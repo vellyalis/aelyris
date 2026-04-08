@@ -1,0 +1,92 @@
+.tabBar {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 8px;
+  background: rgba(24, 24, 37, 0.4);
+  border-bottom: 1px solid var(--border);
+  gap: 2px;
+}
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  flex: 1;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border: none;
+  border-radius: 6px 6px 0 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-family: var(--font-ui);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.tab:hover {
+  background: var(--ctp-surface0);
+  color: var(--text-secondary);
+}
+
+.tab.active {
+  background: var(--ctp-surface0);
+  color: var(--text-primary);
+}
+
+.tabLabel {
+  pointer-events: none;
+}
+
+.tabClose {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  font-size: 12px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+
+.tab:hover .tabClose {
+  opacity: 0.6;
+}
+
+.tabClose:hover {
+  opacity: 1 !important;
+  background: var(--ctp-surface2);
+}
+
+.newTab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.newTab:hover {
+  background: var(--ctp-surface0);
+  color: var(--text-primary);
+}

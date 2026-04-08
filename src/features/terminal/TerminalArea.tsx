@@ -2,9 +2,14 @@ import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
+import type { ShellType } from "../../App";
 import styles from "./TerminalArea.module.css";
 
-export function TerminalArea() {
+interface TerminalAreaProps {
+  shell?: ShellType;
+}
+
+export function TerminalArea({ shell = "powershell" }: TerminalAreaProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
 
@@ -47,7 +52,7 @@ export function TerminalArea() {
     term.writeln("");
 
     // Now connect to PTY
-    connectPty(term);
+    connectPty(term, shell);
 
     const handleResize = () => fitAddon.fit();
     window.addEventListener("resize", handleResize);
@@ -62,13 +67,13 @@ export function TerminalArea() {
   return <div className={styles.terminalArea} ref={containerRef} style={{ padding: 8 }} />;
 }
 
-async function connectPty(term: Terminal) {
+async function connectPty(term: Terminal, shell: string) {
   try {
     const { invoke } = await import("@tauri-apps/api/core");
     const { listen } = await import("@tauri-apps/api/event");
 
     const id = await invoke<string>("spawn_terminal", {
-      shell: "powershell",
+      shell,
       cols: term.cols,
       rows: term.rows,
       cwd: null,
