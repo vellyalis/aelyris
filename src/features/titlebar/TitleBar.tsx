@@ -1,16 +1,31 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import styles from "./TitleBar.module.css";
 
-const appWindow = getCurrentWindow();
+function getWindow() {
+  try {
+    return getCurrentWindow();
+  } catch {
+    return null;
+  }
+}
 
 export function TitleBar() {
+  const handleMinimize = () => getWindow()?.minimize();
+  const handleMaximize = async () => {
+    const win = getWindow();
+    if (!win) return;
+    const isMax = await win.isMaximized();
+    isMax ? win.unmaximize() : win.maximize();
+  };
+  const handleClose = () => getWindow()?.close();
+
   return (
     <div className={styles.titlebar} data-tauri-drag-region>
       <div className={styles.title}>Aether Terminal</div>
       <div className={styles.controls}>
         <button
           className={styles.controlBtn}
-          onClick={() => appWindow.minimize()}
+          onClick={handleMinimize}
           aria-label="Minimize"
         >
           <svg width="10" height="1" viewBox="0 0 10 1">
@@ -19,10 +34,7 @@ export function TitleBar() {
         </button>
         <button
           className={styles.controlBtn}
-          onClick={async () => {
-            const isMax = await appWindow.isMaximized();
-            isMax ? appWindow.unmaximize() : appWindow.maximize();
-          }}
+          onClick={handleMaximize}
           aria-label="Maximize"
         >
           <svg width="10" height="10" viewBox="0 0 10 10">
@@ -39,7 +51,7 @@ export function TitleBar() {
         </button>
         <button
           className={`${styles.controlBtn} ${styles.closeBtn}`}
-          onClick={() => appWindow.close()}
+          onClick={handleClose}
           aria-label="Close"
         >
           <svg width="10" height="10" viewBox="0 0 10 10">
