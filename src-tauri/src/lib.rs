@@ -20,6 +20,9 @@ pub fn run() {
             ipc::close_terminal,
             ipc::list_terminals,
             ipc::detect_shells,
+            ipc::discover_projects,
+            ipc::list_branches,
+            ipc::list_worktrees,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Aether Terminal");

@@ -7,9 +7,10 @@ import styles from "./TerminalArea.module.css";
 
 interface TerminalAreaProps {
   shell?: ShellType;
+  cwd?: string;
 }
 
-export function TerminalArea({ shell = "powershell" }: TerminalAreaProps) {
+export function TerminalArea({ shell = "powershell", cwd }: TerminalAreaProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
 
@@ -52,7 +53,7 @@ export function TerminalArea({ shell = "powershell" }: TerminalAreaProps) {
     term.writeln("");
 
     // Now connect to PTY
-    connectPty(term, shell);
+    connectPty(term, shell, cwd);
 
     const handleResize = () => fitAddon.fit();
     window.addEventListener("resize", handleResize);
@@ -67,7 +68,7 @@ export function TerminalArea({ shell = "powershell" }: TerminalAreaProps) {
   return <div className={styles.terminalArea} ref={containerRef} style={{ padding: 8 }} />;
 }
 
-async function connectPty(term: Terminal, shell: string) {
+async function connectPty(term: Terminal, shell: string, cwd?: string) {
   try {
     const { invoke } = await import("@tauri-apps/api/core");
     const { listen } = await import("@tauri-apps/api/event");
@@ -76,7 +77,7 @@ async function connectPty(term: Terminal, shell: string) {
       shell,
       cols: term.cols,
       rows: term.rows,
-      cwd: null,
+      cwd: cwd ?? null,
     });
 
     await listen<string>(`pty-output-${id}`, (event) => {

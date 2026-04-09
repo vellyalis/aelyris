@@ -5,11 +5,12 @@ export interface Tab {
   id: string;
   label: string;
   shell: ShellType;
+  cwd?: string;
 }
 
 let nextId = 1;
 
-function createTab(shell: ShellType): Tab {
+function createTab(shell: ShellType, cwd?: string): Tab {
   const id = `tab-${nextId++}`;
   const labels: Record<ShellType, string> = {
     powershell: "PowerShell",
@@ -17,7 +18,11 @@ function createTab(shell: ShellType): Tab {
     gitbash: "Git Bash",
     wsl: "WSL",
   };
-  return { id, label: labels[shell], shell };
+  // Use folder name as label if cwd is provided
+  const label = cwd
+    ? cwd.split("/").filter(Boolean).pop() ?? labels[shell]
+    : labels[shell];
+  return { id, label, shell, cwd };
 }
 
 export function useTabManager(defaultShell: ShellType = "powershell") {
@@ -45,7 +50,13 @@ export function useTabManager(defaultShell: ShellType = "powershell") {
     });
   }, [tabs]);
 
+  const addTabWithCwd = useCallback((shell: ShellType, cwd: string) => {
+    const tab = createTab(shell, cwd);
+    setTabs((prev) => [...prev, tab]);
+    setActiveTabId(tab.id);
+  }, []);
+
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
 
-  return { tabs, activeTab, activeTabId, setActiveTabId, addTab, closeTab };
+  return { tabs, activeTab, activeTabId, setActiveTabId, addTab, closeTab, addTabWithCwd };
 }

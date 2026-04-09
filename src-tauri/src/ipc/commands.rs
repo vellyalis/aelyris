@@ -85,6 +85,24 @@ pub fn detect_shells() -> Vec<ShellType> {
     ShellType::detect_available()
 }
 
+/// Discover Git projects in scan directories
+#[tauri::command]
+pub fn discover_projects(scan_dirs: Vec<String>) -> Vec<crate::git::ProjectInfo> {
+    crate::git::discover_projects(&scan_dirs)
+}
+
+/// List branches for a project
+#[tauri::command]
+pub fn list_branches(repo_path: String) -> Result<Vec<crate::git::BranchInfo>, String> {
+    crate::git::list_branches(&repo_path)
+}
+
+/// List worktrees for a project
+#[tauri::command]
+pub fn list_worktrees(repo_path: String) -> Result<Vec<crate::git::WorktreeInfo>, String> {
+    crate::git::list_worktrees(&repo_path)
+}
+
 fn base64_encode(data: &[u8]) -> String {
     use std::fmt::Write;
     let mut s = String::with_capacity(data.len() * 4 / 3 + 4);
