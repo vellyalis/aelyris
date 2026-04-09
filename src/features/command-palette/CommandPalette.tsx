@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { motion, AnimatePresence } from "motion/react";
 import styles from "./CommandPalette.module.css";
 
 export interface Command {
@@ -52,11 +53,25 @@ export function CommandPalette({ visible, onClose, commands }: CommandPalettePro
     }
   }
 
-  if (!visible) return null;
-
   return (
-    <div className={styles.overlay} onClick={onClose}>
-      <div className={styles.palette} onClick={(e) => e.stopPropagation()}>
+    <AnimatePresence>
+    {visible && (
+    <motion.div
+      className={styles.overlay}
+      onClick={onClose}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.12 }}
+    >
+      <motion.div
+        className={styles.palette}
+        onClick={(e) => e.stopPropagation()}
+        initial={{ opacity: 0, y: -20, scale: 0.97 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: -10, scale: 0.97 }}
+        transition={{ type: "spring", stiffness: 400, damping: 30 }}
+      >
         <input
           ref={inputRef}
           className={styles.input}
@@ -84,7 +99,9 @@ export function CommandPalette({ visible, onClose, commands }: CommandPalettePro
             <div className={styles.empty}>No matching commands</div>
           )}
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
+    )}
+    </AnimatePresence>
   );
 }
