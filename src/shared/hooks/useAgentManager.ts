@@ -101,9 +101,31 @@ export function useAgentManager() {
       const id = await invoke<string>("start_agent", { prompt, cwd, model: model ?? null });
       setActiveSessionId(id);
       await subscribeToSession(id);
+      // Add initial log entry
+      setSessions((prev) =>
+        prev.map((s) => s.id === id ? {
+          ...s,
+          logs: [{ timestamp: Date.now(), type: "system" as const, content: `Starting agent: ${prompt.slice(0, 100)}` }],
+        } : s)
+      );
       return id;
     } catch (err) {
-      throw new Error(String(err));
+      // Create a failed session entry for UI feedback
+      const errorId = `error-${Date.now()}`;
+      const errorSession: AgentSession = {
+        id: errorId,
+        name: "Failed",
+        status: "error",
+        model: model ?? "sonnet",
+        prompt,
+        startedAt: Date.now(),
+        logs: [{ timestamp: Date.now(), type: "error", content: `Failed to start: ${String(err)}. Is 'claude' CLI installed?` }],
+        cost: 0,
+        tokensUsed: 0,
+      };
+      setSessions((prev) => [...prev, errorSession]);
+      setActiveSessionId(errorId);
+      return errorId;
     }
   }, [subscribeToSession]);
 

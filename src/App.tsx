@@ -13,6 +13,7 @@ import { Settings } from "./features/settings/Settings";
 import { WatchdogDialog } from "./features/watchdog/WatchdogDialog";
 import { WelcomeScreen } from "./features/welcome/WelcomeScreen";
 import { SearchPanel } from "./features/search/SearchPanel";
+import { AboutDialog } from "./features/about/AboutDialog";
 import { SplitPane } from "./shared/ui/SplitPane";
 import { useTabManager } from "./shared/hooks/useTabManager";
 import { useAgentManager } from "./shared/hooks/useAgentManager";
@@ -30,6 +31,7 @@ export function App() {
   const [activeFile, setActiveFile] = useState<string | null>(null);
   const [watchdogVisible, setWatchdogVisible] = useState(false);
   const [searchVisible, setSearchVisible] = useState(false);
+  const [aboutVisible, setAboutVisible] = useState(false);
 
   const { tabs, activeTab, activeTabId, setActiveTabId, addTab, closeTab, addTabWithCwd } =
     useTabManager("powershell");
@@ -204,7 +206,7 @@ export function App() {
     {
       label: "Help",
       items: [
-        { label: "About Aether Terminal", action: () => { /* TODO */ } },
+        { label: "About Aether Terminal", action: () => setAboutVisible(true) },
         { label: "Keyboard Shortcuts", action: () => setSettingsVisible(true) },
       ],
     },
@@ -357,6 +359,7 @@ export function App() {
       <CommandPalette visible={paletteVisible} onClose={() => setPaletteVisible(false)} commands={commands} />
       <Settings visible={settingsVisible} onClose={() => setSettingsVisible(false)} />
       <WatchdogDialog visible={watchdogVisible} onClose={() => setWatchdogVisible(false)} />
+      <AboutDialog visible={aboutVisible} onClose={() => setAboutVisible(false)} />
     </div>
   );
 }

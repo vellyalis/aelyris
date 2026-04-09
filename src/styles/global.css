@@ -132,3 +132,20 @@ html, body, #root {
   outline: 1px solid var(--gold);
   outline-offset: -1px;
 }
+
+/* Smooth transitions for all interactive elements */
+button, [role="button"] {
+  transition: background 0.1s ease, color 0.1s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+
+/* Loading skeleton shimmer */
+@keyframes shimmer {
+  0% { background-position: -200px 0; }
+  100% { background-position: 200px 0; }
+}
+
+.shimmer {
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent);
+  background-size: 200px 100%;
+  animation: shimmer 1.5s infinite;
+}
