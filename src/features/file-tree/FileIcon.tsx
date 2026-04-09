@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 const COLORS: Record<string, string> = {
   folder: "#c8a050",
   ts: "#3178c6",
@@ -18,7 +20,7 @@ const COLORS: Record<string, string> = {
   file: "rgba(255,255,255,0.3)",
 };
 
-export function FileIcon({ type, isOpen }: { type: string; isOpen?: boolean }) {
+export const FileIcon = memo(function FileIcon({ type, isOpen }: { type: string; isOpen?: boolean }) {
   const color = COLORS[type] ?? COLORS.file;
 
   if (type === "folder") {
@@ -40,4 +42,4 @@ export function FileIcon({ type, isOpen }: { type: string; isOpen?: boolean }) {
       <path d="M9.5 1.5V5H13" stroke={color} strokeWidth="0.8" opacity="0.5"/>
     </svg>
   );
-}
+});

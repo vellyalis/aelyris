@@ -53,8 +53,21 @@
   --font-ui: 'IBM Plex Sans', -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'IBM Plex Mono', 'Cascadia Code', monospace;
 
-  /* Spacing */
+  /* Spacing tokens */
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 10px;
+  --space-6: 12px;
+  --space-8: 16px;
+  --space-10: 20px;
+  --space-12: 24px;
+
+  /* Layout */
   --radius: 8px;
+  --radius-sm: 4px;
+  --radius-lg: 12px;
   --header-height: 32px;
   --bottom-tabs-height: 28px;
 }

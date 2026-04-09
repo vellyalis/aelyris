@@ -1,3 +1,4 @@
+import { memo } from "react";
 import styles from "./ContextGauge.module.css";
 
 interface ContextGaugeProps {
@@ -12,7 +13,7 @@ function gaugeColor(pct: number): string {
   return "#a6e3a1"; // green
 }
 
-export function ContextGauge({ percent, width = 60 }: ContextGaugeProps) {
+export const ContextGauge = memo(function ContextGauge({ percent, width = 60 }: ContextGaugeProps) {
   const color = gaugeColor(percent);
   return (
     <div className={styles.gauge} style={{ width }}>
@@ -22,4 +23,4 @@ export function ContextGauge({ percent, width = 60 }: ContextGaugeProps) {
       <span className={styles.label} style={{ color }}>{Math.round(percent)}%</span>
     </div>
   );
-}
+});

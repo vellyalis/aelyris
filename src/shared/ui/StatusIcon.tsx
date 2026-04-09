@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { AgentStatus } from "../types/agent";
 import { STATUS_COLORS } from "../types/agent";
 
@@ -16,11 +17,11 @@ interface StatusIconProps {
   size?: number;
 }
 
-export function StatusIcon({ status, size = 12 }: StatusIconProps) {
+export const StatusIcon = memo(function StatusIcon({ status, size = 12 }: StatusIconProps) {
   const color = STATUS_COLORS[status];
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
       <path d={ICON_PATHS[status]} />
     </svg>
   );
-}
+});

@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 /**
  * Procedural pixel robot avatar generator.
  * Generates a unique robot from a seed string.
@@ -19,7 +21,7 @@ interface PixelAvatarProps {
   size?: number;
 }
 
-export function PixelAvatar({ seed, size = 32 }: PixelAvatarProps) {
+export const PixelAvatar = memo(function PixelAvatar({ seed, size = 32 }: PixelAvatarProps) {
   const h = hashSeed(seed);
   const bgColor = BG_COLORS[h % BG_COLORS.length];
   const bodyColor = BODY_COLORS[(h >> 3) % BODY_COLORS.length];
@@ -78,4 +80,4 @@ export function PixelAvatar({ seed, size = 32 }: PixelAvatarProps) {
       <rect x={u * 3} y={u * 11} width={u * 10} height={u * 4} rx={u} fill={bodyColor} />
     </svg>
   );
-}
+});
