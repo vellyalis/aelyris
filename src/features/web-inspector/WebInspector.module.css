@@ -1,0 +1,60 @@
+.panel {
+  position: fixed;
+  top: 60px;
+  right: 20px;
+  width: 480px;
+  height: 400px;
+  background: #0d0d0d;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+  display: flex;
+  flex-direction: column;
+  z-index: 70;
+  overflow: hidden;
+  resize: both;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  background: var(--aether-bg-elevated);
+  border-bottom: 1px solid var(--border);
+}
+
+.urlBar {
+  flex: 1;
+  padding: 3px 8px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  outline: none;
+}
+
+.urlBar:focus { border-color: var(--gold); }
+
+.navBtn, .closeBtn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.navBtn:hover, .closeBtn:hover {
+  background: rgba(255,255,255,0.08);
+  color: var(--text-primary);
+}
+
+.frame {
+  flex: 1;
+  border: none;
+  background: #fff;
+}

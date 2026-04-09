@@ -15,6 +15,7 @@ import { WelcomeScreen } from "./features/welcome/WelcomeScreen";
 import { SearchPanel } from "./features/search/SearchPanel";
 import { AboutDialog } from "./features/about/AboutDialog";
 import { PRInspector } from "./features/pr-inspector/PRInspector";
+import { WebInspector } from "./features/web-inspector/WebInspector";
 import { SplitPane } from "./shared/ui/SplitPane";
 import { useTabManager } from "./shared/hooks/useTabManager";
 import { useAgentManager } from "./shared/hooks/useAgentManager";
@@ -33,6 +34,7 @@ export function App() {
   const [watchdogVisible, setWatchdogVisible] = useState(false);
   const [searchVisible, setSearchVisible] = useState(false);
   const [aboutVisible, setAboutVisible] = useState(false);
+  const [webInspectorVisible, setWebInspectorVisible] = useState(false);
 
   const { tabs, activeTab, activeTabId, setActiveTabId, addTab, closeTab, addTabWithCwd } =
     useTabManager("powershell");
@@ -195,6 +197,7 @@ export function App() {
       items: [
         { label: "Command Palette", shortcut: "Ctrl+Shift+P", action: () => setPaletteVisible(true) },
         { label: "Search in Files", shortcut: "Ctrl+Shift+F", action: () => setSearchVisible(true) },
+        { label: "Web Inspector", action: () => setWebInspectorVisible((v) => !v) },
         { divider: true, label: "" },
         { label: "Zoom In", shortcut: "Ctrl+=", action: () => { /* TODO */ } },
         { label: "Zoom Out", shortcut: "Ctrl+-", action: () => { /* TODO */ } },
@@ -376,6 +379,7 @@ export function App() {
       <Settings visible={settingsVisible} onClose={() => setSettingsVisible(false)} />
       <WatchdogDialog visible={watchdogVisible} onClose={() => setWatchdogVisible(false)} />
       <AboutDialog visible={aboutVisible} onClose={() => setAboutVisible(false)} />
+      <WebInspector visible={webInspectorVisible} onClose={() => setWebInspectorVisible(false)} />
     </div>
   );
 }
