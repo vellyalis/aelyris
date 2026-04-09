@@ -1,0 +1,41 @@
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 22px;
+  padding: 0 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid var(--border);
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.shell {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.cwd {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.toggleBtn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.toggleBtn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}

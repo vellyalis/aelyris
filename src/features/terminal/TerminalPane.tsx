@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { TerminalArea } from "./TerminalArea";
+import { TerminalInfoBar } from "./TerminalInfoBar";
 import { SplitPane } from "../../shared/ui/SplitPane";
 import type { ShellType } from "../../App";
 
@@ -73,7 +74,13 @@ function PaneRenderer({
   onSplit: (id: string, dir: "horizontal" | "vertical") => void;
 }) {
   if (node.type === "terminal") {
-    return <TerminalArea shell={node.shell} cwd={node.cwd} />;
+    const shellLabel = node.shell === "powershell" ? "PowerShell" : node.shell === "cmd" ? "CMD" : node.shell === "gitbash" ? "Git Bash" : "WSL";
+    return (
+      <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
+        <TerminalInfoBar shell={shellLabel} cwd={node.cwd} />
+        <TerminalArea shell={node.shell} cwd={node.cwd} />
+      </div>
+    );
   }
 
   return (

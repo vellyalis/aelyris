@@ -200,6 +200,18 @@ fn grep_recursive(dir: &std::path::Path, pattern: &str, max: u32, results: &mut 
     }
 }
 
+/// Load app config
+#[tauri::command]
+pub fn load_app_config() -> crate::config::AppConfig {
+    crate::config::load_config()
+}
+
+/// Save app config
+#[tauri::command]
+pub fn save_app_config(config: crate::config::AppConfig) -> Result<(), String> {
+    crate::config::save_config(&config)
+}
+
 /// Get watchdog rules
 #[tauri::command]
 pub fn get_watchdog_rules() -> crate::watchdog::WatchdogRules {

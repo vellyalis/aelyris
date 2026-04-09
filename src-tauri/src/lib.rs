@@ -34,6 +34,8 @@ pub fn run() {
             ipc::git_status,
             ipc::search_files,
             ipc::grep_files,
+            ipc::load_app_config,
+            ipc::save_app_config,
             ipc::read_file,
             ipc::write_file,
             ipc::create_file,

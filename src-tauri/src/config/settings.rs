@@ -61,6 +61,34 @@ impl Default for AppConfig {
     }
 }
 
+fn config_path() -> std::path::PathBuf {
+    let home = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .unwrap_or_else(|_| ".".to_string());
+    std::path::PathBuf::from(home).join(".aether").join("config.toml")
+}
+
+pub fn load_config() -> AppConfig {
+    let path = config_path();
+    if path.exists() {
+        std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|s| toml::from_str(&s).ok())
+            .unwrap_or_default()
+    } else {
+        AppConfig::default()
+    }
+}
+
+pub fn save_config(config: &AppConfig) -> Result<(), String> {
+    let path = config_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("mkdir: {}", e))?;
+    }
+    let toml_str = toml::to_string_pretty(config).map_err(|e| format!("serialize: {}", e))?;
+    std::fs::write(&path, toml_str).map_err(|e| format!("write: {}", e))
+}
+
 fn default_theme() -> String { "catppuccin-mocha".to_string() }
 fn default_ui_font() -> String { "Geist, Inter, Source Han Sans JP, sans-serif".to_string() }
 fn default_terminal_font() -> String { "Cascadia Code, Cascadia Next JP, monospace".to_string() }
