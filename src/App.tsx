@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
 import { ProjectHeaderBar } from "./features/header/ProjectHeaderBar";
 import { FileTree } from "./features/file-tree/FileTree";
 import { HelmPanel } from "./features/helm/HelmPanel";
@@ -10,6 +11,7 @@ import { WorkspaceTabs } from "./features/workspace-tabs/WorkspaceTabs";
 import { CommandPalette, type Command } from "./features/command-palette/CommandPalette";
 import { Settings } from "./features/settings/Settings";
 import { WatchdogDialog } from "./features/watchdog/WatchdogDialog";
+import { WelcomeScreen } from "./features/welcome/WelcomeScreen";
 import { SplitPane } from "./shared/ui/SplitPane";
 import { useTabManager } from "./shared/hooks/useTabManager";
 import { useAgentManager } from "./shared/hooks/useAgentManager";
@@ -18,19 +20,44 @@ import { useGitStatus } from "./shared/hooks/useGitStatus";
 export type ShellType = "powershell" | "cmd" | "gitbash" | "wsl";
 
 export function App() {
+  const [rootProjectPath, setRootProjectPath] = useState<string | null>(null);
   const [paletteVisible, setPaletteVisible] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [openFilePath, setOpenFilePath] = useState<string | null>(null);
   const [watchdogVisible, setWatchdogVisible] = useState(false);
 
-  const { tabs, activeTab, activeTabId, setActiveTabId, addTab, closeTab } =
+  const { tabs, activeTab, activeTabId, setActiveTabId, addTab, closeTab, addTabWithCwd } =
     useTabManager("powershell");
   const { sessions, activeSessionId, setActiveSessionId, startAgent, stopAgent } =
     useAgentManager();
 
-  const projectPath = activeTab.cwd ?? "C:/Users/owner/Aether_Terminal";
-  const projectName = projectPath.split("/").filter(Boolean).pop() ?? "Aether Terminal";
+  // Project path: from active tab's cwd, or from root selection
+  const projectPath = activeTab.cwd ?? rootProjectPath ?? "";
+  const projectName = projectPath ? projectPath.split("/").filter(Boolean).pop() ?? "Aether" : "Aether";
   const initials = projectName.slice(0, 2).toUpperCase();
+
+  // Open project: set root + create first tab with that CWD
+  const handleOpenProject = useCallback((path: string) => {
+    const normalized = path.replace(/\\/g, "/");
+    setRootProjectPath(normalized);
+    addTabWithCwd("powershell", normalized);
+    setOpenFilePath(null);
+  }, [addTabWithCwd]);
+
+  const handleOpenFolder = useCallback(async () => {
+    try {
+      const selected = await open({ directory: true, multiple: false, title: "Open Project Folder" });
+      if (selected) {
+        handleOpenProject(typeof selected === "string" ? selected : selected[0]);
+      }
+    } catch { /* cancelled */ }
+  }, [handleOpenProject]);
+
+  // Tab switch updates projectPath automatically (via activeTab.cwd)
+  const handleTabSwitch = useCallback((tabId: string) => {
+    setActiveTabId(tabId);
+    setOpenFilePath(null); // Close editor when switching tabs
+  }, [setActiveTabId]);
 
   const { branch, changedFiles } = useGitStatus(projectPath);
 
@@ -73,6 +100,7 @@ export function App() {
     { id: "close-tab", label: "Close Current Tab", shortcut: "Ctrl+Shift+W", action: () => closeTab(activeTabId) },
     { id: "open-settings", label: "Open Settings", shortcut: "Ctrl+,", action: () => setSettingsVisible(true) },
     { id: "close-editor", label: "Close Editor", action: () => setOpenFilePath(null) },
+    { id: "open-folder", label: "Open Folder", action: handleOpenFolder },
     { id: "create-watchdog", label: "Create Watchdog", action: () => setWatchdogVisible(true) },
   ], [addTab, closeTab, activeTabId]);
 
@@ -99,6 +127,15 @@ export function App() {
       <TerminalPane shell={tab.shell} cwd={tab.cwd} />
     </div>
   ));
+
+  // Welcome screen when no project is open
+  if (!rootProjectPath) {
+    return (
+      <div className="app-container">
+        <WelcomeScreen onOpenProject={handleOpenProject} />
+      </div>
+    );
+  }
 
   return (
     <div className="app-container">
@@ -146,7 +183,7 @@ export function App() {
       <WorkspaceTabs
         tabs={tabs}
         activeTabId={activeTabId}
-        onSelectTab={setActiveTabId}
+        onSelectTab={handleTabSwitch}
         onCloseTab={closeTab}
         onNewTab={addTab}
       />

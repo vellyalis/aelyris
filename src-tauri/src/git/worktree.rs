@@ -47,6 +47,43 @@ pub fn list_worktrees(repo_path: &str) -> Result<Vec<WorktreeInfo>, String> {
 }
 
 /// List branches for a repo
+/// Create a new worktree for a branch
+pub fn create_worktree(repo_path: &str, branch_name: &str) -> Result<WorktreeInfo, String> {
+    let repo = Repository::open(repo_path).map_err(|e| format!("Open repo: {}", e))?;
+    let worktree_dir = std::path::Path::new(repo_path)
+        .parent()
+        .unwrap_or(std::path::Path::new(repo_path))
+        .join(format!("{}-{}", std::path::Path::new(repo_path).file_name().unwrap_or_default().to_string_lossy(), branch_name));
+
+    let worktree_path = worktree_dir.to_string_lossy().to_string().replace('\\', "/");
+
+    // Use git command directly for reliability
+    let output = std::process::Command::new("git")
+        .args(["worktree", "add", &worktree_dir.to_string_lossy(), "-b", branch_name])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Git command failed: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        // Try without -b (branch already exists)
+        let output2 = std::process::Command::new("git")
+            .args(["worktree", "add", &worktree_dir.to_string_lossy(), branch_name])
+            .current_dir(repo_path)
+            .output()
+            .map_err(|e| format!("Git command failed: {}", e))?;
+        if !output2.status.success() {
+            return Err(format!("Worktree creation failed: {}", stderr));
+        }
+    }
+
+    Ok(WorktreeInfo {
+        name: branch_name.to_string(),
+        path: worktree_path,
+        branch: branch_name.to_string(),
+    })
+}
+
 pub fn list_branches(repo_path: &str) -> Result<Vec<BranchInfo>, String> {
     let repo = Repository::open(repo_path).map_err(|e| format!("Failed to open repo: {}", e))?;
     let branches = repo

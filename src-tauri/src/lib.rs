@@ -13,6 +13,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(PtyManager::new())
         .manage(AgentManager::new())
         .setup(|_app| {
@@ -28,6 +29,7 @@ pub fn run() {
             ipc::discover_projects,
             ipc::list_branches,
             ipc::list_worktrees,
+            ipc::create_worktree,
             ipc::list_directory,
             ipc::git_status,
             ipc::search_files,

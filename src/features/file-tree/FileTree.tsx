@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { FileIcon } from "./FileIcon";
 import styles from "./FileTree.module.css";
@@ -24,9 +24,13 @@ interface FileTreeProps {
 }
 
 export function FileTree({ rootPath, onFileSelect, changedFiles = [] }: FileTreeProps) {
+  const [currentRoot, setCurrentRoot] = useState(rootPath);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<FileEntry[] | null>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Reset currentRoot when rootPath changes (project switch)
+  useEffect(() => { setCurrentRoot(rootPath); }, [rootPath]);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set([rootPath]));
   const [contents, setContents] = useState<Map<string, FileEntry[]>>(new Map());
   const [loading, setLoading] = useState<Set<string>>(new Set());
@@ -51,12 +55,12 @@ export function FileTree({ rootPath, onFileSelect, changedFiles = [] }: FileTree
     }
   }, [expanded, contents]);
 
-  // Load root on first render
-  if (!contents.has(rootPath) && !loading.has(rootPath)) {
-    toggleDir(rootPath);
+  // Load current root on first render or root change
+  if (!contents.has(currentRoot) && !loading.has(currentRoot)) {
+    toggleDir(currentRoot);
   }
 
-  const rootName = rootPath.split("/").filter(Boolean).pop() ?? "project";
+  // rootName used in breadcrumb via currentRoot
 
   // File search
   const handleSearch = useCallback((query: string) => {
@@ -105,12 +109,24 @@ export function FileTree({ rootPath, onFileSelect, changedFiles = [] }: FileTree
         </div>
       ) : (
         <>
+          {/* Breadcrumb: show back button when drilled into subfolder */}
+          {currentRoot !== rootPath && (
+            <button
+              className={styles.breadcrumb}
+              onClick={() => {
+                const parent = currentRoot.split("/").slice(0, -1).join("/");
+                setCurrentRoot(parent || rootPath);
+              }}
+            >
+              ← {currentRoot.split("/").filter(Boolean).pop()}
+            </button>
+          )}
           <div className={styles.rootHeader}>
             <FileIcon type="folder" isOpen />
-            <span className={styles.rootName}>{rootName}</span>
+            <span className={styles.rootName}>{currentRoot.split("/").filter(Boolean).pop() ?? "project"}</span>
           </div>
           <div className={styles.list}>
-            {renderEntries(contents.get(rootPath) ?? [], 0, expanded, contents, loading, toggleDir, onFileSelect, changedSet, changedStatusMap)}
+            {renderEntries(contents.get(currentRoot) ?? [], 0, expanded, contents, loading, toggleDir, onFileSelect, changedSet, changedStatusMap)}
           </div>
           {changedFiles.length > 0 && (
             <div className={styles.changesBar}>Show {changedFiles.length} changes</div>

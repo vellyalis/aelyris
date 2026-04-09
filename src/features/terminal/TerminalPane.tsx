@@ -25,7 +25,14 @@ interface TerminalPaneProps {
 }
 
 export function TerminalPane({ shell, cwd }: TerminalPaneProps) {
-  const [root, setRoot] = useState<PaneNode>(() => makeTerminalNode(shell, cwd));
+  // Default: vertical split (main shell top + sub shell bottom)
+  const [root, setRoot] = useState<PaneNode>(() => ({
+    type: "split",
+    direction: "vertical",
+    first: makeTerminalNode(shell, cwd),
+    second: makeTerminalNode(shell, cwd),
+    id: `pane-${paneId++}`,
+  }));
 
   const splitPane = useCallback(
     (targetId: string, direction: "horizontal" | "vertical") => {

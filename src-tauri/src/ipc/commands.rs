@@ -110,6 +110,12 @@ pub fn list_directory(path: String) -> Result<Vec<crate::git::FileEntry>, String
     crate::git::list_directory(&path)
 }
 
+/// Create a git worktree
+#[tauri::command]
+pub fn create_worktree(repo_path: String, branch_name: String) -> Result<crate::git::WorktreeInfo, String> {
+    crate::git::create_worktree(&repo_path, &branch_name)
+}
+
 /// Get git status for a repository
 #[tauri::command]
 pub fn git_status(repo_path: String) -> Result<crate::git::GitStatusInfo, String> {

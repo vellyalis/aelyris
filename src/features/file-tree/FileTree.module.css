@@ -2,7 +2,24 @@
   flex: 1;
   overflow-y: auto;
   font-size: 12px;
+  display: flex;
+  flex-direction: column;
 }
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border: none;
+  background: rgba(255,255,255,0.03);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-family: var(--font-ui);
+  cursor: pointer;
+  text-align: left;
+}
+.breadcrumb:hover { background: rgba(255,255,255,0.06); color: var(--text-primary); }
 .rootHeader {
   display: flex;
   align-items: center;
