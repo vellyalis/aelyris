@@ -318,7 +318,7 @@ export function App() {
       <main className="app-main">
         <div className="left-panel" style={{ position: "relative" }}>
           <FileTree rootPath={projectPath} onFileSelect={handleFileSelect} changedFiles={changedFiles} />
-          <HelmPanel />
+          <HelmPanel onStartAgent={handleStartAgent} />
           <SearchPanel
             visible={searchVisible}
             rootPath={projectPath}

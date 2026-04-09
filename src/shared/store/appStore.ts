@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { KanbanTask, KanbanColumnId } from "../types/kanban";
 
 interface AppState {
   // Project
@@ -24,6 +25,13 @@ interface AppState {
   // Agent model
   selectedModel: string;
   setSelectedModel: (modelId: string) => void;
+
+  // Kanban
+  kanbanTasks: KanbanTask[];
+  addKanbanTask: (title: string) => void;
+  moveKanbanTask: (taskId: string, toColumn: KanbanColumnId) => void;
+  deleteKanbanTask: (taskId: string) => void;
+  updateKanbanTask: (taskId: string, updates: Partial<KanbanTask>) => void;
 
   // Editor
   openFiles: string[];
@@ -75,6 +83,32 @@ export const useAppStore = create<AppState>((set) => ({
     set({ selectedModel: modelId });
     try { localStorage.setItem("aether:selectedModel", modelId); } catch {}
   },
+
+  // Kanban
+  kanbanTasks: (() => {
+    try { return JSON.parse(localStorage.getItem("aether:kanban") ?? "[]") as KanbanTask[]; } catch { return [] as KanbanTask[]; }
+  })(),
+  addKanbanTask: (title) => set((s) => {
+    const task: KanbanTask = { id: `task-${Date.now()}`, title, column: "todo", createdAt: Date.now(), updatedAt: Date.now() };
+    const tasks = [...s.kanbanTasks, task];
+    try { localStorage.setItem("aether:kanban", JSON.stringify(tasks)); } catch {}
+    return { kanbanTasks: tasks };
+  }),
+  moveKanbanTask: (taskId, toColumn) => set((s) => {
+    const tasks = s.kanbanTasks.map((t) => t.id === taskId ? { ...t, column: toColumn, updatedAt: Date.now() } : t);
+    try { localStorage.setItem("aether:kanban", JSON.stringify(tasks)); } catch {}
+    return { kanbanTasks: tasks };
+  }),
+  deleteKanbanTask: (taskId) => set((s) => {
+    const tasks = s.kanbanTasks.filter((t) => t.id !== taskId);
+    try { localStorage.setItem("aether:kanban", JSON.stringify(tasks)); } catch {}
+    return { kanbanTasks: tasks };
+  }),
+  updateKanbanTask: (taskId, updates) => set((s) => {
+    const tasks = s.kanbanTasks.map((t) => t.id === taskId ? { ...t, ...updates, updatedAt: Date.now() } : t);
+    try { localStorage.setItem("aether:kanban", JSON.stringify(tasks)); } catch {}
+    return { kanbanTasks: tasks };
+  }),
 
   // Editor
   openFiles: (() => {
