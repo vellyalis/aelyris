@@ -51,6 +51,11 @@
 .log_error .logContent { color: var(--ctp-red); }
 .log_system .logContent { color: var(--text-muted); font-style: italic; }
 
+.activityName {
+  font-size: 9px; color: var(--gold); font-weight: 500; flex-shrink: 0;
+  max-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
 /* Prompt input */
 .promptInput { padding: 6px; border-bottom: 1px solid var(--border); }
 .promptField {

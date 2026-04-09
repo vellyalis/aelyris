@@ -48,48 +48,75 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
         </div>
       )}
 
-      {/* Session cards */}
-      <div className={styles.cards}>
-        {sessions.length === 0 && !showPromptInput && (
-          <div className={styles.empty}>
-            <div>No active agents</div>
-            <div className={styles.hint}>Ctrl+Shift+A to start</div>
-          </div>
-        )}
-        {sessions.map((s) => (
-          <button key={s.id} className={`${styles.card} ${s.id === activeSessionId ? styles.cardActive : ""}`} onClick={() => onSelectSession(s.id)}>
-            <div className={styles.cardTop}>
-              <span className={styles.statusDot} style={{ background: STATUS_COLORS[s.status] }} />
-              <span className={styles.cardName}>{s.name}</span>
-              <span className={styles.cardPct}>{s.status === "done" ? "100" : "—"}%</span>
-            </div>
-            <div className={styles.progressTrack}>
-              <div className={styles.progressBar} style={{ width: s.status === "done" ? "100%" : s.status === "idle" ? "0%" : "50%" }} />
-            </div>
-            <div className={styles.cardMeta}>
-              <span><span className={styles.statusDotSmall} style={{ background: STATUS_COLORS[s.status] }} /> {STATUS_LABELS[s.status]}</span>
-              <span className={styles.cardModel}>{s.model}</span>
-              <span className={styles.cardCost}>${s.cost.toFixed(2)}</span>
-              {s.status !== "done" && s.status !== "idle" && (
-                <span className={styles.stopBtn} onClick={(e) => { e.stopPropagation(); onStopAgent?.(s.id); }}>■</span>
-              )}
-            </div>
-          </button>
-        ))}
-        <div className={styles.navHint}>Ctrl+0-9 Jump · Ctrl+[ Prev · Ctrl+] Next</div>
-      </div>
-
-      {/* Log viewer */}
-      {activeSession && (
-        <div className={styles.logSection}>
-          <div className={styles.logHeader}>{activeSession.tokensUsed.toLocaleString()} tokens</div>
-          <div className={styles.logList}>
-            {activeSession.logs.map((log, i) => (
-              <div key={i} className={`${styles.logEntry} ${styles[`log_${log.type}`]}`}>
-                <span className={styles.logTime}>{new Date(log.timestamp).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
-                <span className={styles.logContent}>{log.content}</span>
+      {tab === "sessions" ? (
+        <>
+          {/* Session cards */}
+          <div className={styles.cards}>
+            {sessions.length === 0 && !showPromptInput && (
+              <div className={styles.empty}>
+                <div>No active agents</div>
+                <div className={styles.hint}>Ctrl+Shift+A to start</div>
               </div>
+            )}
+            {sessions.map((s) => (
+              <button key={s.id} className={`${styles.card} ${s.id === activeSessionId ? styles.cardActive : ""}`} onClick={() => onSelectSession(s.id)}>
+                <div className={styles.cardTop}>
+                  <span className={styles.statusDot} style={{ background: STATUS_COLORS[s.status] }} />
+                  <span className={styles.cardName}>{s.name}</span>
+                  <span className={styles.cardPct}>{s.status === "done" ? "100" : "—"}%</span>
+                </div>
+                <div className={styles.progressTrack}>
+                  <div className={styles.progressBar} style={{ width: s.status === "done" ? "100%" : s.status === "idle" ? "0%" : "50%" }} />
+                </div>
+                <div className={styles.cardMeta}>
+                  <span><span className={styles.statusDotSmall} style={{ background: STATUS_COLORS[s.status] }} /> {STATUS_LABELS[s.status]}</span>
+                  <span className={styles.cardModel}>{s.model}</span>
+                  <span className={styles.cardCost}>${s.cost.toFixed(2)}</span>
+                  {s.status !== "done" && s.status !== "idle" && (
+                    <span className={styles.stopBtn} onClick={(e) => { e.stopPropagation(); onStopAgent?.(s.id); }}>■</span>
+                  )}
+                </div>
+              </button>
             ))}
+            <div className={styles.navHint}>Ctrl+0-9 Jump · Ctrl+[ Prev · Ctrl+] Next</div>
+          </div>
+
+          {/* Log viewer for selected session */}
+          {activeSession && (
+            <div className={styles.logSection}>
+              <div className={styles.logHeader}>{activeSession.tokensUsed.toLocaleString()} tokens</div>
+              <div className={styles.logList}>
+                {activeSession.logs.map((log, i) => (
+                  <div key={i} className={`${styles.logEntry} ${styles[`log_${log.type}`]}`}>
+                    <span className={styles.logTime}>{new Date(log.timestamp).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+                    <span className={styles.logContent}>{log.content}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      ) : (
+        /* Activity tab — unified feed from all sessions */
+        <div className={styles.logSection} style={{ flex: 1 }}>
+          <div className={styles.logHeader}>All Activity</div>
+          <div className={styles.logList}>
+            {sessions
+              .flatMap((s) => s.logs.map((log) => ({ ...log, sessionName: s.name, sessionId: s.id })))
+              .sort((a, b) => b.timestamp - a.timestamp)
+              .slice(0, 100)
+              .map((log, i) => (
+                <div key={i} className={`${styles.logEntry} ${styles[`log_${log.type}`]}`}>
+                  <span className={styles.logTime}>
+                    {new Date(log.timestamp).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                  </span>
+                  <span className={styles.activityName}>{log.sessionName}</span>
+                  <span className={styles.logContent}>{log.content}</span>
+                </div>
+              ))}
+            {sessions.flatMap((s) => s.logs).length === 0 && (
+              <div className={styles.empty}>No activity yet</div>
+            )}
           </div>
         </div>
       )}
