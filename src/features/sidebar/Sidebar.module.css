@@ -46,11 +46,33 @@
   padding: 4px;
 }
 
+.projectRow {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.expandBtn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 10px;
+  cursor: pointer;
+  padding: 4px;
+  flex-shrink: 0;
+  width: 20px;
+  text-align: center;
+}
+
+.expandBtn:hover {
+  color: var(--text-primary);
+}
+
 .project {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  width: 100%;
+  flex: 1;
   padding: 6px 8px;
   border: none;
   border-radius: 6px;
@@ -100,4 +122,32 @@
   padding: 8px;
   font-size: 11px;
   color: var(--ctp-red);
+}
+
+.branchList {
+  padding: 2px 0 4px 28px;
+}
+
+.branchItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  border-radius: 4px;
+}
+
+.branchItem:hover {
+  background: var(--ctp-surface0);
+  color: var(--text-secondary);
+}
+
+.branchActive {
+  color: var(--ctp-green);
+}
+
+.branchIcon {
+  font-size: 8px;
 }
