@@ -28,9 +28,77 @@ export function FileTree({ rootPath, onFileSelect, changedFiles = [] }: FileTree
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<FileEntry[] | null>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; path: string; isDir: boolean } | null>(null);
 
   // Reset currentRoot when rootPath changes (project switch)
   useEffect(() => { setCurrentRoot(rootPath); }, [rootPath]);
+
+  // Close context menu on click
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const close = () => setCtxMenu(null);
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [ctxMenu]);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent, path: string, isDir: boolean) => {
+    e.preventDefault();
+    setCtxMenu({ x: e.clientX, y: e.clientY, path, isDir });
+  }, []);
+
+  const handleNewFile = useCallback(async () => {
+    if (!ctxMenu) return;
+    const name = prompt("New file name:");
+    if (!name) return;
+    const dir = ctxMenu.isDir ? ctxMenu.path : ctxMenu.path.split("/").slice(0, -1).join("/");
+    try {
+      await invoke("create_file", { path: `${dir}/${name}` });
+      // Reload directory
+      const entries = await invoke<FileEntry[]>("list_directory", { path: dir });
+      setContents((prev) => new Map(prev).set(dir, entries));
+    } catch { /* ignore */ }
+    setCtxMenu(null);
+  }, [ctxMenu]);
+
+  const handleNewFolder = useCallback(async () => {
+    if (!ctxMenu) return;
+    const name = prompt("New folder name:");
+    if (!name) return;
+    const dir = ctxMenu.isDir ? ctxMenu.path : ctxMenu.path.split("/").slice(0, -1).join("/");
+    try {
+      await invoke("create_directory", { path: `${dir}/${name}` });
+      const entries = await invoke<FileEntry[]>("list_directory", { path: dir });
+      setContents((prev) => new Map(prev).set(dir, entries));
+    } catch { /* ignore */ }
+    setCtxMenu(null);
+  }, [ctxMenu]);
+
+  const handleRename = useCallback(async () => {
+    if (!ctxMenu) return;
+    const oldName = ctxMenu.path.split("/").pop() ?? "";
+    const newName = prompt("Rename to:", oldName);
+    if (!newName || newName === oldName) return;
+    const parentDir = ctxMenu.path.split("/").slice(0, -1).join("/");
+    try {
+      await invoke("rename_path", { oldPath: ctxMenu.path, newPath: `${parentDir}/${newName}` });
+      const entries = await invoke<FileEntry[]>("list_directory", { path: parentDir });
+      setContents((prev) => new Map(prev).set(parentDir, entries));
+    } catch { /* ignore */ }
+    setCtxMenu(null);
+  }, [ctxMenu]);
+
+  const handleDelete = useCallback(async () => {
+    if (!ctxMenu) return;
+    const name = ctxMenu.path.split("/").pop() ?? "";
+    if (!confirm(`Delete "${name}"?`)) return;
+    const parentDir = ctxMenu.path.split("/").slice(0, -1).join("/");
+    try {
+      await invoke("delete_path", { path: ctxMenu.path });
+      const entries = await invoke<FileEntry[]>("list_directory", { path: parentDir });
+      setContents((prev) => new Map(prev).set(parentDir, entries));
+    } catch { /* ignore */ }
+    setCtxMenu(null);
+  }, [ctxMenu]);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set([rootPath]));
   const [contents, setContents] = useState<Map<string, FileEntry[]>>(new Map());
   const [loading, setLoading] = useState<Set<string>>(new Set());
@@ -126,12 +194,23 @@ export function FileTree({ rootPath, onFileSelect, changedFiles = [] }: FileTree
             <span className={styles.rootName}>{currentRoot.split("/").filter(Boolean).pop() ?? "project"}</span>
           </div>
           <div className={styles.list}>
-            {renderEntries(contents.get(currentRoot) ?? [], 0, expanded, contents, loading, toggleDir, onFileSelect, changedSet, changedStatusMap)}
+            {renderEntries(contents.get(currentRoot) ?? [], 0, expanded, contents, loading, toggleDir, onFileSelect, changedSet, changedStatusMap, handleContextMenu)}
           </div>
           {changedFiles.length > 0 && (
             <div className={styles.changesBar}>Show {changedFiles.length} changes</div>
           )}
         </>
+      )}
+
+      {/* Context menu */}
+      {ctxMenu && (
+        <div className={styles.ctxMenu} style={{ left: ctxMenu.x, top: ctxMenu.y }}>
+          <button className={styles.ctxItem} onClick={handleNewFile}>New File</button>
+          <button className={styles.ctxItem} onClick={handleNewFolder}>New Folder</button>
+          <div className={styles.ctxDivider} />
+          <button className={styles.ctxItem} onClick={handleRename}>Rename</button>
+          <button className={styles.ctxItem} onClick={handleDelete}>Delete</button>
+        </div>
       )}
     </div>
   );
@@ -147,6 +226,7 @@ function renderEntries(
   onFileSelect?: (path: string) => void,
   changedSet?: Set<string>,
   changedStatusMap?: Map<string, string>,
+  onContextMenu?: (e: React.MouseEvent, path: string, isDir: boolean) => void,
 ): React.ReactNode {
   return entries.map((entry) => {
     const isOpen = expanded.has(entry.path);
@@ -160,6 +240,7 @@ function renderEntries(
           className={styles.row}
           style={{ paddingLeft: 8 + depth * 16 }}
           onClick={() => entry.is_dir ? toggleDir(entry.path) : onFileSelect?.(entry.path)}
+          onContextMenu={(e) => onContextMenu?.(e, entry.path, entry.is_dir)}
         >
           {entry.is_dir && (
             <span className={`${styles.arrow} ${isOpen ? styles.arrowOpen : ""}`}>▸</span>
@@ -173,7 +254,7 @@ function renderEntries(
           {isLoading && <span className={styles.spinner}>…</span>}
         </button>
         {entry.is_dir && isOpen && contents.has(entry.path) && (
-          renderEntries(contents.get(entry.path)!, depth + 1, expanded, contents, loading, toggleDir, onFileSelect, changedSet, changedStatusMap)
+          renderEntries(contents.get(entry.path)!, depth + 1, expanded, contents, loading, toggleDir, onFileSelect, changedSet, changedStatusMap, onContextMenu)
         )}
       </div>
     );
