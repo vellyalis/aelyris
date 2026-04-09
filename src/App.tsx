@@ -12,6 +12,7 @@ import { CommandPalette, type Command } from "./features/command-palette/Command
 import { Settings } from "./features/settings/Settings";
 import { WatchdogDialog } from "./features/watchdog/WatchdogDialog";
 import { WelcomeScreen } from "./features/welcome/WelcomeScreen";
+import { SearchPanel } from "./features/search/SearchPanel";
 import { SplitPane } from "./shared/ui/SplitPane";
 import { useTabManager } from "./shared/hooks/useTabManager";
 import { useAgentManager } from "./shared/hooks/useAgentManager";
@@ -26,6 +27,7 @@ export function App() {
   const [openFiles, setOpenFiles] = useState<string[]>([]);
   const [activeFile, setActiveFile] = useState<string | null>(null);
   const [watchdogVisible, setWatchdogVisible] = useState(false);
+  const [searchVisible, setSearchVisible] = useState(false);
 
   const { tabs, activeTab, activeTabId, setActiveTabId, addTab, closeTab, addTabWithCwd } =
     useTabManager("powershell");
@@ -166,6 +168,7 @@ export function App() {
       label: "View",
       items: [
         { label: "Command Palette", shortcut: "Ctrl+Shift+P", action: () => setPaletteVisible(true) },
+        { label: "Search in Files", shortcut: "Ctrl+Shift+F", action: () => setSearchVisible(true) },
         { divider: true, label: "" },
         { label: "Zoom In", shortcut: "Ctrl+=", action: () => { /* TODO */ } },
         { label: "Zoom Out", shortcut: "Ctrl+-", action: () => { /* TODO */ } },
@@ -197,6 +200,7 @@ export function App() {
       if (e.ctrlKey && e.shiftKey && e.key === "P") { e.preventDefault(); setPaletteVisible((v) => !v); }
       else if (e.ctrlKey && e.shiftKey && e.key === "T") { e.preventDefault(); addTab("powershell"); }
       else if (e.ctrlKey && e.shiftKey && e.key === "W") { e.preventDefault(); closeTab(activeTabId); }
+      else if (e.ctrlKey && e.shiftKey && e.key === "F") { e.preventDefault(); setSearchVisible((v) => !v); }
       else if (e.ctrlKey && e.key === ",") { e.preventDefault(); setSettingsVisible((v) => !v); }
       else if (e.ctrlKey && e.key === "[") { e.preventDefault(); navSession(-1); }
       else if (e.ctrlKey && e.key === "]") { e.preventDefault(); navSession(1); }
@@ -270,9 +274,15 @@ export function App() {
       <MenuBar menus={menus} />
 
       <main className="app-main">
-        <div className="left-panel">
+        <div className="left-panel" style={{ position: "relative" }}>
           <FileTree rootPath={projectPath} onFileSelect={handleFileSelect} changedFiles={changedFiles} />
           <HelmPanel />
+          <SearchPanel
+            visible={searchVisible}
+            rootPath={projectPath}
+            onClose={() => setSearchVisible(false)}
+            onResultClick={(file) => handleFileSelect(file)}
+          />
         </div>
 
         <div className="center-panel">
