@@ -6,6 +6,8 @@ import { PixelAvatar } from "../../shared/ui/PixelAvatar";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
 import { ContextGauge } from "../../shared/ui/ContextGauge";
 import { ClipboardCopy, Bell, Plus, Pencil } from "lucide-react";
+import { ToolBadge } from "../../shared/ui/ToolBadge";
+import { extractToolName } from "../../shared/types/toolBadge";
 import styles from "./AgentInspector.module.css";
 
 interface AgentInspectorProps {
@@ -125,12 +127,16 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
             <div className={styles.logSection}>
               <div className={styles.logHeader}>{activeSession.tokensUsed.toLocaleString()} tokens</div>
               <div className={styles.logList}>
-                {activeSession.logs.map((log, i) => (
-                  <div key={i} className={`${styles.logEntry} ${styles[`log_${log.type}`]}`}>
-                    <span className={styles.logTime}>{new Date(log.timestamp).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
-                    <span className={styles.logContent}>{log.content}</span>
-                  </div>
-                ))}
+                {activeSession.logs.map((log, i) => {
+                  const tool = log.type === "tool_use" ? extractToolName(log.content) : null;
+                  return (
+                    <div key={i} className={`${styles.logEntry} ${styles[`log_${log.type}`]}`}>
+                      <span className={styles.logTime}>{new Date(log.timestamp).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+                      {tool && <ToolBadge tool={tool} />}
+                      <span className={styles.logContent}>{log.content}</span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -144,15 +150,18 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
               .flatMap((s) => s.logs.map((log) => ({ ...log, sessionName: s.name, sessionId: s.id })))
               .sort((a, b) => b.timestamp - a.timestamp)
               .slice(0, 100)
-              .map((log, i) => (
+              .map((log, i) => {
+                const tool = log.type === "tool_use" ? extractToolName(log.content) : null;
+                return (
                 <div key={i} className={`${styles.logEntry} ${styles[`log_${log.type}`]}`}>
                   <span className={styles.logTime}>
                     {new Date(log.timestamp).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                   </span>
                   <span className={styles.activityName}>{log.sessionName}</span>
+                  {tool && <ToolBadge tool={tool} />}
                   <span className={styles.logContent}>{log.content}</span>
                 </div>
-              ))}
+                ); })}
             {sessions.flatMap((s) => s.logs).length === 0 && (
               <div className={styles.empty}>No activity yet</div>
             )}
