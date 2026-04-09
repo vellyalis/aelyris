@@ -26,6 +26,7 @@ interface TerminalPaneProps {
 }
 
 export function TerminalPane({ shell, cwd }: TerminalPaneProps) {
+  const [maximizedPaneId, setMaximizedPaneId] = useState<string | null>(null);
   // Default: vertical split (main shell top + sub shell bottom)
   const [root, setRoot] = useState<PaneNode>(() => ({
     type: "split",
@@ -61,7 +62,7 @@ export function TerminalPane({ shell, cwd }: TerminalPaneProps) {
 
   return (
     <div style={{ flex: 1, display: "flex" }} onKeyDown={handleKeyDown}>
-      <PaneRenderer node={root} onSplit={splitPane} />
+      <PaneRenderer node={root} onSplit={splitPane} maximizedId={maximizedPaneId} onToggleMaximize={(id) => setMaximizedPaneId((prev) => prev === id ? null : id)} />
     </div>
   );
 }
@@ -69,27 +70,51 @@ export function TerminalPane({ shell, cwd }: TerminalPaneProps) {
 function PaneRenderer({
   node,
   onSplit,
+  maximizedId,
+  onToggleMaximize,
 }: {
   node: PaneNode;
   onSplit: (id: string, dir: "horizontal" | "vertical") => void;
+  maximizedId: string | null;
+  onToggleMaximize: (id: string) => void;
 }) {
   if (node.type === "terminal") {
     const shellLabel = node.shell === "powershell" ? "PowerShell" : node.shell === "cmd" ? "CMD" : node.shell === "gitbash" ? "Git Bash" : "WSL";
     return (
       <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
-        <TerminalInfoBar shell={shellLabel} cwd={node.cwd} />
+        <TerminalInfoBar
+          shell={shellLabel}
+          cwd={node.cwd}
+          isMaximized={maximizedId === node.id}
+          onToggleMaximize={() => onToggleMaximize(node.id)}
+        />
         <TerminalArea shell={node.shell} cwd={node.cwd} />
       </div>
     );
   }
 
+  // If a pane is maximized, only show that one
+  if (maximizedId) {
+    const found = findNodeById(node, maximizedId);
+    if (found) {
+      return <PaneRenderer node={found} onSplit={onSplit} maximizedId={maximizedId} onToggleMaximize={onToggleMaximize} />;
+    }
+  }
+
   return (
     <SplitPane
       direction={node.direction!}
-      first={<PaneRenderer node={node.first!} onSplit={onSplit} />}
-      second={<PaneRenderer node={node.second!} onSplit={onSplit} />}
+      first={<PaneRenderer node={node.first!} onSplit={onSplit} maximizedId={maximizedId} onToggleMaximize={onToggleMaximize} />}
+      second={<PaneRenderer node={node.second!} onSplit={onSplit} maximizedId={maximizedId} onToggleMaximize={onToggleMaximize} />}
     />
   );
+}
+
+function findNodeById(node: PaneNode, id: string): PaneNode | null {
+  if (node.id === id) return node;
+  if (node.first) { const f = findNodeById(node.first, id); if (f) return f; }
+  if (node.second) { const f = findNodeById(node.second, id); if (f) return f; }
+  return null;
 }
 
 function splitNode(
