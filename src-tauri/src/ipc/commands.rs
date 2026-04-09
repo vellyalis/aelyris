@@ -222,6 +222,45 @@ pub fn git_file_original(repo_path: String, file_path: String) -> Result<String,
     }
 }
 
+/// List GitHub PRs for a repo
+#[tauri::command]
+pub fn list_pull_requests(cwd: String) -> Result<Vec<PullRequestInfo>, String> {
+    let output = std::process::Command::new("gh")
+        .args(["pr", "list", "--json", "number,title,state,author,headRefName,url", "--limit", "10"])
+        .current_dir(&cwd)
+        .output()
+        .map_err(|e| format!("gh CLI not found: {}", e))?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).to_string());
+    }
+    serde_json::from_slice(&output.stdout).map_err(|e| format!("Parse error: {}", e))
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PullRequestInfo {
+    pub number: u32,
+    pub title: String,
+    pub state: String,
+    pub author: serde_json::Value,
+    #[serde(rename = "headRefName")]
+    pub head_ref_name: String,
+    pub url: String,
+}
+
+/// View a specific PR's diff
+#[tauri::command]
+pub fn get_pr_diff(cwd: String, pr_number: u32) -> Result<String, String> {
+    let output = std::process::Command::new("gh")
+        .args(["pr", "diff", &pr_number.to_string()])
+        .current_dir(&cwd)
+        .output()
+        .map_err(|e| format!("gh diff failed: {}", e))?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).to_string());
+    }
+    String::from_utf8(output.stdout).map_err(|e| format!("UTF-8: {}", e))
+}
+
 /// Load app config
 #[tauri::command]
 pub fn load_app_config() -> crate::config::AppConfig {

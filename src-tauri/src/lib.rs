@@ -35,6 +35,8 @@ pub fn run() {
             ipc::search_files,
             ipc::grep_files,
             ipc::git_file_original,
+            ipc::list_pull_requests,
+            ipc::get_pr_diff,
             ipc::load_app_config,
             ipc::save_app_config,
             ipc::read_file,

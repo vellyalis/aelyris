@@ -14,6 +14,7 @@ import { WatchdogDialog } from "./features/watchdog/WatchdogDialog";
 import { WelcomeScreen } from "./features/welcome/WelcomeScreen";
 import { SearchPanel } from "./features/search/SearchPanel";
 import { AboutDialog } from "./features/about/AboutDialog";
+import { PRInspector } from "./features/pr-inspector/PRInspector";
 import { SplitPane } from "./shared/ui/SplitPane";
 import { useTabManager } from "./shared/hooks/useTabManager";
 import { useAgentManager } from "./shared/hooks/useAgentManager";
@@ -356,6 +357,7 @@ export function App() {
             onStartAgent={handleStartAgent}
             onStopAgent={stopAgent}
           />
+          <PRInspector projectPath={projectPath} />
           <ToolkitPanel projectName={projectName} onRunCommand={handleRunCommand} />
         </div>
       </main>
