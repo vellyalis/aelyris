@@ -1,0 +1,144 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.panel {
+  width: 520px;
+  max-height: 80vh;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+}
+
+.closeBtn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.closeBtn:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+}
+
+.section {
+  margin-bottom: 24px;
+}
+
+.sectionTitle {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+.field {
+  margin-bottom: 12px;
+}
+
+.label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.select, .input {
+  width: 100%;
+  padding: 6px 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: var(--font-ui);
+  outline: none;
+}
+
+.select:focus, .input:focus {
+  border-color: var(--accent);
+}
+
+.row {
+  display: flex;
+  gap: 12px;
+}
+
+.row .field {
+  flex: 1;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.toggle input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+
+.shortcutList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shortcutRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.kbd {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}

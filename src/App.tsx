@@ -6,6 +6,7 @@ import { StatusBar } from "./features/statusbar/StatusBar";
 import { TerminalPane } from "./features/terminal/TerminalPane";
 import { AgentInspector } from "./features/agent-inspector/AgentInspector";
 import { CommandPalette, type Command } from "./features/command-palette/CommandPalette";
+import { Settings } from "./features/settings/Settings";
 import { useTabManager } from "./shared/hooks/useTabManager";
 import type { AgentSession } from "./shared/types/agent";
 
@@ -15,6 +16,7 @@ export function App() {
   const [sidebarVisible, setSidebarVisible] = useState(false);
   const [inspectorVisible, setInspectorVisible] = useState(false);
   const [paletteVisible, setPaletteVisible] = useState(false);
+  const [settingsVisible, setSettingsVisible] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [agentSessions, _setAgentSessions] = useState<AgentSession[]>([]);
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
@@ -33,6 +35,7 @@ export function App() {
     { id: "toggle-sidebar", label: "Toggle Sidebar", shortcut: "Ctrl+B", action: () => setSidebarVisible((v) => !v) },
     { id: "toggle-inspector", label: "Toggle Agent Inspector", shortcut: "Ctrl+Shift+I", action: () => setInspectorVisible((v) => !v) },
     { id: "close-tab", label: "Close Current Tab", shortcut: "Ctrl+Shift+W", action: () => closeTab(activeTabId) },
+    { id: "open-settings", label: "Open Settings", shortcut: "Ctrl+,", action: () => setSettingsVisible(true) },
   ], [addTab, closeTab, activeTabId]);
 
   // Global keyboard shortcuts
@@ -53,6 +56,9 @@ export function App() {
       } else if (e.ctrlKey && e.shiftKey && e.key === "I") {
         e.preventDefault();
         setInspectorVisible((v) => !v);
+      } else if (e.ctrlKey && e.key === ",") {
+        e.preventDefault();
+        setSettingsVisible((v) => !v);
       }
     };
     window.addEventListener("keydown", handler);
@@ -93,6 +99,10 @@ export function App() {
         visible={paletteVisible}
         onClose={() => setPaletteVisible(false)}
         commands={commands}
+      />
+      <Settings
+        visible={settingsVisible}
+        onClose={() => setSettingsVisible(false)}
       />
     </div>
   );
