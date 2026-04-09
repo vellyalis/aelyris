@@ -66,11 +66,12 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
             {sessions.map((s) => (
               <button key={s.id} className={`${styles.card} ${s.watchdog ? styles.cardWatchdog : ""} ${s.id === activeSessionId ? styles.cardActive : ""}`} onClick={() => onSelectSession(s.id)}>
                 <div className={styles.cardTop}>
-                  <PixelAvatar seed={s.id} size={24} />
+                  <PixelAvatar seed={s.id} size={36} />
                   <div className={styles.cardInfo}>
                     <div className={styles.cardNameRow}>
                       <span className={styles.cardName}>{s.name}</span>
                       {s.branch && <span className={styles.cardBranch}>⚡{s.branch}</span>}
+                      <span className={styles.cardIcons}>✏️</span>
                     </div>
                     <div className={styles.cardStatusRow}>
                       <StatusIcon status={s.status} size={10} />
