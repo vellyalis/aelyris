@@ -115,6 +115,8 @@ export function App() {
   }, []);
 
   const handleCloseFile = useCallback((path: string) => {
+    // EditorPanel tracks modified state internally via Monaco
+    // For now, always close. TODO: check modified state from EditorPanel ref
     setOpenFiles((prev) => {
       const next = prev.filter((f) => f !== path);
       if (activeFile === path) {
