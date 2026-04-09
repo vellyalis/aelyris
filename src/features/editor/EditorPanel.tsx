@@ -120,6 +120,17 @@ export function EditorPanel({ filePath, onClose, projectPath }: EditorPanelProps
               overviewRulerLanes: 0,
               scrollbar: { verticalScrollbarSize: 5, horizontalScrollbarSize: 5 },
               padding: { top: 8 },
+              autoIndent: "full",
+              formatOnPaste: true,
+              formatOnType: true,
+              tabSize: 2,
+              insertSpaces: true,
+              bracketPairColorization: { enabled: true },
+              guides: { bracketPairs: true, indentation: true },
+              renderWhitespace: "selection",
+              smoothScrolling: true,
+              cursorBlinking: "smooth",
+              cursorSmoothCaretAnimation: "on",
             }}
           />
         )}

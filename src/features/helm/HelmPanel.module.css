@@ -2,10 +2,15 @@
   border-top: 1px solid rgba(124, 58, 237, 0.15);
   background: rgba(124, 58, 237, 0.06);
   min-height: 80px;
+  max-height: 200px;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 .header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: 6px 10px;
   font-size: 10px;
   font-weight: 600;
@@ -13,5 +18,46 @@
   letter-spacing: 0.05em;
   color: var(--purple-text);
 }
-.content { padding: 0 10px 8px; flex: 1; }
-.placeholder { font-size: 11px; color: rgba(167, 139, 250, 0.5); }
+.count {
+  font-weight: 400;
+  font-family: var(--font-mono);
+  color: rgba(167, 139, 250, 0.5);
+}
+.addBtn {
+  background: none; border: none; color: var(--purple-text); font-size: 14px;
+  cursor: pointer; padding: 0 4px; border-radius: 3px; margin-left: auto;
+}
+.addBtn:hover { background: rgba(124, 58, 237, 0.15); }
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 6px 6px;
+}
+.empty {
+  font-size: 11px;
+  color: rgba(167, 139, 250, 0.4);
+  padding: 8px 4px;
+}
+.addForm { padding: 2px 0 4px; }
+.addInput {
+  width: 100%; padding: 4px 8px;
+  background: rgba(124, 58, 237, 0.1); border: 1px solid rgba(124, 58, 237, 0.2);
+  border-radius: 4px; color: var(--text-primary); font-size: 11px;
+  font-family: var(--font-ui); outline: none;
+}
+.addInput:focus { border-color: var(--purple-text); }
+.addInput::placeholder { color: rgba(167, 139, 250, 0.4); }
+.task {
+  display: flex; align-items: center; gap: 6px;
+  padding: 3px 4px; border-radius: 4px; font-size: 11px;
+}
+.task:hover { background: rgba(124, 58, 237, 0.08); }
+.taskDone .taskLabel { text-decoration: line-through; opacity: 0.4; }
+.checkbox { accent-color: var(--purple-text); cursor: pointer; }
+.taskLabel { flex: 1; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.deleteBtn {
+  background: none; border: none; color: rgba(167, 139, 250, 0.3); font-size: 12px;
+  cursor: pointer; opacity: 0; transition: opacity 0.1s;
+}
+.task:hover .deleteBtn { opacity: 1; }
+.deleteBtn:hover { color: #f38ba8; }
