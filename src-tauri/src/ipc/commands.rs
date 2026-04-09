@@ -3,6 +3,24 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::pty::{PtyManager, ShellType};
 
+/// Validate path is not dangerous (no traversal, no system dirs)
+fn validate_path(path: &str) -> Result<(), String> {
+    let p = std::path::Path::new(path);
+    // Block path traversal
+    if path.contains("..") {
+        return Err("Path traversal not allowed".to_string());
+    }
+    // Block system directories
+    let dangerous = ["C:/Windows", "C:/Program Files", "/etc", "/usr", "/bin", "/sbin"];
+    let normalized = p.to_string_lossy().to_string().replace('\\', "/");
+    for d in &dangerous {
+        if normalized.starts_with(d) {
+            return Err(format!("Access to {} not allowed", d));
+        }
+    }
+    Ok(())
+}
+
 /// Spawn a new terminal session
 #[tauri::command]
 pub fn spawn_terminal(
@@ -308,12 +326,14 @@ pub fn read_file(path: String) -> Result<String, String> {
 /// Write content to a file
 #[tauri::command]
 pub fn write_file(path: String, content: String) -> Result<(), String> {
+    validate_path(&path)?;
     std::fs::write(&path, &content).map_err(|e| format!("Write error: {}", e))
 }
 
 /// Create a new file
 #[tauri::command]
 pub fn create_file(path: String, content: Option<String>) -> Result<(), String> {
+    validate_path(&path)?;
     if std::path::Path::new(&path).exists() {
         return Err(format!("File already exists: {}", path));
     }
@@ -326,12 +346,15 @@ pub fn create_file(path: String, content: Option<String>) -> Result<(), String> 
 /// Rename a file or directory
 #[tauri::command]
 pub fn rename_path(old_path: String, new_path: String) -> Result<(), String> {
+    validate_path(&old_path)?;
+    validate_path(&new_path)?;
     std::fs::rename(&old_path, &new_path).map_err(|e| format!("Rename: {}", e))
 }
 
 /// Delete a file or empty directory
 #[tauri::command]
 pub fn delete_path(path: String) -> Result<(), String> {
+    validate_path(&path)?;
     let p = std::path::Path::new(&path);
     if p.is_dir() {
         std::fs::remove_dir_all(p).map_err(|e| format!("Delete dir: {}", e))
@@ -343,6 +366,7 @@ pub fn delete_path(path: String) -> Result<(), String> {
 /// Create a new directory
 #[tauri::command]
 pub fn create_directory(path: String) -> Result<(), String> {
+    validate_path(&path)?;
     std::fs::create_dir_all(&path).map_err(|e| format!("mkdir: {}", e))
 }
 
