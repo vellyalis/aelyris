@@ -115,8 +115,9 @@ export function App() {
   }, []);
 
   const handleCloseFile = useCallback((path: string) => {
-    // EditorPanel tracks modified state internally via Monaco
-    // For now, always close. TODO: check modified state from EditorPanel ref
+    // Check if Monaco has unsaved changes via DOM query
+    const modDots = document.querySelectorAll("[class*='modDot']");
+    if (modDots.length > 0 && !window.confirm("You have unsaved changes. Close anyway?")) return;
     setOpenFiles((prev) => {
       const next = prev.filter((f) => f !== path);
       if (activeFile === path) {

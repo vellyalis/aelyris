@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { motion, AnimatePresence } from "motion/react";
 import styles from "./Settings.module.css";
 
@@ -40,6 +41,32 @@ export function Settings({ visible, onClose }: SettingsProps) {
   const [cursorStyle, setCursorStyle] = useState("bar");
   const [cursorBlink, setCursorBlink] = useState(true);
 
+  // Load config on mount
+  useEffect(() => {
+    invoke<{ appearance: { theme: string; terminal_font_family: string; font_size: number; line_height: number; ligatures: boolean }; terminal: { default_shell: string; cursor_style: string; cursor_blink: boolean } }>("load_app_config")
+      .then((cfg) => {
+        setTheme(cfg.appearance.theme);
+        setFont(cfg.appearance.terminal_font_family.split(",")[0].trim());
+        setFontSize(cfg.appearance.font_size);
+        setLineHeight(cfg.appearance.line_height);
+        setLigatures(cfg.appearance.ligatures);
+        setDefaultShell(cfg.terminal.default_shell);
+        setCursorStyle(cfg.terminal.cursor_style);
+        setCursorBlink(cfg.terminal.cursor_blink);
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleSave = () => {
+    invoke("save_app_config", {
+      config: {
+        appearance: { theme, ui_font_family: "IBM Plex Sans", terminal_font_family: font, font_size: fontSize, line_height: lineHeight, ligatures, window_effect: "mica", opacity: 0.95 },
+        terminal: { default_shell: defaultShell, scrollback: 10000, cursor_style: cursorStyle, cursor_blink: cursorBlink },
+      },
+    }).catch(() => {});
+    onClose();
+  };
+
   return (
     <AnimatePresence>
     {visible && (
@@ -50,7 +77,10 @@ export function Settings({ visible, onClose }: SettingsProps) {
         transition={{ type: "spring", stiffness: 400, damping: 30 }}>
         <div className={styles.header}>
           <h2 className={styles.title}>Settings</h2>
-          <button className={styles.closeBtn} onClick={onClose}>×</button>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button className={styles.saveBtn} onClick={handleSave}>Save</button>
+            <button className={styles.closeBtn} onClick={onClose}>×</button>
+          </div>
         </div>
 
         <div className={styles.content}>
