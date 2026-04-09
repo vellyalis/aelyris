@@ -1,3 +1,4 @@
+use std::io::BufRead;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::pty::{PtyManager, ShellType};
@@ -101,6 +102,76 @@ pub fn list_branches(repo_path: String) -> Result<Vec<crate::git::BranchInfo>, S
 #[tauri::command]
 pub fn list_worktrees(repo_path: String) -> Result<Vec<crate::git::WorktreeInfo>, String> {
     crate::git::list_worktrees(&repo_path)
+}
+
+/// Start a Claude Code agent session
+#[tauri::command]
+pub fn start_agent(
+    app: AppHandle,
+    prompt: String,
+    cwd: String,
+    model: Option<String>,
+) -> Result<String, String> {
+    let agent_manager = app.state::<crate::agent::AgentManager>();
+    let id = agent_manager.start_session(
+        &prompt,
+        &cwd,
+        model.as_deref(),
+        None,
+    )?;
+
+    // Stream stdout to frontend via events
+    let reader = agent_manager.take_stdout(&id)?;
+    let session_id = id.clone();
+    let app_handle = app.clone();
+    let agent_mgr = app.state::<crate::agent::AgentManager>().inner().clone();
+
+    std::thread::spawn(move || {
+        for line in reader.lines() {
+            match line {
+                Ok(line) if !line.is_empty() => {
+                    let event = format!("agent-output-{}", session_id);
+                    let _ = app_handle.emit(&event, &line);
+
+                    // Try to parse status from stream-json
+                    if let Ok(val) = serde_json::from_str::<serde_json::Value>(&line) {
+                        if let Some(msg_type) = val.get("type").and_then(|v| v.as_str()) {
+                            match msg_type {
+                                "assistant" => { let _ = agent_mgr.update_status(&session_id, "coding"); }
+                                "result" => {
+                                    let _ = agent_mgr.update_status(&session_id, "done");
+                                    if let Some(cost) = val.get("cost_usd").and_then(|v| v.as_f64()) {
+                                        let tokens = val.get("total_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+                                        let _ = agent_mgr.update_usage(&session_id, cost, tokens);
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+                Ok(_) => {}
+                Err(_) => break,
+            }
+        }
+        let _ = app_handle.emit(&format!("agent-exit-{}", session_id), ());
+    });
+
+    Ok(id)
+}
+
+/// Stop an agent session
+#[tauri::command]
+pub fn stop_agent(app: AppHandle, id: String) -> Result<(), String> {
+    let agent_manager = app.state::<crate::agent::AgentManager>();
+    agent_manager.stop_session(&id)
+}
+
+/// List agent sessions
+#[tauri::command]
+pub fn list_agents(app: AppHandle) -> Vec<crate::agent::AgentSessionInfo> {
+    let agent_manager = app.state::<crate::agent::AgentManager>();
+    agent_manager.list_sessions()
 }
 
 fn base64_encode(data: &[u8]) -> String {
