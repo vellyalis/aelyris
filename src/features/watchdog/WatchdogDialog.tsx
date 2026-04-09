@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { motion, AnimatePresence } from "motion/react";
 import styles from "./WatchdogDialog.module.css";
 
 interface WatchdogDialogProps {
@@ -11,8 +12,6 @@ export function WatchdogDialog({ visible, onClose }: WatchdogDialogProps) {
   const [name, setName] = useState("");
   const [instructions, setInstructions] = useState("");
   const [saving, setSaving] = useState(false);
-
-  if (!visible) return null;
 
   const handleCreate = async () => {
     if (!name.trim()) return;
@@ -27,8 +26,13 @@ export function WatchdogDialog({ visible, onClose }: WatchdogDialogProps) {
   };
 
   return (
-    <div className={styles.overlay} onClick={onClose}>
-      <div className={styles.dialog} onClick={(e) => e.stopPropagation()}>
+    <AnimatePresence>
+    {visible && (
+    <motion.div className={styles.overlay} onClick={onClose}
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.12 }}>
+      <motion.div className={styles.dialog} onClick={(e) => e.stopPropagation()}
+        initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+        transition={{ type: "spring", stiffness: 400, damping: 30 }}>
         <h3 className={styles.title}>Create Watchdog</h3>
 
         <label className={styles.label}>Name</label>
@@ -55,7 +59,9 @@ export function WatchdogDialog({ visible, onClose }: WatchdogDialogProps) {
             {saving ? "Creating..." : "Create"}
           </button>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
+    )}
+    </AnimatePresence>
   );
 }

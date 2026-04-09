@@ -21,7 +21,9 @@ import { useGitStatus } from "./shared/hooks/useGitStatus";
 export type ShellType = "powershell" | "cmd" | "gitbash" | "wsl";
 
 export function App() {
-  const [rootProjectPath, setRootProjectPath] = useState<string | null>(null);
+  const [rootProjectPath, setRootProjectPath] = useState<string | null>(() => {
+    try { return localStorage.getItem("aether:lastProject"); } catch { return null; }
+  });
   const [paletteVisible, setPaletteVisible] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [openFiles, setOpenFiles] = useState<string[]>([]);
@@ -38,6 +40,14 @@ export function App() {
   const projectPath = activeTab.cwd ?? rootProjectPath ?? "";
   const projectName = projectPath ? projectPath.split("/").filter(Boolean).pop() ?? "Aether" : "Aether";
   const initials = projectName.slice(0, 2).toUpperCase();
+
+  // Persist last project to localStorage
+  useEffect(() => {
+    try {
+      if (rootProjectPath) localStorage.setItem("aether:lastProject", rootProjectPath);
+      else localStorage.removeItem("aether:lastProject");
+    } catch { /* ignore */ }
+  }, [rootProjectPath]);
 
   // Update window title to folder name
   useEffect(() => {
