@@ -1,7 +1,14 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@300;400;500;600&display=swap');
 
 :root {
-  /* Catppuccin Mocha palette */
+  /* Aether Dark palette (Scape-inspired, darker than Catppuccin) */
+  --aether-bg: #1a1a1a;
+  --aether-bg-elevated: #212121;
+  --aether-bg-surface: #2a2a2a;
+  --aether-border: #333333;
+  --aether-border-subtle: #2a2a2a;
+
+  /* Catppuccin accent colors (kept for terminal ANSI) */
   --ctp-rosewater: #f5e0dc;
   --ctp-flamingo: #f2cdcd;
   --ctp-pink: #f5c2e7;
@@ -16,32 +23,23 @@
   --ctp-sapphire: #74c7ec;
   --ctp-blue: #89b4fa;
   --ctp-lavender: #b4befe;
-  --ctp-text: #cdd6f4;
-  --ctp-subtext1: #bac2de;
-  --ctp-subtext0: #a6adc8;
-  --ctp-overlay2: #9399b2;
-  --ctp-overlay1: #7f849c;
-  --ctp-overlay0: #6c7086;
-  --ctp-surface2: #585b70;
-  --ctp-surface1: #45475a;
-  --ctp-surface0: #313244;
-  --ctp-base: #1e1e2e;
-  --ctp-mantle: #181825;
-  --ctp-crust: #11111b;
+
+  /* Text hierarchy (Scape-inspired rgba) */
+  --text-primary: rgba(255, 255, 255, 0.88);
+  --text-secondary: rgba(255, 255, 255, 0.6);
+  --text-muted: rgba(255, 255, 255, 0.35);
 
   /* Semantic tokens */
-  --bg-primary: var(--ctp-base);
-  --bg-secondary: var(--ctp-mantle);
-  --bg-surface: var(--ctp-surface0);
-  --text-primary: var(--ctp-text);
-  --text-secondary: var(--ctp-subtext1);
-  --text-muted: var(--ctp-overlay1);
-  --border: var(--ctp-surface1);
-  --accent: var(--ctp-blue);
+  --bg-primary: var(--aether-bg);
+  --bg-secondary: var(--aether-bg-elevated);
+  --bg-surface: var(--aether-bg-surface);
+  --border: var(--aether-border);
+  --border-subtle: var(--aether-border-subtle);
+  --accent: #4fc1ff;
 
-  /* Typography */
-  --font-ui: 'Inter', 'Geist', 'Source Han Sans JP', 'Noto Sans JP', sans-serif;
-  --font-mono: 'Cascadia Code', 'Cascadia Next JP', 'Source Han Sans JP', monospace;
+  /* Typography — IBM Plex (matching Scape) */
+  --font-ui: 'IBM Plex Sans', -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', 'Cascadia Code', monospace;
 
   /* Spacing */
   --radius: 8px;
@@ -61,14 +59,15 @@ html, body, #root {
   overflow: hidden;
   background: transparent;
   font-family: var(--font-ui);
-  color: var(--ctp-text);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
 }
 
 .app-container {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: rgba(30, 30, 46, 0.85);
+  background: rgba(26, 26, 26, 0.92);
   border-radius: var(--radius);
   overflow: hidden;
 }
@@ -89,16 +88,16 @@ html, body, #root {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--ctp-surface1);
+  background: rgba(255, 255, 255, 0.12);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--ctp-surface2);
+  background: rgba(255, 255, 255, 0.2);
 }
 
 /* Selection */
 ::selection {
-  background: var(--ctp-surface2);
-  color: var(--ctp-text);
+  background: rgba(79, 193, 255, 0.25);
+  color: var(--text-primary);
 }

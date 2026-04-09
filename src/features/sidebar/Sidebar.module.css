@@ -4,7 +4,7 @@
   max-width: 320px;
   display: flex;
   flex-direction: column;
-  background: rgba(24, 24, 37, 0.5);
+  background: rgba(26, 26, 26, 0.5);
   border-right: 1px solid var(--border);
   overflow: hidden;
 }

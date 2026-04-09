@@ -3,7 +3,7 @@ import { TitleBar } from "./features/titlebar/TitleBar";
 import { TabBar } from "./features/titlebar/TabBar";
 import { Sidebar } from "./features/sidebar/Sidebar";
 import { StatusBar } from "./features/statusbar/StatusBar";
-import { TerminalArea } from "./features/terminal/TerminalArea";
+import { TerminalPane } from "./features/terminal/TerminalPane";
 import { CommandPalette, type Command } from "./features/command-palette/CommandPalette";
 import { useTabManager } from "./shared/hooks/useTabManager";
 
@@ -67,7 +67,7 @@ export function App() {
               key={tab.id}
               style={{ display: tab.id === activeTabId ? "flex" : "none", flex: 1 }}
             >
-              <TerminalArea shell={tab.shell} cwd={tab.cwd} />
+              <TerminalPane shell={tab.shell} cwd={tab.cwd} />
             </div>
           ))}
         </div>

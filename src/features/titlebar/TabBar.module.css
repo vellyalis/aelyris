@@ -3,7 +3,7 @@
   align-items: center;
   height: 32px;
   padding: 0 8px;
-  background: rgba(24, 24, 37, 0.4);
+  background: rgba(26, 26, 26, 0.4);
   border-bottom: 1px solid var(--border);
   gap: 2px;
 }
@@ -36,12 +36,12 @@
 }
 
 .tab:hover {
-  background: var(--ctp-surface0);
+  background: var(--bg-surface);
   color: var(--text-secondary);
 }
 
 .tab.active {
-  background: var(--ctp-surface0);
+  background: var(--bg-surface);
   color: var(--text-primary);
 }
 
@@ -87,6 +87,6 @@
 }
 
 .newTab:hover {
-  background: var(--ctp-surface0);
+  background: var(--bg-surface);
   color: var(--text-primary);
 }

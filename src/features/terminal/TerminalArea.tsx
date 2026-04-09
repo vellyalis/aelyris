@@ -19,11 +19,11 @@ export function TerminalArea({ shell = "powershell", cwd }: TerminalAreaProps) {
 
     const term = new Terminal({
       theme: {
-        background: "rgba(30, 30, 46, 0.01)",
-        foreground: "#cdd6f4",
-        cursor: "#f5e0dc",
-        selectionBackground: "#585b70",
-        black: "#45475a",
+        background: "rgba(26, 26, 26, 0.01)",
+        foreground: "rgba(255, 255, 255, 0.88)",
+        cursor: "#4fc1ff",
+        selectionBackground: "rgba(79, 193, 255, 0.25)",
+        black: "#3a3a3a",
         red: "#f38ba8",
         green: "#a6e3a1",
         yellow: "#f9e2af",
