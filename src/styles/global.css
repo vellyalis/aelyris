@@ -126,3 +126,9 @@ html, body, #root {
   background: rgba(200, 160, 80, 0.25);
   color: var(--text-primary);
 }
+
+/* Focus ring for accessibility */
+:focus-visible {
+  outline: 1px solid var(--gold);
+  outline-offset: -1px;
+}

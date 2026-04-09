@@ -212,10 +212,22 @@ export function App() {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.key === "P") { e.preventDefault(); setPaletteVisible((v) => !v); }
+      if (e.ctrlKey && !e.shiftKey && e.key === "n") {
+        e.preventDefault();
+        const name = prompt("New file name:");
+        if (name && projectPath) {
+          import("@tauri-apps/api/core").then(({ invoke: inv }) => {
+            inv("create_file", { path: `${projectPath}/${name}` }).then(() => {
+              handleFileSelect(`${projectPath}/${name}`);
+            }).catch(() => {});
+          });
+        }
+      }
+      else if (e.ctrlKey && e.shiftKey && e.key === "P") { e.preventDefault(); setPaletteVisible((v) => !v); }
       else if (e.ctrlKey && e.shiftKey && e.key === "T") { e.preventDefault(); addTab("powershell"); }
       else if (e.ctrlKey && e.shiftKey && e.key === "W") { e.preventDefault(); closeTab(activeTabId); }
       else if (e.ctrlKey && e.shiftKey && e.key === "F") { e.preventDefault(); setSearchVisible((v) => !v); }
+      else if (e.ctrlKey && !e.shiftKey && e.key === "w") { e.preventDefault(); if (activeFile) handleCloseFile(activeFile); }
       else if (e.ctrlKey && e.key === ",") { e.preventDefault(); setSettingsVisible((v) => !v); }
       else if (e.ctrlKey && e.key === "[") { e.preventDefault(); navSession(-1); }
       else if (e.ctrlKey && e.key === "]") { e.preventDefault(); navSession(1); }
