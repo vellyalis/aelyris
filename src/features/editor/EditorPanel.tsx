@@ -27,8 +27,27 @@ export function EditorPanel({ filePath, onClose, projectPath }: EditorPanelProps
   const [error, setError] = useState<string | null>(null);
   const [modified, setModified] = useState(false);
   const [diffMode, setDiffMode] = useState(false);
+  const [vimMode, setVimMode] = useState(false);
   const [originalContent, setOriginalContent] = useState<string | null>(null);
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
+  const vimRef = useRef<{ dispose: () => void } | null>(null);
+
+  const toggleVim = useCallback(async () => {
+    if (vimMode) {
+      vimRef.current?.dispose();
+      vimRef.current = null;
+      setVimMode(false);
+      return;
+    }
+    if (!editorRef.current) return;
+    try {
+      const { initVimMode } = await import("monaco-vim");
+      const statusEl = document.getElementById("vim-statusbar");
+      const vim = initVimMode(editorRef.current, statusEl);
+      vimRef.current = vim;
+      setVimMode(true);
+    } catch { /* monaco-vim not available */ }
+  }, [vimMode]);
 
   const toggleDiff = useCallback(async () => {
     if (diffMode) { setDiffMode(false); return; }
@@ -81,6 +100,7 @@ export function EditorPanel({ filePath, onClose, projectPath }: EditorPanelProps
           {fileName}
         </span>
         <span className={styles.lang}>{language}</span>
+        <button className={styles.diffBtn} onClick={toggleVim} title="Toggle Vim mode">{vimMode ? "Vim ✓" : "Vim"}</button>
         <button className={styles.diffBtn} onClick={toggleDiff} title="Toggle diff">{diffMode ? "Editor" : "Diff"}</button>
         <button className={styles.closeBtn} onClick={onClose}>×</button>
       </div>
@@ -168,6 +188,7 @@ export function EditorPanel({ filePath, onClose, projectPath }: EditorPanelProps
           />
         )}
       </div>
+      {vimMode && <div id="vim-statusbar" className={styles.vimStatus} />}
     </div>
   );
 }

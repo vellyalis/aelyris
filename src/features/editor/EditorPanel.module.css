@@ -78,3 +78,16 @@
 
 .status { color: var(--text-muted); }
 .error { color: var(--ctp-red); }
+
+.vimStatus {
+  height: 20px;
+  padding: 0 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--aether-bg-elevated);
+  line-height: 20px;
+  white-space: nowrap;
+  overflow: hidden;
+  border-top: 1px solid var(--border);
+}
