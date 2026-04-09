@@ -147,6 +147,10 @@ export function Settings({ visible, onClose }: SettingsProps) {
                 ["Split Horizontal", "Ctrl+Shift+H"],
                 ["Split Vertical", "Ctrl+Shift+V"],
                 ["Search", "Ctrl+F"],
+                ["Search in Files", "Ctrl+Shift+F"],
+                ["New File", "Ctrl+N"],
+                ["Close Editor", "Ctrl+W"],
+                ["Open Folder", "Ctrl+Shift+O"],
                 ["Settings", "Ctrl+,"],
               ].map(([action, key]) => (
                 <div key={action} className={styles.shortcutRow}>

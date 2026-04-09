@@ -330,7 +330,15 @@ export function App() {
           <AgentInspector
             sessions={sessions}
             activeSessionId={activeSessionId}
-            onSelectSession={setActiveSessionId}
+            onSelectSession={(sessionId) => {
+              setActiveSessionId(sessionId);
+              // Find matching tab by agent's CWD and switch to it
+              const agent = sessions.find((s) => s.id === sessionId);
+              if (agent) {
+                const matchTab = tabs.find((t) => t.cwd && agent.prompt.includes(t.cwd.split("/").pop() ?? ""));
+                if (matchTab) handleTabSwitch(matchTab.id);
+              }
+            }}
             onStartAgent={handleStartAgent}
             onStopAgent={stopAgent}
           />
