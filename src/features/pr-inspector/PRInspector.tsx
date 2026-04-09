@@ -12,11 +12,13 @@ interface PullRequest {
 }
 
 interface PRInspectorProps {
+  visible: boolean;
   projectPath: string;
+  onClose: () => void;
   onViewDiff?: (diff: string, prNumber: number) => void;
 }
 
-export function PRInspector({ projectPath, onViewDiff }: PRInspectorProps) {
+export function PRInspector({ visible, projectPath, onClose, onViewDiff }: PRInspectorProps) {
   const [prs, setPrs] = useState<PullRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +37,9 @@ export function PRInspector({ projectPath, onViewDiff }: PRInspectorProps) {
     setLoading(false);
   }, [projectPath]);
 
-  useEffect(() => { loadPRs(); }, [loadPRs]);
+  useEffect(() => { if (visible) loadPRs(); }, [loadPRs, visible]);
+
+  if (!visible) return null;
 
   const viewDiff = async (prNumber: number) => {
     if (expandedPr === prNumber) { setExpandedPr(null); setDiff(null); return; }
@@ -52,6 +56,7 @@ export function PRInspector({ projectPath, onViewDiff }: PRInspectorProps) {
       <div className={styles.header}>
         <span className={styles.title}>Pull Requests</span>
         <button className={styles.refreshBtn} onClick={loadPRs}>↻</button>
+        <button className={styles.refreshBtn} onClick={onClose}>×</button>
       </div>
       <div className={styles.list}>
         {loading && <div className={styles.status}>Loading PRs...</div>}

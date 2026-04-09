@@ -35,6 +35,7 @@ export function App() {
   const [searchVisible, setSearchVisible] = useState(false);
   const [aboutVisible, setAboutVisible] = useState(false);
   const [webInspectorVisible, setWebInspectorVisible] = useState(false);
+  const [prInspectorVisible, setPrInspectorVisible] = useState(false);
 
   const { tabs, activeTab, activeTabId, setActiveTabId, addTab, closeTab, addTabWithCwd } =
     useTabManager("powershell");
@@ -197,6 +198,7 @@ export function App() {
         { label: "Command Palette", shortcut: "Ctrl+Shift+P", action: () => setPaletteVisible(true) },
         { label: "Search in Files", shortcut: "Ctrl+Shift+F", action: () => setSearchVisible(true) },
         { label: "Web Inspector", action: () => setWebInspectorVisible((v) => !v) },
+        { label: "Pull Requests", action: () => setPrInspectorVisible((v) => !v) },
         { divider: true, label: "" },
         { label: "Zoom In", shortcut: "Ctrl+=", action: () => { /* TODO */ } },
         { label: "Zoom Out", shortcut: "Ctrl+-", action: () => { /* TODO */ } },
@@ -359,7 +361,6 @@ export function App() {
             onStartAgent={handleStartAgent}
             onStopAgent={stopAgent}
           />
-          <PRInspector projectPath={projectPath} />
           <ToolkitPanel projectName={projectName} onRunCommand={handleRunCommand} />
         </div>
       </main>
@@ -379,6 +380,7 @@ export function App() {
       <WatchdogDialog visible={watchdogVisible} onClose={() => setWatchdogVisible(false)} />
       <AboutDialog visible={aboutVisible} onClose={() => setAboutVisible(false)} />
       <WebInspector visible={webInspectorVisible} onClose={() => setWebInspectorVisible(false)} />
+      <PRInspector visible={prInspectorVisible} projectPath={projectPath} onClose={() => setPrInspectorVisible(false)} />
     </div>
   );
 }
