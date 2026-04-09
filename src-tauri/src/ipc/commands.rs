@@ -110,6 +110,26 @@ pub fn list_directory(path: String) -> Result<Vec<crate::git::FileEntry>, String
     crate::git::list_directory(&path)
 }
 
+/// Read a file's contents
+#[tauri::command]
+pub fn read_file(path: String) -> Result<String, String> {
+    let p = std::path::Path::new(&path);
+    if !p.is_file() {
+        return Err(format!("Not a file: {}", path));
+    }
+    let meta = std::fs::metadata(p).map_err(|e| format!("Metadata error: {}", e))?;
+    if meta.len() > 5 * 1024 * 1024 {
+        return Err("File too large (>5MB)".to_string());
+    }
+    std::fs::read_to_string(p).map_err(|e| format!("Read error: {}", e))
+}
+
+/// Write content to a file
+#[tauri::command]
+pub fn write_file(path: String, content: String) -> Result<(), String> {
+    std::fs::write(&path, &content).map_err(|e| format!("Write error: {}", e))
+}
+
 /// Start a Claude Code agent session
 #[tauri::command]
 pub fn start_agent(

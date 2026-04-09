@@ -50,3 +50,20 @@
 .log_tool_result .logContent { color: var(--ctp-green); }
 .log_error .logContent { color: var(--ctp-red); }
 .log_system .logContent { color: var(--text-muted); font-style: italic; }
+
+/* Prompt input */
+.promptInput { padding: 6px; border-bottom: 1px solid var(--border); }
+.promptField {
+  width: 100%; padding: 6px 8px; background: var(--aether-bg-card);
+  border: 1px solid var(--gold-subtle); border-radius: 5px;
+  color: var(--text-primary); font-size: 12px; font-family: var(--font-ui); outline: none;
+}
+.promptField:focus { border-color: var(--gold); }
+.promptField::placeholder { color: var(--text-muted); }
+
+/* Stop button */
+.stopBtn {
+  cursor: pointer; font-size: 8px; color: var(--ctp-red); padding: 1px 3px;
+  border-radius: 2px; margin-left: 4px;
+}
+.stopBtn:hover { background: rgba(243, 139, 168, 0.15); }

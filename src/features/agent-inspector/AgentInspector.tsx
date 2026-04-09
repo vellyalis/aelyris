@@ -6,10 +6,14 @@ interface AgentInspectorProps {
   sessions: AgentSession[];
   activeSessionId: string | null;
   onSelectSession: (id: string) => void;
+  onStartAgent?: (prompt: string) => void;
+  onStopAgent?: (id: string) => void;
 }
 
-export function AgentInspector({ sessions, activeSessionId, onSelectSession }: AgentInspectorProps) {
+export function AgentInspector({ sessions, activeSessionId, onSelectSession, onStartAgent, onStopAgent }: AgentInspectorProps) {
   const [tab, setTab] = useState<"sessions" | "activity">("sessions");
+  const [showPromptInput, setShowPromptInput] = useState(false);
+  const [promptText, setPromptText] = useState("");
   const activeSession = sessions.find((s) => s.id === activeSessionId);
 
   return (
@@ -19,13 +23,34 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession }: A
         <button className={`${styles.tab} ${tab === "sessions" ? styles.tabActive : ""}`} onClick={() => setTab("sessions")}>Sessions</button>
         <button className={`${styles.tab} ${tab === "activity" ? styles.tabActive : ""}`} onClick={() => setTab("activity")}>Activity</button>
         <div className={styles.tabActions}>
-          <button className={styles.iconBtn} title="Add session">+</button>
+          <button className={styles.iconBtn} title="Add session" onClick={() => setShowPromptInput(true)}>+</button>
         </div>
       </div>
 
+      {/* Prompt input */}
+      {showPromptInput && (
+        <div className={styles.promptInput}>
+          <input
+            autoFocus
+            placeholder="Enter prompt for Claude..."
+            value={promptText}
+            onChange={(e) => setPromptText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && promptText.trim()) {
+                onStartAgent?.(promptText.trim());
+                setPromptText("");
+                setShowPromptInput(false);
+              }
+              if (e.key === "Escape") { setShowPromptInput(false); setPromptText(""); }
+            }}
+            className={styles.promptField}
+          />
+        </div>
+      )}
+
       {/* Session cards */}
       <div className={styles.cards}>
-        {sessions.length === 0 && (
+        {sessions.length === 0 && !showPromptInput && (
           <div className={styles.empty}>
             <div>No active agents</div>
             <div className={styles.hint}>Ctrl+Shift+A to start</div>
@@ -45,6 +70,9 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession }: A
               <span><span className={styles.statusDotSmall} style={{ background: STATUS_COLORS[s.status] }} /> {STATUS_LABELS[s.status]}</span>
               <span className={styles.cardModel}>{s.model}</span>
               <span className={styles.cardCost}>${s.cost.toFixed(2)}</span>
+              {s.status !== "done" && s.status !== "idle" && (
+                <span className={styles.stopBtn} onClick={(e) => { e.stopPropagation(); onStopAgent?.(s.id); }}>■</span>
+              )}
             </div>
           </button>
         ))}
