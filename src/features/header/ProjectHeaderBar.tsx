@@ -1,9 +1,8 @@
+import { PixelAvatar } from "../../shared/ui/PixelAvatar";
 import styles from "./ProjectHeaderBar.module.css";
 
 interface ProjectHeaderBarProps {
   projectName: string;
-  initials: string;
-  avatarColor: string;
   branch: string;
   status: "idle" | "edit" | "thinking";
   model: string;
@@ -17,7 +16,7 @@ const STATUS_META: Record<string, { color: string; label: string }> = {
 };
 
 export function ProjectHeaderBar({
-  projectName, initials, avatarColor, branch, status, model, cost,
+  projectName, branch, status, model, cost,
 }: ProjectHeaderBarProps) {
   const handleMinimize = async () => {
     try { const { getCurrentWindow } = await import("@tauri-apps/api/window"); getCurrentWindow().minimize(); } catch {}
@@ -40,7 +39,7 @@ export function ProjectHeaderBar({
   return (
     <div className={styles.header} data-tauri-drag-region>
       <div className={styles.left}>
-        <div className={styles.avatar} style={{ background: avatarColor }}>{initials}</div>
+        <PixelAvatar seed={projectName} size={18} />
         <span className={styles.name}>{projectName}</span>
         <span className={styles.branch}>⚡{branch}</span>
         <span className={styles.status}>

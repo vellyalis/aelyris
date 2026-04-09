@@ -1,5 +1,6 @@
 import type { Tab } from "../../shared/hooks/useTabManager";
 import type { ShellType } from "../../App";
+import { PixelAvatar } from "../../shared/ui/PixelAvatar";
 import styles from "./WorkspaceTabs.module.css";
 
 interface WorkspaceTabsProps {
@@ -23,7 +24,7 @@ export function WorkspaceTabs({ tabs, activeTabId, onSelectTab, onCloseTab, onNe
             className={`${styles.tab} ${tab.id === activeTabId ? styles.active : ""}`}
             onClick={() => onSelectTab(tab.id)}
           >
-            <span className={styles.tabDot} />
+            <PixelAvatar seed={tab.label} size={14} />
             <span className={styles.tabLabel}>{tab.label}</span>
             {tabs.length > 1 && (
               <span className={styles.tabClose} onClick={(e) => { e.stopPropagation(); onCloseTab(tab.id); }}>×</span>

@@ -41,8 +41,6 @@ export function App() {
   // Project path: from active tab's cwd, or from root selection
   const projectPath = activeTab.cwd ?? rootProjectPath ?? "";
   const projectName = projectPath ? projectPath.split("/").filter(Boolean).pop() ?? "Aether" : "Aether";
-  const initials = projectName.slice(0, 2).toUpperCase();
-
   // Persist last project to localStorage
   useEffect(() => {
     try {
@@ -310,8 +308,6 @@ export function App() {
     <div className="app-container">
       <ProjectHeaderBar
         projectName={projectName}
-        initials={initials}
-        avatarColor="#7c3aed"
         branch={branch}
         status={headerStatus as "idle" | "edit" | "thinking"}
         model="Opus 4.6 (1M context)"
