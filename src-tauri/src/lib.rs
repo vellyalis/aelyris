@@ -3,6 +3,7 @@ mod config;
 mod git;
 mod ipc;
 mod pty;
+mod watchdog;
 
 use agent::AgentManager;
 use pty::PtyManager;
