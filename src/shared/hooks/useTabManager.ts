@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import type { ShellType } from "../../App";
 
 export interface Tab {
@@ -10,24 +10,50 @@ export interface Tab {
 
 let nextId = 1;
 
+const SHELL_LABELS: Record<ShellType, string> = {
+  powershell: "PowerShell",
+  cmd: "CMD",
+  gitbash: "Git Bash",
+  wsl: "WSL",
+};
+
 function createTab(shell: ShellType, cwd?: string): Tab {
   const id = `tab-${nextId++}`;
-  const labels: Record<ShellType, string> = {
-    powershell: "PowerShell",
-    cmd: "CMD",
-    gitbash: "Git Bash",
-    wsl: "WSL",
-  };
-  // Use folder name as label if cwd is provided
   const label = cwd
-    ? cwd.split("/").filter(Boolean).pop() ?? labels[shell]
-    : labels[shell];
+    ? cwd.split("/").filter(Boolean).pop() ?? SHELL_LABELS[shell]
+    : SHELL_LABELS[shell];
   return { id, label, shell, cwd };
 }
 
+function loadSavedTabs(): Tab[] | null {
+  try {
+    const saved = localStorage.getItem("aether:tabs");
+    if (saved) {
+      const parsed = JSON.parse(saved) as Tab[];
+      if (parsed.length > 0) {
+        nextId = Math.max(...parsed.map((t) => parseInt(t.id.replace("tab-", "")) || 0)) + 1;
+        return parsed;
+      }
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+function saveTabs(tabs: Tab[], activeId: string) {
+  try {
+    localStorage.setItem("aether:tabs", JSON.stringify(tabs));
+    localStorage.setItem("aether:activeTab", activeId);
+  } catch { /* ignore */ }
+}
+
 export function useTabManager(defaultShell: ShellType = "powershell") {
-  const [tabs, setTabs] = useState<Tab[]>(() => [createTab(defaultShell)]);
-  const [activeTabId, setActiveTabId] = useState<string>(() => `tab-1`);
+  const [tabs, setTabs] = useState<Tab[]>(() => loadSavedTabs() ?? [createTab(defaultShell)]);
+  const [activeTabId, setActiveTabId] = useState<string>(() => {
+    try { return localStorage.getItem("aether:activeTab") ?? "tab-1"; } catch { return "tab-1"; }
+  });
+
+  // Persist tabs on change
+  useEffect(() => { saveTabs(tabs, activeTabId); }, [tabs, activeTabId]);
 
   const addTab = useCallback((shell: ShellType) => {
     const tab = createTab(shell);

@@ -29,8 +29,12 @@ export function App() {
   });
   const [paletteVisible, setPaletteVisible] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
-  const [openFiles, setOpenFiles] = useState<string[]>([]);
-  const [activeFile, setActiveFile] = useState<string | null>(null);
+  const [openFiles, setOpenFiles] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem("aether:openFiles") ?? "[]"); } catch { return []; }
+  });
+  const [activeFile, setActiveFile] = useState<string | null>(() => {
+    try { return localStorage.getItem("aether:activeFile") ?? null; } catch { return null; }
+  });
   const [watchdogVisible, setWatchdogVisible] = useState(false);
   const [searchVisible, setSearchVisible] = useState(false);
   const [aboutVisible, setAboutVisible] = useState(false);
@@ -45,6 +49,14 @@ export function App() {
   // Project path: from active tab's cwd, or from root selection
   const projectPath = activeTab.cwd ?? rootProjectPath ?? "";
   const projectName = projectPath ? projectPath.split("/").filter(Boolean).pop() ?? "Aether" : "Aether";
+  // Persist open files
+  useEffect(() => {
+    try { localStorage.setItem("aether:openFiles", JSON.stringify(openFiles)); } catch {}
+  }, [openFiles]);
+  useEffect(() => {
+    try { if (activeFile) localStorage.setItem("aether:activeFile", activeFile); else localStorage.removeItem("aether:activeFile"); } catch {}
+  }, [activeFile]);
+
   // Persist last project to localStorage
   useEffect(() => {
     try {

@@ -67,10 +67,27 @@ export function EditorPanel({ filePath, onClose, projectPath }: EditorPanelProps
     setLoading(true);
     setError(null);
     setModified(false);
+    setDiffMode(false);
     invoke<string>("read_file", { path: filePath })
       .then((data) => { setContent(data); setLoading(false); })
       .catch((err) => { setError(String(err)); setLoading(false); });
   }, [filePath]);
+
+  // Reload file when window regains focus (external change detection)
+  useEffect(() => {
+    if (!filePath) return;
+    const handleFocus = async () => {
+      try {
+        const diskContent = await invoke<string>("read_file", { path: filePath });
+        if (diskContent !== content && content !== null && !modified) {
+          setContent(diskContent);
+          editorRef.current?.setValue(diskContent);
+        }
+      } catch { /* file may have been deleted */ }
+    };
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [filePath, content, modified]);
 
   // Ctrl+S to save
   useEffect(() => {
