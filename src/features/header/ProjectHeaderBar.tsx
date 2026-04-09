@@ -1,4 +1,5 @@
 import { PixelAvatar } from "../../shared/ui/PixelAvatar";
+import { Settings, RefreshCw } from "lucide-react";
 import styles from "./ProjectHeaderBar.module.css";
 
 interface ProjectHeaderBarProps {
@@ -57,8 +58,8 @@ export function ProjectHeaderBar({
             <span className={styles.cost}>&lt;${activeAgent.cost.toFixed(2)}</span>
           </>
         )}
-        <button className={styles.headerBtn} onClick={onRefresh} title="Refresh">↻</button>
-        <button className={styles.headerBtn} onClick={onOpenSettings} title="Settings">⚙</button>
+        <button className={styles.headerBtn} onClick={onRefresh} title="Refresh"><RefreshCw size={12} /></button>
+        <button className={styles.headerBtn} onClick={onOpenSettings} title="Settings"><Settings size={12} /></button>
         <div className={styles.controls}>
           <button className={styles.ctrlBtn} onClick={handleMinimize}>
             <svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" fill="currentColor"/></svg>

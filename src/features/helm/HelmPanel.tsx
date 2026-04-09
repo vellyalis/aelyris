@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { Cloud, Monitor, Paperclip } from "lucide-react";
 import styles from "./HelmPanel.module.css";
 
 interface Task {
@@ -52,9 +53,9 @@ export function HelmPanel() {
         <span>Helm</span>
         {tasks.length > 0 && <span className={styles.count}>{doneCount}/{tasks.length}</span>}
         <div className={styles.helmIcons}>
-          <button className={styles.helmIcon} title="Sync">☁️</button>
-          <button className={styles.helmIcon} title="Terminal">🖥</button>
-          <button className={styles.helmIcon} title="Attach">📎</button>
+          <button className={styles.helmIcon} title="Sync"><Cloud size={10} /></button>
+          <button className={styles.helmIcon} title="Terminal"><Monitor size={10} /></button>
+          <button className={styles.helmIcon} title="Attach"><Paperclip size={10} /></button>
         </div>
         <button className={styles.addBtn} onClick={() => setAdding(true)}>+</button>
       </div>

@@ -1,5 +1,17 @@
 import { useState, useCallback } from "react";
+import { GitPullRequest, Upload, GitBranch, Play, FolderOpen, ClipboardList, ScrollText, FlaskConical } from "lucide-react";
 import styles from "./ToolkitPanel.module.css";
+
+const ICON_MAP: Record<string, React.ReactNode> = {
+  "create-pr": <GitPullRequest size={12} />,
+  "commit-push": <Upload size={12} />,
+  "worktree": <GitBranch size={12} />,
+  "dev-server": <Play size={12} />,
+  "open-vscode": <FolderOpen size={12} />,
+  "git-status": <ClipboardList size={12} />,
+  "git-log": <ScrollText size={12} />,
+  "npm-test": <FlaskConical size={12} />,
+};
 
 export interface ToolkitAction {
   id: string;
@@ -15,14 +27,14 @@ interface ToolkitPanelProps {
 }
 
 const DEFAULT_ACTIONS: ToolkitAction[] = [
-  { id: "create-pr", label: "Create PR", icon: "✏️", badge: "#cba6f7", command: "gh pr create --fill" },
-  { id: "commit-push", label: "Commit & Push", icon: "📤", badge: "#a6e3a1", command: "git add -A && git commit -m 'update' && git push" },
-  { id: "worktree", label: "Worktree", icon: "🔨", badge: "#89b4fa", command: "git worktree list" },
-  { id: "dev-server", label: "Dev Server", icon: "▶️", badge: "#a6e3a1", command: "pnpm dev" },
-  { id: "open-vscode", label: "Open in VSCode", icon: "📂", badge: "#89b4fa", command: "code ." },
-  { id: "git-status", label: "Git Status", icon: "📋", badge: "#f9e2af", command: "git status" },
-  { id: "git-log", label: "Git Log", icon: "📜", badge: "#9399b2", command: "git log --oneline -15" },
-  { id: "npm-test", label: "Run Tests", icon: "🧪", badge: "#f38ba8", command: "npm test" },
+  { id: "create-pr", label: "Create PR", badge: "#cba6f7", command: "gh pr create --fill" },
+  { id: "commit-push", label: "Commit & Push", badge: "#a6e3a1", command: "git add -A && git commit -m 'update' && git push" },
+  { id: "worktree", label: "Worktree", badge: "#89b4fa", command: "git worktree list" },
+  { id: "dev-server", label: "Dev Server", badge: "#a6e3a1", command: "pnpm dev" },
+  { id: "open-vscode", label: "Open in VSCode", badge: "#89b4fa", command: "code ." },
+  { id: "git-status", label: "Git Status", badge: "#f9e2af", command: "git status" },
+  { id: "git-log", label: "Git Log", badge: "#9399b2", command: "git log --oneline -15" },
+  { id: "npm-test", label: "Run Tests", badge: "#f38ba8", command: "npm test" },
 ];
 
 function loadActions(projectName: string): ToolkitAction[] {
@@ -112,7 +124,7 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
             onContextMenu={(e) => { e.preventDefault(); handleEdit(a); }}
             title={a.command}
           >
-            {a.icon && <span className={styles.actionIcon}>{a.icon}</span>}
+            <span className={styles.actionIcon}>{ICON_MAP[a.id] ?? null}</span>
             <span className={styles.actionLabel}>{a.label}</span>
             <span className={styles.badge} style={{ background: a.badge }} />
           </button>

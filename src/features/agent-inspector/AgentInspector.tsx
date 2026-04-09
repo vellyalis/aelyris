@@ -3,6 +3,7 @@ import { type AgentSession, STATUS_COLORS, STATUS_LABELS } from "../../shared/ty
 import { PixelAvatar } from "../../shared/ui/PixelAvatar";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
 import { ContextGauge } from "../../shared/ui/ContextGauge";
+import { ClipboardCopy, Bell, Plus, Pencil } from "lucide-react";
 import styles from "./AgentInspector.module.css";
 
 interface AgentInspectorProps {
@@ -26,9 +27,9 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
         <button className={`${styles.tab} ${tab === "sessions" ? styles.tabActive : ""}`} onClick={() => setTab("sessions")}>Sessions</button>
         <button className={`${styles.tab} ${tab === "activity" ? styles.tabActive : ""}`} onClick={() => setTab("activity")}>Activity</button>
         <div className={styles.tabActions}>
-          <button className={styles.iconBtn} title="Copy session info">📋</button>
-          <button className={styles.iconBtn} title="Notifications">🔔</button>
-          <button className={styles.iconBtn} title="Add session" onClick={() => setShowPromptInput(true)}>+</button>
+          <button className={styles.iconBtn} title="Copy session info"><ClipboardCopy size={12} /></button>
+          <button className={styles.iconBtn} title="Notifications"><Bell size={12} /></button>
+          <button className={styles.iconBtn} title="Add session" onClick={() => setShowPromptInput(true)}><Plus size={12} /></button>
         </div>
       </div>
 
@@ -71,7 +72,7 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
                     <div className={styles.cardNameRow}>
                       <span className={styles.cardName}>{s.name}</span>
                       {s.branch && <span className={styles.cardBranch}>⚡{s.branch}</span>}
-                      <span className={styles.cardIcons}>✏️</span>
+                      <span className={styles.cardIcons}><Pencil size={9} /></span>
                     </div>
                     <div className={styles.cardStatusRow}>
                       <StatusIcon status={s.status} size={10} />
