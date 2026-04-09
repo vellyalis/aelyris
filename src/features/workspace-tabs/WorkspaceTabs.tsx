@@ -8,9 +8,11 @@ interface WorkspaceTabsProps {
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
   onNewTab: (shell: ShellType) => void;
+  branch?: string;
+  changedCount?: number;
 }
 
-export function WorkspaceTabs({ tabs, activeTabId, onSelectTab, onCloseTab, onNewTab }: WorkspaceTabsProps) {
+export function WorkspaceTabs({ tabs, activeTabId, onSelectTab, onCloseTab, onNewTab, branch, changedCount }: WorkspaceTabsProps) {
   return (
     <div className={styles.bar}>
       <button className={styles.replyBtn}>◀ reply</button>
@@ -30,6 +32,12 @@ export function WorkspaceTabs({ tabs, activeTabId, onSelectTab, onCloseTab, onNe
         ))}
       </div>
       <button className={styles.addBtn} onClick={() => onNewTab("powershell")}>+</button>
+      <div className={styles.statusInfo}>
+        {branch && <span className={styles.branchInfo}>⚡{branch}</span>}
+        {changedCount !== undefined && changedCount > 0 && <span className={styles.changes}>{changedCount}M</span>}
+        <span className={styles.encoding}>UTF-8</span>
+        <span className={styles.encoding}>LF</span>
+      </div>
     </div>
   );
 }

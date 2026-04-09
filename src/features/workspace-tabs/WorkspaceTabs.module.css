@@ -37,3 +37,11 @@
   cursor: pointer; padding: 0 6px; border-radius: 4px; flex-shrink: 0;
 }
 .addBtn:hover { background: rgba(255,255,255,0.06); color: var(--text-primary); }
+
+.statusInfo {
+  display: flex; gap: 10px; align-items: center; margin-left: auto;
+  padding-right: 4px; flex-shrink: 0;
+}
+.branchInfo { font-size: 10px; color: var(--status-idle); font-family: var(--font-mono); }
+.changes { font-size: 10px; color: var(--gold); font-family: var(--font-mono); }
+.encoding { font-size: 9px; color: var(--text-muted); font-family: var(--font-mono); }

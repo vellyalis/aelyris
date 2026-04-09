@@ -362,6 +362,8 @@ export function App() {
         onSelectTab={handleTabSwitch}
         onCloseTab={closeTab}
         onNewTab={addTab}
+        branch={branch}
+        changedCount={changedFiles.length}
       />
 
       <CommandPalette visible={paletteVisible} onClose={() => setPaletteVisible(false)} commands={commands} />
