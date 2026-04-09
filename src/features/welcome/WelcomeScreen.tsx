@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import styles from "./WelcomeScreen.module.css";
 
@@ -29,6 +29,26 @@ export function WelcomeScreen({ onOpenProject }: WelcomeScreenProps) {
       .catch(() => setLoading(false));
   }, []);
 
+  const [dragOver, setDragOver] = useState(false);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const items = e.dataTransfer.items;
+    if (items.length > 0) {
+      const entry = items[0].webkitGetAsEntry?.();
+      if (entry?.isDirectory) {
+        onOpenProject(entry.fullPath || entry.name);
+      }
+    }
+    // Also try files
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      const path = (files[0] as unknown as { path?: string }).path;
+      if (path) onOpenProject(path.replace(/\\/g, "/"));
+    }
+  }, [onOpenProject]);
+
   const handleOpenFolder = async () => {
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
@@ -40,7 +60,12 @@ export function WelcomeScreen({ onOpenProject }: WelcomeScreenProps) {
   };
 
   return (
-    <div className={styles.container}>
+    <div
+      className={`${styles.container} ${dragOver ? styles.dragOver : ""}`}
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={handleDrop}
+    >
       <div className={styles.center}>
         <div className={styles.logo}>
           <div className={styles.logoIcon}>AE</div>

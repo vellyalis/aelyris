@@ -4,6 +4,12 @@
   align-items: center;
   justify-content: center;
   background: var(--aether-bg);
+  transition: background 0.2s ease;
+}
+.dragOver {
+  background: rgba(124, 58, 237, 0.08);
+  outline: 2px dashed var(--purple);
+  outline-offset: -8px;
 }
 
 .center {
