@@ -1,11 +1,12 @@
-import { useEffect, useState, useRef } from "react";
-import Editor, { type OnMount } from "@monaco-editor/react";
+import { useEffect, useState, useRef, useCallback } from "react";
+import Editor, { DiffEditor, type OnMount } from "@monaco-editor/react";
 import { invoke } from "@tauri-apps/api/core";
 import styles from "./EditorPanel.module.css";
 
 interface EditorPanelProps {
   filePath: string | null;
   onClose: () => void;
+  projectPath?: string;
 }
 
 const EXT_TO_LANG: Record<string, string> = {
@@ -20,12 +21,27 @@ function detectLanguage(path: string): string {
   return EXT_TO_LANG[ext] ?? "plaintext";
 }
 
-export function EditorPanel({ filePath, onClose }: EditorPanelProps) {
+export function EditorPanel({ filePath, onClose, projectPath }: EditorPanelProps) {
   const [content, setContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [modified, setModified] = useState(false);
+  const [diffMode, setDiffMode] = useState(false);
+  const [originalContent, setOriginalContent] = useState<string | null>(null);
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
+
+  const toggleDiff = useCallback(async () => {
+    if (diffMode) { setDiffMode(false); return; }
+    if (!filePath || !projectPath) return;
+    try {
+      const original = await invoke<string>("git_file_original", { repoPath: projectPath, filePath });
+      setOriginalContent(original);
+      setDiffMode(true);
+    } catch {
+      setOriginalContent("");
+      setDiffMode(true);
+    }
+  }, [diffMode, filePath, projectPath]);
 
   useEffect(() => {
     if (!filePath) return;
@@ -65,12 +81,13 @@ export function EditorPanel({ filePath, onClose }: EditorPanelProps) {
           {fileName}
         </span>
         <span className={styles.lang}>{language}</span>
+        <button className={styles.diffBtn} onClick={toggleDiff} title="Toggle diff">{diffMode ? "Editor" : "Diff"}</button>
         <button className={styles.closeBtn} onClick={onClose}>×</button>
       </div>
       <div className={styles.body}>
         {loading && <div className={styles.status}>Loading...</div>}
         {error && <div className={styles.error}>{error}</div>}
-        {content !== null && !loading && (
+        {content !== null && !loading && !diffMode && (
           <Editor
             defaultValue={content}
             language={language}
@@ -103,6 +120,39 @@ export function EditorPanel({ filePath, onClose }: EditorPanelProps) {
               overviewRulerLanes: 0,
               scrollbar: { verticalScrollbarSize: 5, horizontalScrollbarSize: 5 },
               padding: { top: 8 },
+            }}
+          />
+        )}
+        {content !== null && !loading && diffMode && (
+          <DiffEditor
+            original={originalContent ?? ""}
+            modified={content}
+            language={language}
+            theme="vs-dark"
+            options={{
+              readOnly: true,
+              renderSideBySide: true,
+              fontSize: 13,
+              fontFamily: "IBM Plex Mono, Cascadia Code, monospace",
+              lineHeight: 20,
+              minimap: { enabled: false },
+              scrollBeyondLastLine: false,
+              automaticLayout: true,
+              overviewRulerLanes: 0,
+            }}
+            beforeMount={(monaco) => {
+              monaco.editor.defineTheme("aether-dark", {
+                base: "vs-dark",
+                inherit: true,
+                rules: [],
+                colors: {
+                  "editor.background": "#0d0d0d",
+                  "editorLineNumber.foreground": "#444444",
+                  "editorLineNumber.activeForeground": "#888888",
+                  "editorGutter.background": "#0d0d0d",
+                },
+              });
+              monaco.editor.setTheme("aether-dark");
             }}
           />
         )}

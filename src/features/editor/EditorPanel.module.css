@@ -38,6 +38,18 @@
   margin-left: auto;
 }
 
+.diffBtn {
+  background: none;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 3px;
+  color: var(--text-muted);
+  font-size: 9px;
+  font-family: var(--font-mono);
+  padding: 1px 6px;
+  cursor: pointer;
+}
+.diffBtn:hover { background: rgba(255,255,255,0.08); color: var(--text-primary); border-color: var(--gold); }
+
 .closeBtn {
   background: none;
   border: none;

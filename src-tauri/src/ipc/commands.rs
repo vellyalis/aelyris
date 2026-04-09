@@ -200,6 +200,28 @@ fn grep_recursive(dir: &std::path::Path, pattern: &str, max: u32, results: &mut 
     }
 }
 
+/// Get original file content from git HEAD (for diff)
+#[tauri::command]
+pub fn git_file_original(repo_path: String, file_path: String) -> Result<String, String> {
+    // Get relative path from repo root
+    let relative = file_path
+        .replace(&repo_path, "")
+        .trim_start_matches('/')
+        .to_string();
+
+    let output = std::process::Command::new("git")
+        .args(["show", &format!("HEAD:{}", relative)])
+        .current_dir(&repo_path)
+        .output()
+        .map_err(|e| format!("git show failed: {}", e))?;
+
+    if output.status.success() {
+        String::from_utf8(output.stdout).map_err(|e| format!("UTF-8 error: {}", e))
+    } else {
+        Err("File not in git HEAD".to_string())
+    }
+}
+
 /// Load app config
 #[tauri::command]
 pub fn load_app_config() -> crate::config::AppConfig {

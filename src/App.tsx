@@ -89,8 +89,13 @@ export function App() {
   const totalCost = sessions.reduce((sum, s) => sum + s.cost, 0);
 
   const handleStartAgent = useCallback(async (prompt: string) => {
-    try { await startAgent(prompt, projectPath); } catch { /* */ }
-  }, [startAgent, projectPath]);
+    try {
+      const agentId = await startAgent(prompt, projectPath);
+      // Create a new tab linked to this agent session
+      addTabWithCwd("powershell", projectPath);
+      return agentId;
+    } catch { /* */ }
+  }, [startAgent, projectPath, addTabWithCwd]);
 
   const handleFileSelect = useCallback((path: string) => {
     setOpenFiles((prev) => prev.includes(path) ? prev : [...prev, path]);
@@ -256,7 +261,7 @@ export function App() {
           );
         })}
       </div>
-      <EditorPanel filePath={activeFile} onClose={() => handleCloseFile(activeFile!)} />
+      <EditorPanel filePath={activeFile} onClose={() => handleCloseFile(activeFile!)} projectPath={projectPath} />
     </div>
   ) : null;
 
