@@ -88,6 +88,12 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
                     <span className={styles.stopBtn} onClick={(e) => { e.stopPropagation(); onStopAgent?.(s.id); }}>■</span>
                   )}
                 </div>
+                <div className={styles.progressTrack}>
+                  <div className={styles.progressBar} style={{
+                    width: s.status === "done" ? "100%" : s.status === "idle" ? "0%" : s.status === "generating" ? "50%" : "30%",
+                    background: STATUS_COLORS[s.status],
+                  }} />
+                </div>
                 {s.watchdog && (
                   <div className={styles.watchdogInfo}>🐕 {s.watchdog}</div>
                 )}
