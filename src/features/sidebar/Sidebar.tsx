@@ -15,6 +15,8 @@ interface BranchInfo {
   is_remote: boolean;
 }
 
+type NavSection = "sessions" | "notes" | "files" | "tools";
+
 interface SidebarProps {
   visible: boolean;
   onProjectSelect: (path: string) => void;
@@ -27,30 +29,23 @@ const SCAN_DIRS = [
 ];
 
 export function Sidebar({ visible, onProjectSelect }: SidebarProps) {
+  const [activeNav, setActiveNav] = useState<NavSection>("sessions");
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [expandedProject, setExpandedProject] = useState<string | null>(null);
   const [branches, setBranches] = useState<BranchInfo[]>([]);
 
   useEffect(() => {
-    if (!visible) return;
-    loadProjects();
+    if (visible) loadProjects();
   }, [visible]);
 
   async function loadProjects() {
     setLoading(true);
-    setError(null);
     try {
-      const result = await invoke<ProjectInfo[]>("discover_projects", {
-        scanDirs: SCAN_DIRS,
-      });
+      const result = await invoke<ProjectInfo[]>("discover_projects", { scanDirs: SCAN_DIRS });
       setProjects(result);
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setLoading(false);
-    }
+    } catch { /* ignore */ }
+    setLoading(false);
   }
 
   async function toggleExpand(path: string) {
@@ -63,52 +58,65 @@ export function Sidebar({ visible, onProjectSelect }: SidebarProps) {
     try {
       const result = await invoke<BranchInfo[]>("list_branches", { repoPath: path });
       setBranches(result.filter((b) => !b.is_remote));
-    } catch {
-      setBranches([]);
-    }
+    } catch { setBranches([]); }
   }
 
   if (!visible) return null;
 
   return (
     <div className={styles.sidebar}>
-      <div className={styles.header}>
-        <span className={styles.title}>Projects</span>
-        <button className={styles.refreshBtn} onClick={loadProjects} title="Refresh">
-          ↻
-        </button>
+      {/* Logo area */}
+      <div className={styles.logo}>
+        <span className={styles.logoText}>aether</span>
       </div>
+
+      {/* Navigation */}
+      <nav className={styles.nav}>
+        {([
+          ["sessions", "Sessions"],
+          ["notes", "Notes"],
+          ["files", "Files"],
+          ["tools", "Tools"],
+        ] as [NavSection, string][]).map(([id, label]) => (
+          <button
+            key={id}
+            className={`${styles.navItem} ${activeNav === id ? styles.navActive : ""}`}
+            onClick={() => setActiveNav(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+
+      <div className={styles.divider} />
+
+      {/* Worktree / Projects section */}
+      <div className={styles.sectionHeader}>
+        <span>Worktrees</span>
+        <button className={styles.iconBtn} onClick={loadProjects} title="Refresh">↻</button>
+      </div>
+
       <div className={styles.list}>
         {loading && <div className={styles.status}>Scanning...</div>}
-        {error && <div className={styles.error}>{error}</div>}
         {projects.map((p) => (
           <div key={p.path}>
             <div className={styles.projectRow}>
-              <button
-                className={styles.expandBtn}
-                onClick={() => toggleExpand(p.path)}
-              >
+              <button className={styles.expandBtn} onClick={() => toggleExpand(p.path)}>
                 {expandedProject === p.path ? "▾" : "▸"}
               </button>
-              <button
-                className={styles.project}
-                onClick={() => onProjectSelect(p.path)}
-              >
-                <div className={styles.projectName}>
+              <button className={styles.project} onClick={() => onProjectSelect(p.path)}>
+                <span className={styles.projectName}>
                   {p.has_changes && <span className={styles.dot} />}
                   {p.name}
-                </div>
-                <div className={styles.projectBranch}>{p.branch}</div>
+                </span>
+                <span className={styles.branchBadge}>{p.branch}</span>
               </button>
             </div>
             {expandedProject === p.path && branches.length > 0 && (
               <div className={styles.branchList}>
                 {branches.map((b) => (
-                  <div
-                    key={b.name}
-                    className={`${styles.branchItem} ${b.is_head ? styles.branchActive : ""}`}
-                  >
-                    <span className={styles.branchIcon}>{b.is_head ? "●" : "○"}</span>
+                  <div key={b.name} className={`${styles.branchItem} ${b.is_head ? styles.branchActive : ""}`}>
+                    <span className={styles.branchDot} style={{ background: b.is_head ? "#a6e3a1" : "rgba(255,255,255,0.2)" }} />
                     <span>{b.name}</span>
                   </div>
                 ))}
@@ -116,9 +124,6 @@ export function Sidebar({ visible, onProjectSelect }: SidebarProps) {
             )}
           </div>
         ))}
-        {!loading && projects.length === 0 && !error && (
-          <div className={styles.status}>No projects found</div>
-        )}
       </div>
     </div>
   );

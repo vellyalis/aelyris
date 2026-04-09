@@ -1,25 +1,21 @@
 .titlebar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   height: var(--titlebar-height);
-  padding: 0 12px;
-  background: rgba(26, 26, 26, 0.6);
-  border-bottom: 1px solid var(--border);
+  padding: 0 8px;
+  background: transparent;
   user-select: none;
   -webkit-app-region: drag;
 }
 
 .title {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  letter-spacing: 0.02em;
+  display: none; /* Hidden in Scape-style minimal titlebar */
 }
 
 .controls {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   -webkit-app-region: no-drag;
 }
 
@@ -28,21 +24,21 @@
   align-items: center;
   justify-content: center;
   width: 28px;
-  height: 28px;
+  height: 20px;
   border: none;
-  border-radius: 6px;
+  border-radius: 4px;
   background: transparent;
-  color: var(--text-muted);
+  color: rgba(255, 255, 255, 0.3);
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: background 0.1s, color 0.1s;
 }
 
 .controlBtn:hover {
-  background: var(--bg-surface);
-  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .closeBtn:hover {
-  background: var(--ctp-red);
-  color: var(--ctp-crust);
+  background: #f38ba8;
+  color: #1a1a1a;
 }

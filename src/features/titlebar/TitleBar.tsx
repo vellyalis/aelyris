@@ -1,23 +1,29 @@
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import styles from "./TitleBar.module.css";
 
-function getWindow() {
-  try {
-    return getCurrentWindow();
-  } catch {
-    return null;
-  }
+async function getWindow() {
+  const { getCurrentWindow } = await import("@tauri-apps/api/window");
+  return getCurrentWindow();
 }
 
 export function TitleBar() {
-  const handleMinimize = () => getWindow()?.minimize();
-  const handleMaximize = async () => {
-    const win = getWindow();
-    if (!win) return;
-    const isMax = await win.isMaximized();
-    isMax ? win.unmaximize() : win.maximize();
+  const handleMinimize = async () => {
+    try { (await getWindow()).minimize(); } catch { /* noop */ }
   };
-  const handleClose = () => getWindow()?.close();
+  const handleMaximize = async () => {
+    try {
+      const win = await getWindow();
+      const isMax = await win.isMaximized();
+      isMax ? win.unmaximize() : win.maximize();
+    } catch { /* noop */ }
+  };
+  const handleClose = async () => {
+    try {
+      const { exit } = await import("@tauri-apps/plugin-process");
+      await exit(0);
+    } catch {
+      try { (await getWindow()).close(); } catch { /* noop */ }
+    }
+  };
 
   return (
     <div className={styles.titlebar} data-tauri-drag-region>

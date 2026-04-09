@@ -12,6 +12,7 @@ use pty::PtyManager;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_process::init())
         .manage(PtyManager::new())
         .manage(AgentManager::new())
         .setup(|_app| {

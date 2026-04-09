@@ -39,3 +39,4 @@ env_logger = "0.11"
 
 # UUID for terminal instance IDs
 uuid = { version = "1", features = ["v4"] }
+tauri-plugin-process = "2.3.1"

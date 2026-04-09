@@ -13,8 +13,8 @@ import type { AgentSession } from "./shared/types/agent";
 export type ShellType = "powershell" | "cmd" | "gitbash" | "wsl";
 
 export function App() {
-  const [sidebarVisible, setSidebarVisible] = useState(false);
-  const [inspectorVisible, setInspectorVisible] = useState(false);
+  const [sidebarVisible, setSidebarVisible] = useState(true);
+  const [inspectorVisible, setInspectorVisible] = useState(true);
   const [paletteVisible, setPaletteVisible] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars

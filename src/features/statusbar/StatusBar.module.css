@@ -5,10 +5,10 @@
   justify-content: space-between;
   height: var(--statusbar-height);
   padding: 0 12px;
-  background: rgba(26, 26, 26, 0.6);
-  border-top: 1px solid var(--border);
-  font-size: 11px;
-  color: var(--text-muted);
+  background: rgba(20, 20, 20, 0.6);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.35);
   user-select: none;
 }
 
@@ -27,38 +27,38 @@
 .shellBtn {
   background: none;
   border: none;
-  color: var(--text-secondary);
-  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 10px;
   cursor: pointer;
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: 3px;
   font-family: var(--font-ui);
 }
 
 .shellBtn:hover {
-  background: var(--bg-surface);
-  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .picker {
   position: absolute;
   bottom: 100%;
   left: 8px;
-  background: var(--ctp-surface0);
-  border: 1px solid var(--border);
+  background: #252525;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 6px;
   padding: 4px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.3);
+  gap: 1px;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.5);
 }
 
 .pickerItem {
   background: none;
   border: none;
-  color: var(--text-secondary);
-  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 11px;
   font-family: var(--font-ui);
   padding: 4px 12px;
   border-radius: 4px;
@@ -67,8 +67,8 @@
 }
 
 .pickerItem:hover {
-  background: var(--ctp-surface1);
-  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .pickerItem.active {
