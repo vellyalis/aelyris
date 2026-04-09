@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { type AgentSession, STATUS_COLORS, STATUS_LABELS } from "../../shared/types/agent";
+import { MODEL_OPTIONS, getModelById } from "../../shared/types/model";
+import { useAppStore } from "../../shared/store/appStore";
 import { PixelAvatar } from "../../shared/ui/PixelAvatar";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
 import { ContextGauge } from "../../shared/ui/ContextGauge";
@@ -10,7 +12,7 @@ interface AgentInspectorProps {
   sessions: AgentSession[];
   activeSessionId: string | null;
   onSelectSession: (id: string) => void;
-  onStartAgent?: (prompt: string) => void;
+  onStartAgent?: (prompt: string, model?: string) => void;
   onStopAgent?: (id: string) => void;
 }
 
@@ -18,6 +20,7 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
   const [tab, setTab] = useState<"sessions" | "activity">("sessions");
   const [showPromptInput, setShowPromptInput] = useState(false);
   const [promptText, setPromptText] = useState("");
+  const { selectedModel, setSelectedModel } = useAppStore();
   const activeSession = sessions.find((s) => s.id === activeSessionId);
 
   return (
@@ -33,17 +36,30 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
         </div>
       </div>
 
-      {/* Prompt input */}
+      {/* Prompt input + model selector */}
       {showPromptInput && (
         <div className={styles.promptInput}>
+          <div className={styles.modelRow}>
+            <select
+              className={styles.modelSelect}
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
+            >
+              {MODEL_OPTIONS.map((m) => (
+                <option key={m.id} value={m.id}>{m.label}</option>
+              ))}
+            </select>
+            <span className={styles.modelDot} style={{ background: getModelById(selectedModel)?.color ?? "#89b4fa" }} />
+          </div>
           <input
             autoFocus
-            placeholder="Enter prompt for Claude..."
+            placeholder={`Prompt for ${getModelById(selectedModel)?.label ?? "Agent"}...`}
             value={promptText}
             onChange={(e) => setPromptText(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && promptText.trim()) {
-                onStartAgent?.(promptText.trim());
+                const model = getModelById(selectedModel);
+                onStartAgent?.(promptText.trim(), model?.modelArg);
                 setPromptText("");
                 setShowPromptInput(false);
               }

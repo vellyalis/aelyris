@@ -97,10 +97,9 @@ export function App() {
     ? (activeAgent.status === "thinking" ? "thinking" : activeAgent.status === "coding" ? "edit" : "idle")
     : "idle";
 
-  const handleStartAgent = useCallback(async (prompt: string) => {
+  const handleStartAgent = useCallback(async (prompt: string, model?: string) => {
     try {
-      const agentId = await startAgent(prompt, projectPath);
-      // Create a new tab linked to this agent session
+      const agentId = await startAgent(prompt, projectPath, model);
       addTabWithCwd("powershell", projectPath);
       return agentId;
     } catch { /* */ }

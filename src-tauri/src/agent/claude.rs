@@ -44,25 +44,37 @@ impl AgentManager {
         let id = Uuid::new_v4().to_string();
         let model_str = model.unwrap_or("sonnet");
 
-        let mut cmd = Command::new("claude");
-        cmd.arg("-p")
-            .arg(prompt)
-            .arg("--output-format")
-            .arg("stream-json")
-            .arg("--verbose")
-            .arg("--model")
-            .arg(model_str)
-            .current_dir(cwd)
+        // Route to different CLI based on model provider
+        let (cli_cmd, cli_args) = if model_str.starts_with("codex") {
+            ("codex", vec!["-p".to_string(), prompt.to_string()])
+        } else if model_str.starts_with("gemini") {
+            ("gemini", vec!["-p".to_string(), prompt.to_string()])
+        } else {
+            ("claude", vec![
+                "-p".to_string(), prompt.to_string(),
+                "--output-format".to_string(), "stream-json".to_string(),
+                "--verbose".to_string(),
+                "--model".to_string(), model_str.to_string(),
+            ])
+        };
+
+        let mut cmd = Command::new(cli_cmd);
+        for arg in &cli_args {
+            cmd.arg(arg);
+        }
+        cmd.current_dir(cwd)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
         if let Some(tools) = &allowed_tools {
-            cmd.arg("--allowedTools").arg(tools.join(","));
+            if cli_cmd == "claude" {
+                cmd.arg("--allowedTools").arg(tools.join(","));
+            }
         }
 
         let child = cmd
             .spawn()
-            .map_err(|e| format!("Failed to start claude: {}", e))?;
+            .map_err(|e| format!("Failed to start {}: {}", cli_cmd, e))?;
 
         let info = AgentSessionInfo {
             id: id.clone(),

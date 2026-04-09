@@ -72,7 +72,15 @@
 }
 
 /* Prompt input */
-.promptInput { padding: 6px; border-bottom: 1px solid var(--border); }
+.promptInput { padding: 6px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px; }
+.modelRow { display: flex; align-items: center; gap: 6px; }
+.modelSelect {
+  flex: 1; padding: 3px 6px; background: var(--aether-bg-card);
+  border: 1px solid var(--border); border-radius: 4px;
+  color: var(--text-primary); font-size: 10px; font-family: var(--font-mono); outline: none;
+}
+.modelSelect:focus { border-color: var(--gold); }
+.modelDot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .promptField {
   width: 100%; padding: 6px 8px; background: var(--aether-bg-card);
   border: 1px solid var(--gold-subtle); border-radius: 5px;

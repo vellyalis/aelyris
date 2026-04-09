@@ -21,6 +21,10 @@ interface AppState {
   prInspectorVisible: boolean;
   setPrInspectorVisible: (v: boolean | ((prev: boolean) => boolean)) => void;
 
+  // Agent model
+  selectedModel: string;
+  setSelectedModel: (modelId: string) => void;
+
   // Editor
   openFiles: string[];
   activeFile: string | null;
@@ -62,6 +66,15 @@ export const useAppStore = create<AppState>((set) => ({
   setWebInspectorVisible: (v) => set((s) => ({ webInspectorVisible: toggleOrSet(v, s.webInspectorVisible) })),
   prInspectorVisible: false,
   setPrInspectorVisible: (v) => set((s) => ({ prInspectorVisible: toggleOrSet(v, s.prInspectorVisible) })),
+
+  // Agent model
+  selectedModel: (() => {
+    try { return localStorage.getItem("aether:selectedModel") ?? "claude-sonnet"; } catch { return "claude-sonnet"; }
+  })(),
+  setSelectedModel: (modelId) => {
+    set({ selectedModel: modelId });
+    try { localStorage.setItem("aether:selectedModel", modelId); } catch {}
+  },
 
   // Editor
   openFiles: (() => {
