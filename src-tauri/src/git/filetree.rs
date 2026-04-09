@@ -61,7 +61,7 @@ pub fn list_directory(dir_path: &str) -> Result<Vec<FileEntry>, String> {
     Ok(dirs)
 }
 
-fn ext_to_type(name: &str) -> String {
+pub fn ext_to_type(name: &str) -> String {
     let ext = name.rsplit('.').next().unwrap_or("").to_lowercase();
     match ext.as_str() {
         "ts" | "tsx" => "ts",

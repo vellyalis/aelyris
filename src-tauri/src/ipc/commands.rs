@@ -110,6 +110,41 @@ pub fn list_directory(path: String) -> Result<Vec<crate::git::FileEntry>, String
     crate::git::list_directory(&path)
 }
 
+/// Get git status for a repository
+#[tauri::command]
+pub fn git_status(repo_path: String) -> Result<crate::git::GitStatusInfo, String> {
+    crate::git::git_status(&repo_path)
+}
+
+/// Search files by name in a directory tree
+#[tauri::command]
+pub fn search_files(root_path: String, query: String, max_results: u32) -> Result<Vec<crate::git::FileEntry>, String> {
+    let mut results = Vec::new();
+    let query_lower = query.to_lowercase();
+    search_recursive(std::path::Path::new(&root_path), &query_lower, max_results, &mut results);
+    Ok(results)
+}
+
+fn search_recursive(dir: &std::path::Path, query: &str, max: u32, results: &mut Vec<crate::git::FileEntry>) {
+    if results.len() >= max as usize { return; }
+    let entries = match std::fs::read_dir(dir) { Ok(e) => e, Err(_) => return };
+    for entry in entries.flatten() {
+        if results.len() >= max as usize { return; }
+        let name = entry.file_name().to_string_lossy().to_string();
+        let path = entry.path();
+        let is_dir = path.is_dir();
+        if is_dir && [".git","node_modules","target","__pycache__",".venv","dist",".next",".turbo"].contains(&name.as_str()) {
+            continue;
+        }
+        if name.to_lowercase().contains(query) {
+            let full = path.to_string_lossy().to_string().replace('\\', "/");
+            let file_type = if is_dir { "folder".to_string() } else { crate::git::ext_to_type(&name) };
+            results.push(crate::git::FileEntry { name: name.clone(), path: full, is_dir, file_type, children_count: 0 });
+        }
+        if is_dir { search_recursive(&path, query, max, results); }
+    }
+}
+
 /// Read a file's contents
 #[tauri::command]
 pub fn read_file(path: String) -> Result<String, String> {

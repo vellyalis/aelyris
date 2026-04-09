@@ -12,6 +12,7 @@ import { Settings } from "./features/settings/Settings";
 import { SplitPane } from "./shared/ui/SplitPane";
 import { useTabManager } from "./shared/hooks/useTabManager";
 import { useAgentManager } from "./shared/hooks/useAgentManager";
+import { useGitStatus } from "./shared/hooks/useGitStatus";
 
 export type ShellType = "powershell" | "cmd" | "gitbash" | "wsl";
 
@@ -29,6 +30,8 @@ export function App() {
   const projectName = projectPath.split("/").filter(Boolean).pop() ?? "Aether Terminal";
   const initials = projectName.slice(0, 2).toUpperCase();
 
+  const { branch, changedFiles } = useGitStatus(projectPath);
+
   const activeAgent = sessions.find((s) => s.id === activeSessionId);
   const headerStatus = activeAgent
     ? (activeAgent.status === "thinking" ? "thinking" : activeAgent.status === "coding" ? "edit" : "idle")
@@ -41,6 +44,16 @@ export function App() {
 
   const handleFileSelect = useCallback((path: string) => {
     setOpenFilePath(path);
+  }, []);
+
+  const handleRunCommand = useCallback(async (command: string) => {
+    try {
+      const { invoke: tauriInvoke } = await import("@tauri-apps/api/core");
+      const terminals = await tauriInvoke<string[]>("list_terminals");
+      if (terminals.length > 0) {
+        await tauriInvoke("write_terminal", { id: terminals[0], data: command + "\r" });
+      }
+    } catch { /* ignore */ }
   }, []);
 
   function navSession(delta: number) {
@@ -90,7 +103,7 @@ export function App() {
         projectName={projectName}
         initials={initials}
         avatarColor="#7c3aed"
-        branch="main"
+        branch={branch}
         status={headerStatus as "idle" | "edit" | "thinking"}
         model="Opus 4.6 (1M context)"
         cost={totalCost}
@@ -98,7 +111,7 @@ export function App() {
 
       <main className="app-main">
         <div className="left-panel">
-          <FileTree rootPath={projectPath} onFileSelect={handleFileSelect} />
+          <FileTree rootPath={projectPath} onFileSelect={handleFileSelect} changedFiles={changedFiles} />
           <HelmPanel />
         </div>
 
@@ -123,7 +136,7 @@ export function App() {
             onStartAgent={handleStartAgent}
             onStopAgent={stopAgent}
           />
-          <ToolkitPanel projectName={projectName} />
+          <ToolkitPanel projectName={projectName} onRunCommand={handleRunCommand} />
         </div>
       </main>
 

@@ -29,6 +29,8 @@ pub fn run() {
             ipc::list_branches,
             ipc::list_worktrees,
             ipc::list_directory,
+            ipc::git_status,
+            ipc::search_files,
             ipc::read_file,
             ipc::write_file,
             ipc::start_agent,

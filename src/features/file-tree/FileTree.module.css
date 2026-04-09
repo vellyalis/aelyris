@@ -43,5 +43,33 @@
 }
 .arrowOpen { transform: rotate(90deg); }
 .arrowSpacer { width: 10px; flex-shrink: 0; }
-.fileName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fileName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.fileChanged { color: #fbbf24; }
+.fileChanged[data-status="added"] { color: #4ade80; }
+.fileChanged[data-status="deleted"] { color: #f38ba8; }
+.fileChanged[data-status="untracked"] { color: #a6e3a1; }
+.changeDot {
+  width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; margin-left: auto;
+  background: #fbbf24;
+}
+.changeDot[data-status="added"] { background: #4ade80; }
+.changeDot[data-status="deleted"] { background: #f38ba8; }
+.changeDot[data-status="untracked"] { background: #a6e3a1; }
 .spinner { font-size: 10px; color: var(--text-muted); margin-left: auto; }
+
+/* Search */
+.searchBox { padding: 4px 6px; }
+.searchInput {
+  width: 100%; padding: 4px 8px; background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border); border-radius: 4px;
+  color: var(--text-primary); font-size: 11px; font-family: var(--font-ui); outline: none;
+}
+.searchInput:focus { border-color: var(--gold); }
+.searchInput::placeholder { color: var(--text-muted); }
+.searchPath { font-size: 9px; color: var(--text-muted); margin-left: auto; font-family: var(--font-mono); }
+.noResults { padding: 12px; text-align: center; font-size: 11px; color: var(--text-muted); }
+.changesBar {
+  padding: 4px 10px; font-size: 10px; color: var(--gold);
+  border-top: 1px solid var(--border); cursor: pointer; text-align: center;
+}
+.changesBar:hover { background: rgba(200,160,80,0.06); }

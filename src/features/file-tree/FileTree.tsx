@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { FileIcon } from "./FileIcon";
 import styles from "./FileTree.module.css";
@@ -11,12 +11,22 @@ interface FileEntry {
   children_count: number;
 }
 
+interface ChangedFileInfo {
+  path: string;
+  status: string;
+}
+
 interface FileTreeProps {
   rootPath: string;
   onFileSelect?: (path: string) => void;
+  changedFiles?: ChangedFileInfo[];
+  onSearch?: (query: string) => void;
 }
 
-export function FileTree({ rootPath, onFileSelect }: FileTreeProps) {
+export function FileTree({ rootPath, onFileSelect, changedFiles = [] }: FileTreeProps) {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<FileEntry[] | null>(null);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set([rootPath]));
   const [contents, setContents] = useState<Map<string, FileEntry[]>>(new Map());
   const [loading, setLoading] = useState<Set<string>>(new Set());
@@ -48,15 +58,65 @@ export function FileTree({ rootPath, onFileSelect }: FileTreeProps) {
 
   const rootName = rootPath.split("/").filter(Boolean).pop() ?? "project";
 
+  // File search
+  const handleSearch = useCallback((query: string) => {
+    setSearchQuery(query);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    if (!query.trim()) { setSearchResults(null); return; }
+    searchTimer.current = setTimeout(async () => {
+      try {
+        const results = await invoke<FileEntry[]>("search_files", { rootPath, query, maxResults: 30 });
+        setSearchResults(results);
+      } catch { setSearchResults([]); }
+    }, 200);
+  }, [rootPath]);
+
+  // Build set of changed file paths for highlighting
+  const changedSet = new Set(changedFiles.map((f) => f.path.replace(/\\/g, "/")));
+  const changedStatusMap = new Map(changedFiles.map((f) => [f.path.replace(/\\/g, "/"), f.status]));
+
   return (
     <div className={styles.tree}>
-      <div className={styles.rootHeader}>
-        <FileIcon type="folder" isOpen />
-        <span className={styles.rootName}>{rootName}</span>
+      {/* Search input */}
+      <div className={styles.searchBox}>
+        <input
+          className={styles.searchInput}
+          placeholder="Filter files..."
+          value={searchQuery}
+          onChange={(e) => handleSearch(e.target.value)}
+        />
       </div>
-      <div className={styles.list}>
-        {renderEntries(contents.get(rootPath) ?? [], 0, expanded, contents, loading, toggleDir, onFileSelect)}
-      </div>
+
+      {searchResults ? (
+        <div className={styles.list}>
+          {searchResults.map((entry) => (
+            <button
+              key={entry.path}
+              className={styles.row}
+              style={{ paddingLeft: 8 }}
+              onClick={() => !entry.is_dir && onFileSelect?.(entry.path)}
+            >
+              <FileIcon type={entry.file_type} />
+              <span className={styles.fileName}>{entry.name}</span>
+              <span className={styles.searchPath}>{entry.path.replace(rootPath + "/", "")}</span>
+            </button>
+          ))}
+          {searchResults.length === 0 && <div className={styles.noResults}>No matches</div>}
+        </div>
+      ) : (
+        <>
+          <div className={styles.rootHeader}>
+            <FileIcon type="folder" isOpen />
+            <span className={styles.rootName}>{rootName}</span>
+          </div>
+          <div className={styles.list}>
+            {renderEntries(contents.get(rootPath) ?? [], 0, expanded, contents, loading, toggleDir, onFileSelect, changedSet, changedStatusMap)}
+          </div>
+          {changedFiles.length > 0 && (
+            <div className={styles.changesBar}>Show {changedFiles.length} changes</div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -69,10 +129,14 @@ function renderEntries(
   loading: Set<string>,
   toggleDir: (path: string) => void,
   onFileSelect?: (path: string) => void,
+  changedSet?: Set<string>,
+  changedStatusMap?: Map<string, string>,
 ): React.ReactNode {
   return entries.map((entry) => {
     const isOpen = expanded.has(entry.path);
     const isLoading = loading.has(entry.path);
+    const isChanged = changedSet?.has(entry.path) ?? false;
+    const changeStatus = changedStatusMap?.get(entry.path);
 
     return (
       <div key={entry.path}>
@@ -86,11 +150,14 @@ function renderEntries(
           )}
           {!entry.is_dir && <span className={styles.arrowSpacer} />}
           <FileIcon type={entry.file_type} isOpen={isOpen} />
-          <span className={styles.fileName}>{entry.name}</span>
+          <span className={`${styles.fileName} ${isChanged ? styles.fileChanged : ""}`}
+            data-status={changeStatus}
+          >{entry.name}</span>
+          {isChanged && <span className={styles.changeDot} data-status={changeStatus} />}
           {isLoading && <span className={styles.spinner}>…</span>}
         </button>
         {entry.is_dir && isOpen && contents.has(entry.path) && (
-          renderEntries(contents.get(entry.path)!, depth + 1, expanded, contents, loading, toggleDir, onFileSelect)
+          renderEntries(contents.get(entry.path)!, depth + 1, expanded, contents, loading, toggleDir, onFileSelect, changedSet, changedStatusMap)
         )}
       </div>
     );
