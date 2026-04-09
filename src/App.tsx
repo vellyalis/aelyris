@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { open } from "@tauri-apps/plugin-dialog";
 import { ProjectHeaderBar } from "./features/header/ProjectHeaderBar";
 import { FileTree } from "./features/file-tree/FileTree";
 import { HelmPanel } from "./features/helm/HelmPanel";
@@ -46,11 +45,12 @@ export function App() {
 
   const handleOpenFolder = useCallback(async () => {
     try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
       const selected = await open({ directory: true, multiple: false, title: "Open Project Folder" });
       if (selected) {
         handleOpenProject(typeof selected === "string" ? selected : selected[0]);
       }
-    } catch { /* cancelled */ }
+    } catch { /* cancelled or not in Tauri */ }
   }, [handleOpenProject]);
 
   // Tab switch updates projectPath automatically (via activeTab.cwd)
