@@ -104,6 +104,12 @@ pub fn list_worktrees(repo_path: String) -> Result<Vec<crate::git::WorktreeInfo>
     crate::git::list_worktrees(&repo_path)
 }
 
+/// List directory contents for file tree
+#[tauri::command]
+pub fn list_directory(path: String) -> Result<Vec<crate::git::FileEntry>, String> {
+    crate::git::list_directory(&path)
+}
+
 /// Start a Claude Code agent session
 #[tauri::command]
 pub fn start_agent(

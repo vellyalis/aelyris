@@ -1,0 +1,17 @@
+.helm {
+  border-top: 1px solid rgba(124, 58, 237, 0.15);
+  background: rgba(124, 58, 237, 0.06);
+  min-height: 80px;
+  display: flex;
+  flex-direction: column;
+}
+.header {
+  padding: 6px 10px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--purple-text);
+}
+.content { padding: 0 10px 8px; flex: 1; }
+.placeholder { font-size: 11px; color: rgba(167, 139, 250, 0.5); }

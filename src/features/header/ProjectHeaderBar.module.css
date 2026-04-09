@@ -1,0 +1,34 @@
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--header-height);
+  padding: 0 10px;
+  background: transparent;
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+  -webkit-app-region: drag;
+}
+.left, .right { display: flex; align-items: center; gap: 8px; -webkit-app-region: no-drag; }
+.left { -webkit-app-region: drag; }
+.left > * { -webkit-app-region: no-drag; }
+.avatar {
+  width: 16px; height: 16px; border-radius: 3px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 8px; font-weight: 700; color: #fff;
+}
+.name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.branch { font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); }
+.status { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-secondary); }
+.dot { width: 6px; height: 6px; border-radius: 50%; }
+.model { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); }
+.cost { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); }
+.controls { display: flex; gap: 6px; margin-left: 8px; }
+.ctrlBtn {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 20px; border: none; border-radius: 4px;
+  background: transparent; color: rgba(255,255,255,0.3); cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+.ctrlBtn:hover { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.7); }
+.closeBtn:hover { background: #f38ba8; color: #0d0d0d; }

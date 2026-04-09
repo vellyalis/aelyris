@@ -9,7 +9,7 @@ import type { ShellType } from "../../App";
 import styles from "./TerminalArea.module.css";
 
 const THEME = {
-  background: "rgba(26, 26, 26, 0.01)",
+  background: "rgba(13, 13, 13, 0.01)",
   foreground: "rgba(255, 255, 255, 0.88)",
   cursor: "#4fc1ff",
   cursorAccent: "#1a1a1a",

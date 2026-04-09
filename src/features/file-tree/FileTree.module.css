@@ -1,0 +1,47 @@
+.tree {
+  flex: 1;
+  overflow-y: auto;
+  font-size: 12px;
+}
+.rootHeader {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.rootName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list { padding-bottom: 8px; }
+.row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 2px 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: var(--font-ui);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.08s;
+  height: 22px;
+}
+.row:hover { background: rgba(255,255,255,0.04); color: var(--text-primary); }
+.arrow {
+  font-size: 8px;
+  width: 10px;
+  text-align: center;
+  color: rgba(255,255,255,0.25);
+  transition: transform 0.1s;
+  flex-shrink: 0;
+}
+.arrowOpen { transform: rotate(90deg); }
+.arrowSpacer { width: 10px; flex-shrink: 0; }
+.fileName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spinner { font-size: 10px; color: var(--text-muted); margin-left: auto; }

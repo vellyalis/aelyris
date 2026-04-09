@@ -1,176 +1,52 @@
-.inspector {
-  width: 280px;
-  min-width: 240px;
-  display: flex;
-  flex-direction: column;
-  background: rgba(20, 20, 20, 0.7);
-  border-left: 1px solid rgba(255, 255, 255, 0.06);
-  overflow: hidden;
+.inspector { display: flex; flex-direction: column; overflow: hidden; flex: 1; }
+.tabBar { display: flex; align-items: center; padding: 6px 10px; gap: 2px; border-bottom: 1px solid var(--border); }
+.tab {
+  background: none; border: none; font-size: 13px; font-family: var(--font-ui);
+  color: var(--text-muted); cursor: pointer; padding: 2px 6px; border-radius: 4px;
+  font-weight: 400;
 }
-
-.header {
-  padding: 8px 14px;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+.tab:hover { color: var(--text-secondary); }
+.tabActive { color: var(--text-primary); font-weight: 600; }
+.tabActions { margin-left: auto; }
+.iconBtn {
+  background: none; border: none; color: var(--text-muted); font-size: 16px;
+  cursor: pointer; padding: 0 4px; border-radius: 4px;
 }
+.iconBtn:hover { color: var(--text-primary); background: rgba(255,255,255,0.06); }
 
-/* Session cards */
-.cards {
-  padding: 6px;
-  overflow-y: auto;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
+/* Cards */
+.cards { padding: 6px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 4px; }
 .card {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 8px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.02);
-  color: var(--text-secondary);
-  font-family: var(--font-ui);
-  cursor: pointer;
-  text-align: left;
-  transition: background 0.1s, border-color 0.1s;
+  display: flex; flex-direction: column; gap: 4px; padding: 8px 10px;
+  border: 1px solid var(--gold-subtle); border-radius: 6px;
+  background: var(--aether-bg-card); color: var(--text-secondary);
+  font-family: var(--font-ui); cursor: pointer; text-align: left;
+  transition: border-color 0.15s, background 0.1s;
 }
+.card:hover { border-color: var(--gold-dim); background: rgba(255,255,255,0.03); }
+.cardActive { border-color: var(--gold); background: rgba(200,160,80,0.06); }
+.cardTop { display: flex; align-items: center; gap: 6px; }
+.statusDot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.statusDotSmall { display: inline-block; width: 5px; height: 5px; border-radius: 50%; }
+.cardName { font-size: 12px; font-weight: 500; color: var(--text-primary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cardPct { font-size: 11px; color: var(--gold); font-family: var(--font-mono); font-weight: 500; }
+.progressTrack { height: 2px; background: rgba(255,255,255,0.06); border-radius: 1px; }
+.progressBar { height: 100%; border-radius: 1px; background: var(--gold); transition: width 0.3s ease; }
+.cardMeta { display: flex; gap: 8px; font-size: 10px; color: var(--text-muted); align-items: center; }
+.cardModel { font-family: var(--font-mono); }
+.cardCost { font-family: var(--font-mono); color: var(--ctp-peach); margin-left: auto; }
+.navHint { text-align: center; font-size: 9px; color: var(--text-muted); font-family: var(--font-mono); padding: 6px; }
+.empty { padding: 24px; text-align: center; font-size: 12px; color: var(--text-muted); }
+.hint { font-size: 10px; color: var(--accent); margin-top: 4px; }
 
-.card:hover {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.1);
-}
-
-.cardActive {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(79, 193, 255, 0.3);
-}
-
-.cardTop {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.statusDot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.cardName {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cardStatus {
-  font-size: 10px;
-  color: var(--text-muted);
-  padding-left: 13px;
-}
-
-.cardMeta {
-  display: flex;
-  justify-content: space-between;
-  padding-left: 13px;
-  font-size: 10px;
-}
-
-.model {
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-}
-
-.cost {
-  color: #fab387;
-  font-family: var(--font-mono);
-  font-weight: 500;
-}
-
-/* Progress bar */
-.progressTrack {
-  height: 2px;
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: 1px;
-  margin-top: 2px;
-}
-
-.progressBar {
-  height: 100%;
-  border-radius: 1px;
-  transition: width 0.3s ease;
-}
-
-/* Empty state */
-.empty {
-  padding: 24px 12px;
-  text-align: center;
-}
-
-.emptyTitle {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-bottom: 4px;
-}
-
-.emptyHint {
-  font-size: 10px;
-  color: var(--accent);
-}
-
-/* Log viewer */
-.logSection {
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  display: flex;
-  flex-direction: column;
-  max-height: 200px;
-}
-
-.logHeader {
-  padding: 5px 14px;
-  font-size: 10px;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-}
-
-.logList {
-  flex: 1;
-  overflow-y: auto;
-  padding: 0 8px 6px;
-  font-size: 10px;
-  font-family: var(--font-mono);
-}
-
-.logEntry {
-  display: flex;
-  gap: 6px;
-  padding: 1px 0;
-  line-height: 1.5;
-}
-
-.logTime {
-  color: rgba(255, 255, 255, 0.2);
-  flex-shrink: 0;
-}
-
-.logContent {
-  color: var(--text-secondary);
-  word-break: break-all;
-}
-
-.log_tool_use .logContent { color: #89b4fa; }
-.log_tool_result .logContent { color: #a6e3a1; }
-.log_error .logContent { color: #f38ba8; }
+/* Log */
+.logSection { border-top: 1px solid var(--border); display: flex; flex-direction: column; max-height: 180px; }
+.logHeader { padding: 4px 10px; font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); }
+.logList { flex: 1; overflow-y: auto; padding: 0 8px 4px; font-size: 10px; font-family: var(--font-mono); }
+.logEntry { display: flex; gap: 6px; padding: 1px 0; line-height: 1.5; }
+.logTime { color: rgba(255,255,255,0.15); flex-shrink: 0; }
+.logContent { color: var(--text-secondary); word-break: break-all; }
+.log_tool_use .logContent { color: var(--ctp-blue); }
+.log_tool_result .logContent { color: var(--ctp-green); }
+.log_error .logContent { color: var(--ctp-red); }
 .log_system .logContent { color: var(--text-muted); font-style: italic; }

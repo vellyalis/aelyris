@@ -28,6 +28,7 @@ pub fn run() {
             ipc::discover_projects,
             ipc::list_branches,
             ipc::list_worktrees,
+            ipc::list_directory,
             ipc::start_agent,
             ipc::stop_agent,
             ipc::list_agents,

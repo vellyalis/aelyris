@@ -1,10 +1,11 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
-import { TitleBar } from "./features/titlebar/TitleBar";
-import { TabBar } from "./features/titlebar/TabBar";
-import { Sidebar } from "./features/sidebar/Sidebar";
-import { StatusBar } from "./features/statusbar/StatusBar";
+import { useState, useEffect, useMemo } from "react";
+import { ProjectHeaderBar } from "./features/header/ProjectHeaderBar";
+import { FileTree } from "./features/file-tree/FileTree";
+import { HelmPanel } from "./features/helm/HelmPanel";
 import { TerminalPane } from "./features/terminal/TerminalPane";
 import { AgentInspector } from "./features/agent-inspector/AgentInspector";
+import { ToolkitPanel } from "./features/toolkit/ToolkitPanel";
+import { WorkspaceTabs } from "./features/workspace-tabs/WorkspaceTabs";
 import { CommandPalette, type Command } from "./features/command-palette/CommandPalette";
 import { Settings } from "./features/settings/Settings";
 import { useTabManager } from "./shared/hooks/useTabManager";
@@ -13,27 +14,25 @@ import type { AgentSession } from "./shared/types/agent";
 export type ShellType = "powershell" | "cmd" | "gitbash" | "wsl";
 
 export function App() {
-  const [sidebarVisible, setSidebarVisible] = useState(true);
-  const [inspectorVisible, setInspectorVisible] = useState(true);
   const [paletteVisible, setPaletteVisible] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [agentSessions, _setAgentSessions] = useState<AgentSession[]>([]);
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
-  const { tabs, activeTab, activeTabId, setActiveTabId, addTab, closeTab, addTabWithCwd } =
+
+  const { tabs, activeTab, activeTabId, setActiveTabId, addTab, closeTab } =
     useTabManager("powershell");
 
-  const handleProjectSelect = useCallback((path: string) => {
-    addTabWithCwd("powershell", path);
-  }, [addTabWithCwd]);
+  // Derive project info from active tab
+  const projectPath = activeTab.cwd ?? "C:/Users/owner/Aether_Terminal";
+  const projectName = projectPath.split("/").filter(Boolean).pop() ?? "Aether Terminal";
+  const initials = projectName.slice(0, 2).toUpperCase();
 
   const commands: Command[] = useMemo(() => [
     { id: "new-tab-ps", label: "New Terminal: PowerShell", shortcut: "Ctrl+Shift+T", action: () => addTab("powershell") },
     { id: "new-tab-cmd", label: "New Terminal: CMD", action: () => addTab("cmd") },
     { id: "new-tab-gitbash", label: "New Terminal: Git Bash", action: () => addTab("gitbash") },
     { id: "new-tab-wsl", label: "New Terminal: WSL", action: () => addTab("wsl") },
-    { id: "toggle-sidebar", label: "Toggle Sidebar", shortcut: "Ctrl+B", action: () => setSidebarVisible((v) => !v) },
-    { id: "toggle-inspector", label: "Toggle Agent Inspector", shortcut: "Ctrl+Shift+I", action: () => setInspectorVisible((v) => !v) },
     { id: "close-tab", label: "Close Current Tab", shortcut: "Ctrl+Shift+W", action: () => closeTab(activeTabId) },
     { id: "open-settings", label: "Open Settings", shortcut: "Ctrl+,", action: () => setSettingsVisible(true) },
   ], [addTab, closeTab, activeTabId]);
@@ -41,25 +40,10 @@ export function App() {
   // Global keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.key === "P") {
-        e.preventDefault();
-        setPaletteVisible((v) => !v);
-      } else if (e.ctrlKey && e.key === "b") {
-        e.preventDefault();
-        setSidebarVisible((v) => !v);
-      } else if (e.ctrlKey && e.shiftKey && e.key === "T") {
-        e.preventDefault();
-        addTab("powershell");
-      } else if (e.ctrlKey && e.shiftKey && e.key === "W") {
-        e.preventDefault();
-        closeTab(activeTabId);
-      } else if (e.ctrlKey && e.shiftKey && e.key === "I") {
-        e.preventDefault();
-        setInspectorVisible((v) => !v);
-      } else if (e.ctrlKey && e.key === ",") {
-        e.preventDefault();
-        setSettingsVisible((v) => !v);
-      }
+      if (e.ctrlKey && e.shiftKey && e.key === "P") { e.preventDefault(); setPaletteVisible((v) => !v); }
+      else if (e.ctrlKey && e.shiftKey && e.key === "T") { e.preventDefault(); addTab("powershell"); }
+      else if (e.ctrlKey && e.shiftKey && e.key === "W") { e.preventDefault(); closeTab(activeTabId); }
+      else if (e.ctrlKey && e.key === ",") { e.preventDefault(); setSettingsVisible((v) => !v); }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -67,17 +51,25 @@ export function App() {
 
   return (
     <div className="app-container">
-      <TitleBar />
-      <TabBar
-        tabs={tabs}
-        activeTabId={activeTabId}
-        onSelectTab={setActiveTabId}
-        onCloseTab={closeTab}
-        onNewTab={addTab}
+      <ProjectHeaderBar
+        projectName={projectName}
+        initials={initials}
+        avatarColor="#7c3aed"
+        branch="main"
+        status="idle"
+        model="Opus 4.6 (1M context)"
+        cost={0.01}
       />
+
       <main className="app-main">
-        <Sidebar visible={sidebarVisible} onProjectSelect={handleProjectSelect} />
-        <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+        {/* Left Panel: FileTree + Helm */}
+        <div className="left-panel">
+          <FileTree rootPath={projectPath} />
+          <HelmPanel />
+        </div>
+
+        {/* Center: Terminal */}
+        <div className="center-panel">
           {tabs.map((tab) => (
             <div
               key={tab.id}
@@ -87,23 +79,28 @@ export function App() {
             </div>
           ))}
         </div>
-        <AgentInspector
-          visible={inspectorVisible}
-          sessions={agentSessions}
-          activeSessionId={activeAgentId}
-          onSelectSession={setActiveAgentId}
-        />
+
+        {/* Right Panel: Sessions + Toolkit */}
+        <div className="right-panel">
+          <AgentInspector
+            sessions={agentSessions}
+            activeSessionId={activeAgentId}
+            onSelectSession={setActiveAgentId}
+          />
+          <ToolkitPanel projectName={projectName} />
+        </div>
       </main>
-      <StatusBar activeShell={activeTab.shell} onShellChange={addTab} />
-      <CommandPalette
-        visible={paletteVisible}
-        onClose={() => setPaletteVisible(false)}
-        commands={commands}
+
+      <WorkspaceTabs
+        tabs={tabs}
+        activeTabId={activeTabId}
+        onSelectTab={setActiveTabId}
+        onCloseTab={closeTab}
+        onNewTab={addTab}
       />
-      <Settings
-        visible={settingsVisible}
-        onClose={() => setSettingsVisible(false)}
-      />
+
+      <CommandPalette visible={paletteVisible} onClose={() => setPaletteVisible(false)} commands={commands} />
+      <Settings visible={settingsVisible} onClose={() => setSettingsVisible(false)} />
     </div>
   );
 }

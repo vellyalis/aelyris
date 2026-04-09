@@ -1,81 +1,64 @@
+import { useState } from "react";
 import { type AgentSession, STATUS_COLORS, STATUS_LABELS } from "../../shared/types/agent";
 import styles from "./AgentInspector.module.css";
 
 interface AgentInspectorProps {
-  visible: boolean;
   sessions: AgentSession[];
   activeSessionId: string | null;
   onSelectSession: (id: string) => void;
 }
 
-export function AgentInspector({
-  visible,
-  sessions,
-  activeSessionId,
-  onSelectSession,
-}: AgentInspectorProps) {
-  if (!visible) return null;
-
+export function AgentInspector({ sessions, activeSessionId, onSelectSession }: AgentInspectorProps) {
+  const [tab, setTab] = useState<"sessions" | "activity">("sessions");
   const activeSession = sessions.find((s) => s.id === activeSessionId);
 
   return (
     <div className={styles.inspector}>
-      <div className={styles.header}>Sessions</div>
+      {/* Tab toggle */}
+      <div className={styles.tabBar}>
+        <button className={`${styles.tab} ${tab === "sessions" ? styles.tabActive : ""}`} onClick={() => setTab("sessions")}>Sessions</button>
+        <button className={`${styles.tab} ${tab === "activity" ? styles.tabActive : ""}`} onClick={() => setTab("activity")}>Activity</button>
+        <div className={styles.tabActions}>
+          <button className={styles.iconBtn} title="Add session">+</button>
+        </div>
+      </div>
 
       {/* Session cards */}
       <div className={styles.cards}>
         {sessions.length === 0 && (
           <div className={styles.empty}>
-            <div className={styles.emptyTitle}>No active agents</div>
-            <div className={styles.emptyHint}>Ctrl+Shift+A to start</div>
+            <div>No active agents</div>
+            <div className={styles.hint}>Ctrl+Shift+A to start</div>
           </div>
         )}
-        {sessions.map((session) => (
-          <button
-            key={session.id}
-            className={`${styles.card} ${session.id === activeSessionId ? styles.cardActive : ""}`}
-            onClick={() => onSelectSession(session.id)}
-          >
+        {sessions.map((s) => (
+          <button key={s.id} className={`${styles.card} ${s.id === activeSessionId ? styles.cardActive : ""}`} onClick={() => onSelectSession(s.id)}>
             <div className={styles.cardTop}>
-              <span
-                className={styles.statusDot}
-                style={{ background: STATUS_COLORS[session.status] }}
-              />
-              <span className={styles.cardName}>{session.name}</span>
+              <span className={styles.statusDot} style={{ background: STATUS_COLORS[s.status] }} />
+              <span className={styles.cardName}>{s.name}</span>
+              <span className={styles.cardPct}>{s.status === "done" ? "100" : "—"}%</span>
             </div>
-            <div className={styles.cardStatus}>{STATUS_LABELS[session.status]}</div>
-            <div className={styles.cardMeta}>
-              <span className={styles.model}>{session.model}</span>
-              <span className={styles.cost}>${session.cost.toFixed(2)}</span>
-            </div>
-            {/* Progress bar */}
             <div className={styles.progressTrack}>
-              <div
-                className={styles.progressBar}
-                style={{
-                  width: session.status === "done" ? "100%" : session.status === "idle" ? "0%" : "60%",
-                  background: STATUS_COLORS[session.status],
-                }}
-              />
+              <div className={styles.progressBar} style={{ width: s.status === "done" ? "100%" : s.status === "idle" ? "0%" : "50%" }} />
+            </div>
+            <div className={styles.cardMeta}>
+              <span><span className={styles.statusDotSmall} style={{ background: STATUS_COLORS[s.status] }} /> {STATUS_LABELS[s.status]}</span>
+              <span className={styles.cardModel}>{s.model}</span>
+              <span className={styles.cardCost}>${s.cost.toFixed(2)}</span>
             </div>
           </button>
         ))}
+        <div className={styles.navHint}>Ctrl+0-9 Jump · Ctrl+[ Prev · Ctrl+] Next</div>
       </div>
 
       {/* Log viewer */}
       {activeSession && (
         <div className={styles.logSection}>
-          <div className={styles.logHeader}>
-            <span>{activeSession.tokensUsed.toLocaleString()} tokens</span>
-          </div>
+          <div className={styles.logHeader}>{activeSession.tokensUsed.toLocaleString()} tokens</div>
           <div className={styles.logList}>
             {activeSession.logs.map((log, i) => (
               <div key={i} className={`${styles.logEntry} ${styles[`log_${log.type}`]}`}>
-                <span className={styles.logTime}>
-                  {new Date(log.timestamp).toLocaleTimeString("en-US", {
-                    hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit",
-                  })}
-                </span>
+                <span className={styles.logTime}>{new Date(log.timestamp).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
                 <span className={styles.logContent}>{log.content}</span>
               </div>
             ))}
