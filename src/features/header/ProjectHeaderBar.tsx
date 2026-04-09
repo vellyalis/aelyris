@@ -41,10 +41,12 @@ export function ProjectHeaderBar({
         <PixelAvatar seed={projectName} size={18} />
         <span className={styles.name}>{projectName}</span>
         <span className={styles.branch}>⚡{branch}</span>
-        <span className={styles.status}>
-          <span className={styles.dot} style={{ background: color }} />
-          {label}
-        </span>
+        {activeAgent && (
+          <span className={styles.status}>
+            <span className={styles.dot} style={{ background: color }} />
+            {label}
+          </span>
+        )}
       </div>
       <div className={styles.right}>
         {activeAgent && (
