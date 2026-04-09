@@ -145,4 +145,20 @@ impl AgentManager {
             .map(|s| s.values().map(|p| p.info.clone()).collect())
             .unwrap_or_default()
     }
+
+    /// Kill all agent sessions (called on app exit)
+    pub fn stop_all(&self) {
+        if let Ok(mut sessions) = self.sessions.lock() {
+            for (_, mut proc) in sessions.drain() {
+                let _ = proc.child.kill();
+            }
+            log::info!("Stopped all agent sessions");
+        }
+    }
+}
+
+impl Drop for AgentManager {
+    fn drop(&mut self) {
+        self.stop_all();
+    }
 }

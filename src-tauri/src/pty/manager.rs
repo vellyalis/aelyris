@@ -154,4 +154,21 @@ impl PtyManager {
             .map(|i| i.keys().cloned().collect())
             .unwrap_or_default()
     }
+
+    /// Close all PTY sessions (called on app exit)
+    pub fn close_all(&self) {
+        if let Ok(mut instances) = self.instances.lock() {
+            let ids: Vec<String> = instances.keys().cloned().collect();
+            for id in ids {
+                instances.remove(&id);
+            }
+            log::info!("Closed {} PTY sessions", instances.len());
+        }
+    }
+}
+
+impl Drop for PtyManager {
+    fn drop(&mut self) {
+        self.close_all();
+    }
 }
