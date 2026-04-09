@@ -157,7 +157,14 @@ export function App() {
     {
       label: "File",
       items: [
-        { label: "New File", shortcut: "Ctrl+N", action: () => { /* TODO: new file dialog */ } },
+        { label: "New File", shortcut: "Ctrl+N", action: () => {
+          const name = prompt("New file name:");
+          if (name && projectPath) {
+            import("@tauri-apps/api/core").then(({ invoke: inv }) => {
+              inv("create_file", { path: `${projectPath}/${name}` }).then(() => handleFileSelect(`${projectPath}/${name}`)).catch(() => {});
+            });
+          }
+        }},
         { label: "Open Folder...", shortcut: "Ctrl+Shift+O", action: handleOpenFolder },
         { label: "Close Folder", action: handleCloseFolder },
         { divider: true, label: "" },
@@ -230,6 +237,7 @@ export function App() {
       else if (e.ctrlKey && e.shiftKey && e.key === "W") { e.preventDefault(); closeTab(activeTabId); }
       else if (e.ctrlKey && e.shiftKey && e.key === "F") { e.preventDefault(); setSearchVisible((v) => !v); }
       else if (e.ctrlKey && e.shiftKey && e.key === "O") { e.preventDefault(); handleOpenFolder(); }
+      else if (e.ctrlKey && e.shiftKey && e.key === "E") { e.preventDefault(); setSearchVisible(false); /* focus file tree */ }
       else if (e.ctrlKey && !e.shiftKey && e.key === "w") { e.preventDefault(); if (activeFile) handleCloseFile(activeFile); }
       else if (e.ctrlKey && e.key === ",") { e.preventDefault(); setSettingsVisible((v) => !v); }
       else if (e.ctrlKey && e.key === "[") { e.preventDefault(); navSession(-1); }
