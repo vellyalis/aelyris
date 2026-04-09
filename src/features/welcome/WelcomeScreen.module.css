@@ -54,6 +54,13 @@
   margin-bottom: 32px;
 }
 
+.dropHint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 8px;
+  margin-bottom: 24px;
+}
+
 .openBtn {
   padding: 10px 32px;
   border: none;

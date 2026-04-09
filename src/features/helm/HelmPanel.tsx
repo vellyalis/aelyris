@@ -51,6 +51,11 @@ export function HelmPanel() {
       <div className={styles.header}>
         <span>Helm</span>
         {tasks.length > 0 && <span className={styles.count}>{doneCount}/{tasks.length}</span>}
+        <div className={styles.helmIcons}>
+          <button className={styles.helmIcon} title="Sync">☁️</button>
+          <button className={styles.helmIcon} title="Terminal">🖥</button>
+          <button className={styles.helmIcon} title="Attach">📎</button>
+        </div>
         <button className={styles.addBtn} onClick={() => setAdding(true)}>+</button>
       </div>
       <div className={styles.content}>

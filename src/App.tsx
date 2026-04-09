@@ -155,7 +155,13 @@ export function App() {
     { id: "close-editor", label: "Close Editor", action: () => activeFile && handleCloseFile(activeFile) },
     { id: "open-folder", label: "Open Folder", action: handleOpenFolder },
     { id: "create-watchdog", label: "Create Watchdog", action: () => setWatchdogVisible(true) },
-  ], [addTab, closeTab, activeTabId, activeFile, handleCloseFile]);
+    { id: "pull-requests", label: "View Pull Requests", action: () => setPrInspectorVisible(true) },
+    { id: "web-inspector", label: "Web Inspector", action: () => setWebInspectorVisible(true) },
+    { id: "about", label: "About Aether Terminal", action: () => setAboutVisible(true) },
+    { id: "start-agent", label: "Start Claude Agent", shortcut: "Ctrl+Shift+A", action: () => { const p = window.prompt("Prompt:"); if (p) handleStartAgent(p); } },
+    { id: "close-folder", label: "Close Folder", action: handleCloseFolder },
+    { id: "search-files", label: "Search in Files", shortcut: "Ctrl+Shift+F", action: () => setSearchVisible(true) },
+  ], [addTab, closeTab, activeTabId, activeFile, handleCloseFile, handleStartAgent, handleOpenFolder, handleCloseFolder]);
 
   const menus: Menu[] = useMemo(() => [
     {

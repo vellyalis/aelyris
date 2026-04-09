@@ -18,6 +18,12 @@
   letter-spacing: 0.05em;
   color: var(--purple-text);
 }
+.helmIcons { display: flex; gap: 2px; margin-left: auto; }
+.helmIcon {
+  background: none; border: none; font-size: 10px; cursor: pointer;
+  padding: 1px 3px; border-radius: 3px; opacity: 0.5;
+}
+.helmIcon:hover { opacity: 1; background: rgba(124,58,237,0.15); }
 .count {
   font-weight: 400;
   font-family: var(--font-mono);

@@ -76,6 +76,7 @@ export function WelcomeScreen({ onOpenProject }: WelcomeScreenProps) {
         <button className={styles.openBtn} onClick={handleOpenFolder}>
           Open Folder
         </button>
+        <p className={styles.dropHint}>or drop a folder here</p>
 
         <div className={styles.recentHeader}>Recent Projects</div>
         <div className={styles.recentList}>
