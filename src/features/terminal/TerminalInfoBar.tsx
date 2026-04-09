@@ -4,11 +4,12 @@ interface TerminalInfoBarProps {
   shell: string;
   cwd?: string;
   branch?: string;
+  activeAgent?: { model: string; cost: number } | null;
   isMaximized?: boolean;
   onToggleMaximize?: () => void;
 }
 
-export function TerminalInfoBar({ shell, cwd, branch, isMaximized, onToggleMaximize }: TerminalInfoBarProps) {
+export function TerminalInfoBar({ shell, cwd, branch, activeAgent, isMaximized, onToggleMaximize }: TerminalInfoBarProps) {
   const dir = cwd?.split("/").filter(Boolean).slice(-2).join("/") ?? "";
 
   return (
@@ -17,8 +18,12 @@ export function TerminalInfoBar({ shell, cwd, branch, isMaximized, onToggleMaxim
       {dir && <span className={styles.cwd}>~/{dir}</span>}
       {branch && <span className={styles.branch}>⚡{branch}</span>}
       <div className={styles.spacer} />
-      <span className={styles.meta}>personal</span>
-      <span className={styles.meta}>Opus 4.6</span>
+      {activeAgent && (
+        <>
+          <span className={styles.meta}>{activeAgent.model}</span>
+          <span className={styles.cost}>&lt;${activeAgent.cost.toFixed(2)}</span>
+        </>
+      )}
       {onToggleMaximize && (
         <button className={styles.toggleBtn} onClick={onToggleMaximize} title={isMaximized ? "Restore" : "Maximize"}>
           {isMaximized ? "⊟" : "□"}

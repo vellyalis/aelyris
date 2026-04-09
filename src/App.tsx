@@ -99,7 +99,6 @@ export function App() {
   const headerStatus = activeAgent
     ? (activeAgent.status === "thinking" ? "thinking" : activeAgent.status === "coding" ? "edit" : "idle")
     : "idle";
-  const totalCost = sessions.reduce((sum, s) => sum + s.cost, 0);
 
   const handleStartAgent = useCallback(async (prompt: string) => {
     try {
@@ -314,8 +313,7 @@ export function App() {
         projectName={projectName}
         branch={branch}
         status={headerStatus as "idle" | "edit" | "thinking"}
-        model="Opus 4.6 (1M context)"
-        cost={totalCost}
+        activeAgent={activeAgent ? { model: activeAgent.model, cost: activeAgent.cost } : null}
       />
       <MenuBar menus={menus} />
 

@@ -29,7 +29,13 @@
 
 .meta {
   font-size: 9px;
-  color: rgba(255,255,255,0.2);
+  color: rgba(255,255,255,0.4);
+  font-family: var(--font-mono);
+}
+
+.cost {
+  font-size: 9px;
+  color: var(--ctp-peach);
   font-family: var(--font-mono);
 }
 

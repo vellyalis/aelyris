@@ -5,8 +5,7 @@ interface ProjectHeaderBarProps {
   projectName: string;
   branch: string;
   status: "idle" | "edit" | "thinking";
-  model: string;
-  cost: number;
+  activeAgent?: { model: string; cost: number } | null;
 }
 
 const STATUS_META: Record<string, { color: string; label: string }> = {
@@ -16,7 +15,7 @@ const STATUS_META: Record<string, { color: string; label: string }> = {
 };
 
 export function ProjectHeaderBar({
-  projectName, branch, status, model, cost,
+  projectName, branch, status, activeAgent,
 }: ProjectHeaderBarProps) {
   const handleMinimize = async () => {
     try { const { getCurrentWindow } = await import("@tauri-apps/api/window"); getCurrentWindow().minimize(); } catch {}
@@ -48,8 +47,12 @@ export function ProjectHeaderBar({
         </span>
       </div>
       <div className={styles.right}>
-        <span className={styles.model}>{model}</span>
-        <span className={styles.cost}>&lt;${cost.toFixed(2)}</span>
+        {activeAgent && (
+          <>
+            <span className={styles.model}>{activeAgent.model}</span>
+            <span className={styles.cost}>&lt;${activeAgent.cost.toFixed(2)}</span>
+          </>
+        )}
         <div className={styles.controls}>
           <button className={styles.ctrlBtn} onClick={handleMinimize}>
             <svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" fill="currentColor"/></svg>
