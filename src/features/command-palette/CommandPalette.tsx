@@ -66,6 +66,8 @@ export function CommandPalette({ visible, onClose, commands }: CommandPalettePro
     >
       <motion.div
         className={styles.palette}
+        role="dialog"
+        aria-label="Command palette"
         onClick={(e) => e.stopPropagation()}
         initial={{ opacity: 0, y: -20, scale: 0.97 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}

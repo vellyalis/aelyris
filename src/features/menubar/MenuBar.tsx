@@ -35,7 +35,7 @@ export function MenuBar({ menus }: MenuBarProps) {
   }, [openMenu]);
 
   return (
-    <div className={styles.bar} ref={barRef}>
+    <div className={styles.bar} ref={barRef} role="menubar" aria-label="Application menu">
       {menus.map((menu, i) => (
         <div key={menu.label} className={styles.menuWrapper}>
           <button
@@ -46,7 +46,7 @@ export function MenuBar({ menus }: MenuBarProps) {
             {menu.label}
           </button>
           {openMenu === i && (
-            <div className={styles.dropdown}>
+            <div className={styles.dropdown} role="menu" aria-label={menu.label}>
               {menu.items.map((item, j) =>
                 item.divider ? (
                   <div key={j} className={styles.divider} />
@@ -54,6 +54,7 @@ export function MenuBar({ menus }: MenuBarProps) {
                   <button
                     key={j}
                     className={styles.item}
+                    role="menuitem"
                     disabled={item.disabled}
                     onClick={() => {
                       item.action?.();

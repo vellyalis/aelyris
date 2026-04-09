@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useCallback } from "react";
+import { useEffect, useMemo, useCallback, lazy, Suspense } from "react";
 import { ProjectHeaderBar } from "./features/header/ProjectHeaderBar";
 import { MenuBar, type Menu } from "./features/menubar/MenuBar";
 import { FileTree } from "./features/file-tree/FileTree";
 import { HelmPanel } from "./features/helm/HelmPanel";
 import { TerminalPane } from "./features/terminal/TerminalPane";
-import { EditorPanel } from "./features/editor/EditorPanel";
+
+// Lazy load Monaco Editor (~2MB)
+const EditorPanel = lazy(() => import("./features/editor/EditorPanel").then((m) => ({ default: m.EditorPanel })));
 import { AgentInspector } from "./features/agent-inspector/AgentInspector";
 import { ToolkitPanel } from "./features/toolkit/ToolkitPanel";
 import { WorkspaceTabs } from "./features/workspace-tabs/WorkspaceTabs";
@@ -297,7 +299,9 @@ export function App() {
           );
         })}
       </div>
-      <EditorPanel filePath={activeFile} onClose={() => handleCloseFile(activeFile!)} projectPath={projectPath} />
+      <Suspense fallback={<div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 12 }}>Loading editor...</div>}>
+        <EditorPanel filePath={activeFile} onClose={() => handleCloseFile(activeFile!)} projectPath={projectPath} />
+      </Suspense>
     </div>
   ) : null;
 
