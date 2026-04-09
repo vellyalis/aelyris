@@ -1,5 +1,8 @@
 import { useState } from "react";
 import { type AgentSession, STATUS_COLORS, STATUS_LABELS } from "../../shared/types/agent";
+import { PixelAvatar } from "../../shared/ui/PixelAvatar";
+import { StatusIcon } from "../../shared/ui/StatusIcon";
+import { ContextGauge } from "../../shared/ui/ContextGauge";
 import styles from "./AgentInspector.module.css";
 
 interface AgentInspectorProps {
@@ -61,20 +64,24 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
             {sessions.map((s) => (
               <button key={s.id} className={`${styles.card} ${s.watchdog ? styles.cardWatchdog : ""} ${s.id === activeSessionId ? styles.cardActive : ""}`} onClick={() => onSelectSession(s.id)}>
                 <div className={styles.cardTop}>
-                  <span className={styles.statusDot} style={{ background: STATUS_COLORS[s.status] }} />
-                  <span className={styles.cardName}>{s.name}</span>
-                  {s.branch && <span className={styles.cardBranch}>⚡{s.branch}</span>}
-                  <span className={styles.cardPct}>{s.status === "done" ? "100" : "—"}%</span>
-                </div>
-                <div className={styles.progressTrack}>
-                  <div className={styles.progressBar} style={{ width: s.status === "done" ? "100%" : s.status === "idle" ? "0%" : s.status === "generating" ? "50%" : "30%" }} />
+                  <PixelAvatar seed={s.id} size={24} />
+                  <div className={styles.cardInfo}>
+                    <div className={styles.cardNameRow}>
+                      <span className={styles.cardName}>{s.name}</span>
+                      {s.branch && <span className={styles.cardBranch}>⚡{s.branch}</span>}
+                    </div>
+                    <div className={styles.cardStatusRow}>
+                      <StatusIcon status={s.status} size={10} />
+                      <span style={{ color: STATUS_COLORS[s.status], fontSize: 10 }}>{STATUS_LABELS[s.status]}</span>
+                      {s.filesChanged !== undefined && s.filesChanged > 0 && <span className={styles.cardFiles}>📎{s.filesChanged}</span>}
+                      <span className={styles.cardAge}>{formatAge(s.startedAt)}</span>
+                    </div>
+                  </div>
+                  <ContextGauge percent={s.status === "done" ? 100 : s.status === "idle" ? 0 : s.tokensUsed > 0 ? Math.min(95, (s.tokensUsed / 10000) * 100) : 2} />
                 </div>
                 <div className={styles.cardMeta}>
-                  <span><span className={styles.statusDotSmall} style={{ background: STATUS_COLORS[s.status] }} /> {STATUS_LABELS[s.status]}</span>
-                  {s.filesChanged !== undefined && s.filesChanged > 0 && <span className={styles.cardFiles}>📎{s.filesChanged}</span>}
-                  <span className={styles.cardAge}>{formatAge(s.startedAt)}</span>
                   <span className={styles.cardModel}>{s.model}</span>
-                  <span className={styles.cardCost}>${s.cost.toFixed(2)}</span>
+                  <span className={styles.cardCost}>&lt;${s.cost.toFixed(2)}</span>
                   {s.status !== "done" && s.status !== "idle" && (
                     <span className={styles.stopBtn} onClick={(e) => { e.stopPropagation(); onStopAgent?.(s.id); }}>■</span>
                   )}

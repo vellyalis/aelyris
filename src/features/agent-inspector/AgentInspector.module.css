@@ -57,6 +57,9 @@
 }
 
 /* Card extras */
+.cardInfo { flex: 1; min-width: 0; }
+.cardNameRow { display: flex; align-items: center; gap: 4px; }
+.cardStatusRow { display: flex; align-items: center; gap: 4px; margin-top: 1px; }
 .cardBranch { font-size: 9px; color: var(--status-idle); font-family: var(--font-mono); }
 .cardAge { font-size: 9px; color: var(--text-muted); }
 .cardFiles { font-size: 9px; color: var(--text-muted); }
