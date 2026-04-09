@@ -21,6 +21,18 @@
   color: var(--text-muted);
 }
 
+.branch {
+  color: var(--status-idle);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.meta {
+  font-size: 9px;
+  color: rgba(255,255,255,0.2);
+  font-family: var(--font-mono);
+}
+
 .spacer {
   flex: 1;
 }
