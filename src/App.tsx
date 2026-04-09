@@ -9,6 +9,7 @@ import { ToolkitPanel } from "./features/toolkit/ToolkitPanel";
 import { WorkspaceTabs } from "./features/workspace-tabs/WorkspaceTabs";
 import { CommandPalette, type Command } from "./features/command-palette/CommandPalette";
 import { Settings } from "./features/settings/Settings";
+import { WatchdogDialog } from "./features/watchdog/WatchdogDialog";
 import { SplitPane } from "./shared/ui/SplitPane";
 import { useTabManager } from "./shared/hooks/useTabManager";
 import { useAgentManager } from "./shared/hooks/useAgentManager";
@@ -20,6 +21,7 @@ export function App() {
   const [paletteVisible, setPaletteVisible] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [openFilePath, setOpenFilePath] = useState<string | null>(null);
+  const [watchdogVisible, setWatchdogVisible] = useState(false);
 
   const { tabs, activeTab, activeTabId, setActiveTabId, addTab, closeTab } =
     useTabManager("powershell");
@@ -71,6 +73,7 @@ export function App() {
     { id: "close-tab", label: "Close Current Tab", shortcut: "Ctrl+Shift+W", action: () => closeTab(activeTabId) },
     { id: "open-settings", label: "Open Settings", shortcut: "Ctrl+,", action: () => setSettingsVisible(true) },
     { id: "close-editor", label: "Close Editor", action: () => setOpenFilePath(null) },
+    { id: "create-watchdog", label: "Create Watchdog", action: () => setWatchdogVisible(true) },
   ], [addTab, closeTab, activeTabId]);
 
   useEffect(() => {
@@ -150,6 +153,7 @@ export function App() {
 
       <CommandPalette visible={paletteVisible} onClose={() => setPaletteVisible(false)} commands={commands} />
       <Settings visible={settingsVisible} onClose={() => setSettingsVisible(false)} />
+      <WatchdogDialog visible={watchdogVisible} onClose={() => setWatchdogVisible(false)} />
     </div>
   );
 }

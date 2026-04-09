@@ -145,6 +145,24 @@ fn search_recursive(dir: &std::path::Path, query: &str, max: u32, results: &mut 
     }
 }
 
+/// Get watchdog rules
+#[tauri::command]
+pub fn get_watchdog_rules() -> crate::watchdog::WatchdogRules {
+    crate::watchdog::load_watchdog_rules()
+}
+
+/// Save watchdog rules
+#[tauri::command]
+pub fn save_watchdog_rules(rules: crate::watchdog::WatchdogRules) -> Result<(), String> {
+    crate::watchdog::save_watchdog_rules(&rules)
+}
+
+/// Create a named watchdog
+#[tauri::command]
+pub fn create_watchdog(name: String, instructions: String) -> Result<(), String> {
+    crate::watchdog::create_watchdog(&name, &instructions)
+}
+
 /// Read a file's contents
 #[tauri::command]
 pub fn read_file(path: String) -> Result<String, String> {
