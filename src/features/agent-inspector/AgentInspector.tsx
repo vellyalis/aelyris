@@ -26,6 +26,8 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
         <button className={`${styles.tab} ${tab === "sessions" ? styles.tabActive : ""}`} onClick={() => setTab("sessions")}>Sessions</button>
         <button className={`${styles.tab} ${tab === "activity" ? styles.tabActive : ""}`} onClick={() => setTab("activity")}>Activity</button>
         <div className={styles.tabActions}>
+          <button className={styles.iconBtn} title="Copy session info">📋</button>
+          <button className={styles.iconBtn} title="Notifications">🔔</button>
           <button className={styles.iconBtn} title="Add session" onClick={() => setShowPromptInput(true)}>+</button>
         </div>
       </div>

@@ -20,6 +20,7 @@
   text-align: left; transition: background 0.1s;
 }
 .action:hover { background: rgba(255,255,255,0.06); color: var(--text-primary); }
+.actionIcon { font-size: 10px; flex-shrink: 0; }
 .actionLabel { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .badge { width: 3px; height: 14px; border-radius: 2px; flex-shrink: 0; margin-left: 4px; }
 

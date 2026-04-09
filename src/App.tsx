@@ -314,6 +314,7 @@ export function App() {
         branch={branch}
         status={headerStatus as "idle" | "edit" | "thinking"}
         activeAgent={activeAgent ? { model: activeAgent.model, cost: activeAgent.cost } : null}
+        onOpenSettings={() => setSettingsVisible(true)}
       />
       <MenuBar menus={menus} />
 
