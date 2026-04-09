@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useEffect, useMemo, useCallback } from "react";
 import { ProjectHeaderBar } from "./features/header/ProjectHeaderBar";
 import { MenuBar, type Menu } from "./features/menubar/MenuBar";
 import { FileTree } from "./features/file-tree/FileTree";
@@ -20,26 +20,23 @@ import { SplitPane } from "./shared/ui/SplitPane";
 import { useTabManager } from "./shared/hooks/useTabManager";
 import { useAgentManager } from "./shared/hooks/useAgentManager";
 import { useGitStatus } from "./shared/hooks/useGitStatus";
+import { useAppStore } from "./shared/store/appStore";
 
 export type ShellType = "powershell" | "cmd" | "gitbash" | "wsl";
 
 export function App() {
-  const [rootProjectPath, setRootProjectPath] = useState<string | null>(() => {
-    try { return localStorage.getItem("aether:lastProject"); } catch { return null; }
-  });
-  const [paletteVisible, setPaletteVisible] = useState(false);
-  const [settingsVisible, setSettingsVisible] = useState(false);
-  const [openFiles, setOpenFiles] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem("aether:openFiles") ?? "[]"); } catch { return []; }
-  });
-  const [activeFile, setActiveFile] = useState<string | null>(() => {
-    try { return localStorage.getItem("aether:activeFile") ?? null; } catch { return null; }
-  });
-  const [watchdogVisible, setWatchdogVisible] = useState(false);
-  const [searchVisible, setSearchVisible] = useState(false);
-  const [aboutVisible, setAboutVisible] = useState(false);
-  const [webInspectorVisible, setWebInspectorVisible] = useState(false);
-  const [prInspectorVisible, setPrInspectorVisible] = useState(false);
+  // Zustand store — replaces 10 useState calls
+  const {
+    rootProjectPath, setRootProjectPath,
+    paletteVisible, setPaletteVisible,
+    settingsVisible, setSettingsVisible,
+    watchdogVisible, setWatchdogVisible,
+    searchVisible, setSearchVisible,
+    aboutVisible, setAboutVisible,
+    webInspectorVisible, setWebInspectorVisible,
+    prInspectorVisible, setPrInspectorVisible,
+    openFiles, activeFile, openFile, closeFile, clearFiles, setActiveFile,
+  } = useAppStore();
 
   const { tabs, activeTab, activeTabId, setActiveTabId, addTab, closeTab, addTabWithCwd } =
     useTabManager("powershell");
@@ -49,21 +46,7 @@ export function App() {
   // Project path: from active tab's cwd, or from root selection
   const projectPath = activeTab.cwd ?? rootProjectPath ?? "";
   const projectName = projectPath ? projectPath.split("/").filter(Boolean).pop() ?? "Aether" : "Aether";
-  // Persist open files
-  useEffect(() => {
-    try { localStorage.setItem("aether:openFiles", JSON.stringify(openFiles)); } catch {}
-  }, [openFiles]);
-  useEffect(() => {
-    try { if (activeFile) localStorage.setItem("aether:activeFile", activeFile); else localStorage.removeItem("aether:activeFile"); } catch {}
-  }, [activeFile]);
-
-  // Persist last project to localStorage
-  useEffect(() => {
-    try {
-      if (rootProjectPath) localStorage.setItem("aether:lastProject", rootProjectPath);
-      else localStorage.removeItem("aether:lastProject");
-    } catch { /* ignore */ }
-  }, [rootProjectPath]);
+  // localStorage persistence handled by Zustand store
 
   // Update window title to folder name
   useEffect(() => {
@@ -80,15 +63,14 @@ export function App() {
     const normalized = path.replace(/\\/g, "/");
     setRootProjectPath(normalized);
     addTabWithCwd("powershell", normalized);
-    setOpenFiles([]); setActiveFile(null);
-  }, [addTabWithCwd]);
+    clearFiles();
+  }, [addTabWithCwd, setRootProjectPath, clearFiles]);
 
   // Close folder → back to Welcome
   const handleCloseFolder = useCallback(() => {
     setRootProjectPath(null);
-    setOpenFiles([]);
-    setActiveFile(null);
-  }, []);
+    clearFiles();
+  }, [setRootProjectPath, clearFiles]);
 
   const handleOpenFolder = useCallback(async () => {
     try {
@@ -103,8 +85,8 @@ export function App() {
   // Tab switch updates projectPath automatically (via activeTab.cwd)
   const handleTabSwitch = useCallback((tabId: string) => {
     setActiveTabId(tabId);
-    setOpenFiles([]); setActiveFile(null); // Close editor when switching tabs
-  }, [setActiveTabId]);
+    clearFiles(); // Close editor when switching tabs
+  }, [setActiveTabId, clearFiles]);
 
   const { branch, changedFiles } = useGitStatus(projectPath);
 
@@ -123,22 +105,14 @@ export function App() {
   }, [startAgent, projectPath, addTabWithCwd]);
 
   const handleFileSelect = useCallback((path: string) => {
-    setOpenFiles((prev) => prev.includes(path) ? prev : [...prev, path]);
-    setActiveFile(path);
-  }, []);
+    openFile(path);
+  }, [openFile]);
 
   const handleCloseFile = useCallback((path: string) => {
-    // Check if Monaco has unsaved changes via DOM query
     const modDots = document.querySelectorAll("[class*='modDot']");
     if (modDots.length > 0 && !window.confirm("You have unsaved changes. Close anyway?")) return;
-    setOpenFiles((prev) => {
-      const next = prev.filter((f) => f !== path);
-      if (activeFile === path) {
-        setActiveFile(next.length > 0 ? next[next.length - 1] : null);
-      }
-      return next;
-    });
-  }, [activeFile]);
+    closeFile(path);
+  }, [closeFile]);
 
   const handleRunCommand = useCallback(async (command: string) => {
     try {
