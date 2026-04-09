@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { ProjectHeaderBar } from "./features/header/ProjectHeaderBar";
+import { MenuBar, type Menu } from "./features/menubar/MenuBar";
 import { FileTree } from "./features/file-tree/FileTree";
 import { HelmPanel } from "./features/helm/HelmPanel";
 import { TerminalPane } from "./features/terminal/TerminalPane";
@@ -22,7 +23,8 @@ export function App() {
   const [rootProjectPath, setRootProjectPath] = useState<string | null>(null);
   const [paletteVisible, setPaletteVisible] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
-  const [openFilePath, setOpenFilePath] = useState<string | null>(null);
+  const [openFiles, setOpenFiles] = useState<string[]>([]);
+  const [activeFile, setActiveFile] = useState<string | null>(null);
   const [watchdogVisible, setWatchdogVisible] = useState(false);
 
   const { tabs, activeTab, activeTabId, setActiveTabId, addTab, closeTab, addTabWithCwd } =
@@ -35,13 +37,30 @@ export function App() {
   const projectName = projectPath ? projectPath.split("/").filter(Boolean).pop() ?? "Aether" : "Aether";
   const initials = projectName.slice(0, 2).toUpperCase();
 
+  // Update window title to folder name
+  useEffect(() => {
+    const title = projectPath ? `${projectName} — Aether Terminal` : "Aether Terminal";
+    document.title = title;
+    // Also update Tauri window title
+    import("@tauri-apps/api/window").then(({ getCurrentWindow }) => {
+      getCurrentWindow().setTitle(title).catch(() => {});
+    }).catch(() => {});
+  }, [projectName, projectPath]);
+
   // Open project: set root + create first tab with that CWD
   const handleOpenProject = useCallback((path: string) => {
     const normalized = path.replace(/\\/g, "/");
     setRootProjectPath(normalized);
     addTabWithCwd("powershell", normalized);
-    setOpenFilePath(null);
+    setOpenFiles([]); setActiveFile(null);
   }, [addTabWithCwd]);
+
+  // Close folder → back to Welcome
+  const handleCloseFolder = useCallback(() => {
+    setRootProjectPath(null);
+    setOpenFiles([]);
+    setActiveFile(null);
+  }, []);
 
   const handleOpenFolder = useCallback(async () => {
     try {
@@ -56,7 +75,7 @@ export function App() {
   // Tab switch updates projectPath automatically (via activeTab.cwd)
   const handleTabSwitch = useCallback((tabId: string) => {
     setActiveTabId(tabId);
-    setOpenFilePath(null); // Close editor when switching tabs
+    setOpenFiles([]); setActiveFile(null); // Close editor when switching tabs
   }, [setActiveTabId]);
 
   const { branch, changedFiles } = useGitStatus(projectPath);
@@ -72,8 +91,19 @@ export function App() {
   }, [startAgent, projectPath]);
 
   const handleFileSelect = useCallback((path: string) => {
-    setOpenFilePath(path);
+    setOpenFiles((prev) => prev.includes(path) ? prev : [...prev, path]);
+    setActiveFile(path);
   }, []);
+
+  const handleCloseFile = useCallback((path: string) => {
+    setOpenFiles((prev) => {
+      const next = prev.filter((f) => f !== path);
+      if (activeFile === path) {
+        setActiveFile(next.length > 0 ? next[next.length - 1] : null);
+      }
+      return next;
+    });
+  }, [activeFile]);
 
   const handleRunCommand = useCallback(async (command: string) => {
     try {
@@ -99,10 +129,68 @@ export function App() {
     { id: "new-tab-wsl", label: "New Terminal: WSL", action: () => addTab("wsl") },
     { id: "close-tab", label: "Close Current Tab", shortcut: "Ctrl+Shift+W", action: () => closeTab(activeTabId) },
     { id: "open-settings", label: "Open Settings", shortcut: "Ctrl+,", action: () => setSettingsVisible(true) },
-    { id: "close-editor", label: "Close Editor", action: () => setOpenFilePath(null) },
+    { id: "close-editor", label: "Close Editor", action: () => activeFile && handleCloseFile(activeFile) },
     { id: "open-folder", label: "Open Folder", action: handleOpenFolder },
     { id: "create-watchdog", label: "Create Watchdog", action: () => setWatchdogVisible(true) },
-  ], [addTab, closeTab, activeTabId]);
+  ], [addTab, closeTab, activeTabId, activeFile, handleCloseFile]);
+
+  const menus: Menu[] = useMemo(() => [
+    {
+      label: "File",
+      items: [
+        { label: "New File", shortcut: "Ctrl+N", action: () => { /* TODO: new file dialog */ } },
+        { label: "Open Folder...", shortcut: "Ctrl+Shift+O", action: handleOpenFolder },
+        { label: "Close Folder", action: handleCloseFolder },
+        { divider: true, label: "" },
+        { label: "Save", shortcut: "Ctrl+S", action: () => { /* handled by editor */ } },
+        { divider: true, label: "" },
+        { label: "Close Editor", shortcut: "Ctrl+W", action: () => activeFile && handleCloseFile(activeFile), disabled: !activeFile },
+        { label: "Settings", shortcut: "Ctrl+,", action: () => setSettingsVisible(true) },
+      ],
+    },
+    {
+      label: "Edit",
+      items: [
+        { label: "Undo", shortcut: "Ctrl+Z", action: () => document.execCommand("undo") },
+        { label: "Redo", shortcut: "Ctrl+Y", action: () => document.execCommand("redo") },
+        { divider: true, label: "" },
+        { label: "Cut", shortcut: "Ctrl+X", action: () => document.execCommand("cut") },
+        { label: "Copy", shortcut: "Ctrl+C", action: () => document.execCommand("copy") },
+        { label: "Paste", shortcut: "Ctrl+V", action: () => document.execCommand("paste") },
+        { divider: true, label: "" },
+        { label: "Find", shortcut: "Ctrl+F", action: () => { /* editor/terminal search */ } },
+        { label: "Replace", shortcut: "Ctrl+H", action: () => { /* TODO */ } },
+      ],
+    },
+    {
+      label: "View",
+      items: [
+        { label: "Command Palette", shortcut: "Ctrl+Shift+P", action: () => setPaletteVisible(true) },
+        { divider: true, label: "" },
+        { label: "Zoom In", shortcut: "Ctrl+=", action: () => { /* TODO */ } },
+        { label: "Zoom Out", shortcut: "Ctrl+-", action: () => { /* TODO */ } },
+      ],
+    },
+    {
+      label: "Terminal",
+      items: [
+        { label: "New Terminal", shortcut: "Ctrl+Shift+T", action: () => addTab("powershell") },
+        { label: "New CMD", action: () => addTab("cmd") },
+        { label: "New Git Bash", action: () => addTab("gitbash") },
+        { label: "New WSL", action: () => addTab("wsl") },
+        { divider: true, label: "" },
+        { label: "Split Horizontal", shortcut: "Ctrl+Shift+H", action: () => { /* handled by TerminalPane */ } },
+        { label: "Split Vertical", shortcut: "Ctrl+Shift+V", action: () => { /* handled by TerminalPane */ } },
+      ],
+    },
+    {
+      label: "Help",
+      items: [
+        { label: "About Aether Terminal", action: () => { /* TODO */ } },
+        { label: "Keyboard Shortcuts", action: () => setSettingsVisible(true) },
+      ],
+    },
+  ], [handleOpenFolder, handleCloseFolder, addTab, activeFile, handleCloseFile]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -137,6 +225,37 @@ export function App() {
     );
   }
 
+  const editorArea = activeFile ? (
+    <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
+      {/* Editor file tabs */}
+      <div style={{ display: "flex", height: 28, background: "var(--aether-bg-sidebar)", borderBottom: "1px solid var(--border)", alignItems: "center", gap: 1, padding: "0 4px", overflow: "auto" }}>
+        {openFiles.map((f) => {
+          const name = f.split("/").pop() ?? f;
+          return (
+            <button
+              key={f}
+              onClick={() => setActiveFile(f)}
+              style={{
+                background: f === activeFile ? "rgba(255,255,255,0.07)" : "transparent",
+                color: f === activeFile ? "var(--text-primary)" : "var(--text-muted)",
+                border: "none", borderRadius: 4, padding: "3px 10px", fontSize: 11,
+                fontFamily: "var(--font-ui)", cursor: "pointer", display: "flex", alignItems: "center", gap: 6,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {name}
+              <span
+                onClick={(e) => { e.stopPropagation(); handleCloseFile(f); }}
+                style={{ fontSize: 11, opacity: 0.5, cursor: "pointer" }}
+              >×</span>
+            </button>
+          );
+        })}
+      </div>
+      <EditorPanel filePath={activeFile} onClose={() => handleCloseFile(activeFile!)} />
+    </div>
+  ) : null;
+
   return (
     <div className="app-container">
       <ProjectHeaderBar
@@ -148,6 +267,7 @@ export function App() {
         model="Opus 4.6 (1M context)"
         cost={totalCost}
       />
+      <MenuBar menus={menus} />
 
       <main className="app-main">
         <div className="left-panel">
@@ -156,11 +276,11 @@ export function App() {
         </div>
 
         <div className="center-panel">
-          {openFilePath ? (
+          {editorArea ? (
             <SplitPane
               direction="vertical"
               defaultRatio={0.5}
-              first={<EditorPanel filePath={openFilePath} onClose={() => setOpenFilePath(null)} />}
+              first={editorArea}
               second={<div style={{ flex: 1, display: "flex" }}>{terminalTabs}</div>}
             />
           ) : (

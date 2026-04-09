@@ -189,6 +189,41 @@ pub fn write_file(path: String, content: String) -> Result<(), String> {
     std::fs::write(&path, &content).map_err(|e| format!("Write error: {}", e))
 }
 
+/// Create a new file
+#[tauri::command]
+pub fn create_file(path: String, content: Option<String>) -> Result<(), String> {
+    if std::path::Path::new(&path).exists() {
+        return Err(format!("File already exists: {}", path));
+    }
+    if let Some(parent) = std::path::Path::new(&path).parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("mkdir: {}", e))?;
+    }
+    std::fs::write(&path, content.unwrap_or_default()).map_err(|e| format!("Create: {}", e))
+}
+
+/// Rename a file or directory
+#[tauri::command]
+pub fn rename_path(old_path: String, new_path: String) -> Result<(), String> {
+    std::fs::rename(&old_path, &new_path).map_err(|e| format!("Rename: {}", e))
+}
+
+/// Delete a file or empty directory
+#[tauri::command]
+pub fn delete_path(path: String) -> Result<(), String> {
+    let p = std::path::Path::new(&path);
+    if p.is_dir() {
+        std::fs::remove_dir_all(p).map_err(|e| format!("Delete dir: {}", e))
+    } else {
+        std::fs::remove_file(p).map_err(|e| format!("Delete file: {}", e))
+    }
+}
+
+/// Create a new directory
+#[tauri::command]
+pub fn create_directory(path: String) -> Result<(), String> {
+    std::fs::create_dir_all(&path).map_err(|e| format!("mkdir: {}", e))
+}
+
 /// Start a Claude Code agent session
 #[tauri::command]
 pub fn start_agent(
