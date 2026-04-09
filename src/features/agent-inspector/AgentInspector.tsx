@@ -59,23 +59,29 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
               </div>
             )}
             {sessions.map((s) => (
-              <button key={s.id} className={`${styles.card} ${s.id === activeSessionId ? styles.cardActive : ""}`} onClick={() => onSelectSession(s.id)}>
+              <button key={s.id} className={`${styles.card} ${s.watchdog ? styles.cardWatchdog : ""} ${s.id === activeSessionId ? styles.cardActive : ""}`} onClick={() => onSelectSession(s.id)}>
                 <div className={styles.cardTop}>
                   <span className={styles.statusDot} style={{ background: STATUS_COLORS[s.status] }} />
                   <span className={styles.cardName}>{s.name}</span>
+                  {s.branch && <span className={styles.cardBranch}>⚡{s.branch}</span>}
                   <span className={styles.cardPct}>{s.status === "done" ? "100" : "—"}%</span>
                 </div>
                 <div className={styles.progressTrack}>
-                  <div className={styles.progressBar} style={{ width: s.status === "done" ? "100%" : s.status === "idle" ? "0%" : "50%" }} />
+                  <div className={styles.progressBar} style={{ width: s.status === "done" ? "100%" : s.status === "idle" ? "0%" : s.status === "generating" ? "50%" : "30%" }} />
                 </div>
                 <div className={styles.cardMeta}>
                   <span><span className={styles.statusDotSmall} style={{ background: STATUS_COLORS[s.status] }} /> {STATUS_LABELS[s.status]}</span>
+                  {s.filesChanged !== undefined && s.filesChanged > 0 && <span className={styles.cardFiles}>📎{s.filesChanged}</span>}
+                  <span className={styles.cardAge}>{formatAge(s.startedAt)}</span>
                   <span className={styles.cardModel}>{s.model}</span>
                   <span className={styles.cardCost}>${s.cost.toFixed(2)}</span>
                   {s.status !== "done" && s.status !== "idle" && (
                     <span className={styles.stopBtn} onClick={(e) => { e.stopPropagation(); onStopAgent?.(s.id); }}>■</span>
                   )}
                 </div>
+                {s.watchdog && (
+                  <div className={styles.watchdogInfo}>🐕 {s.watchdog}</div>
+                )}
               </button>
             ))}
             <div className={styles.navHint}>Ctrl+0-9 Jump · Ctrl+[ Prev · Ctrl+] Next</div>
@@ -122,4 +128,15 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
       )}
     </div>
   );
+}
+
+function formatAge(timestamp: number): string {
+  const diff = Date.now() - timestamp;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
 }

@@ -116,6 +116,22 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
           </button>
         ))}
       </div>
+      <div className={styles.bottomActions}>
+        <button className={styles.bottomBtn} onClick={() => { /* TODO: generate */ }}>⊕ Generate...</button>
+        <button className={styles.bottomBtn} onClick={handleAdd}>⊕ Create...</button>
+        <button className={styles.bottomBtn} onClick={() => {
+          const recipe = prompt("Paste a copied recipe/command:");
+          if (recipe) {
+            const newAction: ToolkitAction = {
+              id: `import-${Date.now()}`, label: recipe.split(" ").slice(0, 3).join(" "),
+              badge: "#94e2d5", command: recipe,
+            };
+            const updated = [...actions, newAction];
+            setActions(updated);
+            saveActions(projectName, updated);
+          }
+        }}>⊕ Import...</button>
+      </div>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-export type AgentStatus = "idle" | "thinking" | "coding" | "waiting" | "error" | "done";
+export type AgentStatus = "idle" | "thinking" | "coding" | "waiting" | "error" | "done" | "generating";
 
 export interface AgentSession {
   id: string;
@@ -10,6 +10,9 @@ export interface AgentSession {
   logs: AgentLog[];
   cost: number;
   tokensUsed: number;
+  branch?: string;
+  filesChanged?: number;
+  watchdog?: string; // watchdog name if attached
 }
 
 export interface AgentLog {
@@ -19,12 +22,13 @@ export interface AgentLog {
 }
 
 export const STATUS_COLORS: Record<AgentStatus, string> = {
-  idle: "rgba(255,255,255,0.35)",
-  thinking: "#cba6f7",
+  idle: "#4ade80",
+  thinking: "#fbbf24",
   coding: "#a6e3a1",
-  waiting: "#f9e2af",
+  waiting: "#f38ba8",
   error: "#f38ba8",
   done: "#89b4fa",
+  generating: "#cba6f7",
 };
 
 export const STATUS_LABELS: Record<AgentStatus, string> = {
@@ -34,4 +38,5 @@ export const STATUS_LABELS: Record<AgentStatus, string> = {
   waiting: "Needs Attention",
   error: "Error",
   done: "Complete",
+  generating: "Generating",
 };
