@@ -49,6 +49,12 @@
   --border: var(--aether-border);
   --accent: #4fc1ff;
 
+  /* State tokens — use these for interactive element states */
+  --state-hover: var(--white-6);
+  --state-active: var(--white-10);
+  --state-selected: var(--gold);
+  --state-disabled-opacity: 0.35;
+
   /* Typography */
   --font-ui: 'IBM Plex Sans', -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'IBM Plex Mono', 'Cascadia Code', monospace;
