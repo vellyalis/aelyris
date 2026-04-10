@@ -393,6 +393,10 @@ pub fn start_agent(
     let app_handle = app.clone();
     let agent_mgr = app.state::<crate::agent::AgentManager>().inner().clone();
 
+    // Initialize watchdog engine for this session
+    let watchdog_rules = crate::watchdog::load_watchdog_rules();
+    let watchdog = crate::watchdog::engine::WatchdogEngine::new(watchdog_rules);
+
     std::thread::spawn(move || {
         // Helper: emit full session list to frontend (push updates)
         let emit_sessions = |mgr: &crate::agent::AgentManager, handle: &AppHandle| {
@@ -424,6 +428,22 @@ pub fn start_agent(
                                         let _ = agent_mgr.update_usage(&session_id, cost, tokens);
                                     }
                                     true
+                                }
+                                "tool_use" => {
+                                    // Evaluate tool invocation against watchdog rules
+                                    if let Some(tool_name) = val.get("name").and_then(|v| v.as_str()) {
+                                        let decision = watchdog.evaluate(tool_name);
+                                        let decision_str = match &decision {
+                                            crate::watchdog::engine::WatchdogDecision::AutoApprove { rule } =>
+                                                format!("{{\"decision\":\"approved\",\"tool\":\"{}\",\"rule\":\"{}\"}}", tool_name, rule),
+                                            crate::watchdog::engine::WatchdogDecision::AutoDeny { rule } =>
+                                                format!("{{\"decision\":\"denied\",\"tool\":\"{}\",\"rule\":\"{}\"}}", tool_name, rule),
+                                            crate::watchdog::engine::WatchdogDecision::AskUser =>
+                                                format!("{{\"decision\":\"manual\",\"tool\":\"{}\",\"rule\":\"\"}}", tool_name),
+                                        };
+                                        let _ = app_handle.emit(&format!("watchdog-decision-{}", session_id), &decision_str);
+                                    }
+                                    false
                                 }
                                 _ => false,
                             };

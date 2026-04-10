@@ -4,39 +4,110 @@
   background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(8px);
 }
 .dialog {
-  width: 380px; background: var(--aether-bg-card);
+  width: 420px; max-height: 80vh; overflow-y: auto;
+  background: var(--aether-bg-card);
   border: 1px solid var(--white-10); border-radius: var(--radius-lg);
   padding: var(--space-10); box-shadow: 0 12px 40px rgba(0,0,0,0.6);
 }
 .title {
   font-size: var(--text-2xl); font-weight: 600; color: var(--text-primary);
-  margin-bottom: var(--space-8);
+  margin-bottom: var(--space-6);
+}
+
+/* Enable toggle */
+.toggleRow {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: var(--space-6);
 }
 .label {
-  display: block; font-size: var(--text-base); color: var(--text-secondary);
-  margin-bottom: var(--space-2); margin-top: var(--space-6);
+  font-size: var(--text-base); color: var(--text-secondary);
 }
-.input, .textarea {
-  width: 100%; padding: var(--space-4) var(--space-5); background: var(--aether-bg-sidebar);
+.toggle {
+  padding: 2px 10px; border-radius: 10px; font-size: var(--text-sm);
+  font-weight: 600; cursor: pointer; border: 1px solid var(--white-10);
+  background: var(--aether-bg-sidebar); color: var(--text-muted);
+  transition: background var(--duration-fast), color var(--duration-fast);
+}
+.toggleOn {
+  background: rgba(166, 227, 161, 0.15); color: #a6e3a1;
+  border-color: rgba(166, 227, 161, 0.3);
+}
+
+/* Presets */
+.presets {
+  display: flex; gap: var(--space-3); margin-bottom: var(--space-6);
+}
+.presetBtn {
+  padding: 3px 10px; border: 1px solid var(--white-10);
+  border-radius: var(--radius-sm); background: transparent;
+  color: var(--text-secondary); font-size: var(--text-sm);
+  font-family: var(--font-ui); cursor: pointer;
+  transition: background var(--duration-fast);
+}
+.presetBtn:hover {
+  background: var(--white-6); color: var(--text-primary);
+}
+
+/* Rules list */
+.rulesList {
+  display: flex; flex-direction: column; gap: 2px;
+  margin-bottom: var(--space-6); max-height: 200px; overflow-y: auto;
+}
+.ruleRow {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: 4px 6px; border-radius: var(--radius-sm);
+  background: var(--aether-bg-sidebar);
+}
+.ruleToggle {
+  background: none; border: none; cursor: pointer; padding: 2px;
+  display: flex; align-items: center;
+}
+.rulePattern {
+  flex: 1; font-size: var(--text-sm); font-family: var(--font-mono);
+  color: var(--text-primary); overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ruleDelete {
+  background: none; border: none; color: var(--text-muted);
+  cursor: pointer; padding: 2px; border-radius: 3px;
+  display: flex; align-items: center;
+}
+.ruleDelete:hover { color: var(--ctp-red); background: var(--white-6); }
+
+/* Add rule */
+.addRow {
+  display: flex; gap: var(--space-3); margin-bottom: var(--space-6);
+}
+.input {
+  flex: 1; padding: var(--space-3) var(--space-4); background: var(--aether-bg-sidebar);
   border: 1px solid var(--white-10); border-radius: var(--radius-sm);
-  color: var(--text-primary); font-size: var(--text-lg); font-family: var(--font-mono);
-  outline: none; resize: none;
+  color: var(--text-primary); font-size: var(--text-sm); font-family: var(--font-mono);
+  outline: none;
 }
-.input:focus, .textarea:focus { border-color: var(--ctp-mauve); }
-.input::placeholder, .textarea::placeholder { color: var(--text-muted); }
+.input:focus { border-color: var(--ctp-mauve); }
+.input::placeholder { color: var(--text-muted); }
+.addBtn {
+  background: none; border: 1px solid var(--white-10);
+  border-radius: var(--radius-sm); color: var(--text-muted);
+  cursor: pointer; padding: 4px 8px; display: flex; align-items: center;
+}
+.addBtn:hover { background: var(--white-6); color: var(--text-primary); }
+.addBtn:disabled { opacity: 0.3; cursor: default; }
+
+/* Actions */
 .actions {
-  display: flex; justify-content: flex-end; gap: var(--space-4); margin-top: var(--space-10);
+  display: flex; justify-content: flex-end; gap: var(--space-4); margin-top: var(--space-6);
 }
 .cancelBtn {
   padding: var(--space-3) var(--space-8); border: 1px solid var(--white-10);
   border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary);
-  font-size: var(--text-lg); cursor: pointer;
+  font-size: var(--text-base); cursor: pointer;
 }
 .cancelBtn:hover { background: var(--white-6); }
 .createBtn {
   padding: var(--space-3) var(--space-10); border: none; border-radius: var(--radius-sm);
-  background: var(--ctp-mauve); color: var(--aether-bg);
-  font-size: var(--text-lg); font-weight: 600; cursor: pointer;
+  background: var(--gold); color: var(--aether-bg);
+  font-size: var(--text-base); font-weight: 600; cursor: pointer;
 }
 .createBtn:hover { opacity: 0.9; }
 .createBtn:disabled { opacity: 0.4; cursor: default; }
