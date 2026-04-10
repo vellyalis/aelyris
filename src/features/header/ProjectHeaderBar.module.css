@@ -118,45 +118,37 @@
   color: var(--white-70);
 }
 
-/* Window controls — macOS-inspired circles */
+/* Window controls — right side, Fluent-inspired */
 .controls {
   display: flex;
-  gap: var(--space-4);
-  margin-left: var(--space-4);
+  margin-left: var(--space-2);
 }
 
 .ctrlBtn {
-  width: 12px;
-  height: 12px;
+  width: 46px;
+  height: 32px;
   border: none;
-  border-radius: 50%;
+  border-radius: 0;
+  background: transparent;
+  color: var(--white-50);
   cursor: pointer;
-  transition: opacity var(--duration-fast) var(--ease-silk);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0;
+  transition: background var(--duration-fast) var(--ease-silk), color var(--duration-fast);
 }
 
-.ctrlBtn svg { display: none; }
-.ctrlBtn:hover svg { display: block; }
-
-.minimizeBtn {
-  background: var(--ctp-yellow);
+.minimizeBtn:hover {
+  background: var(--white-10);
+  color: var(--white-90);
 }
 
-.maximizeBtn {
-  background: var(--ctp-green);
+.maximizeBtn:hover {
+  background: var(--white-10);
+  color: var(--white-90);
 }
 
-.closeBtn {
+.closeBtn:hover {
   background: var(--ctp-red);
-}
-
-/* Dim when window not focused */
-.controls:not(:hover) .ctrlBtn {
-  opacity: 0.5;
-}
-.controls:hover .ctrlBtn {
-  opacity: 1;
+  color: #fff;
 }

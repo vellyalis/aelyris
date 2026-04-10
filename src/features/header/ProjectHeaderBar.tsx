@@ -40,19 +40,6 @@ export function ProjectHeaderBar({
 
   return (
     <div className={styles.header} data-tauri-drag-region>
-      {/* macOS-style traffic lights */}
-      <div className={styles.controls}>
-        <button className={`${styles.ctrlBtn} ${styles.closeBtn}`} onClick={handleClose} aria-label="Close">
-          <svg width="6" height="6" viewBox="0 0 6 6"><line x1="0.5" y1="0.5" x2="5.5" y2="5.5" stroke="rgba(0,0,0,0.5)" strokeWidth="1.2"/><line x1="5.5" y1="0.5" x2="0.5" y2="5.5" stroke="rgba(0,0,0,0.5)" strokeWidth="1.2"/></svg>
-        </button>
-        <button className={`${styles.ctrlBtn} ${styles.minimizeBtn}`} onClick={handleMinimize} aria-label="Minimize">
-          <svg width="6" height="1" viewBox="0 0 6 1"><rect width="6" height="1" fill="rgba(0,0,0,0.5)"/></svg>
-        </button>
-        <button className={`${styles.ctrlBtn} ${styles.maximizeBtn}`} onClick={handleMaximize} aria-label="Maximize">
-          <svg width="6" height="6" viewBox="0 0 6 6"><path d="M0.5 3.5V0.5H3.5M5.5 2.5V5.5H2.5" stroke="rgba(0,0,0,0.5)" strokeWidth="1" fill="none"/></svg>
-        </button>
-      </div>
-
       <div className={styles.left}>
         <PixelAvatar seed={projectName} size={28} />
         <div className={styles.projectInfo}>
@@ -78,6 +65,18 @@ export function ProjectHeaderBar({
       <div className={styles.right}>
         <button className={styles.headerBtn} onClick={onRefresh} aria-label="Refresh"><RefreshCw size={14} /></button>
         <button className={styles.headerBtn} onClick={onOpenSettings} aria-label="Settings"><Settings size={14} /></button>
+        {/* Window controls — right side for Windows UX */}
+        <div className={styles.controls}>
+          <button className={`${styles.ctrlBtn} ${styles.minimizeBtn}`} onClick={handleMinimize} aria-label="Minimize">
+            <svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" fill="currentColor"/></svg>
+          </button>
+          <button className={`${styles.ctrlBtn} ${styles.maximizeBtn}`} onClick={handleMaximize} aria-label="Maximize">
+            <svg width="10" height="10" viewBox="0 0 10 10"><rect width="8" height="8" x="1" y="1" fill="none" stroke="currentColor" strokeWidth="1"/></svg>
+          </button>
+          <button className={`${styles.ctrlBtn} ${styles.closeBtn}`} onClick={handleClose} aria-label="Close">
+            <svg width="10" height="10" viewBox="0 0 10 10"><line x1="1" y1="1" x2="9" y2="9" stroke="currentColor" strokeWidth="1.2"/><line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" strokeWidth="1.2"/></svg>
+          </button>
+        </div>
       </div>
     </div>
   );
