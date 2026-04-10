@@ -14,17 +14,31 @@
 .left, .right { display: flex; align-items: center; gap: 8px; -webkit-app-region: no-drag; }
 .left { -webkit-app-region: drag; }
 .left > * { -webkit-app-region: no-drag; }
-.avatar {
-  width: 16px; height: 16px; border-radius: 3px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 8px; font-weight: 700; color: #fff;
-}
 .name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
-.branch { font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); }
+.branch { font-size: 11px; color: var(--ctp-green); font-family: var(--font-mono); }
+
+/* Status — always visible with pulse animation when active */
 .status { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-secondary); }
-.dot { width: 6px; height: 6px; border-radius: 50%; }
-.model { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); }
-.cost { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); }
+.dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.dotPulse { animation: statusPulse 1.5s ease-in-out infinite; }
+.statusLabel { font-size: 10px; }
+.age { font-size: 9px; color: var(--text-muted); font-family: var(--font-mono); }
+
+/* Model — prominent display like Scape */
+.model {
+  font-size: 12px;
+  color: var(--ctp-blue);
+  font-family: var(--font-mono);
+  font-weight: 500;
+}
+
+/* Cost — gold accent */
+.cost {
+  font-size: 10px;
+  color: var(--ctp-peach);
+  font-family: var(--font-mono);
+}
+
 .headerBtn {
   background: none; border: none; color: var(--white-30); font-size: 12px;
   cursor: pointer; padding: 2px 4px; border-radius: 3px;

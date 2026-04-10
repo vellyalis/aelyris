@@ -11,39 +11,70 @@
 }
 .tab:hover { color: var(--text-secondary); }
 .tabActive { color: var(--text-primary); font-weight: 600; }
-.tabActions { margin-left: auto; }
+.tabActions { margin-left: auto; display: flex; gap: 2px; }
 .iconBtn {
   background: none; border: none; color: var(--text-muted); font-size: 16px;
-  cursor: pointer; padding: 0 4px; border-radius: 4px;
+  cursor: pointer; padding: 2px 4px; border-radius: 4px;
 }
 .iconBtn:hover { color: var(--text-primary); background: var(--white-6); }
 
-/* Cards */
-.cards { padding: 8px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 4px; }
+/* ─── Session Cards ─── */
+.cards { padding: 8px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 6px; }
 .card {
-  display: flex; flex-direction: column; gap: 4px; padding: 8px 10px;
-  border: 1px solid var(--gold-subtle); border-radius: 6px;
-  background: var(--aether-bg-card); color: var(--text-secondary);
+  position: relative;
+  display: flex; flex-direction: column; gap: 4px; padding: 8px 10px 8px 14px;
+  border: 1px solid var(--white-6); border-radius: 8px;
+  background: rgba(28, 28, 28, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: var(--text-secondary);
   font-family: var(--font-ui); cursor: pointer; text-align: left;
-  transition: border-color 0.15s, background 0.1s;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.2s;
+  overflow: hidden;
 }
-.card:hover { border-color: var(--gold-dim); background: var(--white-3); }
-.cardActive { border-color: var(--gold); background: rgba(200,160,80,0.08); box-shadow: 0 0 12px rgba(200,160,80,0.1); }
-.cardTop { display: flex; align-items: center; gap: 6px; }
+/* Gold left stripe */
+.card::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--gold-dim);
+  border-radius: 8px 0 0 8px;
+  transition: background 0.15s;
+}
+.card:hover {
+  border-color: var(--gold-subtle);
+  background: rgba(28, 28, 28, 0.75);
+  box-shadow: 0 0 8px rgba(200, 160, 80, 0.08);
+}
+.card:hover::before { background: var(--gold); }
+
+/* Active card — full gold glow */
+.cardActive {
+  border-color: var(--gold);
+  background: rgba(200, 160, 80, 0.06);
+  box-shadow: 0 0 16px rgba(200, 160, 80, 0.2), 0 0 4px rgba(200, 160, 80, 0.1);
+}
+.cardActive::before { background: var(--gold); box-shadow: 0 0 6px rgba(200, 160, 80, 0.4); }
+
+.cardTop { display: flex; align-items: center; gap: 8px; }
 .statusDot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 .statusDotSmall { display: inline-block; width: 5px; height: 5px; border-radius: 50%; }
 .cardName { font-size: 13px; font-weight: 500; color: var(--text-primary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cardPct { font-size: 11px; color: var(--gold); font-family: var(--font-mono); font-weight: 500; }
-.progressTrack { height: 2px; background: var(--white-6); border-radius: 1px; }
+
+/* Progress bar */
+.progressTrack { height: 2px; background: var(--white-6); border-radius: 1px; margin-top: 2px; }
 .progressBar { height: 100%; border-radius: 1px; background: var(--gold); transition: width 0.3s ease; }
+
 .cardMeta { display: flex; gap: 8px; font-size: 10px; color: var(--text-muted); align-items: center; }
-.cardModel { font-family: var(--font-mono); }
+.cardModel { font-family: var(--font-mono); color: var(--ctp-blue); }
 .cardCost { font-family: var(--font-mono); color: var(--ctp-peach); margin-left: auto; }
 .navHint { text-align: center; font-size: 9px; color: var(--text-muted); font-family: var(--font-mono); padding: 6px; }
 .empty { padding: 24px; text-align: center; font-size: 12px; color: var(--text-muted); }
 .hint { font-size: 10px; color: var(--accent); margin-top: 4px; }
 
-/* Log */
+/* ─── Log ─── */
 .logSection { border-top: 1px solid var(--border); display: flex; flex-direction: column; max-height: 180px; }
 .logHeader { padding: 4px 10px; font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); }
 .logList { flex: 1; overflow-y: auto; padding: 0 8px 4px; font-size: 10px; font-family: var(--font-mono); }
@@ -60,22 +91,27 @@
   max-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
-/* Card extras */
+/* ─── Card extras ─── */
 .cardInfo { flex: 1; min-width: 0; }
 .cardNameRow { display: flex; align-items: center; gap: 4px; }
-.cardStatusRow { display: flex; align-items: center; gap: 4px; margin-top: 1px; }
-.cardBranch { font-size: 9px; color: var(--status-idle); font-family: var(--font-mono); }
-.cardIcons { font-size: 9px; opacity: 0.4; }
-.cardAge { font-size: 9px; color: var(--text-muted); }
+.cardStatusRow { display: flex; align-items: center; gap: 4px; margin-top: 2px; }
+.cardBranch { font-size: 9px; color: var(--ctp-green); font-family: var(--font-mono); }
+.cardIcons { font-size: 9px; opacity: 0; transition: opacity 0.1s; }
+.card:hover .cardIcons { opacity: 0.5; }
+.cardAge { font-size: 9px; color: var(--text-muted); margin-left: auto; }
 .cardFiles { font-size: 9px; color: var(--text-muted); }
-.cardWatchdog { border-color: var(--purple-dim); background: rgba(124,58,237,0.06); }
+
+/* Watchdog variant — purple accent */
+.cardWatchdog { border-color: rgba(124, 58, 237, 0.15); }
+.cardWatchdog::before { background: var(--purple-dim); }
 .cardWatchdog:hover { border-color: var(--purple); }
+.cardWatchdog:hover::before { background: var(--purple); }
 .watchdogInfo {
-  font-size: 9px; color: var(--purple-text); padding-left: 13px;
+  font-size: 9px; color: var(--purple-text); padding-left: 2px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
-/* Prompt input */
+/* ─── Prompt input ─── */
 .promptInput { padding: 6px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px; }
 .modelRow { display: flex; align-items: center; gap: 6px; }
 .modelSelect {
@@ -90,12 +126,12 @@
   border: 1px solid var(--gold-subtle); border-radius: 5px;
   color: var(--text-primary); font-size: 12px; font-family: var(--font-ui); outline: none;
 }
-.promptField:focus { border-color: var(--gold); }
+.promptField:focus { border-color: var(--gold); box-shadow: 0 0 8px rgba(200, 160, 80, 0.15); }
 .promptField::placeholder { color: var(--text-muted); }
 
-/* Stop button */
+/* ─── Stop button ─── */
 .stopBtn {
   cursor: pointer; font-size: 8px; color: var(--ctp-red); padding: 1px 3px;
   border-radius: 2px; margin-left: 4px;
 }
-.stopBtn:hover { background: rgba(var(--ctp-red), 0.15); }
+.stopBtn:hover { background: rgba(243, 139, 168, 0.15); }
