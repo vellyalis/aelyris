@@ -10,6 +10,7 @@ pub mod watchdog;
 use agent::AgentManager;
 use db::Database;
 use pty::PtyManager;
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -22,7 +23,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(PtyManager::new())
         .manage(AgentManager::new())
-        .setup(|_app| {
+        .setup(|app| {
             // Initialize database
             let db_path = db::db_path();
             match Database::open(&db_path) {
@@ -34,16 +35,16 @@ pub fn run() {
                 }
             }
 
-            // Mica/Acrylic transparency (disabled — causes WebView2 class conflict)
-            // To re-enable: uncomment below and test on your Windows version
-            // let window = app.get_webview_window("main").expect("main window not found");
-            // #[cfg(target_os = "windows")]
-            // {
-            //     use window_vibrancy::{apply_mica, apply_acrylic};
-            //     if apply_mica(&window, Some(true)).is_err() {
-            //         let _ = apply_acrylic(&window, Some((13, 13, 13, 200)));
-            //     }
-            // }
+            // Apply Mica/Acrylic transparency for premium glass effect
+            #[cfg(target_os = "windows")]
+            {
+                use window_vibrancy::{apply_mica, apply_acrylic};
+                if let Some(window) = app.get_webview_window("main") {
+                    if apply_mica(&window, Some(true)).is_err() {
+                        let _ = apply_acrylic(&window, Some((18, 18, 18, 180)));
+                    }
+                }
+            }
 
             Ok(())
         })
