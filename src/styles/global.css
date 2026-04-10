@@ -7,8 +7,8 @@
   --aether-bg-elevated: #1a1a1a;
   --aether-bg-card: #1e1e1e;
   --aether-bg-surface: #252525;
-  --aether-border: rgba(255, 255, 255, 0.07);
-  --aether-border-strong: rgba(255, 255, 255, 0.12);
+  --aether-border: rgba(255, 255, 255, 0.06);
+  --aether-border-strong: rgba(255, 255, 255, 0.1);
 
   /* Gold accent (Scape session cards) */
   --gold: #c8a050;
@@ -39,8 +39,8 @@
 
   /* Text hierarchy */
   --text-primary: rgba(255, 255, 255, 0.88);
-  --text-secondary: rgba(255, 255, 255, 0.55);
-  --text-muted: rgba(255, 255, 255, 0.35);
+  --text-secondary: rgba(255, 255, 255, 0.5);
+  --text-muted: rgba(255, 255, 255, 0.3);
 
   /* Semantic tokens */
   --bg-primary: var(--aether-bg);
@@ -143,8 +143,7 @@ html, body, #root {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  /* Semi-transparent for Mica; solid dark fallback when Mica unavailable */
-  background: rgba(13, 13, 13, 0.92);
+  background: rgba(13, 13, 13, 0.94);
   border-radius: var(--radius);
   overflow: hidden;
 }
@@ -190,10 +189,10 @@ html, body, #root {
 }
 
 /* Scrollbar */
-::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.14); border-radius: 3px; transition: background 0.2s; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.24); }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
 
 ::selection {
   background: rgba(200, 160, 80, 0.25);
@@ -202,9 +201,8 @@ html, body, #root {
 
 /* Focus ring for accessibility */
 :focus-visible {
-  outline: 2px solid var(--gold);
-  outline-offset: 2px;
-  border-radius: var(--radius-sm);
+  outline: 1px solid var(--gold);
+  outline-offset: -1px;
 }
 
 /* Smooth transitions for all interactive elements */

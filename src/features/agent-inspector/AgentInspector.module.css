@@ -27,8 +27,8 @@
   font-family: var(--font-ui); cursor: pointer; text-align: left;
   transition: border-color 0.15s, background 0.1s;
 }
-.card:hover { border-color: var(--gold-dim); background: var(--white-3); box-shadow: var(--shadow-sm); }
-.cardActive { border-color: var(--gold); background: rgba(200,160,80,0.06); box-shadow: var(--shadow-glow-gold); }
+.card:hover { border-color: var(--gold-dim); background: var(--white-3); }
+.cardActive { border-color: var(--gold); background: rgba(200,160,80,0.06); }
 .cardTop { display: flex; align-items: center; gap: 6px; }
 .statusDot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 .statusDotSmall { display: inline-block; width: 5px; height: 5px; border-radius: 50%; }
