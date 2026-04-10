@@ -394,25 +394,41 @@ pub fn start_agent(
     let agent_mgr = app.state::<crate::agent::AgentManager>().inner().clone();
 
     std::thread::spawn(move || {
+        // Helper: emit full session list to frontend (push updates)
+        let emit_sessions = |mgr: &crate::agent::AgentManager, handle: &AppHandle| {
+            let sessions = mgr.list_sessions();
+            let _ = handle.emit("agent-sessions-updated", &sessions);
+        };
+
+        // Notify frontend of initial session
+        emit_sessions(&agent_mgr, &app_handle);
+
         for line in reader.lines() {
             match line {
                 Ok(line) if !line.is_empty() => {
                     let event = format!("agent-output-{}", session_id);
                     let _ = app_handle.emit(&event, &line);
 
-                    // Try to parse status from stream-json
+                    // Parse status from stream-json and push updates
                     if let Ok(val) = serde_json::from_str::<serde_json::Value>(&line) {
                         if let Some(msg_type) = val.get("type").and_then(|v| v.as_str()) {
-                            match msg_type {
-                                "assistant" => { let _ = agent_mgr.update_status(&session_id, "coding"); }
+                            let should_push = match msg_type {
+                                "assistant" => {
+                                    let _ = agent_mgr.update_status(&session_id, "coding");
+                                    true
+                                }
                                 "result" => {
                                     let _ = agent_mgr.update_status(&session_id, "done");
                                     if let Some(cost) = val.get("cost_usd").and_then(|v| v.as_f64()) {
                                         let tokens = val.get("total_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
                                         let _ = agent_mgr.update_usage(&session_id, cost, tokens);
                                     }
+                                    true
                                 }
-                                _ => {}
+                                _ => false,
+                            };
+                            if should_push {
+                                emit_sessions(&agent_mgr, &app_handle);
                             }
                         }
                     }
@@ -421,7 +437,9 @@ pub fn start_agent(
                 Err(_) => break,
             }
         }
+        // Process ended — emit exit event + updated session list
         let _ = app_handle.emit(&format!("agent-exit-{}", session_id), ());
+        emit_sessions(&agent_mgr, &app_handle);
     });
 
     Ok(id)
@@ -431,7 +449,11 @@ pub fn start_agent(
 #[tauri::command]
 pub fn stop_agent(app: AppHandle, id: String) -> Result<(), String> {
     let agent_manager = app.state::<crate::agent::AgentManager>();
-    agent_manager.stop_session(&id)
+    agent_manager.stop_session(&id)?;
+    // Push updated session list
+    let sessions = agent_manager.list_sessions();
+    let _ = app.emit("agent-sessions-updated", &sessions);
+    Ok(())
 }
 
 /// List agent sessions

@@ -18,11 +18,13 @@ export function useAgentManager() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const unlistenRefs = useRef<Map<string, UnlistenFn[]>>(new Map());
 
-  // Poll for session list
+  // Push-based session updates from Rust via Tauri events
   useEffect(() => {
-    const poll = async () => {
-      try {
-        const raw = await invoke<AgentSessionRaw[]>("list_agents");
+    let unlisten: UnlistenFn | null = null;
+
+    const setup = async () => {
+      unlisten = await listen<AgentSessionRaw[]>("agent-sessions-updated", (event) => {
+        const raw = event.payload;
         setSessions((prev) => {
           // Merge: keep existing logs, update status/cost/tokens
           const map = new Map(prev.map((s) => [s.id, s]));
@@ -41,14 +43,35 @@ export function useAgentManager() {
             };
           });
         });
-      } catch { /* ignore when no agents */ }
+      });
+
+      // Initial fetch to hydrate existing sessions on mount
+      try {
+        const raw = await invoke<AgentSessionRaw[]>("list_agents");
+        if (raw.length > 0) {
+          setSessions((prev) => {
+            const map = new Map(prev.map((s) => [s.id, s]));
+            return raw.map((r) => {
+              const existing = map.get(r.id);
+              return {
+                id: r.id,
+                name: existing?.name ?? r.cwd.split("/").filter(Boolean).pop() ?? "Agent",
+                status: r.status as AgentStatus,
+                model: r.model,
+                prompt: r.prompt,
+                startedAt: existing?.startedAt ?? Date.now(),
+                logs: existing?.logs ?? [],
+                cost: r.cost,
+                tokensUsed: r.tokens_used,
+              };
+            });
+          });
+        }
+      } catch { /* no agents running */ }
     };
 
-    // Delay initial poll to not block startup
-    const timeout = setTimeout(poll, 1000);
-    // Poll less frequently when no sessions active
-    const interval = setInterval(poll, 5000);
-    return () => { clearTimeout(timeout); clearInterval(interval); };
+    setup();
+    return () => { unlisten?.(); };
   }, []);
 
   // Subscribe to output events for a session
