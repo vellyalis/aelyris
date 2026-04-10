@@ -20,7 +20,7 @@
         "decorations": false,
         "transparent": true,
         "windowEffects": {
-          "effects": ["mica"],
+          "effects": ["acrylic"],
           "state": "followsWindowActiveState"
         }
       }

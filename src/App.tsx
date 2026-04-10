@@ -9,7 +9,7 @@ const EditorPanel = lazy(() => import("./features/editor/EditorPanel").then((m) 
 import { AgentInspector } from "./features/agent-inspector/AgentInspector";
 import { ToolkitPanel } from "./features/toolkit/ToolkitPanel";
 import { WorkspaceTabs } from "./features/workspace-tabs/WorkspaceTabs";
-import { CommandPalette, type Command } from "./features/command-palette/CommandPalette";
+import { CommandPalette, type CommandItem } from "./features/command-palette/CommandPalette";
 import { Settings } from "./features/settings/Settings";
 import { WatchdogDialog } from "./features/watchdog/WatchdogDialog";
 import { WelcomeScreen } from "./features/welcome/WelcomeScreen";
@@ -145,7 +145,7 @@ export function App() {
     setActiveSessionId(sessions[next].id);
   }
 
-  const commands: Command[] = useMemo(() => [
+  const commands: CommandItem[] = useMemo(() => [
     { id: "new-tab-ps", label: "New Terminal: PowerShell", shortcut: "Ctrl+Shift+T", action: () => addTab("powershell") },
     { id: "new-tab-cmd", label: "New Terminal: CMD", action: () => addTab("cmd") },
     { id: "new-tab-gitbash", label: "New Terminal: Git Bash", action: () => addTab("gitbash") },

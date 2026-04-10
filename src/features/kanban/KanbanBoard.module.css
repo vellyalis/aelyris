@@ -179,7 +179,7 @@
 
 .card:hover {
   border-color: var(--gold-subtle);
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 0 8px rgba(200, 160, 80, 0.12), var(--shadow-sm);
 }
 
 .card:active {
@@ -189,8 +189,8 @@
 
 .cardActive {
   border-color: var(--gold);
-  box-shadow: var(--shadow-glow-gold);
-  background: rgba(200, 160, 80, 0.04);
+  box-shadow: 0 0 12px rgba(200, 160, 80, 0.25), 0 0 4px rgba(200, 160, 80, 0.15);
+  background: rgba(200, 160, 80, 0.06);
 }
 
 .cardPriorityStripe {

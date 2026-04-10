@@ -13,9 +13,11 @@ import styles from "./TerminalArea.module.css";
 interface TerminalAreaProps {
   shell?: ShellType;
   cwd?: string;
+  onTerminalReady?: (terminalId: string) => void;
 }
 
-export function TerminalArea({ shell = "powershell", cwd }: TerminalAreaProps) {
+export function TerminalArea({ shell = "powershell", cwd, onTerminalReady: _onTerminalReady }: TerminalAreaProps) {
+  const onTerminalReady = _onTerminalReady;
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
@@ -67,7 +69,7 @@ export function TerminalArea({ shell = "powershell", cwd }: TerminalAreaProps) {
     termRef.current = term;
     searchAddonRef.current = searchAddon;
 
-    connectPty(term, shell, cwd);
+    connectPty(term, shell, cwd, onTerminalReady);
 
     const handleResize = () => fitAddon.fit();
     window.addEventListener("resize", handleResize);
@@ -131,7 +133,12 @@ export function TerminalArea({ shell = "powershell", cwd }: TerminalAreaProps) {
   );
 }
 
-async function connectPty(term: Terminal, shell: string, cwd?: string) {
+async function connectPty(
+  term: Terminal,
+  shell: string,
+  cwd?: string,
+  onReady?: (terminalId: string) => void,
+) {
   try {
     const { invoke } = await import("@tauri-apps/api/core");
     const { listen } = await import("@tauri-apps/api/event");
@@ -142,6 +149,8 @@ async function connectPty(term: Terminal, shell: string, cwd?: string) {
       rows: term.rows,
       cwd: cwd ?? null,
     });
+
+    onReady?.(id);
 
     await listen<string>(`pty-output-${id}`, (event) => {
       const decoded = atob(event.payload);

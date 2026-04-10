@@ -90,11 +90,17 @@
   --shadow-glow-gold: 0 0 20px rgba(200, 160, 80, 0.15);
   --shadow-glow-purple: 0 0 20px rgba(124, 58, 237, 0.15);
 
+  /* Catppuccin surface tokens (used by command palette etc.) */
+  --ctp-surface0: #313244;
+  --ctp-surface1: #45475a;
+  --ctp-surface2: #585b70;
+
   /* Transitions */
   --duration-fast: 100ms;
   --duration-normal: 200ms;
   --duration-slow: 300ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-inout: cubic-bezier(0.4, 0, 0.2, 1);
 
   /* Font sizes */
   --text-xs: 9px;
@@ -161,6 +167,8 @@ html, body, #root {
   display: flex;
   flex-direction: column;
   background: var(--aether-bg-sidebar);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border-right: 1px solid var(--border);
   overflow: hidden;
   resize: horizontal;
@@ -179,6 +187,8 @@ html, body, #root {
   display: flex;
   flex-direction: column;
   background: var(--aether-bg-sidebar);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border-left: 1px solid var(--border);
   overflow: hidden;
   resize: horizontal;
@@ -212,7 +222,21 @@ iframe:focus-visible {
 
 /* Smooth transitions for all interactive elements */
 button, [role="button"] {
-  transition: background 0.1s ease, color 0.1s ease, border-color 0.15s ease, opacity 0.15s ease;
+  transition: background 0.1s ease, color 0.1s ease, border-color 0.15s ease, opacity 0.15s ease, transform 0.08s ease;
+}
+
+/* Global click feedback — subtle scale on press */
+button:active:not(:disabled), [role="button"]:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* Status icon animations */

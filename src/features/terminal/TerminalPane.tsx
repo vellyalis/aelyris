@@ -36,6 +36,9 @@ export function TerminalPane({ shell, cwd }: TerminalPaneProps) {
     { id: `pane-${nextPaneId++}`, shell, cwd },
   ]);
   const [maximizedId, setMaximizedId] = useState<string | null>(null);
+  // Map pane IDs to PTY terminal IDs (for send-keys/capture-pane)
+  const [_terminalIds, setTerminalIds] = useState<Map<string, string>>(new Map());
+  void _terminalIds; // reserved for future send-keys/capture-pane
 
   const toggleMaximize = useCallback((id: string) => {
     setMaximizedId((prev) => prev === id ? null : id);
@@ -70,7 +73,11 @@ export function TerminalPane({ shell, cwd }: TerminalPaneProps) {
               isMaximized={maximizedId === t.id}
               onToggleMaximize={() => toggleMaximize(t.id)}
             />
-            <TerminalArea shell={t.shell} cwd={t.cwd} />
+            <TerminalArea
+              shell={t.shell}
+              cwd={t.cwd}
+              onTerminalReady={(tid) => setTerminalIds((prev) => new Map(prev).set(t.id, tid))}
+            />
           </div>
         );
       })}

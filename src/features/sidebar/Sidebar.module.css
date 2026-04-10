@@ -40,6 +40,7 @@
 
 .active {
   color: var(--text-primary);
+  background: rgba(200, 160, 80, 0.08);
 }
 
 .indicator {
@@ -51,4 +52,5 @@
   height: 18px;
   background: var(--gold);
   border-radius: 1px;
+  box-shadow: 0 0 8px rgba(200, 160, 80, 0.4);
 }

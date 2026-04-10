@@ -2,23 +2,41 @@
   position: fixed;
   inset: 0;
   z-index: 100;
-  display: flex;
-  justify-content: center;
-  padding-top: 80px;
   background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .palette {
+  position: fixed;
+  top: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 101;
   width: 480px;
   max-height: 360px;
-  background: var(--ctp-surface0);
+  background: var(--aether-bg-elevated);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
   box-shadow: 0 8px 32px var(--black-50);
   display: flex;
   flex-direction: column;
+}
+
+/* sr-only for accessible but hidden title */
+:global(.sr-only) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
 }
 
 .input {
@@ -56,11 +74,17 @@
   font-family: var(--font-ui);
   cursor: pointer;
   text-align: left;
+  transition: background var(--duration-fast), color var(--duration-fast);
 }
 
-.item:hover,
-.item.selected {
-  background: var(--ctp-surface1);
+/* cmdk applies data-selected to the active item */
+.item[data-selected="true"] {
+  background: var(--white-10);
+  color: var(--text-primary);
+}
+
+.item:hover {
+  background: var(--white-6);
   color: var(--text-primary);
 }
 
@@ -68,7 +92,7 @@
   font-size: 11px;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  background: var(--ctp-surface2);
+  background: var(--white-6);
   padding: 2px 6px;
   border-radius: 4px;
 }

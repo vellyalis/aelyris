@@ -1,8 +1,10 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useEffect, useRef } from "react";
+import { Command } from "cmdk";
+import * as Dialog from "@radix-ui/react-dialog";
 import { motion, AnimatePresence } from "motion/react";
 import styles from "./CommandPalette.module.css";
 
-export interface Command {
+export interface CommandItem {
   id: string;
   label: string;
   shortcut?: string;
@@ -12,98 +14,70 @@ export interface Command {
 interface CommandPaletteProps {
   visible: boolean;
   onClose: () => void;
-  commands: Command[];
+  commands: CommandItem[];
 }
 
 export function CommandPalette({ visible, onClose, commands }: CommandPaletteProps) {
-  const [query, setQuery] = useState("");
-  const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  const filtered = useMemo(() => {
-    if (!query) return commands;
-    const lower = query.toLowerCase();
-    return commands.filter((c) => c.label.toLowerCase().includes(lower));
-  }, [query, commands]);
 
   useEffect(() => {
     if (visible) {
-      setQuery("");
-      setSelectedIndex(0);
       requestAnimationFrame(() => inputRef.current?.focus());
     }
   }, [visible]);
 
-  useEffect(() => {
-    setSelectedIndex(0);
-  }, [query]);
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Escape") {
-      onClose();
-    } else if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setSelectedIndex((i) => Math.min(i + 1, filtered.length - 1));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setSelectedIndex((i) => Math.max(i - 1, 0));
-    } else if (e.key === "Enter" && filtered[selectedIndex]) {
-      filtered[selectedIndex].action();
-      onClose();
-    }
-  }
-
   return (
-    <AnimatePresence>
-    {visible && (
-    <motion.div
-      className={styles.overlay}
-      onClick={onClose}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.12 }}
-    >
-      <motion.div
-        className={styles.palette}
-        role="dialog"
-        aria-label="Command palette"
-        onClick={(e) => e.stopPropagation()}
-        initial={{ opacity: 0, y: -20, scale: 0.97 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: -10, scale: 0.97 }}
-        transition={{ type: "spring", stiffness: 400, damping: 30 }}
-      >
-        <input
-          ref={inputRef}
-          className={styles.input}
-          placeholder="Type a command..."
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={handleKeyDown}
-        />
-        <div className={styles.list}>
-          {filtered.map((cmd, i) => (
-            <button
-              key={cmd.id}
-              className={`${styles.item} ${i === selectedIndex ? styles.selected : ""}`}
-              onClick={() => {
-                cmd.action();
-                onClose();
-              }}
-              onMouseEnter={() => setSelectedIndex(i)}
-            >
-              <span>{cmd.label}</span>
-              {cmd.shortcut && <span className={styles.shortcut}>{cmd.shortcut}</span>}
-            </button>
-          ))}
-          {filtered.length === 0 && (
-            <div className={styles.empty}>No matching commands</div>
-          )}
-        </div>
-      </motion.div>
-    </motion.div>
-    )}
-    </AnimatePresence>
+    <Dialog.Root open={visible} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <AnimatePresence>
+        {visible && (
+          <Dialog.Portal forceMount>
+            <Dialog.Overlay asChild>
+              <motion.div
+                className={styles.overlay}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.12 }}
+              />
+            </Dialog.Overlay>
+            <Dialog.Content asChild aria-describedby={undefined}>
+              <motion.div
+                className={styles.palette}
+                initial={{ opacity: 0, y: -20, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -10, scale: 0.97 }}
+                transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              >
+                <Dialog.Title className="sr-only">Command Palette</Dialog.Title>
+                <Command label="Command palette" loop>
+                  <Command.Input
+                    ref={inputRef}
+                    className={styles.input}
+                    placeholder="Type a command..."
+                  />
+                  <Command.List className={styles.list}>
+                    <Command.Empty className={styles.empty}>No matching commands</Command.Empty>
+                    {commands.map((cmd) => (
+                      <Command.Item
+                        key={cmd.id}
+                        value={cmd.label}
+                        className={styles.item}
+                        onSelect={() => {
+                          cmd.action();
+                          onClose();
+                        }}
+                      >
+                        <span>{cmd.label}</span>
+                        {cmd.shortcut && <span className={styles.shortcut}>{cmd.shortcut}</span>}
+                      </Command.Item>
+                    ))}
+                  </Command.List>
+                </Command>
+              </motion.div>
+            </Dialog.Content>
+          </Dialog.Portal>
+        )}
+      </AnimatePresence>
+    </Dialog.Root>
   );
 }
