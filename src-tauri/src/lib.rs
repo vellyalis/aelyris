@@ -10,7 +10,6 @@ pub mod watchdog;
 use agent::AgentManager;
 use db::Database;
 use pty::PtyManager;
-use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -23,7 +22,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(PtyManager::new())
         .manage(AgentManager::new())
-        .setup(|app| {
+        .setup(|_app| {
             // Initialize database
             let db_path = db::db_path();
             match Database::open(&db_path) {
@@ -34,18 +33,7 @@ pub fn run() {
                     log::error!("Failed to initialize database: {}", e);
                 }
             }
-
-            // Apply Mica/Acrylic transparency for premium glass effect
-            #[cfg(target_os = "windows")]
-            {
-                use window_vibrancy::{apply_mica, apply_acrylic};
-                if let Some(window) = app.get_webview_window("main") {
-                    if apply_mica(&window, Some(true)).is_err() {
-                        let _ = apply_acrylic(&window, Some((18, 18, 18, 180)));
-                    }
-                }
-            }
-
+            // Mica/Acrylic applied via tauri.conf.json windowEffects
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

@@ -48,5 +48,4 @@ thiserror = "2"
 # Database
 rusqlite = { version = "0.31", features = ["bundled"] }
 
-# Window effects (Mica/Acrylic)
-window-vibrancy = "0.7"
+# Window effects: Mica/Acrylic via tauri.conf.json windowEffects (no external crate needed)

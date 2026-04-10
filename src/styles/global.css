@@ -2,11 +2,11 @@
 
 :root {
   /* Scape-matched dark palette */
-  --aether-bg: rgba(13, 13, 13, 0.85);
-  --aether-bg-sidebar: rgba(20, 20, 20, 0.75);
-  --aether-bg-elevated: rgba(26, 26, 26, 0.85);
-  --aether-bg-card: rgba(30, 30, 30, 0.9);
-  --aether-bg-surface: rgba(37, 37, 37, 0.9);
+  --aether-bg: rgba(13, 13, 13, 0.7);
+  --aether-bg-sidebar: rgba(18, 18, 18, 0.6);
+  --aether-bg-elevated: rgba(24, 24, 24, 0.75);
+  --aether-bg-card: rgba(28, 28, 28, 0.85);
+  --aether-bg-surface: rgba(35, 35, 35, 0.85);
   --aether-border: rgba(255, 255, 255, 0.06);
   --aether-border-strong: rgba(255, 255, 255, 0.1);
 
@@ -143,7 +143,7 @@ html, body, #root {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: rgba(13, 13, 13, 0.85);
+  background: rgba(13, 13, 13, 0.7);
   border-radius: 12px;
   overflow: hidden;
 }

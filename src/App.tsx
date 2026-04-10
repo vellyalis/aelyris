@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from "react";
 import { ProjectHeaderBar } from "./features/header/ProjectHeaderBar";
 import { FileTree } from "./features/file-tree/FileTree";
+import { KanbanBoard } from "./features/kanban/KanbanBoard";
 import { TerminalPane } from "./features/terminal/TerminalPane";
 // Lazy load Monaco Editor (~2MB)
 const EditorPanel = lazy(() => import("./features/editor/EditorPanel").then((m) => ({ default: m.EditorPanel })));
@@ -262,6 +263,7 @@ export function App() {
       <main className="app-main" role="main">
         <div className="left-panel" role="navigation" aria-label="Project sidebar" style={{ position: "relative" }}>
           <FileTree rootPath={projectPath} onFileSelect={handleFileSelect} onOpenDiff={handleOpenDiff} changedFiles={changedFiles} />
+          <KanbanBoard onStartAgent={handleStartAgent} />
           <SearchPanel
             visible={searchVisible}
             rootPath={projectPath}
