@@ -22,11 +22,20 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
   const [tab, setTab] = useState<"sessions" | "activity">("sessions");
   const [showPromptInput, setShowPromptInput] = useState(false);
   const [promptText, setPromptText] = useState("");
-  const { selectedModel, setSelectedModel } = useAppStore();
+  const { selectedModel, setSelectedModel, agentBudget } = useAppStore();
   const activeSession = sessions.find((s) => s.id === activeSessionId);
+  const budgetPct = agentBudget.limit > 0 ? Math.min(100, (agentBudget.spent / agentBudget.limit) * 100) : 0;
+  const budgetColor = budgetPct < 50 ? "#a6e3a1" : budgetPct < 80 ? "#f9e2af" : "#f38ba8";
 
   return (
     <div className={styles.inspector} role="region" aria-label="Agent sessions">
+      {/* Budget gauge */}
+      <div className={styles.budgetBar}>
+        <span className={styles.budgetLabel}>${agentBudget.spent.toFixed(2)} / ${agentBudget.limit.toFixed(0)}</span>
+        <div className={styles.budgetTrack}>
+          <div className={styles.budgetFill} style={{ width: `${budgetPct}%`, background: budgetColor }} />
+        </div>
+      </div>
       {/* Tab toggle */}
       <div className={styles.tabBar}>
         <button className={`${styles.tab} ${tab === "sessions" ? styles.tabActive : ""}`} onClick={() => setTab("sessions")}>Sessions</button>

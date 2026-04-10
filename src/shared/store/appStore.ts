@@ -32,6 +32,11 @@ interface AppState {
   selectedModel: string;
   setSelectedModel: (modelId: string) => void;
 
+  // Budget
+  agentBudget: { spent: number; limit: number };
+  addAgentCost: (cost: number) => void;
+  setAgentBudgetLimit: (limit: number) => void;
+
   // Kanban
   kanbanTasks: KanbanTask[];
   activeTaskId: string | null;
@@ -95,6 +100,21 @@ export const useAppStore = create<AppState>((set) => ({
     set({ selectedModel: modelId });
     try { localStorage.setItem("aether:selectedModel", modelId); } catch {}
   },
+
+  // Budget
+  agentBudget: (() => {
+    try { return JSON.parse(localStorage.getItem("aether:budget") ?? '{"spent":0,"limit":10}'); } catch { return { spent: 0, limit: 10 }; }
+  })(),
+  addAgentCost: (cost: number) => set((s) => {
+    const budget = { ...s.agentBudget, spent: s.agentBudget.spent + cost };
+    try { localStorage.setItem("aether:budget", JSON.stringify(budget)); } catch {}
+    return { agentBudget: budget };
+  }),
+  setAgentBudgetLimit: (limit: number) => set((s) => {
+    const budget = { ...s.agentBudget, limit };
+    try { localStorage.setItem("aether:budget", JSON.stringify(budget)); } catch {}
+    return { agentBudget: budget };
+  }),
 
   // Kanban
   kanbanTasks: (() => {

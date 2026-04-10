@@ -1,4 +1,8 @@
 .inspector { display: flex; flex-direction: column; overflow: hidden; flex: 1; }
+.budgetBar { display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-bottom: 1px solid var(--border); }
+.budgetLabel { font-size: 9px; font-family: var(--font-mono); color: var(--text-muted); white-space: nowrap; }
+.budgetTrack { flex: 1; height: 3px; background: var(--white-6); border-radius: 2px; overflow: hidden; }
+.budgetFill { height: 100%; border-radius: 2px; transition: width 0.3s ease, background 0.3s ease; }
 .tabBar { display: flex; align-items: center; padding: var(--space-3) var(--space-5); gap: var(--space-1); border-bottom: 1px solid var(--border); }
 .tab {
   background: none; border: none; font-size: 13px; font-family: var(--font-ui);

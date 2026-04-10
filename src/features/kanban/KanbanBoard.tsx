@@ -8,9 +8,10 @@ import styles from "./KanbanBoard.module.css";
 interface KanbanBoardProps {
   onStartAgent?: (prompt: string) => void;
   onActivateTask?: (taskId: string) => void;
+  onMoveWithSideEffects?: (taskId: string, toColumn: string) => void;
 }
 
-export function KanbanBoard({ onStartAgent, onActivateTask }: KanbanBoardProps) {
+export function KanbanBoard({ onStartAgent, onActivateTask, onMoveWithSideEffects }: KanbanBoardProps) {
   const { kanbanTasks, addKanbanTask, moveKanbanTask, deleteKanbanTask, activeTaskId, setActiveTaskId } = useAppStore();
   const [newTitle, setNewTitle] = useState("");
   const [newPriority, setNewPriority] = useState<TaskPriority>("medium");
@@ -75,7 +76,10 @@ export function KanbanBoard({ onStartAgent, onActivateTask }: KanbanBoardProps) 
             color={col.color}
             tasks={kanbanTasks.filter((t) => t.column === col.id)}
             activeTaskId={activeTaskId}
-            onDrop={moveKanbanTask}
+            onDrop={(taskId, toColumn) => {
+              moveKanbanTask(taskId, toColumn);
+              onMoveWithSideEffects?.(taskId, toColumn);
+            }}
             onStartAgent={onStartAgent}
             onDelete={deleteKanbanTask}
             onActivate={handleActivate}
