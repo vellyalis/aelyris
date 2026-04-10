@@ -77,6 +77,9 @@ pub fn run() {
             ipc::create_window,
             ipc::create_pane,
             ipc::save_session_state,
+            // Workspace pane commands
+            ipc::send_keys,
+            ipc::broadcast_keys,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Aether Terminal");

@@ -567,3 +567,26 @@ pub fn save_session_state(session_id: &str) -> Result<(), String> {
     let db = Database::open(&db::db_path())?;
     db.touch_session(session_id)
 }
+
+// --- Workspace pane commands ---
+
+/// Send keystrokes to a specific terminal pane
+#[tauri::command]
+pub fn send_keys(app: AppHandle, terminal_id: String, data: String) -> Result<(), String> {
+    let pty_manager = app.state::<PtyManager>();
+    pty_manager.write(&terminal_id, data.as_bytes())
+}
+
+/// Send keystrokes to all active terminal panes (synchronize-panes)
+#[tauri::command]
+pub fn broadcast_keys(app: AppHandle, data: String) -> Result<u32, String> {
+    let pty_manager = app.state::<PtyManager>();
+    let ids = pty_manager.list();
+    let mut count: u32 = 0;
+    for id in &ids {
+        if pty_manager.write(id, data.as_bytes()).is_ok() {
+            count += 1;
+        }
+    }
+    Ok(count)
+}

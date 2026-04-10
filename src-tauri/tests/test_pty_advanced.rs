@@ -114,3 +114,61 @@ fn test_zombie_prevention() {
     let mgr2 = PtyManager::new();
     assert!(mgr2.list().is_empty(), "New manager should have no terminals");
 }
+
+// --- send-keys / broadcast-keys tests ---
+
+#[test]
+fn test_send_keys_to_pane() {
+    let mgr = PtyManager::new();
+    let id = mgr.spawn(&ShellType::Cmd, 80, 24, None).expect("spawn");
+    std::thread::sleep(std::time::Duration::from_millis(300));
+
+    // send-keys: write to a specific terminal by ID
+    mgr.write(&id, b"echo SENDKEY_TEST_OK\r\n").expect("send_keys failed");
+
+    let mut reader = mgr.take_reader(&id).expect("reader");
+    let mut buf = [0u8; 4096];
+    let mut output = String::new();
+    let start = std::time::Instant::now();
+    while start.elapsed() < std::time::Duration::from_secs(3) {
+        match reader.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => {
+                output.push_str(&String::from_utf8_lossy(&buf[..n]));
+                if output.contains("SENDKEY_TEST_OK") { break; }
+            }
+            Err(ref e) if e.kind() == std::io::ErrorKind::BrokenPipe => break,
+            Err(_) => break,
+        }
+    }
+    assert!(output.contains("SENDKEY_TEST_OK"), "send_keys output not found: {}", &output[..output.len().min(200)]);
+    mgr.close_all();
+}
+
+#[test]
+fn test_send_keys_invalid_id() {
+    let mgr = PtyManager::new();
+    let result = mgr.write("nonexistent-id", b"hello");
+    assert!(result.is_err(), "send_keys to invalid ID should fail");
+}
+
+#[test]
+fn test_broadcast_keys() {
+    let mgr = PtyManager::new();
+    let id1 = mgr.spawn(&ShellType::Cmd, 80, 24, None).expect("spawn 1");
+    let id2 = mgr.spawn(&ShellType::Cmd, 80, 24, None).expect("spawn 2");
+    let id3 = mgr.spawn(&ShellType::Cmd, 80, 24, None).expect("spawn 3");
+    std::thread::sleep(std::time::Duration::from_millis(300));
+
+    // broadcast: write same data to all terminals
+    let ids = mgr.list();
+    let mut count = 0u32;
+    for id in &ids {
+        if mgr.write(id, b"echo BCAST\r\n").is_ok() {
+            count += 1;
+        }
+    }
+    assert_eq!(count, 3, "broadcast should succeed for all 3 terminals");
+
+    mgr.close_all();
+}
