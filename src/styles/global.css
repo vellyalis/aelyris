@@ -53,7 +53,8 @@
   --font-ui: 'IBM Plex Sans', -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'IBM Plex Mono', 'Cascadia Code', monospace;
 
-  /* Spacing tokens */
+  /* Spacing tokens (4px base) */
+  --space-0: 0px;
   --space-1: 2px;
   --space-2: 4px;
   --space-3: 6px;
@@ -63,6 +64,7 @@
   --space-8: 16px;
   --space-10: 20px;
   --space-12: 24px;
+  --space-16: 32px;
 
   /* Layout */
   --radius: 8px;
@@ -70,6 +72,45 @@
   --radius-lg: 12px;
   --header-height: 32px;
   --bottom-tabs-height: 28px;
+  --statusbar-height: 24px;
+
+  /* Z-index scale */
+  --z-base: 0;
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-overlay: 300;
+  --z-modal: 400;
+  --z-toast: 500;
+  --z-tooltip: 600;
+
+  /* Transitions */
+  --duration-fast: 100ms;
+  --duration-normal: 200ms;
+  --duration-slow: 300ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Font sizes */
+  --text-xs: 9px;
+  --text-sm: 10px;
+  --text-base: 12px;
+  --text-lg: 13px;
+  --text-xl: 14px;
+  --text-2xl: 16px;
+
+  /* Common rgba patterns as variables (reduces duplication) */
+  --white-4: rgba(255, 255, 255, 0.04);
+  --white-6: rgba(255, 255, 255, 0.06);
+  --white-10: rgba(255, 255, 255, 0.1);
+  --white-15: rgba(255, 255, 255, 0.15);
+  --white-25: rgba(255, 255, 255, 0.25);
+  --white-30: rgba(255, 255, 255, 0.3);
+  --white-35: rgba(255, 255, 255, 0.35);
+  --white-40: rgba(255, 255, 255, 0.4);
+  --white-50: rgba(255, 255, 255, 0.5);
+  --white-60: rgba(255, 255, 255, 0.6);
+  --white-80: rgba(255, 255, 255, 0.8);
+  --white-90: rgba(255, 255, 255, 0.9);
+  --black-50: rgba(0, 0, 0, 0.5);
 }
 
 * {
