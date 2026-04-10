@@ -1,7 +1,55 @@
+use std::collections::HashMap;
 use std::io::BufRead;
+use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::pty::{PtyManager, ShellType};
+use crate::pty::buffer::{OutputBuffer, strip_ansi};
+
+/// Global registry of output buffers for capture-pane
+#[derive(Clone)]
+pub struct OutputBufferRegistry {
+    buffers: Arc<Mutex<HashMap<String, OutputBuffer>>>,
+}
+
+impl OutputBufferRegistry {
+    pub fn new() -> Self {
+        Self {
+            buffers: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    pub fn create(&self, id: &str) {
+        if let Ok(mut buffers) = self.buffers.lock() {
+            buffers.insert(id.to_string(), OutputBuffer::new(1000));
+        }
+    }
+
+    pub fn feed(&self, id: &str, data: &str) {
+        if let Ok(mut buffers) = self.buffers.lock() {
+            if let Some(buf) = buffers.get_mut(id) {
+                buf.feed(data);
+            }
+        }
+    }
+
+    pub fn capture(&self, id: &str, lines: usize, clean: bool) -> Result<String, String> {
+        let buffers = self.buffers.lock().map_err(|_| "Lock poisoned".to_string())?;
+        let buf = buffers.get(id).ok_or_else(|| format!("No buffer for terminal {}", id))?;
+        let output = buf.tail(lines).join("\n");
+        if clean {
+            Ok(strip_ansi(&output))
+        } else {
+            Ok(output)
+        }
+    }
+
+    pub fn remove(&self, id: &str) {
+        if let Ok(mut buffers) = self.buffers.lock() {
+            buffers.remove(id);
+        }
+    }
+}
 
 /// Validate path is not dangerous (no traversal, no system dirs)
 fn validate_path(path: &str) -> Result<(), String> {
@@ -33,10 +81,12 @@ pub fn spawn_terminal(
     let pty_manager = app.state::<PtyManager>();
     let id = pty_manager.spawn(&shell, cols, rows, cwd.as_deref())?;
 
-    // Start streaming PTY output via events
+    // Start streaming PTY output via events + capture buffer
     let reader = pty_manager.take_reader(&id)?;
     let terminal_id = id.clone();
     let app_handle = app.clone();
+    let buffer_registry = app.state::<OutputBufferRegistry>().inner().clone();
+    buffer_registry.create(&id);
 
     std::thread::spawn(move || {
         let mut reader = reader;
@@ -47,9 +97,11 @@ pub fn spawn_terminal(
                 Ok(n) => {
                     let data = &buf[..n];
                     let event_name = format!("pty-output-{}", terminal_id);
-                    // Send as base64 to avoid JSON encoding issues with binary data
                     let encoded = base64_encode(data);
                     let _ = app_handle.emit(&event_name, encoded);
+                    // Feed raw text into capture buffer
+                    let text = String::from_utf8_lossy(data);
+                    buffer_registry.feed(&terminal_id, &text);
                 }
                 Err(_) => break,
             }
@@ -575,6 +627,20 @@ pub fn save_session_state(session_id: &str) -> Result<(), String> {
 pub fn send_keys(app: AppHandle, terminal_id: String, data: String) -> Result<(), String> {
     let pty_manager = app.state::<PtyManager>();
     pty_manager.write(&terminal_id, data.as_bytes())
+}
+
+/// Capture recent output from a terminal pane
+#[tauri::command]
+pub fn capture_pane(
+    app: AppHandle,
+    terminal_id: String,
+    lines: Option<usize>,
+    strip_ansi_codes: Option<bool>,
+) -> Result<String, String> {
+    let registry = app.state::<OutputBufferRegistry>();
+    let n = lines.unwrap_or(50);
+    let clean = strip_ansi_codes.unwrap_or(false);
+    registry.capture(&terminal_id, n, clean)
 }
 
 /// Send keystrokes to all active terminal panes (synchronize-panes)

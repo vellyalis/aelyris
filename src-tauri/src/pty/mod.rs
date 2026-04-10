@@ -1,3 +1,4 @@
+pub mod buffer;
 pub mod error;
 mod manager;
 mod shell;

@@ -22,6 +22,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(PtyManager::new())
         .manage(AgentManager::new())
+        .manage(ipc::OutputBufferRegistry::new())
         .setup(|_app| {
             // Initialize database
             let db_path = db::db_path();
@@ -80,6 +81,7 @@ pub fn run() {
             // Workspace pane commands
             ipc::send_keys,
             ipc::broadcast_keys,
+            ipc::capture_pane,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Aether Terminal");
