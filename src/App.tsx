@@ -6,6 +6,7 @@ import { FileTree } from "./features/file-tree/FileTree";
 import { HelmPanel } from "./features/helm/HelmPanel";
 import { TerminalPane } from "./features/terminal/TerminalPane";
 import { StatusBar } from "./features/statusbar/StatusBar";
+import { KanbanBoard } from "./features/kanban/KanbanBoard";
 
 // Lazy load Monaco Editor (~2MB)
 const EditorPanel = lazy(() => import("./features/editor/EditorPanel").then((m) => ({ default: m.EditorPanel })));
@@ -330,9 +331,9 @@ export function App() {
         );
       case "tasks":
         return (
-          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 12, padding: 16, textAlign: "center" }}>
-            Kanban board coming in Phase 2
-          </div>
+          <KanbanBoard
+            onStartAgent={handleStartAgent}
+          />
         );
       case "agents":
         return (

@@ -34,10 +34,12 @@ interface AppState {
 
   // Kanban
   kanbanTasks: KanbanTask[];
-  addKanbanTask: (title: string) => void;
+  activeTaskId: string | null;
+  addKanbanTask: (title: string, priority?: KanbanTask["priority"]) => void;
   moveKanbanTask: (taskId: string, toColumn: KanbanColumnId) => void;
   deleteKanbanTask: (taskId: string) => void;
   updateKanbanTask: (taskId: string, updates: Partial<KanbanTask>) => void;
+  setActiveTaskId: (taskId: string | null) => void;
 
   // Editor
   openFiles: string[];
@@ -98,8 +100,9 @@ export const useAppStore = create<AppState>((set) => ({
   kanbanTasks: (() => {
     try { return JSON.parse(localStorage.getItem("aether:kanban") ?? "[]") as KanbanTask[]; } catch { return [] as KanbanTask[]; }
   })(),
-  addKanbanTask: (title) => set((s) => {
-    const task: KanbanTask = { id: `task-${Date.now()}`, title, column: "todo", createdAt: Date.now(), updatedAt: Date.now() };
+  activeTaskId: null,
+  addKanbanTask: (title, priority = "medium") => set((s) => {
+    const task: KanbanTask = { id: `task-${Date.now()}`, title, column: "todo", priority, createdAt: Date.now(), updatedAt: Date.now() };
     const tasks = [...s.kanbanTasks, task];
     try { localStorage.setItem("aether:kanban", JSON.stringify(tasks)); } catch {}
     return { kanbanTasks: tasks };
@@ -119,6 +122,7 @@ export const useAppStore = create<AppState>((set) => ({
     try { localStorage.setItem("aether:kanban", JSON.stringify(tasks)); } catch {}
     return { kanbanTasks: tasks };
   }),
+  setActiveTaskId: (taskId) => set({ activeTaskId: taskId }),
 
   // Editor
   openFiles: (() => {
