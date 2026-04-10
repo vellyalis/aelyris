@@ -9,17 +9,17 @@
 }
 .replyBtn {
   background: none; border: none; color: var(--text-muted); font-size: var(--text-sm);
-  font-family: var(--font-ui); cursor: pointer; padding: var(--space-1) 8px; border-radius: var(--radius-sm);
+  font-family: var(--font-ui); cursor: pointer; padding: var(--space-1) var(--space-4); border-radius: var(--radius-sm);
   flex-shrink: 0;
 }
 .replyBtn:hover { background: var(--white-6); color: var(--text-secondary); }
 .tabs { display: flex; gap: 1px; overflow-x: auto; flex: 1; }
 .tabs::-webkit-scrollbar { display: none; }
 .tab {
-  display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) 10px;
+  display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-5);
   border: none; border-radius: var(--radius-sm); background: transparent;
   color: var(--text-muted); font-size: var(--text-md); font-family: var(--font-ui);
-  cursor: pointer; white-space: nowrap; transition: background 0.1s, color 0.1s;
+  cursor: pointer; white-space: nowrap; transition: background var(--duration-fast), color var(--duration-fast), border-color var(--duration-fast);
 }
 .tab:hover { color: var(--text-secondary); background: var(--white-6); }
 /* Radix applies data-state="active" to the selected tab trigger */

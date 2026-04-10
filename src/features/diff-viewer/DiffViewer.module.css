@@ -7,7 +7,7 @@
 }
 
 .header {
-  padding: var(--space-3) 12px;
+  padding: var(--space-3) var(--space-6);
   font-size: var(--text-md);
   font-family: var(--font-mono);
   color: var(--text-muted);

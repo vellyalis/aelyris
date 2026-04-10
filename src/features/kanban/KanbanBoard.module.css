@@ -10,7 +10,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-4) 12px;
+  padding: var(--space-4) var(--space-6);
   border-bottom: 1px solid var(--aether-border);
 }
 
@@ -25,7 +25,7 @@
   font-family: var(--font-mono);
   color: var(--text-muted);
   background: var(--white-6);
-  padding: var(--space-1) 5px;
+  padding: var(--space-1) var(--space-2);
   border-radius: var(--radius);
 }
 
@@ -48,7 +48,7 @@
 
 /* New Task Form */
 .form {
-  padding: var(--space-4) 12px;
+  padding: var(--space-4) var(--space-6);
   border-bottom: 1px solid var(--aether-border);
   display: flex;
   flex-direction: column;
@@ -57,7 +57,7 @@
 
 .formInput {
   width: 100%;
-  padding: var(--space-2) 8px;
+  padding: var(--space-2) var(--space-4);
   background: var(--aether-bg);
   border: 1px solid var(--aether-border-strong);
   border-radius: var(--radius-sm);
@@ -68,7 +68,7 @@
 }
 
 .formInput:hover { border-color: var(--white-10); }
-.formInput:focus { border-color: var(--gold); }
+.formInput:focus-visible { outline: none !important; border-color: var(--gold); }
 
 .formRow {
   display: flex;
@@ -77,7 +77,7 @@
 
 .formSelect {
   flex: 1;
-  padding: var(--space-1) 6px;
+  padding: var(--space-1) var(--space-3);
   background: var(--aether-bg);
   border: 1px solid var(--aether-border);
   border-radius: var(--radius-sm);
@@ -89,7 +89,7 @@
 .formSelect:hover { border-color: var(--white-10); }
 
 .formSubmit {
-  padding: var(--space-1) 12px;
+  padding: var(--space-1) var(--space-6);
   background: var(--gold);
   color: var(--aether-bg);
   border: none;
@@ -134,7 +134,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) 8px;
+  padding: var(--space-2) var(--space-4);
   font-size: var(--text-xs);
   font-weight: 600;
   text-transform: uppercase;
@@ -201,7 +201,7 @@
 
 .cardBody {
   flex: 1;
-  padding: var(--space-2) 7px;
+  padding: var(--space-2) var(--space-3);
   min-width: 0;
 }
 
@@ -243,7 +243,7 @@
   color: var(--text-muted);
   font-size: var(--text-sm);
   cursor: pointer;
-  padding: var(--space-1) 4px;
+  padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
   display: flex;
   align-items: center;

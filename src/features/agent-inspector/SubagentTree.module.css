@@ -9,7 +9,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-2) 8px;
+  padding: var(--space-2) var(--space-4);
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: background var(--duration-fast);
@@ -59,7 +59,7 @@
   font-family: var(--font-mono);
   color: var(--text-muted);
   background: var(--white-4);
-  padding: var(--space-1) 4px;
+  padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
 }
 

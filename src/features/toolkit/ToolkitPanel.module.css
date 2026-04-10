@@ -1,6 +1,6 @@
 .toolkit { border-top: 1px solid var(--border); overflow: hidden; }
 .header {
-  display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) 10px;
+  display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-5);
   font-size: var(--text-sm); font-weight: 600; text-transform: uppercase;
   letter-spacing: 0.05em; color: var(--text-muted);
 }
@@ -27,34 +27,34 @@
 /* Edit form */
 .editForm { padding: var(--space-3); border-bottom: 1px solid var(--border); }
 .editInput {
-  width: 100%; padding: var(--space-2) 8px; margin-bottom: var(--space-2);
+  width: 100%; padding: var(--space-2) var(--space-4); margin-bottom: var(--space-2);
   background: var(--white-4); border: 1px solid var(--border); border-radius: var(--radius-sm);
   color: var(--text-primary); font-size: var(--text-md); font-family: var(--font-mono); outline: none;
 }
 .editInput:hover { border-color: var(--white-10); }
-.editInput:focus { border-color: var(--gold); }
+.editInput:focus-visible { outline: none !important; border-color: var(--gold); }
 .editActions { display: flex; gap: var(--space-2); justify-content: flex-end; }
 .editSave, .editCancel {
   background: none; border: 1px solid var(--white-10); border-radius: var(--radius-sm);
-  color: var(--text-secondary); font-size: var(--text-sm); padding: var(--space-1) 10px; cursor: pointer;
+  color: var(--text-secondary); font-size: var(--text-sm); padding: var(--space-1) var(--space-5); cursor: pointer;
 }
 .editSave:hover { background: var(--gold); color: var(--aether-bg); border-color: var(--gold); }
 .editCancel:hover { background: var(--white-6); }
 .editDelete {
   background: none; border: 1px solid var(--ctp-red); border-radius: var(--radius-sm);
-  color: var(--ctp-red); font-size: var(--text-sm); padding: var(--space-1) 10px; cursor: pointer; margin-right: auto;
+  color: var(--ctp-red); font-size: var(--text-sm); padding: var(--space-1) var(--space-5); cursor: pointer; margin-right: auto;
   opacity: 0.4;
 }
 .editDelete:hover { background: var(--white-6); opacity: 1; }
 
 /* Bottom action buttons */
 .bottomActions {
-  display: flex; gap: var(--space-2); padding: var(--space-2) 6px; border-top: 1px solid var(--border);
+  display: flex; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-top: 1px solid var(--border);
   justify-content: center;
 }
 .bottomBtn {
   background: none; border: none; color: var(--text-muted); font-size: var(--text-xs);
-  font-family: var(--font-ui); cursor: pointer; padding: var(--space-1) 8px; border-radius: var(--radius-sm);
+  font-family: var(--font-ui); cursor: pointer; padding: var(--space-1) var(--space-4); border-radius: var(--radius-sm);
 }
 .bottomBtn:hover { background: var(--white-6); color: var(--text-secondary); }
 
@@ -83,25 +83,25 @@
   color: var(--text-primary); font-family: var(--font-ui);
 }
 .importTextarea {
-  width: 100%; padding: var(--space-4) 10px;
+  width: 100%; padding: var(--space-4) var(--space-5);
   background: var(--white-4); border: 1px solid var(--border);
   border-radius: var(--radius); color: var(--text-primary);
   font-size: var(--text-base); font-family: var(--font-mono);
   outline: none; resize: vertical;
 }
-.importTextarea:focus { border-color: var(--gold); }
+.importTextarea:focus-visible { outline: none !important; border-color: var(--gold); }
 .importTextarea::placeholder { color: var(--text-muted); }
 .importActions { display: flex; gap: var(--space-4); justify-content: flex-end; }
 .importCancel {
   background: none; border: 1px solid var(--white-10);
   border-radius: var(--radius); color: var(--text-secondary);
-  font-size: var(--text-base); padding: var(--space-2) 14px; cursor: pointer;
+  font-size: var(--text-base); padding: var(--space-2) var(--space-6); cursor: pointer;
 }
 .importCancel:hover { background: var(--white-6); }
 .importSubmit {
   background: var(--gold); border: none;
   border-radius: var(--radius); color: var(--aether-bg);
-  font-size: var(--text-base); font-weight: 600; padding: var(--space-2) 14px; cursor: pointer;
+  font-size: var(--text-base); font-weight: 600; padding: var(--space-2) var(--space-6); cursor: pointer;
 }
 .importSubmit:hover { opacity: 0.9; }
 .importSubmit:disabled { opacity: 0.35; cursor: default; }

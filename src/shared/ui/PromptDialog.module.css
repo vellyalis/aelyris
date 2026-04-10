@@ -53,7 +53,7 @@
 }
 
 .input:hover { border-color: var(--white-15); }
-.input:focus { border-color: var(--gold); }
+.input:focus-visible { outline: none !important; border-color: var(--gold); }
 .input::placeholder { color: var(--text-muted); }
 
 .actions {

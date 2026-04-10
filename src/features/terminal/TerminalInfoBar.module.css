@@ -49,7 +49,7 @@
   color: var(--text-muted);
   font-size: var(--text-base);
   cursor: pointer;
-  padding: var(--space-1) 4px;
+  padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
 }
 

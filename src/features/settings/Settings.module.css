@@ -30,7 +30,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-8) 20px;
+  padding: var(--space-8) var(--space-10);
   border-bottom: 1px solid var(--border);
 }
 
@@ -48,7 +48,7 @@
   font-size: var(--text-md);
   font-weight: 600;
   cursor: pointer;
-  padding: var(--space-2) 12px;
+  padding: var(--space-2) var(--space-6);
   border-radius: var(--radius-sm);
 }
 .saveBtn:hover { opacity: 0.9; }
@@ -59,7 +59,7 @@
   color: var(--text-muted);
   font-size: var(--text-4xl);
   cursor: pointer;
-  padding: var(--space-2) 8px;
+  padding: var(--space-2) var(--space-4);
   border-radius: var(--radius);
 }
 
@@ -71,7 +71,7 @@
 .content {
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-8) 20px;
+  padding: var(--space-8) var(--space-10);
 }
 
 .section {
@@ -100,7 +100,7 @@
 
 .select, .input {
   width: 100%;
-  padding: var(--space-3) 10px;
+  padding: var(--space-3) var(--space-5);
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -110,7 +110,7 @@
   outline: none;
 }
 
-.select:focus, .input:focus {
+.select:focus, .input:focus-visible { outline: none !important;
   border-color: var(--accent);
 }
 
@@ -156,7 +156,7 @@
   font-size: var(--text-md);
   color: var(--text-muted);
   background: var(--bg-surface);
-  padding: var(--space-1) 8px;
+  padding: var(--space-1) var(--space-4);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
 }

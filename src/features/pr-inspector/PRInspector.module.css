@@ -7,19 +7,19 @@
 }
 .header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: var(--space-3) 10px; border-bottom: 1px solid var(--border);
+  padding: var(--space-3) var(--space-5); border-bottom: 1px solid var(--border);
 }
 .title { font-size: var(--text-sm); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
 .refreshBtn {
   background: none; border: none; color: var(--text-muted); font-size: var(--text-base); cursor: pointer;
-  padding: var(--space-1) 4px; border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm);
 }
 .refreshBtn:hover { color: var(--text-primary); background: var(--white-6); }
 .list { flex: 1; overflow-y: auto; padding: var(--space-2); }
 .status { padding: var(--space-6); text-align: center; font-size: var(--text-md); color: var(--text-muted); }
 .error { padding: var(--space-4); font-size: var(--text-md); color: var(--ctp-red); }
 .prCard {
-  display: flex; align-items: center; gap: var(--space-3); width: 100%; padding: var(--space-3) 8px;
+  display: flex; align-items: center; gap: var(--space-3); width: 100%; padding: var(--space-3) var(--space-4);
   border: none; border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary);
   font-size: var(--text-md); font-family: var(--font-ui); cursor: pointer; text-align: left;
 }
@@ -28,13 +28,13 @@
 .prTitle { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .prBranch { font-size: var(--text-xs); color: var(--text-muted); font-family: var(--font-mono); }
 .diffPreview {
-  margin: 0 8px 4px; padding: var(--space-3) 8px; background: var(--white-2);
+  margin: 0 8px 4px; padding: var(--space-3) var(--space-4); background: var(--white-2);
   border: 1px solid var(--border); border-radius: var(--radius-sm);
   font-size: var(--text-sm); font-family: var(--font-mono); color: var(--text-muted);
   overflow: auto; max-height: 200px; white-space: pre-wrap; word-break: break-all;
 }
 .reviewBtn {
-  margin: 0 8px 6px; padding: var(--space-2) 12px;
+  margin: 0 8px 6px; padding: var(--space-2) var(--space-6);
   background: var(--gold); color: var(--aether-bg);
   border: none; border-radius: var(--radius-sm);
   font-size: var(--text-sm); font-weight: 600; cursor: pointer;

@@ -3,7 +3,7 @@
   align-items: center;
   justify-content: center;
   gap: var(--space-3);
-  padding: var(--space-3) 12px;
+  padding: var(--space-3) var(--space-6);
   border: none;
   border-radius: var(--radius-sm);
   font-family: var(--font-ui);
@@ -71,13 +71,13 @@
 
 /* Size variants */
 .sm {
-  padding: var(--space-1) 8px;
+  padding: var(--space-1) var(--space-4);
   font-size: var(--text-sm);
   gap: var(--space-2);
 }
 
 .lg {
-  padding: var(--space-4) 18px;
+  padding: var(--space-4) var(--space-10);
   font-size: var(--text-lg);
   gap: var(--space-4);
 }
