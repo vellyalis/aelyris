@@ -22,7 +22,8 @@
   cursor: pointer; white-space: nowrap; transition: background 0.1s, color 0.1s;
 }
 .tab:hover { color: var(--text-secondary); background: var(--white-6); }
-.tab.active { color: var(--text-primary); background: transparent; border-bottom: 2px solid var(--gold); border-radius: 4px 4px 0 0; }
+/* Radix applies data-state="active" to the selected tab trigger */
+.tab[data-state="active"] { color: var(--text-primary); background: transparent; border-bottom: 2px solid var(--gold); border-radius: 4px 4px 0 0; }
 .tabDot { width: 6px; height: 6px; border-radius: 2px; background: var(--gold); flex-shrink: 0; }
 .tabLabel { overflow: hidden; text-overflow: ellipsis; }
 .tabClose {

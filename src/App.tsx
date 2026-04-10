@@ -18,6 +18,7 @@ import { AboutDialog } from "./features/about/AboutDialog";
 import { PRInspector } from "./features/pr-inspector/PRInspector";
 import { WebInspector } from "./features/web-inspector/WebInspector";
 import { SplitPane } from "./shared/ui/SplitPane";
+import { TooltipProvider } from "./shared/ui/Tooltip";
 import { useTabManager } from "./shared/hooks/useTabManager";
 import { useAgentManager } from "./shared/hooks/useAgentManager";
 import { useGitStatus } from "./shared/hooks/useGitStatus";
@@ -271,9 +272,11 @@ export function App() {
   // Welcome screen when no project is open
   if (!rootProjectPath) {
     return (
-      <div className="app-container">
-        <WelcomeScreen onOpenProject={handleOpenProject} />
-      </div>
+      <TooltipProvider>
+        <div className="app-container">
+          <WelcomeScreen onOpenProject={handleOpenProject} />
+        </div>
+      </TooltipProvider>
     );
   }
 
@@ -313,6 +316,7 @@ export function App() {
   ) : null;
 
   return (
+    <TooltipProvider>
     <div className="app-container">
       <ProjectHeaderBar
         projectName={projectName}
@@ -377,5 +381,6 @@ export function App() {
       <WebInspector visible={webInspectorVisible} onClose={() => setWebInspectorVisible(false)} />
       <PRInspector visible={prInspectorVisible} projectPath={projectPath} onClose={() => setPrInspectorVisible(false)} onStartReview={(prompt) => handleStartAgent(prompt)} />
     </div>
+    </TooltipProvider>
   );
 }
