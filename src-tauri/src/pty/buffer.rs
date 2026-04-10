@@ -80,7 +80,14 @@ pub fn strip_ansi(input: &str) -> String {
                 chars.next();
                 while let Some(&next) = chars.peek() {
                     chars.next();
-                    if next == '\x07' || next == '\\' {
+                    if next == '\x07' {
+                        break;
+                    }
+                    // Two-byte ST: ESC followed by backslash
+                    if next == '\x1b' {
+                        if chars.peek() == Some(&'\\') {
+                            chars.next(); // consume the trailing '\'
+                        }
                         break;
                     }
                 }

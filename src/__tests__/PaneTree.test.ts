@@ -20,6 +20,7 @@ describe("PaneTree — splitNode", () => {
     const leaf2 = createTerminalLeaf("powershell");
     const tree: PaneNode = {
       type: "split",
+      id: "test-split",
       direction: "vertical",
       ratio: 0.5,
       first: leaf1,
@@ -52,6 +53,7 @@ describe("PaneTree — removeNode", () => {
     const leaf2 = createTerminalLeaf("powershell");
     const tree: PaneNode = {
       type: "split",
+      id: "test-split",
       direction: "vertical",
       ratio: 0.5,
       first: leaf1,
@@ -81,11 +83,13 @@ describe("PaneTree — removeNode", () => {
 
     const tree: PaneNode = {
       type: "split",
+      id: "test-split",
       direction: "vertical",
       ratio: 0.5,
       first: a,
       second: {
         type: "split",
+        id: "inner-split",
         direction: "horizontal",
         ratio: 0.5,
         first: b,

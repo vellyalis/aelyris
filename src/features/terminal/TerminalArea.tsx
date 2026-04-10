@@ -21,6 +21,9 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
   const onTerminalReady = _onTerminalReady;
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
+  // Track syncMode in a ref so the onData closure always reads the current value
+  const syncModeRef = useRef(syncMode);
+  useEffect(() => { syncModeRef.current = syncMode; }, [syncMode]);
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const [searchVisible, setSearchVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -70,7 +73,7 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
     termRef.current = term;
     searchAddonRef.current = searchAddon;
 
-    connectPty(term, shell, cwd, onTerminalReady, syncMode);
+    connectPty(term, shell, cwd, onTerminalReady, syncModeRef);
 
     const handleResize = () => fitAddon.fit();
     window.addEventListener("resize", handleResize);
@@ -139,7 +142,7 @@ async function connectPty(
   shell: string,
   cwd?: string,
   onReady?: (terminalId: string) => void,
-  syncMode?: boolean,
+  syncModeRef?: React.RefObject<boolean | undefined>,
 ) {
   try {
     const { invoke } = await import("@tauri-apps/api/core");
@@ -168,7 +171,7 @@ async function connectPty(
     });
 
     term.onData((data) => {
-      if (syncMode) {
+      if (syncModeRef?.current) {
         invoke("broadcast_keys", { data });
       } else {
         invoke("write_terminal", { id, data });

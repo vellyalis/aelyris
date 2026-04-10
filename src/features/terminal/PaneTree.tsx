@@ -15,6 +15,7 @@ interface TerminalLeaf {
 
 interface SplitNode {
   type: "split";
+  id: string;
   direction: "horizontal" | "vertical";
   ratio: number;
   first: PaneNode;
@@ -43,6 +44,7 @@ export function splitNode(
     if (tree.id === targetId) {
       return {
         type: "split",
+        id: `split-${nextPaneId++}`,
         direction,
         ratio: 0.5,
         first: tree,
@@ -139,7 +141,7 @@ function renderNode(
 
   return (
     <SplitPane
-      key={`split-${node.first.type === "terminal" ? node.first.id : "s"}-${node.second.type === "terminal" ? node.second.id : "s"}`}
+      key={node.id}
       direction={node.direction}
       defaultRatio={node.ratio}
       first={renderNode(node.first, syncMode, onSplit, onClose, onTerminalReady)}

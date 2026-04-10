@@ -53,17 +53,24 @@ impl OutputBufferRegistry {
 
 /// Validate path is not dangerous (no traversal, no system dirs)
 fn validate_path(path: &str) -> Result<(), String> {
-    let p = std::path::Path::new(path);
     // Block path traversal
     if path.contains("..") {
         return Err("Path traversal not allowed".to_string());
     }
-    // Block system directories
-    let dangerous = ["C:/Windows", "C:/Program Files", "/etc", "/usr", "/bin", "/sbin"];
-    let normalized = p.to_string_lossy().to_string().replace('\\', "/");
+    // Block UNC paths
+    if path.starts_with("\\\\") || path.starts_with("//") {
+        return Err("UNC paths not allowed".to_string());
+    }
+    // Normalize and compare case-insensitively (Windows is case-insensitive)
+    let normalized = path.replace('\\', "/").to_lowercase();
+    let dangerous = [
+        "c:/windows", "c:/program files", "c:/program files (x86)",
+        "d:/windows",
+        "/etc", "/usr", "/bin", "/sbin",
+    ];
     for d in &dangerous {
         if normalized.starts_with(d) {
-            return Err(format!("Access to {} not allowed", d));
+            return Err(format!("Access to system directory not allowed"));
         }
     }
     Ok(())
@@ -145,7 +152,11 @@ pub fn resize_terminal(
 #[tauri::command]
 pub fn close_terminal(app: AppHandle, id: String) -> Result<(), String> {
     let pty_manager = app.state::<PtyManager>();
-    pty_manager.close(&id)
+    pty_manager.close(&id)?;
+    // Clean up associated registries
+    app.state::<OutputBufferRegistry>().remove(&id);
+    app.state::<crate::pty::PaneRegistry>().remove(&id);
+    Ok(())
 }
 
 /// List active terminals
@@ -369,6 +380,7 @@ pub fn create_watchdog(name: String, instructions: String) -> Result<(), String>
 /// Read a file's contents
 #[tauri::command]
 pub fn read_file(path: String) -> Result<String, String> {
+    validate_path(&path)?;
     let p = std::path::Path::new(&path);
     if !p.is_file() {
         return Err(format!("Not a file: {}", path));
@@ -627,9 +639,19 @@ pub fn save_session_state(session_id: &str) -> Result<(), String> {
 
 // --- Workspace pane commands ---
 
+const MAX_KEYS_BYTES: usize = 1024 * 1024; // 1 MB
+
+fn validate_keys_size(data: &str) -> Result<(), String> {
+    if data.len() > MAX_KEYS_BYTES {
+        return Err("Input data exceeds maximum allowed size (1 MB)".to_string());
+    }
+    Ok(())
+}
+
 /// Send keystrokes to a specific terminal pane
 #[tauri::command]
 pub fn send_keys(app: AppHandle, terminal_id: String, data: String) -> Result<(), String> {
+    validate_keys_size(&data)?;
     let pty_manager = app.state::<PtyManager>();
     pty_manager.write(&terminal_id, data.as_bytes())
 }
@@ -643,7 +665,7 @@ pub fn capture_pane(
     strip_ansi_codes: Option<bool>,
 ) -> Result<String, String> {
     let registry = app.state::<OutputBufferRegistry>();
-    let n = lines.unwrap_or(50);
+    let n = lines.unwrap_or(50).min(1000);
     let clean = strip_ansi_codes.unwrap_or(false);
     registry.capture(&terminal_id, n, clean)
 }
@@ -651,6 +673,7 @@ pub fn capture_pane(
 /// Send keystrokes to all active terminal panes (synchronize-panes)
 #[tauri::command]
 pub fn broadcast_keys(app: AppHandle, data: String) -> Result<u32, String> {
+    validate_keys_size(&data)?;
     let pty_manager = app.state::<PtyManager>();
     let ids = pty_manager.list();
     let mut count: u32 = 0;
@@ -672,6 +695,7 @@ pub fn rename_pane(app: AppHandle, terminal_id: String, name: String) -> Result<
 /// Send keystrokes to a pane by its user-assigned name
 #[tauri::command]
 pub fn send_keys_by_name(app: AppHandle, name: String, data: String) -> Result<(), String> {
+    validate_keys_size(&data)?;
     let pane_registry = app.state::<crate::pty::PaneRegistry>();
     let terminal_id = pane_registry
         .find_by_name(&name)
