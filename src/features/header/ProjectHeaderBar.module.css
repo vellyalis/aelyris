@@ -4,7 +4,7 @@
   justify-content: space-between;
   height: var(--header-height);
   padding: 0 10px;
-  background: var(--glass-thin);
+  background: var(--glass-frame);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--border);

@@ -24,7 +24,7 @@
   position: relative;
   display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-4) var(--space-5) var(--space-4) var(--space-6);
   border: 1px solid var(--white-10); border-radius: var(--radius);
-  background: linear-gradient(135deg, rgba(28, 28, 28, 0.68) 0%, rgba(24, 24, 24, 0.58) 100%);
+  background: linear-gradient(135deg, rgba(28, 28, 28, 0.72) 0%, rgba(24, 24, 24, 0.62) 100%);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   color: var(--text-secondary);

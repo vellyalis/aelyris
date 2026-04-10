@@ -1,22 +1,24 @@
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@300;400;500;600&display=swap');
 
 :root {
-  /* Layered glass system — each zone has different thickness */
+  /* Layered glass system — high contrast between zones */
+  /* Level 0: Terminal center — maximum transparency */
+  --glass-clear: rgba(12, 12, 12, 0.02);
   /* Level 1: Ground — sidebar rail, darkest anchor */
   --glass-ground: rgba(10, 10, 10, 0.85);
-  /* Level 2: Thin — header, statusbar */
-  --glass-thin: rgba(16, 16, 16, 0.38);
+  /* Level 2: Frame — header, statusbar */
+  --glass-frame: rgba(16, 16, 16, 0.45);
   /* Level 3: Standard — left panel */
-  --glass-standard: rgba(20, 20, 20, 0.42);
+  --glass-standard: rgba(20, 20, 20, 0.55);
   /* Level 3.5: Dense — right panel (higher info density) */
-  --glass-dense: rgba(22, 22, 22, 0.52);
+  --glass-dense: rgba(22, 22, 22, 0.62);
   /* Level 4: Thick — cards, elevated surfaces */
-  --glass-thick: rgba(28, 28, 28, 0.68);
+  --glass-thick: rgba(28, 28, 28, 0.72);
   /* Level 5: Solid — modals, dialogs */
-  --glass-solid: rgba(26, 26, 26, 0.78);
+  --glass-solid: rgba(26, 26, 26, 0.82);
 
   /* Legacy aliases (used by existing components) */
-  --aether-bg: rgba(12, 12, 12, 0.08);
+  --aether-bg: var(--glass-clear);
   --aether-bg-sidebar: var(--glass-standard);
   --aether-bg-elevated: var(--glass-dense);
   --aether-bg-card: var(--glass-thick);
