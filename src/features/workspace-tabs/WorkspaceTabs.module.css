@@ -12,7 +12,7 @@
   font-family: var(--font-ui); cursor: pointer; padding: 3px 8px; border-radius: 4px;
   flex-shrink: 0;
 }
-.replyBtn:hover { background: rgba(255,255,255,0.06); color: var(--text-secondary); }
+.replyBtn:hover { background: var(--white-6); color: var(--text-secondary); }
 .tabs { display: flex; gap: 1px; overflow-x: auto; flex: 1; }
 .tabs::-webkit-scrollbar { display: none; }
 .tab {
@@ -21,8 +21,8 @@
   color: var(--text-muted); font-size: 11px; font-family: var(--font-ui);
   cursor: pointer; white-space: nowrap; transition: background 0.1s, color 0.1s;
 }
-.tab:hover { color: var(--text-secondary); background: rgba(255,255,255,0.04); }
-.tab.active { color: var(--text-primary); background: rgba(255,255,255,0.07); }
+.tab:hover { color: var(--text-secondary); background: var(--white-4); }
+.tab.active { color: var(--text-primary); background: var(--white-6); }
 .tabDot { width: 6px; height: 6px; border-radius: 2px; background: var(--gold); flex-shrink: 0; }
 .tabLabel { overflow: hidden; text-overflow: ellipsis; }
 .tabClose {
@@ -31,12 +31,12 @@
   border-radius: 3px;
 }
 .tab:hover .tabClose { opacity: 0.5; }
-.tabClose:hover { opacity: 1 !important; background: rgba(255,255,255,0.1); }
+.tabClose:hover { opacity: 1 !important; background: var(--white-10); }
 .addBtn {
   background: none; border: none; color: var(--text-muted); font-size: 14px;
   cursor: pointer; padding: 0 6px; border-radius: 4px; flex-shrink: 0;
 }
-.addBtn:hover { background: rgba(255,255,255,0.06); color: var(--text-primary); }
+.addBtn:hover { background: var(--white-6); color: var(--text-primary); }
 
 .statusInfo {
   display: flex; gap: 10px; align-items: center; margin-left: auto;

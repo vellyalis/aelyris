@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useCallback, lazy, Suspense } from "react";
+import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from "react";
 import { ProjectHeaderBar } from "./features/header/ProjectHeaderBar";
 import { MenuBar, type Menu } from "./features/menubar/MenuBar";
 import { FileTree } from "./features/file-tree/FileTree";
@@ -39,6 +39,7 @@ export function App() {
     prInspectorVisible, setPrInspectorVisible,
     openFiles, activeFile, openFile, closeFile, clearFiles, setActiveFile,
   } = useAppStore();
+  const [editorLine, setEditorLine] = useState<number | undefined>(undefined);
 
   const { tabs, activeTab, activeTabId, setActiveTabId, addTab, closeTab, addTabWithCwd } =
     useTabManager("powershell");
@@ -291,6 +292,8 @@ export function App() {
             >
               {name}
               <span
+                role="button"
+                aria-label={`Close ${name}`}
                 onClick={(e) => { e.stopPropagation(); handleCloseFile(f); }}
                 style={{ fontSize: 11, opacity: 0.5, cursor: "pointer" }}
               >×</span>
@@ -299,7 +302,7 @@ export function App() {
         })}
       </div>
       <Suspense fallback={<div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 12 }}>Loading editor...</div>}>
-        <EditorPanel filePath={activeFile} onClose={() => handleCloseFile(activeFile!)} projectPath={projectPath} />
+        <EditorPanel filePath={activeFile} onClose={() => handleCloseFile(activeFile!)} projectPath={projectPath} initialLine={editorLine} />
       </Suspense>
     </div>
   ) : null;
@@ -315,19 +318,19 @@ export function App() {
       />
       <MenuBar menus={menus} />
 
-      <main className="app-main">
-        <div className="left-panel" style={{ position: "relative" }}>
+      <main className="app-main" role="main">
+        <div className="left-panel" role="navigation" aria-label="Project sidebar" style={{ position: "relative" }}>
           <FileTree rootPath={projectPath} onFileSelect={handleFileSelect} changedFiles={changedFiles} />
           <HelmPanel />
           <SearchPanel
             visible={searchVisible}
             rootPath={projectPath}
             onClose={() => setSearchVisible(false)}
-            onResultClick={(file) => handleFileSelect(file)}
+            onResultClick={(file, line) => { handleFileSelect(file); setEditorLine(line); }}
           />
         </div>
 
-        <div className="center-panel">
+        <div className="center-panel" role="region" aria-label="Terminal and editor">
           {editorArea ? (
             <SplitPane
               direction="vertical"
@@ -340,7 +343,7 @@ export function App() {
           )}
         </div>
 
-        <div className="right-panel">
+        <div className="right-panel" role="complementary" aria-label="Agent inspector">
           <AgentInspector
             sessions={sessions}
             activeSessionId={activeSessionId}

@@ -7,7 +7,7 @@
 .track {
   flex: 1;
   height: 3px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--white-6);
   border-radius: 2px;
   overflow: hidden;
 }

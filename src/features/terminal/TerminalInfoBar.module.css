@@ -4,7 +4,7 @@
   gap: 8px;
   height: 22px;
   padding: 0 8px;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--white-2);
   border-bottom: 1px solid var(--border);
   font-size: 10px;
   color: var(--text-muted);
@@ -29,7 +29,7 @@
 
 .meta {
   font-size: 9px;
-  color: rgba(255,255,255,0.4);
+  color: var(--white-40);
   font-family: var(--font-mono);
 }
 
@@ -54,6 +54,6 @@
 }
 
 .toggleBtn:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--white-6);
   color: var(--text-primary);
 }

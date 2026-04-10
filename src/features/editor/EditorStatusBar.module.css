@@ -29,6 +29,17 @@
 }
 
 .toggleBtn:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--white-6);
   color: var(--text-primary);
+}
+
+.saved {
+  padding: 0 6px;
+  color: var(--ctp-green, var(--ctp-green));
+  animation: fadeIn 0.15s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }

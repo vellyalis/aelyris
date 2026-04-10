@@ -38,7 +38,7 @@
 .saveBtn {
   background: var(--gold);
   border: none;
-  color: #0d0d0d;
+  color: var(--aether-bg);
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;

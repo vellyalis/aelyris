@@ -98,6 +98,8 @@
   --text-2xl: 16px;
 
   /* Common rgba patterns as variables (reduces duplication) */
+  --white-2: rgba(255, 255, 255, 0.02);
+  --white-3: rgba(255, 255, 255, 0.03);
   --white-4: rgba(255, 255, 255, 0.04);
   --white-6: rgba(255, 255, 255, 0.06);
   --white-10: rgba(255, 255, 255, 0.1);
@@ -108,6 +110,7 @@
   --white-40: rgba(255, 255, 255, 0.4);
   --white-50: rgba(255, 255, 255, 0.5);
   --white-60: rgba(255, 255, 255, 0.6);
+  --white-70: rgba(255, 255, 255, 0.7);
   --white-80: rgba(255, 255, 255, 0.8);
   --white-90: rgba(255, 255, 255, 0.9);
   --black-50: rgba(0, 0, 0, 0.5);

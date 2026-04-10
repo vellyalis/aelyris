@@ -26,6 +26,6 @@
 
 .sep {
   margin: 0 2px;
-  color: rgba(255, 255, 255, 0.2);
+  color: var(--white-15);
   flex-shrink: 0;
 }

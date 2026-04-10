@@ -1,7 +1,7 @@
 .panel {
   position: fixed; top: 60px; left: 50%; transform: translateX(-50%);
   width: 500px; max-height: 400px;
-  background: #1a1a1a; border: 1px solid rgba(255,255,255,0.1);
+  background: var(--aether-bg-elevated); border: 1px solid var(--white-10);
   border-radius: 8px; box-shadow: 0 12px 40px rgba(0,0,0,0.6);
   display: flex; flex-direction: column; overflow: hidden; z-index: 75;
 }
@@ -14,7 +14,7 @@
   background: none; border: none; color: var(--text-muted); font-size: 12px; cursor: pointer;
   padding: 2px 4px; border-radius: 3px;
 }
-.refreshBtn:hover { color: var(--text-primary); background: rgba(255,255,255,0.06); }
+.refreshBtn:hover { color: var(--text-primary); background: var(--white-6); }
 .list { flex: 1; overflow-y: auto; padding: 4px; }
 .status { padding: 12px; text-align: center; font-size: 11px; color: var(--text-muted); }
 .error { padding: 8px; font-size: 11px; color: var(--ctp-red); }
@@ -23,12 +23,12 @@
   border: none; border-radius: 5px; background: transparent; color: var(--text-secondary);
   font-size: 11px; font-family: var(--font-ui); cursor: pointer; text-align: left;
 }
-.prCard:hover { background: rgba(255,255,255,0.04); }
+.prCard:hover { background: var(--white-4); }
 .prNumber { color: var(--ctp-green); font-family: var(--font-mono); font-weight: 500; flex-shrink: 0; }
 .prTitle { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .prBranch { font-size: 9px; color: var(--text-muted); font-family: var(--font-mono); }
 .diffPreview {
-  margin: 0 8px 4px; padding: 6px 8px; background: rgba(255,255,255,0.02);
+  margin: 0 8px 4px; padding: 6px 8px; background: var(--white-2);
   border: 1px solid var(--border); border-radius: 4px;
   font-size: 10px; font-family: var(--font-mono); color: var(--text-muted);
   overflow: auto; max-height: 200px; white-space: pre-wrap; word-break: break-all;

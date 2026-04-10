@@ -24,17 +24,17 @@
 .model { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); }
 .cost { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); }
 .headerBtn {
-  background: none; border: none; color: rgba(255,255,255,0.3); font-size: 12px;
+  background: none; border: none; color: var(--white-30); font-size: 12px;
   cursor: pointer; padding: 2px 4px; border-radius: 3px;
   -webkit-app-region: no-drag;
 }
-.headerBtn:hover { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.7); }
+.headerBtn:hover { background: var(--white-6); color: var(--white-70); }
 .controls { display: flex; gap: 6px; margin-left: 4px; }
 .ctrlBtn {
   display: flex; align-items: center; justify-content: center;
   width: 28px; height: 20px; border: none; border-radius: 4px;
-  background: transparent; color: rgba(255,255,255,0.3); cursor: pointer;
+  background: transparent; color: var(--white-30); cursor: pointer;
   transition: background 0.1s, color 0.1s;
 }
-.ctrlBtn:hover { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.7); }
-.closeBtn:hover { background: #f38ba8; color: #0d0d0d; }
+.ctrlBtn:hover { background: var(--white-6); color: var(--white-70); }
+.closeBtn:hover { background: var(--ctp-red); color: var(--aether-bg); }

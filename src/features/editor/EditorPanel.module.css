@@ -3,7 +3,7 @@
   flex-direction: column;
   height: 100%;
   width: 100%;
-  background: #0d0d0d;
+  background: var(--aether-bg);
 }
 
 .header {
@@ -40,7 +40,7 @@
 
 .diffBtn {
   background: none;
-  border: 1px solid rgba(255,255,255,0.1);
+  border: 1px solid var(--white-10);
   border-radius: 3px;
   color: var(--text-muted);
   font-size: 9px;
@@ -48,7 +48,7 @@
   padding: 1px 6px;
   cursor: pointer;
 }
-.diffBtn:hover { background: rgba(255,255,255,0.08); color: var(--text-primary); border-color: var(--gold); }
+.diffBtn:hover { background: var(--white-6); color: var(--text-primary); border-color: var(--gold); }
 
 .closeBtn {
   background: none;
@@ -61,7 +61,7 @@
 }
 
 .closeBtn:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--white-6);
   color: var(--text-primary);
 }
 

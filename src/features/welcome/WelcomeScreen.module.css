@@ -66,7 +66,7 @@
   border: none;
   border-radius: 8px;
   background: var(--gold);
-  color: #0d0d0d;
+  color: var(--aether-bg);
   font-size: 14px;
   font-weight: 600;
   font-family: var(--font-ui);
@@ -106,7 +106,7 @@
   padding: 8px 12px;
   border: 1px solid var(--aether-border);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--white-2);
   color: var(--text-secondary);
   font-family: var(--font-ui);
   cursor: pointer;
@@ -116,7 +116,7 @@
 
 .projectCard:hover {
   border-color: var(--gold-dim);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--white-4);
 }
 
 .projectAvatar {
