@@ -40,35 +40,44 @@ export function ProjectHeaderBar({
 
   return (
     <div className={styles.header} data-tauri-drag-region>
-      <div className={styles.left}>
-        <PixelAvatar seed={projectName} size={18} />
-        <span className={styles.name}>{projectName}</span>
-        <span className={styles.branch}>⚡{branch}</span>
-        <span className={styles.status}>
-          <span className={`${styles.dot} ${status !== "idle" ? styles.dotPulse : ""}`} style={{ background: color }} />
-          <span className={styles.statusLabel}>{label}</span>
-        </span>
+      {/* macOS-style traffic lights */}
+      <div className={styles.controls}>
+        <button className={`${styles.ctrlBtn} ${styles.closeBtn}`} onClick={handleClose} aria-label="Close">
+          <svg width="6" height="6" viewBox="0 0 6 6"><line x1="0.5" y1="0.5" x2="5.5" y2="5.5" stroke="rgba(0,0,0,0.5)" strokeWidth="1.2"/><line x1="5.5" y1="0.5" x2="0.5" y2="5.5" stroke="rgba(0,0,0,0.5)" strokeWidth="1.2"/></svg>
+        </button>
+        <button className={`${styles.ctrlBtn} ${styles.minimizeBtn}`} onClick={handleMinimize} aria-label="Minimize">
+          <svg width="6" height="1" viewBox="0 0 6 1"><rect width="6" height="1" fill="rgba(0,0,0,0.5)"/></svg>
+        </button>
+        <button className={`${styles.ctrlBtn} ${styles.maximizeBtn}`} onClick={handleMaximize} aria-label="Maximize">
+          <svg width="6" height="6" viewBox="0 0 6 6"><path d="M0.5 3.5V0.5H3.5M5.5 2.5V5.5H2.5" stroke="rgba(0,0,0,0.5)" strokeWidth="1" fill="none"/></svg>
+        </button>
       </div>
-      <div className={styles.right}>
-        {activeAgent && (
-          <>
-            <span className={styles.model}>{activeAgent.model}</span>
-            <span className={styles.cost}>&lt;${activeAgent.cost.toFixed(2)}</span>
-          </>
-        )}
-        <button className={styles.headerBtn} onClick={onRefresh} title="Refresh"><RefreshCw size={12} /></button>
-        <button className={styles.headerBtn} onClick={onOpenSettings} title="Settings"><Settings size={12} /></button>
-        <div className={styles.controls}>
-          <button className={styles.ctrlBtn} onClick={handleMinimize}>
-            <svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" fill="currentColor"/></svg>
-          </button>
-          <button className={styles.ctrlBtn} onClick={handleMaximize}>
-            <svg width="10" height="10" viewBox="0 0 10 10"><rect width="9" height="9" x=".5" y=".5" fill="none" stroke="currentColor" strokeWidth="1"/></svg>
-          </button>
-          <button className={`${styles.ctrlBtn} ${styles.closeBtn}`} onClick={handleClose}>
-            <svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="0" x2="10" y2="10" stroke="currentColor" strokeWidth="1.2"/><line x1="10" y1="0" x2="0" y2="10" stroke="currentColor" strokeWidth="1.2"/></svg>
-          </button>
+
+      <div className={styles.left}>
+        <PixelAvatar seed={projectName} size={28} />
+        <div className={styles.projectInfo}>
+          <div className={styles.topRow}>
+            <span className={styles.name}>{projectName}</span>
+            <span className={styles.branch}>⚡{branch}</span>
+          </div>
+          <div className={styles.bottomRow}>
+            <span className={styles.status}>
+              <span className={`${styles.dot} ${status !== "idle" ? styles.dotPulse : ""}`} style={{ background: color }} />
+              <span className={styles.statusLabel}>{label}</span>
+            </span>
+            {activeAgent && (
+              <>
+                <span className={styles.model}>{activeAgent.model}</span>
+                <span className={styles.cost}>&lt;${activeAgent.cost.toFixed(2)}</span>
+              </>
+            )}
+          </div>
         </div>
+      </div>
+
+      <div className={styles.right}>
+        <button className={styles.headerBtn} onClick={onRefresh} aria-label="Refresh"><RefreshCw size={14} /></button>
+        <button className={styles.headerBtn} onClick={onOpenSettings} aria-label="Settings"><Settings size={14} /></button>
       </div>
     </div>
   );
