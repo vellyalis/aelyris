@@ -118,18 +118,18 @@
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-inout: cubic-bezier(0.4, 0, 0.2, 1);
 
-  /* Font sizes — complete scale */
-  --text-2xs: 8px;
-  --text-xs: 9px;
-  --text-sm: 10px;
-  --text-md: 11px;
-  --text-base: 12px;
-  --text-lg: 13px;
-  --text-xl: 14px;
-  --text-2xl: 16px;
-  --text-3xl: 18px;
-  --text-4xl: 20px;
-  --text-5xl: 24px;
+  /* Font sizes — complete scale (+1px for Apple HIG compliance) */
+  --text-2xs: 9px;
+  --text-xs: 10px;
+  --text-sm: 11px;
+  --text-md: 12px;
+  --text-base: 13px;
+  --text-lg: 14px;
+  --text-xl: 15px;
+  --text-2xl: 17px;
+  --text-3xl: 19px;
+  --text-4xl: 21px;
+  --text-5xl: 25px;
 
   /* Common rgba patterns as variables (reduces duplication) */
   --white-2: rgba(255, 255, 255, 0.02);
@@ -183,9 +183,9 @@ html, body, #root {
 
 .left-panel {
   position: relative;
-  width: 220px;
-  min-width: 140px;
-  max-width: 400px;
+  width: 180px;
+  min-width: 120px;
+  max-width: 360px;
   display: flex;
   flex-direction: column;
   background: var(--aether-bg-sidebar);
@@ -194,7 +194,9 @@ html, body, #root {
   border-right: 1px solid var(--border);
   overflow: hidden;
   resize: horizontal;
+  transition: border-color var(--duration-fast);
 }
+.left-panel:hover { border-right-color: var(--white-15); }
 
 .center-panel {
   flex: 1;
@@ -203,9 +205,9 @@ html, body, #root {
 }
 
 .right-panel {
-  width: 280px;
-  min-width: 180px;
-  max-width: 450px;
+  width: 240px;
+  min-width: 160px;
+  max-width: 400px;
   display: flex;
   flex-direction: column;
   background: var(--aether-bg-sidebar);
@@ -215,10 +217,12 @@ html, body, #root {
   overflow: hidden;
   resize: horizontal;
   direction: rtl; /* resize handle on left side */
+  transition: border-color var(--duration-fast);
 }
 .right-panel > * {
   direction: ltr; /* reset direction for children */
 }
+.right-panel:hover { border-left-color: var(--white-15); }
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 5px; }
@@ -231,10 +235,11 @@ html, body, #root {
   color: var(--text-primary);
 }
 
-/* Focus ring for accessibility — overrides outline:none in modules */
+/* Focus ring for accessibility — double ring for dark bg visibility */
 :focus-visible {
   outline: 2px solid var(--gold) !important;
   outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(200, 160, 80, 0.2) !important;
 }
 /* Terminal and iframe should not show focus ring */
 .xterm-screen:focus-visible,
