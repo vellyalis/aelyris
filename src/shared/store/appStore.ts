@@ -1,10 +1,16 @@
 import { create } from "zustand";
 import type { KanbanTask, KanbanColumnId } from "../types/kanban";
 
+export type SidebarSection = "files" | "tasks" | "agents" | "tools";
+
 interface AppState {
   // Project
   rootProjectPath: string | null;
   setRootProjectPath: (path: string | null) => void;
+
+  // Sidebar
+  sidebarSection: SidebarSection;
+  setSidebarSection: (section: SidebarSection) => void;
 
   // UI visibility
   paletteVisible: boolean;
@@ -58,6 +64,10 @@ export const useAppStore = create<AppState>((set) => ({
       else localStorage.removeItem("aether:lastProject");
     } catch {}
   },
+
+  // Sidebar
+  sidebarSection: "files" as SidebarSection,
+  setSidebarSection: (section: SidebarSection) => set({ sidebarSection: section }),
 
   // UI
   paletteVisible: false,

@@ -10,6 +10,7 @@ pub mod watchdog;
 use agent::AgentManager;
 use db::Database;
 use pty::PtyManager;
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -22,7 +23,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(PtyManager::new())
         .manage(AgentManager::new())
-        .setup(|_app| {
+        .setup(|app| {
             // Initialize database
             let db_path = db::db_path();
             match Database::open(&db_path) {
@@ -33,6 +34,19 @@ pub fn run() {
                     log::error!("Failed to initialize database: {}", e);
                 }
             }
+
+            // Apply Mica/Acrylic transparency
+            let window = app.get_webview_window("main")
+                .expect("main window not found");
+            #[cfg(target_os = "windows")]
+            {
+                use window_vibrancy::{apply_mica, apply_acrylic};
+                if apply_mica(&window, Some(true)).is_err() {
+                    // Win10 fallback: Acrylic with dark tint
+                    let _ = apply_acrylic(&window, Some((13, 13, 13, 200)));
+                }
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

@@ -1,9 +1,11 @@
 import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from "react";
 import { ProjectHeaderBar } from "./features/header/ProjectHeaderBar";
 import { MenuBar, type Menu } from "./features/menubar/MenuBar";
+import { Sidebar } from "./features/sidebar/Sidebar";
 import { FileTree } from "./features/file-tree/FileTree";
 import { HelmPanel } from "./features/helm/HelmPanel";
 import { TerminalPane } from "./features/terminal/TerminalPane";
+import { StatusBar } from "./features/statusbar/StatusBar";
 
 // Lazy load Monaco Editor (~2MB)
 const EditorPanel = lazy(() => import("./features/editor/EditorPanel").then((m) => ({ default: m.EditorPanel })));
@@ -27,9 +29,9 @@ import { useAppStore } from "./shared/store/appStore";
 export type ShellType = "powershell" | "cmd" | "gitbash" | "wsl";
 
 export function App() {
-  // Zustand store — replaces 10 useState calls
   const {
     rootProjectPath, setRootProjectPath,
+    sidebarSection,
     paletteVisible, setPaletteVisible,
     settingsVisible, setSettingsVisible,
     watchdogVisible, setWatchdogVisible,
@@ -46,22 +48,17 @@ export function App() {
   const { sessions, activeSessionId, setActiveSessionId, startAgent, stopAgent } =
     useAgentManager();
 
-  // Project path: from active tab's cwd, or from root selection
   const projectPath = activeTab.cwd ?? rootProjectPath ?? "";
   const projectName = projectPath ? projectPath.split("/").filter(Boolean).pop() ?? "Aether" : "Aether";
-  // localStorage persistence handled by Zustand store
 
-  // Update window title to folder name
   useEffect(() => {
     const title = projectPath ? `${projectName} — Aether Terminal` : "Aether Terminal";
     document.title = title;
-    // Also update Tauri window title
     import("@tauri-apps/api/window").then(({ getCurrentWindow }) => {
       getCurrentWindow().setTitle(title).catch(() => {});
     }).catch(() => {});
   }, [projectName, projectPath]);
 
-  // Open project: set root + create first tab with that CWD
   const handleOpenProject = useCallback((path: string) => {
     const normalized = path.replace(/\\/g, "/");
     setRootProjectPath(normalized);
@@ -69,7 +66,6 @@ export function App() {
     clearFiles();
   }, [addTabWithCwd, setRootProjectPath, clearFiles]);
 
-  // Close folder → back to Welcome
   const handleCloseFolder = useCallback(() => {
     setRootProjectPath(null);
     clearFiles();
@@ -85,10 +81,9 @@ export function App() {
     } catch { /* cancelled or not in Tauri */ }
   }, [handleOpenProject]);
 
-  // Tab switch updates projectPath automatically (via activeTab.cwd)
   const handleTabSwitch = useCallback((tabId: string) => {
     setActiveTabId(tabId);
-    clearFiles(); // Close editor when switching tabs
+    clearFiles();
   }, [setActiveTabId, clearFiles]);
 
   const { branch, changedFiles } = useGitStatus(projectPath);
@@ -125,6 +120,16 @@ export function App() {
       }
     } catch { /* ignore */ }
   }, []);
+
+  // Session switching = holistic workspace switch
+  const handleSelectSession = useCallback((sessionId: string) => {
+    setActiveSessionId(sessionId);
+    const agent = sessions.find((s) => s.id === sessionId);
+    if (agent) {
+      const matchTab = tabs.find((t) => t.cwd && agent.prompt.includes(t.cwd.split("/").pop() ?? ""));
+      if (matchTab) handleTabSwitch(matchTab.id);
+    }
+  }, [sessions, tabs, setActiveSessionId, handleTabSwitch]);
 
   function navSession(delta: number) {
     if (sessions.length === 0) return;
@@ -307,6 +312,48 @@ export function App() {
     </div>
   ) : null;
 
+  // Left panel content based on sidebar section
+  const leftPanelContent = (() => {
+    switch (sidebarSection) {
+      case "files":
+        return (
+          <>
+            <FileTree rootPath={projectPath} onFileSelect={handleFileSelect} changedFiles={changedFiles} />
+            <HelmPanel />
+            <SearchPanel
+              visible={searchVisible}
+              rootPath={projectPath}
+              onClose={() => setSearchVisible(false)}
+              onResultClick={(file, line) => { handleFileSelect(file); setEditorLine(line); }}
+            />
+          </>
+        );
+      case "tasks":
+        return (
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 12, padding: 16, textAlign: "center" }}>
+            Kanban board coming in Phase 2
+          </div>
+        );
+      case "agents":
+        return (
+          <AgentInspector
+            sessions={sessions}
+            activeSessionId={activeSessionId}
+            onSelectSession={handleSelectSession}
+            onStartAgent={handleStartAgent}
+            onStopAgent={stopAgent}
+          />
+        );
+      case "tools":
+        return <ToolkitPanel projectName={projectName} onRunCommand={handleRunCommand} />;
+    }
+  })();
+
+  // Determine agent status text for status bar
+  const agentStatusText = activeAgent
+    ? `${activeAgent.status} (${activeAgent.model})`
+    : undefined;
+
   return (
     <div className="app-container">
       <ProjectHeaderBar
@@ -319,15 +366,10 @@ export function App() {
       <MenuBar menus={menus} />
 
       <main className="app-main" role="main">
+        <Sidebar />
+
         <div className="left-panel" role="navigation" aria-label="Project sidebar" style={{ position: "relative" }}>
-          <FileTree rootPath={projectPath} onFileSelect={handleFileSelect} changedFiles={changedFiles} />
-          <HelmPanel />
-          <SearchPanel
-            visible={searchVisible}
-            rootPath={projectPath}
-            onClose={() => setSearchVisible(false)}
-            onResultClick={(file, line) => { handleFileSelect(file); setEditorLine(line); }}
-          />
+          {leftPanelContent}
         </div>
 
         <div className="center-panel" role="region" aria-label="Terminal and editor">
@@ -343,24 +385,18 @@ export function App() {
           )}
         </div>
 
-        <div className="right-panel" role="complementary" aria-label="Agent inspector">
-          <AgentInspector
-            sessions={sessions}
-            activeSessionId={activeSessionId}
-            onSelectSession={(sessionId) => {
-              setActiveSessionId(sessionId);
-              // Find matching tab by agent's CWD and switch to it
-              const agent = sessions.find((s) => s.id === sessionId);
-              if (agent) {
-                const matchTab = tabs.find((t) => t.cwd && agent.prompt.includes(t.cwd.split("/").pop() ?? ""));
-                if (matchTab) handleTabSwitch(matchTab.id);
-              }
-            }}
-            onStartAgent={handleStartAgent}
-            onStopAgent={stopAgent}
-          />
-          <ToolkitPanel projectName={projectName} onRunCommand={handleRunCommand} />
-        </div>
+        {sidebarSection !== "agents" && sidebarSection !== "tools" && (
+          <div className="right-panel" role="complementary" aria-label="Agent inspector">
+            <AgentInspector
+              sessions={sessions}
+              activeSessionId={activeSessionId}
+              onSelectSession={handleSelectSession}
+              onStartAgent={handleStartAgent}
+              onStopAgent={stopAgent}
+            />
+            <ToolkitPanel projectName={projectName} onRunCommand={handleRunCommand} />
+          </div>
+        )}
       </main>
 
       <WorkspaceTabs
@@ -371,6 +407,13 @@ export function App() {
         onNewTab={addTab}
         branch={branch}
         changedCount={changedFiles.length}
+      />
+
+      <StatusBar
+        shell={activeTab.shell}
+        branch={branch}
+        changedCount={changedFiles.length}
+        agentStatus={agentStatusText}
       />
 
       <CommandPalette visible={paletteVisible} onClose={() => setPaletteVisible(false)} commands={commands} />

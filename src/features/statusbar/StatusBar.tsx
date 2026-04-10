@@ -1,51 +1,41 @@
-import { useState } from "react";
-import type { ShellType } from "../../App";
+import { GitBranch, FileText, Cpu } from "lucide-react";
 import styles from "./StatusBar.module.css";
 
-const SHELL_LABELS: Record<ShellType, string> = {
-  powershell: "PowerShell",
-  cmd: "CMD",
-  gitbash: "Git Bash",
-  wsl: "WSL",
-};
-
-const SHELL_OPTIONS: ShellType[] = ["powershell", "cmd", "gitbash", "wsl"];
-
 interface StatusBarProps {
-  activeShell: ShellType;
-  onShellChange: (shell: ShellType) => void;
+  shell: string;
+  branch: string;
+  changedCount: number;
+  encoding?: string;
+  agentStatus?: string;
 }
 
-export function StatusBar({ activeShell, onShellChange }: StatusBarProps) {
-  const [showPicker, setShowPicker] = useState(false);
-
+export function StatusBar({ shell, branch, changedCount, encoding = "UTF-8", agentStatus }: StatusBarProps) {
   return (
     <div className={styles.statusbar}>
       <div className={styles.left}>
-        <button
-          className={styles.shellBtn}
-          onClick={() => setShowPicker(!showPicker)}
-        >
-          {SHELL_LABELS[activeShell]} ▾
-        </button>
-        {showPicker && (
-          <div className={styles.picker}>
-            {SHELL_OPTIONS.map((s) => (
-              <button
-                key={s}
-                className={`${styles.pickerItem} ${s === activeShell ? styles.active : ""}`}
-                onClick={() => {
-                  onShellChange(s);
-                  setShowPicker(false);
-                }}
-              >
-                {SHELL_LABELS[s]}
-              </button>
-            ))}
-          </div>
+        <span className={styles.item}>{shell}</span>
+        {branch && (
+          <span className={styles.item}>
+            <GitBranch size={11} />
+            {branch}
+          </span>
+        )}
+        {changedCount > 0 && (
+          <span className={styles.item}>
+            <FileText size={11} />
+            {changedCount} changed
+          </span>
         )}
       </div>
       <div className={styles.right}>
+        {agentStatus && (
+          <span className={styles.item}>
+            <Cpu size={11} />
+            {agentStatus}
+          </span>
+        )}
+        <span className={styles.item}>{encoding}</span>
+        <span className={styles.item}>LF</span>
         <span className={styles.item}>Aether v0.1.0</span>
       </div>
     </div>

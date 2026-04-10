@@ -7,8 +7,8 @@
   --aether-bg-elevated: #1a1a1a;
   --aether-bg-card: #1e1e1e;
   --aether-bg-surface: #252525;
-  --aether-border: rgba(255, 255, 255, 0.06);
-  --aether-border-strong: rgba(255, 255, 255, 0.1);
+  --aether-border: rgba(255, 255, 255, 0.09);
+  --aether-border-strong: rgba(255, 255, 255, 0.14);
 
   /* Gold accent (Scape session cards) */
   --gold: #c8a050;
@@ -39,8 +39,8 @@
 
   /* Text hierarchy */
   --text-primary: rgba(255, 255, 255, 0.88);
-  --text-secondary: rgba(255, 255, 255, 0.5);
-  --text-muted: rgba(255, 255, 255, 0.3);
+  --text-secondary: rgba(255, 255, 255, 0.58);
+  --text-muted: rgba(255, 255, 255, 0.42);
 
   /* Semantic tokens */
   --bg-primary: var(--aether-bg);
@@ -82,6 +82,13 @@
   --z-modal: 400;
   --z-toast: 500;
   --z-tooltip: 600;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-glow-gold: 0 0 20px rgba(200, 160, 80, 0.15);
+  --shadow-glow-purple: 0 0 20px rgba(124, 58, 237, 0.15);
 
   /* Transitions */
   --duration-fast: 100ms;
@@ -136,7 +143,7 @@ html, body, #root {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: rgba(13, 13, 13, 0.94);
+  background: rgba(13, 13, 13, 0.82);
   border-radius: var(--radius);
   overflow: hidden;
 }
@@ -155,6 +162,7 @@ html, body, #root {
   flex-direction: column;
   background: var(--aether-bg-sidebar);
   border-right: 1px solid var(--border);
+  box-shadow: 1px 0 0 rgba(255, 255, 255, 0.03), var(--shadow-sm);
   overflow: hidden;
   resize: horizontal;
 }
@@ -173,6 +181,7 @@ html, body, #root {
   flex-direction: column;
   background: var(--aether-bg-sidebar);
   border-left: 1px solid var(--border);
+  box-shadow: -1px 0 0 rgba(255, 255, 255, 0.03), var(--shadow-sm);
   overflow: hidden;
   resize: horizontal;
   direction: rtl; /* resize handle on left side */
@@ -194,14 +203,28 @@ html, body, #root {
 
 /* Focus ring for accessibility */
 :focus-visible {
-  outline: 1px solid var(--gold);
-  outline-offset: -1px;
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
 
 /* Smooth transitions for all interactive elements */
 button, [role="button"] {
   transition: background 0.1s ease, color 0.1s ease, border-color 0.15s ease, opacity 0.15s ease;
 }
+
+/* Status icon animations */
+@keyframes statusPulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.3); opacity: 0.8; }
+}
+@keyframes statusBreathe {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+.status-pulse { animation: statusPulse 1.5s ease-in-out infinite; }
+.status-pulse-fast { animation: statusPulse 1s ease-in-out infinite; }
+.status-breathe { animation: statusBreathe 2s ease-in-out infinite; }
 
 /* Loading skeleton shimmer */
 @keyframes shimmer {
