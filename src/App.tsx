@@ -23,6 +23,7 @@ import { ErrorBoundary } from "./shared/ui/ErrorBoundary";
 import { TooltipProvider } from "./shared/ui/Tooltip";
 import { ToastProvider } from "./shared/ui/Toast";
 import { PromptDialog, showPrompt } from "./shared/ui/PromptDialog";
+import { OnboardingOverlay } from "./shared/ui/OnboardingOverlay";
 import { useTabManager } from "./shared/hooks/useTabManager";
 import { useAgentManager } from "./shared/hooks/useAgentManager";
 import { useGitStatus } from "./shared/hooks/useGitStatus";
@@ -382,6 +383,7 @@ export function App() {
       <WebInspector visible={webInspectorVisible} onClose={() => setWebInspectorVisible(false)} />
       <PRInspector visible={prInspectorVisible} projectPath={projectPath} onClose={() => setPrInspectorVisible(false)} onStartReview={(prompt) => handleStartAgent(prompt)} />
       <PromptDialog />
+      <OnboardingOverlay />
     </div>
     </ToastProvider>
     </TooltipProvider>
