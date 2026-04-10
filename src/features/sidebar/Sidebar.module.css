@@ -39,8 +39,8 @@
 }
 
 .active {
-  color: var(--text-primary);
-  background: rgba(200, 160, 80, 0.08);
+  color: var(--gold);
+  background: rgba(200, 160, 80, 0.1);
 }
 
 .indicator {
@@ -48,9 +48,9 @@
   left: -6px;
   top: 50%;
   transform: translateY(-50%);
-  width: 2px;
-  height: 18px;
+  width: 3px;
+  height: 20px;
   background: var(--gold);
-  border-radius: 1px;
-  box-shadow: 0 0 8px rgba(200, 160, 80, 0.4);
+  border-radius: 2px;
+  box-shadow: var(--shadow-glow-gold);
 }

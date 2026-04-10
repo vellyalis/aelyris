@@ -29,7 +29,7 @@
   -webkit-backdrop-filter: blur(16px);
   color: var(--text-secondary);
   font-family: var(--font-ui); cursor: pointer; text-align: left;
-  transition: border-color 0.15s, background 0.15s, box-shadow 0.2s;
+  transition: border-color 0.15s, background 0.15s, box-shadow var(--duration-slow) var(--ease-out), transform var(--duration-fast);
   overflow: hidden;
 }
 /* Gold left stripe */
@@ -39,23 +39,24 @@
   left: 0; top: 0; bottom: 0;
   width: 3px;
   background: var(--gold-dim);
-  border-radius: var(--radius) 0 0 8px;
-  transition: background 0.15s;
+  border-radius: var(--radius) 0 0 var(--radius);
+  transition: background 0.15s, box-shadow 0.2s;
 }
 .card:hover {
   border-color: var(--gold-subtle);
   background: rgba(28, 28, 28, 0.75);
-  box-shadow: 0 0 8px rgba(200, 160, 80, 0.08);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), 0 0 16px rgba(200, 160, 80, 0.2);
+  transform: translateY(-1px);
 }
 .card:hover::before { background: var(--gold); }
 
 /* Active card — full gold glow */
 .cardActive {
   border-color: var(--gold);
-  background: rgba(200, 160, 80, 0.06);
-  box-shadow: 0 0 16px rgba(200, 160, 80, 0.2), 0 0 4px rgba(200, 160, 80, 0.1);
+  background: rgba(200, 160, 80, 0.08);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3), var(--shadow-glow-gold);
 }
-.cardActive::before { background: var(--gold); box-shadow: 0 0 6px rgba(200, 160, 80, 0.4); }
+.cardActive::before { background: var(--gold); box-shadow: 0 0 8px rgba(200, 160, 80, 0.5); }
 
 .cardTop { display: flex; align-items: center; gap: var(--space-4); }
 .statusDot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
