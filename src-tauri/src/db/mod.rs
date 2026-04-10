@@ -1,5 +1,5 @@
 mod migrations;
-mod queries;
+pub mod queries;
 
 pub use queries::Database;
 

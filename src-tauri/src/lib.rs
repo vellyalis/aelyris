@@ -4,6 +4,7 @@ pub mod db;
 mod git;
 mod ipc;
 pub mod pty;
+pub mod session;
 pub mod watchdog;
 
 use agent::AgentManager;
@@ -66,6 +67,14 @@ pub fn run() {
             ipc::start_agent,
             ipc::stop_agent,
             ipc::list_agents,
+            // Session management
+            ipc::create_session,
+            ipc::list_db_sessions,
+            ipc::delete_session,
+            ipc::restore_last_session,
+            ipc::create_window,
+            ipc::create_pane,
+            ipc::save_session_state,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Aether Terminal");
