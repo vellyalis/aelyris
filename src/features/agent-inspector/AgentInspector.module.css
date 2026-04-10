@@ -135,3 +135,32 @@
   border-radius: 2px; margin-left: 4px;
 }
 .stopBtn:hover { background: rgba(243, 139, 168, 0.15); }
+
+/* ─── Session Context Menu ─── */
+.ctxMenu {
+  min-width: 180px;
+  background: var(--aether-bg-card);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--white-10);
+  border-radius: 6px;
+  padding: var(--space-2);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  z-index: var(--z-dropdown);
+  animation: sessionCtxIn 0.1s ease-out;
+}
+@keyframes sessionCtxIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+.ctxItem {
+  display: flex; align-items: center; width: 100%;
+  padding: var(--space-3) var(--space-5);
+  border: none; border-radius: var(--radius-sm);
+  background: transparent; color: var(--text-secondary);
+  font-size: var(--text-base); font-family: var(--font-ui);
+  cursor: pointer; text-align: left; outline: none;
+}
+.ctxItem[data-highlighted] { background: var(--white-6); color: var(--text-primary); }
+.ctxItem[data-disabled] { opacity: 0.35; cursor: default; }
+.ctxDivider { height: 1px; background: var(--white-6); margin: var(--space-2) var(--space-4); }

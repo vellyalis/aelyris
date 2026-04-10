@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { type AgentSession, STATUS_COLORS, STATUS_LABELS } from "../../shared/types/agent";
 import { MODEL_OPTIONS, getModelById } from "../../shared/types/model";
 import { useAppStore } from "../../shared/store/appStore";
 import { PixelAvatar } from "../../shared/ui/PixelAvatar";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
 import { ContextGauge } from "../../shared/ui/ContextGauge";
+import * as RadixContextMenu from "@radix-ui/react-context-menu";
 import { ClipboardCopy, Bell, Plus, Pencil } from "lucide-react";
 import { ToolBadge } from "../../shared/ui/ToolBadge";
 import { extractToolName } from "../../shared/types/toolBadge";
@@ -24,6 +25,20 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
   const [promptText, setPromptText] = useState("");
   const { selectedModel, setSelectedModel } = useAppStore();
   const activeSession = sessions.find((s) => s.id === activeSessionId);
+
+  const handleRenameSession = useCallback((session: AgentSession) => {
+    const newName = prompt("Rename session:", session.name);
+    if (newName && newName !== session.name) {
+      // Session rename is in-memory only for now
+      session.name = newName;
+      onSelectSession(session.id); // trigger re-render
+    }
+  }, [onSelectSession]);
+
+  const handleCopySessionInfo = useCallback((session: AgentSession) => {
+    const info = `Session: ${session.name}\nModel: ${session.model}\nStatus: ${STATUS_LABELS[session.status]}\nCost: $${session.cost.toFixed(2)}\nTokens: ${session.tokensUsed}`;
+    navigator.clipboard.writeText(info).catch(() => {});
+  }, []);
 
   return (
     <div className={styles.inspector} role="region" aria-label="Agent sessions">
@@ -83,41 +98,59 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
               </div>
             )}
             {sessions.map((s) => (
-              <button key={s.id} className={`${styles.card} ${s.watchdog ? styles.cardWatchdog : ""} ${s.id === activeSessionId ? styles.cardActive : ""}`} onClick={() => onSelectSession(s.id)}>
-                <div className={styles.cardTop}>
-                  <PixelAvatar seed={s.id} size={36} />
-                  <div className={styles.cardInfo}>
-                    <div className={styles.cardNameRow}>
-                      <span className={styles.cardName}>{s.name}</span>
-                      {s.branch && <span className={styles.cardBranch}>⚡{s.branch}</span>}
-                      <span className={styles.cardIcons}><Pencil size={9} /></span>
+              <RadixContextMenu.Root key={s.id}>
+                <RadixContextMenu.Trigger asChild>
+                  <button className={`${styles.card} ${s.watchdog ? styles.cardWatchdog : ""} ${s.id === activeSessionId ? styles.cardActive : ""}`} onClick={() => onSelectSession(s.id)}>
+                    <div className={styles.cardTop}>
+                      <PixelAvatar seed={s.id} size={36} />
+                      <div className={styles.cardInfo}>
+                        <div className={styles.cardNameRow}>
+                          <span className={styles.cardName}>{s.name}</span>
+                          {s.branch && <span className={styles.cardBranch}>⚡{s.branch}</span>}
+                          <span className={styles.cardIcons}><Pencil size={9} /></span>
+                        </div>
+                        <div className={styles.cardStatusRow}>
+                          <StatusIcon status={s.status} size={10} />
+                          <span style={{ color: STATUS_COLORS[s.status], fontSize: 10 }}>{STATUS_LABELS[s.status]}</span>
+                          {s.filesChanged !== undefined && s.filesChanged > 0 && <span className={styles.cardFiles}>📎{s.filesChanged}</span>}
+                          <span className={styles.cardAge}>{formatAge(s.startedAt)}</span>
+                        </div>
+                      </div>
+                      <ContextGauge percent={s.status === "done" ? 100 : s.status === "idle" ? 0 : s.tokensUsed > 0 ? Math.min(95, (s.tokensUsed / 10000) * 100) : 2} />
                     </div>
-                    <div className={styles.cardStatusRow}>
-                      <StatusIcon status={s.status} size={10} />
-                      <span style={{ color: STATUS_COLORS[s.status], fontSize: 10 }}>{STATUS_LABELS[s.status]}</span>
-                      {s.filesChanged !== undefined && s.filesChanged > 0 && <span className={styles.cardFiles}>📎{s.filesChanged}</span>}
-                      <span className={styles.cardAge}>{formatAge(s.startedAt)}</span>
+                    <div className={styles.cardMeta}>
+                      <span className={styles.cardModel}>{s.model}</span>
+                      <span className={styles.cardCost}>&lt;${s.cost.toFixed(2)}</span>
+                      {s.status !== "done" && s.status !== "idle" && (
+                        <span className={styles.stopBtn} onClick={(e) => { e.stopPropagation(); onStopAgent?.(s.id); }}>■</span>
+                      )}
                     </div>
-                  </div>
-                  <ContextGauge percent={s.status === "done" ? 100 : s.status === "idle" ? 0 : s.tokensUsed > 0 ? Math.min(95, (s.tokensUsed / 10000) * 100) : 2} />
-                </div>
-                <div className={styles.cardMeta}>
-                  <span className={styles.cardModel}>{s.model}</span>
-                  <span className={styles.cardCost}>&lt;${s.cost.toFixed(2)}</span>
-                  {s.status !== "done" && s.status !== "idle" && (
-                    <span className={styles.stopBtn} onClick={(e) => { e.stopPropagation(); onStopAgent?.(s.id); }}>■</span>
-                  )}
-                </div>
-                <div className={styles.progressTrack}>
-                  <div className={styles.progressBar} style={{
-                    width: s.status === "done" ? "100%" : s.status === "idle" ? "0%" : s.status === "generating" ? "50%" : "30%",
-                    background: STATUS_COLORS[s.status],
-                  }} />
-                </div>
-                {s.watchdog && (
-                  <div className={styles.watchdogInfo}>🐕 {s.watchdog}</div>
-                )}
-              </button>
+                    <div className={styles.progressTrack}>
+                      <div className={styles.progressBar} style={{
+                        width: s.status === "done" ? "100%" : s.status === "idle" ? "0%" : s.status === "generating" ? "50%" : "30%",
+                        background: STATUS_COLORS[s.status],
+                      }} />
+                    </div>
+                    {s.watchdog && (
+                      <div className={styles.watchdogInfo}>🐕 {s.watchdog}</div>
+                    )}
+                  </button>
+                </RadixContextMenu.Trigger>
+                <RadixContextMenu.Portal>
+                  <RadixContextMenu.Content className={styles.ctxMenu}>
+                    <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => onSelectSession(s.id)}>Switch to Session</RadixContextMenu.Item>
+                    <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => handleRenameSession(s)}>Rename</RadixContextMenu.Item>
+                    <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => handleCopySessionInfo(s)}>Copy Info</RadixContextMenu.Item>
+                    <RadixContextMenu.Separator className={styles.ctxDivider} />
+                    <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => onStartAgent?.(`Create worktree for ${s.name}`, s.model)}>Create Worktree</RadixContextMenu.Item>
+                    <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => onStartAgent?.(`Attach watchdog to ${s.name}`)}>Attach Watchdog</RadixContextMenu.Item>
+                    <RadixContextMenu.Separator className={styles.ctxDivider} />
+                    <RadixContextMenu.Item className={styles.ctxItem} disabled={s.status === "idle" || s.status === "done"} onSelect={() => onStopAgent?.(s.id)}>
+                      End Session
+                    </RadixContextMenu.Item>
+                  </RadixContextMenu.Content>
+                </RadixContextMenu.Portal>
+              </RadixContextMenu.Root>
             ))}
             <div className={styles.navHint}>Ctrl+0-9 Jump · Ctrl+[ Prev · Ctrl+] Next</div>
           </div>

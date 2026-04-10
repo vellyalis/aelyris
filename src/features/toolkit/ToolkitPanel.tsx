@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
 import { GitPullRequest, Upload, GitBranch, Play, FolderOpen, ClipboardList, ScrollText, FlaskConical } from "lucide-react";
 import styles from "./ToolkitPanel.module.css";
 
@@ -54,6 +55,8 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editLabel, setEditLabel] = useState("");
   const [editCommand, setEditCommand] = useState("");
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState("");
 
   const handleEdit = useCallback((action: ToolkitAction) => {
     setEditingId(action.id);
@@ -95,6 +98,21 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
     setEditingId(null);
   }, [editingId, actions, projectName]);
 
+  const handleImport = useCallback(() => {
+    if (!importText.trim()) return;
+    const newAction: ToolkitAction = {
+      id: `import-${Date.now()}`,
+      label: importText.trim().split(" ").slice(0, 3).join(" "),
+      badge: "var(--ctp-cyan)",
+      command: importText.trim(),
+    };
+    const updated = [...actions, newAction];
+    setActions(updated);
+    saveActions(projectName, updated);
+    setImportText("");
+    setImportOpen(false);
+  }, [importText, actions, projectName]);
+
   return (
     <div className={styles.toolkit}>
       <div className={styles.header}>
@@ -133,19 +151,37 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
       <div className={styles.bottomActions}>
         <button className={styles.bottomBtn} onClick={() => { /* TODO: generate */ }}>⊕ Generate...</button>
         <button className={styles.bottomBtn} onClick={handleAdd}>⊕ Create...</button>
-        <button className={styles.bottomBtn} onClick={() => {
-          const recipe = prompt("Paste a copied recipe/command:");
-          if (recipe) {
-            const newAction: ToolkitAction = {
-              id: `import-${Date.now()}`, label: recipe.split(" ").slice(0, 3).join(" "),
-              badge: "var(--ctp-cyan)", command: recipe,
-            };
-            const updated = [...actions, newAction];
-            setActions(updated);
-            saveActions(projectName, updated);
-          }
-        }}>⊕ Import...</button>
+        <button className={styles.bottomBtn} onClick={() => setImportOpen(true)}>⊕ Import...</button>
       </div>
+
+      {/* Import Tool Dialog */}
+      <Dialog.Root open={importOpen} onOpenChange={setImportOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className={styles.importOverlay} />
+          <Dialog.Content className={styles.importPanel} aria-describedby={undefined}>
+            <Dialog.Title className={styles.importTitle}>Import Tool</Dialog.Title>
+            <textarea
+              className={styles.importTextarea}
+              placeholder="Paste a copied recipe or command below..."
+              value={importText}
+              onChange={(e) => setImportText(e.target.value)}
+              rows={4}
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && e.ctrlKey) handleImport();
+              }}
+            />
+            <div className={styles.importActions}>
+              <Dialog.Close asChild>
+                <button className={styles.importCancel}>Cancel</button>
+              </Dialog.Close>
+              <button className={styles.importSubmit} onClick={handleImport} disabled={!importText.trim()}>
+                Import
+              </button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </div>
   );
 }
