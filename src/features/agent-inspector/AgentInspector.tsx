@@ -26,7 +26,7 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
   const activeSession = sessions.find((s) => s.id === activeSessionId);
 
   return (
-    <div className={styles.inspector}>
+    <div className={styles.inspector} role="region" aria-label="Agent sessions">
       {/* Tab toggle */}
       <div className={styles.tabBar}>
         <button className={`${styles.tab} ${tab === "sessions" ? styles.tabActive : ""}`} onClick={() => setTab("sessions")}>Sessions</button>

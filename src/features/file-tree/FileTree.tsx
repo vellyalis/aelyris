@@ -148,7 +148,7 @@ export function FileTree({ rootPath, onFileSelect, changedFiles = [] }: FileTree
   const changedStatusMap = new Map(changedFiles.map((f) => [f.path.replace(/\\/g, "/"), f.status]));
 
   return (
-    <div className={styles.tree}>
+    <div className={styles.tree} role="tree" aria-label="File explorer">
       {/* Search input */}
       <div className={styles.searchBox}>
         <input

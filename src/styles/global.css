@@ -170,3 +170,12 @@ button, [role="button"] {
   background-size: 200px 100%;
   animation: shimmer 1.5s infinite;
 }
+
+/* Responsive: collapse panels on small windows */
+@media (max-width: 900px) {
+  .right-panel { display: none; }
+}
+
+@media (max-width: 700px) {
+  .left-panel { display: none; }
+}
