@@ -30,10 +30,10 @@ export function HelmPanel() {
         setNewLabel("");
       }
     };
-    // Use setTimeout to avoid catching the same click that opened it
+    // Delay to skip the click that triggered opening
     const timer = setTimeout(() => {
       document.addEventListener("mousedown", handler);
-    }, 0);
+    }, 100);
     return () => { clearTimeout(timer); document.removeEventListener("mousedown", handler); };
   }, [adding]);
 

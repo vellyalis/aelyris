@@ -38,7 +38,7 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
         setPromptText("");
       }
     };
-    const timer = setTimeout(() => document.addEventListener("mousedown", handler), 0);
+    const timer = setTimeout(() => document.addEventListener("mousedown", handler), 100);
     return () => { clearTimeout(timer); document.removeEventListener("mousedown", handler); };
   }, [showPromptInput]);
 

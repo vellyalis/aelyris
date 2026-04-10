@@ -68,7 +68,7 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
         setEditingId(null);
       }
     };
-    const timer = setTimeout(() => document.addEventListener("mousedown", handler), 0);
+    const timer = setTimeout(() => document.addEventListener("mousedown", handler), 100);
     return () => { clearTimeout(timer); document.removeEventListener("mousedown", handler); };
   }, [editingId]);
 
