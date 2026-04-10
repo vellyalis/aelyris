@@ -483,6 +483,12 @@ pub fn list_agents(app: AppHandle) -> Vec<crate::agent::AgentSessionInfo> {
     agent_manager.list_sessions()
 }
 
+/// Route a prompt to the best model
+#[tauri::command]
+pub fn route_agent(prompt: String, budget: Option<f64>) -> crate::agent::router::RoutingDecision {
+    crate::agent::router::AgentRouter::route(&prompt, budget)
+}
+
 fn base64_encode(data: &[u8]) -> String {
     let mut s = String::with_capacity(data.len() * 4 / 3 + 4);
     const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";

@@ -81,6 +81,7 @@ pub fn run() {
             ipc::start_agent,
             ipc::stop_agent,
             ipc::list_agents,
+            ipc::route_agent,
             // Session management
             ipc::create_session,
             ipc::list_db_sessions,
