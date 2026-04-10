@@ -95,6 +95,16 @@
   --ctp-surface1: #45475a;
   --ctp-surface2: #585b70;
 
+  /* Typography — line heights */
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.75;
+
+  /* Font weight semantics */
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+
   /* Transitions */
   --duration-fast: 100ms;
   --duration-normal: 200ms;
@@ -161,6 +171,7 @@ html, body, #root {
 }
 
 .left-panel {
+  position: relative;
   width: 220px;
   min-width: 140px;
   max-width: 400px;
@@ -211,8 +222,8 @@ html, body, #root {
 
 /* Focus ring for accessibility — overrides outline:none in modules */
 :focus-visible {
-  outline: 1px solid var(--gold) !important;
-  outline-offset: -1px;
+  outline: 2px solid var(--gold) !important;
+  outline-offset: 2px;
 }
 /* Terminal and iframe should not show focus ring */
 .xterm-screen:focus-visible,

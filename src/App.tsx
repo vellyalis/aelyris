@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from "react";
+import appStyles from "./App.module.css";
 import { ProjectHeaderBar } from "./features/header/ProjectHeaderBar";
 import { MenuBar, type Menu } from "./features/menubar/MenuBar";
 import { FileTree } from "./features/file-tree/FileTree";
@@ -18,7 +19,9 @@ import { AboutDialog } from "./features/about/AboutDialog";
 import { PRInspector } from "./features/pr-inspector/PRInspector";
 import { WebInspector } from "./features/web-inspector/WebInspector";
 import { SplitPane } from "./shared/ui/SplitPane";
+import { ErrorBoundary } from "./shared/ui/ErrorBoundary";
 import { TooltipProvider } from "./shared/ui/Tooltip";
+import { ToastProvider } from "./shared/ui/Toast";
 import { useTabManager } from "./shared/hooks/useTabManager";
 import { useAgentManager } from "./shared/hooks/useAgentManager";
 import { useGitStatus } from "./shared/hooks/useGitStatus";
@@ -264,7 +267,7 @@ export function App() {
   }, [addTab, closeTab, activeTabId, sessions, setActiveSessionId]);
 
   const terminalTabs = tabs.map((tab) => (
-    <div key={tab.id} style={{ display: tab.id === activeTabId ? "flex" : "none", flex: 1 }}>
+    <div key={tab.id} className={appStyles.terminalTabPane} data-active={tab.id === activeTabId}>
       <TerminalPane shell={tab.shell} cwd={tab.cwd} />
     </div>
   ));
@@ -273,50 +276,49 @@ export function App() {
   if (!rootProjectPath) {
     return (
       <TooltipProvider>
+      <ToastProvider>
         <div className="app-container">
           <WelcomeScreen onOpenProject={handleOpenProject} />
         </div>
+      </ToastProvider>
       </TooltipProvider>
     );
   }
 
   const editorArea = activeFile ? (
-    <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
-      {/* Editor file tabs */}
-      <div style={{ display: "flex", height: 28, background: "var(--aether-bg-sidebar)", borderBottom: "1px solid var(--border)", alignItems: "center", gap: 1, padding: "0 4px", overflow: "auto" }}>
+    <div className={appStyles.editorArea}>
+      <div className={appStyles.editorTabsBar}>
         {openFiles.map((f) => {
           const name = f.split("/").pop() ?? f;
           return (
             <button
               key={f}
+              className={appStyles.editorTab}
+              data-active={f === activeFile}
               onClick={() => setActiveFile(f)}
-              style={{
-                background: f === activeFile ? "var(--white-6)" : "transparent",
-                color: f === activeFile ? "var(--text-primary)" : "var(--text-muted)",
-                border: "none", borderRadius: 4, padding: "3px 10px", fontSize: 11,
-                fontFamily: "var(--font-ui)", cursor: "pointer", display: "flex", alignItems: "center", gap: 6,
-                whiteSpace: "nowrap",
-              }}
             >
               {name}
               <span
                 role="button"
+                className={appStyles.editorTabClose}
                 aria-label={`Close ${name}`}
                 onClick={(e) => { e.stopPropagation(); handleCloseFile(f); }}
-                style={{ fontSize: 11, opacity: 0.5, cursor: "pointer" }}
               >×</span>
             </button>
           );
         })}
       </div>
-      <Suspense fallback={<div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 12 }}>Loading editor...</div>}>
-        <EditorPanel filePath={activeFile} onClose={() => handleCloseFile(activeFile!)} projectPath={projectPath} initialLine={editorLine} initialDiffMode={openInDiff} />
-      </Suspense>
+      <ErrorBoundary>
+        <Suspense fallback={<div className={appStyles.editorLoading}>Loading editor...</div>}>
+          <EditorPanel filePath={activeFile} onClose={() => handleCloseFile(activeFile!)} projectPath={projectPath} initialLine={editorLine} initialDiffMode={openInDiff} />
+        </Suspense>
+      </ErrorBoundary>
     </div>
   ) : null;
 
   return (
     <TooltipProvider>
+    <ToastProvider>
     <div className="app-container">
       <ProjectHeaderBar
         projectName={projectName}
@@ -328,7 +330,7 @@ export function App() {
       <MenuBar menus={menus} />
 
       <main className="app-main" role="main">
-        <div className="left-panel" role="navigation" aria-label="Project sidebar" style={{ position: "relative" }}>
+        <div className="left-panel" role="navigation" aria-label="Project sidebar">
           <FileTree rootPath={projectPath} onFileSelect={handleFileSelect} onOpenDiff={handleOpenDiff} changedFiles={changedFiles} />
           <KanbanBoard onStartAgent={handleStartAgent} />
           <SearchPanel
@@ -345,7 +347,7 @@ export function App() {
               direction="vertical"
               defaultRatio={0.5}
               first={editorArea}
-              second={<div style={{ flex: 1, display: "flex" }}>{terminalTabs}</div>}
+              second={<div className={appStyles.terminalContainer}>{terminalTabs}</div>}
             />
           ) : (
             terminalTabs
@@ -381,6 +383,7 @@ export function App() {
       <WebInspector visible={webInspectorVisible} onClose={() => setWebInspectorVisible(false)} />
       <PRInspector visible={prInspectorVisible} projectPath={projectPath} onClose={() => setPrInspectorVisible(false)} onStartReview={(prompt) => handleStartAgent(prompt)} />
     </div>
+    </ToastProvider>
     </TooltipProvider>
   );
 }

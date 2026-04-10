@@ -1,0 +1,84 @@
+/* Terminal tab pane — show/hide without unmounting */
+.terminalTabPane {
+  flex: 1;
+  display: none;
+}
+.terminalTabPane[data-active="true"] {
+  display: flex;
+}
+
+/* Editor area wrapper */
+.editorArea {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+/* Editor file tabs bar */
+.editorTabsBar {
+  display: flex;
+  height: var(--bottom-tabs-height);
+  background: var(--aether-bg-sidebar);
+  border-bottom: 1px solid var(--border);
+  align-items: center;
+  gap: 1px;
+  padding: 0 var(--space-2);
+  overflow-x: auto;
+}
+.editorTabsBar::-webkit-scrollbar { display: none; }
+
+/* Individual editor file tab */
+.editorTab {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 3px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-family: var(--font-ui);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--duration-fast), color var(--duration-fast);
+}
+.editorTab:hover {
+  background: var(--white-6);
+  color: var(--text-secondary);
+}
+.editorTab[data-active="true"] {
+  background: var(--white-6);
+  color: var(--text-primary);
+}
+
+/* Close button on editor tab */
+.editorTabClose {
+  font-size: var(--text-sm);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity var(--duration-fast);
+}
+.editorTab:hover .editorTabClose {
+  opacity: 0.5;
+}
+.editorTabClose:hover {
+  opacity: 1 !important;
+}
+
+/* Editor loading fallback */
+.editorLoading {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: var(--text-base);
+  font-family: var(--font-ui);
+}
+
+/* Terminal container inside SplitPane */
+.terminalContainer {
+  flex: 1;
+  display: flex;
+}

@@ -23,7 +23,7 @@
 .card {
   position: relative;
   display: flex; flex-direction: column; gap: 4px; padding: 8px 10px 8px 14px;
-  border: 1px solid var(--white-6); border-radius: 8px;
+  border: 1px solid var(--white-10); border-radius: 8px;
   background: rgba(28, 28, 28, 0.6);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);

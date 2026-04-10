@@ -162,3 +162,39 @@
   font-size: 12px;
   color: var(--text-muted);
 }
+
+/* Skeleton loading cards */
+.skeletonCard {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--aether-border);
+  border-radius: 8px;
+  background: var(--white-2);
+}
+.skeletonAvatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: var(--white-6);
+  animation: shimmer 1.5s ease-in-out infinite;
+  flex-shrink: 0;
+}
+.skeletonText {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.skeletonLine {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--white-6);
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+@keyframes shimmer {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}

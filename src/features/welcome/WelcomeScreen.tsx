@@ -91,7 +91,15 @@ export function WelcomeScreen({ onOpenProject }: WelcomeScreenProps) {
 
         <div className={styles.recentHeader}>Recent Projects</div>
         <div className={styles.recentList}>
-          {loading && <div className={styles.hint}>Scanning projects...</div>}
+          {loading && Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className={styles.skeletonCard}>
+              <div className={styles.skeletonAvatar} />
+              <div className={styles.skeletonText}>
+                <div className={styles.skeletonLine} style={{ width: `${60 + i * 10}%` }} />
+                <div className={styles.skeletonLine} style={{ width: `${40 + i * 8}%` }} />
+              </div>
+            </div>
+          ))}
           {recentProjects.map((p, i) => (
             <motion.button
               key={p.path}
