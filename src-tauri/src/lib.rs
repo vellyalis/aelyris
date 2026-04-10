@@ -41,9 +41,15 @@ pub fn run() {
             #[cfg(target_os = "windows")]
             {
                 use window_vibrancy::{apply_mica, apply_acrylic};
-                if apply_mica(&window, Some(true)).is_err() {
-                    // Win10 fallback: Acrylic with dark tint
-                    let _ = apply_acrylic(&window, Some((13, 13, 13, 200)));
+                match apply_mica(&window, Some(true)) {
+                    Ok(_) => log::info!("Mica applied successfully"),
+                    Err(e) => {
+                        log::warn!("Mica failed: {:?}, trying Acrylic fallback", e);
+                        match apply_acrylic(&window, Some((13, 13, 13, 200))) {
+                            Ok(_) => log::info!("Acrylic applied successfully"),
+                            Err(e) => log::error!("Both Mica and Acrylic failed: {:?}", e),
+                        }
+                    }
                 }
             }
 
