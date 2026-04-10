@@ -13,10 +13,11 @@ import styles from "./TerminalArea.module.css";
 interface TerminalAreaProps {
   shell?: ShellType;
   cwd?: string;
+  syncMode?: boolean;
   onTerminalReady?: (terminalId: string) => void;
 }
 
-export function TerminalArea({ shell = "powershell", cwd, onTerminalReady: _onTerminalReady }: TerminalAreaProps) {
+export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalReady: _onTerminalReady }: TerminalAreaProps) {
   const onTerminalReady = _onTerminalReady;
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
@@ -69,7 +70,7 @@ export function TerminalArea({ shell = "powershell", cwd, onTerminalReady: _onTe
     termRef.current = term;
     searchAddonRef.current = searchAddon;
 
-    connectPty(term, shell, cwd, onTerminalReady);
+    connectPty(term, shell, cwd, onTerminalReady, syncMode);
 
     const handleResize = () => fitAddon.fit();
     window.addEventListener("resize", handleResize);
@@ -138,6 +139,7 @@ async function connectPty(
   shell: string,
   cwd?: string,
   onReady?: (terminalId: string) => void,
+  syncMode?: boolean,
 ) {
   try {
     const { invoke } = await import("@tauri-apps/api/core");
@@ -166,7 +168,11 @@ async function connectPty(
     });
 
     term.onData((data) => {
-      invoke("write_terminal", { id, data });
+      if (syncMode) {
+        invoke("broadcast_keys", { data });
+      } else {
+        invoke("write_terminal", { id, data });
+      }
     });
 
     term.onResize(({ cols, rows }) => {
