@@ -4,7 +4,7 @@
   display: flex;
   flex-direction: column;
   background: rgba(20, 20, 20, 0.7);
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  border-right: 1px solid var(--white-6);
   overflow: hidden;
 }
 
@@ -42,17 +42,17 @@
 
 .navItem:hover {
   color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--white-4);
 }
 
 .navActive {
   color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--white-6);
 }
 
 .divider {
   height: 1px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--white-6);
   margin: 6px 12px;
 }
 
@@ -98,7 +98,7 @@
 .expandBtn {
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.25);
+  color: var(--white-25);
   font-size: 9px;
   cursor: pointer;
   padding: 4px;
@@ -124,7 +124,7 @@
 }
 
 .project:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--white-4);
   color: var(--text-primary);
 }
 
@@ -138,8 +138,8 @@
 .branchBadge {
   font-size: 9px;
   font-family: var(--font-mono);
-  color: rgba(255, 255, 255, 0.3);
-  background: rgba(255, 255, 255, 0.05);
+  color: var(--white-30);
+  background: var(--white-4);
   padding: 1px 5px;
   border-radius: 3px;
 }
@@ -148,7 +148,7 @@
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: #fab387;
+  background: var(--ctp-peach);
   flex-shrink: 0;
 }
 
@@ -162,13 +162,13 @@
   gap: 5px;
   padding: 2px 6px;
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--white-40);
   font-family: var(--font-mono);
   border-radius: 3px;
 }
 
 .branchActive {
-  color: #a6e3a1;
+  color: var(--ctp-green);
 }
 
 .branchDot {

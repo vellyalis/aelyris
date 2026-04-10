@@ -5,7 +5,7 @@
   justify-content: space-between;
   height: var(--statusbar-height);
   padding: 0 12px;
-  background: rgba(20, 20, 20, 0.6);
+  background: color-mix(in srgb, var(--aether-bg-sidebar) 60%, transparent);
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   font-size: 10px;
   color: rgba(255, 255, 255, 0.35);

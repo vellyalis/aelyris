@@ -60,7 +60,7 @@ export function HelmPanel() {
         )}
         {tasks.map((t) => (
           <div key={t.id} className={`${styles.task} ${t.done ? styles.taskDone : ""}`}>
-            <input type="checkbox" checked={t.done} onChange={() => toggleTask(t.id)} className={styles.checkbox} />
+            <input type="checkbox" checked={t.done} onClick={() => toggleTask(t.id)} readOnly className={styles.checkbox} />
             <span className={styles.taskLabel}>{t.label}</span>
             <button className={styles.deleteBtn} onClick={() => deleteTask(t.id)}>×</button>
           </div>
