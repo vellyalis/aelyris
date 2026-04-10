@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { GitPullRequest, Upload, GitBranch, Play, FolderOpen, ClipboardList, ScrollText, FlaskConical } from "lucide-react";
 import { showPrompt } from "../../shared/ui/PromptDialog";
@@ -58,6 +58,19 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
   const [editCommand, setEditCommand] = useState("");
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
+  const editFormRef = useRef<HTMLDivElement>(null);
+
+  // Close edit form on outside click
+  useEffect(() => {
+    if (!editingId) return;
+    const handler = (e: MouseEvent) => {
+      if (editFormRef.current && !editFormRef.current.contains(e.target as Node)) {
+        setEditingId(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [editingId]);
 
   const handleEdit = useCallback((action: ToolkitAction) => {
     setEditingId(action.id);
@@ -123,7 +136,7 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
       </div>
 
       {editingId && (
-        <div className={styles.editForm}>
+        <div className={styles.editForm} ref={editFormRef}>
           <input className={styles.editInput} value={editLabel} onChange={(e) => setEditLabel(e.target.value)} placeholder="Label" />
           <input className={styles.editInput} value={editCommand} onChange={(e) => setEditCommand(e.target.value)} placeholder="Command" />
           <div className={styles.editActions}>

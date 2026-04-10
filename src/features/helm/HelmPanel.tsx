@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import styles from "./HelmPanel.module.css";
 
@@ -19,6 +19,20 @@ export function HelmPanel() {
   const [tasks, setTasks] = useState<Task[]>(loadTasks);
   const [adding, setAdding] = useState(false);
   const [newLabel, setNewLabel] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!adding) return;
+    const handler = (e: MouseEvent) => {
+      if (inputRef.current && !inputRef.current.contains(e.target as Node)) {
+        setAdding(false);
+        setNewLabel("");
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [adding]);
 
   const addTask = useCallback(() => {
     if (!newLabel.trim()) return;
@@ -48,11 +62,12 @@ export function HelmPanel() {
       <div className={styles.content}>
         {adding && (
           <input
+            ref={inputRef}
             autoFocus
             className={styles.addInput}
             value={newLabel}
             onChange={(e) => setNewLabel(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") addTask(); if (e.key === "Escape") setAdding(false); }}
+            onKeyDown={(e) => { if (e.key === "Enter") addTask(); if (e.key === "Escape") { setAdding(false); setNewLabel(""); } }}
             placeholder="Add task..."
           />
         )}
