@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { type AgentSession, STATUS_COLORS, STATUS_LABELS } from "../../shared/types/agent";
 import { MODEL_OPTIONS, getModelById } from "../../shared/types/model";
 import { showPrompt } from "../../shared/ui/PromptDialog";
@@ -27,20 +27,6 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
   const [promptText, setPromptText] = useState("");
   const { selectedModel, setSelectedModel } = useAppStore();
   const activeSession = sessions.find((s) => s.id === activeSessionId);
-  const promptRef = useRef<HTMLDivElement>(null);
-
-  // Close prompt input on outside click
-  useEffect(() => {
-    if (!showPromptInput) return;
-    const handler = (e: MouseEvent) => {
-      if (promptRef.current && !promptRef.current.contains(e.target as Node)) {
-        setShowPromptInput(false);
-        setPromptText("");
-      }
-    };
-    const timer = setTimeout(() => document.addEventListener("mousedown", handler), 100);
-    return () => { clearTimeout(timer); document.removeEventListener("mousedown", handler); };
-  }, [showPromptInput]);
 
   const handleRenameSession = useCallback(async (session: AgentSession) => {
     const newName = await showPrompt("Rename Session", { defaultValue: session.name });
@@ -71,7 +57,16 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
 
       {/* Prompt input + model selector */}
       {showPromptInput && (
-        <div className={styles.promptInput} ref={promptRef}>
+        <div
+          className={styles.promptInput}
+          onBlur={(e) => {
+            // Only close if focus leaves the entire promptInput container
+            if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+              setShowPromptInput(false);
+              setPromptText("");
+            }
+          }}
+        >
           <div className={styles.modelRow}>
             <select
               className={styles.modelSelect}

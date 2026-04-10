@@ -137,6 +137,7 @@
   border-radius: 0;
   background: transparent;
   color: var(--white-50);
+  -webkit-app-region: no-drag;
   cursor: pointer;
   display: flex;
   align-items: center;
