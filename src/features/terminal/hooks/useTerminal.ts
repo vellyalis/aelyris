@@ -1,6 +1,5 @@
 import { useEffect, useRef, useCallback } from "react";
 import { Terminal } from "@xterm/xterm";
-import { WebglAddon } from "@xterm/addon-webgl";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { SearchAddon } from "@xterm/addon-search";
@@ -76,16 +75,8 @@ export function useTerminal(options: UseTerminalOptions = {}) {
 
     term.open(container);
 
-    // Try WebGL, fallback to canvas
-    try {
-      const webglAddon = new WebglAddon();
-      webglAddon.onContextLoss(() => {
-        webglAddon.dispose();
-      });
-      term.loadAddon(webglAddon);
-    } catch {
-      // Falls back to canvas renderer silently
-    }
+    // Skip WebGL renderer — it doesn't support transparent backgrounds.
+    // Canvas renderer handles transparency correctly with allowTransparency: true.
 
     fitAddon.fit();
     xtermRef.current = term;

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from "react";
 import { ProjectHeaderBar } from "./features/header/ProjectHeaderBar";
+import { MenuBar, type Menu } from "./features/menubar/MenuBar";
 import { FileTree } from "./features/file-tree/FileTree";
 import { KanbanBoard } from "./features/kanban/KanbanBoard";
 import { TerminalPane } from "./features/terminal/TerminalPane";
@@ -159,6 +160,66 @@ export function App() {
     { id: "search-files", label: "Search in Files", shortcut: "Ctrl+Shift+F", action: () => setSearchVisible(true) },
   ], [addTab, closeTab, activeTabId, activeFile, handleCloseFile, handleStartAgent, handleOpenFolder, handleCloseFolder]);
 
+  const menus: Menu[] = useMemo(() => [
+    {
+      label: "File",
+      items: [
+        { label: "New File", shortcut: "Ctrl+N", action: () => {
+          const name = prompt("New file name:");
+          if (name && projectPath) {
+            import("@tauri-apps/api/core").then(({ invoke: inv }) => {
+              inv("create_file", { path: `${projectPath}/${name}` }).then(() => handleFileSelect(`${projectPath}/${name}`)).catch(() => {});
+            });
+          }
+        }},
+        { label: "Open Folder...", shortcut: "Ctrl+Shift+O", action: handleOpenFolder },
+        { label: "Close Folder", action: handleCloseFolder },
+        { divider: true, label: "" },
+        { label: "Save", shortcut: "Ctrl+S", action: () => { /* handled by editor */ } },
+        { divider: true, label: "" },
+        { label: "Close Editor", shortcut: "Ctrl+W", action: () => activeFile && handleCloseFile(activeFile), disabled: !activeFile },
+        { label: "Settings", shortcut: "Ctrl+,", action: () => setSettingsVisible(true) },
+      ],
+    },
+    {
+      label: "Edit",
+      items: [
+        { label: "Undo", shortcut: "Ctrl+Z", action: () => document.execCommand("undo") },
+        { label: "Redo", shortcut: "Ctrl+Y", action: () => document.execCommand("redo") },
+        { divider: true, label: "" },
+        { label: "Cut", shortcut: "Ctrl+X", action: () => document.execCommand("cut") },
+        { label: "Copy", shortcut: "Ctrl+C", action: () => document.execCommand("copy") },
+        { label: "Paste", shortcut: "Ctrl+V", action: () => document.execCommand("paste") },
+        { divider: true, label: "" },
+        { label: "Find", shortcut: "Ctrl+F", action: () => {} },
+        { label: "Replace", shortcut: "Ctrl+H", action: () => {} },
+      ],
+    },
+    {
+      label: "View",
+      items: [
+        { label: "Command Palette", shortcut: "Ctrl+Shift+P", action: () => setPaletteVisible(true) },
+        { label: "Search in Files", shortcut: "Ctrl+Shift+F", action: () => setSearchVisible(true) },
+        { label: "Web Inspector", action: () => setWebInspectorVisible((v) => !v) },
+        { label: "Pull Requests", action: () => setPrInspectorVisible((v) => !v) },
+      ],
+    },
+    {
+      label: "Terminal",
+      items: [
+        { label: "New Terminal", shortcut: "Ctrl+Shift+T", action: () => addTab("powershell") },
+        { label: "New CMD", action: () => addTab("cmd") },
+        { label: "New Git Bash", action: () => addTab("gitbash") },
+        { label: "New WSL", action: () => addTab("wsl") },
+      ],
+    },
+    {
+      label: "Help",
+      items: [
+        { label: "About Aether Terminal", action: () => setAboutVisible(true) },
+      ],
+    },
+  ], [handleOpenFolder, handleCloseFolder, addTab, activeFile, handleCloseFile]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -257,8 +318,7 @@ export function App() {
         activeAgent={activeAgent ? { model: activeAgent.model, cost: activeAgent.cost } : null}
         onOpenSettings={() => setSettingsVisible(true)}
       />
-      {/* MenuBar hidden — all actions via Ctrl+Shift+P command palette */}
-      {/* <MenuBar menus={menus} /> */}
+      <MenuBar menus={menus} />
 
       <main className="app-main" role="main">
         <div className="left-panel" role="navigation" aria-label="Project sidebar" style={{ position: "relative" }}>
