@@ -1,11 +1,13 @@
 pub mod agent;
 mod config;
+pub mod db;
 mod git;
 mod ipc;
 pub mod pty;
 pub mod watchdog;
 
 use agent::AgentManager;
+use db::Database;
 use pty::PtyManager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -20,6 +22,16 @@ pub fn run() {
         .manage(PtyManager::new())
         .manage(AgentManager::new())
         .setup(|_app| {
+            // Initialize database
+            let db_path = db::db_path();
+            match Database::open(&db_path) {
+                Ok(_db) => {
+                    log::info!("Database initialized at {:?}", db_path);
+                }
+                Err(e) => {
+                    log::error!("Failed to initialize database: {}", e);
+                }
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
