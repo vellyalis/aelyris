@@ -6,7 +6,7 @@
   border: 1px solid var(--white-10);
   border-radius: var(--radius-sm);
   padding: var(--space-2);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  box-shadow: var(--shadow-lg);
   z-index: var(--z-dropdown);
   animation: ctxFadeIn 0.1s ease-out;
 }

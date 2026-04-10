@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import * as RadixContextMenu from "@radix-ui/react-context-menu";
+import { showPrompt } from "../../shared/ui/PromptDialog";
 import { FileIcon } from "./FileIcon";
 import styles from "./FileTree.module.css";
 
@@ -53,7 +54,7 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
   }, []);
 
   const handleNewFile = useCallback(async (dir: string) => {
-    const name = prompt("New file name:");
+    const name = await showPrompt("New File", { placeholder: "file name..." });
     if (!name) return;
     try {
       await invoke("create_file", { path: `${dir}/${name}` });
@@ -62,7 +63,7 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
   }, [reloadDir]);
 
   const handleNewFolder = useCallback(async (dir: string) => {
-    const name = prompt("New folder name:");
+    const name = await showPrompt("New Folder", { placeholder: "folder name..." });
     if (!name) return;
     try {
       await invoke("create_directory", { path: `${dir}/${name}` });
@@ -72,7 +73,7 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
 
   const handleRename = useCallback(async (path: string) => {
     const oldName = path.split("/").pop() ?? "";
-    const newName = prompt("Rename to:", oldName);
+    const newName = await showPrompt("Rename", { placeholder: "new name...", defaultValue: oldName });
     if (!newName || newName === oldName) return;
     const parentDir = path.split("/").slice(0, -1).join("/");
     try {

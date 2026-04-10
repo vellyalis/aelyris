@@ -5,7 +5,7 @@
   padding: 0 10px;
   background: var(--aether-bg-elevated);
   border-top: 1px solid var(--border);
-  font-size: 11px;
+  font-size: var(--text-md);
   font-family: var(--font-mono);
   color: var(--text-muted);
   flex-shrink: 0;
@@ -22,8 +22,8 @@
   border: none;
   color: var(--text-muted);
   cursor: pointer;
-  padding: 2px 4px;
-  border-radius: 3px;
+  padding: var(--space-1) 4px;
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
 }

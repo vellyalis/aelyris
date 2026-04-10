@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { type AgentSession, STATUS_COLORS, STATUS_LABELS } from "../../shared/types/agent";
 import { MODEL_OPTIONS, getModelById } from "../../shared/types/model";
+import { showPrompt } from "../../shared/ui/PromptDialog";
 import { useAppStore } from "../../shared/store/appStore";
 import { PixelAvatar } from "../../shared/ui/PixelAvatar";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
@@ -26,8 +27,8 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
   const { selectedModel, setSelectedModel } = useAppStore();
   const activeSession = sessions.find((s) => s.id === activeSessionId);
 
-  const handleRenameSession = useCallback((session: AgentSession) => {
-    const newName = prompt("Rename session:", session.name);
+  const handleRenameSession = useCallback(async (session: AgentSession) => {
+    const newName = await showPrompt("Rename Session", { defaultValue: session.name });
     if (newName && newName !== session.name) {
       // Session rename is in-memory only for now
       session.name = newName;
@@ -111,7 +112,7 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
                         </div>
                         <div className={styles.cardStatusRow}>
                           <StatusIcon status={s.status} size={10} />
-                          <span style={{ color: STATUS_COLORS[s.status], fontSize: 10 }}>{STATUS_LABELS[s.status]}</span>
+                          <span className={styles.cardStatusLabel} style={{ color: STATUS_COLORS[s.status] }}>{STATUS_LABELS[s.status]}</span>
                           {s.filesChanged !== undefined && s.filesChanged > 0 && <span className={styles.cardFiles}>📎{s.filesChanged}</span>}
                           <span className={styles.cardAge}>{formatAge(s.startedAt)}</span>
                         </div>

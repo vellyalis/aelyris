@@ -1,12 +1,12 @@
 .bar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-4);
   height: 22px;
   padding: 0 8px;
   background: transparent;
   border-bottom: 1px solid var(--border);
-  font-size: 10px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
   flex-shrink: 0;
 }
@@ -24,17 +24,17 @@
 .branch {
   color: var(--status-idle);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: var(--text-xs);
 }
 
 .meta {
-  font-size: 9px;
+  font-size: var(--text-xs);
   color: var(--white-40);
   font-family: var(--font-mono);
 }
 
 .cost {
-  font-size: 9px;
+  font-size: var(--text-xs);
   color: var(--ctp-peach);
   font-family: var(--font-mono);
 }
@@ -47,10 +47,10 @@
   background: none;
   border: none;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-base);
   cursor: pointer;
-  padding: 1px 4px;
-  border-radius: 3px;
+  padding: var(--space-1) 4px;
+  border-radius: var(--radius-sm);
 }
 
 .toggleBtn:hover {

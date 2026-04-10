@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { GitPullRequest, Upload, GitBranch, Play, FolderOpen, ClipboardList, ScrollText, FlaskConical } from "lucide-react";
+import { showPrompt } from "../../shared/ui/PromptDialog";
 import styles from "./ToolkitPanel.module.css";
 
 const ICON_MAP: Record<string, React.ReactNode> = {
@@ -74,10 +75,10 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
     setEditingId(null);
   }, [editingId, editLabel, editCommand, actions, projectName]);
 
-  const handleAdd = useCallback(() => {
-    const label = prompt("Button label:");
+  const handleAdd = useCallback(async () => {
+    const label = await showPrompt("Add Tool", { placeholder: "Button label..." });
     if (!label) return;
-    const command = prompt("Command to run:");
+    const command = await showPrompt("Command", { placeholder: "Command to run..." });
     if (!command) return;
     const newAction: ToolkitAction = {
       id: `custom-${Date.now()}`,
@@ -149,7 +150,7 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
         ))}
       </div>
       <div className={styles.bottomActions}>
-        <button className={styles.bottomBtn} onClick={() => { /* TODO: generate */ }}>⊕ Generate...</button>
+        <button className={styles.bottomBtn} onClick={async () => { const cmd = await showPrompt("Generate Tool", { placeholder: "Describe what the tool should do..." }); if (cmd) { const newAction: ToolkitAction = { id: `gen-${Date.now()}`, label: cmd.split(" ").slice(0, 3).join(" "), badge: "var(--ctp-mauve)", command: cmd }; const updated = [...actions, newAction]; setActions(updated); saveActions(projectName, updated); } }}>⊕ Generate...</button>
         <button className={styles.bottomBtn} onClick={handleAdd}>⊕ Create...</button>
         <button className={styles.bottomBtn} onClick={() => setImportOpen(true)}>⊕ Import...</button>
       </div>

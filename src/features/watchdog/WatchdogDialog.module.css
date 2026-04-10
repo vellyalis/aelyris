@@ -7,7 +7,7 @@
   width: 420px; max-height: 80vh; overflow-y: auto;
   background: var(--aether-bg-card);
   border: 1px solid var(--white-10); border-radius: var(--radius-lg);
-  padding: var(--space-10); box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+  padding: var(--space-10); box-shadow: var(--shadow-lg);
 }
 .title {
   font-size: var(--text-2xl); font-weight: 600; color: var(--text-primary);
@@ -23,7 +23,7 @@
   font-size: var(--text-base); color: var(--text-secondary);
 }
 .toggle {
-  padding: 2px 10px; border-radius: 10px; font-size: var(--text-sm);
+  padding: var(--space-1) 10px; border-radius: var(--radius); font-size: var(--text-sm);
   font-weight: 600; cursor: pointer; border: 1px solid var(--white-10);
   background: var(--aether-bg-sidebar); color: var(--text-muted);
   transition: background var(--duration-fast), color var(--duration-fast);
@@ -38,7 +38,7 @@
   display: flex; gap: var(--space-3); margin-bottom: var(--space-6);
 }
 .presetBtn {
-  padding: 3px 10px; border: 1px solid var(--white-10);
+  padding: var(--space-1) 10px; border: 1px solid var(--white-10);
   border-radius: var(--radius-sm); background: transparent;
   color: var(--text-secondary); font-size: var(--text-sm);
   font-family: var(--font-ui); cursor: pointer;
@@ -50,16 +50,16 @@
 
 /* Rules list */
 .rulesList {
-  display: flex; flex-direction: column; gap: 2px;
+  display: flex; flex-direction: column; gap: var(--space-1);
   margin-bottom: var(--space-6); max-height: 200px; overflow-y: auto;
 }
 .ruleRow {
   display: flex; align-items: center; gap: var(--space-3);
-  padding: 4px 6px; border-radius: var(--radius-sm);
+  padding: var(--space-2) 6px; border-radius: var(--radius-sm);
   background: var(--aether-bg-sidebar);
 }
 .ruleToggle {
-  background: none; border: none; cursor: pointer; padding: 2px;
+  background: none; border: none; cursor: pointer; padding: var(--space-1);
   display: flex; align-items: center;
 }
 .rulePattern {
@@ -69,7 +69,7 @@
 }
 .ruleDelete {
   background: none; border: none; color: var(--text-muted);
-  cursor: pointer; padding: 2px; border-radius: 3px;
+  cursor: pointer; padding: var(--space-1); border-radius: var(--radius-sm);
   display: flex; align-items: center;
 }
 .ruleDelete:hover { color: var(--ctp-red); background: var(--white-6); }
@@ -89,7 +89,7 @@
 .addBtn {
   background: none; border: 1px solid var(--white-10);
   border-radius: var(--radius-sm); color: var(--text-muted);
-  cursor: pointer; padding: 4px 8px; display: flex; align-items: center;
+  cursor: pointer; padding: var(--space-2) 8px; display: flex; align-items: center;
 }
 .addBtn:hover { background: var(--white-6); color: var(--text-primary); }
 .addBtn:disabled { opacity: 0.3; cursor: default; }

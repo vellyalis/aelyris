@@ -5,7 +5,7 @@
   padding: 0 10px;
   background: var(--aether-bg-sidebar);
   border-bottom: 1px solid var(--border);
-  font-size: 11px;
+  font-size: var(--text-md);
   overflow: hidden;
 }
 

@@ -14,7 +14,7 @@
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-5);
-  font-size: 10px;
+  font-size: var(--text-sm);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -26,7 +26,7 @@
   color: var(--text-muted);
 }
 .addBtn {
-  background: none; border: none; color: var(--text-muted); font-size: 14px;
+  background: none; border: none; color: var(--text-muted); font-size: var(--text-xl);
   cursor: pointer; padding: 0 var(--space-2); border-radius: var(--radius-sm); margin-left: auto;
 }
 .addBtn:hover { background: var(--white-6); color: var(--text-primary); }
@@ -36,14 +36,14 @@
   padding: 0 var(--space-3) var(--space-3);
 }
 .empty {
-  font-size: 11px;
+  font-size: var(--text-md);
   color: var(--text-muted);
   padding: var(--space-4) var(--space-2);
 }
 .addInput {
   width: 100%; padding: var(--space-2) var(--space-4);
   background: var(--white-4); border: 1px solid var(--border);
-  border-radius: var(--radius-sm); color: var(--text-primary); font-size: 11px;
+  border-radius: var(--radius-sm); color: var(--text-primary); font-size: var(--text-md);
   font-family: var(--font-ui); outline: none; margin-bottom: var(--space-2);
 }
 .addInput:hover { border-color: var(--white-10); }
@@ -51,7 +51,7 @@
 .addInput::placeholder { color: var(--text-muted); }
 .task {
   display: flex; align-items: center; gap: var(--space-3);
-  padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); font-size: 11px;
+  padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); font-size: var(--text-md);
   transition: background var(--duration-fast);
 }
 .task:hover { background: rgba(124, 58, 237, 0.08); }
@@ -59,7 +59,7 @@
 .checkbox { accent-color: var(--purple-text); cursor: pointer; }
 .taskLabel { flex: 1; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .deleteBtn {
-  background: none; border: none; color: rgba(167, 139, 250, 0.3); font-size: 12px;
+  background: none; border: none; color: rgba(167, 139, 250, 0.3); font-size: var(--text-base);
   cursor: pointer; opacity: 0; transition: opacity 0.1s;
 }
 .task:hover .deleteBtn { opacity: 1; }

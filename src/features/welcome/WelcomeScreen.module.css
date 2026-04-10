@@ -18,14 +18,14 @@
   align-items: center;
   max-width: 480px;
   width: 100%;
-  padding: 40px 20px;
+  padding: var(--space-16) var(--space-10);
 }
 
 .logo {
   display: flex;
   align-items: center;
   gap: var(--space-6);
-  margin-bottom: 8px;
+  margin-bottom: var(--space-4);
 }
 
 .logoIcon {
@@ -36,29 +36,29 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  font-size: var(--text-2xl);
   font-weight: 700;
   color: #fff;
 }
 
 .title {
-  font-size: var(--text-3xl);
+  font-size: var(--text-5xl);
   font-weight: 600;
   color: var(--text-primary);
   letter-spacing: -0.02em;
 }
 
 .subtitle {
-  font-size: 13px;
+  font-size: var(--text-lg);
   color: var(--text-muted);
-  margin-bottom: 32px;
+  margin-bottom: var(--space-16);
 }
 
 .dropHint {
-  font-size: 11px;
+  font-size: var(--text-md);
   color: var(--text-muted);
-  margin-top: 8px;
-  margin-bottom: 24px;
+  margin-top: var(--space-4);
+  margin-bottom: var(--space-12);
 }
 
 .openBtn {
@@ -67,12 +67,12 @@
   border-radius: var(--radius);
   background: var(--gold);
   color: var(--aether-bg);
-  font-size: 14px;
+  font-size: var(--text-xl);
   font-weight: 600;
   font-family: var(--font-ui);
   cursor: pointer;
   transition: opacity 0.15s;
-  margin-bottom: 32px;
+  margin-bottom: var(--space-16);
 }
 
 .openBtn:hover {
@@ -80,20 +80,20 @@
 }
 
 .recentHeader {
-  font-size: 10px;
+  font-size: var(--text-sm);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-muted);
   align-self: flex-start;
-  margin-bottom: 8px;
+  margin-bottom: var(--space-4);
 }
 
 .recentList {
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-2);
   max-height: 300px;
   overflow-y: auto;
 }
@@ -103,7 +103,7 @@
   align-items: center;
   gap: var(--space-5);
   width: 100%;
-  padding: 8px 12px;
+  padding: var(--space-4) 12px;
   border: 1px solid var(--aether-border);
   border-radius: var(--radius);
   background: var(--white-2);
@@ -129,7 +129,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: var(--text-md);
   font-weight: 700;
   color: #fff;
   flex-shrink: 0;
@@ -140,13 +140,13 @@
 }
 
 .projectName {
-  font-size: 13px;
+  font-size: var(--text-lg);
   font-weight: 500;
   color: var(--text-primary);
 }
 
 .projectPath {
-  font-size: 10px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
   font-family: var(--font-mono);
   overflow: hidden;
@@ -159,9 +159,9 @@
 }
 
 .hint {
-  padding: 16px;
+  padding: var(--space-8);
   text-align: center;
-  font-size: 12px;
+  font-size: var(--text-base);
   color: var(--text-muted);
 }
 
@@ -171,7 +171,7 @@
   align-items: center;
   gap: var(--space-5);
   width: 100%;
-  padding: 8px 12px;
+  padding: var(--space-4) 12px;
   border: 1px solid var(--aether-border);
   border-radius: var(--radius);
   background: var(--white-2);
@@ -188,11 +188,11 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-3);
 }
 .skeletonLine {
   height: 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--white-6);
   animation: shimmer 1.5s ease-in-out infinite;
 }

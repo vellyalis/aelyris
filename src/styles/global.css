@@ -118,14 +118,18 @@
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-inout: cubic-bezier(0.4, 0, 0.2, 1);
 
-  /* Font sizes */
+  /* Font sizes — complete scale */
+  --text-2xs: 8px;
   --text-xs: 9px;
   --text-sm: 10px;
+  --text-md: 11px;
   --text-base: 12px;
   --text-lg: 13px;
   --text-xl: 14px;
-  --text-3xl: 24px;
   --text-2xl: 16px;
+  --text-3xl: 18px;
+  --text-4xl: 20px;
+  --text-5xl: 24px;
 
   /* Common rgba patterns as variables (reduces duplication) */
   --white-2: rgba(255, 255, 255, 0.02);
@@ -246,6 +250,13 @@ button, [role="button"] {
 /* Global click feedback — subtle scale on press */
 button:active:not(:disabled), [role="button"]:active:not(:disabled) {
   transform: scale(0.97);
+}
+
+/* Global disabled state */
+button:disabled, [role="button"][aria-disabled="true"] {
+  opacity: var(--state-disabled-opacity);
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 /* Reduced motion preference */

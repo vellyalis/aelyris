@@ -60,7 +60,7 @@
   background: none;
   border: none;
   color: var(--white-60);
-  font-size: 11px;
+  font-size: var(--text-md);
   font-family: var(--font-ui);
   padding: var(--space-2) var(--space-6);
   border-radius: var(--radius-sm);

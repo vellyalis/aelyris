@@ -22,6 +22,7 @@ import { SplitPane } from "./shared/ui/SplitPane";
 import { ErrorBoundary } from "./shared/ui/ErrorBoundary";
 import { TooltipProvider } from "./shared/ui/Tooltip";
 import { ToastProvider } from "./shared/ui/Toast";
+import { PromptDialog, showPrompt } from "./shared/ui/PromptDialog";
 import { useTabManager } from "./shared/hooks/useTabManager";
 import { useAgentManager } from "./shared/hooks/useAgentManager";
 import { useGitStatus } from "./shared/hooks/useGitStatus";
@@ -162,7 +163,7 @@ export function App() {
     { id: "pull-requests", label: "View Pull Requests", action: () => setPrInspectorVisible(true) },
     { id: "web-inspector", label: "Web Inspector", action: () => setWebInspectorVisible(true) },
     { id: "about", label: "About Aether Terminal", action: () => setAboutVisible(true) },
-    { id: "start-agent", label: "Start Claude Agent", shortcut: "Ctrl+Shift+A", action: () => { const p = window.prompt("Prompt:"); if (p) handleStartAgent(p); } },
+    { id: "start-agent", label: "Start Claude Agent", shortcut: "Ctrl+Shift+A", action: async () => { const p = await showPrompt("Enter prompt for agent", { placeholder: "What should the agent do?" }); if (p) handleStartAgent(p); } },
     { id: "close-folder", label: "Close Folder", action: handleCloseFolder },
     { id: "search-files", label: "Search in Files", shortcut: "Ctrl+Shift+F", action: () => setSearchVisible(true) },
   ], [addTab, closeTab, activeTabId, activeFile, handleCloseFile, handleStartAgent, handleOpenFolder, handleCloseFolder]);
@@ -171,12 +172,12 @@ export function App() {
     {
       label: "File",
       items: [
-        { label: "New File", shortcut: "Ctrl+N", action: () => {
-          const name = prompt("New file name:");
+        { label: "New File", shortcut: "Ctrl+N", action: async () => {
+          const name = await showPrompt("New File", { placeholder: "file name..." });
           if (name && projectPath) {
-            import("@tauri-apps/api/core").then(({ invoke: inv }) => {
-              inv("create_file", { path: `${projectPath}/${name}` }).then(() => handleFileSelect(`${projectPath}/${name}`)).catch(() => {});
-            });
+            const { invoke: inv } = await import("@tauri-apps/api/core");
+            await inv("create_file", { path: `${projectPath}/${name}` }).catch(() => {});
+            handleFileSelect(`${projectPath}/${name}`);
           }
         }},
         { label: "Open Folder...", shortcut: "Ctrl+Shift+O", action: handleOpenFolder },
@@ -198,8 +199,8 @@ export function App() {
         { label: "Copy", shortcut: "Ctrl+C", action: () => document.execCommand("copy") },
         { label: "Paste", shortcut: "Ctrl+V", action: () => document.execCommand("paste") },
         { divider: true, label: "" },
-        { label: "Find", shortcut: "Ctrl+F", action: () => {} },
-        { label: "Replace", shortcut: "Ctrl+H", action: () => {} },
+        { label: "Find", shortcut: "Ctrl+F", disabled: true, action: () => {} },
+        { label: "Replace", shortcut: "Ctrl+H", disabled: true, action: () => {} },
       ],
     },
     {
@@ -232,14 +233,13 @@ export function App() {
     const handler = (e: KeyboardEvent) => {
       if (e.ctrlKey && !e.shiftKey && e.key === "n") {
         e.preventDefault();
-        const name = prompt("New file name:");
-        if (name && projectPath) {
-          import("@tauri-apps/api/core").then(({ invoke: inv }) => {
-            inv("create_file", { path: `${projectPath}/${name}` }).then(() => {
-              handleFileSelect(`${projectPath}/${name}`);
-            }).catch(() => {});
-          });
-        }
+        showPrompt("New File", { placeholder: "file name..." }).then(async (name) => {
+          if (name && projectPath) {
+            const { invoke: inv } = await import("@tauri-apps/api/core");
+            await inv("create_file", { path: `${projectPath}/${name}` }).catch(() => {});
+            handleFileSelect(`${projectPath}/${name}`);
+          }
+        });
       }
       else if (e.ctrlKey && e.shiftKey && e.key === "P") { e.preventDefault(); setPaletteVisible((v) => !v); }
       else if (e.ctrlKey && e.shiftKey && e.key === "T") { e.preventDefault(); addTab("powershell"); }
@@ -249,8 +249,7 @@ export function App() {
       else if (e.ctrlKey && e.shiftKey && e.key === "E") { e.preventDefault(); setSearchVisible(false); }
       else if (e.ctrlKey && e.shiftKey && e.key === "A") {
         e.preventDefault();
-        const prompt = window.prompt("Enter prompt for Claude agent:");
-        if (prompt) handleStartAgent(prompt);
+        showPrompt("Start Agent", { placeholder: "What should the agent do?" }).then((p) => { if (p) handleStartAgent(p); });
       }
       else if (e.ctrlKey && !e.shiftKey && e.key === "w") { e.preventDefault(); if (activeFile) handleCloseFile(activeFile); }
       else if (e.ctrlKey && e.key === ",") { e.preventDefault(); setSettingsVisible((v) => !v); }
@@ -382,6 +381,7 @@ export function App() {
       <AboutDialog visible={aboutVisible} onClose={() => setAboutVisible(false)} />
       <WebInspector visible={webInspectorVisible} onClose={() => setWebInspectorVisible(false)} />
       <PRInspector visible={prInspectorVisible} projectPath={projectPath} onClose={() => setPrInspectorVisible(false)} onStartReview={(prompt) => handleStartAgent(prompt)} />
+      <PromptDialog />
     </div>
     </ToastProvider>
     </TooltipProvider>

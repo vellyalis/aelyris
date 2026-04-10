@@ -8,7 +8,7 @@
 
 .terminalContainer {
   flex: 1;
-  padding: 8px;
+  padding: var(--space-4);
   overflow: hidden;
 }
 
@@ -20,8 +20,8 @@
 .searchBar {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
+  gap: var(--space-2);
+  padding: var(--space-2) 8px;
   background: var(--aether-bg-elevated);
   border-bottom: 1px solid var(--border);
 }
@@ -30,11 +30,11 @@
   flex: 1;
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius);
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: var(--text-base);
   font-family: var(--font-mono);
-  padding: 4px 8px;
+  padding: var(--space-2) 8px;
   outline: none;
   transition: border-color 150ms ease;
 }
@@ -51,10 +51,10 @@
   background: none;
   border: none;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--text-xl);
   cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 4px;
+  padding: var(--space-1) 6px;
+  border-radius: var(--radius-sm);
 }
 
 .searchBtn:hover {

@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rtk git:*)",
+      "Bash(rtk pnpm:*)",
+      "Bash(rtk cargo:*)",
+      "Bash(cargo test:*)",
+      "Bash(cargo check:*)"
+    ]
+  }
+}
