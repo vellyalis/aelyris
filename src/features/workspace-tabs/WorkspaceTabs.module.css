@@ -3,7 +3,7 @@
   align-items: center;
   height: 28px;
   padding: 0 var(--space-4);
-  background: var(--glass-ground);
+  background: var(--glass-frame);
   border-top: 1px solid var(--border);
 }
 
