@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { GitBranch, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { EmptyState } from "../../shared/ui/EmptyState";
 import styles from "./WorktreeManager.module.css";
 
 interface WorktreeInfo {
@@ -79,7 +80,7 @@ export function WorktreeManager({ projectPath, onSwitch }: WorktreeManagerProps)
 
       <div className={styles.list}>
         {worktrees.length === 0 && (
-          <div className={styles.empty}>No worktrees found</div>
+          <EmptyState preset="worktrees" title="No worktrees" description="Create a worktree to work on a branch in parallel" />
         )}
         {worktrees.map((wt) => (
           <div

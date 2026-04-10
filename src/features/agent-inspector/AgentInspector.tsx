@@ -7,7 +7,8 @@ import { PixelAvatar } from "../../shared/ui/PixelAvatar";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
 import { ContextGauge } from "../../shared/ui/ContextGauge";
 import * as RadixContextMenu from "@radix-ui/react-context-menu";
-import { ClipboardCopy, Bell, Plus, Pencil } from "lucide-react";
+import { ClipboardCopy, Bell, Plus, Pencil, Activity } from "lucide-react";
+import { EmptyState } from "../../shared/ui/EmptyState";
 import { ToolBadge } from "../../shared/ui/ToolBadge";
 import { extractToolName } from "../../shared/types/toolBadge";
 import styles from "./AgentInspector.module.css";
@@ -93,10 +94,7 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
           {/* Session cards */}
           <div className={styles.cards}>
             {sessions.length === 0 && !showPromptInput && (
-              <div className={styles.empty}>
-                <div>No active agents</div>
-                <div className={styles.hint}>Ctrl+Shift+A to start</div>
-              </div>
+              <EmptyState preset="agents" title="No active agents" description="Press Ctrl+Shift+A to start an agent" />
             )}
             {sessions.map((s) => (
               <RadixContextMenu.Root key={s.id}>
@@ -197,7 +195,7 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
                 </div>
                 ); })}
             {sessions.flatMap((s) => s.logs).length === 0 && (
-              <div className={styles.empty}>No activity yet</div>
+              <EmptyState icon={<Activity size={20} />} title="No activity yet" description="Agent logs will appear here" />
             )}
           </div>
         </div>

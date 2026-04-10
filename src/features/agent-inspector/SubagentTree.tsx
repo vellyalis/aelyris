@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { ChevronRight, Shield } from "lucide-react";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
+import { EmptyState } from "../../shared/ui/EmptyState";
 import type { AgentStatus } from "../../shared/types/agent";
 import styles from "./SubagentTree.module.css";
 
@@ -28,7 +29,7 @@ const PERM_COLORS: Record<string, string> = {
 export const SubagentTree = memo(function SubagentTree({ agents, activeId, onSelect }: SubagentTreeProps) {
   if (agents.length === 0) {
     return (
-      <div className={styles.empty}>No active agents</div>
+      <EmptyState preset="agents" title="No active agents" description="Start an agent to see its subagents" />
     );
   }
 

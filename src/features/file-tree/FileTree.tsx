@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import * as RadixContextMenu from "@radix-ui/react-context-menu";
 import { showPrompt } from "../../shared/ui/PromptDialog";
+import { EmptyState } from "../../shared/ui/EmptyState";
 import { FileIcon } from "./FileIcon";
 import styles from "./FileTree.module.css";
 
@@ -165,7 +166,7 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
               <span className={styles.searchPath}>{entry.path.replace(rootPath + "/", "")}</span>
             </button>
           ))}
-          {searchResults.length === 0 && <div className={styles.noResults}>No matches</div>}
+          {searchResults.length === 0 && <EmptyState preset="files" title="No matches" description="Try a different search term" />}
         </div>
       ) : (
         <>

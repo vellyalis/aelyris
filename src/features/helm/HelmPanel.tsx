@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { EmptyState } from "../../shared/ui/EmptyState";
 import styles from "./HelmPanel.module.css";
 
 interface Task {
@@ -56,7 +57,7 @@ export function HelmPanel() {
           />
         )}
         {tasks.length === 0 && !adding && (
-          <div className={styles.empty}>No tasks</div>
+          <EmptyState preset="tasks" title="No tasks" description="Click + to add a task" />
         )}
         {tasks.map((t) => (
           <div key={t.id} className={`${styles.task} ${t.done ? styles.taskDone : ""}`}>
