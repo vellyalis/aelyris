@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
+import * as RadixContextMenu from "@radix-ui/react-context-menu";
+import type { ReactNode } from "react";
 import styles from "./ContextMenu.module.css";
 
 interface ContextMenuItem {
@@ -14,42 +15,29 @@ interface ContextMenuProps {
 }
 
 export function ContextMenu({ children, items }: ContextMenuProps) {
-  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  const handleContextMenu = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    setPos({ x: e.clientX, y: e.clientY });
-  }, []);
-
-  useEffect(() => {
-    if (!pos) return;
-    const close = () => setPos(null);
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [pos]);
-
   return (
-    <div onContextMenu={handleContextMenu} style={{ display: "contents" }}>
-      {children}
-      {pos && (
-        <div ref={menuRef} className={styles.menu} style={{ left: pos.x, top: pos.y }}>
+    <RadixContextMenu.Root>
+      <RadixContextMenu.Trigger asChild>
+        {children}
+      </RadixContextMenu.Trigger>
+      <RadixContextMenu.Portal>
+        <RadixContextMenu.Content className={styles.menu}>
           {items.map((item, i) =>
             item.divider ? (
-              <div key={i} className={styles.divider} />
+              <RadixContextMenu.Separator key={`sep-${i}`} className={styles.divider} />
             ) : (
-              <button
-                key={i}
+              <RadixContextMenu.Item
+                key={item.label}
                 className={styles.item}
                 disabled={item.disabled}
-                onClick={() => { item.action(); setPos(null); }}
+                onSelect={item.action}
               >
                 {item.label}
-              </button>
+              </RadixContextMenu.Item>
             )
           )}
-        </div>
-      )}
-    </div>
+        </RadixContextMenu.Content>
+      </RadixContextMenu.Portal>
+    </RadixContextMenu.Root>
   );
 }

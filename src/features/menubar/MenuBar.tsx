@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import styles from "./MenuBar.module.css";
 
 export interface MenuItem {
@@ -19,56 +20,51 @@ interface MenuBarProps {
 }
 
 export function MenuBar({ menus }: MenuBarProps) {
-  const [openMenu, setOpenMenu] = useState<number | null>(null);
-  const barRef = useRef<HTMLDivElement>(null);
-
-  // Close menu on outside click
-  useEffect(() => {
-    if (openMenu === null) return;
-    const handler = (e: MouseEvent) => {
-      if (barRef.current && !barRef.current.contains(e.target as Node)) {
-        setOpenMenu(null);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [openMenu]);
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
 
   return (
-    <div className={styles.bar} ref={barRef} role="menubar" aria-label="Application menu">
-      {menus.map((menu, i) => (
-        <div key={menu.label} className={styles.menuWrapper}>
-          <button
-            className={`${styles.menuBtn} ${openMenu === i ? styles.menuBtnActive : ""}`}
-            onClick={() => setOpenMenu(openMenu === i ? null : i)}
-            onMouseEnter={() => openMenu !== null && setOpenMenu(i)}
-          >
-            {menu.label}
-          </button>
-          {openMenu === i && (
-            <div className={styles.dropdown} role="menu" aria-label={menu.label}>
+    <div className={styles.bar} role="menubar" aria-label="Application menu">
+      {menus.map((menu) => (
+        <DropdownMenu.Root
+          key={menu.label}
+          open={openMenu === menu.label}
+          onOpenChange={(open) => setOpenMenu(open ? menu.label : null)}
+        >
+          <DropdownMenu.Trigger asChild>
+            <button
+              className={`${styles.menuBtn} ${openMenu === menu.label ? styles.menuBtnActive : ""}`}
+              onMouseEnter={() => openMenu !== null && setOpenMenu(menu.label)}
+            >
+              {menu.label}
+            </button>
+          </DropdownMenu.Trigger>
+
+          <DropdownMenu.Portal>
+            <DropdownMenu.Content
+              className={styles.dropdown}
+              sideOffset={2}
+              align="start"
+            >
               {menu.items.map((item, j) =>
                 item.divider ? (
-                  <div key={j} className={styles.divider} />
+                  <DropdownMenu.Separator key={`sep-${j}`} className={styles.divider} />
                 ) : (
-                  <button
-                    key={j}
+                  <DropdownMenu.Item
+                    key={item.label}
                     className={styles.item}
-                    role="menuitem"
                     disabled={item.disabled}
-                    onClick={() => {
-                      item.action?.();
-                      setOpenMenu(null);
-                    }}
+                    onSelect={() => item.action?.()}
                   >
                     <span>{item.label}</span>
-                    {item.shortcut && <span className={styles.shortcut}>{item.shortcut}</span>}
-                  </button>
+                    {item.shortcut && (
+                      <span className={styles.shortcut}>{item.shortcut}</span>
+                    )}
+                  </DropdownMenu.Item>
                 )
               )}
-            </div>
-          )}
-        </div>
+            </DropdownMenu.Content>
+          </DropdownMenu.Portal>
+        </DropdownMenu.Root>
       ))}
     </div>
   );

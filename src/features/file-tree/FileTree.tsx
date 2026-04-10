@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import * as RadixContextMenu from "@radix-ui/react-context-menu";
 import { FileIcon } from "./FileIcon";
 import styles from "./FileTree.module.css";
 
@@ -24,85 +25,71 @@ interface FileTreeProps {
   onSearch?: (query: string) => void;
 }
 
+interface TreeActions {
+  onNewFile: (dir: string) => void;
+  onNewFolder: (dir: string) => void;
+  onRename: (path: string) => void;
+  onDelete: (path: string) => void;
+  onOpenDiff?: (path: string) => void;
+  changedSet: Set<string>;
+}
+
 export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = [] }: FileTreeProps) {
   const [currentRoot, setCurrentRoot] = useState(rootPath);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<FileEntry[] | null>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; path: string; isDir: boolean } | null>(null);
-
-  // Reset currentRoot when rootPath changes (project switch)
-  useEffect(() => { setCurrentRoot(rootPath); }, [rootPath]);
-
-  // Close context menu on click
-  useEffect(() => {
-    if (!ctxMenu) return;
-    const close = () => setCtxMenu(null);
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [ctxMenu]);
-
-  const handleContextMenu = useCallback((e: React.MouseEvent, path: string, isDir: boolean) => {
-    e.preventDefault();
-    setCtxMenu({ x: e.clientX, y: e.clientY, path, isDir });
-  }, []);
-
-  const handleNewFile = useCallback(async () => {
-    if (!ctxMenu) return;
-    const name = prompt("New file name:");
-    if (!name) return;
-    const dir = ctxMenu.isDir ? ctxMenu.path : ctxMenu.path.split("/").slice(0, -1).join("/");
-    try {
-      await invoke("create_file", { path: `${dir}/${name}` });
-      // Reload directory
-      const entries = await invoke<FileEntry[]>("list_directory", { path: dir });
-      setContents((prev) => new Map(prev).set(dir, entries));
-    } catch { /* ignore */ }
-    setCtxMenu(null);
-  }, [ctxMenu]);
-
-  const handleNewFolder = useCallback(async () => {
-    if (!ctxMenu) return;
-    const name = prompt("New folder name:");
-    if (!name) return;
-    const dir = ctxMenu.isDir ? ctxMenu.path : ctxMenu.path.split("/").slice(0, -1).join("/");
-    try {
-      await invoke("create_directory", { path: `${dir}/${name}` });
-      const entries = await invoke<FileEntry[]>("list_directory", { path: dir });
-      setContents((prev) => new Map(prev).set(dir, entries));
-    } catch { /* ignore */ }
-    setCtxMenu(null);
-  }, [ctxMenu]);
-
-  const handleRename = useCallback(async () => {
-    if (!ctxMenu) return;
-    const oldName = ctxMenu.path.split("/").pop() ?? "";
-    const newName = prompt("Rename to:", oldName);
-    if (!newName || newName === oldName) return;
-    const parentDir = ctxMenu.path.split("/").slice(0, -1).join("/");
-    try {
-      await invoke("rename_path", { oldPath: ctxMenu.path, newPath: `${parentDir}/${newName}` });
-      const entries = await invoke<FileEntry[]>("list_directory", { path: parentDir });
-      setContents((prev) => new Map(prev).set(parentDir, entries));
-    } catch { /* ignore */ }
-    setCtxMenu(null);
-  }, [ctxMenu]);
-
-  const handleDelete = useCallback(async () => {
-    if (!ctxMenu) return;
-    const name = ctxMenu.path.split("/").pop() ?? "";
-    if (!confirm(`Delete "${name}"?`)) return;
-    const parentDir = ctxMenu.path.split("/").slice(0, -1).join("/");
-    try {
-      await invoke("delete_path", { path: ctxMenu.path });
-      const entries = await invoke<FileEntry[]>("list_directory", { path: parentDir });
-      setContents((prev) => new Map(prev).set(parentDir, entries));
-    } catch { /* ignore */ }
-    setCtxMenu(null);
-  }, [ctxMenu]);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set([rootPath]));
   const [contents, setContents] = useState<Map<string, FileEntry[]>>(new Map());
   const [loading, setLoading] = useState<Set<string>>(new Set());
+
+  useEffect(() => { setCurrentRoot(rootPath); }, [rootPath]);
+
+  const reloadDir = useCallback(async (dir: string) => {
+    try {
+      const entries = await invoke<FileEntry[]>("list_directory", { path: dir });
+      setContents((prev) => new Map(prev).set(dir, entries));
+    } catch { /* ignore */ }
+  }, []);
+
+  const handleNewFile = useCallback(async (dir: string) => {
+    const name = prompt("New file name:");
+    if (!name) return;
+    try {
+      await invoke("create_file", { path: `${dir}/${name}` });
+      reloadDir(dir);
+    } catch { /* ignore */ }
+  }, [reloadDir]);
+
+  const handleNewFolder = useCallback(async (dir: string) => {
+    const name = prompt("New folder name:");
+    if (!name) return;
+    try {
+      await invoke("create_directory", { path: `${dir}/${name}` });
+      reloadDir(dir);
+    } catch { /* ignore */ }
+  }, [reloadDir]);
+
+  const handleRename = useCallback(async (path: string) => {
+    const oldName = path.split("/").pop() ?? "";
+    const newName = prompt("Rename to:", oldName);
+    if (!newName || newName === oldName) return;
+    const parentDir = path.split("/").slice(0, -1).join("/");
+    try {
+      await invoke("rename_path", { oldPath: path, newPath: `${parentDir}/${newName}` });
+      reloadDir(parentDir);
+    } catch { /* ignore */ }
+  }, [reloadDir]);
+
+  const handleDelete = useCallback(async (path: string) => {
+    const name = path.split("/").pop() ?? "";
+    if (!confirm(`Delete "${name}"?`)) return;
+    const parentDir = path.split("/").slice(0, -1).join("/");
+    try {
+      await invoke("delete_path", { path });
+      reloadDir(parentDir);
+    } catch { /* ignore */ }
+  }, [reloadDir]);
 
   const toggleDir = useCallback(async (dirPath: string) => {
     const next = new Set(expanded);
@@ -124,14 +111,10 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
     }
   }, [expanded, contents]);
 
-  // Load current root on first render or root change
   if (!contents.has(currentRoot) && !loading.has(currentRoot)) {
     toggleDir(currentRoot);
   }
 
-  // rootName used in breadcrumb via currentRoot
-
-  // File search
   const handleSearch = useCallback((query: string) => {
     setSearchQuery(query);
     if (searchTimer.current) clearTimeout(searchTimer.current);
@@ -144,13 +127,20 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
     }, 200);
   }, [rootPath]);
 
-  // Build set of changed file paths for highlighting
   const changedSet = new Set(changedFiles.map((f) => f.path.replace(/\\/g, "/")));
   const changedStatusMap = new Map(changedFiles.map((f) => [f.path.replace(/\\/g, "/"), f.status]));
 
+  const actions: TreeActions = {
+    onNewFile: handleNewFile,
+    onNewFolder: handleNewFolder,
+    onRename: handleRename,
+    onDelete: handleDelete,
+    onOpenDiff,
+    changedSet,
+  };
+
   return (
     <div className={styles.tree} role="tree" aria-label="File explorer">
-      {/* Search input */}
       <div className={styles.searchBox}>
         <input
           className={styles.searchInput}
@@ -178,7 +168,6 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
         </div>
       ) : (
         <>
-          {/* Breadcrumb: show back button when drilled into subfolder */}
           {currentRoot !== rootPath && (
             <button
               className={styles.breadcrumb}
@@ -195,29 +184,12 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
             <span className={styles.rootName}>{currentRoot.split("/").filter(Boolean).pop() ?? "project"}</span>
           </div>
           <div className={styles.list}>
-            {renderEntries(contents.get(currentRoot) ?? [], 0, expanded, contents, loading, toggleDir, onFileSelect, changedSet, changedStatusMap, handleContextMenu)}
+            {renderEntries(contents.get(currentRoot) ?? [], 0, expanded, contents, loading, toggleDir, onFileSelect, changedSet, changedStatusMap, actions)}
           </div>
           {changedFiles.length > 0 && (
             <div className={styles.changesBar}>Show {changedFiles.length} changes</div>
           )}
         </>
-      )}
-
-      {/* Context menu */}
-      {ctxMenu && (
-        <div className={styles.ctxMenu} style={{ left: ctxMenu.x, top: ctxMenu.y }}>
-          <button className={styles.ctxItem} onClick={handleNewFile}>New File</button>
-          <button className={styles.ctxItem} onClick={handleNewFolder}>New Folder</button>
-          {!ctxMenu.isDir && changedSet.has(ctxMenu.path) && onOpenDiff && (
-            <>
-              <div className={styles.ctxDivider} />
-              <button className={styles.ctxItem} onClick={() => { onOpenDiff(ctxMenu.path); setCtxMenu(null); }}>Open Diff</button>
-            </>
-          )}
-          <div className={styles.ctxDivider} />
-          <button className={styles.ctxItem} onClick={handleRename}>Rename</button>
-          <button className={styles.ctxItem} onClick={handleDelete}>Delete</button>
-        </div>
       )}
     </div>
   );
@@ -230,38 +202,67 @@ function renderEntries(
   contents: Map<string, { name: string; path: string; is_dir: boolean; file_type: string }[]>,
   loading: Set<string>,
   toggleDir: (path: string) => void,
-  onFileSelect?: (path: string) => void,
-  changedSet?: Set<string>,
-  changedStatusMap?: Map<string, string>,
-  onContextMenu?: (e: React.MouseEvent, path: string, isDir: boolean) => void,
+  onFileSelect: ((path: string) => void) | undefined,
+  changedSet: Set<string>,
+  changedStatusMap: Map<string, string>,
+  actions: TreeActions,
 ): React.ReactNode {
   return entries.map((entry) => {
     const isOpen = expanded.has(entry.path);
     const isLoading = loading.has(entry.path);
-    const isChanged = changedSet?.has(entry.path) ?? false;
-    const changeStatus = changedStatusMap?.get(entry.path);
+    const isChanged = changedSet.has(entry.path);
+    const changeStatus = changedStatusMap.get(entry.path);
+    const dir = entry.is_dir ? entry.path : entry.path.split("/").slice(0, -1).join("/");
 
     return (
       <div key={entry.path}>
-        <button
-          className={styles.row}
-          style={{ paddingLeft: 8 + depth * 16 }}
-          onClick={() => entry.is_dir ? toggleDir(entry.path) : onFileSelect?.(entry.path)}
-          onContextMenu={(e) => onContextMenu?.(e, entry.path, entry.is_dir)}
-        >
-          {entry.is_dir && (
-            <span className={`${styles.arrow} ${isOpen ? styles.arrowOpen : ""}`}>▸</span>
-          )}
-          {!entry.is_dir && <span className={styles.arrowSpacer} />}
-          <FileIcon type={entry.file_type} isOpen={isOpen} />
-          <span className={`${styles.fileName} ${isChanged ? styles.fileChanged : ""}`}
-            data-status={changeStatus}
-          >{entry.name}</span>
-          {isChanged && <span className={styles.changeDot} data-status={changeStatus} />}
-          {isLoading && <span className={styles.spinner}>…</span>}
-        </button>
+        <RadixContextMenu.Root>
+          <RadixContextMenu.Trigger asChild>
+            <button
+              className={styles.row}
+              style={{ paddingLeft: 8 + depth * 16 }}
+              onClick={() => entry.is_dir ? toggleDir(entry.path) : onFileSelect?.(entry.path)}
+            >
+              {entry.is_dir && (
+                <span className={`${styles.arrow} ${isOpen ? styles.arrowOpen : ""}`}>▸</span>
+              )}
+              {!entry.is_dir && <span className={styles.arrowSpacer} />}
+              <FileIcon type={entry.file_type} isOpen={isOpen} />
+              <span className={`${styles.fileName} ${isChanged ? styles.fileChanged : ""}`}
+                data-status={changeStatus}
+              >{entry.name}</span>
+              {isChanged && <span className={styles.changeDot} data-status={changeStatus} />}
+              {isLoading && <span className={styles.spinner}>…</span>}
+            </button>
+          </RadixContextMenu.Trigger>
+          <RadixContextMenu.Portal>
+            <RadixContextMenu.Content className={styles.ctxMenu}>
+              <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => actions.onNewFile(dir)}>
+                New File
+              </RadixContextMenu.Item>
+              <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => actions.onNewFolder(dir)}>
+                New Folder
+              </RadixContextMenu.Item>
+              {!entry.is_dir && actions.changedSet.has(entry.path) && actions.onOpenDiff && (
+                <>
+                  <RadixContextMenu.Separator className={styles.ctxDivider} />
+                  <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => actions.onOpenDiff!(entry.path)}>
+                    Open Diff
+                  </RadixContextMenu.Item>
+                </>
+              )}
+              <RadixContextMenu.Separator className={styles.ctxDivider} />
+              <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => actions.onRename(entry.path)}>
+                Rename
+              </RadixContextMenu.Item>
+              <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => actions.onDelete(entry.path)}>
+                Delete
+              </RadixContextMenu.Item>
+            </RadixContextMenu.Content>
+          </RadixContextMenu.Portal>
+        </RadixContextMenu.Root>
         {entry.is_dir && isOpen && contents.has(entry.path) && (
-          renderEntries(contents.get(entry.path)!, depth + 1, expanded, contents, loading, toggleDir, onFileSelect, changedSet, changedStatusMap, onContextMenu)
+          renderEntries(contents.get(entry.path)!, depth + 1, expanded, contents, loading, toggleDir, onFileSelect, changedSet, changedStatusMap, actions)
         )}
       </div>
     );
