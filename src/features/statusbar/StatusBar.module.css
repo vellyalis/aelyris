@@ -5,9 +5,9 @@
   justify-content: space-between;
   height: var(--statusbar-height);
   padding: 0 var(--space-6);
-  background: rgba(13, 13, 13, 0.35);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: rgba(13, 13, 13, 0.2);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
   border-top: 1px solid var(--white-6);
   font-size: var(--text-sm);
   color: var(--white-35);

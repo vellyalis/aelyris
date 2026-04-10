@@ -1,12 +1,12 @@
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@300;400;500;600&display=swap');
 
 :root {
-  /* Scape-matched dark palette */
-  --aether-bg: rgba(13, 13, 13, 0.05);
-  --aether-bg-sidebar: rgba(18, 18, 18, 0.6);
-  --aether-bg-elevated: rgba(24, 24, 24, 0.75);
-  --aether-bg-card: rgba(28, 28, 28, 0.85);
-  --aether-bg-surface: rgba(35, 35, 35, 0.85);
+  /* Crystal dark palette — transparent enough to see through */
+  --aether-bg: rgba(13, 13, 13, 0.03);
+  --aether-bg-sidebar: rgba(18, 18, 18, 0.35);
+  --aether-bg-elevated: rgba(24, 24, 24, 0.5);
+  --aether-bg-card: rgba(28, 28, 28, 0.6);
+  --aether-bg-surface: rgba(35, 35, 35, 0.55);
   --aether-border: rgba(255, 255, 255, 0.06);
   --aether-border-strong: rgba(255, 255, 255, 0.1);
 
@@ -205,7 +205,7 @@ html, body, #root {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: linear-gradient(180deg, rgba(15, 15, 15, 0.07) 0%, rgba(13, 13, 13, 0.04) 50%, rgba(13, 13, 13, 0.07) 100%);
+  background: transparent;
   border-radius: var(--radius-lg);
   overflow: hidden;
 }
