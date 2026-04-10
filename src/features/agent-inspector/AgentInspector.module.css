@@ -19,7 +19,7 @@
 .iconBtn:hover { color: var(--text-primary); background: var(--white-6); }
 
 /* Cards */
-.cards { padding: 6px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.cards { padding: 8px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 4px; }
 .card {
   display: flex; flex-direction: column; gap: 4px; padding: 8px 10px;
   border: 1px solid var(--gold-subtle); border-radius: 6px;
@@ -28,11 +28,11 @@
   transition: border-color 0.15s, background 0.1s;
 }
 .card:hover { border-color: var(--gold-dim); background: var(--white-3); }
-.cardActive { border-color: var(--gold); background: rgba(200,160,80,0.06); }
+.cardActive { border-color: var(--gold); background: rgba(200,160,80,0.08); box-shadow: 0 0 12px rgba(200,160,80,0.1); }
 .cardTop { display: flex; align-items: center; gap: 6px; }
 .statusDot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 .statusDotSmall { display: inline-block; width: 5px; height: 5px; border-radius: 50%; }
-.cardName { font-size: 12px; font-weight: 500; color: var(--text-primary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cardName { font-size: 13px; font-weight: 500; color: var(--text-primary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cardPct { font-size: 11px; color: var(--gold); font-family: var(--font-mono); font-weight: 500; }
 .progressTrack { height: 2px; background: var(--white-6); border-radius: 1px; }
 .progressBar { height: 100%; border-radius: 1px; background: var(--gold); transition: width 0.3s ease; }

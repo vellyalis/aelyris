@@ -4,25 +4,25 @@
   font-size: 10px; font-weight: 600; text-transform: uppercase;
   letter-spacing: 0.05em; color: var(--text-muted);
 }
-.title { color: var(--ctp-peach); }
+.title { color: var(--ctp-peach); font-weight: 700; }
 .project { font-weight: 400; color: var(--text-muted); font-family: var(--font-mono); flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .addBtn {
   background: none; border: none; color: var(--text-muted); font-size: 14px;
   cursor: pointer; padding: 0 4px; border-radius: 3px; margin-left: auto;
 }
 .addBtn:hover { color: var(--text-primary); background: var(--white-6); }
-.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 0 6px 6px; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 0 6px 6px; }
 .action {
   display: flex; align-items: center; justify-content: space-between;
   padding: 5px 8px; border: none; border-radius: 5px;
-  background: var(--white-2); color: var(--text-secondary);
+  background: var(--white-3); color: var(--text-secondary);
   font-size: 10px; font-family: var(--font-ui); cursor: pointer;
   text-align: left; transition: background 0.1s;
 }
 .action:hover { background: var(--white-6); color: var(--text-primary); }
 .actionIcon { font-size: 10px; flex-shrink: 0; }
 .actionLabel { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.badge { width: 3px; height: 14px; border-radius: 2px; flex-shrink: 0; margin-left: 4px; }
+.badge { width: 4px; height: 16px; border-radius: 2px; flex-shrink: 0; margin-left: auto; }
 
 /* Edit form */
 .editForm { padding: 6px; border-bottom: 1px solid var(--border); }

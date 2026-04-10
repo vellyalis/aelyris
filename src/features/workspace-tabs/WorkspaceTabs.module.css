@@ -21,8 +21,8 @@
   color: var(--text-muted); font-size: 11px; font-family: var(--font-ui);
   cursor: pointer; white-space: nowrap; transition: background 0.1s, color 0.1s;
 }
-.tab:hover { color: var(--text-secondary); background: var(--white-4); }
-.tab.active { color: var(--text-primary); background: var(--white-6); }
+.tab:hover { color: var(--text-secondary); background: var(--white-6); }
+.tab.active { color: var(--text-primary); background: transparent; border-bottom: 2px solid var(--gold); border-radius: 4px 4px 0 0; }
 .tabDot { width: 6px; height: 6px; border-radius: 2px; background: var(--gold); flex-shrink: 0; }
 .tabLabel { overflow: hidden; text-overflow: ellipsis; }
 .tabClose {
@@ -30,7 +30,7 @@
   width: 14px; height: 14px; display: flex; align-items: center; justify-content: center;
   border-radius: 3px;
 }
-.tab:hover .tabClose { opacity: 0.5; }
+.tab:hover .tabClose { opacity: 0.8; }
 .tabClose:hover { opacity: 1 !important; background: var(--white-10); }
 .addBtn {
   background: none; border: none; color: var(--text-muted); font-size: 14px;

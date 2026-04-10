@@ -28,7 +28,7 @@
   cursor: pointer; padding: 2px 4px; border-radius: 3px;
   -webkit-app-region: no-drag;
 }
-.headerBtn:hover { background: var(--white-6); color: var(--white-70); }
+.headerBtn:hover { background: var(--white-10); color: var(--white-80); }
 .controls { display: flex; gap: 6px; margin-left: 4px; }
 .ctrlBtn {
   display: flex; align-items: center; justify-content: center;
@@ -37,4 +37,4 @@
   transition: background 0.1s, color 0.1s;
 }
 .ctrlBtn:hover { background: var(--white-6); color: var(--white-70); }
-.closeBtn:hover { background: var(--ctp-red); color: var(--aether-bg); }
+.closeBtn:hover { background: var(--ctp-red); color: #fff; }
