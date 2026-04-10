@@ -1,26 +1,20 @@
-.wrapper {
-  display: flex;
-  flex-direction: column;
-  border-top: 1px solid var(--border);
-}
-
-/* ─── Tab row ─── */
-.tabRow {
+.bar {
   display: flex;
   align-items: center;
-  height: var(--bottom-tabs-height);
+  height: 28px;
   padding: 0 var(--space-4);
-  background: var(--glass-standard);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  gap: var(--space-1);
+  background: var(--glass-ground);
+  border-top: 1px solid var(--border);
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
 }
 
+/* ─── Tabs (left side) ─── */
 .tabs {
   display: flex;
   gap: 1px;
   overflow-x: auto;
-  flex: 1;
 }
 .tabs::-webkit-scrollbar { display: none; }
 
@@ -28,16 +22,16 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-1) var(--space-5);
+  padding: var(--space-1) var(--space-4);
   border: none;
-  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-muted);
-  font-size: var(--text-md);
+  font-size: var(--text-xs);
   font-family: var(--font-ui);
   cursor: pointer;
   white-space: nowrap;
-  transition: background var(--duration-fast) var(--ease-silk), color var(--duration-fast), border-color var(--duration-fast);
+  border-radius: var(--radius-sm);
+  transition: background var(--duration-fast) var(--ease-silk), color var(--duration-fast);
 }
 .tab:hover {
   color: var(--text-secondary);
@@ -45,76 +39,60 @@
 }
 .tab[data-state="active"] {
   color: var(--text-primary);
-  background: var(--white-4);
-  border-bottom: 2px solid var(--gold);
-  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: var(--white-6);
 }
 
 .tabLabel { overflow: hidden; text-overflow: ellipsis; }
 
 .tabClose {
-  font-size: var(--text-md);
+  font-size: var(--text-xs);
   opacity: 0;
   transition: opacity var(--duration-fast);
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-sm);
 }
-.tab:hover .tabClose { opacity: 0.6; }
+.tab:hover .tabClose { opacity: 0.5; }
 .tabClose:hover { opacity: 1 !important; background: var(--white-10); }
 
 .addBtn {
   background: none;
   border: none;
   color: var(--text-muted);
-  font-size: var(--text-xl);
+  font-size: var(--text-sm);
   cursor: pointer;
-  padding: 0 var(--space-3);
+  padding: 0 var(--space-2);
   border-radius: var(--radius-sm);
   flex-shrink: 0;
 }
 .addBtn:hover { background: var(--white-6); color: var(--text-primary); }
 
-/* ─── Status row ─── */
-.statusRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 22px;
-  padding: 0 var(--space-6);
-  background: var(--glass-ground);
-  font-size: var(--text-xs);
-  font-family: var(--font-mono);
-  color: var(--text-muted);
+/* ─── Spacer ─── */
+.spacer { flex: 1; }
+
+/* ─── Divider between sections ─── */
+.divider {
+  width: 1px;
+  height: 12px;
+  background: var(--white-10);
+  flex-shrink: 0;
 }
 
-.statusLeft {
-  display: flex;
-  align-items: center;
-  gap: var(--space-5);
-}
-
-.statusRight {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
+/* ─── Status items (right side) ─── */
 .branchInfo {
   color: var(--ctp-green);
+  flex-shrink: 0;
 }
 
 .changes {
   color: var(--gold);
+  flex-shrink: 0;
 }
 
 .encoding {
   color: var(--text-muted);
-}
-
-.separator {
-  color: var(--white-15);
+  flex-shrink: 0;
 }
