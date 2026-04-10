@@ -1,42 +1,42 @@
 .overlay {
-  position: fixed; inset: 0; z-index: 95;
+  position: fixed; inset: 0; z-index: var(--z-overlay);
   display: flex; justify-content: center; align-items: center;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--black-50);
 }
 .dialog {
-  width: 380px; background: #1e1e1e;
-  border: 1px solid rgba(255,255,255,0.1); border-radius: 12px;
-  padding: 20px; box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+  width: 380px; background: var(--aether-bg-card);
+  border: 1px solid var(--white-10); border-radius: var(--radius-lg);
+  padding: var(--space-10); box-shadow: 0 12px 40px rgba(0,0,0,0.6);
 }
 .title {
-  font-size: 16px; font-weight: 600; color: var(--text-primary);
-  margin-bottom: 16px;
+  font-size: var(--text-2xl); font-weight: 600; color: var(--text-primary);
+  margin-bottom: var(--space-8);
 }
 .label {
-  display: block; font-size: 12px; color: var(--text-secondary);
-  margin-bottom: 4px; margin-top: 12px;
+  display: block; font-size: var(--text-base); color: var(--text-secondary);
+  margin-bottom: var(--space-2); margin-top: var(--space-6);
 }
 .input, .textarea {
-  width: 100%; padding: 8px 10px; background: #141414;
-  border: 1px solid rgba(255,255,255,0.1); border-radius: 6px;
-  color: var(--text-primary); font-size: 13px; font-family: var(--font-mono);
+  width: 100%; padding: var(--space-4) var(--space-5); background: var(--aether-bg-sidebar);
+  border: 1px solid var(--white-10); border-radius: var(--radius-sm);
+  color: var(--text-primary); font-size: var(--text-lg); font-family: var(--font-mono);
   outline: none; resize: none;
 }
 .input:focus, .textarea:focus { border-color: var(--ctp-mauve); }
 .input::placeholder, .textarea::placeholder { color: var(--text-muted); }
 .actions {
-  display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px;
+  display: flex; justify-content: flex-end; gap: var(--space-4); margin-top: var(--space-10);
 }
 .cancelBtn {
-  padding: 6px 16px; border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 6px; background: transparent; color: var(--text-secondary);
-  font-size: 13px; cursor: pointer;
+  padding: var(--space-3) var(--space-8); border: 1px solid var(--white-10);
+  border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary);
+  font-size: var(--text-lg); cursor: pointer;
 }
-.cancelBtn:hover { background: rgba(255,255,255,0.06); }
+.cancelBtn:hover { background: var(--white-6); }
 .createBtn {
-  padding: 6px 20px; border: none; border-radius: 6px;
-  background: var(--ctp-mauve); color: #0d0d0d;
-  font-size: 13px; font-weight: 600; cursor: pointer;
+  padding: var(--space-3) var(--space-10); border: none; border-radius: var(--radius-sm);
+  background: var(--ctp-mauve); color: var(--aether-bg);
+  font-size: var(--text-lg); font-weight: 600; cursor: pointer;
 }
 .createBtn:hover { opacity: 0.9; }
 .createBtn:disabled { opacity: 0.4; cursor: default; }

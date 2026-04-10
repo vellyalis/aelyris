@@ -3,19 +3,19 @@
   align-items: center;
   justify-content: flex-end;
   height: var(--titlebar-height);
-  padding: 0 8px;
+  padding: 0 var(--space-4);
   background: transparent;
   user-select: none;
   -webkit-app-region: drag;
 }
 
 .title {
-  display: none; /* Hidden in Scape-style minimal titlebar */
+  display: none;
 }
 
 .controls {
   display: flex;
-  gap: 6px;
+  gap: var(--space-3);
   -webkit-app-region: no-drag;
 }
 
@@ -26,19 +26,19 @@
   width: 28px;
   height: 20px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: transparent;
-  color: rgba(255, 255, 255, 0.3);
+  color: var(--white-30);
   cursor: pointer;
-  transition: background 0.1s, color 0.1s;
+  transition: background var(--duration-fast), color var(--duration-fast);
 }
 
 .controlBtn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.7);
+  background: var(--white-6);
+  color: var(--white-80);
 }
 
 .closeBtn:hover {
-  background: #f38ba8;
-  color: #1a1a1a;
+  background: var(--ctp-red);
+  color: var(--aether-bg-elevated);
 }
