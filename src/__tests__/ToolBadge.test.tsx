@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render } from "@testing-library/react";
 import { ToolBadge } from "../shared/ui/ToolBadge";
-import { extractToolName, TOOL_COLORS } from "../shared/types/toolBadge";
+import { extractToolName } from "../shared/types/toolBadge";
 import type { ToolName } from "../shared/types/toolBadge";
 
 describe("ToolBadge", () => {

@@ -1,6 +1,8 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import Editor, { DiffEditor, type OnMount } from "@monaco-editor/react";
 import { invoke } from "@tauri-apps/api/core";
+import { EditorBreadcrumb } from "./EditorBreadcrumb";
+import { EditorStatusBar } from "./EditorStatusBar";
 import styles from "./EditorPanel.module.css";
 
 interface EditorPanelProps {
@@ -29,6 +31,8 @@ export function EditorPanel({ filePath, onClose, projectPath }: EditorPanelProps
   const [diffMode, setDiffMode] = useState(false);
   const [vimMode, setVimMode] = useState(false);
   const [originalContent, setOriginalContent] = useState<string | null>(null);
+  const [cursorPos, setCursorPos] = useState({ line: 1, column: 1 });
+  const [minimapEnabled, setMinimapEnabled] = useState(false);
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const vimRef = useRef<{ dispose: () => void } | null>(null);
 
@@ -111,6 +115,7 @@ export function EditorPanel({ filePath, onClose, projectPath }: EditorPanelProps
 
   return (
     <div className={styles.panel}>
+      <EditorBreadcrumb filePath={filePath} projectPath={projectPath} />
       <div className={styles.header}>
         <span className={styles.fileName}>
           {modified && <span className={styles.modDot}>●</span>}
@@ -131,16 +136,30 @@ export function EditorPanel({ filePath, onClose, projectPath }: EditorPanelProps
             theme="vs-dark"
             onMount={(editor, monaco) => {
               editorRef.current = editor;
+              editor.onDidChangeCursorPosition((e) => {
+                setCursorPos({ line: e.position.lineNumber, column: e.position.column });
+              });
               monaco.editor.defineTheme("aether-dark", {
                 base: "vs-dark",
                 inherit: true,
-                rules: [],
+                rules: [
+                  { token: "comment", foreground: "6A9955" },
+                  { token: "keyword", foreground: "569CD6" },
+                  { token: "string", foreground: "CE9178" },
+                  { token: "number", foreground: "B5CEA8" },
+                  { token: "type", foreground: "4EC9B0" },
+                  { token: "function", foreground: "DCDCAA" },
+                ],
                 colors: {
                   "editor.background": "#0d0d0d",
-                  "editorLineNumber.foreground": "#444444",
-                  "editorLineNumber.activeForeground": "#888888",
-                  "editor.selectionBackground": "#c8a05030",
+                  "editor.foreground": "#D4D4D4",
+                  "editorLineNumber.foreground": "#555555",
+                  "editorLineNumber.activeForeground": "#CCCCCC",
+                  "editor.selectionBackground": "#264F78",
+                  "editor.inactiveSelectionBackground": "#3A3D41",
                   "editorGutter.background": "#0d0d0d",
+                  "editorIndentGuide.background": "#404040",
+                  "editorIndentGuide.activeBackground": "#707070",
                 },
               });
               monaco.editor.setTheme("aether-dark");
@@ -151,7 +170,7 @@ export function EditorPanel({ filePath, onClose, projectPath }: EditorPanelProps
               fontSize: 13,
               fontFamily: "IBM Plex Mono, Cascadia Code, monospace",
               lineHeight: 20,
-              minimap: { enabled: false },
+              minimap: { enabled: minimapEnabled },
               scrollBeyondLastLine: false,
               automaticLayout: true,
               overviewRulerLanes: 0,
@@ -183,7 +202,7 @@ export function EditorPanel({ filePath, onClose, projectPath }: EditorPanelProps
               fontSize: 13,
               fontFamily: "IBM Plex Mono, Cascadia Code, monospace",
               lineHeight: 20,
-              minimap: { enabled: false },
+              minimap: { enabled: minimapEnabled },
               scrollBeyondLastLine: false,
               automaticLayout: true,
               overviewRulerLanes: 0,
@@ -205,6 +224,16 @@ export function EditorPanel({ filePath, onClose, projectPath }: EditorPanelProps
           />
         )}
       </div>
+      <EditorStatusBar
+        line={cursorPos.line}
+        column={cursorPos.column}
+        language={language}
+        minimapEnabled={minimapEnabled}
+        onToggleMinimap={() => {
+          setMinimapEnabled((v) => !v);
+          editorRef.current?.updateOptions({ minimap: { enabled: !minimapEnabled } });
+        }}
+      />
       {vimMode && <div id="vim-statusbar" className={styles.vimStatus} />}
     </div>
   );

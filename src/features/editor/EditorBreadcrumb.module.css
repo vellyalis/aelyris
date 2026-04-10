@@ -1,0 +1,31 @@
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 10px;
+  background: var(--aether-bg-sidebar);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  overflow: hidden;
+}
+
+.segment {
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.active {
+  color: var(--text-primary);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.sep {
+  margin: 0 2px;
+  color: rgba(255, 255, 255, 0.2);
+  flex-shrink: 0;
+}
