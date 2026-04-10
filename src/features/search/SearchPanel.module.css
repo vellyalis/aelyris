@@ -85,7 +85,7 @@
   font-family: var(--font-mono);
   cursor: pointer;
   text-align: left;
-  line-height: 1.6;
+  line-height: var(--leading-normal);
 }
 
 .match:hover {
