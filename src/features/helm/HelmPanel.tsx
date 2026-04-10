@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import styles from "./HelmPanel.module.css";
 
@@ -19,6 +19,27 @@ export function HelmPanel() {
   const [tasks, setTasks] = useState<Task[]>(loadTasks);
   const [adding, setAdding] = useState(false);
   const [newLabel, setNewLabel] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Global click listener — close if click is outside the input
+  useEffect(() => {
+    if (!adding) return;
+
+    const handler = (e: MouseEvent) => {
+      if (inputRef.current && !inputRef.current.contains(e.target as Node)) {
+        setAdding(false);
+        setNewLabel("");
+      }
+    };
+
+    // Use 'click' (fires after mousedown+mouseup) with capture phase
+    // requestAnimationFrame ensures the input is mounted first
+    requestAnimationFrame(() => {
+      document.addEventListener("click", handler, true);
+    });
+
+    return () => document.removeEventListener("click", handler, true);
+  }, [adding]);
 
   const addTask = useCallback(() => {
     if (!newLabel.trim()) return;
@@ -27,11 +48,6 @@ export function HelmPanel() {
     setNewLabel("");
     setAdding(false);
   }, [newLabel]);
-
-  const closeAdding = useCallback(() => {
-    setAdding(false);
-    setNewLabel("");
-  }, []);
 
   const toggleTask = useCallback((id: string) => {
     setTasks((prev) => { const u = prev.map((t) => t.id === id ? { ...t, done: !t.done } : t); saveTasks(u); return u; });
@@ -53,12 +69,15 @@ export function HelmPanel() {
       <div className={styles.content}>
         {adding && (
           <input
+            ref={inputRef}
             autoFocus
             className={styles.addInput}
             value={newLabel}
             onChange={(e) => setNewLabel(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") addTask(); if (e.key === "Escape") closeAdding(); }}
-            onBlur={closeAdding}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") addTask();
+              if (e.key === "Escape") { setAdding(false); setNewLabel(""); }
+            }}
             placeholder="Add task..."
           />
         )}
