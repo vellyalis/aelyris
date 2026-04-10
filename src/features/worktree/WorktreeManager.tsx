@@ -1,0 +1,110 @@
+import { useState, useEffect, useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { GitBranch, Plus, RefreshCw, Trash2 } from "lucide-react";
+import styles from "./WorktreeManager.module.css";
+
+interface WorktreeInfo {
+  branch: string;
+  path: string;
+  is_main: boolean;
+}
+
+interface WorktreeManagerProps {
+  projectPath: string;
+  onSwitch: (worktreePath: string) => void;
+}
+
+export function WorktreeManager({ projectPath, onSwitch }: WorktreeManagerProps) {
+  const [worktrees, setWorktrees] = useState<WorktreeInfo[]>([]);
+  const [activePath, setActivePath] = useState(projectPath);
+  const [showCreate, setShowCreate] = useState(false);
+  const [newBranch, setNewBranch] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const loadWorktrees = useCallback(async () => {
+    try {
+      const result = await invoke<WorktreeInfo[]>("list_worktrees", { repoPath: projectPath });
+      setWorktrees(result);
+    } catch { /* ignore */ }
+  }, [projectPath]);
+
+  useEffect(() => {
+    loadWorktrees();
+  }, [loadWorktrees]);
+
+  const handleCreate = useCallback(async () => {
+    if (!newBranch.trim()) return;
+    setLoading(true);
+    try {
+      await invoke("create_worktree", { repoPath: projectPath, branchName: newBranch.trim() });
+      setNewBranch("");
+      setShowCreate(false);
+      await loadWorktrees();
+    } catch { /* ignore */ }
+    setLoading(false);
+  }, [newBranch, projectPath, loadWorktrees]);
+
+  const handleSwitch = useCallback((path: string) => {
+    setActivePath(path);
+    onSwitch(path);
+  }, [onSwitch]);
+
+  return (
+    <div className={styles.container}>
+      <div className={styles.header}>
+        <span className={styles.headerTitle}>Worktrees</span>
+        <button className={styles.headerBtn} onClick={() => setShowCreate(!showCreate)} title="New Worktree">
+          <Plus size={14} />
+        </button>
+        <button className={styles.headerBtn} onClick={loadWorktrees} title="Refresh">
+          <RefreshCw size={12} />
+        </button>
+      </div>
+
+      {showCreate && (
+        <div className={styles.createForm}>
+          <input
+            className={styles.createInput}
+            placeholder="Branch name..."
+            value={newBranch}
+            onChange={(e) => setNewBranch(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); if (e.key === "Escape") setShowCreate(false); }}
+            autoFocus
+          />
+          <button className={styles.headerBtn} onClick={handleCreate} disabled={loading || !newBranch.trim()}>
+            {loading ? "..." : "Create"}
+          </button>
+        </div>
+      )}
+
+      <div className={styles.list}>
+        {worktrees.length === 0 && (
+          <div className={styles.empty}>No worktrees found</div>
+        )}
+        {worktrees.map((wt) => (
+          <div
+            key={wt.path}
+            className={`${styles.card} ${wt.path === activePath ? styles.cardActive : ""}`}
+            onClick={() => handleSwitch(wt.path)}
+          >
+            <GitBranch size={14} className={styles.cardIcon} />
+            <div className={styles.cardInfo}>
+              <div className={styles.cardBranch}>
+                {wt.branch}
+                {wt.is_main && " (main)"}
+              </div>
+              <div className={styles.cardPath}>{wt.path}</div>
+            </div>
+            {!wt.is_main && (
+              <div className={styles.cardActions}>
+                <button className={styles.deleteBtn} onClick={(e) => { e.stopPropagation(); }} title="Remove Worktree">
+                  <Trash2 size={11} />
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

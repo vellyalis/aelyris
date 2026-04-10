@@ -1,0 +1,71 @@
+.tree {
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  gap: 2px;
+}
+
+.node {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--duration-fast);
+}
+
+.node:hover {
+  background: var(--white-6);
+}
+
+.nodeActive {
+  background: var(--white-4);
+  border-left: 2px solid var(--gold);
+}
+
+.connector {
+  display: flex;
+  align-items: center;
+  width: 16px;
+  position: relative;
+}
+
+.line {
+  position: absolute;
+  left: 5px;
+  top: -10px;
+  width: 1px;
+  height: 10px;
+  background: var(--aether-border-strong);
+}
+
+.arrow {
+  color: var(--text-muted);
+}
+
+.name {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  background: var(--white-4);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
