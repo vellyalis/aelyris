@@ -68,8 +68,8 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
         setEditingId(null);
       }
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    const timer = setTimeout(() => document.addEventListener("mousedown", handler), 0);
+    return () => { clearTimeout(timer); document.removeEventListener("mousedown", handler); };
   }, [editingId]);
 
   const handleEdit = useCallback((action: ToolkitAction) => {

@@ -19,19 +19,22 @@ export function HelmPanel() {
   const [tasks, setTasks] = useState<Task[]>(loadTasks);
   const [adding, setAdding] = useState(false);
   const [newLabel, setNewLabel] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
+  const helmRef = useRef<HTMLDivElement>(null);
 
-  // Close on outside click
+  // Close add input on outside click
   useEffect(() => {
     if (!adding) return;
     const handler = (e: MouseEvent) => {
-      if (inputRef.current && !inputRef.current.contains(e.target as Node)) {
+      if (helmRef.current && !helmRef.current.contains(e.target as Node)) {
         setAdding(false);
         setNewLabel("");
       }
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    // Use setTimeout to avoid catching the same click that opened it
+    const timer = setTimeout(() => {
+      document.addEventListener("mousedown", handler);
+    }, 0);
+    return () => { clearTimeout(timer); document.removeEventListener("mousedown", handler); };
   }, [adding]);
 
   const addTask = useCallback(() => {
@@ -53,7 +56,7 @@ export function HelmPanel() {
   const doneCount = tasks.filter((t) => t.done).length;
 
   return (
-    <div className={styles.helm}>
+    <div className={styles.helm} ref={helmRef}>
       <div className={styles.header}>
         <span>Tasks</span>
         {tasks.length > 0 && <span className={styles.count}>{doneCount}/{tasks.length}</span>}
@@ -62,12 +65,12 @@ export function HelmPanel() {
       <div className={styles.content}>
         {adding && (
           <input
-            ref={inputRef}
             autoFocus
             className={styles.addInput}
             value={newLabel}
             onChange={(e) => setNewLabel(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") addTask(); if (e.key === "Escape") { setAdding(false); setNewLabel(""); } }}
+            onBlur={() => { if (!newLabel.trim()) { setAdding(false); setNewLabel(""); } }}
             placeholder="Add task..."
           />
         )}

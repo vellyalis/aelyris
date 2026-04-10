@@ -38,8 +38,8 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
         setPromptText("");
       }
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    const timer = setTimeout(() => document.addEventListener("mousedown", handler), 0);
+    return () => { clearTimeout(timer); document.removeEventListener("mousedown", handler); };
   }, [showPromptInput]);
 
   const handleRenameSession = useCallback(async (session: AgentSession) => {
