@@ -49,6 +49,18 @@
   letter-spacing: -0.01em;
 }
 
+.branch {
+  font-size: var(--text-xs);
+  color: var(--ctp-green);
+  font-family: var(--font-mono);
+}
+
+.changes {
+  font-size: var(--text-xs);
+  color: var(--gold);
+  font-family: var(--font-mono);
+}
+
 /* Status dot + label */
 .status {
   display: flex;

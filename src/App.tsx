@@ -322,6 +322,8 @@ export function App() {
     <div className="app-container">
       <ProjectHeaderBar
         projectName={projectName}
+        branch={branch}
+        changedCount={changedFiles.length}
         status={headerStatus as "idle" | "edit" | "thinking"}
         activeAgent={activeAgent ? { model: activeAgent.model, cost: activeAgent.cost } : null}
         onOpenSettings={() => setSettingsVisible(true)}
@@ -371,8 +373,6 @@ export function App() {
         onSelectTab={handleTabSwitch}
         onCloseTab={closeTab}
         onNewTab={addTab}
-        branch={branch}
-        changedCount={changedFiles.length}
       />
 
       <CommandPalette visible={paletteVisible} onClose={() => setPaletteVisible(false)} commands={commands} />

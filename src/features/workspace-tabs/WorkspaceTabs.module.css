@@ -1,17 +1,9 @@
-.wrapper {
-  display: flex;
-  flex-direction: column;
-}
-
-/* ─── Row 1: Tabs ─── */
-.tabRow {
+.bar {
   display: flex;
   align-items: center;
   height: 28px;
   padding: 0 var(--space-4);
-  background: var(--glass-standard);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: var(--glass-ground);
   border-top: 1px solid var(--border);
 }
 
@@ -75,40 +67,3 @@
   margin-left: var(--space-2);
 }
 .addBtn:hover { background: var(--white-6); color: var(--text-primary); }
-
-/* ─── Row 2: Status ─── */
-.statusRow {
-  display: flex;
-  align-items: center;
-  height: 22px;
-  padding: 0 var(--space-6);
-  background: var(--glass-ground);
-  font-size: var(--text-xs);
-  font-family: var(--font-mono);
-  color: var(--text-muted);
-  gap: var(--space-4);
-}
-
-.spacer { flex: 1; }
-
-.divider {
-  width: 1px;
-  height: 10px;
-  background: var(--white-10);
-  flex-shrink: 0;
-}
-
-.branchInfo {
-  color: var(--ctp-green);
-  flex-shrink: 0;
-}
-
-.changes {
-  color: var(--gold);
-  flex-shrink: 0;
-}
-
-.encoding {
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
