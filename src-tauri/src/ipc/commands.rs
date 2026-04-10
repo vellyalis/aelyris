@@ -88,6 +88,11 @@ pub fn spawn_terminal(
     let buffer_registry = app.state::<OutputBufferRegistry>().inner().clone();
     buffer_registry.create(&id);
 
+    // Register in pane registry for name-based operations
+    let pane_registry = app.state::<crate::pty::PaneRegistry>();
+    let shell_name = format!("{:?}", shell).to_lowercase();
+    pane_registry.register(&id, &shell_name, cwd.as_deref().unwrap_or("."));
+
     std::thread::spawn(move || {
         let mut reader = reader;
         let mut buf = [0u8; 4096];
@@ -655,4 +660,29 @@ pub fn broadcast_keys(app: AppHandle, data: String) -> Result<u32, String> {
         }
     }
     Ok(count)
+}
+
+/// Rename a terminal pane (for send-keys-by-name)
+#[tauri::command]
+pub fn rename_pane(app: AppHandle, terminal_id: String, name: String) -> Result<(), String> {
+    let registry = app.state::<crate::pty::PaneRegistry>();
+    registry.rename(&terminal_id, &name)
+}
+
+/// Send keystrokes to a pane by its user-assigned name
+#[tauri::command]
+pub fn send_keys_by_name(app: AppHandle, name: String, data: String) -> Result<(), String> {
+    let pane_registry = app.state::<crate::pty::PaneRegistry>();
+    let terminal_id = pane_registry
+        .find_by_name(&name)
+        .ok_or_else(|| format!("No pane named '{}'", name))?;
+    let pty_manager = app.state::<PtyManager>();
+    pty_manager.write(&terminal_id, data.as_bytes())
+}
+
+/// List all registered panes with metadata
+#[tauri::command]
+pub fn list_panes_info(app: AppHandle) -> Vec<crate::pty::registry::PaneEntry> {
+    let registry = app.state::<crate::pty::PaneRegistry>();
+    registry.list()
 }
