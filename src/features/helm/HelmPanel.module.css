@@ -46,11 +46,13 @@
   border-radius: var(--radius-sm); color: var(--text-primary); font-size: 11px;
   font-family: var(--font-ui); outline: none; margin-bottom: var(--space-2);
 }
+.addInput:hover { border-color: var(--white-10); }
 .addInput:focus { border-color: var(--gold); }
 .addInput::placeholder { color: var(--text-muted); }
 .task {
-  display: flex; align-items: center; gap: 6px;
-  padding: 3px 4px; border-radius: 4px; font-size: 11px;
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); font-size: 11px;
+  transition: background var(--duration-fast);
 }
 .task:hover { background: rgba(124, 58, 237, 0.08); }
 .taskDone .taskLabel { text-decoration: line-through; opacity: 0.4; }

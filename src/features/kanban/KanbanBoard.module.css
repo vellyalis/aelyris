@@ -67,9 +67,8 @@
   outline: none;
 }
 
-.formInput:focus {
-  border-color: var(--gold);
-}
+.formInput:hover { border-color: var(--white-10); }
+.formInput:focus { border-color: var(--gold); }
 
 .formRow {
   display: flex;
@@ -87,6 +86,7 @@
   font-family: var(--font-ui);
   outline: none;
 }
+.formSelect:hover { border-color: var(--white-10); }
 
 .formSubmit {
   padding: 3px 12px;
@@ -120,7 +120,7 @@
   flex-direction: column;
   background: rgba(255, 255, 255, 0.015);
   border: 1px solid var(--aether-border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
   transition: background var(--duration-fast), border-color var(--duration-fast);
 }
@@ -171,15 +171,16 @@
   display: flex;
   background: var(--white-3);
   border: 1px solid var(--aether-border);
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   cursor: grab;
-  transition: border-color var(--duration-fast), box-shadow var(--duration-normal);
+  transition: border-color var(--duration-fast), box-shadow var(--duration-slow) var(--ease-out), transform var(--duration-fast);
   overflow: hidden;
 }
 
 .card:hover {
   border-color: var(--gold-subtle);
-  box-shadow: 0 0 8px rgba(200, 160, 80, 0.12), var(--shadow-sm);
+  box-shadow: 0 2px 12px rgba(200, 160, 80, 0.15), 0 1px 4px rgba(0, 0, 0, 0.2);
+  transform: translateY(-1px);
 }
 
 .card:active {

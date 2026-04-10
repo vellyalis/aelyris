@@ -24,14 +24,14 @@
 .logo {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-6);
   margin-bottom: 8px;
 }
 
 .logoIcon {
   width: 40px;
   height: 40px;
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--purple);
   display: flex;
   align-items: center;
@@ -42,7 +42,7 @@
 }
 
 .title {
-  font-size: 24px;
+  font-size: var(--text-3xl);
   font-weight: 600;
   color: var(--text-primary);
   letter-spacing: -0.02em;
@@ -62,9 +62,9 @@
 }
 
 .openBtn {
-  padding: 10px 32px;
+  padding: var(--space-5) var(--space-16);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--gold);
   color: var(--aether-bg);
   font-size: 14px;
@@ -101,11 +101,11 @@
 .projectCard {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-5);
   width: 100%;
   padding: 8px 12px;
   border: 1px solid var(--aether-border);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--white-2);
   color: var(--text-secondary);
   font-family: var(--font-ui);
@@ -117,12 +117,14 @@
 .projectCard:hover {
   border-color: var(--gold-dim);
   background: var(--white-4);
+  box-shadow: 0 2px 12px rgba(200, 160, 80, 0.12), 0 1px 4px rgba(0, 0, 0, 0.2);
+  transform: translateY(-1px);
 }
 
 .projectAvatar {
   width: 32px;
   height: 32px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--purple);
   display: flex;
   align-items: center;
@@ -167,17 +169,17 @@
 .skeletonCard {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-5);
   width: 100%;
   padding: 8px 12px;
   border: 1px solid var(--aether-border);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--white-2);
 }
 .skeletonAvatar {
   width: 32px;
   height: 32px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--white-6);
   animation: shimmer 1.5s ease-in-out infinite;
   flex-shrink: 0;

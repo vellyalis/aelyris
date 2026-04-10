@@ -124,6 +124,7 @@
   --text-base: 12px;
   --text-lg: 13px;
   --text-xl: 14px;
+  --text-3xl: 24px;
   --text-2xl: 16px;
 
   /* Common rgba patterns as variables (reduces duplication) */

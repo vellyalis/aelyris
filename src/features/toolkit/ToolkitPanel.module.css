@@ -14,12 +14,12 @@
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 0 6px 6px; }
 .action {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 5px 8px; border: none; border-radius: 5px;
+  padding: var(--space-2) var(--space-4); border: none; border-radius: var(--radius-sm);
   background: var(--white-3); color: var(--text-secondary);
-  font-size: 10px; font-family: var(--font-ui); cursor: pointer;
-  text-align: left; transition: background 0.1s;
+  font-size: var(--text-sm); font-family: var(--font-ui); cursor: pointer;
+  text-align: left; transition: background var(--duration-fast), box-shadow var(--duration-normal) var(--ease-out), transform var(--duration-fast);
 }
-.action:hover { background: var(--white-6); color: var(--text-primary); box-shadow: 0 0 6px rgba(200, 160, 80, 0.1); }
+.action:hover { background: var(--white-6); color: var(--text-primary); box-shadow: 0 2px 8px rgba(200, 160, 80, 0.1); transform: translateY(-1px); }
 .actionIcon { font-size: 10px; flex-shrink: 0; }
 .actionLabel { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .badge { width: 4px; height: 16px; border-radius: 2px; flex-shrink: 0; margin-left: auto; }
@@ -31,6 +31,7 @@
   background: var(--white-4); border: 1px solid var(--border); border-radius: 4px;
   color: var(--text-primary); font-size: 11px; font-family: var(--font-mono); outline: none;
 }
+.editInput:hover { border-color: var(--white-10); }
 .editInput:focus { border-color: var(--gold); }
 .editActions { display: flex; gap: 4px; justify-content: flex-end; }
 .editSave, .editCancel {

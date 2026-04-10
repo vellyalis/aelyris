@@ -48,10 +48,11 @@
   font-family: var(--font-ui);
   cursor: pointer;
   text-align: left;
-  transition: background 0.08s;
+  transition: background var(--duration-fast), color var(--duration-fast);
   height: 22px;
 }
 .row:hover { background: var(--white-4); color: var(--text-primary); }
+.searchInput:hover { border-color: var(--white-10); }
 .arrow {
   font-size: 8px;
   width: 10px;
