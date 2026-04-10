@@ -442,7 +442,6 @@ pub fn list_agents(app: AppHandle) -> Vec<crate::agent::AgentSessionInfo> {
 }
 
 fn base64_encode(data: &[u8]) -> String {
-    use std::fmt::Write;
     let mut s = String::with_capacity(data.len() * 4 / 3 + 4);
     const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     for chunk in data.chunks(3) {

@@ -1,4 +1,4 @@
-use super::rules::{AutoApproveRule, WatchdogRules};
+use super::rules::WatchdogRules;
 
 /// Decision made by the watchdog engine for a tool invocation
 #[derive(Debug, Clone, PartialEq)]

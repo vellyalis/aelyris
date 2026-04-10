@@ -1,4 +1,20 @@
 import { memo } from "react";
+import {
+  Folder,
+  FolderOpen,
+  FileText,
+  FileCode2,
+  FileJson2,
+  FileType,
+  FileCog,
+  FileImage,
+  FileTerminal,
+  GitBranch,
+  Lock,
+  File,
+} from "lucide-react";
+
+const SIZE = 14;
 
 const COLORS: Record<string, string> = {
   folder: "#c8a050",
@@ -20,26 +36,32 @@ const COLORS: Record<string, string> = {
   file: "rgba(255,255,255,0.3)",
 };
 
+const ICON_MAP: Record<string, typeof File> = {
+  ts: FileCode2,
+  js: FileCode2,
+  rs: FileCog,
+  py: FileCode2,
+  html: FileCode2,
+  css: FileType,
+  json: FileJson2,
+  md: FileText,
+  toml: FileCog,
+  yaml: FileCog,
+  svg: FileImage,
+  image: FileImage,
+  shell: FileTerminal,
+  git: GitBranch,
+  lock: Lock,
+};
+
 export const FileIcon = memo(function FileIcon({ type, isOpen }: { type: string; isOpen?: boolean }) {
   const color = COLORS[type] ?? COLORS.file;
 
   if (type === "folder") {
-    return isOpen ? (
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-        <path d="M1.5 3.5h5l1.5 1.5H14.5v8h-13v-9.5z" stroke={color} strokeWidth="1.2" fill="none"/>
-        <path d="M1.5 7h13" stroke={color} strokeWidth="0.8" opacity="0.4"/>
-      </svg>
-    ) : (
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-        <path d="M1.5 3.5h5l1.5 1.5H14.5v8h-13v-9.5z" stroke={color} strokeWidth="1.2" fill="none"/>
-      </svg>
-    );
+    const Icon = isOpen ? FolderOpen : Folder;
+    return <Icon size={SIZE} color={color} strokeWidth={1.5} />;
   }
 
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-      <path d="M4 1.5h5.5L13 5v9.5H4V1.5z" stroke={color} strokeWidth="1" fill="none"/>
-      <path d="M9.5 1.5V5H13" stroke={color} strokeWidth="0.8" opacity="0.5"/>
-    </svg>
-  );
+  const Icon = ICON_MAP[type] ?? File;
+  return <Icon size={SIZE} color={color} strokeWidth={1.5} />;
 });

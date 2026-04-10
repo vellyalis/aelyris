@@ -8,6 +8,7 @@ import styles from "./EditorPanel.module.css";
 interface EditorPanelProps {
   filePath: string | null;
   onClose: () => void;
+  initialLine?: number;
   projectPath?: string;
 }
 
@@ -23,7 +24,7 @@ function detectLanguage(path: string): string {
   return EXT_TO_LANG[ext] ?? "plaintext";
 }
 
-export function EditorPanel({ filePath, onClose, projectPath }: EditorPanelProps) {
+export function EditorPanel({ filePath, onClose, projectPath, initialLine }: EditorPanelProps) {
   const [content, setContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,6 +34,9 @@ export function EditorPanel({ filePath, onClose, projectPath }: EditorPanelProps
   const [originalContent, setOriginalContent] = useState<string | null>(null);
   const [cursorPos, setCursorPos] = useState({ line: 1, column: 1 });
   const [minimapEnabled, setMinimapEnabled] = useState(false);
+  const [wordWrap, setWordWrap] = useState(false);
+  const [tabSize, setTabSize] = useState(2);
+  const [saved, setSaved] = useState(false);
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const vimRef = useRef<{ dispose: () => void } | null>(null);
 
@@ -100,7 +104,11 @@ export function EditorPanel({ filePath, onClose, projectPath }: EditorPanelProps
         e.preventDefault();
         const value = editorRef.current.getValue();
         invoke("write_file", { path: filePath, content: value })
-          .then(() => setModified(false))
+          .then(() => {
+            setModified(false);
+            setSaved(true);
+            setTimeout(() => setSaved(false), 2000);
+          })
           .catch((err) => setError(String(err)));
       }
     };
@@ -131,6 +139,7 @@ export function EditorPanel({ filePath, onClose, projectPath }: EditorPanelProps
         {error && <div className={styles.error}>{error}</div>}
         {content !== null && !loading && !diffMode && (
           <Editor
+            key={filePath}
             defaultValue={content}
             language={language}
             theme="vs-dark"
@@ -164,6 +173,14 @@ export function EditorPanel({ filePath, onClose, projectPath }: EditorPanelProps
               });
               monaco.editor.setTheme("aether-dark");
               editor.focus();
+              const model = editor.getModel();
+              if (model) {
+                setTabSize(model.getOptions().tabSize);
+              }
+              if (initialLine) {
+                editor.revealLineInCenter(initialLine);
+                editor.setPosition({ lineNumber: initialLine, column: 1 });
+              }
             }}
             onChange={() => setModified(true)}
             options={{
@@ -184,6 +201,7 @@ export function EditorPanel({ filePath, onClose, projectPath }: EditorPanelProps
               bracketPairColorization: { enabled: true },
               guides: { bracketPairs: true, indentation: true },
               renderWhitespace: "selection",
+              wordWrap: wordWrap ? "on" : "off",
               smoothScrolling: true,
               cursorBlinking: "smooth",
               cursorSmoothCaretAnimation: "on",
@@ -228,10 +246,18 @@ export function EditorPanel({ filePath, onClose, projectPath }: EditorPanelProps
         line={cursorPos.line}
         column={cursorPos.column}
         language={language}
+        tabSize={tabSize}
         minimapEnabled={minimapEnabled}
+        wordWrap={wordWrap}
+        saved={saved}
         onToggleMinimap={() => {
           setMinimapEnabled((v) => !v);
           editorRef.current?.updateOptions({ minimap: { enabled: !minimapEnabled } });
+        }}
+        onToggleWordWrap={() => {
+          const next = !wordWrap;
+          setWordWrap(next);
+          editorRef.current?.updateOptions({ wordWrap: next ? "on" : "off" });
         }}
       />
       {vimMode && <div id="vim-statusbar" className={styles.vimStatus} />}

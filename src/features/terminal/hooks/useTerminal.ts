@@ -84,7 +84,7 @@ export function useTerminal(options: UseTerminalOptions = {}) {
       });
       term.loadAddon(webglAddon);
     } catch {
-      console.warn("WebGL addon failed, using canvas renderer");
+      // Falls back to canvas renderer silently
     }
 
     fitAddon.fit();
@@ -124,12 +124,12 @@ export function useTerminal(options: UseTerminalOptions = {}) {
 
       // Forward input to PTY
       term.onData((data) => {
-        invoke("write_terminal", { id, data }).catch(console.error);
+        invoke("write_terminal", { id, data }).catch(() => {});
       });
 
       // Handle resize
       term.onResize(({ cols, rows }) => {
-        invoke("resize_terminal", { id, cols, rows }).catch(console.error);
+        invoke("resize_terminal", { id, cols, rows }).catch(() => {});
       });
     } catch (err) {
       term.writeln(`\x1b[31mFailed to spawn terminal: ${err}\x1b[0m`);

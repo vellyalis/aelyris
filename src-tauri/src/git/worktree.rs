@@ -49,7 +49,7 @@ pub fn list_worktrees(repo_path: &str) -> Result<Vec<WorktreeInfo>, String> {
 /// List branches for a repo
 /// Create a new worktree for a branch
 pub fn create_worktree(repo_path: &str, branch_name: &str) -> Result<WorktreeInfo, String> {
-    let repo = Repository::open(repo_path).map_err(|e| format!("Open repo: {}", e))?;
+    let _repo = Repository::open(repo_path).map_err(|e| format!("Open repo: {}", e))?;
     let worktree_dir = std::path::Path::new(repo_path)
         .parent()
         .unwrap_or(std::path::Path::new(repo_path))
