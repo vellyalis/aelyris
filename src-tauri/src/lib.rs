@@ -10,7 +10,6 @@ pub mod watchdog;
 use agent::AgentManager;
 use db::Database;
 use pty::PtyManager;
-use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -23,7 +22,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(PtyManager::new())
         .manage(AgentManager::new())
-        .setup(|app| {
+        .setup(|_app| {
             // Initialize database
             let db_path = db::db_path();
             match Database::open(&db_path) {
@@ -35,23 +34,16 @@ pub fn run() {
                 }
             }
 
-            // Apply Mica/Acrylic transparency
-            let window = app.get_webview_window("main")
-                .expect("main window not found");
-            #[cfg(target_os = "windows")]
-            {
-                use window_vibrancy::{apply_mica, apply_acrylic};
-                match apply_mica(&window, Some(true)) {
-                    Ok(_) => log::info!("Mica applied successfully"),
-                    Err(e) => {
-                        log::warn!("Mica failed: {:?}, trying Acrylic fallback", e);
-                        match apply_acrylic(&window, Some((13, 13, 13, 200))) {
-                            Ok(_) => log::info!("Acrylic applied successfully"),
-                            Err(e) => log::error!("Both Mica and Acrylic failed: {:?}", e),
-                        }
-                    }
-                }
-            }
+            // Mica/Acrylic transparency (disabled — causes WebView2 class conflict)
+            // To re-enable: uncomment below and test on your Windows version
+            // let window = app.get_webview_window("main").expect("main window not found");
+            // #[cfg(target_os = "windows")]
+            // {
+            //     use window_vibrancy::{apply_mica, apply_acrylic};
+            //     if apply_mica(&window, Some(true)).is_err() {
+            //         let _ = apply_acrylic(&window, Some((13, 13, 13, 200)));
+            //     }
+            // }
 
             Ok(())
         })

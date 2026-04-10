@@ -1,14 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from "react";
 import { ProjectHeaderBar } from "./features/header/ProjectHeaderBar";
-import { MenuBar, type Menu } from "./features/menubar/MenuBar";
-import { Sidebar } from "./features/sidebar/Sidebar";
 import { FileTree } from "./features/file-tree/FileTree";
-import { HelmPanel } from "./features/helm/HelmPanel";
 import { TerminalPane } from "./features/terminal/TerminalPane";
-import { StatusBar } from "./features/statusbar/StatusBar";
-import { KanbanBoard } from "./features/kanban/KanbanBoard";
-import { WorktreeManager } from "./features/worktree/WorktreeManager";
-
 // Lazy load Monaco Editor (~2MB)
 const EditorPanel = lazy(() => import("./features/editor/EditorPanel").then((m) => ({ default: m.EditorPanel })));
 import { AgentInspector } from "./features/agent-inspector/AgentInspector";
@@ -33,7 +26,6 @@ export type ShellType = "powershell" | "cmd" | "gitbash" | "wsl";
 export function App() {
   const {
     rootProjectPath, setRootProjectPath,
-    sidebarSection,
     paletteVisible, setPaletteVisible,
     settingsVisible, setSettingsVisible,
     watchdogVisible, setWatchdogVisible,
@@ -131,23 +123,6 @@ export function App() {
   }, []);
 
   // Kanban move side effects: create worktree + terminal tab when moving to in_progress
-  const handleKanbanMove = useCallback(async (taskId: string, toColumn: string) => {
-    if (toColumn === "in_progress") {
-      try {
-        const { invoke: inv } = await import("@tauri-apps/api/core");
-        const task = useAppStore.getState().kanbanTasks.find((t) => t.id === taskId);
-        if (task) {
-          const branchName = `feat/${task.title.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")}`;
-          try {
-            await inv("create_worktree", { repoPath: projectPath, branchName });
-          } catch { /* worktree may already exist */ }
-          useAppStore.getState().updateKanbanTask(taskId, { branch: branchName });
-          addTabWithCwd("powershell", projectPath);
-        }
-      } catch { /* ignore */ }
-    }
-  }, [projectPath, addTabWithCwd]);
-
   // Session switching = holistic workspace switch
   const handleSelectSession = useCallback((sessionId: string) => {
     setActiveSessionId(sessionId);
@@ -183,73 +158,6 @@ export function App() {
     { id: "search-files", label: "Search in Files", shortcut: "Ctrl+Shift+F", action: () => setSearchVisible(true) },
   ], [addTab, closeTab, activeTabId, activeFile, handleCloseFile, handleStartAgent, handleOpenFolder, handleCloseFolder]);
 
-  const menus: Menu[] = useMemo(() => [
-    {
-      label: "File",
-      items: [
-        { label: "New File", shortcut: "Ctrl+N", action: () => {
-          const name = prompt("New file name:");
-          if (name && projectPath) {
-            import("@tauri-apps/api/core").then(({ invoke: inv }) => {
-              inv("create_file", { path: `${projectPath}/${name}` }).then(() => handleFileSelect(`${projectPath}/${name}`)).catch(() => {});
-            });
-          }
-        }},
-        { label: "Open Folder...", shortcut: "Ctrl+Shift+O", action: handleOpenFolder },
-        { label: "Close Folder", action: handleCloseFolder },
-        { divider: true, label: "" },
-        { label: "Save", shortcut: "Ctrl+S", action: () => { /* handled by editor */ } },
-        { divider: true, label: "" },
-        { label: "Close Editor", shortcut: "Ctrl+W", action: () => activeFile && handleCloseFile(activeFile), disabled: !activeFile },
-        { label: "Settings", shortcut: "Ctrl+,", action: () => setSettingsVisible(true) },
-      ],
-    },
-    {
-      label: "Edit",
-      items: [
-        { label: "Undo", shortcut: "Ctrl+Z", action: () => document.execCommand("undo") },
-        { label: "Redo", shortcut: "Ctrl+Y", action: () => document.execCommand("redo") },
-        { divider: true, label: "" },
-        { label: "Cut", shortcut: "Ctrl+X", action: () => document.execCommand("cut") },
-        { label: "Copy", shortcut: "Ctrl+C", action: () => document.execCommand("copy") },
-        { label: "Paste", shortcut: "Ctrl+V", action: () => document.execCommand("paste") },
-        { divider: true, label: "" },
-        { label: "Find", shortcut: "Ctrl+F", action: () => { /* editor/terminal search */ } },
-        { label: "Replace", shortcut: "Ctrl+H", action: () => { /* TODO */ } },
-      ],
-    },
-    {
-      label: "View",
-      items: [
-        { label: "Command Palette", shortcut: "Ctrl+Shift+P", action: () => setPaletteVisible(true) },
-        { label: "Search in Files", shortcut: "Ctrl+Shift+F", action: () => setSearchVisible(true) },
-        { label: "Web Inspector", action: () => setWebInspectorVisible((v) => !v) },
-        { label: "Pull Requests", action: () => setPrInspectorVisible((v) => !v) },
-        { divider: true, label: "" },
-        { label: "Zoom In", shortcut: "Ctrl+=", action: () => { /* TODO */ } },
-        { label: "Zoom Out", shortcut: "Ctrl+-", action: () => { /* TODO */ } },
-      ],
-    },
-    {
-      label: "Terminal",
-      items: [
-        { label: "New Terminal", shortcut: "Ctrl+Shift+T", action: () => addTab("powershell") },
-        { label: "New CMD", action: () => addTab("cmd") },
-        { label: "New Git Bash", action: () => addTab("gitbash") },
-        { label: "New WSL", action: () => addTab("wsl") },
-        { divider: true, label: "" },
-        { label: "Split Horizontal", shortcut: "Ctrl+Shift+H", action: () => { /* handled by TerminalPane */ } },
-        { label: "Split Vertical", shortcut: "Ctrl+Shift+V", action: () => { /* handled by TerminalPane */ } },
-      ],
-    },
-    {
-      label: "Help",
-      items: [
-        { label: "About Aether Terminal", action: () => setAboutVisible(true) },
-        { label: "Keyboard Shortcuts", action: () => setSettingsVisible(true) },
-      ],
-    },
-  ], [handleOpenFolder, handleCloseFolder, addTab, activeFile, handleCloseFile]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -339,53 +247,6 @@ export function App() {
     </div>
   ) : null;
 
-  // Left panel content based on sidebar section
-  const leftPanelContent = (() => {
-    switch (sidebarSection) {
-      case "files":
-        return (
-          <>
-            <WorktreeManager projectPath={projectPath} onSwitch={(path) => {
-              setRootProjectPath(path.replace(/\\/g, "/"));
-              addTabWithCwd("powershell", path.replace(/\\/g, "/"));
-            }} />
-            <FileTree rootPath={projectPath} onFileSelect={handleFileSelect} onOpenDiff={handleOpenDiff} changedFiles={changedFiles} />
-            <HelmPanel />
-            <SearchPanel
-              visible={searchVisible}
-              rootPath={projectPath}
-              onClose={() => setSearchVisible(false)}
-              onResultClick={(file, line) => { handleFileSelect(file); setEditorLine(line); }}
-            />
-          </>
-        );
-      case "tasks":
-        return (
-          <KanbanBoard
-            onStartAgent={handleStartAgent}
-            onMoveWithSideEffects={handleKanbanMove}
-          />
-        );
-      case "agents":
-        return (
-          <AgentInspector
-            sessions={sessions}
-            activeSessionId={activeSessionId}
-            onSelectSession={handleSelectSession}
-            onStartAgent={handleStartAgent}
-            onStopAgent={stopAgent}
-          />
-        );
-      case "tools":
-        return <ToolkitPanel projectName={projectName} onRunCommand={handleRunCommand} />;
-    }
-  })();
-
-  // Determine agent status text for status bar
-  const agentStatusText = activeAgent
-    ? `${activeAgent.status} (${activeAgent.model})`
-    : undefined;
-
   return (
     <div className="app-container">
       <ProjectHeaderBar
@@ -395,13 +256,18 @@ export function App() {
         activeAgent={activeAgent ? { model: activeAgent.model, cost: activeAgent.cost } : null}
         onOpenSettings={() => setSettingsVisible(true)}
       />
-      <MenuBar menus={menus} />
+      {/* MenuBar hidden — all actions via Ctrl+Shift+P command palette */}
+      {/* <MenuBar menus={menus} /> */}
 
       <main className="app-main" role="main">
-        <Sidebar />
-
         <div className="left-panel" role="navigation" aria-label="Project sidebar" style={{ position: "relative" }}>
-          {leftPanelContent}
+          <FileTree rootPath={projectPath} onFileSelect={handleFileSelect} onOpenDiff={handleOpenDiff} changedFiles={changedFiles} />
+          <SearchPanel
+            visible={searchVisible}
+            rootPath={projectPath}
+            onClose={() => setSearchVisible(false)}
+            onResultClick={(file, line) => { handleFileSelect(file); setEditorLine(line); }}
+          />
         </div>
 
         <div className="center-panel" role="region" aria-label="Terminal and editor">
@@ -417,18 +283,16 @@ export function App() {
           )}
         </div>
 
-        {sidebarSection !== "agents" && sidebarSection !== "tools" && (
-          <div className="right-panel" role="complementary" aria-label="Agent inspector">
-            <AgentInspector
-              sessions={sessions}
-              activeSessionId={activeSessionId}
-              onSelectSession={handleSelectSession}
-              onStartAgent={handleStartAgent}
-              onStopAgent={stopAgent}
-            />
-            <ToolkitPanel projectName={projectName} onRunCommand={handleRunCommand} />
-          </div>
-        )}
+        <div className="right-panel" role="complementary" aria-label="Agent inspector">
+          <AgentInspector
+            sessions={sessions}
+            activeSessionId={activeSessionId}
+            onSelectSession={handleSelectSession}
+            onStartAgent={handleStartAgent}
+            onStopAgent={stopAgent}
+          />
+          <ToolkitPanel projectName={projectName} onRunCommand={handleRunCommand} />
+        </div>
       </main>
 
       <WorkspaceTabs
@@ -439,13 +303,6 @@ export function App() {
         onNewTab={addTab}
         branch={branch}
         changedCount={changedFiles.length}
-      />
-
-      <StatusBar
-        shell={activeTab.shell}
-        branch={branch}
-        changedCount={changedFiles.length}
-        agentStatus={agentStatusText}
       />
 
       <CommandPalette visible={paletteVisible} onClose={() => setPaletteVisible(false)} commands={commands} />
