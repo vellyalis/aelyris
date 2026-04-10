@@ -1,5 +1,6 @@
 pub mod engine;
 mod monitor;
+pub mod pane_watcher;
 mod rules;
 
 pub use monitor::SessionMonitor;
