@@ -33,3 +33,11 @@
   font-size: 10px; font-family: var(--font-mono); color: var(--text-muted);
   overflow: auto; max-height: 200px; white-space: pre-wrap; word-break: break-all;
 }
+.reviewBtn {
+  margin: 0 8px 6px; padding: 4px 12px;
+  background: var(--gold); color: var(--aether-bg);
+  border: none; border-radius: var(--radius-sm);
+  font-size: 10px; font-weight: 600; cursor: pointer;
+  font-family: var(--font-ui);
+}
+.reviewBtn:hover { opacity: 0.9; }

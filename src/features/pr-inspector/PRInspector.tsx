@@ -16,9 +16,10 @@ interface PRInspectorProps {
   projectPath: string;
   onClose: () => void;
   onViewDiff?: (diff: string, prNumber: number) => void;
+  onStartReview?: (prompt: string) => void;
 }
 
-export function PRInspector({ visible, projectPath, onClose, onViewDiff }: PRInspectorProps) {
+export function PRInspector({ visible, projectPath, onClose, onViewDiff, onStartReview }: PRInspectorProps) {
   const [prs, setPrs] = useState<PullRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,7 +70,17 @@ export function PRInspector({ visible, projectPath, onClose, onViewDiff }: PRIns
               <span className={styles.prBranch}>{pr.headRefName}</span>
             </button>
             {expandedPr === pr.number && diff && (
-              <pre className={styles.diffPreview}>{diff.slice(0, 2000)}{diff.length > 2000 ? "\n..." : ""}</pre>
+              <>
+                <pre className={styles.diffPreview}>{diff.slice(0, 2000)}{diff.length > 2000 ? "\n..." : ""}</pre>
+                {onStartReview && (
+                  <button
+                    className={styles.reviewBtn}
+                    onClick={() => onStartReview(`Review PR #${pr.number}: ${pr.title}\n\nDiff:\n${diff.slice(0, 8000)}`)}
+                  >
+                    Review with Agent
+                  </button>
+                )}
+              </>
             )}
           </div>
         ))}

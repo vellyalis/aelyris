@@ -19,11 +19,12 @@ interface ChangedFileInfo {
 interface FileTreeProps {
   rootPath: string;
   onFileSelect?: (path: string) => void;
+  onOpenDiff?: (path: string) => void;
   changedFiles?: ChangedFileInfo[];
   onSearch?: (query: string) => void;
 }
 
-export function FileTree({ rootPath, onFileSelect, changedFiles = [] }: FileTreeProps) {
+export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = [] }: FileTreeProps) {
   const [currentRoot, setCurrentRoot] = useState(rootPath);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<FileEntry[] | null>(null);
@@ -207,6 +208,12 @@ export function FileTree({ rootPath, onFileSelect, changedFiles = [] }: FileTree
         <div className={styles.ctxMenu} style={{ left: ctxMenu.x, top: ctxMenu.y }}>
           <button className={styles.ctxItem} onClick={handleNewFile}>New File</button>
           <button className={styles.ctxItem} onClick={handleNewFolder}>New Folder</button>
+          {!ctxMenu.isDir && changedSet.has(ctxMenu.path) && onOpenDiff && (
+            <>
+              <div className={styles.ctxDivider} />
+              <button className={styles.ctxItem} onClick={() => { onOpenDiff(ctxMenu.path); setCtxMenu(null); }}>Open Diff</button>
+            </>
+          )}
           <div className={styles.ctxDivider} />
           <button className={styles.ctxItem} onClick={handleRename}>Rename</button>
           <button className={styles.ctxItem} onClick={handleDelete}>Delete</button>

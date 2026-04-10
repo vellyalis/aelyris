@@ -9,6 +9,7 @@ interface EditorPanelProps {
   filePath: string | null;
   onClose: () => void;
   initialLine?: number;
+  initialDiffMode?: boolean;
   projectPath?: string;
 }
 
@@ -24,7 +25,7 @@ function detectLanguage(path: string): string {
   return EXT_TO_LANG[ext] ?? "plaintext";
 }
 
-export function EditorPanel({ filePath, onClose, projectPath, initialLine }: EditorPanelProps) {
+export function EditorPanel({ filePath, onClose, projectPath, initialLine, initialDiffMode }: EditorPanelProps) {
   const [content, setContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -77,7 +78,16 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine }: Edi
     setModified(false);
     setDiffMode(false);
     invoke<string>("read_file", { path: filePath })
-      .then((data) => { setContent(data); setLoading(false); })
+      .then((data) => {
+        setContent(data);
+        setLoading(false);
+        // Auto-open diff if requested
+        if (initialDiffMode && projectPath) {
+          invoke<string>("git_file_original", { repoPath: projectPath, filePath })
+            .then((orig) => { setOriginalContent(orig); setDiffMode(true); })
+            .catch(() => { setOriginalContent(""); setDiffMode(true); });
+        }
+      })
       .catch((err) => { setError(String(err)); setLoading(false); });
   }, [filePath]);
 

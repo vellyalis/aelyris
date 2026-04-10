@@ -43,6 +43,7 @@ export function App() {
     openFiles, activeFile, openFile, closeFile, clearFiles, setActiveFile,
   } = useAppStore();
   const [editorLine, setEditorLine] = useState<number | undefined>(undefined);
+  const [openInDiff, setOpenInDiff] = useState(false);
 
   const { tabs, activeTab, activeTabId, setActiveTabId, addTab, closeTab, addTabWithCwd } =
     useTabManager("powershell");
@@ -103,6 +104,12 @@ export function App() {
   }, [startAgent, projectPath, addTabWithCwd]);
 
   const handleFileSelect = useCallback((path: string) => {
+    setOpenInDiff(false);
+    openFile(path);
+  }, [openFile]);
+
+  const handleOpenDiff = useCallback((path: string) => {
+    setOpenInDiff(true);
     openFile(path);
   }, [openFile]);
 
@@ -308,7 +315,7 @@ export function App() {
         })}
       </div>
       <Suspense fallback={<div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 12 }}>Loading editor...</div>}>
-        <EditorPanel filePath={activeFile} onClose={() => handleCloseFile(activeFile!)} projectPath={projectPath} initialLine={editorLine} />
+        <EditorPanel filePath={activeFile} onClose={() => handleCloseFile(activeFile!)} projectPath={projectPath} initialLine={editorLine} initialDiffMode={openInDiff} />
       </Suspense>
     </div>
   ) : null;
@@ -319,7 +326,7 @@ export function App() {
       case "files":
         return (
           <>
-            <FileTree rootPath={projectPath} onFileSelect={handleFileSelect} changedFiles={changedFiles} />
+            <FileTree rootPath={projectPath} onFileSelect={handleFileSelect} onOpenDiff={handleOpenDiff} changedFiles={changedFiles} />
             <HelmPanel />
             <SearchPanel
               visible={searchVisible}
@@ -422,7 +429,7 @@ export function App() {
       <WatchdogDialog visible={watchdogVisible} onClose={() => setWatchdogVisible(false)} />
       <AboutDialog visible={aboutVisible} onClose={() => setAboutVisible(false)} />
       <WebInspector visible={webInspectorVisible} onClose={() => setWebInspectorVisible(false)} />
-      <PRInspector visible={prInspectorVisible} projectPath={projectPath} onClose={() => setPrInspectorVisible(false)} />
+      <PRInspector visible={prInspectorVisible} projectPath={projectPath} onClose={() => setPrInspectorVisible(false)} onStartReview={(prompt) => handleStartAgent(prompt)} />
     </div>
   );
 }
