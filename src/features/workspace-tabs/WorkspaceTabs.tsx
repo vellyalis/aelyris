@@ -16,41 +16,43 @@ interface WorkspaceTabsProps {
 
 export function WorkspaceTabs({ tabs, activeTabId, onSelectTab, onCloseTab, onNewTab, branch, changedCount }: WorkspaceTabsProps) {
   return (
-    <div className={styles.bar}>
-      {/* Left: terminal tabs */}
-      <Tabs.Root value={activeTabId} onValueChange={onSelectTab}>
-        <Tabs.List className={styles.tabs} aria-label="Terminal tabs">
-          {tabs.map((tab) => (
-            <Tabs.Trigger key={tab.id} value={tab.id} className={styles.tab} asChild>
-              <button>
-                <PixelAvatar seed={tab.label} size={12} />
-                <span className={styles.tabLabel}>{tab.label}</span>
-                {tabs.length > 1 && (
-                  <span
-                    className={styles.tabClose}
-                    role="button"
-                    aria-label={`Close ${tab.label}`}
-                    onClick={(e) => { e.stopPropagation(); onCloseTab(tab.id); }}
-                  >×</span>
-                )}
-              </button>
-            </Tabs.Trigger>
-          ))}
-        </Tabs.List>
-      </Tabs.Root>
-      <button className={styles.addBtn} onClick={() => onNewTab("powershell")} aria-label="New terminal tab">+</button>
+    <div className={styles.wrapper}>
+      {/* Row 1: Tabs */}
+      <div className={styles.tabRow}>
+        <Tabs.Root value={activeTabId} onValueChange={onSelectTab}>
+          <Tabs.List className={styles.tabs} aria-label="Terminal tabs">
+            {tabs.map((tab) => (
+              <Tabs.Trigger key={tab.id} value={tab.id} className={styles.tab} asChild>
+                <button>
+                  <PixelAvatar seed={tab.label} size={12} />
+                  <span className={styles.tabLabel}>{tab.label}</span>
+                  {tabs.length > 1 && (
+                    <span
+                      className={styles.tabClose}
+                      role="button"
+                      aria-label={`Close ${tab.label}`}
+                      onClick={(e) => { e.stopPropagation(); onCloseTab(tab.id); }}
+                    >×</span>
+                  )}
+                </button>
+              </Tabs.Trigger>
+            ))}
+          </Tabs.List>
+        </Tabs.Root>
+        <button className={styles.addBtn} onClick={() => onNewTab("powershell")} aria-label="New terminal tab">+</button>
+      </div>
 
-      {/* Spacer */}
-      <div className={styles.spacer} />
-
-      {/* Right: git status + encoding */}
-      {branch && <span className={styles.branchInfo}>⚡ {branch}</span>}
-      {changedCount !== undefined && changedCount > 0 && (
-        <span className={styles.changes}>{changedCount} changed</span>
-      )}
-      <span className={styles.divider} />
-      <span className={styles.encoding}>UTF-8</span>
-      <span className={styles.encoding}>LF</span>
+      {/* Row 2: Status */}
+      <div className={styles.statusRow}>
+        {branch && <span className={styles.branchInfo}>⚡ {branch}</span>}
+        {changedCount !== undefined && changedCount > 0 && (
+          <span className={styles.changes}>{changedCount} changed</span>
+        )}
+        <div className={styles.spacer} />
+        <span className={styles.encoding}>UTF-8</span>
+        <span className={styles.divider} />
+        <span className={styles.encoding}>LF</span>
+      </div>
     </div>
   );
 }
