@@ -80,24 +80,36 @@ function PaneRenderer({
 }) {
   if (node.type === "terminal") {
     const shellLabel = node.shell === "powershell" ? "PowerShell" : node.shell === "cmd" ? "CMD" : node.shell === "gitbash" ? "Git Bash" : "WSL";
+    // Use key={node.id} to prevent remount on parent state changes
     return (
-      <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
+      <div key={node.id} style={{ display: "flex", flexDirection: "column", flex: 1 }}>
         <TerminalInfoBar
           shell={shellLabel}
           cwd={node.cwd}
           isMaximized={maximizedId === node.id}
           onToggleMaximize={() => onToggleMaximize(node.id)}
         />
-        <TerminalArea shell={node.shell} cwd={node.cwd} />
+        <TerminalArea key={node.id} shell={node.shell} cwd={node.cwd} />
       </div>
     );
   }
 
-  // If a pane is maximized, only show that one
-  if (maximizedId) {
-    const found = findNodeById(node, maximizedId);
-    if (found) {
-      return <PaneRenderer node={found} onSplit={onSplit} maximizedId={maximizedId} onToggleMaximize={onToggleMaximize} />;
+  // If a pane is maximized, use CSS visibility instead of conditional rendering
+  // This prevents terminal remount/PTY loss
+  if (node.type === "split" && maximizedId) {
+    const isFirstMaximized = containsNode(node.first!, maximizedId);
+    const isSecondMaximized = containsNode(node.second!, maximizedId);
+    if (isFirstMaximized || isSecondMaximized) {
+      return (
+        <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+          <div style={{ display: isFirstMaximized || !maximizedId ? "flex" : "none", flex: 1 }}>
+            <PaneRenderer node={node.first!} onSplit={onSplit} maximizedId={maximizedId} onToggleMaximize={onToggleMaximize} />
+          </div>
+          <div style={{ display: isSecondMaximized || !maximizedId ? "flex" : "none", flex: 1 }}>
+            <PaneRenderer node={node.second!} onSplit={onSplit} maximizedId={maximizedId} onToggleMaximize={onToggleMaximize} />
+          </div>
+        </div>
+      );
     }
   }
 
@@ -108,13 +120,6 @@ function PaneRenderer({
       second={<PaneRenderer node={node.second!} onSplit={onSplit} maximizedId={maximizedId} onToggleMaximize={onToggleMaximize} />}
     />
   );
-}
-
-function findNodeById(node: PaneNode, id: string): PaneNode | null {
-  if (node.id === id) return node;
-  if (node.first) { const f = findNodeById(node.first, id); if (f) return f; }
-  if (node.second) { const f = findNodeById(node.second, id); if (f) return f; }
-  return null;
 }
 
 function splitNode(
@@ -151,4 +156,11 @@ function findFirstTerminal(node: PaneNode): string | null {
   }
   if (node.second) return findFirstTerminal(node.second);
   return null;
+}
+
+function containsNode(node: PaneNode, id: string): boolean {
+  if (node.id === id) return true;
+  if (node.first && containsNode(node.first, id)) return true;
+  if (node.second && containsNode(node.second, id)) return true;
+  return false;
 }

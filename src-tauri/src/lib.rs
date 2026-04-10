@@ -1,9 +1,9 @@
-mod agent;
+pub mod agent;
 mod config;
 mod git;
 mod ipc;
-mod pty;
-mod watchdog;
+pub mod pty;
+pub mod watchdog;
 
 use agent::AgentManager;
 use pty::PtyManager;

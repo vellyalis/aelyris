@@ -44,9 +44,11 @@ export function useAgentManager() {
       } catch { /* ignore when no agents */ }
     };
 
-    poll();
-    const interval = setInterval(poll, 2000);
-    return () => clearInterval(interval);
+    // Delay initial poll to not block startup
+    const timeout = setTimeout(poll, 1000);
+    // Poll less frequently when no sessions active
+    const interval = setInterval(poll, 5000);
+    return () => { clearTimeout(timeout); clearInterval(interval); };
   }, []);
 
   // Subscribe to output events for a session

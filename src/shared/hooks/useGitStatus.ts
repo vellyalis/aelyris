@@ -28,9 +28,10 @@ export function useGitStatus(repoPath: string) {
         setChangedFiles(info.changed_files);
       } catch { /* not a git repo or error */ }
     };
-    poll();
-    const interval = setInterval(poll, 3000);
-    return () => { active = false; clearInterval(interval); };
+    // Delay initial poll to not block startup
+    const timeout = setTimeout(poll, 500);
+    const interval = setInterval(poll, 5000);
+    return () => { active = false; clearTimeout(timeout); clearInterval(interval); };
   }, [repoPath]);
 
   return { branch, isDirty, changedFiles };
