@@ -322,7 +322,6 @@ export function App() {
     <div className="app-container">
       <ProjectHeaderBar
         projectName={projectName}
-        branch={branch}
         status={headerStatus as "idle" | "edit" | "thinking"}
         activeAgent={activeAgent ? { model: activeAgent.model, cost: activeAgent.cost } : null}
         onOpenSettings={() => setSettingsVisible(true)}

@@ -40,8 +40,8 @@ export function WorkspaceTabs({ tabs, activeTabId, onSelectTab, onCloseTab, onNe
       </Tabs.Root>
       <button className={styles.addBtn} onClick={() => onNewTab("powershell")} aria-label="New terminal tab">+</button>
       <div className={styles.statusInfo}>
-        {branch && <span className={styles.branchInfo}>⚡{branch}</span>}
-        {changedCount !== undefined && changedCount > 0 && <span className={styles.changes}>{changedCount}M</span>}
+        {branch && <span className={styles.branchInfo}>⚡ {branch}</span>}
+        {changedCount !== undefined && changedCount > 0 && <span className={styles.changes}>{changedCount} changed</span>}
         <span className={styles.encoding}>UTF-8</span>
         <span className={styles.encoding}>LF</span>
       </div>

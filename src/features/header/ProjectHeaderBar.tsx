@@ -4,7 +4,6 @@ import styles from "./ProjectHeaderBar.module.css";
 
 interface ProjectHeaderBarProps {
   projectName: string;
-  branch: string;
   status: "idle" | "edit" | "thinking";
   activeAgent?: { model: string; cost: number } | null;
   onOpenSettings?: () => void;
@@ -18,7 +17,7 @@ const STATUS_META: Record<string, { color: string; label: string }> = {
 };
 
 export function ProjectHeaderBar({
-  projectName, branch, status, activeAgent, onOpenSettings, onRefresh,
+  projectName, status, activeAgent, onOpenSettings, onRefresh,
 }: ProjectHeaderBarProps) {
   const handleMinimize = async () => {
     try { const { getCurrentWindow } = await import("@tauri-apps/api/window"); getCurrentWindow().minimize(); } catch {}
@@ -45,20 +44,17 @@ export function ProjectHeaderBar({
         <div className={styles.projectInfo}>
           <div className={styles.topRow}>
             <span className={styles.name}>{projectName}</span>
-            <span className={styles.branch}>⚡{branch}</span>
-          </div>
-          <div className={styles.bottomRow}>
             <span className={styles.status}>
               <span className={`${styles.dot} ${status !== "idle" ? styles.dotPulse : ""}`} style={{ background: color }} />
               <span className={styles.statusLabel}>{label}</span>
             </span>
-            {activeAgent && (
-              <>
-                <span className={styles.model}>{activeAgent.model}</span>
-                <span className={styles.cost}>&lt;${activeAgent.cost.toFixed(2)}</span>
-              </>
-            )}
           </div>
+          {activeAgent && (
+            <div className={styles.bottomRow}>
+              <span className={styles.model}>{activeAgent.model}</span>
+              <span className={styles.cost}>&lt;${activeAgent.cost.toFixed(2)}</span>
+            </div>
+          )}
         </div>
       </div>
 
