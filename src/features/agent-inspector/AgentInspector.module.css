@@ -68,8 +68,8 @@
 .cardIcons { font-size: 9px; opacity: 0.4; }
 .cardAge { font-size: 9px; color: var(--text-muted); }
 .cardFiles { font-size: 9px; color: var(--text-muted); }
-.cardWatchdog { border-color: rgba(124,58,237,0.4); background: rgba(124,58,237,0.06); }
-.cardWatchdog:hover { border-color: rgba(124,58,237,0.6); }
+.cardWatchdog { border-color: var(--purple-dim); background: rgba(124,58,237,0.06); }
+.cardWatchdog:hover { border-color: var(--purple); }
 .watchdogInfo {
   font-size: 9px; color: var(--purple-text); padding-left: 13px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -98,4 +98,4 @@
   cursor: pointer; font-size: 8px; color: var(--ctp-red); padding: 1px 3px;
   border-radius: 2px; margin-left: 4px;
 }
-.stopBtn:hover { background: rgba(243, 139, 168, 0.15); }
+.stopBtn:hover { background: rgba(var(--ctp-red), 0.15); }

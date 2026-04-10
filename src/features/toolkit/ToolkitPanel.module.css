@@ -40,10 +40,11 @@
 .editSave:hover { background: var(--gold); color: var(--aether-bg); border-color: var(--gold); }
 .editCancel:hover { background: var(--white-6); }
 .editDelete {
-  background: none; border: 1px solid rgba(243,139,168,0.3); border-radius: 4px;
+  background: none; border: 1px solid var(--ctp-red); border-radius: 4px;
   color: var(--ctp-red); font-size: 10px; padding: 2px 10px; cursor: pointer; margin-right: auto;
+  opacity: 0.4;
 }
-.editDelete:hover { background: rgba(243,139,168,0.15); }
+.editDelete:hover { background: var(--white-6); opacity: 1; }
 
 /* Bottom action buttons */
 .bottomActions {

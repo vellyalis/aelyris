@@ -51,7 +51,7 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
                 <option key={m.id} value={m.id}>{m.label}</option>
               ))}
             </select>
-            <span className={styles.modelDot} style={{ background: getModelById(selectedModel)?.color ?? "#89b4fa" }} />
+            <span className={styles.modelDot} style={{ background: getModelById(selectedModel)?.color ?? "var(--ctp-blue)" }} />
           </div>
           <input
             autoFocus

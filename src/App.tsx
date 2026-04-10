@@ -22,11 +22,13 @@ import { useTabManager } from "./shared/hooks/useTabManager";
 import { useAgentManager } from "./shared/hooks/useAgentManager";
 import { useGitStatus } from "./shared/hooks/useGitStatus";
 import { useAppStore } from "./shared/store/appStore";
+import { useThemeApplier } from "./shared/hooks/useTheme";
 
 export type ShellType = "powershell" | "cmd" | "gitbash" | "wsl";
 
 export function App() {
   const {
+    themeId,
     rootProjectPath, setRootProjectPath,
     paletteVisible, setPaletteVisible,
     settingsVisible, setSettingsVisible,
@@ -37,6 +39,7 @@ export function App() {
     prInspectorVisible, setPrInspectorVisible,
     openFiles, activeFile, openFile, closeFile, clearFiles, setActiveFile,
   } = useAppStore();
+  useThemeApplier(themeId);
   const [editorLine, setEditorLine] = useState<number | undefined>(undefined);
   const [openInDiff, setOpenInDiff] = useState(false);
 
@@ -285,7 +288,7 @@ export function App() {
               key={f}
               onClick={() => setActiveFile(f)}
               style={{
-                background: f === activeFile ? "rgba(255,255,255,0.07)" : "transparent",
+                background: f === activeFile ? "var(--white-6)" : "transparent",
                 color: f === activeFile ? "var(--text-primary)" : "var(--text-muted)",
                 border: "none", borderRadius: 4, padding: "3px 10px", fontSize: 11,
                 fontFamily: "var(--font-ui)", cursor: "pointer", display: "flex", alignItems: "center", gap: 6,

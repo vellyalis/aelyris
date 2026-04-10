@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { motion, AnimatePresence } from "motion/react";
 import styles from "./PRInspector.module.css";
 
 interface PullRequest {
@@ -40,8 +41,6 @@ export function PRInspector({ visible, projectPath, onClose, onViewDiff, onStart
 
   useEffect(() => { if (visible) loadPRs(); }, [loadPRs, visible]);
 
-  if (!visible) return null;
-
   const viewDiff = async (prNumber: number) => {
     if (expandedPr === prNumber) { setExpandedPr(null); setDiff(null); return; }
     setExpandedPr(prNumber);
@@ -53,7 +52,15 @@ export function PRInspector({ visible, projectPath, onClose, onViewDiff, onStart
   };
 
   return (
-    <div className={styles.panel}>
+    <AnimatePresence>
+    {visible && (
+    <motion.div
+      className={styles.panel}
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      transition={{ type: "spring", stiffness: 400, damping: 30 }}
+    >
       <div className={styles.header}>
         <span className={styles.title}>Pull Requests</span>
         <button className={styles.refreshBtn} onClick={loadPRs}>↻</button>
@@ -88,6 +95,8 @@ export function PRInspector({ visible, projectPath, onClose, onViewDiff, onStart
           <div className={styles.status}>No open PRs</div>
         )}
       </div>
-    </div>
+    </motion.div>
+    )}
+    </AnimatePresence>
   );
 }

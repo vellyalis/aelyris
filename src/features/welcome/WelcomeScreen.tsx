@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { motion } from "motion/react";
 import styles from "./WelcomeScreen.module.css";
 
 interface ProjectInfo {
@@ -66,11 +67,21 @@ export function WelcomeScreen({ onOpenProject }: WelcomeScreenProps) {
       onDragLeave={() => setDragOver(false)}
       onDrop={handleDrop}
     >
-      <div className={styles.center}>
-        <div className={styles.logo}>
+      <motion.div
+        className={styles.center}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ type: "spring", stiffness: 200, damping: 25 }}
+      >
+        <motion.div
+          className={styles.logo}
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: "spring", stiffness: 300, damping: 20, delay: 0.05 }}
+        >
           <div className={styles.logoIcon}>AE</div>
           <h1 className={styles.title}>Aether Terminal</h1>
-        </div>
+        </motion.div>
         <p className={styles.subtitle}>AI Workspace for Windows</p>
 
         <button className={styles.openBtn} onClick={handleOpenFolder}>
@@ -81,11 +92,14 @@ export function WelcomeScreen({ onOpenProject }: WelcomeScreenProps) {
         <div className={styles.recentHeader}>Recent Projects</div>
         <div className={styles.recentList}>
           {loading && <div className={styles.hint}>Scanning projects...</div>}
-          {recentProjects.map((p) => (
-            <button
+          {recentProjects.map((p, i) => (
+            <motion.button
               key={p.path}
               className={styles.projectCard}
               onClick={() => onOpenProject(p.path)}
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.1 + i * 0.04, type: "spring", stiffness: 300, damping: 25 }}
             >
               <div className={styles.projectAvatar}>
                 {p.name.slice(0, 2).toUpperCase()}
@@ -96,13 +110,13 @@ export function WelcomeScreen({ onOpenProject }: WelcomeScreenProps) {
                   {p.path} · <span className={styles.branch}>⚡{p.branch}</span>
                 </div>
               </div>
-            </button>
+            </motion.button>
           ))}
           {!loading && recentProjects.length === 0 && (
             <div className={styles.hint}>No projects found. Open a folder to get started.</div>
           )}
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

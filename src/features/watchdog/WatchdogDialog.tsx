@@ -138,8 +138,8 @@ export function WatchdogDialog({ visible, onClose }: WatchdogDialogProps) {
             <div key={i} className={styles.ruleRow}>
               <button className={styles.ruleToggle} onClick={() => toggleRuleApproval(i)} title={rule.approve ? "Approve" : "Deny"}>
                 {rule.approve
-                  ? <ShieldCheck size={12} color="#a6e3a1" />
-                  : <ShieldX size={12} color="#f38ba8" />
+                  ? <ShieldCheck size={12} color="var(--ctp-green)" />
+                  : <ShieldX size={12} color="var(--ctp-red)" />
                 }
               </button>
               <span className={styles.rulePattern}>{rule.pattern}</span>

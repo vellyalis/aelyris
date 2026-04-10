@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { motion, AnimatePresence } from "motion/react";
+import { useAppStore } from "../../shared/store/appStore";
 import styles from "./Settings.module.css";
 
 interface SettingsProps {
@@ -12,6 +13,8 @@ const THEMES = [
   { id: "aether-dark", label: "Aether Dark" },
   { id: "catppuccin-mocha", label: "Catppuccin Mocha" },
   { id: "catppuccin-frappe", label: "Catppuccin Frappé" },
+  { id: "catppuccin-macchiato", label: "Catppuccin Macchiato" },
+  { id: "catppuccin-latte", label: "Catppuccin Latte (Light)" },
   { id: "tokyo-night", label: "Tokyo Night" },
   { id: "dracula", label: "Dracula" },
 ];
@@ -32,7 +35,8 @@ const SHELLS = [
 ];
 
 export function Settings({ visible, onClose }: SettingsProps) {
-  const [theme, setTheme] = useState("aether-dark");
+  const { themeId: storeTheme, setThemeId } = useAppStore();
+  const [theme, setTheme] = useState(storeTheme);
   const [font, setFont] = useState("IBM Plex Mono");
   const [fontSize, setFontSize] = useState(14);
   const [lineHeight, setLineHeight] = useState(1.4);
@@ -58,6 +62,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
   }, []);
 
   const handleSave = () => {
+    setThemeId(theme);
     invoke("save_app_config", {
       config: {
         appearance: { theme, ui_font_family: "IBM Plex Sans", terminal_font_family: font, font_size: fontSize, line_height: lineHeight, ligatures, window_effect: "mica", opacity: 0.95 },

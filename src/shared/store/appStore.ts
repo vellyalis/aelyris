@@ -4,6 +4,10 @@ import type { KanbanTask, KanbanColumnId } from "../types/kanban";
 export type SidebarSection = "files" | "tasks" | "agents" | "tools";
 
 interface AppState {
+  // Theme
+  themeId: string;
+  setThemeId: (id: string) => void;
+
   // Project
   rootProjectPath: string | null;
   setRootProjectPath: (path: string | null) => void;
@@ -60,6 +64,15 @@ function toggleOrSet(v: boolean | ((prev: boolean) => boolean), prev: boolean): 
 }
 
 export const useAppStore = create<AppState>((set) => ({
+  // Theme
+  themeId: (() => {
+    try { return localStorage.getItem("aether:theme") ?? "aether-dark"; } catch { return "aether-dark"; }
+  })(),
+  setThemeId: (id) => {
+    set({ themeId: id });
+    try { localStorage.setItem("aether:theme", id); } catch {}
+  },
+
   // Project
   rootProjectPath: (() => {
     try { return localStorage.getItem("aether:lastProject"); } catch { return null; }

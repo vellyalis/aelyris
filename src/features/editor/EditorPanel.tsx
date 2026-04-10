@@ -3,6 +3,8 @@ import Editor, { DiffEditor, type OnMount } from "@monaco-editor/react";
 import { invoke } from "@tauri-apps/api/core";
 import { EditorBreadcrumb } from "./EditorBreadcrumb";
 import { EditorStatusBar } from "./EditorStatusBar";
+import { useAppStore } from "../../shared/store/appStore";
+import { getPalette, isLightTheme, monacoThemeColors } from "../../shared/themes/catppuccin";
 import styles from "./EditorPanel.module.css";
 
 interface EditorPanelProps {
@@ -26,6 +28,10 @@ function detectLanguage(path: string): string {
 }
 
 export function EditorPanel({ filePath, onClose, projectPath, initialLine, initialDiffMode }: EditorPanelProps) {
+  const themeId = useAppStore((s) => s.themeId);
+  const palette = getPalette(themeId);
+  const light = isLightTheme(themeId);
+  const editorColors = monacoThemeColors(palette, light);
   const [content, setContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -158,30 +164,20 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
               editor.onDidChangeCursorPosition((e) => {
                 setCursorPos({ line: e.position.lineNumber, column: e.position.column });
               });
-              monaco.editor.defineTheme("aether-dark", {
-                base: "vs-dark",
+              monaco.editor.defineTheme("aether-theme", {
+                base: light ? "vs" : "vs-dark",
                 inherit: true,
                 rules: [
-                  { token: "comment", foreground: "6A9955" },
-                  { token: "keyword", foreground: "569CD6" },
-                  { token: "string", foreground: "CE9178" },
-                  { token: "number", foreground: "B5CEA8" },
-                  { token: "type", foreground: "4EC9B0" },
-                  { token: "function", foreground: "DCDCAA" },
+                  { token: "comment", foreground: light ? "6c6f85" : "6A9955" },
+                  { token: "keyword", foreground: palette.mauve.slice(1) },
+                  { token: "string", foreground: palette.green.slice(1) },
+                  { token: "number", foreground: palette.peach.slice(1) },
+                  { token: "type", foreground: palette.yellow.slice(1) },
+                  { token: "function", foreground: palette.blue.slice(1) },
                 ],
-                colors: {
-                  "editor.background": "#0d0d0d",
-                  "editor.foreground": "#D4D4D4",
-                  "editorLineNumber.foreground": "#555555",
-                  "editorLineNumber.activeForeground": "#CCCCCC",
-                  "editor.selectionBackground": "#264F78",
-                  "editor.inactiveSelectionBackground": "#3A3D41",
-                  "editorGutter.background": "#0d0d0d",
-                  "editorIndentGuide.background": "#404040",
-                  "editorIndentGuide.activeBackground": "#707070",
-                },
+                colors: editorColors,
               });
-              monaco.editor.setTheme("aether-dark");
+              monaco.editor.setTheme("aether-theme");
               editor.focus();
               const model = editor.getModel();
               if (model) {
@@ -236,18 +232,13 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
               overviewRulerLanes: 0,
             }}
             beforeMount={(monaco) => {
-              monaco.editor.defineTheme("aether-dark", {
-                base: "vs-dark",
+              monaco.editor.defineTheme("aether-theme", {
+                base: light ? "vs" : "vs-dark",
                 inherit: true,
                 rules: [],
-                colors: {
-                  "editor.background": "#0d0d0d",
-                  "editorLineNumber.foreground": "#444444",
-                  "editorLineNumber.activeForeground": "#888888",
-                  "editorGutter.background": "#0d0d0d",
-                },
+                colors: editorColors,
               });
-              monaco.editor.setTheme("aether-dark");
+              monaco.editor.setTheme("aether-theme");
             }}
           />
         )}

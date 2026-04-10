@@ -19,10 +19,10 @@ interface SubagentTreeProps {
 }
 
 const PERM_COLORS: Record<string, string> = {
-  full: "#a6e3a1",
-  edit: "#f9e2af",
-  readonly: "#89b4fa",
-  restricted: "#f38ba8",
+  full: "var(--ctp-green)",
+  edit: "var(--ctp-yellow)",
+  readonly: "var(--ctp-blue)",
+  restricted: "var(--ctp-red)",
 };
 
 export const SubagentTree = memo(function SubagentTree({ agents, activeId, onSelect }: SubagentTreeProps) {

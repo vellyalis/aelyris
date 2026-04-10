@@ -15,24 +15,26 @@ interface WorkspaceTabsProps {
 
 export function WorkspaceTabs({ tabs, activeTabId, onSelectTab, onCloseTab, onNewTab, branch, changedCount }: WorkspaceTabsProps) {
   return (
-    <div className={styles.bar}>
-      <button className={styles.replyBtn}>◀ reply</button>
+    <div className={styles.bar} role="tablist" aria-label="Terminal tabs">
+      <button className={styles.replyBtn} aria-label="Reply">◀ reply</button>
       <div className={styles.tabs}>
         {tabs.map((tab) => (
           <button
             key={tab.id}
+            role="tab"
+            aria-selected={tab.id === activeTabId}
             className={`${styles.tab} ${tab.id === activeTabId ? styles.active : ""}`}
             onClick={() => onSelectTab(tab.id)}
           >
             <PixelAvatar seed={tab.label} size={14} />
             <span className={styles.tabLabel}>{tab.label}</span>
             {tabs.length > 1 && (
-              <span className={styles.tabClose} onClick={(e) => { e.stopPropagation(); onCloseTab(tab.id); }}>×</span>
+              <span className={styles.tabClose} role="button" aria-label={`Close ${tab.label}`} onClick={(e) => { e.stopPropagation(); onCloseTab(tab.id); }}>×</span>
             )}
           </button>
         ))}
       </div>
-      <button className={styles.addBtn} onClick={() => onNewTab("powershell")}>+</button>
+      <button className={styles.addBtn} onClick={() => onNewTab("powershell")} aria-label="New terminal tab">+</button>
       <div className={styles.statusInfo}>
         {branch && <span className={styles.branchInfo}>⚡{branch}</span>}
         {changedCount !== undefined && changedCount > 0 && <span className={styles.changes}>{changedCount}M</span>}

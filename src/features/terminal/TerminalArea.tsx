@@ -6,32 +6,9 @@ import { SearchAddon } from "@xterm/addon-search";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 import type { ShellType } from "../../App";
+import { useAppStore } from "../../shared/store/appStore";
+import { useXtermTheme } from "../../shared/hooks/useTheme";
 import styles from "./TerminalArea.module.css";
-
-const THEME = {
-  background: "rgba(13, 13, 13, 0.01)",
-  foreground: "rgba(255, 255, 255, 0.88)",
-  cursor: "#4fc1ff",
-  cursorAccent: "#1a1a1a",
-  selectionBackground: "rgba(79, 193, 255, 0.25)",
-  selectionForeground: "rgba(255, 255, 255, 0.95)",
-  black: "#3a3a3a",
-  red: "#f38ba8",
-  green: "#a6e3a1",
-  yellow: "#f9e2af",
-  blue: "#89b4fa",
-  magenta: "#f5c2e7",
-  cyan: "#94e2d5",
-  white: "#bac2de",
-  brightBlack: "#555555",
-  brightRed: "#f38ba8",
-  brightGreen: "#a6e3a1",
-  brightYellow: "#f9e2af",
-  brightBlue: "#89b4fa",
-  brightMagenta: "#f5c2e7",
-  brightCyan: "#94e2d5",
-  brightWhite: "#ffffff",
-};
 
 interface TerminalAreaProps {
   shell?: ShellType;
@@ -45,12 +22,21 @@ export function TerminalArea({ shell = "powershell", cwd }: TerminalAreaProps) {
   const [searchVisible, setSearchVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const themeId = useAppStore((s) => s.themeId);
+  const xtermTheme = useXtermTheme(themeId);
+
+  // Update theme when it changes
+  useEffect(() => {
+    if (termRef.current) {
+      termRef.current.options.theme = xtermTheme;
+    }
+  }, [xtermTheme]);
 
   useEffect(() => {
     if (!containerRef.current || termRef.current) return;
 
     const term = new Terminal({
-      theme: THEME,
+      theme: xtermTheme,
       fontFamily: "IBM Plex Mono, Cascadia Code, Cascadia Next JP, monospace",
       fontSize: 14,
       lineHeight: 1.4,

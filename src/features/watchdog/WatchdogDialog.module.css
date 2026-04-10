@@ -29,7 +29,7 @@
   transition: background var(--duration-fast), color var(--duration-fast);
 }
 .toggleOn {
-  background: rgba(166, 227, 161, 0.15); color: #a6e3a1;
+  background: rgba(166, 227, 161, 0.15); color: var(--ctp-green);
   border-color: rgba(166, 227, 161, 0.3);
 }
 

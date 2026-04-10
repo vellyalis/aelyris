@@ -27,14 +27,14 @@ interface ToolkitPanelProps {
 }
 
 const DEFAULT_ACTIONS: ToolkitAction[] = [
-  { id: "create-pr", label: "Create PR", badge: "#cba6f7", command: "gh pr create --fill" },
-  { id: "commit-push", label: "Commit & Push", badge: "#a6e3a1", command: "git add -A && git commit -m 'update' && git push" },
-  { id: "worktree", label: "Worktree", badge: "#89b4fa", command: "git worktree list" },
-  { id: "dev-server", label: "Dev Server", badge: "#a6e3a1", command: "pnpm dev" },
-  { id: "open-vscode", label: "Open in VSCode", badge: "#89b4fa", command: "code ." },
-  { id: "git-status", label: "Git Status", badge: "#f9e2af", command: "git status" },
-  { id: "git-log", label: "Git Log", badge: "#9399b2", command: "git log --oneline -15" },
-  { id: "npm-test", label: "Run Tests", badge: "#f38ba8", command: "npm test" },
+  { id: "create-pr", label: "Create PR", badge: "var(--ctp-mauve)", command: "gh pr create --fill" },
+  { id: "commit-push", label: "Commit & Push", badge: "var(--ctp-green)", command: "git add -A && git commit -m 'update' && git push" },
+  { id: "worktree", label: "Worktree", badge: "var(--ctp-blue)", command: "git worktree list" },
+  { id: "dev-server", label: "Dev Server", badge: "var(--ctp-green)", command: "pnpm dev" },
+  { id: "open-vscode", label: "Open in VSCode", badge: "var(--ctp-blue)", command: "code ." },
+  { id: "git-status", label: "Git Status", badge: "var(--ctp-yellow)", command: "git status" },
+  { id: "git-log", label: "Git Log", badge: "var(--text-secondary)", command: "git log --oneline -15" },
+  { id: "npm-test", label: "Run Tests", badge: "var(--ctp-red)", command: "npm test" },
 ];
 
 function loadActions(projectName: string): ToolkitAction[] {
@@ -79,7 +79,7 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
     const newAction: ToolkitAction = {
       id: `custom-${Date.now()}`,
       label,
-      badge: "#94e2d5",
+      badge: "var(--ctp-cyan)",
       command,
     };
     const updated = [...actions, newAction];
@@ -138,7 +138,7 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
           if (recipe) {
             const newAction: ToolkitAction = {
               id: `import-${Date.now()}`, label: recipe.split(" ").slice(0, 3).join(" "),
-              badge: "#94e2d5", command: recipe,
+              badge: "var(--ctp-cyan)", command: recipe,
             };
             const updated = [...actions, newAction];
             setActions(updated);

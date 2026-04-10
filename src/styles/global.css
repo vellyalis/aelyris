@@ -2,7 +2,7 @@
 
 :root {
   /* Scape-matched dark palette */
-  --aether-bg: rgba(13, 13, 13, 0.7);
+  --aether-bg: rgba(13, 13, 13, 0.05);
   --aether-bg-sidebar: rgba(18, 18, 18, 0.6);
   --aether-bg-elevated: rgba(24, 24, 24, 0.75);
   --aether-bg-card: rgba(28, 28, 28, 0.85);
@@ -143,8 +143,8 @@ html, body, #root {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: rgba(13, 13, 13, 0.7);
-  border-radius: 12px;
+  background: var(--aether-bg);
+  border-radius: var(--radius-lg);
   overflow: hidden;
 }
 
@@ -199,10 +199,15 @@ html, body, #root {
   color: var(--text-primary);
 }
 
-/* Focus ring for accessibility */
+/* Focus ring for accessibility — overrides outline:none in modules */
 :focus-visible {
-  outline: 1px solid var(--gold);
+  outline: 1px solid var(--gold) !important;
   outline-offset: -1px;
+}
+/* Terminal and iframe should not show focus ring */
+.xterm-screen:focus-visible,
+iframe:focus-visible {
+  outline: none !important;
 }
 
 /* Smooth transitions for all interactive elements */

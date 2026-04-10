@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { motion, AnimatePresence } from "motion/react";
 import styles from "./SearchPanel.module.css";
 
 interface GrepResult {
@@ -39,8 +40,6 @@ export function SearchPanel({ visible, rootPath, onClose, onResultClick }: Searc
     }, 300);
   }, [rootPath]);
 
-  if (!visible) return null;
-
   // Group results by file
   const grouped = new Map<string, GrepResult[]>();
   for (const r of results) {
@@ -50,7 +49,15 @@ export function SearchPanel({ visible, rootPath, onClose, onResultClick }: Searc
   }
 
   return (
-    <div className={styles.panel}>
+    <AnimatePresence>
+    {visible && (
+    <motion.div
+      className={styles.panel}
+      initial={{ height: 0, opacity: 0 }}
+      animate={{ height: "auto", opacity: 1 }}
+      exit={{ height: 0, opacity: 0 }}
+      transition={{ type: "spring", stiffness: 300, damping: 30 }}
+    >
       <div className={styles.header}>
         <input
           autoFocus
@@ -89,7 +96,9 @@ export function SearchPanel({ visible, rootPath, onClose, onResultClick }: Searc
           <div className={styles.status}>Type to search across all files</div>
         )}
       </div>
-    </div>
+    </motion.div>
+    )}
+    </AnimatePresence>
   );
 }
 

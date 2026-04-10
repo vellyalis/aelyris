@@ -1,4 +1,6 @@
 import { DiffEditor } from "@monaco-editor/react";
+import { useAppStore } from "../../shared/store/appStore";
+import { getPalette, isLightTheme, monacoThemeColors } from "../../shared/themes/catppuccin";
 import styles from "./DiffViewer.module.css";
 
 interface DiffViewerProps {
@@ -8,25 +10,17 @@ interface DiffViewerProps {
   fileName?: string;
 }
 
-const SCAPE_DARK_THEME = {
-  base: "vs-dark" as const,
-  inherit: true,
-  rules: [],
-  colors: {
-    "editor.background": "#1a1a1a",
-    "editorLineNumber.foreground": "#555555",
-    "editorLineNumber.activeForeground": "#888888",
-    "editor.selectionBackground": "#3a3a4a",
-    "editorGutter.background": "#1a1a1a",
-  },
-};
-
 export function DiffViewer({
   original,
   modified,
   language = "typescript",
   fileName,
 }: DiffViewerProps) {
+  const themeId = useAppStore((s) => s.themeId);
+  const palette = getPalette(themeId);
+  const light = isLightTheme(themeId);
+  const colors = monacoThemeColors(palette, light);
+
   return (
     <div className={styles.container}>
       {fileName && <div className={styles.header}>{fileName}</div>}
@@ -35,7 +29,7 @@ export function DiffViewer({
           original={original}
           modified={modified}
           language={language}
-          theme="vs-dark"
+          theme="aether-theme"
           options={{
             readOnly: true,
             renderSideBySide: true,
@@ -49,10 +43,13 @@ export function DiffViewer({
             scrollbar: { verticalScrollbarSize: 6, horizontalScrollbarSize: 6 },
           }}
           beforeMount={(monaco) => {
-            monaco.editor.defineTheme("aether-dark", SCAPE_DARK_THEME);
-          }}
-          onMount={() => {
-            // Theme applied via beforeMount
+            monaco.editor.defineTheme("aether-theme", {
+              base: light ? "vs" : "vs-dark",
+              inherit: true,
+              rules: [],
+              colors,
+            });
+            monaco.editor.setTheme("aether-theme");
           }}
         />
       </div>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { motion, AnimatePresence } from "motion/react";
 import styles from "./WebInspector.module.css";
 
 interface WebInspectorProps {
@@ -10,10 +11,16 @@ export function WebInspector({ visible, onClose }: WebInspectorProps) {
   const [url, setUrl] = useState("http://localhost:3000");
   const [currentUrl, setCurrentUrl] = useState("http://localhost:3000");
 
-  if (!visible) return null;
-
   return (
-    <div className={styles.panel}>
+    <AnimatePresence>
+    {visible && (
+    <motion.div
+      className={styles.panel}
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      transition={{ type: "spring", stiffness: 400, damping: 30 }}
+    >
       <div className={styles.header}>
         <button className={styles.navBtn} onClick={() => setCurrentUrl(url)}>→</button>
         <input
@@ -32,6 +39,8 @@ export function WebInspector({ visible, onClose }: WebInspectorProps) {
         title="Web Inspector"
         sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
       />
-    </div>
+    </motion.div>
+    )}
+    </AnimatePresence>
   );
 }
