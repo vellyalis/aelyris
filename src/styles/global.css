@@ -1,12 +1,26 @@
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@300;400;500;600&display=swap');
 
 :root {
-  /* Crystal dark palette — transparent enough to see through */
-  --aether-bg: rgba(13, 13, 13, 0.03);
-  --aether-bg-sidebar: rgba(18, 18, 18, 0.35);
-  --aether-bg-elevated: rgba(24, 24, 24, 0.5);
-  --aether-bg-card: rgba(28, 28, 28, 0.6);
-  --aether-bg-surface: rgba(35, 35, 35, 0.55);
+  /* Layered glass system — each zone has different thickness */
+  /* Level 1: Ground — sidebar rail, darkest anchor */
+  --glass-ground: rgba(10, 10, 10, 0.85);
+  /* Level 2: Thin — header, statusbar */
+  --glass-thin: rgba(16, 16, 16, 0.38);
+  /* Level 3: Standard — left panel */
+  --glass-standard: rgba(20, 20, 20, 0.42);
+  /* Level 3.5: Dense — right panel (higher info density) */
+  --glass-dense: rgba(22, 22, 22, 0.52);
+  /* Level 4: Thick — cards, elevated surfaces */
+  --glass-thick: rgba(28, 28, 28, 0.68);
+  /* Level 5: Solid — modals, dialogs */
+  --glass-solid: rgba(26, 26, 26, 0.78);
+
+  /* Legacy aliases (used by existing components) */
+  --aether-bg: rgba(12, 12, 12, 0.08);
+  --aether-bg-sidebar: var(--glass-standard);
+  --aether-bg-elevated: var(--glass-dense);
+  --aether-bg-card: var(--glass-thick);
+  --aether-bg-surface: var(--glass-dense);
   --aether-border: rgba(255, 255, 255, 0.06);
   --aether-border-strong: rgba(255, 255, 255, 0.1);
 
@@ -223,9 +237,9 @@ html, body, #root {
   max-width: 360px;
   display: flex;
   flex-direction: column;
-  background: var(--aether-bg-sidebar);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
+  background: var(--glass-standard);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border-right: 1px solid var(--border);
   overflow: hidden;
   resize: horizontal;
@@ -237,6 +251,9 @@ html, body, #root {
   flex: 1;
   display: flex;
   overflow: hidden;
+  background: var(--aether-bg);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .right-panel {
@@ -245,7 +262,7 @@ html, body, #root {
   max-width: 400px;
   display: flex;
   flex-direction: column;
-  background: var(--aether-bg-sidebar);
+  background: var(--glass-dense);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   border-left: 1px solid var(--border);

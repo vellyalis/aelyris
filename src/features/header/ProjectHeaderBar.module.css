@@ -4,9 +4,9 @@
   justify-content: space-between;
   height: var(--header-height);
   padding: 0 10px;
-  background: rgba(13, 13, 13, 0.3);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: var(--glass-thin);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--border);
   user-select: none;
   -webkit-app-region: drag;
