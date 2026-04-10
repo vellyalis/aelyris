@@ -48,10 +48,10 @@
   font-family: var(--font-ui);
   cursor: pointer;
   text-align: left;
-  transition: background 0.08s;
-  height: 22px;
+  transition: background 0.08s, box-shadow 0.15s;
+  height: 20px;
 }
-.row:hover { background: var(--white-4); color: var(--text-primary); }
+.row:hover { background: var(--white-4); color: var(--text-primary); box-shadow: inset 2px 0 0 var(--gold-subtle); }
 .arrow {
   font-size: 8px;
   width: 10px;
