@@ -1,7 +1,9 @@
 import type { PaneNode, SplitDirection } from "./types";
 import { TerminalArea } from "../TerminalArea";
+import { GpuTerminalArea } from "../GpuTerminalArea";
 import { TerminalInfoBar } from "../TerminalInfoBar";
 import { SplitPane } from "../../../shared/ui/SplitPane";
+import { useGpuRenderer } from "../../../shared/hooks/useGpuRenderer";
 import styles from "./PaneTreeRenderer.module.css";
 
 interface PaneTreeRendererProps {
@@ -29,15 +31,17 @@ export function PaneTreeRenderer({
   tree, activePaneId, maximizedPaneId, syncMode,
   onFocusPane, onSplit, onClose, onResize, onToggleMaximize, onTerminalReady, canClose,
 }: PaneTreeRendererProps) {
+  const rendererMode = useGpuRenderer();
+
   // If a pane is maximized, render only that pane
   if (maximizedPaneId) {
     const leaf = findLeaf(tree, maximizedPaneId);
     if (leaf && leaf.type === "terminal") {
-      return renderLeaf(leaf, true, true, syncMode, onFocusPane, onSplit, onClose, onToggleMaximize, onTerminalReady, canClose);
+      return renderLeaf(leaf, true, true, syncMode, onFocusPane, onSplit, onClose, onToggleMaximize, onTerminalReady, canClose, rendererMode);
     }
   }
 
-  return renderNode(tree, activePaneId, syncMode, onFocusPane, onSplit, onClose, onResize, onToggleMaximize, onTerminalReady, canClose);
+  return renderNode(tree, activePaneId, syncMode, onFocusPane, onSplit, onClose, onResize, onToggleMaximize, onTerminalReady, canClose, rendererMode);
 }
 
 function renderNode(
@@ -51,10 +55,11 @@ function renderNode(
   onToggleMaximize: (id: string) => void,
   onTerminalReady: (paneId: string, terminalId: string) => void,
   canClose: boolean,
+  rendererMode: "wgpu" | "xterm",
 ): React.ReactElement {
   if (node.type === "terminal") {
     const isActive = node.id === activePaneId;
-    return renderLeaf(node, isActive, false, syncMode, onFocusPane, onSplit, onClose, onToggleMaximize, onTerminalReady, canClose);
+    return renderLeaf(node, isActive, false, syncMode, onFocusPane, onSplit, onClose, onToggleMaximize, onTerminalReady, canClose, rendererMode);
   }
 
   return (
@@ -63,8 +68,8 @@ function renderNode(
       direction={node.direction}
       defaultRatio={node.ratio}
       onRatioChange={(r) => onResize(node.id, r)}
-      first={renderNode(node.first, activePaneId, syncMode, onFocusPane, onSplit, onClose, onResize, onToggleMaximize, onTerminalReady, canClose)}
-      second={renderNode(node.second, activePaneId, syncMode, onFocusPane, onSplit, onClose, onResize, onToggleMaximize, onTerminalReady, canClose)}
+      first={renderNode(node.first, activePaneId, syncMode, onFocusPane, onSplit, onClose, onResize, onToggleMaximize, onTerminalReady, canClose, rendererMode)}
+      second={renderNode(node.second, activePaneId, syncMode, onFocusPane, onSplit, onClose, onResize, onToggleMaximize, onTerminalReady, canClose, rendererMode)}
     />
   );
 }
@@ -80,7 +85,10 @@ function renderLeaf(
   onToggleMaximize: (id: string) => void,
   onTerminalReady: (paneId: string, terminalId: string) => void,
   canClose: boolean,
+  rendererMode: "wgpu" | "xterm",
 ) {
+  const TerminalComponent = rendererMode === "wgpu" ? GpuTerminalArea : TerminalArea;
+
   return (
     <div
       key={node.id}
@@ -97,7 +105,7 @@ function renderLeaf(
         onToggleMaximize={() => onToggleMaximize(node.id)}
         onClose={canClose ? () => onClose(node.id) : undefined}
       />
-      <TerminalArea
+      <TerminalComponent
         shell={node.shell as "powershell" | "cmd" | "gitbash" | "wsl"}
         cwd={node.cwd}
         syncMode={syncMode}
