@@ -29,16 +29,6 @@ pub struct FontManager {
     pub baseline: f32,
 }
 
-/// Windows system font paths.
-const FONT_PATHS: &[(&str, &str)] = &[
-    ("regular", "C:/Windows/Fonts/CascadiaCode.ttf"),
-    ("bold", "C:/Windows/Fonts/consolab.ttf"),
-    ("italic", "C:/Windows/Fonts/consolai.ttf"),
-    ("bold_italic", "C:/Windows/Fonts/consolaz.ttf"),
-    ("cjk", "C:/Windows/Fonts/NotoSansJP-VF.ttf"),
-    ("fallback", "C:/Windows/Fonts/consola.ttf"),
-];
-
 fn load_font(path: &str) -> Option<fontdue::Font> {
     let data = std::fs::read(path).ok()?;
     let settings = fontdue::FontSettings {
