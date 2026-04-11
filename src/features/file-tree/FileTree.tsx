@@ -115,10 +115,23 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
 
   // Load root directory on mount or when root changes
   useEffect(() => {
-    if (!contents.has(currentRoot) && !loading.has(currentRoot)) {
-      toggleDir(currentRoot);
+    let cancelled = false;
+    async function loadRoot() {
+      setLoading((prev) => new Set(prev).add(currentRoot));
+      setExpanded((prev) => new Set(prev).add(currentRoot));
+      try {
+        const entries = await invoke<FileEntry[]>("list_directory", { path: currentRoot });
+        if (!cancelled) {
+          setContents((prev) => new Map(prev).set(currentRoot, entries));
+        }
+      } catch { /* ignore */ }
+      if (!cancelled) {
+        setLoading((prev) => { const n = new Set(prev); n.delete(currentRoot); return n; });
+      }
     }
-  }, [currentRoot]); // eslint-disable-line react-hooks/exhaustive-deps
+    loadRoot();
+    return () => { cancelled = true; };
+  }, [currentRoot]);
 
   const handleSearch = useCallback((query: string) => {
     setSearchQuery(query);
