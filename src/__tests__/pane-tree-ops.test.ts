@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createLeaf, splitPane, removePane, collectLeafIds, countLeaves } from "../features/terminal/pane-tree/operations";
 import { splitDirectionToTree } from "../features/terminal/pane-tree/types";
+import type { PaneNode } from "../features/terminal/pane-tree/types";
 
 describe("createLeaf", () => {
   it("creates a terminal leaf with unique id", () => {
@@ -96,8 +97,8 @@ describe("collectLeafIds", () => {
 
 describe("countLeaves", () => {
   it("counts correctly for nested tree", () => {
-    let tree = createLeaf("powershell");
-    tree = splitPane(tree, tree.id, "right", "cmd");
+    const leaf = createLeaf("powershell");
+    let tree: PaneNode = splitPane(leaf, leaf.id, "right", "cmd");
     if (tree.type === "split") {
       tree = splitPane(tree, tree.second.id, "down", "wsl");
     }
