@@ -396,7 +396,7 @@ export function App() {
       </div>
       <ErrorBoundary>
         <Suspense fallback={<div className={appStyles.editorLoading}>Loading editor...</div>}>
-          <EditorPanel filePath={activeFile} onClose={() => handleCloseFile(activeFile!)} projectPath={projectPath} initialLine={editorLine} initialDiffMode={openInDiff} />
+          <EditorPanel filePath={activeFile} onClose={() => handleCloseFile(activeFile!)} projectPath={projectPath} initialLine={editorLine} initialDiffMode={openInDiff} onStartAgent={(p) => { handleStartAgent(p); }} />
         </Suspense>
       </ErrorBoundary>
     </div>

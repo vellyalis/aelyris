@@ -9,12 +9,19 @@ import { useAppStore } from "../../shared/store/appStore";
 import { getPalette, isLightTheme, monacoThemeColors } from "../../shared/themes/catppuccin";
 import styles from "./EditorPanel.module.css";
 
+interface DiffComment {
+  lineNumber: number;
+  comment: string;
+  status: "pending" | "fixing" | "resolved";
+}
+
 interface EditorPanelProps {
   filePath: string | null;
   onClose: () => void;
   initialLine?: number;
   initialDiffMode?: boolean;
   projectPath?: string;
+  onStartAgent?: (prompt: string) => void;
 }
 
 const EXT_TO_LANG: Record<string, string> = {
@@ -29,7 +36,7 @@ function detectLanguage(path: string): string {
   return EXT_TO_LANG[ext] ?? "plaintext";
 }
 
-export function EditorPanel({ filePath, onClose, projectPath, initialLine, initialDiffMode }: EditorPanelProps) {
+export function EditorPanel({ filePath, onClose, projectPath, initialLine, initialDiffMode, onStartAgent }: EditorPanelProps) {
   const themeId = useAppStore((s) => s.themeId);
   const palette = getPalette(themeId);
   const light = isLightTheme(themeId);
@@ -44,6 +51,9 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
   const [cursorPos, setCursorPos] = useState({ line: 1, column: 1 });
   const [minimapEnabled, setMinimapEnabled] = useState(false);
   const [wordWrap, setWordWrap] = useState(false);
+  const [diffComments, setDiffComments] = useState<DiffComment[]>([]);
+  const [commentLine, setCommentLine] = useState<number | null>(null);
+  const [commentText, setCommentText] = useState("");
   const [tabSize, setTabSize] = useState(2);
   const [saved, setSaved] = useState(false);
   const [previewMode, setPreviewMode] = useState(false);
@@ -258,7 +268,69 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
               });
               monaco.editor.setTheme("aether-theme");
             }}
+            onMount={(editor) => {
+              // Click in glyph margin to add comment
+              const modifiedEditor = editor.getModifiedEditor();
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              modifiedEditor.onMouseDown((e: any) => {
+                if (e.target.type === 2 && e.target.position) { // GLYPH_MARGIN
+                  setCommentLine(e.target.position.lineNumber);
+                  setCommentText("");
+                }
+              });
+            }}
           />
+        )}
+        {/* Inline diff comment input */}
+        {diffMode && commentLine !== null && (
+          <div className={styles.commentOverlay}>
+            <div className={styles.commentBox}>
+              <span className={styles.commentLabel}>Line {commentLine} — feedback for agent:</span>
+              <textarea
+                autoFocus
+                className={styles.commentInput}
+                placeholder="Describe what to fix..."
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+                rows={2}
+                onKeyDown={(e) => {
+                  if (e.ctrlKey && e.key === "Enter" && commentText.trim()) {
+                    const lines = (content ?? "").split("\n");
+                    const context = lines.slice(Math.max(0, commentLine! - 3), commentLine! + 2).join("\n");
+                    const prompt = `File: ${filePath}, Line ${commentLine}\n\nContext:\n${context}\n\nFeedback: ${commentText.trim()}\n\nPlease fix this issue.`;
+                    onStartAgent?.(prompt);
+                    setDiffComments((prev) => [...prev, { lineNumber: commentLine!, comment: commentText.trim(), status: "fixing" }]);
+                    setCommentLine(null);
+                    setCommentText("");
+                  }
+                  if (e.key === "Escape") { setCommentLine(null); setCommentText(""); }
+                }}
+              />
+              <div className={styles.commentActions}>
+                <button className={styles.commentSend} onClick={() => {
+                  if (!commentText.trim()) return;
+                  const lines = (content ?? "").split("\n");
+                  const context = lines.slice(Math.max(0, commentLine! - 3), commentLine! + 2).join("\n");
+                  const prompt = `File: ${filePath}, Line ${commentLine}\n\nContext:\n${context}\n\nFeedback: ${commentText.trim()}\n\nPlease fix this issue.`;
+                  onStartAgent?.(prompt);
+                  setDiffComments((prev) => [...prev, { lineNumber: commentLine!, comment: commentText.trim(), status: "fixing" }]);
+                  setCommentLine(null);
+                  setCommentText("");
+                }}>Send to Agent (Ctrl+Enter)</button>
+                <button className={styles.commentCancel} onClick={() => { setCommentLine(null); setCommentText(""); }}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        )}
+        {/* Comment badges */}
+        {diffMode && diffComments.length > 0 && (
+          <div className={styles.commentBadges}>
+            {diffComments.map((c, i) => (
+              <span key={i} className={styles.commentBadge} data-status={c.status} title={c.comment}>
+                L{c.lineNumber}: {c.status === "fixing" ? "🔧" : c.status === "resolved" ? "✓" : "💬"} {c.comment.slice(0, 30)}
+              </span>
+            ))}
+          </div>
         )}
       </div>
       <EditorStatusBar
