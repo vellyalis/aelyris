@@ -7,6 +7,7 @@ pub mod pty;
 pub mod session;
 mod watcher;
 pub mod watchdog;
+pub mod workflow;
 
 use agent::AgentManager;
 use db::Database;
@@ -27,6 +28,7 @@ pub fn run() {
         .manage(ipc::OutputBufferRegistry::new())
         .manage(pty::PaneRegistry::new())
         .manage(ipc::FsWatcherRegistry::new())
+        .manage(workflow::WorkflowExecutor::new())
         .setup(move |_app| {
             // Initialize database
             let db_path = db::db_path();
@@ -96,6 +98,16 @@ pub fn run() {
             ipc::list_panes_info,
             ipc::start_fs_watcher,
             ipc::stop_fs_watcher,
+            // Workflow commands
+            ipc::list_workflows,
+            ipc::start_workflow,
+            ipc::workflow_current_phase,
+            ipc::workflow_set_agent,
+            ipc::workflow_phase_done,
+            ipc::workflow_approve_gate,
+            ipc::workflow_reject_gate,
+            ipc::workflow_status,
+            ipc::list_running_workflows,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Aether Terminal");

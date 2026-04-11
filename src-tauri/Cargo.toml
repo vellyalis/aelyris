@@ -48,6 +48,9 @@ thiserror = "2"
 # Database
 rusqlite = { version = "0.31", features = ["bundled"] }
 
+# YAML workflow definitions
+serde_yaml = "0.9"
+
 # File system watching
 notify = { version = "7", features = ["macos_kqueue"] }
 notify-debouncer-mini = "0.5"

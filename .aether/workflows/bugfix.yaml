@@ -1,0 +1,35 @@
+name: Bug Fix
+description: Reproduce → Fix → Verify の3段パイプライン
+
+phases:
+  - name: reproduce
+    agent:
+      model: claude-sonnet
+      prompt: |
+        {task_title}のバグを再現してください。
+        テストケースを書いて、RED状態を確認すること。
+      max_cost: 0.50
+    quality_gate:
+      type: test_pass
+      criteria: "テストが失敗すること (RED)"
+
+  - name: fix
+    depends_on: [reproduce]
+    agent:
+      model: claude-sonnet
+      prompt: |
+        再現テストを通るように修正してください。
+        最小限の変更で修正すること。
+      allowed_tools: [Read, Write, Edit, Bash, Grep, Glob]
+      max_cost: 1.50
+    quality_gate:
+      type: test_pass
+
+  - name: verify
+    depends_on: [fix]
+    agent:
+      model: claude-sonnet
+      prompt: |
+        修正を検証してください。
+        回帰テストを実行し、他の機能に影響がないか確認すること。
+      max_cost: 0.50

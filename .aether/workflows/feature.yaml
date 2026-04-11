@@ -1,0 +1,37 @@
+name: Feature Implementation
+description: Plan → Implement (TDD) → Review の3段パイプライン
+
+phases:
+  - name: plan
+    agent:
+      model: claude-opus
+      prompt: |
+        {task_title}の実装計画を立ててください。
+        プロジェクト: {project_path}
+        要件を整理し、影響範囲を分析し、段階的な実装手順を出力してください。
+      max_cost: 0.50
+    quality_gate:
+      type: human_review
+
+  - name: implement
+    depends_on: [plan]
+    agent:
+      model: claude-sonnet
+      prompt: |
+        計画に基づいて{task_title}を実装してください。
+        TDDで進め、テストを先に書いてから実装すること。
+      allowed_tools: [Read, Write, Edit, Bash, Grep, Glob]
+      max_cost: 2.00
+    quality_gate:
+      type: test_pass
+
+  - name: review
+    depends_on: [implement]
+    agent:
+      model: claude-opus
+      prompt: |
+        実装をレビューしてください。
+        CRITICAL/HIGHの問題を報告し、改善提案を出すこと。
+      max_cost: 0.50
+    quality_gate:
+      type: human_review

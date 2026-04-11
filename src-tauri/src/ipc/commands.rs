@@ -917,3 +917,112 @@ impl FsWatcherRegistry {
         }
     }
 }
+
+// ── Workflow commands ──
+
+/// List available workflow definitions for a project
+#[tauri::command]
+pub fn list_workflows(project_path: String) -> Vec<crate::workflow::WorkflowSummary> {
+    crate::workflow::list_workflow_files(&project_path)
+}
+
+/// Start a workflow execution
+#[tauri::command]
+pub fn start_workflow(
+    app: AppHandle,
+    project_path: String,
+    workflow_path: String,
+    task_title: String,
+) -> Result<crate::workflow::WorkflowStatus, String> {
+    let workflow = crate::workflow::parse_workflow(&workflow_path)?;
+    let executor = app.state::<crate::workflow::WorkflowExecutor>();
+    let id = executor.start(workflow, &task_title, &project_path)?;
+    executor.status(&id)
+}
+
+/// Get the current phase config for a workflow (so frontend can start the agent)
+#[tauri::command]
+pub fn workflow_current_phase(
+    app: AppHandle,
+    workflow_id: String,
+) -> Result<WorkflowPhaseInfo, String> {
+    let executor = app.state::<crate::workflow::WorkflowExecutor>();
+    let (phase, prompt) = executor.current_phase_config(&workflow_id)?;
+    Ok(WorkflowPhaseInfo {
+        name: phase.name,
+        model: phase.agent.model,
+        prompt,
+        max_cost: phase.agent.max_cost,
+        has_gate: phase.quality_gate.is_some(),
+        gate_type: phase.quality_gate.map(|g| format!("{:?}", g.gate_type)),
+    })
+}
+
+#[derive(serde::Serialize)]
+pub struct WorkflowPhaseInfo {
+    pub name: String,
+    pub model: String,
+    pub prompt: String,
+    pub max_cost: f64,
+    pub has_gate: bool,
+    pub gate_type: Option<String>,
+}
+
+/// Record that an agent was started for the current phase
+#[tauri::command]
+pub fn workflow_set_agent(
+    app: AppHandle,
+    workflow_id: String,
+    agent_session_id: String,
+) -> Result<(), String> {
+    let executor = app.state::<crate::workflow::WorkflowExecutor>();
+    executor.set_phase_agent(&workflow_id, &agent_session_id)
+}
+
+/// Mark current phase as waiting for gate approval
+#[tauri::command]
+pub fn workflow_phase_done(
+    app: AppHandle,
+    workflow_id: String,
+    cost: f64,
+) -> Result<(), String> {
+    let executor = app.state::<crate::workflow::WorkflowExecutor>();
+    executor.phase_waiting_gate(&workflow_id, cost)
+}
+
+/// Approve the current quality gate → advance to next phase
+#[tauri::command]
+pub fn workflow_approve_gate(
+    app: AppHandle,
+    workflow_id: String,
+) -> Result<bool, String> {
+    let executor = app.state::<crate::workflow::WorkflowExecutor>();
+    executor.approve_gate(&workflow_id)
+}
+
+/// Reject the current quality gate → retry the phase
+#[tauri::command]
+pub fn workflow_reject_gate(
+    app: AppHandle,
+    workflow_id: String,
+) -> Result<(), String> {
+    let executor = app.state::<crate::workflow::WorkflowExecutor>();
+    executor.reject_gate(&workflow_id)
+}
+
+/// Get workflow execution status
+#[tauri::command]
+pub fn workflow_status(
+    app: AppHandle,
+    workflow_id: String,
+) -> Result<crate::workflow::WorkflowStatus, String> {
+    let executor = app.state::<crate::workflow::WorkflowExecutor>();
+    executor.status(&workflow_id)
+}
+
+/// List all running workflows
+#[tauri::command]
+pub fn list_running_workflows(app: AppHandle) -> Vec<crate::workflow::WorkflowStatus> {
+    let executor = app.state::<crate::workflow::WorkflowExecutor>();
+    executor.list()
+}

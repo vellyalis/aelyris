@@ -7,6 +7,7 @@ import { KanbanBoard } from "./features/kanban/KanbanBoard";
 import { TerminalPane } from "./features/terminal/TerminalPane";
 import { AgentInspector } from "./features/agent-inspector/AgentInspector";
 import { ToolkitPanel } from "./features/toolkit/ToolkitPanel";
+import { WorkflowPanel } from "./features/workflow/WorkflowPanel";
 import { WorkspaceTabs } from "./features/workspace-tabs/WorkspaceTabs";
 import type { CommandItem } from "./features/command-palette/CommandPalette";
 
@@ -450,6 +451,7 @@ export function App() {
             onCreateWorktree={handleCreateWorktree}
             onRemoveWorktree={handleRemoveWorktree}
           />
+          <WorkflowPanel projectPath={projectPath} onStartAgent={handleStartAgent} />
           <ToolkitPanel projectName={projectName} onRunCommand={handleRunCommand} />
         </div>
       </main>
