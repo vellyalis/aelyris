@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Play, CheckCircle, XCircle, Clock, ChevronRight, Loader } from "lucide-react";
+import { Play, CheckCircle, XCircle, Clock, ChevronRight, Loader, Workflow } from "lucide-react";
 import styles from "./WorkflowPanel.module.css";
+
+const WorkflowBuilder = lazy(() => import("./WorkflowBuilder").then((m) => ({ default: m.WorkflowBuilder })));
 
 interface WorkflowSummary {
   name: string;
@@ -52,6 +54,17 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
   const [running, setRunning] = useState<WorkflowStatus[]>([]);
   const [expanded, setExpanded] = useState(false);
+  const [builderOpen, setBuilderOpen] = useState(false);
+
+  const handleExportYaml = useCallback(async (yaml: string) => {
+    try {
+      await invoke("create_file", { path: `${projectPath}/.aether/workflows/custom-${Date.now()}.yaml` });
+      await invoke("write_file", { path: `${projectPath}/.aether/workflows/custom-${Date.now()}.yaml`, content: yaml });
+    } catch { /* ignore write errors */ }
+    setBuilderOpen(false);
+    // Refresh workflows list
+    invoke<WorkflowSummary[]>("list_workflows", { projectPath }).then(setWorkflows).catch(() => {});
+  }, [projectPath]);
 
   // Load available workflows
   useEffect(() => {
@@ -156,7 +169,17 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
               <span className={styles.templatePhases}>{wf.phase_count} phases</span>
             </button>
           ))}
+          <button className={styles.templateBtn} onClick={() => setBuilderOpen(true)}>
+            <Workflow size={10} />
+            <span>Visual Builder</span>
+          </button>
         </div>
+      )}
+
+      {builderOpen && (
+        <Suspense fallback={null}>
+          <WorkflowBuilder onClose={() => setBuilderOpen(false)} onExport={handleExportYaml} />
+        </Suspense>
       )}
     </div>
   );
