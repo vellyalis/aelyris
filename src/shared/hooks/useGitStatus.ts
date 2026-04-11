@@ -41,27 +41,31 @@ export function useGitStatus(repoPath: string) {
 
   // Start file watcher and listen for fs:changed events
   useEffect(() => {
-    if (!repoPath || watcherStarted.current) return;
+    if (!repoPath) return;
+    let aborted = false;
     let unlisten: (() => void) | null = null;
 
     const setup = async () => {
       try {
-        // Start the backend file watcher
         await invoke("start_fs_watcher", { watchPath: repoPath });
+        if (aborted) {
+          invoke("stop_fs_watcher", { watchPath: repoPath }).catch(() => {});
+          return;
+        }
         watcherStarted.current = true;
 
-        // Listen for change events from the watcher
         const { listen } = await import("@tauri-apps/api/event");
-        unlisten = await listen<{ root: string; paths: string[] }>("fs:changed", (event) => {
-          if (event.payload.root === repoPath) {
-            refresh();
-          }
+        const unsub = await listen<{ root: string; paths: string[] }>("fs:changed", (event) => {
+          if (event.payload.root === repoPath) refresh();
         });
+        if (aborted) { unsub(); return; }
+        unlisten = unsub;
       } catch { /* watcher not available */ }
     };
     setup();
 
     return () => {
+      aborted = true;
       unlisten?.();
       if (watcherStarted.current) {
         invoke("stop_fs_watcher", { watchPath: repoPath }).catch(() => {});

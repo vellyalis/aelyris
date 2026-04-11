@@ -9,6 +9,7 @@ mod watcher;
 pub mod watchdog;
 pub mod workflow;
 
+use tauri::Manager;
 use agent::AgentManager;
 use db::Database;
 use pty::PtyManager;
@@ -29,15 +30,20 @@ pub fn run() {
         .manage(pty::PaneRegistry::new())
         .manage(ipc::FsWatcherRegistry::new())
         .manage(workflow::WorkflowExecutor::new())
-        .setup(move |_app| {
-            // Initialize database
+        .setup(move |app| {
+            // Initialize database as managed state
             let db_path = db::db_path();
             match Database::open(&db_path) {
-                Ok(_db) => {
+                Ok(database) => {
                     log::info!("Database initialized at {:?}", db_path);
+                    app.handle().manage(db::ManagedDb::new(database));
                 }
                 Err(e) => {
                     log::error!("Failed to initialize database: {}", e);
+                    // Provide a fallback in-memory db so commands don't panic
+                    if let Ok(mem_db) = Database::open_memory() {
+                        app.handle().manage(db::ManagedDb::new(mem_db));
+                    }
                 }
             }
             // Mica/Acrylic applied via tauri.conf.json windowEffects

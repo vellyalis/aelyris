@@ -26,6 +26,11 @@ export function useTaskAgentLink({ sessions, kanbanTasks, moveKanbanTask }: UseT
       }
       prevStatuses.current[s.id] = s.status;
     }
+    // Prune stale IDs to prevent unbounded growth
+    const liveIds = new Set(sessions.map((s) => s.id));
+    for (const id of Object.keys(prevStatuses.current)) {
+      if (!liveIds.has(id)) delete prevStatuses.current[id];
+    }
   }, [sessions, kanbanTasks, moveKanbanTask]);
 
   const agentStatuses = useMemo(() => {

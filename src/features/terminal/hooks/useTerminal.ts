@@ -9,6 +9,14 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 import "@xterm/xterm/css/xterm.css";
 
+// Track the most recently focused terminal's PTY ID via window (survives chunk boundaries)
+export function getActivePtyId(): string | null {
+  return (window as unknown as Record<string, string | null>).__aether_active_pty_id ?? null;
+}
+export function setActivePtyId(id: string | null) {
+  (window as unknown as Record<string, string | null>).__aether_active_pty_id = id;
+}
+
 // Catppuccin Mocha terminal colors
 const CATPPUCCIN_THEME = {
   background: "rgba(30, 30, 46, 0.0)", // transparent for Mica
@@ -102,6 +110,7 @@ export function useTerminal(options: UseTerminalOptions = {}) {
         cwd: options.cwd ?? null,
       });
       terminalIdRef.current = id;
+      setActivePtyId(id);
 
       // Listen for PTY output
       unlistenOutputRef.current = await listen<string>(
@@ -120,6 +129,12 @@ export function useTerminal(options: UseTerminalOptions = {}) {
       unlistenExitRef.current = await listen(`pty-exit-${id}`, () => {
         term.writeln("\r\n\x1b[90m[Process exited]\x1b[0m");
       });
+
+      // Track which terminal is active on focus/click
+      const el = container;
+      const handleFocus = () => setActivePtyId(id);
+      el.addEventListener("mousedown", handleFocus);
+      el.addEventListener("focusin", handleFocus);
 
       // Forward input to PTY
       term.onData((data) => {

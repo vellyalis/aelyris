@@ -109,6 +109,7 @@ fn worktree_status_for_repo(repo: &Repository) -> WorktreeStatus {
 
 /// Remove a worktree and optionally delete the branch
 pub fn remove_worktree(repo_path: &str, worktree_name: &str, delete_branch: bool) -> Result<(), String> {
+    validate_branch_name(worktree_name)?;
     // Use git CLI for reliable worktree removal (handles locked worktrees)
     let output = std::process::Command::new("git")
         .args(["worktree", "remove", worktree_name, "--force"])
@@ -137,9 +138,23 @@ pub fn remove_worktree(repo_path: &str, worktree_name: &str, delete_branch: bool
     Ok(())
 }
 
-/// List branches for a repo
+/// Validate branch name: alphanumeric, hyphens, underscores, slashes, dots only. No ".." or absolute paths.
+fn validate_branch_name(name: &str) -> Result<(), String> {
+    if name.is_empty() {
+        return Err("Branch name cannot be empty".to_string());
+    }
+    if name.contains("..") || name.starts_with('/') || name.starts_with('\\') || name.contains(':') {
+        return Err(format!("Invalid branch name: {}", name));
+    }
+    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '/' || c == '.') {
+        return Err(format!("Branch name contains invalid characters: {}", name));
+    }
+    Ok(())
+}
+
 /// Create a new worktree for a branch
 pub fn create_worktree(repo_path: &str, branch_name: &str) -> Result<WorktreeInfo, String> {
+    validate_branch_name(branch_name)?;
     let _repo = Repository::open(repo_path).map_err(|e| format!("Open repo: {}", e))?;
     let worktree_dir = std::path::Path::new(repo_path)
         .parent()

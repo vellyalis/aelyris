@@ -81,6 +81,54 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
 
     connectPty(term, shell, cwd, onTerminalReady, syncModeRef);
 
+    // Image paste: intercept Ctrl+V via keydown (capture phase)
+    // paste events don't reliably fire with image data in WebView2 + xterm.js
+    // Instead, catch Ctrl+V, use Clipboard API to check for images
+    const handleCtrlV = async (e: KeyboardEvent) => {
+      if (!(e.ctrlKey && e.key === "v")) return;
+      // Only if this terminal has focus
+      const active = document.activeElement;
+      if (!containerRef.current?.contains(active) && active !== term.textarea) return;
+
+      // Prevent xterm from handling it — we handle all paste ourselves
+      e.preventDefault();
+      e.stopImmediatePropagation();
+
+      try {
+        const clipItems = await navigator.clipboard.read();
+        for (const item of clipItems) {
+          const imageType = item.types.find((t: string) => t.startsWith("image/"));
+          if (imageType) {
+            const blob = await item.getType(imageType);
+            const reader = new FileReader();
+            reader.onload = async () => {
+              try {
+                const { invoke: inv } = await import("@tauri-apps/api/core");
+                const path = await inv<string>("save_temp_image", { data: reader.result as string });
+                const escaped = path.replace(/\\/g, "/");
+                term.paste(`--image "${escaped}" `);
+                term.writeln(`\x1b[90m[Image: ${escaped}]\x1b[0m`);
+              } catch (err) {
+                term.writeln(`\x1b[31m[Image paste failed: ${err}]\x1b[0m`);
+              }
+            };
+            reader.readAsDataURL(blob);
+            return; // handled image
+          }
+        }
+        // No image in clipboard — paste text normally
+        const text = await navigator.clipboard.readText();
+        if (text) term.paste(text);
+      } catch {
+        // Clipboard API failed — try text fallback
+        try {
+          const text = await navigator.clipboard.readText();
+          if (text) term.paste(text);
+        } catch { /* give up */ }
+      }
+    };
+    document.addEventListener("keydown", handleCtrlV, { capture: true });
+
     const handleResize = () => fitAddon.fit();
     window.addEventListener("resize", handleResize);
 
@@ -96,6 +144,7 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
 
     return () => {
       cleanupIME();
+      document.removeEventListener("keydown", handleCtrlV, { capture: true } as EventListenerOptions);
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("keydown", handleKeyDown);
       term.dispose();

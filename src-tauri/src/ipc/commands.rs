@@ -377,9 +377,12 @@ fn grep_recursive(dir: &std::path::Path, pattern: &str, max: u32, results: &mut 
 /// Get original file content from git HEAD (for diff)
 #[tauri::command]
 pub fn git_file_original(repo_path: String, file_path: String) -> Result<String, String> {
-    // Get relative path from repo root
-    let relative = file_path
-        .replace(&repo_path, "")
+    // Normalize separators then compute relative path via strip_prefix
+    let repo_norm = repo_path.replace('\\', "/");
+    let file_norm = file_path.replace('\\', "/");
+    let relative = file_norm
+        .strip_prefix(&repo_norm)
+        .unwrap_or(&file_norm)
         .trim_start_matches('/')
         .to_string();
 
@@ -1090,6 +1093,7 @@ pub fn list_running_workflows(app: AppHandle) -> Vec<crate::workflow::WorkflowSt
 /// Save agent session to database for persistence across restarts
 #[tauri::command]
 pub fn save_agent_to_db(
+    app: AppHandle,
     id: String,
     model: String,
     prompt: String,
@@ -1097,28 +1101,26 @@ pub fn save_agent_to_db(
     cost: f64,
     tokens_used: u64,
 ) -> Result<(), String> {
-    let db_path = crate::db::db_path();
-    let db = crate::db::Database::open(&db_path)?;
-    db.save_agent_session(&id, &model, &prompt, &status, cost, tokens_used)
+    let db = app.state::<crate::db::ManagedDb>();
+    db.with(|d| d.save_agent_session(&id, &model, &prompt, &status, cost, tokens_used))
 }
 
 /// Update agent session in database
 #[tauri::command]
 pub fn update_agent_in_db(
+    app: AppHandle,
     id: String,
     status: String,
     cost: f64,
     tokens_used: u64,
 ) -> Result<(), String> {
-    let db_path = crate::db::db_path();
-    let db = crate::db::Database::open(&db_path)?;
-    db.update_agent_session(&id, &status, cost, tokens_used)
+    let db = app.state::<crate::db::ManagedDb>();
+    db.with(|d| d.update_agent_session(&id, &status, cost, tokens_used))
 }
 
 /// List recent agent sessions from database
 #[tauri::command]
-pub fn list_agent_history(limit: usize) -> Result<Vec<crate::db::AgentSessionRecord>, String> {
-    let db_path = crate::db::db_path();
-    let db = crate::db::Database::open(&db_path)?;
-    db.list_agent_sessions(limit)
+pub fn list_agent_history(app: AppHandle, limit: usize) -> Result<Vec<crate::db::AgentSessionRecord>, String> {
+    let db = app.state::<crate::db::ManagedDb>();
+    db.with(|d| d.list_agent_sessions(limit))
 }

@@ -61,7 +61,7 @@ export function App() {
   const [fileTreeKey, setFileTreeKey] = useState(0);
 
   const { tabs, activeTab, activeTabId, setActiveTabId, addTab, closeTab, addTabWithCwd } = useTabManager("powershell");
-  const { sessions, activeSessionId, setActiveSessionId, startAgent, stopAgent } = useAgentManager();
+  const { sessions, activeSessionId, setActiveSessionId, startAgent, stopAgent, renameSession } = useAgentManager();
 
   const projectPath = activeTab.cwd ?? rootProjectPath ?? "";
   const projectName = projectPath ? projectPath.split("/").filter(Boolean).pop() ?? "Aether" : "Aether";
@@ -337,7 +337,7 @@ export function App() {
           <AgentInspector
             sessions={sessions} activeSessionId={activeSessionId}
             onSelectSession={handleSelectSession} onStartAgent={handleStartAgent} onStopAgent={stopAgent}
-            onCreateWorktree={createWorktree} onRemoveWorktree={removeWorktree}
+            onCreateWorktree={createWorktree} onRemoveWorktree={removeWorktree} onRenameSession={renameSession}
           />
           <WorkflowPanel projectPath={projectPath} onStartAgent={handleStartAgent} />
           <ToolkitPanel projectName={projectName} onRunCommand={handleRunCommand} />

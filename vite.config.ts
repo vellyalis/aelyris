@@ -14,6 +14,18 @@ export default defineConfig(async () => ({
     setupFiles: [],
   },
 
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "xterm": ["@xterm/xterm", "@xterm/addon-fit", "@xterm/addon-web-links", "@xterm/addon-search", "@xterm/addon-unicode11"],
+          "radix": ["@radix-ui/react-context-menu", "@radix-ui/react-dialog", "@radix-ui/react-dropdown-menu", "@radix-ui/react-scroll-area", "@radix-ui/react-tabs", "@radix-ui/react-toast", "@radix-ui/react-tooltip"],
+          "motion": ["motion"],
+        },
+      },
+    },
+  },
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors

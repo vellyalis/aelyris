@@ -172,11 +172,16 @@ export function useAgentManager() {
     };
   }, []);
 
+  const renameSession = useCallback((id: string, newName: string) => {
+    setSessions((prev) => prev.map((s) => s.id === id ? { ...s, name: newName } : s));
+  }, []);
+
   return {
     sessions,
     activeSessionId,
     setActiveSessionId,
     startAgent,
     stopAgent,
+    renameSession,
   };
 }

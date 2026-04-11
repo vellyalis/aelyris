@@ -8,7 +8,27 @@
   </head>
 
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Inline splash — visible until React hydrates -->
+      <div id="splash" style="
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        background: transparent;
+        color: rgba(255,255,255,0.5);
+        font-family: 'Segoe UI', system-ui, sans-serif;
+        font-size: 14px;
+        letter-spacing: 0.5px;
+        user-select: none;
+        -webkit-user-select: none;
+      ">
+        <div style="text-align:center;">
+          <div style="font-size: 20px; font-weight: 600; color: #c8a050; margin-bottom: 8px;">Aether Terminal</div>
+          <div style="opacity: 0.6;">Starting...</div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

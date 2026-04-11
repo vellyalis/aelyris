@@ -58,11 +58,10 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
 
   const handleExportYaml = useCallback(async (yaml: string) => {
     try {
-      await invoke("create_file", { path: `${projectPath}/.aether/workflows/custom-${Date.now()}.yaml` });
-      await invoke("write_file", { path: `${projectPath}/.aether/workflows/custom-${Date.now()}.yaml`, content: yaml });
+      const filePath = `${projectPath}/.aether/workflows/custom-${Date.now()}.yaml`;
+      await invoke("write_file", { path: filePath, content: yaml });
     } catch { /* ignore write errors */ }
     setBuilderOpen(false);
-    // Refresh workflows list
     invoke<WorkflowSummary[]>("list_workflows", { projectPath }).then(setWorkflows).catch(() => {});
   }, [projectPath]);
 
@@ -79,22 +78,6 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
     return () => clearInterval(interval);
   }, []);
 
-  const handleStart = useCallback(async (wf: WorkflowSummary, taskTitle?: string) => {
-    const title = taskTitle ?? wf.name;
-    try {
-      const status = await invoke<WorkflowStatus>("start_workflow", {
-        projectPath,
-        workflowPath: wf.path,
-        taskTitle: title,
-      });
-      setRunning((prev) => [...prev, status]);
-      // Auto-start first phase agent
-      await advancePhase(status.id);
-    } catch (e) {
-      console.error("Failed to start workflow:", e);
-    }
-  }, [projectPath, onStartAgent]);
-
   const advancePhase = useCallback(async (workflowId: string) => {
     if (!onStartAgent) return;
     try {
@@ -105,6 +88,21 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
       }
     } catch { /* no more phases */ }
   }, [onStartAgent]);
+
+  const handleStart = useCallback(async (wf: WorkflowSummary, taskTitle?: string) => {
+    const title = taskTitle ?? wf.name;
+    try {
+      const status = await invoke<WorkflowStatus>("start_workflow", {
+        projectPath,
+        workflowPath: wf.path,
+        taskTitle: title,
+      });
+      setRunning((prev) => [...prev, status]);
+      await advancePhase(status.id);
+    } catch (e) {
+      console.error("Failed to start workflow:", e);
+    }
+  }, [projectPath, advancePhase]);
 
   const handleApprove = useCallback(async (workflowId: string) => {
     try {

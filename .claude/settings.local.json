@@ -19,7 +19,23 @@
       "Bash(powershell:*)",
       "Bash(/c/Program Files/PowerShell/7/pwsh.exe:*)",
       "Bash(pnpm vite:*)",
-      "Bash(pnpm add:*)"
+      "Bash(pnpm add:*)",
+      "WebFetch(domain:www.scape.work)",
+      "Read(//c/Users/owner/Desktop/**)",
+      "Bash(xargs ls:*)",
+      "WebFetch(domain:code.visualstudio.com)",
+      "Bash(find crates/orchestrator-web-* -type f -name \"*.rs\")",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:api.github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(wc -l src/**/*.rs src/*.rs)",
+      "Bash(wc -l /c/Users/owner/Aether_Terminal/src/features/*/\\\\*.tsx /c/Users/owner/Aether_Terminal/src/shared/hooks/\\\\*.ts /c/Users/owner/Aether_Terminal/src/shared/store/\\\\*.ts)",
+      "Bash(wc -l tests/*.rs)",
+      "Bash(rtk grep:*)",
+      "Bash(find /c/Users/owner/Aether_Terminal/src/features -name \"*.tsx\" -exec wc -l {} +)",
+      "Bash(find /c/Users/owner/Aether_Terminal/src/shared -type f \\\\\\( -name \"*.ts\" -o -name \"*.tsx\" \\\\\\) -exec wc -l {} +)",
+      "Bash(pnpm build:*)",
+      "Bash(pnpm test:*)"
     ]
   }
 }

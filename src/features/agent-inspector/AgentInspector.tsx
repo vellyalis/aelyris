@@ -22,9 +22,10 @@ interface AgentInspectorProps {
   onStopAgent?: (id: string) => void;
   onCreateWorktree?: (sessionId: string, branchName: string) => Promise<WorktreeInfo | null>;
   onRemoveWorktree?: (sessionId: string) => void;
+  onRenameSession?: (sessionId: string, newName: string) => void;
 }
 
-export function AgentInspector({ sessions, activeSessionId, onSelectSession, onStartAgent, onStopAgent, onCreateWorktree, onRemoveWorktree }: AgentInspectorProps) {
+export function AgentInspector({ sessions, activeSessionId, onSelectSession, onStartAgent, onStopAgent, onCreateWorktree, onRemoveWorktree, onRenameSession }: AgentInspectorProps) {
   const [tab, setTab] = useState<"sessions" | "activity" | "parallel">("sessions");
   const [showPromptInput, setShowPromptInput] = useState(false);
   const [promptText, setPromptText] = useState("");
@@ -74,11 +75,9 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
   const handleRenameSession = useCallback(async (session: AgentSession) => {
     const newName = await showPrompt("Rename Session", { defaultValue: session.name });
     if (newName && newName !== session.name) {
-      // Session rename is in-memory only for now
-      session.name = newName;
-      onSelectSession(session.id); // trigger re-render
+      onRenameSession?.(session.id, newName);
     }
-  }, [onSelectSession]);
+  }, [onRenameSession]);
 
   const handleCopySessionInfo = useCallback((session: AgentSession) => {
     const info = `Session: ${session.name}\nModel: ${session.model}\nStatus: ${STATUS_LABELS[session.status]}\nCost: $${session.cost.toFixed(2)}\nTokens: ${session.tokensUsed}`;
