@@ -8,10 +8,6 @@ interface UsePaneTreeOptions {
   initialCwd?: string;
 }
 
-/**
- * Hook that manages PaneTree state: split, close, navigate, resize.
- * Pure state management — no UI rendering.
- */
 export function usePaneTree({ initialShell, initialCwd }: UsePaneTreeOptions) {
   const [tree, setTree] = useState<PaneNode>(() => createLeaf(initialShell, initialCwd));
   const [activePaneId, setActivePaneId] = useState<string | null>(null);
@@ -20,22 +16,29 @@ export function usePaneTree({ initialShell, initialCwd }: UsePaneTreeOptions) {
 
   const split = useCallback((targetId: string, direction: SplitDirection) => {
     setTree((prev) => splitPane(prev, targetId, direction, initialShell, initialCwd));
-    // Exit maximize mode when splitting — the layout changes
     setMaximizedPaneId(null);
   }, [initialShell, initialCwd]);
 
   const close = useCallback((targetId: string) => {
-    setTree((prev) => {
-      if (countLeaves(prev) <= 1) return prev; // don't close last pane
-      return removePane(prev, targetId) ?? prev;
-    });
-    setActivePaneId((prev) => prev === targetId ? null : prev);
-    setMaximizedPaneId((prev) => prev === targetId ? null : prev);
+    // Close the PTY on the Rust side before removing from tree
     setTerminalIds((prev) => {
+      const ptyId = prev.get(targetId);
+      if (ptyId) {
+        import("@tauri-apps/api/core").then(({ invoke }) => {
+          invoke("close_terminal", { id: ptyId }).catch(() => {});
+        });
+      }
       const next = new Map(prev);
       next.delete(targetId);
       return next;
     });
+
+    setTree((prev) => {
+      if (countLeaves(prev) <= 1) return prev;
+      return removePane(prev, targetId) ?? prev;
+    });
+    setActivePaneId((prev) => prev === targetId ? null : prev);
+    setMaximizedPaneId((prev) => prev === targetId ? null : prev);
   }, []);
 
   const resize = useCallback((splitId: string, ratio: number) => {
@@ -50,7 +53,6 @@ export function usePaneTree({ initialShell, initialCwd }: UsePaneTreeOptions) {
     setTerminalIds((prev) => new Map(prev).set(paneId, terminalId));
   }, []);
 
-  /** Navigate to the next/previous pane */
   const navigate = useCallback((delta: 1 | -1) => {
     const leafIds = collectLeafIds(tree);
     if (leafIds.length <= 1) return;

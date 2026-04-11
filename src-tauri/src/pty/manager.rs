@@ -38,13 +38,34 @@ impl PtyManager {
         }
     }
 
-    /// Spawn a new PTY session, returns the terminal ID
+    /// Spawn a new PTY session for a shell, returns the terminal ID
     pub fn spawn(
         &self,
         shell: &ShellType,
         cols: u16,
         rows: u16,
         cwd: Option<&str>,
+    ) -> Result<String, String> {
+        let program = shell.program().to_string();
+        let args: Vec<String> = shell.args().into_iter().map(|s| s.to_string()).collect();
+        let mut env = std::collections::HashMap::new();
+        env.insert("AETHER_SHELL".to_string(), program.clone());
+
+        let id = self.spawn_command(&program, &args, cols, rows, cwd, Some(env))?;
+        log::info!("Spawned terminal {} ({:?})", id, shell);
+        Ok(id)
+    }
+
+    /// Spawn a PTY running an arbitrary command (shell, AI CLI, or any program).
+    /// Returns the terminal ID. Used by both shell spawning and interactive agent sessions.
+    pub fn spawn_command(
+        &self,
+        program: &str,
+        args: &[String],
+        cols: u16,
+        rows: u16,
+        cwd: Option<&str>,
+        extra_env: Option<std::collections::HashMap<String, String>>,
     ) -> Result<String, String> {
         let id = Uuid::new_v4().to_string();
         let pty_system = native_pty_system();
@@ -59,31 +80,38 @@ impl PtyManager {
             .openpty(size)
             .map_err(|e| format!("Failed to open PTY: {}", e))?;
 
-        let mut cmd = CommandBuilder::new(shell.program());
-        for arg in shell.args() {
+        let mut cmd = CommandBuilder::new(program);
+        for arg in args {
             cmd.arg(arg);
         }
 
         let resolved_cwd = cwd.unwrap_or(".").to_string();
         cmd.cwd(&resolved_cwd);
 
-        // Inject Aether metadata as environment variables
+        // Inject Aether metadata
         cmd.env("AETHER_TERMINAL_ID", &id);
         cmd.env("AETHER_PROJECT", &resolved_cwd);
-        cmd.env("AETHER_SHELL", shell.program());
+
+        // Extra environment variables (e.g. AETHER_SHELL for shells, model info for agents)
+        if let Some(envs) = &extra_env {
+            for (k, v) in envs {
+                cmd.env(k, v);
+            }
+        }
 
         pair.slave
             .spawn_command(cmd)
-            .map_err(|e| format!("Failed to spawn shell: {}", e))?;
+            .map_err(|e| format!("Failed to spawn command '{}': {}", program, e))?;
 
         let writer = pair
             .master
             .take_writer()
             .map_err(|e| format!("Failed to get PTY writer: {}", e))?;
+
         let instance = PtyInstance {
             pair,
             writer,
-            shell_type: shell.clone(),
+            shell_type: ShellType::PowerShell, // placeholder for non-shell commands
             cwd: resolved_cwd,
             spawned_at: Instant::now(),
         };
@@ -91,7 +119,6 @@ impl PtyManager {
         self.lock_instances()?
             .insert(id.clone(), instance);
 
-        log::info!("Spawned terminal {} ({:?})", id, shell);
         Ok(id)
     }
 

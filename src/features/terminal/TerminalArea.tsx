@@ -127,14 +127,10 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
     window.addEventListener("keydown", handleKeyDown);
 
     return () => {
+      // Only detach event listeners — do NOT close PTY here.
+      // PTY close is handled by usePaneTree when a pane is explicitly closed.
+      // This component should never be unmounted during split/maximize.
       (term as TerminalWithCleanup).__ptyCleanup?.();
-      // Close PTY on unmount — the pane is being destroyed
-      const ptyId = (term as TerminalWithCleanup).__ptyId;
-      if (ptyId) {
-        import("@tauri-apps/api/core").then(({ invoke }) => {
-          invoke("close_terminal", { id: ptyId }).catch(() => {});
-        });
-      }
       cleanupIME();
       document.removeEventListener("keydown", handleCtrlV, { capture: true } as EventListenerOptions);
       window.removeEventListener("resize", handleResize);

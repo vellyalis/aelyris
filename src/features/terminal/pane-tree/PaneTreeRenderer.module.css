@@ -1,4 +1,5 @@
 .paneRoot {
+  position: relative;
   display: flex;
   flex: 1;
   min-height: 0;
@@ -6,12 +7,28 @@
   overflow: hidden;
 }
 
+/* Invisible layout layer — slots provide sizing for absolute terminals */
+.layoutLayer {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  visibility: hidden; /* invisible but still takes space for sizing */
+}
+
 .paneSlot {
   display: flex;
   flex: 1;
   min-height: 0;
   min-width: 0;
+}
+
+/* Absolute-positioned terminal mount — sized by JS to match slot rect */
+.terminalMount {
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
+  z-index: 1;
 }
 
 .paneLeaf {

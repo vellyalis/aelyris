@@ -46,6 +46,9 @@ tauri-plugin-dialog = "2.7.0"
 # Error handling
 thiserror = "2"
 
+# Regex for output parsing
+regex = "1"
+
 # Database
 rusqlite = { version = "0.31", features = ["bundled"] }
 
