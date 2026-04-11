@@ -8,6 +8,7 @@ import { TerminalPane } from "./features/terminal/TerminalPane";
 import { AgentInspector } from "./features/agent-inspector/AgentInspector";
 import { ToolkitPanel } from "./features/toolkit/ToolkitPanel";
 import { WorkflowPanel } from "./features/workflow/WorkflowPanel";
+import { SCMPanel } from "./features/scm/SCMPanel";
 import { WorkspaceTabs } from "./features/workspace-tabs/WorkspaceTabs";
 import type { CommandItem } from "./features/command-palette/CommandPalette";
 
@@ -426,6 +427,7 @@ export function App() {
             onClose={() => setSearchVisible(false)}
             onResultClick={(file, line) => { handleFileSelect(file); setEditorLine(line); }}
           /></Suspense>}
+          <SCMPanel projectPath={projectPath} onOpenFile={handleFileSelect} onOpenDiff={handleOpenDiff} />
         </div>
 
         <div className="center-panel" role="region" aria-label="Terminal and editor">

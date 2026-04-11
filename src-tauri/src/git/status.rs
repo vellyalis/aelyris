@@ -12,6 +12,8 @@ pub struct GitStatusInfo {
 pub struct ChangedFile {
     pub path: String,
     pub status: String, // "modified" | "added" | "deleted" | "renamed" | "untracked"
+    pub staged: bool,
+    pub conflicted: bool,
 }
 
 pub fn git_status(repo_path: &str) -> Result<GitStatusInfo, String> {
@@ -36,8 +38,12 @@ pub fn git_status(repo_path: &str) -> Result<GitStatusInfo, String> {
     for entry in statuses.iter() {
         let path = entry.path().unwrap_or("").to_string();
         let s = entry.status();
-        let status_str = if s.is_index_new() || s.is_wt_new() {
-            if s.is_wt_new() { "untracked" } else { "added" }
+        let conflicted = s.is_conflicted();
+        let staged = s.is_index_new() || s.is_index_modified() || s.is_index_deleted() || s.is_index_renamed();
+        let status_str = if conflicted {
+            "conflicted"
+        } else if s.is_index_new() || s.is_wt_new() {
+            if s.is_wt_new() && !staged { "untracked" } else { "added" }
         } else if s.is_index_deleted() || s.is_wt_deleted() {
             "deleted"
         } else if s.is_index_renamed() || s.is_wt_renamed() {
@@ -48,6 +54,8 @@ pub fn git_status(repo_path: &str) -> Result<GitStatusInfo, String> {
         changed_files.push(ChangedFile {
             path,
             status: status_str.to_string(),
+            staged,
+            conflicted,
         });
     }
 

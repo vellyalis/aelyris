@@ -238,6 +238,76 @@ pub fn git_status(repo_path: String) -> Result<crate::git::GitStatusInfo, String
     crate::git::git_status(&repo_path)
 }
 
+/// Stage files for commit
+#[tauri::command]
+pub fn git_stage(repo_path: String, paths: Vec<String>) -> Result<(), String> {
+    let mut args = vec!["add".to_string(), "--".to_string()];
+    args.extend(paths);
+    run_git_cmd(&repo_path, &args)
+}
+
+/// Unstage files (reset HEAD)
+#[tauri::command]
+pub fn git_unstage(repo_path: String, paths: Vec<String>) -> Result<(), String> {
+    let mut args = vec!["reset".to_string(), "HEAD".to_string(), "--".to_string()];
+    args.extend(paths);
+    run_git_cmd(&repo_path, &args)
+}
+
+/// Stage all changes
+#[tauri::command]
+pub fn git_stage_all(repo_path: String) -> Result<(), String> {
+    run_git_cmd(&repo_path, &["add", "-A"])
+}
+
+/// Discard changes in working tree
+#[tauri::command]
+pub fn git_discard(repo_path: String, paths: Vec<String>) -> Result<(), String> {
+    let mut args = vec!["checkout".to_string(), "--".to_string()];
+    args.extend(paths);
+    run_git_cmd(&repo_path, &args)
+}
+
+/// Create a commit
+#[tauri::command]
+pub fn git_commit(repo_path: String, message: String) -> Result<String, String> {
+    let output = std::process::Command::new("git")
+        .args(["commit", "-m", &message])
+        .current_dir(&repo_path)
+        .output()
+        .map_err(|e| format!("Git commit failed: {}", e))?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).to_string());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+/// Push to remote
+#[tauri::command]
+pub fn git_push(repo_path: String) -> Result<String, String> {
+    let output = std::process::Command::new("git")
+        .args(["push"])
+        .current_dir(&repo_path)
+        .output()
+        .map_err(|e| format!("Git push failed: {}", e))?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).to_string());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+fn run_git_cmd(repo_path: &str, args: &[impl AsRef<std::ffi::OsStr>]) -> Result<(), String> {
+    let output = std::process::Command::new("git")
+        .args(args)
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Git command failed: {}", e))?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).to_string());
+    }
+    Ok(())
+}
+
 /// Search files by name in a directory tree
 #[tauri::command]
 pub fn search_files(root_path: String, query: String, max_results: u32) -> Result<Vec<crate::git::FileEntry>, String> {
