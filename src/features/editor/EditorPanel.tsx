@@ -7,6 +7,7 @@ import { EditorBreadcrumb } from "./EditorBreadcrumb";
 import { EditorStatusBar } from "./EditorStatusBar";
 import { useAppStore } from "../../shared/store/appStore";
 import { getPalette, isLightTheme, monacoThemeColors } from "../../shared/themes/catppuccin";
+import { useLsp, registerLspProviders } from "./lsp";
 import styles from "./EditorPanel.module.css";
 
 interface DiffComment {
@@ -55,6 +56,16 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
   const [commentLine, setCommentLine] = useState<number | null>(null);
   const [commentText, setCommentText] = useState("");
   const [tabSize, setTabSize] = useState(2);
+
+  // LSP integration
+  const currentLanguage = filePath ? detectLanguage(filePath) : "plaintext";
+  const lsp = useLsp({ projectPath: projectPath ?? "", monacoLanguage: currentLanguage });
+  const lspDispose = useRef<(() => void) | null>(null);
+
+  // Cleanup LSP providers on unmount
+  useEffect(() => {
+    return () => { lspDispose.current?.(); };
+  }, []);
   const [saved, setSaved] = useState(false);
   const [previewMode, setPreviewMode] = useState(false);
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
@@ -214,6 +225,16 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
               if (initialLine) {
                 editor.revealLineInCenter(initialLine);
                 editor.setPosition({ lineNumber: initialLine, column: 1 });
+              }
+              // Register LSP providers (if language server is available)
+              if (lsp.isAvailable) {
+                lspDispose.current?.();
+                lspDispose.current = registerLspProviders(monaco, language, lsp);
+                // Notify LSP about file open
+                if (filePath && content !== null) {
+                  const uri = `file:///${filePath.replace(/\\/g, "/")}`;
+                  lsp.notifyOpen(uri, currentLanguage, content);
+                }
               }
             }}
             onChange={() => setModified(true)}
