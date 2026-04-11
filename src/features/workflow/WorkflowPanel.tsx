@@ -70,13 +70,29 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
     invoke<WorkflowSummary[]>("list_workflows", { projectPath }).then(setWorkflows).catch(() => {});
   }, [projectPath]);
 
-  // Poll running workflows
+  // Poll running workflows — filter out completed ones
   useEffect(() => {
     let active = true;
-    const poll = () => {
-      invoke<WorkflowStatus[]>("list_running_workflows")
-        .then((r) => { if (active) setRunning(r); })
-        .catch(() => { if (active) setRunning([]); });
+    const TERMINAL_STATUSES = new Set(["passed", "failed", "skipped"]);
+    const isFinished = (wf: WorkflowStatus) =>
+      wf.phases.every((p) => TERMINAL_STATUSES.has(p.status));
+
+    const poll = async () => {
+      try {
+        const r = await invoke<WorkflowStatus[]>("list_running_workflows");
+        if (!active) return;
+        // Filter out fully-completed workflows
+        const stillRunning = r.filter((wf) => !isFinished(wf));
+        setRunning(stillRunning);
+        // Auto-remove completed workflows from Rust side
+        for (const wf of r) {
+          if (isFinished(wf)) {
+            invoke("workflow_remove", { workflowId: wf.id }).catch(() => {});
+          }
+        }
+      } catch {
+        if (active) setRunning([]);
+      }
     };
     poll();
     const interval = setInterval(poll, 3000);

@@ -1095,6 +1095,13 @@ pub fn list_running_workflows(app: AppHandle) -> Vec<crate::workflow::WorkflowSt
     executor.list()
 }
 
+/// Remove a completed/cancelled workflow from the executor
+#[tauri::command]
+pub fn workflow_remove(app: AppHandle, workflow_id: String) {
+    let executor = app.state::<crate::workflow::WorkflowExecutor>();
+    executor.remove(&workflow_id);
+}
+
 // ── Agent session persistence ──
 
 /// Save agent session to database for persistence across restarts
