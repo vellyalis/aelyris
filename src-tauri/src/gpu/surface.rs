@@ -14,6 +14,11 @@ use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::core::w;
 
 /// Manages a native child window + wgpu surface for one terminal pane.
+///
+/// # Safety
+/// HWND is only accessed from the main thread or via Win32 thread-safe APIs.
+/// The Send/Sync impls are safe because all HWND operations use thread-safe
+/// Win32 functions (MoveWindow, ShowWindow, DestroyWindow).
 pub struct TerminalSurface {
     #[cfg(windows)]
     hwnd: HWND,
@@ -133,9 +138,22 @@ impl TerminalSurface {
         })
     }
 
-    /// Reposition and resize the child window + reconfigure surface.
+    /// Simple reposition without surface reconfiguration (used before surface is created).
+    pub fn reposition(&mut self, x: i32, y: i32, width: i32, height: i32) {
+        self.x = x;
+        self.y = y;
+        self.width = width;
+        self.height = height;
+
+        #[cfg(windows)]
+        if self.hwnd != HWND::default() {
+            unsafe { let _ = MoveWindow(self.hwnd, x, y, width, height, true); }
+        }
+    }
+
+    /// Reposition and resize the child window + reconfigure wgpu surface.
     #[cfg(windows)]
-    pub fn reposition(&mut self, device: &wgpu::Device, x: i32, y: i32, width: i32, height: i32) {
+    pub fn reposition_with_device(&mut self, device: &wgpu::Device, x: i32, y: i32, width: i32, height: i32) {
         self.x = x;
         self.y = y;
         self.width = width;
@@ -180,17 +198,21 @@ impl TerminalSurface {
         DefWindowProcW(hwnd, msg, wparam, lparam)
     }
 
-    /// Placeholder for non-Windows (won't compile on other platforms anyway for now).
-    #[cfg(not(windows))]
+    /// Create a placeholder surface (no HWND, no wgpu surface — used before window attachment).
     pub fn new_placeholder(x: i32, y: i32, width: i32, height: i32) -> Self {
-        Self { x, y, width, height, surface: None, surface_config: None }
-    }
-
-    #[cfg(not(windows))]
-    pub fn reposition(&mut self, _device: &wgpu::Device, x: i32, y: i32, width: i32, height: i32) {
-        self.x = x; self.y = y; self.width = width; self.height = height;
+        Self {
+            #[cfg(windows)]
+            hwnd: HWND::default(),
+            x, y, width, height,
+            surface: None,
+            surface_config: None,
+        }
     }
 }
+
+// SAFETY: HWND operations (MoveWindow, ShowWindow, DestroyWindow) are thread-safe Win32 APIs.
+unsafe impl Send for TerminalSurface {}
+unsafe impl Sync for TerminalSurface {}
 
 #[cfg(windows)]
 impl Drop for TerminalSurface {

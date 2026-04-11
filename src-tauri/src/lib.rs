@@ -31,6 +31,7 @@ pub fn run() {
         .manage(pty::PaneRegistry::new())
         .manage(ipc::FsWatcherRegistry::new())
         .manage(workflow::WorkflowExecutor::new())
+        .manage(gpu::GpuTerminalManager::new())
         .setup(move |app| {
             // Initialize database as managed state
             let db_path = db::db_path();
@@ -126,6 +127,14 @@ pub fn run() {
             ipc::update_agent_in_db,
             ipc::list_agent_history,
             ipc::list_all_files,
+            // GPU terminal commands
+            gpu::commands::gpu_spawn_terminal,
+            gpu::commands::gpu_write_terminal,
+            gpu::commands::gpu_resize_terminal,
+            gpu::commands::gpu_reposition_terminal,
+            gpu::commands::gpu_close_terminal,
+            gpu::commands::gpu_search_terminal,
+            gpu::commands::get_terminal_renderer,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Aether Terminal");
