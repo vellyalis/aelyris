@@ -7,6 +7,7 @@ interface SplitPaneProps {
   second: ReactNode;
   defaultRatio?: number; // 0-1, default 0.5
   minSize?: number; // min pixels for each pane
+  onRatioChange?: (ratio: number) => void;
 }
 
 export function SplitPane({
@@ -15,6 +16,7 @@ export function SplitPane({
   second,
   defaultRatio = 0.5,
   minSize = 100,
+  onRatioChange,
 }: SplitPaneProps) {
   const [ratio, setRatio] = useState(defaultRatio);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -36,6 +38,7 @@ export function SplitPane({
         const pos = isHorizontal ? ev.clientX - rect.left : ev.clientY - rect.top;
         const newRatio = Math.max(minSize / total, Math.min(1 - minSize / total, pos / total));
         setRatio(newRatio);
+        onRatioChange?.(newRatio);
       };
 
       const onMouseUp = () => {

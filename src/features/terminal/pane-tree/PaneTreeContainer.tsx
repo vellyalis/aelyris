@@ -1,0 +1,39 @@
+import { usePaneTree } from "./usePaneTree";
+import { PaneTreeRenderer } from "./PaneTreeRenderer";
+import { countLeaves } from "./operations";
+import type { ShellType } from "../../../App";
+
+interface PaneTreeContainerProps {
+  shell: ShellType;
+  cwd?: string;
+  syncMode?: boolean;
+}
+
+/**
+ * Container that owns the PaneTree state for a single tab.
+ * Connects the usePaneTree hook to the PaneTreeRenderer.
+ */
+export function PaneTreeContainer({ shell, cwd, syncMode = false }: PaneTreeContainerProps) {
+  const {
+    tree, activePaneId, maximizedPaneId,
+    setActivePaneId, split, close, resize, toggleMaximize, registerTerminal,
+  } = usePaneTree({ initialShell: shell, initialCwd: cwd });
+
+  const canClose = countLeaves(tree) > 1;
+
+  return (
+    <PaneTreeRenderer
+      tree={tree}
+      activePaneId={activePaneId}
+      maximizedPaneId={maximizedPaneId}
+      syncMode={syncMode}
+      onFocusPane={setActivePaneId}
+      onSplit={split}
+      onClose={close}
+      onResize={resize}
+      onToggleMaximize={toggleMaximize}
+      onTerminalReady={registerTerminal}
+      canClose={canClose}
+    />
+  );
+}

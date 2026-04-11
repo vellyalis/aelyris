@@ -4,7 +4,7 @@ import { ProjectHeaderBar } from "./features/header/ProjectHeaderBar";
 import { MenuBar, type Menu } from "./features/menubar/MenuBar";
 import { FileTree } from "./features/file-tree/FileTree";
 import { KanbanBoard } from "./features/kanban/KanbanBoard";
-import { TerminalPane } from "./features/terminal/TerminalPane";
+import { PaneTreeContainer } from "./features/terminal/pane-tree";
 import { AgentInspector } from "./features/agent-inspector/AgentInspector";
 import { ToolkitPanel } from "./features/toolkit/ToolkitPanel";
 import { WorkflowPanel } from "./features/workflow/WorkflowPanel";
@@ -273,7 +273,7 @@ export function App() {
 
   const terminalTabs = tabs.map((tab) => (
     <div key={tab.id} className={appStyles.terminalTabPane} data-active={tab.id === activeTabId}>
-      <TerminalPane shell={tab.shell} cwd={tab.cwd} />
+      <PaneTreeContainer shell={tab.shell} cwd={tab.cwd} />
     </div>
   ));
 
