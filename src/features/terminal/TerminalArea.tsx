@@ -77,8 +77,9 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
 
     const handleCtrlV = async (e: KeyboardEvent) => {
       if (!(e.ctrlKey && e.key === "v")) return;
+      // Only handle if THIS terminal has focus (not all terminals)
       const active = document.activeElement;
-      if (!containerRef.current?.contains(active) && active !== term.textarea) return;
+      if (!containerRef.current?.contains(active)) return;
       e.preventDefault();
       e.stopImmediatePropagation();
       try {
@@ -118,6 +119,8 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
     window.addEventListener("resize", handleResize);
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Only handle if THIS terminal has focus
+      if (!containerRef.current?.contains(document.activeElement)) return;
       if (e.ctrlKey && e.key === "f") {
         e.preventDefault();
         setSearchVisible(true);

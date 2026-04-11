@@ -1,12 +1,12 @@
-import { useState, useRef, useCallback, type ReactNode } from "react";
+import { useState, useRef, useCallback, useEffect, type ReactNode } from "react";
 import styles from "./SplitPane.module.css";
 
 interface SplitPaneProps {
   direction: "horizontal" | "vertical";
   first: ReactNode;
   second: ReactNode;
-  defaultRatio?: number; // 0-1, default 0.5
-  minSize?: number; // min pixels for each pane
+  defaultRatio?: number;
+  minSize?: number;
   onRatioChange?: (ratio: number) => void;
 }
 
@@ -21,6 +21,17 @@ export function SplitPane({
   const [ratio, setRatio] = useState(defaultRatio);
   const containerRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
+  const onRatioChangeRef = useRef(onRatioChange);
+  onRatioChangeRef.current = onRatioChange;
+
+  // Sync ratio when defaultRatio changes (e.g. tab switch restoring saved ratio)
+  const prevDefault = useRef(defaultRatio);
+  useEffect(() => {
+    if (defaultRatio !== prevDefault.current) {
+      prevDefault.current = defaultRatio;
+      setRatio(defaultRatio);
+    }
+  }, [defaultRatio]);
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -38,7 +49,7 @@ export function SplitPane({
         const pos = isHorizontal ? ev.clientX - rect.left : ev.clientY - rect.top;
         const newRatio = Math.max(minSize / total, Math.min(1 - minSize / total, pos / total));
         setRatio(newRatio);
-        onRatioChange?.(newRatio);
+        onRatioChangeRef.current?.(newRatio);
       };
 
       const onMouseUp = () => {

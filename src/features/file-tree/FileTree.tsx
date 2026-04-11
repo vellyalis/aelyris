@@ -113,9 +113,12 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
     }
   }, [expanded, contents]);
 
-  if (!contents.has(currentRoot) && !loading.has(currentRoot)) {
-    toggleDir(currentRoot);
-  }
+  // Load root directory on mount or when root changes
+  useEffect(() => {
+    if (!contents.has(currentRoot) && !loading.has(currentRoot)) {
+      toggleDir(currentRoot);
+    }
+  }, [currentRoot]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSearch = useCallback((query: string) => {
     setSearchQuery(query);

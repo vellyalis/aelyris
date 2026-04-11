@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import type { ShellType } from "../../App";
 
 export interface Tab {
@@ -62,20 +62,23 @@ export function useTabManager(defaultShell: ShellType = "powershell") {
     setActiveTabId(tab.id);
   }, []);
 
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
+
   const closeTab = useCallback((id: string) => {
     setTabs((prev) => {
       const next = prev.filter((t) => t.id !== id);
-      if (next.length === 0) return prev; // Don't close last tab
+      if (next.length === 0) return prev;
       return next;
     });
     setActiveTabId((currentId) => {
       if (currentId !== id) return currentId;
-      // Switch to adjacent tab
-      const idx = tabs.findIndex((t) => t.id === id);
-      const nextTab = tabs[idx - 1] ?? tabs[idx + 1];
+      const latest = tabsRef.current;
+      const idx = latest.findIndex((t) => t.id === id);
+      const nextTab = latest[idx - 1] ?? latest[idx + 1];
       return nextTab?.id ?? currentId;
     });
-  }, [tabs]);
+  }, []);
 
   const addTabWithCwd = useCallback((shell: ShellType, cwd: string, worktreeBranch?: string) => {
     const tab = createTab(shell, cwd);
