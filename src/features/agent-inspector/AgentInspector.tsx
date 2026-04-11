@@ -7,10 +7,11 @@ import { PixelAvatar } from "../../shared/ui/PixelAvatar";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
 import { ContextGauge } from "../../shared/ui/ContextGauge";
 import * as RadixContextMenu from "@radix-ui/react-context-menu";
-import { ClipboardCopy, Plus, Pencil, Activity, Layers, GitBranch, Globe, Shield } from "lucide-react";
+import { ClipboardCopy, Plus, Pencil, Activity, Layers, GitBranch, Globe, Shield, BarChart3 } from "lucide-react";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { ToolBadge } from "../../shared/ui/ToolBadge";
 import { extractToolName } from "../../shared/types/toolBadge";
+import { SessionAnalytics } from "../analytics/SessionAnalytics";
 import styles from "./AgentInspector.module.css";
 
 interface AgentInspectorProps {
@@ -32,6 +33,8 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
 
   // Inline worktree creation state (per-session)
   const [worktreeInputId, setWorktreeInputId] = useState<string | null>(null);
+  const [analyticsSessionId, setAnalyticsSessionId] = useState<string | null>(null);
+  const analyticsSession = analyticsSessionId ? sessions.find((s) => s.id === analyticsSessionId) : null;
   const [worktreeBranch, setWorktreeBranch] = useState("");
 
   const handleCreateWorktree = useCallback(async (sessionId: string) => {
@@ -245,6 +248,9 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
                   <RadixContextMenu.Content className={styles.ctxMenu}>
                     <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => onSelectSession(s.id)}>Switch to Session</RadixContextMenu.Item>
                     <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => handleRenameSession(s)}>Rename</RadixContextMenu.Item>
+                    <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => setAnalyticsSessionId(s.id)}>
+                      <BarChart3 size={10} style={{ marginRight: 4 }} />View Analytics
+                    </RadixContextMenu.Item>
                     <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => handleCopySessionInfo(s)}>Copy Info</RadixContextMenu.Item>
                     <RadixContextMenu.Separator className={styles.ctxDivider} />
                     {s.worktree ? (
@@ -367,6 +373,11 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
             })
           )}
         </div>
+      )}
+
+      {/* Analytics modal */}
+      {analyticsSession && (
+        <SessionAnalytics session={analyticsSession} onClose={() => setAnalyticsSessionId(null)} />
       )}
     </div>
   );
