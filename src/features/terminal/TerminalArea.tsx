@@ -333,6 +333,7 @@ async function connectPty(
     (term as TerminalWithCleanup).__ptyCleanup = () => {
       unlistenOutput();
       unlistenExit();
+      invoke("close_terminal", { id }).catch(() => {});
     };
 
     term.onData((data) => {

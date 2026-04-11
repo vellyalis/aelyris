@@ -20,6 +20,8 @@ export function usePaneTree({ initialShell, initialCwd }: UsePaneTreeOptions) {
 
   const split = useCallback((targetId: string, direction: SplitDirection) => {
     setTree((prev) => splitPane(prev, targetId, direction, initialShell, initialCwd));
+    // Exit maximize mode when splitting — the layout changes
+    setMaximizedPaneId(null);
   }, [initialShell, initialCwd]);
 
   const close = useCallback((targetId: string) => {

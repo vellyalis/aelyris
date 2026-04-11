@@ -32,21 +32,19 @@ export function PaneTreeRenderer({
   onFocusPane, onSplit, onClose, onResize, onToggleMaximize, onTerminalReady, canClose,
 }: PaneTreeRendererProps) {
   const rendererMode = useGpuRenderer();
+  const TerminalComponent = rendererMode === "wgpu" ? GpuTerminalArea : TerminalArea;
 
-  // If a pane is maximized, render only that pane
-  if (maximizedPaneId) {
-    const leaf = findLeaf(tree, maximizedPaneId);
-    if (leaf && leaf.type === "terminal") {
-      return renderLeaf(leaf, true, true, syncMode, onFocusPane, onSplit, onClose, onToggleMaximize, onTerminalReady, canClose, rendererMode);
-    }
-  }
-
-  return renderNode(tree, activePaneId, syncMode, onFocusPane, onSplit, onClose, onResize, onToggleMaximize, onTerminalReady, canClose, rendererMode);
+  return renderNode(
+    tree, activePaneId, maximizedPaneId, syncMode,
+    onFocusPane, onSplit, onClose, onResize, onToggleMaximize, onTerminalReady, canClose,
+    TerminalComponent,
+  );
 }
 
 function renderNode(
   node: PaneNode,
   activePaneId: string | null,
+  maximizedPaneId: string | null,
   syncMode: boolean,
   onFocusPane: (id: string) => void,
   onSplit: (id: string, direction: SplitDirection) => void,
@@ -55,11 +53,52 @@ function renderNode(
   onToggleMaximize: (id: string) => void,
   onTerminalReady: (paneId: string, terminalId: string) => void,
   canClose: boolean,
-  rendererMode: "wgpu" | "xterm",
+  TerminalComponent: typeof TerminalArea | typeof GpuTerminalArea,
 ): React.ReactElement {
   if (node.type === "terminal") {
     const isActive = node.id === activePaneId;
-    return renderLeaf(node, isActive, false, syncMode, onFocusPane, onSplit, onClose, onToggleMaximize, onTerminalReady, canClose, rendererMode);
+    const isMaximized = node.id === maximizedPaneId;
+    // When another pane is maximized, hide this one via CSS (don't unmount)
+    const isHidden = maximizedPaneId !== null && !isMaximized;
+
+    return (
+      <div
+        key={node.id}
+        className={styles.paneLeaf}
+        style={isHidden ? { display: "none" } : undefined}
+        onMouseDown={() => onFocusPane(node.id)}
+      >
+        <TerminalInfoBar
+          shell={SHELL_LABELS[node.shell] ?? node.shell}
+          cwd={node.cwd}
+          isActive={isActive}
+          isMaximized={isMaximized}
+          onSplitRight={() => onSplit(node.id, "right")}
+          onSplitDown={() => onSplit(node.id, "down")}
+          onToggleMaximize={() => onToggleMaximize(node.id)}
+          onClose={canClose ? () => onClose(node.id) : undefined}
+        />
+        <TerminalComponent
+          shell={node.shell as "powershell" | "cmd" | "gitbash" | "wsl"}
+          cwd={node.cwd}
+          syncMode={syncMode}
+          onTerminalReady={(tid) => onTerminalReady(node.id, tid)}
+        />
+      </div>
+    );
+  }
+
+  // When a pane is maximized, hide the SplitPane chrome but keep children mounted
+  const isHiddenSplit = maximizedPaneId !== null;
+
+  if (isHiddenSplit) {
+    // Render children flat (no SplitPane wrapper) — hidden ones get display:none
+    return (
+      <div key={node.id} style={{ display: "contents" }}>
+        {renderNode(node.first, activePaneId, maximizedPaneId, syncMode, onFocusPane, onSplit, onClose, onResize, onToggleMaximize, onTerminalReady, canClose, TerminalComponent)}
+        {renderNode(node.second, activePaneId, maximizedPaneId, syncMode, onFocusPane, onSplit, onClose, onResize, onToggleMaximize, onTerminalReady, canClose, TerminalComponent)}
+      </div>
+    );
   }
 
   return (
@@ -68,54 +107,8 @@ function renderNode(
       direction={node.direction}
       defaultRatio={node.ratio}
       onRatioChange={(r) => onResize(node.id, r)}
-      first={renderNode(node.first, activePaneId, syncMode, onFocusPane, onSplit, onClose, onResize, onToggleMaximize, onTerminalReady, canClose, rendererMode)}
-      second={renderNode(node.second, activePaneId, syncMode, onFocusPane, onSplit, onClose, onResize, onToggleMaximize, onTerminalReady, canClose, rendererMode)}
+      first={renderNode(node.first, activePaneId, maximizedPaneId, syncMode, onFocusPane, onSplit, onClose, onResize, onToggleMaximize, onTerminalReady, canClose, TerminalComponent)}
+      second={renderNode(node.second, activePaneId, maximizedPaneId, syncMode, onFocusPane, onSplit, onClose, onResize, onToggleMaximize, onTerminalReady, canClose, TerminalComponent)}
     />
   );
-}
-
-function renderLeaf(
-  node: { id: string; shell: string; cwd?: string },
-  isActive: boolean,
-  isMaximized: boolean,
-  syncMode: boolean,
-  onFocusPane: (id: string) => void,
-  onSplit: (id: string, direction: SplitDirection) => void,
-  onClose: (id: string) => void,
-  onToggleMaximize: (id: string) => void,
-  onTerminalReady: (paneId: string, terminalId: string) => void,
-  canClose: boolean,
-  rendererMode: "wgpu" | "xterm",
-) {
-  const TerminalComponent = rendererMode === "wgpu" ? GpuTerminalArea : TerminalArea;
-
-  return (
-    <div
-      key={node.id}
-      className={`${styles.paneLeaf} ${isActive ? styles.paneActive : ""}`}
-      onMouseDown={() => onFocusPane(node.id)}
-    >
-      <TerminalInfoBar
-        shell={SHELL_LABELS[node.shell] ?? node.shell}
-        cwd={node.cwd}
-        isActive={isActive}
-        isMaximized={isMaximized}
-        onSplitRight={() => onSplit(node.id, "right")}
-        onSplitDown={() => onSplit(node.id, "down")}
-        onToggleMaximize={() => onToggleMaximize(node.id)}
-        onClose={canClose ? () => onClose(node.id) : undefined}
-      />
-      <TerminalComponent
-        shell={node.shell as "powershell" | "cmd" | "gitbash" | "wsl"}
-        cwd={node.cwd}
-        syncMode={syncMode}
-        onTerminalReady={(tid) => onTerminalReady(node.id, tid)}
-      />
-    </div>
-  );
-}
-
-function findLeaf(tree: PaneNode, id: string): PaneNode | null {
-  if (tree.type === "terminal") return tree.id === id ? tree : null;
-  return findLeaf(tree.first, id) ?? findLeaf(tree.second, id);
 }

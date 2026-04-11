@@ -242,12 +242,10 @@ html, body, #root {
   background: var(--glass-standard);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border-right: 1px solid var(--border);
+  border-right: 1px solid var(--white-6);
   overflow: hidden;
   resize: horizontal;
-  transition: border-color var(--duration-fast);
 }
-.left-panel:hover { border-right-color: var(--white-15); }
 
 .center-panel {
   flex: 1;
@@ -267,16 +265,14 @@ html, body, #root {
   background: var(--glass-dense);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  border-left: 1px solid var(--border);
+  border-left: 1px solid var(--white-6);
   overflow: hidden;
   resize: horizontal;
   direction: rtl; /* resize handle on left side */
-  transition: border-color var(--duration-fast);
 }
 .right-panel > * {
-  direction: ltr; /* reset direction for children */
+  direction: ltr;
 }
-.right-panel:hover { border-left-color: var(--white-15); }
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 5px; }
@@ -289,16 +285,22 @@ html, body, #root {
   color: var(--text-primary);
 }
 
-/* Focus ring for accessibility — double ring for dark bg visibility */
-:focus-visible {
+/* Focus ring — only on interactive inputs, not layout containers */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+button:focus-visible,
+[role="button"]:focus-visible {
   outline: 2px solid var(--gold) !important;
-  outline-offset: 2px;
-  box-shadow: 0 0 0 4px rgba(200, 160, 80, 0.2) !important;
+  outline-offset: 1px;
 }
-/* Terminal and iframe should not show focus ring */
+/* Suppress focus ring on layout/container elements */
+div:focus-visible,
+section:focus-visible,
 .xterm-screen:focus-visible,
 iframe:focus-visible {
   outline: none !important;
+  box-shadow: none !important;
 }
 
 /* Smooth transitions — silk easing for all interactive elements */
