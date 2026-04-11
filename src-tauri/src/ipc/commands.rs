@@ -103,6 +103,7 @@ pub fn spawn_terminal(
     std::thread::spawn(move || {
         let mut reader = reader;
         let mut buf = [0u8; 4096];
+        let mut detected_ports = std::collections::HashSet::new();
         loop {
             match reader.read(&mut buf) {
                 Ok(0) => break,
@@ -114,6 +115,29 @@ pub fn spawn_terminal(
                     // Feed raw text into capture buffer
                     let text = String::from_utf8_lossy(data);
                     buffer_registry.feed(&terminal_id, &text);
+
+                    // Port auto-detection: scan for localhost:<port> patterns
+                    for segment in text.split_whitespace() {
+                        let segment = segment.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != ':' && c != '.');
+                        if let Some(port_str) = segment
+                            .strip_prefix("localhost:")
+                            .or_else(|| segment.strip_prefix("127.0.0.1:"))
+                            .or_else(|| segment.strip_prefix("http://localhost:"))
+                            .or_else(|| segment.strip_prefix("http://127.0.0.1:"))
+                            .or_else(|| segment.strip_prefix("https://localhost:"))
+                        {
+                            let port_digits: String = port_str.chars().take_while(|c| c.is_ascii_digit()).collect();
+                            if let Ok(port) = port_digits.parse::<u16>() {
+                                if port >= 1024 && !detected_ports.contains(&port) {
+                                    detected_ports.insert(port);
+                                    let _ = app_handle.emit("port-detected", serde_json::json!({
+                                        "terminal_id": terminal_id,
+                                        "port": port,
+                                    }));
+                                }
+                            }
+                        }
+                    }
                 }
                 Err(_) => break,
             }

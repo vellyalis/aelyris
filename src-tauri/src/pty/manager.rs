@@ -46,6 +46,7 @@ impl PtyManager {
         rows: u16,
         cwd: Option<&str>,
     ) -> Result<String, String> {
+        let id = Uuid::new_v4().to_string();
         let pty_system = native_pty_system();
         let size = PtySize {
             rows,
@@ -66,6 +67,11 @@ impl PtyManager {
         let resolved_cwd = cwd.unwrap_or(".").to_string();
         cmd.cwd(&resolved_cwd);
 
+        // Inject Aether metadata as environment variables
+        cmd.env("AETHER_TERMINAL_ID", &id);
+        cmd.env("AETHER_PROJECT", &resolved_cwd);
+        cmd.env("AETHER_SHELL", shell.program());
+
         pair.slave
             .spawn_command(cmd)
             .map_err(|e| format!("Failed to spawn shell: {}", e))?;
@@ -74,8 +80,6 @@ impl PtyManager {
             .master
             .take_writer()
             .map_err(|e| format!("Failed to get PTY writer: {}", e))?;
-
-        let id = Uuid::new_v4().to_string();
         let instance = PtyInstance {
             pair,
             writer,
@@ -152,11 +156,15 @@ impl PtyManager {
         Ok(())
     }
 
-    /// List active terminal IDs
+    /// List active terminal IDs (sorted by spawn time, newest first)
     pub fn list(&self) -> Vec<String> {
         self.instances
             .lock()
-            .map(|i| i.keys().cloned().collect())
+            .map(|i| {
+                let mut entries: Vec<_> = i.iter().map(|(id, inst)| (id.clone(), inst.spawned_at)).collect();
+                entries.sort_by(|a, b| b.1.cmp(&a.1)); // newest first
+                entries.into_iter().map(|(id, _)| id).collect()
+            })
             .unwrap_or_default()
     }
 

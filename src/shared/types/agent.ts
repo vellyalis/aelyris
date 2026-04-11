@@ -23,6 +23,8 @@ export interface AgentSession {
   filesChanged?: number;
   watchdog?: string;
   worktree?: WorktreeInfo;
+  permissionMode?: "full" | "edit" | "plan" | "readonly";
+  detectedPort?: number;
 }
 
 export interface AgentLog {

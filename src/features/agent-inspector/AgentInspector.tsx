@@ -7,7 +7,7 @@ import { PixelAvatar } from "../../shared/ui/PixelAvatar";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
 import { ContextGauge } from "../../shared/ui/ContextGauge";
 import * as RadixContextMenu from "@radix-ui/react-context-menu";
-import { ClipboardCopy, Plus, Pencil, Activity, Layers, GitBranch } from "lucide-react";
+import { ClipboardCopy, Plus, Pencil, Activity, Layers, GitBranch, Globe, Shield } from "lucide-react";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { ToolBadge } from "../../shared/ui/ToolBadge";
 import { extractToolName } from "../../shared/types/toolBadge";
@@ -176,6 +176,16 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
                         <div className={styles.cardStatusRow}>
                           <StatusIcon status={s.status} size={10} />
                           <span className={styles.cardStatusLabel} style={{ color: STATUS_COLORS[s.status] }}>{STATUS_LABELS[s.status]}</span>
+                          {s.permissionMode && (
+                            <span className={styles.permBadge} data-mode={s.permissionMode} title={`Permission: ${s.permissionMode}`}>
+                              <Shield size={8} />{s.permissionMode === "full" ? "auto" : s.permissionMode}
+                            </span>
+                          )}
+                          {s.detectedPort && (
+                            <span className={styles.portBadge} title={`localhost:${s.detectedPort}`}>
+                              <Globe size={8} />:{s.detectedPort}
+                            </span>
+                          )}
                           {pct > 0 && pct < 100 && <span className={styles.cardPct}>{pct}%</span>}
                           {s.filesChanged !== undefined && s.filesChanged > 0 && <span className={styles.cardFiles}>📎{s.filesChanged}</span>}
                           <span className={styles.cardAge}>{formatAge(s.startedAt)}</span>

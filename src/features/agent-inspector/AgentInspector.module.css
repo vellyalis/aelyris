@@ -135,6 +135,21 @@
   white-space: nowrap;
 }
 .cardPct { font-size: var(--text-md); color: var(--gold); font-family: var(--font-mono); font-weight: 500; }
+.permBadge {
+  display: inline-flex; align-items: center; gap: 2px;
+  font-size: 9px; font-family: var(--font-mono);
+  padding: 0 3px; border-radius: 3px;
+  background: var(--white-6); color: var(--text-muted);
+}
+.permBadge[data-mode="full"] { color: var(--ctp-green); }
+.permBadge[data-mode="plan"] { color: var(--ctp-yellow); }
+.permBadge[data-mode="readonly"] { color: var(--ctp-red); }
+.portBadge {
+  display: inline-flex; align-items: center; gap: 2px;
+  font-size: 9px; font-family: var(--font-mono);
+  color: var(--ctp-cyan); cursor: pointer;
+}
+.portBadge:hover { text-decoration: underline; }
 
 /* Progress bar — session-colored */
 .progressTrack { height: 2px; background: var(--white-6); border-radius: 1px; margin-top: var(--space-1); }
