@@ -2,7 +2,9 @@ pub mod agent;
 mod config;
 pub mod db;
 mod git;
+pub mod gpu;
 mod ipc;
+pub mod lsp;
 pub mod pty;
 pub mod session;
 mod watcher;
@@ -30,6 +32,7 @@ pub fn run() {
         .manage(pty::PaneRegistry::new())
         .manage(ipc::FsWatcherRegistry::new())
         .manage(workflow::WorkflowExecutor::new())
+        .manage(lsp::LspManager::new())
         .setup(move |app| {
             // Initialize database as managed state
             let db_path = db::db_path();
@@ -124,6 +127,11 @@ pub fn run() {
             ipc::save_agent_to_db,
             ipc::update_agent_in_db,
             ipc::list_agent_history,
+            // LSP commands
+            ipc::lsp_start,
+            ipc::lsp_request,
+            ipc::lsp_stop,
+            ipc::lsp_list,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Aether Terminal");

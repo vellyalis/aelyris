@@ -1124,3 +1124,33 @@ pub fn list_agent_history(app: AppHandle, limit: usize) -> Result<Vec<crate::db:
     let db = app.state::<crate::db::ManagedDb>();
     db.with(|d| d.list_agent_sessions(limit))
 }
+
+// ── LSP commands ──
+
+/// Start a language server for a file's language
+#[tauri::command]
+pub fn lsp_start(app: AppHandle, language: crate::lsp::LspLanguage, root_path: String) -> Result<crate::lsp::LspServerInfo, String> {
+    let manager = app.state::<crate::lsp::LspManager>();
+    manager.start(&app, language, &root_path)
+}
+
+/// Send a JSON-RPC request to a running language server
+#[tauri::command]
+pub fn lsp_request(app: AppHandle, language: crate::lsp::LspLanguage, root_path: String, json_rpc: String) -> Result<(), String> {
+    let manager = app.state::<crate::lsp::LspManager>();
+    manager.send_request(&language, &root_path, &json_rpc)
+}
+
+/// Stop a language server
+#[tauri::command]
+pub fn lsp_stop(app: AppHandle, language: crate::lsp::LspLanguage, root_path: String) -> Result<(), String> {
+    let manager = app.state::<crate::lsp::LspManager>();
+    manager.stop(&language, &root_path)
+}
+
+/// List running language servers
+#[tauri::command]
+pub fn lsp_list(app: AppHandle) -> Vec<crate::lsp::LspServerInfo> {
+    let manager = app.state::<crate::lsp::LspManager>();
+    manager.list()
+}
