@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { GitPullRequest, Upload, GitBranch, Play, FolderOpen, ClipboardList, ScrollText, FlaskConical } from "lucide-react";
+import { GitPullRequest, Upload, GitBranch, Play, FolderOpen, ClipboardList, ScrollText, FlaskConical, FileUp, AlertCircle } from "lucide-react";
 import { showPrompt } from "../../shared/ui/PromptDialog";
 import styles from "./ToolkitPanel.module.css";
 
@@ -58,6 +58,8 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
   const [editCommand, setEditCommand] = useState("");
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
+  const [importParsed, setImportParsed] = useState<ToolkitAction[] | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
 
   const handleEdit = useCallback((action: ToolkitAction) => {
     setEditingId(action.id);
@@ -99,20 +101,83 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
     setEditingId(null);
   }, [editingId, actions, projectName]);
 
-  const handleImport = useCallback(() => {
-    if (!importText.trim()) return;
-    const newAction: ToolkitAction = {
-      id: `import-${Date.now()}`,
-      label: importText.trim().split(" ").slice(0, 3).join(" "),
+  const parseImportText = useCallback((text: string) => {
+    setImportText(text);
+    setImportError(null);
+    setImportParsed(null);
+
+    const trimmed = text.trim();
+    if (!trimmed) return;
+
+    // Try JSON parse first
+    try {
+      const parsed = JSON.parse(trimmed);
+      const items: ToolkitAction[] = [];
+
+      const toAction = (obj: Record<string, unknown>, i: number): ToolkitAction => ({
+        id: `import-${Date.now()}-${i}`,
+        label: String(obj.label ?? obj.name ?? "Imported Tool"),
+        icon: typeof obj.icon === "string" ? obj.icon : undefined,
+        badge: typeof obj.badge === "string" ? obj.badge : "var(--ctp-cyan)",
+        command: String(obj.command ?? obj.cmd ?? ""),
+      });
+
+      if (Array.isArray(parsed)) {
+        parsed.forEach((item, i) => {
+          if (item && typeof item === "object" && (item.command || item.cmd)) {
+            items.push(toAction(item, i));
+          }
+        });
+      } else if (typeof parsed === "object" && parsed !== null && (parsed.command || parsed.cmd)) {
+        items.push(toAction(parsed, 0));
+      }
+
+      if (items.length > 0) {
+        setImportParsed(items);
+        return;
+      }
+    } catch { /* not JSON, fall through */ }
+
+    // Fallback: treat each non-empty line as a raw command
+    const lines = trimmed.split("\n").map((l) => l.trim()).filter(Boolean);
+    const items = lines.map((line, i): ToolkitAction => ({
+      id: `import-${Date.now()}-${i}`,
+      label: line.split(" ").slice(0, 3).join(" "),
       badge: "var(--ctp-cyan)",
-      command: importText.trim(),
-    };
-    const updated = [...actions, newAction];
+      command: line,
+    }));
+    setImportParsed(items);
+  }, []);
+
+  const handleImport = useCallback(() => {
+    if (!importParsed || importParsed.length === 0) return;
+    const updated = [...actions, ...importParsed];
     setActions(updated);
     saveActions(projectName, updated);
     setImportText("");
+    setImportParsed(null);
+    setImportError(null);
     setImportOpen(false);
-  }, [importText, actions, projectName]);
+  }, [importParsed, actions, projectName]);
+
+  const handleImportFile = useCallback(() => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json";
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === "string") {
+          parseImportText(reader.result);
+        }
+      };
+      reader.onerror = () => setImportError("Failed to read file");
+      reader.readAsText(file);
+    };
+    input.click();
+  }, [parseImportText]);
 
   return (
     <div className={styles.toolkit}>
@@ -156,28 +221,60 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
       </div>
 
       {/* Import Tool Dialog */}
-      <Dialog.Root open={importOpen} onOpenChange={setImportOpen}>
+      <Dialog.Root open={importOpen} onOpenChange={(open) => {
+        setImportOpen(open);
+        if (!open) { setImportText(""); setImportParsed(null); setImportError(null); }
+      }}>
         <Dialog.Portal>
           <Dialog.Overlay className={styles.importOverlay} />
           <Dialog.Content className={styles.importPanel} aria-describedby={undefined}>
             <Dialog.Title className={styles.importTitle}>Import Tool</Dialog.Title>
+            <p className={styles.importHint}>
+              Paste JSON recipe, raw commands, or load a .json file.
+            </p>
             <textarea
               className={styles.importTextarea}
-              placeholder="Paste a copied recipe or command below..."
+              placeholder={'{\n  "label": "My Tool",\n  "command": "echo hello"\n}\n\n— or just paste a command —'}
               value={importText}
-              onChange={(e) => setImportText(e.target.value)}
-              rows={4}
+              onChange={(e) => parseImportText(e.target.value)}
+              rows={5}
               autoFocus
               onKeyDown={(e) => {
                 if (e.key === "Enter" && e.ctrlKey) handleImport();
               }}
             />
+
+            {/* Preview */}
+            {importParsed && importParsed.length > 0 && (
+              <div className={styles.importPreview}>
+                <span className={styles.importPreviewLabel}>
+                  {importParsed.length} tool{importParsed.length > 1 ? "s" : ""} found:
+                </span>
+                {importParsed.map((item) => (
+                  <div key={item.id} className={styles.importPreviewItem}>
+                    <span className={styles.importPreviewName}>{item.label}</span>
+                    <span className={styles.importPreviewCmd}>{item.command}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {importError && (
+              <div className={styles.importErrorMsg}>
+                <AlertCircle size={12} /> {importError}
+              </div>
+            )}
+
             <div className={styles.importActions}>
+              <button className={styles.importFileBtn} onClick={handleImportFile} title="Load .json file">
+                <FileUp size={13} /> File
+              </button>
+              <div className={styles.importActionsSpacer} />
               <Dialog.Close asChild>
                 <button className={styles.importCancel}>Cancel</button>
               </Dialog.Close>
-              <button className={styles.importSubmit} onClick={handleImport} disabled={!importText.trim()}>
-                Import
+              <button className={styles.importSubmit} onClick={handleImport} disabled={!importParsed || importParsed.length === 0}>
+                Import{importParsed && importParsed.length > 1 ? ` (${importParsed.length})` : ""}
               </button>
             </div>
           </Dialog.Content>
