@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
+
+interface TerminalWithCleanup extends Terminal {
+  __ptyCleanup?: () => void;
+}
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { WebLinksAddon } from "@xterm/addon-web-links";
@@ -143,6 +147,8 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
     window.addEventListener("keydown", handleKeyDown);
 
     return () => {
+      // Cleanup Tauri PTY event listeners to prevent leaks
+      (term as TerminalWithCleanup).__ptyCleanup?.();
       cleanupIME();
       document.removeEventListener("keydown", handleCtrlV, { capture: true } as EventListenerOptions);
       window.removeEventListener("resize", handleResize);
@@ -310,7 +316,7 @@ async function connectPty(
 
     onReady?.(id);
 
-    await listen<string>(`pty-output-${id}`, (event) => {
+    const unlistenOutput = await listen<string>(`pty-output-${id}`, (event) => {
       const decoded = atob(event.payload);
       const bytes = new Uint8Array(decoded.length);
       for (let i = 0; i < decoded.length; i++) {
@@ -319,9 +325,15 @@ async function connectPty(
       term.write(bytes);
     });
 
-    await listen(`pty-exit-${id}`, () => {
+    const unlistenExit = await listen(`pty-exit-${id}`, () => {
       term.writeln("\r\n\x1b[90m[Process exited]\x1b[0m");
     });
+
+    // Store cleanup functions on the term object for the caller to use
+    (term as TerminalWithCleanup).__ptyCleanup = () => {
+      unlistenOutput();
+      unlistenExit();
+    };
 
     term.onData((data) => {
       if (syncModeRef?.current) {

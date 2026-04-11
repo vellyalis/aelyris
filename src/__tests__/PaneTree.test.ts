@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { createTerminalLeaf, splitNode, removeNode, type PaneNode } from "../features/terminal/PaneTree";
+import { createLeaf, splitPane, removePane, type PaneNode } from "../features/terminal/pane-tree";
 
-describe("PaneTree — splitNode", () => {
+describe("PaneTree (legacy compat) — splitPane", () => {
   it("splits a single leaf into two", () => {
-    const leaf = createTerminalLeaf("cmd", "/test");
-    const result = splitNode(leaf, leaf.id, "horizontal", "cmd", "/test");
+    const leaf = createLeaf("cmd", "/test");
+    const result = splitPane(leaf, leaf.id, "right", "cmd", "/test");
 
     expect(result.type).toBe("split");
     if (result.type === "split") {
@@ -16,8 +16,8 @@ describe("PaneTree — splitNode", () => {
   });
 
   it("splits a nested leaf", () => {
-    const leaf1 = createTerminalLeaf("cmd");
-    const leaf2 = createTerminalLeaf("powershell");
+    const leaf1 = createLeaf("cmd");
+    const leaf2 = createLeaf("powershell");
     const tree: PaneNode = {
       type: "split",
       id: "test-split",
@@ -27,12 +27,12 @@ describe("PaneTree — splitNode", () => {
       second: leaf2,
     };
 
-    const result = splitNode(tree, leaf2.id, "horizontal", "gitbash");
+    const result = splitPane(tree, leaf2.id, "right", "gitbash");
 
     expect(result.type).toBe("split");
     if (result.type === "split") {
-      expect(result.first).toBe(leaf1); // unchanged
-      expect(result.second.type).toBe("split"); // leaf2 was split
+      expect(result.first).toBe(leaf1);
+      expect(result.second.type).toBe("split");
       if (result.second.type === "split") {
         expect(result.second.first).toBe(leaf2);
         expect(result.second.second.type).toBe("terminal");
@@ -41,16 +41,16 @@ describe("PaneTree — splitNode", () => {
   });
 
   it("does nothing for non-matching ID", () => {
-    const leaf = createTerminalLeaf("cmd");
-    const result = splitNode(leaf, "nonexistent", "horizontal", "cmd");
+    const leaf = createLeaf("cmd");
+    const result = splitPane(leaf, "nonexistent", "right", "cmd");
     expect(result).toBe(leaf);
   });
 });
 
-describe("PaneTree — removeNode", () => {
+describe("PaneTree (legacy compat) — removePane", () => {
   it("removes a leaf from a split, collapsing to sibling", () => {
-    const leaf1 = createTerminalLeaf("cmd");
-    const leaf2 = createTerminalLeaf("powershell");
+    const leaf1 = createLeaf("cmd");
+    const leaf2 = createLeaf("powershell");
     const tree: PaneNode = {
       type: "split",
       id: "test-split",
@@ -60,26 +60,26 @@ describe("PaneTree — removeNode", () => {
       second: leaf2,
     };
 
-    const result = removeNode(tree, leaf1.id);
+    const result = removePane(tree, leaf1.id);
     expect(result).toBe(leaf2);
   });
 
   it("returns null when removing the only node", () => {
-    const leaf = createTerminalLeaf("cmd");
-    const result = removeNode(leaf, leaf.id);
+    const leaf = createLeaf("cmd");
+    const result = removePane(leaf, leaf.id);
     expect(result).toBeNull();
   });
 
   it("preserves tree when removing non-matching ID", () => {
-    const leaf = createTerminalLeaf("cmd");
-    const result = removeNode(leaf, "nonexistent");
+    const leaf = createLeaf("cmd");
+    const result = removePane(leaf, "nonexistent");
     expect(result).toBe(leaf);
   });
 
   it("handles deeply nested removal", () => {
-    const a = createTerminalLeaf("cmd");
-    const b = createTerminalLeaf("powershell");
-    const c = createTerminalLeaf("gitbash");
+    const a = createLeaf("cmd");
+    const b = createLeaf("powershell");
+    const c = createLeaf("gitbash");
 
     const tree: PaneNode = {
       type: "split",
@@ -97,8 +97,7 @@ describe("PaneTree — removeNode", () => {
       },
     };
 
-    // Remove b -> second collapses to just c
-    const result = removeNode(tree, b.id);
+    const result = removePane(tree, b.id);
     expect(result).not.toBeNull();
     if (result && result.type === "split") {
       expect(result.first).toBe(a);

@@ -35,7 +35,8 @@
       "Bash(find /c/Users/owner/Aether_Terminal/src/features -name \"*.tsx\" -exec wc -l {} +)",
       "Bash(find /c/Users/owner/Aether_Terminal/src/shared -type f \\\\\\( -name \"*.ts\" -o -name \"*.tsx\" \\\\\\) -exec wc -l {} +)",
       "Bash(pnpm build:*)",
-      "Bash(pnpm test:*)"
+      "Bash(pnpm test:*)",
+      "WebFetch(domain:wezterm.org)"
     ]
   }
 }

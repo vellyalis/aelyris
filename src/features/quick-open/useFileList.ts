@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 interface FileListEntry {
   relative_path: string;
+  /** File size in bytes. Precision limited to 2^53 (JS number). Sufficient for all practical file sizes. */
   size: number;
 }
 
