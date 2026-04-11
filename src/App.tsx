@@ -92,7 +92,13 @@ export function App() {
     clearFiles();
   }, [setActiveTabId, clearFiles]);
 
-  const { branch, changedFiles } = useGitStatus(projectPath);
+  const { branch, changedFiles, refresh: refreshGitStatus } = useGitStatus(projectPath);
+  const [fileTreeKey, setFileTreeKey] = useState(0);
+
+  const handleRefresh = useCallback(() => {
+    refreshGitStatus();
+    setFileTreeKey((k) => k + 1);
+  }, [refreshGitStatus]);
 
   const activeAgent = sessions.find((s) => s.id === activeSessionId);
   const headerStatus = activeAgent
@@ -327,12 +333,13 @@ export function App() {
         status={headerStatus as "idle" | "edit" | "thinking"}
         activeAgent={activeAgent ? { model: activeAgent.model, cost: activeAgent.cost } : null}
         onOpenSettings={() => setSettingsVisible(true)}
+        onRefresh={handleRefresh}
       />
       <MenuBar menus={menus} />
 
       <main className="app-main" role="main">
         <div className="left-panel" role="navigation" aria-label="Project sidebar">
-          <FileTree rootPath={projectPath} onFileSelect={handleFileSelect} onOpenDiff={handleOpenDiff} changedFiles={changedFiles} />
+          <FileTree key={fileTreeKey} rootPath={projectPath} onFileSelect={handleFileSelect} onOpenDiff={handleOpenDiff} changedFiles={changedFiles} />
           <KanbanBoard onStartAgent={handleStartAgent} />
           <SearchPanel
             visible={searchVisible}

@@ -48,6 +48,13 @@
   letter-spacing: -0.02em;
 }
 
+.greeting {
+  font-size: var(--text-xl);
+  color: var(--gold);
+  font-weight: 500;
+  margin-bottom: var(--space-2);
+}
+
 .subtitle {
   font-size: var(--text-lg);
   color: var(--text-muted);

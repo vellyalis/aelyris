@@ -1,8 +1,7 @@
-import { useState, useCallback } from "react";
-import { Plus } from "lucide-react";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { Plus, ChevronRight, Play } from "lucide-react";
 import { useAppStore } from "../../shared/store/appStore";
-import { KANBAN_COLUMNS, type TaskPriority } from "../../shared/types/kanban";
-import { KanbanColumn } from "./KanbanColumn";
+import { KANBAN_COLUMNS, type KanbanColumnId, type TaskPriority, PRIORITY_COLORS } from "../../shared/types/kanban";
 import styles from "./KanbanBoard.module.css";
 
 interface KanbanBoardProps {
@@ -16,6 +15,20 @@ export function KanbanBoard({ onStartAgent, onActivateTask, onMoveWithSideEffect
   const [newTitle, setNewTitle] = useState("");
   const [newPriority, setNewPriority] = useState<TaskPriority>("medium");
   const [showForm, setShowForm] = useState(false);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({ done: true });
+  const formRef = useRef<HTMLDivElement>(null);
+
+  // Close form on outside click (mousedown for WebView2 reliability)
+  useEffect(() => {
+    if (!showForm) return;
+    const handler = (e: MouseEvent) => {
+      if (formRef.current?.contains(e.target as Node)) return;
+      setShowForm(false);
+      setNewTitle("");
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showForm]);
 
   const handleAdd = useCallback(() => {
     if (!newTitle.trim()) return;
@@ -24,10 +37,24 @@ export function KanbanBoard({ onStartAgent, onActivateTask, onMoveWithSideEffect
     setShowForm(false);
   }, [newTitle, newPriority, addKanbanTask]);
 
+  const toggleCollapse = useCallback((id: string) => {
+    setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }));
+  }, []);
+
   const handleActivate = useCallback((taskId: string) => {
     setActiveTaskId(taskId);
     onActivateTask?.(taskId);
   }, [setActiveTaskId, onActivateTask]);
+
+  const handleDrop = useCallback((e: React.DragEvent, toColumn: KanbanColumnId) => {
+    e.preventDefault();
+    e.currentTarget.classList.remove(styles.dropHover);
+    const taskId = e.dataTransfer.getData("taskId");
+    if (taskId) {
+      moveKanbanTask(taskId, toColumn);
+      onMoveWithSideEffects?.(taskId, toColumn);
+    }
+  }, [moveKanbanTask, onMoveWithSideEffects]);
 
   return (
     <div className={styles.container}>
@@ -40,13 +67,13 @@ export function KanbanBoard({ onStartAgent, onActivateTask, onMoveWithSideEffect
       </div>
 
       {showForm && (
-        <div className={styles.form}>
+        <div ref={formRef} className={styles.form}>
           <input
             className={styles.formInput}
             placeholder="Task title..."
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); if (e.key === "Escape") setShowForm(false); }}
+            onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); if (e.key === "Escape") { setShowForm(false); setNewTitle(""); } }}
             autoFocus
           />
           <div className={styles.formRow}>
@@ -67,24 +94,54 @@ export function KanbanBoard({ onStartAgent, onActivateTask, onMoveWithSideEffect
         </div>
       )}
 
-      <div className={styles.board}>
-        {KANBAN_COLUMNS.map((col) => (
-          <KanbanColumn
-            key={col.id}
-            columnId={col.id}
-            label={col.label}
-            color={col.color}
-            tasks={kanbanTasks.filter((t) => t.column === col.id)}
-            activeTaskId={activeTaskId}
-            onDrop={(taskId, toColumn) => {
-              moveKanbanTask(taskId, toColumn);
-              onMoveWithSideEffects?.(taskId, toColumn);
-            }}
-            onStartAgent={onStartAgent}
-            onDelete={deleteKanbanTask}
-            onActivate={handleActivate}
-          />
-        ))}
+      <div className={styles.list}>
+        {KANBAN_COLUMNS.map((col) => {
+          const tasks = kanbanTasks.filter((t) => t.column === col.id);
+          const isCollapsed = !!collapsed[col.id];
+          return (
+            <div
+              key={col.id}
+              className={styles.group}
+              onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add(styles.dropHover); }}
+              onDragLeave={(e) => e.currentTarget.classList.remove(styles.dropHover)}
+              onDrop={(e) => handleDrop(e, col.id)}
+            >
+              <button className={styles.groupHeader} onClick={() => toggleCollapse(col.id)}>
+                <ChevronRight size={12} className={`${styles.chevron} ${!isCollapsed ? styles.chevronOpen : ""}`} />
+                <span className={styles.groupDot} style={{ background: col.color }} />
+                <span className={styles.groupLabel}>{col.label}</span>
+                <span className={styles.groupCount}>{tasks.length}</span>
+              </button>
+              {!isCollapsed && tasks.length > 0 && (
+                <div className={styles.groupItems}>
+                  {tasks.map((t) => (
+                    <div
+                      key={t.id}
+                      className={`${styles.item} ${t.id === activeTaskId ? styles.itemActive : ""}`}
+                      draggable
+                      onDragStart={(e) => e.dataTransfer.setData("taskId", t.id)}
+                      onClick={() => handleActivate(t.id)}
+                    >
+                      <span className={styles.priorityDot} style={{ background: PRIORITY_COLORS[t.priority ?? "medium"] }} />
+                      <span className={styles.itemTitle}>{t.title}</span>
+                      {(t.column === "todo" || t.column === "in_progress") && onStartAgent && (
+                        <button
+                          className={styles.itemAction}
+                          onClick={(e) => { e.stopPropagation(); onStartAgent(t.title); }}
+                          title="Start Agent"
+                        ><Play size={10} /></button>
+                      )}
+                      <button
+                        className={styles.itemDelete}
+                        onClick={(e) => { e.stopPropagation(); deleteKanbanTask(t.id); }}
+                      >×</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

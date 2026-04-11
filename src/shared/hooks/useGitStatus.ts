@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 interface ChangedFile {
@@ -16,6 +16,9 @@ export function useGitStatus(repoPath: string) {
   const [branch, setBranch] = useState("main");
   const [isDirty, setIsDirty] = useState(false);
   const [changedFiles, setChangedFiles] = useState<ChangedFile[]>([]);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
   useEffect(() => {
     let active = true;
@@ -32,7 +35,7 @@ export function useGitStatus(repoPath: string) {
     const timeout = setTimeout(poll, 500);
     const interval = setInterval(poll, 5000);
     return () => { active = false; clearTimeout(timeout); clearInterval(interval); };
-  }, [repoPath]);
+  }, [repoPath, refreshKey]);
 
-  return { branch, isDirty, changedFiles };
+  return { branch, isDirty, changedFiles, refresh };
 }

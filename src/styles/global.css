@@ -259,8 +259,8 @@ html, body, #root {
 }
 
 .right-panel {
-  width: 240px;
-  min-width: 160px;
+  width: 320px;
+  min-width: 260px;
   max-width: 400px;
   display: flex;
   flex-direction: column;

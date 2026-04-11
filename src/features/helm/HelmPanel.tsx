@@ -21,24 +21,15 @@ export function HelmPanel() {
   const [newLabel, setNewLabel] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Global click listener — close if click is outside the input
   useEffect(() => {
     if (!adding) return;
-
     const handler = (e: MouseEvent) => {
-      if (inputRef.current && !inputRef.current.contains(e.target as Node)) {
-        setAdding(false);
-        setNewLabel("");
-      }
+      if (inputRef.current?.contains(e.target as Node)) return;
+      setAdding(false);
+      setNewLabel("");
     };
-
-    // Use 'click' (fires after mousedown+mouseup) with capture phase
-    // requestAnimationFrame ensures the input is mounted first
-    requestAnimationFrame(() => {
-      document.addEventListener("click", handler, true);
-    });
-
-    return () => document.removeEventListener("click", handler, true);
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
   }, [adding]);
 
   const addTask = useCallback(() => {

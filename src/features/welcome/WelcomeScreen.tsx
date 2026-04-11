@@ -20,14 +20,28 @@ const SCAN_DIRS = [
   "C:/Users/owner",
 ];
 
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 6) return "Good night";
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+}
+
 export function WelcomeScreen({ onOpenProject }: WelcomeScreenProps) {
   const [recentProjects, setRecentProjects] = useState<ProjectInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [userName, setUserName] = useState<string | null>(null);
 
   useEffect(() => {
     invoke<ProjectInfo[]>("discover_projects", { scanDirs: SCAN_DIRS })
       .then((projects) => { setRecentProjects(projects); setLoading(false); })
       .catch(() => setLoading(false));
+
+    // Try to get git user name for personalization
+    invoke<string>("get_git_user_name")
+      .then((name) => { if (name) setUserName(name); })
+      .catch(() => { /* not available yet */ });
   }, []);
 
   const [dragOver, setDragOver] = useState(false);
@@ -82,6 +96,16 @@ export function WelcomeScreen({ onOpenProject }: WelcomeScreenProps) {
           <div className={styles.logoIcon}>AE</div>
           <h1 className={styles.title}>Aether Terminal</h1>
         </motion.div>
+        {userName && (
+          <motion.p
+            className={styles.greeting}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.15 }}
+          >
+            {getGreeting()}, {userName}.
+          </motion.p>
+        )}
         <p className={styles.subtitle}>AI Workspace for Windows</p>
 
         <button className={styles.openBtn} onClick={handleOpenFolder}>

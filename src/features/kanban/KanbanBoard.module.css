@@ -104,152 +104,128 @@
   cursor: default;
 }
 
-/* Board */
-.board {
-  display: flex;
-  gap: var(--space-1);
+/* ─── Accordion List ─── */
+.list {
   flex: 1;
-  overflow-x: auto;
-  padding: var(--space-3);
+  overflow-y: auto;
+  padding: var(--space-2) 0;
 }
 
-.column {
-  flex: 1;
-  min-width: 90px;
-  display: flex;
-  flex-direction: column;
-  background: rgba(255, 255, 255, 0.015);
-  border: 1px solid var(--aether-border);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  transition: background var(--duration-fast), border-color var(--duration-fast);
+.group {
+  transition: background var(--duration-fast);
 }
 
 .dropHover {
   background: rgba(200, 160, 80, 0.06);
-  border-color: var(--gold-dim);
 }
 
-.colHeader {
+.groupHeader {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3) var(--space-6);
+  border: none;
+  background: transparent;
   color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  font-family: var(--font-ui);
+  cursor: pointer;
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  transition: background var(--duration-fast);
+}
+.groupHeader:hover { background: var(--white-4); }
+
+.chevron {
+  flex-shrink: 0;
+  color: var(--white-25);
+  transition: transform var(--duration-fast);
+}
+.chevronOpen {
+  transform: rotate(90deg);
 }
 
-.colDot {
+.groupDot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
-.colLabel { flex: 1; }
+.groupLabel {
+  flex: 1;
+}
 
-.colCount {
+.groupCount {
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
   color: var(--text-muted);
 }
 
-/* Cards */
-.colCards {
-  flex: 1;
-  overflow-y: auto;
-  padding: var(--space-1);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+/* ─── Task Items ─── */
+.groupItems {
+  padding: var(--space-1) 0;
 }
 
-.card {
+.item {
   display: flex;
-  background: var(--white-3);
-  border: 1px solid var(--aether-border);
-  border-radius: var(--radius-sm);
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-6) var(--space-2) var(--space-8);
   cursor: grab;
-  transition: border-color var(--duration-fast), box-shadow var(--duration-slow) var(--ease-out), transform var(--duration-fast);
-  overflow: hidden;
+  transition: background var(--duration-fast);
+}
+.item:hover { background: var(--white-4); }
+.item:active { cursor: grabbing; opacity: 0.7; }
+
+.itemActive {
+  background: rgba(200, 160, 80, 0.08);
+  border-left: 2px solid var(--gold);
+  padding-left: calc(var(--space-8) - 2px);
 }
 
-.card:hover {
-  border-color: var(--gold-subtle);
-  box-shadow: 0 2px 12px rgba(200, 160, 80, 0.15), 0 1px 4px rgba(0, 0, 0, 0.2);
-  transform: translateY(-1px);
-}
-
-.card:active {
-  cursor: grabbing;
-  opacity: 0.7;
-}
-
-.cardActive {
-  border-color: var(--gold);
-  box-shadow: 0 0 12px rgba(200, 160, 80, 0.25), 0 0 4px rgba(200, 160, 80, 0.15);
-  background: rgba(200, 160, 80, 0.06);
-}
-
-.cardPriorityStripe {
-  width: 3px;
+.priorityDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
   flex-shrink: 0;
 }
 
-.cardBody {
+.itemTitle {
   flex: 1;
-  padding: var(--space-2) var(--space-3);
-  min-width: 0;
-}
-
-.cardTitle {
-  color: var(--text-secondary);
   font-size: var(--text-md);
-  font-weight: 500;
+  color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.cardBranch {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  font-size: var(--text-xs);
-  color: var(--ctp-green);
-  font-family: var(--font-mono);
-  margin-top: var(--space-1);
-}
-
-.cardActions {
-  display: flex;
-  gap: var(--space-1);
-  margin-top: 3px;
-  justify-content: flex-end;
+.itemAction {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 var(--space-1);
   opacity: 0;
-  transition: opacity var(--duration-fast);
+  display: flex;
+  align-items: center;
+  transition: opacity 0.1s;
 }
+.item:hover .itemAction { opacity: 1; }
+.itemAction:hover { color: var(--ctp-green); }
 
-.card:hover .cardActions {
-  opacity: 1;
-}
-
-.cardBtn {
+.itemDelete {
   background: none;
   border: none;
   color: var(--text-muted);
   font-size: var(--text-sm);
   cursor: pointer;
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-sm);
-  display: flex;
-  align-items: center;
+  padding: 0 var(--space-1);
+  opacity: 0;
+  transition: opacity 0.1s;
 }
-
-.cardBtn:hover {
-  background: var(--white-10);
-  color: var(--text-primary);
-}
+.item:hover .itemDelete { opacity: 1; }
+.itemDelete:hover { color: var(--ctp-red); }
