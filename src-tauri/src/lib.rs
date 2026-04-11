@@ -5,6 +5,7 @@ mod git;
 mod ipc;
 pub mod pty;
 pub mod session;
+mod watcher;
 pub mod watchdog;
 
 use agent::AgentManager;
@@ -14,6 +15,7 @@ use pty::PtyManager;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     env_logger::init();
+    let t0 = std::time::Instant::now();
     log::info!("Aether Terminal starting...");
 
     tauri::Builder::default()
@@ -24,7 +26,8 @@ pub fn run() {
         .manage(AgentManager::new())
         .manage(ipc::OutputBufferRegistry::new())
         .manage(pty::PaneRegistry::new())
-        .setup(|_app| {
+        .manage(ipc::FsWatcherRegistry::new())
+        .setup(move |_app| {
             // Initialize database
             let db_path = db::db_path();
             match Database::open(&db_path) {
@@ -36,6 +39,7 @@ pub fn run() {
                 }
             }
             // Mica/Acrylic applied via tauri.conf.json windowEffects
+            log::info!("Setup complete in {:?}", t0.elapsed());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -49,6 +53,7 @@ pub fn run() {
             ipc::list_branches,
             ipc::list_worktrees,
             ipc::create_worktree,
+            ipc::remove_worktree,
             ipc::list_directory,
             ipc::git_status,
             ipc::search_files,
@@ -71,6 +76,9 @@ pub fn run() {
             ipc::stop_agent,
             ipc::list_agents,
             ipc::route_agent,
+            ipc::start_chat_agent,
+            ipc::stop_chat_agent,
+            ipc::save_temp_image,
             // Session management
             ipc::create_session,
             ipc::list_db_sessions,
@@ -86,6 +94,8 @@ pub fn run() {
             ipc::rename_pane,
             ipc::send_keys_by_name,
             ipc::list_panes_info,
+            ipc::start_fs_watcher,
+            ipc::stop_fs_watcher,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Aether Terminal");

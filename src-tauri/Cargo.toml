@@ -48,4 +48,8 @@ thiserror = "2"
 # Database
 rusqlite = { version = "0.31", features = ["bundled"] }
 
+# File system watching
+notify = { version = "7", features = ["macos_kqueue"] }
+notify-debouncer-mini = "0.5"
+
 # Window effects: Mica/Acrylic via tauri.conf.json windowEffects (no external crate needed)

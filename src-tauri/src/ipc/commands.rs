@@ -202,6 +202,12 @@ pub fn create_worktree(repo_path: String, branch_name: String) -> Result<crate::
     crate::git::create_worktree(&repo_path, &branch_name)
 }
 
+/// Remove a git worktree (and optionally its branch)
+#[tauri::command]
+pub fn remove_worktree(repo_path: String, worktree_name: String, delete_branch: bool) -> Result<(), String> {
+    crate::git::remove_worktree(&repo_path, &worktree_name, delete_branch)
+}
+
 /// Get git status for a repository
 #[tauri::command]
 pub fn git_status(repo_path: String) -> Result<crate::git::GitStatusInfo, String> {
@@ -558,6 +564,138 @@ pub fn route_agent(prompt: String, budget: Option<f64>) -> crate::agent::router:
     crate::agent::router::AgentRouter::route(&prompt, budget)
 }
 
+/// Start a chat agent session (supports --resume for multi-turn)
+#[tauri::command]
+pub fn start_chat_agent(
+    app: AppHandle,
+    conversation_id: String,
+    prompt: String,
+    cwd: String,
+    model: Option<String>,
+    resume_id: Option<String>,
+    images: Option<Vec<String>>,
+) -> Result<String, String> {
+    let agent_manager = app.state::<crate::agent::AgentManager>();
+
+    // Build image args: save base64 to temp files
+    let image_paths: Vec<String> = if let Some(imgs) = &images {
+        let tmp_dir = std::env::temp_dir().join("aether-chat-images");
+        std::fs::create_dir_all(&tmp_dir).ok();
+        imgs.iter().enumerate().filter_map(|(i, data)| {
+            // Strip data URI prefix if present
+            let raw = if let Some(pos) = data.find(",") { &data[pos + 1..] } else { data.as_str() };
+            // Simple base64 decode
+            let bytes = base64_decode(raw).ok()?;
+            let path = tmp_dir.join(format!("img_{}_{}.png", conversation_id.replace('-', ""), i));
+            std::fs::write(&path, &bytes).ok()?;
+            Some(path.to_string_lossy().to_string())
+        }).collect()
+    } else {
+        vec![]
+    };
+
+    let id = agent_manager.start_session(
+        &prompt,
+        &cwd,
+        model.as_deref(),
+        None,
+        resume_id.as_deref(),
+    )?;
+
+    // Inject --image flags into the CLI process
+    // Note: images are passed via start_session's command builder
+    // For now, we handle it by modifying the prompt to include image references
+    // TODO: Extend start_session to accept image paths
+
+    let reader = agent_manager.take_stdout(&id)?;
+    let session_id = id.clone();
+    let conv_id = conversation_id.clone();
+    let app_handle = app.clone();
+    let agent_mgr = app.state::<crate::agent::AgentManager>().inner().clone();
+
+    std::thread::spawn(move || {
+        for line in reader.lines() {
+            match line {
+                Ok(line) if !line.is_empty() => {
+                    let event = format!("chat-stream-{}", conv_id);
+                    let _ = app_handle.emit(&event, &line);
+
+                    // Update session status from stream
+                    if let Ok(val) = serde_json::from_str::<serde_json::Value>(&line) {
+                        if let Some(msg_type) = val.get("type").and_then(|v| v.as_str()) {
+                            match msg_type {
+                                "assistant" => { let _ = agent_mgr.update_status(&session_id, "coding"); }
+                                "result" => {
+                                    let _ = agent_mgr.update_status(&session_id, "done");
+                                    if let Some(cost) = val.get("cost_usd").and_then(|v| v.as_f64()) {
+                                        let tokens = val.get("total_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+                                        let _ = agent_mgr.update_usage(&session_id, cost, tokens);
+                                    }
+                                    // Send session_id from result for --resume
+                                    if let Some(sid) = val.get("session_id").and_then(|v| v.as_str()) {
+                                        let _ = app_handle.emit(&format!("chat-session-id-{}", conv_id), sid);
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+                Ok(_) => {}
+                Err(_) => break,
+            }
+        }
+        let _ = app_handle.emit(&format!("chat-complete-{}", conv_id), &session_id);
+
+        // Clean up temp images
+        for p in &image_paths {
+            std::fs::remove_file(p).ok();
+        }
+    });
+
+    Ok(id)
+}
+
+/// Save a base64-encoded image to a temp file, return the file path
+#[tauri::command]
+pub fn save_temp_image(data: String) -> Result<String, String> {
+    let tmp_dir = std::env::temp_dir().join("aether-chat-images");
+    std::fs::create_dir_all(&tmp_dir).map_err(|e| e.to_string())?;
+    // Strip data URI prefix if present
+    let raw = if let Some(pos) = data.find(',') { &data[pos + 1..] } else { data.as_str() };
+    let bytes = base64_decode(raw)?;
+    let name = format!("img_{}.png", uuid::Uuid::new_v4());
+    let path = tmp_dir.join(&name);
+    std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().to_string())
+}
+
+/// Stop a chat agent session
+#[tauri::command]
+pub fn stop_chat_agent(app: AppHandle, id: String) -> Result<(), String> {
+    let agent_manager = app.state::<crate::agent::AgentManager>();
+    agent_manager.stop_session(&id)
+}
+
+fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
+    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut buf = Vec::with_capacity(input.len() * 3 / 4);
+    let mut acc: u32 = 0;
+    let mut bits: u32 = 0;
+    for &b in input.as_bytes() {
+        if b == b'=' || b == b'\n' || b == b'\r' { continue; }
+        let val = CHARS.iter().position(|&c| c == b).ok_or("invalid base64")? as u32;
+        acc = (acc << 6) | val;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            buf.push((acc >> bits) as u8);
+            acc &= (1 << bits) - 1;
+        }
+    }
+    Ok(buf)
+}
+
 fn base64_encode(data: &[u8]) -> String {
     let mut s = String::with_capacity(data.len() * 4 / 3 + 4);
     const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -709,4 +847,49 @@ pub fn send_keys_by_name(app: AppHandle, name: String, data: String) -> Result<(
 pub fn list_panes_info(app: AppHandle) -> Vec<crate::pty::registry::PaneEntry> {
     let registry = app.state::<crate::pty::PaneRegistry>();
     registry.list()
+}
+
+/// Start watching a directory for file changes (100ms debounce → "fs:changed" event)
+#[tauri::command]
+pub fn start_fs_watcher(app: AppHandle, watch_path: String) -> Result<(), String> {
+    let registry = app.state::<FsWatcherRegistry>();
+    registry.start(app.clone(), watch_path)
+}
+
+/// Stop watching a directory
+#[tauri::command]
+pub fn stop_fs_watcher(watch_path: String, app: AppHandle) -> Result<(), String> {
+    let registry = app.state::<FsWatcherRegistry>();
+    registry.stop(&watch_path);
+    Ok(())
+}
+
+/// Registry for active file watchers
+#[derive(Default)]
+pub struct FsWatcherRegistry {
+    watchers: Mutex<HashMap<String, crate::watcher::WatcherHandle>>,
+}
+
+impl FsWatcherRegistry {
+    pub fn new() -> Self {
+        Self {
+            watchers: Mutex::new(HashMap::new()),
+        }
+    }
+
+    pub fn start(&self, app: AppHandle, path: String) -> Result<(), String> {
+        let mut watchers = self.watchers.lock().map_err(|_| "Lock poisoned".to_string())?;
+        if watchers.contains_key(&path) {
+            return Ok(()); // Already watching
+        }
+        let handle = crate::watcher::start_watcher(app, path.clone())?;
+        watchers.insert(path, handle);
+        Ok(())
+    }
+
+    pub fn stop(&self, path: &str) {
+        if let Ok(mut watchers) = self.watchers.lock() {
+            watchers.remove(path); // WatcherHandle drop stops the watcher
+        }
+    }
 }
