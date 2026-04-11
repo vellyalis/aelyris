@@ -156,7 +156,7 @@ export function App() {
         await invoke("write_terminal", { id: terminals[0], data: command + "\r" });
       }
     } catch (err) {
-      console.error("[handleRunCommand] failed:", err);
+      /* command error */
     }
   }, []);
 

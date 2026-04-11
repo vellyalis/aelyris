@@ -48,7 +48,7 @@ export function useInteractiveAgent() {
       setActiveSessionId(result.session_id);
       return result;
     } catch (e) {
-      console.error("Failed to start interactive agent:", e);
+      /* start error */
       return null;
     }
   }, []);
@@ -62,7 +62,7 @@ export function useInteractiveAgent() {
         setActiveSessionId(null);
       }
     } catch (e) {
-      console.error("Failed to stop interactive agent:", e);
+      /* stop error */
     }
   }, [activeSessionId]);
 
@@ -75,7 +75,7 @@ export function useInteractiveAgent() {
         setActiveSessionId(null);
       }
     } catch (e) {
-      console.error("Failed to end session and remove worktree:", e);
+      /* end session error */
     }
   }, [activeSessionId]);
 

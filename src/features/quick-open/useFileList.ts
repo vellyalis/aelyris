@@ -20,6 +20,7 @@ export function useFileList(projectPath: string) {
     if (!projectPath) return;
     if (cache.current?.path === projectPath) {
       setFiles(cache.current.files);
+      setLoading(false);
       return;
     }
     setLoading(true);

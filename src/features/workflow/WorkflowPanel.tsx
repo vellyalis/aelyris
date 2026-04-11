@@ -72,10 +72,15 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
 
   // Poll running workflows
   useEffect(() => {
-    const poll = () => { invoke<WorkflowStatus[]>("list_running_workflows").then(setRunning).catch(() => {}); };
+    let active = true;
+    const poll = () => {
+      invoke<WorkflowStatus[]>("list_running_workflows")
+        .then((r) => { if (active) setRunning(r); })
+        .catch(() => { if (active) setRunning([]); });
+    };
     poll();
     const interval = setInterval(poll, 3000);
-    return () => clearInterval(interval);
+    return () => { active = false; clearInterval(interval); };
   }, []);
 
   const advancePhase = useCallback(async (workflowId: string) => {
@@ -100,7 +105,7 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
       setRunning((prev) => [...prev, status]);
       await advancePhase(status.id);
     } catch (e) {
-      console.error("Failed to start workflow:", e);
+      /* workflow start error */
     }
   }, [projectPath, advancePhase]);
 
@@ -111,7 +116,7 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
         await advancePhase(workflowId);
       }
     } catch (e) {
-      console.error("Failed to approve gate:", e);
+      /* gate approve error */
     }
   }, [advancePhase]);
 
@@ -120,7 +125,7 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
       await invoke("workflow_reject_gate", { workflowId });
       await advancePhase(workflowId);
     } catch (e) {
-      console.error("Failed to reject gate:", e);
+      /* gate reject error */
     }
   }, [advancePhase]);
 
