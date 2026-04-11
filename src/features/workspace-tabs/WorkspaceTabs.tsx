@@ -22,6 +22,7 @@ export function WorkspaceTabs({ tabs, activeTabId, onSelectTab, onCloseTab, onNe
               <button>
                 <PixelAvatar seed={tab.label} size={12} />
                 <span className={styles.tabLabel}>{tab.label}</span>
+                {tab.worktreeBranch && <span className={styles.branchBadge}>⚡{tab.worktreeBranch}</span>}
                 {tabs.length > 1 && (
                   <span
                     className={styles.tabClose}

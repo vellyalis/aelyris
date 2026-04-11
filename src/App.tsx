@@ -5,19 +5,21 @@ import { MenuBar, type Menu } from "./features/menubar/MenuBar";
 import { FileTree } from "./features/file-tree/FileTree";
 import { KanbanBoard } from "./features/kanban/KanbanBoard";
 import { TerminalPane } from "./features/terminal/TerminalPane";
-// Lazy load Monaco Editor (~2MB)
-const EditorPanel = lazy(() => import("./features/editor/EditorPanel").then((m) => ({ default: m.EditorPanel })));
 import { AgentInspector } from "./features/agent-inspector/AgentInspector";
 import { ToolkitPanel } from "./features/toolkit/ToolkitPanel";
 import { WorkspaceTabs } from "./features/workspace-tabs/WorkspaceTabs";
-import { CommandPalette, type CommandItem } from "./features/command-palette/CommandPalette";
-import { Settings } from "./features/settings/Settings";
-import { WatchdogDialog } from "./features/watchdog/WatchdogDialog";
-import { WelcomeScreen } from "./features/welcome/WelcomeScreen";
-import { SearchPanel } from "./features/search/SearchPanel";
-import { AboutDialog } from "./features/about/AboutDialog";
-import { PRInspector } from "./features/pr-inspector/PRInspector";
-import { WebInspector } from "./features/web-inspector/WebInspector";
+import type { CommandItem } from "./features/command-palette/CommandPalette";
+
+// Lazy load heavy components — not needed at initial render
+const EditorPanel = lazy(() => import("./features/editor/EditorPanel").then((m) => ({ default: m.EditorPanel })));
+const CommandPalette = lazy(() => import("./features/command-palette/CommandPalette").then((m) => ({ default: m.CommandPalette })));
+const Settings = lazy(() => import("./features/settings/Settings").then((m) => ({ default: m.Settings })));
+const WatchdogDialog = lazy(() => import("./features/watchdog/WatchdogDialog").then((m) => ({ default: m.WatchdogDialog })));
+const WelcomeScreen = lazy(() => import("./features/welcome/WelcomeScreen").then((m) => ({ default: m.WelcomeScreen })));
+const SearchPanel = lazy(() => import("./features/search/SearchPanel").then((m) => ({ default: m.SearchPanel })));
+const AboutDialog = lazy(() => import("./features/about/AboutDialog").then((m) => ({ default: m.AboutDialog })));
+const PRInspector = lazy(() => import("./features/pr-inspector/PRInspector").then((m) => ({ default: m.PRInspector })));
+const WebInspector = lazy(() => import("./features/web-inspector/WebInspector").then((m) => ({ default: m.WebInspector })));
 import { SplitPane } from "./shared/ui/SplitPane";
 import { ErrorBoundary } from "./shared/ui/ErrorBoundary";
 import { TooltipProvider } from "./shared/ui/Tooltip";
@@ -29,6 +31,7 @@ import { useAgentManager } from "./shared/hooks/useAgentManager";
 import { useGitStatus } from "./shared/hooks/useGitStatus";
 import { useAppStore } from "./shared/store/appStore";
 import { useThemeApplier } from "./shared/hooks/useTheme";
+import { getActivePtyId } from "./features/terminal/hooks/useTerminal";
 
 export type ShellType = "powershell" | "cmd" | "gitbash" | "wsl";
 
@@ -56,6 +59,13 @@ export function App() {
 
   const projectPath = activeTab.cwd ?? rootProjectPath ?? "";
   const projectName = projectPath ? projectPath.split("/").filter(Boolean).pop() ?? "Aether" : "Aether";
+
+  // Show window once React has mounted (window starts hidden to avoid white flash)
+  useEffect(() => {
+    import("@tauri-apps/api/window").then(({ getCurrentWindow }) => {
+      getCurrentWindow().show().catch(() => {});
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const title = projectPath ? `${projectName} — Aether Terminal` : "Aether Terminal";
@@ -105,6 +115,38 @@ export function App() {
     ? (activeAgent.status === "thinking" ? "thinking" : activeAgent.status === "coding" ? "edit" : "idle")
     : "idle";
 
+  // Worktree handlers
+  const handleCreateWorktree = useCallback(async (_sessionId: string, branchName: string) => {
+    try {
+      const { invoke: tauriInvoke } = await import("@tauri-apps/api/core");
+      const wt = await tauriInvoke<{ name: string; path: string; branch: string; is_main: boolean; head_sha: string; status: string }>("create_worktree", {
+        repoPath: projectPath,
+        branchName,
+      });
+      // Add a terminal tab scoped to the worktree with branch badge
+      addTabWithCwd("powershell", wt.path, branchName);
+      handleRefresh();
+      return { ...wt, status: wt.status as "Clean" | "Modified" | "Conflicted" };
+    } catch {
+      return null;
+    }
+  }, [projectPath, addTabWithCwd, handleRefresh]);
+
+  const handleRemoveWorktree = useCallback(async (sessionId: string) => {
+    const session = sessions.find((s) => s.id === sessionId);
+    if (!session?.worktree) return;
+    try {
+      const { invoke: tauriInvoke } = await import("@tauri-apps/api/core");
+      await tauriInvoke("remove_worktree", {
+        repoPath: projectPath,
+        worktreeName: session.worktree.name,
+        deleteBranch: true,
+      });
+      stopAgent(sessionId);
+      handleRefresh();
+    } catch { /* ignore */ }
+  }, [sessions, projectPath, stopAgent, handleRefresh]);
+
   const handleStartAgent = useCallback(async (prompt: string, model?: string) => {
     try {
       const agentId = await startAgent(prompt, projectPath, model);
@@ -132,11 +174,20 @@ export function App() {
   const handleRunCommand = useCallback(async (command: string) => {
     try {
       const { invoke: tauriInvoke } = await import("@tauri-apps/api/core");
+      // Use the most recently focused terminal
+      const activeId = getActivePtyId();
+      if (activeId) {
+        await tauriInvoke("write_terminal", { id: activeId, data: command + "\r" });
+        return;
+      }
+      // Fallback: try any available terminal
       const terminals = await tauriInvoke<string[]>("list_terminals");
       if (terminals.length > 0) {
         await tauriInvoke("write_terminal", { id: terminals[0], data: command + "\r" });
       }
-    } catch { /* ignore */ }
+    } catch (err) {
+      console.error("[handleRunCommand] failed:", err);
+    }
   }, []);
 
   // Kanban move side effects: create worktree + terminal tab when moving to in_progress
@@ -284,7 +335,9 @@ export function App() {
       <TooltipProvider>
       <ToastProvider>
         <div className="app-container">
-          <WelcomeScreen onOpenProject={handleOpenProject} />
+          <Suspense fallback={null}>
+            <WelcomeScreen onOpenProject={handleOpenProject} />
+          </Suspense>
         </div>
       </ToastProvider>
       </TooltipProvider>
@@ -341,12 +394,12 @@ export function App() {
         <div className="left-panel" role="navigation" aria-label="Project sidebar">
           <FileTree key={fileTreeKey} rootPath={projectPath} onFileSelect={handleFileSelect} onOpenDiff={handleOpenDiff} changedFiles={changedFiles} />
           <KanbanBoard onStartAgent={handleStartAgent} />
-          <SearchPanel
-            visible={searchVisible}
+          {searchVisible && <Suspense fallback={null}><SearchPanel
+            visible
             rootPath={projectPath}
             onClose={() => setSearchVisible(false)}
             onResultClick={(file, line) => { handleFileSelect(file); setEditorLine(line); }}
-          />
+          /></Suspense>}
         </div>
 
         <div className="center-panel" role="region" aria-label="Terminal and editor">
@@ -369,6 +422,8 @@ export function App() {
             onSelectSession={handleSelectSession}
             onStartAgent={handleStartAgent}
             onStopAgent={stopAgent}
+            onCreateWorktree={handleCreateWorktree}
+            onRemoveWorktree={handleRemoveWorktree}
           />
           <ToolkitPanel projectName={projectName} onRunCommand={handleRunCommand} />
         </div>
@@ -382,12 +437,12 @@ export function App() {
         onNewTab={addTab}
       />
 
-      <CommandPalette visible={paletteVisible} onClose={() => setPaletteVisible(false)} commands={commands} />
-      <Settings visible={settingsVisible} onClose={() => setSettingsVisible(false)} />
-      <WatchdogDialog visible={watchdogVisible} onClose={() => setWatchdogVisible(false)} />
-      <AboutDialog visible={aboutVisible} onClose={() => setAboutVisible(false)} />
-      <WebInspector visible={webInspectorVisible} onClose={() => setWebInspectorVisible(false)} />
-      <PRInspector visible={prInspectorVisible} projectPath={projectPath} onClose={() => setPrInspectorVisible(false)} onStartReview={(prompt) => handleStartAgent(prompt)} />
+      {paletteVisible && <Suspense fallback={null}><CommandPalette visible onClose={() => setPaletteVisible(false)} commands={commands} /></Suspense>}
+      {settingsVisible && <Suspense fallback={null}><Settings visible onClose={() => setSettingsVisible(false)} /></Suspense>}
+      {watchdogVisible && <Suspense fallback={null}><WatchdogDialog visible onClose={() => setWatchdogVisible(false)} /></Suspense>}
+      {aboutVisible && <Suspense fallback={null}><AboutDialog visible onClose={() => setAboutVisible(false)} /></Suspense>}
+      {webInspectorVisible && <Suspense fallback={null}><WebInspector visible onClose={() => setWebInspectorVisible(false)} /></Suspense>}
+      {prInspectorVisible && <Suspense fallback={null}><PRInspector visible projectPath={projectPath} onClose={() => setPrInspectorVisible(false)} onStartReview={(prompt) => handleStartAgent(prompt)} /></Suspense>}
       <PromptDialog />
       <OnboardingOverlay />
     </div>

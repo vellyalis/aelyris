@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
-import { type AgentSession, type AgentStatus, STATUS_COLORS, STATUS_LABELS, getSessionColor } from "../../shared/types/agent";
+import { type AgentSession, type AgentStatus, type WorktreeInfo, STATUS_COLORS, STATUS_LABELS, getSessionColor } from "../../shared/types/agent";
 import { MODEL_OPTIONS, getModelById } from "../../shared/types/model";
 import { showPrompt } from "../../shared/ui/PromptDialog";
 import { useAppStore } from "../../shared/store/appStore";
@@ -7,7 +7,7 @@ import { PixelAvatar } from "../../shared/ui/PixelAvatar";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
 import { ContextGauge } from "../../shared/ui/ContextGauge";
 import * as RadixContextMenu from "@radix-ui/react-context-menu";
-import { ClipboardCopy, Plus, Pencil, Activity, Layers } from "lucide-react";
+import { ClipboardCopy, Plus, Pencil, Activity, Layers, GitBranch } from "lucide-react";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { ToolBadge } from "../../shared/ui/ToolBadge";
 import { extractToolName } from "../../shared/types/toolBadge";
@@ -19,14 +19,27 @@ interface AgentInspectorProps {
   onSelectSession: (id: string) => void;
   onStartAgent?: (prompt: string, model?: string) => void;
   onStopAgent?: (id: string) => void;
+  onCreateWorktree?: (sessionId: string, branchName: string) => Promise<WorktreeInfo | null>;
+  onRemoveWorktree?: (sessionId: string) => void;
 }
 
-export function AgentInspector({ sessions, activeSessionId, onSelectSession, onStartAgent, onStopAgent }: AgentInspectorProps) {
+export function AgentInspector({ sessions, activeSessionId, onSelectSession, onStartAgent, onStopAgent, onCreateWorktree, onRemoveWorktree }: AgentInspectorProps) {
   const [tab, setTab] = useState<"sessions" | "activity" | "parallel">("sessions");
   const [showPromptInput, setShowPromptInput] = useState(false);
   const [promptText, setPromptText] = useState("");
   const { selectedModel, setSelectedModel } = useAppStore();
   const activeSession = sessions.find((s) => s.id === activeSessionId);
+
+  // Inline worktree creation state (per-session)
+  const [worktreeInputId, setWorktreeInputId] = useState<string | null>(null);
+  const [worktreeBranch, setWorktreeBranch] = useState("");
+
+  const handleCreateWorktree = useCallback(async (sessionId: string) => {
+    if (!worktreeBranch.trim() || !onCreateWorktree) return;
+    await onCreateWorktree(sessionId, worktreeBranch.trim());
+    setWorktreeInputId(null);
+    setWorktreeBranch("");
+  }, [worktreeBranch, onCreateWorktree]);
 
   const activeSessions = useMemo(
     () => sessions.filter((s) => s.status !== "idle" && s.status !== "done"),
@@ -189,6 +202,30 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
                         background: sColor.accent,
                       }} />
                     </div>
+                    {/* Worktree info or inline creation */}
+                    {s.worktree ? (
+                      <div className={styles.worktreeInfo}>
+                        <GitBranch size={10} />
+                        <span className={styles.worktreeBranch}>{s.worktree.branch}</span>
+                        <span className={styles.worktreeStatus} data-status={s.worktree.status}>{s.worktree.status === "Clean" ? "✓" : s.worktree.status === "Modified" ? "●" : "⚠"}</span>
+                      </div>
+                    ) : worktreeInputId === s.id ? (
+                      <div className={styles.worktreeCreate} onClick={(e) => e.stopPropagation()}>
+                        <GitBranch size={10} />
+                        <input
+                          autoFocus
+                          className={styles.worktreeInput}
+                          placeholder="branch name"
+                          value={worktreeBranch}
+                          onChange={(e) => setWorktreeBranch(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleCreateWorktree(s.id);
+                            if (e.key === "Escape") { setWorktreeInputId(null); setWorktreeBranch(""); }
+                          }}
+                        />
+                        <button className={styles.worktreeBtn} onClick={() => handleCreateWorktree(s.id)}>Create</button>
+                      </div>
+                    ) : null}
                     {s.watchdog && (
                       <div className={styles.watchdogInfo}>🐕 {s.watchdog}</div>
                     )}
@@ -200,7 +237,15 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
                     <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => handleRenameSession(s)}>Rename</RadixContextMenu.Item>
                     <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => handleCopySessionInfo(s)}>Copy Info</RadixContextMenu.Item>
                     <RadixContextMenu.Separator className={styles.ctxDivider} />
-                    <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => onStartAgent?.(`Create worktree for ${s.name}`, s.model)}>Create Worktree</RadixContextMenu.Item>
+                    {s.worktree ? (
+                      <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => onRemoveWorktree?.(s.id)}>
+                        End Session &amp; Remove Worktree
+                      </RadixContextMenu.Item>
+                    ) : (
+                      <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => { setWorktreeInputId(s.id); setWorktreeBranch(""); }}>
+                        Create Worktree
+                      </RadixContextMenu.Item>
+                    )}
                     <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => onStartAgent?.(`Attach watchdog to ${s.name}`)}>Attach Watchdog</RadixContextMenu.Item>
                     <RadixContextMenu.Separator className={styles.ctxDivider} />
                     <RadixContextMenu.Item className={styles.ctxItem} disabled={s.status === "idle" || s.status === "done"} onSelect={() => onStopAgent?.(s.id)}>

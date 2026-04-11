@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 interface ChangedFile {
@@ -17,9 +17,11 @@ export function useGitStatus(repoPath: string) {
   const [isDirty, setIsDirty] = useState(false);
   const [changedFiles, setChangedFiles] = useState<ChangedFile[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
+  const watcherStarted = useRef(false);
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
+  // Poll git status
   useEffect(() => {
     let active = true;
     const poll = async () => {
@@ -31,11 +33,42 @@ export function useGitStatus(repoPath: string) {
         setChangedFiles(info.changed_files);
       } catch { /* not a git repo or error */ }
     };
-    // Delay initial poll to not block startup
     const timeout = setTimeout(poll, 500);
-    const interval = setInterval(poll, 5000);
+    // With file watcher, reduce polling to 30s (watcher handles fast updates)
+    const interval = setInterval(poll, 30000);
     return () => { active = false; clearTimeout(timeout); clearInterval(interval); };
   }, [repoPath, refreshKey]);
+
+  // Start file watcher and listen for fs:changed events
+  useEffect(() => {
+    if (!repoPath || watcherStarted.current) return;
+    let unlisten: (() => void) | null = null;
+
+    const setup = async () => {
+      try {
+        // Start the backend file watcher
+        await invoke("start_fs_watcher", { watchPath: repoPath });
+        watcherStarted.current = true;
+
+        // Listen for change events from the watcher
+        const { listen } = await import("@tauri-apps/api/event");
+        unlisten = await listen<{ root: string; paths: string[] }>("fs:changed", (event) => {
+          if (event.payload.root === repoPath) {
+            refresh();
+          }
+        });
+      } catch { /* watcher not available */ }
+    };
+    setup();
+
+    return () => {
+      unlisten?.();
+      if (watcherStarted.current) {
+        invoke("stop_fs_watcher", { watchPath: repoPath }).catch(() => {});
+        watcherStarted.current = false;
+      }
+    };
+  }, [repoPath, refresh]);
 
   return { branch, isDirty, changedFiles, refresh };
 }

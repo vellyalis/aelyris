@@ -40,6 +40,13 @@
 }
 
 .tabLabel { overflow: hidden; text-overflow: ellipsis; }
+.branchBadge {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  color: var(--ctp-green);
+  opacity: 0.8;
+  white-space: nowrap;
+}
 
 .tabClose {
   font-size: var(--text-xs);

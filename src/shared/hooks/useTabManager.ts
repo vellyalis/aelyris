@@ -6,6 +6,7 @@ export interface Tab {
   label: string;
   shell: ShellType;
   cwd?: string;
+  worktreeBranch?: string;
 }
 
 let nextId = 1;
@@ -76,8 +77,9 @@ export function useTabManager(defaultShell: ShellType = "powershell") {
     });
   }, [tabs]);
 
-  const addTabWithCwd = useCallback((shell: ShellType, cwd: string) => {
+  const addTabWithCwd = useCallback((shell: ShellType, cwd: string, worktreeBranch?: string) => {
     const tab = createTab(shell, cwd);
+    if (worktreeBranch) tab.worktreeBranch = worktreeBranch;
     setTabs((prev) => [...prev, tab]);
     setActiveTabId(tab.id);
   }, []);

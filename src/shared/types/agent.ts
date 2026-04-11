@@ -1,5 +1,14 @@
 export type AgentStatus = "idle" | "thinking" | "coding" | "waiting" | "error" | "done" | "generating";
 
+export interface WorktreeInfo {
+  name: string;
+  path: string;
+  branch: string;
+  is_main: boolean;
+  head_sha: string;
+  status: "Clean" | "Modified" | "Conflicted";
+}
+
 export interface AgentSession {
   id: string;
   name: string;
@@ -12,7 +21,8 @@ export interface AgentSession {
   tokensUsed: number;
   branch?: string;
   filesChanged?: number;
-  watchdog?: string; // watchdog name if attached
+  watchdog?: string;
+  worktree?: WorktreeInfo;
 }
 
 export interface AgentLog {
