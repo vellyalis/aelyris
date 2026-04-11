@@ -15,8 +15,14 @@
 - Phase 1 (Task-Agent Link): **完了** — Kanban↔Agent双方向リンク, 自動カラム移動
 - Phase 2 (Agent Enrichment): **完了** — 環境変数注入, ポート検出, パーミッションバッジ
 - Phase 3 (Workflow Engine): **完了** — YAML定義, 品質ゲート, WorkflowPanel
+- Phase 4 (SCM Panel): **完了** — Staged/Unstaged/Conflicts, Commit/Push UI
+- Phase 5 (Diff Feedback): **完了** — 行コメント→Agent即修正
+- Phase 6 (Analytics): **完了** — SessionAnalyticsモーダル, View Analytics
+- Phase 7 (Visual Builder): **完了** — reactflow ノードエディタ, YAMLエクスポート
+- Phase 8 (Persistence): **完了** — agent_sessions SQLite永続化, 履歴API
+- リファクタリング: **完了** — App.tsx分解, テスト104本
 
-**次のマイルストーン: Phase 4 (SCM Panel)**
+**全Phase完了。**
 
 ---
 

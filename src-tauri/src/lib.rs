@@ -114,6 +114,10 @@ pub fn run() {
             ipc::workflow_reject_gate,
             ipc::workflow_status,
             ipc::list_running_workflows,
+            // Agent session persistence
+            ipc::save_agent_to_db,
+            ipc::update_agent_in_db,
+            ipc::list_agent_history,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Aether Terminal");

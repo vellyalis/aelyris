@@ -357,4 +357,87 @@ impl Database {
             .map_err(|e| format!("Deactivate: {}", e))?;
         Ok(())
     }
+
+    // --- Agent Session persistence ---
+
+    /// Save an agent session to the database
+    pub fn save_agent_session(
+        &self,
+        id: &str,
+        model: &str,
+        prompt: &str,
+        status: &str,
+        cost: f64,
+        tokens_used: u64,
+    ) -> Result<(), String> {
+        self.conn
+            .execute(
+                "INSERT OR REPLACE INTO agent_sessions (id, model, prompt, status, cost, tokens_used) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![id, model, prompt, status, cost, tokens_used as i64],
+            )
+            .map_err(|e| format!("Save agent session: {}", e))?;
+        Ok(())
+    }
+
+    /// Update agent session status and cost
+    pub fn update_agent_session(&self, id: &str, status: &str, cost: f64, tokens_used: u64) -> Result<(), String> {
+        self.conn
+            .execute(
+                "UPDATE agent_sessions SET status = ?1, cost = ?2, tokens_used = ?3 WHERE id = ?4",
+                params![status, cost, tokens_used as i64, id],
+            )
+            .map_err(|e| format!("Update agent session: {}", e))?;
+        Ok(())
+    }
+
+    /// Mark agent session as ended
+    pub fn end_agent_session(&self, id: &str) -> Result<(), String> {
+        self.conn
+            .execute(
+                "UPDATE agent_sessions SET status = 'done', ended_at = datetime('now') WHERE id = ?1",
+                params![id],
+            )
+            .map_err(|e| format!("End agent session: {}", e))?;
+        Ok(())
+    }
+
+    /// List recent agent sessions (for session history display)
+    pub fn list_agent_sessions(&self, limit: usize) -> Result<Vec<AgentSessionRecord>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, model, prompt, status, cost, tokens_used, started_at, ended_at FROM agent_sessions ORDER BY started_at DESC LIMIT ?1",
+            )
+            .map_err(|e| format!("Prepare: {}", e))?;
+
+        let rows = stmt
+            .query_map(params![limit as i64], |row| {
+                Ok(AgentSessionRecord {
+                    id: row.get(0)?,
+                    model: row.get(1)?,
+                    prompt: row.get(2)?,
+                    status: row.get(3)?,
+                    cost: row.get(4)?,
+                    tokens_used: row.get::<_, i64>(5)? as u64,
+                    started_at: row.get(6)?,
+                    ended_at: row.get(7)?,
+                })
+            })
+            .map_err(|e| format!("Query: {}", e))?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Collect: {}", e))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentSessionRecord {
+    pub id: String,
+    pub model: String,
+    pub prompt: String,
+    pub status: String,
+    pub cost: f64,
+    pub tokens_used: u64,
+    pub started_at: String,
+    pub ended_at: Option<String>,
 }

@@ -1,7 +1,7 @@
 mod migrations;
 pub mod queries;
 
-pub use queries::Database;
+pub use queries::{Database, AgentSessionRecord};
 
 use std::path::PathBuf;
 

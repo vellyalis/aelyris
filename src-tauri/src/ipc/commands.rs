@@ -1084,3 +1084,41 @@ pub fn list_running_workflows(app: AppHandle) -> Vec<crate::workflow::WorkflowSt
     let executor = app.state::<crate::workflow::WorkflowExecutor>();
     executor.list()
 }
+
+// ── Agent session persistence ──
+
+/// Save agent session to database for persistence across restarts
+#[tauri::command]
+pub fn save_agent_to_db(
+    id: String,
+    model: String,
+    prompt: String,
+    status: String,
+    cost: f64,
+    tokens_used: u64,
+) -> Result<(), String> {
+    let db_path = crate::db::db_path();
+    let db = crate::db::Database::open(&db_path)?;
+    db.save_agent_session(&id, &model, &prompt, &status, cost, tokens_used)
+}
+
+/// Update agent session in database
+#[tauri::command]
+pub fn update_agent_in_db(
+    id: String,
+    status: String,
+    cost: f64,
+    tokens_used: u64,
+) -> Result<(), String> {
+    let db_path = crate::db::db_path();
+    let db = crate::db::Database::open(&db_path)?;
+    db.update_agent_session(&id, &status, cost, tokens_used)
+}
+
+/// List recent agent sessions from database
+#[tauri::command]
+pub fn list_agent_history(limit: usize) -> Result<Vec<crate::db::AgentSessionRecord>, String> {
+    let db_path = crate::db::db_path();
+    let db = crate::db::Database::open(&db_path)?;
+    db.list_agent_sessions(limit)
+}
