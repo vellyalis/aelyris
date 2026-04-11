@@ -3,6 +3,7 @@ import { Terminal } from "@xterm/xterm";
 
 interface TerminalWithCleanup extends Terminal {
   __ptyCleanup?: () => void;
+  __ptyId?: string;
 }
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
@@ -25,7 +26,6 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
   const onTerminalReady = _onTerminalReady;
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
-  // Track syncMode in a ref so the onData closure always reads the current value
   const syncModeRef = useRef(syncMode);
   useEffect(() => { syncModeRef.current = syncMode; }, [syncMode]);
   const searchAddonRef = useRef<SearchAddon | null>(null);
@@ -35,7 +35,6 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
   const themeId = useAppStore((s) => s.themeId);
   const xtermTheme = useXtermTheme(themeId);
 
-  // Update theme when it changes
   useEffect(() => {
     if (termRef.current) {
       termRef.current.options.theme = xtermTheme;
@@ -60,44 +59,28 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
     const fitAddon = new FitAddon();
     const searchAddon = new SearchAddon();
 
-    // Unicode11 addon for correct CJK character width calculation (must be loaded before open)
     const unicode11 = new Unicode11Addon();
     term.loadAddon(unicode11);
-
     term.loadAddon(fitAddon);
     term.loadAddon(searchAddon);
     term.loadAddon(new WebLinksAddon());
     term.open(containerRef.current);
-
-    // Activate Unicode 11 for proper full-width character handling
     term.unicode.activeVersion = "11";
-
-    // Canvas renderer only — WebGL uses a separate coordinate system that
-    // breaks IME textarea positioning in WebView2 transparent windows.
-    // Canvas handles transparency correctly with allowTransparency: true.
 
     fitAddon.fit();
     termRef.current = term;
     searchAddonRef.current = searchAddon;
 
-    // Custom IME overlay — bypasses WebView2's broken coordinate reporting
     const cleanupIME = setupIMEOverlay(term, containerRef.current);
 
     connectPty(term, shell, cwd, onTerminalReady, syncModeRef);
 
-    // Image paste: intercept Ctrl+V via keydown (capture phase)
-    // paste events don't reliably fire with image data in WebView2 + xterm.js
-    // Instead, catch Ctrl+V, use Clipboard API to check for images
     const handleCtrlV = async (e: KeyboardEvent) => {
       if (!(e.ctrlKey && e.key === "v")) return;
-      // Only if this terminal has focus
       const active = document.activeElement;
       if (!containerRef.current?.contains(active) && active !== term.textarea) return;
-
-      // Prevent xterm from handling it — we handle all paste ourselves
       e.preventDefault();
       e.stopImmediatePropagation();
-
       try {
         const clipItems = await navigator.clipboard.read();
         for (const item of clipItems) {
@@ -117,14 +100,12 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
               }
             };
             reader.readAsDataURL(blob);
-            return; // handled image
+            return;
           }
         }
-        // No image in clipboard — paste text normally
         const text = await navigator.clipboard.readText();
         if (text) term.paste(text);
       } catch {
-        // Clipboard API failed — try text fallback
         try {
           const text = await navigator.clipboard.readText();
           if (text) term.paste(text);
@@ -136,7 +117,6 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
     const handleResize = () => fitAddon.fit();
     window.addEventListener("resize", handleResize);
 
-    // Ctrl+F for search
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.key === "f") {
         e.preventDefault();
@@ -147,8 +127,14 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
     window.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      // Cleanup Tauri PTY event listeners to prevent leaks
       (term as TerminalWithCleanup).__ptyCleanup?.();
+      // Close PTY on unmount — the pane is being destroyed
+      const ptyId = (term as TerminalWithCleanup).__ptyId;
+      if (ptyId) {
+        import("@tauri-apps/api/core").then(({ invoke }) => {
+          invoke("close_terminal", { id: ptyId }).catch(() => {});
+        });
+      }
       cleanupIME();
       document.removeEventListener("keydown", handleCtrlV, { capture: true } as EventListenerOptions);
       window.removeEventListener("resize", handleResize);
@@ -194,90 +180,59 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
           <button className={styles.searchBtn} onClick={handleSearchClose}>×</button>
         </div>
       )}
-      <div className={styles.terminalContainer} ref={containerRef} />
+      <div ref={containerRef} className={styles.terminalContainer} />
     </div>
   );
 }
 
-/**
- * Custom IME composition overlay.
- *
- * WebView2 in transparent frameless windows reports inconsistent screen
- * coordinates to the OS IME system, so the native IME candidate window
- * position is unreliable. Instead of fighting the textarea position, we
- * render the composition text ourselves in a DOM element placed at the
- * cursor location. DOM-internal coordinates are always consistent.
- */
-function setupIMEOverlay(term: Terminal, container: HTMLDivElement): () => void {
+// ── IME overlay ──
+
+function setupIMEOverlay(term: Terminal, container: HTMLElement): () => void {
   const textarea = term.textarea;
   if (!textarea) return () => {};
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const core = (term as any)._core;
-
-  const screen = container.querySelector(".xterm-screen");
-  if (!screen) return () => {};
-
-  // All styles inline — CSS module scoping can't break this
   const overlay = document.createElement("div");
-  overlay.style.cssText = [
-    "position:absolute",
-    "z-index:10",
-    "display:none",
-    "pointer-events:none",
-    `font-family:${term.options.fontFamily || "monospace"}`,
-    `font-size:${term.options.fontSize || 14}px`,
-    "color:#cdd6f4",
-    "background:rgba(49,50,68,0.95)",
-    "border-bottom:2px solid #c8a050",
-    "padding:0 2px",
-    "white-space:pre",
-  ].join(";");
-  screen.appendChild(overlay);
+  overlay.className = styles.imeOverlay;
+  overlay.style.cssText = `
+    position: absolute; display: none; pointer-events: none; z-index: 100;
+    font-family: "IBM Plex Mono", "Cascadia Code", monospace;
+    font-size: 14px; line-height: 1.4;
+    color: var(--text-primary); background: var(--glass-dense);
+    padding: 0 2px; border-radius: 2px;
+  `;
+  container.style.position = "relative";
+  container.appendChild(overlay);
 
   const getCursorPos = () => {
-    const dims = core?._renderService?.dimensions;
-    if (!dims?.css?.cell?.width) return null;
-    return {
-      left: Math.min(term.buffer.active.cursorX, term.cols - 1) * dims.css.cell.width,
-      top: term.buffer.active.cursorY * dims.css.cell.height,
-      cellHeight: dims.css.cell.height,
-    };
+    const cursor = container.querySelector(".xterm-cursor-layer");
+    if (!cursor) return null;
+    const style = window.getComputedStyle(cursor);
+    return { left: parseInt(style.left || "0"), top: parseInt(style.top || "0") };
   };
-
-  const applyPos = (pos: { left: number; top: number; cellHeight: number }) => {
-    overlay.style.left = pos.left + "px";
-    overlay.style.top = pos.top + "px";
-    overlay.style.height = pos.cellHeight + "px";
-    overlay.style.lineHeight = pos.cellHeight + "px";
+  const applyPos = (pos: { left: number; top: number }) => {
+    overlay.style.left = `${pos.left}px`;
+    overlay.style.top = `${pos.top}px`;
   };
-
-  // Hide xterm.js's built-in composition view to avoid double rendering
   const hideXtermComposition = () => {
-    const cv = container.querySelector(".xterm-composition-view") as HTMLElement | null;
-    if (cv) cv.style.opacity = "0";
+    const comp = container.querySelector(".xterm-composition-view") as HTMLElement | null;
+    if (comp) comp.style.display = "none";
   };
   const showXtermComposition = () => {
-    const cv = container.querySelector(".xterm-composition-view") as HTMLElement | null;
-    if (cv) cv.style.opacity = "";
+    const comp = container.querySelector(".xterm-composition-view") as HTMLElement | null;
+    if (comp) comp.style.display = "";
   };
 
   const onStart = () => {
-    const pos = getCursorPos();
-    if (!pos) return;
-    applyPos(pos);
     overlay.style.display = "block";
     overlay.textContent = "";
     hideXtermComposition();
   };
-
   const onUpdate = (e: CompositionEvent) => {
     overlay.textContent = e.data;
     const pos = getCursorPos();
     if (pos) applyPos(pos);
     hideXtermComposition();
   };
-
   const onEnd = () => {
     overlay.style.display = "none";
     overlay.textContent = "";
@@ -314,6 +269,7 @@ async function connectPty(
       cwd: cwd ?? null,
     });
 
+    (term as TerminalWithCleanup).__ptyId = id;
     onReady?.(id);
 
     const unlistenOutput = await listen<string>(`pty-output-${id}`, (event) => {
@@ -329,11 +285,9 @@ async function connectPty(
       term.writeln("\r\n\x1b[90m[Process exited]\x1b[0m");
     });
 
-    // Store cleanup functions on the term object for the caller to use
     (term as TerminalWithCleanup).__ptyCleanup = () => {
       unlistenOutput();
       unlistenExit();
-      invoke("close_terminal", { id }).catch(() => {});
     };
 
     term.onData((data) => {
