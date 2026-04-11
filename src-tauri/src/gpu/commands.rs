@@ -203,9 +203,97 @@ pub fn gpu_search_terminal(
     })
 }
 
+/// Get selected text from a GPU terminal.
+#[tauri::command]
+pub fn gpu_get_selection(
+    app: AppHandle,
+    id: String,
+    start_row: u16,
+    start_col: u16,
+    end_row: u16,
+    end_col: u16,
+) -> Result<String, String> {
+    let gpu_manager = app.state::<GpuTerminalManager>();
+    gpu_manager.with_terminal(&id, |terminal| {
+        let grid = terminal.grid.lock().unwrap();
+        let mut selection = crate::gpu::selection::Selection::new();
+        selection.start(start_row, start_col);
+        selection.update(end_row, end_col);
+
+        let mut text = String::new();
+        if let Some((start, end)) = selection.normalized() {
+            for row in start.row..=end.row {
+                let r = row as usize;
+                if r >= grid.cells.len() { break; }
+                let col_start = if row == start.row { start.col as usize } else { 0 };
+                let col_end = if row == end.row { end.col as usize } else { grid.cols as usize - 1 };
+                for col in col_start..=col_end.min(grid.cells[r].len().saturating_sub(1)) {
+                    let c = grid.cells[r][col].c;
+                    if grid.cells[r][col].width > 0 {
+                        text.push(c);
+                    }
+                }
+                if row < end.row { text.push('\n'); }
+            }
+        }
+        // Trim trailing whitespace per line
+        text.lines().map(|l| l.trim_end()).collect::<Vec<_>>().join("\n")
+    })
+}
+
+/// Detect URLs in a visible row of the GPU terminal.
+#[tauri::command]
+pub fn gpu_detect_links(
+    app: AppHandle,
+    id: String,
+    row: u16,
+) -> Result<Vec<serde_json::Value>, String> {
+    let gpu_manager = app.state::<GpuTerminalManager>();
+    gpu_manager.with_terminal(&id, |terminal| {
+        let grid = terminal.grid.lock().unwrap();
+        let r = row as usize;
+        if r >= grid.cells.len() { return vec![]; }
+        let text: String = grid.cells[r].iter().map(|c| c.c).collect();
+        crate::gpu::link::detect_links(&text)
+            .into_iter()
+            .map(|link| serde_json::json!({
+                "col_start": link.col_start,
+                "col_end": link.col_end,
+                "url": link.url,
+            }))
+            .collect()
+    })
+}
+
+/// Focus a GPU terminal (set keyboard focus to the Child HWND).
+#[tauri::command]
+pub fn gpu_focus_terminal(app: AppHandle, id: String) -> Result<(), String> {
+    let gpu_manager = app.state::<GpuTerminalManager>();
+    gpu_manager.with_terminal(&id, |terminal| {
+        #[cfg(windows)]
+        {
+            // Focus is handled by the Child HWND — will be wired in Phase 7
+        }
+        let _ = terminal;
+    })
+}
+
+/// Set terminal opacity (background alpha).
+#[tauri::command]
+pub fn gpu_set_opacity(
+    app: AppHandle,
+    id: String,
+    _opacity: f32,
+) -> Result<(), String> {
+    let gpu_manager = app.state::<GpuTerminalManager>();
+    gpu_manager.with_terminal(&id, |_terminal| {
+        // Will be applied during render_frame clear color alpha
+        // Stored per-terminal in Phase 7
+    })
+}
+
 /// Get the current terminal renderer mode.
 #[tauri::command]
 pub fn get_terminal_renderer() -> String {
-    // Feature flag — will be configurable in settings
     "wgpu".to_string()
 }

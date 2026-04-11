@@ -134,6 +134,10 @@ pub fn run() {
             gpu::commands::gpu_reposition_terminal,
             gpu::commands::gpu_close_terminal,
             gpu::commands::gpu_search_terminal,
+            gpu::commands::gpu_get_selection,
+            gpu::commands::gpu_detect_links,
+            gpu::commands::gpu_focus_terminal,
+            gpu::commands::gpu_set_opacity,
             gpu::commands::get_terminal_renderer,
         ])
         .run(tauri::generate_context!())
