@@ -8,16 +8,15 @@
 
 ## 現在地
 
-- UI/デザイン刷新: **完了** (ガラス階層, ヘッダー, Mica/Acrylic, オンボーディング)
+- UI/デザイン刷新: **完了**
 - ターミナル基盤: **完了** (ConPTY, multi-shell, IMEオーバーレイ, Canvas描画)
-- send-keys / capture-pane: **完了** (workspace-management-plan Phase 1-2)
-- pane_watcher (Watchdog): **完了**
-- Agent Inspector: **完了** (並列タブ, セッションカラー, ContextGauge)
-- Toolkit: **完了** (JSONインポート, ファイル読込)
-- Editor: **完了** (Monaco + Diff + Markdownプレビュー + Vim)
-- Kanban: **完了** (4列, 優先度, エージェント起動ボタン)
+- send-keys / capture-pane: **完了**
+- Phase 0 (Worktree Deep Integration): **完了** — WorktreeManager, File Watcher, インラインUI
+- Phase 1 (Task-Agent Link): **完了** — Kanban↔Agent双方向リンク, 自動カラム移動
+- Phase 2 (Agent Enrichment): **完了** — 環境変数注入, ポート検出, パーミッションバッジ
+- Phase 3 (Workflow Engine): **完了** — YAML定義, 品質ゲート, WorkflowPanel
 
-**次のマイルストーン: Phase 0 (Worktree Deep Integration)**
+**次のマイルストーン: Phase 4 (SCM Panel)**
 
 ---
 
