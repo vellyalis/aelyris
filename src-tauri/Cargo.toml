@@ -16,6 +16,7 @@ tauri-build = { version = "2", features = [] }
 # Tauri core
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
+tauri-plugin-notification = "2"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -56,3 +57,22 @@ notify = { version = "7", features = ["macos_kqueue"] }
 notify-debouncer-mini = "0.5"
 
 # Window effects: Mica/Acrylic via tauri.conf.json windowEffects (no external crate needed)
+
+# --- GPU terminal renderer (wgpu) ---
+wgpu = "25"
+vte = "0.13"
+fontdue = "0.9"
+unicode-width = "0.2"
+bytemuck = { version = "1", features = ["derive"] }
+raw-window-handle = "0.6"
+
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.61"
+features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Input_Ime",
+    "Win32_Graphics_Gdi",
+    "Win32_Graphics_Dwm",
+    "Win32_System_LibraryLoader",
+]

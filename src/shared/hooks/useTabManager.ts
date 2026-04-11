@@ -86,5 +86,26 @@ export function useTabManager(defaultShell: ShellType = "powershell") {
 
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
 
-  return { tabs, activeTab, activeTabId, setActiveTabId, addTab, closeTab, addTabWithCwd };
+  // Activity tracking for notification badges
+  const [activityTabs, setActivityTabs] = useState<Set<string>>(new Set());
+
+  const markTabActivity = useCallback((tabId: string) => {
+    setActivityTabs((prev) => {
+      if (prev.has(tabId)) return prev;
+      return new Set(prev).add(tabId);
+    });
+  }, []);
+
+  // Clear activity when switching to a tab
+  const selectTab = useCallback((tabId: string) => {
+    setActiveTabId(tabId);
+    setActivityTabs((prev) => {
+      if (!prev.has(tabId)) return prev;
+      const next = new Set(prev);
+      next.delete(tabId);
+      return next;
+    });
+  }, []);
+
+  return { tabs, activeTab, activeTabId, setActiveTabId: selectTab, addTab, closeTab, addTabWithCwd, activityTabs, markTabActivity };
 }

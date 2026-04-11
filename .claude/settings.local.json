@@ -35,7 +35,13 @@
       "Bash(find /c/Users/owner/Aether_Terminal/src/features -name \"*.tsx\" -exec wc -l {} +)",
       "Bash(find /c/Users/owner/Aether_Terminal/src/shared -type f \\\\\\( -name \"*.ts\" -o -name \"*.tsx\" \\\\\\) -exec wc -l {} +)",
       "Bash(pnpm build:*)",
-      "Bash(pnpm test:*)"
+      "Bash(pnpm test:*)",
+      "Bash(git checkout:*)",
+      "Bash(git merge:*)",
+      "WebFetch(domain:zenn.dev)",
+      "Bash(git stash:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ]
   }
 }

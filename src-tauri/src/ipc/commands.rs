@@ -138,6 +138,13 @@ pub fn spawn_terminal(
                             }
                         }
                     }
+
+                    // Bell detection: \x07 in raw output → notify frontend
+                    if data.contains(&0x07) {
+                        let _ = app_handle.emit("terminal:bell", serde_json::json!({
+                            "terminal_id": terminal_id,
+                        }));
+                    }
                 }
                 Err(_) => break,
             }
@@ -1153,4 +1160,10 @@ pub fn lsp_stop(app: AppHandle, language: crate::lsp::LspLanguage, root_path: St
 pub fn lsp_list(app: AppHandle) -> Vec<crate::lsp::LspServerInfo> {
     let manager = app.state::<crate::lsp::LspManager>();
     manager.list()
+}
+
+/// List all files in a project (gitignore-aware for fuzzy finder)
+#[tauri::command]
+pub fn list_all_files(root_path: String, max_files: usize) -> Result<Vec<crate::git::FileListEntry>, String> {
+    crate::git::list_all_files(&root_path, max_files)
 }

@@ -26,6 +26,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(PtyManager::new())
         .manage(AgentManager::new())
         .manage(ipc::OutputBufferRegistry::new())
@@ -33,6 +34,7 @@ pub fn run() {
         .manage(ipc::FsWatcherRegistry::new())
         .manage(workflow::WorkflowExecutor::new())
         .manage(lsp::LspManager::new())
+        .manage(gpu::GpuTerminalManager::new())
         .setup(move |app| {
             // Initialize database as managed state
             let db_path = db::db_path();
@@ -132,6 +134,19 @@ pub fn run() {
             ipc::lsp_request,
             ipc::lsp_stop,
             ipc::lsp_list,
+            ipc::list_all_files,
+            // GPU terminal commands
+            gpu::commands::gpu_spawn_terminal,
+            gpu::commands::gpu_write_terminal,
+            gpu::commands::gpu_resize_terminal,
+            gpu::commands::gpu_reposition_terminal,
+            gpu::commands::gpu_close_terminal,
+            gpu::commands::gpu_search_terminal,
+            gpu::commands::gpu_get_selection,
+            gpu::commands::gpu_detect_links,
+            gpu::commands::gpu_focus_terminal,
+            gpu::commands::gpu_set_opacity,
+            gpu::commands::get_terminal_renderer,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Aether Terminal");
