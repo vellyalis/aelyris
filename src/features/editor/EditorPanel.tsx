@@ -1,6 +1,8 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import Editor, { DiffEditor, type OnMount } from "@monaco-editor/react";
 import { invoke } from "@tauri-apps/api/core";
+import { marked } from "marked";
+import DOMPurify from "dompurify";
 import { EditorBreadcrumb } from "./EditorBreadcrumb";
 import { EditorStatusBar } from "./EditorStatusBar";
 import { useAppStore } from "../../shared/store/appStore";
@@ -44,6 +46,7 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
   const [wordWrap, setWordWrap] = useState(false);
   const [tabSize, setTabSize] = useState(2);
   const [saved, setSaved] = useState(false);
+  const [previewMode, setPreviewMode] = useState(false);
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const vimRef = useRef<{ dispose: () => void } | null>(null);
 
@@ -136,6 +139,13 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
 
   const fileName = filePath.split("/").pop() ?? filePath;
   const language = detectLanguage(filePath);
+  const isMarkdown = language === "markdown";
+
+  const renderedHtml = useMemo(() => {
+    if (!isMarkdown || !previewMode || content === null) return "";
+    const raw = marked.parse(content, { async: false }) as string;
+    return DOMPurify.sanitize(raw);
+  }, [isMarkdown, previewMode, content]);
 
   return (
     <div className={styles.panel}>
@@ -146,6 +156,11 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
           {fileName}
         </span>
         <span className={styles.lang}>{language}</span>
+        {isMarkdown && (
+          <button className={styles.diffBtn} onClick={() => setPreviewMode((v) => !v)} title="Toggle markdown preview">
+            {previewMode ? "Edit" : "Preview"}
+          </button>
+        )}
         <button className={styles.diffBtn} onClick={toggleVim} title="Toggle Vim mode">{vimMode ? "Vim ✓" : "Vim"}</button>
         <button className={styles.diffBtn} onClick={toggleDiff} title="Toggle diff">{diffMode ? "Editor" : "Diff"}</button>
         <button className={styles.closeBtn} onClick={onClose}>×</button>
@@ -153,7 +168,10 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
       <div className={styles.body}>
         {loading && <div className={styles.status}>Loading...</div>}
         {error && <div className={styles.error}>{error}</div>}
-        {content !== null && !loading && !diffMode && (
+        {content !== null && !loading && previewMode && isMarkdown && (
+          <MarkdownPreview html={renderedHtml} />
+        )}
+        {content !== null && !loading && !diffMode && !previewMode && (
           <Editor
             key={filePath}
             defaultValue={content}
@@ -263,5 +281,36 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
       />
       {vimMode && <div id="vim-statusbar" className={styles.vimStatus} />}
     </div>
+  );
+}
+
+/**
+ * Renders DOMPurify-sanitized markdown HTML in a sandboxed iframe.
+ * Content is pre-sanitized via DOMPurify before reaching this component.
+ */
+function MarkdownPreview({ html }: { html: string }) {
+  const srcdoc = `<!DOCTYPE html>
+<html><head><style>
+  body { font-family: 'IBM Plex Sans', sans-serif; color: #cdd6f4; background: transparent; padding: 16px; margin: 0; line-height: 1.6; }
+  h1,h2,h3,h4 { color: #c8a050; margin-top: 1.2em; }
+  a { color: #89b4fa; }
+  code { background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px; font-family: 'IBM Plex Mono', monospace; font-size: 0.9em; }
+  pre { background: rgba(255,255,255,0.04); padding: 12px; border-radius: 8px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  blockquote { border-left: 3px solid #c8a050; margin-left: 0; padding-left: 12px; color: rgba(255,255,255,0.5); }
+  table { border-collapse: collapse; width: 100%; }
+  th,td { border: 1px solid rgba(255,255,255,0.1); padding: 6px 10px; text-align: left; }
+  th { background: rgba(255,255,255,0.04); color: #c8a050; }
+  img { max-width: 100%; }
+  hr { border: none; border-top: 1px solid rgba(255,255,255,0.1); }
+</style></head><body>${html}</body></html>`;
+
+  return (
+    <iframe
+      className={styles.mdPreview}
+      srcDoc={srcdoc}
+      sandbox="allow-same-origin"
+      title="Markdown Preview"
+    />
   );
 }
