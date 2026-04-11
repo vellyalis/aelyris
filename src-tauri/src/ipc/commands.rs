@@ -271,32 +271,20 @@ pub fn git_discard(repo_path: String, paths: Vec<String>) -> Result<(), String> 
 /// Create a commit
 #[tauri::command]
 pub fn git_commit(repo_path: String, message: String) -> Result<String, String> {
-    let output = std::process::Command::new("git")
-        .args(["commit", "-m", &message])
-        .current_dir(&repo_path)
-        .output()
-        .map_err(|e| format!("Git commit failed: {}", e))?;
-    if !output.status.success() {
-        return Err(String::from_utf8_lossy(&output.stderr).to_string());
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    run_git_cmd_with_output(&repo_path, &["commit", "-m", &message])
 }
 
 /// Push to remote
 #[tauri::command]
 pub fn git_push(repo_path: String) -> Result<String, String> {
-    let output = std::process::Command::new("git")
-        .args(["push"])
-        .current_dir(&repo_path)
-        .output()
-        .map_err(|e| format!("Git push failed: {}", e))?;
-    if !output.status.success() {
-        return Err(String::from_utf8_lossy(&output.stderr).to_string());
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    run_git_cmd_with_output(&repo_path, &["push"])
 }
 
 fn run_git_cmd(repo_path: &str, args: &[impl AsRef<std::ffi::OsStr>]) -> Result<(), String> {
+    run_git_cmd_with_output(repo_path, args).map(|_| ())
+}
+
+fn run_git_cmd_with_output(repo_path: &str, args: &[impl AsRef<std::ffi::OsStr>]) -> Result<String, String> {
     let output = std::process::Command::new("git")
         .args(args)
         .current_dir(repo_path)
@@ -305,7 +293,7 @@ fn run_git_cmd(repo_path: &str, args: &[impl AsRef<std::ffi::OsStr>]) -> Result<
     if !output.status.success() {
         return Err(String::from_utf8_lossy(&output.stderr).to_string());
     }
-    Ok(())
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
 /// Search files by name in a directory tree

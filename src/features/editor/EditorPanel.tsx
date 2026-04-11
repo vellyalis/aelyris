@@ -283,44 +283,20 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
         )}
         {/* Inline diff comment input */}
         {diffMode && commentLine !== null && (
-          <div className={styles.commentOverlay}>
-            <div className={styles.commentBox}>
-              <span className={styles.commentLabel}>Line {commentLine} — feedback for agent:</span>
-              <textarea
-                autoFocus
-                className={styles.commentInput}
-                placeholder="Describe what to fix..."
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-                rows={2}
-                onKeyDown={(e) => {
-                  if (e.ctrlKey && e.key === "Enter" && commentText.trim()) {
-                    const lines = (content ?? "").split("\n");
-                    const context = lines.slice(Math.max(0, commentLine! - 3), commentLine! + 2).join("\n");
-                    const prompt = `File: ${filePath}, Line ${commentLine}\n\nContext:\n${context}\n\nFeedback: ${commentText.trim()}\n\nPlease fix this issue.`;
-                    onStartAgent?.(prompt);
-                    setDiffComments((prev) => [...prev, { lineNumber: commentLine!, comment: commentText.trim(), status: "fixing" }]);
-                    setCommentLine(null);
-                    setCommentText("");
-                  }
-                  if (e.key === "Escape") { setCommentLine(null); setCommentText(""); }
-                }}
-              />
-              <div className={styles.commentActions}>
-                <button className={styles.commentSend} onClick={() => {
-                  if (!commentText.trim()) return;
-                  const lines = (content ?? "").split("\n");
-                  const context = lines.slice(Math.max(0, commentLine! - 3), commentLine! + 2).join("\n");
-                  const prompt = `File: ${filePath}, Line ${commentLine}\n\nContext:\n${context}\n\nFeedback: ${commentText.trim()}\n\nPlease fix this issue.`;
-                  onStartAgent?.(prompt);
-                  setDiffComments((prev) => [...prev, { lineNumber: commentLine!, comment: commentText.trim(), status: "fixing" }]);
-                  setCommentLine(null);
-                  setCommentText("");
-                }}>Send to Agent (Ctrl+Enter)</button>
-                <button className={styles.commentCancel} onClick={() => { setCommentLine(null); setCommentText(""); }}>Cancel</button>
-              </div>
-            </div>
-          </div>
+          <DiffCommentInput
+            filePath={filePath}
+            lineNumber={commentLine}
+            content={content}
+            commentText={commentText}
+            onChangeText={setCommentText}
+            onSubmit={(prompt, comment) => {
+              onStartAgent?.(prompt);
+              setDiffComments((prev) => [...prev, { lineNumber: commentLine!, comment, status: "fixing" }]);
+              setCommentLine(null);
+              setCommentText("");
+            }}
+            onCancel={() => { setCommentLine(null); setCommentText(""); }}
+          />
         )}
         {/* Comment badges */}
         {diffMode && diffComments.length > 0 && (
@@ -360,6 +336,46 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
  * Renders DOMPurify-sanitized markdown HTML in a sandboxed iframe.
  * Content is pre-sanitized via DOMPurify before reaching this component.
  */
+function buildCommentPrompt(filePath: string | null, lineNumber: number, content: string | null, comment: string): string {
+  const lines = (content ?? "").split("\n");
+  const context = lines.slice(Math.max(0, lineNumber - 3), lineNumber + 2).join("\n");
+  return `File: ${filePath}, Line ${lineNumber}\n\nContext:\n${context}\n\nFeedback: ${comment}\n\nPlease fix this issue.`;
+}
+
+function DiffCommentInput({ filePath, lineNumber, content, commentText, onChangeText, onSubmit, onCancel }: {
+  filePath: string | null;
+  lineNumber: number;
+  content: string | null;
+  commentText: string;
+  onChangeText: (t: string) => void;
+  onSubmit: (prompt: string, comment: string) => void;
+  onCancel: () => void;
+}) {
+  const submit = () => {
+    if (!commentText.trim()) return;
+    onSubmit(buildCommentPrompt(filePath, lineNumber, content, commentText.trim()), commentText.trim());
+  };
+  return (
+    <div className={styles.commentOverlay}>
+      <div className={styles.commentBox}>
+        <span className={styles.commentLabel}>Line {lineNumber} — feedback for agent:</span>
+        <textarea
+          autoFocus className={styles.commentInput} placeholder="Describe what to fix..."
+          value={commentText} onChange={(e) => onChangeText(e.target.value)} rows={2}
+          onKeyDown={(e) => {
+            if (e.ctrlKey && e.key === "Enter") submit();
+            if (e.key === "Escape") onCancel();
+          }}
+        />
+        <div className={styles.commentActions}>
+          <button className={styles.commentSend} onClick={submit}>Send to Agent (Ctrl+Enter)</button>
+          <button className={styles.commentCancel} onClick={onCancel}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MarkdownPreview({ html }: { html: string }) {
   const srcdoc = `<!DOCTYPE html>
 <html><head><style>

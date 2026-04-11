@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef, lazy, Suspense } from "react";
+import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from "react";
 import appStyles from "./App.module.css";
 import { ProjectHeaderBar } from "./features/header/ProjectHeaderBar";
 import { MenuBar, type Menu } from "./features/menubar/MenuBar";
@@ -12,7 +12,6 @@ import { SCMPanel } from "./features/scm/SCMPanel";
 import { WorkspaceTabs } from "./features/workspace-tabs/WorkspaceTabs";
 import type { CommandItem } from "./features/command-palette/CommandPalette";
 
-// Lazy load heavy components — not needed at initial render
 const EditorPanel = lazy(() => import("./features/editor/EditorPanel").then((m) => ({ default: m.EditorPanel })));
 const CommandPalette = lazy(() => import("./features/command-palette/CommandPalette").then((m) => ({ default: m.CommandPalette })));
 const Settings = lazy(() => import("./features/settings/Settings").then((m) => ({ default: m.Settings })));
@@ -22,6 +21,7 @@ const SearchPanel = lazy(() => import("./features/search/SearchPanel").then((m) 
 const AboutDialog = lazy(() => import("./features/about/AboutDialog").then((m) => ({ default: m.AboutDialog })));
 const PRInspector = lazy(() => import("./features/pr-inspector/PRInspector").then((m) => ({ default: m.PRInspector })));
 const WebInspector = lazy(() => import("./features/web-inspector/WebInspector").then((m) => ({ default: m.WebInspector })));
+
 import { SplitPane } from "./shared/ui/SplitPane";
 import { ErrorBoundary } from "./shared/ui/ErrorBoundary";
 import { TooltipProvider } from "./shared/ui/Tooltip";
@@ -31,6 +31,9 @@ import { OnboardingOverlay } from "./shared/ui/OnboardingOverlay";
 import { useTabManager } from "./shared/hooks/useTabManager";
 import { useAgentManager } from "./shared/hooks/useAgentManager";
 import { useGitStatus } from "./shared/hooks/useGitStatus";
+import { useWorktreeActions } from "./shared/hooks/useWorktreeActions";
+import { useTaskAgentLink } from "./shared/hooks/useTaskAgentLink";
+import { useKeyboardShortcuts } from "./shared/hooks/useKeyboardShortcuts";
 import { useAppStore } from "./shared/store/appStore";
 import { useThemeApplier } from "./shared/hooks/useTheme";
 import { getActivePtyId } from "./features/terminal/hooks/useTerminal";
@@ -52,31 +55,41 @@ export function App() {
     kanbanTasks, moveKanbanTask,
   } = useAppStore();
   useThemeApplier(themeId);
+
   const [editorLine, setEditorLine] = useState<number | undefined>(undefined);
   const [openInDiff, setOpenInDiff] = useState(false);
+  const [fileTreeKey, setFileTreeKey] = useState(0);
 
-  const { tabs, activeTab, activeTabId, setActiveTabId, addTab, closeTab, addTabWithCwd } =
-    useTabManager("powershell");
-  const { sessions, activeSessionId, setActiveSessionId, startAgent, stopAgent } =
-    useAgentManager();
+  const { tabs, activeTab, activeTabId, setActiveTabId, addTab, closeTab, addTabWithCwd } = useTabManager("powershell");
+  const { sessions, activeSessionId, setActiveSessionId, startAgent, stopAgent } = useAgentManager();
 
   const projectPath = activeTab.cwd ?? rootProjectPath ?? "";
   const projectName = projectPath ? projectPath.split("/").filter(Boolean).pop() ?? "Aether" : "Aether";
 
-  // Show window once React has mounted (window starts hidden to avoid white flash)
-  useEffect(() => {
-    import("@tauri-apps/api/window").then(({ getCurrentWindow }) => {
-      getCurrentWindow().show().catch(() => {});
-    }).catch(() => {});
-  }, []);
+  // ── Derived state ──
 
-  useEffect(() => {
-    const title = projectPath ? `${projectName} — Aether Terminal` : "Aether Terminal";
-    document.title = title;
-    import("@tauri-apps/api/window").then(({ getCurrentWindow }) => {
-      getCurrentWindow().setTitle(title).catch(() => {});
-    }).catch(() => {});
-  }, [projectName, projectPath]);
+  const { branch, changedFiles, refresh: refreshGitStatus } = useGitStatus(projectPath);
+  const activeAgent = sessions.find((s) => s.id === activeSessionId);
+  const headerStatus = activeAgent
+    ? (activeAgent.status === "thinking" ? "thinking" : activeAgent.status === "coding" ? "edit" : "idle")
+    : "idle";
+
+  const handleRefresh = useCallback(() => {
+    refreshGitStatus();
+    setFileTreeKey((k) => k + 1);
+  }, [refreshGitStatus]);
+
+  // ── Extracted hooks ──
+
+  const { createWorktree, removeWorktree } = useWorktreeActions({
+    projectPath, sessions, addTabWithCwd, stopAgent, onRefresh: handleRefresh,
+  });
+
+  const { agentStatuses } = useTaskAgentLink({
+    sessions, kanbanTasks, moveKanbanTask,
+  });
+
+  // ── Handlers ──
 
   const handleOpenProject = useCallback((path: string) => {
     const normalized = path.replace(/\\/g, "/");
@@ -105,82 +118,11 @@ export function App() {
     clearFiles();
   }, [setActiveTabId, clearFiles]);
 
-  const { branch, changedFiles, refresh: refreshGitStatus } = useGitStatus(projectPath);
-  const [fileTreeKey, setFileTreeKey] = useState(0);
-
-  const handleRefresh = useCallback(() => {
-    refreshGitStatus();
-    setFileTreeKey((k) => k + 1);
-  }, [refreshGitStatus]);
-
-  const activeAgent = sessions.find((s) => s.id === activeSessionId);
-  const headerStatus = activeAgent
-    ? (activeAgent.status === "thinking" ? "thinking" : activeAgent.status === "coding" ? "edit" : "idle")
-    : "idle";
-
-  // Agent completion → auto-move linked Kanban tasks to "review"
-  const prevSessionStatuses = useRef<Record<string, string>>({});
-  useEffect(() => {
-    for (const s of sessions) {
-      const prev = prevSessionStatuses.current[s.id];
-      if (prev && prev !== "done" && s.status === "done") {
-        const linkedTask = kanbanTasks.find((t) => t.assignedAgentId === s.id);
-        if (linkedTask && linkedTask.column === "in_progress") {
-          moveKanbanTask(linkedTask.id, "review");
-        }
-      }
-      prevSessionStatuses.current[s.id] = s.status;
-    }
-  }, [sessions, kanbanTasks, moveKanbanTask]);
-
-  // Build agentStatuses map for KanbanBoard badges
-  const agentStatuses = useMemo(() => {
-    const map: Record<string, { status: string; cost: number }> = {};
-    for (const s of sessions) {
-      map[s.id] = { status: s.status, cost: s.cost };
-    }
-    return map;
-  }, [sessions]);
-
-  // Worktree handlers
-  const handleCreateWorktree = useCallback(async (_sessionId: string, branchName: string) => {
-    try {
-      const { invoke: tauriInvoke } = await import("@tauri-apps/api/core");
-      const wt = await tauriInvoke<{ name: string; path: string; branch: string; is_main: boolean; head_sha: string; status: string }>("create_worktree", {
-        repoPath: projectPath,
-        branchName,
-      });
-      // Add a terminal tab scoped to the worktree with branch badge
-      addTabWithCwd("powershell", wt.path, branchName);
-      handleRefresh();
-      return { ...wt, status: wt.status as "Clean" | "Modified" | "Conflicted" };
-    } catch {
-      return null;
-    }
-  }, [projectPath, addTabWithCwd, handleRefresh]);
-
-  const handleRemoveWorktree = useCallback(async (sessionId: string) => {
-    const session = sessions.find((s) => s.id === sessionId);
-    if (!session?.worktree) return;
-    try {
-      const { invoke: tauriInvoke } = await import("@tauri-apps/api/core");
-      await tauriInvoke("remove_worktree", {
-        repoPath: projectPath,
-        worktreeName: session.worktree.name,
-        deleteBranch: true,
-      });
-      stopAgent(sessionId);
-      handleRefresh();
-    } catch { /* ignore */ }
-  }, [sessions, projectPath, stopAgent, handleRefresh]);
-
   const handleStartAgent = useCallback(async (prompt: string, model?: string) => {
     try {
-      const agentId = await startAgent(prompt, projectPath, model);
-      addTabWithCwd("powershell", projectPath);
-      return agentId;
-    } catch { /* */ }
-  }, [startAgent, projectPath, addTabWithCwd]);
+      return await startAgent(prompt, projectPath, model);
+    } catch { return undefined; }
+  }, [startAgent, projectPath]);
 
   const handleFileSelect = useCallback((path: string) => {
     setOpenInDiff(false);
@@ -200,25 +142,21 @@ export function App() {
 
   const handleRunCommand = useCallback(async (command: string) => {
     try {
-      const { invoke: tauriInvoke } = await import("@tauri-apps/api/core");
-      // Use the most recently focused terminal
+      const { invoke } = await import("@tauri-apps/api/core");
       const activeId = getActivePtyId();
       if (activeId) {
-        await tauriInvoke("write_terminal", { id: activeId, data: command + "\r" });
+        await invoke("write_terminal", { id: activeId, data: command + "\r" });
         return;
       }
-      // Fallback: try any available terminal
-      const terminals = await tauriInvoke<string[]>("list_terminals");
+      const terminals = await invoke<string[]>("list_terminals");
       if (terminals.length > 0) {
-        await tauriInvoke("write_terminal", { id: terminals[0], data: command + "\r" });
+        await invoke("write_terminal", { id: terminals[0], data: command + "\r" });
       }
     } catch (err) {
       console.error("[handleRunCommand] failed:", err);
     }
   }, []);
 
-  // Kanban move side effects: create worktree + terminal tab when moving to in_progress
-  // Session switching = holistic workspace switch
   const handleSelectSession = useCallback((sessionId: string) => {
     setActiveSessionId(sessionId);
     const agent = sessions.find((s) => s.id === sessionId);
@@ -228,12 +166,32 @@ export function App() {
     }
   }, [sessions, tabs, setActiveSessionId, handleTabSwitch]);
 
-  function navSession(delta: number) {
-    if (sessions.length === 0) return;
-    const idx = sessions.findIndex((s) => s.id === activeSessionId);
-    const next = Math.max(0, Math.min(sessions.length - 1, (idx === -1 ? 0 : idx) + delta));
-    setActiveSessionId(sessions[next].id);
-  }
+  // ── Keyboard shortcuts (extracted hook) ──
+
+  useKeyboardShortcuts({
+    projectPath, addTab, closeTab, activeTabId, activeFile,
+    sessions, activeSessionId, setActiveSessionId,
+    setPaletteVisible, setSettingsVisible, setSearchVisible,
+    handleOpenFolder, handleCloseFile, handleFileSelect, handleStartAgent,
+  });
+
+  // ── Window setup ──
+
+  useEffect(() => {
+    import("@tauri-apps/api/window").then(({ getCurrentWindow }) => {
+      getCurrentWindow().show().catch(() => {});
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const title = projectPath ? `${projectName} — Aether Terminal` : "Aether Terminal";
+    document.title = title;
+    import("@tauri-apps/api/window").then(({ getCurrentWindow }) => {
+      getCurrentWindow().setTitle(title).catch(() => {});
+    }).catch(() => {});
+  }, [projectName, projectPath]);
+
+  // ── Command palette commands ──
 
   const commands: CommandItem[] = useMemo(() => [
     { id: "new-tab-ps", label: "New Terminal: PowerShell", shortcut: "Ctrl+Shift+T", action: () => addTab("powershell") },
@@ -253,6 +211,8 @@ export function App() {
     { id: "search-files", label: "Search in Files", shortcut: "Ctrl+Shift+F", action: () => setSearchVisible(true) },
   ], [addTab, closeTab, activeTabId, activeFile, handleCloseFile, handleStartAgent, handleOpenFolder, handleCloseFolder]);
 
+  // ── Menu bar ──
+
   const menus: Menu[] = useMemo(() => [
     {
       label: "File",
@@ -260,8 +220,8 @@ export function App() {
         { label: "New File", shortcut: "Ctrl+N", action: async () => {
           const name = await showPrompt("New File", { placeholder: "file name..." });
           if (name && projectPath) {
-            const { invoke: inv } = await import("@tauri-apps/api/core");
-            await inv("create_file", { path: `${projectPath}/${name}` }).catch(() => {});
+            const { invoke } = await import("@tauri-apps/api/core");
+            await invoke("create_file", { path: `${projectPath}/${name}` }).catch(() => {});
             handleFileSelect(`${projectPath}/${name}`);
           }
         }},
@@ -306,49 +266,10 @@ export function App() {
         { label: "New WSL", action: () => addTab("wsl") },
       ],
     },
-    {
-      label: "Help",
-      items: [
-        { label: "About Aether Terminal", action: () => setAboutVisible(true) },
-      ],
-    },
+    { label: "Help", items: [{ label: "About Aether Terminal", action: () => setAboutVisible(true) }] },
   ], [handleOpenFolder, handleCloseFolder, addTab, activeFile, handleCloseFile]);
 
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.ctrlKey && !e.shiftKey && e.key === "n") {
-        e.preventDefault();
-        showPrompt("New File", { placeholder: "file name..." }).then(async (name) => {
-          if (name && projectPath) {
-            const { invoke: inv } = await import("@tauri-apps/api/core");
-            await inv("create_file", { path: `${projectPath}/${name}` }).catch(() => {});
-            handleFileSelect(`${projectPath}/${name}`);
-          }
-        });
-      }
-      else if (e.ctrlKey && e.shiftKey && e.key === "P") { e.preventDefault(); setPaletteVisible((v) => !v); }
-      else if (e.ctrlKey && e.shiftKey && e.key === "T") { e.preventDefault(); addTab("powershell"); }
-      else if (e.ctrlKey && e.shiftKey && e.key === "W") { e.preventDefault(); closeTab(activeTabId); }
-      else if (e.ctrlKey && e.shiftKey && e.key === "F") { e.preventDefault(); setSearchVisible((v) => !v); }
-      else if (e.ctrlKey && e.shiftKey && e.key === "O") { e.preventDefault(); handleOpenFolder(); }
-      else if (e.ctrlKey && e.shiftKey && e.key === "E") { e.preventDefault(); setSearchVisible(false); }
-      else if (e.ctrlKey && e.shiftKey && e.key === "A") {
-        e.preventDefault();
-        showPrompt("Start Agent", { placeholder: "What should the agent do?" }).then((p) => { if (p) handleStartAgent(p); });
-      }
-      else if (e.ctrlKey && !e.shiftKey && e.key === "w") { e.preventDefault(); if (activeFile) handleCloseFile(activeFile); }
-      else if (e.ctrlKey && e.key === ",") { e.preventDefault(); setSettingsVisible((v) => !v); }
-      else if (e.ctrlKey && e.key === "[") { e.preventDefault(); navSession(-1); }
-      else if (e.ctrlKey && e.key === "]") { e.preventDefault(); navSession(1); }
-      else if (e.ctrlKey && e.key >= "0" && e.key <= "9") {
-        e.preventDefault();
-        const idx = parseInt(e.key);
-        if (idx < sessions.length) setActiveSessionId(sessions[idx].id);
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [addTab, closeTab, activeTabId, sessions, setActiveSessionId]);
+  // ── Render ──
 
   const terminalTabs = tabs.map((tab) => (
     <div key={tab.id} className={appStyles.terminalTabPane} data-active={tab.id === activeTabId}>
@@ -356,18 +277,13 @@ export function App() {
     </div>
   ));
 
-  // Welcome screen when no project is open
   if (!rootProjectPath) {
     return (
-      <TooltipProvider>
-      <ToastProvider>
+      <TooltipProvider><ToastProvider>
         <div className="app-container">
-          <Suspense fallback={null}>
-            <WelcomeScreen onOpenProject={handleOpenProject} />
-          </Suspense>
+          <Suspense fallback={null}><WelcomeScreen onOpenProject={handleOpenProject} /></Suspense>
         </div>
-      </ToastProvider>
-      </TooltipProvider>
+      </ToastProvider></TooltipProvider>
     );
   }
 
@@ -377,43 +293,29 @@ export function App() {
         {openFiles.map((f) => {
           const name = f.split("/").pop() ?? f;
           return (
-            <button
-              key={f}
-              className={appStyles.editorTab}
-              data-active={f === activeFile}
-              onClick={() => setActiveFile(f)}
-            >
+            <button key={f} className={appStyles.editorTab} data-active={f === activeFile} onClick={() => setActiveFile(f)}>
               {name}
-              <span
-                role="button"
-                className={appStyles.editorTabClose}
-                aria-label={`Close ${name}`}
-                onClick={(e) => { e.stopPropagation(); handleCloseFile(f); }}
-              >×</span>
+              <span role="button" className={appStyles.editorTabClose} aria-label={`Close ${name}`} onClick={(e) => { e.stopPropagation(); handleCloseFile(f); }}>×</span>
             </button>
           );
         })}
       </div>
       <ErrorBoundary>
         <Suspense fallback={<div className={appStyles.editorLoading}>Loading editor...</div>}>
-          <EditorPanel filePath={activeFile} onClose={() => handleCloseFile(activeFile!)} projectPath={projectPath} initialLine={editorLine} initialDiffMode={openInDiff} onStartAgent={(p) => { handleStartAgent(p); }} />
+          <EditorPanel filePath={activeFile} onClose={() => handleCloseFile(activeFile!)} projectPath={projectPath} initialLine={editorLine} initialDiffMode={openInDiff} onStartAgent={handleStartAgent} />
         </Suspense>
       </ErrorBoundary>
     </div>
   ) : null;
 
   return (
-    <TooltipProvider>
-    <ToastProvider>
+    <TooltipProvider><ToastProvider>
     <div className="app-container">
       <ProjectHeaderBar
-        projectName={projectName}
-        branch={branch}
-        changedCount={changedFiles.length}
+        projectName={projectName} branch={branch} changedCount={changedFiles.length}
         status={headerStatus as "idle" | "edit" | "thinking"}
         activeAgent={activeAgent ? { model: activeAgent.model, cost: activeAgent.cost } : null}
-        onOpenSettings={() => setSettingsVisible(true)}
-        onRefresh={handleRefresh}
+        onOpenSettings={() => setSettingsVisible(true)} onRefresh={handleRefresh}
       />
       <MenuBar menus={menus} />
 
@@ -421,61 +323,38 @@ export function App() {
         <div className="left-panel" role="navigation" aria-label="Project sidebar">
           <FileTree key={fileTreeKey} rootPath={projectPath} onFileSelect={handleFileSelect} onOpenDiff={handleOpenDiff} changedFiles={changedFiles} />
           <KanbanBoard onStartAgent={handleStartAgent} projectPath={projectPath} agentStatuses={agentStatuses} />
-          {searchVisible && <Suspense fallback={null}><SearchPanel
-            visible
-            rootPath={projectPath}
-            onClose={() => setSearchVisible(false)}
-            onResultClick={(file, line) => { handleFileSelect(file); setEditorLine(line); }}
-          /></Suspense>}
+          {searchVisible && <Suspense fallback={null}><SearchPanel visible rootPath={projectPath} onClose={() => setSearchVisible(false)} onResultClick={(file, line) => { handleFileSelect(file); setEditorLine(line); }} /></Suspense>}
           <SCMPanel projectPath={projectPath} onOpenFile={handleFileSelect} onOpenDiff={handleOpenDiff} />
         </div>
 
         <div className="center-panel" role="region" aria-label="Terminal and editor">
           {editorArea ? (
-            <SplitPane
-              direction="vertical"
-              defaultRatio={0.5}
-              first={editorArea}
-              second={<div className={appStyles.terminalContainer}>{terminalTabs}</div>}
-            />
-          ) : (
-            terminalTabs
-          )}
+            <SplitPane direction="vertical" defaultRatio={0.5} first={editorArea} second={<div className={appStyles.terminalContainer}>{terminalTabs}</div>} />
+          ) : terminalTabs}
         </div>
 
         <div className="right-panel" role="complementary" aria-label="Agent inspector">
           <AgentInspector
-            sessions={sessions}
-            activeSessionId={activeSessionId}
-            onSelectSession={handleSelectSession}
-            onStartAgent={handleStartAgent}
-            onStopAgent={stopAgent}
-            onCreateWorktree={handleCreateWorktree}
-            onRemoveWorktree={handleRemoveWorktree}
+            sessions={sessions} activeSessionId={activeSessionId}
+            onSelectSession={handleSelectSession} onStartAgent={handleStartAgent} onStopAgent={stopAgent}
+            onCreateWorktree={createWorktree} onRemoveWorktree={removeWorktree}
           />
           <WorkflowPanel projectPath={projectPath} onStartAgent={handleStartAgent} />
           <ToolkitPanel projectName={projectName} onRunCommand={handleRunCommand} />
         </div>
       </main>
 
-      <WorkspaceTabs
-        tabs={tabs}
-        activeTabId={activeTabId}
-        onSelectTab={handleTabSwitch}
-        onCloseTab={closeTab}
-        onNewTab={addTab}
-      />
+      <WorkspaceTabs tabs={tabs} activeTabId={activeTabId} onSelectTab={handleTabSwitch} onCloseTab={closeTab} onNewTab={addTab} />
 
       {paletteVisible && <Suspense fallback={null}><CommandPalette visible onClose={() => setPaletteVisible(false)} commands={commands} /></Suspense>}
       {settingsVisible && <Suspense fallback={null}><Settings visible onClose={() => setSettingsVisible(false)} /></Suspense>}
       {watchdogVisible && <Suspense fallback={null}><WatchdogDialog visible onClose={() => setWatchdogVisible(false)} /></Suspense>}
       {aboutVisible && <Suspense fallback={null}><AboutDialog visible onClose={() => setAboutVisible(false)} /></Suspense>}
       {webInspectorVisible && <Suspense fallback={null}><WebInspector visible onClose={() => setWebInspectorVisible(false)} /></Suspense>}
-      {prInspectorVisible && <Suspense fallback={null}><PRInspector visible projectPath={projectPath} onClose={() => setPrInspectorVisible(false)} onStartReview={(prompt) => handleStartAgent(prompt)} /></Suspense>}
+      {prInspectorVisible && <Suspense fallback={null}><PRInspector visible projectPath={projectPath} onClose={() => setPrInspectorVisible(false)} onStartReview={handleStartAgent} /></Suspense>}
       <PromptDialog />
       <OnboardingOverlay />
     </div>
-    </ToastProvider>
-    </TooltipProvider>
+    </ToastProvider></TooltipProvider>
   );
 }
