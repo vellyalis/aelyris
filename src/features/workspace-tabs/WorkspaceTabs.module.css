@@ -40,6 +40,12 @@
 }
 
 .tabLabel { overflow: hidden; text-overflow: ellipsis; }
+.activityDot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--ctp-green); flex-shrink: 0;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 .branchBadge {
   font-size: 9px;
   font-family: var(--font-mono);

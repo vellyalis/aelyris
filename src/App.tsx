@@ -35,6 +35,7 @@ import { useGitStatus } from "./shared/hooks/useGitStatus";
 import { useWorktreeActions } from "./shared/hooks/useWorktreeActions";
 import { useTaskAgentLink } from "./shared/hooks/useTaskAgentLink";
 import { useKeyboardShortcuts } from "./shared/hooks/useKeyboardShortcuts";
+import { useTerminalNotifications } from "./shared/hooks/useTerminalNotifications";
 import { useAppStore } from "./shared/store/appStore";
 import { useThemeApplier } from "./shared/hooks/useTheme";
 import { getActivePtyId } from "./features/terminal/hooks/useTerminal";
@@ -62,7 +63,7 @@ export function App() {
   const [fileTreeKey, setFileTreeKey] = useState(0);
   const [quickOpenMode, setQuickOpenMode] = useState<"files" | "buffers" | null>(null);
 
-  const { tabs, activeTab, activeTabId, setActiveTabId, addTab, closeTab, addTabWithCwd } = useTabManager("powershell");
+  const { tabs, activeTab, activeTabId, setActiveTabId, addTab, closeTab, addTabWithCwd, activityTabs, markTabActivity } = useTabManager("powershell");
   const { sessions, activeSessionId, setActiveSessionId, startAgent, stopAgent, renameSession } = useAgentManager();
 
   const projectPath = activeTab.cwd ?? rootProjectPath ?? "";
@@ -176,6 +177,10 @@ export function App() {
     setPaletteVisible, setSettingsVisible, setSearchVisible,
     handleOpenFolder, handleCloseFile, handleFileSelect, handleStartAgent, setQuickOpenMode,
   });
+
+  // ── Terminal notifications (bell → tab badge + Windows toast) ──
+
+  useTerminalNotifications({ activeTabId, tabs, onTabActivity: markTabActivity });
 
   // ── Window setup ──
 
@@ -346,7 +351,7 @@ export function App() {
         </div>
       </main>
 
-      <WorkspaceTabs tabs={tabs} activeTabId={activeTabId} onSelectTab={handleTabSwitch} onCloseTab={closeTab} onNewTab={addTab} />
+      <WorkspaceTabs tabs={tabs} activeTabId={activeTabId} activityTabs={activityTabs} onSelectTab={handleTabSwitch} onCloseTab={closeTab} onNewTab={addTab} />
 
       {paletteVisible && <Suspense fallback={null}><CommandPalette visible onClose={() => setPaletteVisible(false)} commands={commands} /></Suspense>}
       {settingsVisible && <Suspense fallback={null}><Settings visible onClose={() => setSettingsVisible(false)} /></Suspense>}

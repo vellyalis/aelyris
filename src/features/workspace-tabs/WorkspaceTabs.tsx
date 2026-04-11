@@ -7,12 +7,13 @@ import styles from "./WorkspaceTabs.module.css";
 interface WorkspaceTabsProps {
   tabs: Tab[];
   activeTabId: string;
+  activityTabs?: Set<string>;
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
   onNewTab: (shell: ShellType) => void;
 }
 
-export function WorkspaceTabs({ tabs, activeTabId, onSelectTab, onCloseTab, onNewTab }: WorkspaceTabsProps) {
+export function WorkspaceTabs({ tabs, activeTabId, activityTabs, onSelectTab, onCloseTab, onNewTab }: WorkspaceTabsProps) {
   return (
     <div className={styles.bar}>
       <Tabs.Root value={activeTabId} onValueChange={onSelectTab}>
@@ -21,6 +22,7 @@ export function WorkspaceTabs({ tabs, activeTabId, onSelectTab, onCloseTab, onNe
             <Tabs.Trigger key={tab.id} value={tab.id} className={styles.tab} asChild>
               <button>
                 <PixelAvatar seed={tab.label} size={12} />
+                {activityTabs?.has(tab.id) && <span className={styles.activityDot} />}
                 <span className={styles.tabLabel}>{tab.label}</span>
                 {tab.worktreeBranch && <span className={styles.branchBadge}>⚡{tab.worktreeBranch}</span>}
                 {tabs.length > 1 && (

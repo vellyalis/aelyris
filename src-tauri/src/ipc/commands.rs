@@ -138,6 +138,13 @@ pub fn spawn_terminal(
                             }
                         }
                     }
+
+                    // Bell detection: \x07 in raw output → notify frontend
+                    if data.contains(&0x07) {
+                        let _ = app_handle.emit("terminal:bell", serde_json::json!({
+                            "terminal_id": terminal_id,
+                        }));
+                    }
                 }
                 Err(_) => break,
             }

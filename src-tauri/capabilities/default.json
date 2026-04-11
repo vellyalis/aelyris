@@ -11,6 +11,7 @@
     "core:window:allow-is-maximized",
     "opener:default",
     "process:allow-exit",
-    "dialog:default"
+    "dialog:default",
+    "notification:default"
   ]
 }
