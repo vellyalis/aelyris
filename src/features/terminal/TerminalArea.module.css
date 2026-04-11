@@ -4,11 +4,13 @@
   flex-direction: column;
   overflow: hidden;
   position: relative;
+  /* Padding moved here from .terminalContainer so it doesn't interfere
+     with WebView2's IME coordinate reporting for the xterm textarea */
+  padding: var(--space-4);
 }
 
 .terminalContainer {
   flex: 1;
-  padding: var(--space-4);
   overflow: hidden;
 }
 
@@ -16,6 +18,7 @@
 .terminalContainer :global(.xterm-viewport) {
   background-color: transparent !important;
 }
+
 
 .searchBar {
   display: flex;

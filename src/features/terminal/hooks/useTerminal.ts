@@ -3,6 +3,7 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { SearchAddon } from "@xterm/addon-search";
+import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
@@ -64,9 +65,13 @@ export function useTerminal(options: UseTerminalOptions = {}) {
       cursorStyle: "bar",
       cursorBlink: true,
       allowTransparency: true,
+      allowProposedApi: true,
       scrollback: 10000,
       convertEol: true,
     });
+
+    const unicode11 = new Unicode11Addon();
+    term.loadAddon(unicode11);
 
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
@@ -74,6 +79,9 @@ export function useTerminal(options: UseTerminalOptions = {}) {
     term.loadAddon(new SearchAddon());
 
     term.open(container);
+
+    // Activate Unicode 11 for proper CJK full-width character handling
+    term.unicode.activeVersion = "11";
 
     // Skip WebGL renderer — it doesn't support transparent backgrounds.
     // Canvas renderer handles transparency correctly with allowTransparency: true.

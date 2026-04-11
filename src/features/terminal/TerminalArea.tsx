@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
-import { WebglAddon } from "@xterm/addon-webgl";
 import { SearchAddon } from "@xterm/addon-search";
 import { WebLinksAddon } from "@xterm/addon-web-links";
+import { Unicode11Addon } from "@xterm/addon-unicode11";
 import "@xterm/xterm/css/xterm.css";
 import type { ShellType } from "../../App";
 import { useAppStore } from "../../shared/store/appStore";
@@ -49,29 +49,35 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
       cursorStyle: "bar",
       cursorBlink: true,
       allowTransparency: true,
+      allowProposedApi: true,
       scrollback: 10000,
     });
 
     const fitAddon = new FitAddon();
     const searchAddon = new SearchAddon();
 
+    // Unicode11 addon for correct CJK character width calculation (must be loaded before open)
+    const unicode11 = new Unicode11Addon();
+    term.loadAddon(unicode11);
+
     term.loadAddon(fitAddon);
     term.loadAddon(searchAddon);
     term.loadAddon(new WebLinksAddon());
     term.open(containerRef.current);
 
-    // Try WebGL renderer
-    try {
-      const webgl = new WebglAddon();
-      webgl.onContextLoss(() => webgl.dispose());
-      term.loadAddon(webgl);
-    } catch {
-      // Falls back to canvas renderer
-    }
+    // Activate Unicode 11 for proper full-width character handling
+    term.unicode.activeVersion = "11";
+
+    // Canvas renderer only — WebGL uses a separate coordinate system that
+    // breaks IME textarea positioning in WebView2 transparent windows.
+    // Canvas handles transparency correctly with allowTransparency: true.
 
     fitAddon.fit();
     termRef.current = term;
     searchAddonRef.current = searchAddon;
+
+    // Custom IME overlay — bypasses WebView2's broken coordinate reporting
+    const cleanupIME = setupIMEOverlay(term, containerRef.current);
 
     connectPty(term, shell, cwd, onTerminalReady, syncModeRef);
 
@@ -89,6 +95,7 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
     window.addEventListener("keydown", handleKeyDown);
 
     return () => {
+      cleanupIME();
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("keydown", handleKeyDown);
       term.dispose();
@@ -135,6 +142,103 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
       <div className={styles.terminalContainer} ref={containerRef} />
     </div>
   );
+}
+
+/**
+ * Custom IME composition overlay.
+ *
+ * WebView2 in transparent frameless windows reports inconsistent screen
+ * coordinates to the OS IME system, so the native IME candidate window
+ * position is unreliable. Instead of fighting the textarea position, we
+ * render the composition text ourselves in a DOM element placed at the
+ * cursor location. DOM-internal coordinates are always consistent.
+ */
+function setupIMEOverlay(term: Terminal, container: HTMLDivElement): () => void {
+  const textarea = term.textarea;
+  if (!textarea) return () => {};
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const core = (term as any)._core;
+
+  const screen = container.querySelector(".xterm-screen");
+  if (!screen) return () => {};
+
+  // All styles inline — CSS module scoping can't break this
+  const overlay = document.createElement("div");
+  overlay.style.cssText = [
+    "position:absolute",
+    "z-index:10",
+    "display:none",
+    "pointer-events:none",
+    `font-family:${term.options.fontFamily || "monospace"}`,
+    `font-size:${term.options.fontSize || 14}px`,
+    "color:#cdd6f4",
+    "background:rgba(49,50,68,0.95)",
+    "border-bottom:2px solid #c8a050",
+    "padding:0 2px",
+    "white-space:pre",
+  ].join(";");
+  screen.appendChild(overlay);
+
+  const getCursorPos = () => {
+    const dims = core?._renderService?.dimensions;
+    if (!dims?.css?.cell?.width) return null;
+    return {
+      left: Math.min(term.buffer.active.cursorX, term.cols - 1) * dims.css.cell.width,
+      top: term.buffer.active.cursorY * dims.css.cell.height,
+      cellHeight: dims.css.cell.height,
+    };
+  };
+
+  const applyPos = (pos: { left: number; top: number; cellHeight: number }) => {
+    overlay.style.left = pos.left + "px";
+    overlay.style.top = pos.top + "px";
+    overlay.style.height = pos.cellHeight + "px";
+    overlay.style.lineHeight = pos.cellHeight + "px";
+  };
+
+  // Hide xterm.js's built-in composition view to avoid double rendering
+  const hideXtermComposition = () => {
+    const cv = container.querySelector(".xterm-composition-view") as HTMLElement | null;
+    if (cv) cv.style.opacity = "0";
+  };
+  const showXtermComposition = () => {
+    const cv = container.querySelector(".xterm-composition-view") as HTMLElement | null;
+    if (cv) cv.style.opacity = "";
+  };
+
+  const onStart = () => {
+    const pos = getCursorPos();
+    if (!pos) return;
+    applyPos(pos);
+    overlay.style.display = "block";
+    overlay.textContent = "";
+    hideXtermComposition();
+  };
+
+  const onUpdate = (e: CompositionEvent) => {
+    overlay.textContent = e.data;
+    const pos = getCursorPos();
+    if (pos) applyPos(pos);
+    hideXtermComposition();
+  };
+
+  const onEnd = () => {
+    overlay.style.display = "none";
+    overlay.textContent = "";
+    showXtermComposition();
+  };
+
+  textarea.addEventListener("compositionstart", onStart);
+  textarea.addEventListener("compositionupdate", onUpdate);
+  textarea.addEventListener("compositionend", onEnd);
+
+  return () => {
+    textarea.removeEventListener("compositionstart", onStart);
+    textarea.removeEventListener("compositionupdate", onUpdate);
+    textarea.removeEventListener("compositionend", onEnd);
+    overlay.remove();
+  };
 }
 
 async function connectPty(
