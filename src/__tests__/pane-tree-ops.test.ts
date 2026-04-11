@@ -96,8 +96,8 @@ describe("collectLeafIds", () => {
 
 describe("countLeaves", () => {
   it("counts correctly for nested tree", () => {
-    let tree = createLeaf("powershell");
-    tree = splitPane(tree, tree.id, "right", "cmd");
+    const leaf = createLeaf("powershell");
+    let tree: ReturnType<typeof splitPane> = splitPane(leaf, leaf.id, "right", "cmd");
     if (tree.type === "split") {
       tree = splitPane(tree, tree.second.id, "down", "wsl");
     }

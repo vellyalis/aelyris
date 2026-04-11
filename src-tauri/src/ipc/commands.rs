@@ -1124,3 +1124,9 @@ pub fn list_agent_history(app: AppHandle, limit: usize) -> Result<Vec<crate::db:
     let db = app.state::<crate::db::ManagedDb>();
     db.with(|d| d.list_agent_sessions(limit))
 }
+
+/// List all files in a project (gitignore-aware for fuzzy finder)
+#[tauri::command]
+pub fn list_all_files(root_path: String, max_files: usize) -> Result<Vec<crate::git::FileListEntry>, String> {
+    crate::git::list_all_files(&root_path, max_files)
+}

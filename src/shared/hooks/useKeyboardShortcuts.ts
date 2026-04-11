@@ -18,13 +18,14 @@ interface UseKeyboardShortcutsOptions {
   handleCloseFile: (path: string) => void;
   handleFileSelect: (path: string) => void;
   handleStartAgent: (prompt: string) => void;
+  setQuickOpenMode?: (mode: "files" | "buffers" | null) => void;
 }
 
 export function useKeyboardShortcuts({
   projectPath, addTab, closeTab, activeTabId, activeFile,
   sessions, activeSessionId, setActiveSessionId,
   setPaletteVisible, setSettingsVisible, setSearchVisible,
-  handleOpenFolder, handleCloseFile, handleFileSelect, handleStartAgent,
+  handleOpenFolder, handleCloseFile, handleFileSelect, handleStartAgent, setQuickOpenMode,
 }: UseKeyboardShortcutsOptions) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -38,6 +39,7 @@ export function useKeyboardShortcuts({
           }
         });
       }
+      else if (e.ctrlKey && !e.shiftKey && e.key === "p") { e.preventDefault(); setQuickOpenMode?.("files"); }
       else if (e.ctrlKey && e.shiftKey && e.key === "P") { e.preventDefault(); setPaletteVisible((v: boolean) => !v); }
       else if (e.ctrlKey && e.shiftKey && e.key === "T") { e.preventDefault(); addTab("powershell"); }
       else if (e.ctrlKey && e.shiftKey && e.key === "W") { e.preventDefault(); closeTab(activeTabId); }
@@ -78,6 +80,6 @@ export function useKeyboardShortcuts({
     projectPath, addTab, closeTab, activeTabId, activeFile,
     sessions, activeSessionId, setActiveSessionId,
     setPaletteVisible, setSettingsVisible, setSearchVisible,
-    handleOpenFolder, handleCloseFile, handleFileSelect, handleStartAgent,
+    handleOpenFolder, handleCloseFile, handleFileSelect, handleStartAgent, setQuickOpenMode,
   ]);
 }

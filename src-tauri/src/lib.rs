@@ -124,6 +124,7 @@ pub fn run() {
             ipc::save_agent_to_db,
             ipc::update_agent_in_db,
             ipc::list_agent_history,
+            ipc::list_all_files,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Aether Terminal");

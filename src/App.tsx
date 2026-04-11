@@ -5,6 +5,7 @@ import { MenuBar, type Menu } from "./features/menubar/MenuBar";
 import { FileTree } from "./features/file-tree/FileTree";
 import { KanbanBoard } from "./features/kanban/KanbanBoard";
 import { PaneTreeContainer } from "./features/terminal/pane-tree";
+const QuickOpen = lazy(() => import("./features/quick-open/QuickOpen").then((m) => ({ default: m.QuickOpen })));
 import { AgentInspector } from "./features/agent-inspector/AgentInspector";
 import { ToolkitPanel } from "./features/toolkit/ToolkitPanel";
 import { WorkflowPanel } from "./features/workflow/WorkflowPanel";
@@ -59,6 +60,7 @@ export function App() {
   const [editorLine, setEditorLine] = useState<number | undefined>(undefined);
   const [openInDiff, setOpenInDiff] = useState(false);
   const [fileTreeKey, setFileTreeKey] = useState(0);
+  const [quickOpenMode, setQuickOpenMode] = useState<"files" | "buffers" | null>(null);
 
   const { tabs, activeTab, activeTabId, setActiveTabId, addTab, closeTab, addTabWithCwd } = useTabManager("powershell");
   const { sessions, activeSessionId, setActiveSessionId, startAgent, stopAgent, renameSession } = useAgentManager();
@@ -172,7 +174,7 @@ export function App() {
     projectPath, addTab, closeTab, activeTabId, activeFile,
     sessions, activeSessionId, setActiveSessionId,
     setPaletteVisible, setSettingsVisible, setSearchVisible,
-    handleOpenFolder, handleCloseFile, handleFileSelect, handleStartAgent,
+    handleOpenFolder, handleCloseFile, handleFileSelect, handleStartAgent, setQuickOpenMode,
   });
 
   // ── Window setup ──
@@ -352,6 +354,7 @@ export function App() {
       {aboutVisible && <Suspense fallback={null}><AboutDialog visible onClose={() => setAboutVisible(false)} /></Suspense>}
       {webInspectorVisible && <Suspense fallback={null}><WebInspector visible onClose={() => setWebInspectorVisible(false)} /></Suspense>}
       {prInspectorVisible && <Suspense fallback={null}><PRInspector visible projectPath={projectPath} onClose={() => setPrInspectorVisible(false)} onStartReview={handleStartAgent} /></Suspense>}
+      {quickOpenMode && <Suspense fallback={null}><QuickOpen projectPath={projectPath} openFiles={openFiles} onSelectFile={handleFileSelect} onClose={() => setQuickOpenMode(null)} initialMode={quickOpenMode} /></Suspense>}
       <PromptDialog />
       <OnboardingOverlay />
     </div>

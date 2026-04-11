@@ -39,6 +39,7 @@
     "dompurify": "^3.3.3",
     "lucide-react": "^1.8.0",
     "marked": "^18.0.0",
+    "match-sorter": "^8.2.0",
     "monaco-editor": "^0.55.1",
     "monaco-vim": "^0.4.4",
     "motion": "^12.38.0",
