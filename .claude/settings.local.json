@@ -5,7 +5,21 @@
       "Bash(rtk pnpm:*)",
       "Bash(rtk cargo:*)",
       "Bash(cargo test:*)",
-      "Bash(cargo check:*)"
+      "Bash(cargo check:*)",
+      "Bash(grep -n \"position\\\\|transform\\\\|translate\\\\|WebGL\\\\|canvas\\\\|iframe\" C:/Users/owner/Aether_Terminal/src/features/terminal/*.tsx C:/Users/owner/Aether_Terminal/src/features/terminal/*.ts)",
+      "Bash(grep:*)",
+      "Read(//c/Users/owner/Desktop/scape//**)",
+      "Read(//c/Users/owner/Desktop/scape/**)",
+      "Bash(rtk npx:*)",
+      "Bash(npx tsc:*)",
+      "Bash(pnpm exec:*)",
+      "Bash(where pnpm:*)",
+      "Bash(where node:*)",
+      "Bash(\"C:/Users/owner/AppData/Local/pnpm/pnpm.cmd\" exec:*)",
+      "Bash(powershell:*)",
+      "Bash(/c/Program Files/PowerShell/7/pwsh.exe:*)",
+      "Bash(pnpm vite:*)",
+      "Bash(pnpm add:*)"
     ]
   }
 }
