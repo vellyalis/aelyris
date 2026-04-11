@@ -2,6 +2,7 @@ pub mod agent;
 mod config;
 pub mod db;
 mod git;
+pub mod gpu;
 mod ipc;
 pub mod pty;
 pub mod session;
