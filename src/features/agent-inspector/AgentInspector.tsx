@@ -1,5 +1,5 @@
-import { useState, useCallback } from "react";
-import { type AgentSession, STATUS_COLORS, STATUS_LABELS } from "../../shared/types/agent";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import { type AgentSession, type AgentStatus, STATUS_COLORS, STATUS_LABELS, getSessionColor } from "../../shared/types/agent";
 import { MODEL_OPTIONS, getModelById } from "../../shared/types/model";
 import { showPrompt } from "../../shared/ui/PromptDialog";
 import { useAppStore } from "../../shared/store/appStore";
@@ -7,7 +7,7 @@ import { PixelAvatar } from "../../shared/ui/PixelAvatar";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
 import { ContextGauge } from "../../shared/ui/ContextGauge";
 import * as RadixContextMenu from "@radix-ui/react-context-menu";
-import { ClipboardCopy, Bell, Plus, Pencil, Activity } from "lucide-react";
+import { ClipboardCopy, Plus, Pencil, Activity, Layers } from "lucide-react";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { ToolBadge } from "../../shared/ui/ToolBadge";
 import { extractToolName } from "../../shared/types/toolBadge";
@@ -22,11 +22,38 @@ interface AgentInspectorProps {
 }
 
 export function AgentInspector({ sessions, activeSessionId, onSelectSession, onStartAgent, onStopAgent }: AgentInspectorProps) {
-  const [tab, setTab] = useState<"sessions" | "activity">("sessions");
+  const [tab, setTab] = useState<"sessions" | "activity" | "parallel">("sessions");
   const [showPromptInput, setShowPromptInput] = useState(false);
   const [promptText, setPromptText] = useState("");
   const { selectedModel, setSelectedModel } = useAppStore();
   const activeSession = sessions.find((s) => s.id === activeSessionId);
+
+  const activeSessions = useMemo(
+    () => sessions.filter((s) => s.status !== "idle" && s.status !== "done"),
+    [sessions],
+  );
+
+  // Sort: active sessions first, then idle, then done
+  const STATUS_ORDER: Record<AgentStatus, number> = {
+    generating: 0, coding: 1, thinking: 2, waiting: 3,
+    error: 4, idle: 5, done: 6,
+  };
+  const sortedSessions = useMemo(
+    () => [...sessions].sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]),
+    [sessions],
+  );
+
+  // Auto-switch to parallel tab when 2+ sessions become active
+  const prevActiveCount = useRef(activeSessions.length);
+  useEffect(() => {
+    if (activeSessions.length >= 2 && prevActiveCount.current < 2 && tab === "sessions") {
+      setTab("parallel");
+    }
+    if (activeSessions.length < 2 && prevActiveCount.current >= 2 && tab === "parallel") {
+      setTab("sessions");
+    }
+    prevActiveCount.current = activeSessions.length;
+  }, [activeSessions.length]);
 
   const handleRenameSession = useCallback(async (session: AgentSession) => {
     const newName = await showPrompt("Rename Session", { defaultValue: session.name });
@@ -48,9 +75,12 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
       <div className={styles.tabBar}>
         <button className={`${styles.tab} ${tab === "sessions" ? styles.tabActive : ""}`} onClick={() => setTab("sessions")}>Sessions</button>
         <button className={`${styles.tab} ${tab === "activity" ? styles.tabActive : ""}`} onClick={() => setTab("activity")}>Activity</button>
+        <button className={`${styles.tab} ${tab === "parallel" ? styles.tabActive : ""}`} onClick={() => setTab("parallel")} title="Parallel session view">
+          <Layers size={11} style={{ marginRight: 3, verticalAlign: -1 }} />
+          {activeSessions.length > 0 && <span className={styles.tabBadge}>{activeSessions.length}</span>}
+        </button>
         <div className={styles.tabActions}>
-          <button className={styles.iconBtn} title="Copy session info"><ClipboardCopy size={12} /></button>
-          <button className={styles.iconBtn} title="Notifications"><Bell size={12} /></button>
+          <button className={styles.iconBtn} title="Copy session info" onClick={() => { if (activeSession) handleCopySessionInfo(activeSession); }}><ClipboardCopy size={12} /></button>
           <button className={styles.iconBtn} title="Add session" onClick={() => setShowPromptInput(true)}><Plus size={12} /></button>
         </div>
       </div>
@@ -102,13 +132,26 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
         <>
           {/* Session cards */}
           <div className={styles.cards}>
-            {sessions.length === 0 && !showPromptInput && (
+            {sortedSessions.length === 0 && !showPromptInput && (
               <EmptyState preset="agents" title="No active agents" description="Press Ctrl+Shift+A to start an agent" />
             )}
-            {sessions.map((s) => (
+            {sortedSessions.map((s) => {
+              const sColor = getSessionColor(s.id);
+              const lastLog = s.logs.length > 0 ? s.logs[s.logs.length - 1] : null;
+              const pct = s.status === "done" ? 100 : s.status === "idle" ? 0 : s.tokensUsed > 0 ? Math.min(95, Math.round((s.tokensUsed / 10000) * 100)) : 2;
+              return (
               <RadixContextMenu.Root key={s.id}>
                 <RadixContextMenu.Trigger asChild>
-                  <button className={`${styles.card} ${s.watchdog ? styles.cardWatchdog : ""} ${s.id === activeSessionId ? styles.cardActive : ""}`} onClick={() => onSelectSession(s.id)}>
+                  <button
+                    className={`${styles.card} ${s.watchdog ? styles.cardWatchdog : ""} ${s.id === activeSessionId ? styles.cardActive : ""}`}
+                    onClick={() => onSelectSession(s.id)}
+                    style={{
+                      "--session-accent": sColor.accent,
+                      "--session-dim": sColor.dim,
+                      "--session-subtle": sColor.subtle,
+                      "--session-glow": sColor.glow,
+                    } as React.CSSProperties}
+                  >
                     <div className={styles.cardTop}>
                       <PixelAvatar seed={s.id} size={36} />
                       <div className={styles.cardInfo}>
@@ -120,12 +163,19 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
                         <div className={styles.cardStatusRow}>
                           <StatusIcon status={s.status} size={10} />
                           <span className={styles.cardStatusLabel} style={{ color: STATUS_COLORS[s.status] }}>{STATUS_LABELS[s.status]}</span>
+                          {pct > 0 && pct < 100 && <span className={styles.cardPct}>{pct}%</span>}
                           {s.filesChanged !== undefined && s.filesChanged > 0 && <span className={styles.cardFiles}>📎{s.filesChanged}</span>}
                           <span className={styles.cardAge}>{formatAge(s.startedAt)}</span>
                         </div>
                       </div>
-                      <ContextGauge percent={s.status === "done" ? 100 : s.status === "idle" ? 0 : s.tokensUsed > 0 ? Math.min(95, (s.tokensUsed / 10000) * 100) : 2} />
+                      <ContextGauge percent={pct} />
                     </div>
+                    {/* Last log preview */}
+                    {lastLog && (
+                      <div className={styles.cardPreview}>
+                        <span className={styles.cardPreviewText}>{lastLog.content}</span>
+                      </div>
+                    )}
                     <div className={styles.cardMeta}>
                       <span className={styles.cardModel}>{s.model}</span>
                       <span className={styles.cardCost}>&lt;${s.cost.toFixed(2)}</span>
@@ -135,8 +185,8 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
                     </div>
                     <div className={styles.progressTrack}>
                       <div className={styles.progressBar} style={{
-                        width: s.status === "done" ? "100%" : s.status === "idle" ? "0%" : s.status === "generating" ? "50%" : "30%",
-                        background: STATUS_COLORS[s.status],
+                        width: `${pct}%`,
+                        background: sColor.accent,
                       }} />
                     </div>
                     {s.watchdog && (
@@ -159,7 +209,8 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
                   </RadixContextMenu.Content>
                 </RadixContextMenu.Portal>
               </RadixContextMenu.Root>
-            ))}
+              );
+            })}
             <div className={styles.navHint}>Ctrl+0-9 Jump · Ctrl+[ Prev · Ctrl+] Next</div>
           </div>
 
@@ -182,7 +233,7 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
             </div>
           )}
         </>
-      ) : (
+      ) : tab === "activity" ? (
         /* Activity tab — unified feed from all sessions */
         <div className={styles.logSection} style={{ flex: 1 }}>
           <div className={styles.logHeader}>All Activity</div>
@@ -193,11 +244,13 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
               .slice(0, 100)
               .map((log, i) => {
                 const tool = log.type === "tool_use" ? extractToolName(log.content) : null;
+                const logColor = getSessionColor(log.sessionId);
                 return (
                 <div key={i} className={`${styles.logEntry} ${styles[`log_${log.type}`]}`}>
                   <span className={styles.logTime}>
                     {new Date(log.timestamp).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                   </span>
+                  <span className={styles.activityDot} style={{ background: logColor.accent }} />
                   <span className={styles.activityName}>{log.sessionName}</span>
                   {tool && <ToolBadge tool={tool} />}
                   <span className={styles.logContent}>{log.content}</span>
@@ -207,6 +260,57 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
               <EmptyState icon={<Activity size={20} />} title="No activity yet" description="Agent logs will appear here" />
             )}
           </div>
+        </div>
+      ) : (
+        /* Parallel tab — stacked mini-logs for all sessions */
+        <div className={styles.parallelView}>
+          {sessions.length === 0 ? (
+            <EmptyState icon={<Layers size={20} />} title="No sessions" description="Start agents to see parallel view" />
+          ) : (
+            sessions.map((s) => {
+              const sColor = getSessionColor(s.id);
+              const pct = s.status === "done" ? 100 : s.status === "idle" ? 0 : s.tokensUsed > 0 ? Math.min(95, Math.round((s.tokensUsed / 10000) * 100)) : 2;
+              return (
+                <div
+                  key={s.id}
+                  className={`${styles.parallelPane} ${s.id === activeSessionId ? styles.parallelPaneActive : ""}`}
+                  style={{ "--session-accent": sColor.accent, "--session-dim": sColor.dim, "--session-glow": sColor.glow } as React.CSSProperties}
+                  onClick={() => onSelectSession(s.id)}
+                >
+                  <div className={styles.parallelHeader}>
+                    <PixelAvatar seed={s.id} size={20} />
+                    <span className={styles.parallelName}>{s.name}</span>
+                    <StatusIcon status={s.status} size={8} />
+                    <span className={styles.parallelStatus} style={{ color: STATUS_COLORS[s.status] }}>{STATUS_LABELS[s.status]}</span>
+                    {pct > 0 && pct < 100 && <span className={styles.parallelPct}>{pct}%</span>}
+                    {s.status !== "done" && s.status !== "idle" && (
+                      <span className={styles.stopBtn} onClick={(e) => { e.stopPropagation(); onStopAgent?.(s.id); }}>■</span>
+                    )}
+                  </div>
+                  <div className={styles.parallelProgress}>
+                    <div className={styles.parallelProgressBar} style={{ width: `${pct}%`, background: sColor.accent }} />
+                  </div>
+                  <div className={styles.parallelLogs}>
+                    {s.logs.slice(-5).map((log, i) => {
+                      const tool = log.type === "tool_use" ? extractToolName(log.content) : null;
+                      return (
+                        <div key={i} className={`${styles.logEntry} ${styles[`log_${log.type}`]}`}>
+                          <span className={styles.logTime}>
+                            {new Date(log.timestamp).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                          </span>
+                          {tool && <ToolBadge tool={tool} />}
+                          <span className={styles.logContent}>{log.content}</span>
+                        </div>
+                      );
+                    })}
+                    {s.logs.length === 0 && (
+                      <span className={styles.parallelEmpty}>Waiting for activity...</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       )}
     </div>

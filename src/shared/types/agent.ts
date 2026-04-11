@@ -40,3 +40,25 @@ export const STATUS_LABELS: Record<AgentStatus, string> = {
   done: "Complete",
   generating: "Generating",
 };
+
+// Scape-inspired session-specific colors for parallel identification
+const SESSION_PALETTE = [
+  { accent: "#7c3aed", dim: "rgba(124, 58, 237, 0.4)", subtle: "rgba(124, 58, 237, 0.2)", glow: "rgba(124, 58, 237, 0.35)" },  // purple
+  { accent: "#2563eb", dim: "rgba(37, 99, 235, 0.4)",  subtle: "rgba(37, 99, 235, 0.2)",  glow: "rgba(37, 99, 235, 0.35)" },   // blue
+  { accent: "#dc2626", dim: "rgba(220, 38, 38, 0.4)",  subtle: "rgba(220, 38, 38, 0.2)",  glow: "rgba(220, 38, 38, 0.35)" },   // red
+  { accent: "#059669", dim: "rgba(5, 150, 105, 0.4)",  subtle: "rgba(5, 150, 105, 0.2)",  glow: "rgba(5, 150, 105, 0.35)" },   // emerald
+  { accent: "#d97706", dim: "rgba(217, 119, 6, 0.4)",  subtle: "rgba(217, 119, 6, 0.2)",  glow: "rgba(217, 119, 6, 0.35)" },   // amber
+  { accent: "#db2777", dim: "rgba(219, 39, 119, 0.4)", subtle: "rgba(219, 39, 119, 0.2)", glow: "rgba(219, 39, 119, 0.35)" },  // pink
+  { accent: "#0891b2", dim: "rgba(8, 145, 178, 0.4)",  subtle: "rgba(8, 145, 178, 0.2)",  glow: "rgba(8, 145, 178, 0.35)" },   // cyan
+  { accent: "#4f46e5", dim: "rgba(79, 70, 229, 0.4)",  subtle: "rgba(79, 70, 229, 0.2)",  glow: "rgba(79, 70, 229, 0.35)" },   // indigo
+] as const;
+
+export type SessionColor = typeof SESSION_PALETTE[number];
+
+export function getSessionColor(sessionId: string): SessionColor {
+  let hash = 0;
+  for (let i = 0; i < sessionId.length; i++) {
+    hash = ((hash << 5) - hash + sessionId.charCodeAt(i)) | 0;
+  }
+  return SESSION_PALETTE[Math.abs(hash) % SESSION_PALETTE.length];
+}
