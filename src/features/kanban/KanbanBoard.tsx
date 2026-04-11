@@ -1,17 +1,20 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { Plus, ChevronRight, Play } from "lucide-react";
+import { Plus, ChevronRight, Play, GitBranch, Bot } from "lucide-react";
 import { useAppStore } from "../../shared/store/appStore";
 import { KANBAN_COLUMNS, type KanbanColumnId, type TaskPriority, PRIORITY_COLORS } from "../../shared/types/kanban";
+import { STATUS_COLORS } from "../../shared/types/agent";
 import styles from "./KanbanBoard.module.css";
 
 interface KanbanBoardProps {
-  onStartAgent?: (prompt: string) => void;
+  onStartAgent?: (prompt: string) => Promise<string | undefined>;
   onActivateTask?: (taskId: string) => void;
   onMoveWithSideEffects?: (taskId: string, toColumn: string) => void;
+  projectPath?: string;
+  agentStatuses?: Record<string, { status: string; cost: number }>;
 }
 
-export function KanbanBoard({ onStartAgent, onActivateTask, onMoveWithSideEffects }: KanbanBoardProps) {
-  const { kanbanTasks, addKanbanTask, moveKanbanTask, deleteKanbanTask, activeTaskId, setActiveTaskId } = useAppStore();
+export function KanbanBoard({ onStartAgent, onActivateTask, onMoveWithSideEffects, projectPath, agentStatuses }: KanbanBoardProps) {
+  const { kanbanTasks, addKanbanTask, moveKanbanTask, deleteKanbanTask, updateKanbanTask, activeTaskId, setActiveTaskId } = useAppStore();
   const [newTitle, setNewTitle] = useState("");
   const [newPriority, setNewPriority] = useState<TaskPriority>("medium");
   const [showForm, setShowForm] = useState(false);
@@ -45,6 +48,27 @@ export function KanbanBoard({ onStartAgent, onActivateTask, onMoveWithSideEffect
     setActiveTaskId(taskId);
     onActivateTask?.(taskId);
   }, [setActiveTaskId, onActivateTask]);
+
+  // Unified task→agent launch: create worktree → start agent → link → move to in_progress
+  const handleLaunchTask = useCallback(async (task: { id: string; title: string }) => {
+    if (!onStartAgent) return;
+    const branchSlug = `task/${task.id.replace("task-", "")}`;
+
+    // Create worktree if projectPath available
+    if (projectPath) {
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        await invoke("create_worktree", { repoPath: projectPath, branchName: branchSlug });
+        updateKanbanTask(task.id, { branch: branchSlug, worktreePath: `${projectPath}-${branchSlug}` });
+      } catch { /* worktree already exists or no git, continue anyway */ }
+    }
+
+    // Start agent and link
+    const sessionId = await onStartAgent(task.title);
+    if (sessionId) {
+      updateKanbanTask(task.id, { assignedAgentId: sessionId, column: "in_progress" });
+    }
+  }, [onStartAgent, projectPath, updateKanbanTask]);
 
   const handleDrop = useCallback((e: React.DragEvent, toColumn: KanbanColumnId) => {
     e.preventDefault();
@@ -124,11 +148,17 @@ export function KanbanBoard({ onStartAgent, onActivateTask, onMoveWithSideEffect
                     >
                       <span className={styles.priorityDot} style={{ background: PRIORITY_COLORS[t.priority ?? "medium"] }} />
                       <span className={styles.itemTitle}>{t.title}</span>
-                      {(t.column === "todo" || t.column === "in_progress") && onStartAgent && (
+                      {t.branch && <GitBranch size={9} className={styles.itemBranchIcon} />}
+                      {t.assignedAgentId && agentStatuses?.[t.assignedAgentId] && (
+                        <span className={styles.itemAgentBadge} style={{ color: STATUS_COLORS[agentStatuses[t.assignedAgentId].status as keyof typeof STATUS_COLORS] ?? "var(--text-muted)" }} title={`Agent: ${agentStatuses[t.assignedAgentId].status}`}>
+                          <Bot size={9} />
+                        </span>
+                      )}
+                      {(t.column === "todo" || t.column === "in_progress") && !t.assignedAgentId && onStartAgent && (
                         <button
                           className={styles.itemAction}
-                          onClick={(e) => { e.stopPropagation(); onStartAgent(t.title); }}
-                          title="Start Agent"
+                          onClick={(e) => { e.stopPropagation(); handleLaunchTask(t); }}
+                          title="Launch Agent + Worktree"
                         ><Play size={10} /></button>
                       )}
                       <button

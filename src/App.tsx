@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef, lazy, Suspense } from "react";
 import appStyles from "./App.module.css";
 import { ProjectHeaderBar } from "./features/header/ProjectHeaderBar";
 import { MenuBar, type Menu } from "./features/menubar/MenuBar";
@@ -47,6 +47,7 @@ export function App() {
     webInspectorVisible, setWebInspectorVisible,
     prInspectorVisible, setPrInspectorVisible,
     openFiles, activeFile, openFile, closeFile, clearFiles, setActiveFile,
+    kanbanTasks, moveKanbanTask,
   } = useAppStore();
   useThemeApplier(themeId);
   const [editorLine, setEditorLine] = useState<number | undefined>(undefined);
@@ -114,6 +115,30 @@ export function App() {
   const headerStatus = activeAgent
     ? (activeAgent.status === "thinking" ? "thinking" : activeAgent.status === "coding" ? "edit" : "idle")
     : "idle";
+
+  // Agent completion → auto-move linked Kanban tasks to "review"
+  const prevSessionStatuses = useRef<Record<string, string>>({});
+  useEffect(() => {
+    for (const s of sessions) {
+      const prev = prevSessionStatuses.current[s.id];
+      if (prev && prev !== "done" && s.status === "done") {
+        const linkedTask = kanbanTasks.find((t) => t.assignedAgentId === s.id);
+        if (linkedTask && linkedTask.column === "in_progress") {
+          moveKanbanTask(linkedTask.id, "review");
+        }
+      }
+      prevSessionStatuses.current[s.id] = s.status;
+    }
+  }, [sessions, kanbanTasks, moveKanbanTask]);
+
+  // Build agentStatuses map for KanbanBoard badges
+  const agentStatuses = useMemo(() => {
+    const map: Record<string, { status: string; cost: number }> = {};
+    for (const s of sessions) {
+      map[s.id] = { status: s.status, cost: s.cost };
+    }
+    return map;
+  }, [sessions]);
 
   // Worktree handlers
   const handleCreateWorktree = useCallback(async (_sessionId: string, branchName: string) => {
@@ -393,7 +418,7 @@ export function App() {
       <main className="app-main" role="main">
         <div className="left-panel" role="navigation" aria-label="Project sidebar">
           <FileTree key={fileTreeKey} rootPath={projectPath} onFileSelect={handleFileSelect} onOpenDiff={handleOpenDiff} changedFiles={changedFiles} />
-          <KanbanBoard onStartAgent={handleStartAgent} />
+          <KanbanBoard onStartAgent={handleStartAgent} projectPath={projectPath} agentStatuses={agentStatuses} />
           {searchVisible && <Suspense fallback={null}><SearchPanel
             visible
             rootPath={projectPath}

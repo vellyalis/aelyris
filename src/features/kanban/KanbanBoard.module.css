@@ -217,6 +217,9 @@
 .item:hover .itemAction { opacity: 1; }
 .itemAction:hover { color: var(--ctp-green); }
 
+.itemBranchIcon { color: var(--ctp-green); opacity: 0.6; flex-shrink: 0; }
+.itemAgentBadge { display: flex; align-items: center; flex-shrink: 0; }
+
 .itemDelete {
   background: none;
   border: none;
