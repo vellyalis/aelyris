@@ -1057,6 +1057,12 @@ pub struct WorkflowPhaseInfo {
     pub gate_type: Option<String>,
 }
 
+/// Emit workflow status update event to frontend
+fn emit_workflow_update(app: &AppHandle, executor: &crate::workflow::WorkflowExecutor) {
+    let statuses = executor.list();
+    let _ = app.emit("workflow-updated", statuses);
+}
+
 /// Record that an agent was started for the current phase
 #[tauri::command]
 pub fn workflow_set_agent(
@@ -1065,7 +1071,9 @@ pub fn workflow_set_agent(
     agent_session_id: String,
 ) -> Result<(), String> {
     let executor = app.state::<crate::workflow::WorkflowExecutor>();
-    executor.set_phase_agent(&workflow_id, &agent_session_id)
+    executor.set_phase_agent(&workflow_id, &agent_session_id)?;
+    emit_workflow_update(&app, &executor);
+    Ok(())
 }
 
 /// Mark current phase as waiting for gate approval
@@ -1076,7 +1084,9 @@ pub fn workflow_phase_done(
     cost: f64,
 ) -> Result<(), String> {
     let executor = app.state::<crate::workflow::WorkflowExecutor>();
-    executor.phase_waiting_gate(&workflow_id, cost)
+    executor.phase_waiting_gate(&workflow_id, cost)?;
+    emit_workflow_update(&app, &executor);
+    Ok(())
 }
 
 /// Approve the current quality gate → advance to next phase
@@ -1086,7 +1096,9 @@ pub fn workflow_approve_gate(
     workflow_id: String,
 ) -> Result<bool, String> {
     let executor = app.state::<crate::workflow::WorkflowExecutor>();
-    executor.approve_gate(&workflow_id)
+    let done = executor.approve_gate(&workflow_id)?;
+    emit_workflow_update(&app, &executor);
+    Ok(done)
 }
 
 /// Reject the current quality gate → retry the phase
@@ -1096,7 +1108,9 @@ pub fn workflow_reject_gate(
     workflow_id: String,
 ) -> Result<(), String> {
     let executor = app.state::<crate::workflow::WorkflowExecutor>();
-    executor.reject_gate(&workflow_id)
+    executor.reject_gate(&workflow_id)?;
+    emit_workflow_update(&app, &executor);
+    Ok(())
 }
 
 /// Get workflow execution status

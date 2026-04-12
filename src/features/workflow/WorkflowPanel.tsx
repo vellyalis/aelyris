@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Play, CheckCircle, XCircle, Clock, ChevronRight, Loader, Workflow } from "lucide-react";
 import { toast } from "../../shared/store/toastStore";
+import { showPrompt } from "../../shared/ui/PromptDialog";
 import styles from "./WorkflowPanel.module.css";
 
 const WorkflowBuilder = lazy(() => import("./WorkflowBuilder").then((m) => ({ default: m.WorkflowBuilder })));
@@ -71,33 +72,42 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
     invoke<WorkflowSummary[]>("list_workflows", { projectPath }).then(setWorkflows).catch(() => {});
   }, [projectPath]);
 
-  // Poll running workflows — filter out completed ones
+  // Event-driven workflow status updates (with fallback polling)
   useEffect(() => {
     let active = true;
     const TERMINAL_STATUSES = new Set(["passed", "failed", "skipped"]);
     const isFinished = (wf: WorkflowStatus) =>
       wf.phases.every((p) => TERMINAL_STATUSES.has(p.status));
 
-    const poll = async () => {
-      try {
-        const r = await invoke<WorkflowStatus[]>("list_running_workflows");
-        if (!active) return;
-        // Filter out fully-completed workflows
-        const stillRunning = r.filter((wf) => !isFinished(wf));
-        setRunning(stillRunning);
-        // Auto-remove completed workflows from Rust side
-        for (const wf of r) {
-          if (isFinished(wf)) {
-            invoke("workflow_remove", { workflowId: wf.id }).catch(() => {});
-          }
+    const processUpdate = (statuses: WorkflowStatus[]) => {
+      if (!active) return;
+      const stillRunning = statuses.filter((wf) => !isFinished(wf));
+      setRunning(stillRunning);
+      for (const wf of statuses) {
+        if (isFinished(wf)) {
+          invoke("workflow_remove", { workflowId: wf.id }).catch(() => {});
         }
-      } catch {
-        if (active) setRunning([]);
       }
     };
+
+    // Listen for real-time updates from Rust
+    let unlisten: (() => void) | null = null;
+    import("@tauri-apps/api/event").then(({ listen }) => {
+      listen<WorkflowStatus[]>("workflow-updated", (e) => {
+        processUpdate(e.payload);
+      }).then((u) => { unlisten = u; });
+    });
+
+    // Initial fetch + slow fallback poll (30s instead of 3s)
+    const poll = () => {
+      invoke<WorkflowStatus[]>("list_running_workflows")
+        .then(processUpdate)
+        .catch(() => { if (active) setRunning([]); });
+    };
     poll();
-    const interval = setInterval(poll, 3000);
-    return () => { active = false; clearInterval(interval); };
+    const interval = setInterval(poll, 30_000);
+
+    return () => { active = false; clearInterval(interval); unlisten?.(); };
   }, []);
 
   const advancePhase = useCallback(async (workflowId: string) => {
@@ -130,7 +140,10 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
   const handleApprove = useCallback(async (workflowId: string) => {
     try {
       const done = await invoke<boolean>("workflow_approve_gate", { workflowId });
-      if (!done) {
+      if (done) {
+        toast.success("Workflow completed", "All phases passed");
+      } else {
+        toast.info("Phase approved", "Advancing to next phase...");
         await advancePhase(workflowId);
       }
     } catch (e) {
@@ -139,10 +152,15 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
   }, [advancePhase]);
 
   const handleReject = useCallback(async (workflowId: string) => {
+    // Confirm before rejecting — this stops the entire workflow
+    const confirmed = await showPrompt("Reject this phase?", {
+      placeholder: "Type 'reject' to confirm",
+      defaultValue: "",
+    });
+    if (confirmed !== "reject") return;
+
     try {
       await invoke("workflow_reject_gate", { workflowId });
-      // Rejection stops the workflow — do NOT advance to next phase.
-      // Remove from running list since it's effectively cancelled.
       setRunning((prev) => prev.filter((wf) => wf.id !== workflowId));
       toast.warning("Workflow rejected", "Workflow has been stopped");
       invoke("workflow_remove", { workflowId }).catch(() => {});

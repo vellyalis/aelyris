@@ -116,8 +116,10 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
     };
     document.addEventListener("keydown", handleCtrlV, { capture: true });
 
-    const handleResize = () => fitAddon.fit();
-    window.addEventListener("resize", handleResize);
+    // Use ResizeObserver on container instead of window resize
+    // This correctly handles SplitPane drag, maximize, and window resize
+    const resizeObserver = new ResizeObserver(() => { fitAddon.fit(); });
+    resizeObserver.observe(containerRef.current);
 
     const handleKeyDown = (e: KeyboardEvent) => {
       // Only handle if THIS terminal has focus
@@ -137,7 +139,7 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
       (term as TerminalWithCleanup).__ptyCleanup?.();
       cleanupIME();
       document.removeEventListener("keydown", handleCtrlV, { capture: true } as EventListenerOptions);
-      window.removeEventListener("resize", handleResize);
+      resizeObserver.disconnect();
       window.removeEventListener("keydown", handleKeyDown);
       term.dispose();
       termRef.current = null;
