@@ -103,22 +103,33 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
 
   useEffect(() => {
     if (!filePath) return;
+    let cancelled = false;
     setLoading(true);
     setError(null);
     setModified(false);
     setDiffMode(false);
-    invoke<string>("read_file", { path: filePath })
-      .then((data) => {
+
+    (async () => {
+      try {
+        const data = await invoke<string>("read_file", { path: filePath });
+        if (cancelled) return;
         setContent(data);
-        setLoading(false);
-        // Auto-open diff if requested
         if (initialDiffMode && projectPath) {
-          invoke<string>("git_file_original", { repoPath: projectPath, filePath })
-            .then((orig) => { setOriginalContent(orig); setDiffMode(true); })
-            .catch(() => { setOriginalContent(""); setDiffMode(true); });
+          try {
+            const orig = await invoke<string>("git_file_original", { repoPath: projectPath, filePath });
+            if (!cancelled) { setOriginalContent(orig); setDiffMode(true); }
+          } catch {
+            if (!cancelled) { setOriginalContent(""); setDiffMode(true); }
+          }
         }
-      })
-      .catch((err) => { setError(String(err)); setLoading(false); });
+      } catch (err) {
+        if (!cancelled) setError(String(err));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
   }, [filePath]);
 
   // Reload file when window regains focus (external change detection)

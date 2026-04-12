@@ -50,6 +50,12 @@ export function useKeyboardShortcuts({
         e.preventDefault();
         showPrompt("Start Agent", { placeholder: "What should the agent do?" }).then((p) => { if (p) handleStartAgent(p); });
       }
+      else if (e.ctrlKey && e.key === "`") {
+        // Ctrl+` — focus the active terminal pane
+        e.preventDefault();
+        const xterm = document.querySelector(".xterm-helper-textarea") as HTMLTextAreaElement | null;
+        xterm?.focus();
+      }
       else if (e.ctrlKey && !e.shiftKey && e.key === "w") { e.preventDefault(); if (activeFile) handleCloseFile(activeFile); }
       else if (e.ctrlKey && e.key === ",") { e.preventDefault(); setSettingsVisible((v: boolean) => !v); }
       else if (e.ctrlKey && e.key === "[") {

@@ -31,10 +31,10 @@ export function TerminalInfoBar({ shell, cwd, branch, activeAgent, isActive: _is
         </>
       )}
       {onSplitRight && (
-        <button className={styles.toggleBtn} onClick={onSplitRight} title="Split Right (Alt+Shift+Right)">⎸</button>
+        <button className={styles.toggleBtn} onClick={onSplitRight} title="Split Right (Alt+Shift+Right)" aria-label="Split pane right">⎸</button>
       )}
       {onSplitDown && (
-        <button className={styles.toggleBtn} onClick={onSplitDown} title="Split Down (Alt+Shift+Down)">⎯</button>
+        <button className={styles.toggleBtn} onClick={onSplitDown} title="Split Down (Alt+Shift+Down)" aria-label="Split pane down">⎯</button>
       )}
       {onToggleSync && (
         <button
@@ -48,12 +48,12 @@ export function TerminalInfoBar({ shell, cwd, branch, activeAgent, isActive: _is
         </button>
       )}
       {onToggleMaximize && (
-        <button className={styles.toggleBtn} onClick={onToggleMaximize} title={isMaximized ? "Restore" : "Maximize"}>
+        <button className={styles.toggleBtn} onClick={onToggleMaximize} title={isMaximized ? "Restore" : "Maximize"} aria-label={isMaximized ? "Restore pane" : "Maximize pane"}>
           {isMaximized ? "⊟" : "□"}
         </button>
       )}
       {onClose && (
-        <button className={styles.toggleBtn} onClick={onClose} title="Close Pane (Ctrl+Shift+W)">×</button>
+        <button className={styles.toggleBtn} onClick={onClose} title="Close Pane (Ctrl+Shift+W)" aria-label="Close pane">×</button>
       )}
     </div>
   );

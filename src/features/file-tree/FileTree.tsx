@@ -4,6 +4,7 @@ import * as RadixContextMenu from "@radix-ui/react-context-menu";
 import { showPrompt } from "../../shared/ui/PromptDialog";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { FileIcon } from "./FileIcon";
+import { toast } from "../../shared/store/toastStore";
 import styles from "./FileTree.module.css";
 
 interface FileEntry {
@@ -60,7 +61,7 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
     try {
       await invoke("create_file", { path: `${dir}/${name}` });
       reloadDir(dir);
-    } catch { /* ignore */ }
+    } catch (e) { toast.error("Failed to create file", String(e)); }
   }, [reloadDir]);
 
   const handleNewFolder = useCallback(async (dir: string) => {
@@ -69,7 +70,7 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
     try {
       await invoke("create_directory", { path: `${dir}/${name}` });
       reloadDir(dir);
-    } catch { /* ignore */ }
+    } catch (e) { toast.error("Failed to create folder", String(e)); }
   }, [reloadDir]);
 
   const handleRename = useCallback(async (path: string) => {
@@ -80,7 +81,7 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
     try {
       await invoke("rename_path", { oldPath: path, newPath: `${parentDir}/${newName}` });
       reloadDir(parentDir);
-    } catch { /* ignore */ }
+    } catch (e) { toast.error("Rename failed", String(e)); }
   }, [reloadDir]);
 
   const handleDelete = useCallback(async (path: string) => {
@@ -90,7 +91,7 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
     try {
       await invoke("delete_path", { path });
       reloadDir(parentDir);
-    } catch { /* ignore */ }
+    } catch (e) { toast.error("Delete failed", String(e)); }
   }, [reloadDir]);
 
   const toggleDir = useCallback(async (dirPath: string) => {

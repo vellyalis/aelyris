@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { GitBranch, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { EmptyState } from "../../shared/ui/EmptyState";
+import { toast } from "../../shared/store/toastStore";
 import styles from "./WorktreeManager.module.css";
 
 interface WorktreeInfo {
@@ -41,11 +42,13 @@ export function WorktreeManager({ projectPath, onSwitch }: WorktreeManagerProps)
     setCreateError(null);
     try {
       await invoke("create_worktree", { repoPath: projectPath, branchName: newBranch.trim() });
+      toast.success("Worktree created", newBranch.trim());
       setNewBranch("");
       setShowCreate(false);
       await loadWorktrees();
     } catch (err) {
       setCreateError(String(err));
+      toast.error("Worktree creation failed", String(err));
     } finally {
       setLoading(false);
     }

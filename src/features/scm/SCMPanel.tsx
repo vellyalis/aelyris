@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ChevronRight, Plus, Minus, Undo2, Check, Upload, FileText } from "lucide-react";
+import { toast } from "../../shared/store/toastStore";
 import styles from "./SCMPanel.module.css";
 
 interface ChangedFile {
@@ -98,9 +99,10 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
     try {
       await invoke("git_commit", { repoPath: projectPath, message: commitMsg.trim() });
       setCommitMsg("");
+      toast.success("Committed", commitMsg.trim().slice(0, 50));
       refresh();
     } catch (e) {
-      /* commit error — user sees no new commit in UI */
+      toast.error("Commit failed", String(e));
     } finally { setLoading(false); }
   }, [commitMsg, projectPath, refresh]);
 
@@ -111,9 +113,10 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
       await invoke("git_commit", { repoPath: projectPath, message: commitMsg.trim() });
       await invoke("git_push", { repoPath: projectPath });
       setCommitMsg("");
+      toast.success("Committed & pushed", commitMsg.trim().slice(0, 50));
       refresh();
     } catch (e) {
-      /* commit & push error */
+      toast.error("Commit & push failed", String(e));
     } finally { setLoading(false); }
   }, [commitMsg, projectPath, refresh]);
 

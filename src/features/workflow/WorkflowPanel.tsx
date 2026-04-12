@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Play, CheckCircle, XCircle, Clock, ChevronRight, Loader, Workflow } from "lucide-react";
+import { toast } from "../../shared/store/toastStore";
 import styles from "./WorkflowPanel.module.css";
 
 const WorkflowBuilder = lazy(() => import("./WorkflowBuilder").then((m) => ({ default: m.WorkflowBuilder })));
@@ -119,9 +120,10 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
         taskTitle: title,
       });
       setRunning((prev) => [...prev, status]);
+      toast.info("Workflow started", title);
       await advancePhase(status.id);
     } catch (e) {
-      /* workflow start error */
+      toast.error("Workflow failed to start", String(e));
     }
   }, [projectPath, advancePhase]);
 
@@ -132,7 +134,7 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
         await advancePhase(workflowId);
       }
     } catch (e) {
-      /* gate approve error */
+      toast.error("Gate approval failed", String(e));
     }
   }, [advancePhase]);
 
@@ -142,9 +144,10 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
       // Rejection stops the workflow — do NOT advance to next phase.
       // Remove from running list since it's effectively cancelled.
       setRunning((prev) => prev.filter((wf) => wf.id !== workflowId));
+      toast.warning("Workflow rejected", "Workflow has been stopped");
       invoke("workflow_remove", { workflowId }).catch(() => {});
-    } catch {
-      /* gate reject error */
+    } catch (e) {
+      toast.error("Gate rejection failed", String(e));
     }
   }, []);
 
