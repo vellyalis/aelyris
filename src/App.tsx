@@ -213,8 +213,35 @@ export function App() {
   useEffect(() => {
     import("@tauri-apps/api/window").then(({ getCurrentWindow }) => {
       const win = getCurrentWindow();
+
+      // Restore window position/size
+      try {
+        const saved = localStorage.getItem("aether:windowBounds");
+        if (saved) {
+          const { x, y, width, height, maximized } = JSON.parse(saved);
+          if (width > 0 && height > 0) {
+            import("@tauri-apps/api/dpi").then(({ LogicalPosition: LP, LogicalSize: LS }) => {
+              win.setPosition(new LP(x, y)).catch(() => {});
+              win.setSize(new LS(width, height)).catch(() => {});
+            }).catch(() => {});
+          }
+          if (maximized) win.maximize().catch(() => {});
+        }
+      } catch { /* ignore */ }
+
       win.show().catch(() => {});
+
       win.onCloseRequested(async (event) => {
+        // Save window position/size before close
+        try {
+          const pos = await win.outerPosition();
+          const size = await win.outerSize();
+          const maximized = await win.isMaximized();
+          localStorage.setItem("aether:windowBounds", JSON.stringify({
+            x: pos.x, y: pos.y, width: size.width, height: size.height, maximized,
+          }));
+        } catch { /* ignore */ }
+
         const { unsavedFiles } = useAppStore.getState();
         if (unsavedFiles.size > 0) {
           const ok = window.confirm(`${unsavedFiles.size} file(s) have unsaved changes. Close anyway?`);

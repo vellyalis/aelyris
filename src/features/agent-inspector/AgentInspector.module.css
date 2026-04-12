@@ -32,7 +32,8 @@
 }
 .tab:hover { color: var(--text-secondary); background: var(--white-4); }
 .tabActive { color: var(--text-primary); font-weight: 600; }
-.tabActions { margin-left: auto; display: flex; gap: var(--space-2); }
+.tabActions { margin-left: auto; display: flex; gap: var(--space-2); align-items: center; }
+.totalCost { font-size: var(--text-xs); font-family: var(--font-mono); color: var(--ctp-green); opacity: 0.7; }
 .iconBtn {
   background: none;
   border: none;

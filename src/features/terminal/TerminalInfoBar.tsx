@@ -1,3 +1,4 @@
+import { memo } from "react";
 import styles from "./TerminalInfoBar.module.css";
 
 interface TerminalInfoBarProps {
@@ -15,7 +16,7 @@ interface TerminalInfoBarProps {
   onClose?: () => void;
 }
 
-export function TerminalInfoBar({ shell, cwd, branch, activeAgent, isActive: _isActive, isMaximized, onToggleMaximize, syncMode, onToggleSync, onSplitRight, onSplitDown, onClose }: TerminalInfoBarProps) {
+export const TerminalInfoBar = memo(function TerminalInfoBar({ shell, cwd, branch, activeAgent, isActive: _isActive, isMaximized, onToggleMaximize, syncMode, onToggleSync, onSplitRight, onSplitDown, onClose }: TerminalInfoBarProps) {
   const dir = cwd?.split("/").filter(Boolean).slice(-2).join("/") ?? "";
 
   return (
@@ -57,4 +58,4 @@ export function TerminalInfoBar({ shell, cwd, branch, activeAgent, isActive: _is
       )}
     </div>
   );
-}
+});

@@ -65,6 +65,11 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
     [sessions],
   );
 
+  const totalCost = useMemo(
+    () => sessions.reduce((sum, s) => sum + s.cost, 0),
+    [sessions],
+  );
+
   const prevActiveCount = useRef(activeSessions.length);
   useEffect(() => {
     if (activeSessions.length >= 2 && prevActiveCount.current < 2 && tab === "sessions") {
@@ -99,6 +104,7 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
           {activeSessions.length > 0 && <span className={styles.tabBadge}>{activeSessions.length}</span>}
         </button>
         <div className={styles.tabActions}>
+          {totalCost > 0 && <span className={styles.totalCost} title="Total session cost">${totalCost.toFixed(2)}</span>}
           <button className={styles.iconBtn} title="Copy session info" onClick={() => { if (activeSession) handleCopySessionInfo(activeSession); }}><ClipboardCopy size={12} /></button>
           <button className={styles.iconBtn} title="Add session" onClick={() => setShowPromptInput(true)}><Plus size={12} /></button>
         </div>
