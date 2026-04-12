@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use wgpu::util::DeviceExt;
 
 use crate::gpu::atlas::GlyphAtlas;
@@ -90,8 +91,8 @@ fn color_to_rgba(c: Color, is_fg: bool) -> [f32; 4] {
 
 /// The wgpu terminal renderer with full GPU pipeline.
 pub struct TerminalRenderer {
-    device: wgpu::Device,
-    queue: wgpu::Queue,
+    device: Arc<wgpu::Device>,
+    queue: Arc<wgpu::Queue>,
     glyph_pipeline: wgpu::RenderPipeline,
     rect_pipeline: wgpu::RenderPipeline,
     uniform_buffer: wgpu::Buffer,
@@ -108,7 +109,7 @@ pub struct TerminalRenderer {
 
 impl TerminalRenderer {
     /// Initialize the full wgpu pipeline (call after device/queue are available).
-    pub fn new(device: wgpu::Device, queue: wgpu::Queue, width: u32, height: u32) -> Self {
+    pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>, width: u32, height: u32) -> Self {
         // --- Uniform buffer ---
         let uniforms = Uniforms {
             viewport_size: [width as f32, height as f32],

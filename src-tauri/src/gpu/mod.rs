@@ -30,13 +30,7 @@ pub struct GpuTerminal {
     pub font: FontManager,
     pub surface: TerminalSurface,
     pub cursor_render: Mutex<CursorRender>,
-}
-
-/// Manages all GPU terminal instances and the shared wgpu rendering context.
-pub struct GpuTerminalManager {
-    terminals: Mutex<HashMap<TerminalId, GpuTerminal>>,
-    /// Shared wgpu device/queue — initialized lazily on first terminal creation
-    wgpu_context: Mutex<Option<WgpuContext>>,
+    pub renderer: Option<TerminalRenderer>,
 }
 
 /// Shared wgpu state (one per application).
@@ -47,18 +41,28 @@ struct WgpuContext {
     queue: Arc<wgpu::Queue>,
 }
 
+/// Manages all GPU terminal instances and the shared wgpu rendering context.
+pub struct GpuTerminalManager {
+    terminals: Mutex<HashMap<TerminalId, GpuTerminal>>,
+    wgpu_context: Mutex<Option<WgpuContext>>,
+    render_active: Mutex<bool>,
+}
+
 impl GpuTerminalManager {
     pub fn new() -> Self {
         Self {
             terminals: Mutex::new(HashMap::new()),
             wgpu_context: Mutex::new(None),
+            render_active: Mutex::new(false),
         }
     }
 
-    /// Initialize the wgpu context if not already done.
+    /// Initialize wgpu (DX12/Vulkan). Idempotent.
     pub async fn ensure_wgpu(&self) -> Result<(), String> {
-        let mut ctx = self.wgpu_context.lock().unwrap();
-        if ctx.is_some() { return Ok(()); }
+        {
+            let ctx = self.wgpu_context.lock().unwrap();
+            if ctx.is_some() { return Ok(()); }
+        }
 
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: wgpu::Backends::DX12 | wgpu::Backends::VULKAN,
@@ -80,12 +84,11 @@ impl GpuTerminalManager {
                 ..Default::default()
             })
             .await
-            .map_err(|e| format!("Failed to create device: {}", e))?;
-        let device: wgpu::Device = device;
-        let queue: wgpu::Queue = queue;
+            .map_err(|e| format!("Device creation failed: {}", e))?;
 
         log::info!("wgpu initialized: {:?}", adapter.get_info().name);
 
+        let mut ctx = self.wgpu_context.lock().unwrap();
         *ctx = Some(WgpuContext {
             instance,
             adapter,
@@ -94,6 +97,24 @@ impl GpuTerminalManager {
         });
 
         Ok(())
+    }
+
+    /// Get cloned device/queue for creating renderers and surfaces.
+    pub fn device_and_queue(&self) -> Result<(Arc<wgpu::Device>, Arc<wgpu::Queue>), String> {
+        let ctx = self.wgpu_context.lock().unwrap();
+        let c = ctx.as_ref().ok_or("wgpu not initialized")?;
+        Ok((c.device.clone(), c.queue.clone()))
+    }
+
+    /// Borrow wgpu instance and adapter (needed for surface creation).
+    /// Caller must hold the returned guard for the duration of use.
+    pub fn with_wgpu<F, R>(&self, f: F) -> Result<R, String>
+    where
+        F: FnOnce(&wgpu::Instance, &wgpu::Adapter, &wgpu::Device) -> R,
+    {
+        let ctx = self.wgpu_context.lock().unwrap();
+        let c = ctx.as_ref().ok_or("wgpu not initialized")?;
+        Ok(f(&c.instance, &c.adapter, &c.device))
     }
 
     pub fn insert(&self, id: TerminalId, terminal: GpuTerminal) {
@@ -122,17 +143,38 @@ impl GpuTerminalManager {
         Ok(f(terminal))
     }
 
-    /// Run one render tick for all terminals that need redraw.
-    /// Called from the render loop thread.
-    pub fn render_tick(&self) {
-        let ctx = self.wgpu_context.lock().unwrap();
-        let ctx = match ctx.as_ref() {
-            Some(c) => c,
-            None => return,
+    /// Start the render loop background thread.
+    /// Safe to call multiple times (idempotent).
+    pub fn start_render_loop(manager: Arc<Self>) {
+        {
+            let mut active = manager.render_active.lock().unwrap();
+            if *active { return; }
+            *active = true;
+        }
+
+        std::thread::Builder::new()
+            .name("gpu-render-loop".into())
+            .spawn(move || {
+                log::info!("GPU render loop started");
+                loop {
+                    std::thread::sleep(std::time::Duration::from_millis(16)); // ~60fps
+                    manager.render_tick();
+                }
+            })
+            .expect("Failed to spawn render loop thread");
+    }
+
+    /// Render one frame for all terminals that need redraw.
+    fn render_tick(&self) {
+        let has_ctx = self.wgpu_context.lock().unwrap().is_some();
+        if !has_ctx { return; }
+
+        let mut terminals = match self.terminals.lock() {
+            Ok(t) => t,
+            Err(_) => return,
         };
 
-        let terminals = self.terminals.lock().unwrap();
-        for (_id, terminal) in terminals.iter() {
+        for (_id, terminal) in terminals.iter_mut() {
             let mut grid = match terminal.grid.lock() {
                 Ok(g) => g,
                 Err(_) => continue,
@@ -140,32 +182,52 @@ impl GpuTerminalManager {
 
             if !grid.needs_redraw { continue; }
 
-            // Build instances
-            let mut atlas = terminal.atlas.lock().unwrap();
+            let renderer = match terminal.renderer.as_ref() {
+                Some(r) => r,
+                None => { grid.clear_dirty(); continue; }
+            };
+
+            // Build glyph instances from dirty grid
+            let mut atlas = match terminal.atlas.lock() {
+                Ok(a) => a,
+                Err(_) => continue,
+            };
             let glyph_instances = build_glyph_instances(&grid, &terminal.font, &mut atlas);
 
-            // Cursor
+            // Cursor blink
             let cursor_rects = {
-                let mut cr = terminal.cursor_render.lock().unwrap();
+                let mut cr = match terminal.cursor_render.lock() {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
                 cr.tick();
                 build_cursor_rects(&grid, &terminal.font, cr.blink_visible)
             };
 
-            // Upload atlas if dirty
-            // (requires renderer — deferred until surface is attached)
+            // Upload atlas texture if glyphs were added
+            if atlas.dirty {
+                renderer.upload_atlas(&atlas);
+                atlas.clear_dirty();
+            }
 
-            // Get surface texture
+            // Acquire surface frame and render
             match terminal.surface.get_current_texture() {
                 Ok(frame) => {
                     let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
-                    // render_frame would go here with the actual renderer
-                    // For now, mark grid as clean
+                    renderer.render_frame(
+                        &view,
+                        &glyph_instances,
+                        &cursor_rects,
+                        wgpu::Color { r: 0.0, g: 0.0, b: 0.0, a: 0.85 },
+                    );
                     frame.present();
                 }
                 Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
-                    // Surface needs reconfiguration
+                    log::warn!("GPU surface lost/outdated for terminal {}", _id);
                 }
-                Err(_) => {}
+                Err(e) => {
+                    log::trace!("GPU surface error: {:?}", e);
+                }
             }
 
             grid.clear_dirty();
@@ -173,7 +235,6 @@ impl GpuTerminalManager {
     }
 }
 
-/// Build glyph instances from grid (extracted for reuse)
 fn build_glyph_instances(
     grid: &Grid,
     font: &FontManager,

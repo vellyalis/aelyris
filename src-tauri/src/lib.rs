@@ -36,7 +36,7 @@ pub fn run() {
         .manage(ipc::FsWatcherRegistry::new())
         .manage(workflow::WorkflowExecutor::new())
         .manage(lsp::LspManager::new())
-        .manage(gpu::GpuTerminalManager::new())
+        .manage(std::sync::Arc::new(gpu::GpuTerminalManager::new()))
         .setup(move |app| {
             // Initialize database as managed state
             let db_path = db::db_path();

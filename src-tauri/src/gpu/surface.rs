@@ -34,7 +34,7 @@ impl TerminalSurface {
     /// Create a child HWND inside the given parent Tauri window and attach a wgpu surface.
     #[cfg(windows)]
     pub fn new(
-        parent_window: &tauri::Window,
+        parent_window: &tauri::WebviewWindow,
         instance: &wgpu::Instance,
         adapter: &wgpu::Adapter,
         device: &wgpu::Device,
