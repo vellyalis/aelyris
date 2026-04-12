@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { CommandBlockTracker, detectPrompt } from "./commandBlock";
+import { decodeBase64ToBytes } from "../../shared/lib/decodeBase64";
 
 interface TerminalWithCleanup extends Terminal {
   __ptyCleanup?: () => void;
@@ -287,11 +288,7 @@ async function connectPty(
     let lastPromptMarkerLine = -1;
 
     const unlistenOutput = await listen<string>(`pty-output-${id}`, (event) => {
-      const decoded = atob(event.payload);
-      const bytes = new Uint8Array(decoded.length);
-      for (let i = 0; i < decoded.length; i++) {
-        bytes[i] = decoded.charCodeAt(i);
-      }
+      const bytes = decodeBase64ToBytes(event.payload);
       term.write(bytes);
 
       // Track command blocks from decoded text

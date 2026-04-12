@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
+import { decodeBase64ToBytes } from "../../shared/lib/decodeBase64";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
@@ -87,11 +88,7 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
         if (cancelled) return;
 
         const unlistenOutput = await listen<string>(`pty-output-${ptyId}`, (event) => {
-          const decoded = atob(event.payload);
-          const bytes = new Uint8Array(decoded.length);
-          for (let i = 0; i < decoded.length; i++) {
-            bytes[i] = decoded.charCodeAt(i);
-          }
+          const bytes = decodeBase64ToBytes(event.payload);
           term.write(bytes);
         });
 

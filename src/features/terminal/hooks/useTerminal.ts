@@ -6,6 +6,7 @@ import { SearchAddon } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { decodeBase64ToBytes } from "../../../shared/lib/decodeBase64";
 
 import "@xterm/xterm/css/xterm.css";
 
@@ -116,11 +117,7 @@ export function useTerminal(options: UseTerminalOptions = {}) {
       unlistenOutputRef.current = await listen<string>(
         `pty-output-${id}`,
         (event) => {
-          const decoded = atob(event.payload);
-          const bytes = new Uint8Array(decoded.length);
-          for (let i = 0; i < decoded.length; i++) {
-            bytes[i] = decoded.charCodeAt(i);
-          }
+          const bytes = decodeBase64ToBytes(event.payload);
           term.write(bytes);
         },
       );
