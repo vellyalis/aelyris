@@ -1,4 +1,4 @@
-# Aether Terminal
+# Aether Terminal 
 
 Windows向けプロジェクトファーストAIワークスペースターミナル。
 
