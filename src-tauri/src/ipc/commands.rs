@@ -529,11 +529,17 @@ pub fn rename_path(old_path: String, new_path: String) -> Result<(), String> {
     std::fs::rename(&old_path, &new_path).map_err(|e| format!("Rename: {}", e))
 }
 
-/// Delete a file or empty directory
+/// Delete a file or directory (protects .git and other critical dirs)
 #[tauri::command]
 pub fn delete_path(path: String) -> Result<(), String> {
     validate_path(&path)?;
     let p = std::path::Path::new(&path);
+    // Protect critical directories from accidental deletion
+    let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    let protected = [".git", ".hg", "node_modules", ".env"];
+    if p.is_dir() && protected.contains(&name) {
+        return Err(format!("Cannot delete protected directory: {}", name));
+    }
     if p.is_dir() {
         std::fs::remove_dir_all(p).map_err(|e| format!("Delete dir: {}", e))
     } else {

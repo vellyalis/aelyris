@@ -57,13 +57,19 @@ interface AppState {
   closeFile: (path: string) => void;
   setActiveFile: (path: string | null) => void;
   clearFiles: () => void;
+
+  // Unsaved file tracking (replaces DOM-based modDot detection)
+  unsavedFiles: Set<string>;
+  markUnsaved: (path: string) => void;
+  markSaved: (path: string) => void;
+  hasUnsavedChanges: () => boolean;
 }
 
 function toggleOrSet(v: boolean | ((prev: boolean) => boolean), prev: boolean): boolean {
   return typeof v === "function" ? v(prev) : v;
 }
 
-export const useAppStore = create<AppState>((set) => ({
+export const useAppStore = create<AppState>((set, get) => ({
   // Theme
   themeId: (() => {
     try { return localStorage.getItem("aether:theme") ?? "aether-dark"; } catch { return "aether-dark"; }
@@ -182,7 +188,22 @@ export const useAppStore = create<AppState>((set) => ({
     try { if (path) localStorage.setItem("aether:activeFile", path); else localStorage.removeItem("aether:activeFile"); } catch {}
   },
   clearFiles: () => {
-    set({ openFiles: [], activeFile: null });
+    set({ openFiles: [], activeFile: null, unsavedFiles: new Set() });
     try { localStorage.removeItem("aether:openFiles"); localStorage.removeItem("aether:activeFile"); } catch {}
   },
+
+  unsavedFiles: new Set(),
+  markUnsaved: (path) => set((s) => {
+    if (s.unsavedFiles.has(path)) return s;
+    const next = new Set(s.unsavedFiles);
+    next.add(path);
+    return { unsavedFiles: next };
+  }),
+  markSaved: (path) => set((s) => {
+    if (!s.unsavedFiles.has(path)) return s;
+    const next = new Set(s.unsavedFiles);
+    next.delete(path);
+    return { unsavedFiles: next };
+  }),
+  hasUnsavedChanges: () => get().unsavedFiles.size > 0,
 }));

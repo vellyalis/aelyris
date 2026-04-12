@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, lazy, Suspense } from "react";
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Play, CheckCircle, XCircle, Clock, ChevronRight, Loader, Workflow } from "lucide-react";
 import { toast } from "../../shared/store/toastStore";
@@ -110,8 +110,13 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
     return () => { active = false; clearInterval(interval); unlisten?.(); };
   }, []);
 
+  const advancingRef = useRef(new Set<string>());
+
   const advancePhase = useCallback(async (workflowId: string) => {
     if (!onStartAgent) return;
+    // Prevent double execution if approve is clicked rapidly
+    if (advancingRef.current.has(workflowId)) return;
+    advancingRef.current.add(workflowId);
     try {
       const phase = await invoke<WorkflowPhaseInfo>("workflow_current_phase", { workflowId });
       const sessionId = await onStartAgent(phase.prompt, phase.model);
@@ -119,6 +124,7 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
         await invoke("workflow_set_agent", { workflowId, agentSessionId: sessionId });
       }
     } catch { /* no more phases */ }
+    finally { advancingRef.current.delete(workflowId); }
   }, [onStartAgent]);
 
   const handleStart = useCallback(async (wf: WorkflowSummary, taskTitle?: string) => {

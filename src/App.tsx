@@ -147,11 +147,11 @@ export function App() {
     openFile(path);
   }, [openFile]);
 
+  const unsavedFiles = useAppStore((s) => s.unsavedFiles);
   const handleCloseFile = useCallback((path: string) => {
-    const modDots = document.querySelectorAll("[class*='modDot']");
-    if (modDots.length > 0 && !window.confirm("You have unsaved changes. Close anyway?")) return;
+    if (unsavedFiles.has(path) && !window.confirm("You have unsaved changes. Close anyway?")) return;
     closeFile(path);
-  }, [closeFile]);
+  }, [closeFile, unsavedFiles]);
 
   const handleRunCommand = useCallback(async (command: string) => {
     try {
