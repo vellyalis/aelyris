@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { AgentSession, AgentLog, AgentStatus } from "../types/agent";
+import { parseFileChange } from "../lib/agentFileChanges";
 
 interface AgentSessionRaw {
   id: string;
@@ -107,8 +108,17 @@ export function useAgentManager() {
       }
 
       const log: AgentLog = { timestamp: Date.now(), type: logType, content };
+
+      // Track file changes
+      const fileChange = parseFileChange(line);
+      const filesChangedDelta = fileChange ? 1 : 0;
+
       setSessions((prev) =>
-        prev.map((s) => s.id === id ? { ...s, logs: [...s.logs, log] } : s)
+        prev.map((s) => s.id === id ? {
+          ...s,
+          logs: [...s.logs, log],
+          filesChanged: (s.filesChanged ?? 0) + filesChangedDelta,
+        } : s)
       );
     });
     unlistens.push(unlisten1);
