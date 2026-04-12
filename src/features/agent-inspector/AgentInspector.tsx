@@ -13,6 +13,7 @@ import { ClipboardCopy, Plus, Pencil, Activity, Layers, GitBranch, Globe, Shield
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { ToolBadge } from "../../shared/ui/ToolBadge";
 import { extractToolName } from "../../shared/types/toolBadge";
+import { parseToolUse } from "../../shared/lib/agentLogParser";
 import { SessionAnalytics } from "../analytics/SessionAnalytics";
 import styles from "./AgentInspector.module.css";
 
@@ -375,11 +376,23 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
               <div className={styles.logList}>
                 {activeSession.logs.map((log, i) => {
                   const tool = log.type === "tool_use" ? extractToolName(log.content) : null;
+                  const parsed = log.type === "tool_use" ? parseToolUse(log.content) : null;
                   return (
                     <div key={i} className={`${styles.logEntry} ${styles[`log_${log.type}`]}`}>
                       <span className={styles.logTime}>{new Date(log.timestamp).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
                       {tool && <ToolBadge tool={tool} />}
-                      <span className={styles.logContent}>{log.content}</span>
+                      {parsed?.isFileChange && parsed.filePath ? (
+                        <span className={styles.logContent}>
+                          <span style={{ color: "var(--ctp-green)", fontWeight: 500 }}>{parsed.tool}</span>
+                          {" → "}
+                          <span style={{ color: "var(--ctp-blue)" }}>{parsed.filePath.split("/").pop()}</span>
+                          <span style={{ color: "var(--text-muted)", fontSize: "var(--text-xs)", marginLeft: 4 }}>
+                            {parsed.filePath.split("/").slice(-3, -1).join("/")}
+                          </span>
+                        </span>
+                      ) : (
+                        <span className={styles.logContent}>{log.content}</span>
+                      )}
                     </div>
                   );
                 })}
