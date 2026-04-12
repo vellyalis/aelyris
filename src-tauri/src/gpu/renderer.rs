@@ -3,7 +3,7 @@ use wgpu::util::DeviceExt;
 
 use crate::gpu::atlas::GlyphAtlas;
 use crate::gpu::font::FontManager;
-use crate::gpu::grid::{Cell, CellFlags, Color, Grid};
+use crate::gpu::grid::{Cell, Color, Grid};
 
 /// Per-instance data for each terminal cell (sent to glyph shader).
 #[repr(C)]
@@ -433,13 +433,15 @@ impl TerminalRenderer {
         rect_instances: &[RectInstance],
         clear_color: wgpu::Color,
     ) {
-        // Upload instance data
-        if !glyph_instances.is_empty() {
-            let data = bytemuck::cast_slice(glyph_instances);
+        // Upload instance data (clamped to buffer capacity)
+        let glyph_count = glyph_instances.len().min(self.max_glyph_instances as usize);
+        let rect_count = rect_instances.len().min(self.max_rect_instances as usize);
+        if glyph_count > 0 {
+            let data = bytemuck::cast_slice(&glyph_instances[..glyph_count]);
             self.queue.write_buffer(&self.glyph_instance_buffer, 0, data);
         }
-        if !rect_instances.is_empty() {
-            let data = bytemuck::cast_slice(rect_instances);
+        if rect_count > 0 {
+            let data = bytemuck::cast_slice(&rect_instances[..rect_count]);
             self.queue.write_buffer(&self.rect_instance_buffer, 0, data);
         }
 
@@ -463,20 +465,20 @@ impl TerminalRenderer {
             });
 
             // 1. Draw background rects + cursor/selection
-            if !rect_instances.is_empty() {
+            if rect_count > 0 {
                 pass.set_pipeline(&self.rect_pipeline);
                 pass.set_bind_group(0, &self.uniform_bind_group, &[]);
                 pass.set_vertex_buffer(0, self.rect_instance_buffer.slice(..));
-                pass.draw(0..6, 0..rect_instances.len() as u32);
+                pass.draw(0..6, 0..rect_count as u32);
             }
 
             // 2. Draw glyphs (text)
-            if !glyph_instances.is_empty() {
+            if glyph_count > 0 {
                 pass.set_pipeline(&self.glyph_pipeline);
                 pass.set_bind_group(0, &self.uniform_bind_group, &[]);
                 pass.set_bind_group(1, &self.atlas_bind_group, &[]);
                 pass.set_vertex_buffer(0, self.glyph_instance_buffer.slice(..));
-                pass.draw(0..6, 0..glyph_instances.len() as u32);
+                pass.draw(0..6, 0..glyph_count as u32);
             }
         }
 

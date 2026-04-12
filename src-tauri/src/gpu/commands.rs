@@ -268,6 +268,7 @@ pub fn gpu_set_opacity(app: AppHandle, id: String, _opacity: f32) -> Result<(), 
 /// Get the current terminal renderer mode.
 #[tauri::command]
 pub fn get_terminal_renderer() -> String {
-    // TODO: read from config. For now, default to xterm until user opts in.
+    // Default to xterm. wgpu mode causes UI freeze due to mutex contention
+    // in render loop (Phase D: needs lock-free grid snapshot approach).
     "xterm".to_string()
 }

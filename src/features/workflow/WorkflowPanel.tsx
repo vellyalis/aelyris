@@ -62,7 +62,10 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
     try {
       const filePath = `${projectPath}/.aether/workflows/custom-${Date.now()}.yaml`;
       await invoke("write_file", { path: filePath, content: yaml });
-    } catch { /* ignore write errors */ }
+      toast.success("Workflow exported", filePath.split("/").pop());
+    } catch (err) {
+      toast.error("Export failed", String(err));
+    }
     setBuilderOpen(false);
     invoke<WorkflowSummary[]>("list_workflows", { projectPath }).then(setWorkflows).catch(() => {});
   }, [projectPath]);

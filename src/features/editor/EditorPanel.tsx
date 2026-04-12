@@ -39,6 +39,8 @@ function detectLanguage(path: string): string {
 
 export function EditorPanel({ filePath, onClose, projectPath, initialLine, initialDiffMode, onStartAgent }: EditorPanelProps) {
   const themeId = useAppStore((s) => s.themeId);
+  const markUnsaved = useAppStore((s) => s.markUnsaved);
+  const markSaved = useAppStore((s) => s.markSaved);
   const palette = getPalette(themeId);
   const light = isLightTheme(themeId);
   const editorColors = monacoThemeColors(palette, light);
@@ -107,6 +109,7 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
     setLoading(true);
     setError(null);
     setModified(false);
+    if (filePath) markSaved(filePath);
     setDiffMode(false);
 
     (async () => {
@@ -157,6 +160,7 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
         invoke("write_file", { path: filePath, content: value })
           .then(() => {
             setModified(false);
+            markSaved(filePath);
             setSaved(true);
             setTimeout(() => setSaved(false), 2000);
           })
@@ -248,7 +252,7 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
                 }
               }
             }}
-            onChange={() => setModified(true)}
+            onChange={() => { setModified(true); if (filePath) markUnsaved(filePath); }}
             options={{
               fontSize: 13,
               fontFamily: "IBM Plex Mono, Cascadia Code, monospace",
