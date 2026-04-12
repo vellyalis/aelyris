@@ -27,7 +27,21 @@ pub fn spawn_interactive_agent(
 ) -> Result<SpawnResult, String> {
     let model_str = model.as_deref().unwrap_or("sonnet");
     let cli = AgentCli::from_model(model_str);
+    cli.validate()?;
     let (program, mut args) = cli.program_and_args(Some(model_str));
+
+    // Validate branch_name if provided (prevent path traversal / shell injection)
+    if let Some(ref branch) = branch_name {
+        if branch.is_empty() || branch.len() > 200 {
+            return Err("Branch name must be 1-200 characters".to_string());
+        }
+        if !branch.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '/' || c == '.') {
+            return Err("Branch name contains invalid characters".to_string());
+        }
+        if branch.contains("..") || branch.starts_with('-') || branch.starts_with('.') {
+            return Err("Branch name contains unsafe patterns".to_string());
+        }
+    }
 
     // If branch_name is set, create a worktree and use it as cwd
     let (resolved_cwd, worktree_branch, worktree_path, repo_path) = if let Some(ref branch) = branch_name {
@@ -136,8 +150,14 @@ pub fn stop_interactive_agent(app: AppHandle, id: String) -> Result<(), String> 
     let pty_manager = app.state::<PtyManager>();
     let session_mgr = app.state::<InteractiveSessionManager>();
 
-    // Close PTY (kills the process)
-    let _ = pty_manager.close(&id);
+    // Retrieve session info to get pty_id (currently session_id == pty_id)
+    let pty_id = match session_mgr.get(&id)? {
+        Some(info) => info.pty_id,
+        None => id.clone(), // fallback: assume session_id == pty_id
+    };
+
+    // Close PTY (kills the process, output monitor thread will exit on read EOF)
+    let _ = pty_manager.close(&pty_id);
 
     // Unregister session
     session_mgr.unregister(&id)?;
@@ -155,9 +175,10 @@ pub fn end_session_and_remove_worktree(app: AppHandle, id: String) -> Result<(),
     // Get session info before removing
     let info = session_mgr.get(&id)?;
 
-    // Close PTY
+    // Close PTY (use pty_id from session info)
     let pty_manager = app.state::<PtyManager>();
-    let _ = pty_manager.close(&id);
+    let pty_id = info.as_ref().map(|s| s.pty_id.clone()).unwrap_or_else(|| id.clone());
+    let _ = pty_manager.close(&pty_id);
 
     // Remove worktree if one was created
     if let Some(session) = &info {

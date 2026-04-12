@@ -68,6 +68,11 @@
 .tab:hover .tabClose { opacity: 0.5; }
 .tabClose:hover { opacity: 1 !important; background: var(--white-10); }
 
+.agentDot {
+  width: 6px; height: 6px; border-radius: 50%;
+  flex-shrink: 0;
+}
+
 .addBtn {
   background: none;
   border: none;

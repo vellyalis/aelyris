@@ -1,7 +1,6 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
-import { SearchAddon } from "@xterm/addon-search";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import "@xterm/xterm/css/xterm.css";
@@ -15,8 +14,6 @@ import styles from "./AgentTerminal.module.css";
 interface AgentTerminalProps {
   /** PTY ID to connect to (already spawned by Rust backend) */
   ptyId: string;
-  /** Session metadata */
-  sessionId: string;
   cli: AgentCliType;
   status: AgentStatus;
   model: string;
@@ -30,7 +27,7 @@ interface AgentTerminalProps {
  * Unlike TerminalArea, this does NOT spawn a new PTY — it connects to an existing one.
  * The PTY was already spawned by spawn_interactive_agent on the Rust side.
  */
-export function AgentTerminal({ ptyId, sessionId: _sessionId, cli, status, model, cost, accentColor }: AgentTerminalProps) {
+export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: AgentTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -45,9 +42,18 @@ export function AgentTerminal({ ptyId, sessionId: _sessionId, cli, status, model
     }
   }, [xtermTheme]);
 
-  const attach = useCallback(async (container: HTMLDivElement) => {
+  const themeRef = useRef(xtermTheme);
+  themeRef.current = xtermTheme;
+
+  // Mount terminal — keyed on ptyId to handle session switches
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    let cancelled = false;
+
     const term = new Terminal({
-      theme: xtermTheme,
+      theme: themeRef.current,
       fontFamily: "IBM Plex Mono, Cascadia Code, Cascadia Next JP, monospace",
       fontSize: 14,
       lineHeight: 1.4,
@@ -64,7 +70,6 @@ export function AgentTerminal({ ptyId, sessionId: _sessionId, cli, status, model
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
     term.loadAddon(new WebLinksAddon());
-    term.loadAddon(new SearchAddon());
 
     term.open(container);
     term.unicode.activeVersion = "11";
@@ -73,55 +78,64 @@ export function AgentTerminal({ ptyId, sessionId: _sessionId, cli, status, model
     termRef.current = term;
     fitAddonRef.current = fitAddon;
 
-    // Connect to the existing PTY output stream
-    try {
-      const { listen } = await import("@tauri-apps/api/event");
-      const { invoke } = await import("@tauri-apps/api/core");
+    // Async connection — guarded by cancelled flag to prevent listener leaks
+    const connectPty = async () => {
+      try {
+        const { listen } = await import("@tauri-apps/api/event");
+        const { invoke } = await import("@tauri-apps/api/core");
 
-      // Listen for PTY output (base64 encoded, same format as regular terminals)
-      const unlistenOutput = await listen<string>(`pty-output-${ptyId}`, (event) => {
-        const decoded = atob(event.payload);
-        const bytes = new Uint8Array(decoded.length);
-        for (let i = 0; i < decoded.length; i++) {
-          bytes[i] = decoded.charCodeAt(i);
+        if (cancelled) return;
+
+        const unlistenOutput = await listen<string>(`pty-output-${ptyId}`, (event) => {
+          const decoded = atob(event.payload);
+          const bytes = new Uint8Array(decoded.length);
+          for (let i = 0; i < decoded.length; i++) {
+            bytes[i] = decoded.charCodeAt(i);
+          }
+          term.write(bytes);
+        });
+
+        const unlistenExit = await listen(`pty-exit-${ptyId}`, () => {
+          term.writeln("\r\n\x1b[90m[Agent process exited]\x1b[0m");
+        });
+
+        if (cancelled) {
+          // Component unmounted during await — immediately clean up
+          unlistenOutput();
+          unlistenExit();
+          return;
         }
-        term.write(bytes);
-      });
 
-      const unlistenExit = await listen(`pty-exit-${ptyId}`, () => {
-        term.writeln("\r\n\x1b[90m[Agent process exited]\x1b[0m");
-      });
+        // Forward user input to PTY
+        term.onData((data) => {
+          invoke("write_terminal", { id: ptyId, data }).catch(() => {});
+        });
 
-      // Forward user input to PTY
-      term.onData((data) => {
-        invoke("write_terminal", { id: ptyId, data }).catch(() => {});
-      });
+        term.onResize(({ cols, rows }) => {
+          invoke("resize_terminal", { id: ptyId, cols, rows }).catch(() => {});
+        });
 
-      // Handle resize
-      term.onResize(({ cols, rows }) => {
-        invoke("resize_terminal", { id: ptyId, cols, rows }).catch(() => {});
-      });
+        cleanupRef.current = () => {
+          unlistenOutput();
+          unlistenExit();
+        };
+      } catch (err) {
+        if (!cancelled) {
+          term.writeln(`\x1b[31mFailed to connect to agent PTY: ${err}\x1b[0m`);
+        }
+      }
+    };
 
-      cleanupRef.current = () => {
-        unlistenOutput();
-        unlistenExit();
-      };
-    } catch (err) {
-      term.writeln(`\x1b[31mFailed to connect to agent PTY: ${err}\x1b[0m`);
-    }
-  }, [ptyId, xtermTheme]);
+    connectPty();
 
-  // Mount terminal
-  useEffect(() => {
-    if (containerRef.current && !termRef.current) {
-      attach(containerRef.current);
-    }
     return () => {
+      cancelled = true;
       cleanupRef.current?.();
-      termRef.current?.dispose();
+      cleanupRef.current = null;
+      term.dispose();
       termRef.current = null;
     };
-  }, [attach]);
+  }, [ptyId]);
 
   // Fit on window resize
   useEffect(() => {

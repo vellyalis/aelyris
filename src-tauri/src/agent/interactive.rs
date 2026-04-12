@@ -38,7 +38,8 @@ impl AgentCli {
         }
     }
 
-    /// Detect CLI type from model name string
+    /// Detect CLI type from model name string.
+    /// Only known CLI types are returned — no user-controlled binary execution.
     pub fn from_model(model: &str) -> Self {
         if model.starts_with("codex") {
             AgentCli::Codex
@@ -46,6 +47,27 @@ impl AgentCli {
             AgentCli::Gemini
         } else {
             AgentCli::Claude
+        }
+    }
+
+    /// Validate that this CLI is safe to execute (known binary only).
+    /// Custom CLIs must be in the allowlist.
+    pub fn validate(&self) -> Result<(), String> {
+        match self {
+            AgentCli::Claude | AgentCli::Gemini | AgentCli::Codex => Ok(()),
+            AgentCli::Custom(bin) => {
+                // Reject path traversal, absolute paths, shell metacharacters
+                if bin.contains('/') || bin.contains('\\') || bin.contains("..") || bin.is_empty() {
+                    return Err(format!("Unsafe CLI binary name: {}", bin));
+                }
+                // Only allow explicitly known custom CLIs
+                const ALLOWED_CUSTOM: &[&str] = &["aider", "cursor", "continue"];
+                if ALLOWED_CUSTOM.contains(&bin.as_str()) {
+                    Ok(())
+                } else {
+                    Err(format!("Unknown CLI '{}'. Allowed: {:?}", bin, ALLOWED_CUSTOM))
+                }
+            }
         }
     }
 }
@@ -190,5 +212,70 @@ mod tests {
         assert_eq!(AgentCli::from_model("gemini-2.5-pro"), AgentCli::Gemini);
         assert_eq!(AgentCli::from_model("opus"), AgentCli::Claude);
         assert_eq!(AgentCli::from_model("sonnet"), AgentCli::Claude);
+    }
+
+    #[test]
+    fn program_and_args_claude_with_model() {
+        let cli = AgentCli::Claude;
+        let (prog, args) = cli.program_and_args(Some("opus"));
+        assert_eq!(prog, "claude");
+        assert_eq!(args, vec!["--model", "opus"]);
+    }
+
+    #[test]
+    fn program_and_args_claude_no_model() {
+        let cli = AgentCli::Claude;
+        let (prog, args) = cli.program_and_args(None);
+        assert_eq!(prog, "claude");
+        assert!(args.is_empty());
+    }
+
+    #[test]
+    fn program_and_args_custom() {
+        let cli = AgentCli::Custom("my-agent".to_string());
+        let (prog, args) = cli.program_and_args(None);
+        assert_eq!(prog, "my-agent");
+        assert!(args.is_empty());
+    }
+
+    #[test]
+    fn update_nonexistent_session_is_noop() {
+        let mgr = InteractiveSessionManager::new();
+        // Should not error, just no-op
+        mgr.update_status("nonexistent", "coding").unwrap();
+        mgr.update_usage("nonexistent", 1.0, 100).unwrap();
+        assert!(mgr.get("nonexistent").unwrap().is_none());
+    }
+
+    #[test]
+    fn unregister_nonexistent_returns_none() {
+        let mgr = InteractiveSessionManager::new();
+        let removed = mgr.unregister("nope").unwrap();
+        assert!(removed.is_none());
+    }
+
+    #[test]
+    fn concurrent_access() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let mgr = Arc::new(InteractiveSessionManager::new());
+        let mut handles = vec![];
+
+        for i in 0..10 {
+            let mgr = mgr.clone();
+            handles.push(thread::spawn(move || {
+                let id = format!("s{}", i);
+                mgr.register(make_session(&id, AgentCli::Claude)).unwrap();
+                mgr.update_status(&id, "coding").unwrap();
+                mgr.update_usage(&id, 0.1 * i as f64, i * 100).unwrap();
+            }));
+        }
+
+        for h in handles {
+            h.join().unwrap();
+        }
+
+        assert_eq!(mgr.list().len(), 10);
     }
 }

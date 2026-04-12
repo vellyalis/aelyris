@@ -37,7 +37,7 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
   const [tab, setTab] = useState<"sessions" | "activity" | "parallel">("sessions");
   const [showPromptInput, setShowPromptInput] = useState(false);
   const [promptText, setPromptText] = useState("");
-  const { selectedModel, setSelectedModel } = useAppStore();
+  const { selectedModel, setSelectedModel, rootProjectPath } = useAppStore();
   const activeSession = sessions.find((s) => s.id === activeSessionId);
 
   // Inline worktree creation state (per-session)
@@ -134,13 +134,19 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
           </div>
           <input
             autoFocus
-            placeholder={`Prompt for ${getModelById(selectedModel)?.label ?? "Agent"}...`}
+            placeholder={`Prompt (Enter=agent, Ctrl+Enter=interactive)...`}
             value={promptText}
             onChange={(e) => setPromptText(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && promptText.trim()) {
                 const model = getModelById(selectedModel);
-                onStartAgent?.(promptText.trim(), model?.modelArg);
+                if (e.ctrlKey && onStartInteractiveSession && rootProjectPath) {
+                  // Ctrl+Enter → interactive PTY session
+                  onStartInteractiveSession({ cwd: rootProjectPath, model: model?.modelArg, initialPrompt: promptText.trim() });
+                } else {
+                  // Enter → headless agent session
+                  onStartAgent?.(promptText.trim(), model?.modelArg);
+                }
                 setPromptText("");
                 setShowPromptInput(false);
               }

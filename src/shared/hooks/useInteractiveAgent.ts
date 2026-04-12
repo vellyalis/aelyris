@@ -1,5 +1,6 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import type { InteractiveSession, SpawnResult } from "../types/interactiveAgent";
+import { toast } from "../store/toastStore";
 
 /**
  * Manages interactive agent sessions (PTY-based, works with any AI CLI).
@@ -8,6 +9,8 @@ import type { InteractiveSession, SpawnResult } from "../types/interactiveAgent"
 export function useInteractiveAgent() {
   const [sessions, setSessions] = useState<InteractiveSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const activeSessionIdRef = useRef(activeSessionId);
+  activeSessionIdRef.current = activeSessionId;
 
   // Listen for session state updates from Rust backend
   useEffect(() => {
@@ -48,7 +51,7 @@ export function useInteractiveAgent() {
       setActiveSessionId(result.session_id);
       return result;
     } catch (e) {
-      /* start error */
+      toast.error("Failed to start agent session", e instanceof Error ? e.message : String(e));
       return null;
     }
   }, []);
@@ -58,26 +61,26 @@ export function useInteractiveAgent() {
     try {
       const { invoke } = await import("@tauri-apps/api/core");
       await invoke("stop_interactive_agent", { id });
-      if (activeSessionId === id) {
+      if (activeSessionIdRef.current === id) {
         setActiveSessionId(null);
       }
     } catch (e) {
-      /* stop error */
+      toast.error("Failed to stop agent session", e instanceof Error ? e.message : String(e));
     }
-  }, [activeSessionId]);
+  }, []);
 
   /** End session AND remove its worktree */
   const endSessionAndRemoveWorktree = useCallback(async (id: string) => {
     try {
       const { invoke } = await import("@tauri-apps/api/core");
       await invoke("end_session_and_remove_worktree", { id });
-      if (activeSessionId === id) {
+      if (activeSessionIdRef.current === id) {
         setActiveSessionId(null);
       }
     } catch (e) {
-      /* end session error */
+      toast.error("Failed to end agent session", e instanceof Error ? e.message : String(e));
     }
-  }, [activeSessionId]);
+  }, []);
 
   /** Select an active session */
   const selectSession = useCallback((id: string) => {

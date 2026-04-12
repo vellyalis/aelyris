@@ -140,9 +140,11 @@ pub fn create_parser(cli: &AgentCli) -> Box<dyn CliOutputParser> {
 /// Strips ANSI escape sequences from raw terminal output for pattern matching.
 /// This is intentionally simple — we only need it for status heuristics, not rendering.
 pub fn strip_ansi(input: &str) -> String {
-    // Matches ESC[...m (SGR) and ESC[...X (CSI) sequences
-    let re = Regex::new(r"\x1b\[[0-9;]*[a-zA-Z]").unwrap();
-    re.replace_all(input, "").to_string()
+    use std::sync::LazyLock;
+    static ANSI_RE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"\x1b\[[0-9;]*[a-zA-Z]").unwrap()
+    });
+    ANSI_RE.replace_all(input, "").to_string()
 }
 
 #[cfg(test)]
@@ -218,5 +220,44 @@ mod tests {
         let _ = create_parser(&AgentCli::Gemini);
         let _ = create_parser(&AgentCli::Codex);
         let _ = create_parser(&AgentCli::Custom("my-agent".to_string()));
+    }
+
+    #[test]
+    fn claude_detects_idle_prompt() {
+        let parser = ClaudeParser::new();
+        let result = parser.parse_chunk("❯ ");
+        assert_eq!(result.status, Some(DetectedStatus::Idle));
+    }
+
+    #[test]
+    fn claude_no_status_on_arbitrary_text() {
+        let parser = ClaudeParser::new();
+        let result = parser.parse_chunk("Hello this is some normal output text");
+        assert_eq!(result.status, None);
+    }
+
+    #[test]
+    fn claude_cost_and_status_same_chunk() {
+        let parser = ClaudeParser::new();
+        let result = parser.parse_chunk("⠋ Thinking... Total cost: $0.05, tokens: 1,234");
+        assert_eq!(result.status, Some(DetectedStatus::Thinking));
+        assert_eq!(result.usage.cost, Some(0.05));
+        assert_eq!(result.usage.tokens, Some(1234));
+    }
+
+    #[test]
+    fn strip_ansi_handles_empty_input() {
+        assert_eq!(strip_ansi(""), "");
+    }
+
+    #[test]
+    fn strip_ansi_handles_no_escapes() {
+        assert_eq!(strip_ansi("plain text"), "plain text");
+    }
+
+    #[test]
+    fn strip_ansi_complex_sequences() {
+        let raw = "\x1b[1;32mBold Green\x1b[0m \x1b[38;5;196mRed\x1b[0m";
+        assert_eq!(strip_ansi(raw), "Bold Green Red");
     }
 }
