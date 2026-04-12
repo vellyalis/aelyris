@@ -55,6 +55,15 @@ const ANSI_COLORS: [[f32; 3]; 16] = [
 const DEFAULT_FG: [f32; 4] = [0.81, 0.83, 0.88, 1.0]; // Catppuccin Text
 const DEFAULT_BG: [f32; 4] = [0.0, 0.0, 0.0, 0.0];     // Transparent
 
+/// Resolve foreground and background colors for a cell, handling inverse.
+pub fn resolve_cell_colors(cell: &Cell) -> ([f32; 4], [f32; 4]) {
+    if cell.flags.inverse {
+        (color_to_rgba(cell.bg, false), color_to_rgba(cell.fg, true))
+    } else {
+        (color_to_rgba(cell.fg, true), color_to_rgba(cell.bg, false))
+    }
+}
+
 fn color_to_rgba(c: Color, is_fg: bool) -> [f32; 4] {
     match c {
         Color::Default => if is_fg { DEFAULT_FG } else { DEFAULT_BG },

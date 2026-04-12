@@ -56,6 +56,7 @@ pub fn gpu_spawn_terminal(
         atlas,
         font,
         surface: TerminalSurface::new_placeholder(0, 0, 0, 0),
+        cursor_render: std::sync::Mutex::new(crate::gpu::cursor::CursorRender::new()),
     };
 
     let gpu_manager = app.state::<GpuTerminalManager>();
