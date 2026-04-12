@@ -252,6 +252,13 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
         </div>
       ) : (
         <div className={styles.parallelView}>
+          {activeSessions.length >= 2 && (
+            <div className={styles.parallelSummary}>
+              <span>{activeSessions.length} agents running</span>
+              <span className={styles.parallelCost}>${activeSessions.reduce((s, a) => s + a.cost, 0).toFixed(2)}</span>
+              <button className={styles.stopAllBtn} onClick={() => activeSessions.forEach((s) => onStopAgent?.(s.id))} title="Stop all agents">Stop All</button>
+            </div>
+          )}
           {sessions.length === 0 ? (
             <EmptyState icon={<Layers size={20} />} title="No sessions" description="Start agents to see parallel view" />
           ) : (
