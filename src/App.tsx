@@ -198,7 +198,7 @@ export function App() {
   // ── Keyboard shortcuts (extracted hook) ──
 
   useKeyboardShortcuts({
-    projectPath, addTab, closeTab, activeTabId, activeFile,
+    projectPath, tabs, addTab, closeTab, activeTabId, setActiveTabId, activeFile,
     sessions, activeSessionId, setActiveSessionId,
     setPaletteVisible, setSettingsVisible, setSearchVisible,
     handleOpenFolder, handleCloseFile, handleFileSelect, handleStartAgent, setQuickOpenMode,
@@ -212,7 +212,15 @@ export function App() {
 
   useEffect(() => {
     import("@tauri-apps/api/window").then(({ getCurrentWindow }) => {
-      getCurrentWindow().show().catch(() => {});
+      const win = getCurrentWindow();
+      win.show().catch(() => {});
+      win.onCloseRequested(async (event) => {
+        const { unsavedFiles } = useAppStore.getState();
+        if (unsavedFiles.size > 0) {
+          const ok = window.confirm(`${unsavedFiles.size} file(s) have unsaved changes. Close anyway?`);
+          if (!ok) event.preventDefault();
+        }
+      }).catch(() => {});
     }).catch(() => {});
   }, []);
 
@@ -289,10 +297,16 @@ export function App() {
 
       <main className="app-main" role="main">
         <div className="left-panel" role="navigation" aria-label="Project sidebar">
-          <FileTree key={fileTreeKey} rootPath={projectPath} onFileSelect={handleFileSelect} onOpenDiff={handleOpenDiff} changedFiles={changedFiles} />
-          <KanbanBoard onStartAgent={handleStartAgent} projectPath={projectPath} agentStatuses={agentStatuses} />
-          {searchVisible && <Suspense fallback={null}><SearchPanel visible rootPath={projectPath} onClose={() => setSearchVisible(false)} onResultClick={(file, line) => { handleFileSelect(file); setEditorLine(line); }} /></Suspense>}
-          <SCMPanel projectPath={projectPath} onOpenFile={handleFileSelect} onOpenDiff={handleOpenDiff} />
+          <ErrorBoundary>
+            <FileTree key={fileTreeKey} rootPath={projectPath} onFileSelect={handleFileSelect} onOpenDiff={handleOpenDiff} changedFiles={changedFiles} />
+          </ErrorBoundary>
+          <ErrorBoundary>
+            <KanbanBoard onStartAgent={handleStartAgent} projectPath={projectPath} agentStatuses={agentStatuses} />
+          </ErrorBoundary>
+          {searchVisible && <Suspense fallback={null}><ErrorBoundary><SearchPanel visible rootPath={projectPath} onClose={() => setSearchVisible(false)} onResultClick={(file, line) => { handleFileSelect(file); setEditorLine(line); }} /></ErrorBoundary></Suspense>}
+          <ErrorBoundary>
+            <SCMPanel projectPath={projectPath} onOpenFile={handleFileSelect} onOpenDiff={handleOpenDiff} />
+          </ErrorBoundary>
         </div>
 
         <div className="center-panel" role="region" aria-label="Terminal and editor">
@@ -333,18 +347,24 @@ export function App() {
         </div>
 
         <div className="right-panel" role="complementary" aria-label="Agent inspector">
-          <AgentInspector
-            sessions={sessions} activeSessionId={activeSessionId}
-            onSelectSession={handleSelectSession} onStartAgent={handleStartAgent} onStopAgent={stopAgent}
-            onCreateWorktree={createWorktree} onRemoveWorktree={removeWorktree} onRenameSession={renameSession}
-            interactiveSessions={interactiveSessions}
-            onFocusInteractiveSession={handleFocusInteractiveSession}
-            onStopInteractiveSession={stopInteractiveSession}
-            onEndSessionAndRemoveWorktree={endSessionAndRemoveWorktree}
-            onStartInteractiveSession={handleStartInteractiveSession}
-          />
-          <WorkflowPanel projectPath={projectPath} onStartAgent={handleStartAgent} />
-          <ToolkitPanel projectName={projectName} onRunCommand={handleRunCommand} />
+          <ErrorBoundary>
+            <AgentInspector
+              sessions={sessions} activeSessionId={activeSessionId}
+              onSelectSession={handleSelectSession} onStartAgent={handleStartAgent} onStopAgent={stopAgent}
+              onCreateWorktree={createWorktree} onRemoveWorktree={removeWorktree} onRenameSession={renameSession}
+              interactiveSessions={interactiveSessions}
+              onFocusInteractiveSession={handleFocusInteractiveSession}
+              onStopInteractiveSession={stopInteractiveSession}
+              onEndSessionAndRemoveWorktree={endSessionAndRemoveWorktree}
+              onStartInteractiveSession={handleStartInteractiveSession}
+            />
+          </ErrorBoundary>
+          <ErrorBoundary>
+            <WorkflowPanel projectPath={projectPath} onStartAgent={handleStartAgent} />
+          </ErrorBoundary>
+          <ErrorBoundary>
+            <ToolkitPanel projectName={projectName} onRunCommand={handleRunCommand} />
+          </ErrorBoundary>
         </div>
       </main>
 

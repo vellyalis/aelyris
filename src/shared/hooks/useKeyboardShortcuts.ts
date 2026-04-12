@@ -4,9 +4,11 @@ import type { ShellType } from "../../App";
 
 interface UseKeyboardShortcutsOptions {
   projectPath: string;
+  tabs: { id: string }[];
   addTab: (shell: ShellType) => void;
   closeTab: (id: string) => void;
   activeTabId: string;
+  setActiveTabId: (id: string) => void;
   activeFile: string | null;
   sessions: { id: string }[];
   activeSessionId: string | null;
@@ -22,7 +24,7 @@ interface UseKeyboardShortcutsOptions {
 }
 
 export function useKeyboardShortcuts({
-  projectPath, addTab, closeTab, activeTabId, activeFile,
+  projectPath, tabs, addTab, closeTab, activeTabId, setActiveTabId, activeFile,
   sessions, activeSessionId, setActiveSessionId,
   setPaletteVisible, setSettingsVisible, setSearchVisible,
   handleOpenFolder, handleCloseFile, handleFileSelect, handleStartAgent, setQuickOpenMode,
@@ -76,6 +78,16 @@ export function useKeyboardShortcuts({
           setActiveSessionId(sessions[next].id);
         }
       }
+      else if (e.ctrlKey && e.key === "Tab") {
+        e.preventDefault();
+        if (tabs.length > 1) {
+          const idx = tabs.findIndex((t) => t.id === activeTabId);
+          const next = e.shiftKey
+            ? (idx - 1 + tabs.length) % tabs.length
+            : (idx + 1) % tabs.length;
+          setActiveTabId(tabs[next].id);
+        }
+      }
       else if (e.ctrlKey && e.key >= "0" && e.key <= "9") {
         e.preventDefault();
         const idx = parseInt(e.key);
@@ -85,7 +97,7 @@ export function useKeyboardShortcuts({
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [
-    projectPath, addTab, closeTab, activeTabId, activeFile,
+    projectPath, tabs, addTab, closeTab, activeTabId, setActiveTabId, activeFile,
     sessions, activeSessionId, setActiveSessionId,
     setPaletteVisible, setSettingsVisible, setSearchVisible,
     handleOpenFolder, handleCloseFile, handleFileSelect, handleStartAgent, setQuickOpenMode,

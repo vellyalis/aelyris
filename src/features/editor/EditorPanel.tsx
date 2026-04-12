@@ -8,6 +8,7 @@ import { EditorStatusBar } from "./EditorStatusBar";
 import { useAppStore } from "../../shared/store/appStore";
 import { getPalette, isLightTheme, monacoThemeColors } from "../../shared/themes/catppuccin";
 import { useLsp, registerLspProviders } from "./lsp";
+import { toast } from "../../shared/store/toastStore";
 import styles from "./EditorPanel.module.css";
 
 interface DiffComment {
@@ -163,8 +164,12 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
             markSaved(filePath);
             setSaved(true);
             setTimeout(() => setSaved(false), 2000);
+            toast.success("Saved", filePath.split(/[/\\]/).pop() ?? filePath);
           })
-          .catch((err) => setError(String(err)));
+          .catch((err) => {
+            setError(String(err));
+            toast.error("Save failed", String(err));
+          });
       }
     };
     window.addEventListener("keydown", handler);

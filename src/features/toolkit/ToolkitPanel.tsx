@@ -31,7 +31,7 @@ interface ToolkitPanelProps {
 
 const DEFAULT_ACTIONS: ToolkitAction[] = [
   { id: "create-pr", label: "Create PR", badge: "var(--ctp-mauve)", command: "gh pr create --fill" },
-  { id: "commit-push", label: "Commit & Push", badge: "var(--ctp-green)", command: "git add -A && git commit && git push" },
+  { id: "commit-push", label: "Commit & Push", badge: "var(--ctp-green)", command: 'git add -A && git commit -m "{message}" && git push' },
   { id: "worktree", label: "Worktree", badge: "var(--ctp-blue)", command: "git worktree list" },
   { id: "dev-server", label: "Dev Server", badge: "var(--ctp-green)", command: "pnpm dev" },
   { id: "open-vscode", label: "Open in VSCode", badge: "var(--ctp-blue)", command: "code ." },
@@ -214,15 +214,26 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
             key={a.id}
             className={styles.action}
             onClick={async () => {
-              const warning = detectDangerousCommand(a.command);
+              let command = a.command;
+              // Prompt for placeholders like {message}
+              const placeholders = command.match(/\{(\w+)\}/g);
+              if (placeholders) {
+                for (const ph of [...new Set(placeholders)]) {
+                  const name = ph.slice(1, -1);
+                  const value = await showPrompt(`Enter ${name}`, { placeholder: `${name}...` });
+                  if (!value) return;
+                  command = command.split(ph).join(value.replace(/"/g, '\\"'));
+                }
+              }
+              const warning = detectDangerousCommand(command);
               if (warning) {
                 const ok = await showPrompt("Run dangerous command?", {
-                  placeholder: `${warning}\n\nCommand: ${a.command}`,
+                  placeholder: `${warning}\n\nCommand: ${command}`,
                   defaultValue: "yes",
                 });
                 if (ok !== "yes") return;
               }
-              onRunCommand?.(a.command);
+              onRunCommand?.(command);
             }}
             onContextMenu={(e) => { e.preventDefault(); handleEdit(a); }}
             title={a.command}
