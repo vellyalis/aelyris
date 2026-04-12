@@ -85,3 +85,10 @@
   margin-left: var(--space-2);
 }
 .addBtn:hover { background: var(--white-6); color: var(--text-primary); }
+
+/* Drag & drop feedback */
+.tab[data-drag-over] {
+  border-left: 2px solid var(--ctp-blue);
+  padding-left: calc(var(--space-4) - 2px);
+}
+.tab:active { cursor: grabbing; }

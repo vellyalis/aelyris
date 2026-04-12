@@ -1,3 +1,4 @@
+import { useState, useCallback } from "react";
 import * as Tabs from "@radix-ui/react-tabs";
 import type { Tab } from "../../shared/hooks/useTabManager";
 import type { InteractiveSession } from "../../shared/types/interactiveAgent";
@@ -13,16 +14,19 @@ interface WorkspaceTabsProps {
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
   onNewTab: (shell: ShellType) => void;
-  /** Interactive agent sessions shown as additional tabs */
+  onReorderTab?: (fromId: string, toId: string) => void;
   interactiveSessions?: InteractiveSession[];
   activeInteractiveId?: string | null;
   onSelectInteractive?: (id: string) => void;
   onCloseInteractive?: (id: string) => void;
 }
 
-export function WorkspaceTabs({ tabs, activeTabId, activityTabs, onSelectTab, onCloseTab, onNewTab, interactiveSessions = [], activeInteractiveId, onSelectInteractive, onCloseInteractive }: WorkspaceTabsProps) {
-  // Determine which tab is truly active (terminal tab vs interactive session)
+export function WorkspaceTabs({
+  tabs, activeTabId, activityTabs, onSelectTab, onCloseTab, onNewTab, onReorderTab,
+  interactiveSessions = [], activeInteractiveId, onSelectInteractive, onCloseInteractive,
+}: WorkspaceTabsProps) {
   const effectiveActiveId = activeInteractiveId ? `agent-${activeInteractiveId}` : activeTabId;
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
 
   const handleValueChange = (value: string) => {
     if (value.startsWith("agent-")) {
@@ -32,13 +36,44 @@ export function WorkspaceTabs({ tabs, activeTabId, activityTabs, onSelectTab, on
     }
   };
 
+  const handleDragStart = useCallback((e: React.DragEvent, tabId: string) => {
+    e.dataTransfer.setData("text/plain", tabId);
+    e.dataTransfer.effectAllowed = "move";
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent, tabId: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverId(tabId);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent, toId: string) => {
+    e.preventDefault();
+    const fromId = e.dataTransfer.getData("text/plain");
+    if (fromId && fromId !== toId) {
+      onReorderTab?.(fromId, toId);
+    }
+    setDragOverId(null);
+  }, [onReorderTab]);
+
+  const handleDragEnd = useCallback(() => {
+    setDragOverId(null);
+  }, []);
+
   return (
     <div className={styles.bar}>
       <Tabs.Root value={effectiveActiveId} onValueChange={handleValueChange}>
         <Tabs.List className={styles.tabs} aria-label="Terminal tabs">
           {tabs.map((tab) => (
             <Tabs.Trigger key={tab.id} value={tab.id} className={styles.tab} asChild>
-              <button>
+              <button
+                draggable
+                onDragStart={(e) => handleDragStart(e, tab.id)}
+                onDragOver={(e) => handleDragOver(e, tab.id)}
+                onDrop={(e) => handleDrop(e, tab.id)}
+                onDragEnd={handleDragEnd}
+                data-drag-over={dragOverId === tab.id || undefined}
+              >
                 <PixelAvatar seed={tab.label} size={12} />
                 {activityTabs?.has(tab.id) && <span className={styles.activityDot} />}
                 <span className={styles.tabLabel}>{tab.label}</span>

@@ -90,4 +90,24 @@ describe("useTabManager", () => {
     expect(newTab.cwd).toBe("/home/user/project");
     expect(newTab.label).toBe("project");
   });
+
+  it("reorders tabs via drag & drop", () => {
+    const { result } = renderHook(() => useTabManager());
+    act(() => { result.current.addTab("cmd"); });
+    act(() => { result.current.addTab("gitbash"); });
+
+    const [a, b, c] = result.current.tabs;
+    // Move C before A
+    act(() => { result.current.reorderTab(c.id, a.id); });
+
+    expect(result.current.tabs.map((t) => t.id)).toEqual([c.id, a.id, b.id]);
+  });
+
+  it("reorder with same source and target is a no-op", () => {
+    const { result } = renderHook(() => useTabManager());
+    act(() => { result.current.addTab("cmd"); });
+    const before = result.current.tabs.map((t) => t.id);
+    act(() => { result.current.reorderTab(before[0], before[0]); });
+    expect(result.current.tabs.map((t) => t.id)).toEqual(before);
+  });
 });

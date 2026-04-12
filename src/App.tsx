@@ -65,7 +65,7 @@ export function App() {
   const [fileTreeKey, setFileTreeKey] = useState(0);
   const [quickOpenMode, setQuickOpenMode] = useState<"files" | "buffers" | null>(null);
 
-  const { tabs, activeTab, activeTabId, setActiveTabId, addTab, closeTab, addTabWithCwd, activityTabs, markTabActivity } = useTabManager("powershell");
+  const { tabs, activeTab, activeTabId, setActiveTabId, addTab, closeTab, addTabWithCwd, activityTabs, markTabActivity, reorderTab } = useTabManager("powershell");
   const { sessions, activeSessionId, setActiveSessionId, startAgent, stopAgent, renameSession } = useAgentManager();
   const {
     sessions: interactiveSessions,
@@ -350,7 +350,7 @@ export function App() {
 
       <WorkspaceTabs
         tabs={tabs} activeTabId={activeTabId} activityTabs={activityTabs}
-        onSelectTab={(id) => { if (interactiveSessionId) selectInteractiveSession(""); handleTabSwitch(id); }} onCloseTab={closeTab} onNewTab={addTab}
+        onSelectTab={(id) => { if (interactiveSessionId) selectInteractiveSession(""); handleTabSwitch(id); }} onCloseTab={closeTab} onNewTab={addTab} onReorderTab={reorderTab}
         interactiveSessions={interactiveSessions}
         activeInteractiveId={interactiveSessionId}
         onSelectInteractive={handleFocusInteractiveSession}

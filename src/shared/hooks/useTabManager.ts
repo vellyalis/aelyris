@@ -120,5 +120,17 @@ export function useTabManager(defaultShell: ShellType = "powershell") {
     });
   }, []);
 
-  return { tabs, activeTab, activeTabId, setActiveTabId: selectTab, addTab, closeTab, addTabWithCwd, activityTabs, markTabActivity };
+  const reorderTab = useCallback((fromId: string, toId: string) => {
+    setTabs((prev) => {
+      const fromIdx = prev.findIndex((t) => t.id === fromId);
+      const toIdx = prev.findIndex((t) => t.id === toId);
+      if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, moved);
+      return next;
+    });
+  }, []);
+
+  return { tabs, activeTab, activeTabId, setActiveTabId: selectTab, addTab, closeTab, addTabWithCwd, activityTabs, markTabActivity, reorderTab };
 }
