@@ -15,7 +15,7 @@ const DANGEROUS_PATTERNS = [
   /\bmkfs\b/i,
   /\bdd\s+if=/i,
   /\b>\s*\/dev\/sd[a-z]/i,
-  /\bchmod\s+(-R\s+)?777\b/,
+  /\bchmod\s+(-[rR]\s+)?777\b/,
   /\bcurl\b.*\|\s*(ba)?sh\b/i,
   /\bwget\b.*\|\s*(ba)?sh\b/i,
   /\bpowershell\b.*-enc/i,

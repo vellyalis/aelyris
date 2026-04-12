@@ -45,16 +45,23 @@ function saveTabs(tabs: Tab[], activeId: string) {
 }
 
 export function useTabManager(defaultShell: ShellType = "powershell") {
-  const [tabs, setTabs] = useState<Tab[]>(() => loadSavedTabs() ?? [createTab(defaultShell)]);
-  const [activeTabId, setActiveTabId] = useState<string>(() => {
+  // Initialize tabs and activeTabId together to keep them in sync
+  const [initialState] = useState(() => {
+    const saved = loadSavedTabs();
+    const tabs = saved ?? [createTab(defaultShell)];
+    let activeId: string;
     try {
-      const saved = localStorage.getItem("aether:activeTab");
-      if (saved) return saved;
-    } catch { /* ignore */ }
-    // Fall back to first tab's ID
-    const loaded = loadSavedTabs();
-    return loaded?.[0]?.id ?? "";
+      const savedActive = localStorage.getItem("aether:activeTab");
+      activeId = savedActive && tabs.some((t) => t.id === savedActive)
+        ? savedActive
+        : tabs[0]?.id ?? "";
+    } catch {
+      activeId = tabs[0]?.id ?? "";
+    }
+    return { tabs, activeId };
   });
+  const [tabs, setTabs] = useState<Tab[]>(initialState.tabs);
+  const [activeTabId, setActiveTabId] = useState<string>(initialState.activeId);
 
   // Persist tabs on change
   useEffect(() => { saveTabs(tabs, activeTabId); }, [tabs, activeTabId]);
