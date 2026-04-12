@@ -29,14 +29,21 @@
 - Render loop起動
 
 **失敗した部分:**
-- アプリが「応答なし」でフリーズ → 原因: render loopが`terminals` Mutexを保持したまま`surface.get_current_texture()`（vsync待ち）を呼ぶため、Tauri IPCスレッドがmutex待ちで詰まる
+- アプリが「応答なし」でフリーズ（3回テスト、全てフリーズ）
+- try_lock化（ノンブロッキング）でも解決しなかった → mutex contentionが原因ではない
 - `alpha=Opaque`（PreMultiplied未対応のGPUドライバ）
 
+**根本原因の推定 (Phase D調査課題):**
+mutex contentionを完全排除しても改善しないため、Child HWND自体がWebView2のメッセージループを阻害している可能性が高い。考えられる原因:
+1. WS_CHILD HWNDがWebView2のWM_INPUT/WM_POINTER等を横取り
+2. wgpu surface presentがDXGI Swap Chainを通じてメインスレッドのGPU操作をブロック
+3. Child HWNDの初期位置(0,0)がWebView2を一時的に遮蔽
+
 **修正方針 (Phase D):**
-1. render loop内でmutexを最小限に保持: grid stateのスナップショットを取ってからロック解放→GPU操作
-2. `terminals` mutexを`RwLock`に変更: read lockなら複数スレッド同時アクセス可能
-3. `get_current_texture()`はロック外で呼ぶ
-4. alpha=Opaque問題: DX12バックエンドを優先するか、Opaque前提でChild HWNDのZ-order調整
+1. **オフスクリーン描画方式**: wgpuでオフスクリーンテクスチャに描画 → SharedTextureで WebView2に転送（Child HWND不要）
+2. **DComp統合**: DirectComposition visual treeでWebView2と合成（WezTermの方式）
+3. **WebGPU fallback**: xterm.js WebGLの代わりにWebGPU APIを使う（Child HWND不要、Rustコードを活用できない）
+4. 現状のtry_lock + Arc<Mutex>の改善は残す（将来どの方式でも有用）
 
 ---
 

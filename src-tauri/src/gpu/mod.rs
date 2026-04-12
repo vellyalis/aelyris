@@ -28,9 +28,9 @@ pub struct GpuTerminal {
     pub grid: Arc<Mutex<Grid>>,
     pub atlas: Mutex<GlyphAtlas>,
     pub font: FontManager,
-    pub surface: TerminalSurface,
+    pub surface: Arc<Mutex<TerminalSurface>>,
     pub cursor_render: Mutex<CursorRender>,
-    pub renderer: Option<TerminalRenderer>,
+    pub renderer: Arc<Mutex<Option<TerminalRenderer>>>,
 }
 
 /// Shared wgpu state (one per application).
@@ -165,72 +165,123 @@ impl GpuTerminalManager {
     }
 
     /// Render one frame for all terminals that need redraw.
+    ///
+    /// Fully non-blocking: all locks use try_lock. If any lock is contended,
+    /// skip that terminal this frame. This ensures the render loop never
+    /// blocks Tauri IPC or the main thread.
     fn render_tick(&self) {
-        let has_ctx = self.wgpu_context.lock().unwrap().is_some();
-        if !has_ctx { return; }
+        if let Ok(ctx) = self.wgpu_context.try_lock() {
+            if ctx.is_none() { return; }
+        } else {
+            return;
+        }
 
-        let mut terminals = match self.terminals.lock() {
-            Ok(t) => t,
-            Err(_) => return,
-        };
+        struct FrameData {
+            id: String,
+            glyph_instances: Vec<renderer::GlyphInstance>,
+            cursor_rects: Vec<renderer::RectInstance>,
+            surface: Arc<Mutex<TerminalSurface>>,
+            renderer: Arc<Mutex<Option<TerminalRenderer>>>,
+        }
 
-        for (_id, terminal) in terminals.iter_mut() {
-            let mut grid = match terminal.grid.lock() {
-                Ok(g) => g,
-                Err(_) => continue,
+        let mut frames: Vec<FrameData> = Vec::new();
+
+        // Phase 1: try_lock terminals, build instances, collect Arc refs
+        {
+            let terminals = match self.terminals.try_lock() {
+                Ok(t) => t,
+                Err(_) => return, // Skip frame if terminals locked by IPC
             };
 
-            if !grid.needs_redraw { continue; }
+            for (id, terminal) in terminals.iter() {
+                let mut grid = match terminal.grid.try_lock() {
+                    Ok(g) => g,
+                    Err(_) => continue, // PTY thread writing — skip this terminal
+                };
 
-            let renderer = match terminal.renderer.as_ref() {
-                Some(r) => r,
-                None => { grid.clear_dirty(); continue; }
-            };
+                if !grid.needs_redraw { continue; }
 
-            // Build glyph instances from dirty grid
-            let mut atlas = match terminal.atlas.lock() {
-                Ok(a) => a,
-                Err(_) => continue,
-            };
-            let glyph_instances = build_glyph_instances(&grid, &terminal.font, &mut atlas);
+                // Check renderer exists
+                {
+                    let renderer_guard = match terminal.renderer.try_lock() {
+                        Ok(r) => r,
+                        Err(_) => continue,
+                    };
+                    if renderer_guard.is_none() {
+                        grid.clear_dirty();
+                        continue;
+                    }
+                }
 
-            // Cursor blink
-            let cursor_rects = {
-                let mut cr = match terminal.cursor_render.lock() {
-                    Ok(c) => c,
+                let mut atlas = match terminal.atlas.try_lock() {
+                    Ok(a) => a,
                     Err(_) => continue,
                 };
-                cr.tick();
-                build_cursor_rects(&grid, &terminal.font, cr.blink_visible)
+                let glyph_instances = build_glyph_instances(&grid, &terminal.font, &mut atlas);
+
+                let cursor_rects = {
+                    let mut cr = match terminal.cursor_render.try_lock() {
+                        Ok(c) => c,
+                        Err(_) => continue,
+                    };
+                    cr.tick();
+                    build_cursor_rects(&grid, &terminal.font, cr.blink_visible)
+                };
+
+                if atlas.dirty {
+                    if let Ok(renderer_guard) = terminal.renderer.try_lock() {
+                        if let Some(ref renderer) = *renderer_guard {
+                            renderer.upload_atlas(&atlas);
+                        }
+                    }
+                    atlas.clear_dirty();
+                }
+
+                grid.clear_dirty();
+
+                frames.push(FrameData {
+                    id: id.clone(),
+                    glyph_instances,
+                    cursor_rects,
+                    surface: terminal.surface.clone(),
+                    renderer: terminal.renderer.clone(),
+                });
+            }
+        } // terminals lock released here
+
+        // Phase 2: GPU operations without terminals lock
+        for frame in frames {
+            let surface = match frame.surface.try_lock() {
+                Ok(s) => s,
+                Err(_) => continue, // Reposition in progress — skip
+            };
+            let renderer_guard = match frame.renderer.try_lock() {
+                Ok(r) => r,
+                Err(_) => continue,
+            };
+            let renderer = match renderer_guard.as_ref() {
+                Some(r) => r,
+                None => continue,
             };
 
-            // Upload atlas texture if glyphs were added
-            if atlas.dirty {
-                renderer.upload_atlas(&atlas);
-                atlas.clear_dirty();
-            }
-
-            // Acquire surface frame and render
-            match terminal.surface.get_current_texture() {
-                Ok(frame) => {
-                    let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
+            match surface.get_current_texture() {
+                Ok(texture) => {
+                    let view = texture.texture.create_view(&wgpu::TextureViewDescriptor::default());
                     renderer.render_frame(
                         &view,
-                        &glyph_instances,
-                        &cursor_rects,
+                        &frame.glyph_instances,
+                        &frame.cursor_rects,
                         wgpu::Color { r: 0.0, g: 0.0, b: 0.0, a: 0.85 },
                     );
-                    frame.present();
+                    texture.present();
                 }
                 Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
-                    log::warn!("GPU surface lost/outdated for terminal {}", _id);
+                    log::warn!("GPU surface lost/outdated for terminal {}", frame.id);
                 }
                 Err(e) => {
                     log::trace!("GPU surface error: {:?}", e);
                 }
             }
-
-            grid.clear_dirty();
         }
     }
 }

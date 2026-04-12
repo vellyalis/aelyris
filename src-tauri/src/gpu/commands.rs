@@ -78,9 +78,9 @@ pub async fn gpu_spawn_terminal(
         grid: grid.clone(),
         atlas,
         font,
-        surface,
+        surface: Arc::new(Mutex::new(surface)),
         cursor_render: Mutex::new(crate::gpu::cursor::CursorRender::new()),
-        renderer: Some(renderer),
+        renderer: Arc::new(Mutex::new(Some(renderer))),
     };
     gpu_manager.insert(id.clone(), gpu_terminal);
 
@@ -178,10 +178,14 @@ pub fn gpu_resize_terminal(app: AppHandle, id: String, cols: u16, rows: u16) -> 
 #[tauri::command]
 pub fn gpu_reposition_terminal(app: AppHandle, id: String, x: i32, y: i32, w: i32, h: i32) -> Result<(), String> {
     let gpu_manager = app.state::<Arc<GpuTerminalManager>>();
-    gpu_manager.with_terminal_mut(&id, |terminal| {
-        terminal.surface.reposition(x, y, w, h);
-        if let Some(ref mut renderer) = terminal.renderer {
-            renderer.resize(w.max(1) as u32, h.max(1) as u32);
+    gpu_manager.with_terminal(&id, |terminal| {
+        if let Ok(mut surface) = terminal.surface.lock() {
+            surface.reposition(x, y, w, h);
+        }
+        if let Ok(mut renderer_guard) = terminal.renderer.lock() {
+            if let Some(ref mut renderer) = *renderer_guard {
+                renderer.resize(w.max(1) as u32, h.max(1) as u32);
+            }
         }
     })
 }
@@ -268,7 +272,7 @@ pub fn gpu_set_opacity(app: AppHandle, id: String, _opacity: f32) -> Result<(), 
 /// Get the current terminal renderer mode.
 #[tauri::command]
 pub fn get_terminal_renderer() -> String {
-    // Default to xterm. wgpu mode causes UI freeze due to mutex contention
-    // in render loop (Phase D: needs lock-free grid snapshot approach).
+    // wgpu mode freezes UI — Child HWND blocks WebView2 message loop.
+    // Phase D: investigate offscreen rendering or DComp integration.
     "xterm".to_string()
 }
