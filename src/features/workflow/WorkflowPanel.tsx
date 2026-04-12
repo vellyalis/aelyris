@@ -187,8 +187,8 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
   if (workflows.length === 0 && running.length === 0) return null;
 
   return (
-    <div className={styles.panel}>
-      <button className={styles.header} onClick={() => setExpanded(!expanded)}>
+    <div className={styles.panel} role="region" aria-label="Workflow panel">
+      <button className={styles.header} onClick={() => setExpanded(!expanded)} aria-expanded={expanded} aria-label="Toggle workflows">
         <ChevronRight size={12} className={`${styles.chevron} ${expanded ? styles.chevronOpen : ""}`} />
         <span className={styles.headerTitle}>Workflows</span>
         {running.length > 0 && <span className={styles.badge}>{running.length}</span>}

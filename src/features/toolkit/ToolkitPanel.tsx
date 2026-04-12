@@ -189,11 +189,11 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
   }, [parseImportText]);
 
   return (
-    <div className={styles.toolkit}>
+    <div className={styles.toolkit} role="region" aria-label="Toolkit">
       <div className={styles.header}>
         <span className={styles.title}>Toolkit</span>
         <span className={styles.project}>{projectName}</span>
-        <button className={styles.addBtn} onClick={handleAdd} title="Add action">+</button>
+        <button className={styles.addBtn} onClick={handleAdd} title="Add action" aria-label="Add tool">+</button>
       </div>
 
       {editingId && (
