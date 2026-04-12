@@ -417,6 +417,61 @@ pub fn git_file_original(repo_path: String, file_path: String) -> Result<String,
     }
 }
 
+/// Get unified diff for a specific file against HEAD.
+#[tauri::command]
+pub fn git_diff_file(repo_path: String, file_path: String) -> Result<String, String> {
+    let repo_norm = repo_path.replace('\\', "/");
+    let file_norm = file_path.replace('\\', "/");
+    let relative = file_norm
+        .strip_prefix(&repo_norm)
+        .unwrap_or(&file_norm)
+        .trim_start_matches('/')
+        .to_string();
+
+    let output = std::process::Command::new("git")
+        .args(["diff", "HEAD", "--", &relative])
+        .current_dir(&repo_path)
+        .output()
+        .map_err(|e| format!("git diff failed: {}", e))?;
+
+    if output.status.success() {
+        String::from_utf8(output.stdout).map_err(|e| format!("UTF-8 error: {}", e))
+    } else {
+        // File might be untracked — show full content as "new file"
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("git diff failed: {}", stderr))
+    }
+}
+
+/// Get unified diffs for multiple files against HEAD (batch operation).
+#[tauri::command]
+pub fn git_diff_files(repo_path: String, file_paths: Vec<String>) -> Result<Vec<(String, String)>, String> {
+    let repo_norm = repo_path.replace('\\', "/");
+    let mut results = Vec::new();
+
+    for file_path in file_paths {
+        let file_norm = file_path.replace('\\', "/");
+        let relative = file_norm
+            .strip_prefix(&repo_norm)
+            .unwrap_or(&file_norm)
+            .trim_start_matches('/')
+            .to_string();
+
+        let output = std::process::Command::new("git")
+            .args(["diff", "HEAD", "--", &relative])
+            .current_dir(&repo_path)
+            .output();
+
+        let diff = match output {
+            Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).to_string(),
+            _ => String::new(),
+        };
+        results.push((relative, diff));
+    }
+
+    Ok(results)
+}
+
 /// List GitHub PRs for a repo
 #[tauri::command]
 pub fn list_pull_requests(cwd: String) -> Result<Vec<PullRequestInfo>, String> {

@@ -18,6 +18,7 @@ interface SessionCardProps {
   onCreateWorktree?: (id: string) => void;
   onRemoveWorktree?: (id: string) => void;
   onStartAgent?: (prompt: string) => void;
+  onViewDiffs?: (id: string) => void;
   worktreeInputId: string | null;
   worktreeBranch: string;
   onWorktreeBranchChange: (value: string) => void;
@@ -36,6 +37,7 @@ export function SessionCard({
   onCreateWorktree,
   onRemoveWorktree,
   onStartAgent,
+  onViewDiffs,
   worktreeInputId,
   worktreeBranch,
   onWorktreeBranchChange,
@@ -137,6 +139,11 @@ export function SessionCard({
           <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => onViewAnalytics(s.id)}>
             <BarChart3 size={10} style={{ marginRight: 4 }} />View Analytics
           </RadixContextMenu.Item>
+          {(s.filesChanged ?? 0) > 0 && (
+            <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => onViewDiffs?.(s.id)}>
+              <GitBranch size={10} style={{ marginRight: 4 }} />View Diffs ({s.filesChanged})
+            </RadixContextMenu.Item>
+          )}
           <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => onCopyInfo(s)}>Copy Info</RadixContextMenu.Item>
           <RadixContextMenu.Separator className={styles.ctxDivider} />
           {s.worktree ? (

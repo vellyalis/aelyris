@@ -9,6 +9,14 @@ export interface WorktreeInfo {
   status: "Clean" | "Modified" | "Conflicted";
 }
 
+/** Detail of a single file change made by an agent. */
+export interface FileChangeDetail {
+  path: string;
+  action: "create" | "edit" | "delete";
+  toolName: string;
+  timestamp: number;
+}
+
 export interface AgentSession {
   id: string;
   name: string;
@@ -21,6 +29,8 @@ export interface AgentSession {
   tokensUsed: number;
   branch?: string;
   filesChanged?: number;
+  /** Detailed list of files changed by the agent (for inline diff display). */
+  changedFileDetails?: FileChangeDetail[];
   watchdog?: string;
   worktree?: WorktreeInfo;
   permissionMode?: "full" | "edit" | "plan" | "readonly";

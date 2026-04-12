@@ -6,7 +6,7 @@ import { showPrompt } from "../../shared/ui/PromptDialog";
 import { useAppStore } from "../../shared/store/appStore";
 import { PixelAvatar } from "../../shared/ui/PixelAvatar";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
-import { ClipboardCopy, Plus, Activity, Layers } from "lucide-react";
+import { ClipboardCopy, Plus, Activity, Layers, GitCompare } from "lucide-react";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { ToolBadge } from "../../shared/ui/ToolBadge";
 import { extractToolName } from "../../shared/types/toolBadge";
@@ -14,6 +14,7 @@ import { parseToolUse } from "../../shared/lib/agentLogParser";
 import { SessionAnalytics } from "../analytics/SessionAnalytics";
 import { SessionCard } from "./SessionCard";
 import { InteractiveSessionCard } from "./InteractiveSessionCard";
+import { InlineResultPanel } from "./InlineResultPanel";
 import styles from "./AgentInspector.module.css";
 
 interface AgentInspectorProps {
@@ -33,7 +34,7 @@ interface AgentInspectorProps {
 }
 
 export function AgentInspector({ sessions, activeSessionId, onSelectSession, onStartAgent, onStopAgent, onCreateWorktree, onRemoveWorktree, onRenameSession, interactiveSessions = [], onFocusInteractiveSession, onStopInteractiveSession, onEndSessionAndRemoveWorktree, onStartInteractiveSession }: AgentInspectorProps) {
-  const [tab, setTab] = useState<"sessions" | "activity" | "parallel">("sessions");
+  const [tab, setTab] = useState<"sessions" | "activity" | "parallel" | "diffs">("sessions");
   const [showPromptInput, setShowPromptInput] = useState(false);
   const [promptText, setPromptText] = useState("");
   const { selectedModel, setSelectedModel, rootProjectPath } = useAppStore();
@@ -102,6 +103,9 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
         <button className={`${styles.tab} ${tab === "parallel" ? styles.tabActive : ""}`} onClick={() => setTab("parallel")} title="Parallel session view">
           <Layers size={11} style={{ marginRight: 3, verticalAlign: -1 }} />
           {activeSessions.length > 0 && <span className={styles.tabBadge}>{activeSessions.length}</span>}
+        </button>
+        <button className={`${styles.tab} ${tab === "diffs" ? styles.tabActive : ""}`} onClick={() => setTab("diffs")} title="View file changes">
+          <GitCompare size={11} style={{ marginRight: 3, verticalAlign: -1 }} />
         </button>
         <div className={styles.tabActions}>
           {totalCost > 0 && <span className={styles.totalCost} title="Total session cost">${totalCost.toFixed(2)}</span>}
@@ -179,6 +183,7 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
                 onRename={handleRenameSession}
                 onCopyInfo={handleCopySessionInfo}
                 onViewAnalytics={setAnalyticsSessionId}
+                onViewDiffs={(id) => { onSelectSession(id); setTab("diffs"); }}
                 onCreateWorktree={(id) => { setWorktreeInputId(id); setWorktreeBranch(""); }}
                 onRemoveWorktree={onRemoveWorktree}
                 onStartAgent={onStartAgent}
@@ -307,6 +312,20 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
             })
           )}
         </div>
+      )}
+
+      {tab === "diffs" && (
+        activeSession ? (
+          <InlineResultPanel
+            session={activeSession}
+            projectPath={rootProjectPath ?? ""}
+            onClose={() => setTab("sessions")}
+          />
+        ) : (
+          <div className={styles.cards}>
+            <EmptyState icon={<GitCompare size={20} />} title="No session selected" description="Select an agent session to view its file changes" />
+          </div>
+        )
       )}
 
       {analyticsSession && (

@@ -109,16 +109,22 @@ export function useAgentManager() {
 
       const log: AgentLog = { timestamp: Date.now(), type: logType, content };
 
-      // Track file changes
+      // Track file changes with detail
       const fileChange = parseFileChange(line);
-      const filesChangedDelta = fileChange ? 1 : 0;
 
       setSessions((prev) =>
-        prev.map((s) => s.id === id ? {
-          ...s,
-          logs: [...s.logs, log],
-          filesChanged: (s.filesChanged ?? 0) + filesChangedDelta,
-        } : s)
+        prev.map((s) => {
+          if (s.id !== id) return s;
+          const updated = { ...s, logs: [...s.logs, log] };
+          if (fileChange) {
+            updated.filesChanged = (s.filesChanged ?? 0) + 1;
+            updated.changedFileDetails = [
+              ...(s.changedFileDetails ?? []),
+              { path: fileChange.path, action: fileChange.action, toolName: fileChange.toolName, timestamp: fileChange.timestamp },
+            ];
+          }
+          return updated;
+        })
       );
     });
     unlistens.push(unlisten1);

@@ -80,6 +80,8 @@ pub fn run() {
             ipc::search_files,
             ipc::grep_files,
             ipc::git_file_original,
+            ipc::git_diff_file,
+            ipc::git_diff_files,
             ipc::list_pull_requests,
             ipc::get_pr_diff,
             ipc::load_app_config,
