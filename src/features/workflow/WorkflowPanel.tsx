@@ -147,12 +147,17 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
   }, [projectPath, advancePhase]);
 
   const handleApprove = useCallback(async (workflowId: string) => {
+    const comment = await showPrompt("Approve phase", {
+      placeholder: "Optional comment (Enter to approve)...",
+      defaultValue: "",
+    });
+    if (comment === null) return; // cancelled
     try {
       const done = await invoke<boolean>("workflow_approve_gate", { workflowId });
       if (done) {
         toast.success("Workflow completed", "All phases passed");
       } else {
-        toast.info("Phase approved", "Advancing to next phase...");
+        toast.info("Phase approved", comment || "Advancing to next phase...");
         await advancePhase(workflowId);
       }
     } catch (e) {
@@ -191,9 +196,14 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
       {expanded && (
         <div className={styles.content}>
           {/* Running workflows */}
-          {running.map((wf) => (
+          {running.map((wf) => {
+            const totalCost = wf.phases.reduce((sum, p) => sum + p.cost, 0);
+            return (
             <div key={wf.id} className={styles.runningCard}>
-              <div className={styles.runningTitle}>{wf.task_title}</div>
+              <div className={styles.runningTitle}>
+                {wf.task_title}
+                {totalCost > 0 && <span className={styles.totalCost}>${totalCost.toFixed(2)}</span>}
+              </div>
               <div className={styles.stepBar}>
                 {wf.phases.map((p, i) => (
                   <div key={p.name} className={`${styles.step} ${styles[`step_${p.status}`]}`} title={`${p.name}: ${p.status}`}>
@@ -211,7 +221,8 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
                 ))}
               </div>
             </div>
-          ))}
+          );
+          })}
 
           {/* Available workflows to start */}
           {workflows.map((wf) => (
