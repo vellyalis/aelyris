@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
+import { CommandBlockTracker, detectPrompt } from "./commandBlock";
 
 interface TerminalWithCleanup extends Terminal {
   __ptyCleanup?: () => void;
@@ -73,7 +74,8 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
 
     const cleanupIME = setupIMEOverlay(term, containerRef.current);
 
-    connectPty(term, shell, cwd, onTerminalReady, syncModeRef);
+    const blockTracker = new CommandBlockTracker();
+    connectPty(term, shell, cwd, onTerminalReady, syncModeRef, blockTracker);
 
     const handleCtrlV = async (e: KeyboardEvent) => {
       if (!(e.ctrlKey && e.key === "v")) return;
@@ -259,6 +261,7 @@ async function connectPty(
   cwd?: string,
   onReady?: (terminalId: string) => void,
   syncModeRef?: React.RefObject<boolean | undefined>,
+  blockTracker?: CommandBlockTracker,
 ) {
   try {
     const { invoke } = await import("@tauri-apps/api/core");
@@ -274,6 +277,9 @@ async function connectPty(
     (term as TerminalWithCleanup).__ptyId = id;
     onReady?.(id);
 
+    // Track last prompt line for block decoration
+    let lastPromptMarkerLine = -1;
+
     const unlistenOutput = await listen<string>(`pty-output-${id}`, (event) => {
       const decoded = atob(event.payload);
       const bytes = new Uint8Array(decoded.length);
@@ -281,6 +287,41 @@ async function connectPty(
         bytes[i] = decoded.charCodeAt(i);
       }
       term.write(bytes);
+
+      // Track command blocks from decoded text
+      if (blockTracker) {
+        const text = new TextDecoder().decode(bytes);
+        // Strip ANSI escape codes for prompt detection
+        const clean = text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
+        const lines = clean.split(/\r?\n/);
+        for (const line of lines) {
+          if (line.trim().length === 0) continue;
+          blockTracker.addLine(line);
+          const detected = detectPrompt(line);
+          if (detected && blockTracker.blockCount > 0) {
+            // Add a subtle separator decoration at the prompt line
+            const cursorRow = term.buffer.active.cursorY;
+            if (cursorRow !== lastPromptMarkerLine) {
+              lastPromptMarkerLine = cursorRow;
+              try {
+                const marker = term.registerMarker(0);
+                if (marker) {
+                  const deco = term.registerDecoration({
+                    marker,
+                    width: term.cols,
+                    overviewRulerOptions: { color: "rgba(166, 173, 200, 0.3)" },
+                  });
+                  deco?.onRender((el) => {
+                    el.style.borderTop = "1px solid rgba(166, 173, 200, 0.15)";
+                    el.style.height = "0px";
+                    el.style.pointerEvents = "none";
+                  });
+                }
+              } catch { /* decoration API may not be available */ }
+            }
+          }
+        }
+      }
     });
 
     const unlistenExit = await listen(`pty-exit-${id}`, () => {
