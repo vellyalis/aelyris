@@ -312,7 +312,8 @@ async function connectPty(
                     overviewRulerOptions: { color: "rgba(166, 173, 200, 0.3)" },
                   });
                   deco?.onRender((el) => {
-                    el.style.borderTop = "1px solid rgba(166, 173, 200, 0.15)";
+                    el.style.borderTop = "1px solid rgba(166, 173, 200, 0.25)";
+                    el.style.marginTop = "-1px";
                     el.style.height = "0px";
                     el.style.pointerEvents = "none";
                   });
