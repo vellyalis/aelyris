@@ -28,10 +28,18 @@
 .totalCost { font-size: var(--text-xs); font-family: var(--font-mono); color: var(--ctp-green); opacity: 0.7; margin-left: auto; }
 
 .stepBar { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.stepWrapper { display: flex; flex-direction: column; }
 .step {
   display: flex; align-items: center; gap: 3px;
   font-size: 10px; font-family: var(--font-mono); color: var(--text-muted);
 }
+.phaseDetail {
+  font-size: 9px; font-family: var(--font-mono); color: var(--text-muted);
+  padding: 2px 4px; margin-top: 2px;
+  background: var(--white-4); border-radius: var(--radius-sm);
+}
+.phaseDetailRow { display: flex; justify-content: space-between; gap: var(--space-4); }
+.phaseDetailMono { color: var(--ctp-blue); }
 .step_running { color: var(--ctp-green); }
 .step_waiting_gate { color: var(--ctp-yellow); }
 .step_passed { color: var(--ctp-green); opacity: 0.7; }

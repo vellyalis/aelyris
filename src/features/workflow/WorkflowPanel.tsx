@@ -57,6 +57,7 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
   const [running, setRunning] = useState<WorkflowStatus[]>([]);
   const [expanded, setExpanded] = useState(false);
   const [builderOpen, setBuilderOpen] = useState(false);
+  const [expandedPhase, setExpandedPhase] = useState<string | null>(null);
 
   const handleExportYaml = useCallback(async (yaml: string) => {
     try {
@@ -205,20 +206,40 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
                 {totalCost > 0 && <span className={styles.totalCost}>${totalCost.toFixed(2)}</span>}
               </div>
               <div className={styles.stepBar}>
-                {wf.phases.map((p, i) => (
-                  <div key={p.name} className={`${styles.step} ${styles[`step_${p.status}`]}`} title={`${p.name}: ${p.status}`}>
-                    {STATUS_ICON[p.status]}
-                    <span className={styles.stepName}>{p.name}</span>
-                    {p.cost > 0 && <span className={styles.stepCost}>${p.cost.toFixed(2)}</span>}
-                    {p.status === "waiting_gate" && (
-                      <span className={styles.gateActions}>
-                        <button className={styles.approveBtn} onClick={() => handleApprove(wf.id)} title="Approve">✓</button>
-                        <button className={styles.rejectBtn} onClick={() => handleReject(wf.id)} title="Reject">✗</button>
-                      </span>
+                {wf.phases.map((p, i) => {
+                  const phaseKey = `${wf.id}:${p.name}`;
+                  const isExpanded = expandedPhase === phaseKey;
+                  return (
+                  <div key={p.name} className={styles.stepWrapper}>
+                    <div
+                      className={`${styles.step} ${styles[`step_${p.status}`]}`}
+                      title={`${p.name}: ${p.status} (click to expand)`}
+                      onClick={() => setExpandedPhase(isExpanded ? null : phaseKey)}
+                      style={{ cursor: "pointer" }}
+                    >
+                      {STATUS_ICON[p.status]}
+                      <span className={styles.stepName}>{p.name}</span>
+                      {p.cost > 0 && <span className={styles.stepCost}>${p.cost.toFixed(2)}</span>}
+                      {p.status === "waiting_gate" && (
+                        <span className={styles.gateActions}>
+                          <button className={styles.approveBtn} onClick={(e) => { e.stopPropagation(); handleApprove(wf.id); }} title="Approve">✓</button>
+                          <button className={styles.rejectBtn} onClick={(e) => { e.stopPropagation(); handleReject(wf.id); }} title="Reject">✗</button>
+                        </span>
+                      )}
+                      {i < wf.phases.length - 1 && <span className={styles.arrow}>→</span>}
+                    </div>
+                    {isExpanded && (
+                      <div className={styles.phaseDetail}>
+                        <div className={styles.phaseDetailRow}><span>Status:</span> <span>{p.status}</span></div>
+                        <div className={styles.phaseDetailRow}><span>Cost:</span> <span>${p.cost.toFixed(4)}</span></div>
+                        {p.agent_session_id && (
+                          <div className={styles.phaseDetailRow}><span>Agent:</span> <span className={styles.phaseDetailMono}>{p.agent_session_id.slice(0, 12)}</span></div>
+                        )}
+                      </div>
                     )}
-                    {i < wf.phases.length - 1 && <span className={styles.arrow}>→</span>}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           );
