@@ -18,6 +18,15 @@
   transition: width 0.3s ease, background 0.3s ease;
 }
 
+.barCritical {
+  animation: pulse-critical 1s ease-in-out infinite;
+}
+
+@keyframes pulse-critical {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 .label {
   font-size: var(--text-xs);
   font-family: var(--font-mono);

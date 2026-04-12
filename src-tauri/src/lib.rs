@@ -112,6 +112,7 @@ pub fn run() {
             ipc::send_keys,
             ipc::broadcast_keys,
             ipc::capture_pane,
+            ipc::command_blocks,
             ipc::rename_pane,
             ipc::send_keys_by_name,
             ipc::list_panes_info,

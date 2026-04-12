@@ -33,6 +33,13 @@ impl OutputBufferRegistry {
         }
     }
 
+    pub fn command_blocks(&self, id: &str) -> Result<Vec<crate::pty::buffer::CommandBlock>, String> {
+        let buffers = self.buffers.lock().map_err(|_| "Lock poisoned".to_string())?;
+        let buf = buffers.get(id).ok_or_else(|| format!("No buffer for terminal {}", id))?;
+        let lines = buf.tail(500);
+        Ok(crate::pty::buffer::extract_command_blocks(&lines))
+    }
+
     pub fn capture(&self, id: &str, lines: usize, clean: bool) -> Result<String, String> {
         let buffers = self.buffers.lock().map_err(|_| "Lock poisoned".to_string())?;
         let buf = buffers.get(id).ok_or_else(|| format!("No buffer for terminal {}", id))?;
@@ -902,6 +909,16 @@ pub fn capture_pane(
     let n = lines.unwrap_or(50).min(1000);
     let clean = strip_ansi_codes.unwrap_or(false);
     registry.capture(&terminal_id, n, clean)
+}
+
+/// Extract command blocks from a terminal's output buffer
+#[tauri::command]
+pub fn command_blocks(
+    app: AppHandle,
+    terminal_id: String,
+) -> Result<Vec<crate::pty::buffer::CommandBlock>, String> {
+    let registry = app.state::<OutputBufferRegistry>();
+    registry.command_blocks(&terminal_id)
 }
 
 /// Send keystrokes to all active terminal panes (synchronize-panes)

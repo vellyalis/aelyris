@@ -14,10 +14,16 @@ describe("ContextGauge", () => {
     expect(bar?.style.background).toBe("rgb(166, 227, 161)"); // #a6e3a1
   });
 
-  it("shows red for high usage (>=80%)", () => {
+  it("shows orange for high usage (80-94%)", () => {
     const { container } = render(<ContextGauge percent={85} />);
     const bar = container.querySelector("[class*='bar']") as HTMLElement;
-    expect(bar?.style.background).toBe("rgb(243, 139, 168)"); // #f38ba8
+    expect(bar?.style.background).toBe("rgb(250, 179, 135)"); // #fab387 warning orange
+  });
+
+  it("shows red for critical usage (>=95%)", () => {
+    const { container } = render(<ContextGauge percent={97} />);
+    const bar = container.querySelector("[class*='bar']") as HTMLElement;
+    expect(bar?.style.background).toBe("rgb(243, 139, 168)"); // #f38ba8 critical red
   });
 
   it("clamps at 100%", () => {

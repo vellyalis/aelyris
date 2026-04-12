@@ -57,6 +57,79 @@ impl OutputBuffer {
     }
 }
 
+/// A command block: prompt line + command + output
+#[derive(serde::Serialize, Clone, Debug)]
+pub struct CommandBlock {
+    /// The command that was executed (extracted from prompt line)
+    pub command: String,
+    /// Output lines following the command
+    pub output: Vec<String>,
+    /// Line index in the buffer where this block starts
+    pub start_line: usize,
+}
+
+/// Detect prompt patterns and split buffer into command blocks.
+/// Recognizes: PS C:\...>, $, %, #, >, and common shell prompts.
+pub fn extract_command_blocks(lines: &[String]) -> Vec<CommandBlock> {
+    let mut blocks = Vec::new();
+    let mut i = 0;
+
+    while i < lines.len() {
+        let stripped = strip_ansi(&lines[i]);
+        let trimmed = stripped.trim();
+
+        if let Some(cmd) = detect_prompt_command(trimmed) {
+            let start = i;
+            i += 1;
+            // Collect output lines until next prompt or end
+            let mut output = Vec::new();
+            while i < lines.len() {
+                let next_stripped = strip_ansi(&lines[i]);
+                let next_trimmed = next_stripped.trim();
+                if detect_prompt_command(next_trimmed).is_some() {
+                    break;
+                }
+                output.push(lines[i].clone());
+                i += 1;
+            }
+            if !cmd.is_empty() {
+                blocks.push(CommandBlock { command: cmd, output, start_line: start });
+            }
+        } else {
+            i += 1;
+        }
+    }
+
+    blocks
+}
+
+/// Try to extract the command from a prompt line.
+/// Returns Some(command) if this looks like a prompt, None otherwise.
+fn detect_prompt_command(line: &str) -> Option<String> {
+    // PowerShell: PS C:\Users\owner> command
+    if let Some(idx) = line.find("PS ") {
+        if let Some(gt) = line[idx..].find('>') {
+            let after = line[idx + gt + 1..].trim();
+            return Some(after.to_string());
+        }
+    }
+    // Bash/Zsh: user@host:~/dir$ command  or  ~/dir$ command
+    if let Some(idx) = line.rfind("$ ") {
+        let after = line[idx + 2..].trim();
+        return Some(after.to_string());
+    }
+    // Generic: > command (at start of line)
+    if line.starts_with("> ") {
+        return Some(line[2..].trim().to_string());
+    }
+    // Trailing $ or > with content after (single char prompt)
+    if line.ends_with('$') || line.ends_with('>') || line.ends_with('#') {
+        // This is a prompt with no command yet typed
+        return Some(String::new());
+    }
+    None
+}
+
 /// Strip ANSI escape sequences from text
 pub fn strip_ansi(input: &str) -> String {
     let mut result = String::with_capacity(input.len());
@@ -165,5 +238,57 @@ mod tests {
     fn test_strip_carriage_return() {
         let input = "hello\r\nworld\r\n";
         assert_eq!(strip_ansi(input), "hello\nworld\n");
+    }
+
+    #[test]
+    fn test_command_blocks_powershell() {
+        let lines = vec![
+            "PS C:\\Users\\owner> git status".to_string(),
+            "On branch main".to_string(),
+            "nothing to commit".to_string(),
+            "PS C:\\Users\\owner> ls".to_string(),
+            "file1.txt".to_string(),
+            "file2.txt".to_string(),
+        ];
+        let blocks = extract_command_blocks(&lines);
+        assert_eq!(blocks.len(), 2);
+        assert_eq!(blocks[0].command, "git status");
+        assert_eq!(blocks[0].output.len(), 2);
+        assert_eq!(blocks[1].command, "ls");
+        assert_eq!(blocks[1].output.len(), 2);
+    }
+
+    #[test]
+    fn test_command_blocks_bash() {
+        let lines = vec![
+            "user@host:~$ echo hello".to_string(),
+            "hello".to_string(),
+            "user@host:~$ pwd".to_string(),
+            "/home/user".to_string(),
+        ];
+        let blocks = extract_command_blocks(&lines);
+        assert_eq!(blocks.len(), 2);
+        assert_eq!(blocks[0].command, "echo hello");
+        assert_eq!(blocks[1].command, "pwd");
+    }
+
+    #[test]
+    fn test_command_blocks_no_prompts() {
+        let lines = vec![
+            "just some output".to_string(),
+            "more output".to_string(),
+        ];
+        let blocks = extract_command_blocks(&lines);
+        assert_eq!(blocks.len(), 0);
+    }
+
+    #[test]
+    fn test_command_blocks_empty_prompt() {
+        let lines = vec![
+            "PS C:\\Users\\owner>".to_string(),
+        ];
+        let blocks = extract_command_blocks(&lines);
+        // Empty command should be excluded
+        assert_eq!(blocks.len(), 0);
     }
 }

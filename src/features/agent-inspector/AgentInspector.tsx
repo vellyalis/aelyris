@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { type AgentSession, type AgentStatus, type WorktreeInfo, STATUS_COLORS, STATUS_LABELS, getSessionColor } from "../../shared/types/agent";
 import type { InteractiveSession } from "../../shared/types/interactiveAgent";
 import { getCliLabel, getCliColor } from "../../shared/types/interactiveAgent";
-import { MODEL_OPTIONS, getModelById } from "../../shared/types/model";
+import { MODEL_OPTIONS, getModelById, getMaxTokens } from "../../shared/types/model";
 import { showPrompt } from "../../shared/ui/PromptDialog";
 import { useAppStore } from "../../shared/store/appStore";
 import { PixelAvatar } from "../../shared/ui/PixelAvatar";
@@ -247,7 +247,7 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
             {sortedSessions.map((s) => {
               const sColor = getSessionColor(s.id);
               const lastLog = s.logs.length > 0 ? s.logs[s.logs.length - 1] : null;
-              const pct = s.status === "done" ? 100 : s.status === "idle" ? 0 : s.tokensUsed > 0 ? Math.min(95, Math.round((s.tokensUsed / 10000) * 100)) : 2;
+              const pct = s.status === "done" ? 100 : s.status === "idle" ? 0 : s.tokensUsed > 0 ? Math.min(99, Math.round((s.tokensUsed / getMaxTokens(s.model)) * 100)) : 2;
               return (
               <RadixContextMenu.Root key={s.id}>
                 <RadixContextMenu.Trigger asChild>
@@ -423,7 +423,7 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
           ) : (
             sessions.map((s) => {
               const sColor = getSessionColor(s.id);
-              const pct = s.status === "done" ? 100 : s.status === "idle" ? 0 : s.tokensUsed > 0 ? Math.min(95, Math.round((s.tokensUsed / 10000) * 100)) : 2;
+              const pct = s.status === "done" ? 100 : s.status === "idle" ? 0 : s.tokensUsed > 0 ? Math.min(99, Math.round((s.tokensUsed / getMaxTokens(s.model)) * 100)) : 2;
               return (
                 <div
                   key={s.id}
