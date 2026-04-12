@@ -137,11 +137,15 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
     };
   }, [ptyId]);
 
-  // Fit on window resize
+  // Fit on window resize (debounced)
   useEffect(() => {
-    const handleResize = () => fitAddonRef.current?.fit();
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const handleResize = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => fitAddonRef.current?.fit(), 50);
+    };
     window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    return () => { window.removeEventListener("resize", handleResize); if (timer) clearTimeout(timer); };
   }, []);
 
   const accent = accentColor ?? getCliColor(cli);

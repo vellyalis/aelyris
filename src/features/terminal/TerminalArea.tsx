@@ -120,7 +120,12 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
 
     // Use ResizeObserver on container instead of window resize
     // This correctly handles SplitPane drag, maximize, and window resize
-    const resizeObserver = new ResizeObserver(() => { fitAddon.fit(); });
+    // Debounce fit() to avoid excessive calls during drag resize
+    let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+    const resizeObserver = new ResizeObserver(() => {
+      if (resizeTimer) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => fitAddon.fit(), 50);
+    });
     resizeObserver.observe(containerRef.current);
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -142,6 +147,7 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
       cleanupIME();
       document.removeEventListener("keydown", handleCtrlV, { capture: true } as EventListenerOptions);
       resizeObserver.disconnect();
+      if (resizeTimer) clearTimeout(resizeTimer);
       window.removeEventListener("keydown", handleKeyDown);
       term.dispose();
       termRef.current = null;
