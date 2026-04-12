@@ -14,7 +14,7 @@ import {
   Position,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Download, Plus, X } from "lucide-react";
+import { Download, Plus, Upload, X } from "lucide-react";
 import styles from "./WorkflowBuilder.module.css";
 
 // ── Custom node types ──
@@ -73,6 +73,32 @@ const PRESETS: { name: string; nodes: Node[]; edges: Edge[] }[] = [
     edges: [
       { id: "e1", source: "reproduce", target: "fix" },
       { id: "e2", source: "fix", target: "verify" },
+    ],
+  },
+  {
+    name: "Refactoring (analyze→refactor→test→review)",
+    nodes: [
+      { id: "analyze", type: "phase", position: { x: 50, y: 100 }, data: { label: "Analyze", model: "opus", prompt: "コードの問題点と改善方針を分析", maxCost: 0.5, gateType: "human_review" } },
+      { id: "refactor", type: "phase", position: { x: 300, y: 100 }, data: { label: "Refactor", model: "sonnet", prompt: "分析結果に基づきリファクタリング実施", maxCost: 2.0, gateType: "test_pass" } },
+      { id: "test", type: "phase", position: { x: 550, y: 100 }, data: { label: "Test", model: "sonnet", prompt: "リファクタリング後の全テスト実行", maxCost: 0.5, gateType: "test_pass" } },
+      { id: "review", type: "phase", position: { x: 800, y: 100 }, data: { label: "Review", model: "opus", prompt: "変更差分をレビュー", maxCost: 0.5, gateType: "human_review" } },
+    ],
+    edges: [
+      { id: "e1", source: "analyze", target: "refactor" },
+      { id: "e2", source: "refactor", target: "test" },
+      { id: "e3", source: "test", target: "review" },
+    ],
+  },
+  {
+    name: "Code Review (scan→review→report)",
+    nodes: [
+      { id: "scan", type: "phase", position: { x: 50, y: 100 }, data: { label: "Scan", model: "sonnet", prompt: "コードベースをスキャンして問題検出", maxCost: 1.0, gateType: null } },
+      { id: "review", type: "phase", position: { x: 300, y: 100 }, data: { label: "Review", model: "opus", prompt: "検出された問題を深掘りレビュー", maxCost: 1.0, gateType: "human_review" } },
+      { id: "report", type: "phase", position: { x: 550, y: 100 }, data: { label: "Report", model: "sonnet", prompt: "レビュー結果をMarkdownレポート作成", maxCost: 0.5, gateType: null } },
+    ],
+    edges: [
+      { id: "e1", source: "scan", target: "review" },
+      { id: "e2", source: "review", target: "report" },
     ],
   },
 ];
@@ -154,6 +180,89 @@ export function WorkflowBuilder({ onClose, onExport }: WorkflowBuilderProps) {
     onExport(yamlLines.join("\n"));
   }, [nodes, edges, workflowName, onExport]);
 
+  const importYaml = useCallback(() => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".yaml,.yml";
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result !== "string") return;
+        try {
+          // Simple YAML parser for workflow files
+          const lines = reader.result.split("\n");
+          let name = "Imported Workflow";
+          const importedNodes: Node[] = [];
+          const importedEdges: Edge[] = [];
+          let currentPhase: Record<string, unknown> | null = null;
+          let prevId: string | null = null;
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith("name:")) {
+              name = trimmed.slice(5).trim();
+            } else if (trimmed.startsWith("- name:")) {
+              if (currentPhase) {
+                const id = String(currentPhase.name);
+                importedNodes.push({
+                  id,
+                  type: "phase",
+                  position: { x: importedNodes.length * 250 + 50, y: 100 },
+                  data: {
+                    label: id.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+                    model: String(currentPhase.model ?? "sonnet"),
+                    prompt: String(currentPhase.prompt ?? ""),
+                    maxCost: Number(currentPhase.max_cost ?? 1.0),
+                    gateType: currentPhase.gate_type ? String(currentPhase.gate_type) : null,
+                  },
+                });
+                if (prevId) {
+                  importedEdges.push({ id: `e-${prevId}-${id}`, source: prevId, target: id });
+                }
+                prevId = id;
+              }
+              currentPhase = { name: trimmed.slice(7).trim() };
+            } else if (currentPhase) {
+              if (trimmed.startsWith("model:")) currentPhase.model = trimmed.slice(6).trim();
+              else if (trimmed.startsWith("prompt:")) currentPhase.prompt = trimmed.slice(7).trim().replace(/^"|"$/g, "");
+              else if (trimmed.startsWith("max_cost:")) currentPhase.max_cost = parseFloat(trimmed.slice(9).trim());
+              else if (trimmed.startsWith("type:")) currentPhase.gate_type = trimmed.slice(5).trim();
+            }
+          }
+          // Last phase
+          if (currentPhase) {
+            const id = String(currentPhase.name);
+            importedNodes.push({
+              id,
+              type: "phase",
+              position: { x: importedNodes.length * 250 + 50, y: 100 },
+              data: {
+                label: id.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+                model: String(currentPhase.model ?? "sonnet"),
+                prompt: String(currentPhase.prompt ?? ""),
+                maxCost: Number(currentPhase.max_cost ?? 1.0),
+                gateType: currentPhase.gate_type ? String(currentPhase.gate_type) : null,
+              },
+            });
+            if (prevId) {
+              importedEdges.push({ id: `e-${prevId}-${id}`, source: prevId, target: id });
+            }
+          }
+
+          if (importedNodes.length > 0) {
+            setNodes(importedNodes);
+            setEdges(importedEdges);
+            setWorkflowName(name);
+          }
+        } catch { /* invalid YAML */ }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  }, [setNodes, setEdges]);
+
   return (
     <div className={styles.overlay}>
       <div className={styles.builder}>
@@ -165,7 +274,8 @@ export function WorkflowBuilder({ onClose, onExport }: WorkflowBuilderProps) {
             ))}
           </div>
           <button className={styles.addBtn} onClick={addPhase}><Plus size={12} /> Phase</button>
-          <button className={styles.exportBtn} onClick={exportYaml}><Download size={12} /> Export YAML</button>
+          <button className={styles.exportBtn} onClick={importYaml}><Upload size={12} /> Import</button>
+          <button className={styles.exportBtn} onClick={exportYaml}><Download size={12} /> Export</button>
           <button className={styles.closeBtn} onClick={onClose}><X size={14} /></button>
         </div>
         <div className={styles.canvas}>
