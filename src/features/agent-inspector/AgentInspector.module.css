@@ -77,6 +77,12 @@
     transform var(--duration-fast) var(--ease-silk);
   overflow: hidden;
 }
+/* Interactive session card — thicker left stripe with terminal icon glow */
+.cardInteractive::before {
+  width: 4px;
+  background: var(--session-accent, var(--ctp-mauve));
+}
+
 /* Session-colored left stripe */
 .card::before {
   content: "";

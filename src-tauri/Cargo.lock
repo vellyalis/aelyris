@@ -21,6 +21,7 @@ dependencies = [
  "notify-debouncer-mini",
  "portable-pty",
  "raw-window-handle",
+ "regex",
  "rusqlite",
  "serde",
  "serde_json",

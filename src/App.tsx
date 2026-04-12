@@ -7,6 +7,7 @@ import { KanbanBoard } from "./features/kanban/KanbanBoard";
 import { PaneTreeContainer } from "./features/terminal/pane-tree";
 const QuickOpen = lazy(() => import("./features/quick-open/QuickOpen").then((m) => ({ default: m.QuickOpen })));
 import { AgentInspector } from "./features/agent-inspector/AgentInspector";
+import { AgentTerminal } from "./features/agent-terminal";
 import { ToolkitPanel } from "./features/toolkit/ToolkitPanel";
 import { WorkflowPanel } from "./features/workflow/WorkflowPanel";
 import { SCMPanel } from "./features/scm/SCMPanel";
@@ -31,6 +32,7 @@ import { PromptDialog, showPrompt } from "./shared/ui/PromptDialog";
 import { OnboardingOverlay } from "./shared/ui/OnboardingOverlay";
 import { useTabManager } from "./shared/hooks/useTabManager";
 import { useAgentManager } from "./shared/hooks/useAgentManager";
+import { useInteractiveAgent } from "./shared/hooks/useInteractiveAgent";
 import { useGitStatus } from "./shared/hooks/useGitStatus";
 import { useWorktreeActions } from "./shared/hooks/useWorktreeActions";
 import { useTaskAgentLink } from "./shared/hooks/useTaskAgentLink";
@@ -65,6 +67,14 @@ export function App() {
 
   const { tabs, activeTab, activeTabId, setActiveTabId, addTab, closeTab, addTabWithCwd, activityTabs, markTabActivity } = useTabManager("powershell");
   const { sessions, activeSessionId, setActiveSessionId, startAgent, stopAgent, renameSession } = useAgentManager();
+  const {
+    sessions: interactiveSessions,
+    activeSessionId: interactiveSessionId,
+    selectSession: selectInteractiveSession,
+    startSession: startInteractiveSession,
+    stopSession: stopInteractiveSession,
+    endSessionAndRemoveWorktree,
+  } = useInteractiveAgent();
 
   const projectPath = activeTab.cwd ?? rootProjectPath ?? "";
   const projectName = projectPath ? projectPath.split("/").filter(Boolean).pop() ?? "Aether" : "Aether";
@@ -156,7 +166,7 @@ export function App() {
         await invoke("write_terminal", { id: terminals[0], data: command + "\r" });
       }
     } catch (err) {
-      console.error("[handleRunCommand] failed:", err);
+      /* command error */
     }
   }, []);
 
@@ -168,6 +178,22 @@ export function App() {
       if (matchTab) handleTabSwitch(matchTab.id);
     }
   }, [sessions, tabs, setActiveSessionId, handleTabSwitch]);
+
+  // ── Interactive agent session handlers ──
+
+  const handleFocusInteractiveSession = useCallback((sessionId: string) => {
+    selectInteractiveSession(sessionId);
+  }, [selectInteractiveSession]);
+
+  const handleStartInteractiveSession = useCallback(async (opts: {
+    cwd: string; model?: string; initialPrompt?: string; branchName?: string;
+  }) => {
+    await startInteractiveSession({
+      ...opts,
+      cols: 120,
+      rows: 30,
+    });
+  }, [startInteractiveSession]);
 
   // ── Keyboard shortcuts (extracted hook) ──
 
@@ -278,8 +304,11 @@ export function App() {
 
   // ── Render ──
 
+  // Active interactive session (if any)
+  const activeInteractive = interactiveSessions.find((s) => s.id === interactiveSessionId);
+
   const terminalTabs = tabs.map((tab) => (
-    <div key={tab.id} className={appStyles.terminalTabPane} data-active={tab.id === activeTabId}>
+    <div key={tab.id} className={appStyles.terminalTabPane} data-active={tab.id === activeTabId && !activeInteractive}>
       <PaneTreeContainer shell={tab.shell} cwd={tab.cwd} />
     </div>
   ));
@@ -336,8 +365,39 @@ export function App() {
 
         <div className="center-panel" role="region" aria-label="Terminal and editor">
           {editorArea ? (
-            <SplitPane direction="vertical" defaultRatio={0.5} first={editorArea} second={<div className={appStyles.terminalContainer}>{terminalTabs}</div>} />
-          ) : terminalTabs}
+            <SplitPane direction="vertical" defaultRatio={0.5} first={editorArea} second={
+              <div className={appStyles.terminalContainer}>
+                {terminalTabs}
+                {activeInteractive && (
+                  <div className={appStyles.terminalTabPane} data-active>
+                    <AgentTerminal
+                      ptyId={activeInteractive.pty_id}
+
+                      cli={activeInteractive.cli}
+                      status={activeInteractive.status as "idle" | "thinking" | "coding" | "generating" | "waiting" | "error" | "done"}
+                      model={activeInteractive.model}
+                      cost={activeInteractive.cost}
+                    />
+                  </div>
+                )}
+              </div>
+            } />
+          ) : (
+            <div className={appStyles.terminalContainer}>
+              {terminalTabs}
+              {activeInteractive && (
+                <div className={appStyles.terminalTabPane} data-active>
+                  <AgentTerminal
+                    ptyId={activeInteractive.pty_id}
+                    cli={activeInteractive.cli}
+                    status={activeInteractive.status as "idle" | "thinking" | "coding" | "generating" | "waiting" | "error" | "done"}
+                    model={activeInteractive.model}
+                    cost={activeInteractive.cost}
+                  />
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="right-panel" role="complementary" aria-label="Agent inspector">
@@ -345,13 +405,25 @@ export function App() {
             sessions={sessions} activeSessionId={activeSessionId}
             onSelectSession={handleSelectSession} onStartAgent={handleStartAgent} onStopAgent={stopAgent}
             onCreateWorktree={createWorktree} onRemoveWorktree={removeWorktree} onRenameSession={renameSession}
+            interactiveSessions={interactiveSessions}
+            onFocusInteractiveSession={handleFocusInteractiveSession}
+            onStopInteractiveSession={stopInteractiveSession}
+            onEndSessionAndRemoveWorktree={endSessionAndRemoveWorktree}
+            onStartInteractiveSession={handleStartInteractiveSession}
           />
           <WorkflowPanel projectPath={projectPath} onStartAgent={handleStartAgent} />
           <ToolkitPanel projectName={projectName} onRunCommand={handleRunCommand} />
         </div>
       </main>
 
-      <WorkspaceTabs tabs={tabs} activeTabId={activeTabId} activityTabs={activityTabs} onSelectTab={handleTabSwitch} onCloseTab={closeTab} onNewTab={addTab} />
+      <WorkspaceTabs
+        tabs={tabs} activeTabId={activeTabId} activityTabs={activityTabs}
+        onSelectTab={(id) => { if (interactiveSessionId) selectInteractiveSession(""); handleTabSwitch(id); }} onCloseTab={closeTab} onNewTab={addTab}
+        interactiveSessions={interactiveSessions}
+        activeInteractiveId={interactiveSessionId}
+        onSelectInteractive={handleFocusInteractiveSession}
+        onCloseInteractive={stopInteractiveSession}
+      />
 
       {paletteVisible && <Suspense fallback={null}><CommandPalette visible onClose={() => setPaletteVisible(false)} commands={commands} /></Suspense>}
       {settingsVisible && <Suspense fallback={null}><Settings visible onClose={() => setSettingsVisible(false)} /></Suspense>}

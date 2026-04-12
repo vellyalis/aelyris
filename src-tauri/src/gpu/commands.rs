@@ -295,5 +295,6 @@ pub fn gpu_set_opacity(
 /// Get the current terminal renderer mode.
 #[tauri::command]
 pub fn get_terminal_renderer() -> String {
-    "wgpu".to_string()
+    // TODO: switch to "wgpu" when render loop is implemented
+    "xterm".to_string()
 }

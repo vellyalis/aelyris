@@ -100,7 +100,7 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
       setCommitMsg("");
       refresh();
     } catch (e) {
-      console.error("Commit failed:", e);
+      /* commit error — user sees no new commit in UI */
     } finally { setLoading(false); }
   }, [commitMsg, projectPath, refresh]);
 
@@ -113,7 +113,7 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
       setCommitMsg("");
       refresh();
     } catch (e) {
-      console.error("Commit & push failed:", e);
+      /* commit & push error */
     } finally { setLoading(false); }
   }, [commitMsg, projectPath, refresh]);
 

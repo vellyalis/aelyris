@@ -33,16 +33,22 @@ export function WorktreeManager({ projectPath, onSwitch }: WorktreeManagerProps)
     loadWorktrees();
   }, [loadWorktrees]);
 
+  const [createError, setCreateError] = useState<string | null>(null);
+
   const handleCreate = useCallback(async () => {
     if (!newBranch.trim()) return;
     setLoading(true);
+    setCreateError(null);
     try {
       await invoke("create_worktree", { repoPath: projectPath, branchName: newBranch.trim() });
       setNewBranch("");
       setShowCreate(false);
       await loadWorktrees();
-    } catch { /* ignore */ }
-    setLoading(false);
+    } catch (err) {
+      setCreateError(String(err));
+    } finally {
+      setLoading(false);
+    }
   }, [newBranch, projectPath, loadWorktrees]);
 
   const handleSwitch = useCallback((path: string) => {
@@ -75,6 +81,7 @@ export function WorktreeManager({ projectPath, onSwitch }: WorktreeManagerProps)
           <button className={styles.headerBtn} onClick={handleCreate} disabled={loading || !newBranch.trim()}>
             {loading ? "..." : "Create"}
           </button>
+          {createError && <div style={{ color: "var(--ctp-red)", fontSize: "var(--text-xs)", padding: "2px 4px" }}>{createError}</div>}
         </div>
       )}
 

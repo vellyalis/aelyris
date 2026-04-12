@@ -70,12 +70,33 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
     invoke<WorkflowSummary[]>("list_workflows", { projectPath }).then(setWorkflows).catch(() => {});
   }, [projectPath]);
 
-  // Poll running workflows
+  // Poll running workflows — filter out completed ones
   useEffect(() => {
-    const poll = () => { invoke<WorkflowStatus[]>("list_running_workflows").then(setRunning).catch(() => {}); };
+    let active = true;
+    const TERMINAL_STATUSES = new Set(["passed", "failed", "skipped"]);
+    const isFinished = (wf: WorkflowStatus) =>
+      wf.phases.every((p) => TERMINAL_STATUSES.has(p.status));
+
+    const poll = async () => {
+      try {
+        const r = await invoke<WorkflowStatus[]>("list_running_workflows");
+        if (!active) return;
+        // Filter out fully-completed workflows
+        const stillRunning = r.filter((wf) => !isFinished(wf));
+        setRunning(stillRunning);
+        // Auto-remove completed workflows from Rust side
+        for (const wf of r) {
+          if (isFinished(wf)) {
+            invoke("workflow_remove", { workflowId: wf.id }).catch(() => {});
+          }
+        }
+      } catch {
+        if (active) setRunning([]);
+      }
+    };
     poll();
     const interval = setInterval(poll, 3000);
-    return () => clearInterval(interval);
+    return () => { active = false; clearInterval(interval); };
   }, []);
 
   const advancePhase = useCallback(async (workflowId: string) => {
@@ -100,7 +121,7 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
       setRunning((prev) => [...prev, status]);
       await advancePhase(status.id);
     } catch (e) {
-      console.error("Failed to start workflow:", e);
+      /* workflow start error */
     }
   }, [projectPath, advancePhase]);
 
@@ -111,7 +132,7 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
         await advancePhase(workflowId);
       }
     } catch (e) {
-      console.error("Failed to approve gate:", e);
+      /* gate approve error */
     }
   }, [advancePhase]);
 
@@ -120,7 +141,7 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
       await invoke("workflow_reject_gate", { workflowId });
       await advancePhase(workflowId);
     } catch (e) {
-      console.error("Failed to reject gate:", e);
+      /* gate reject error */
     }
   }, [advancePhase]);
 

@@ -78,6 +78,8 @@ export function useAgentManager() {
   const subscribeToSession = useCallback(async (id: string) => {
     const unlistens: UnlistenFn[] = [];
 
+    try {
+
     const unlisten1 = await listen<string>(`agent-output-${id}`, (event) => {
       const line = event.payload;
       let logType: AgentLog["type"] = "text";
@@ -119,6 +121,11 @@ export function useAgentManager() {
     unlistens.push(unlisten2);
 
     unlistenRefs.current.set(id, unlistens);
+
+    } catch {
+      // Cleanup any partially registered listeners
+      unlistens.forEach((fn) => fn());
+    }
   }, []);
 
   const startAgent = useCallback(async (prompt: string, cwd: string, model?: string) => {
@@ -157,11 +164,17 @@ export function useAgentManager() {
   const stopAgent = useCallback(async (id: string) => {
     try {
       await invoke("stop_agent", { id });
-      // Cleanup listeners
-      const unlistens = unlistenRefs.current.get(id);
-      unlistens?.forEach((fn) => fn());
-      unlistenRefs.current.delete(id);
     } catch { /* ignore */ }
+    // Cleanup listeners regardless of invoke result
+    const unlistens = unlistenRefs.current.get(id);
+    unlistens?.forEach((fn) => fn());
+    unlistenRefs.current.delete(id);
+    // Mark session as done immediately (don't wait for event)
+    setSessions((prev) =>
+      prev.map((s) => s.id === id ? { ...s, status: "done" as AgentStatus } : s)
+    );
+    // Reset active session if this was the active one
+    setActiveSessionId((prev) => prev === id ? null : prev);
   }, []);
 
   // Cleanup all listeners on unmount

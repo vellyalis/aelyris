@@ -44,6 +44,32 @@ describe("splitPane", () => {
     }
   });
 
+  it("preserves original leaf id after split (PTY session survival)", () => {
+    const leaf = createLeaf("powershell");
+    const originalId = leaf.id;
+    const tree = splitPane(leaf, leaf.id, "right", "cmd");
+    // The original leaf must keep its ID — this is what keeps the PTY alive
+    const leafIds = collectLeafIds(tree);
+    expect(leafIds).toContain(originalId);
+    // The original leaf should be the first child (split right = original stays left)
+    if (tree.type === "split") {
+      expect(tree.first.id).toBe(originalId);
+    }
+  });
+
+  it("preserves all leaf ids after multiple splits", () => {
+    const leaf = createLeaf("powershell");
+    const id1 = leaf.id;
+    const tree1 = splitPane(leaf, leaf.id, "right", "cmd");
+    if (tree1.type !== "split") throw new Error("expected split");
+    const id2 = tree1.second.id;
+    const tree2 = splitPane(tree1, id2, "down", "wsl");
+    const allIds = collectLeafIds(tree2);
+    expect(allIds).toContain(id1);
+    expect(allIds).toContain(id2);
+    expect(allIds.length).toBe(3);
+  });
+
   it("does not split non-matching id", () => {
     const leaf = createLeaf("powershell");
     const result = splitPane(leaf, "nonexistent", "right", "cmd");
@@ -73,6 +99,17 @@ describe("removePane", () => {
   it("returns null when removing the only leaf", () => {
     const leaf = createLeaf("powershell");
     expect(removePane(leaf, leaf.id)).toBeNull();
+  });
+
+  it("preserves surviving leaf ids after close", () => {
+    const a = createLeaf("powershell");
+    const tree = splitPane(a, a.id, "right", "cmd");
+    if (tree.type !== "split") throw new Error("expected split");
+    const bId = tree.second.id;
+    // Close B — A should survive with same ID
+    const result = removePane(tree, bId);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe(a.id);
   });
 
   it("returns unchanged tree when id not found", () => {

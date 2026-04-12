@@ -1,0 +1,54 @@
+.agentTerminal {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  position: relative;
+  border-top: 2px solid var(--agent-accent, var(--ctp-mauve));
+}
+
+.statusBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  background: rgba(30, 30, 46, 0.6);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid rgba(88, 91, 112, 0.2);
+  font-size: 11px;
+  color: var(--ctp-subtext0);
+  flex-shrink: 0;
+}
+
+.cliBadge {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 10px;
+}
+
+.modelLabel {
+  color: var(--ctp-subtext1);
+}
+
+.statusLabel {
+  font-size: 10px;
+}
+
+.cost {
+  margin-left: auto;
+  color: var(--ctp-yellow);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+}
+
+.terminalContainer {
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Accent glow on active */
+.agentTerminal:focus-within {
+  border-top-color: var(--agent-accent, var(--ctp-mauve));
+  box-shadow: 0 -1px 8px rgba(var(--agent-accent-rgb, 196, 167, 231), 0.15);
+}

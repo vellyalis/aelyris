@@ -13,6 +13,7 @@ pub mod workflow;
 
 use tauri::Manager;
 use agent::AgentManager;
+use agent::InteractiveSessionManager;
 use db::Database;
 use pty::PtyManager;
 
@@ -29,6 +30,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(PtyManager::new())
         .manage(AgentManager::new())
+        .manage(InteractiveSessionManager::new())
         .manage(ipc::OutputBufferRegistry::new())
         .manage(pty::PaneRegistry::new())
         .manage(ipc::FsWatcherRegistry::new())
@@ -125,6 +127,7 @@ pub fn run() {
             ipc::workflow_reject_gate,
             ipc::workflow_status,
             ipc::list_running_workflows,
+            ipc::workflow_remove,
             // Agent session persistence
             ipc::save_agent_to_db,
             ipc::update_agent_in_db,
@@ -147,6 +150,11 @@ pub fn run() {
             gpu::commands::gpu_focus_terminal,
             gpu::commands::gpu_set_opacity,
             gpu::commands::get_terminal_renderer,
+            // Interactive agent session commands
+            ipc::spawn_interactive_agent,
+            ipc::stop_interactive_agent,
+            ipc::end_session_and_remove_worktree,
+            ipc::list_interactive_agents,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Aether Terminal");
