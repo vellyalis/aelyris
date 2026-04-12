@@ -85,6 +85,10 @@ pub fn spawn_terminal(
     rows: u16,
     cwd: Option<String>,
 ) -> Result<String, String> {
+    // Validate cwd before spawning
+    if let Some(ref dir) = cwd {
+        validate_path(dir)?;
+    }
     let pty_manager = app.state::<PtyManager>();
     let id = pty_manager.spawn(&shell, cols, rows, cwd.as_deref())?;
 

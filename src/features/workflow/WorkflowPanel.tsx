@@ -139,11 +139,14 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
   const handleReject = useCallback(async (workflowId: string) => {
     try {
       await invoke("workflow_reject_gate", { workflowId });
-      await advancePhase(workflowId);
-    } catch (e) {
+      // Rejection stops the workflow — do NOT advance to next phase.
+      // Remove from running list since it's effectively cancelled.
+      setRunning((prev) => prev.filter((wf) => wf.id !== workflowId));
+      invoke("workflow_remove", { workflowId }).catch(() => {});
+    } catch {
       /* gate reject error */
     }
-  }, [advancePhase]);
+  }, []);
 
   if (workflows.length === 0 && running.length === 0) return null;
 

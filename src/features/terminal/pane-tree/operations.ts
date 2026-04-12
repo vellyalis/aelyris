@@ -2,11 +2,13 @@ import type { PaneNode, TerminalLeaf, SplitDirection } from "./types";
 import { splitDirectionToTree } from "./types";
 import type { ShellType } from "../../../App";
 
-let nextId = 0;
+function uid(): string {
+  return crypto.randomUUID().slice(0, 8);
+}
 
 /** Create a fresh terminal leaf */
 export function createLeaf(shell: ShellType, cwd?: string): TerminalLeaf {
-  return { type: "terminal", id: `pane-${nextId++}`, shell, cwd };
+  return { type: "terminal", id: `pane-${uid()}`, shell, cwd };
 }
 
 /** Split the target leaf into a split containing the original + a new terminal */
@@ -23,7 +25,7 @@ export function splitPane(
     const newLeaf = createLeaf(shell, cwd);
     return {
       type: "split",
-      id: `split-${nextId++}`,
+      id: `split-${uid()}`,
       direction,
       ratio: 0.5,
       first: newFirst ? newLeaf : tree,

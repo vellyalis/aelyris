@@ -92,8 +92,9 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
             reader.onload = async () => {
               try {
                 const { invoke: inv } = await import("@tauri-apps/api/core");
+                const { escapeShellPath } = await import("../../shared/lib/shellSafety");
                 const path = await inv<string>("save_temp_image", { data: reader.result as string });
-                const escaped = path.replace(/\\/g, "/");
+                const escaped = escapeShellPath(path);
                 term.paste(`--image "${escaped}" `);
                 term.writeln(`\x1b[90m[Image: ${escaped}]\x1b[0m`);
               } catch (err) {
@@ -169,8 +170,8 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
             onChange={(e) => handleSearch(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Escape") handleSearchClose();
-              if (e.key === "Enter") searchAddonRef.current?.findNext(searchQuery);
-              if (e.key === "Enter" && e.shiftKey) searchAddonRef.current?.findPrevious(searchQuery);
+              else if (e.key === "Enter" && e.shiftKey) searchAddonRef.current?.findPrevious(searchQuery);
+              else if (e.key === "Enter") searchAddonRef.current?.findNext(searchQuery);
             }}
             placeholder="Search..."
           />

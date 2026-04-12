@@ -9,8 +9,6 @@ export interface Tab {
   worktreeBranch?: string;
 }
 
-let nextId = 1;
-
 const SHELL_LABELS: Record<ShellType, string> = {
   powershell: "PowerShell",
   cmd: "CMD",
@@ -19,7 +17,7 @@ const SHELL_LABELS: Record<ShellType, string> = {
 };
 
 function createTab(shell: ShellType, cwd?: string): Tab {
-  const id = `tab-${nextId++}`;
+  const id = `tab-${crypto.randomUUID().slice(0, 8)}`;
   const label = cwd
     ? cwd.split("/").filter(Boolean).pop() ?? SHELL_LABELS[shell]
     : SHELL_LABELS[shell];
@@ -32,7 +30,6 @@ function loadSavedTabs(): Tab[] | null {
     if (saved) {
       const parsed = JSON.parse(saved) as Tab[];
       if (parsed.length > 0) {
-        nextId = Math.max(...parsed.map((t) => parseInt(t.id.replace("tab-", "")) || 0)) + 1;
         return parsed;
       }
     }
@@ -50,7 +47,13 @@ function saveTabs(tabs: Tab[], activeId: string) {
 export function useTabManager(defaultShell: ShellType = "powershell") {
   const [tabs, setTabs] = useState<Tab[]>(() => loadSavedTabs() ?? [createTab(defaultShell)]);
   const [activeTabId, setActiveTabId] = useState<string>(() => {
-    try { return localStorage.getItem("aether:activeTab") ?? "tab-1"; } catch { return "tab-1"; }
+    try {
+      const saved = localStorage.getItem("aether:activeTab");
+      if (saved) return saved;
+    } catch { /* ignore */ }
+    // Fall back to first tab's ID
+    const loaded = loadSavedTabs();
+    return loaded?.[0]?.id ?? "";
   });
 
   // Persist tabs on change

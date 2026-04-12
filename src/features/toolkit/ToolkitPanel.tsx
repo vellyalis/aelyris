@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { GitPullRequest, Upload, GitBranch, Play, FolderOpen, ClipboardList, ScrollText, FlaskConical, FileUp, AlertCircle } from "lucide-react";
 import { showPrompt } from "../../shared/ui/PromptDialog";
+import { detectDangerousCommand } from "../../shared/lib/shellSafety";
 import styles from "./ToolkitPanel.module.css";
 
 const ICON_MAP: Record<string, React.ReactNode> = {
@@ -30,7 +31,7 @@ interface ToolkitPanelProps {
 
 const DEFAULT_ACTIONS: ToolkitAction[] = [
   { id: "create-pr", label: "Create PR", badge: "var(--ctp-mauve)", command: "gh pr create --fill" },
-  { id: "commit-push", label: "Commit & Push", badge: "var(--ctp-green)", command: "git add -A && git commit -m 'update' && git push" },
+  { id: "commit-push", label: "Commit & Push", badge: "var(--ctp-green)", command: "git add -A && git commit && git push" },
   { id: "worktree", label: "Worktree", badge: "var(--ctp-blue)", command: "git worktree list" },
   { id: "dev-server", label: "Dev Server", badge: "var(--ctp-green)", command: "pnpm dev" },
   { id: "open-vscode", label: "Open in VSCode", badge: "var(--ctp-blue)", command: "code ." },
@@ -151,6 +152,14 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
 
   const handleImport = useCallback(() => {
     if (!importParsed || importParsed.length === 0) return;
+    // Check for dangerous commands in import
+    const dangers = importParsed
+      .map((a) => ({ label: a.label, warning: detectDangerousCommand(a.command) }))
+      .filter((d) => d.warning !== null);
+    if (dangers.length > 0) {
+      const msg = dangers.map((d) => `${d.label}: ${d.warning}`).join("\n");
+      if (!confirm(`Warning: imported commands contain dangerous patterns:\n\n${msg}\n\nImport anyway?`)) return;
+    }
     const updated = [...actions, ...importParsed];
     setActions(updated);
     saveActions(projectName, updated);
@@ -204,7 +213,17 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
           <button
             key={a.id}
             className={styles.action}
-            onClick={() => onRunCommand?.(a.command)}
+            onClick={async () => {
+              const warning = detectDangerousCommand(a.command);
+              if (warning) {
+                const ok = await showPrompt("Run dangerous command?", {
+                  placeholder: `${warning}\n\nCommand: ${a.command}`,
+                  defaultValue: "yes",
+                });
+                if (ok !== "yes") return;
+              }
+              onRunCommand?.(a.command);
+            }}
             onContextMenu={(e) => { e.preventDefault(); handleEdit(a); }}
             title={a.command}
           >
