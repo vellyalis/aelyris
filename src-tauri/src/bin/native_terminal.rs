@@ -10,7 +10,7 @@ use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::window::{Window, WindowId};
-use winit::keyboard::{Key, NamedKey};
+use winit::keyboard::{Key, NamedKey, ModifiersState};
 
 use aether_terminal_lib::gpu::font::FontManager;
 use aether_terminal_lib::gpu::atlas::GlyphAtlas;
@@ -35,6 +35,8 @@ struct NativeTerminal {
     pty_id: Option<String>,
     pty_manager: PtyManager,
     ime_state: ImeState,
+    modifiers: ModifiersState,
+    mouse_pressed: bool,
 }
 
 impl NativeTerminal {
@@ -53,6 +55,8 @@ impl NativeTerminal {
             pty_id: None,
             pty_manager: PtyManager::new(),
             ime_state: ImeState::new(),
+            modifiers: ModifiersState::empty(),
+            mouse_pressed: false,
         }
     }
 
@@ -235,9 +239,58 @@ impl NativeTerminal {
     }
 
     fn handle_key_input(&mut self, key: Key) {
-        let pty_id = match &self.pty_id { Some(id) => id.clone(), None => return };
+        let ctrl = self.modifiers.contains(ModifiersState::CONTROL);
+        let shift = self.modifiers.contains(ModifiersState::SHIFT);
+
+        // Ctrl+Shift+C: Copy selection to clipboard
+        if ctrl && shift {
+            if let Key::Character(ref c) = key {
+                if c.eq_ignore_ascii_case("c") {
+                    let text = self.grid.lock().unwrap().selected_text();
+                    if !text.is_empty() {
+                        if let Ok(mut clip) = arboard::Clipboard::new() {
+                            let _ = clip.set_text(&text);
+                        }
+                    }
+                    return;
+                }
+            }
+        }
+
+        // Ctrl+V: Paste from clipboard
+        if ctrl {
+            if let Key::Character(ref c) = key {
+                if c.eq_ignore_ascii_case("v") {
+                    if let Ok(mut clip) = arboard::Clipboard::new() {
+                        if let Ok(text) = clip.get_text() {
+                            // Bracketed paste if terminal supports it
+                            let grid = self.grid.lock().unwrap();
+                            let bracketed = grid.mode.bracketed_paste;
+                            drop(grid);
+                            if bracketed {
+                                self.write_to_pty(b"\x1b[200~");
+                                self.write_to_pty(text.as_bytes());
+                                self.write_to_pty(b"\x1b[201~");
+                            } else {
+                                self.write_to_pty(text.as_bytes());
+                            }
+                        }
+                    }
+                    return;
+                }
+                // Ctrl+C: send SIGINT (^C)
+                if c.eq_ignore_ascii_case("c") {
+                    self.write_to_pty(&[0x03]);
+                    return;
+                }
+            }
+        }
+
+        // Any keyboard input resets viewport to live view
+        self.grid.lock().unwrap().reset_viewport();
+
         let data = match key {
-            Key::Character(ref c) => c.to_string().into_bytes(),
+            Key::Character(ref c) if !ctrl => c.to_string().into_bytes(),
             Key::Named(NamedKey::Enter) => vec![b'\r'],
             Key::Named(NamedKey::Backspace) => vec![0x7f],
             Key::Named(NamedKey::Tab) => vec![b'\t'],
@@ -251,7 +304,15 @@ impl NativeTerminal {
             Key::Named(NamedKey::Delete) => b"\x1b[3~".to_vec(),
             _ => return,
         };
-        let _ = self.pty_manager.write(&pty_id, &data);
+        self.write_to_pty(&data);
+    }
+
+    /// Convert mouse pixel position to grid (row, col).
+    fn pixel_to_cell(&self, x: f64, y: f64) -> (u16, u16) {
+        let col = (x / self.font.cell_width as f64).max(0.0) as u16;
+        let row = (y / self.font.cell_height as f64).max(0.0) as u16;
+        let grid = self.grid.lock().unwrap();
+        (row.min(grid.rows.saturating_sub(1)), col.min(grid.cols.saturating_sub(1)))
     }
 }
 
@@ -323,16 +384,45 @@ impl ApplicationHandler for NativeTerminal {
                     }
                 }
             }
+            WindowEvent::ModifiersChanged(mods) => {
+                self.modifiers = mods.state();
+            }
             WindowEvent::MouseWheel { delta, .. } => {
                 let lines = match delta {
-                    winit::event::MouseScrollDelta::LineDelta(_, y) => -y as i32,
-                    winit::event::MouseScrollDelta::PixelDelta(pos) => -(pos.y / self.font.cell_height as f64) as i32,
+                    winit::event::MouseScrollDelta::LineDelta(_, y) => y as i32,
+                    winit::event::MouseScrollDelta::PixelDelta(pos) => (pos.y / self.font.cell_height as f64) as i32,
                 };
-                // Send cursor up/down sequences to PTY (3 lines per scroll tick)
-                let count = lines.unsigned_abs().max(1).min(10);
-                let seq = if lines < 0 { b"\x1b[A" } else { b"\x1b[B" };
-                for _ in 0..count {
-                    self.write_to_pty(seq);
+                if lines != 0 {
+                    let mut grid = self.grid.lock().unwrap();
+                    // In alt screen (vim, less), send arrow keys instead of scrolling viewport
+                    if grid.mode.alt_screen {
+                        drop(grid);
+                        let count = lines.unsigned_abs().max(1).min(10);
+                        let seq = if lines > 0 { b"\x1b[A" } else { b"\x1b[B" };
+                        for _ in 0..count { self.write_to_pty(seq); }
+                    } else {
+                        grid.scroll_viewport(-lines);
+                    }
+                }
+            }
+            WindowEvent::MouseInput { state, button: winit::event::MouseButton::Left, .. } => {
+                if state.is_pressed() {
+                    self.mouse_pressed = true;
+                    // Start selection at current cursor position
+                    // (actual position updated by CursorMoved)
+                } else {
+                    self.mouse_pressed = false;
+                }
+            }
+            WindowEvent::CursorMoved { position, .. } => {
+                let (row, col) = self.pixel_to_cell(position.x, position.y);
+                if self.mouse_pressed {
+                    let mut grid = self.grid.lock().unwrap();
+                    if grid.selection.anchor.is_none() {
+                        grid.selection.anchor = Some((row, col));
+                    }
+                    grid.selection.end = Some((row, col));
+                    grid.needs_redraw = true;
                 }
             }
             WindowEvent::KeyboardInput { event, .. } => {

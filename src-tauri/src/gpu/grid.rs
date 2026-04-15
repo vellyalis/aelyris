@@ -92,6 +92,46 @@ impl Default for CursorState {
     }
 }
 
+/// Text selection range (start and end positions in grid coordinates).
+#[derive(Clone, Debug, Default)]
+pub struct Selection {
+    /// Selection anchor (where click started). None = no selection.
+    pub anchor: Option<(u16, u16)>,
+    /// Selection end (current mouse position during drag).
+    pub end: Option<(u16, u16)>,
+}
+
+impl Selection {
+    /// Returns normalized (start, end) with start <= end in reading order.
+    pub fn normalized(&self) -> Option<((u16, u16), (u16, u16))> {
+        let (a, b) = (self.anchor?, self.end?);
+        if a.0 < b.0 || (a.0 == b.0 && a.1 <= b.1) {
+            Some((a, b))
+        } else {
+            Some((b, a))
+        }
+    }
+
+    /// Check if a cell (row, col) is within the selection.
+    pub fn contains(&self, row: u16, col: u16) -> bool {
+        let Some(((sr, sc), (er, ec))) = self.normalized() else { return false };
+        if row < sr || row > er { return false; }
+        if sr == er { return col >= sc && col <= ec; }
+        if row == sr { return col >= sc; }
+        if row == er { return col <= ec; }
+        true
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.anchor.is_some() && self.end.is_some()
+    }
+
+    pub fn clear(&mut self) {
+        self.anchor = None;
+        self.end = None;
+    }
+}
+
 /// The terminal grid: cells + scrollback + cursor + modes.
 pub struct Grid {
     pub cols: u16,
@@ -113,6 +153,10 @@ pub struct Grid {
     pub dirty_rows: Vec<bool>,
     /// True if any row is dirty and a frame should be rendered.
     pub needs_redraw: bool,
+    /// Viewport offset into scrollback (0 = live view, >0 = scrolled back).
+    pub viewport_offset: usize,
+    /// Current text selection.
+    pub selection: Selection,
 }
 
 impl Grid {
@@ -133,6 +177,8 @@ impl Grid {
             mode: TerminalMode { auto_wrap: true, ..Default::default() },
             dirty_rows: vec![true; rows as usize],
             needs_redraw: true,
+            viewport_offset: 0,
+            selection: Selection::default(),
         }
     }
 
@@ -164,6 +210,76 @@ impl Grid {
             *d = false;
         }
         self.needs_redraw = false;
+    }
+
+    /// Scroll viewport into scrollback history. Returns true if offset changed.
+    pub fn scroll_viewport(&mut self, delta: i32) -> bool {
+        let max = self.scrollback.len();
+        let old = self.viewport_offset;
+        self.viewport_offset = if delta < 0 {
+            self.viewport_offset.saturating_add((-delta) as usize).min(max)
+        } else {
+            self.viewport_offset.saturating_sub(delta as usize)
+        };
+        if self.viewport_offset != old {
+            self.needs_redraw = true;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Reset viewport to live view (latest output).
+    pub fn reset_viewport(&mut self) {
+        if self.viewport_offset > 0 {
+            self.viewport_offset = 0;
+            self.needs_redraw = true;
+        }
+    }
+
+    /// Get a visible row, accounting for viewport_offset.
+    /// When offset > 0, top rows come from scrollback.
+    pub fn visible_row(&self, screen_row: usize) -> &[Cell] {
+        if self.viewport_offset == 0 || screen_row >= self.rows as usize {
+            return &self.cells[screen_row.min(self.rows as usize - 1)];
+        }
+        let sb_len = self.scrollback.len();
+        let sb_start = sb_len.saturating_sub(self.viewport_offset);
+        let sb_idx = sb_start + screen_row;
+        if sb_idx < sb_len {
+            &self.scrollback[sb_idx]
+        } else {
+            let cell_row = sb_idx - sb_len;
+            &self.cells[cell_row.min(self.rows as usize - 1)]
+        }
+    }
+
+    /// Extract selected text as a string.
+    pub fn selected_text(&self) -> String {
+        let Some(((sr, sc), (er, ec))) = self.selection.normalized() else {
+            return String::new();
+        };
+        let mut result = String::new();
+        for row in sr..=er {
+            let cols_start = if row == sr { sc } else { 0 };
+            let cols_end = if row == er { ec } else { self.cols - 1 };
+            let cells = if (row as usize) < self.rows as usize {
+                &self.cells[row as usize]
+            } else {
+                continue;
+            };
+            for col in cols_start..=cols_end {
+                if (col as usize) < cells.len() {
+                    let c = cells[col as usize].c;
+                    result.push(if c == '\0' { ' ' } else { c });
+                }
+            }
+            // Trim trailing spaces on each line
+            let trimmed = result.trim_end_matches(' ');
+            result.truncate(trimmed.len());
+            if row < er { result.push('\n'); }
+        }
+        result
     }
 
     /// Resize the grid, reflowing content where possible.
@@ -862,5 +978,94 @@ mod tests {
         }
         assert!(!grid.mode.alt_screen);
         assert_eq!(grid.cells[0][0].c, 'A'); // original content restored
+    }
+
+    #[test]
+    fn test_selection_contains() {
+        let sel = Selection {
+            anchor: Some((1, 5)),
+            end: Some((3, 10)),
+        };
+        assert!(!sel.contains(0, 5));  // above selection
+        assert!(sel.contains(1, 5));   // start
+        assert!(sel.contains(1, 79));  // first row, right edge
+        assert!(sel.contains(2, 0));   // middle row
+        assert!(sel.contains(3, 0));   // last row, left edge
+        assert!(sel.contains(3, 10));  // end
+        assert!(!sel.contains(3, 11)); // past end
+        assert!(!sel.contains(4, 0));  // below selection
+    }
+
+    #[test]
+    fn test_selection_single_line() {
+        let sel = Selection {
+            anchor: Some((2, 3)),
+            end: Some((2, 8)),
+        };
+        assert!(!sel.contains(2, 2));
+        assert!(sel.contains(2, 3));
+        assert!(sel.contains(2, 5));
+        assert!(sel.contains(2, 8));
+        assert!(!sel.contains(2, 9));
+    }
+
+    #[test]
+    fn test_selection_reversed() {
+        // Drag upward: end is before anchor
+        let sel = Selection {
+            anchor: Some((5, 10)),
+            end: Some((3, 2)),
+        };
+        let ((sr, sc), (er, ec)) = sel.normalized().unwrap();
+        assert_eq!((sr, sc), (3, 2));
+        assert_eq!((er, ec), (5, 10));
+        assert!(sel.contains(4, 0));
+    }
+
+    #[test]
+    fn test_selected_text() {
+        let mut grid = Grid::new(10, 5, 100);
+        for (i, c) in "Hello".chars().enumerate() {
+            grid.cells[0][i].c = c;
+        }
+        for (i, c) in "World".chars().enumerate() {
+            grid.cells[1][i].c = c;
+        }
+        grid.selection.anchor = Some((0, 0));
+        grid.selection.end = Some((1, 4));
+        let text = grid.selected_text();
+        assert_eq!(text, "Hello\nWorld");
+    }
+
+    #[test]
+    fn test_scroll_viewport() {
+        let mut grid = Grid::new(80, 3, 100);
+        // Push some lines into scrollback
+        for _ in 0..5 {
+            grid.cursor.row = 2;
+            grid.put_char('X');
+            grid.line_feed();
+        }
+        assert!(grid.scrollback.len() >= 3);
+
+        // Scroll up into history
+        assert!(grid.scroll_viewport(-3));
+        assert_eq!(grid.viewport_offset, 3);
+
+        // Scroll down back
+        assert!(grid.scroll_viewport(2));
+        assert_eq!(grid.viewport_offset, 1);
+
+        // Reset to live
+        grid.reset_viewport();
+        assert_eq!(grid.viewport_offset, 0);
+    }
+
+    #[test]
+    fn test_viewport_clamp() {
+        let mut grid = Grid::new(80, 3, 100);
+        // No scrollback — can't scroll up
+        assert!(!grid.scroll_viewport(-5));
+        assert_eq!(grid.viewport_offset, 0);
     }
 }
