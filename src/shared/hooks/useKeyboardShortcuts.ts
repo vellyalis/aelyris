@@ -21,16 +21,18 @@ interface UseKeyboardShortcutsOptions {
   handleFileSelect: (path: string) => void;
   handleStartAgent: (prompt: string) => void;
   setQuickOpenMode?: (mode: "files" | "buffers" | null) => void;
+  setHelpVisible?: (v: boolean | ((prev: boolean) => boolean)) => void;
 }
 
 export function useKeyboardShortcuts({
   projectPath, tabs, addTab, closeTab, activeTabId, setActiveTabId, activeFile,
   sessions, activeSessionId, setActiveSessionId,
   setPaletteVisible, setSettingsVisible, setSearchVisible,
-  handleOpenFolder, handleCloseFile, handleFileSelect, handleStartAgent, setQuickOpenMode,
+  handleOpenFolder, handleCloseFile, handleFileSelect, handleStartAgent, setQuickOpenMode, setHelpVisible,
 }: UseKeyboardShortcutsOptions) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (e.key === "F1") { e.preventDefault(); setHelpVisible?.((v: boolean) => !v); return; }
       if (e.ctrlKey && !e.shiftKey && e.key === "n") {
         e.preventDefault();
         showPrompt("New File", { placeholder: "file name..." }).then(async (name) => {
@@ -100,6 +102,6 @@ export function useKeyboardShortcuts({
     projectPath, tabs, addTab, closeTab, activeTabId, setActiveTabId, activeFile,
     sessions, activeSessionId, setActiveSessionId,
     setPaletteVisible, setSettingsVisible, setSearchVisible,
-    handleOpenFolder, handleCloseFile, handleFileSelect, handleStartAgent, setQuickOpenMode,
+    handleOpenFolder, handleCloseFile, handleFileSelect, handleStartAgent, setQuickOpenMode, setHelpVisible,
   ]);
 }

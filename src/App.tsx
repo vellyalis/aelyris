@@ -209,7 +209,7 @@ export function App() {
     projectPath, tabs, addTab, closeTab, activeTabId, setActiveTabId, activeFile,
     sessions, activeSessionId, setActiveSessionId,
     setPaletteVisible, setSettingsVisible, setSearchVisible,
-    handleOpenFolder, handleCloseFile, handleFileSelect, handleStartAgent, setQuickOpenMode,
+    handleOpenFolder, handleCloseFile, handleFileSelect, handleStartAgent, setQuickOpenMode, setHelpVisible,
   });
 
   // ── Terminal notifications (bell → tab badge + Windows toast) ──
