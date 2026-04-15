@@ -10,7 +10,7 @@
   -webkit-backdrop-filter: blur(12px);
   border-top: 1px solid var(--white-6);
   font-size: var(--text-sm);
-  color: var(--white-35);
+  color: var(--text-muted);
   user-select: none;
 }
 
