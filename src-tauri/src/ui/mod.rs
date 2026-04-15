@@ -3,6 +3,7 @@
 //! Uses the same RectInstance + GlyphInstance as the terminal grid.
 //! No external UI framework dependency.
 
+pub mod editor;
 pub mod sidebar;
 
 use crate::gpu::atlas::GlyphAtlas;
@@ -85,6 +86,13 @@ pub struct ChromeOutput {
     pub hits: Vec<HitRegion>,
 }
 
+/// Optional status bar override (e.g., editor mode info).
+pub struct StatusOverride {
+    pub label: String,
+    pub detail: String,
+    pub indicator: String,
+}
+
 /// State for the UI chrome.
 pub struct ChromeState {
     pub tabs: Vec<Tab>,
@@ -92,6 +100,7 @@ pub struct ChromeState {
     pub is_maximized: bool,
     pub git_branch: Option<String>,
     pub mouse_pos: Option<(f32, f32)>,
+    pub status_override: Option<StatusOverride>,
 }
 
 impl ChromeState {
@@ -102,6 +111,7 @@ impl ChromeState {
             is_maximized: false,
             git_branch: None,
             mouse_pos: None,
+            status_override: None,
         }
     }
 
@@ -325,25 +335,36 @@ impl ChromeState {
         let text_y = bar_y + (STATUS_BAR_HEIGHT - font.cell_height) / 2.0;
         let mut x = 10.0;
 
-        if let Some(tab) = self.tabs.get(self.active_tab) {
-            // Shell name
-            render_text(font, atlas, &tab.shell, x, text_y, cat::BLUE, glyphs);
-            x += tab.shell.chars().count() as f32 * font.cell_width + 8.0;
+        if let Some(so) = &self.status_override {
+            // Editor mode status bar
+            render_text(font, atlas, &so.label, x, text_y, cat::BLUE, glyphs);
+            x += so.label.chars().count() as f32 * font.cell_width + 8.0;
 
-            // Separator
             render_text(font, atlas, "|", x, text_y, cat::OVERLAY0, glyphs);
             x += font.cell_width + 8.0;
 
-            // Git branch
+            render_text(font, atlas, &so.detail, x, text_y, cat::SUBTEXT1, glyphs);
+            x += so.detail.chars().count() as f32 * font.cell_width + 8.0;
+
+            render_text(font, atlas, "|", x, text_y, cat::OVERLAY0, glyphs);
+            x += font.cell_width + 8.0;
+
+            render_text(font, atlas, &so.indicator, x, text_y, cat::GREEN, glyphs);
+        } else if let Some(tab) = self.tabs.get(self.active_tab) {
+            // Terminal mode status bar
+            render_text(font, atlas, &tab.shell, x, text_y, cat::BLUE, glyphs);
+            x += tab.shell.chars().count() as f32 * font.cell_width + 8.0;
+
+            render_text(font, atlas, "|", x, text_y, cat::OVERLAY0, glyphs);
+            x += font.cell_width + 8.0;
+
             let branch = self.git_branch.as_deref().unwrap_or("—");
             render_text(font, atlas, branch, x, text_y, cat::GREEN, glyphs);
             x += branch.chars().count() as f32 * font.cell_width + 8.0;
 
-            // Separator
             render_text(font, atlas, "|", x, text_y, cat::OVERLAY0, glyphs);
             x += font.cell_width + 8.0;
 
-            // Encoding
             render_text(font, atlas, "UTF-8", x, text_y, cat::SUBTEXT0, glyphs);
         }
     }

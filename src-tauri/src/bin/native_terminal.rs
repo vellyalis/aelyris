@@ -19,7 +19,14 @@ use aether_terminal_lib::gpu::ime::ImeState;
 use aether_terminal_lib::gpu::renderer::TerminalRenderer;
 use aether_terminal_lib::pty::{PtyManager, ShellType};
 use aether_terminal_lib::ui::{self, ChromeAction, ChromeState, HitRegion};
+use aether_terminal_lib::ui::editor::FileViewerState;
 use aether_terminal_lib::ui::sidebar::SidebarState;
+
+/// What occupies the main content area.
+enum ContentPane {
+    Terminal,
+    FileViewer(FileViewerState),
+}
 
 /// Application state for the native terminal.
 struct NativeTerminal {
@@ -43,6 +50,7 @@ struct NativeTerminal {
     chrome: ChromeState,
     sidebar: SidebarState,
     hit_regions: Vec<HitRegion>,
+    content_pane: ContentPane,
     should_exit: bool,
 }
 
@@ -67,6 +75,7 @@ impl NativeTerminal {
             chrome: ChromeState::new(),
             sidebar: SidebarState::new(),
             hit_regions: Vec::new(),
+            content_pane: ContentPane::Terminal,
             should_exit: false,
         }
     }
@@ -213,6 +222,16 @@ impl NativeTerminal {
 
         let sidebar_w = self.sidebar.width();
 
+        // --- Set status bar override for editor mode ---
+        self.chrome.status_override = match &self.content_pane {
+            ContentPane::FileViewer(viewer) => Some(ui::StatusOverride {
+                label: viewer.file_name.clone(),
+                detail: format!("Ln {}/{}", viewer.cursor_line + 1, viewer.total_lines),
+                indicator: "READ-ONLY".to_string(),
+            }),
+            ContentPane::Terminal => None,
+        };
+
         // --- Build chrome instances ---
         let mut atlas = self.atlas.lock().unwrap();
         let chrome_out = self.chrome.build(&self.font, &mut atlas, window_w, window_h);
@@ -227,41 +246,56 @@ impl NativeTerminal {
             self.chrome.mouse_pos,
         );
 
-        // --- Build terminal instances (offset by chrome top + sidebar width) ---
-        let mut grid = self.grid.lock().unwrap();
-        let mut term_glyphs =
-            aether_terminal_lib::gpu::build_glyph_instances(&grid, &self.font, &mut atlas);
-        let mut term_rects = aether_terminal_lib::gpu::build_bg_rects(&grid, &self.font);
-        term_rects.extend(aether_terminal_lib::gpu::build_cursor_rects(
-            &grid, &self.font, true,
-        ));
-
-        // Offset terminal instances by chrome height and sidebar width
-        for g in &mut term_glyphs {
-            g.pos[0] += sidebar_w;
-            g.pos[1] += ui::CHROME_TOP;
-        }
-        for r in &mut term_rects {
-            r.pos[0] += sidebar_w;
-            r.pos[1] += ui::CHROME_TOP;
-        }
+        // --- Build content instances (terminal or editor) ---
+        let content_w = window_w - sidebar_w;
+        let content_h = window_h - ui::CHROME_TOP - ui::STATUS_BAR_HEIGHT;
+        let (content_rects, content_glyphs) = match &self.content_pane {
+            ContentPane::Terminal => {
+                let mut grid = self.grid.lock().unwrap();
+                let mut term_glyphs =
+                    aether_terminal_lib::gpu::build_glyph_instances(&grid, &self.font, &mut atlas);
+                let mut term_rects = aether_terminal_lib::gpu::build_bg_rects(&grid, &self.font);
+                term_rects.extend(aether_terminal_lib::gpu::build_cursor_rects(
+                    &grid, &self.font, true,
+                ));
+                for g in &mut term_glyphs {
+                    g.pos[0] += sidebar_w;
+                    g.pos[1] += ui::CHROME_TOP;
+                }
+                for r in &mut term_rects {
+                    r.pos[0] += sidebar_w;
+                    r.pos[1] += ui::CHROME_TOP;
+                }
+                grid.clear_dirty();
+                (term_rects, term_glyphs)
+            }
+            ContentPane::FileViewer(viewer) => {
+                let out = viewer.build(
+                    &self.font,
+                    &mut atlas,
+                    sidebar_w,
+                    ui::CHROME_TOP,
+                    content_w,
+                    content_h,
+                );
+                (out.rects, out.glyphs)
+            }
+        };
 
         // Upload atlas if dirty
         if atlas.dirty {
             renderer.upload_atlas(&atlas);
             atlas.clear_dirty();
         }
-        grid.clear_dirty();
-        drop(grid);
         drop(atlas);
 
-        // --- Combine: chrome → sidebar → terminal ---
+        // --- Combine: chrome → sidebar → content ---
         let mut all_rects = chrome_out.rects;
         all_rects.extend(sidebar_out.rects);
-        all_rects.extend(term_rects);
+        all_rects.extend(content_rects);
         let mut all_glyphs = chrome_out.glyphs;
         all_glyphs.extend(sidebar_out.glyphs);
-        all_glyphs.extend(term_glyphs);
+        all_glyphs.extend(content_glyphs);
 
         // --- GPU render ---
         match surface.get_current_texture() {
@@ -363,6 +397,25 @@ impl NativeTerminal {
         let ctrl = self.modifiers.contains(ModifiersState::CONTROL);
         let shift = self.modifiers.contains(ModifiersState::SHIFT);
 
+        // Ctrl+B: Toggle sidebar (works in all modes)
+        if ctrl {
+            if let Key::Character(ref c) = key {
+                if c.eq_ignore_ascii_case("b") {
+                    self.sidebar.toggle();
+                    self.recalc_grid_size();
+                    return;
+                }
+            }
+        }
+
+        // Dispatch by content pane
+        if matches!(self.content_pane, ContentPane::FileViewer(_)) {
+            self.handle_viewer_key(key);
+            return;
+        }
+
+        // --- Terminal mode ---
+
         // Ctrl+Shift+C: Copy selection
         if ctrl && shift {
             if let Key::Character(ref c) = key {
@@ -373,17 +426,6 @@ impl NativeTerminal {
                             let _ = clip.set_text(&text);
                         }
                     }
-                    return;
-                }
-            }
-        }
-
-        // Ctrl+B: Toggle sidebar
-        if ctrl {
-            if let Key::Character(ref c) = key {
-                if c.eq_ignore_ascii_case("b") {
-                    self.sidebar.toggle();
-                    self.recalc_grid_size();
                     return;
                 }
             }
@@ -436,6 +478,35 @@ impl NativeTerminal {
             _ => return,
         };
         self.write_to_pty(&data);
+    }
+
+    /// Handle key input when in file viewer mode.
+    fn handle_viewer_key(&mut self, key: Key) {
+        // Handle Escape outside the borrow to avoid move-while-borrowed
+        if matches!(key, Key::Named(NamedKey::Escape)) {
+            self.content_pane = ContentPane::Terminal;
+            log::info!("Back to terminal");
+            return;
+        }
+
+        let content_h = self
+            .surface_config
+            .as_ref()
+            .map(|c| c.height as f32 - ui::CHROME_TOP - ui::STATUS_BAR_HEIGHT)
+            .unwrap_or(400.0);
+
+        if let ContentPane::FileViewer(viewer) = &mut self.content_pane {
+            let visible = viewer.visible_count(content_h, self.font.cell_height);
+            match key {
+                Key::Named(NamedKey::ArrowUp) => viewer.cursor_up(visible),
+                Key::Named(NamedKey::ArrowDown) => viewer.cursor_down(visible),
+                Key::Named(NamedKey::PageUp) => viewer.page_up(visible),
+                Key::Named(NamedKey::PageDown) => viewer.page_down(visible),
+                Key::Named(NamedKey::Home) => viewer.go_top(),
+                Key::Named(NamedKey::End) => viewer.go_bottom(visible),
+                _ => {}
+            }
+        }
     }
 
     /// Convert pixel position to grid cell, accounting for chrome and sidebar offset.
@@ -590,11 +661,27 @@ impl ApplicationHandler for NativeTerminal {
                             && (mx as f64) < self.sidebar.width() as f64
                             && my > ui::CHROME_TOP
                         {
+                            let mut open_path: Option<std::path::PathBuf> = None;
                             if let Some(tree) = &mut self.sidebar.file_tree {
                                 let content_top = ui::CHROME_TOP + 28.0; // HEADER_HEIGHT
                                 if let Some(idx) = tree.entry_at_y(my, content_top) {
                                     tree.selected = Some(idx);
-                                    tree.toggle(idx);
+                                    if tree.entries[idx].is_dir {
+                                        tree.toggle(idx);
+                                    } else {
+                                        open_path = Some(tree.entries[idx].path.clone());
+                                    }
+                                }
+                            }
+                            if let Some(path) = open_path {
+                                match FileViewerState::open(&path) {
+                                    Ok(viewer) => {
+                                        log::info!("Opened file: {}", viewer.file_name);
+                                        self.content_pane = ContentPane::FileViewer(viewer);
+                                    }
+                                    Err(e) => {
+                                        log::warn!("Cannot open file: {}", e);
+                                    }
                                 }
                             }
                             return;
@@ -631,7 +718,7 @@ impl ApplicationHandler for NativeTerminal {
                         return;
                     }
                 }
-                // Only scroll terminal in content area
+                // Scroll content area (terminal or editor)
                 if let Some((mx, my)) = self.chrome.mouse_pos {
                     if !self.is_in_content(mx as f64, my as f64) {
                         return;
@@ -644,16 +731,30 @@ impl ApplicationHandler for NativeTerminal {
                     }
                 };
                 if lines != 0 {
-                    let mut grid = self.grid.lock().unwrap();
-                    if grid.mode.alt_screen {
-                        drop(grid);
-                        let count = lines.unsigned_abs().max(1).min(10);
-                        let seq = if lines > 0 { b"\x1b[A" } else { b"\x1b[B" };
-                        for _ in 0..count {
-                            self.write_to_pty(seq);
+                    if let ContentPane::FileViewer(viewer) = &mut self.content_pane {
+                        let config = self.surface_config.as_ref();
+                        let content_h = config
+                            .map(|c| c.height as f32 - ui::CHROME_TOP - ui::STATUS_BAR_HEIGHT)
+                            .unwrap_or(400.0);
+                        let visible = viewer.visible_count(content_h, self.font.cell_height);
+                        let scroll_lines = lines.unsigned_abs() as usize;
+                        if lines > 0 {
+                            viewer.scroll_up(scroll_lines);
+                        } else {
+                            viewer.scroll_down(scroll_lines, visible);
                         }
                     } else {
-                        grid.scroll_viewport(-lines);
+                        let mut grid = self.grid.lock().unwrap();
+                        if grid.mode.alt_screen {
+                            drop(grid);
+                            let count = lines.unsigned_abs().max(1).min(10);
+                            let seq = if lines > 0 { b"\x1b[A" } else { b"\x1b[B" };
+                            for _ in 0..count {
+                                self.write_to_pty(seq);
+                            }
+                        } else {
+                            grid.scroll_viewport(-lines);
+                        }
                     }
                 }
             }
