@@ -34,23 +34,31 @@ Binary: cargo run --bin native-terminal
 ### Phase 1 残 (Phase 2で対応)
 1. スプリットペイン (複数PTY同一ウィンドウ) — UI Chromeと同時実装
 
-## Phase 2: UI Chrome
+## Phase 2: UI Chrome ✅ 完了
 
 **目標**: タブ/ヘッダー/ステータスバーをRustで描画
 
-| タスク | 担当 | 方針 |
+```
+Status: ✅ Phase 2 完了 (コマンドパレット除く)
+Binary: cargo run --bin native-terminal
+```
+
+| タスク | 状態 | 詳細 |
 |--------|------|------|
-| カスタムタイトルバー | wgpu 直描画 | 最小化/最大化/閉じるボタン |
-| タブバー | egui or wgpu | ドラッグ&ドロップ並替 |
-| ステータスバー | wgpu 直描画 | シェル/ブランチ/エンコーディング |
-| コマンドパレット | egui | Ctrl+Shift+P テキスト入力 |
+| カスタムタイトルバー | ✅ | wgpu 直描画 — ドラッグ移動 + 最小化/最大化/閉じる + ホバー効果 |
+| タブバー | ✅ | wgpu 直描画 — タブ切替 + 閉じる + 新規タブボタン + ホバー効果 |
+| ステータスバー | ✅ | wgpu 直描画 — シェル名/Gitブランチ/エンコーディング |
+| コマンドパレット | 📋 | Phase 3 以降で実装（テキスト入力が必要） |
 
-**UIフレームワーク候補**:
-- **egui**: 即座に使える。wgpu統合済み。ターミナル以外のUI全般に使用
-- **iced**: より構造的だがイベントループの統合が複雑
-- **独自実装**: ターミナル描画と同じwgpuパイプラインでUI描画
+**UIフレームワーク**: egui は wgpu 25 とのバージョン非互換のため不採用。
+ターミナルと同じ RectInstance + GlyphInstance パイプラインで UI Chrome を直接描画。
+ヒットテストはフレーム毎に生成する HitRegion 配列で処理。
 
-**推奨**: egui で開始。パフォーマンス問題が出たら部分的に独自描画に移行。
+### Phase 2 実装詳細
+- **`src/ui/mod.rs`**: ChromeState, HitRegion, render_text ヘルパー
+- **content_offset**: シェーダーに content_offset uniform 追加（将来のスクロール対応用）
+- **レイアウト**: タイトルバー(32px) + タブバー(34px) + ターミナル + ステータスバー(24px)
+- **Catppuccin Mocha**: UI Chrome も同一パレットで統一描画
 
 ## Phase 3: サイドパネル
 

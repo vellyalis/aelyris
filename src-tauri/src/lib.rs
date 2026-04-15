@@ -4,6 +4,7 @@ pub mod db;
 mod git;
 pub mod gpu;
 mod ipc;
+pub mod ui;
 pub mod lsp;
 pub mod pty;
 pub mod session;
