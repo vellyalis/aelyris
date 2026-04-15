@@ -34,6 +34,8 @@ src-tauri/src/
 ### Native 操作
 | キー | 動作 |
 |------|------|
+| Ctrl+Shift+P | コマンドパレット |
+| Ctrl+R | コマンド履歴検索 |
 | Ctrl+B | サイドバー トグル |
 | Ctrl+Shift+C | テキスト選択コピー |
 | Ctrl+V | ペースト (bracketed paste) |
@@ -42,6 +44,12 @@ src-tauri/src/
 | Ctrl+Shift+Z | エディタ Redo |
 | Escape | エディタ → ターミナル復帰 |
 | サイドバーファイルクリック | エディタでファイル表示 |
+
+### パレットコマンド
+- New Terminal Tab / Close Tab
+- Toggle Sidebar / Save File / Close Editor
+- Git: Create/Switch/Delete Worktree
+- Command History (Ctrl+R)
 
 ## Tauri版 (レガシー)
 
