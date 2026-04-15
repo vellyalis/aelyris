@@ -96,11 +96,181 @@ enum AgentUpdate {
     Usage(String, f64, u64),
 }
 
-/// Per-tab state: each tab has its own PTY and grid.
-struct TabState {
+/// Split direction for pane splitting.
+#[derive(Clone, Copy, Debug)]
+enum SplitDir {
+    Horizontal, // left | right
+    Vertical,   // top / bottom
+}
+
+/// A leaf pane — single terminal with its own PTY.
+struct PaneLeaf {
+    id: u32,
     pty_id: String,
     grid: Arc<Mutex<Grid>>,
     agent_info: Option<AgentTabInfo>,
+}
+
+/// Pane tree node — either a leaf or a split.
+enum PaneNode {
+    Leaf(PaneLeaf),
+    Split {
+        dir: SplitDir,
+        ratio: f32,
+        first: Box<PaneNode>,
+        second: Box<PaneNode>,
+    },
+}
+
+impl PaneNode {
+    /// Find a leaf by pane ID.
+    fn find_leaf(&self, id: u32) -> Option<&PaneLeaf> {
+        match self {
+            PaneNode::Leaf(leaf) => {
+                if leaf.id == id { Some(leaf) } else { None }
+            }
+            PaneNode::Split { first, second, .. } => {
+                first.find_leaf(id).or_else(|| second.find_leaf(id))
+            }
+        }
+    }
+
+    fn find_leaf_mut(&mut self, id: u32) -> Option<&mut PaneLeaf> {
+        match self {
+            PaneNode::Leaf(leaf) => {
+                if leaf.id == id { Some(leaf) } else { None }
+            }
+            PaneNode::Split { first, second, .. } => {
+                if let Some(l) = first.find_leaf_mut(id) {
+                    Some(l)
+                } else {
+                    second.find_leaf_mut(id)
+                }
+            }
+        }
+    }
+
+    /// Collect all leaf pane IDs (left-to-right / top-to-bottom order).
+    fn leaf_ids(&self) -> Vec<u32> {
+        match self {
+            PaneNode::Leaf(leaf) => vec![leaf.id],
+            PaneNode::Split { first, second, .. } => {
+                let mut ids = first.leaf_ids();
+                ids.extend(second.leaf_ids());
+                ids
+            }
+        }
+    }
+
+    /// Collect all PTY IDs for cleanup.
+    fn all_pty_ids(&self) -> Vec<String> {
+        match self {
+            PaneNode::Leaf(leaf) => vec![leaf.pty_id.clone()],
+            PaneNode::Split { first, second, .. } => {
+                let mut ids = first.all_pty_ids();
+                ids.extend(second.all_pty_ids());
+                ids
+            }
+        }
+    }
+
+    /// Apply a function to all leaves (for resize, etc.)
+    fn for_each_leaf<F: FnMut(&PaneLeaf)>(&self, f: &mut F) {
+        match self {
+            PaneNode::Leaf(leaf) => f(leaf),
+            PaneNode::Split { first, second, .. } => {
+                first.for_each_leaf(f);
+                second.for_each_leaf(f);
+            }
+        }
+    }
+
+    /// Split a leaf pane by ID, returning the new leaf's ID.
+    fn split_leaf(
+        &mut self,
+        target_id: u32,
+        dir: SplitDir,
+        new_leaf: PaneLeaf,
+    ) -> bool {
+        match self {
+            PaneNode::Leaf(leaf) if leaf.id == target_id => {
+                // Replace this leaf with a split
+                let old = std::mem::replace(
+                    self,
+                    PaneNode::Leaf(PaneLeaf {
+                        id: 0,
+                        pty_id: String::new(),
+                        grid: Arc::new(Mutex::new(Grid::new(1, 1, 0))),
+                        agent_info: None,
+                    }),
+                );
+                *self = PaneNode::Split {
+                    dir,
+                    ratio: 0.5,
+                    first: Box::new(old),
+                    second: Box::new(PaneNode::Leaf(new_leaf)),
+                };
+                true
+            }
+            PaneNode::Split { first, second, .. } => {
+                // Check which subtree contains the target before consuming new_leaf
+                if first.find_leaf(target_id).is_some() {
+                    first.split_leaf(target_id, dir, new_leaf)
+                } else {
+                    second.split_leaf(target_id, dir, new_leaf)
+                }
+            }
+            _ => false,
+        }
+    }
+}
+
+/// Per-tab state: pane tree with focused pane tracking.
+struct TabState {
+    root: PaneNode,
+    focused_pane_id: u32,
+    next_pane_id: u32,
+}
+
+impl TabState {
+    fn new_single(pty_id: String, grid: Arc<Mutex<Grid>>, agent_info: Option<AgentTabInfo>) -> Self {
+        Self {
+            root: PaneNode::Leaf(PaneLeaf { id: 0, pty_id, grid, agent_info }),
+            focused_pane_id: 0,
+            next_pane_id: 1,
+        }
+    }
+
+    fn focused_leaf(&self) -> Option<&PaneLeaf> {
+        self.root.find_leaf(self.focused_pane_id)
+    }
+
+    fn focused_leaf_mut(&mut self) -> Option<&mut PaneLeaf> {
+        self.root.find_leaf_mut(self.focused_pane_id)
+    }
+
+    /// Cycle focus to the next pane.
+    fn focus_next(&mut self) {
+        let ids = self.root.leaf_ids();
+        if let Some(pos) = ids.iter().position(|&id| id == self.focused_pane_id) {
+            self.focused_pane_id = ids[(pos + 1) % ids.len()];
+        }
+    }
+
+    /// Get the focused pane's grid.
+    fn grid(&self) -> Option<&Arc<Mutex<Grid>>> {
+        self.focused_leaf().map(|l| &l.grid)
+    }
+
+    /// Get the focused pane's PTY ID.
+    fn pty_id(&self) -> Option<&str> {
+        self.focused_leaf().map(|l| l.pty_id.as_str())
+    }
+
+    /// Get the focused pane's agent info.
+    fn agent_info(&self) -> Option<&AgentTabInfo> {
+        self.focused_leaf().and_then(|l| l.agent_info.as_ref())
+    }
 }
 
 /// Application state for the native terminal.
@@ -260,12 +430,12 @@ impl NativeTerminal {
 
     /// Get the active tab's grid (if any).
     fn active_grid(&self) -> Option<&Arc<Mutex<Grid>>> {
-        self.tab_states.get(self.chrome.active_tab).map(|t| &t.grid)
+        self.tab_states.get(self.chrome.active_tab).and_then(|t| t.grid())
     }
 
-    /// Get the active tab's PTY ID (if any).
+    /// Get the active tab's focused PTY ID (if any).
     fn active_pty_id(&self) -> Option<&str> {
-        self.tab_states.get(self.chrome.active_tab).map(|t| t.pty_id.as_str())
+        self.tab_states.get(self.chrome.active_tab).and_then(|t| t.pty_id())
     }
 
     /// Spawn a new PTY tab.
@@ -314,7 +484,7 @@ impl NativeTerminal {
                     });
                 }
                 self.chrome.add_tab(id.clone(), shell_name, "PowerShell".into());
-                self.tab_states.push(TabState { pty_id: id, grid, agent_info: None });
+                self.tab_states.push(TabState::new_single(id, grid, None));
                 // Switch to new tab
                 self.chrome.active_tab = self.tab_states.len() - 1;
             }
@@ -406,10 +576,10 @@ impl NativeTerminal {
                 let tab_name = format!("{} ({})", cli_label, model_display);
                 self.chrome
                     .add_tab(id.clone(), tab_name, cli_label.clone());
-                self.tab_states.push(TabState {
-                    pty_id: id,
+                self.tab_states.push(TabState::new_single(
+                    id,
                     grid,
-                    agent_info: Some(AgentTabInfo {
+                    Some(AgentTabInfo {
                         cli,
                         status: AgentStatus::Idle,
                         model: model_display,
@@ -417,7 +587,7 @@ impl NativeTerminal {
                         tokens_used: 0,
                         started_at: std::time::Instant::now(),
                     }),
-                });
+                ));
                 self.chrome.active_tab = self.tab_states.len() - 1;
                 self.content_pane = ContentPane::Terminal;
             }
@@ -502,27 +672,23 @@ impl NativeTerminal {
         let content_h = window_h - ui::CHROME_TOP - ui::STATUS_BAR_HEIGHT;
         let (content_rects, content_glyphs) = match &mut self.content_pane {
             ContentPane::Terminal => {
-                let grid_arc = match self.active_grid() {
-                    Some(g) => g.clone(),
-                    None => return,
-                };
-                let mut grid = grid_arc.lock().unwrap();
-                let mut term_glyphs =
-                    aether_terminal_lib::gpu::build_glyph_instances(&grid, &self.font, &mut atlas);
-                let mut term_rects = aether_terminal_lib::gpu::build_bg_rects(&grid, &self.font);
-                term_rects.extend(aether_terminal_lib::gpu::build_cursor_rects(
-                    &grid, &self.font, true,
-                ));
-                for g in &mut term_glyphs {
-                    g.pos[0] += sidebar_w;
-                    g.pos[1] += ui::CHROME_TOP;
+                let mut all_r = Vec::new();
+                let mut all_g = Vec::new();
+                if let Some(tab) = self.tab_states.get(self.chrome.active_tab) {
+                    Self::render_pane_tree(
+                        &tab.root,
+                        tab.focused_pane_id,
+                        &self.font,
+                        &mut atlas,
+                        sidebar_w,
+                        ui::CHROME_TOP,
+                        content_w,
+                        content_h,
+                        &mut all_r,
+                        &mut all_g,
+                    );
                 }
-                for r in &mut term_rects {
-                    r.pos[0] += sidebar_w;
-                    r.pos[1] += ui::CHROME_TOP;
-                }
-                grid.clear_dirty();
-                (term_rects, term_glyphs)
+                (all_r, all_g)
             }
             ContentPane::Editor(editor) => {
                 editor.refresh_syntax();
@@ -602,7 +768,9 @@ impl NativeTerminal {
             ChromeAction::Close => {
                 self.save_session();
                 for tab in &self.tab_states {
-                    let _ = self.pty_manager.close(&tab.pty_id);
+                    for pty_id in tab.root.all_pty_ids() {
+                        let _ = self.pty_manager.close(&pty_id);
+                    }
                 }
                 self.should_exit = true;
             }
@@ -631,12 +799,16 @@ impl NativeTerminal {
                 if self.chrome.tabs.len() <= 1 {
                     // Last tab — close window
                     for tab in &self.tab_states {
-                        let _ = self.pty_manager.close(&tab.pty_id);
+                        for pty_id in tab.root.all_pty_ids() {
+                            let _ = self.pty_manager.close(&pty_id);
+                        }
                     }
                     self.should_exit = true;
                 } else if idx < self.tab_states.len() {
-                    // Close this tab's PTY and remove state
-                    let _ = self.pty_manager.close(&self.tab_states[idx].pty_id);
+                    // Close this tab's all PTYs and remove state
+                    for pty_id in self.tab_states[idx].root.all_pty_ids() {
+                        let _ = self.pty_manager.close(&pty_id);
+                    }
                     self.tab_states.remove(idx);
                     self.chrome.tabs.remove(idx);
                     if self.chrome.active_tab >= self.chrome.tabs.len() {
@@ -685,10 +857,22 @@ impl NativeTerminal {
         // Ctrl+Shift+P: Toggle command palette (works in all modes)
         if ctrl && shift {
             if let Key::Character(ref c) = key {
-                if c.eq_ignore_ascii_case("p") {
-                    self.palette.toggle();
-                    return;
+                match c.to_lowercase().as_str() {
+                    "p" => { self.palette.toggle(); return; }
+                    "h" => { self.split_focused_pane(SplitDir::Horizontal); return; }
+                    "v" => { self.split_focused_pane(SplitDir::Vertical); return; }
+                    _ => {}
                 }
+            }
+        }
+
+        // Alt+Arrow: Switch focus between panes
+        if self.modifiers.contains(ModifiersState::ALT) {
+            if matches!(key, Key::Named(NamedKey::Tab)) {
+                if let Some(tab) = self.tab_states.get_mut(self.chrome.active_tab) {
+                    tab.focus_next();
+                }
+                return;
             }
         }
 
@@ -1198,6 +1382,84 @@ impl NativeTerminal {
         }
     }
 
+    /// Recursively render a pane tree at the given screen rect.
+    fn render_pane_tree(
+        node: &PaneNode,
+        focused_id: u32,
+        font: &FontManager,
+        atlas: &mut GlyphAtlas,
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        rects: &mut Vec<RectInstance>,
+        glyphs: &mut Vec<GlyphInstance>,
+    ) {
+        match node {
+            PaneNode::Leaf(leaf) => {
+                let mut grid = leaf.grid.lock().unwrap();
+                let mut term_glyphs =
+                    aether_terminal_lib::gpu::build_glyph_instances(&grid, font, atlas);
+                let mut term_rects = aether_terminal_lib::gpu::build_bg_rects(&grid, font);
+                let is_focused = leaf.id == focused_id;
+                term_rects.extend(aether_terminal_lib::gpu::build_cursor_rects(
+                    &grid, font, is_focused,
+                ));
+                for g in &mut term_glyphs {
+                    g.pos[0] += x;
+                    g.pos[1] += y;
+                }
+                for r in &mut term_rects {
+                    r.pos[0] += x;
+                    r.pos[1] += y;
+                }
+                grid.clear_dirty();
+                rects.extend(term_rects);
+                glyphs.extend(term_glyphs);
+
+                // Draw focus border for non-single panes
+                if is_focused {
+                    // Thin border at top
+                    rects.push(RectInstance {
+                        pos: [x, y],
+                        size: [w, 1.0],
+                        color: ui::cat::pm(137, 180, 250, 120),
+                    });
+                }
+            }
+            PaneNode::Split { dir, ratio, first, second } => {
+                match dir {
+                    SplitDir::Horizontal => {
+                        let first_w = (w * ratio).floor();
+                        let divider = 2.0;
+                        let second_w = w - first_w - divider;
+                        Self::render_pane_tree(first, focused_id, font, atlas, x, y, first_w, h, rects, glyphs);
+                        // Divider
+                        rects.push(RectInstance {
+                            pos: [x + first_w, y],
+                            size: [divider, h],
+                            color: ui::cat::pm(69, 71, 90, 200),
+                        });
+                        Self::render_pane_tree(second, focused_id, font, atlas, x + first_w + divider, y, second_w, h, rects, glyphs);
+                    }
+                    SplitDir::Vertical => {
+                        let first_h = (h * ratio).floor();
+                        let divider = 2.0;
+                        let second_h = h - first_h - divider;
+                        Self::render_pane_tree(first, focused_id, font, atlas, x, y, w, first_h, rects, glyphs);
+                        // Divider
+                        rects.push(RectInstance {
+                            pos: [x, y + first_h],
+                            size: [w, divider],
+                            color: ui::cat::pm(69, 71, 90, 200),
+                        });
+                        Self::render_pane_tree(second, focused_id, font, atlas, x, y + first_h + divider, w, second_h, rects, glyphs);
+                    }
+                }
+            }
+        }
+    }
+
     /// Build right-click context menu overlay.
     fn build_context_menu(
         &self,
@@ -1316,7 +1578,7 @@ impl NativeTerminal {
             .tab_states
             .iter()
             .enumerate()
-            .filter_map(|(i, t)| t.agent_info.as_ref().map(|a| (i, a)))
+            .filter_map(|(i, t)| t.agent_info().map(|a| (i, a)))
             .collect();
 
         if agent_tabs.is_empty() {
@@ -1407,6 +1669,74 @@ impl NativeTerminal {
         }
 
         (rects, glyphs)
+    }
+
+    /// Split the focused pane in the active tab.
+    fn split_focused_pane(&mut self, dir: SplitDir) {
+        let size = self
+            .window
+            .as_ref()
+            .map(|w| w.inner_size())
+            .unwrap_or(winit::dpi::PhysicalSize::new(1200, 700));
+        let content_w = size.width as f32 - self.sidebar.width();
+        let content_h = (size.height as f32 - ui::CHROME_TOP - ui::STATUS_BAR_HEIGHT).max(1.0);
+        // For split panes, each pane gets half the space
+        let (pane_w, pane_h) = match dir {
+            SplitDir::Horizontal => (content_w / 2.0, content_h),
+            SplitDir::Vertical => (content_w, content_h / 2.0),
+        };
+        let cols = (pane_w / self.font.cell_width).max(1.0) as u16;
+        let rows = (pane_h / self.font.cell_height).max(1.0) as u16;
+
+        let grid = Arc::new(Mutex::new(Grid::new(cols, rows, 10_000)));
+        let shell = ShellType::PowerShell;
+
+        match self.pty_manager.spawn(&shell, cols, rows, None) {
+            Ok(id) => {
+                if let Ok(reader) = self.pty_manager.take_reader(&id) {
+                    let grid_clone = grid.clone();
+                    std::thread::spawn(move || {
+                        let mut reader = reader;
+                        let mut parser = vte::Parser::new();
+                        let mut buf = [0u8; 4096];
+                        loop {
+                            match std::io::Read::read(&mut reader, &mut buf) {
+                                Ok(0) => break,
+                                Ok(n) => {
+                                    let mut g = match grid_clone.lock() {
+                                        Ok(g) => g,
+                                        Err(_) => break,
+                                    };
+                                    let mut performer = GridPerformer { grid: &mut g };
+                                    for byte in &buf[..n] {
+                                        parser.advance(&mut performer, *byte);
+                                    }
+                                    g.needs_redraw = true;
+                                }
+                                Err(_) => break,
+                            }
+                        }
+                    });
+                }
+
+                if let Some(tab) = self.tab_states.get_mut(self.chrome.active_tab) {
+                    let new_id = tab.next_pane_id;
+                    tab.next_pane_id += 1;
+                    let new_leaf = PaneLeaf {
+                        id: new_id,
+                        pty_id: id,
+                        grid,
+                        agent_info: None,
+                    };
+                    let target_id = tab.focused_pane_id;
+                    if tab.root.split_leaf(target_id, dir, new_leaf) {
+                        tab.focused_pane_id = new_id;
+                        log::info!("Pane split {:?}, new pane {}", dir, new_id);
+                    }
+                }
+            }
+            Err(e) => log::error!("Failed to spawn PTY for split: {}", e),
+        }
     }
 
     /// Apply a setting change from the settings palette.
@@ -1527,17 +1857,37 @@ impl NativeTerminal {
     /// Process pending agent status updates from monitor threads.
     fn process_agent_updates(&mut self) {
         while let Ok(update) = self.agent_rx.try_recv() {
-            let (pty_id, apply): (String, Box<dyn FnOnce(&mut AgentTabInfo)>) = match update {
-                AgentUpdate::Status(id, status) => (id, Box::new(move |info| info.status = status)),
-                AgentUpdate::Usage(id, cost, tokens) => (id, Box::new(move |info| {
-                    if cost > info.cost { info.cost = cost; }
-                    if tokens > info.tokens_used { info.tokens_used = tokens; }
-                })),
-            };
-            if let Some(tab) = self.tab_states.iter_mut().find(|t| t.pty_id == pty_id) {
-                if let Some(info) = &mut tab.agent_info {
-                    apply(info);
+            match update {
+                AgentUpdate::Status(ref pty_id, ref status) => {
+                    self.apply_agent_update_to_tree(pty_id, |info| info.status = status.clone());
                 }
+                AgentUpdate::Usage(ref pty_id, cost, tokens) => {
+                    self.apply_agent_update_to_tree(pty_id, |info| {
+                        if cost > info.cost { info.cost = cost; }
+                        if tokens > info.tokens_used { info.tokens_used = tokens; }
+                    });
+                }
+            }
+        }
+    }
+
+    fn apply_agent_update_to_tree(&mut self, pty_id: &str, f: impl FnOnce(&mut AgentTabInfo)) {
+        fn find_and_apply<'a>(
+            node: &'a mut PaneNode,
+            pty_id: &str,
+        ) -> Option<&'a mut AgentTabInfo> {
+            match node {
+                PaneNode::Leaf(leaf) if leaf.pty_id == pty_id => leaf.agent_info.as_mut(),
+                PaneNode::Split { first, second, .. } => {
+                    find_and_apply(first, pty_id).or_else(|| find_and_apply(second, pty_id))
+                }
+                _ => None,
+            }
+        }
+        for tab in &mut self.tab_states {
+            if let Some(info) = find_and_apply(&mut tab.root, pty_id) {
+                f(info);
+                return;
             }
         }
     }
@@ -1546,7 +1896,7 @@ impl NativeTerminal {
     fn active_agent_info(&self) -> Option<&AgentTabInfo> {
         self.tab_states
             .get(self.chrome.active_tab)
-            .and_then(|t| t.agent_info.as_ref())
+            .and_then(|t| t.agent_info())
     }
 
     /// Try to start an LSP server for the opened file.
@@ -1797,10 +2147,12 @@ impl NativeTerminal {
         let content_h = config.height as f32 - ui::CHROME_TOP - ui::STATUS_BAR_HEIGHT;
         let cols = (content_w / self.font.cell_width).max(1.0) as u16;
         let rows = (content_h / self.font.cell_height).max(1.0) as u16;
-        // Resize all PTY tabs
+        // Resize all PTY panes in all tabs
         for tab in &self.tab_states {
-            let _ = self.pty_manager.resize(&tab.pty_id, cols, rows);
-            tab.grid.lock().unwrap().resize(cols, rows);
+            tab.root.for_each_leaf(&mut |leaf| {
+                let _ = self.pty_manager.resize(&leaf.pty_id, cols, rows);
+                leaf.grid.lock().unwrap().resize(cols, rows);
+            });
         }
     }
 }
@@ -1854,7 +2206,9 @@ impl ApplicationHandler for NativeTerminal {
             WindowEvent::CloseRequested => {
                 self.save_session();
                 for tab in &self.tab_states {
-                    let _ = self.pty_manager.close(&tab.pty_id);
+                    for pty_id in tab.root.all_pty_ids() {
+                        let _ = self.pty_manager.close(&pty_id);
+                    }
                 }
                 event_loop.exit();
             }
@@ -2140,10 +2494,12 @@ impl ApplicationHandler for NativeTerminal {
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
         // Sync tab titles from OSC 0/2
         for (i, tab) in self.tab_states.iter().enumerate() {
-            if let Ok(grid) = tab.grid.lock() {
-                if let Some(title) = &grid.title {
-                    if i < self.chrome.tabs.len() && self.chrome.tabs[i].title != *title {
-                        self.chrome.tabs[i].title = title.clone();
+            if let Some(leaf) = tab.focused_leaf() {
+                if let Ok(grid) = leaf.grid.lock() {
+                    if let Some(title) = &grid.title {
+                        if i < self.chrome.tabs.len() && self.chrome.tabs[i].title != *title {
+                            self.chrome.tabs[i].title = title.clone();
+                        }
                     }
                 }
             }
