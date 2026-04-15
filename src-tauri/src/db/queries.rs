@@ -487,6 +487,55 @@ impl Database {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_command_history_save_and_search() {
+        let db = Database::open_memory().unwrap();
+        db.save_command("term-1", "git status", "/project").unwrap();
+        db.save_command("term-1", "git add -A", "/project").unwrap();
+        db.save_command("term-1", "cargo test", "/project").unwrap();
+
+        let results = db.search_commands("git", 10).unwrap();
+        assert_eq!(results.len(), 2);
+        assert!(results[0].command.contains("git"));
+    }
+
+    #[test]
+    fn test_recent_commands_deduplication() {
+        let db = Database::open_memory().unwrap();
+        db.save_command("t1", "git status", "/a").unwrap();
+        db.save_command("t1", "git status", "/a").unwrap();
+        db.save_command("t1", "cargo build", "/a").unwrap();
+
+        let recent = db.recent_commands(10).unwrap();
+        // DISTINCT ensures no duplicates
+        assert_eq!(recent.len(), 2);
+    }
+
+    #[test]
+    fn test_recent_commands_limit() {
+        let db = Database::open_memory().unwrap();
+        db.save_command("t1", "first", "/a").unwrap();
+        db.save_command("t1", "second", "/a").unwrap();
+        db.save_command("t1", "third", "/a").unwrap();
+
+        let recent = db.recent_commands(2).unwrap();
+        assert_eq!(recent.len(), 2);
+    }
+
+    #[test]
+    fn test_search_commands_empty_query() {
+        let db = Database::open_memory().unwrap();
+        db.save_command("t1", "test", "/a").unwrap();
+
+        let results = db.search_commands("", 10).unwrap();
+        assert_eq!(results.len(), 1); // % matches all
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommandRecord {
     pub id: i64,
