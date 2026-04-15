@@ -29,6 +29,12 @@ enum ContentPane {
     Editor(EditorState),
 }
 
+/// Per-tab state: each tab has its own PTY and grid.
+struct TabState {
+    pty_id: String,
+    grid: Arc<Mutex<Grid>>,
+}
+
 /// Application state for the native terminal.
 struct NativeTerminal {
     window: Option<Arc<Window>>,
@@ -39,10 +45,9 @@ struct NativeTerminal {
     surface_config: Option<wgpu::SurfaceConfiguration>,
     renderer: Option<TerminalRenderer>,
     // Terminal state
-    grid: Arc<Mutex<Grid>>,
+    tab_states: Vec<TabState>,
     atlas: Mutex<GlyphAtlas>,
     font: FontManager,
-    pty_id: Option<String>,
     pty_manager: PtyManager,
     ime_state: ImeState,
     modifiers: ModifiersState,
@@ -70,10 +75,9 @@ impl NativeTerminal {
             queue: None,
             surface_config: None,
             renderer: None,
-            grid: Arc::new(Mutex::new(Grid::new(120, 30, 10_000))),
+            tab_states: Vec::new(),
             atlas: Mutex::new(GlyphAtlas::new(2048, 2048)),
             font,
-            pty_id: None,
             pty_manager: PtyManager::new(),
             ime_state: ImeState::new(),
             modifiers: ModifiersState::empty(),
@@ -161,11 +165,21 @@ impl NativeTerminal {
         self.renderer = Some(renderer);
     }
 
+    /// Get the active tab's grid (if any).
+    fn active_grid(&self) -> Option<&Arc<Mutex<Grid>>> {
+        self.tab_states.get(self.chrome.active_tab).map(|t| &t.grid)
+    }
+
+    /// Get the active tab's PTY ID (if any).
+    fn active_pty_id(&self) -> Option<&str> {
+        self.tab_states.get(self.chrome.active_tab).map(|t| t.pty_id.as_str())
+    }
+
+    /// Spawn a new PTY tab.
     fn spawn_pty(&mut self) {
         let shell = ShellType::PowerShell;
         let shell_name = "PowerShell".to_string();
 
-        // Calculate grid size for content area (minus chrome)
         let size = self
             .window
             .as_ref()
@@ -176,13 +190,13 @@ impl NativeTerminal {
         let cols = (content_w / self.font.cell_width).max(1.0) as u16;
         let rows = (content_h / self.font.cell_height).max(1.0) as u16;
 
-        self.grid.lock().unwrap().resize(cols, rows);
+        let grid = Arc::new(Mutex::new(Grid::new(cols, rows, 10_000)));
 
         match self.pty_manager.spawn(&shell, cols, rows, None) {
             Ok(id) => {
                 log::info!("PTY spawned: {} ({}x{})", id, cols, rows);
                 if let Ok(reader) = self.pty_manager.take_reader(&id) {
-                    let grid = self.grid.clone();
+                    let grid_clone = grid.clone();
                     std::thread::spawn(move || {
                         let mut reader = reader;
                         let mut parser = vte::Parser::new();
@@ -191,9 +205,9 @@ impl NativeTerminal {
                             match std::io::Read::read(&mut reader, &mut buf) {
                                 Ok(0) => break,
                                 Ok(n) => {
-                                    let mut g = match grid.lock() {
+                                    let mut g = match grid_clone.lock() {
                                         Ok(g) => g,
-                                        Err(e) => e.into_inner(), // recover from poison
+                                        Err(e) => e.into_inner(),
                                     };
                                     let mut performer = GridPerformer { grid: &mut g };
                                     for byte in &buf[..n] {
@@ -207,7 +221,9 @@ impl NativeTerminal {
                     });
                 }
                 self.chrome.add_tab(id.clone(), shell_name, "PowerShell".into());
-                self.pty_id = Some(id);
+                self.tab_states.push(TabState { pty_id: id, grid });
+                // Switch to new tab
+                self.chrome.active_tab = self.tab_states.len() - 1;
             }
             Err(e) => log::error!("Failed to spawn PTY: {}", e),
         }
@@ -267,7 +283,11 @@ impl NativeTerminal {
         let content_h = window_h - ui::CHROME_TOP - ui::STATUS_BAR_HEIGHT;
         let (content_rects, content_glyphs) = match &mut self.content_pane {
             ContentPane::Terminal => {
-                let mut grid = self.grid.lock().unwrap();
+                let grid_arc = match self.active_grid() {
+                    Some(g) => g.clone(),
+                    None => return,
+                };
+                let mut grid = grid_arc.lock().unwrap();
                 let mut term_glyphs =
                     aether_terminal_lib::gpu::build_glyph_instances(&grid, &self.font, &mut atlas);
                 let mut term_rects = aether_terminal_lib::gpu::build_bg_rects(&grid, &self.font);
@@ -345,8 +365,9 @@ impl NativeTerminal {
     fn handle_chrome_action(&mut self, action: ChromeAction) {
         match action {
             ChromeAction::Close => {
-                if let Some(id) = &self.pty_id {
-                    let _ = self.pty_manager.close(id);
+                // Close all PTYs
+                for tab in &self.tab_states {
+                    let _ = self.pty_manager.close(&tab.pty_id);
                 }
                 self.should_exit = true;
             }
@@ -368,22 +389,30 @@ impl NativeTerminal {
                 }
             }
             ChromeAction::NewTab => {
-                log::info!("New tab requested (multi-tab coming in Phase 2+)");
+                self.spawn_pty();
+                self.content_pane = ContentPane::Terminal;
             }
             ChromeAction::CloseTab(idx) => {
                 if self.chrome.tabs.len() <= 1 {
                     // Last tab — close window
-                    if let Some(id) = &self.pty_id {
-                        let _ = self.pty_manager.close(id);
+                    for tab in &self.tab_states {
+                        let _ = self.pty_manager.close(&tab.pty_id);
                     }
                     self.should_exit = true;
-                } else {
-                    log::info!("Close tab {} (multi-tab not yet implemented)", idx);
+                } else if idx < self.tab_states.len() {
+                    // Close this tab's PTY and remove state
+                    let _ = self.pty_manager.close(&self.tab_states[idx].pty_id);
+                    self.tab_states.remove(idx);
+                    self.chrome.tabs.remove(idx);
+                    if self.chrome.active_tab >= self.chrome.tabs.len() {
+                        self.chrome.active_tab = self.chrome.tabs.len().saturating_sub(1);
+                    }
                 }
             }
             ChromeAction::SwitchTab(idx) => {
                 if idx < self.chrome.tabs.len() {
                     self.chrome.active_tab = idx;
+                    self.content_pane = ContentPane::Terminal;
                 }
             }
         }
@@ -394,7 +423,11 @@ impl NativeTerminal {
             Some(w) => w,
             None => return,
         };
-        let grid = self.grid.lock().unwrap();
+        let grid_arc = match self.active_grid() {
+            Some(g) => g.clone(),
+            None => return,
+        };
+        let grid = grid_arc.lock().unwrap();
         let x = grid.cursor.col as f64 * self.font.cell_width as f64;
         let y = grid.cursor.row as f64 * self.font.cell_height as f64 + ui::CHROME_TOP as f64;
         let size = winit::dpi::LogicalSize::new(
@@ -405,7 +438,7 @@ impl NativeTerminal {
     }
 
     fn write_to_pty(&self, data: &[u8]) {
-        if let Some(id) = &self.pty_id {
+        if let Some(id) = self.active_pty_id() {
             let _ = self.pty_manager.write(id, data);
         }
     }
@@ -437,7 +470,7 @@ impl NativeTerminal {
         if ctrl && shift {
             if let Key::Character(ref c) = key {
                 if c.eq_ignore_ascii_case("c") {
-                    let text = self.grid.lock().unwrap().selected_text();
+                    let text = self.active_grid().map(|g| g.lock().unwrap().selected_text()).unwrap_or_default();
                     if !text.is_empty() {
                         if let Ok(mut clip) = arboard::Clipboard::new() {
                             let _ = clip.set_text(&text);
@@ -454,9 +487,9 @@ impl NativeTerminal {
                 if c.eq_ignore_ascii_case("v") {
                     if let Ok(mut clip) = arboard::Clipboard::new() {
                         if let Ok(text) = clip.get_text() {
-                            let grid = self.grid.lock().unwrap();
-                            let bracketed = grid.mode.bracketed_paste;
-                            drop(grid);
+                            let bracketed = self.active_grid()
+                                .map(|g| g.lock().unwrap().mode.bracketed_paste)
+                                .unwrap_or(false);
                             if bracketed {
                                 self.write_to_pty(b"\x1b[200~");
                                 self.write_to_pty(text.as_bytes());
@@ -477,7 +510,7 @@ impl NativeTerminal {
         }
 
         // Reset viewport on keyboard input
-        self.grid.lock().unwrap().reset_viewport();
+        if let Some(g) = self.active_grid() { g.lock().unwrap().reset_viewport(); }
 
         let data = match key {
             Key::Character(ref c) if !ctrl => c.to_string().into_bytes(),
@@ -714,11 +747,15 @@ impl NativeTerminal {
         let content_x = (x - self.sidebar.width() as f64).max(0.0);
         let col = (content_x / self.font.cell_width as f64).max(0.0) as u16;
         let row = (content_y / self.font.cell_height as f64).max(0.0) as u16;
-        let grid = self.grid.lock().unwrap();
-        (
-            row.min(grid.rows.saturating_sub(1)),
-            col.min(grid.cols.saturating_sub(1)),
-        )
+        if let Some(g) = self.active_grid() {
+            let grid = g.lock().unwrap();
+            (
+                row.min(grid.rows.saturating_sub(1)),
+                col.min(grid.cols.saturating_sub(1)),
+            )
+        } else {
+            (row, col)
+        }
     }
 
     /// Check if mouse position is in the terminal content area.
@@ -743,10 +780,11 @@ impl NativeTerminal {
         let content_h = config.height as f32 - ui::CHROME_TOP - ui::STATUS_BAR_HEIGHT;
         let cols = (content_w / self.font.cell_width).max(1.0) as u16;
         let rows = (content_h / self.font.cell_height).max(1.0) as u16;
-        if let Some(id) = &self.pty_id {
-            let _ = self.pty_manager.resize(id, cols, rows);
+        // Resize all PTY tabs
+        for tab in &self.tab_states {
+            let _ = self.pty_manager.resize(&tab.pty_id, cols, rows);
+            tab.grid.lock().unwrap().resize(cols, rows);
         }
-        self.grid.lock().unwrap().resize(cols, rows);
     }
 }
 
@@ -784,8 +822,8 @@ impl ApplicationHandler for NativeTerminal {
     ) {
         match event {
             WindowEvent::CloseRequested => {
-                if let Some(id) = &self.pty_id {
-                    let _ = self.pty_manager.close(id);
+                for tab in &self.tab_states {
+                    let _ = self.pty_manager.close(&tab.pty_id);
                 }
                 event_loop.exit();
             }
@@ -813,7 +851,7 @@ impl ApplicationHandler for NativeTerminal {
                 winit::event::Ime::Preedit(text, _cursor_pos) => {
                     self.ime_state.set_composing(text);
                     self.update_ime_cursor_area();
-                    self.grid.lock().unwrap().needs_redraw = true;
+                    if let Some(g) = self.active_grid() { g.lock().unwrap().needs_redraw = true; }
                 }
                 winit::event::Ime::Commit(text) => {
                     self.ime_state.commit();
@@ -832,13 +870,15 @@ impl ApplicationHandler for NativeTerminal {
 
                 // Handle selection drag in content area
                 if self.mouse_pressed && self.is_in_content(position.x, position.y) {
+                    if let Some(g) = self.active_grid() {
                     let (row, col) = self.pixel_to_cell(position.x, position.y);
-                    let mut grid = self.grid.lock().unwrap();
+                    let mut grid = g.lock().unwrap();
                     if grid.selection.anchor.is_none() {
                         grid.selection.anchor = Some((row, col));
                     }
                     grid.selection.end = Some((row, col));
                     grid.needs_redraw = true;
+                    }
                 }
             }
             WindowEvent::MouseInput {
@@ -891,8 +931,9 @@ impl ApplicationHandler for NativeTerminal {
                     if let Some((mx, my)) = self.chrome.mouse_pos {
                         if self.is_in_content(mx as f64, my as f64) {
                             self.mouse_pressed = true;
-                            let mut grid = self.grid.lock().unwrap();
-                            grid.selection.clear();
+                            if let Some(g) = self.active_grid() {
+                                g.lock().unwrap().selection.clear();
+                            }
                         }
                     }
                 } else {
@@ -943,8 +984,8 @@ impl ApplicationHandler for NativeTerminal {
                         } else {
                             viewer.scroll_down(scroll_lines, visible);
                         }
-                    } else {
-                        let mut grid = self.grid.lock().unwrap();
+                    } else if let Some(g) = self.active_grid() {
+                        let mut grid = g.lock().unwrap();
                         if grid.mode.alt_screen {
                             drop(grid);
                             let count = lines.unsigned_abs().max(1).min(10);
