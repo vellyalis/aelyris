@@ -338,6 +338,30 @@ pub fn build_bg_rects(
     let mut rects = Vec::new();
     let has_selection = grid.selection.is_active();
 
+    // Pre-compute search matches per visible row
+    let search_matches: Vec<Vec<(usize, usize)>> = if let Some(query) = &grid.search_query {
+        if query.is_empty() {
+            vec![Vec::new(); grid.rows as usize]
+        } else {
+            (0..grid.rows as usize)
+                .map(|row| {
+                    let cells = grid.visible_row(row);
+                    let line: String = cells.iter().map(|c| c.c).collect();
+                    let mut matches = Vec::new();
+                    let mut start = 0;
+                    while let Some(pos) = line[start..].find(query.as_str()) {
+                        let col = start + pos;
+                        matches.push((col, col + query.len()));
+                        start = col + query.len();
+                    }
+                    matches
+                })
+                .collect()
+        }
+    } else {
+        vec![Vec::new(); grid.rows as usize]
+    };
+
     for row in 0..grid.rows as usize {
         let cells = grid.visible_row(row);
         for col in 0..grid.cols as usize {
@@ -349,7 +373,17 @@ pub fn build_bg_rects(
                 rects.push(renderer::RectInstance {
                     pos: [col as f32 * cw, row as f32 * ch],
                     size: [cw, ch],
-                    color: [0.54 * 0.3, 0.71 * 0.3, 0.98 * 0.3, 0.3], // Catppuccin blue, premultiplied
+                    color: [0.54 * 0.3, 0.71 * 0.3, 0.98 * 0.3, 0.3],
+                });
+                continue;
+            }
+
+            // Search match highlight (yellow)
+            if search_matches.get(row).map_or(false, |m| m.iter().any(|(s, e)| col >= *s && col < *e)) {
+                rects.push(renderer::RectInstance {
+                    pos: [col as f32 * cw, row as f32 * ch],
+                    size: [cw, ch],
+                    color: [0.98 * 0.25, 0.89 * 0.25, 0.69 * 0.25, 0.25],
                 });
                 continue;
             }

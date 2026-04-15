@@ -719,6 +719,16 @@ impl NativeTerminal {
             }
         }
 
+        // Ctrl+Shift+F: Terminal text search
+        if ctrl && shift {
+            if let Key::Character(ref c) = key {
+                if c.eq_ignore_ascii_case("f") {
+                    self.palette.enter_terminal_search();
+                    return;
+                }
+            }
+        }
+
         // Ctrl+Shift+C: Copy selection
         if ctrl && shift {
             if let Key::Character(ref c) = key {
@@ -929,7 +939,18 @@ impl NativeTerminal {
     /// Handle key input when command palette is open.
     fn handle_palette_key(&mut self, key: Key) {
         match key {
-            Key::Named(NamedKey::Escape) => self.palette.close(),
+            Key::Named(NamedKey::Escape) => {
+                // Clear terminal search on close
+                if let Some(g) = self.active_grid() {
+                    if let Ok(mut grid) = g.lock() {
+                        if grid.search_query.is_some() {
+                            grid.search_query = None;
+                            grid.needs_redraw = true;
+                        }
+                    }
+                }
+                self.palette.close();
+            }
             Key::Named(NamedKey::Enter) => {
                 let action = self.palette.execute();
                 self.execute_palette_action(action);
@@ -1016,6 +1037,13 @@ impl NativeTerminal {
             }
             PaletteAction::BeginAgentGemini => {
                 self.palette.enter_agent_spawn("gemini".to_string());
+            }
+            PaletteAction::SearchTerminal(query) => {
+                if let Some(g) = self.active_grid() {
+                    let mut grid = g.lock().unwrap();
+                    grid.search_query = if query.is_empty() { None } else { Some(query) };
+                    grid.needs_redraw = true;
+                }
             }
             PaletteAction::SpawnAgent { cli, model } => {
                 let agent_cli = AgentCli::from_model(&cli);

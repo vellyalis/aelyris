@@ -53,6 +53,8 @@ pub enum PaletteMode {
     AgentSpawn {
         cli: String,
     },
+    /// Terminal text search.
+    TerminalSearch,
 }
 
 /// Actions produced by the command palette.
@@ -79,6 +81,7 @@ pub enum PaletteAction {
     BeginAgentCodex,
     BeginAgentGemini,
     SpawnAgent { cli: String, model: String },
+    SearchTerminal(String),
     None,
 }
 
@@ -166,7 +169,9 @@ impl PaletteState {
             PaletteMode::Command
             | PaletteMode::WorktreeSelect { .. }
             | PaletteMode::CommandHistory { .. } => self.filtered.len(),
-            PaletteMode::WorktreeCreate | PaletteMode::AgentSpawn { .. } => 0,
+            PaletteMode::WorktreeCreate
+            | PaletteMode::AgentSpawn { .. }
+            | PaletteMode::TerminalSearch => 0,
         };
         if self.selected + 1 < count {
             self.selected += 1;
@@ -192,6 +197,14 @@ impl PaletteState {
     /// Enter agent spawn mode (type model name).
     pub fn enter_agent_spawn(&mut self, cli: String) {
         self.mode = PaletteMode::AgentSpawn { cli };
+        self.input.clear();
+        self.selected = 0;
+        self.filtered.clear();
+    }
+
+    /// Enter terminal search mode.
+    pub fn enter_terminal_search(&mut self) {
+        self.mode = PaletteMode::TerminalSearch;
         self.input.clear();
         self.selected = 0;
         self.filtered.clear();
@@ -282,6 +295,11 @@ impl PaletteState {
                 self.close();
                 PaletteAction::SpawnAgent { cli, model }
             }
+            PaletteMode::TerminalSearch => {
+                let query = self.input.clone();
+                self.close();
+                PaletteAction::SearchTerminal(query)
+            }
         }
     }
 
@@ -309,7 +327,9 @@ impl PaletteState {
                     })
                     .collect();
             }
-            PaletteMode::WorktreeCreate | PaletteMode::AgentSpawn { .. } => {
+            PaletteMode::WorktreeCreate
+            | PaletteMode::AgentSpawn { .. }
+            | PaletteMode::TerminalSearch => {
                 // No filtering in input mode
             }
             PaletteMode::CommandHistory { commands } => {
@@ -347,7 +367,9 @@ impl PaletteState {
             PaletteMode::Command
             | PaletteMode::WorktreeSelect { .. }
             | PaletteMode::CommandHistory { .. } => self.filtered.len().min(MAX_VISIBLE_ITEMS),
-            PaletteMode::WorktreeCreate | PaletteMode::AgentSpawn { .. } => 1,
+            PaletteMode::WorktreeCreate
+            | PaletteMode::AgentSpawn { .. }
+            | PaletteMode::TerminalSearch => 1,
         };
         let palette_h = INPUT_HEIGHT + item_count as f32 * ITEM_HEIGHT + PADDING * 2.0;
 
@@ -373,6 +395,7 @@ impl PaletteState {
             PaletteMode::WorktreeSelect { delete: false, .. } => cat::pm(250, 179, 135, 200),
             PaletteMode::CommandHistory { .. } => cat::pm(203, 166, 247, 200), // Mauve
             PaletteMode::AgentSpawn { .. } => cat::pm(148, 226, 213, 200),   // Teal
+            PaletteMode::TerminalSearch => cat::pm(249, 226, 175, 200),     // Yellow
         };
         rects.push(RectInstance {
             pos: [palette_x, palette_y],
@@ -398,6 +421,7 @@ impl PaletteState {
                 PaletteMode::WorktreeSelect { delete: false, .. } => "Filter worktrees...",
                 PaletteMode::CommandHistory { .. } => "Search command history...",
                 PaletteMode::AgentSpawn { .. } => "Model (e.g. opus, sonnet) — Enter for default...",
+                PaletteMode::TerminalSearch => "Search terminal output...",
             };
             (placeholder, cat::OVERLAY0)
         } else {
@@ -415,7 +439,7 @@ impl PaletteState {
 
         // Cursor in input (always visible in create mode, otherwise only when text present)
         if !self.input.is_empty()
-            || matches!(self.mode, PaletteMode::WorktreeCreate | PaletteMode::AgentSpawn { .. })
+            || matches!(self.mode, PaletteMode::WorktreeCreate | PaletteMode::AgentSpawn { .. } | PaletteMode::TerminalSearch)
         {
             let cursor_x = palette_x + PADDING + 4.0
                 + self.input.chars().count() as f32 * font.cell_width;
@@ -452,6 +476,18 @@ impl PaletteState {
             PaletteMode::CommandHistory { commands } => {
                 self.build_history_list(
                     font, atlas, palette_x, list_y, commands, &mut rects, &mut glyphs,
+                );
+            }
+            PaletteMode::TerminalSearch => {
+                let hint_y = list_y + (ITEM_HEIGHT - font.cell_height) / 2.0;
+                super::render_text(
+                    font,
+                    atlas,
+                    "Enter to search, Esc to clear",
+                    palette_x + PADDING + 8.0,
+                    hint_y,
+                    cat::OVERLAY0,
+                    &mut glyphs,
                 );
             }
             PaletteMode::AgentSpawn { cli } => {

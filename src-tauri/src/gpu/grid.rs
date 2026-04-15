@@ -178,6 +178,8 @@ pub struct Grid {
     pub selection: Selection,
     /// Window title set by OSC 0/2.
     pub title: Option<String>,
+    /// Active search query for highlighting matches.
+    pub search_query: Option<String>,
 }
 
 impl Grid {
@@ -201,6 +203,7 @@ impl Grid {
             viewport_offset: 0,
             selection: Selection::default(),
             title: None,
+            search_query: None,
         }
     }
 
