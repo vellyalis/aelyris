@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { CommandBlockTracker, detectPrompt } from "./commandBlock";
 import { decodeBase64ToBytes } from "../../shared/lib/decodeBase64";
+import { detectError } from "../../shared/lib/errorDetector";
+import { toast } from "../../shared/store/toastStore";
 
 interface TerminalWithCleanup extends Terminal {
   __ptyCleanup?: () => void;
@@ -286,6 +288,8 @@ async function connectPty(
 
     // Track last prompt line for block decoration
     let lastPromptMarkerLine = -1;
+    // Debounce error notifications (max 1 per 5 seconds)
+    let lastErrorTime = 0;
 
     const unlistenOutput = await listen<string>(`pty-output-${id}`, (event) => {
       const bytes = decodeBase64ToBytes(event.payload);
@@ -300,6 +304,17 @@ async function connectPty(
         for (const line of lines) {
           if (line.trim().length === 0) continue;
           blockTracker.addLine(line);
+
+          // Error detection — throttled (max 1 per 5s)
+          const now = Date.now();
+          if (now - lastErrorTime > 5000) {
+            const error = detectError(line);
+            if (error) {
+              lastErrorTime = now;
+              toast.error(`${error.type}: ${error.message.slice(0, 80)}`, error.suggestedPrompt.slice(0, 120));
+            }
+          }
+
           const detected = detectPrompt(line);
           if (detected && blockTracker.blockCount > 0) {
             // Add a subtle separator decoration at the prompt line
