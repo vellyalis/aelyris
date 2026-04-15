@@ -136,14 +136,23 @@ Binary: cargo run --bin native-terminal
 - **パフォーマンス**: 編集時に dirty フラグ → 次の描画フレームで全文再解析
 - **文字ごとカラー**: build() で byte offset → syntax span → 色マッピング
 
-### Phase 4d: LSP 統合 📋
+### Phase 4d: LSP 統合 ✅ 基本完了
 
-| タスク | 方針 |
-|--------|------|
-| プロトコル | lsp-types |
-| 診断 | エラー/警告 下線表示 |
-| Go to Definition | Ctrl+Click / F12 |
-| 補完 | `.` / `::` トリガー |
+| タスク | 状態 | 詳細 |
+|--------|------|------|
+| LspManager リファクタ | ✅ | Tauri依存除去 → mpsc::channel ベース |
+| 自動起動 | ✅ | ファイル拡張子 → 言語検出 → LSP起動 |
+| initialize + didOpen | ✅ | JSON-RPC プロトコル準拠 |
+| 診断表示 | ✅ | publishDiagnostics → 色付き下線 (Error=赤, Warning=黄, Info=青) |
+| Go to Definition | 📋 | 後続で実装（Ctrl+Click / F12） |
+| 補完 | 📋 | 後続で実装（`.` / `::` トリガー） |
+
+#### Phase 4d 実装詳細
+- **LspManager**: `AppHandle` + `Emitter` → `mpsc::Sender<LspMessage>`
+- **Tauri互換**: lib.rs + ipc/commands.rs もAPI変更に対応（dummy receiver）
+- **プロトコル**: initialize → initialized → didOpen の3ステップハンドシェイク
+- **診断パース**: `publishDiagnostics` の JSON-RPC を `Vec<Diagnostic>` に変換
+- **描画**: エラー行に2px下線、severity で色分け
 
 **注**: エディタは段階的に実装。Phase 4a (ビューア) → 4b (編集) → 4c (ハイライト) → 4d (LSP)。
 
