@@ -92,6 +92,14 @@ impl NativeTerminal {
             .get_default_config(&adapter, size.width.max(1), size.height.max(1))
             .expect("Surface not supported");
         config.format = wgpu::TextureFormat::Bgra8Unorm;
+        // Try PreMultiplied alpha for true transparency; fallback to Opaque
+        let caps = surface.get_capabilities(&adapter);
+        if caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::PreMultiplied) {
+            config.alpha_mode = wgpu::CompositeAlphaMode::PreMultiplied;
+            log::info!("Alpha mode: PreMultiplied (true transparency)");
+        } else {
+            log::info!("Alpha mode: Opaque (DWM Mica handles backdrop)");
+        }
         surface.configure(&device, &config);
 
         // Create renderer
@@ -172,7 +180,7 @@ impl NativeTerminal {
                     &view,
                     &instances,
                     &cursor_rects,
-                    wgpu::Color { r: 0.118, g: 0.118, b: 0.180, a: 1.0 }, // Catppuccin base
+                    wgpu::Color { r: 0.0, g: 0.0, b: 0.0, a: 0.75 }, // Semi-transparent for Mica bleed-through
                 );
                 texture.present();
             }
@@ -212,9 +220,16 @@ impl ApplicationHandler for NativeTerminal {
 
         let attrs = Window::default_attributes()
             .with_title("Aether Terminal (Native)")
-            .with_inner_size(winit::dpi::LogicalSize::new(1200, 700));
+            .with_inner_size(winit::dpi::LogicalSize::new(1200, 700))
+            .with_transparent(true)
+            .with_decorations(false);
 
         let window = Arc::new(event_loop.create_window(attrs).expect("Failed to create window"));
+
+        // Enable Mica/Acrylic via DWM on Windows 11
+        #[cfg(windows)]
+        enable_mica_effect(&window);
+
         self.init_wgpu(window);
         self.spawn_pty();
     }
@@ -264,6 +279,50 @@ impl ApplicationHandler for NativeTerminal {
             window.request_redraw();
         }
     }
+}
+
+/// Enable Mica backdrop + extend frame for transparency on Windows 11.
+#[cfg(windows)]
+fn enable_mica_effect(window: &Window) {
+    use raw_window_handle::HasWindowHandle;
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::Graphics::Dwm::{
+        DwmSetWindowAttribute, DwmExtendFrameIntoClientArea,
+        DWMWA_SYSTEMBACKDROP_TYPE, DWMWA_USE_IMMERSIVE_DARK_MODE, DWM_SYSTEMBACKDROP_TYPE,
+    };
+    use windows::Win32::UI::Controls::MARGINS;
+
+    let handle = match window.window_handle() {
+        Ok(h) => h,
+        Err(_) => return,
+    };
+    let raw = handle.as_raw();
+    let hwnd = match raw {
+        raw_window_handle::RawWindowHandle::Win32(h) => HWND(h.hwnd.get() as *mut _),
+        _ => return,
+    };
+
+    unsafe {
+        // Dark mode
+        let dark_mode: i32 = 1;
+        let _ = DwmSetWindowAttribute(
+            hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE,
+            &dark_mode as *const _ as *const _, 4,
+        );
+
+        // Extend frame into entire client area (required for Mica to show through)
+        let margins = MARGINS { cxLeftWidth: -1, cxRightWidth: -1, cyTopHeight: -1, cyBottomHeight: -1 };
+        let _ = DwmExtendFrameIntoClientArea(hwnd, &margins);
+
+        // Enable Mica backdrop (2 = Mica, 3 = Acrylic, 4 = Mica Alt)
+        let backdrop_type = DWM_SYSTEMBACKDROP_TYPE(2);
+        let _ = DwmSetWindowAttribute(
+            hwnd, DWMWA_SYSTEMBACKDROP_TYPE,
+            &backdrop_type as *const _ as *const _,
+            std::mem::size_of::<DWM_SYSTEMBACKDROP_TYPE>() as u32,
+        );
+    }
+    log::info!("Mica backdrop + dark mode enabled");
 }
 
 fn main() {
