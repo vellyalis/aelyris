@@ -1,73 +1,59 @@
 # 次セッション引き継ぎ — Aether Terminal
 
-**最終セッション日: 2026-04-12 (3回目)**
+**最終セッション日: 2026-04-15**
 **ブランチ: master**
 
 ---
 
-## 本セッション完了項目 (20項目)
+## 本セッション追加完了項目
 
-| Phase | 項目 | 内容 |
-|-------|------|------|
-| S-5 | コミットメッセージ必須化 | `{message}` プレースホルダ + showPrompt |
-| B-1 | Toast補完 | EditorPanel 保存成功/失敗 toast |
-| B-3 | ウィンドウ閉じ確認 | `onCloseRequested` + 未保存ダイアログ |
-| B-4 | タブ切替 | Ctrl+Tab / Ctrl+Shift+Tab |
-| B-5 | ErrorBoundary分離 | 全7パネルに個別 ErrorBoundary |
-| C-1 | コマンドブロック分離 | プロンプト検出 + xterm.js区切り線 |
-| C-2 | AIインライン結果表示 | InlineResultPanel + Monaco DiffEditor |
-| C-4 | パラレルビュー強化 | サマリーバー + Stop All |
-| C-5 | コスト表示 | AgentInspector セッションコスト合計 |
-| E-1 | 成果物可視化 | フェーズ詳細展開パネル |
-| E-2 | テンプレート強化 | Refactoring/Review追加 + YAMLインポート |
-| E-4 | ゲート承認UI | コメント入力 + 合計コスト表示 |
-| F-1 | パフォーマンス | memo化 + FitAddon debounce |
-| F-3 | ウィンドウ記憶 | 位置/サイズ localStorage 保存/復元 |
-| F-4 | プロダクションビルド | MSI + NSIS生成成功 |
-| A-6 | E2Eテスト | Playwright 8テスト通過 |
-| a11y | アクセシビリティ | WorkflowPanel, ToolkitPanel aria-label |
-| refactor | 共通化 | base64デコードヘルパー抽出 |
-| Rust | git_diff_file | 単体/バッチdiffコマンド追加 |
-| テスト | 64件追加 | ユニット 182->238 + E2E 8件 |
+| 項目 | 内容 |
+|------|------|
+| vitest e2e除外 | vitest.config.tsにexclude: ["e2e"]追加 |
+| ワークフロー型テスト | Rust 5件追加 (131→136) |
+| エラー検知システム | errorDetector.ts (10パターン) + TerminalArea統合 |
+| コマンド履歴UI | CommandHistory (フィルタ/再実行/コピー) |
+| analysis_and_ideas.md | コミット済み |
+
+## 全セッション通算完了項目
+
+### セキュリティ (Phase S) - 完了
+S-1〜S-5 全完了
+
+### 基盤品質 (Phase A) - 完了
+A-1〜A-3, A-6 (E2E 8テスト), テスト250件
+
+### UX研磨 (Phase B) - 完了
+B-1〜B-5 全完了
+
+### AIワークスペース (Phase C) - 90%
+C-1 コマンドブロック分離, C-2 AIインライン結果表示,
+C-3 ContextGauge正確化, C-4 パラレルビュー強化, C-5 コスト表示
+
+### ワークフロー (Phase E) - 完了
+E-1〜E-4 全完了
+
+### 最終研磨 (Phase F) - 80%
+F-1〜F-4完了, F-5(ドキュメント)未着手
+
+### 新規独自機能
+- エラー検知 + AI修正提案toast (自己修復ターミナル基盤)
+- コマンド履歴UI (フィルタ/再実行/コピー)
 
 ## テスト状況
 
-| 種別 | 件数 | 状態 |
-|------|------|------|
-| Rust ユニット | 131 | 全通過 |
-| Frontend ユニット | 238 | 全通過 |
-| E2E (Playwright) | 8 | 全通過 |
-| TypeScript型チェック | - | エラーなし |
-| cargo build (release) | - | 成功 (MSI+NSIS生成) |
-| 実機 (xterm mode) | - | スクショ検証済み |
-
-## Phase完了状況
-
-| Phase | 状態 | 備考 |
-|-------|------|------|
-| S (セキュリティ) | 完了 | S-1-S-5 全完了 |
-| A (基盤品質) | 完了 | A-1-A-3, A-6完了 |
-| B (UX研磨) | 完了 | B-1-B-5 全完了 |
-| C (AIワークスペース) | 80% | C-1-C-5完了. C-4一部残 |
-| D (wgpu描画) | 保留 | Child HWNDフリーズ 要アーキ変更 |
-| E (ワークフロー) | 完了 | E-1-E-4 全完了 |
-| F (最終研磨) | 70% | F-1-F-4完了. F-5(ドキュメント)未着手 |
+| 種別 | 件数 |
+|------|------|
+| Rust ユニット | 136 |
+| Frontend ユニット | 250 |
+| E2E (Playwright) | 8 |
+| 合計 | 394 |
 
 ## 残タスク
 
 | タスク | 状態 |
 |--------|------|
-| D: wgpu描画 | 要アーキ変更(オフスクリーン描画) |
+| D: wgpu描画 | 保留 (要アーキ変更) |
 | F-5: ドキュメント | 未着手 |
-| CSP unsafe-eval | Monaco必須で除去不可 |
-
-## ビルド状況
-
-- cargo check: pass
-- cargo build: pass (0 warning)
-- cargo build --release: pass (MSI+NSIS)
-- cargo test: 131/131
-- npx tsc --noEmit: pass
-- pnpm test: 238/238
-- pnpm test:e2e: 8/8
-- pnpm tauri dev (xterm): pass
+| ゴーストタイピング | ideas.md参照 |
+| 完全自律デバッグループ | ideas.md参照 |
