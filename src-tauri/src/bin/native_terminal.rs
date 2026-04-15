@@ -815,8 +815,14 @@ impl NativeTerminal {
 
     /// Handle key input when in editor mode.
     fn handle_editor_key(&mut self, key: Key, ctrl: bool, shift: bool) {
-        // Escape: back to terminal
+        // Escape: close find bar first, then back to terminal
         if matches!(key, Key::Named(NamedKey::Escape)) {
+            if let ContentPane::Editor(editor) = &mut self.content_pane {
+                if editor.find.active {
+                    editor.find.active = false;
+                    return;
+                }
+            }
             self.content_pane = ContentPane::Terminal;
             log::info!("Back to terminal");
             return;
@@ -830,6 +836,47 @@ impl NativeTerminal {
 
         if let ContentPane::Editor(editor) = &mut self.content_pane {
             let visible = editor.visible_count(content_h, self.font.cell_height);
+
+            // Ctrl+F / Ctrl+H: toggle find/replace
+            if ctrl {
+                if let Key::Character(ref c) = key {
+                    if c.eq_ignore_ascii_case("f") {
+                        editor.toggle_find();
+                        return;
+                    }
+                    if c.eq_ignore_ascii_case("h") {
+                        editor.toggle_replace();
+                        return;
+                    }
+                }
+            }
+
+            // Handle find bar input when active
+            if editor.find.active {
+                match key {
+                    Key::Named(NamedKey::Enter) => {
+                        if editor.find.focus == 0 {
+                            if shift {
+                                editor.find_prev(visible);
+                            } else {
+                                editor.find_next(visible);
+                            }
+                        } else {
+                            editor.replace_current();
+                        }
+                    }
+                    Key::Named(NamedKey::Tab) => {
+                        // Toggle between find and replace fields
+                        if editor.find.show_replace {
+                            editor.find.focus = if editor.find.focus == 0 { 1 } else { 0 };
+                        }
+                    }
+                    Key::Named(NamedKey::Backspace) => editor.find_backspace(),
+                    Key::Character(ref c) if !ctrl => editor.find_insert_char(c),
+                    _ => {}
+                }
+                return;
+            }
 
             // Ctrl shortcuts
             if ctrl {

@@ -71,6 +71,34 @@ pub struct Diagnostic {
     pub message: String,
 }
 
+/// Find/replace state.
+pub struct FindState {
+    pub active: bool,
+    pub query: String,
+    pub replace: String,
+    pub show_replace: bool,
+    /// All match positions: (line, col_start, col_end).
+    pub matches: Vec<(usize, usize, usize)>,
+    /// Currently highlighted match index.
+    pub current_match: usize,
+    /// Which field is focused (0 = find, 1 = replace).
+    pub focus: u8,
+}
+
+impl FindState {
+    fn new() -> Self {
+        Self {
+            active: false,
+            query: String::new(),
+            replace: String::new(),
+            show_replace: false,
+            matches: Vec::new(),
+            current_match: 0,
+            focus: 0,
+        }
+    }
+}
+
 /// Editor state with ropey text buffer.
 pub struct EditorState {
     pub file_path: PathBuf,
@@ -99,6 +127,8 @@ pub struct EditorState {
     // Cursor blink
     pub cursor_visible: bool,
     blink_counter: u32,
+    // Find/replace
+    pub find: FindState,
 }
 
 impl EditorState {
@@ -168,6 +198,7 @@ impl EditorState {
             git_markers: compute_git_markers(path),
             cursor_visible: true,
             blink_counter: 0,
+            find: FindState::new(),
         })
     }
 
@@ -522,6 +553,145 @@ impl EditorState {
         self.blink_counter = 0;
     }
 
+    // --- Find / Replace ---
+
+    /// Toggle find bar (Ctrl+F).
+    pub fn toggle_find(&mut self) {
+        if self.find.active {
+            self.find.active = false;
+        } else {
+            self.find.active = true;
+            self.find.show_replace = false;
+            self.find.focus = 0;
+        }
+    }
+
+    /// Toggle replace bar (Ctrl+H).
+    pub fn toggle_replace(&mut self) {
+        if self.find.active && self.find.show_replace {
+            self.find.active = false;
+        } else {
+            self.find.active = true;
+            self.find.show_replace = true;
+            self.find.focus = 0;
+        }
+    }
+
+    /// Update search matches after query changes.
+    pub fn update_find_matches(&mut self) {
+        self.find.matches.clear();
+        if self.find.query.is_empty() {
+            return;
+        }
+        let query = &self.find.query;
+        let total = self.rope.len_lines();
+        for line_idx in 0..total {
+            let line = self.rope.line(line_idx);
+            let line_str: String = line.chars().collect();
+            let mut start = 0;
+            while let Some(pos) = line_str[start..].find(query.as_str()) {
+                let col = start + pos;
+                self.find.matches.push((line_idx, col, col + query.len()));
+                start = col + query.len();
+            }
+        }
+        // Reset current match to 0
+        self.find.current_match = 0;
+    }
+
+    /// Jump to the next match.
+    pub fn find_next(&mut self, visible: usize) {
+        if self.find.matches.is_empty() {
+            return;
+        }
+        self.find.current_match = (self.find.current_match + 1) % self.find.matches.len();
+        self.jump_to_current_match(visible);
+    }
+
+    /// Jump to the previous match.
+    pub fn find_prev(&mut self, visible: usize) {
+        if self.find.matches.is_empty() {
+            return;
+        }
+        if self.find.current_match == 0 {
+            self.find.current_match = self.find.matches.len() - 1;
+        } else {
+            self.find.current_match -= 1;
+        }
+        self.jump_to_current_match(visible);
+    }
+
+    fn jump_to_current_match(&mut self, visible: usize) {
+        if let Some(&(line, col, _)) = self.find.matches.get(self.find.current_match) {
+            self.cursor_line = line;
+            self.cursor_col = col;
+            // Ensure the match is visible
+            if line < self.scroll_offset || line >= self.scroll_offset + visible {
+                self.scroll_offset = line.saturating_sub(visible / 3);
+            }
+        }
+    }
+
+    /// Replace the current match.
+    pub fn replace_current(&mut self) {
+        if self.find.matches.is_empty() || self.find.replace.is_empty() && self.find.query.is_empty() {
+            return;
+        }
+        if let Some(&(line, col_start, col_end)) = self.find.matches.get(self.find.current_match) {
+            let line_start = self.rope.line_to_char(line);
+            let from = line_start + col_start;
+            let to = line_start + col_end;
+            let old_text: String = self.rope.slice(from..to).chars().collect();
+            self.rope.remove(from..to);
+            self.rope.insert(from, &self.find.replace);
+            self.modified = true;
+            self.undo_stack.push(EditOp::Delete { pos: from, char_count: old_text.chars().count(), text: old_text });
+            self.undo_stack.push(EditOp::Insert { pos: from, char_count: self.find.replace.chars().count(), text: self.find.replace.clone() });
+            self.redo_stack.clear();
+            self.syntax_dirty = true;
+            self.update_find_matches();
+        }
+    }
+
+    /// Replace all matches.
+    pub fn replace_all(&mut self) {
+        if self.find.matches.is_empty() {
+            return;
+        }
+        // Replace from bottom to top to preserve line/col offsets
+        let matches: Vec<_> = self.find.matches.clone();
+        for &(line, col_start, col_end) in matches.iter().rev() {
+            let line_start = self.rope.line_to_char(line);
+            let from = line_start + col_start;
+            let to = line_start + col_end;
+            self.rope.remove(from..to);
+            self.rope.insert(from, &self.find.replace);
+        }
+        self.modified = true;
+        self.syntax_dirty = true;
+        self.update_find_matches();
+    }
+
+    /// Insert a character into the active find/replace field.
+    pub fn find_insert_char(&mut self, ch: &str) {
+        if self.find.focus == 0 {
+            self.find.query.push_str(ch);
+            self.update_find_matches();
+        } else {
+            self.find.replace.push_str(ch);
+        }
+    }
+
+    /// Backspace in the active find/replace field.
+    pub fn find_backspace(&mut self) {
+        if self.find.focus == 0 {
+            self.find.query.pop();
+            self.update_find_matches();
+        } else {
+            self.find.replace.pop();
+        }
+    }
+
     /// Gutter width in pixels.
     fn gutter_width(&self, cell_w: f32) -> f32 {
         let digits = digit_count(self.total_lines());
@@ -731,6 +901,104 @@ impl EditorState {
                         pos: [ux, uy],
                         size: [uw, 2.0],
                         color: underline_color,
+                    });
+                }
+            }
+        }
+
+        // --- Find match highlights ---
+        if self.find.active && !self.find.matches.is_empty() {
+            let hl_text_x = x_offset + gutter_w;
+            for (i, &(line, col_s, col_e)) in self.find.matches.iter().enumerate() {
+                if line < self.scroll_offset || line >= self.scroll_offset + visible {
+                    continue;
+                }
+                if col_e <= self.scroll_col || col_s >= self.scroll_col + max_cols {
+                    continue;
+                }
+                let hl_y = y_offset + (line - self.scroll_offset) as f32 * font.cell_height;
+                let hl_x = hl_text_x + (col_s.saturating_sub(self.scroll_col)) as f32 * font.cell_width;
+                let hl_w = (col_e.min(self.scroll_col + max_cols) - col_s.max(self.scroll_col)) as f32 * font.cell_width;
+                let is_current = i == self.find.current_match;
+                let hl_color = if is_current {
+                    cat::pm(250, 179, 135, 100) // Peach for current
+                } else {
+                    cat::pm(249, 226, 175, 60) // Yellow for others
+                };
+                rects.push(RectInstance {
+                    pos: [hl_x, hl_y],
+                    size: [hl_w, font.cell_height],
+                    color: hl_color,
+                });
+            }
+        }
+
+        // --- Find bar overlay (top-right) ---
+        if self.find.active {
+            let bar_w = 320.0f32;
+            let bar_h = if self.find.show_replace { 60.0 } else { 32.0 };
+            let bar_x = x_offset + content_w - bar_w - 8.0;
+            let bar_y = y_offset + 4.0;
+
+            // Background
+            rects.push(RectInstance {
+                pos: [bar_x, bar_y],
+                size: [bar_w, bar_h],
+                color: cat::pm(30, 30, 46, 240),
+            });
+            // Border
+            rects.push(RectInstance {
+                pos: [bar_x, bar_y],
+                size: [bar_w, 1.0],
+                color: cat::pm(137, 180, 250, 180),
+            });
+
+            // Find input
+            let find_y = bar_y + 6.0;
+            let find_text = if self.find.query.is_empty() {
+                "Find..."
+            } else {
+                &self.find.query
+            };
+            let find_color = if self.find.query.is_empty() { cat::OVERLAY0 } else { cat::TEXT };
+            super::render_text(font, atlas, find_text, bar_x + 4.0, find_y, find_color, &mut glyphs);
+
+            // Match count
+            let count_str = if self.find.matches.is_empty() {
+                "0/0".to_string()
+            } else {
+                format!("{}/{}", self.find.current_match + 1, self.find.matches.len())
+            };
+            let count_w = count_str.chars().count() as f32 * font.cell_width;
+            super::render_text(font, atlas, &count_str, bar_x + bar_w - count_w - 4.0, find_y, cat::OVERLAY0, &mut glyphs);
+
+            // Cursor in find field
+            if self.find.focus == 0 {
+                let cursor_x = bar_x + 4.0 + self.find.query.chars().count() as f32 * font.cell_width;
+                rects.push(RectInstance {
+                    pos: [cursor_x, find_y],
+                    size: [2.0, font.cell_height],
+                    color: cat::TEXT,
+                });
+            }
+
+            // Replace input
+            if self.find.show_replace {
+                let rep_y = find_y + font.cell_height + 6.0;
+                let rep_text = if self.find.replace.is_empty() {
+                    "Replace..."
+                } else {
+                    &self.find.replace
+                };
+                let rep_color = if self.find.replace.is_empty() { cat::OVERLAY0 } else { cat::TEXT };
+                super::render_text(font, atlas, rep_text, bar_x + 4.0, rep_y, rep_color, &mut glyphs);
+
+                if self.find.focus == 1 {
+                    let cursor_x = bar_x + 4.0 + self.find.replace.chars().count() as f32 * font.cell_width;
+                    rects.push(RectInstance {
+                        pos: [cursor_x, rep_y],
+                        size: [2.0, font.cell_height],
+                        color: cat::TEXT,
                     });
                 }
             }
