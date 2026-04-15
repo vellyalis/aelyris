@@ -43,3 +43,13 @@
 | Ctrl+[ | Previous Agent Session |
 | Ctrl+] | Next Agent Session |
 | Ctrl+0-9 | Switch to Agent Session N |
+
+## Command Palette Actions
+
+These are available via Ctrl+Shift+P:
+
+- Search Command History
+- View Pull Requests
+- Web Inspector
+- Create Watchdog
+- Orchestra Mode (♫ button in Agent Inspector)
