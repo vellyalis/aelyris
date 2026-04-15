@@ -19,13 +19,13 @@ use aether_terminal_lib::gpu::ime::ImeState;
 use aether_terminal_lib::gpu::renderer::TerminalRenderer;
 use aether_terminal_lib::pty::{PtyManager, ShellType};
 use aether_terminal_lib::ui::{self, ChromeAction, ChromeState, HitRegion};
-use aether_terminal_lib::ui::editor::FileViewerState;
+use aether_terminal_lib::ui::editor::EditorState;
 use aether_terminal_lib::ui::sidebar::SidebarState;
 
 /// What occupies the main content area.
 enum ContentPane {
     Terminal,
-    FileViewer(FileViewerState),
+    Editor(EditorState),
 }
 
 /// Application state for the native terminal.
@@ -224,11 +224,18 @@ impl NativeTerminal {
 
         // --- Set status bar override for editor mode ---
         self.chrome.status_override = match &self.content_pane {
-            ContentPane::FileViewer(viewer) => Some(ui::StatusOverride {
-                label: viewer.file_name.clone(),
-                detail: format!("Ln {}/{}", viewer.cursor_line + 1, viewer.total_lines),
-                indicator: "READ-ONLY".to_string(),
-            }),
+            ContentPane::Editor(editor) => {
+                let modified_marker = if editor.modified { " [+]" } else { "" };
+                Some(ui::StatusOverride {
+                    label: format!("{}{}", editor.file_name, modified_marker),
+                    detail: format!(
+                        "Ln {}, Col {}",
+                        editor.cursor_line + 1,
+                        editor.cursor_col + 1
+                    ),
+                    indicator: "UTF-8".to_string(),
+                })
+            }
             ContentPane::Terminal => None,
         };
 
@@ -269,7 +276,7 @@ impl NativeTerminal {
                 grid.clear_dirty();
                 (term_rects, term_glyphs)
             }
-            ContentPane::FileViewer(viewer) => {
+            ContentPane::Editor(viewer) => {
                 let out = viewer.build(
                     &self.font,
                     &mut atlas,
@@ -409,8 +416,8 @@ impl NativeTerminal {
         }
 
         // Dispatch by content pane
-        if matches!(self.content_pane, ContentPane::FileViewer(_)) {
-            self.handle_viewer_key(key);
+        if matches!(self.content_pane, ContentPane::Editor(_)) {
+            self.handle_editor_key(key, ctrl, shift);
             return;
         }
 
@@ -480,9 +487,9 @@ impl NativeTerminal {
         self.write_to_pty(&data);
     }
 
-    /// Handle key input when in file viewer mode.
-    fn handle_viewer_key(&mut self, key: Key) {
-        // Handle Escape outside the borrow to avoid move-while-borrowed
+    /// Handle key input when in editor mode.
+    fn handle_editor_key(&mut self, key: Key, ctrl: bool, shift: bool) {
+        // Escape: back to terminal
         if matches!(key, Key::Named(NamedKey::Escape)) {
             self.content_pane = ContentPane::Terminal;
             log::info!("Back to terminal");
@@ -495,17 +502,54 @@ impl NativeTerminal {
             .map(|c| c.height as f32 - ui::CHROME_TOP - ui::STATUS_BAR_HEIGHT)
             .unwrap_or(400.0);
 
-        if let ContentPane::FileViewer(viewer) = &mut self.content_pane {
-            let visible = viewer.visible_count(content_h, self.font.cell_height);
-            match key {
-                Key::Named(NamedKey::ArrowUp) => viewer.cursor_up(visible),
-                Key::Named(NamedKey::ArrowDown) => viewer.cursor_down(visible),
-                Key::Named(NamedKey::PageUp) => viewer.page_up(visible),
-                Key::Named(NamedKey::PageDown) => viewer.page_down(visible),
-                Key::Named(NamedKey::Home) => viewer.go_top(),
-                Key::Named(NamedKey::End) => viewer.go_bottom(visible),
-                _ => {}
+        if let ContentPane::Editor(editor) = &mut self.content_pane {
+            let visible = editor.visible_count(content_h, self.font.cell_height);
+
+            // Ctrl shortcuts
+            if ctrl {
+                if let Key::Character(ref c) = key {
+                    match c.as_str() {
+                        "s" | "S" => {
+                            match editor.save() {
+                                Ok(()) => log::info!("File saved"),
+                                Err(e) => log::error!("Save failed: {}", e),
+                            }
+                            return;
+                        }
+                        "z" | "Z" => {
+                            if shift {
+                                editor.redo();
+                            } else {
+                                editor.undo();
+                            }
+                            editor.reset_blink();
+                            return;
+                        }
+                        _ => {}
+                    }
+                }
             }
+
+            // Navigation and editing keys
+            match key {
+                Key::Named(NamedKey::ArrowUp) => editor.move_up(visible),
+                Key::Named(NamedKey::ArrowDown) => editor.move_down(visible),
+                Key::Named(NamedKey::ArrowLeft) => editor.move_left(visible),
+                Key::Named(NamedKey::ArrowRight) => editor.move_right(visible),
+                Key::Named(NamedKey::PageUp) => editor.page_up(visible),
+                Key::Named(NamedKey::PageDown) => editor.page_down(visible),
+                Key::Named(NamedKey::Home) => editor.move_home(),
+                Key::Named(NamedKey::End) => editor.move_end(),
+                Key::Named(NamedKey::Enter) => editor.insert_newline(),
+                Key::Named(NamedKey::Backspace) => editor.delete_backward(),
+                Key::Named(NamedKey::Delete) => editor.delete_forward(),
+                Key::Named(NamedKey::Tab) => editor.insert_tab(),
+                Key::Character(ref c) if !ctrl => {
+                    editor.insert_text(c);
+                }
+                _ => return, // skip blink reset for unhandled keys
+            }
+            editor.reset_blink();
         }
     }
 
@@ -674,10 +718,10 @@ impl ApplicationHandler for NativeTerminal {
                                 }
                             }
                             if let Some(path) = open_path {
-                                match FileViewerState::open(&path) {
+                                match EditorState::open(&path) {
                                     Ok(viewer) => {
                                         log::info!("Opened file: {}", viewer.file_name);
-                                        self.content_pane = ContentPane::FileViewer(viewer);
+                                        self.content_pane = ContentPane::Editor(viewer);
                                     }
                                     Err(e) => {
                                         log::warn!("Cannot open file: {}", e);
@@ -731,7 +775,7 @@ impl ApplicationHandler for NativeTerminal {
                     }
                 };
                 if lines != 0 {
-                    if let ContentPane::FileViewer(viewer) = &mut self.content_pane {
+                    if let ContentPane::Editor(viewer) = &mut self.content_pane {
                         let config = self.surface_config.as_ref();
                         let content_h = config
                             .map(|c| c.height as f32 - ui::CHROME_TOP - ui::STATUS_BAR_HEIGHT)
@@ -777,6 +821,10 @@ impl ApplicationHandler for NativeTerminal {
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        // Tick editor cursor blink
+        if let ContentPane::Editor(editor) = &mut self.content_pane {
+            editor.tick_blink();
+        }
         if let Some(window) = &self.window {
             window.request_redraw();
         }
