@@ -61,6 +61,9 @@ src-tauri/src/
 - Agent: Start Claude/Codex/Gemini (モデル入力可)
 - Settings (Theme/Font Size/Opacity)
 - Terminal Search / Quick Open
+- Git: Stage All / Commit / Push
+- PR: List Pull Requests
+- Workflow: List / Start
 
 ### エージェント機能
 - パレットからClaude/Codex/Gemini CLIをPTYタブとして起動
