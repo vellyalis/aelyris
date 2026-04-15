@@ -1306,6 +1306,23 @@ impl NativeTerminal {
                     }
                 }
             }
+            PaletteAction::WorkflowList => {
+                if let Some(path) = self.repo_path() {
+                    let workflows = aether_terminal_lib::workflow::list_workflow_files(&path);
+                    if workflows.is_empty() {
+                        self.toasts.info("No workflows found in .aether/workflows/");
+                    } else {
+                        let items: Vec<String> = workflows
+                            .iter()
+                            .map(|w| format!("{} ({} phases)", w.name, w.phase_count))
+                            .collect();
+                        self.palette.enter_settings(items, "wf_start".to_string());
+                    }
+                }
+            }
+            PaletteAction::WorkflowStatus => {
+                self.toasts.info("Use 'Workflow: List' to start a workflow");
+            }
             PaletteAction::OpenSettings => {
                 // Show settings categories
                 let items = vec![
