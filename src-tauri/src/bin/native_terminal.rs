@@ -256,7 +256,7 @@ impl NativeTerminal {
         // --- Build content instances (terminal or editor) ---
         let content_w = window_w - sidebar_w;
         let content_h = window_h - ui::CHROME_TOP - ui::STATUS_BAR_HEIGHT;
-        let (content_rects, content_glyphs) = match &self.content_pane {
+        let (content_rects, content_glyphs) = match &mut self.content_pane {
             ContentPane::Terminal => {
                 let mut grid = self.grid.lock().unwrap();
                 let mut term_glyphs =
@@ -276,8 +276,9 @@ impl NativeTerminal {
                 grid.clear_dirty();
                 (term_rects, term_glyphs)
             }
-            ContentPane::Editor(viewer) => {
-                let out = viewer.build(
+            ContentPane::Editor(editor) => {
+                editor.refresh_syntax();
+                let out = editor.build(
                     &self.font,
                     &mut atlas,
                     sidebar_w,

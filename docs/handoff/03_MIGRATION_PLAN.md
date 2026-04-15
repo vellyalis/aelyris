@@ -120,13 +120,21 @@ Binary: cargo run --bin native-terminal
 - **modified追跡**: `saved_undo_depth` でディスク読み込み不要のmodified判定
 - **カーソル安全**: `char_idx_to_pos` はcol を `line_len` でclamp
 
-### Phase 4c: シンタックスハイライト 📋
+### Phase 4c: シンタックスハイライト ✅ 完了
 
-| タスク | 方針 |
-|--------|------|
-| パーサー | tree-sitter (インクリメンタル) |
-| 言語検出 | ファイル拡張子 → 言語マッピング |
-| カラー | Catppuccin Mocha パレット |
+| タスク | 状態 | 詳細 |
+|--------|------|------|
+| パーサー | ✅ | tree-sitter + tree-sitter-highlight |
+| 言語検出 | ✅ | 拡張子 → Rust/JS/TS/Python/JSON/TOML |
+| カラー | ✅ | Catppuccin Mocha 24色マッピング |
+| 再ハイライト | ✅ | 編集時に syntax_dirty → build前に再解析 |
+
+#### Phase 4c 実装詳細
+- **`src/ui/syntax.rs`**: SyntaxState — tree-sitter-highlight ベース
+- **24キャプチャ名**: keyword, string, comment, function, type, number, operator 等
+- **言語**: Rust, JavaScript, TypeScript, Python, JSON, TOML
+- **パフォーマンス**: 編集時に dirty フラグ → 次の描画フレームで全文再解析
+- **文字ごとカラー**: build() で byte offset → syntax span → 色マッピング
 
 ### Phase 4d: LSP 統合 📋
 
