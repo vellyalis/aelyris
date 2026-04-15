@@ -60,16 +60,22 @@ Binary: cargo run --bin native-terminal
 - **レイアウト**: タイトルバー(32px) + タブバー(34px) + ターミナル + ステータスバー(24px)
 - **Catppuccin Mocha**: UI Chrome も同一パレットで統一描画
 
-## Phase 3: サイドパネル
+## Phase 3: サイドパネル 🔧 進行中
 
 **目標**: ファイルツリー/エージェントパネルをRust UIで実装
 
-| タスク | 元のReactコンポーネント | Rust実装方針 |
-|--------|----------------------|-------------|
-| ファイルツリー | FileTree.tsx (289行) | egui TreeView + git2-rs |
-| エージェント一覧 | AgentInspector.tsx (352行) | egui カード表示 |
-| ワークフロー | WorkflowPanel.tsx (270行) | egui ステップ表示 |
-| ツールキット | ToolkitPanel.tsx (315行) | egui ボタングリッド |
+| タスク | 状態 | 詳細 |
+|--------|------|------|
+| ファイルツリー | ✅ | wgpu 直描画 — Ctrl+B トグル、展開/折畳、スクロール、ホバー |
+| エージェント一覧 | 📋 | Phase 3+ |
+| ワークフロー | 📋 | Phase 3+ |
+| ツールキット | 📋 | Phase 3+ |
+
+### Phase 3 実装詳細
+- **`src/ui/sidebar.rs`**: SidebarState, FileTreeState, TreeEntry
+- **レイアウト**: サイドバー(260px, トグル式) + ターミナル幅自動調整
+- **ファイルスキャン**: `std::fs::read_dir` — .git/node_modules/target 除外、ディレクトリ優先ソート
+- **操作**: クリックで展開/折畳、マウスホイールスクロール、Ctrl+B トグル
 
 ## Phase 4: エディタ
 
