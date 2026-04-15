@@ -50,6 +50,13 @@ src-tauri/src/
 - Toggle Sidebar / Save File / Close Editor
 - Git: Create/Switch/Delete Worktree
 - Command History (Ctrl+R)
+- Agent: Start Claude/Codex/Gemini (モデル入力可)
+
+### エージェント機能
+- パレットからClaude/Codex/Gemini CLIをPTYタブとして起動
+- 出力モニタリング: CLI固有パーサーでステータス/コスト/トークン自動検出
+- ステータスバー: エージェントタブで CLI名/モデル/ステータス/コスト/経過時間
+- サイドバー AGENTS パネル: アクティブセッション一覧 (ステータスドット+コスト)
 
 ## Tauri版 (レガシー)
 
