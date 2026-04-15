@@ -59,6 +59,11 @@ pub enum PaletteMode {
     FileSearch {
         files: Vec<String>,
     },
+    /// Settings selection list.
+    Settings {
+        items: Vec<String>,
+        category: String,
+    },
 }
 
 /// Actions produced by the command palette.
@@ -87,6 +92,8 @@ pub enum PaletteAction {
     SpawnAgent { cli: String, model: String },
     SearchTerminal(String),
     OpenFile(String),
+    OpenSettings,
+    ChangeSetting { category: String, value: String },
     None,
 }
 
@@ -101,6 +108,7 @@ const COMMANDS: &[PaletteCommand] = &[
     PaletteCommand { id: "wt_switch", label: "Git: Switch Worktree", shortcut: "" },
     PaletteCommand { id: "wt_delete", label: "Git: Delete Worktree", shortcut: "" },
     PaletteCommand { id: "cmd_history", label: "Command History", shortcut: "Ctrl+R" },
+    PaletteCommand { id: "settings", label: "Settings", shortcut: "Ctrl+," },
     PaletteCommand { id: "agent_claude", label: "Agent: Start Claude", shortcut: "" },
     PaletteCommand { id: "agent_codex", label: "Agent: Start Codex", shortcut: "" },
     PaletteCommand { id: "agent_gemini", label: "Agent: Start Gemini", shortcut: "" },
@@ -174,7 +182,8 @@ impl PaletteState {
             PaletteMode::Command
             | PaletteMode::WorktreeSelect { .. }
             | PaletteMode::CommandHistory { .. }
-            | PaletteMode::FileSearch { .. } => self.filtered.len(),
+            | PaletteMode::FileSearch { .. }
+            | PaletteMode::Settings { .. } => self.filtered.len(),
             PaletteMode::WorktreeCreate
             | PaletteMode::AgentSpawn { .. }
             | PaletteMode::TerminalSearch => 0,
@@ -206,6 +215,14 @@ impl PaletteState {
         self.input.clear();
         self.selected = 0;
         self.filtered.clear();
+    }
+
+    /// Enter settings list mode.
+    pub fn enter_settings(&mut self, items: Vec<String>, category: String) {
+        self.filtered = (0..items.len()).collect();
+        self.mode = PaletteMode::Settings { items, category };
+        self.input.clear();
+        self.selected = 0;
     }
 
     /// Enter file search mode (Quick Open).
@@ -247,6 +264,7 @@ impl PaletteState {
                         "wt_switch" => PaletteAction::BeginWorktreeSwitch,
                         "wt_delete" => PaletteAction::BeginWorktreeDelete,
                         "cmd_history" => PaletteAction::BeginCommandHistory,
+                        "settings" => PaletteAction::OpenSettings,
                         "agent_claude" => PaletteAction::BeginAgentClaude,
                         "agent_codex" => PaletteAction::BeginAgentCodex,
                         "agent_gemini" => PaletteAction::BeginAgentGemini,
@@ -263,7 +281,8 @@ impl PaletteState {
                     | PaletteAction::BeginCommandHistory
                     | PaletteAction::BeginAgentClaude
                     | PaletteAction::BeginAgentCodex
-                    | PaletteAction::BeginAgentGemini => {}
+                    | PaletteAction::BeginAgentGemini
+                    | PaletteAction::OpenSettings => {}
                     _ => self.close(),
                 }
                 action
@@ -324,6 +343,19 @@ impl PaletteState {
                 }
                 PaletteAction::None
             }
+            PaletteMode::Settings { items, category } => {
+                if let Some(&idx) = self.filtered.get(self.selected) {
+                    if let Some(value) = items.get(idx) {
+                        let action = PaletteAction::ChangeSetting {
+                            category: category.clone(),
+                            value: value.clone(),
+                        };
+                        self.close();
+                        return action;
+                    }
+                }
+                PaletteAction::None
+            }
         }
     }
 
@@ -376,6 +408,16 @@ impl PaletteState {
                     })
                     .collect();
             }
+            PaletteMode::Settings { items, .. } => {
+                self.filtered = (0..items.len())
+                    .filter(|&i| {
+                        if query.is_empty() {
+                            return true;
+                        }
+                        items[i].to_lowercase().contains(&query)
+                    })
+                    .collect();
+            }
         }
     }
 
@@ -401,7 +443,8 @@ impl PaletteState {
             PaletteMode::Command
             | PaletteMode::WorktreeSelect { .. }
             | PaletteMode::CommandHistory { .. }
-            | PaletteMode::FileSearch { .. } => self.filtered.len().min(MAX_VISIBLE_ITEMS),
+            | PaletteMode::FileSearch { .. }
+            | PaletteMode::Settings { .. } => self.filtered.len().min(MAX_VISIBLE_ITEMS),
             PaletteMode::WorktreeCreate
             | PaletteMode::AgentSpawn { .. }
             | PaletteMode::TerminalSearch => 1,
@@ -432,6 +475,7 @@ impl PaletteState {
             PaletteMode::AgentSpawn { .. } => cat::pm(148, 226, 213, 200),   // Teal
             PaletteMode::TerminalSearch => cat::pm(249, 226, 175, 200),     // Yellow
             PaletteMode::FileSearch { .. } => cat::pm(166, 227, 161, 200), // Green
+            PaletteMode::Settings { .. } => cat::pm(245, 194, 231, 200),  // Pink
         };
         rects.push(RectInstance {
             pos: [palette_x, palette_y],
@@ -459,6 +503,7 @@ impl PaletteState {
                 PaletteMode::AgentSpawn { .. } => "Model (e.g. opus, sonnet) — Enter for default...",
                 PaletteMode::TerminalSearch => "Search terminal output...",
                 PaletteMode::FileSearch { .. } => "Open file...",
+                PaletteMode::Settings { .. } => "Select option...",
             };
             (placeholder, cat::OVERLAY0)
         } else {
@@ -518,6 +563,11 @@ impl PaletteState {
             PaletteMode::FileSearch { files } => {
                 self.build_history_list(
                     font, atlas, palette_x, list_y, files, &mut rects, &mut glyphs,
+                );
+            }
+            PaletteMode::Settings { items, .. } => {
+                self.build_history_list(
+                    font, atlas, palette_x, list_y, items, &mut rects, &mut glyphs,
                 );
             }
             PaletteMode::TerminalSearch => {

@@ -1039,6 +1039,18 @@ impl NativeTerminal {
                 self.write_to_pty(cmd.as_bytes());
                 self.write_to_pty(b"\r");
             }
+            PaletteAction::OpenSettings => {
+                // Show settings categories
+                let items = vec![
+                    "Theme".to_string(),
+                    "Font Size".to_string(),
+                    "Opacity".to_string(),
+                ];
+                self.palette.enter_settings(items, "root".to_string());
+            }
+            PaletteAction::ChangeSetting { category, value } => {
+                self.apply_setting(&category, &value);
+            }
             PaletteAction::BeginAgentClaude => {
                 self.palette.enter_agent_spawn("claude".to_string());
             }
@@ -1287,6 +1299,61 @@ impl NativeTerminal {
         }
 
         (rects, glyphs)
+    }
+
+    /// Apply a setting change from the settings palette.
+    fn apply_setting(&mut self, category: &str, value: &str) {
+        match category {
+            "root" => {
+                // Second level: show options for the selected category
+                let items = match value {
+                    "Theme" => vec![
+                        "catppuccin-mocha".to_string(),
+                        "catppuccin-latte".to_string(),
+                        "dracula".to_string(),
+                        "nord".to_string(),
+                        "tokyo-night".to_string(),
+                        "gruvbox".to_string(),
+                        "one-dark".to_string(),
+                    ],
+                    "Font Size" => (10..=24).map(|s| format!("{}", s)).collect(),
+                    "Opacity" => vec![
+                        "1.0".to_string(),
+                        "0.95".to_string(),
+                        "0.9".to_string(),
+                        "0.85".to_string(),
+                        "0.8".to_string(),
+                        "0.75".to_string(),
+                    ],
+                    _ => return,
+                };
+                self.palette.enter_settings(items, value.to_string());
+            }
+            "Theme" => {
+                self.config.appearance.theme = value.to_string();
+                let _ = save_config(&self.config);
+                log::info!("Theme changed to: {}", value);
+            }
+            "Font Size" => {
+                if let Ok(size) = value.parse::<u32>() {
+                    self.config.appearance.font_size = size;
+                    self.font = FontManager::new(size as f32, self.config.appearance.line_height);
+                    let _ = save_config(&self.config);
+                    self.recalc_grid_size();
+                    // Re-create atlas for new font
+                    self.atlas = Mutex::new(GlyphAtlas::new(2048, 2048));
+                    log::info!("Font size changed to: {}", size);
+                }
+            }
+            "Opacity" => {
+                if let Ok(opacity) = value.parse::<f32>() {
+                    self.config.appearance.opacity = opacity;
+                    let _ = save_config(&self.config);
+                    log::info!("Opacity changed to: {}", opacity);
+                }
+            }
+            _ => {}
+        }
     }
 
     /// Open quick file search (Ctrl+P).
