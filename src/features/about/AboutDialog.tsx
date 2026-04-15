@@ -1,4 +1,5 @@
 import { motion, AnimatePresence } from "motion/react";
+import logoSvg from "../../assets/logo.svg";
 import styles from "./AboutDialog.module.css";
 
 interface AboutDialogProps {
@@ -15,7 +16,7 @@ export function AboutDialog({ visible, onClose }: AboutDialogProps) {
       <motion.div className={styles.dialog} onClick={(e) => e.stopPropagation()}
         initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
         transition={{ type: "spring", stiffness: 400, damping: 30 }}>
-        <div className={styles.logo}>AE</div>
+        <img src={logoSvg} alt="Aether" width={64} height={64} className={styles.logo} />
         <h2 className={styles.title}>Aether Terminal</h2>
         <p className={styles.version}>Version 0.1.0</p>
         <p className={styles.desc}>AI Workspace for Windows</p>

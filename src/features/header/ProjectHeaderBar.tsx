@@ -1,5 +1,5 @@
-import { PixelAvatar } from "../../shared/ui/PixelAvatar";
 import { Settings, RefreshCw } from "lucide-react";
+import logoSvg from "../../assets/logo.svg";
 import styles from "./ProjectHeaderBar.module.css";
 
 interface ProjectHeaderBarProps {
@@ -45,7 +45,7 @@ export function ProjectHeaderBar({
   return (
     <div className={styles.header} data-tauri-drag-region>
       <div className={styles.left}>
-        <PixelAvatar seed={projectName} size={28} />
+        <img src={logoSvg} alt="Aether" width={28} height={28} className={styles.logo} />
         <div className={styles.projectInfo}>
           <div className={styles.topRow}>
             <span className={styles.name}>{projectName}</span>

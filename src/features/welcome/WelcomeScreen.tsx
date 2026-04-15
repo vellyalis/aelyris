@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { motion } from "motion/react";
+import logoSvg from "../../assets/logo.svg";
 import styles from "./WelcomeScreen.module.css";
 
 interface ProjectInfo {
@@ -93,7 +94,7 @@ export function WelcomeScreen({ onOpenProject }: WelcomeScreenProps) {
           animate={{ scale: 1, opacity: 1 }}
           transition={{ type: "spring", stiffness: 300, damping: 20, delay: 0.05 }}
         >
-          <div className={styles.logoIcon}>AE</div>
+          <img src={logoSvg} alt="Aether" width={48} height={48} className={styles.logoIcon} />
           <h1 className={styles.title}>Aether Terminal</h1>
         </motion.div>
         {userName && (

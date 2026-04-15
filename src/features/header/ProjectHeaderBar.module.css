@@ -12,6 +12,8 @@
   -webkit-app-region: drag;
 }
 
+.logo { border-radius: var(--radius-sm); flex-shrink: 0; }
+
 /* Left group: avatar + project info (2 rows) */
 .left {
   display: flex;
