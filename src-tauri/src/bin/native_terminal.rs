@@ -187,6 +187,71 @@ impl PaneNode {
         }
     }
 
+    /// Remove a leaf pane by ID. Returns the PTY ID of the removed pane, or None.
+    /// The sibling takes over the parent's position.
+    fn close_leaf(&mut self, target_id: u32) -> Option<String> {
+        match self {
+            PaneNode::Split { first, second, .. } => {
+                // Check if first child is the target leaf
+                if matches!(first.as_ref(), PaneNode::Leaf(l) if l.id == target_id) {
+                    let pty_id = if let PaneNode::Leaf(l) = first.as_ref() {
+                        l.pty_id.clone()
+                    } else {
+                        return None;
+                    };
+                    // Replace self with second child
+                    let sibling = std::mem::replace(
+                        second.as_mut(),
+                        PaneNode::Leaf(PaneLeaf {
+                            id: 0, pty_id: String::new(),
+                            grid: Arc::new(Mutex::new(Grid::new(1, 1, 0))),
+                            agent_info: None,
+                        }),
+                    );
+                    *self = sibling;
+                    return Some(pty_id);
+                }
+                // Check if second child is the target leaf
+                if matches!(second.as_ref(), PaneNode::Leaf(l) if l.id == target_id) {
+                    let pty_id = if let PaneNode::Leaf(l) = second.as_ref() {
+                        l.pty_id.clone()
+                    } else {
+                        return None;
+                    };
+                    let sibling = std::mem::replace(
+                        first.as_mut(),
+                        PaneNode::Leaf(PaneLeaf {
+                            id: 0, pty_id: String::new(),
+                            grid: Arc::new(Mutex::new(Grid::new(1, 1, 0))),
+                            agent_info: None,
+                        }),
+                    );
+                    *self = sibling;
+                    return Some(pty_id);
+                }
+                // Recurse
+                first.close_leaf(target_id).or_else(|| second.close_leaf(target_id))
+            }
+            PaneNode::Leaf(_) => None, // Can't close the root leaf
+        }
+    }
+
+    /// Find the split node containing target_id and adjust its ratio.
+    fn adjust_ratio(&mut self, target_id: u32, delta: f32) -> bool {
+        match self {
+            PaneNode::Split { first, second, ratio, .. } => {
+                let first_ids = first.leaf_ids();
+                let second_ids = second.leaf_ids();
+                if first_ids.contains(&target_id) || second_ids.contains(&target_id) {
+                    *ratio = (*ratio + delta).clamp(0.15, 0.85);
+                    return true;
+                }
+                first.adjust_ratio(target_id, delta) || second.adjust_ratio(target_id, delta)
+            }
+            PaneNode::Leaf(_) => false,
+        }
+    }
+
     /// Split a leaf pane by ID, returning the new leaf's ID.
     fn split_leaf(
         &mut self,
@@ -275,6 +340,13 @@ impl TabState {
     }
 }
 
+/// Divider drag tracking state.
+struct DividerDrag {
+    dir: SplitDir,
+    start_pos: f32,
+    content_size: f32, // total size in the split direction
+}
+
 /// Application state for the native terminal.
 struct NativeTerminal {
     window: Option<Arc<Window>>,
@@ -312,6 +384,8 @@ struct NativeTerminal {
     agent_rx: std::sync::mpsc::Receiver<AgentUpdate>,
     // Context menu position (None = hidden)
     context_menu: Option<(f32, f32)>,
+    // Divider drag state
+    divider_drag: Option<DividerDrag>,
     // SCM panel
     scm: ScmState,
     // Toast notifications
@@ -359,6 +433,7 @@ impl NativeTerminal {
             agent_tx,
             agent_rx,
             context_menu: None,
+            divider_drag: None,
             scm: ScmState::new(),
             toasts: ToastManager::new(),
         }
@@ -884,6 +959,7 @@ impl NativeTerminal {
                     "p" => { self.palette.toggle(); return; }
                     "h" => { self.split_focused_pane(SplitDir::Horizontal); return; }
                     "v" => { self.split_focused_pane(SplitDir::Vertical); return; }
+                    "w" => { self.close_focused_pane(); return; }
                     _ => {}
                 }
             }
@@ -1851,6 +1927,29 @@ impl NativeTerminal {
         }
     }
 
+    /// Close the focused pane in the active tab.
+    fn close_focused_pane(&mut self) {
+        let tab = match self.tab_states.get_mut(self.chrome.active_tab) {
+            Some(t) => t,
+            None => return,
+        };
+        let leaf_count = tab.root.leaf_ids().len();
+        if leaf_count <= 1 {
+            // Only one pane — close the whole tab
+            let idx = self.chrome.active_tab;
+            self.handle_chrome_action(ChromeAction::CloseTab(idx));
+            return;
+        }
+        let target = tab.focused_pane_id;
+        if let Some(pty_id) = tab.root.close_leaf(target) {
+            let _ = self.pty_manager.close(&pty_id);
+            // Switch focus to first remaining pane
+            let ids = tab.root.leaf_ids();
+            tab.focused_pane_id = ids.first().copied().unwrap_or(0);
+            self.toasts.info("Pane closed");
+        }
+    }
+
     /// Apply a setting change from the settings palette.
     fn apply_setting(&mut self, category: &str, value: &str) {
         match category {
@@ -2365,6 +2464,22 @@ impl ApplicationHandler for NativeTerminal {
                 // Update mouse position for hover effects
                 self.chrome.mouse_pos = Some((position.x as f32, position.y as f32));
 
+                // Divider drag: adjust split ratio
+                if let Some(drag) = &self.divider_drag {
+                    let pos = match drag.dir {
+                        SplitDir::Horizontal => position.x as f32 - self.sidebar.width(),
+                        SplitDir::Vertical => position.y as f32 - ui::CHROME_TOP,
+                    };
+                    let new_ratio = (pos / drag.content_size).clamp(0.15, 0.85);
+                    if let Some(tab) = self.tab_states.get_mut(self.chrome.active_tab) {
+                        // Apply to the root split (simplified — only handles root split)
+                        if let PaneNode::Split { ratio, .. } = &mut tab.root {
+                            *ratio = new_ratio;
+                        }
+                    }
+                    return;
+                }
+
                 // Mouse motion reporting (button-event or any-event tracking)
                 if self.is_in_content(position.x, position.y) {
                     use aether_terminal_lib::gpu::grid::MouseMode;
@@ -2459,6 +2574,44 @@ impl ApplicationHandler for NativeTerminal {
                             return;
                         }
                     }
+                    // Check for divider click (start drag)
+                    if let Some((mx, my)) = self.chrome.mouse_pos {
+                        if self.is_in_content(mx as f64, my as f64) {
+                            if let Some(tab) = self.tab_states.get(self.chrome.active_tab) {
+                                if let PaneNode::Split { dir, ratio, .. } = &tab.root {
+                                    let config = self.surface_config.as_ref();
+                                    let content_w = config.map(|c| c.width as f32 - self.sidebar.width()).unwrap_or(800.0);
+                                    let content_h = config.map(|c| c.height as f32 - ui::CHROME_TOP - ui::STATUS_BAR_HEIGHT).unwrap_or(500.0);
+                                    let hit = match dir {
+                                        SplitDir::Horizontal => {
+                                            let divider_x = self.sidebar.width() + content_w * ratio;
+                                            (mx - divider_x).abs() < 6.0
+                                        }
+                                        SplitDir::Vertical => {
+                                            let divider_y = ui::CHROME_TOP + content_h * ratio;
+                                            (my - divider_y).abs() < 6.0
+                                        }
+                                    };
+                                    if hit {
+                                        let content_size = match dir {
+                                            SplitDir::Horizontal => content_w,
+                                            SplitDir::Vertical => content_h,
+                                        };
+                                        self.divider_drag = Some(DividerDrag {
+                                            dir: *dir,
+                                            start_pos: match dir {
+                                                SplitDir::Horizontal => mx,
+                                                SplitDir::Vertical => my,
+                                            },
+                                            content_size,
+                                        });
+                                        return;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // Content area: hyperlink click, mouse reporting, or selection
                     if let Some((mx, my)) = self.chrome.mouse_pos {
                         if self.is_in_content(mx as f64, my as f64) {
@@ -2490,6 +2643,7 @@ impl ApplicationHandler for NativeTerminal {
                         }
                     }
                 } else {
+                    self.divider_drag = None;
                     if self.is_mouse_tracking() {
                         if let Some((mx, my)) = self.chrome.mouse_pos {
                             if self.is_in_content(mx as f64, my as f64) {
