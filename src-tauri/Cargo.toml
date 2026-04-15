@@ -65,6 +65,9 @@ notify-debouncer-mini = "0.5"
 
 # Window effects: Mica/Acrylic via tauri.conf.json windowEffects (no external crate needed)
 
+# --- Editor ---
+ropey = "1"
+
 # --- GPU terminal renderer (wgpu) ---
 wgpu = "25"
 vte = "0.13"

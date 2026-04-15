@@ -103,15 +103,22 @@ Binary: cargo run --bin native-terminal
 - **ガター**: 行番号桁数に応じた動的幅、整数演算で正確な桁数計算
 - **安全性**: saturating_add で全オーバーフロー防止、visible_count >= 1 保証
 
-### Phase 4b: テキスト編集 📋
+### Phase 4b: テキスト編集 ✅ 完了
 
-| タスク | 方針 |
-|--------|------|
-| テキストバッファ | ropey (rope data structure) |
-| カーソル操作 | 行/列位置、点滅カーソル描画 |
-| 挿入/削除 | キー入力でテキスト編集 |
-| Undo/Redo | EditOp パターン |
-| 保存 | Ctrl+S |
+| タスク | 状態 | 詳細 |
+|--------|------|------|
+| テキストバッファ | ✅ | ropey::Rope — CRLF→LF正規化、保存時復元 |
+| カーソル操作 | ✅ | 行/列、sticky desired_col、点滅カーソル（30フレーム周期） |
+| 挿入/削除 | ✅ | 文字入力、Enter、Backspace、Delete、Tab（4スペース） |
+| Undo/Redo | ✅ | EditOp + char_count（マルチバイト安全）、saved_undo_depth追跡 |
+| 保存 | ✅ | Ctrl+S（元の改行コード復元）、[+] 修正マーカー表示 |
+
+#### Phase 4b 実装詳細
+- **ropey 1.x**: Rope データ構造 — 大ファイルの効率的な編集
+- **CRLF正規化**: open()でLFに正規化、save()で元のCRLFに復元
+- **Undo/Redo**: `EditOp::Insert/Delete` に `char_count` フィールド（`text.len()` バイト数ではなくchar数）
+- **modified追跡**: `saved_undo_depth` でディスク読み込み不要のmodified判定
+- **カーソル安全**: `char_idx_to_pos` はcol を `line_len` でclamp
 
 ### Phase 4c: シンタックスハイライト 📋
 
