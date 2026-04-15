@@ -110,6 +110,10 @@ pub fn run() {
             ipc::create_window,
             ipc::create_pane,
             ipc::save_session_state,
+            // Command history
+            ipc::save_command_history,
+            ipc::search_command_history,
+            ipc::recent_commands,
             // Workspace pane commands
             ipc::send_keys,
             ipc::broadcast_keys,

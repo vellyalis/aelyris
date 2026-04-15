@@ -1,7 +1,7 @@
 mod migrations;
 pub mod queries;
 
-pub use queries::{Database, AgentSessionRecord};
+pub use queries::{Database, AgentSessionRecord, CommandRecord};
 
 use std::path::PathBuf;
 use std::sync::Mutex;

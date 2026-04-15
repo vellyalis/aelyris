@@ -428,6 +428,73 @@ impl Database {
         rows.collect::<Result<Vec<_>, _>>()
             .map_err(|e| format!("Collect: {}", e))
     }
+
+    // --- Command History ---
+
+    /// Save a command to history
+    pub fn save_command(&self, terminal_id: &str, command: &str, cwd: &str) -> Result<(), String> {
+        self.conn
+            .execute(
+                "INSERT INTO command_history (terminal_id, command, cwd) VALUES (?1, ?2, ?3)",
+                params![terminal_id, command, cwd],
+            )
+            .map_err(|e| format!("Save command: {}", e))?;
+        Ok(())
+    }
+
+    /// Search command history by substring match
+    pub fn search_commands(&self, query: &str, limit: usize) -> Result<Vec<CommandRecord>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, terminal_id, command, cwd, exit_code, executed_at FROM command_history WHERE command LIKE ?1 ORDER BY executed_at DESC LIMIT ?2",
+            )
+            .map_err(|e| format!("Prepare: {}", e))?;
+
+        let pattern = format!("%{}%", query);
+        let rows = stmt
+            .query_map(params![pattern, limit as i64], |row| {
+                Ok(CommandRecord {
+                    id: row.get(0)?,
+                    terminal_id: row.get(1)?,
+                    command: row.get(2)?,
+                    cwd: row.get(3)?,
+                    exit_code: row.get(4)?,
+                    executed_at: row.get(5)?,
+                })
+            })
+            .map_err(|e| format!("Query: {}", e))?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Collect: {}", e))
+    }
+
+    /// Get recent commands (for suggestions)
+    pub fn recent_commands(&self, limit: usize) -> Result<Vec<String>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT DISTINCT command FROM command_history ORDER BY executed_at DESC LIMIT ?1",
+            )
+            .map_err(|e| format!("Prepare: {}", e))?;
+
+        let rows = stmt
+            .query_map(params![limit as i64], |row| row.get(0))
+            .map_err(|e| format!("Query: {}", e))?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Collect: {}", e))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommandRecord {
+    pub id: i64,
+    pub terminal_id: String,
+    pub command: String,
+    pub cwd: String,
+    pub exit_code: Option<i32>,
+    pub executed_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

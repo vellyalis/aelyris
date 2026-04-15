@@ -1235,6 +1235,29 @@ pub fn list_agent_history(app: AppHandle, limit: usize) -> Result<Vec<crate::db:
     db.with(|d| d.list_agent_sessions(limit))
 }
 
+// ── Command History ──
+
+/// Save a command to history
+#[tauri::command]
+pub fn save_command_history(app: AppHandle, terminal_id: String, command: String, cwd: String) -> Result<(), String> {
+    let db = app.state::<crate::db::ManagedDb>();
+    db.with(|d| d.save_command(&terminal_id, &command, &cwd))
+}
+
+/// Search command history
+#[tauri::command]
+pub fn search_command_history(app: AppHandle, query: String, limit: usize) -> Result<Vec<crate::db::CommandRecord>, String> {
+    let db = app.state::<crate::db::ManagedDb>();
+    db.with(|d| d.search_commands(&query, limit))
+}
+
+/// Get recent unique commands
+#[tauri::command]
+pub fn recent_commands(app: AppHandle, limit: usize) -> Result<Vec<String>, String> {
+    let db = app.state::<crate::db::ManagedDb>();
+    db.with(|d| d.recent_commands(limit))
+}
+
 // ── LSP commands ──
 
 /// Start a language server for a file's language
