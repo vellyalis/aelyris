@@ -46,6 +46,9 @@ src-tauri/src/
 | Ctrl+S | エディタ ファイル保存 |
 | Ctrl+Z | エディタ Undo |
 | Ctrl+Shift+Z | エディタ Redo |
+| Ctrl+Shift+H | ペイン水平分割 |
+| Ctrl+Shift+V | ペイン垂直分割 |
+| Alt+Tab | ペインフォーカス切替 |
 | Ctrl+Click | ハイパーリンクをブラウザで開く |
 | Escape | エディタ → ターミナル復帰 |
 | 右クリック | コンテキストメニュー |
