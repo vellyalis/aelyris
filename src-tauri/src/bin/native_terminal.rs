@@ -12,6 +12,7 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{Key, NamedKey, ModifiersState};
 use winit::window::{Window, WindowId};
 
+use aether_terminal_lib::config::{AppConfig, load_config, save_config};
 use aether_terminal_lib::gpu::font::FontManager;
 use aether_terminal_lib::gpu::atlas::GlyphAtlas;
 use aether_terminal_lib::gpu::grid::{Grid, GridPerformer};
@@ -63,12 +64,16 @@ struct NativeTerminal {
     lsp_manager: LspManager,
     lsp_receiver: std::sync::mpsc::Receiver<LspMessage>,
     lsp_request_id: u64,
+    config: AppConfig,
     should_exit: bool,
 }
 
 impl NativeTerminal {
     fn new() -> Self {
-        let font = FontManager::new(16.0, 1.4);
+        let config = load_config();
+        let font_size = config.appearance.font_size as f32;
+        let line_height = config.appearance.line_height;
+        let font = FontManager::new(font_size, line_height);
         let (lsp_tx, lsp_rx) = std::sync::mpsc::channel();
         Self {
             window: None,
@@ -92,6 +97,7 @@ impl NativeTerminal {
             lsp_manager: LspManager::new(lsp_tx),
             lsp_receiver: lsp_rx,
             lsp_request_id: 1,
+            config,
             should_exit: false,
         }
     }
@@ -373,7 +379,7 @@ impl NativeTerminal {
     fn handle_chrome_action(&mut self, action: ChromeAction) {
         match action {
             ChromeAction::Close => {
-                // Close all PTYs
+                self.save_session();
                 for tab in &self.tab_states {
                     let _ = self.pty_manager.close(&tab.pty_id);
                 }
@@ -834,6 +840,27 @@ impl NativeTerminal {
             && y < bottom
     }
 
+    /// Save window state to config before exit.
+    fn save_session(&mut self) {
+        if let Some(window) = &self.window {
+            let size = window.inner_size();
+            self.config.window.width = size.width;
+            self.config.window.height = size.height;
+            if let Ok(pos) = window.outer_position() {
+                self.config.window.x = Some(pos.x);
+                self.config.window.y = Some(pos.y);
+            }
+            self.config.window.maximized = window.is_maximized();
+        }
+        self.config.window.sidebar_visible = self.sidebar.visible;
+        self.config.window.last_directory = std::env::current_dir()
+            .ok()
+            .map(|p| p.to_string_lossy().into_owned());
+        if let Err(e) = save_config(&self.config) {
+            log::warn!("Failed to save config: {}", e);
+        }
+    }
+
     /// Recalculate terminal grid dimensions based on available content area.
     fn recalc_grid_size(&mut self) {
         let config = match &self.surface_config {
@@ -858,11 +885,16 @@ impl ApplicationHandler for NativeTerminal {
             return;
         }
 
-        let attrs = Window::default_attributes()
+        let wc = &self.config.window;
+        let mut attrs = Window::default_attributes()
             .with_title("Aether Terminal (Native)")
-            .with_inner_size(winit::dpi::LogicalSize::new(1200, 700))
+            .with_inner_size(winit::dpi::LogicalSize::new(wc.width, wc.height))
             .with_transparent(true)
             .with_decorations(false);
+
+        if let (Some(x), Some(y)) = (wc.x, wc.y) {
+            attrs = attrs.with_position(winit::dpi::LogicalPosition::new(x, y));
+        }
 
         let window = Arc::new(
             event_loop
@@ -870,6 +902,14 @@ impl ApplicationHandler for NativeTerminal {
                 .expect("Failed to create window"),
         );
         window.set_ime_allowed(true);
+
+        if wc.maximized {
+            window.set_maximized(true);
+            self.chrome.is_maximized = true;
+        }
+        if wc.sidebar_visible {
+            self.sidebar.toggle();
+        }
 
         #[cfg(windows)]
         enable_mica_effect(&window);
@@ -886,6 +926,7 @@ impl ApplicationHandler for NativeTerminal {
     ) {
         match event {
             WindowEvent::CloseRequested => {
+                self.save_session();
                 for tab in &self.tab_states {
                     let _ = self.pty_manager.close(&tab.pty_id);
                 }

@@ -4,6 +4,40 @@ use serde::{Deserialize, Serialize};
 pub struct AppConfig {
     pub appearance: AppearanceConfig,
     pub terminal: TerminalConfig,
+    #[serde(default)]
+    pub window: WindowConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WindowConfig {
+    #[serde(default = "default_window_width")]
+    pub width: u32,
+    #[serde(default = "default_window_height")]
+    pub height: u32,
+    #[serde(default)]
+    pub x: Option<i32>,
+    #[serde(default)]
+    pub y: Option<i32>,
+    #[serde(default)]
+    pub maximized: bool,
+    #[serde(default)]
+    pub sidebar_visible: bool,
+    #[serde(default)]
+    pub last_directory: Option<String>,
+}
+
+impl Default for WindowConfig {
+    fn default() -> Self {
+        Self {
+            width: default_window_width(),
+            height: default_window_height(),
+            x: None,
+            y: None,
+            maximized: false,
+            sidebar_visible: false,
+            last_directory: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -57,6 +91,7 @@ impl Default for AppConfig {
                 cursor_style: default_cursor_style(),
                 cursor_blink: true,
             },
+            window: WindowConfig::default(),
         }
     }
 }
@@ -97,6 +132,8 @@ fn default_line_height() -> f32 { 1.4 }
 fn default_true() -> bool { true }
 fn default_window_effect() -> String { "mica".to_string() }
 fn default_opacity() -> f32 { 0.95 }
+fn default_window_width() -> u32 { 1200 }
+fn default_window_height() -> u32 { 700 }
 fn default_shell() -> String { "pwsh.exe".to_string() }
 fn default_scrollback() -> u32 { 10000 }
 fn default_cursor_style() -> String { "bar".to_string() }
