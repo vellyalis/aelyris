@@ -89,7 +89,37 @@
 .navBtn:disabled { opacity: 0.3; cursor: default; }
 
 .navLabel { font-weight: 500; }
-.filePath { color: var(--ctp-blue); margin-left: auto; }
+.filePath { color: var(--ctp-blue); }
+
+.navActions { margin-left: auto; display: flex; gap: var(--space-2); }
+
+.acceptBtn, .revertBtn {
+  background: none;
+  border: 1px solid;
+  font-size: 9px;
+  font-family: var(--font-mono);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.acceptBtn { border-color: var(--ctp-green); color: var(--ctp-green); }
+.acceptBtn:hover { background: var(--ctp-green); color: var(--bg-primary); }
+.revertBtn { border-color: var(--ctp-peach); color: var(--ctp-peach); }
+.revertBtn:hover { background: var(--ctp-peach); color: var(--bg-primary); }
+.aiFixBtn {
+  background: none;
+  border: 1px solid var(--ctp-mauve);
+  color: var(--ctp-mauve);
+  font-size: 9px;
+  font-family: var(--font-mono);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.aiFixBtn:hover { background: var(--ctp-mauve); color: var(--bg-primary); }
 
 .diffArea {
   flex: 1;

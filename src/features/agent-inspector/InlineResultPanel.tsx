@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, lazy, Suspense } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { FileText, X, ChevronLeft, ChevronRight } from "lucide-react";
+import { FileText, X, ChevronLeft, ChevronRight, Check, RotateCcw } from "lucide-react";
 import type { AgentSession, FileChangeDetail } from "../../shared/types/agent";
+import { toast } from "../../shared/store/toastStore";
 import styles from "./InlineResultPanel.module.css";
 
 const DiffViewer = lazy(() =>
@@ -12,6 +13,7 @@ interface InlineResultPanelProps {
   session: AgentSession;
   projectPath: string;
   onClose: () => void;
+  onStartAgent?: (prompt: string) => void;
 }
 
 interface FileDiffData {
@@ -33,7 +35,7 @@ function detectLanguage(path: string): string {
   return map[ext] ?? "plaintext";
 }
 
-export function InlineResultPanel({ session, projectPath, onClose }: InlineResultPanelProps) {
+export function InlineResultPanel({ session, projectPath, onClose, onStartAgent }: InlineResultPanelProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [diffs, setDiffs] = useState<Map<string, FileDiffData>>(new Map());
 
@@ -156,6 +158,54 @@ export function InlineResultPanel({ session, projectPath, onClose }: InlineResul
           <ChevronRight size={12} />
         </button>
         <span className={styles.filePath}>{activeFile?.path}</span>
+        <div className={styles.navActions}>
+          <button
+            className={styles.revertBtn}
+            onClick={async () => {
+              if (!activeFile || !projectPath) return;
+              try {
+                const original = diffs.get(activeFile.path)?.original;
+                if (original !== undefined && original !== "") {
+                  await invoke("write_file", { path: activeFile.path, content: original });
+                  toast.success("Reverted", activeFile.path.split(/[/\\]/).pop() ?? "");
+                  // Reload diff
+                  setDiffs((prev) => { const next = new Map(prev); next.delete(activeFile.path); return next; });
+                }
+              } catch (err) { toast.error("Revert failed", String(err)); }
+            }}
+            title="Revert to original"
+            aria-label="Revert file"
+          >
+            <RotateCcw size={10} /> Revert
+          </button>
+          <button
+            className={styles.acceptBtn}
+            onClick={() => {
+              toast.success("Accepted", activeFile?.path.split(/[/\\]/).pop() ?? "");
+              // Move to next file or close if last
+              if (activeIndex < uniqueFiles.length - 1) {
+                setActiveIndex((i) => i + 1);
+              }
+            }}
+            title="Accept this change"
+            aria-label="Accept change"
+          >
+            <Check size={10} /> Accept
+          </button>
+          {onStartAgent && (
+            <button
+              className={styles.aiFixBtn}
+              onClick={() => {
+                const fileName = activeFile?.path.split(/[/\\]/).pop() ?? "";
+                onStartAgent(`Review and improve the changes in ${fileName}. Check for bugs, style issues, and missing edge cases.`);
+              }}
+              title="Ask AI to review this file"
+              aria-label="Ask AI to review"
+            >
+              AI Review
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Diff content */}

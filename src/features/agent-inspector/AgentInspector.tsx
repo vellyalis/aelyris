@@ -320,6 +320,7 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
             session={activeSession}
             projectPath={rootProjectPath ?? ""}
             onClose={() => setTab("sessions")}
+            onStartAgent={onStartAgent}
           />
         ) : (
           <div className={styles.cards}>
