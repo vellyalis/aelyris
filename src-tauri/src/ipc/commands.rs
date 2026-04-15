@@ -1293,3 +1293,54 @@ pub fn lsp_list(app: AppHandle) -> Vec<crate::lsp::LspServerInfo> {
 pub fn list_all_files(root_path: String, max_files: usize) -> Result<Vec<crate::git::FileListEntry>, String> {
     crate::git::list_all_files(&root_path, max_files)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_path_allows_normal_paths() {
+        assert!(validate_path("C:/Users/owner/project").is_ok());
+        assert!(validate_path("/home/user/project").is_ok());
+        assert!(validate_path("D:/work/code").is_ok());
+    }
+
+    #[test]
+    fn validate_path_blocks_traversal() {
+        assert!(validate_path("C:/Users/../etc").is_err());
+        assert!(validate_path("../../etc/passwd").is_err());
+    }
+
+    #[test]
+    fn validate_path_blocks_unc() {
+        assert!(validate_path("\\\\server\\share").is_err());
+        assert!(validate_path("//server/share").is_err());
+    }
+
+    #[test]
+    fn validate_path_blocks_system_dirs() {
+        assert!(validate_path("C:/Windows/System32").is_err());
+        assert!(validate_path("c:\\windows\\system32").is_err());
+        assert!(validate_path("C:/Program Files/app").is_err());
+        assert!(validate_path("/etc/passwd").is_err());
+        assert!(validate_path("/usr/bin/sh").is_err());
+    }
+
+    #[test]
+    fn validate_path_case_insensitive_on_windows() {
+        assert!(validate_path("C:/WINDOWS/temp").is_err());
+        assert!(validate_path("c:/Program Files (x86)/app").is_err());
+    }
+
+    #[test]
+    fn strip_ansi_removes_codes() {
+        let input = "\x1b[31mError\x1b[0m: failed";
+        let result = strip_ansi(input);
+        assert_eq!(result, "Error: failed");
+    }
+
+    #[test]
+    fn strip_ansi_preserves_plain_text() {
+        assert_eq!(strip_ansi("hello world"), "hello world");
+    }
+}
