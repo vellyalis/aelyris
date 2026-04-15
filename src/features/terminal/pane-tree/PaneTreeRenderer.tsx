@@ -1,7 +1,7 @@
 import { useRef, useEffect, useMemo, useState, useCallback } from "react";
 import type { PaneNode, SplitDirection } from "./types";
 import { TerminalArea } from "../TerminalArea";
-import { GpuTerminalArea } from "../GpuTerminalArea";
+import { WebGpuTerminal } from "../WebGpuTerminal";
 import { TerminalInfoBar } from "../TerminalInfoBar";
 import { useGpuRenderer } from "../../../shared/hooks/useGpuRenderer";
 import { SplitPane } from "../../../shared/ui/SplitPane";
@@ -175,10 +175,9 @@ export function PaneTreeRenderer({
               onClose={canClose ? () => onClose(leaf.id) : undefined}
             />
             {rendererMode === "wgpu" ? (
-              <GpuTerminalArea
+              <WebGpuTerminal
                 shell={leaf.shell as "powershell" | "cmd" | "gitbash" | "wsl"}
                 cwd={leaf.cwd}
-                syncMode={syncMode}
                 onTerminalReady={(tid) => onTerminalReady(leaf.id, tid)}
               />
             ) : (

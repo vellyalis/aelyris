@@ -272,7 +272,81 @@ pub fn gpu_set_opacity(app: AppHandle, id: String, _opacity: f32) -> Result<(), 
 /// Get the current terminal renderer mode.
 #[tauri::command]
 pub fn get_terminal_renderer() -> String {
-    // wgpu mode freezes UI — Child HWND blocks WebView2 message loop.
-    // Phase D: investigate offscreen rendering or DComp integration.
     "xterm".to_string()
+}
+
+/// Export GPU terminal grid state for WebGPU rendering in the browser.
+/// Returns a compact representation: { cols, rows, cursor, cells: [[char, fg_r, fg_g, fg_b, bg_r, bg_g, bg_b, flags], ...] }
+#[tauri::command]
+pub fn gpu_get_grid_state(app: AppHandle, id: String) -> Result<serde_json::Value, String> {
+    let gpu_manager = app.state::<Arc<GpuTerminalManager>>();
+    gpu_manager.with_terminal(&id, |terminal| {
+        let grid = terminal.grid.lock().unwrap();
+
+        let resolve_color = |c: &crate::gpu::grid::Color| -> (u8, u8, u8) {
+            match c {
+                crate::gpu::grid::Color::Default => (205, 214, 244), // Catppuccin text
+                crate::gpu::grid::Color::Indexed(i) => ansi_to_rgb(*i),
+                crate::gpu::grid::Color::Rgb(r, g, b) => (*r, *g, *b),
+            }
+        };
+
+        let mut cells = Vec::with_capacity((grid.cols as usize) * (grid.rows as usize));
+        for row in 0..grid.rows as usize {
+            for col in 0..grid.cols as usize {
+                let cell = &grid.cells[row][col];
+                let (fr, fg, fb) = resolve_color(&cell.fg);
+                let (br, bg, bb) = resolve_color(&cell.bg);
+                let flags: u8 =
+                    (cell.flags.bold as u8)
+                    | ((cell.flags.italic as u8) << 1)
+                    | ((cell.flags.underline as u8) << 2)
+                    | ((cell.flags.inverse as u8) << 3);
+                cells.push(serde_json::json!([cell.c as u32, fr, fg, fb, br, bg, bb, flags]));
+            }
+        }
+
+        serde_json::json!({
+            "cols": grid.cols,
+            "rows": grid.rows,
+            "cursor": { "row": grid.cursor.row, "col": grid.cursor.col, "visible": grid.cursor.visible },
+            "cells": cells,
+            "needs_redraw": grid.needs_redraw,
+        })
+    })
+}
+
+/// Convert ANSI color index to RGB.
+fn ansi_to_rgb(idx: u8) -> (u8, u8, u8) {
+    match idx {
+        0 => (30, 30, 46),      // black (Catppuccin base)
+        1 => (243, 139, 168),   // red
+        2 => (166, 227, 161),   // green
+        3 => (249, 226, 175),   // yellow
+        4 => (137, 180, 250),   // blue
+        5 => (203, 166, 247),   // magenta
+        6 => (148, 226, 213),   // cyan
+        7 => (186, 194, 222),   // white
+        8 => (88, 91, 112),     // bright black
+        9 => (243, 139, 168),   // bright red
+        10 => (166, 227, 161),  // bright green
+        11 => (249, 226, 175),  // bright yellow
+        12 => (137, 180, 250),  // bright blue
+        13 => (203, 166, 247),  // bright magenta
+        14 => (148, 226, 213),  // bright cyan
+        15 => (205, 214, 244),  // bright white
+        16..=231 => {
+            // 216 color cube
+            let idx = idx - 16;
+            let r = (idx / 36) * 51;
+            let g = ((idx % 36) / 6) * 51;
+            let b = (idx % 6) * 51;
+            (r, g, b)
+        }
+        232..=255 => {
+            // Grayscale ramp
+            let v = 8 + (idx - 232) * 10;
+            (v, v, v)
+        }
+    }
 }

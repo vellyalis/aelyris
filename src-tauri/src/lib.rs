@@ -157,6 +157,7 @@ pub fn run() {
             gpu::commands::gpu_focus_terminal,
             gpu::commands::gpu_set_opacity,
             gpu::commands::get_terminal_renderer,
+            gpu::commands::gpu_get_grid_state,
             // Interactive agent session commands
             ipc::spawn_interactive_agent,
             ipc::stop_interactive_agent,
