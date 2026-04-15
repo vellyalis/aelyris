@@ -138,6 +138,8 @@ struct NativeTerminal {
     // Agent monitoring
     agent_tx: std::sync::mpsc::SyncSender<AgentUpdate>,
     agent_rx: std::sync::mpsc::Receiver<AgentUpdate>,
+    // Context menu position (None = hidden)
+    context_menu: Option<(f32, f32)>,
 }
 
 impl NativeTerminal {
@@ -180,6 +182,7 @@ impl NativeTerminal {
             command_buffer: String::new(),
             agent_tx,
             agent_rx,
+            context_menu: None,
         }
     }
 
@@ -539,6 +542,9 @@ impl NativeTerminal {
         let (agent_rects, agent_glyphs) =
             self.build_agent_panel(&self.font, &mut atlas, window_h);
 
+        // --- Build context menu ---
+        let (ctx_rects, ctx_glyphs) = self.build_context_menu(&self.font, &mut atlas);
+
         // --- Build palette overlay ---
         let palette_out = self.palette.build(&self.font, &mut atlas, window_w);
 
@@ -549,16 +555,18 @@ impl NativeTerminal {
         }
         drop(atlas);
 
-        // --- Combine: chrome → sidebar → agent panel → content → palette ---
+        // --- Combine: chrome → sidebar → agent panel → content → ctx menu → palette ---
         let mut all_rects = chrome_out.rects;
         all_rects.extend(sidebar_out.rects);
         all_rects.extend(agent_rects);
         all_rects.extend(content_rects);
+        all_rects.extend(ctx_rects);
         all_rects.extend(palette_out.rects);
         let mut all_glyphs = chrome_out.glyphs;
         all_glyphs.extend(sidebar_out.glyphs);
         all_glyphs.extend(agent_glyphs);
         all_glyphs.extend(content_glyphs);
+        all_glyphs.extend(ctx_glyphs);
         all_glyphs.extend(palette_out.glyphs);
 
         // --- GPU render ---
@@ -1187,6 +1195,106 @@ impl NativeTerminal {
         match git::remove_worktree(&repo_path, name, false) {
             Ok(()) => log::info!("Worktree deleted: {}", name),
             Err(e) => log::error!("Failed to delete worktree: {}", e),
+        }
+    }
+
+    /// Build right-click context menu overlay.
+    fn build_context_menu(
+        &self,
+        font: &FontManager,
+        atlas: &mut GlyphAtlas,
+    ) -> (Vec<RectInstance>, Vec<GlyphInstance>) {
+        let mut rects = Vec::new();
+        let mut glyphs = Vec::new();
+        let (mx, my) = match self.context_menu {
+            Some(pos) => pos,
+            None => return (rects, glyphs),
+        };
+
+        const ITEMS: &[&str] = &["Copy", "Paste", "Select All", "Search", "Clear"];
+        let item_h = 26.0f32;
+        let menu_w = 140.0f32;
+        let menu_h = ITEMS.len() as f32 * item_h + 8.0;
+
+        // Background
+        rects.push(RectInstance {
+            pos: [mx, my],
+            size: [menu_w, menu_h],
+            color: ui::cat::pm(30, 30, 46, 245),
+        });
+        // Border
+        rects.push(RectInstance {
+            pos: [mx, my],
+            size: [menu_w, 1.0],
+            color: ui::cat::pm(69, 71, 90, 200),
+        });
+
+        // Hover highlight
+        let hover_idx = self.chrome.mouse_pos.and_then(|(hx, hy)| {
+            if hx >= mx && hx < mx + menu_w && hy >= my + 4.0 && hy < my + menu_h {
+                Some(((hy - my - 4.0) / item_h) as usize)
+            } else {
+                None
+            }
+        });
+
+        for (i, label) in ITEMS.iter().enumerate() {
+            let iy = my + 4.0 + i as f32 * item_h;
+            if hover_idx == Some(i) {
+                rects.push(RectInstance {
+                    pos: [mx + 2.0, iy],
+                    size: [menu_w - 4.0, item_h],
+                    color: ui::cat::pm(69, 71, 90, 150),
+                });
+            }
+            let text_y = iy + (item_h - font.cell_height) / 2.0;
+            ui::render_text(font, atlas, label, mx + 12.0, text_y, ui::cat::TEXT, &mut glyphs);
+        }
+
+        (rects, glyphs)
+    }
+
+    /// Handle a context menu item click.
+    fn handle_context_click(&mut self, idx: usize) {
+        self.context_menu = None;
+        match idx {
+            0 => {
+                // Copy
+                let text = self.active_grid()
+                    .map(|g| g.lock().unwrap().selected_text())
+                    .unwrap_or_default();
+                if !text.is_empty() {
+                    if let Ok(mut clip) = arboard::Clipboard::new() {
+                        let _ = clip.set_text(&text);
+                    }
+                }
+            }
+            1 => {
+                // Paste
+                if let Ok(mut clip) = arboard::Clipboard::new() {
+                    if let Ok(text) = clip.get_text() {
+                        self.write_to_pty(text.as_bytes());
+                    }
+                }
+            }
+            2 => {
+                // Select All — select entire visible area
+                if let Some(g) = self.active_grid() {
+                    let mut grid = g.lock().unwrap();
+                    grid.selection.anchor = Some((0, 0));
+                    grid.selection.end = Some((grid.rows.saturating_sub(1), grid.cols.saturating_sub(1)));
+                    grid.needs_redraw = true;
+                }
+            }
+            3 => {
+                // Search
+                self.palette.enter_terminal_search();
+            }
+            4 => {
+                // Clear
+                self.write_to_pty(b"clear\r");
+            }
+            _ => {}
         }
     }
 
@@ -1829,6 +1937,22 @@ impl ApplicationHandler for NativeTerminal {
                 ..
             } => {
                 if state.is_pressed() {
+                    // Check context menu click first
+                    if let Some((cmx, cmy)) = self.context_menu {
+                        if let Some((hx, hy)) = self.chrome.mouse_pos {
+                            let menu_w = 140.0f32;
+                            let item_h = 26.0f32;
+                            let menu_h = 5.0 * item_h + 8.0;
+                            if hx >= cmx && hx < cmx + menu_w && hy >= cmy + 4.0 && hy < cmy + menu_h {
+                                let idx = ((hy - cmy - 4.0) / item_h) as usize;
+                                self.handle_context_click(idx);
+                                return;
+                            }
+                        }
+                        // Click outside context menu = close
+                        self.context_menu = None;
+                        return;
+                    }
                     // Check chrome hit regions first
                     if let Some((mx, my)) = self.chrome.mouse_pos {
                         if let Some(action) = self.chrome.hit_test(&self.hit_regions, mx, my) {
@@ -1909,6 +2033,19 @@ impl ApplicationHandler for NativeTerminal {
                         }
                     }
                     self.mouse_pressed = false;
+                }
+            }
+            WindowEvent::MouseInput {
+                state,
+                button: winit::event::MouseButton::Right,
+                ..
+            } => {
+                if state.is_pressed() {
+                    if let Some((mx, my)) = self.chrome.mouse_pos {
+                        if self.is_in_content(mx as f64, my as f64) {
+                            self.context_menu = Some((mx, my));
+                        }
+                    }
                 }
             }
             WindowEvent::MouseWheel { delta, .. } => {
