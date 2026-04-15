@@ -35,22 +35,29 @@ src-tauri/src/
 | キー | 動作 |
 |------|------|
 | Ctrl+Shift+P | コマンドパレット |
+| Ctrl+P | Quick Open ファイル検索 |
 | Ctrl+R | コマンド履歴検索 |
+| Ctrl+Shift+F | ターミナル内テキスト検索 |
+| Ctrl+F | エディタ Find |
+| Ctrl+H | エディタ Find/Replace |
 | Ctrl+B | サイドバー トグル |
 | Ctrl+Shift+C | テキスト選択コピー |
 | Ctrl+V | ペースト (bracketed paste) |
 | Ctrl+S | エディタ ファイル保存 |
 | Ctrl+Z | エディタ Undo |
 | Ctrl+Shift+Z | エディタ Redo |
+| Ctrl+Click | ハイパーリンクをブラウザで開く |
 | Escape | エディタ → ターミナル復帰 |
-| サイドバーファイルクリック | エディタでファイル表示 |
+| 右クリック | コンテキストメニュー |
 
 ### パレットコマンド
-- New Terminal Tab / Close Tab
-- Toggle Sidebar / Save File / Close Editor
+- New Terminal Tab / Close Tab / Toggle Sidebar
+- Save File / Close Editor
 - Git: Create/Switch/Delete Worktree
 - Command History (Ctrl+R)
 - Agent: Start Claude/Codex/Gemini (モデル入力可)
+- Settings (Theme/Font Size/Opacity)
+- Terminal Search / Quick Open
 
 ### エージェント機能
 - パレットからClaude/Codex/Gemini CLIをPTYタブとして起動
