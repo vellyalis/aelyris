@@ -4,6 +4,7 @@
 //! No external UI framework dependency.
 
 pub mod editor;
+pub mod kanban;
 pub mod palette;
 pub mod scm;
 pub mod sidebar;

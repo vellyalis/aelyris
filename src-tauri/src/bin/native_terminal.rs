@@ -25,6 +25,7 @@ use aether_terminal_lib::gpu::renderer::{GlyphInstance, RectInstance, TerminalRe
 use aether_terminal_lib::lsp::{LspLanguage, LspManager, LspMessage};
 use aether_terminal_lib::pty::{PtyManager, ShellType};
 use aether_terminal_lib::ui::editor::{Diagnostic, DiagnosticSeverity, EditorState};
+use aether_terminal_lib::ui::kanban::KanbanState;
 use aether_terminal_lib::ui::palette::{PaletteAction, PaletteState, WorktreeEntry};
 use aether_terminal_lib::ui::scm::ScmState;
 use aether_terminal_lib::ui::toast::ToastManager;
@@ -35,6 +36,7 @@ use aether_terminal_lib::ui::{self, ChromeAction, ChromeState, HitRegion};
 enum ContentPane {
     Terminal,
     Editor(EditorState),
+    Kanban(KanbanState),
 }
 
 /// Agent status for display.
@@ -388,6 +390,8 @@ struct NativeTerminal {
     sidebar_menu: Option<(f32, f32, std::path::PathBuf, bool)>, // (x, y, path, is_dir)
     // Divider drag state
     divider_drag: Option<DividerDrag>,
+    // Tab drag state (source tab index)
+    tab_drag: Option<usize>,
     // SCM panel
     scm: ScmState,
     // Toast notifications
@@ -436,6 +440,7 @@ impl NativeTerminal {
             agent_rx,
             context_menu: None,
             divider_drag: None,
+            tab_drag: None,
             sidebar_menu: None,
             scm: ScmState::new(),
             toasts: ToastManager::new(),
@@ -737,6 +742,13 @@ impl NativeTerminal {
                     }
                 })
             }
+            ContentPane::Kanban(_) => {
+                Some(ui::StatusOverride {
+                    label: "Kanban Board".to_string(),
+                    detail: "Arrow keys to navigate, Enter to add, Delete to remove".to_string(),
+                    indicator: "Tasks".to_string(),
+                })
+            }
         };
 
         // --- Build chrome instances ---
@@ -779,6 +791,17 @@ impl NativeTerminal {
             ContentPane::Editor(editor) => {
                 editor.refresh_syntax();
                 let out = editor.build(
+                    &self.font,
+                    &mut atlas,
+                    sidebar_w,
+                    ui::CHROME_TOP,
+                    content_w,
+                    content_h,
+                );
+                (out.rects, out.glyphs)
+            }
+            ContentPane::Kanban(kanban) => {
+                let out = kanban.build(
                     &self.font,
                     &mut atlas,
                     sidebar_w,
@@ -923,6 +946,17 @@ impl NativeTerminal {
                 }
             }
             ChromeAction::SwitchTab(idx) => {
+                // Tab drag reorder: if dragging from a different tab, swap
+                if let Some(src) = self.tab_drag.take() {
+                    if src != idx && src < self.tab_states.len() && idx < self.tab_states.len() {
+                        self.tab_states.swap(src, idx);
+                        self.chrome.tabs.swap(src, idx);
+                        self.chrome.active_tab = idx;
+                        self.content_pane = ContentPane::Terminal;
+                        return;
+                    }
+                }
+                self.tab_drag = Some(idx);
                 if idx < self.chrome.tabs.len() {
                     self.chrome.active_tab = idx;
                     self.content_pane = ContentPane::Terminal;
@@ -1008,6 +1042,10 @@ impl NativeTerminal {
         // Dispatch by content pane
         if matches!(self.content_pane, ContentPane::Editor(_)) {
             self.handle_editor_key(key, ctrl, shift);
+            return;
+        }
+        if matches!(self.content_pane, ContentPane::Kanban(_)) {
+            self.handle_kanban_key(key);
             return;
         }
 
@@ -1250,6 +1288,35 @@ impl NativeTerminal {
         }
     }
 
+    /// Handle key input in kanban mode.
+    fn handle_kanban_key(&mut self, key: Key) {
+        if matches!(key, Key::Named(NamedKey::Escape)) {
+            self.content_pane = ContentPane::Terminal;
+            return;
+        }
+        if let ContentPane::Kanban(kanban) = &mut self.content_pane {
+            match key {
+                Key::Named(NamedKey::ArrowUp) => kanban.select_up(),
+                Key::Named(NamedKey::ArrowDown) => kanban.select_down(),
+                Key::Named(NamedKey::ArrowLeft) => kanban.focus_col(-1),
+                Key::Named(NamedKey::ArrowRight) => kanban.focus_col(1),
+                Key::Named(NamedKey::Delete) | Key::Named(NamedKey::Backspace) => {
+                    kanban.delete_selected();
+                }
+                Key::Named(NamedKey::Enter) => {
+                    // Add card — use palette for input
+                    let col = kanban.selected_col;
+                    self.palette.enter_agent_spawn(format!("__kanban__{}", col));
+                }
+                Key::Named(NamedKey::Tab) => {
+                    // Move card right
+                    kanban.move_right();
+                }
+                _ => {}
+            }
+        }
+    }
+
     /// Handle key input when command palette is open.
     fn handle_palette_key(&mut self, key: Key) {
         match key {
@@ -1407,6 +1474,52 @@ impl NativeTerminal {
             PaletteAction::WorkflowStatus => {
                 self.toasts.info("Use 'Workflow: List' to start a workflow");
             }
+            PaletteAction::OpenKanban => {
+                self.content_pane = ContentPane::Kanban(KanbanState::load());
+            }
+            PaletteAction::ShowHelp => {
+                let items = vec![
+                    "Ctrl+Shift+P  Command Palette".into(),
+                    "Ctrl+P        Quick Open File".into(),
+                    "Ctrl+R        Command History".into(),
+                    "Ctrl+Shift+F  Terminal Search".into(),
+                    "Ctrl+F/H      Editor Find/Replace".into(),
+                    "Ctrl+B        Toggle Sidebar".into(),
+                    "Ctrl+Shift+H  Split Horizontal".into(),
+                    "Ctrl+Shift+V  Split Vertical".into(),
+                    "Ctrl+Shift+W  Close Pane".into(),
+                    "Alt+Tab       Focus Next Pane".into(),
+                    "Ctrl+Shift+C  Copy Selection".into(),
+                    "Ctrl+V        Paste".into(),
+                    "Ctrl+S        Save File".into(),
+                    "Ctrl+Z        Undo".into(),
+                    "Ctrl+Click    Open Hyperlink".into(),
+                    "Escape        Close Editor/Find".into(),
+                ];
+                self.palette.enter_command_history(items);
+            }
+            PaletteAction::ShowAbout => {
+                let items = vec![
+                    "Aether Terminal (Native)".into(),
+                    "wgpu 25 + winit 0.30 + DX12".into(),
+                    format!("Build: {}", env!("CARGO_PKG_VERSION")),
+                    "License: MIT".into(),
+                ];
+                self.palette.enter_command_history(items);
+            }
+            PaletteAction::ShowWatchdog => {
+                if let Some(path) = self.repo_path() {
+                    let rules_path = std::path::Path::new(&path).join(".aether").join("watchdog.json");
+                    if rules_path.exists() {
+                        match EditorState::open(&rules_path) {
+                            Ok(editor) => self.content_pane = ContentPane::Editor(editor),
+                            Err(e) => self.toasts.error(format!("Cannot open watchdog: {}", e)),
+                        }
+                    } else {
+                        self.toasts.info("No watchdog rules found. Create .aether/watchdog.json");
+                    }
+                }
+            }
             PaletteAction::OpenSettings => {
                 // Show settings categories
                 let items = vec![
@@ -1489,6 +1602,17 @@ impl NativeTerminal {
                         } else {
                             self.toasts.success(format!("Renamed to {}", model));
                             if let Some(tree) = &mut self.sidebar.file_tree { tree.rebuild(); }
+                        }
+                    }
+                    return;
+                }
+                if let Some(col_str) = cli.strip_prefix("__kanban__") {
+                    if let Ok(col) = col_str.parse::<usize>() {
+                        if !model.is_empty() {
+                            if let ContentPane::Kanban(kanban) = &mut self.content_pane {
+                                kanban.add_card(col, model);
+                                self.toasts.success("Card added");
+                            }
                         }
                     }
                     return;
@@ -2821,6 +2945,7 @@ impl ApplicationHandler for NativeTerminal {
                     }
                 } else {
                     self.divider_drag = None;
+                    self.tab_drag = None;
                     if self.is_mouse_tracking() {
                         if let Some((mx, my)) = self.chrome.mouse_pos {
                             if self.is_in_content(mx as f64, my as f64) {
