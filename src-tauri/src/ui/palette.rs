@@ -482,18 +482,10 @@ impl PaletteState {
         let palette_h = INPUT_HEIGHT + item_count as f32 * ITEM_HEIGHT + PADDING * 2.0;
 
         // Dimmed backdrop
-        rects.push(RectInstance {
-            pos: [0.0, 0.0],
-            size: [window_w, 2000.0],
-            color: [0.0, 0.0, 0.0, 0.4],
-        });
+        rects.push(RectInstance::new([0.0, 0.0], [window_w, 2000.0], [0.0, 0.0, 0.0, 0.4]));
 
         // Palette background
-        rects.push(RectInstance {
-            pos: [palette_x, palette_y],
-            size: [PALETTE_WIDTH, palette_h],
-            color: cat::pm(30, 30, 46, 250),
-        });
+        rects.push(RectInstance::rounded([palette_x, palette_y], [PALETTE_WIDTH, palette_h], cat::pm(30, 30, 46, 250), 8.0));
 
         // Border — color varies by mode
         let border_color = match &self.mode {
@@ -507,19 +499,11 @@ impl PaletteState {
             PaletteMode::FileSearch { .. } => cat::pm(166, 227, 161, 200), // Green
             PaletteMode::Settings { .. } => cat::pm(245, 194, 231, 200),  // Pink
         };
-        rects.push(RectInstance {
-            pos: [palette_x, palette_y],
-            size: [PALETTE_WIDTH, 1.0],
-            color: border_color,
-        });
+        rects.push(RectInstance::new([palette_x, palette_y], [PALETTE_WIDTH, 1.0], border_color));
 
         // Input background
         let input_y = palette_y + PADDING;
-        rects.push(RectInstance {
-            pos: [palette_x + PADDING, input_y],
-            size: [PALETTE_WIDTH - PADDING * 2.0, INPUT_HEIGHT],
-            color: cat::pm(24, 24, 37, 250),
-        });
+        rects.push(RectInstance::rounded([palette_x + PADDING, input_y], [PALETTE_WIDTH - PADDING * 2.0, INPUT_HEIGHT], cat::pm(24, 24, 37, 250), 4.0));
 
         // Input text — placeholder depends on mode
         let text_y = input_y + (INPUT_HEIGHT - font.cell_height) / 2.0;
@@ -555,11 +539,7 @@ impl PaletteState {
         {
             let cursor_x = palette_x + PADDING + 4.0
                 + self.input.chars().count() as f32 * font.cell_width;
-            rects.push(RectInstance {
-                pos: [cursor_x, text_y],
-                size: [2.0, font.cell_height],
-                color: cat::TEXT,
-            });
+            rects.push(RectInstance::new([cursor_x, text_y], [2.0, font.cell_height], cat::TEXT));
         }
 
         // Item list — depends on mode
@@ -645,11 +625,7 @@ impl PaletteState {
 
             // Selected highlight
             if i == self.selected {
-                rects.push(RectInstance {
-                    pos: [palette_x + PADDING, item_y],
-                    size: [PALETTE_WIDTH - PADDING * 2.0, ITEM_HEIGHT],
-                    color: cat::pm(69, 71, 90, 150),
-                });
+                rects.push(RectInstance::new([palette_x + PADDING, item_y], [PALETTE_WIDTH - PADDING * 2.0, ITEM_HEIGHT], cat::pm(69, 71, 90, 150)));
             }
 
             // Command label
@@ -705,11 +681,7 @@ impl PaletteState {
                 } else {
                     cat::pm(69, 71, 90, 150)
                 };
-                rects.push(RectInstance {
-                    pos: [palette_x + PADDING, item_y],
-                    size: [PALETTE_WIDTH - PADDING * 2.0, ITEM_HEIGHT],
-                    color,
-                });
+                rects.push(RectInstance::new([palette_x + PADDING, item_y], [PALETTE_WIDTH - PADDING * 2.0, ITEM_HEIGHT], color));
             }
 
             let label_y = item_y + (ITEM_HEIGHT - font.cell_height) / 2.0;
@@ -768,11 +740,7 @@ impl PaletteState {
             };
 
             if i == self.selected {
-                rects.push(RectInstance {
-                    pos: [palette_x + PADDING, item_y],
-                    size: [PALETTE_WIDTH - PADDING * 2.0, ITEM_HEIGHT],
-                    color: cat::pm(69, 71, 90, 150),
-                });
+                rects.push(RectInstance::new([palette_x + PADDING, item_y], [PALETTE_WIDTH - PADDING * 2.0, ITEM_HEIGHT], cat::pm(69, 71, 90, 150)));
             }
 
             let label_y = item_y + (ITEM_HEIGHT - font.cell_height) / 2.0;

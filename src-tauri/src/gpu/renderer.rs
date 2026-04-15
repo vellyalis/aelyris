@@ -23,6 +23,21 @@ pub struct RectInstance {
     pub pos: [f32; 2],
     pub size: [f32; 2],
     pub color: [f32; 4],
+    /// Border radius in pixels (0 = sharp corners).
+    pub border_radius: f32,
+    pub _pad: [f32; 3],
+}
+
+impl RectInstance {
+    /// Create a rect with sharp corners (backward compatible).
+    pub fn new(pos: [f32; 2], size: [f32; 2], color: [f32; 4]) -> Self {
+        Self { pos, size, color, border_radius: 0.0, _pad: [0.0; 3] }
+    }
+
+    /// Create a rect with rounded corners.
+    pub fn rounded(pos: [f32; 2], size: [f32; 2], color: [f32; 4], radius: f32) -> Self {
+        Self { pos, size, color, border_radius: radius, _pad: [0.0; 3] }
+    }
 }
 
 /// Uniform buffer shared between glyph and rect shaders.
@@ -264,6 +279,8 @@ impl TerminalRenderer {
             0 => Float32x2,  // pos
             1 => Float32x2,  // size
             2 => Float32x4,  // color
+            3 => Float32,    // border_radius
+            4 => Float32x3,  // _pad
         ];
 
         let rect_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -416,11 +433,11 @@ impl TerminalRenderer {
             let ch = font.cell_height;
             let cursor_color = [0.81, 0.83, 0.88, 0.8]; // Semi-transparent white
 
-            rects.push(RectInstance {
-                pos: [grid.cursor.col as f32 * cw, grid.cursor.row as f32 * ch],
-                size: [2.0, ch], // Bar cursor (2px wide)
-                color: cursor_color,
-            });
+            rects.push(RectInstance::new(
+                [grid.cursor.col as f32 * cw, grid.cursor.row as f32 * ch],
+                [2.0, ch],
+                cursor_color,
+            ));
         }
 
         rects

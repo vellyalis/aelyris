@@ -370,32 +370,20 @@ pub fn build_bg_rects(
 
             // Selection highlight (semi-transparent blue)
             if has_selection && grid.selection.contains(row as u16, col as u16) {
-                rects.push(renderer::RectInstance {
-                    pos: [col as f32 * cw, row as f32 * ch],
-                    size: [cw, ch],
-                    color: [0.54 * 0.3, 0.71 * 0.3, 0.98 * 0.3, 0.3],
-                });
+                rects.push(renderer::RectInstance::new([col as f32 * cw, row as f32 * ch], [cw, ch], [0.54 * 0.3, 0.71 * 0.3, 0.98 * 0.3, 0.3]));
                 continue;
             }
 
             // Search match highlight (yellow)
             if search_matches.get(row).map_or(false, |m| m.iter().any(|(s, e)| col >= *s && col < *e)) {
-                rects.push(renderer::RectInstance {
-                    pos: [col as f32 * cw, row as f32 * ch],
-                    size: [cw, ch],
-                    color: [0.98 * 0.25, 0.89 * 0.25, 0.69 * 0.25, 0.25],
-                });
+                rects.push(renderer::RectInstance::new([col as f32 * cw, row as f32 * ch], [cw, ch], [0.98 * 0.25, 0.89 * 0.25, 0.69 * 0.25, 0.25]));
                 continue;
             }
 
             let (_fg, bg) = renderer::resolve_cell_colors(cell);
             if bg[3] < f32::EPSILON { continue; }
 
-            rects.push(renderer::RectInstance {
-                pos: [col as f32 * cw, row as f32 * ch],
-                size: [cw, ch],
-                color: bg,
-            });
+            rects.push(renderer::RectInstance::new([col as f32 * cw, row as f32 * ch], [cw, ch], bg));
         }
     }
 
@@ -409,11 +397,11 @@ pub fn build_cursor_rects(
 ) -> Vec<renderer::RectInstance> {
     let mut rects = Vec::new();
     if visible && grid.cursor.visible {
-        rects.push(renderer::RectInstance {
-            pos: [grid.cursor.col as f32 * font.cell_width, grid.cursor.row as f32 * font.cell_height],
-            size: [2.0, font.cell_height],
-            color: [0.81, 0.83, 0.88, 0.8],
-        });
+        rects.push(renderer::RectInstance::new(
+            [grid.cursor.col as f32 * font.cell_width, grid.cursor.row as f32 * font.cell_height],
+            [2.0, font.cell_height],
+            [0.81, 0.83, 0.88, 0.8],
+        ));
     }
     rects
 }

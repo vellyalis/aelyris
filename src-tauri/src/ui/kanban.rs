@@ -190,11 +190,7 @@ impl KanbanState {
             let is_focused = ci == self.selected_col;
 
             // Column background
-            rects.push(RectInstance {
-                pos: [cx, y],
-                size: [col_w, h],
-                color: cat::pm(30, 30, 46, 180),
-            });
+            rects.push(RectInstance::rounded([cx, y], [col_w, h], cat::pm(30, 30, 46, 180), 8.0));
 
             // Column header
             let header_color = match ci {
@@ -209,11 +205,7 @@ impl KanbanState {
 
             // Focus indicator
             if is_focused {
-                rects.push(RectInstance {
-                    pos: [cx, y],
-                    size: [col_w, 2.0],
-                    color: header_color,
-                });
+                rects.push(RectInstance::new([cx, y], [col_w, 2.0], header_color));
             }
 
             // Cards
@@ -224,15 +216,12 @@ impl KanbanState {
                 let is_selected = is_focused && self.selected_card == Some(ki);
 
                 // Card background
-                rects.push(RectInstance {
-                    pos: [cx + 4.0, ky],
-                    size: [col_w - 8.0, CARD_HEIGHT],
-                    color: if is_selected {
-                        cat::pm(69, 71, 90, 200)
-                    } else {
-                        cat::pm(45, 45, 59, 200)
-                    },
-                });
+                let card_color = if is_selected {
+                    cat::pm(69, 71, 90, 200)
+                } else {
+                    cat::pm(45, 45, 59, 200)
+                };
+                rects.push(RectInstance::rounded([cx + 4.0, ky], [col_w - 8.0, CARD_HEIGHT], card_color, 6.0));
 
                 // Card text
                 let text_y = ky + (CARD_HEIGHT - font.cell_height) / 2.0;

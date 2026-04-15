@@ -102,18 +102,10 @@ impl ToastManager {
             };
 
             // Background
-            rects.push(RectInstance {
-                pos: [x, y],
-                size: [TOAST_WIDTH, TOAST_HEIGHT],
-                color: cat::pm(30, 30, 46, (230.0 * alpha) as u8),
-            });
+            rects.push(RectInstance::rounded([x, y], [TOAST_WIDTH, TOAST_HEIGHT], cat::pm(30, 30, 46, (230.0 * alpha) as u8), 6.0));
 
             // Left border
-            rects.push(RectInstance {
-                pos: [x, y],
-                size: [3.0, TOAST_HEIGHT],
-                color: border_color,
-            });
+            rects.push(RectInstance::new([x, y], [3.0, TOAST_HEIGHT], border_color));
 
             // Text
             let text_y = y + (TOAST_HEIGHT - font.cell_height) / 2.0;

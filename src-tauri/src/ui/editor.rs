@@ -729,25 +729,13 @@ impl EditorState {
         let max_cols = (text_area_w / font.cell_width).floor() as usize;
 
         // Editor background (Catppuccin Base)
-        rects.push(RectInstance {
-            pos: [x_offset, y_offset],
-            size: [content_w, content_h],
-            color: cat::pm(30, 30, 46, 250),
-        });
+        rects.push(RectInstance::new([x_offset, y_offset], [content_w, content_h], cat::pm(30, 30, 46, 250)));
 
         // Gutter background (Catppuccin Mantle)
-        rects.push(RectInstance {
-            pos: [x_offset, y_offset],
-            size: [gutter_w, content_h],
-            color: cat::pm(24, 24, 37, 250),
-        });
+        rects.push(RectInstance::new([x_offset, y_offset], [gutter_w, content_h], cat::pm(24, 24, 37, 250)));
 
         // Gutter divider
-        rects.push(RectInstance {
-            pos: [x_offset + gutter_w - 1.0, y_offset],
-            size: [1.0, content_h],
-            color: cat::pm(49, 50, 68, 180),
-        });
+        rects.push(RectInstance::new([x_offset + gutter_w - 1.0, y_offset], [1.0, content_h], cat::pm(49, 50, 68, 180)));
 
         let total = self.total_lines();
         let end_line = self.scroll_offset
@@ -766,11 +754,7 @@ impl EditorState {
 
             // Current line highlight
             if i == self.cursor_line {
-                rects.push(RectInstance {
-                    pos: [x_offset + gutter_w, line_y],
-                    size: [content_w - gutter_w, font.cell_height],
-                    color: cat::pm(49, 50, 68, 100),
-                });
+                rects.push(RectInstance::new([x_offset + gutter_w, line_y], [content_w - gutter_w, font.cell_height], cat::pm(49, 50, 68, 100)));
             }
 
             // Line number
@@ -798,11 +782,7 @@ impl EditorState {
                         GitLineStatus::Modified => [0.54, 0.71, 0.98, 0.9], // Blue
                         GitLineStatus::Deleted => [0.95, 0.30, 0.30, 0.9],  // Red
                     };
-                    rects.push(RectInstance {
-                        pos: [x_offset + 1.0, line_y],
-                        size: [3.0, font.cell_height],
-                        color: marker_color,
-                    });
+                    rects.push(RectInstance::new([x_offset + 1.0, line_y], [3.0, font.cell_height], marker_color));
                     break;
                 }
             }
@@ -872,11 +852,7 @@ impl EditorState {
                 if self.cursor_col >= self.scroll_col && cursor_display_col < max_cols {
                     let cursor_x = x_offset + gutter_w + 4.0
                         + cursor_display_col as f32 * font.cell_width;
-                    rects.push(RectInstance {
-                        pos: [cursor_x, line_y],
-                        size: [2.0, font.cell_height],
-                        color: cat::TEXT,
-                    });
+                    rects.push(RectInstance::new([cursor_x, line_y], [2.0, font.cell_height], cat::TEXT));
                 }
             }
 
@@ -897,11 +873,7 @@ impl EditorState {
                     let ux = text_x + (ds - self.scroll_col) as f32 * font.cell_width;
                     let uw = (de - ds) as f32 * font.cell_width;
                     let uy = line_y + font.cell_height - 2.0;
-                    rects.push(RectInstance {
-                        pos: [ux, uy],
-                        size: [uw, 2.0],
-                        color: underline_color,
-                    });
+                    rects.push(RectInstance::new([ux, uy], [uw, 2.0], underline_color));
                 }
             }
         }
@@ -925,11 +897,7 @@ impl EditorState {
                 } else {
                     cat::pm(249, 226, 175, 60) // Yellow for others
                 };
-                rects.push(RectInstance {
-                    pos: [hl_x, hl_y],
-                    size: [hl_w, font.cell_height],
-                    color: hl_color,
-                });
+                rects.push(RectInstance::new([hl_x, hl_y], [hl_w, font.cell_height], hl_color));
             }
         }
 
@@ -941,17 +909,9 @@ impl EditorState {
             let bar_y = y_offset + 4.0;
 
             // Background
-            rects.push(RectInstance {
-                pos: [bar_x, bar_y],
-                size: [bar_w, bar_h],
-                color: cat::pm(30, 30, 46, 240),
-            });
+            rects.push(RectInstance::new([bar_x, bar_y], [bar_w, bar_h], cat::pm(30, 30, 46, 240)));
             // Border
-            rects.push(RectInstance {
-                pos: [bar_x, bar_y],
-                size: [bar_w, 1.0],
-                color: cat::pm(137, 180, 250, 180),
-            });
+            rects.push(RectInstance::new([bar_x, bar_y], [bar_w, 1.0], cat::pm(137, 180, 250, 180)));
 
             // Find input
             let find_y = bar_y + 6.0;
@@ -975,11 +935,7 @@ impl EditorState {
             // Cursor in find field
             if self.find.focus == 0 {
                 let cursor_x = bar_x + 4.0 + self.find.query.chars().count() as f32 * font.cell_width;
-                rects.push(RectInstance {
-                    pos: [cursor_x, find_y],
-                    size: [2.0, font.cell_height],
-                    color: cat::TEXT,
-                });
+                rects.push(RectInstance::new([cursor_x, find_y], [2.0, font.cell_height], cat::TEXT));
             }
 
             // Replace input
@@ -995,11 +951,7 @@ impl EditorState {
 
                 if self.find.focus == 1 {
                     let cursor_x = bar_x + 4.0 + self.find.replace.chars().count() as f32 * font.cell_width;
-                    rects.push(RectInstance {
-                        pos: [cursor_x, rep_y],
-                        size: [2.0, font.cell_height],
-                        color: cat::TEXT,
-                    });
+                    rects.push(RectInstance::new([cursor_x, rep_y], [2.0, font.cell_height], cat::TEXT));
                 }
             }
         }

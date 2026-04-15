@@ -202,18 +202,10 @@ impl SidebarState {
         let sidebar_h = window_h - chrome_top - super::STATUS_BAR_HEIGHT;
 
         // Sidebar background
-        rects.push(RectInstance {
-            pos: [0.0, chrome_top],
-            size: [SIDEBAR_WIDTH, sidebar_h],
-            color: cat::pm(20, 20, 33, 240),
-        });
+        rects.push(RectInstance::new([0.0, chrome_top], [SIDEBAR_WIDTH, sidebar_h], cat::pm(20, 20, 33, 240)));
 
         // Divider line (right edge)
-        rects.push(RectInstance {
-            pos: [SIDEBAR_WIDTH - 1.0, chrome_top],
-            size: [1.0, sidebar_h],
-            color: cat::pm(49, 50, 68, 200),
-        });
+        rects.push(RectInstance::new([SIDEBAR_WIDTH - 1.0, chrome_top], [1.0, sidebar_h], cat::pm(49, 50, 68, 200)));
 
         // Header: "EXPLORER"
         let header_y = chrome_top + (HEADER_HEIGHT - font.cell_height) / 2.0;
@@ -253,21 +245,13 @@ impl SidebarState {
                         && my < row_y + ROW_HEIGHT
                         && my >= content_top
                     {
-                        rects.push(RectInstance {
-                            pos: [0.0, row_y],
-                            size: [SIDEBAR_WIDTH - 1.0, ROW_HEIGHT],
-                            color: cat::BTN_HOVER,
-                        });
+                        rects.push(RectInstance::new([0.0, row_y], [SIDEBAR_WIDTH - 1.0, ROW_HEIGHT], cat::BTN_HOVER));
                     }
                 }
 
                 // Selected highlight
                 if tree.selected == Some(i) {
-                    rects.push(RectInstance {
-                        pos: [0.0, row_y],
-                        size: [SIDEBAR_WIDTH - 1.0, ROW_HEIGHT],
-                        color: cat::pm(49, 50, 68, 180),
-                    });
+                    rects.push(RectInstance::new([0.0, row_y], [SIDEBAR_WIDTH - 1.0, ROW_HEIGHT], cat::pm(49, 50, 68, 180)));
                 }
 
                 // Icon + name

@@ -164,11 +164,7 @@ impl ChromeState {
         hits: &mut Vec<HitRegion>,
     ) {
         // Background
-        rects.push(RectInstance {
-            pos: [0.0, 0.0],
-            size: [w, TITLE_BAR_HEIGHT],
-            color: cat::MANTLE_BG,
-        });
+        rects.push(RectInstance::new([0.0, 0.0], [w, TITLE_BAR_HEIGHT], cat::MANTLE_BG));
 
         // Title text
         let title_y = (TITLE_BAR_HEIGHT - font.cell_height) / 2.0;
@@ -183,23 +179,11 @@ impl ChromeState {
         if let Some((mx, my)) = self.mouse_pos {
             if my < TITLE_BAR_HEIGHT {
                 if mx >= btn_x_close {
-                    rects.push(RectInstance {
-                        pos: [btn_x_close, 0.0],
-                        size: [BTN_WIDTH, TITLE_BAR_HEIGHT],
-                        color: cat::CLOSE_HOVER,
-                    });
+                    rects.push(RectInstance::new([btn_x_close, 0.0], [BTN_WIDTH, TITLE_BAR_HEIGHT], cat::CLOSE_HOVER));
                 } else if mx >= btn_x_max {
-                    rects.push(RectInstance {
-                        pos: [btn_x_max, 0.0],
-                        size: [BTN_WIDTH, TITLE_BAR_HEIGHT],
-                        color: cat::BTN_HOVER,
-                    });
+                    rects.push(RectInstance::new([btn_x_max, 0.0], [BTN_WIDTH, TITLE_BAR_HEIGHT], cat::BTN_HOVER));
                 } else if mx >= btn_x_min {
-                    rects.push(RectInstance {
-                        pos: [btn_x_min, 0.0],
-                        size: [BTN_WIDTH, TITLE_BAR_HEIGHT],
-                        color: cat::BTN_HOVER,
-                    });
+                    rects.push(RectInstance::new([btn_x_min, 0.0], [BTN_WIDTH, TITLE_BAR_HEIGHT], cat::BTN_HOVER));
                 }
             }
         }
@@ -244,11 +228,7 @@ impl ChromeState {
         let bar_y = TITLE_BAR_HEIGHT;
 
         // Background
-        rects.push(RectInstance {
-            pos: [0.0, bar_y],
-            size: [w, TAB_BAR_HEIGHT],
-            color: cat::TAB_BAR_BG,
-        });
+        rects.push(RectInstance::new([0.0, bar_y], [w, TAB_BAR_HEIGHT], cat::TAB_BAR_BG));
 
         let tab_h = TAB_BAR_HEIGHT - 4.0;
         let tab_y = bar_y + 2.0;
@@ -264,18 +244,10 @@ impl ChromeState {
 
             // Tab background (active tab is highlighted)
             if is_active {
-                rects.push(RectInstance {
-                    pos: [x, tab_y],
-                    size: [tab_w, tab_h],
-                    color: cat::TAB_ACTIVE,
-                });
+                rects.push(RectInstance::new([x, tab_y], [tab_w, tab_h], cat::TAB_ACTIVE));
             } else if let Some((mx, my)) = self.mouse_pos {
                 if mx >= x && mx < x + tab_w && my >= tab_y && my < tab_y + tab_h {
-                    rects.push(RectInstance {
-                        pos: [x, tab_y],
-                        size: [tab_w, tab_h],
-                        color: cat::BTN_HOVER,
-                    });
+                    rects.push(RectInstance::new([x, tab_y], [tab_w, tab_h], cat::BTN_HOVER));
                 }
             }
 
@@ -305,11 +277,7 @@ impl ChromeState {
         render_text(font, atlas, "+", x + 8.0, text_y, cat::OVERLAY0, glyphs);
         if let Some((mx, my)) = self.mouse_pos {
             if mx >= x && mx < x + add_w && my >= tab_y && my < tab_y + tab_h {
-                rects.push(RectInstance {
-                    pos: [x, tab_y],
-                    size: [add_w, tab_h],
-                    color: cat::BTN_HOVER,
-                });
+                rects.push(RectInstance::new([x, tab_y], [add_w, tab_h], cat::BTN_HOVER));
             }
         }
         hits.push(HitRegion {
@@ -331,11 +299,7 @@ impl ChromeState {
         let bar_y = h - STATUS_BAR_HEIGHT;
 
         // Background
-        rects.push(RectInstance {
-            pos: [0.0, bar_y],
-            size: [w, STATUS_BAR_HEIGHT],
-            color: cat::STATUS_BG,
-        });
+        rects.push(RectInstance::new([0.0, bar_y], [w, STATUS_BAR_HEIGHT], cat::STATUS_BG));
 
         let text_y = bar_y + (STATUS_BAR_HEIGHT - font.cell_height) / 2.0;
         let mut x = 10.0;

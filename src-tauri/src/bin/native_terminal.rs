@@ -1778,11 +1778,7 @@ impl NativeTerminal {
                 // Draw focus border for non-single panes
                 if is_focused {
                     // Thin border at top
-                    rects.push(RectInstance {
-                        pos: [x, y],
-                        size: [w, 1.0],
-                        color: ui::cat::pm(137, 180, 250, 120),
-                    });
+                    rects.push(RectInstance::new([x, y], [w, 1.0], ui::cat::pm(137, 180, 250, 120)));
                 }
             }
             PaneNode::Split { dir, ratio, first, second } => {
@@ -1793,11 +1789,7 @@ impl NativeTerminal {
                         let second_w = w - first_w - divider;
                         Self::render_pane_tree(first, focused_id, font, atlas, x, y, first_w, h, rects, glyphs);
                         // Divider
-                        rects.push(RectInstance {
-                            pos: [x + first_w, y],
-                            size: [divider, h],
-                            color: ui::cat::pm(69, 71, 90, 200),
-                        });
+                        rects.push(RectInstance::new([x + first_w, y], [divider, h], ui::cat::pm(69, 71, 90, 200)));
                         Self::render_pane_tree(second, focused_id, font, atlas, x + first_w + divider, y, second_w, h, rects, glyphs);
                     }
                     SplitDir::Vertical => {
@@ -1806,11 +1798,7 @@ impl NativeTerminal {
                         let second_h = h - first_h - divider;
                         Self::render_pane_tree(first, focused_id, font, atlas, x, y, w, first_h, rects, glyphs);
                         // Divider
-                        rects.push(RectInstance {
-                            pos: [x, y + first_h],
-                            size: [w, divider],
-                            color: ui::cat::pm(69, 71, 90, 200),
-                        });
+                        rects.push(RectInstance::new([x, y + first_h], [w, divider], ui::cat::pm(69, 71, 90, 200)));
                         Self::render_pane_tree(second, focused_id, font, atlas, x, y + first_h + divider, w, second_h, rects, glyphs);
                     }
                 }
@@ -1837,17 +1825,9 @@ impl NativeTerminal {
         let menu_h = ITEMS.len() as f32 * item_h + 8.0;
 
         // Background
-        rects.push(RectInstance {
-            pos: [mx, my],
-            size: [menu_w, menu_h],
-            color: ui::cat::pm(30, 30, 46, 245),
-        });
+        rects.push(RectInstance::new([mx, my], [menu_w, menu_h], ui::cat::pm(30, 30, 46, 245)));
         // Border
-        rects.push(RectInstance {
-            pos: [mx, my],
-            size: [menu_w, 1.0],
-            color: ui::cat::pm(69, 71, 90, 200),
-        });
+        rects.push(RectInstance::new([mx, my], [menu_w, 1.0], ui::cat::pm(69, 71, 90, 200)));
 
         // Hover highlight
         let hover_idx = self.chrome.mouse_pos.and_then(|(hx, hy)| {
@@ -1861,11 +1841,7 @@ impl NativeTerminal {
         for (i, label) in ITEMS.iter().enumerate() {
             let iy = my + 4.0 + i as f32 * item_h;
             if hover_idx == Some(i) {
-                rects.push(RectInstance {
-                    pos: [mx + 2.0, iy],
-                    size: [menu_w - 4.0, item_h],
-                    color: ui::cat::pm(69, 71, 90, 150),
-                });
+                rects.push(RectInstance::new([mx + 2.0, iy], [menu_w - 4.0, item_h], ui::cat::pm(69, 71, 90, 150)));
             }
             let text_y = iy + (item_h - font.cell_height) / 2.0;
             ui::render_text(font, atlas, label, mx + 12.0, text_y, ui::cat::TEXT, &mut glyphs);
@@ -1948,18 +1924,10 @@ impl NativeTerminal {
         let panel_y = window_h - ui::STATUS_BAR_HEIGHT - panel_h;
 
         // Panel background
-        rects.push(RectInstance {
-            pos: [0.0, panel_y],
-            size: [sidebar_w, panel_h],
-            color: ui::cat::pm(24, 24, 37, 220),
-        });
+        rects.push(RectInstance::new([0.0, panel_y], [sidebar_w, panel_h], ui::cat::pm(24, 24, 37, 220)));
 
         // Header separator
-        rects.push(RectInstance {
-            pos: [0.0, panel_y],
-            size: [sidebar_w, 1.0],
-            color: ui::cat::pm(69, 71, 90, 150),
-        });
+        rects.push(RectInstance::new([0.0, panel_y], [sidebar_w, 1.0], ui::cat::pm(69, 71, 90, 150)));
 
         // Header text
         let header_y = panel_y + (28.0 - font.cell_height) / 2.0;
@@ -1994,20 +1962,12 @@ impl NativeTerminal {
 
             // Active highlight
             if is_active {
-                rects.push(RectInstance {
-                    pos: [0.0, y],
-                    size: [sidebar_w, 36.0],
-                    color: ui::cat::pm(69, 71, 90, 80),
-                });
+                rects.push(RectInstance::new([0.0, y], [sidebar_w, 36.0], ui::cat::pm(69, 71, 90, 80)));
             }
 
             // Status indicator dot (4px circle approximated as square)
             let dot_y = y + (36.0 - 4.0) / 2.0;
-            rects.push(RectInstance {
-                pos: [8.0, dot_y],
-                size: [4.0, 4.0],
-                color: info.status.color(),
-            });
+            rects.push(RectInstance::new([8.0, dot_y], [4.0, 4.0], info.status.color()));
 
             // CLI name + model
             let text_y1 = y + 4.0;
@@ -2118,16 +2078,8 @@ impl NativeTerminal {
         let menu_w = 160.0f32;
         let menu_h = items.len() as f32 * item_h + 8.0;
 
-        rects.push(RectInstance {
-            pos: [mx, my],
-            size: [menu_w, menu_h],
-            color: ui::cat::pm(30, 30, 46, 245),
-        });
-        rects.push(RectInstance {
-            pos: [mx, my],
-            size: [menu_w, 1.0],
-            color: ui::cat::pm(69, 71, 90, 200),
-        });
+        rects.push(RectInstance::new([mx, my], [menu_w, menu_h], ui::cat::pm(30, 30, 46, 245)));
+        rects.push(RectInstance::new([mx, my], [menu_w, 1.0], ui::cat::pm(69, 71, 90, 200)));
 
         let hover_idx = self.chrome.mouse_pos.and_then(|(hx, hy)| {
             if hx >= mx && hx < mx + menu_w && hy >= my + 4.0 && hy < my + menu_h {
@@ -2140,11 +2092,7 @@ impl NativeTerminal {
         for (i, label) in items.iter().enumerate() {
             let iy = my + 4.0 + i as f32 * item_h;
             if hover_idx == Some(i) {
-                rects.push(RectInstance {
-                    pos: [mx + 2.0, iy],
-                    size: [menu_w - 4.0, item_h],
-                    color: ui::cat::pm(69, 71, 90, 150),
-                });
+                rects.push(RectInstance::new([mx + 2.0, iy], [menu_w - 4.0, item_h], ui::cat::pm(69, 71, 90, 150)));
             }
             let text_y = iy + (item_h - font.cell_height) / 2.0;
             ui::render_text(font, atlas, label, mx + 12.0, text_y, ui::cat::TEXT, &mut glyphs);
