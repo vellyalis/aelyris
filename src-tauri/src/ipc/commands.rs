@@ -1242,14 +1242,14 @@ pub fn recent_commands(app: AppHandle, limit: usize) -> Result<Vec<String>, Stri
 #[tauri::command]
 pub fn lsp_start(app: AppHandle, language: crate::lsp::LspLanguage, root_path: String) -> Result<crate::lsp::LspServerInfo, String> {
     let manager = app.state::<crate::lsp::LspManager>();
-    manager.start(&app, language, &root_path)
+    manager.start(language, &root_path)
 }
 
 /// Send a JSON-RPC request to a running language server
 #[tauri::command]
 pub fn lsp_request(app: AppHandle, language: crate::lsp::LspLanguage, root_path: String, json_rpc: String) -> Result<(), String> {
     let manager = app.state::<crate::lsp::LspManager>();
-    manager.send_request(&language, &root_path, &json_rpc)
+    manager.send(&language, &root_path, &json_rpc)
 }
 
 /// Stop a language server

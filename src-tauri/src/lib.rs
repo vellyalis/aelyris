@@ -36,7 +36,10 @@ pub fn run() {
         .manage(pty::PaneRegistry::new())
         .manage(ipc::FsWatcherRegistry::new())
         .manage(workflow::WorkflowExecutor::new())
-        .manage(lsp::LspManager::new())
+        .manage({
+            let (tx, _rx) = std::sync::mpsc::channel();
+            lsp::LspManager::new(tx)
+        })
         .manage(std::sync::Arc::new(gpu::GpuTerminalManager::new()))
         .setup(move |app| {
             // Initialize database as managed state

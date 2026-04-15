@@ -44,6 +44,25 @@ enum EditOp {
     Delete { pos: usize, char_count: usize, text: String },
 }
 
+/// Diagnostic severity from a language server.
+#[derive(Clone, Copy, PartialEq)]
+pub enum DiagnosticSeverity {
+    Error,
+    Warning,
+    Info,
+    Hint,
+}
+
+/// A single diagnostic from the language server.
+#[derive(Clone)]
+pub struct Diagnostic {
+    pub line: usize,
+    pub col_start: usize,
+    pub col_end: usize,
+    pub severity: DiagnosticSeverity,
+    pub message: String,
+}
+
 /// Editor state with ropey text buffer.
 pub struct EditorState {
     pub file_path: PathBuf,
@@ -65,6 +84,8 @@ pub struct EditorState {
     // Syntax highlighting
     pub syntax: Option<SyntaxState>,
     syntax_dirty: bool,
+    // LSP diagnostics
+    pub diagnostics: Vec<Diagnostic>,
     // Cursor blink
     pub cursor_visible: bool,
     blink_counter: u32,
@@ -133,6 +154,7 @@ impl EditorState {
             saved_undo_depth: 0,
             syntax,
             syntax_dirty: false,
+            diagnostics: Vec::new(),
             cursor_visible: true,
             blink_counter: 0,
         })
@@ -656,6 +678,31 @@ impl EditorState {
                         pos: [cursor_x, line_y],
                         size: [2.0, font.cell_height],
                         color: cat::TEXT,
+                    });
+                }
+            }
+
+            // Diagnostic underlines
+            for diag in &self.diagnostics {
+                if diag.line != i {
+                    continue;
+                }
+                let underline_color = match diag.severity {
+                    DiagnosticSeverity::Error => [0.95, 0.30, 0.30, 0.9],   // Red
+                    DiagnosticSeverity::Warning => [0.98, 0.89, 0.40, 0.9], // Yellow
+                    DiagnosticSeverity::Info => [0.54, 0.71, 0.98, 0.7],    // Blue
+                    DiagnosticSeverity::Hint => [0.42, 0.44, 0.53, 0.5],    // Overlay0
+                };
+                let ds = diag.col_start.max(self.scroll_col);
+                let de = diag.col_end.min(self.scroll_col + max_cols);
+                if ds < de {
+                    let ux = text_x + (ds - self.scroll_col) as f32 * font.cell_width;
+                    let uw = (de - ds) as f32 * font.cell_width;
+                    let uy = line_y + font.cell_height - 2.0;
+                    rects.push(RectInstance {
+                        pos: [ux, uy],
+                        size: [uw, 2.0],
+                        color: underline_color,
                     });
                 }
             }

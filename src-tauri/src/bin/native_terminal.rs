@@ -17,9 +17,10 @@ use aether_terminal_lib::gpu::atlas::GlyphAtlas;
 use aether_terminal_lib::gpu::grid::{Grid, GridPerformer};
 use aether_terminal_lib::gpu::ime::ImeState;
 use aether_terminal_lib::gpu::renderer::TerminalRenderer;
+use aether_terminal_lib::lsp::{LspLanguage, LspManager, LspMessage};
 use aether_terminal_lib::pty::{PtyManager, ShellType};
 use aether_terminal_lib::ui::{self, ChromeAction, ChromeState, HitRegion};
-use aether_terminal_lib::ui::editor::EditorState;
+use aether_terminal_lib::ui::editor::{Diagnostic, DiagnosticSeverity, EditorState};
 use aether_terminal_lib::ui::sidebar::SidebarState;
 
 /// What occupies the main content area.
@@ -51,12 +52,17 @@ struct NativeTerminal {
     sidebar: SidebarState,
     hit_regions: Vec<HitRegion>,
     content_pane: ContentPane,
+    // LSP
+    lsp_manager: LspManager,
+    lsp_receiver: std::sync::mpsc::Receiver<LspMessage>,
+    lsp_request_id: u64,
     should_exit: bool,
 }
 
 impl NativeTerminal {
     fn new() -> Self {
         let font = FontManager::new(16.0, 1.4);
+        let (lsp_tx, lsp_rx) = std::sync::mpsc::channel();
         Self {
             window: None,
             surface: None,
@@ -76,6 +82,9 @@ impl NativeTerminal {
             sidebar: SidebarState::new(),
             hit_regions: Vec::new(),
             content_pane: ContentPane::Terminal,
+            lsp_manager: LspManager::new(lsp_tx),
+            lsp_receiver: lsp_rx,
+            lsp_request_id: 1,
             should_exit: false,
         }
     }
@@ -554,6 +563,151 @@ impl NativeTerminal {
         }
     }
 
+    /// Try to start an LSP server for the opened file.
+    fn try_start_lsp(&mut self, path: &std::path::Path) {
+        let ext = match path.extension().and_then(|e| e.to_str()) {
+            Some(e) => e,
+            None => return,
+        };
+        let language = match LspLanguage::from_extension(ext) {
+            Some(l) => l,
+            None => return,
+        };
+        // Use parent directory as project root
+        let root = path
+            .parent()
+            .unwrap_or(path)
+            .to_string_lossy()
+            .into_owned();
+
+        if let Err(e) = self.lsp_manager.start(language.clone(), &root) {
+            // Already running is OK, not a real error
+            if !e.contains("already running") {
+                log::warn!("LSP start failed: {}", e);
+                return;
+            }
+        }
+
+        // Send initialize request
+        let init_request = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": self.next_request_id(),
+            "method": "initialize",
+            "params": {
+                "processId": std::process::id(),
+                "rootUri": format!("file:///{}", root.replace('\\', "/")),
+                "capabilities": {
+                    "textDocument": {
+                        "publishDiagnostics": {
+                            "relatedInformation": false
+                        }
+                    }
+                }
+            }
+        });
+        let _ = self.lsp_manager.send(&language, &root, &init_request.to_string());
+
+        // Send initialized notification
+        let initialized = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "initialized",
+            "params": {}
+        });
+        let _ = self.lsp_manager.send(&language, &root, &initialized.to_string());
+
+        // Send textDocument/didOpen
+        let file_uri = format!("file:///{}", path.to_string_lossy().replace('\\', "/"));
+        let lang_id = match ext {
+            "rs" => "rust",
+            "py" => "python",
+            "ts" | "tsx" => "typescript",
+            "js" | "jsx" => "javascript",
+            "go" => "go",
+            _ => "plaintext",
+        };
+        // Read file content for didOpen
+        let content = std::fs::read_to_string(path).unwrap_or_default();
+        let did_open = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": {
+                "textDocument": {
+                    "uri": file_uri,
+                    "languageId": lang_id,
+                    "version": 1,
+                    "text": content
+                }
+            }
+        });
+        let _ = self.lsp_manager.send(&language, &root, &did_open.to_string());
+        log::info!("LSP didOpen sent for {}", path.display());
+    }
+
+    fn next_request_id(&mut self) -> u64 {
+        let id = self.lsp_request_id;
+        self.lsp_request_id += 1;
+        id
+    }
+
+    /// Process pending LSP messages and update editor diagnostics.
+    fn process_lsp_messages(&mut self) {
+        while let Ok(msg) = self.lsp_receiver.try_recv() {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&msg.json) {
+                if json.get("method").and_then(|m| m.as_str()) == Some("textDocument/publishDiagnostics") {
+                    if let Some(params) = json.get("params") {
+                        self.handle_diagnostics(params);
+                    }
+                }
+            }
+        }
+    }
+
+    fn handle_diagnostics(&mut self, params: &serde_json::Value) {
+        let diagnostics_json = match params.get("diagnostics").and_then(|d| d.as_array()) {
+            Some(d) => d,
+            None => return,
+        };
+
+        let mut diags = Vec::new();
+        for d in diagnostics_json {
+            let range = match d.get("range") {
+                Some(r) => r,
+                None => continue,
+            };
+            let start = match range.get("start") {
+                Some(s) => s,
+                None => continue,
+            };
+            let end = match range.get("end") {
+                Some(e) => e,
+                None => continue,
+            };
+            let line = start.get("line").and_then(|l| l.as_u64()).unwrap_or(0) as usize;
+            let col_start = start.get("character").and_then(|c| c.as_u64()).unwrap_or(0) as usize;
+            let col_end = end.get("character").and_then(|c| c.as_u64()).unwrap_or((col_start + 1) as u64) as usize;
+            let severity_num = d.get("severity").and_then(|s| s.as_u64()).unwrap_or(1);
+            let severity = match severity_num {
+                1 => DiagnosticSeverity::Error,
+                2 => DiagnosticSeverity::Warning,
+                3 => DiagnosticSeverity::Info,
+                _ => DiagnosticSeverity::Hint,
+            };
+            let message = d.get("message").and_then(|m| m.as_str()).unwrap_or("").to_string();
+
+            diags.push(Diagnostic {
+                line,
+                col_start,
+                col_end,
+                severity,
+                message,
+            });
+        }
+
+        if let ContentPane::Editor(editor) = &mut self.content_pane {
+            editor.diagnostics = diags;
+        }
+    }
+
     /// Convert pixel position to grid cell, accounting for chrome and sidebar offset.
     fn pixel_to_cell(&self, x: f64, y: f64) -> (u16, u16) {
         let content_y = (y - ui::CHROME_TOP as f64).max(0.0);
@@ -720,9 +874,10 @@ impl ApplicationHandler for NativeTerminal {
                             }
                             if let Some(path) = open_path {
                                 match EditorState::open(&path) {
-                                    Ok(viewer) => {
-                                        log::info!("Opened file: {}", viewer.file_name);
-                                        self.content_pane = ContentPane::Editor(viewer);
+                                    Ok(editor) => {
+                                        log::info!("Opened file: {}", editor.file_name);
+                                        self.try_start_lsp(&path);
+                                        self.content_pane = ContentPane::Editor(editor);
                                     }
                                     Err(e) => {
                                         log::warn!("Cannot open file: {}", e);
@@ -822,6 +977,8 @@ impl ApplicationHandler for NativeTerminal {
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        // Process LSP messages
+        self.process_lsp_messages();
         // Tick editor cursor blink
         if let ContentPane::Editor(editor) = &mut self.content_pane {
             editor.tick_blink();
