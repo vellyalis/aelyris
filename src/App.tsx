@@ -22,6 +22,7 @@ const WatchdogDialog = lazy(() => import("./features/watchdog/WatchdogDialog").t
 const WelcomeScreen = lazy(() => import("./features/welcome/WelcomeScreen").then((m) => ({ default: m.WelcomeScreen })));
 const SearchPanel = lazy(() => import("./features/search/SearchPanel").then((m) => ({ default: m.SearchPanel })));
 const AboutDialog = lazy(() => import("./features/about/AboutDialog").then((m) => ({ default: m.AboutDialog })));
+const HelpDialog = lazy(() => import("./features/help/HelpDialog").then((m) => ({ default: m.HelpDialog })));
 const PRInspector = lazy(() => import("./features/pr-inspector/PRInspector").then((m) => ({ default: m.PRInspector })));
 const WebInspector = lazy(() => import("./features/web-inspector/WebInspector").then((m) => ({ default: m.WebInspector })));
 
@@ -54,6 +55,7 @@ export function App() {
     watchdogVisible, setWatchdogVisible,
     searchVisible, setSearchVisible,
     aboutVisible, setAboutVisible,
+    helpVisible, setHelpVisible,
     webInspectorVisible, setWebInspectorVisible,
     prInspectorVisible, setPrInspectorVisible,
     openFiles, activeFile, openFile, closeFile, clearFiles, setActiveFile,
@@ -272,7 +274,7 @@ export function App() {
     handleFileSelect, handleCloseFile, handleOpenFolder, handleCloseFolder,
     handleStartAgent,
     setPaletteVisible, setSettingsVisible, setSearchVisible,
-    setWatchdogVisible, setAboutVisible, setWebInspectorVisible, setPrInspectorVisible,
+    setWatchdogVisible, setAboutVisible, setHelpVisible, setWebInspectorVisible, setPrInspectorVisible,
   });
 
   // ── Render ──
@@ -421,6 +423,7 @@ export function App() {
       {settingsVisible && <Suspense fallback={null}><Settings visible onClose={() => setSettingsVisible(false)} /></Suspense>}
       {watchdogVisible && <Suspense fallback={null}><WatchdogDialog visible onClose={() => setWatchdogVisible(false)} /></Suspense>}
       {aboutVisible && <Suspense fallback={null}><AboutDialog visible onClose={() => setAboutVisible(false)} /></Suspense>}
+      {helpVisible && <Suspense fallback={null}><HelpDialog visible onClose={() => setHelpVisible(false)} /></Suspense>}
       {webInspectorVisible && <Suspense fallback={null}><WebInspector visible onClose={() => setWebInspectorVisible(false)} /></Suspense>}
       {prInspectorVisible && <Suspense fallback={null}><PRInspector visible projectPath={projectPath} onClose={() => setPrInspectorVisible(false)} onStartReview={handleStartAgent} /></Suspense>}
       {quickOpenMode && <Suspense fallback={null}><QuickOpen projectPath={projectPath} openFiles={openFiles} onSelectFile={handleFileSelect} onClose={() => setQuickOpenMode(null)} initialMode={quickOpenMode} /></Suspense>}

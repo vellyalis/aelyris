@@ -27,6 +27,8 @@ interface AppState {
   setSearchVisible: (v: boolean | ((prev: boolean) => boolean)) => void;
   aboutVisible: boolean;
   setAboutVisible: (v: boolean | ((prev: boolean) => boolean)) => void;
+  helpVisible: boolean;
+  setHelpVisible: (v: boolean | ((prev: boolean) => boolean)) => void;
   webInspectorVisible: boolean;
   setWebInspectorVisible: (v: boolean | ((prev: boolean) => boolean)) => void;
   prInspectorVisible: boolean;
@@ -106,6 +108,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSearchVisible: (v) => set((s) => ({ searchVisible: toggleOrSet(v, s.searchVisible) })),
   aboutVisible: false,
   setAboutVisible: (v) => set((s) => ({ aboutVisible: toggleOrSet(v, s.aboutVisible) })),
+  helpVisible: false,
+  setHelpVisible: (v) => set((s) => ({ helpVisible: toggleOrSet(v, s.helpVisible) })),
   webInspectorVisible: false,
   setWebInspectorVisible: (v) => set((s) => ({ webInspectorVisible: toggleOrSet(v, s.webInspectorVisible) })),
   prInspectorVisible: false,

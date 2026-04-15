@@ -1,0 +1,80 @@
+.overlay {
+  position: fixed; inset: 0; z-index: var(--z-modal);
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(4px);
+}
+
+.dialog {
+  width: 640px; max-width: 90vw; max-height: 80vh;
+  background: var(--aether-bg-card);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--white-10);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+
+.header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--border);
+}
+
+.title {
+  font-size: var(--text-lg); font-weight: 600; color: var(--text-primary);
+  margin: 0; font-family: var(--font-ui);
+}
+
+.closeBtn {
+  background: none; border: none; color: var(--text-muted);
+  cursor: pointer; padding: var(--space-2); border-radius: var(--radius-sm);
+}
+.closeBtn:hover { color: var(--text-primary); background: var(--white-6); }
+
+.body {
+  display: flex; flex: 1; overflow: hidden;
+}
+
+.nav {
+  width: 140px; padding: var(--space-4);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 2px;
+  overflow-y: auto; flex-shrink: 0;
+}
+
+.navItem {
+  background: none; border: none;
+  color: var(--text-muted); font-size: var(--text-sm); font-family: var(--font-ui);
+  padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm);
+  cursor: pointer; text-align: left;
+}
+.navItem:hover { color: var(--text-primary); background: var(--white-4); }
+.navActive { color: var(--text-primary); background: var(--white-6); font-weight: 500; }
+
+.content {
+  flex: 1; padding: var(--space-5) var(--space-6);
+  overflow-y: auto;
+}
+
+.sectionTitle {
+  font-size: var(--text-base); font-weight: 600; color: var(--gold);
+  margin: 0 0 var(--space-4); font-family: var(--font-ui);
+}
+
+.list {
+  list-style: none; padding: 0; margin: 0;
+  display: flex; flex-direction: column; gap: var(--space-3);
+}
+
+.item {
+  font-size: var(--text-sm); color: var(--text-secondary);
+  line-height: 1.5; font-family: var(--font-ui);
+  padding-left: var(--space-4);
+  position: relative;
+}
+.item::before {
+  content: "·";
+  position: absolute; left: 0;
+  color: var(--text-muted);
+}

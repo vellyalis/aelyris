@@ -20,6 +20,7 @@ interface UseAppMenusOptions {
   setSearchVisible: (v: boolean | ((p: boolean) => boolean)) => void;
   setWatchdogVisible: (v: boolean | ((p: boolean) => boolean)) => void;
   setAboutVisible: (v: boolean | ((p: boolean) => boolean)) => void;
+  setHelpVisible: (v: boolean | ((p: boolean) => boolean)) => void;
   setWebInspectorVisible: (v: boolean | ((p: boolean) => boolean)) => void;
   setPrInspectorVisible: (v: boolean | ((p: boolean) => boolean)) => void;
 }
@@ -30,7 +31,7 @@ export function useAppMenus(opts: UseAppMenusOptions) {
     handleFileSelect, handleCloseFile, handleOpenFolder, handleCloseFolder,
     handleStartAgent,
     setPaletteVisible, setSettingsVisible, setSearchVisible,
-    setWatchdogVisible, setAboutVisible, setWebInspectorVisible, setPrInspectorVisible,
+    setWatchdogVisible, setAboutVisible, setHelpVisible, setWebInspectorVisible, setPrInspectorVisible,
   } = opts;
 
   const commands: CommandItem[] = useMemo(() => [
@@ -124,7 +125,11 @@ export function useAppMenus(opts: UseAppMenusOptions) {
         { label: "New WSL", action: () => addTab("wsl") },
       ],
     },
-    { label: "Help", items: [{ label: "About Aether Terminal", action: () => setAboutVisible(true) }] },
+    { label: "Help", items: [
+      { label: "Help Guide", shortcut: "F1", action: () => setHelpVisible(true) },
+      { divider: true, label: "" },
+      { label: "About Aether Terminal", action: () => setAboutVisible(true) },
+    ] },
   ], [handleOpenFolder, handleCloseFolder, addTab, activeFile, handleCloseFile, projectPath, handleFileSelect]);
 
   return { commands, menus };
