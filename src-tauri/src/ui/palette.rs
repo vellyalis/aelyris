@@ -1,6 +1,7 @@
 //! Command palette — Ctrl+Shift+P overlay.
 //!
 //! Floating overlay with text input and filtered command list.
+//! Supports sub-modes for worktree create / switch / delete.
 //! Rendered as RectInstance + GlyphInstance on top of all content.
 
 use crate::gpu::atlas::GlyphAtlas;
@@ -23,6 +24,29 @@ pub struct PaletteCommand {
     pub shortcut: &'static str,
 }
 
+/// A worktree entry for list selection.
+#[derive(Debug, Clone)]
+pub struct WorktreeEntry {
+    pub name: String,
+    pub path: String,
+    pub branch: String,
+    pub is_main: bool,
+}
+
+/// Palette operating mode.
+#[derive(Debug)]
+pub enum PaletteMode {
+    /// Normal: filter and select from static commands.
+    Command,
+    /// Text input: enter a branch name to create a worktree.
+    WorktreeCreate,
+    /// List selection: pick a worktree to switch to or delete.
+    WorktreeSelect {
+        entries: Vec<WorktreeEntry>,
+        delete: bool,
+    },
+}
+
 /// Actions produced by the command palette.
 #[derive(Debug, Clone)]
 pub enum PaletteAction {
@@ -31,6 +55,14 @@ pub enum PaletteAction {
     ToggleSidebar,
     SaveFile,
     CloseEditor,
+    // Worktree mode transitions (palette stays open)
+    BeginWorktreeCreate,
+    BeginWorktreeSwitch,
+    BeginWorktreeDelete,
+    // Worktree confirmations (palette closes)
+    DoWorktreeCreate(String),
+    DoWorktreeSwitch(String),
+    DoWorktreeDelete(String),
     None,
 }
 
@@ -41,6 +73,9 @@ const COMMANDS: &[PaletteCommand] = &[
     PaletteCommand { id: "toggle_sidebar", label: "Toggle Sidebar", shortcut: "Ctrl+B" },
     PaletteCommand { id: "save_file", label: "Save File", shortcut: "Ctrl+S" },
     PaletteCommand { id: "close_editor", label: "Close Editor", shortcut: "Esc" },
+    PaletteCommand { id: "wt_create", label: "Git: Create Worktree", shortcut: "" },
+    PaletteCommand { id: "wt_switch", label: "Git: Switch Worktree", shortcut: "" },
+    PaletteCommand { id: "wt_delete", label: "Git: Delete Worktree", shortcut: "" },
 ];
 
 pub struct PaletteOutput {
@@ -53,7 +88,8 @@ pub struct PaletteState {
     pub visible: bool,
     pub input: String,
     pub selected: usize,
-    filtered: Vec<usize>, // indices into COMMANDS
+    filtered: Vec<usize>,
+    mode: PaletteMode,
 }
 
 impl PaletteState {
@@ -64,6 +100,7 @@ impl PaletteState {
             input: String::new(),
             selected: 0,
             filtered,
+            mode: PaletteMode::Command,
         }
     }
 
@@ -72,12 +109,14 @@ impl PaletteState {
         if self.visible {
             self.input.clear();
             self.selected = 0;
+            self.mode = PaletteMode::Command;
             self.update_filter();
         }
     }
 
     pub fn close(&mut self) {
         self.visible = false;
+        self.mode = PaletteMode::Command;
     }
 
     /// Insert a character into the input.
@@ -103,39 +142,115 @@ impl PaletteState {
 
     /// Move selection down.
     pub fn select_down(&mut self) {
-        if self.selected + 1 < self.filtered.len() {
+        let count = match &self.mode {
+            PaletteMode::Command | PaletteMode::WorktreeSelect { .. } => self.filtered.len(),
+            PaletteMode::WorktreeCreate => 0,
+        };
+        if self.selected + 1 < count {
             self.selected += 1;
         }
     }
 
-    /// Execute the selected command.
+    /// Enter worktree create mode (text input for branch name).
+    pub fn enter_worktree_create(&mut self) {
+        self.mode = PaletteMode::WorktreeCreate;
+        self.input.clear();
+        self.selected = 0;
+        self.filtered.clear();
+    }
+
+    /// Enter worktree select mode (pick from list).
+    pub fn enter_worktree_select(&mut self, entries: Vec<WorktreeEntry>, delete: bool) {
+        self.filtered = (0..entries.len()).collect();
+        self.mode = PaletteMode::WorktreeSelect { entries, delete };
+        self.input.clear();
+        self.selected = 0;
+    }
+
+    /// Execute the selected command or confirm the current sub-mode.
     pub fn execute(&mut self) -> PaletteAction {
-        let action = if let Some(&cmd_idx) = self.filtered.get(self.selected) {
-            match COMMANDS[cmd_idx].id {
-                "new_tab" => PaletteAction::NewTab,
-                "close_tab" => PaletteAction::CloseTab,
-                "toggle_sidebar" => PaletteAction::ToggleSidebar,
-                "save_file" => PaletteAction::SaveFile,
-                "close_editor" => PaletteAction::CloseEditor,
-                _ => PaletteAction::None,
+        match &self.mode {
+            PaletteMode::Command => {
+                let action = if let Some(&cmd_idx) = self.filtered.get(self.selected) {
+                    match COMMANDS[cmd_idx].id {
+                        "new_tab" => PaletteAction::NewTab,
+                        "close_tab" => PaletteAction::CloseTab,
+                        "toggle_sidebar" => PaletteAction::ToggleSidebar,
+                        "save_file" => PaletteAction::SaveFile,
+                        "close_editor" => PaletteAction::CloseEditor,
+                        "wt_create" => PaletteAction::BeginWorktreeCreate,
+                        "wt_switch" => PaletteAction::BeginWorktreeSwitch,
+                        "wt_delete" => PaletteAction::BeginWorktreeDelete,
+                        _ => PaletteAction::None,
+                    }
+                } else {
+                    PaletteAction::None
+                };
+                // Only close for final actions, not mode transitions
+                match &action {
+                    PaletteAction::BeginWorktreeCreate
+                    | PaletteAction::BeginWorktreeSwitch
+                    | PaletteAction::BeginWorktreeDelete => {}
+                    _ => self.close(),
+                }
+                action
             }
-        } else {
-            PaletteAction::None
-        };
-        self.close();
-        action
+            PaletteMode::WorktreeCreate => {
+                let name = self.input.trim().to_string();
+                if name.is_empty() {
+                    return PaletteAction::None;
+                }
+                self.close();
+                PaletteAction::DoWorktreeCreate(name)
+            }
+            PaletteMode::WorktreeSelect { entries, delete } => {
+                if let Some(&idx) = self.filtered.get(self.selected) {
+                    if let Some(entry) = entries.get(idx) {
+                        let action = if *delete {
+                            if entry.is_main {
+                                return PaletteAction::None; // cannot delete main worktree
+                            }
+                            PaletteAction::DoWorktreeDelete(entry.name.clone())
+                        } else {
+                            PaletteAction::DoWorktreeSwitch(entry.path.clone())
+                        };
+                        self.close();
+                        return action;
+                    }
+                }
+                PaletteAction::None
+            }
+        }
     }
 
     fn update_filter(&mut self) {
         let query = self.input.to_lowercase();
-        self.filtered = (0..COMMANDS.len())
-            .filter(|&i| {
-                if query.is_empty() {
-                    return true;
-                }
-                COMMANDS[i].label.to_lowercase().contains(&query)
-            })
-            .collect();
+        match &self.mode {
+            PaletteMode::Command => {
+                self.filtered = (0..COMMANDS.len())
+                    .filter(|&i| {
+                        if query.is_empty() {
+                            return true;
+                        }
+                        COMMANDS[i].label.to_lowercase().contains(&query)
+                    })
+                    .collect();
+            }
+            PaletteMode::WorktreeSelect { entries, .. } => {
+                self.filtered = (0..entries.len())
+                    .filter(|&i| {
+                        if query.is_empty() {
+                            return true;
+                        }
+                        entries[i].name.to_lowercase().contains(&query)
+                            || entries[i].branch.to_lowercase().contains(&query)
+                    })
+                    .collect();
+            }
+            PaletteMode::WorktreeCreate => {
+                // No filtering in create mode
+            }
+        }
     }
 
     /// Build overlay rendering instances.
@@ -154,8 +269,15 @@ impl PaletteState {
 
         let palette_x = (window_w - PALETTE_WIDTH) / 2.0;
         let palette_y: f32 = 80.0;
-        let visible_items = self.filtered.len().min(MAX_VISIBLE_ITEMS);
-        let palette_h = INPUT_HEIGHT + visible_items as f32 * ITEM_HEIGHT + PADDING * 2.0;
+
+        // Calculate height based on mode
+        let item_count = match &self.mode {
+            PaletteMode::Command | PaletteMode::WorktreeSelect { .. } => {
+                self.filtered.len().min(MAX_VISIBLE_ITEMS)
+            }
+            PaletteMode::WorktreeCreate => 1, // hint line
+        };
+        let palette_h = INPUT_HEIGHT + item_count as f32 * ITEM_HEIGHT + PADDING * 2.0;
 
         // Dimmed backdrop
         rects.push(RectInstance {
@@ -171,11 +293,17 @@ impl PaletteState {
             color: cat::pm(30, 30, 46, 250),
         });
 
-        // Border
+        // Border — color varies by mode
+        let border_color = match &self.mode {
+            PaletteMode::Command => cat::pm(137, 180, 250, 200),
+            PaletteMode::WorktreeCreate => cat::pm(166, 227, 161, 200),
+            PaletteMode::WorktreeSelect { delete: true, .. } => cat::pm(243, 139, 168, 200),
+            PaletteMode::WorktreeSelect { delete: false, .. } => cat::pm(250, 179, 135, 200),
+        };
         rects.push(RectInstance {
             pos: [palette_x, palette_y],
             size: [PALETTE_WIDTH, 1.0],
-            color: cat::pm(137, 180, 250, 200), // Blue border top
+            color: border_color,
         });
 
         // Input background
@@ -186,17 +314,18 @@ impl PaletteState {
             color: cat::pm(24, 24, 37, 250),
         });
 
-        // Input text
+        // Input text — placeholder depends on mode
         let text_y = input_y + (INPUT_HEIGHT - font.cell_height) / 2.0;
-        let display_input = if self.input.is_empty() {
-            "> Type a command..."
+        let (display_input, input_color) = if self.input.is_empty() {
+            let placeholder = match &self.mode {
+                PaletteMode::Command => "> Type a command...",
+                PaletteMode::WorktreeCreate => "Branch name (e.g. feat/my-feature)...",
+                PaletteMode::WorktreeSelect { delete: true, .. } => "Filter worktrees to delete...",
+                PaletteMode::WorktreeSelect { delete: false, .. } => "Filter worktrees...",
+            };
+            (placeholder, cat::OVERLAY0)
         } else {
-            &self.input
-        };
-        let input_color = if self.input.is_empty() {
-            cat::OVERLAY0
-        } else {
-            cat::TEXT
+            (self.input.as_str(), cat::TEXT)
         };
         super::render_text(
             font,
@@ -208,8 +337,8 @@ impl PaletteState {
             &mut glyphs,
         );
 
-        // Cursor in input
-        if !self.input.is_empty() {
+        // Cursor in input (always visible in create mode, otherwise only when text present)
+        if !self.input.is_empty() || matches!(self.mode, PaletteMode::WorktreeCreate) {
             let cursor_x = palette_x + PADDING + 4.0
                 + self.input.chars().count() as f32 * font.cell_width;
             rects.push(RectInstance {
@@ -219,8 +348,43 @@ impl PaletteState {
             });
         }
 
-        // Command list
+        // Item list — depends on mode
         let list_y = input_y + INPUT_HEIGHT + 4.0;
+        match &self.mode {
+            PaletteMode::Command => {
+                self.build_command_list(font, atlas, palette_x, list_y, &mut rects, &mut glyphs);
+            }
+            PaletteMode::WorktreeCreate => {
+                let hint_y = list_y + (ITEM_HEIGHT - font.cell_height) / 2.0;
+                super::render_text(
+                    font,
+                    atlas,
+                    "Press Enter to create, Esc to cancel",
+                    palette_x + PADDING + 8.0,
+                    hint_y,
+                    cat::OVERLAY0,
+                    &mut glyphs,
+                );
+            }
+            PaletteMode::WorktreeSelect { entries, delete } => {
+                self.build_worktree_list(
+                    font, atlas, palette_x, list_y, entries, *delete, &mut rects, &mut glyphs,
+                );
+            }
+        }
+
+        PaletteOutput { rects, glyphs }
+    }
+
+    fn build_command_list(
+        &self,
+        font: &FontManager,
+        atlas: &mut GlyphAtlas,
+        palette_x: f32,
+        list_y: f32,
+        rects: &mut Vec<RectInstance>,
+        glyphs: &mut Vec<GlyphInstance>,
+    ) {
         for (i, &cmd_idx) in self.filtered.iter().enumerate().take(MAX_VISIBLE_ITEMS) {
             let item_y = list_y + i as f32 * ITEM_HEIGHT;
             let cmd = &COMMANDS[cmd_idx];
@@ -243,7 +407,7 @@ impl PaletteState {
                 palette_x + PADDING + 8.0,
                 label_y,
                 cat::TEXT,
-                &mut glyphs,
+                glyphs,
             );
 
             // Shortcut (right-aligned)
@@ -256,12 +420,97 @@ impl PaletteState {
                     palette_x + PALETTE_WIDTH - PADDING - 8.0 - shortcut_w,
                     label_y,
                     cat::OVERLAY0,
-                    &mut glyphs,
+                    glyphs,
                 );
             }
         }
+    }
 
-        PaletteOutput { rects, glyphs }
+    fn build_worktree_list(
+        &self,
+        font: &FontManager,
+        atlas: &mut GlyphAtlas,
+        palette_x: f32,
+        list_y: f32,
+        entries: &[WorktreeEntry],
+        delete: bool,
+        rects: &mut Vec<RectInstance>,
+        glyphs: &mut Vec<GlyphInstance>,
+    ) {
+        for (i, &entry_idx) in self.filtered.iter().enumerate().take(MAX_VISIBLE_ITEMS) {
+            let item_y = list_y + i as f32 * ITEM_HEIGHT;
+            let entry = match entries.get(entry_idx) {
+                Some(e) => e,
+                None => continue,
+            };
+
+            // Selected highlight
+            if i == self.selected {
+                let color = if delete {
+                    cat::pm(243, 139, 168, 40)
+                } else {
+                    cat::pm(69, 71, 90, 150)
+                };
+                rects.push(RectInstance {
+                    pos: [palette_x + PADDING, item_y],
+                    size: [PALETTE_WIDTH - PADDING * 2.0, ITEM_HEIGHT],
+                    color,
+                });
+            }
+
+            let label_y = item_y + (ITEM_HEIGHT - font.cell_height) / 2.0;
+
+            // Branch name (with main marker)
+            let label = if entry.is_main {
+                format!("{} (main)", entry.branch)
+            } else {
+                entry.branch.clone()
+            };
+            let label_color = if delete && entry.is_main {
+                cat::OVERLAY0 // dimmed — cannot delete main
+            } else {
+                cat::TEXT
+            };
+            super::render_text(
+                font,
+                atlas,
+                &label,
+                palette_x + PADDING + 8.0,
+                label_y,
+                label_color,
+                glyphs,
+            );
+
+            // Path (right-aligned, truncated)
+            let path_display = truncate_path(&entry.path, 30);
+            let path_w = path_display.chars().count() as f32 * font.cell_width;
+            super::render_text(
+                font,
+                atlas,
+                &path_display,
+                palette_x + PALETTE_WIDTH - PADDING - 8.0 - path_w,
+                label_y,
+                cat::OVERLAY0,
+                glyphs,
+            );
+        }
+    }
+}
+
+/// Truncate a path string to max_chars, keeping the tail.
+fn truncate_path(path: &str, max_chars: usize) -> String {
+    if path.chars().count() <= max_chars {
+        path.to_string()
+    } else {
+        let tail: String = path
+            .chars()
+            .rev()
+            .take(max_chars.saturating_sub(3))
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+        format!("...{}", tail)
     }
 }
 

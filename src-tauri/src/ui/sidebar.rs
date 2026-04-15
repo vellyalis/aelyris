@@ -168,6 +168,12 @@ impl SidebarState {
         }
     }
 
+    /// Set the sidebar root directory (e.g. when switching worktrees).
+    /// Does not change visibility — caller should manage that if needed.
+    pub fn set_root(&mut self, path: PathBuf) {
+        self.file_tree = Some(FileTreeState::new(path));
+    }
+
     /// Get the sidebar width (0 if hidden).
     pub fn width(&self) -> f32 {
         if self.visible {

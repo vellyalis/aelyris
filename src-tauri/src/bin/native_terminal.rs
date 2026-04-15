@@ -22,7 +22,8 @@ use aether_terminal_lib::lsp::{LspLanguage, LspManager, LspMessage};
 use aether_terminal_lib::pty::{PtyManager, ShellType};
 use aether_terminal_lib::ui::{self, ChromeAction, ChromeState, HitRegion};
 use aether_terminal_lib::ui::editor::{Diagnostic, DiagnosticSeverity, EditorState};
-use aether_terminal_lib::ui::palette::{PaletteAction, PaletteState};
+use aether_terminal_lib::git;
+use aether_terminal_lib::ui::palette::{PaletteAction, PaletteState, WorktreeEntry};
 use aether_terminal_lib::ui::sidebar::SidebarState;
 
 /// What occupies the main content area.
@@ -662,7 +663,118 @@ impl NativeTerminal {
             PaletteAction::CloseEditor => {
                 self.content_pane = ContentPane::Terminal;
             }
+            PaletteAction::BeginWorktreeCreate => {
+                self.palette.enter_worktree_create();
+            }
+            PaletteAction::BeginWorktreeSwitch => {
+                let entries = self.list_worktree_entries();
+                if entries.is_empty() {
+                    log::warn!("No worktrees found (not a git repo?)");
+                    self.palette.close();
+                    return;
+                }
+                self.palette.enter_worktree_select(entries, false);
+            }
+            PaletteAction::BeginWorktreeDelete => {
+                let entries = self.list_worktree_entries();
+                if entries.is_empty() {
+                    log::warn!("No worktrees found (not a git repo?)");
+                    self.palette.close();
+                    return;
+                }
+                self.palette.enter_worktree_select(entries, true);
+            }
+            PaletteAction::DoWorktreeCreate(branch) => {
+                self.do_create_worktree(&branch);
+            }
+            PaletteAction::DoWorktreeSwitch(path) => {
+                self.do_switch_worktree(&path);
+            }
+            PaletteAction::DoWorktreeDelete(name) => {
+                self.do_delete_worktree(&name);
+            }
             PaletteAction::None => {}
+        }
+    }
+
+    /// Get the repo path from sidebar root or current directory.
+    fn repo_path(&self) -> Option<String> {
+        self.sidebar
+            .file_tree
+            .as_ref()
+            .map(|ft| ft.root.to_string_lossy().into_owned())
+            .or_else(|| {
+                std::env::current_dir()
+                    .ok()
+                    .map(|p| p.to_string_lossy().into_owned())
+            })
+    }
+
+    /// List worktree entries for palette selection.
+    fn list_worktree_entries(&self) -> Vec<WorktreeEntry> {
+        let repo_path = match self.repo_path() {
+            Some(p) => p,
+            None => return Vec::new(),
+        };
+        match git::list_worktrees(&repo_path) {
+            Ok(worktrees) => worktrees
+                .into_iter()
+                .map(|wt| WorktreeEntry {
+                    name: wt.name,
+                    path: wt.path,
+                    branch: wt.branch,
+                    is_main: wt.is_main,
+                })
+                .collect(),
+            Err(e) => {
+                log::warn!("Failed to list worktrees: {}", e);
+                Vec::new()
+            }
+        }
+    }
+
+    /// Create a worktree and switch to it.
+    fn do_create_worktree(&mut self, branch: &str) {
+        let repo_path = match self.repo_path() {
+            Some(p) => p,
+            None => {
+                log::warn!("No repo path for worktree creation");
+                return;
+            }
+        };
+        match git::create_worktree(&repo_path, branch) {
+            Ok(info) => {
+                log::info!("Worktree created: {} at {}", info.name, info.path);
+                self.do_switch_worktree(&info.path);
+            }
+            Err(e) => {
+                log::error!("Failed to create worktree: {}", e);
+            }
+        }
+    }
+
+    /// Switch sidebar root to a worktree path.
+    fn do_switch_worktree(&mut self, path: &str) {
+        let path_buf = std::path::Path::new(path).to_path_buf();
+        if path_buf.exists() {
+            self.sidebar.set_root(path_buf);
+            self.content_pane = ContentPane::Terminal;
+            self.recalc_grid_size();
+            log::info!("Switched to worktree: {}", path);
+        } else {
+            log::warn!("Worktree path does not exist: {}", path);
+        }
+    }
+
+    /// Delete a worktree by name.
+    fn do_delete_worktree(&mut self, name: &str) {
+        let repo_path = match self.repo_path() {
+            Some(p) => p,
+            None => return,
+        };
+        match git::remove_worktree(&repo_path, name, false) {
+            Ok(()) => log::info!("Worktree deleted: {}", name),
+            Err(e) => log::error!("Failed to delete worktree: {}", e),
         }
     }
 

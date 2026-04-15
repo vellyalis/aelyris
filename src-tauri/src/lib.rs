@@ -1,7 +1,7 @@
 pub mod agent;
 pub mod config;
 pub mod db;
-mod git;
+pub mod git;
 pub mod gpu;
 mod ipc;
 pub mod ui;
