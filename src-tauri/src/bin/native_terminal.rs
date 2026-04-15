@@ -451,7 +451,7 @@ impl NativeTerminal {
         let size = window.inner_size();
 
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::DX12,
+            backends: wgpu::Backends::DX12 | wgpu::Backends::VULKAN,
             ..Default::default()
         });
 
@@ -488,6 +488,7 @@ impl NativeTerminal {
         let caps = surface.get_capabilities(&adapter);
         let alpha_priority = [
             wgpu::CompositeAlphaMode::PreMultiplied,
+            wgpu::CompositeAlphaMode::PostMultiplied,
             wgpu::CompositeAlphaMode::Inherit,
             wgpu::CompositeAlphaMode::Auto,
             wgpu::CompositeAlphaMode::Opaque,
@@ -878,7 +879,7 @@ impl NativeTerminal {
                         r: 0.0,
                         g: 0.0,
                         b: 0.0,
-                        a: 0.75,
+                        a: self.config.appearance.opacity as f64,
                     },
                 );
                 texture.present();
