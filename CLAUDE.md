@@ -2,30 +2,62 @@
 
 Windows向けプロジェクトファーストAIワークスペースターミナル。
 
-## Tech Stack
-- **Framework**: Tauri v2 (Rust backend + WebView2)
-- **Frontend**: Vite + React 19 + TypeScript + Tailwind CSS 4
-- **Terminal**: xterm.js + @xterm/addon-webgl (WebGL2 GPU描画)
-- **PTY**: portable-pty (ConPTY) — PowerShell/CMD/WSL2/Git Bash対応
-- **Git**: git2-rs (libgit2)
-- **Async**: tokio
-- **Animation**: Motion (旧 Framer Motion) v12+
-- **State**: Zustand
-- **Theme**: Catppuccin + Fluent Design (Mica/Acrylic/Reveal Highlight)
-- **UI Font**: Geist or Inter + Source Han Sans JP (源ノ角ゴシック)
-- **Terminal Font**: Cascadia Code + Cascadia Next JP
+## Native Terminal (推奨)
 
-## Commands
+**フルネイティブRustバイナリ** — WebView2不要、wgpu直描画。
+
+```bash
+cd src-tauri
+cargo run --bin native-terminal          # 開発
+cargo build --bin native-terminal --release  # リリース (14MB)
+```
+
+### Native Tech Stack
+- **Renderer**: wgpu 25 (DX12) — RectInstance + GlyphInstance パイプライン
+- **Window**: winit 0.30 — カスタムタイトルバー、Mica透過
+- **PTY**: portable-pty (ConPTY) — PowerShell
+- **Font**: fontdue — CascadiaCode + NotoSansJP
+- **Editor**: ropey (Rope) + tree-sitter (シンタックスハイライト)
+- **LSP**: 自前JSON-RPC クライアント (rust-analyzer, pyright, etc.)
+- **Theme**: Catppuccin Mocha — UI Chrome + エディタ統一パレット
+
+### Native Architecture
+```
+src-tauri/src/
+  bin/native_terminal.rs  # メインバイナリ — winit EventLoop
+  gpu/                    # wgpu レンダラー (atlas, font, grid, renderer, surface)
+  ui/                     # UI Chrome (mod.rs, sidebar.rs, editor.rs, syntax.rs)
+  pty/                    # PTY管理
+  lsp/                    # LSP クライアント (manager.rs, types.rs)
+```
+
+### Native 操作
+| キー | 動作 |
+|------|------|
+| Ctrl+B | サイドバー トグル |
+| Ctrl+Shift+C | テキスト選択コピー |
+| Ctrl+V | ペースト (bracketed paste) |
+| Ctrl+S | エディタ ファイル保存 |
+| Ctrl+Z | エディタ Undo |
+| Ctrl+Shift+Z | エディタ Redo |
+| Escape | エディタ → ターミナル復帰 |
+| サイドバーファイルクリック | エディタでファイル表示 |
+
+## Tauri版 (レガシー)
+
+Tauri v2 + React + xterm.js 版。段階的に native 版に移行中。
+
+### Tauri Commands
 | Command | Description |
 |---------|-------------|
 | `pnpm dev` | Vite dev server起動 |
 | `pnpm build` | プロダクションビルド |
 | `pnpm tauri dev` | Tauri開発モード（Rust+Frontend同時） |
 | `pnpm tauri build` | リリースビルド |
-| `cargo test` | Rustユニットテスト |
+| `cargo test` | Rustユニットテスト (156テスト) |
 | `pnpm test` | Frontendテスト |
 
-## Architecture
+### Tauri Architecture
 ```
 aether-terminal/
   src-tauri/              # Rust backend
@@ -51,11 +83,11 @@ aether-terminal/
 ```
 
 ## Gotchas
-- Tauri IPC: invoke式は10MBで200ms遅延。**Event Channel(`emit`/`listen`)**を使うこと
 - Mica: Win11専用。Win10はAcrylicフォールバック
 - ConPTY: `PSEUDOCONSOLE_PASSTHROUGH_MODE` (0x8) はWin11 22H2+のみ
-- xterm.js WebGL: GPU非対応環境はCanvas rendererにフォールバック必要
-- WSL2パス: `/mnt/c/` ↔ `C:\` の変換ロジック要注意
+- tree-sitter: C パーサーのコンパイルに cc クレートが必要
+- wgpu 25: egui 0.28 と非互換（wgpu 0.20 依存）→ UI Chrome は wgpu 直描画
 
 ## Docs
 - 要件定義: `docs/requirements.md`
+- 移行計画: `docs/handoff/03_MIGRATION_PLAN.md`
