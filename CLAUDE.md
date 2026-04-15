@@ -64,6 +64,8 @@ src-tauri/src/
 - Git: Stage All / Commit / Push
 - PR: List Pull Requests
 - Workflow: List / Start
+- Kanban Board
+- Help / About / Watchdog
 
 ### エージェント機能
 - パレットからClaude/Codex/Gemini CLIをPTYタブとして起動
