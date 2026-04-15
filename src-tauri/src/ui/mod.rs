@@ -4,6 +4,7 @@
 //! No external UI framework dependency.
 
 pub mod editor;
+pub mod palette;
 pub mod sidebar;
 pub mod syntax;
 
