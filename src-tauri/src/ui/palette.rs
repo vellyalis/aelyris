@@ -45,6 +45,10 @@ pub enum PaletteMode {
         entries: Vec<WorktreeEntry>,
         delete: bool,
     },
+    /// Command history search (Ctrl+R style).
+    CommandHistory {
+        commands: Vec<String>,
+    },
 }
 
 /// Actions produced by the command palette.
@@ -63,6 +67,9 @@ pub enum PaletteAction {
     DoWorktreeCreate(String),
     DoWorktreeSwitch(String),
     DoWorktreeDelete(String),
+    // Command history
+    BeginCommandHistory,
+    RunCommand(String),
     None,
 }
 
@@ -76,6 +83,7 @@ const COMMANDS: &[PaletteCommand] = &[
     PaletteCommand { id: "wt_create", label: "Git: Create Worktree", shortcut: "" },
     PaletteCommand { id: "wt_switch", label: "Git: Switch Worktree", shortcut: "" },
     PaletteCommand { id: "wt_delete", label: "Git: Delete Worktree", shortcut: "" },
+    PaletteCommand { id: "cmd_history", label: "Command History", shortcut: "Ctrl+R" },
 ];
 
 pub struct PaletteOutput {
@@ -143,7 +151,9 @@ impl PaletteState {
     /// Move selection down.
     pub fn select_down(&mut self) {
         let count = match &self.mode {
-            PaletteMode::Command | PaletteMode::WorktreeSelect { .. } => self.filtered.len(),
+            PaletteMode::Command
+            | PaletteMode::WorktreeSelect { .. }
+            | PaletteMode::CommandHistory { .. } => self.filtered.len(),
             PaletteMode::WorktreeCreate => 0,
         };
         if self.selected + 1 < count {
@@ -167,6 +177,14 @@ impl PaletteState {
         self.selected = 0;
     }
 
+    /// Enter command history search mode.
+    pub fn enter_command_history(&mut self, commands: Vec<String>) {
+        self.filtered = (0..commands.len()).collect();
+        self.mode = PaletteMode::CommandHistory { commands };
+        self.input.clear();
+        self.selected = 0;
+    }
+
     /// Execute the selected command or confirm the current sub-mode.
     pub fn execute(&mut self) -> PaletteAction {
         match &self.mode {
@@ -181,6 +199,7 @@ impl PaletteState {
                         "wt_create" => PaletteAction::BeginWorktreeCreate,
                         "wt_switch" => PaletteAction::BeginWorktreeSwitch,
                         "wt_delete" => PaletteAction::BeginWorktreeDelete,
+                        "cmd_history" => PaletteAction::BeginCommandHistory,
                         _ => PaletteAction::None,
                     }
                 } else {
@@ -190,7 +209,8 @@ impl PaletteState {
                 match &action {
                     PaletteAction::BeginWorktreeCreate
                     | PaletteAction::BeginWorktreeSwitch
-                    | PaletteAction::BeginWorktreeDelete => {}
+                    | PaletteAction::BeginWorktreeDelete
+                    | PaletteAction::BeginCommandHistory => {}
                     _ => self.close(),
                 }
                 action
@@ -214,6 +234,16 @@ impl PaletteState {
                         } else {
                             PaletteAction::DoWorktreeSwitch(entry.path.clone())
                         };
+                        self.close();
+                        return action;
+                    }
+                }
+                PaletteAction::None
+            }
+            PaletteMode::CommandHistory { commands } => {
+                if let Some(&idx) = self.filtered.get(self.selected) {
+                    if let Some(cmd) = commands.get(idx) {
+                        let action = PaletteAction::RunCommand(cmd.clone());
                         self.close();
                         return action;
                     }
@@ -250,6 +280,16 @@ impl PaletteState {
             PaletteMode::WorktreeCreate => {
                 // No filtering in create mode
             }
+            PaletteMode::CommandHistory { commands } => {
+                self.filtered = (0..commands.len())
+                    .filter(|&i| {
+                        if query.is_empty() {
+                            return true;
+                        }
+                        commands[i].to_lowercase().contains(&query)
+                    })
+                    .collect();
+            }
         }
     }
 
@@ -272,9 +312,9 @@ impl PaletteState {
 
         // Calculate height based on mode
         let item_count = match &self.mode {
-            PaletteMode::Command | PaletteMode::WorktreeSelect { .. } => {
-                self.filtered.len().min(MAX_VISIBLE_ITEMS)
-            }
+            PaletteMode::Command
+            | PaletteMode::WorktreeSelect { .. }
+            | PaletteMode::CommandHistory { .. } => self.filtered.len().min(MAX_VISIBLE_ITEMS),
             PaletteMode::WorktreeCreate => 1, // hint line
         };
         let palette_h = INPUT_HEIGHT + item_count as f32 * ITEM_HEIGHT + PADDING * 2.0;
@@ -299,6 +339,7 @@ impl PaletteState {
             PaletteMode::WorktreeCreate => cat::pm(166, 227, 161, 200),
             PaletteMode::WorktreeSelect { delete: true, .. } => cat::pm(243, 139, 168, 200),
             PaletteMode::WorktreeSelect { delete: false, .. } => cat::pm(250, 179, 135, 200),
+            PaletteMode::CommandHistory { .. } => cat::pm(203, 166, 247, 200), // Mauve
         };
         rects.push(RectInstance {
             pos: [palette_x, palette_y],
@@ -322,6 +363,7 @@ impl PaletteState {
                 PaletteMode::WorktreeCreate => "Branch name (e.g. feat/my-feature)...",
                 PaletteMode::WorktreeSelect { delete: true, .. } => "Filter worktrees to delete...",
                 PaletteMode::WorktreeSelect { delete: false, .. } => "Filter worktrees...",
+                PaletteMode::CommandHistory { .. } => "Search command history...",
             };
             (placeholder, cat::OVERLAY0)
         } else {
@@ -369,6 +411,11 @@ impl PaletteState {
             PaletteMode::WorktreeSelect { entries, delete } => {
                 self.build_worktree_list(
                     font, atlas, palette_x, list_y, entries, *delete, &mut rects, &mut glyphs,
+                );
+            }
+            PaletteMode::CommandHistory { commands } => {
+                self.build_history_list(
+                    font, atlas, palette_x, list_y, commands, &mut rects, &mut glyphs,
                 );
             }
         }
@@ -491,6 +538,52 @@ impl PaletteState {
                 palette_x + PALETTE_WIDTH - PADDING - 8.0 - path_w,
                 label_y,
                 cat::OVERLAY0,
+                glyphs,
+            );
+        }
+    }
+
+    fn build_history_list(
+        &self,
+        font: &FontManager,
+        atlas: &mut GlyphAtlas,
+        palette_x: f32,
+        list_y: f32,
+        commands: &[String],
+        rects: &mut Vec<RectInstance>,
+        glyphs: &mut Vec<GlyphInstance>,
+    ) {
+        for (i, &cmd_idx) in self.filtered.iter().enumerate().take(MAX_VISIBLE_ITEMS) {
+            let item_y = list_y + i as f32 * ITEM_HEIGHT;
+            let cmd = match commands.get(cmd_idx) {
+                Some(c) => c,
+                None => continue,
+            };
+
+            if i == self.selected {
+                rects.push(RectInstance {
+                    pos: [palette_x + PADDING, item_y],
+                    size: [PALETTE_WIDTH - PADDING * 2.0, ITEM_HEIGHT],
+                    color: cat::pm(69, 71, 90, 150),
+                });
+            }
+
+            let label_y = item_y + (ITEM_HEIGHT - font.cell_height) / 2.0;
+            // Truncate long commands for display
+            let max_chars = ((PALETTE_WIDTH - PADDING * 2.0 - 16.0) / font.cell_width) as usize;
+            let display = if cmd.chars().count() > max_chars {
+                let truncated: String = cmd.chars().take(max_chars.saturating_sub(3)).collect();
+                format!("{}...", truncated)
+            } else {
+                cmd.clone()
+            };
+            super::render_text(
+                font,
+                atlas,
+                &display,
+                palette_x + PADDING + 8.0,
+                label_y,
+                cat::TEXT,
                 glyphs,
             );
         }

@@ -13,6 +13,7 @@ use winit::keyboard::{Key, NamedKey, ModifiersState};
 use winit::window::{Window, WindowId};
 
 use aether_terminal_lib::config::{AppConfig, load_config, save_config};
+use aether_terminal_lib::db::{Database, db_path};
 use aether_terminal_lib::gpu::font::FontManager;
 use aether_terminal_lib::gpu::atlas::GlyphAtlas;
 use aether_terminal_lib::gpu::grid::{Grid, GridPerformer};
@@ -67,6 +68,9 @@ struct NativeTerminal {
     lsp_request_id: u64,
     config: AppConfig,
     should_exit: bool,
+    // Database
+    db: Database,
+    command_buffer: String,
 }
 
 impl NativeTerminal {
@@ -76,6 +80,10 @@ impl NativeTerminal {
         let line_height = config.appearance.line_height;
         let font = FontManager::new(font_size, line_height);
         let (lsp_tx, lsp_rx) = std::sync::mpsc::channel();
+        let db = Database::open(&db_path()).unwrap_or_else(|e| {
+            log::warn!("Failed to open DB, using in-memory: {}", e);
+            Database::open_memory().expect("in-memory DB should always succeed")
+        });
         Self {
             window: None,
             surface: None,
@@ -100,6 +108,8 @@ impl NativeTerminal {
             lsp_request_id: 1,
             config,
             should_exit: false,
+            db,
+            command_buffer: String::new(),
         }
     }
 
@@ -497,6 +507,16 @@ impl NativeTerminal {
 
         // --- Terminal mode ---
 
+        // Ctrl+R: Open command history search
+        if ctrl {
+            if let Key::Character(ref c) = key {
+                if c.eq_ignore_ascii_case("r") {
+                    self.execute_palette_action(PaletteAction::BeginCommandHistory);
+                    return;
+                }
+            }
+        }
+
         // Ctrl+Shift+C: Copy selection
         if ctrl && shift {
             if let Key::Character(ref c) = key {
@@ -532,8 +552,9 @@ impl NativeTerminal {
                     }
                     return;
                 }
-                // Ctrl+C: SIGINT
+                // Ctrl+C: SIGINT — also clear command buffer
                 if c.eq_ignore_ascii_case("c") {
+                    self.command_buffer.clear();
                     self.write_to_pty(&[0x03]);
                     return;
                 }
@@ -544,13 +565,42 @@ impl NativeTerminal {
         if let Some(g) = self.active_grid() { g.lock().unwrap().reset_viewport(); }
 
         let data = match key {
-            Key::Character(ref c) if !ctrl => c.to_string().into_bytes(),
-            Key::Named(NamedKey::Enter) => vec![b'\r'],
-            Key::Named(NamedKey::Backspace) => vec![0x7f],
-            Key::Named(NamedKey::Tab) => vec![b'\t'],
+            Key::Character(ref c) if !ctrl => {
+                self.command_buffer.push_str(c);
+                c.to_string().into_bytes()
+            }
+            Key::Named(NamedKey::Enter) => {
+                let cmd = self.command_buffer.trim().to_string();
+                if !cmd.is_empty() {
+                    let pty_id = self.active_pty_id().unwrap_or("?").to_string();
+                    let cwd = std::env::current_dir()
+                        .map(|p| p.to_string_lossy().into_owned())
+                        .unwrap_or_default();
+                    if let Err(e) = self.db.save_command(&pty_id, &cmd, &cwd) {
+                        log::trace!("Command history save: {}", e);
+                    }
+                }
+                self.command_buffer.clear();
+                vec![b'\r']
+            }
+            Key::Named(NamedKey::Backspace) => {
+                self.command_buffer.pop();
+                vec![0x7f]
+            }
+            Key::Named(NamedKey::Tab) => {
+                // Tab completion invalidates our command buffer
+                self.command_buffer.clear();
+                vec![b'\t']
+            }
             Key::Named(NamedKey::Escape) => vec![0x1b],
-            Key::Named(NamedKey::ArrowUp) => b"\x1b[A".to_vec(),
-            Key::Named(NamedKey::ArrowDown) => b"\x1b[B".to_vec(),
+            Key::Named(NamedKey::ArrowUp) | Key::Named(NamedKey::ArrowDown) => {
+                // Shell history navigation replaces the command
+                self.command_buffer.clear();
+                match key {
+                    Key::Named(NamedKey::ArrowUp) => b"\x1b[A".to_vec(),
+                    _ => b"\x1b[B".to_vec(),
+                }
+            }
             Key::Named(NamedKey::ArrowRight) => b"\x1b[C".to_vec(),
             Key::Named(NamedKey::ArrowLeft) => b"\x1b[D".to_vec(),
             Key::Named(NamedKey::Home) => b"\x1b[H".to_vec(),
@@ -692,6 +742,22 @@ impl NativeTerminal {
             }
             PaletteAction::DoWorktreeDelete(name) => {
                 self.do_delete_worktree(&name);
+            }
+            PaletteAction::BeginCommandHistory => {
+                match self.db.recent_commands(100) {
+                    Ok(commands) if !commands.is_empty() => {
+                        self.palette.enter_command_history(commands);
+                    }
+                    _ => {
+                        log::info!("No command history yet");
+                        self.palette.close();
+                    }
+                }
+            }
+            PaletteAction::RunCommand(cmd) => {
+                self.content_pane = ContentPane::Terminal;
+                self.write_to_pty(cmd.as_bytes());
+                self.write_to_pty(b"\r");
             }
             PaletteAction::None => {}
         }
