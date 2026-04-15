@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { CommandBlockTracker, detectPrompt } from "./commandBlock";
 import { CommandHistory } from "./CommandHistory";
+import { findSuggestion, GhostSuggestOverlay } from "./ghostSuggest";
 import { decodeBase64ToBytes } from "../../shared/lib/decodeBase64";
 import { detectError } from "../../shared/lib/errorDetector";
 import { toast } from "../../shared/store/toastStore";
@@ -79,6 +80,7 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
     searchAddonRef.current = searchAddon;
 
     const cleanupIME = setupIMEOverlay(term, containerRef.current);
+    const ghost = new GhostSuggestOverlay(containerRef.current);
 
     const blockTracker = blockTrackerRef.current;
     const updateHistory = () => {
@@ -86,6 +88,52 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
       const cmds = blocks.map((b) => b.command).filter((c) => c.length > 0);
       setCommandHistory(cmds);
     };
+
+    // Ghost typing: track current input and show suggestions
+    let currentInput = "";
+    term.onData((data) => {
+      if (data === "\r" || data === "\n") {
+        currentInput = "";
+        ghost.hide();
+      } else if (data === "\x7f" || data === "\b") {
+        currentInput = currentInput.slice(0, -1);
+      } else if (data.length === 1 && data.charCodeAt(0) >= 32) {
+        currentInput += data;
+      } else if (data === "\t") {
+        // Tab: accept ghost suggestion
+        const suggestion = ghost.getSuggestion();
+        if (suggestion) {
+          const remaining = suggestion.slice(currentInput.length);
+          const ptyId = (term as TerminalWithCleanup).__ptyId;
+          if (ptyId && remaining) {
+            import("@tauri-apps/api/core").then(({ invoke }) => {
+              invoke("write_terminal", { id: ptyId, data: remaining });
+            });
+            currentInput = suggestion;
+            ghost.hide();
+            return; // Don't forward Tab to PTY
+          }
+        }
+      }
+
+      // Update ghost suggestion
+      if (currentInput.length >= 2) {
+        const history = blockTracker.getBlocks().map((b) => b.command).filter((c) => c.length > 0);
+        const suggestion = findSuggestion(currentInput, history);
+        if (suggestion) {
+          const cursor = containerRef.current?.querySelector(".xterm-cursor-layer");
+          if (cursor) {
+            const style = window.getComputedStyle(cursor);
+            ghost.show(suggestion, currentInput.length, parseInt(style.left || "0"), parseInt(style.top || "0"));
+          }
+        } else {
+          ghost.hide();
+        }
+      } else {
+        ghost.hide();
+      }
+    });
+
     connectPty(term, shell, cwd, onTerminalReady, syncModeRef, blockTracker, updateHistory);
 
     const handleCtrlV = async (e: KeyboardEvent) => {
@@ -156,6 +204,7 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
       // This component should never be unmounted during split/maximize.
       (term as TerminalWithCleanup).__ptyCleanup?.();
       cleanupIME();
+      ghost.dispose();
       document.removeEventListener("keydown", handleCtrlV, { capture: true } as EventListenerOptions);
       resizeObserver.disconnect();
       if (resizeTimer) clearTimeout(resizeTimer);
