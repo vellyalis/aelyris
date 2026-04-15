@@ -384,6 +384,8 @@ struct NativeTerminal {
     agent_rx: std::sync::mpsc::Receiver<AgentUpdate>,
     // Context menu position (None = hidden)
     context_menu: Option<(f32, f32)>,
+    // Sidebar context menu (position + target path)
+    sidebar_menu: Option<(f32, f32, std::path::PathBuf, bool)>, // (x, y, path, is_dir)
     // Divider drag state
     divider_drag: Option<DividerDrag>,
     // SCM panel
@@ -434,6 +436,7 @@ impl NativeTerminal {
             agent_rx,
             context_menu: None,
             divider_drag: None,
+            sidebar_menu: None,
             scm: ScmState::new(),
             toasts: ToastManager::new(),
         }
@@ -799,6 +802,9 @@ impl NativeTerminal {
             (Vec::new(), Vec::new())
         };
 
+        // --- Build sidebar context menu ---
+        let (sb_menu_rects, sb_menu_glyphs) = self.build_sidebar_menu(&self.font, &mut atlas);
+
         // --- Build context menu ---
         let (ctx_rects, ctx_glyphs) = self.build_context_menu(&self.font, &mut atlas);
 
@@ -822,6 +828,7 @@ impl NativeTerminal {
         all_rects.extend(agent_rects);
         all_rects.extend(content_rects);
         all_rects.extend(ctx_rects);
+        all_rects.extend(sb_menu_rects);
         all_rects.extend(palette_out.rects);
         all_rects.extend(toast_rects);
         let mut all_glyphs = chrome_out.glyphs;
@@ -830,6 +837,7 @@ impl NativeTerminal {
         all_glyphs.extend(agent_glyphs);
         all_glyphs.extend(content_glyphs);
         all_glyphs.extend(ctx_glyphs);
+        all_glyphs.extend(sb_menu_glyphs);
         all_glyphs.extend(palette_out.glyphs);
         all_glyphs.extend(toast_glyphs);
 
@@ -1447,7 +1455,44 @@ impl NativeTerminal {
                 }
             }
             PaletteAction::SpawnAgent { cli, model } => {
-                // Special case: commit message input
+                // Special cases: file operations and commit
+                if let Some(dir) = cli.strip_prefix("__newfile__") {
+                    if !model.is_empty() {
+                        let path = std::path::Path::new(dir).join(&model);
+                        if let Err(e) = std::fs::write(&path, "") {
+                            self.toasts.error(format!("Create file: {}", e));
+                        } else {
+                            self.toasts.success(format!("Created {}", model));
+                            if let Some(tree) = &mut self.sidebar.file_tree { tree.rebuild(); }
+                        }
+                    }
+                    return;
+                }
+                if let Some(dir) = cli.strip_prefix("__newfolder__") {
+                    if !model.is_empty() {
+                        let path = std::path::Path::new(dir).join(&model);
+                        if let Err(e) = std::fs::create_dir_all(&path) {
+                            self.toasts.error(format!("Create folder: {}", e));
+                        } else {
+                            self.toasts.success(format!("Created {}/", model));
+                            if let Some(tree) = &mut self.sidebar.file_tree { tree.rebuild(); }
+                        }
+                    }
+                    return;
+                }
+                if let Some(old_path) = cli.strip_prefix("__rename__") {
+                    if !model.is_empty() {
+                        let old = std::path::Path::new(old_path);
+                        let new = old.parent().unwrap_or(old).join(&model);
+                        if let Err(e) = std::fs::rename(old, &new) {
+                            self.toasts.error(format!("Rename: {}", e));
+                        } else {
+                            self.toasts.success(format!("Renamed to {}", model));
+                            if let Some(tree) = &mut self.sidebar.file_tree { tree.rebuild(); }
+                        }
+                    }
+                    return;
+                }
                 if cli == "__commit__" {
                     if !model.is_empty() {
                         if let Some(path) = self.repo_path() {
@@ -1924,6 +1969,121 @@ impl NativeTerminal {
                 }
             }
             Err(e) => log::error!("Failed to spawn PTY for split: {}", e),
+        }
+    }
+
+    /// Build sidebar context menu overlay.
+    fn build_sidebar_menu(
+        &self,
+        font: &FontManager,
+        atlas: &mut GlyphAtlas,
+    ) -> (Vec<RectInstance>, Vec<GlyphInstance>) {
+        let mut rects = Vec::new();
+        let mut glyphs = Vec::new();
+        let (mx, my, _, is_dir) = match &self.sidebar_menu {
+            Some(m) => (m.0, m.1, &m.2, m.3),
+            None => return (rects, glyphs),
+        };
+        let items: &[&str] = if is_dir {
+            &["New File", "New Folder", "Delete"]
+        } else {
+            &["Rename", "Delete", "Open"]
+        };
+        let item_h = 26.0f32;
+        let menu_w = 160.0f32;
+        let menu_h = items.len() as f32 * item_h + 8.0;
+
+        rects.push(RectInstance {
+            pos: [mx, my],
+            size: [menu_w, menu_h],
+            color: ui::cat::pm(30, 30, 46, 245),
+        });
+        rects.push(RectInstance {
+            pos: [mx, my],
+            size: [menu_w, 1.0],
+            color: ui::cat::pm(69, 71, 90, 200),
+        });
+
+        let hover_idx = self.chrome.mouse_pos.and_then(|(hx, hy)| {
+            if hx >= mx && hx < mx + menu_w && hy >= my + 4.0 && hy < my + menu_h {
+                Some(((hy - my - 4.0) / item_h) as usize)
+            } else {
+                None
+            }
+        });
+
+        for (i, label) in items.iter().enumerate() {
+            let iy = my + 4.0 + i as f32 * item_h;
+            if hover_idx == Some(i) {
+                rects.push(RectInstance {
+                    pos: [mx + 2.0, iy],
+                    size: [menu_w - 4.0, item_h],
+                    color: ui::cat::pm(69, 71, 90, 150),
+                });
+            }
+            let text_y = iy + (item_h - font.cell_height) / 2.0;
+            ui::render_text(font, atlas, label, mx + 12.0, text_y, ui::cat::TEXT, &mut glyphs);
+        }
+        (rects, glyphs)
+    }
+
+    /// Handle sidebar context menu click.
+    fn handle_sidebar_menu_click(&mut self, idx: usize, path: &std::path::Path, is_dir: bool) {
+        if is_dir {
+            match idx {
+                0 => {
+                    // New File — enter name via palette
+                    let dir = path.to_string_lossy().to_string();
+                    self.palette.enter_agent_spawn(format!("__newfile__{}", dir));
+                }
+                1 => {
+                    // New Folder
+                    let dir = path.to_string_lossy().to_string();
+                    self.palette.enter_agent_spawn(format!("__newfolder__{}", dir));
+                }
+                2 => {
+                    // Delete directory
+                    if let Err(e) = std::fs::remove_dir_all(path) {
+                        self.toasts.error(format!("Delete failed: {}", e));
+                    } else {
+                        self.toasts.success("Directory deleted");
+                        if let Some(tree) = &mut self.sidebar.file_tree {
+                            tree.rebuild();
+                        }
+                    }
+                }
+                _ => {}
+            }
+        } else {
+            match idx {
+                0 => {
+                    // Rename — enter new name via palette
+                    let file = path.to_string_lossy().to_string();
+                    self.palette.enter_agent_spawn(format!("__rename__{}", file));
+                }
+                1 => {
+                    // Delete file
+                    if let Err(e) = std::fs::remove_file(path) {
+                        self.toasts.error(format!("Delete failed: {}", e));
+                    } else {
+                        self.toasts.success("File deleted");
+                        if let Some(tree) = &mut self.sidebar.file_tree {
+                            tree.rebuild();
+                        }
+                    }
+                }
+                2 => {
+                    // Open in editor
+                    match EditorState::open(path) {
+                        Ok(editor) => {
+                            self.try_start_lsp(path);
+                            self.content_pane = ContentPane::Editor(editor);
+                        }
+                        Err(e) => self.toasts.error(format!("Cannot open: {}", e)),
+                    }
+                }
+                _ => {}
+            }
         }
     }
 
@@ -2534,6 +2694,23 @@ impl ApplicationHandler for NativeTerminal {
                         self.context_menu = None;
                         return;
                     }
+                    // Check sidebar context menu click
+                    if let Some((smx, smy, ref path, is_dir)) = self.sidebar_menu.clone() {
+                        if let Some((hx, hy)) = self.chrome.mouse_pos {
+                            let menu_w = 160.0f32;
+                            let item_h = 26.0f32;
+                            let item_count = if is_dir { 3.0 } else { 3.0 };
+                            let menu_h = item_count * item_h + 8.0;
+                            if hx >= smx && hx < smx + menu_w && hy >= smy + 4.0 && hy < smy + menu_h {
+                                let idx = ((hy - smy - 4.0) / item_h) as usize;
+                                self.handle_sidebar_menu_click(idx, &path, is_dir);
+                                self.sidebar_menu = None;
+                                return;
+                            }
+                        }
+                        self.sidebar_menu = None;
+                        return;
+                    }
                     // Check chrome hit regions first
                     if let Some((mx, my)) = self.chrome.mouse_pos {
                         if let Some(action) = self.chrome.hit_test(&self.hit_regions, mx, my) {
@@ -2662,7 +2839,19 @@ impl ApplicationHandler for NativeTerminal {
             } => {
                 if state.is_pressed() {
                     if let Some((mx, my)) = self.chrome.mouse_pos {
-                        if self.is_in_content(mx as f64, my as f64) {
+                        // Right-click in sidebar
+                        if self.sidebar.visible
+                            && (mx as f64) < self.sidebar.width() as f64
+                            && my > ui::CHROME_TOP
+                        {
+                            if let Some(tree) = &self.sidebar.file_tree {
+                                let content_top = ui::CHROME_TOP + 28.0;
+                                if let Some(idx) = tree.entry_at_y(my, content_top) {
+                                    let entry = &tree.entries[idx];
+                                    self.sidebar_menu = Some((mx, my, entry.path.clone(), entry.is_dir));
+                                }
+                            }
+                        } else if self.is_in_content(mx as f64, my as f64) {
                             self.context_menu = Some((mx, my));
                         }
                     }
