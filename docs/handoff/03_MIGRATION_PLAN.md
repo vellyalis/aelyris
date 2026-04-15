@@ -8,12 +8,12 @@
 2. native-terminal バイナリを段階的に機能追加
 3. 機能パリティ達成後にTauri版を deprecate
 
-## Phase 1: ターミナルコア (現在)
+## Phase 1: ターミナルコア ✅ 完了
 
 **目標**: GPU描画ターミナルが単体で動く
 
 ```
-Status: ✅ 動作確認済み (グリフ位置ズレあり)
+Status: ✅ Phase 1 完了
 Binary: cargo run --bin native-terminal
 ```
 
@@ -23,18 +23,16 @@ Binary: cargo run --bin native-terminal
 | wgpu DX12 初期化 | ✅ | Intel Arc 140V 動作確認 |
 | PTY (PowerShell) | ✅ | spawn + reader thread |
 | VTE parser → Grid | ✅ | 120x30 グリッド |
-| GPU レンダリング | ⚠️ | グリフUVズレ修正必要 |
-| キーボード入力 | ✅ | ASCII + 特殊キー |
-| Mica 透過 | ⚠️ | DWM設定済み、PreMultiplied非対応GPU |
-| IME 入力 | ❌ | 未実装 |
-| テキスト選択 | ❌ | 未実装 |
-| スクロール | ❌ | マウスホイール未対応 |
+| GPU レンダリング | ✅ | premultiplied alpha + bearing + ascent baseline |
+| キーボード入力 | ✅ | ASCII + 特殊キー + Ctrl修飾 |
+| Mica 透過 | ✅ | alpha modeフォールバックチェーン |
+| IME 入力 | ✅ | winit Ime events + カーソルエリア |
+| テキスト選択 | ✅ | マウスドラッグ + Catppuccin blueハイライト |
+| スクロール | ✅ | viewport_offset + alt screenカーソル送信 |
+| コピー&ペースト | ✅ | Ctrl+Shift+C / Ctrl+V (bracketed paste) |
 
-### Phase 1 残タスク
-1. グリフアトラスのUV座標修正 (renderer.rsのquad計算)
-2. IME入力 (winit IME API + 候補ウィンドウ表示)
-3. マウスイベント (選択、スクロール、リンククリック)
-4. スプリットペイン (複数PTY同一ウィンドウ)
+### Phase 1 残 (Phase 2で対応)
+1. スプリットペイン (複数PTY同一ウィンドウ) — UI Chromeと同時実装
 
 ## Phase 2: UI Chrome
 
