@@ -39,6 +39,8 @@ pub struct Cell {
     pub flags: CellFlags,
     /// Display width: 1 for half-width, 2 for full-width (CJK).
     pub width: u8,
+    /// Hyperlink URL from OSC 8 (None if no link).
+    pub hyperlink: Option<std::sync::Arc<String>>,
 }
 
 impl Default for Cell {
@@ -48,6 +50,7 @@ impl Default for Cell {
             fg: Color::Default,
             bg: Color::Default,
             flags: CellFlags::default(),
+            hyperlink: None,
             width: 1,
         }
     }
@@ -180,6 +183,8 @@ pub struct Grid {
     pub title: Option<String>,
     /// Active search query for highlighting matches.
     pub search_query: Option<String>,
+    /// Currently active hyperlink URL (set by OSC 8, cleared by OSC 8;;).
+    active_hyperlink: Option<std::sync::Arc<String>>,
 }
 
 impl Grid {
@@ -204,6 +209,7 @@ impl Grid {
             selection: Selection::default(),
             title: None,
             search_query: None,
+            active_hyperlink: None,
         }
     }
 
@@ -350,6 +356,7 @@ impl Grid {
                 bg: self.cursor.bg,
                 flags: self.cursor.flags,
                 width: w,
+                hyperlink: self.active_hyperlink.clone(),
             };
             // For full-width chars, blank the next cell
             if w == 2 && col + 1 < self.cells[row].len() {
@@ -851,6 +858,22 @@ impl<'a> Perform for GridPerformer<'a> {
                             self.grid.title = Some(title.to_string());
                             self.grid.needs_redraw = true;
                         }
+                    }
+                }
+                b"8" => {
+                    // OSC 8 ; params ; uri ST — hyperlinks
+                    // OSC 8 ;; — close hyperlink
+                    if let Some(uri_bytes) = params.get(2) {
+                        if let Ok(uri) = std::str::from_utf8(uri_bytes) {
+                            if uri.is_empty() {
+                                self.grid.active_hyperlink = None;
+                            } else {
+                                self.grid.active_hyperlink =
+                                    Some(std::sync::Arc::new(uri.to_string()));
+                            }
+                        }
+                    } else {
+                        self.grid.active_hyperlink = None;
                     }
                 }
                 _ => {}

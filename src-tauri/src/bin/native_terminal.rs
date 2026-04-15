@@ -1869,9 +1869,25 @@ impl ApplicationHandler for NativeTerminal {
                             return;
                         }
                     }
-                    // Content area: mouse reporting or selection
+                    // Content area: hyperlink click, mouse reporting, or selection
                     if let Some((mx, my)) = self.chrome.mouse_pos {
                         if self.is_in_content(mx as f64, my as f64) {
+                            // Ctrl+Click: open hyperlink
+                            if self.modifiers.contains(ModifiersState::CONTROL) {
+                                let (row, col) = self.pixel_to_cell(mx as f64, my as f64);
+                                if let Some(g) = self.active_grid() {
+                                    let grid = g.lock().unwrap();
+                                    let cells = grid.visible_row(row as usize);
+                                    if let Some(cell) = cells.get(col as usize) {
+                                        if let Some(url) = &cell.hyperlink {
+                                            let _ = std::process::Command::new("cmd")
+                                                .args(["/C", "start", "", url.as_str()])
+                                                .spawn();
+                                            return;
+                                        }
+                                    }
+                                }
+                            }
                             if self.is_mouse_tracking() {
                                 let (row, col) = self.pixel_to_cell(mx as f64, my as f64);
                                 self.send_mouse_event(0, col, row, true);
