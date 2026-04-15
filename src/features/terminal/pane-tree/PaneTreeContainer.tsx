@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { usePaneTree } from "./usePaneTree";
 import { PaneTreeRenderer } from "./PaneTreeRenderer";
 import { countLeaves } from "./operations";
@@ -16,8 +17,13 @@ interface PaneTreeContainerProps {
 export function PaneTreeContainer({ shell, cwd, syncMode = false }: PaneTreeContainerProps) {
   const {
     tree, activePaneId, maximizedPaneId,
-    setActivePaneId, split, close, resize, toggleMaximize, registerTerminal,
+    setActivePaneId, split, close, closeAllPtys, resize, toggleMaximize, registerTerminal,
   } = usePaneTree({ initialShell: shell, initialCwd: cwd });
+
+  // Clean up all PTYs when this tab/container is unmounted
+  useEffect(() => {
+    return () => { closeAllPtys(); };
+  }, [closeAllPtys]);
 
   const canClose = countLeaves(tree) > 1;
 

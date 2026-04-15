@@ -22,9 +22,10 @@ export function useAgentManager() {
   // Push-based session updates from Rust via Tauri events
   useEffect(() => {
     let unlisten: UnlistenFn | null = null;
+    let cancelled = false;
 
     const setup = async () => {
-      unlisten = await listen<AgentSessionRaw[]>("agent-sessions-updated", (event) => {
+      const unsub = await listen<AgentSessionRaw[]>("agent-sessions-updated", (event) => {
         const raw = event.payload;
         setSessions((prev) => {
           // Merge: keep existing logs, update status/cost/tokens
@@ -45,11 +46,13 @@ export function useAgentManager() {
           });
         });
       });
+      if (cancelled) { unsub(); return; }
+      unlisten = unsub;
 
       // Initial fetch to hydrate existing sessions on mount
       try {
         const raw = await invoke<AgentSessionRaw[]>("list_agents");
-        if (raw.length > 0) {
+        if (!cancelled && raw.length > 0) {
           setSessions((prev) => {
             const map = new Map(prev.map((s) => [s.id, s]));
             return raw.map((r) => {
@@ -72,7 +75,7 @@ export function useAgentManager() {
     };
 
     setup();
-    return () => { unlisten?.(); };
+    return () => { cancelled = true; unlisten?.(); };
   }, []);
 
   // Subscribe to output events for a session

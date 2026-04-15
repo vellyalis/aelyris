@@ -53,6 +53,18 @@ export function usePaneTree({ initialShell, initialCwd }: UsePaneTreeOptions) {
     setTerminalIds((prev) => new Map(prev).set(paneId, terminalId));
   }, []);
 
+  /** Close all PTYs in this tree (called when parent tab is closed). */
+  const closeAllPtys = useCallback(() => {
+    setTerminalIds((prev) => {
+      for (const ptyId of prev.values()) {
+        import("@tauri-apps/api/core").then(({ invoke }) => {
+          invoke("close_terminal", { id: ptyId }).catch(() => {});
+        });
+      }
+      return new Map();
+    });
+  }, []);
+
   const navigate = useCallback((delta: 1 | -1) => {
     const leafIds = collectLeafIds(tree);
     if (leafIds.length <= 1) return;
@@ -69,6 +81,7 @@ export function usePaneTree({ initialShell, initialCwd }: UsePaneTreeOptions) {
     terminalIds,
     split,
     close,
+    closeAllPtys,
     resize,
     toggleMaximize,
     registerTerminal,

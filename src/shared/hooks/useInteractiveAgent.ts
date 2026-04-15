@@ -15,18 +15,26 @@ export function useInteractiveAgent() {
   // Listen for session state updates from Rust backend
   useEffect(() => {
     let unlisten: (() => void) | null = null;
+    let cancelled = false;
 
-    const setup = async () => {
+    (async () => {
       try {
         const { listen } = await import("@tauri-apps/api/event");
-        unlisten = await listen<InteractiveSession[]>("interactive-sessions-updated", (event) => {
+        const unsub = await listen<InteractiveSession[]>("interactive-sessions-updated", (event) => {
           setSessions(event.payload);
         });
+        if (cancelled) {
+          unsub(); // Component unmounted during await — clean up immediately
+        } else {
+          unlisten = unsub;
+        }
       } catch { /* not in Tauri */ }
-    };
-    setup();
+    })();
 
-    return () => { unlisten?.(); };
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
   }, []);
 
   /** Start a new interactive agent session */
