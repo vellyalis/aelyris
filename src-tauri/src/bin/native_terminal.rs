@@ -15,6 +15,7 @@ use winit::keyboard::{Key, NamedKey};
 use aether_terminal_lib::gpu::font::FontManager;
 use aether_terminal_lib::gpu::atlas::GlyphAtlas;
 use aether_terminal_lib::gpu::grid::{Grid, GridPerformer};
+use aether_terminal_lib::gpu::ime::ImeState;
 use aether_terminal_lib::gpu::renderer::TerminalRenderer;
 use aether_terminal_lib::pty::{PtyManager, ShellType};
 
@@ -33,6 +34,7 @@ struct NativeTerminal {
     font: FontManager,
     pty_id: Option<String>,
     pty_manager: PtyManager,
+    ime_state: ImeState,
 }
 
 impl NativeTerminal {
@@ -50,6 +52,7 @@ impl NativeTerminal {
             font,
             pty_id: None,
             pty_manager: PtyManager::new(),
+            ime_state: ImeState::new(),
         }
     }
 
@@ -92,14 +95,28 @@ impl NativeTerminal {
             .get_default_config(&adapter, size.width.max(1), size.height.max(1))
             .expect("Surface not supported");
         config.format = wgpu::TextureFormat::Bgra8Unorm;
-        // Try PreMultiplied alpha for true transparency; fallback to Opaque
+
+        // Alpha mode fallback chain for transparency support.
+        // PreMultiplied is ideal (matches our premultiplied shaders).
+        // Inherit may work under DWM compositing.
+        // Auto lets wgpu pick the best available.
+        // Opaque as last resort — DWM Mica still works at window level.
         let caps = surface.get_capabilities(&adapter);
-        if caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::PreMultiplied) {
-            config.alpha_mode = wgpu::CompositeAlphaMode::PreMultiplied;
-            log::info!("Alpha mode: PreMultiplied (true transparency)");
-        } else {
-            log::info!("Alpha mode: Opaque (DWM Mica handles backdrop)");
-        }
+        let alpha_priority = [
+            wgpu::CompositeAlphaMode::PreMultiplied,
+            wgpu::CompositeAlphaMode::Inherit,
+            wgpu::CompositeAlphaMode::Auto,
+            wgpu::CompositeAlphaMode::Opaque,
+        ];
+        config.alpha_mode = alpha_priority
+            .iter()
+            .find(|mode| caps.alpha_modes.contains(mode))
+            .copied()
+            .unwrap_or(wgpu::CompositeAlphaMode::Auto);
+        log::info!(
+            "Alpha mode: {:?} (available: {:?})",
+            config.alpha_mode, caps.alpha_modes
+        );
         surface.configure(&device, &config);
 
         // Create renderer
@@ -159,10 +176,11 @@ impl NativeTerminal {
         let mut grid = self.grid.lock().unwrap();
         if !grid.needs_redraw { return; }
 
-        // Build glyph instances
+        // Build glyph instances and background rects
         let mut atlas = self.atlas.lock().unwrap();
         let instances = aether_terminal_lib::gpu::build_glyph_instances(&grid, &self.font, &mut atlas);
-        let cursor_rects = aether_terminal_lib::gpu::build_cursor_rects(&grid, &self.font, true);
+        let mut cursor_rects = aether_terminal_lib::gpu::build_bg_rects(&grid, &self.font);
+        cursor_rects.extend(aether_terminal_lib::gpu::build_cursor_rects(&grid, &self.font, true));
 
         // Upload atlas if dirty
         if atlas.dirty {
@@ -190,6 +208,29 @@ impl NativeTerminal {
                 }
             }
             Err(e) => log::trace!("Surface error: {:?}", e),
+        }
+    }
+
+    /// Position the IME candidate window at the terminal cursor location.
+    fn update_ime_cursor_area(&self) {
+        let window = match &self.window { Some(w) => w, None => return };
+        let grid = self.grid.lock().unwrap();
+        let x = grid.cursor.col as f64 * self.font.cell_width as f64;
+        let y = grid.cursor.row as f64 * self.font.cell_height as f64;
+        let size = winit::dpi::LogicalSize::new(
+            self.font.cell_width as f64,
+            self.font.cell_height as f64,
+        );
+        window.set_ime_cursor_area(
+            winit::dpi::LogicalPosition::new(x, y),
+            size,
+        );
+    }
+
+    /// Write text to the PTY (used for both keyboard input and IME commit).
+    fn write_to_pty(&self, data: &[u8]) {
+        if let Some(id) = &self.pty_id {
+            let _ = self.pty_manager.write(id, data);
         }
     }
 
@@ -225,6 +266,7 @@ impl ApplicationHandler for NativeTerminal {
             .with_decorations(false);
 
         let window = Arc::new(event_loop.create_window(attrs).expect("Failed to create window"));
+        window.set_ime_allowed(true);
 
         // Enable Mica/Acrylic via DWM on Windows 11
         #[cfg(windows)]
@@ -261,7 +303,41 @@ impl ApplicationHandler for NativeTerminal {
                     self.grid.lock().unwrap().resize(cols.max(1), rows.max(1));
                 }
             }
+            WindowEvent::Ime(ime_event) => {
+                match ime_event {
+                    winit::event::Ime::Enabled => {
+                        self.update_ime_cursor_area();
+                    }
+                    winit::event::Ime::Preedit(text, _cursor_pos) => {
+                        self.ime_state.set_composing(text);
+                        self.update_ime_cursor_area();
+                        // Mark grid for redraw to show composition indicator
+                        self.grid.lock().unwrap().needs_redraw = true;
+                    }
+                    winit::event::Ime::Commit(text) => {
+                        self.ime_state.commit();
+                        self.write_to_pty(text.as_bytes());
+                    }
+                    winit::event::Ime::Disabled => {
+                        self.ime_state.cancel();
+                    }
+                }
+            }
+            WindowEvent::MouseWheel { delta, .. } => {
+                let lines = match delta {
+                    winit::event::MouseScrollDelta::LineDelta(_, y) => -y as i32,
+                    winit::event::MouseScrollDelta::PixelDelta(pos) => -(pos.y / self.font.cell_height as f64) as i32,
+                };
+                // Send cursor up/down sequences to PTY (3 lines per scroll tick)
+                let count = lines.unsigned_abs().max(1).min(10);
+                let seq = if lines < 0 { b"\x1b[A" } else { b"\x1b[B" };
+                for _ in 0..count {
+                    self.write_to_pty(seq);
+                }
+            }
             WindowEvent::KeyboardInput { event, .. } => {
+                // Don't process key events during IME composition
+                if self.ime_state.active { return; }
                 if event.state.is_pressed() {
                     self.handle_key_input(event.logical_key);
                 }

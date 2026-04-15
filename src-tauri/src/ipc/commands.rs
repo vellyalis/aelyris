@@ -697,7 +697,8 @@ pub fn start_agent(
                 Err(_) => break,
             }
         }
-        // Process ended — emit exit event + updated session list
+        // Process ended — update status to done, emit exit event + session list
+        let _ = agent_mgr.update_status(&session_id, "done");
         let _ = app_handle.emit(&format!("agent-exit-{}", session_id), ());
         emit_sessions(&agent_mgr, &app_handle);
     });
@@ -859,30 +860,6 @@ fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
         }
     }
     Ok(buf)
-}
-
-fn base64_encode(data: &[u8]) -> String {
-    let mut s = String::with_capacity(data.len() * 4 / 3 + 4);
-    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    for chunk in data.chunks(3) {
-        let b0 = chunk[0] as u32;
-        let b1 = chunk.get(1).copied().unwrap_or(0) as u32;
-        let b2 = chunk.get(2).copied().unwrap_or(0) as u32;
-        let n = (b0 << 16) | (b1 << 8) | b2;
-        s.push(CHARS[((n >> 18) & 0x3F) as usize] as char);
-        s.push(CHARS[((n >> 12) & 0x3F) as usize] as char);
-        if chunk.len() > 1 {
-            s.push(CHARS[((n >> 6) & 0x3F) as usize] as char);
-        } else {
-            s.push('=');
-        }
-        if chunk.len() > 2 {
-            s.push(CHARS[(n & 0x3F) as usize] as char);
-        } else {
-            s.push('=');
-        }
-    }
-    s
 }
 
 use std::io::Read;

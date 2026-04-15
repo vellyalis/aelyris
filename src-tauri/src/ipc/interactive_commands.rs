@@ -156,6 +156,10 @@ pub fn stop_interactive_agent(app: AppHandle, id: String) -> Result<(), String> 
         None => id.clone(), // fallback: assume session_id == pty_id
     };
 
+    // Update status to "done" before closing PTY so the frontend sees the
+    // final state even if the output monitor thread hasn't caught up yet.
+    let _ = session_mgr.update_status(&id, "done");
+
     // Close PTY (kills the process, output monitor thread will exit on read EOF)
     let _ = pty_manager.close(&pty_id);
 
@@ -284,69 +288,3 @@ fn run_output_monitor(
     let _ = app.emit(&format!("pty-exit-{}", session_id), ());
 }
 
-fn base64_encode(bytes: &[u8]) -> String {
-    use std::io::Write;
-    let mut buf = Vec::with_capacity(bytes.len() * 4 / 3 + 4);
-    {
-        let mut encoder = Base64Encoder::new(&mut buf);
-        let _ = encoder.write_all(bytes);
-        let _ = encoder.finish();
-    }
-    String::from_utf8(buf).unwrap_or_default()
-}
-
-// Minimal base64 encoder (avoids adding another crate)
-struct Base64Encoder<W: std::io::Write> {
-    inner: W,
-    buffer: [u8; 3],
-    len: usize,
-}
-
-const B64_CHARS: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-impl<W: std::io::Write> Base64Encoder<W> {
-    fn new(inner: W) -> Self {
-        Self { inner, buffer: [0; 3], len: 0 }
-    }
-
-    fn flush_block(&mut self) -> std::io::Result<()> {
-        if self.len == 0 { return Ok(()); }
-        let b = &self.buffer;
-        let mut out = [b'='; 4];
-        out[0] = B64_CHARS[(b[0] >> 2) as usize];
-        out[1] = B64_CHARS[((b[0] & 0x03) << 4 | b[1] >> 4) as usize];
-        if self.len > 1 {
-            out[2] = B64_CHARS[((b[1] & 0x0f) << 2 | b[2] >> 6) as usize];
-        }
-        if self.len > 2 {
-            out[3] = B64_CHARS[(b[2] & 0x3f) as usize];
-        }
-        self.inner.write_all(&out)?;
-        self.buffer = [0; 3];
-        self.len = 0;
-        Ok(())
-    }
-
-    fn finish(mut self) -> std::io::Result<()> {
-        self.flush_block()
-    }
-}
-
-impl<W: std::io::Write> std::io::Write for Base64Encoder<W> {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let mut written = 0;
-        for &byte in buf {
-            self.buffer[self.len] = byte;
-            self.len += 1;
-            if self.len == 3 {
-                self.flush_block()?;
-            }
-            written += 1;
-        }
-        Ok(written)
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        self.inner.flush()
-    }
-}

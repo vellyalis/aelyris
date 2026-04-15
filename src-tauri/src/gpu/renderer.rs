@@ -363,6 +363,8 @@ impl TerminalRenderer {
     }
 
     /// Build glyph instances from the terminal grid.
+    /// Applies font bearing for correct baseline positioning.
+    /// Cell backgrounds are handled separately by build_bg_rects.
     pub fn build_glyph_instances(
         &self,
         grid: &Grid,
@@ -371,28 +373,27 @@ impl TerminalRenderer {
     ) -> Vec<GlyphInstance> {
         let cw = font.cell_width;
         let ch = font.cell_height;
+        let baseline = font.baseline;
         let mut instances = Vec::with_capacity((grid.cols * grid.rows) as usize);
 
         for row in 0..grid.rows as usize {
             for col in 0..grid.cols as usize {
                 let cell = &grid.cells[row][col];
-                if cell.c == ' ' && cell.bg == Color::Default {
-                    continue; // Skip blank transparent cells
-                }
-
-                let (fg, bg) = if cell.flags.inverse {
-                    (color_to_rgba(cell.bg, false), color_to_rgba(cell.fg, true))
-                } else {
-                    (color_to_rgba(cell.fg, true), color_to_rgba(cell.bg, false))
-                };
+                if cell.c <= ' ' { continue; }
 
                 let entry = atlas.get_or_insert(cell.c, cell.flags, font);
+                if entry.width == 0 || entry.height == 0 { continue; }
+
+                let (fg, _bg) = resolve_cell_colors(cell);
+
+                let x = col as f32 * cw + entry.bearing_x;
+                let y = row as f32 * ch + baseline - entry.bearing_y - entry.height as f32;
 
                 instances.push(GlyphInstance {
-                    pos: [col as f32 * cw, row as f32 * ch],
+                    pos: [x, y],
                     uv_rect: entry.uv,
                     fg_color: fg,
-                    bg_color: bg,
+                    bg_color: [0.0, 0.0, 0.0, 0.0],
                     size: [entry.width as f32, entry.height as f32],
                 });
             }

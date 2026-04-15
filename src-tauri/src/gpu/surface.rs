@@ -110,11 +110,18 @@ impl TerminalSurface {
             .copied()
             .unwrap_or(wgpu::TextureFormat::Bgra8Unorm);
 
-        let alpha_mode = if caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::PreMultiplied) {
-            wgpu::CompositeAlphaMode::PreMultiplied
-        } else {
-            caps.alpha_modes.first().copied().unwrap_or(wgpu::CompositeAlphaMode::Auto)
-        };
+        // Alpha mode fallback chain — PreMultiplied matches premultiplied shaders
+        let alpha_priority = [
+            wgpu::CompositeAlphaMode::PreMultiplied,
+            wgpu::CompositeAlphaMode::Inherit,
+            wgpu::CompositeAlphaMode::Auto,
+            wgpu::CompositeAlphaMode::Opaque,
+        ];
+        let alpha_mode = alpha_priority
+            .iter()
+            .find(|mode| caps.alpha_modes.contains(mode))
+            .copied()
+            .unwrap_or(wgpu::CompositeAlphaMode::Auto);
 
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,

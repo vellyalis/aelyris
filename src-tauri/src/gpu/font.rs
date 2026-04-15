@@ -56,7 +56,19 @@ impl FontManager {
         let metrics = regular.metrics('M', font_size);
         let cell_width = metrics.advance_width;
         let cell_height = font_size * line_height;
-        let baseline = font_size * 0.8; // approximate
+
+        // Compute baseline from font's actual ascent/descent metrics.
+        // Center text vertically within the cell:
+        //   text_height = ascent - descent
+        //   top_padding = (cell_height - text_height) / 2
+        //   baseline = top_padding + ascent
+        let baseline = if let Some(lm) = regular.horizontal_line_metrics(font_size) {
+            let text_height = lm.ascent - lm.descent;
+            let top_padding = (cell_height - text_height) / 2.0;
+            (top_padding + lm.ascent).max(lm.ascent)
+        } else {
+            font_size * 0.8 // fallback
+        };
 
         log::info!(
             "FontManager: size={}, cell={}x{}, regular=CascadiaCode, cjk={}",
@@ -170,5 +182,46 @@ mod tests {
         assert!(fm.cell_width > 5.0 && fm.cell_width < 15.0, "cell_width={}", fm.cell_width);
         // Cell height = font_size * line_height = 14 * 1.4 = 19.6
         assert!((fm.cell_height - 19.6).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_baseline_from_line_metrics() {
+        let fm = FontManager::new(16.0, 1.4);
+        let lm = fm.regular.horizontal_line_metrics(fm.font_size).unwrap();
+        // Baseline should be >= ascent (centered within cell adds padding)
+        assert!(fm.baseline >= lm.ascent,
+            "baseline {} should be >= ascent {}", fm.baseline, lm.ascent);
+        // Baseline should be within cell height
+        assert!(fm.baseline < fm.cell_height,
+            "baseline {} should be < cell_height {}", fm.baseline, fm.cell_height);
+    }
+
+    #[test]
+    fn test_glyph_positioning_within_cell() {
+        let fm = FontManager::new(16.0, 1.4);
+        // Verify all printable ASCII glyphs fit within a cell
+        for c in '!'..='~' {
+            let g = fm.rasterize(c, CellFlags::default());
+            if g.width == 0 || g.height == 0 { continue; }
+            let y = fm.baseline - g.bearing_y - g.height as f32;
+            assert!(y >= -1.0,
+                "'{}' top at y={} clips above cell (bearing_y={}, h={})",
+                c, y, g.bearing_y, g.height);
+            let bottom = y + g.height as f32;
+            assert!(bottom <= fm.cell_height + 1.0,
+                "'{}' bottom at {} exceeds cell_height {} (bearing_y={}, h={})",
+                c, bottom, fm.cell_height, g.bearing_y, g.height);
+        }
+    }
+
+    #[test]
+    fn test_glyph_bearing_values() {
+        let fm = FontManager::new(16.0, 1.4);
+        // 'A' should have non-negative bearing_y (sits on baseline)
+        let a = fm.rasterize('A', CellFlags::default());
+        assert!(a.bearing_y >= 0.0, "'A' bearing_y={} should be >= 0", a.bearing_y);
+        // 'g' should have negative bearing_y (descender)
+        let g = fm.rasterize('g', CellFlags::default());
+        assert!(g.bearing_y < 0.0, "'g' bearing_y={} should be < 0 (descender)", g.bearing_y);
     }
 }

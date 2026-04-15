@@ -216,6 +216,30 @@ export function App() {
 
   useTerminalNotifications({ activeTabId, tabs, onTabActivity: markTabActivity });
 
+  // ── Session restore (DB bookkeeping + localStorage fallback) ──
+
+  useEffect(() => {
+    import("@tauri-apps/api/core").then(({ invoke }) => {
+      invoke<{ session: { id: string; name: string }; windows: { panes: { shell_type: string; cwd: string }[] }[] } | null>("restore_last_session")
+        .then((restored) => {
+          if (!restored) return;
+          // If localStorage had no saved tabs, use DB panes as fallback
+          const hasSavedTabs = localStorage.getItem("aether:tabs");
+          if (!hasSavedTabs && restored.windows.length > 0) {
+            for (const win of restored.windows) {
+              for (const pane of win.panes) {
+                const shell = (pane.shell_type as ShellType) || "powershell";
+                if (pane.cwd) {
+                  addTabWithCwd(shell, pane.cwd);
+                }
+              }
+            }
+          }
+        })
+        .catch(() => { /* DB not available or no session */ });
+    }).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Window setup ──
 
   useEffect(() => {

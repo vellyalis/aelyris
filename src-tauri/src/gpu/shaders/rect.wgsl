@@ -53,5 +53,6 @@ fn vs_main(
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return in.color;
+    // Output premultiplied RGBA for hardware PREMULTIPLIED_ALPHA_BLENDING
+    return vec4<f32>(in.color.rgb * in.color.a, in.color.a);
 }

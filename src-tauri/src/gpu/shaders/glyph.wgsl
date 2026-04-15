@@ -74,10 +74,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Sample glyph alpha from the atlas (R8 texture, alpha in .r channel)
     let glyph_alpha = textureSample(atlas_texture, atlas_sampler, in.uv).r;
 
-    // Blend: background first, then foreground glyph on top
-    let fg = vec4<f32>(in.fg_color.rgb, in.fg_color.a * glyph_alpha);
+    // Combined alpha: foreground opacity × glyph coverage
+    let alpha = in.fg_color.a * glyph_alpha;
 
-    // Premultiplied alpha compositing: fg over bg
-    let result = fg + in.bg_color * (1.0 - fg.a);
-    return result;
+    // Output premultiplied RGBA for hardware PREMULTIPLIED_ALPHA_BLENDING.
+    // RGB must be pre-multiplied by alpha so the hardware blend
+    // (src*1 + dst*(1-src.a)) produces correct compositing.
+    return vec4<f32>(in.fg_color.rgb * alpha, alpha);
 }
