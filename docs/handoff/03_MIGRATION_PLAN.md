@@ -77,18 +77,60 @@ Binary: cargo run --bin native-terminal
 - **ファイルスキャン**: `std::fs::read_dir` — .git/node_modules/target 除外、ディレクトリ優先ソート
 - **操作**: クリックで展開/折畳、マウスホイールスクロール、Ctrl+B トグル
 
-## Phase 4: エディタ
+## Phase 4: エディタ 🔧 進行中
 
-**目標**: Monaco Editor相当をRustで実装
+**目標**: Monaco Editor相当をRustで段階的に実装
+
+```
+Status: 🔧 Phase 4a 完了 (読み取り専用ファイルビューア)
+Binary: cargo run --bin native-terminal
+```
+
+### Phase 4a: 読み取り専用ファイルビューア ✅ 完了
+
+| タスク | 状態 | 詳細 |
+|--------|------|------|
+| ファイル表示 | ✅ | サイドバーのファイルクリックで表示 — 行番号、ガター、カーソル行ハイライト |
+| スクロール | ✅ | マウスホイール + 矢印キー + PgUp/PgDn + Home/End |
+| バイナリ検出 | ✅ | 先頭8KBにnullバイト → 拒否 / 10MB超 → 拒否 |
+| ステータスバー | ✅ | ファイル名 / Ln X/Y / READ-ONLY 表示 |
+| ターミナル復帰 | ✅ | Escape でターミナルに戻る（PTYはバックグラウンド維持） |
+
+#### Phase 4a 実装詳細
+- **`src/ui/editor.rs`**: FileViewerState — open/build/scroll/cursor
+- **ContentPane enum**: Terminal | FileViewer — コンテンツエリアの切替
+- **レンダリング**: 既存の RectInstance + GlyphInstance パイプラインで描画
+- **ガター**: 行番号桁数に応じた動的幅、整数演算で正確な桁数計算
+- **安全性**: saturating_add で全オーバーフロー防止、visible_count >= 1 保証
+
+### Phase 4b: テキスト編集 📋
 
 | タスク | 方針 |
 |--------|------|
-| シンタックスハイライト | tree-sitter |
-| テキスト編集 | ropey (rope data structure) |
-| Diff表示 | similar crate |
-| LSP | tower-lsp or lsp-types |
+| テキストバッファ | ropey (rope data structure) |
+| カーソル操作 | 行/列位置、点滅カーソル描画 |
+| 挿入/削除 | キー入力でテキスト編集 |
+| Undo/Redo | EditOp パターン |
+| 保存 | Ctrl+S |
 
-**注**: エディタは最も複雑。最後に実装。初期版ではTauri版のMonacoを併用してもよい。
+### Phase 4c: シンタックスハイライト 📋
+
+| タスク | 方針 |
+|--------|------|
+| パーサー | tree-sitter (インクリメンタル) |
+| 言語検出 | ファイル拡張子 → 言語マッピング |
+| カラー | Catppuccin Mocha パレット |
+
+### Phase 4d: LSP 統合 📋
+
+| タスク | 方針 |
+|--------|------|
+| プロトコル | lsp-types |
+| 診断 | エラー/警告 下線表示 |
+| Go to Definition | Ctrl+Click / F12 |
+| 補完 | `.` / `::` トリガー |
+
+**注**: エディタは段階的に実装。Phase 4a (ビューア) → 4b (編集) → 4c (ハイライト) → 4d (LSP)。
 
 ## Phase 5: 統合テスト + リリース
 
