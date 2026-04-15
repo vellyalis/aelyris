@@ -1,5 +1,5 @@
 pub mod agent;
-mod config;
+pub mod config;
 pub mod db;
 mod git;
 pub mod gpu;
