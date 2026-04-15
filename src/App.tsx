@@ -12,6 +12,7 @@ import { ToolkitPanel } from "./features/toolkit/ToolkitPanel";
 import { WorkflowPanel } from "./features/workflow/WorkflowPanel";
 import { useAppMenus } from "./features/app/useAppMenus";
 import { SCMPanel } from "./features/scm/SCMPanel";
+import { StatusBar } from "./features/statusbar/StatusBar";
 import { WorkspaceTabs } from "./features/workspace-tabs/WorkspaceTabs";
 
 const EditorPanel = lazy(() => import("./features/editor/EditorPanel").then((m) => ({ default: m.EditorPanel })));
@@ -84,7 +85,12 @@ export function App() {
   const { branch, changedFiles, refresh: refreshGitStatus } = useGitStatus(projectPath);
   const activeAgent = sessions.find((s) => s.id === activeSessionId);
   const headerStatus = activeAgent
-    ? (activeAgent.status === "thinking" ? "thinking" : activeAgent.status === "coding" ? "edit" : "idle")
+    ? (activeAgent.status === "thinking" || activeAgent.status === "generating" ? "thinking"
+      : activeAgent.status === "coding" ? "edit"
+      : activeAgent.status === "error" ? "error"
+      : activeAgent.status === "waiting" ? "waiting"
+      : activeAgent.status === "done" ? "done"
+      : "idle")
     : "idle";
 
   const handleRefresh = useCallback(() => {
@@ -316,7 +322,7 @@ export function App() {
     <div className="app-container">
       <ProjectHeaderBar
         projectName={projectName} branch={branch} changedCount={changedFiles.length}
-        status={headerStatus as "idle" | "edit" | "thinking"}
+        status={headerStatus as "idle" | "edit" | "thinking" | "error" | "waiting" | "done"}
         activeAgent={activeAgent ? { model: activeAgent.model, cost: activeAgent.cost } : null}
         onOpenSettings={() => setSettingsVisible(true)} onRefresh={handleRefresh}
       />
@@ -402,6 +408,13 @@ export function App() {
         activeInteractiveId={interactiveSessionId}
         onSelectInteractive={handleFocusInteractiveSession}
         onCloseInteractive={stopInteractiveSession}
+      />
+
+      <StatusBar
+        shell={activeTab.shell}
+        branch={branch}
+        changedCount={changedFiles.length}
+        agentStatus={activeAgent ? `${activeAgent.model} · $${activeAgent.cost.toFixed(2)}` : undefined}
       />
 
       {paletteVisible && <Suspense fallback={null}><CommandPalette visible onClose={() => setPaletteVisible(false)} commands={commands} /></Suspense>}

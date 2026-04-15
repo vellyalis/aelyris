@@ -6,7 +6,7 @@ interface ProjectHeaderBarProps {
   projectName: string;
   branch: string;
   changedCount?: number;
-  status: "idle" | "edit" | "thinking";
+  status: "idle" | "edit" | "thinking" | "error" | "waiting" | "done";
   activeAgent?: { model: string; cost: number } | null;
   onOpenSettings?: () => void;
   onRefresh?: () => void;
@@ -14,8 +14,11 @@ interface ProjectHeaderBarProps {
 
 const STATUS_META: Record<string, { color: string; label: string }> = {
   idle: { color: "var(--status-idle)", label: "Idle" },
-  edit: { color: "var(--status-edit)", label: "Edit" },
+  edit: { color: "var(--status-edit)", label: "Coding" },
   thinking: { color: "var(--status-thinking)", label: "Thinking..." },
+  error: { color: "var(--ctp-red)", label: "Error" },
+  waiting: { color: "var(--ctp-yellow)", label: "Needs Attention" },
+  done: { color: "var(--ctp-blue)", label: "Complete" },
 };
 
 export function ProjectHeaderBar({
