@@ -55,6 +55,10 @@ pub enum PaletteMode {
     },
     /// Terminal text search.
     TerminalSearch,
+    /// Quick open file (Ctrl+P).
+    FileSearch {
+        files: Vec<String>,
+    },
 }
 
 /// Actions produced by the command palette.
@@ -82,6 +86,7 @@ pub enum PaletteAction {
     BeginAgentGemini,
     SpawnAgent { cli: String, model: String },
     SearchTerminal(String),
+    OpenFile(String),
     None,
 }
 
@@ -168,7 +173,8 @@ impl PaletteState {
         let count = match &self.mode {
             PaletteMode::Command
             | PaletteMode::WorktreeSelect { .. }
-            | PaletteMode::CommandHistory { .. } => self.filtered.len(),
+            | PaletteMode::CommandHistory { .. }
+            | PaletteMode::FileSearch { .. } => self.filtered.len(),
             PaletteMode::WorktreeCreate
             | PaletteMode::AgentSpawn { .. }
             | PaletteMode::TerminalSearch => 0,
@@ -200,6 +206,14 @@ impl PaletteState {
         self.input.clear();
         self.selected = 0;
         self.filtered.clear();
+    }
+
+    /// Enter file search mode (Quick Open).
+    pub fn enter_file_search(&mut self, files: Vec<String>) {
+        self.filtered = (0..files.len()).collect();
+        self.mode = PaletteMode::FileSearch { files };
+        self.input.clear();
+        self.selected = 0;
     }
 
     /// Enter terminal search mode.
@@ -300,6 +314,16 @@ impl PaletteState {
                 self.close();
                 PaletteAction::SearchTerminal(query)
             }
+            PaletteMode::FileSearch { files } => {
+                if let Some(&idx) = self.filtered.get(self.selected) {
+                    if let Some(path) = files.get(idx) {
+                        let action = PaletteAction::OpenFile(path.clone());
+                        self.close();
+                        return action;
+                    }
+                }
+                PaletteAction::None
+            }
         }
     }
 
@@ -342,6 +366,16 @@ impl PaletteState {
                     })
                     .collect();
             }
+            PaletteMode::FileSearch { files } => {
+                self.filtered = (0..files.len())
+                    .filter(|&i| {
+                        if query.is_empty() {
+                            return true;
+                        }
+                        files[i].to_lowercase().contains(&query)
+                    })
+                    .collect();
+            }
         }
     }
 
@@ -366,7 +400,8 @@ impl PaletteState {
         let item_count = match &self.mode {
             PaletteMode::Command
             | PaletteMode::WorktreeSelect { .. }
-            | PaletteMode::CommandHistory { .. } => self.filtered.len().min(MAX_VISIBLE_ITEMS),
+            | PaletteMode::CommandHistory { .. }
+            | PaletteMode::FileSearch { .. } => self.filtered.len().min(MAX_VISIBLE_ITEMS),
             PaletteMode::WorktreeCreate
             | PaletteMode::AgentSpawn { .. }
             | PaletteMode::TerminalSearch => 1,
@@ -396,6 +431,7 @@ impl PaletteState {
             PaletteMode::CommandHistory { .. } => cat::pm(203, 166, 247, 200), // Mauve
             PaletteMode::AgentSpawn { .. } => cat::pm(148, 226, 213, 200),   // Teal
             PaletteMode::TerminalSearch => cat::pm(249, 226, 175, 200),     // Yellow
+            PaletteMode::FileSearch { .. } => cat::pm(166, 227, 161, 200), // Green
         };
         rects.push(RectInstance {
             pos: [palette_x, palette_y],
@@ -422,6 +458,7 @@ impl PaletteState {
                 PaletteMode::CommandHistory { .. } => "Search command history...",
                 PaletteMode::AgentSpawn { .. } => "Model (e.g. opus, sonnet) — Enter for default...",
                 PaletteMode::TerminalSearch => "Search terminal output...",
+                PaletteMode::FileSearch { .. } => "Open file...",
             };
             (placeholder, cat::OVERLAY0)
         } else {
@@ -476,6 +513,11 @@ impl PaletteState {
             PaletteMode::CommandHistory { commands } => {
                 self.build_history_list(
                     font, atlas, palette_x, list_y, commands, &mut rects, &mut glyphs,
+                );
+            }
+            PaletteMode::FileSearch { files } => {
+                self.build_history_list(
+                    font, atlas, palette_x, list_y, files, &mut rects, &mut glyphs,
                 );
             }
             PaletteMode::TerminalSearch => {

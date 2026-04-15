@@ -709,6 +709,16 @@ impl NativeTerminal {
 
         // --- Terminal mode ---
 
+        // Ctrl+P: Quick open file
+        if ctrl {
+            if let Key::Character(ref c) = key {
+                if c.eq_ignore_ascii_case("p") && !shift {
+                    self.open_quick_file_search();
+                    return;
+                }
+            }
+        }
+
         // Ctrl+R: Open command history search
         if ctrl {
             if let Key::Character(ref c) = key {
@@ -1038,6 +1048,25 @@ impl NativeTerminal {
             PaletteAction::BeginAgentGemini => {
                 self.palette.enter_agent_spawn("gemini".to_string());
             }
+            PaletteAction::OpenFile(path) => {
+                // Resolve relative paths against sidebar root or cwd
+                let base = self
+                    .sidebar
+                    .file_tree
+                    .as_ref()
+                    .map(|ft| ft.root.clone())
+                    .or_else(|| std::env::current_dir().ok())
+                    .unwrap_or_default();
+                let path_buf = base.join(&path);
+                match EditorState::open(&path_buf) {
+                    Ok(editor) => {
+                        log::info!("Quick open: {}", editor.file_name);
+                        self.try_start_lsp(&path_buf);
+                        self.content_pane = ContentPane::Editor(editor);
+                    }
+                    Err(e) => log::warn!("Cannot open file: {}", e),
+                }
+            }
             PaletteAction::SearchTerminal(query) => {
                 if let Some(g) = self.active_grid() {
                     let mut grid = g.lock().unwrap();
@@ -1258,6 +1287,66 @@ impl NativeTerminal {
         }
 
         (rects, glyphs)
+    }
+
+    /// Open quick file search (Ctrl+P).
+    fn open_quick_file_search(&mut self) {
+        let root = self
+            .sidebar
+            .file_tree
+            .as_ref()
+            .map(|ft| ft.root.clone())
+            .or_else(|| std::env::current_dir().ok());
+        let root = match root {
+            Some(r) => r,
+            None => return,
+        };
+        // Collect files recursively (max 2000)
+        let mut files = Vec::new();
+        Self::collect_files(&root, &root, &mut files, 2000);
+        if files.is_empty() {
+            return;
+        }
+        self.palette.enter_file_search(files);
+    }
+
+    fn collect_files(
+        dir: &std::path::Path,
+        root: &std::path::Path,
+        files: &mut Vec<String>,
+        max: usize,
+    ) {
+        if files.len() >= max {
+            return;
+        }
+        let entries = match std::fs::read_dir(dir) {
+            Ok(e) => e,
+            Err(_) => return,
+        };
+        for entry in entries.flatten() {
+            if files.len() >= max {
+                break;
+            }
+            let path = entry.path();
+            let name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("");
+            // Skip hidden and common large dirs
+            if name.starts_with('.') || name == "node_modules" || name == "target" || name == "__pycache__" {
+                continue;
+            }
+            if path.is_dir() {
+                Self::collect_files(&path, root, files, max);
+            } else {
+                let relative = path
+                    .strip_prefix(root)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .to_string();
+                files.push(relative);
+            }
+        }
     }
 
     /// Process pending agent status updates from monitor threads.
