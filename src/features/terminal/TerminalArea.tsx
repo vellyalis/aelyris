@@ -403,6 +403,18 @@ async function connectPty(
           const detected = detectPrompt(line);
           if (detected) {
             onHistoryUpdate?.();
+            // Persist last completed command to SQLite
+            const blocks = blockTracker.getBlocks();
+            const lastBlock = blocks.length > 0 ? blocks[blocks.length - 1] : null;
+            if (lastBlock && lastBlock.command.trim()) {
+              import("@tauri-apps/api/core").then(({ invoke: inv }) => {
+                inv("save_command_history", {
+                  terminalId: id,
+                  command: lastBlock.command,
+                  cwd: cwd ?? ".",
+                }).catch(() => {});
+              });
+            }
           }
           if (detected && blockTracker.blockCount > 0) {
             // Add a subtle separator decoration at the prompt line
