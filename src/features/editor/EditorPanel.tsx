@@ -5,6 +5,8 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { EditorBreadcrumb } from "./EditorBreadcrumb";
 import { EditorStatusBar } from "./EditorStatusBar";
+import { DiffCommentInput } from "./DiffCommentInput";
+import { MarkdownPreview } from "./MarkdownPreview";
 import { useAppStore } from "../../shared/store/appStore";
 import { getPalette, isLightTheme, monacoThemeColors } from "../../shared/themes/catppuccin";
 import { useLsp, registerLspProviders } from "./lsp";
@@ -373,73 +375,3 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
   );
 }
 
-/**
- * Renders DOMPurify-sanitized markdown HTML in a sandboxed iframe.
- * Content is pre-sanitized via DOMPurify before reaching this component.
- */
-function buildCommentPrompt(filePath: string | null, lineNumber: number, content: string | null, comment: string): string {
-  const lines = (content ?? "").split("\n");
-  const context = lines.slice(Math.max(0, lineNumber - 3), lineNumber + 2).join("\n");
-  return `File: ${filePath}, Line ${lineNumber}\n\nContext:\n${context}\n\nFeedback: ${comment}\n\nPlease fix this issue.`;
-}
-
-function DiffCommentInput({ filePath, lineNumber, content, commentText, onChangeText, onSubmit, onCancel }: {
-  filePath: string | null;
-  lineNumber: number;
-  content: string | null;
-  commentText: string;
-  onChangeText: (t: string) => void;
-  onSubmit: (prompt: string, comment: string) => void;
-  onCancel: () => void;
-}) {
-  const submit = () => {
-    if (!commentText.trim()) return;
-    onSubmit(buildCommentPrompt(filePath, lineNumber, content, commentText.trim()), commentText.trim());
-  };
-  return (
-    <div className={styles.commentOverlay}>
-      <div className={styles.commentBox}>
-        <span className={styles.commentLabel}>Line {lineNumber} — feedback for agent:</span>
-        <textarea
-          autoFocus className={styles.commentInput} placeholder="Describe what to fix..."
-          value={commentText} onChange={(e) => onChangeText(e.target.value)} rows={2}
-          onKeyDown={(e) => {
-            if (e.ctrlKey && e.key === "Enter") submit();
-            if (e.key === "Escape") onCancel();
-          }}
-        />
-        <div className={styles.commentActions}>
-          <button className={styles.commentSend} onClick={submit}>Send to Agent (Ctrl+Enter)</button>
-          <button className={styles.commentCancel} onClick={onCancel}>Cancel</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MarkdownPreview({ html }: { html: string }) {
-  const srcdoc = `<!DOCTYPE html>
-<html><head><style>
-  body { font-family: 'IBM Plex Sans', sans-serif; color: #cdd6f4; background: transparent; padding: 16px; margin: 0; line-height: 1.6; }
-  h1,h2,h3,h4 { color: #c8a050; margin-top: 1.2em; }
-  a { color: #89b4fa; }
-  code { background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px; font-family: 'IBM Plex Mono', monospace; font-size: 0.9em; }
-  pre { background: rgba(255,255,255,0.04); padding: 12px; border-radius: 8px; overflow-x: auto; }
-  pre code { background: none; padding: 0; }
-  blockquote { border-left: 3px solid #c8a050; margin-left: 0; padding-left: 12px; color: rgba(255,255,255,0.5); }
-  table { border-collapse: collapse; width: 100%; }
-  th,td { border: 1px solid rgba(255,255,255,0.1); padding: 6px 10px; text-align: left; }
-  th { background: rgba(255,255,255,0.04); color: #c8a050; }
-  img { max-width: 100%; }
-  hr { border: none; border-top: 1px solid rgba(255,255,255,0.1); }
-</style></head><body>${html}</body></html>`;
-
-  return (
-    <iframe
-      className={styles.mdPreview}
-      srcDoc={srcdoc}
-      sandbox="allow-same-origin"
-      title="Markdown Preview"
-    />
-  );
-}
