@@ -230,10 +230,10 @@ fn run_output_monitor(
             Ok(n) => {
                 let chunk = &buf[..n];
 
-                // Emit raw output for xterm.js (base64 encoded, same format as regular PTY)
-                let encoded = base64_encode(chunk);
+                // Emit raw output as byte array (no base64 overhead)
+                let bytes_vec: Vec<u8> = chunk.to_vec();
                 let event = format!("pty-output-{}", session_id);
-                let _ = app.emit(&event, &encoded);
+                let _ = app.emit(&event, bytes_vec);
 
                 // Parse for status/cost (strip ANSI first)
                 if let Ok(text) = std::str::from_utf8(chunk) {

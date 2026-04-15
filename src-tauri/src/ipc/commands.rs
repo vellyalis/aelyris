@@ -121,8 +121,9 @@ pub fn spawn_terminal(
                 Ok(n) => {
                     let data = &buf[..n];
                     let event_name = format!("pty-output-{}", terminal_id);
-                    let encoded = base64_encode(data);
-                    let _ = app_handle.emit(&event_name, encoded);
+                    // Send as number array — avoids base64 encode/decode overhead
+                    let bytes_vec: Vec<u8> = data.to_vec();
+                    let _ = app_handle.emit(&event_name, bytes_vec);
                     // Feed raw text into capture buffer
                     let text = String::from_utf8_lossy(data);
                     buffer_registry.feed(&terminal_id, &text);

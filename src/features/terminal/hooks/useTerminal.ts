@@ -6,7 +6,6 @@ import { SearchAddon } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { decodeBase64ToBytes } from "../../../shared/lib/decodeBase64";
 
 import "@xterm/xterm/css/xterm.css";
 
@@ -114,10 +113,10 @@ export function useTerminal(options: UseTerminalOptions = {}) {
       setActivePtyId(id);
 
       // Listen for PTY output
-      unlistenOutputRef.current = await listen<string>(
+      unlistenOutputRef.current = await listen<number[]>(
         `pty-output-${id}`,
         (event) => {
-          const bytes = decodeBase64ToBytes(event.payload);
+          const bytes = new Uint8Array(event.payload);
           term.write(bytes);
         },
       );

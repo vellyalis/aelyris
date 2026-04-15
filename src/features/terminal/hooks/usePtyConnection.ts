@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { Terminal } from "@xterm/xterm";
-import { decodeBase64ToBytes } from "../../../shared/lib/decodeBase64";
 
 interface UsePtyConnectionOptions {
   term: Terminal | null;
@@ -51,8 +50,8 @@ export function usePtyConnection({
         setPtyId(id);
         onReady?.(id);
 
-        const unlistenOutput = await listen<string>(`pty-output-${id}`, (event) => {
-          const bytes = decodeBase64ToBytes(event.payload);
+        const unlistenOutput = await listen<number[]>(`pty-output-${id}`, (event) => {
+          const bytes = new Uint8Array(event.payload);
           term.write(bytes);
           onOutput?.(new TextDecoder().decode(bytes), id);
         });
