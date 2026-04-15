@@ -286,7 +286,7 @@ impl GpuTerminalManager {
     }
 }
 
-fn build_glyph_instances(
+pub fn build_glyph_instances(
     grid: &Grid,
     font: &FontManager,
     atlas: &mut GlyphAtlas,
@@ -316,7 +316,7 @@ fn build_glyph_instances(
     instances
 }
 
-fn build_cursor_rects(
+pub fn build_cursor_rects(
     grid: &Grid,
     font: &FontManager,
     visible: bool,
