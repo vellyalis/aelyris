@@ -21,6 +21,7 @@ use aether_terminal_lib::lsp::{LspLanguage, LspManager, LspMessage};
 use aether_terminal_lib::pty::{PtyManager, ShellType};
 use aether_terminal_lib::ui::{self, ChromeAction, ChromeState, HitRegion};
 use aether_terminal_lib::ui::editor::{Diagnostic, DiagnosticSeverity, EditorState};
+use aether_terminal_lib::ui::palette::{PaletteAction, PaletteState};
 use aether_terminal_lib::ui::sidebar::SidebarState;
 
 /// What occupies the main content area.
@@ -56,6 +57,7 @@ struct NativeTerminal {
     chrome: ChromeState,
     sidebar: SidebarState,
     hit_regions: Vec<HitRegion>,
+    palette: PaletteState,
     content_pane: ContentPane,
     // LSP
     lsp_manager: LspManager,
@@ -85,6 +87,7 @@ impl NativeTerminal {
             chrome: ChromeState::new(),
             sidebar: SidebarState::new(),
             hit_regions: Vec::new(),
+            palette: PaletteState::new(),
             content_pane: ContentPane::Terminal,
             lsp_manager: LspManager::new(lsp_tx),
             lsp_receiver: lsp_rx,
@@ -319,6 +322,9 @@ impl NativeTerminal {
             }
         };
 
+        // --- Build palette overlay ---
+        let palette_out = self.palette.build(&self.font, &mut atlas, window_w);
+
         // Upload atlas if dirty
         if atlas.dirty {
             renderer.upload_atlas(&atlas);
@@ -326,13 +332,15 @@ impl NativeTerminal {
         }
         drop(atlas);
 
-        // --- Combine: chrome → sidebar → content ---
+        // --- Combine: chrome → sidebar → content → palette (on top) ---
         let mut all_rects = chrome_out.rects;
         all_rects.extend(sidebar_out.rects);
         all_rects.extend(content_rects);
+        all_rects.extend(palette_out.rects);
         let mut all_glyphs = chrome_out.glyphs;
         all_glyphs.extend(sidebar_out.glyphs);
         all_glyphs.extend(content_glyphs);
+        all_glyphs.extend(palette_out.glyphs);
 
         // --- GPU render ---
         match surface.get_current_texture() {
@@ -446,6 +454,22 @@ impl NativeTerminal {
     fn handle_key_input(&mut self, key: Key) {
         let ctrl = self.modifiers.contains(ModifiersState::CONTROL);
         let shift = self.modifiers.contains(ModifiersState::SHIFT);
+
+        // Ctrl+Shift+P: Toggle command palette (works in all modes)
+        if ctrl && shift {
+            if let Key::Character(ref c) = key {
+                if c.eq_ignore_ascii_case("p") {
+                    self.palette.toggle();
+                    return;
+                }
+            }
+        }
+
+        // Handle palette input when open
+        if self.palette.visible {
+            self.handle_palette_key(key);
+            return;
+        }
 
         // Ctrl+B: Toggle sidebar (works in all modes)
         if ctrl {
@@ -593,6 +617,46 @@ impl NativeTerminal {
                 _ => return, // skip blink reset for unhandled keys
             }
             editor.reset_blink();
+        }
+    }
+
+    /// Handle key input when command palette is open.
+    fn handle_palette_key(&mut self, key: Key) {
+        match key {
+            Key::Named(NamedKey::Escape) => self.palette.close(),
+            Key::Named(NamedKey::Enter) => {
+                let action = self.palette.execute();
+                self.execute_palette_action(action);
+            }
+            Key::Named(NamedKey::ArrowUp) => self.palette.select_up(),
+            Key::Named(NamedKey::ArrowDown) => self.palette.select_down(),
+            Key::Named(NamedKey::Backspace) => self.palette.backspace(),
+            Key::Character(ref c) => self.palette.insert_char(c),
+            _ => {}
+        }
+    }
+
+    /// Execute a palette action.
+    fn execute_palette_action(&mut self, action: PaletteAction) {
+        match action {
+            PaletteAction::NewTab => self.spawn_pty(),
+            PaletteAction::CloseTab => {
+                let idx = self.chrome.active_tab;
+                self.handle_chrome_action(ChromeAction::CloseTab(idx));
+            }
+            PaletteAction::ToggleSidebar => {
+                self.sidebar.toggle();
+                self.recalc_grid_size();
+            }
+            PaletteAction::SaveFile => {
+                if let ContentPane::Editor(editor) = &mut self.content_pane {
+                    let _ = editor.save();
+                }
+            }
+            PaletteAction::CloseEditor => {
+                self.content_pane = ContentPane::Terminal;
+            }
+            PaletteAction::None => {}
         }
     }
 
