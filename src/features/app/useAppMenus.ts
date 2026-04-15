@@ -52,6 +52,23 @@ export function useAppMenus(opts: UseAppMenusOptions) {
     }},
     { id: "close-folder", label: "Close Folder", action: handleCloseFolder },
     { id: "search-files", label: "Search in Files", shortcut: "Ctrl+Shift+F", action: () => setSearchVisible(true) },
+    { id: "search-history", label: "Search Command History", action: async () => {
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        const results = await invoke<string[]>("recent_commands", { limit: 50 });
+        if (results.length === 0) { showPrompt("No command history", { placeholder: "No commands recorded yet" }); return; }
+        const query = await showPrompt("Command History", { placeholder: `${results.length} commands — type to filter...` });
+        if (query) {
+          const filtered = await invoke<Array<{ command: string }>>( "search_command_history", { query, limit: 10 });
+          if (filtered.length > 0) {
+            const cmd = filtered[0].command;
+            const { getActivePtyId } = await import("../../features/terminal/hooks/useTerminal");
+            const activeId = getActivePtyId();
+            if (activeId) await invoke("write_terminal", { id: activeId, data: cmd + "\r" });
+          }
+        }
+      } catch { /* not in Tauri */ }
+    }},
   ], [addTab, closeTab, activeTabId, activeFile, handleCloseFile, handleStartAgent, handleOpenFolder, handleCloseFolder]);
 
   const menus: Menu[] = useMemo(() => [
