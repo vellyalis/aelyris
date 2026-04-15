@@ -5,8 +5,10 @@
 
 pub mod editor;
 pub mod palette;
+pub mod scm;
 pub mod sidebar;
 pub mod syntax;
+pub mod toast;
 
 use crate::gpu::atlas::GlyphAtlas;
 use crate::gpu::font::FontManager;

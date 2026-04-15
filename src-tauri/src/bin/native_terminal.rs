@@ -26,6 +26,8 @@ use aether_terminal_lib::lsp::{LspLanguage, LspManager, LspMessage};
 use aether_terminal_lib::pty::{PtyManager, ShellType};
 use aether_terminal_lib::ui::editor::{Diagnostic, DiagnosticSeverity, EditorState};
 use aether_terminal_lib::ui::palette::{PaletteAction, PaletteState, WorktreeEntry};
+use aether_terminal_lib::ui::scm::ScmState;
+use aether_terminal_lib::ui::toast::ToastManager;
 use aether_terminal_lib::ui::sidebar::SidebarState;
 use aether_terminal_lib::ui::{self, ChromeAction, ChromeState, HitRegion};
 
@@ -310,6 +312,10 @@ struct NativeTerminal {
     agent_rx: std::sync::mpsc::Receiver<AgentUpdate>,
     // Context menu position (None = hidden)
     context_menu: Option<(f32, f32)>,
+    // SCM panel
+    scm: ScmState,
+    // Toast notifications
+    toasts: ToastManager,
 }
 
 impl NativeTerminal {
@@ -353,6 +359,8 @@ impl NativeTerminal {
             agent_tx,
             agent_rx,
             context_menu: None,
+            scm: ScmState::new(),
+            toasts: ToastManager::new(),
         }
     }
 
@@ -708,11 +716,22 @@ impl NativeTerminal {
         let (agent_rects, agent_glyphs) =
             self.build_agent_panel(&self.font, &mut atlas, window_h);
 
+        // --- Build SCM panel (if sidebar visible) ---
+        let (scm_rects, scm_glyphs) = if self.sidebar.visible {
+            let scm_y = window_h - ui::STATUS_BAR_HEIGHT - 300.0;
+            self.scm.build(&self.font, &mut atlas, 0.0, scm_y.max(ui::CHROME_TOP + 200.0), sidebar_w, 280.0)
+        } else {
+            (Vec::new(), Vec::new())
+        };
+
         // --- Build context menu ---
         let (ctx_rects, ctx_glyphs) = self.build_context_menu(&self.font, &mut atlas);
 
         // --- Build palette overlay ---
         let palette_out = self.palette.build(&self.font, &mut atlas, window_w);
+
+        // --- Build toast notifications ---
+        let (toast_rects, toast_glyphs) = self.toasts.build(&self.font, &mut atlas, window_w, window_h);
 
         // Upload atlas if dirty
         if atlas.dirty {
@@ -721,19 +740,23 @@ impl NativeTerminal {
         }
         drop(atlas);
 
-        // --- Combine: chrome → sidebar → agent panel → content → ctx menu → palette ---
+        // --- Combine all layers ---
         let mut all_rects = chrome_out.rects;
         all_rects.extend(sidebar_out.rects);
+        all_rects.extend(scm_rects);
         all_rects.extend(agent_rects);
         all_rects.extend(content_rects);
         all_rects.extend(ctx_rects);
         all_rects.extend(palette_out.rects);
+        all_rects.extend(toast_rects);
         let mut all_glyphs = chrome_out.glyphs;
         all_glyphs.extend(sidebar_out.glyphs);
+        all_glyphs.extend(scm_glyphs);
         all_glyphs.extend(agent_glyphs);
         all_glyphs.extend(content_glyphs);
         all_glyphs.extend(ctx_glyphs);
         all_glyphs.extend(palette_out.glyphs);
+        all_glyphs.extend(toast_glyphs);
 
         // --- GPU render ---
         match surface.get_current_texture() {
@@ -887,6 +910,11 @@ impl NativeTerminal {
             if let Key::Character(ref c) = key {
                 if c.eq_ignore_ascii_case("b") {
                     self.sidebar.toggle();
+                    if self.sidebar.visible {
+                        if let Some(path) = self.repo_path() {
+                            self.scm.set_repo(path);
+                        }
+                    }
                     self.recalc_grid_size();
                     return;
                 }
@@ -1231,6 +1259,53 @@ impl NativeTerminal {
                 self.write_to_pty(cmd.as_bytes());
                 self.write_to_pty(b"\r");
             }
+            PaletteAction::ScmStageAll => {
+                if let Some(path) = self.repo_path() {
+                    let _ = std::process::Command::new("git").args(["add", "-A"]).current_dir(&path).output();
+                    self.scm.refresh();
+                    self.toasts.success("All files staged");
+                }
+            }
+            PaletteAction::ScmCommit => {
+                // Reuse WorktreeCreate mode for commit message input
+                // The input text will be used as commit message
+                self.palette.enter_agent_spawn("__commit__".to_string());
+            }
+            PaletteAction::ScmPush => {
+                if let Some(path) = self.repo_path() {
+                    match std::process::Command::new("git").args(["push"]).current_dir(&path).output() {
+                        Ok(out) if out.status.success() => self.toasts.success("Pushed to remote"),
+                        Ok(out) => self.toasts.error(format!("Push failed: {}", String::from_utf8_lossy(&out.stderr))),
+                        Err(e) => self.toasts.error(format!("Push error: {}", e)),
+                    }
+                }
+            }
+            PaletteAction::PrList => {
+                if let Some(path) = self.repo_path() {
+                    match std::process::Command::new("gh")
+                        .args(["pr", "list", "--json", "number,title", "--limit", "10"])
+                        .current_dir(&path)
+                        .output()
+                    {
+                        Ok(out) if out.status.success() => {
+                            if let Ok(prs) = serde_json::from_slice::<Vec<serde_json::Value>>(&out.stdout) {
+                                let items: Vec<String> = prs.iter().map(|pr| {
+                                    format!("#{} {}",
+                                        pr.get("number").and_then(|n| n.as_u64()).unwrap_or(0),
+                                        pr.get("title").and_then(|t| t.as_str()).unwrap_or("")
+                                    )
+                                }).collect();
+                                if items.is_empty() {
+                                    self.toasts.info("No pull requests found");
+                                } else {
+                                    self.palette.enter_settings(items, "pr_select".to_string());
+                                }
+                            }
+                        }
+                        _ => self.toasts.info("gh CLI not available or no PRs"),
+                    }
+                }
+            }
             PaletteAction::OpenSettings => {
                 // Show settings categories
                 let items = vec![
@@ -1279,6 +1354,26 @@ impl NativeTerminal {
                 }
             }
             PaletteAction::SpawnAgent { cli, model } => {
+                // Special case: commit message input
+                if cli == "__commit__" {
+                    if !model.is_empty() {
+                        if let Some(path) = self.repo_path() {
+                            match std::process::Command::new("git")
+                                .args(["commit", "-m", &model])
+                                .current_dir(&path)
+                                .output()
+                            {
+                                Ok(out) if out.status.success() => {
+                                    self.toasts.success("Committed");
+                                    self.scm.refresh();
+                                }
+                                Ok(out) => self.toasts.error(String::from_utf8_lossy(&out.stderr).to_string()),
+                                Err(e) => self.toasts.error(format!("Commit: {}", e)),
+                            }
+                        }
+                    }
+                    return;
+                }
                 let agent_cli = AgentCli::from_model(&cli);
                 if let Err(e) = agent_cli.validate() {
                     log::error!("Agent CLI validation failed: {}", e);
@@ -2508,6 +2603,8 @@ impl ApplicationHandler for NativeTerminal {
         self.process_lsp_messages();
         // Process agent updates
         self.process_agent_updates();
+        // Tick toast notifications
+        self.toasts.tick();
         // Tick editor cursor blink
         if let ContentPane::Editor(editor) = &mut self.content_pane {
             editor.tick_blink();
