@@ -1,7 +1,9 @@
-//! UI Chrome — title bar, tab bar, and status bar rendered with the wgpu pipeline.
+//! UI Chrome — title bar, tab bar, status bar, and sidebar.
 //!
 //! Uses the same RectInstance + GlyphInstance as the terminal grid.
 //! No external UI framework dependency.
+
+pub mod sidebar;
 
 use crate::gpu::atlas::GlyphAtlas;
 use crate::gpu::font::FontManager;
@@ -16,7 +18,7 @@ pub const CHROME_TOP: f32 = TITLE_BAR_HEIGHT + TAB_BAR_HEIGHT;
 pub const BTN_WIDTH: f32 = 46.0;
 
 // Catppuccin Mocha palette (premultiplied where needed)
-mod cat {
+pub(crate) mod cat {
     /// Premultiplied RGBA from 0-255 components.
     pub const fn pm(r: u8, g: u8, b: u8, a: u8) -> [f32; 4] {
         let af = a as f32 / 255.0;
@@ -354,7 +356,7 @@ impl Default for ChromeState {
 }
 
 /// Render a text string as glyph instances using the terminal font.
-fn render_text(
+pub(crate) fn render_text(
     font: &FontManager,
     atlas: &mut GlyphAtlas,
     text: &str,

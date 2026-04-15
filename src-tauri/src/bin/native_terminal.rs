@@ -19,6 +19,7 @@ use aether_terminal_lib::gpu::ime::ImeState;
 use aether_terminal_lib::gpu::renderer::TerminalRenderer;
 use aether_terminal_lib::pty::{PtyManager, ShellType};
 use aether_terminal_lib::ui::{self, ChromeAction, ChromeState, HitRegion};
+use aether_terminal_lib::ui::sidebar::SidebarState;
 
 /// Application state for the native terminal.
 struct NativeTerminal {
@@ -40,6 +41,7 @@ struct NativeTerminal {
     mouse_pressed: bool,
     // UI Chrome
     chrome: ChromeState,
+    sidebar: SidebarState,
     hit_regions: Vec<HitRegion>,
     should_exit: bool,
 }
@@ -63,6 +65,7 @@ impl NativeTerminal {
             modifiers: ModifiersState::empty(),
             mouse_pressed: false,
             chrome: ChromeState::new(),
+            sidebar: SidebarState::new(),
             hit_regions: Vec::new(),
             should_exit: false,
         }
@@ -150,8 +153,9 @@ impl NativeTerminal {
             .as_ref()
             .map(|w| w.inner_size())
             .unwrap_or(winit::dpi::PhysicalSize::new(1200, 700));
+        let content_w = size.width as f32 - self.sidebar.width();
         let content_h = (size.height as f32 - ui::CHROME_TOP - ui::STATUS_BAR_HEIGHT).max(1.0);
-        let cols = (size.width as f32 / self.font.cell_width).max(1.0) as u16;
+        let cols = (content_w / self.font.cell_width).max(1.0) as u16;
         let rows = (content_h / self.font.cell_height).max(1.0) as u16;
 
         self.grid.lock().unwrap().resize(cols, rows);
@@ -207,12 +211,23 @@ impl NativeTerminal {
         let window_w = config.width as f32;
         let window_h = config.height as f32;
 
+        let sidebar_w = self.sidebar.width();
+
         // --- Build chrome instances ---
         let mut atlas = self.atlas.lock().unwrap();
         let chrome_out = self.chrome.build(&self.font, &mut atlas, window_w, window_h);
         self.hit_regions = chrome_out.hits;
 
-        // --- Build terminal instances (offset by chrome top) ---
+        // --- Build sidebar instances ---
+        let sidebar_out = self.sidebar.build(
+            &self.font,
+            &mut atlas,
+            ui::CHROME_TOP,
+            window_h,
+            self.chrome.mouse_pos,
+        );
+
+        // --- Build terminal instances (offset by chrome top + sidebar width) ---
         let mut grid = self.grid.lock().unwrap();
         let mut term_glyphs =
             aether_terminal_lib::gpu::build_glyph_instances(&grid, &self.font, &mut atlas);
@@ -221,11 +236,13 @@ impl NativeTerminal {
             &grid, &self.font, true,
         ));
 
-        // Offset terminal instances by chrome height
+        // Offset terminal instances by chrome height and sidebar width
         for g in &mut term_glyphs {
+            g.pos[0] += sidebar_w;
             g.pos[1] += ui::CHROME_TOP;
         }
         for r in &mut term_rects {
+            r.pos[0] += sidebar_w;
             r.pos[1] += ui::CHROME_TOP;
         }
 
@@ -238,10 +255,12 @@ impl NativeTerminal {
         drop(grid);
         drop(atlas);
 
-        // --- Combine: chrome first (behind), then terminal on top ---
+        // --- Combine: chrome → sidebar → terminal ---
         let mut all_rects = chrome_out.rects;
+        all_rects.extend(sidebar_out.rects);
         all_rects.extend(term_rects);
         let mut all_glyphs = chrome_out.glyphs;
+        all_glyphs.extend(sidebar_out.glyphs);
         all_glyphs.extend(term_glyphs);
 
         // --- GPU render ---
@@ -359,6 +378,17 @@ impl NativeTerminal {
             }
         }
 
+        // Ctrl+B: Toggle sidebar
+        if ctrl {
+            if let Key::Character(ref c) = key {
+                if c.eq_ignore_ascii_case("b") {
+                    self.sidebar.toggle();
+                    self.recalc_grid_size();
+                    return;
+                }
+            }
+        }
+
         // Ctrl+V: Paste
         if ctrl {
             if let Key::Character(ref c) = key {
@@ -408,10 +438,11 @@ impl NativeTerminal {
         self.write_to_pty(&data);
     }
 
-    /// Convert pixel position to grid cell, accounting for chrome offset.
+    /// Convert pixel position to grid cell, accounting for chrome and sidebar offset.
     fn pixel_to_cell(&self, x: f64, y: f64) -> (u16, u16) {
         let content_y = (y - ui::CHROME_TOP as f64).max(0.0);
-        let col = (x / self.font.cell_width as f64).max(0.0) as u16;
+        let content_x = (x - self.sidebar.width() as f64).max(0.0);
+        let col = (content_x / self.font.cell_width as f64).max(0.0) as u16;
         let row = (content_y / self.font.cell_height as f64).max(0.0) as u16;
         let grid = self.grid.lock().unwrap();
         (
@@ -421,13 +452,31 @@ impl NativeTerminal {
     }
 
     /// Check if mouse position is in the terminal content area.
-    fn is_in_content(&self, y: f64) -> bool {
+    fn is_in_content(&self, x: f64, y: f64) -> bool {
         let config = match &self.surface_config {
             Some(c) => c,
             None => return false,
         };
         let bottom = config.height as f64 - ui::STATUS_BAR_HEIGHT as f64;
-        y >= ui::CHROME_TOP as f64 && y < bottom
+        x >= self.sidebar.width() as f64
+            && y >= ui::CHROME_TOP as f64
+            && y < bottom
+    }
+
+    /// Recalculate terminal grid dimensions based on available content area.
+    fn recalc_grid_size(&mut self) {
+        let config = match &self.surface_config {
+            Some(c) => c,
+            None => return,
+        };
+        let content_w = config.width as f32 - self.sidebar.width();
+        let content_h = config.height as f32 - ui::CHROME_TOP - ui::STATUS_BAR_HEIGHT;
+        let cols = (content_w / self.font.cell_width).max(1.0) as u16;
+        let rows = (content_h / self.font.cell_height).max(1.0) as u16;
+        if let Some(id) = &self.pty_id {
+            let _ = self.pty_manager.resize(id, cols, rows);
+        }
+        self.grid.lock().unwrap().resize(cols, rows);
     }
 }
 
@@ -480,15 +529,8 @@ impl ApplicationHandler for NativeTerminal {
                     if let Some(renderer) = &mut self.renderer {
                         renderer.resize(config.width, config.height);
                     }
-                    // Resize grid for content area
-                    let content_h =
-                        (size.height as f32 - ui::CHROME_TOP - ui::STATUS_BAR_HEIGHT).max(1.0);
-                    let cols = (size.width as f32 / self.font.cell_width).max(1.0) as u16;
-                    let rows = (content_h / self.font.cell_height).max(1.0) as u16;
-                    if let Some(id) = &self.pty_id {
-                        let _ = self.pty_manager.resize(id, cols, rows);
-                    }
-                    self.grid.lock().unwrap().resize(cols, rows);
+                    // Resize grid for content area (accounting for sidebar)
+                    self.recalc_grid_size();
                 }
                 if let Some(window) = &self.window {
                     self.chrome.is_maximized = window.is_maximized();
@@ -519,7 +561,7 @@ impl ApplicationHandler for NativeTerminal {
                 self.chrome.mouse_pos = Some((position.x as f32, position.y as f32));
 
                 // Handle selection drag in content area
-                if self.mouse_pressed && self.is_in_content(position.y) {
+                if self.mouse_pressed && self.is_in_content(position.x, position.y) {
                     let (row, col) = self.pixel_to_cell(position.x, position.y);
                     let mut grid = self.grid.lock().unwrap();
                     if grid.selection.anchor.is_none() {
@@ -542,11 +584,26 @@ impl ApplicationHandler for NativeTerminal {
                             return;
                         }
                     }
+                    // Check sidebar click
+                    if let Some((mx, my)) = self.chrome.mouse_pos {
+                        if self.sidebar.visible
+                            && (mx as f64) < self.sidebar.width() as f64
+                            && my > ui::CHROME_TOP
+                        {
+                            if let Some(tree) = &mut self.sidebar.file_tree {
+                                let content_top = ui::CHROME_TOP + 28.0; // HEADER_HEIGHT
+                                if let Some(idx) = tree.entry_at_y(my, content_top) {
+                                    tree.selected = Some(idx);
+                                    tree.toggle(idx);
+                                }
+                            }
+                            return;
+                        }
+                    }
                     // Otherwise start selection in content area
-                    if let Some((_, my)) = self.chrome.mouse_pos {
-                        if self.is_in_content(my as f64) {
+                    if let Some((mx, my)) = self.chrome.mouse_pos {
+                        if self.is_in_content(mx as f64, my as f64) {
                             self.mouse_pressed = true;
-                            // Clear previous selection
                             let mut grid = self.grid.lock().unwrap();
                             grid.selection.clear();
                         }
@@ -556,9 +613,27 @@ impl ApplicationHandler for NativeTerminal {
                 }
             }
             WindowEvent::MouseWheel { delta, .. } => {
-                // Only scroll in content area
-                if let Some((_, my)) = self.chrome.mouse_pos {
-                    if !self.is_in_content(my as f64) {
+                // Check if scrolling in sidebar
+                if let Some((mx, my)) = self.chrome.mouse_pos {
+                    if self.sidebar.visible
+                        && (mx as f64) < self.sidebar.width() as f64
+                        && my > ui::CHROME_TOP
+                    {
+                        let lines = match delta {
+                            winit::event::MouseScrollDelta::LineDelta(_, y) => y,
+                            winit::event::MouseScrollDelta::PixelDelta(pos) => {
+                                pos.y as f32 / self.font.cell_height
+                            }
+                        };
+                        if let Some(tree) = &mut self.sidebar.file_tree {
+                            tree.scroll(-lines * 22.0); // ROW_HEIGHT
+                        }
+                        return;
+                    }
+                }
+                // Only scroll terminal in content area
+                if let Some((mx, my)) = self.chrome.mouse_pos {
+                    if !self.is_in_content(mx as f64, my as f64) {
                         return;
                     }
                 }
