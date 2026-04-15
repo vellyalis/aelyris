@@ -19,6 +19,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           {t.description && (
             <RadixToast.Description className={styles.description}>{t.description}</RadixToast.Description>
           )}
+          {t.action && (
+            <RadixToast.Action className={styles.action} altText={t.action.label} onClick={() => { t.action!.onClick(); dismiss(t.id); }}>
+              {t.action.label}
+            </RadixToast.Action>
+          )}
           <RadixToast.Close className={styles.close} aria-label="Dismiss">×</RadixToast.Close>
         </RadixToast.Root>
       ))}

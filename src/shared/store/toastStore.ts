@@ -1,10 +1,16 @@
 import { create } from "zustand";
 
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 export interface ToastItem {
   id: string;
   type: "success" | "error" | "info" | "warning";
   title: string;
   description?: string;
+  action?: ToastAction;
 }
 
 interface ToastStore {

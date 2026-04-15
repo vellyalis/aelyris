@@ -59,6 +59,20 @@
   margin-top: var(--space-1);
 }
 
+.action {
+  background: none;
+  border: 1px solid var(--ctp-blue);
+  color: var(--ctp-blue);
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  margin-top: var(--space-2);
+  white-space: nowrap;
+}
+.action:hover { background: var(--ctp-blue); color: var(--bg-primary); }
+
 .close {
   background: none;
   border: none;

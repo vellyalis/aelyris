@@ -5,7 +5,7 @@ import { CommandHistory } from "./CommandHistory";
 import { findSuggestion, GhostSuggestOverlay } from "./ghostSuggest";
 import { decodeBase64ToBytes } from "../../shared/lib/decodeBase64";
 import { detectError } from "../../shared/lib/errorDetector";
-import { toast } from "../../shared/store/toastStore";
+import { useToastStore } from "../../shared/store/toastStore";
 
 interface TerminalWithCleanup extends Terminal {
   __ptyCleanup?: () => void;
@@ -26,9 +26,10 @@ interface TerminalAreaProps {
   cwd?: string;
   syncMode?: boolean;
   onTerminalReady?: (terminalId: string) => void;
+  onStartAgent?: (prompt: string) => void;
 }
 
-export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalReady: _onTerminalReady }: TerminalAreaProps) {
+export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalReady: _onTerminalReady, onStartAgent }: TerminalAreaProps) {
   const onTerminalReady = _onTerminalReady;
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
@@ -134,7 +135,7 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
       }
     });
 
-    connectPty(term, shell, cwd, onTerminalReady, syncModeRef, blockTracker, updateHistory);
+    connectPty(term, shell, cwd, onTerminalReady, syncModeRef, blockTracker, updateHistory, onStartAgent);
 
     const handleCtrlV = async (e: KeyboardEvent) => {
       if (!(e.ctrlKey && e.key === "v")) return;
@@ -345,6 +346,7 @@ async function connectPty(
   syncModeRef?: React.RefObject<boolean | undefined>,
   blockTracker?: CommandBlockTracker,
   onHistoryUpdate?: () => void,
+  onStartAgent?: (prompt: string) => void,
 ) {
   try {
     const { invoke } = await import("@tauri-apps/api/core");
@@ -385,7 +387,16 @@ async function connectPty(
             const error = detectError(line);
             if (error) {
               lastErrorTime = now;
-              toast.error(`${error.type}: ${error.message.slice(0, 80)}`, error.suggestedPrompt.slice(0, 120));
+              const addToast = useToastStore.getState().add;
+              addToast({
+                type: "error",
+                title: `${error.type}: ${error.message.slice(0, 80)}`,
+                description: error.suggestedPrompt.slice(0, 120),
+                action: onStartAgent ? {
+                  label: "Ask AI to fix",
+                  onClick: () => onStartAgent(error.suggestedPrompt),
+                } : undefined,
+              });
             }
           }
 
