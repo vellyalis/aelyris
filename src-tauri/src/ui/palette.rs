@@ -49,6 +49,10 @@ pub enum PaletteMode {
     CommandHistory {
         commands: Vec<String>,
     },
+    /// Agent spawn: select model then launch (cli stored for context).
+    AgentSpawn {
+        cli: String,
+    },
 }
 
 /// Actions produced by the command palette.
@@ -70,6 +74,11 @@ pub enum PaletteAction {
     // Command history
     BeginCommandHistory,
     RunCommand(String),
+    // Agent
+    BeginAgentClaude,
+    BeginAgentCodex,
+    BeginAgentGemini,
+    SpawnAgent { cli: String, model: String },
     None,
 }
 
@@ -84,6 +93,9 @@ const COMMANDS: &[PaletteCommand] = &[
     PaletteCommand { id: "wt_switch", label: "Git: Switch Worktree", shortcut: "" },
     PaletteCommand { id: "wt_delete", label: "Git: Delete Worktree", shortcut: "" },
     PaletteCommand { id: "cmd_history", label: "Command History", shortcut: "Ctrl+R" },
+    PaletteCommand { id: "agent_claude", label: "Agent: Start Claude", shortcut: "" },
+    PaletteCommand { id: "agent_codex", label: "Agent: Start Codex", shortcut: "" },
+    PaletteCommand { id: "agent_gemini", label: "Agent: Start Gemini", shortcut: "" },
 ];
 
 pub struct PaletteOutput {
@@ -154,7 +166,7 @@ impl PaletteState {
             PaletteMode::Command
             | PaletteMode::WorktreeSelect { .. }
             | PaletteMode::CommandHistory { .. } => self.filtered.len(),
-            PaletteMode::WorktreeCreate => 0,
+            PaletteMode::WorktreeCreate | PaletteMode::AgentSpawn { .. } => 0,
         };
         if self.selected + 1 < count {
             self.selected += 1;
@@ -175,6 +187,14 @@ impl PaletteState {
         self.mode = PaletteMode::WorktreeSelect { entries, delete };
         self.input.clear();
         self.selected = 0;
+    }
+
+    /// Enter agent spawn mode (type model name).
+    pub fn enter_agent_spawn(&mut self, cli: String) {
+        self.mode = PaletteMode::AgentSpawn { cli };
+        self.input.clear();
+        self.selected = 0;
+        self.filtered.clear();
     }
 
     /// Enter command history search mode.
@@ -200,6 +220,9 @@ impl PaletteState {
                         "wt_switch" => PaletteAction::BeginWorktreeSwitch,
                         "wt_delete" => PaletteAction::BeginWorktreeDelete,
                         "cmd_history" => PaletteAction::BeginCommandHistory,
+                        "agent_claude" => PaletteAction::BeginAgentClaude,
+                        "agent_codex" => PaletteAction::BeginAgentCodex,
+                        "agent_gemini" => PaletteAction::BeginAgentGemini,
                         _ => PaletteAction::None,
                     }
                 } else {
@@ -210,7 +233,10 @@ impl PaletteState {
                     PaletteAction::BeginWorktreeCreate
                     | PaletteAction::BeginWorktreeSwitch
                     | PaletteAction::BeginWorktreeDelete
-                    | PaletteAction::BeginCommandHistory => {}
+                    | PaletteAction::BeginCommandHistory
+                    | PaletteAction::BeginAgentClaude
+                    | PaletteAction::BeginAgentCodex
+                    | PaletteAction::BeginAgentGemini => {}
                     _ => self.close(),
                 }
                 action
@@ -250,6 +276,12 @@ impl PaletteState {
                 }
                 PaletteAction::None
             }
+            PaletteMode::AgentSpawn { cli } => {
+                let model = self.input.trim().to_string();
+                let cli = cli.clone();
+                self.close();
+                PaletteAction::SpawnAgent { cli, model }
+            }
         }
     }
 
@@ -277,8 +309,8 @@ impl PaletteState {
                     })
                     .collect();
             }
-            PaletteMode::WorktreeCreate => {
-                // No filtering in create mode
+            PaletteMode::WorktreeCreate | PaletteMode::AgentSpawn { .. } => {
+                // No filtering in input mode
             }
             PaletteMode::CommandHistory { commands } => {
                 self.filtered = (0..commands.len())
@@ -315,7 +347,7 @@ impl PaletteState {
             PaletteMode::Command
             | PaletteMode::WorktreeSelect { .. }
             | PaletteMode::CommandHistory { .. } => self.filtered.len().min(MAX_VISIBLE_ITEMS),
-            PaletteMode::WorktreeCreate => 1, // hint line
+            PaletteMode::WorktreeCreate | PaletteMode::AgentSpawn { .. } => 1,
         };
         let palette_h = INPUT_HEIGHT + item_count as f32 * ITEM_HEIGHT + PADDING * 2.0;
 
@@ -340,6 +372,7 @@ impl PaletteState {
             PaletteMode::WorktreeSelect { delete: true, .. } => cat::pm(243, 139, 168, 200),
             PaletteMode::WorktreeSelect { delete: false, .. } => cat::pm(250, 179, 135, 200),
             PaletteMode::CommandHistory { .. } => cat::pm(203, 166, 247, 200), // Mauve
+            PaletteMode::AgentSpawn { .. } => cat::pm(148, 226, 213, 200),   // Teal
         };
         rects.push(RectInstance {
             pos: [palette_x, palette_y],
@@ -364,6 +397,7 @@ impl PaletteState {
                 PaletteMode::WorktreeSelect { delete: true, .. } => "Filter worktrees to delete...",
                 PaletteMode::WorktreeSelect { delete: false, .. } => "Filter worktrees...",
                 PaletteMode::CommandHistory { .. } => "Search command history...",
+                PaletteMode::AgentSpawn { .. } => "Model (e.g. opus, sonnet) — Enter for default...",
             };
             (placeholder, cat::OVERLAY0)
         } else {
@@ -380,7 +414,9 @@ impl PaletteState {
         );
 
         // Cursor in input (always visible in create mode, otherwise only when text present)
-        if !self.input.is_empty() || matches!(self.mode, PaletteMode::WorktreeCreate) {
+        if !self.input.is_empty()
+            || matches!(self.mode, PaletteMode::WorktreeCreate | PaletteMode::AgentSpawn { .. })
+        {
             let cursor_x = palette_x + PADDING + 4.0
                 + self.input.chars().count() as f32 * font.cell_width;
             rects.push(RectInstance {
@@ -416,6 +452,19 @@ impl PaletteState {
             PaletteMode::CommandHistory { commands } => {
                 self.build_history_list(
                     font, atlas, palette_x, list_y, commands, &mut rects, &mut glyphs,
+                );
+            }
+            PaletteMode::AgentSpawn { cli } => {
+                let hint_y = list_y + (ITEM_HEIGHT - font.cell_height) / 2.0;
+                let hint = format!("Enter to start {} (empty = default model)", cli);
+                super::render_text(
+                    font,
+                    atlas,
+                    &hint,
+                    palette_x + PADDING + 8.0,
+                    hint_y,
+                    cat::OVERLAY0,
+                    &mut glyphs,
                 );
             }
         }

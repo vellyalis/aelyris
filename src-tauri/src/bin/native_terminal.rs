@@ -12,20 +12,22 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{Key, NamedKey, ModifiersState};
 use winit::window::{Window, WindowId};
 
+use aether_terminal_lib::agent::interactive::AgentCli;
+use aether_terminal_lib::agent::output_monitor::{self, DetectedStatus};
 use aether_terminal_lib::config::{AppConfig, load_config, save_config};
 use aether_terminal_lib::db::{Database, db_path};
-use aether_terminal_lib::gpu::font::FontManager;
+use aether_terminal_lib::git;
 use aether_terminal_lib::gpu::atlas::GlyphAtlas;
+use aether_terminal_lib::gpu::font::FontManager;
 use aether_terminal_lib::gpu::grid::{Grid, GridPerformer};
 use aether_terminal_lib::gpu::ime::ImeState;
-use aether_terminal_lib::gpu::renderer::TerminalRenderer;
+use aether_terminal_lib::gpu::renderer::{GlyphInstance, RectInstance, TerminalRenderer};
 use aether_terminal_lib::lsp::{LspLanguage, LspManager, LspMessage};
 use aether_terminal_lib::pty::{PtyManager, ShellType};
-use aether_terminal_lib::ui::{self, ChromeAction, ChromeState, HitRegion};
 use aether_terminal_lib::ui::editor::{Diagnostic, DiagnosticSeverity, EditorState};
-use aether_terminal_lib::git;
 use aether_terminal_lib::ui::palette::{PaletteAction, PaletteState, WorktreeEntry};
 use aether_terminal_lib::ui::sidebar::SidebarState;
+use aether_terminal_lib::ui::{self, ChromeAction, ChromeState, HitRegion};
 
 /// What occupies the main content area.
 enum ContentPane {
@@ -33,10 +35,72 @@ enum ContentPane {
     Editor(EditorState),
 }
 
+/// Agent status for display.
+#[derive(Debug, Clone, PartialEq)]
+enum AgentStatus {
+    Idle,
+    Thinking,
+    Coding,
+    Waiting,
+    Done,
+}
+
+impl AgentStatus {
+    fn label(&self) -> &'static str {
+        match self {
+            Self::Idle => "Idle",
+            Self::Thinking => "Thinking...",
+            Self::Coding => "Coding",
+            Self::Waiting => "Needs Input",
+            Self::Done => "Done",
+        }
+    }
+
+    fn color(&self) -> [f32; 4] {
+        match self {
+            Self::Idle => [0.29, 0.87, 0.50, 1.0],      // Green
+            Self::Thinking => [0.98, 0.75, 0.15, 1.0],   // Amber
+            Self::Coding => [0.65, 0.89, 0.63, 1.0],     // Catppuccin green
+            Self::Waiting => [0.95, 0.55, 0.66, 1.0],    // Pink
+            Self::Done => [0.54, 0.71, 0.98, 1.0],       // Blue
+        }
+    }
+
+    fn from_detected(d: &DetectedStatus) -> Self {
+        match d {
+            DetectedStatus::Thinking => Self::Thinking,
+            DetectedStatus::Coding => Self::Coding,
+            DetectedStatus::Idle => Self::Idle,
+            DetectedStatus::Done => Self::Done,
+            DetectedStatus::WaitingPermission => Self::Waiting,
+            DetectedStatus::Unknown => Self::Idle,
+        }
+    }
+}
+
+/// Per-tab agent metadata (None for regular terminal tabs).
+#[derive(Debug, Clone)]
+struct AgentTabInfo {
+    cli: AgentCli,
+    status: AgentStatus,
+    model: String,
+    cost: f64,
+    tokens_used: u64,
+    started_at: std::time::Instant,
+}
+
+/// Status update from agent output monitor thread.
+/// Uses PTY ID (not index) for stable identification across tab removals.
+enum AgentUpdate {
+    Status(String, AgentStatus),
+    Usage(String, f64, u64),
+}
+
 /// Per-tab state: each tab has its own PTY and grid.
 struct TabState {
     pty_id: String,
     grid: Arc<Mutex<Grid>>,
+    agent_info: Option<AgentTabInfo>,
 }
 
 /// Application state for the native terminal.
@@ -71,6 +135,9 @@ struct NativeTerminal {
     // Database
     db: Database,
     command_buffer: String,
+    // Agent monitoring
+    agent_tx: std::sync::mpsc::SyncSender<AgentUpdate>,
+    agent_rx: std::sync::mpsc::Receiver<AgentUpdate>,
 }
 
 impl NativeTerminal {
@@ -80,6 +147,7 @@ impl NativeTerminal {
         let line_height = config.appearance.line_height;
         let font = FontManager::new(font_size, line_height);
         let (lsp_tx, lsp_rx) = std::sync::mpsc::channel();
+        let (agent_tx, agent_rx) = std::sync::mpsc::sync_channel(512);
         let db = Database::open(&db_path()).unwrap_or_else(|e| {
             log::warn!("Failed to open DB, using in-memory: {}", e);
             Database::open_memory().expect("in-memory DB should always succeed")
@@ -110,6 +178,8 @@ impl NativeTerminal {
             should_exit: false,
             db,
             command_buffer: String::new(),
+            agent_tx,
+            agent_rx,
         }
     }
 
@@ -241,11 +311,114 @@ impl NativeTerminal {
                     });
                 }
                 self.chrome.add_tab(id.clone(), shell_name, "PowerShell".into());
-                self.tab_states.push(TabState { pty_id: id, grid });
+                self.tab_states.push(TabState { pty_id: id, grid, agent_info: None });
                 // Switch to new tab
                 self.chrome.active_tab = self.tab_states.len() - 1;
             }
             Err(e) => log::error!("Failed to spawn PTY: {}", e),
+        }
+    }
+
+    /// Spawn an agent CLI in a new PTY tab with output monitoring.
+    fn spawn_agent_pty(&mut self, cli: AgentCli, model: Option<&str>) {
+        let (program, args) = cli.program_and_args(model);
+        let cli_label = match &cli {
+                AgentCli::Claude => "Claude",
+                AgentCli::Codex => "Codex",
+                AgentCli::Gemini => "Gemini",
+                AgentCli::Custom(s) => s.as_str(),
+            }.to_string();
+
+        let size = self
+            .window
+            .as_ref()
+            .map(|w| w.inner_size())
+            .unwrap_or(winit::dpi::PhysicalSize::new(1200, 700));
+        let content_w = size.width as f32 - self.sidebar.width();
+        let content_h = (size.height as f32 - ui::CHROME_TOP - ui::STATUS_BAR_HEIGHT).max(1.0);
+        let cols = (content_w / self.font.cell_width).max(1.0) as u16;
+        let rows = (content_h / self.font.cell_height).max(1.0) as u16;
+
+        let grid = Arc::new(Mutex::new(Grid::new(cols, rows, 10_000)));
+
+        match self.pty_manager.spawn_command(&program, &args, cols, rows, None, None) {
+            Ok(id) => {
+                log::info!("Agent PTY spawned: {} ({}) {}x{}", id, cli_label, cols, rows);
+                if let Ok(reader) = self.pty_manager.take_reader(&id) {
+                    let grid_clone = grid.clone();
+                    let agent_tx = self.agent_tx.clone();
+                    let pty_id_clone = id.clone();
+                    let parser = output_monitor::create_parser(&cli);
+                    std::thread::spawn(move || {
+                        let mut reader = reader;
+                        let mut vte_parser = vte::Parser::new();
+                        let mut buf = [0u8; 4096];
+                        loop {
+                            match std::io::Read::read(&mut reader, &mut buf) {
+                                Ok(0) => break,
+                                Ok(n) => {
+                                    // Feed VTE parser for grid rendering
+                                    let mut g = match grid_clone.lock() {
+                                        Ok(g) => g,
+                                        Err(_) => break, // mutex poisoned — exit cleanly
+                                    };
+                                    let mut performer = GridPerformer { grid: &mut g };
+                                    for byte in &buf[..n] {
+                                        vte_parser.advance(&mut performer, *byte);
+                                    }
+                                    g.needs_redraw = true;
+                                    drop(g);
+
+                                    // Feed agent output parser
+                                    let text = String::from_utf8_lossy(&buf[..n]);
+                                    let stripped = output_monitor::strip_ansi(&text);
+                                    let result = parser.parse_chunk(&stripped);
+                                    if let Some(status) = result.status {
+                                        if agent_tx.send(AgentUpdate::Status(
+                                            pty_id_clone.clone(),
+                                            AgentStatus::from_detected(&status),
+                                        )).is_err() {
+                                            break;
+                                        }
+                                    }
+                                    if result.usage.cost.is_some() || result.usage.tokens.is_some()
+                                    {
+                                        if agent_tx.send(AgentUpdate::Usage(
+                                            pty_id_clone.clone(),
+                                            result.usage.cost.unwrap_or(0.0),
+                                            result.usage.tokens.unwrap_or(0),
+                                        )).is_err() {
+                                            break;
+                                        }
+                                    }
+                                }
+                                Err(_) => break,
+                            }
+                        }
+                        // Agent exited
+                        let _ = agent_tx.send(AgentUpdate::Status(pty_id_clone, AgentStatus::Done));
+                    });
+                }
+                let model_display = model.unwrap_or("default").to_string();
+                let tab_name = format!("{} ({})", cli_label, model_display);
+                self.chrome
+                    .add_tab(id.clone(), tab_name, cli_label.clone());
+                self.tab_states.push(TabState {
+                    pty_id: id,
+                    grid,
+                    agent_info: Some(AgentTabInfo {
+                        cli,
+                        status: AgentStatus::Idle,
+                        model: model_display,
+                        cost: 0.0,
+                        tokens_used: 0,
+                        started_at: std::time::Instant::now(),
+                    }),
+                });
+                self.chrome.active_tab = self.tab_states.len() - 1;
+                self.content_pane = ContentPane::Terminal;
+            }
+            Err(e) => log::error!("Failed to spawn agent PTY: {}", e),
         }
     }
 
@@ -281,7 +454,30 @@ impl NativeTerminal {
                     indicator: "UTF-8".to_string(),
                 })
             }
-            ContentPane::Terminal => None,
+            ContentPane::Terminal => {
+                // Show agent info in status bar when on an agent tab
+                self.active_agent_info().map(|info| {
+                    let elapsed = info.started_at.elapsed();
+                    let mins = elapsed.as_secs() / 60;
+                    let secs = elapsed.as_secs() % 60;
+                    let cli_name = match &info.cli {
+                        AgentCli::Claude => "Claude",
+                        AgentCli::Codex => "Codex",
+                        AgentCli::Gemini => "Gemini",
+                        AgentCli::Custom(s) => s.as_str(),
+                    };
+                    ui::StatusOverride {
+                        label: format!(
+                            "{} ({}) — {}",
+                            cli_name,
+                            info.model,
+                            info.status.label()
+                        ),
+                        detail: format!("${:.4}  {}tok  {}:{:02}", info.cost, info.tokens_used, mins, secs),
+                        indicator: info.status.label().to_string(),
+                    }
+                })
+            }
         };
 
         // --- Build chrome instances ---
@@ -339,6 +535,10 @@ impl NativeTerminal {
             }
         };
 
+        // --- Build agent panel (inside sidebar, bottom section) ---
+        let (agent_rects, agent_glyphs) =
+            self.build_agent_panel(&self.font, &mut atlas, window_h);
+
         // --- Build palette overlay ---
         let palette_out = self.palette.build(&self.font, &mut atlas, window_w);
 
@@ -349,13 +549,15 @@ impl NativeTerminal {
         }
         drop(atlas);
 
-        // --- Combine: chrome → sidebar → content → palette (on top) ---
+        // --- Combine: chrome → sidebar → agent panel → content → palette ---
         let mut all_rects = chrome_out.rects;
         all_rects.extend(sidebar_out.rects);
+        all_rects.extend(agent_rects);
         all_rects.extend(content_rects);
         all_rects.extend(palette_out.rects);
         let mut all_glyphs = chrome_out.glyphs;
         all_glyphs.extend(sidebar_out.glyphs);
+        all_glyphs.extend(agent_glyphs);
         all_glyphs.extend(content_glyphs);
         all_glyphs.extend(palette_out.glyphs);
 
@@ -759,6 +961,34 @@ impl NativeTerminal {
                 self.write_to_pty(cmd.as_bytes());
                 self.write_to_pty(b"\r");
             }
+            PaletteAction::BeginAgentClaude => {
+                self.palette.enter_agent_spawn("claude".to_string());
+            }
+            PaletteAction::BeginAgentCodex => {
+                self.palette.enter_agent_spawn("codex".to_string());
+            }
+            PaletteAction::BeginAgentGemini => {
+                self.palette.enter_agent_spawn("gemini".to_string());
+            }
+            PaletteAction::SpawnAgent { cli, model } => {
+                let agent_cli = AgentCli::from_model(&cli);
+                if let Err(e) = agent_cli.validate() {
+                    log::error!("Agent CLI validation failed: {}", e);
+                    return;
+                }
+                // Validate model name: alphanumeric, hyphens, dots, underscores only
+                let model_opt = if model.is_empty() {
+                    None
+                } else if model.len() > 64
+                    || !model.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.' || c == '_')
+                {
+                    log::error!("Invalid model name: {}", model);
+                    return;
+                } else {
+                    Some(model.as_str())
+                };
+                self.spawn_agent_pty(agent_cli, model_opt);
+            }
             PaletteAction::None => {}
         }
     }
@@ -842,6 +1072,142 @@ impl NativeTerminal {
             Ok(()) => log::info!("Worktree deleted: {}", name),
             Err(e) => log::error!("Failed to delete worktree: {}", e),
         }
+    }
+
+    /// Build agent session panel (rendered inside sidebar, bottom area).
+    fn build_agent_panel(
+        &self,
+        font: &FontManager,
+        atlas: &mut GlyphAtlas,
+        window_h: f32,
+    ) -> (Vec<RectInstance>, Vec<GlyphInstance>) {
+        let mut rects = Vec::new();
+        let mut glyphs = Vec::new();
+
+        if !self.sidebar.visible {
+            return (rects, glyphs);
+        }
+
+        let agent_tabs: Vec<(usize, &AgentTabInfo)> = self
+            .tab_states
+            .iter()
+            .enumerate()
+            .filter_map(|(i, t)| t.agent_info.as_ref().map(|a| (i, a)))
+            .collect();
+
+        if agent_tabs.is_empty() {
+            return (rects, glyphs);
+        }
+
+        let sidebar_w = self.sidebar.width();
+        let panel_h = 28.0 + agent_tabs.len() as f32 * 36.0;
+        let panel_y = window_h - ui::STATUS_BAR_HEIGHT - panel_h;
+
+        // Panel background
+        rects.push(RectInstance {
+            pos: [0.0, panel_y],
+            size: [sidebar_w, panel_h],
+            color: ui::cat::pm(24, 24, 37, 220),
+        });
+
+        // Header separator
+        rects.push(RectInstance {
+            pos: [0.0, panel_y],
+            size: [sidebar_w, 1.0],
+            color: ui::cat::pm(69, 71, 90, 150),
+        });
+
+        // Header text
+        let header_y = panel_y + (28.0 - font.cell_height) / 2.0;
+        ui::render_text(
+            font,
+            atlas,
+            "AGENTS",
+            8.0,
+            header_y,
+            ui::cat::OVERLAY0,
+            &mut glyphs,
+        );
+
+        // Agent count badge
+        let count_str = format!("{}", agent_tabs.len());
+        let count_x = 8.0 + 7.0 * font.cell_width;
+        ui::render_text(
+            font,
+            atlas,
+            &count_str,
+            count_x,
+            header_y,
+            ui::cat::pm(137, 180, 250, 255),
+            &mut glyphs,
+        );
+
+        // Each agent entry
+        let entry_top = panel_y + 28.0;
+        for (i, (tab_idx, info)) in agent_tabs.iter().enumerate() {
+            let y = entry_top + i as f32 * 36.0;
+            let is_active = *tab_idx == self.chrome.active_tab;
+
+            // Active highlight
+            if is_active {
+                rects.push(RectInstance {
+                    pos: [0.0, y],
+                    size: [sidebar_w, 36.0],
+                    color: ui::cat::pm(69, 71, 90, 80),
+                });
+            }
+
+            // Status indicator dot (4px circle approximated as square)
+            let dot_y = y + (36.0 - 4.0) / 2.0;
+            rects.push(RectInstance {
+                pos: [8.0, dot_y],
+                size: [4.0, 4.0],
+                color: info.status.color(),
+            });
+
+            // CLI name + model
+            let text_y1 = y + 4.0;
+            let cli_name = match &info.cli {
+                AgentCli::Claude => "Claude",
+                AgentCli::Codex => "Codex",
+                AgentCli::Gemini => "Gemini",
+                AgentCli::Custom(s) => s.as_str(),
+            };
+            let label = format!("{} ({})", cli_name, info.model);
+            ui::render_text(font, atlas, &label, 18.0, text_y1, ui::cat::TEXT, &mut glyphs);
+
+            // Status + cost on second line
+            let text_y2 = y + 4.0 + font.cell_height + 2.0;
+            let detail = format!("{} ${:.3}", info.status.label(), info.cost);
+            ui::render_text(font, atlas, &detail, 18.0, text_y2, ui::cat::OVERLAY0, &mut glyphs);
+        }
+
+        (rects, glyphs)
+    }
+
+    /// Process pending agent status updates from monitor threads.
+    fn process_agent_updates(&mut self) {
+        while let Ok(update) = self.agent_rx.try_recv() {
+            let (pty_id, apply): (String, Box<dyn FnOnce(&mut AgentTabInfo)>) = match update {
+                AgentUpdate::Status(id, status) => (id, Box::new(move |info| info.status = status)),
+                AgentUpdate::Usage(id, cost, tokens) => (id, Box::new(move |info| {
+                    if cost > info.cost { info.cost = cost; }
+                    if tokens > info.tokens_used { info.tokens_used = tokens; }
+                })),
+            };
+            if let Some(tab) = self.tab_states.iter_mut().find(|t| t.pty_id == pty_id) {
+                if let Some(info) = &mut tab.agent_info {
+                    apply(info);
+                }
+            }
+        }
+    }
+
+    /// Get active agent info for status bar display.
+    fn active_agent_info(&self) -> Option<&AgentTabInfo> {
+        self.tab_states
+            .get(self.chrome.active_tab)
+            .and_then(|t| t.agent_info.as_ref())
     }
 
     /// Try to start an LSP server for the opened file.
@@ -1303,6 +1669,8 @@ impl ApplicationHandler for NativeTerminal {
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
         // Process LSP messages
         self.process_lsp_messages();
+        // Process agent updates
+        self.process_agent_updates();
         // Tick editor cursor blink
         if let ContentPane::Editor(editor) = &mut self.content_pane {
             editor.tick_blink();

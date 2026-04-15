@@ -21,7 +21,7 @@ pub const CHROME_TOP: f32 = TITLE_BAR_HEIGHT + TAB_BAR_HEIGHT;
 pub const BTN_WIDTH: f32 = 46.0;
 
 // Catppuccin Mocha palette (premultiplied where needed)
-pub(crate) mod cat {
+pub mod cat {
     /// Premultiplied RGBA from 0-255 components.
     pub const fn pm(r: u8, g: u8, b: u8, a: u8) -> [f32; 4] {
         let af = a as f32 / 255.0;
@@ -379,7 +379,7 @@ impl Default for ChromeState {
 }
 
 /// Render a text string as glyph instances using the terminal font.
-pub(crate) fn render_text(
+pub fn render_text(
     font: &FontManager,
     atlas: &mut GlyphAtlas,
     text: &str,
