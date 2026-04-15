@@ -64,3 +64,9 @@
   background: var(--bg-surface);
   color: var(--text-primary);
 }
+
+.historyBar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 var(--space-2);
+}

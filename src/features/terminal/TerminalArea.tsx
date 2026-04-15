@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { CommandBlockTracker, detectPrompt } from "./commandBlock";
+import { CommandHistory } from "./CommandHistory";
 import { decodeBase64ToBytes } from "../../shared/lib/decodeBase64";
 import { detectError } from "../../shared/lib/errorDetector";
 import { toast } from "../../shared/store/toastStore";
@@ -35,6 +36,8 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const [searchVisible, setSearchVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const blockTrackerRef = useRef<CommandBlockTracker>(new CommandBlockTracker());
+  const [commandHistory, setCommandHistory] = useState<string[]>([]);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const themeId = useAppStore((s) => s.themeId);
   const xtermTheme = useXtermTheme(themeId);
@@ -77,8 +80,13 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
 
     const cleanupIME = setupIMEOverlay(term, containerRef.current);
 
-    const blockTracker = new CommandBlockTracker();
-    connectPty(term, shell, cwd, onTerminalReady, syncModeRef, blockTracker);
+    const blockTracker = blockTrackerRef.current;
+    const updateHistory = () => {
+      const blocks = blockTracker.getBlocks();
+      const cmds = blocks.map((b) => b.command).filter((c) => c.length > 0);
+      setCommandHistory(cmds);
+    };
+    connectPty(term, shell, cwd, onTerminalReady, syncModeRef, blockTracker, updateHistory);
 
     const handleCtrlV = async (e: KeyboardEvent) => {
       if (!(e.ctrlKey && e.key === "v")) return;
@@ -194,6 +202,22 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
         </div>
       )}
       <div ref={containerRef} className={styles.terminalContainer} />
+      {commandHistory.length > 0 && (
+        <div className={styles.historyBar}>
+          <CommandHistory
+            commands={commandHistory}
+            onRerun={(cmd) => {
+              const ptyId = (termRef.current as TerminalWithCleanup)?.__ptyId;
+              if (ptyId) {
+                import("@tauri-apps/api/core").then(({ invoke }) => {
+                  invoke("write_terminal", { id: ptyId, data: cmd + "\r" });
+                });
+              }
+            }}
+            onCopy={(cmd) => navigator.clipboard.writeText(cmd).catch(() => {})}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -271,6 +295,7 @@ async function connectPty(
   onReady?: (terminalId: string) => void,
   syncModeRef?: React.RefObject<boolean | undefined>,
   blockTracker?: CommandBlockTracker,
+  onHistoryUpdate?: () => void,
 ) {
   try {
     const { invoke } = await import("@tauri-apps/api/core");
@@ -316,6 +341,9 @@ async function connectPty(
           }
 
           const detected = detectPrompt(line);
+          if (detected) {
+            onHistoryUpdate?.();
+          }
           if (detected && blockTracker.blockCount > 0) {
             // Add a subtle separator decoration at the prompt line
             const cursorRow = term.buffer.active.cursorY;
