@@ -5,6 +5,7 @@
 
 pub mod editor;
 pub mod sidebar;
+pub mod syntax;
 
 use crate::gpu::atlas::GlyphAtlas;
 use crate::gpu::font::FontManager;

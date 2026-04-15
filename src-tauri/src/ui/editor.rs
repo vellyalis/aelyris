@@ -1,7 +1,8 @@
-//! Editor pane — file viewer and text editor.
+//! Editor pane — file viewer and text editor with syntax highlighting.
 //!
 //! Phase 4a: read-only file viewing with line numbers and scrolling.
 //! Phase 4b: text editing with ropey, cursor, undo/redo, save.
+//! Phase 4c: syntax highlighting with tree-sitter.
 //!
 //! Triggered by clicking a file in the sidebar.
 //! Escape returns to terminal view.
@@ -13,6 +14,8 @@ use ropey::Rope;
 use crate::gpu::atlas::GlyphAtlas;
 use crate::gpu::font::FontManager;
 use crate::gpu::renderer::{GlyphInstance, RectInstance};
+
+use super::syntax::SyntaxState;
 
 use super::cat;
 
@@ -58,7 +61,10 @@ pub struct EditorState {
     pub modified: bool,
     undo_stack: Vec<EditOp>,
     redo_stack: Vec<EditOp>,
-    saved_undo_depth: usize, // undo_stack.len() at last save
+    saved_undo_depth: usize,
+    // Syntax highlighting
+    pub syntax: Option<SyntaxState>,
+    syntax_dirty: bool,
     // Cursor blink
     pub cursor_visible: bool,
     blink_counter: u32,
@@ -97,6 +103,13 @@ impl EditorState {
 
         // Normalize to LF internally
         let normalized = content.replace("\r\n", "\n");
+
+        // Syntax highlighting
+        let syntax = SyntaxState::from_path(path, &normalized);
+        if let Some(ref s) = syntax {
+            log::info!("Syntax: {} detected", s.language_name);
+        }
+
         let rope = Rope::from_str(&normalized);
 
         let file_name = path
@@ -118,6 +131,8 @@ impl EditorState {
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             saved_undo_depth: 0,
+            syntax,
+            syntax_dirty: false,
             cursor_visible: true,
             blink_counter: 0,
         })
@@ -302,6 +317,7 @@ impl EditorState {
         self.undo_stack.push(op);
         self.redo_stack.clear();
         self.modified = self.undo_stack.len() != self.saved_undo_depth;
+        self.syntax_dirty = true;
 
         // Advance cursor
         for ch in text.chars() {
@@ -338,6 +354,7 @@ impl EditorState {
         self.undo_stack.push(op);
         self.redo_stack.clear();
         self.modified = self.undo_stack.len() != self.saved_undo_depth;
+        self.syntax_dirty = true;
 
         if del_char == '\n' {
             self.cursor_line = self.cursor_line.saturating_sub(1);
@@ -366,6 +383,7 @@ impl EditorState {
         self.undo_stack.push(op);
         self.redo_stack.clear();
         self.modified = self.undo_stack.len() != self.saved_undo_depth;
+        self.syntax_dirty = true;
     }
 
     /// Insert a tab as spaces.
@@ -401,6 +419,7 @@ impl EditorState {
         self.redo_stack.push(op);
         self.desired_col = self.cursor_col;
         self.modified = self.undo_stack.len() != self.saved_undo_depth;
+        self.syntax_dirty = true;
     }
 
     /// Redo the last undone operation.
@@ -429,6 +448,7 @@ impl EditorState {
         self.undo_stack.push(op);
         self.desired_col = self.cursor_col;
         self.modified = self.undo_stack.len() != self.saved_undo_depth;
+        self.syntax_dirty = true;
     }
 
     /// Convert a char index to (line, col), clamped to valid range.
@@ -473,6 +493,18 @@ impl EditorState {
     fn gutter_width(&self, cell_w: f32) -> f32 {
         let digits = digit_count(self.total_lines());
         (digits as f32 + 1.0) * cell_w + LINE_NUM_PAD
+    }
+
+    /// Refresh syntax highlighting if dirty.
+    pub fn refresh_syntax(&mut self) {
+        if !self.syntax_dirty {
+            return;
+        }
+        self.syntax_dirty = false;
+        if let Some(ref mut syntax) = self.syntax {
+            let source = self.rope.to_string();
+            syntax.rehighlight(&self.file_path, &source);
+        }
     }
 
     /// Build rendering instances for the visible portion of the file.
@@ -555,22 +587,64 @@ impl EditorState {
                 &mut glyphs,
             );
 
-            // File content (with horizontal scroll, truncated to visible width)
-            let line_text = self.line_text(i);
-            let chars: Vec<char> = line_text.chars().collect();
-            let start = self.scroll_col.min(chars.len());
-            let end = (start + max_cols).min(chars.len());
-            let display: String = chars[start..end].iter().collect();
+            // File content with syntax highlighting
+            let text_x = x_offset + gutter_w + 4.0;
 
-            super::render_text(
-                font,
-                atlas,
-                &display,
-                x_offset + gutter_w + 4.0,
-                line_y,
-                cat::TEXT,
-                &mut glyphs,
-            );
+            if let Some(ref syntax) = self.syntax {
+                // Per-character color from syntax highlighting
+                let line_start_byte = self.rope.line_to_byte(i);
+                let line_rope = self.rope.line(i);
+                let mut byte_offset = 0;
+                let mut col_idx: usize = 0;
+
+                for ch in line_rope.chars() {
+                    if ch == '\n' {
+                        break;
+                    }
+                    let char_byte_len = ch.len_utf8();
+                    let is_tab = ch == '\t';
+
+                    if is_tab {
+                        let tab_spaces = TAB_WIDTH - (col_idx % TAB_WIDTH);
+                        col_idx += tab_spaces;
+                    } else {
+                        // Render if within visible range
+                        if col_idx >= self.scroll_col && col_idx < self.scroll_col + max_cols {
+                            let display_col = col_idx - self.scroll_col;
+                            let color = syntax.color_at_byte(line_start_byte + byte_offset);
+                            let ch_str = ch.to_string();
+                            super::render_text(
+                                font,
+                                atlas,
+                                &ch_str,
+                                text_x + display_col as f32 * font.cell_width,
+                                line_y,
+                                color,
+                                &mut glyphs,
+                            );
+                        }
+                        col_idx += 1;
+                    }
+                    byte_offset += char_byte_len;
+                }
+            } else {
+                // No syntax — uniform color
+                let line_text = self.line_text(i);
+                let chars: Vec<char> = line_text.chars().collect();
+                let start = self.scroll_col.min(chars.len());
+                let end = (start + max_cols).min(chars.len());
+                let display: String = chars[start..end].iter().collect();
+
+                super::render_text(
+                    font,
+                    atlas,
+                    &display,
+                    text_x,
+                    line_y,
+                    cat::TEXT,
+                    &mut glyphs,
+                );
+            }
 
             // Cursor rendering (thin line cursor)
             if i == self.cursor_line && self.cursor_visible {
