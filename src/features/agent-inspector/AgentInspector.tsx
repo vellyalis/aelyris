@@ -11,6 +11,7 @@ import { EmptyState } from "../../shared/ui/EmptyState";
 import { ToolBadge } from "../../shared/ui/ToolBadge";
 import { extractToolName } from "../../shared/types/toolBadge";
 import { parseToolUse } from "../../shared/lib/agentLogParser";
+import { buildOrchestraPrompts } from "../../shared/lib/orchestrator";
 import { SessionAnalytics } from "../analytics/SessionAnalytics";
 import { SessionCard } from "./SessionCard";
 import { InteractiveSessionCard } from "./InteractiveSessionCard";
@@ -94,6 +95,19 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
     navigator.clipboard.writeText(info).catch(() => {});
   }, []);
 
+  const handleOrchestra = useCallback(async () => {
+    const task = await showPrompt("Orchestra Mode", { placeholder: "What should the team work on?" });
+    if (!task || !onStartAgent || !rootProjectPath) return;
+    const prompts = buildOrchestraPrompts({
+      task,
+      roles: ["implementer", "tester", "reviewer"],
+      projectPath: rootProjectPath,
+    });
+    for (const p of prompts) {
+      onStartAgent(p.prompt, p.model);
+    }
+  }, [onStartAgent, rootProjectPath]);
+
   return (
     <div className={styles.inspector} role="region" aria-label="Agent sessions">
       {/* Tab toggle */}
@@ -110,6 +124,7 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
         <div className={styles.tabActions}>
           {totalCost > 0 && <span className={styles.totalCost} title="Total session cost">${totalCost.toFixed(2)}</span>}
           <button className={styles.iconBtn} title="Copy session info" onClick={() => { if (activeSession) handleCopySessionInfo(activeSession); }}><ClipboardCopy size={12} /></button>
+          <button className={styles.iconBtn} title="Orchestra mode (3 agents)" onClick={handleOrchestra}>♫</button>
           <button className={styles.iconBtn} title="Add session" onClick={() => setShowPromptInput(true)}><Plus size={12} /></button>
         </div>
       </div>
