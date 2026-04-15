@@ -1372,6 +1372,49 @@ impl NativeTerminal {
         }
     }
 
+    /// Send SGR mouse event to PTY if mouse tracking is enabled.
+    /// button: 0=left, 1=middle, 2=right, 64=scroll_up, 65=scroll_down
+    /// pressed: true for press, false for release
+    fn send_mouse_event(&self, button: u8, col: u16, row: u16, pressed: bool) {
+        use aether_terminal_lib::gpu::grid::MouseMode;
+        let grid_arc = match self.active_grid() {
+            Some(g) => g.clone(),
+            None => return,
+        };
+        let grid = grid_arc.lock().unwrap();
+        if grid.mode.mouse_mode == MouseMode::None {
+            return;
+        }
+        // SGR encoding (1006): CSI < button ; col ; row M/m
+        if grid.mode.sgr_mouse {
+            let ch = if pressed { 'M' } else { 'm' };
+            let seq = format!("\x1b[<{};{};{}{}", button, col + 1, row + 1, ch);
+            drop(grid);
+            self.write_to_pty(seq.as_bytes());
+        } else {
+            // Legacy X10 encoding: CSI M button+32 col+33 row+33
+            if pressed {
+                let buf = [
+                    0x1b, b'[', b'M',
+                    button + 32,
+                    (col as u8).saturating_add(33),
+                    (row as u8).saturating_add(33),
+                ];
+                drop(grid);
+                self.write_to_pty(&buf);
+            }
+        }
+    }
+
+    /// Check if mouse tracking is active for the current tab.
+    fn is_mouse_tracking(&self) -> bool {
+        use aether_terminal_lib::gpu::grid::MouseMode;
+        self.active_grid()
+            .and_then(|g| g.lock().ok())
+            .map(|g| g.mode.mouse_mode != MouseMode::None)
+            .unwrap_or(false)
+    }
+
     /// Check if mouse position is in the terminal content area.
     fn is_in_content(&self, x: f64, y: f64) -> bool {
         let config = match &self.surface_config {
@@ -1517,16 +1560,35 @@ impl ApplicationHandler for NativeTerminal {
                 // Update mouse position for hover effects
                 self.chrome.mouse_pos = Some((position.x as f32, position.y as f32));
 
-                // Handle selection drag in content area
-                if self.mouse_pressed && self.is_in_content(position.x, position.y) {
-                    if let Some(g) = self.active_grid() {
-                    let (row, col) = self.pixel_to_cell(position.x, position.y);
-                    let mut grid = g.lock().unwrap();
-                    if grid.selection.anchor.is_none() {
-                        grid.selection.anchor = Some((row, col));
+                // Mouse motion reporting (button-event or any-event tracking)
+                if self.is_in_content(position.x, position.y) {
+                    use aether_terminal_lib::gpu::grid::MouseMode;
+                    let should_report = self.active_grid()
+                        .and_then(|g| g.lock().ok())
+                        .map(|g| match g.mode.mouse_mode {
+                            MouseMode::AnyMotion => true,
+                            MouseMode::ButtonMotion => self.mouse_pressed,
+                            _ => false,
+                        })
+                        .unwrap_or(false);
+                    if should_report {
+                        let (row, col) = self.pixel_to_cell(position.x, position.y);
+                        // Button 32 = motion with no button (or +0 for left drag)
+                        let button = if self.mouse_pressed { 32 } else { 35 };
+                        self.send_mouse_event(button, col, row, true);
                     }
-                    grid.selection.end = Some((row, col));
-                    grid.needs_redraw = true;
+                }
+
+                // Handle selection drag in content area (only when not mouse tracking)
+                if self.mouse_pressed && !self.is_mouse_tracking() && self.is_in_content(position.x, position.y) {
+                    if let Some(g) = self.active_grid() {
+                        let (row, col) = self.pixel_to_cell(position.x, position.y);
+                        let mut grid = g.lock().unwrap();
+                        if grid.selection.anchor.is_none() {
+                            grid.selection.anchor = Some((row, col));
+                        }
+                        grid.selection.end = Some((row, col));
+                        grid.needs_redraw = true;
                     }
                 }
             }
@@ -1576,16 +1638,29 @@ impl ApplicationHandler for NativeTerminal {
                             return;
                         }
                     }
-                    // Otherwise start selection in content area
+                    // Content area: mouse reporting or selection
                     if let Some((mx, my)) = self.chrome.mouse_pos {
                         if self.is_in_content(mx as f64, my as f64) {
-                            self.mouse_pressed = true;
-                            if let Some(g) = self.active_grid() {
-                                g.lock().unwrap().selection.clear();
+                            if self.is_mouse_tracking() {
+                                let (row, col) = self.pixel_to_cell(mx as f64, my as f64);
+                                self.send_mouse_event(0, col, row, true);
+                            } else {
+                                self.mouse_pressed = true;
+                                if let Some(g) = self.active_grid() {
+                                    g.lock().unwrap().selection.clear();
+                                }
                             }
                         }
                     }
                 } else {
+                    if self.is_mouse_tracking() {
+                        if let Some((mx, my)) = self.chrome.mouse_pos {
+                            if self.is_in_content(mx as f64, my as f64) {
+                                let (row, col) = self.pixel_to_cell(mx as f64, my as f64);
+                                self.send_mouse_event(0, col, row, false);
+                            }
+                        }
+                    }
                     self.mouse_pressed = false;
                 }
             }
@@ -1621,6 +1696,18 @@ impl ApplicationHandler for NativeTerminal {
                     }
                 };
                 if lines != 0 {
+                    // Mouse wheel reporting when tracking is active
+                    if self.is_mouse_tracking() && matches!(self.content_pane, ContentPane::Terminal) {
+                        if let Some((mx, my)) = self.chrome.mouse_pos {
+                            let (row, col) = self.pixel_to_cell(mx as f64, my as f64);
+                            let button = if lines > 0 { 64u8 } else { 65u8 }; // scroll up/down
+                            let count = lines.unsigned_abs().max(1).min(5);
+                            for _ in 0..count {
+                                self.send_mouse_event(button, col, row, true);
+                            }
+                        }
+                        return;
+                    }
                     if let ContentPane::Editor(viewer) = &mut self.content_pane {
                         let config = self.surface_config.as_ref();
                         let content_h = config
@@ -1667,6 +1754,16 @@ impl ApplicationHandler for NativeTerminal {
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        // Sync tab titles from OSC 0/2
+        for (i, tab) in self.tab_states.iter().enumerate() {
+            if let Ok(grid) = tab.grid.lock() {
+                if let Some(title) = &grid.title {
+                    if i < self.chrome.tabs.len() && self.chrome.tabs[i].title != *title {
+                        self.chrome.tabs[i].title = title.clone();
+                    }
+                }
+            }
+        }
         // Process LSP messages
         self.process_lsp_messages();
         // Process agent updates

@@ -53,6 +53,19 @@ impl Default for Cell {
     }
 }
 
+/// Mouse tracking mode.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum MouseMode {
+    #[default]
+    None,
+    /// Normal tracking (1000) — report button press/release.
+    Press,
+    /// Button-event tracking (1002) — report press/release/drag with button.
+    ButtonMotion,
+    /// Any-event tracking (1003) — report all motion.
+    AnyMotion,
+}
+
 /// Terminal mode flags (DECCKM, DECAWM, etc.).
 #[derive(Clone, Debug, Default)]
 pub struct TerminalMode {
@@ -66,6 +79,12 @@ pub struct TerminalMode {
     pub bracketed_paste: bool,
     /// Alternate screen buffer active.
     pub alt_screen: bool,
+    /// Mouse tracking mode.
+    pub mouse_mode: MouseMode,
+    /// SGR extended mouse encoding (1006).
+    pub sgr_mouse: bool,
+    /// Focus event reporting (1004).
+    pub focus_events: bool,
 }
 
 /// Cursor state.
@@ -157,6 +176,8 @@ pub struct Grid {
     pub viewport_offset: usize,
     /// Current text selection.
     pub selection: Selection,
+    /// Window title set by OSC 0/2.
+    pub title: Option<String>,
 }
 
 impl Grid {
@@ -179,6 +200,7 @@ impl Grid {
             needs_redraw: true,
             viewport_offset: 0,
             selection: Selection::default(),
+            title: None,
         }
     }
 
@@ -821,7 +843,12 @@ impl<'a> Perform for GridPerformer<'a> {
         if let Some(cmd) = params.first() {
             match *cmd {
                 b"0" | b"2" => {
-                    // Window title — TODO: notify React via Tauri event
+                    if let Some(title_bytes) = params.get(1) {
+                        if let Ok(title) = std::str::from_utf8(title_bytes) {
+                            self.grid.title = Some(title.to_string());
+                            self.grid.needs_redraw = true;
+                        }
+                    }
                 }
                 _ => {}
             }
@@ -858,6 +885,18 @@ impl<'a> GridPerformer<'a> {
                     }
                 }
                 2004 => self.grid.mode.bracketed_paste = enable, // Bracketed paste
+                // Mouse tracking modes
+                1000 => {
+                    self.grid.mode.mouse_mode = if enable { MouseMode::Press } else { MouseMode::None };
+                }
+                1002 => {
+                    self.grid.mode.mouse_mode = if enable { MouseMode::ButtonMotion } else { MouseMode::None };
+                }
+                1003 => {
+                    self.grid.mode.mouse_mode = if enable { MouseMode::AnyMotion } else { MouseMode::None };
+                }
+                1006 => self.grid.mode.sgr_mouse = enable, // SGR extended encoding
+                1004 => self.grid.mode.focus_events = enable, // Focus events
                 _ => {}
             }
         }
