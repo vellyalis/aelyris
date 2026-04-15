@@ -19,6 +19,14 @@ use super::syntax::SyntaxState;
 
 use super::cat;
 
+/// Git diff status for a line in the gutter.
+#[derive(Clone, Copy, PartialEq)]
+pub enum GitLineStatus {
+    Added,
+    Modified,
+    Deleted,
+}
+
 const LINE_NUM_PAD: f32 = 8.0;
 const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024; // 10 MB
 const BINARY_CHECK_LEN: usize = 8192;
@@ -86,6 +94,8 @@ pub struct EditorState {
     syntax_dirty: bool,
     // LSP diagnostics
     pub diagnostics: Vec<Diagnostic>,
+    // Git diff markers (line index → status)
+    pub git_markers: Vec<(usize, GitLineStatus)>,
     // Cursor blink
     pub cursor_visible: bool,
     blink_counter: u32,
@@ -155,6 +165,7 @@ impl EditorState {
             syntax,
             syntax_dirty: false,
             diagnostics: Vec::new(),
+            git_markers: compute_git_markers(path),
             cursor_visible: true,
             blink_counter: 0,
         })
@@ -609,6 +620,23 @@ impl EditorState {
                 &mut glyphs,
             );
 
+            // Git diff marker (2px bar at gutter left edge)
+            for &(line, status) in &self.git_markers {
+                if line == i {
+                    let marker_color = match status {
+                        GitLineStatus::Added => [0.40, 0.75, 0.40, 0.9],    // Green
+                        GitLineStatus::Modified => [0.54, 0.71, 0.98, 0.9], // Blue
+                        GitLineStatus::Deleted => [0.95, 0.30, 0.30, 0.9],  // Red
+                    };
+                    rects.push(RectInstance {
+                        pos: [x_offset + 1.0, line_y],
+                        size: [3.0, font.cell_height],
+                        color: marker_color,
+                    });
+                    break;
+                }
+            }
+
             // File content with syntax highlighting
             let text_x = x_offset + gutter_w + 4.0;
 
@@ -724,4 +752,72 @@ fn digit_count(n: usize) -> usize {
         count += 1;
     }
     count
+}
+
+/// Compute git diff markers for a file using git2.
+fn compute_git_markers(path: &Path) -> Vec<(usize, GitLineStatus)> {
+    let abs_path = match std::fs::canonicalize(path) {
+        Ok(p) => p,
+        Err(_) => return Vec::new(),
+    };
+
+    let repo = match git2::Repository::discover(&abs_path) {
+        Ok(r) => r,
+        Err(_) => return Vec::new(),
+    };
+
+    let workdir = match repo.workdir() {
+        Some(w) => w.to_path_buf(),
+        None => return Vec::new(),
+    };
+
+    let rel_path = match abs_path.strip_prefix(&workdir) {
+        Ok(p) => p,
+        Err(_) => return Vec::new(),
+    };
+
+    // Get diff between HEAD and working directory
+    let mut diff_opts = git2::DiffOptions::new();
+    diff_opts.pathspec(rel_path.to_string_lossy().as_ref());
+
+    let diff = match repo.diff_index_to_workdir(None, Some(&mut diff_opts)) {
+        Ok(d) => d,
+        Err(_) => {
+            // Try HEAD to workdir if index diff fails
+            match repo.diff_tree_to_workdir(None, Some(&mut diff_opts)) {
+                Ok(d) => d,
+                Err(_) => return Vec::new(),
+            }
+        }
+    };
+
+    let mut markers = Vec::new();
+    let _ = diff.foreach(
+        &mut |_, _| true,
+        None,
+        Some(&mut |_delta, hunk| {
+            let new_start = hunk.new_start() as usize;
+            let new_lines = hunk.new_lines() as usize;
+            let old_lines = hunk.old_lines() as usize;
+
+            if old_lines == 0 {
+                // Pure addition
+                for i in 0..new_lines {
+                    markers.push((new_start.saturating_sub(1) + i, GitLineStatus::Added));
+                }
+            } else if new_lines == 0 {
+                // Pure deletion — mark at the line before
+                markers.push((new_start.saturating_sub(1), GitLineStatus::Deleted));
+            } else {
+                // Modification
+                for i in 0..new_lines {
+                    markers.push((new_start.saturating_sub(1) + i, GitLineStatus::Modified));
+                }
+            }
+            true
+        }),
+        None,
+    );
+
+    markers
 }
