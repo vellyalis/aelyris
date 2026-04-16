@@ -151,14 +151,35 @@ impl GradientRectInstance {
         }
     }
 
-    /// Gold button gradient (18K gold surface).
-    pub fn gold_button(pos: [f32; 2], size: [f32; 2], radius: f32) -> Self {
-        Self::gradient_v(
-            pos, size,
-            [0.91, 0.77, 0.50, 1.0],  // #e8c580 top
-            [0.66, 0.50, 0.19, 1.0],  // #a88030 bottom
-            radius,
-        )
+    /// Gold button gradient (18K gold surface) — 5-stop luxury gradient.
+    ///
+    /// CSS: linear-gradient(180deg, #e8c580 0%, #d4b896 20%, #c8a050 50%, #b89040 80%, #a88030 100%)
+    /// Split into 3 vertical segments (each a 2-color gradient) for smooth 5-stop approximation.
+    pub fn gold_button_segments(pos: [f32; 2], size: [f32; 2], radius: f32) -> [Self; 3] {
+        let h_top = size[1] * 0.33;     // 0%–33%  (#e8c580 → #d4b896 blend into #c8a050)
+        let h_mid = size[1] * 0.34;     // 33%–67% (#c8a050 → #b89040)
+        let h_bot = size[1] - h_top - h_mid; // 67%–100% (#b89040 → #a88030)
+
+        [
+            Self::gradient_v(
+                pos, [size[0], h_top],
+                [0.91, 0.77, 0.50, 1.0],  // #e8c580
+                [0.78, 0.63, 0.31, 1.0],  // #c8a050
+                radius,
+            ),
+            Self::gradient_v(
+                [pos[0], pos[1] + h_top], [size[0], h_mid],
+                [0.78, 0.63, 0.31, 1.0],  // #c8a050
+                [0.72, 0.56, 0.25, 1.0],  // #b89040
+                0.0, // no radius for middle segment
+            ),
+            Self::gradient_v(
+                [pos[0], pos[1] + h_top + h_mid], [size[0], h_bot],
+                [0.72, 0.56, 0.25, 1.0],  // #b89040
+                [0.66, 0.50, 0.19, 1.0],  // #a88030
+                radius,
+            ),
+        ]
     }
 }
 
@@ -251,7 +272,7 @@ impl TerminalRenderer {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        // --- Atlas texture (2048x2048 RGBA8 for subpixel AA) ---
+        // --- Atlas texture (2048x2048 R8 grayscale) ---
         let atlas_size = wgpu::Extent3d { width: 2048, height: 2048, depth_or_array_layers: 1 };
         let atlas_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("glyph_atlas"),
@@ -259,7 +280,7 @@ impl TerminalRenderer {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8Unorm,
+            format: wgpu::TextureFormat::R8Unorm,
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
@@ -539,7 +560,7 @@ impl TerminalRenderer {
             &atlas.pixels,
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(atlas.atlas_width * 4),
+                bytes_per_row: Some(atlas.atlas_width),
                 rows_per_image: Some(atlas.atlas_height),
             },
             wgpu::Extent3d {

@@ -259,14 +259,17 @@ impl NativeTerminal {
         }
         drop(atlas);
 
+        // --- Backdrop blur: any floating element triggers 2-pass rendering ---
+        let needs_blur = self.palette.visible
+            || self.context_menu.is_some()
+            || self.sidebar_menu.is_some()
+            || !self.toasts.is_empty();
+
         // --- Gradient rects (shadows, light leaks, component backgrounds) ---
         let mut all_gradient_rects = build_light_leaks(window_w, window_h);
         all_gradient_rects.extend(agent_grads);
-        all_gradient_rects.extend(ctx_grads);
-        all_gradient_rects.extend(sb_menu_grads);
-        all_gradient_rects.extend(toast_grads);
 
-        // --- Regular rects (chrome, content, overlays — palette kept separate for blur) ---
+        // --- Base scene rects (non-floating content) ---
         let mut all_rects: Vec<RectInstance> = Vec::new();
         all_rects.extend(chrome_out.rects);
         all_rects.extend(sidebar_out.rects);
@@ -275,23 +278,7 @@ impl NativeTerminal {
         all_rects.extend(toolkit_out.rects);
         all_rects.extend(activity_out.rects);
         all_rects.extend(content_rects);
-        all_rects.extend(ctx_rects);
-        all_rects.extend(sb_menu_rects);
-        all_rects.extend(toast_rects);
 
-        // Backdrop blur flag: palette/menus trigger 2-pass rendering
-        let needs_blur = self.palette.visible;
-
-        // Palette instances: separate for blur, merged for fast path
-        // When not blurring, palette goes into the main batch.
-        // When blurring, palette_out is consumed later in render_overlay.
-        let overlay_palette = if needs_blur {
-            Some(palette_out)
-        } else {
-            all_rects.extend(palette_out.rects);
-            all_gradient_rects.extend(palette_out.gradient_rects);
-            None
-        };
         let mut all_glyphs = chrome_out.glyphs;
         all_glyphs.extend(sidebar_out.glyphs);
         all_glyphs.extend(scm_glyphs);
@@ -299,12 +286,40 @@ impl NativeTerminal {
         all_glyphs.extend(toolkit_out.glyphs);
         all_glyphs.extend(activity_out.glyphs);
         all_glyphs.extend(content_glyphs);
-        all_glyphs.extend(ctx_glyphs);
-        all_glyphs.extend(sb_menu_glyphs);
-        all_glyphs.extend(toast_glyphs);
 
-        if let None = &overlay_palette {
-            // palette glyphs already consumed into overlay_palette or merged above
+        // --- Split floating overlays from base scene ---
+        let mut overlay_rects: Vec<RectInstance> = Vec::new();
+        let mut overlay_glyphs: Vec<GlyphInstance> = Vec::new();
+        let mut overlay_grads: Vec<GradientRectInstance> = Vec::new();
+
+        if needs_blur {
+            // Floating elements → overlay (rendered AFTER blur)
+            overlay_grads.extend(ctx_grads);
+            overlay_grads.extend(sb_menu_grads);
+            overlay_grads.extend(palette_out.gradient_rects);
+            overlay_grads.extend(toast_grads);
+            overlay_rects.extend(ctx_rects);
+            overlay_rects.extend(sb_menu_rects);
+            overlay_rects.extend(palette_out.rects);
+            overlay_rects.extend(toast_rects);
+            overlay_glyphs.extend(ctx_glyphs);
+            overlay_glyphs.extend(sb_menu_glyphs);
+            overlay_glyphs.extend(palette_out.glyphs);
+            overlay_glyphs.extend(toast_glyphs);
+        } else {
+            // No blur: merge floating elements into main batch
+            all_gradient_rects.extend(ctx_grads);
+            all_gradient_rects.extend(sb_menu_grads);
+            all_gradient_rects.extend(palette_out.gradient_rects);
+            all_gradient_rects.extend(toast_grads);
+            all_rects.extend(ctx_rects);
+            all_rects.extend(sb_menu_rects);
+            all_rects.extend(palette_out.rects);
+            all_rects.extend(toast_rects);
+            all_glyphs.extend(ctx_glyphs);
+            all_glyphs.extend(sb_menu_glyphs);
+            all_glyphs.extend(palette_out.glyphs);
+            all_glyphs.extend(toast_glyphs);
         }
 
         // Fluent Design "Reveal Highlight" — radial glow following the mouse cursor
@@ -315,14 +330,12 @@ impl NativeTerminal {
             a: 0.02, // glass-clear — nearly transparent, Mica shows through
         };
 
-        // Backdrop blur: when palette is visible, blur the scene behind it.
-
         match surface.get_current_texture() {
             Ok(texture) => {
                 let view = texture.texture.create_view(&wgpu::TextureViewDescriptor::default());
 
                 if needs_blur {
-                    // 2-pass rendering: scene → blur → overlay
+                    // 3-phase rendering: scene → blur → floating overlays
                     let w = config.width;
                     let h = config.height;
 
@@ -348,7 +361,7 @@ impl NativeTerminal {
 
                     let scene_view = &self.scene_texture.as_ref().unwrap().1;
 
-                    // Phase 1: render full scene to offscreen texture
+                    // Phase 1: render base scene (no floating overlays) to offscreen
                     renderer.render_frame_full(scene_view, &all_glyphs, &all_rects, &all_gradient_rects, clear_color);
 
                     // Phase 2: blur offscreen → surface
@@ -362,12 +375,12 @@ impl NativeTerminal {
                     }
                     queue.submit(std::iter::once(encoder.finish()));
 
-                    // Phase 3: render palette overlay on top of blurred scene
-                    if let Some(ref p) = overlay_palette {
-                        renderer.render_overlay(&view, &p.glyphs, &p.rects, &p.gradient_rects);
+                    // Phase 3: render all floating overlays on top of blurred scene
+                    if !overlay_rects.is_empty() || !overlay_glyphs.is_empty() || !overlay_grads.is_empty() {
+                        renderer.render_overlay(&view, &overlay_glyphs, &overlay_rects, &overlay_grads);
                     }
                 } else {
-                    // Fast path: single-pass rendering (no blur)
+                    // Fast path: single-pass rendering (no blur needed)
                     renderer.render_frame_full(&view, &all_glyphs, &all_rects, &all_gradient_rects, clear_color);
                 }
 
@@ -396,10 +409,18 @@ impl NativeTerminal {
             None => return (rects, glyphs, gradient_rects),
         };
 
-        const ITEMS: &[&str] = &["Copy", "Paste", "Select All", "Search", "Clear"];
-        let item_h = 26.0f32;
-        let menu_w = 140.0f32;
-        let menu_h = ITEMS.len() as f32 * item_h + 8.0;
+        const ITEMS: &[(&str, bool)] = &[
+            ("Copy", false), ("Paste", false), ("Select All", true),
+            ("Search", false), ("Clear", false),
+        ];
+        let item_h = 28.0f32;
+        let menu_w = 180.0f32;
+        let pad = 6.0f32; // space-3
+        let divider_h = 1.0 + pad * 2.0; // divider takes space
+        let content_h: f32 = ITEMS.iter().map(|(_, has_div)| {
+            item_h + if *has_div { divider_h } else { 0.0 }
+        }).sum();
+        let menu_h = content_h + pad * 2.0;
 
         // GPU SDF shadow (16px blur) + glass-thick background
         gradient_rects.push(GradientRectInstance::shadowed(
@@ -410,20 +431,41 @@ impl NativeTerminal {
         rects.push(RectInstance::bordered([mx, my], [menu_w, menu_h], [0.0, 0.0, 0.0, 0.0], 8.0, 1.0, 0.1));
 
         let hover_idx = self.chrome.mouse_pos.and_then(|(hx, hy)| {
-            if hx >= mx && hx < mx + menu_w && hy >= my + 4.0 && hy < my + menu_h {
-                Some(((hy - my - 4.0) / item_h) as usize)
+            if hx >= mx && hx < mx + menu_w && hy >= my + pad && hy < my + menu_h - pad {
+                // Calculate index accounting for dividers
+                let mut y_acc = 0.0f32;
+                for (i, (_, has_div)) in ITEMS.iter().enumerate() {
+                    let this_h = item_h + if *has_div { divider_h } else { 0.0 };
+                    if hy - my - pad < y_acc + this_h {
+                        return Some(i);
+                    }
+                    y_acc += this_h;
+                }
+                None
             } else {
                 None
             }
         });
 
-        for (i, label) in ITEMS.iter().enumerate() {
-            let iy = my + 4.0 + i as f32 * item_h;
+        let mut cursor_y = my + pad;
+        for (i, (label, has_divider)) in ITEMS.iter().enumerate() {
             if hover_idx == Some(i) {
-                rects.push(RectInstance::rounded([mx + 2.0, iy], [menu_w - 4.0, item_h], ui::cat::HOVER, 4.0));
+                rects.push(RectInstance::rounded([mx + 4.0, cursor_y], [menu_w - 8.0, item_h], ui::cat::HOVER, 4.0));
             }
-            let text_y = iy + (item_h - font.cell_height) / 2.0;
+            let text_y = cursor_y + (item_h - font.cell_height) / 2.0;
             ui::render_text(font, atlas, label, mx + 12.0, text_y, ui::cat::text(), &mut glyphs);
+            cursor_y += item_h;
+
+            // Divider line after this item
+            if *has_divider {
+                cursor_y += pad;
+                rects.push(RectInstance::new(
+                    [mx + 8.0, cursor_y],
+                    [menu_w - 16.0, 1.0],
+                    ui::cat::BORDER,
+                ));
+                cursor_y += 1.0 + pad;
+            }
         }
         (rects, glyphs, gradient_rects)
     }
@@ -446,9 +488,10 @@ impl NativeTerminal {
         } else {
             &["Rename", "Delete", "Open", "Show Diff"]
         };
-        let item_h = 26.0f32;
-        let menu_w = 160.0f32;
-        let menu_h = items.len() as f32 * item_h + 8.0;
+        let item_h = 28.0f32;
+        let menu_w = 180.0f32;
+        let pad = 6.0f32;
+        let menu_h = items.len() as f32 * item_h + pad * 2.0;
 
         // GPU SDF shadow (16px blur) + glass-thick background
         gradient_rects.push(GradientRectInstance::shadowed(
@@ -459,17 +502,17 @@ impl NativeTerminal {
         rects.push(RectInstance::bordered([mx, my], [menu_w, menu_h], [0.0, 0.0, 0.0, 0.0], 8.0, 1.0, 0.1));
 
         let hover_idx = self.chrome.mouse_pos.and_then(|(hx, hy)| {
-            if hx >= mx && hx < mx + menu_w && hy >= my + 4.0 && hy < my + menu_h {
-                Some(((hy - my - 4.0) / item_h) as usize)
+            if hx >= mx && hx < mx + menu_w && hy >= my + pad && hy < my + menu_h - pad {
+                Some(((hy - my - pad) / item_h) as usize)
             } else {
                 None
             }
         });
 
         for (i, label) in items.iter().enumerate() {
-            let iy = my + 4.0 + i as f32 * item_h;
+            let iy = my + pad + i as f32 * item_h;
             if hover_idx == Some(i) {
-                rects.push(RectInstance::rounded([mx + 2.0, iy], [menu_w - 4.0, item_h], ui::cat::HOVER, 4.0));
+                rects.push(RectInstance::rounded([mx + 4.0, iy], [menu_w - 8.0, item_h], ui::cat::HOVER, 4.0));
             }
             let text_y = iy + (item_h - font.cell_height) / 2.0;
             ui::render_text(font, atlas, label, mx + 12.0, text_y, ui::cat::text(), &mut glyphs);
@@ -500,7 +543,8 @@ impl NativeTerminal {
             return (rects, glyphs, gradient_rects);
         }
         let sidebar_w = self.sidebar.width();
-        let panel_h = 28.0 + agent_tabs.len() as f32 * 36.0;
+        let card_total_h = 40.0 + 4.0; // card_h + card_gap
+        let panel_h = 28.0 + agent_tabs.len() as f32 * card_total_h;
         let panel_y = window_h - ui::STATUS_BAR_HEIGHT - panel_h;
 
         // Panel background: glass-thick + subtle gradient (top slightly lighter)
@@ -518,52 +562,91 @@ impl NativeTerminal {
         let count_x = 8.0 + 7.0 * font.cell_width;
         ui::render_text(font, atlas, &count_str, count_x, header_y, ui::cat::pm(137, 180, 250, 255), &mut glyphs);
 
+        let card_h = 40.0f32;
+        let card_gap = 4.0f32;
         let entry_top = panel_y + 28.0;
         for (i, (tab_idx, info)) in agent_tabs.iter().enumerate() {
-            let y = entry_top + i as f32 * 36.0;
+            let y = entry_top + i as f32 * (card_h + card_gap);
             let is_active = *tab_idx == self.chrome.active_tab;
-
-            // Card background: gradient + rounded corners
-            let card_bg = if is_active {
-                [0.08, 0.08, 0.08, 0.08] // subtle highlight
-            } else {
-                [0.03, 0.03, 0.03, 0.03] // near-transparent
-            };
-            rects.push(RectInstance::rounded([4.0, y + 1.0], [sidebar_w - 8.0, 34.0], card_bg, 6.0));
-
-            // 3px left accent stripe (status color)
             let status_color = info.status.color();
-            rects.push(RectInstance::rounded([4.0, y + 1.0], [3.0, 34.0], status_color, 6.0));
+            let card_x = 6.0f32;
+            let card_w = sidebar_w - 12.0;
 
-            // Inner glow (subtle status-colored edge glow)
-            let glow_color = [
-                status_color[0] * 0.15,
-                status_color[1] * 0.15,
-                status_color[2] * 0.15,
-                0.15,
+            // Card background: gradient(135deg, glass-thick → glass-dense) + shadow
+            gradient_rects.push(GradientRectInstance::gradient_v_shadowed(
+                [card_x, y], [card_w, card_h],
+                ui::cat::GLASS_THICK,
+                ui::cat::GLASS_DENSE,
+                8.0, 8.0, 0.2,
+            ));
+
+            // Card border — status-colored when active, subtle otherwise
+            let border_color = if is_active {
+                [status_color[0] * 0.6, status_color[1] * 0.6, status_color[2] * 0.6, 0.6]
+            } else {
+                ui::cat::BORDER
+            };
+            rects.push(RectInstance::bordered([card_x, y], [card_w, card_h], [0.0; 4], 8.0, 1.0,
+                border_color[3]));
+
+            // 3px left accent stripe
+            rects.push(RectInstance::rounded([card_x, y + 4.0], [3.0, card_h - 8.0], status_color, 4.0));
+
+            // Stripe glow (6px spread)
+            let stripe_glow = [
+                status_color[0] * 0.3,
+                status_color[1] * 0.3,
+                status_color[2] * 0.3,
+                0.3,
             ];
-            rects.push(RectInstance::rounded([4.0, y + 1.0], [sidebar_w - 8.0, 34.0], glow_color, 6.0));
+            rects.push(RectInstance::rounded([card_x, y + 2.0], [8.0, card_h - 4.0], stripe_glow, 4.0));
 
-            let text_y1 = y + 5.0;
+            // Active card: inner glow radial simulation
+            if is_active {
+                let inner_glow = [
+                    status_color[0] * 0.08,
+                    status_color[1] * 0.08,
+                    status_color[2] * 0.08,
+                    0.08,
+                ];
+                rects.push(RectInstance::rounded([card_x, y], [card_w, card_h], inner_glow, 8.0));
+            }
+
+            // Status dot: 7x7 circle with glow
+            let dot_x = card_x + 12.0;
+            let dot_y = y + 8.0;
+            // Dot glow (behind)
+            let dot_glow = [
+                status_color[0] * 0.25,
+                status_color[1] * 0.25,
+                status_color[2] * 0.25,
+                0.25,
+            ];
+            rects.push(RectInstance::rounded([dot_x - 3.0, dot_y - 3.0], [13.0, 13.0], dot_glow, 6.0));
+            // Dot
+            rects.push(RectInstance::rounded([dot_x, dot_y], [7.0, 7.0], status_color, 4.0));
+
+            // CLI name: text-primary, bold
+            let text_x = dot_x + 14.0;
+            let text_y1 = y + 6.0;
             let cli_name = match &info.cli {
                 AgentCli::Claude => "Claude",
                 AgentCli::Codex => "Codex",
                 AgentCli::Gemini => "Gemini",
                 AgentCli::Custom(s) => s.as_str(),
             };
-            // CLI name: text-primary rgba(255,255,255,0.88)
-            ui::render_text(font, atlas, cli_name, 14.0, text_y1, ui::cat::TEXT_PRIMARY, &mut glyphs);
+            ui::render_text(font, atlas, cli_name, text_x, text_y1, ui::cat::TEXT_PRIMARY, &mut glyphs);
             // Model text: #89b4fa (ctp-blue)
-            let model_x = 14.0 + (cli_name.len() as f32 + 1.0) * font.cell_width;
+            let model_x = text_x + (cli_name.len() as f32 + 1.0) * font.cell_width;
             let model_label = format!("({})", info.model);
             ui::render_text(font, atlas, &model_label, model_x, text_y1, ui::cat::CTP_BLUE, &mut glyphs);
 
-            let text_y2 = y + 5.0 + font.cell_height + 2.0;
-            // Status label + cost text: #fab387 (ctp-peach)
+            // Status label + cost text
+            let text_y2 = text_y1 + font.cell_height + 3.0;
             let status_label = info.status.label();
-            ui::render_text(font, atlas, status_label, 14.0, text_y2, ui::cat::overlay0(), &mut glyphs);
+            ui::render_text(font, atlas, status_label, text_x, text_y2, ui::cat::overlay0(), &mut glyphs);
             let cost_str = format!(" ${:.3}", info.cost);
-            let cost_x = 14.0 + status_label.len() as f32 * font.cell_width;
+            let cost_x = text_x + status_label.len() as f32 * font.cell_width;
             ui::render_text(font, atlas, &cost_str, cost_x, text_y2, ui::cat::CTP_PEACH, &mut glyphs);
         }
         (rects, glyphs, gradient_rects)

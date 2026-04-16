@@ -365,12 +365,21 @@ impl DialogState {
             &mut glyphs,
         );
 
-        // Confirm button — 18K gold gradient, dark text, radius 8
+        // Confirm button — 18K gold 5-stop gradient, dark text, radius 8
         let confirm_x = cancel_x + button_w + button_gap;
         let dark_text: [f32; 4] = [0.1, 0.1, 0.1, 1.0]; // dark text on gold
-        gradient_rects.push(GradientRectInstance::gold_button(
+        for seg in GradientRectInstance::gold_button_segments(
             [confirm_x, button_y],
             [button_w, BUTTON_HEIGHT],
+            FIELD_RADIUS,
+        ) {
+            gradient_rects.push(seg);
+        }
+        // Inset highlight: 1px white 25% at top edge
+        rects.push(RectInstance::rounded(
+            [confirm_x + 1.0, button_y],
+            [button_w - 2.0, 1.0],
+            [0.25, 0.25, 0.25, 0.25],
             FIELD_RADIUS,
         ));
         let confirm_text_x = confirm_x
