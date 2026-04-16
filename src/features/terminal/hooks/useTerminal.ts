@@ -61,7 +61,7 @@ export function useTerminal(options: UseTerminalOptions = {}) {
 
   const {
     fontSize = 14,
-    fontFamily = "Cascadia Code, Cascadia Next JP, monospace",
+    fontFamily = "IBM Plex Mono, Cascadia Code, Cascadia Next JP, monospace",
   } = options;
 
   const attach = useCallback(async (container: HTMLDivElement) => {
@@ -77,6 +77,7 @@ export function useTerminal(options: UseTerminalOptions = {}) {
       allowProposedApi: true,
       scrollback: 10000,
       convertEol: true,
+      windowsPty: { backend: "conpty", buildNumber: 21376 },
     });
 
     const unicode11 = new Unicode11Addon();

@@ -169,6 +169,8 @@ pub fn run() {
             ipc::stop_interactive_agent,
             ipc::end_session_and_remove_worktree,
             ipc::list_interactive_agents,
+            // IME positioning
+            ipc::set_ime_position,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Aether Terminal");

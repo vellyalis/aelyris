@@ -26,8 +26,39 @@ export function useGhostSuggest({
     ghostRef.current = ghost;
 
     let currentInput = "";
+    let ghostCursorY = -1;
+    let ghostCursorX = -1;
 
-    const disposable = term.onData((data) => {
+    // Hide ghost when terminal renders and cursor has moved (PTY output, TUI apps, etc.)
+    const onRender = term.onRender(() => {
+      if (!ghost.getSuggestion()) return;
+      const buf = term.buffer.active;
+      // Any cursor movement means the ghost is stale
+      if (buf.cursorY !== ghostCursorY || buf.cursorX !== ghostCursorX) {
+        ghost.hide();
+        currentInput = "";
+      }
+      // Alternate screen = TUI app
+      if (buf.type !== "normal") {
+        ghost.hide();
+        currentInput = "";
+      }
+    });
+
+    const onData = term.onData((data) => {
+      if (term.buffer.active.type !== "normal") {
+        ghost.hide();
+        currentInput = "";
+        return;
+      }
+
+      // Escape sequences, control chars, or multi-byte IME input → clear ghost
+      if (data.length > 1 && data.charCodeAt(0) < 32) {
+        ghost.hide();
+        currentInput = "";
+        return;
+      }
+
       if (data === "\r" || data === "\n") {
         currentInput = "";
         ghost.hide();
@@ -37,6 +68,11 @@ export function useGhostSuggest({
         currentInput = currentInput.slice(0, -1);
       } else if (data.length === 1 && data.charCodeAt(0) >= 32) {
         currentInput += data;
+      } else if (data.length > 1 && data.charCodeAt(0) >= 32) {
+        // Multi-byte input (e.g., Japanese IME confirmed text) — reset ghost
+        currentInput = "";
+        ghost.hide();
+        return;
       } else if (data === "\t") {
         const suggestion = ghost.getSuggestion();
         if (suggestion) {
@@ -48,17 +84,23 @@ export function useGhostSuggest({
             return;
           }
         }
+      } else {
+        ghost.hide();
+        currentInput = "";
+        return;
       }
 
-      // Update ghost suggestion
       if (currentInput.length >= 2) {
         const history = blockTracker.getBlocks().map((b) => b.command).filter((c) => c.length > 0);
         const suggestion = findSuggestion(currentInput, history);
         if (suggestion) {
-          const cursor = containerRef.current?.querySelector(".xterm-cursor-layer");
-          if (cursor) {
-            const style = window.getComputedStyle(cursor);
-            ghost.show(suggestion, currentInput.length, parseInt(style.left || "0"), parseInt(style.top || "0"));
+          // Use xterm buffer coordinates to compute pixel position
+          const buf = term.buffer.active;
+          const cellDims = (term as unknown as { _core: { _renderService: { dimensions: { css: { cell: { width: number; height: number } } } } } })._core?._renderService?.dimensions?.css?.cell;
+          if (cellDims) {
+            ghostCursorX = buf.cursorX;
+            ghostCursorY = buf.cursorY;
+            ghost.show(suggestion, currentInput.length, buf.cursorX * cellDims.width, buf.cursorY * cellDims.height);
           }
         } else {
           ghost.hide();
@@ -69,7 +111,8 @@ export function useGhostSuggest({
     });
 
     return () => {
-      disposable.dispose();
+      onData.dispose();
+      onRender.dispose();
       ghost.dispose();
       ghostRef.current = null;
     };

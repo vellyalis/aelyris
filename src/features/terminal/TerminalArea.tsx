@@ -11,10 +11,10 @@ import type { ShellType } from "../../App";
 import { useAppStore } from "../../shared/store/appStore";
 import { useXtermTheme } from "../../shared/hooks/useTheme";
 import { CommandHistory } from "./CommandHistory";
-import { useIMEOverlay } from "./hooks/useIMEOverlay";
+// import { useIMEOverlay } from "./hooks/useIMEOverlay";
 import { useTerminalOutput } from "./hooks/useTerminalOutput";
 import { usePtyConnection } from "./hooks/usePtyConnection";
-import { useGhostSuggest } from "./hooks/useGhostSuggest";
+// import { useGhostSuggest } from "./hooks/useGhostSuggest";
 import styles from "./TerminalArea.module.css";
 
 interface TerminalAreaProps {
@@ -44,6 +44,14 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
     if (termRef.current) termRef.current.options.theme = xtermTheme;
   }, [xtermTheme]);
 
+  // Clean up orphaned overlay divs from old ghost suggest / IME overlay code
+  useEffect(() => {
+    const c = containerRef.current;
+    if (!c) return;
+    c.querySelectorAll<HTMLElement>("[data-ime-input]").forEach((el) => el.remove());
+    c.querySelectorAll<HTMLElement>("div[style*='pointer-events: none'][style*='z-index']").forEach((el) => el.remove());
+  }, []);
+
   // ── Terminal initialization ──
   useEffect(() => {
     if (!containerRef.current || termRef.current) return;
@@ -54,7 +62,8 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
       fontSize: 14, lineHeight: 1.4,
       cursorStyle: "bar", cursorBlink: true,
       allowTransparency: true, allowProposedApi: true,
-      scrollback: 10000,
+      scrollback: 10000, convertEol: true,
+      windowsPty: { backend: "conpty", buildNumber: 21376 },
     });
 
     const fitAddon = new FitAddon();
@@ -154,9 +163,10 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
   // ── Extracted hooks ──
   const term = termRef.current;
 
-  useIMEOverlay(term, containerRef);
+  // IME: let xterm.js handle natively — no custom overlay
+  // useIMEOverlay(term, containerRef);
 
-  const { blockTracker, commandHistory, processOutput } = useTerminalOutput({
+  const { commandHistory, processOutput } = useTerminalOutput({
     term, cwd, onStartAgent,
   });
 
@@ -166,7 +176,9 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
     onOutput: processOutput,
   });
 
-  useGhostSuggest({ term, containerRef, blockTracker, writeToPty });
+  // Ghost suggest disabled — causes burn-in with TUI apps (gemini/claude)
+  // TODO: re-enable when properly scoped to shell prompt only
+  // useGhostSuggest({ term, containerRef, blockTracker, writeToPty });
 
   // ── Search handlers ──
   const handleSearch = (query: string) => {

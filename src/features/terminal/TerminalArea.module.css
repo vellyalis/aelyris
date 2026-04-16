@@ -3,20 +3,20 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  position: relative;
-  /* Padding moved here from .terminalContainer so it doesn't interfere
-     with WebView2's IME coordinate reporting for the xterm textarea */
-  padding: var(--space-4);
 }
 
 .terminalContainer {
   flex: 1;
   overflow: hidden;
+  /* Padding inside terminal container — xterm.js CompositionHelper calculates
+     IME position relative to .xterm element, so padding must be on the
+     container wrapping xterm, not on a parent with position:relative */
+  padding: var(--space-4);
 }
 
 .terminalContainer :global(.xterm),
 .terminalContainer :global(.xterm-viewport) {
-  background-color: transparent !important;
+  background-color: transparent;
 }
 
 
@@ -42,7 +42,8 @@
   transition: border-color 150ms ease;
 }
 
-.searchInput:focus-visible { outline: none !important;
+.searchInput:focus-visible {
+  outline: none;
   border-color: var(--gold);
 }
 

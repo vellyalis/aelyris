@@ -11,7 +11,7 @@
 }
 
 .terminalContainer :global(.xterm-viewport) {
-  background-color: transparent !important;
+  background-color: transparent;
 }
 
 .terminalContainer :global(.xterm-screen) {

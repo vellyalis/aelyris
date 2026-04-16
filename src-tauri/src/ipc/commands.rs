@@ -1272,6 +1272,49 @@ pub fn list_all_files(root_path: String, max_files: usize) -> Result<Vec<crate::
     crate::git::list_all_files(&root_path, max_files)
 }
 
+/// Set the IME composition window position via Win32 API.
+/// This directly tells Windows where to place the IME candidate popup,
+/// bypassing WebView2's broken textarea-based positioning.
+#[tauri::command]
+pub fn set_ime_position(app: AppHandle, x: f64, y: f64) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::UI::Input::Ime::*;
+        use windows::Win32::Foundation::POINT;
+
+        let window = app.get_webview_window("main")
+            .ok_or("No main window")?;
+
+        let hwnd = window.hwnd().map_err(|e| e.to_string())?;
+
+        unsafe {
+            let himc = ImmGetContext(hwnd);
+            if himc.is_invalid() {
+                return Err("Failed to get IME context".into());
+            }
+
+            let cf = COMPOSITIONFORM {
+                dwStyle: CFS_POINT,
+                ptCurrentPos: POINT { x: x as i32, y: y as i32 },
+                ..Default::default()
+            };
+            let _ = ImmSetCompositionWindow(himc, &cf);
+
+            // Also set candidate window position
+            let cand = CANDIDATEFORM {
+                dwIndex: 0,
+                dwStyle: CFS_CANDIDATEPOS,
+                ptCurrentPos: POINT { x: x as i32, y: y as i32 },
+                ..Default::default()
+            };
+            let _ = ImmSetCandidateWindow(himc, &cand);
+
+            let _ = ImmReleaseContext(hwnd, himc);
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

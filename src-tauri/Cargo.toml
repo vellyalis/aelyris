@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Windows-native AI workspace terminal"
 authors = ["vellyalis"]
 edition = "2021"
+default-run = "aether-terminal"
 
 [lib]
 name = "aether_terminal_lib"

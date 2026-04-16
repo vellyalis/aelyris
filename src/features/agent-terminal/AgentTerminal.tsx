@@ -7,7 +7,7 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import "@xterm/xterm/css/xterm.css";
 import { useAppStore } from "../../shared/store/appStore";
 import { useXtermTheme } from "../../shared/hooks/useTheme";
-import { useIMEOverlay } from "../terminal/hooks/useIMEOverlay";
+// import { useIMEOverlay } from "../terminal/hooks/useIMEOverlay";
 import { getCliLabel, getCliColor, type AgentCliType } from "../../shared/types/interactiveAgent";
 import { STATUS_COLORS, STATUS_LABELS, type AgentStatus } from "../../shared/types/agent";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
@@ -55,7 +55,7 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
     let cancelled = false;
 
     const term = new Terminal({
-      theme: themeRef.current,
+      theme: xtermTheme,
       fontFamily: "IBM Plex Mono, Cascadia Code, Cascadia Next JP, monospace",
       fontSize: 14,
       lineHeight: 1.4,
@@ -64,6 +64,8 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
       allowTransparency: true,
       allowProposedApi: true,
       scrollback: 10000,
+      convertEol: true,
+      windowsPty: { backend: "conpty", buildNumber: 21376 },
     });
 
     const unicode11 = new Unicode11Addon();
@@ -155,8 +157,8 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
     return () => { window.removeEventListener("resize", handleResize); if (timer) clearTimeout(timer); };
   }, []);
 
-  // IME overlay for CJK input — uses buffer API to track cursor in TUI apps
-  useIMEOverlay(termRef.current, containerRef);
+  // IME: let xterm.js handle natively — no custom overlay
+  // useIMEOverlay(termRef.current, containerRef);
 
   const accent = accentColor ?? getCliColor(cli);
 

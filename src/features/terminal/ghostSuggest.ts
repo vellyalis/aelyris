@@ -36,6 +36,7 @@ export function findSuggestion(
 export class GhostSuggestOverlay {
   private overlay: HTMLDivElement;
   private currentSuggestion: string | null = null;
+  private autoHideTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(container: HTMLElement) {
     this.overlay = document.createElement("div");
@@ -57,17 +58,29 @@ export class GhostSuggestOverlay {
   /** Show a ghost suggestion at the cursor position. */
   show(suggestion: string, inputLength: number, cursorX: number, cursorY: number): void {
     this.currentSuggestion = suggestion;
-    // Only show the part after what's already typed
     const ghost = suggestion.slice(inputLength);
     if (!ghost) {
       this.hide();
       return;
     }
 
+    const container = this.overlay.parentElement;
+    if (container) {
+      const bounds = container.getBoundingClientRect();
+      if (cursorX < 0 || cursorY < 0 || cursorX > bounds.width || cursorY > bounds.height) {
+        this.hide();
+        return;
+      }
+    }
+
     this.overlay.textContent = ghost;
     this.overlay.style.display = "block";
     this.overlay.style.left = `${cursorX}px`;
     this.overlay.style.top = `${cursorY}px`;
+
+    // Auto-hide after 3s — safety net against burn-in
+    if (this.autoHideTimer) clearTimeout(this.autoHideTimer);
+    this.autoHideTimer = setTimeout(() => this.hide(), 3000);
   }
 
   /** Hide the ghost suggestion. */
@@ -75,6 +88,10 @@ export class GhostSuggestOverlay {
     this.overlay.style.display = "none";
     this.overlay.textContent = "";
     this.currentSuggestion = null;
+    if (this.autoHideTimer) {
+      clearTimeout(this.autoHideTimer);
+      this.autoHideTimer = null;
+    }
   }
 
   /** Get the current suggestion (for Tab completion). */
