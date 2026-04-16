@@ -82,9 +82,10 @@ impl ToastManager {
         atlas: &mut GlyphAtlas,
         window_w: f32,
         window_h: f32,
-    ) -> (Vec<RectInstance>, Vec<GlyphInstance>) {
+    ) -> (Vec<RectInstance>, Vec<GlyphInstance>, Vec<GradientRectInstance>) {
         let mut rects = Vec::new();
         let mut glyphs = Vec::new();
+        let mut gradient_rects = Vec::new();
 
         for (i, toast) in self.toasts.iter().enumerate() {
             let x = window_w - TOAST_WIDTH - TOAST_MARGIN;
@@ -105,21 +106,19 @@ impl ToastManager {
                 ToastLevel::Error => [0.953 * alpha, 0.545 * alpha, 0.659 * alpha, alpha],   // #f38ba8
             };
 
-            // Drop shadow (scaled by alpha for fade-out)
-            if alpha > 0.3 {
-                for mut sr in super::shadow::toast_shadow([x, y], [TOAST_WIDTH, TOAST_HEIGHT], 8.0) {
-                    sr.color[3] *= alpha;
-                    rects.push(sr);
-                }
-            }
-
-            // Background: rgba(28,28,28,0.72) — glass-thick
-            // Border: 1px rgba(255,255,255,0.1), corner radius 8
+            // GPU SDF shadow (16px blur) + glass-thick background
             let bg_alpha = 0.72 * alpha;
             let bg_r = 28.0 / 255.0 * bg_alpha;
+            gradient_rects.push(GradientRectInstance::shadowed(
+                [x, y], [TOAST_WIDTH, TOAST_HEIGHT],
+                [bg_r, bg_r, bg_r, bg_alpha],
+                8.0, 16.0, 0.35 * alpha,
+            ));
+
+            // Border: 1px rgba(255,255,255,0.1), corner radius 8
             rects.push(RectInstance::bordered(
                 [x, y], [TOAST_WIDTH, TOAST_HEIGHT],
-                [bg_r, bg_r, bg_r, bg_alpha], 8.0, 1.0, 0.1,
+                [0.0, 0.0, 0.0, 0.0], 8.0, 1.0, 0.1 * alpha,
             ));
 
             // Left accent stripe (3px)
@@ -138,7 +137,7 @@ impl ToastManager {
             super::render_text(font, atlas, &display, x + 10.0, text_y, text_color, &mut glyphs);
         }
 
-        (rects, glyphs)
+        (rects, glyphs, gradient_rects)
     }
 }
 

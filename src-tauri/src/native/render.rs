@@ -209,7 +209,7 @@ impl NativeTerminal {
             }
         };
 
-        let (agent_rects, agent_glyphs) =
+        let (agent_rects, agent_glyphs, agent_grads) =
             self.build_agent_panel(&self.font, &mut atlas, window_h);
 
         let (scm_rects, scm_glyphs) = if self.sidebar.visible {
@@ -248,10 +248,10 @@ impl NativeTerminal {
             }
         };
 
-        let (sb_menu_rects, sb_menu_glyphs) = self.build_sidebar_menu(&self.font, &mut atlas);
-        let (ctx_rects, ctx_glyphs) = self.build_context_menu(&self.font, &mut atlas);
+        let (sb_menu_rects, sb_menu_glyphs, sb_menu_grads) = self.build_sidebar_menu(&self.font, &mut atlas);
+        let (ctx_rects, ctx_glyphs, ctx_grads) = self.build_context_menu(&self.font, &mut atlas);
         let palette_out = self.palette.build(&self.font, &mut atlas, window_w, window_h);
-        let (toast_rects, toast_glyphs) = self.toasts.build(&self.font, &mut atlas, window_w, window_h);
+        let (toast_rects, toast_glyphs, toast_grads) = self.toasts.build(&self.font, &mut atlas, window_w, window_h);
 
         if atlas.dirty {
             renderer.upload_atlas(&atlas);
@@ -259,63 +259,14 @@ impl NativeTerminal {
         }
         drop(atlas);
 
-        // --- Gradient rects (shadows, light leaks) ---
+        // --- Gradient rects (shadows, light leaks, component backgrounds) ---
         let mut all_gradient_rects = build_light_leaks(window_w, window_h);
-
-        // Palette shadow (rendered before regular rects for correct layering)
-        if self.palette.should_render() {
-            let opacity = self.palette.render_opacity();
-            let palette_x = (window_w - 480.0) / 2.0;
-            let palette_y = 80.0_f32;
-            // Estimate palette height: INPUT(44) + up to 10 items * 36 + padding(16)
-            let palette_h = 44.0 + 10.0 * 36.0 + 16.0;
-            all_gradient_rects.push(GradientRectInstance::shadowed(
-                [palette_x - 4.0, palette_y - 4.0],
-                [488.0, palette_h + 8.0],
-                [0.0, 0.0, 0.0, 0.0], // transparent fill (shadow only)
-                12.0, 24.0, 0.5 * opacity,
-            ));
-        }
-
-        // Context menu shadow
-        if let Some((mx, my)) = self.context_menu {
-            let menu_w = 140.0_f32;
-            let menu_h = 5.0 * 26.0 + 8.0; // 5 items * 26 + padding
-            all_gradient_rects.push(GradientRectInstance::shadowed(
-                [mx - 2.0, my - 2.0],
-                [menu_w + 4.0, menu_h + 4.0],
-                [0.0, 0.0, 0.0, 0.0],
-                4.0, 16.0, 0.4,
-            ));
-        }
-
-        // Sidebar context menu shadow
-        if let Some((mx, my, _, is_dir)) = &self.sidebar_menu {
-            let item_count = if *is_dir { 3.0 } else { 4.0 };
-            let menu_w = 160.0_f32;
-            let menu_h = item_count * 26.0 + 8.0;
-            all_gradient_rects.push(GradientRectInstance::shadowed(
-                [mx - 2.0, my - 2.0],
-                [menu_w + 4.0, menu_h + 4.0],
-                [0.0, 0.0, 0.0, 0.0],
-                4.0, 16.0, 0.4,
-            ));
-        }
-
-        // Toast gradient shadows — only when toasts are visible.
-        // ToastManager builds its own shadow rects internally; gradient shadows
-        // add a higher-quality Gaussian falloff layer underneath.
-        if !self.toasts.is_empty() {
-            // Approximate: place a single shadow behind the toast stack area.
-            let tx = window_w - 320.0 - 8.0;
-            let ty = window_h - (32.0 + 8.0) - 30.0;
-            all_gradient_rects.push(GradientRectInstance::shadowed(
-                [tx - 2.0, ty - 2.0],
-                [324.0, 36.0],
-                [0.0, 0.0, 0.0, 0.0],
-                8.0, 16.0, 0.3,
-            ));
-        }
+        // Component-emitted gradient rects (shadow + background combined)
+        all_gradient_rects.extend(agent_grads);
+        all_gradient_rects.extend(palette_out.gradient_rects);
+        all_gradient_rects.extend(ctx_grads);
+        all_gradient_rects.extend(sb_menu_grads);
+        all_gradient_rects.extend(toast_grads);
 
         // --- Regular rects (chrome, content, overlays) ---
         let mut all_rects: Vec<RectInstance> = Vec::new();
@@ -376,12 +327,13 @@ impl NativeTerminal {
         &self,
         font: &FontManager,
         atlas: &mut GlyphAtlas,
-    ) -> (Vec<RectInstance>, Vec<GlyphInstance>) {
+    ) -> (Vec<RectInstance>, Vec<GlyphInstance>, Vec<GradientRectInstance>) {
         let mut rects = Vec::new();
         let mut glyphs = Vec::new();
+        let mut gradient_rects = Vec::new();
         let (mx, my) = match self.context_menu {
             Some(pos) => pos,
-            None => return (rects, glyphs),
+            None => return (rects, glyphs, gradient_rects),
         };
 
         const ITEMS: &[&str] = &["Copy", "Paste", "Select All", "Search", "Clear"];
@@ -389,10 +341,13 @@ impl NativeTerminal {
         let menu_w = 140.0f32;
         let menu_h = ITEMS.len() as f32 * item_h + 8.0;
 
-        // Drop shadow + bordered background
-        rects.extend(ui::shadow::menu_shadow([mx, my], [menu_w, menu_h], 8.0));
-        rects.push(RectInstance::bordered([mx, my], [menu_w, menu_h], ui::cat::GLASS_DENSE, 8.0, 1.0, 0.8));
-        rects.push(RectInstance::new([mx, my], [menu_w, 1.0], ui::cat::BORDER_STRONG));
+        // GPU SDF shadow (16px blur) + glass-thick background
+        gradient_rects.push(GradientRectInstance::shadowed(
+            [mx, my], [menu_w, menu_h],
+            ui::cat::GLASS_THICK, 8.0, 16.0, 0.4,
+        ));
+        // Border: 1px rgba(255,255,255,0.1)
+        rects.push(RectInstance::bordered([mx, my], [menu_w, menu_h], [0.0, 0.0, 0.0, 0.0], 8.0, 1.0, 0.1));
 
         let hover_idx = self.chrome.mouse_pos.and_then(|(hx, hy)| {
             if hx >= mx && hx < mx + menu_w && hy >= my + 4.0 && hy < my + menu_h {
@@ -405,12 +360,12 @@ impl NativeTerminal {
         for (i, label) in ITEMS.iter().enumerate() {
             let iy = my + 4.0 + i as f32 * item_h;
             if hover_idx == Some(i) {
-                rects.push(RectInstance::rounded([mx + 2.0, iy], [menu_w - 4.0, item_h], ui::cat::ACTIVE, 4.0));
+                rects.push(RectInstance::rounded([mx + 2.0, iy], [menu_w - 4.0, item_h], ui::cat::HOVER, 4.0));
             }
             let text_y = iy + (item_h - font.cell_height) / 2.0;
             ui::render_text(font, atlas, label, mx + 12.0, text_y, ui::cat::text(), &mut glyphs);
         }
-        (rects, glyphs)
+        (rects, glyphs, gradient_rects)
     }
 
     /// Build sidebar context menu overlay.
@@ -418,12 +373,13 @@ impl NativeTerminal {
         &self,
         font: &FontManager,
         atlas: &mut GlyphAtlas,
-    ) -> (Vec<RectInstance>, Vec<GlyphInstance>) {
+    ) -> (Vec<RectInstance>, Vec<GlyphInstance>, Vec<GradientRectInstance>) {
         let mut rects = Vec::new();
         let mut glyphs = Vec::new();
+        let mut gradient_rects = Vec::new();
         let (mx, my, _, is_dir) = match &self.sidebar_menu {
             Some(m) => (m.0, m.1, &m.2, m.3),
-            None => return (rects, glyphs),
+            None => return (rects, glyphs, gradient_rects),
         };
         let items: &[&str] = if is_dir {
             &["New File", "New Folder", "Delete"]
@@ -434,9 +390,13 @@ impl NativeTerminal {
         let menu_w = 160.0f32;
         let menu_h = items.len() as f32 * item_h + 8.0;
 
-        // Drop shadow + bordered background
-        rects.extend(ui::shadow::menu_shadow([mx, my], [menu_w, menu_h], 8.0));
-        rects.push(RectInstance::bordered([mx, my], [menu_w, menu_h], ui::cat::GLASS_DENSE, 8.0, 1.0, 0.8));
+        // GPU SDF shadow (16px blur) + glass-thick background
+        gradient_rects.push(GradientRectInstance::shadowed(
+            [mx, my], [menu_w, menu_h],
+            ui::cat::GLASS_THICK, 8.0, 16.0, 0.4,
+        ));
+        // Border: 1px rgba(255,255,255,0.1)
+        rects.push(RectInstance::bordered([mx, my], [menu_w, menu_h], [0.0, 0.0, 0.0, 0.0], 8.0, 1.0, 0.1));
 
         let hover_idx = self.chrome.mouse_pos.and_then(|(hx, hy)| {
             if hx >= mx && hx < mx + menu_w && hy >= my + 4.0 && hy < my + menu_h {
@@ -449,12 +409,12 @@ impl NativeTerminal {
         for (i, label) in items.iter().enumerate() {
             let iy = my + 4.0 + i as f32 * item_h;
             if hover_idx == Some(i) {
-                rects.push(RectInstance::rounded([mx + 2.0, iy], [menu_w - 4.0, item_h], ui::cat::ACTIVE, 4.0));
+                rects.push(RectInstance::rounded([mx + 2.0, iy], [menu_w - 4.0, item_h], ui::cat::HOVER, 4.0));
             }
             let text_y = iy + (item_h - font.cell_height) / 2.0;
             ui::render_text(font, atlas, label, mx + 12.0, text_y, ui::cat::text(), &mut glyphs);
         }
-        (rects, glyphs)
+        (rects, glyphs, gradient_rects)
     }
 
     /// Build agent session panel (inside sidebar, bottom area).
@@ -463,11 +423,12 @@ impl NativeTerminal {
         font: &FontManager,
         atlas: &mut GlyphAtlas,
         window_h: f32,
-    ) -> (Vec<RectInstance>, Vec<GlyphInstance>) {
+    ) -> (Vec<RectInstance>, Vec<GlyphInstance>, Vec<GradientRectInstance>) {
         let mut rects = Vec::new();
         let mut glyphs = Vec::new();
+        let mut gradient_rects = Vec::new();
         if !self.sidebar.visible {
-            return (rects, glyphs);
+            return (rects, glyphs, gradient_rects);
         }
         let agent_tabs: Vec<(usize, &super::types::AgentTabInfo)> = self
             .tab_states
@@ -476,14 +437,18 @@ impl NativeTerminal {
             .filter_map(|(i, t)| t.agent_info().map(|a| (i, a)))
             .collect();
         if agent_tabs.is_empty() {
-            return (rects, glyphs);
+            return (rects, glyphs, gradient_rects);
         }
         let sidebar_w = self.sidebar.width();
         let panel_h = 28.0 + agent_tabs.len() as f32 * 36.0;
         let panel_y = window_h - ui::STATUS_BAR_HEIGHT - panel_h;
 
-        // Panel background: glass-thick rgba(28,28,28,0.72)
-        rects.push(RectInstance::bordered([0.0, panel_y], [sidebar_w, panel_h], ui::cat::GLASS_THICK, 0.0, 1.0, 0.5));
+        // Panel background: glass-thick + subtle gradient (top slightly lighter)
+        gradient_rects.push(GradientRectInstance::gradient_v(
+            [0.0, panel_y], [sidebar_w, panel_h],
+            ui::cat::GLASS_DENSE, ui::cat::GLASS_THICK,
+            0.0,
+        ));
         rects.push(RectInstance::new([0.0, panel_y], [sidebar_w, 1.0], ui::cat::BORDER));
 
         let header_y = panel_y + (28.0 - font.cell_height) / 2.0;
@@ -498,14 +463,28 @@ impl NativeTerminal {
             let y = entry_top + i as f32 * 36.0;
             let is_active = *tab_idx == self.chrome.active_tab;
 
-            if is_active {
-                // Agent entry active: rgba(255,255,255,0.06)
-                rects.push(RectInstance::rounded([2.0, y], [sidebar_w - 4.0, 36.0], ui::cat::HOVER, 6.0));
-            }
-            let dot_y = y + (36.0 - 4.0) / 2.0;
-            rects.push(RectInstance::new([8.0, dot_y], [4.0, 4.0], info.status.color()));
+            // Card background: gradient + rounded corners
+            let card_bg = if is_active {
+                [0.08, 0.08, 0.08, 0.08] // subtle highlight
+            } else {
+                [0.03, 0.03, 0.03, 0.03] // near-transparent
+            };
+            rects.push(RectInstance::rounded([4.0, y + 1.0], [sidebar_w - 8.0, 34.0], card_bg, 6.0));
 
-            let text_y1 = y + 4.0;
+            // 3px left accent stripe (status color)
+            let status_color = info.status.color();
+            rects.push(RectInstance::rounded([4.0, y + 1.0], [3.0, 34.0], status_color, 6.0));
+
+            // Inner glow (subtle status-colored edge glow)
+            let glow_color = [
+                status_color[0] * 0.15,
+                status_color[1] * 0.15,
+                status_color[2] * 0.15,
+                0.15,
+            ];
+            rects.push(RectInstance::rounded([4.0, y + 1.0], [sidebar_w - 8.0, 34.0], glow_color, 6.0));
+
+            let text_y1 = y + 5.0;
             let cli_name = match &info.cli {
                 AgentCli::Claude => "Claude",
                 AgentCli::Codex => "Codex",
@@ -513,21 +492,21 @@ impl NativeTerminal {
                 AgentCli::Custom(s) => s.as_str(),
             };
             // CLI name: text-primary rgba(255,255,255,0.88)
-            ui::render_text(font, atlas, cli_name, 18.0, text_y1, ui::cat::TEXT_PRIMARY, &mut glyphs);
+            ui::render_text(font, atlas, cli_name, 14.0, text_y1, ui::cat::TEXT_PRIMARY, &mut glyphs);
             // Model text: #89b4fa (ctp-blue)
-            let model_x = 18.0 + (cli_name.len() as f32 + 1.0) * font.cell_width;
+            let model_x = 14.0 + (cli_name.len() as f32 + 1.0) * font.cell_width;
             let model_label = format!("({})", info.model);
             ui::render_text(font, atlas, &model_label, model_x, text_y1, ui::cat::CTP_BLUE, &mut glyphs);
 
-            let text_y2 = y + 4.0 + font.cell_height + 2.0;
+            let text_y2 = y + 5.0 + font.cell_height + 2.0;
             // Status label + cost text: #fab387 (ctp-peach)
             let status_label = info.status.label();
-            ui::render_text(font, atlas, status_label, 18.0, text_y2, ui::cat::overlay0(), &mut glyphs);
+            ui::render_text(font, atlas, status_label, 14.0, text_y2, ui::cat::overlay0(), &mut glyphs);
             let cost_str = format!(" ${:.3}", info.cost);
-            let cost_x = 18.0 + status_label.len() as f32 * font.cell_width;
+            let cost_x = 14.0 + status_label.len() as f32 * font.cell_width;
             ui::render_text(font, atlas, &cost_str, cost_x, text_y2, ui::cat::CTP_PEACH, &mut glyphs);
         }
-        (rects, glyphs)
+        (rects, glyphs, gradient_rects)
     }
 }
 

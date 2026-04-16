@@ -15,7 +15,6 @@ const BUTTON_HEIGHT: f32 = 32.0;
 const PADDING: f32 = 16.0;
 const CORNER_RADIUS: f32 = 12.0;
 const FIELD_RADIUS: f32 = 8.0;
-const SHADOW_OFFSET: f32 = 4.0;
 const LABEL_FIELD_GAP: f32 = 4.0;
 
 /// A single input field in a dialog.

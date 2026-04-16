@@ -10,20 +10,40 @@
 // Spacing (margins, paddings, gaps between elements)
 // ---------------------------------------------------------------------------
 
-pub const SPACE_XS: f32 = 2.0;
-pub const SPACE_SM: f32 = 4.0;
-pub const SPACE_MD: f32 = 8.0;
-pub const SPACE_LG: f32 = 12.0;
-pub const SPACE_XL: f32 = 16.0;
+/// space-1 (2px)
+pub const SPACE_1: f32 = 2.0;
+/// space-2 (4px)
+pub const SPACE_2: f32 = 4.0;
+/// space-3 (6px)
+pub const SPACE_3: f32 = 6.0;
+/// space-4 (8px)
+pub const SPACE_4: f32 = 8.0;
+/// space-5 (10px)
+pub const SPACE_5: f32 = 10.0;
+/// space-6 (12px)
+pub const SPACE_6: f32 = 12.0;
+/// space-8 (16px)
+pub const SPACE_8: f32 = 16.0;
+
+// Legacy aliases
+pub const SPACE_XS: f32 = SPACE_1;
+pub const SPACE_SM: f32 = SPACE_2;
+pub const SPACE_MD: f32 = SPACE_4;
+pub const SPACE_LG: f32 = SPACE_6;
+pub const SPACE_XL: f32 = SPACE_8;
 pub const SPACE_2XL: f32 = 24.0;
 
 // ---------------------------------------------------------------------------
 // Border radius
 // ---------------------------------------------------------------------------
 
-pub const RADIUS_SM: f32 = 3.0;
-pub const RADIUS_MD: f32 = 6.0;
-pub const RADIUS_LG: f32 = 8.0;
+/// 角丸-sm (4px) — design system
+pub const RADIUS_SM: f32 = 4.0;
+/// 角丸 (8px) — design system
+pub const RADIUS_MD: f32 = 8.0;
+/// 角丸-lg (12px) — design system
+pub const RADIUS_LG: f32 = 12.0;
+// Extra alias
 pub const RADIUS_XL: f32 = 12.0;
 
 // ---------------------------------------------------------------------------
@@ -75,17 +95,17 @@ pub const TOOLTIP_OFFSET: f32 = 6.0;
 // Scrollbar colors (theme-aware via cat module)
 // ---------------------------------------------------------------------------
 
-/// Scrollbar track background (very subtle).
-pub const SCROLLBAR_TRACK: [f32; 4] = [0.15, 0.15, 0.20, 0.3];
+/// Scrollbar track background (nearly invisible).
+pub const SCROLLBAR_TRACK: [f32; 4] = [0.0, 0.0, 0.0, 0.0];
 
-/// Scrollbar thumb at rest.
-pub const SCROLLBAR_THUMB: [f32; 4] = [0.35, 0.36, 0.45, 0.5];
+/// Scrollbar thumb at rest — rgba(255,255,255,0.15).
+pub const SCROLLBAR_THUMB: [f32; 4] = [0.15, 0.15, 0.15, 0.15];
 
-/// Scrollbar thumb on hover.
-pub const SCROLLBAR_THUMB_HOVER: [f32; 4] = [0.45, 0.46, 0.55, 0.7];
+/// Scrollbar thumb on hover — rgba(255,255,255,0.25).
+pub const SCROLLBAR_THUMB_HOVER: [f32; 4] = [0.25, 0.25, 0.25, 0.25];
 
-/// Scrollbar thumb while dragging.
-pub const SCROLLBAR_THUMB_ACTIVE: [f32; 4] = [0.55, 0.56, 0.65, 0.8];
+/// Scrollbar thumb while dragging — rgba(255,255,255,0.35).
+pub const SCROLLBAR_THUMB_ACTIVE: [f32; 4] = [0.35, 0.35, 0.35, 0.35];
 
 // ---------------------------------------------------------------------------
 // Tooltip colors
