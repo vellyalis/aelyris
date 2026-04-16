@@ -154,6 +154,26 @@ impl Selection {
     }
 }
 
+/// Shell integration marker type (OSC 133 — FinalTerm protocol).
+#[derive(Clone, Debug, PartialEq)]
+pub enum ShellMarkerType {
+    /// 133;A — Prompt start.
+    PromptStart,
+    /// 133;B — Command start (user hit Enter after typing).
+    CommandStart,
+    /// 133;C — Command output start.
+    OutputStart,
+    /// 133;D;{exit_code} — Command finished with exit code.
+    CommandFinished(i32),
+}
+
+/// A shell integration marker placed on a specific row.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ShellMarker {
+    pub row: usize,
+    pub marker_type: ShellMarkerType,
+}
+
 /// The terminal grid: cells + scrollback + cursor + modes.
 pub struct Grid {
     pub cols: u16,
@@ -185,6 +205,8 @@ pub struct Grid {
     pub search_query: Option<String>,
     /// Currently active hyperlink URL (set by OSC 8, cleared by OSC 8;;).
     active_hyperlink: Option<std::sync::Arc<String>>,
+    /// Shell integration markers (OSC 133 — FinalTerm protocol).
+    pub shell_markers: Vec<ShellMarker>,
 }
 
 impl Grid {
@@ -210,6 +232,7 @@ impl Grid {
             title: None,
             search_query: None,
             active_hyperlink: None,
+            shell_markers: Vec::new(),
         }
     }
 
@@ -876,6 +899,36 @@ impl<'a> Perform for GridPerformer<'a> {
                         self.grid.active_hyperlink = None;
                     }
                 }
+                b"133" => {
+                    // OSC 133 — Shell Integration Protocol (FinalTerm)
+                    // VTE splits by ';', so "133;D;127" arrives as
+                    // params = [b"133", b"D", b"127"].
+                    if let Some(sub) = params.get(1) {
+                        if let Ok(s) = std::str::from_utf8(sub) {
+                            let marker_type = match s {
+                                "A" => Some(ShellMarkerType::PromptStart),
+                                "B" => Some(ShellMarkerType::CommandStart),
+                                "C" => Some(ShellMarkerType::OutputStart),
+                                "D" => {
+                                    // Exit code is in the next param (params[2]).
+                                    let exit_code = params
+                                        .get(2)
+                                        .and_then(|p| std::str::from_utf8(p).ok())
+                                        .and_then(|c| c.parse::<i32>().ok())
+                                        .unwrap_or(0);
+                                    Some(ShellMarkerType::CommandFinished(exit_code))
+                                }
+                                _ => None,
+                            };
+                            if let Some(mt) = marker_type {
+                                self.grid.shell_markers.push(ShellMarker {
+                                    row: self.grid.cursor.row as usize,
+                                    marker_type: mt,
+                                });
+                            }
+                        }
+                    }
+                }
                 _ => {}
             }
         }
@@ -1132,5 +1185,106 @@ mod tests {
         // No scrollback — can't scroll up
         assert!(!grid.scroll_viewport(-5));
         assert_eq!(grid.viewport_offset, 0);
+    }
+
+    #[test]
+    fn test_osc_133_prompt_start() {
+        let mut grid = Grid::new(80, 24, 100);
+        let mut parser = vte::Parser::new();
+        let mut performer = GridPerformer { grid: &mut grid };
+        // OSC 133;A BEL
+        for byte in b"\x1b]133;A\x07" {
+            parser.advance(&mut performer, *byte);
+        }
+        assert_eq!(grid.shell_markers.len(), 1);
+        assert!(matches!(
+            grid.shell_markers[0].marker_type,
+            ShellMarkerType::PromptStart
+        ));
+    }
+
+    #[test]
+    fn test_osc_133_command_start() {
+        let mut grid = Grid::new(80, 24, 100);
+        let mut parser = vte::Parser::new();
+        let mut performer = GridPerformer { grid: &mut grid };
+        for byte in b"\x1b]133;B\x07" {
+            parser.advance(&mut performer, *byte);
+        }
+        assert_eq!(grid.shell_markers.len(), 1);
+        assert!(matches!(
+            grid.shell_markers[0].marker_type,
+            ShellMarkerType::CommandStart
+        ));
+    }
+
+    #[test]
+    fn test_osc_133_output_start() {
+        let mut grid = Grid::new(80, 24, 100);
+        let mut parser = vte::Parser::new();
+        let mut performer = GridPerformer { grid: &mut grid };
+        for byte in b"\x1b]133;C\x07" {
+            parser.advance(&mut performer, *byte);
+        }
+        assert_eq!(grid.shell_markers.len(), 1);
+        assert!(matches!(
+            grid.shell_markers[0].marker_type,
+            ShellMarkerType::OutputStart
+        ));
+    }
+
+    #[test]
+    fn test_osc_133_command_finished_with_exit_code() {
+        let mut grid = Grid::new(80, 24, 100);
+        let mut parser = vte::Parser::new();
+        let mut performer = GridPerformer { grid: &mut grid };
+        for byte in b"\x1b]133;D;0\x07" {
+            parser.advance(&mut performer, *byte);
+        }
+        assert_eq!(grid.shell_markers.len(), 1);
+        assert!(matches!(
+            grid.shell_markers[0].marker_type,
+            ShellMarkerType::CommandFinished(0)
+        ));
+    }
+
+    #[test]
+    fn test_osc_133_command_finished_nonzero_exit() {
+        let mut grid = Grid::new(80, 24, 100);
+        let mut parser = vte::Parser::new();
+        let mut performer = GridPerformer { grid: &mut grid };
+        for byte in b"\x1b]133;D;127\x07" {
+            parser.advance(&mut performer, *byte);
+        }
+        assert_eq!(grid.shell_markers.len(), 1);
+        assert!(matches!(
+            grid.shell_markers[0].marker_type,
+            ShellMarkerType::CommandFinished(127)
+        ));
+    }
+
+    #[test]
+    fn test_osc_133_multiple_markers() {
+        let mut grid = Grid::new(80, 24, 100);
+        let mut parser = vte::Parser::new();
+        let mut performer = GridPerformer { grid: &mut grid };
+        // Full command cycle: prompt → command → output → finished
+        for byte in b"\x1b]133;A\x07" {
+            parser.advance(&mut performer, *byte);
+        }
+        for byte in b"\x1b]133;B\x07" {
+            parser.advance(&mut performer, *byte);
+        }
+        for byte in b"\x1b]133;C\x07" {
+            parser.advance(&mut performer, *byte);
+        }
+        for byte in b"\x1b]133;D;0\x07" {
+            parser.advance(&mut performer, *byte);
+        }
+        assert_eq!(grid.shell_markers.len(), 4);
+        assert!(matches!(grid.shell_markers[0].marker_type, ShellMarkerType::PromptStart));
+        assert!(matches!(grid.shell_markers[1].marker_type, ShellMarkerType::CommandStart));
+        assert!(matches!(grid.shell_markers[2].marker_type, ShellMarkerType::OutputStart));
+        assert!(matches!(grid.shell_markers[3].marker_type, ShellMarkerType::CommandFinished(0)));
     }
 }
