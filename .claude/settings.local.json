@@ -57,7 +57,12 @@
       "Bash(taskkill /F /IM native-terminal.exe)",
       "WebFetch(domain:news.ycombinator.com)",
       "WebFetch(domain:www.boringcactus.com)",
-      "WebFetch(domain:deepwiki.com)"
+      "WebFetch(domain:deepwiki.com)",
+      "Bash(rtk pwd *)",
+      "Bash(rtk tasklist *)",
+      "Bash(rtk netstat *)",
+      "Bash(rtk lsof *)",
+      "Bash(xargs -r kill -9)"
     ]
   }
 }

@@ -2,76 +2,70 @@ import { useEffect } from "react";
 import type { Terminal } from "@xterm/xterm";
 
 /**
- * Manages IME composition overlay for CJK input in xterm.js.
- * Hides xterm's built-in composition view and shows a custom overlay
- * positioned at the cursor location.
+ * Fixes IME candidate window positioning for CJK input in xterm.js.
+ *
+ * Problem: Windows places the OS IME candidate popup relative to the hidden
+ * textarea. xterm.js doesn't update that textarea position when TUI apps
+ * (Claude/Gemini CLI) move the cursor via ANSI escapes.
+ *
+ * Fix: On compositionstart, reposition the textarea to match buffer.active
+ * cursor position. No custom overlay — xterm's built-in composition view
+ * handles the visual display. This avoids ghost text / burn-in bugs.
  */
 export function useIMEOverlay(
   term: Terminal | null,
-  containerRef: React.RefObject<HTMLDivElement | null>,
+  _containerRef: React.RefObject<HTMLDivElement | null>,
 ): void {
   useEffect(() => {
-    if (!term || !containerRef.current) return;
-    const container = containerRef.current;
+    if (!term) return;
     const textarea = term.textarea;
     if (!textarea) return;
 
-    const overlay = document.createElement("div");
-    overlay.style.cssText = `
-      position: absolute; display: none; pointer-events: none; z-index: 100;
-      font-family: "IBM Plex Mono", "Cascadia Code", monospace;
-      font-size: 14px; line-height: 1.4;
-      color: var(--text-primary); background: var(--glass-dense);
-      padding: 0 2px; border-radius: 2px;
-    `;
-    container.style.position = "relative";
-    container.appendChild(overlay);
+    const origPosition = textarea.style.position;
+    const origLeft = textarea.style.left;
+    const origTop = textarea.style.top;
 
-    const getCursorPos = () => {
-      const cursor = container.querySelector(".xterm-cursor-layer");
-      if (!cursor) return null;
-      const style = window.getComputedStyle(cursor);
-      return { left: parseInt(style.left || "0"), top: parseInt(style.top || "0") };
+    const repositionTextarea = () => {
+      const buf = term.buffer.active;
+      const el = term.element;
+      if (!el) return;
+
+      const measureEl = el.querySelector(".xterm-char-measure-element");
+      const cellW = measureEl?.getBoundingClientRect().width
+        ?? (el.clientWidth / term.cols);
+
+      const rowEl = el.querySelector(".xterm-rows > div");
+      const cellH = rowEl?.getBoundingClientRect().height
+        ?? (el.clientHeight / term.rows);
+
+      const screen = el.querySelector(".xterm-screen") as HTMLElement | null;
+      if (!screen) return;
+
+      const screenRect = screen.getBoundingClientRect();
+      const x = screenRect.left + buf.cursorX * cellW;
+      const y = screenRect.top + buf.cursorY * cellH + cellH;
+
+      textarea.style.position = "fixed";
+      textarea.style.left = `${x}px`;
+      textarea.style.top = `${y}px`;
     };
 
-    const hideXtermComposition = () => {
-      const comp = container.querySelector(".xterm-composition-view") as HTMLElement | null;
-      if (comp) comp.style.display = "none";
-    };
-    const showXtermComposition = () => {
-      const comp = container.querySelector(".xterm-composition-view") as HTMLElement | null;
-      if (comp) comp.style.display = "";
+    const restoreTextarea = () => {
+      textarea.style.position = origPosition;
+      textarea.style.left = origLeft;
+      textarea.style.top = origTop;
     };
 
-    const onStart = () => {
-      overlay.style.display = "block";
-      overlay.textContent = "";
-      hideXtermComposition();
-    };
-    const onUpdate = (e: CompositionEvent) => {
-      overlay.textContent = e.data;
-      const pos = getCursorPos();
-      if (pos) {
-        overlay.style.left = `${pos.left}px`;
-        overlay.style.top = `${pos.top}px`;
-      }
-      hideXtermComposition();
-    };
-    const onEnd = () => {
-      overlay.style.display = "none";
-      overlay.textContent = "";
-      showXtermComposition();
-    };
+    const onStart = () => repositionTextarea();
+    const onEnd = () => restoreTextarea();
 
     textarea.addEventListener("compositionstart", onStart);
-    textarea.addEventListener("compositionupdate", onUpdate);
     textarea.addEventListener("compositionend", onEnd);
 
     return () => {
       textarea.removeEventListener("compositionstart", onStart);
-      textarea.removeEventListener("compositionupdate", onUpdate);
       textarea.removeEventListener("compositionend", onEnd);
-      overlay.remove();
+      restoreTextarea();
     };
-  }, [term, containerRef]);
+  }, [term]);
 }

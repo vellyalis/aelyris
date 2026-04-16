@@ -47,6 +47,11 @@
   overflow: hidden;
 }
 
+.terminalContainer :global(.xterm),
+.terminalContainer :global(.xterm-viewport) {
+  background-color: transparent !important;
+}
+
 /* Accent glow on active */
 .agentTerminal:focus-within {
   border-top-color: var(--agent-accent, var(--ctp-mauve));

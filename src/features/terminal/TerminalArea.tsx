@@ -4,6 +4,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
+import { WebglAddon } from "@xterm/addon-webgl";
 import "@xterm/xterm/css/xterm.css";
 
 import type { ShellType } from "../../App";
@@ -65,6 +66,16 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
     term.loadAddon(new WebLinksAddon());
     term.open(containerRef.current);
     term.unicode.activeVersion = "11";
+
+    // WebGL renderer with transparency (supported since addon-webgl 0.18+)
+    try {
+      const webgl = new WebglAddon();
+      webgl.onContextLoss(() => webgl.dispose());
+      term.loadAddon(webgl);
+    } catch {
+      // WebGL unavailable — Canvas fallback is automatic
+    }
+
     fitAddon.fit();
 
     termRef.current = term;

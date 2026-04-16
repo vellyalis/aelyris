@@ -3,9 +3,11 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
+import { WebglAddon } from "@xterm/addon-webgl";
 import "@xterm/xterm/css/xterm.css";
 import { useAppStore } from "../../shared/store/appStore";
 import { useXtermTheme } from "../../shared/hooks/useTheme";
+import { useIMEOverlay } from "../terminal/hooks/useIMEOverlay";
 import { getCliLabel, getCliColor, type AgentCliType } from "../../shared/types/interactiveAgent";
 import { STATUS_COLORS, STATUS_LABELS, type AgentStatus } from "../../shared/types/agent";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
@@ -73,6 +75,15 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
 
     term.open(container);
     term.unicode.activeVersion = "11";
+
+    try {
+      const webgl = new WebglAddon();
+      webgl.onContextLoss(() => webgl.dispose());
+      term.loadAddon(webgl);
+    } catch {
+      // WebGL unavailable — Canvas fallback is automatic
+    }
+
     fitAddon.fit();
 
     termRef.current = term;
@@ -143,6 +154,9 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
     window.addEventListener("resize", handleResize);
     return () => { window.removeEventListener("resize", handleResize); if (timer) clearTimeout(timer); };
   }, []);
+
+  // IME overlay for CJK input — uses buffer API to track cursor in TUI apps
+  useIMEOverlay(termRef.current, containerRef);
 
   const accent = accentColor ?? getCliColor(cli);
 

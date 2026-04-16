@@ -4,6 +4,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { SearchAddon } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
+import { WebglAddon } from "@xterm/addon-webgl";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
@@ -91,8 +92,14 @@ export function useTerminal(options: UseTerminalOptions = {}) {
     // Activate Unicode 11 for proper CJK full-width character handling
     term.unicode.activeVersion = "11";
 
-    // Skip WebGL renderer — it doesn't support transparent backgrounds.
-    // Canvas renderer handles transparency correctly with allowTransparency: true.
+    // WebGL renderer with transparency (supported since addon-webgl 0.18+)
+    try {
+      const webgl = new WebglAddon();
+      webgl.onContextLoss(() => webgl.dispose());
+      term.loadAddon(webgl);
+    } catch {
+      // WebGL unavailable — Canvas fallback is automatic
+    }
 
     fitAddon.fit();
     xtermRef.current = term;

@@ -1,7 +1,9 @@
 import { useRef, useEffect, useMemo, useState, useCallback } from "react";
 import type { PaneNode, SplitDirection } from "./types";
 import { TerminalArea } from "../TerminalArea";
+import { WebGpuTerminal } from "../WebGpuTerminal";
 import { TerminalInfoBar } from "../TerminalInfoBar";
+import { useGpuRenderer } from "../../../shared/hooks/useGpuRenderer";
 import { SplitPane } from "../../../shared/ui/SplitPane";
 import styles from "./PaneTreeRenderer.module.css";
 
@@ -48,6 +50,7 @@ export function PaneTreeRenderer({
   tree, activePaneId, maximizedPaneId, syncMode,
   onFocusPane, onSplit, onClose, onResize, onToggleMaximize, onTerminalReady, canClose,
 }: PaneTreeRendererProps) {
+  const rendererMode = useGpuRenderer();
   const rootRef = useRef<HTMLDivElement>(null);
 
   // Accumulate all leaves ever seen (never remove — React handles unmount via key removal)
@@ -171,12 +174,20 @@ export function PaneTreeRenderer({
               onToggleMaximize={() => onToggleMaximize(leaf.id)}
               onClose={canClose ? () => onClose(leaf.id) : undefined}
             />
-            <TerminalArea
-              shell={leaf.shell as "powershell" | "cmd" | "gitbash" | "wsl"}
-              cwd={leaf.cwd}
-              syncMode={syncMode}
-              onTerminalReady={(tid) => onTerminalReady(leaf.id, tid)}
-            />
+            {rendererMode === "wgpu" ? (
+              <WebGpuTerminal
+                shell={leaf.shell as "powershell" | "cmd" | "gitbash" | "wsl"}
+                cwd={leaf.cwd}
+                onTerminalReady={(tid) => onTerminalReady(leaf.id, tid)}
+              />
+            ) : (
+              <TerminalArea
+                shell={leaf.shell as "powershell" | "cmd" | "gitbash" | "wsl"}
+                cwd={leaf.cwd}
+                syncMode={syncMode}
+                onTerminalReady={(tid) => onTerminalReady(leaf.id, tid)}
+              />
+            )}
           </div>
         );
       })}
