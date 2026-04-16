@@ -109,21 +109,23 @@ impl FontManager {
         )
     }
 
-    /// Rasterize a character with the given style flags.
-    pub fn rasterize(&self, c: char, flags: CellFlags) -> RasterizedGlyph {
-        // Select font: CJK fallback for CJK characters, style-based for others
-        let font = if Self::needs_cjk(c) {
+    /// Select the best font for a character.
+    fn select_font_for(&self, c: char, flags: CellFlags) -> &fontdue::Font {
+        if Self::needs_cjk(c) {
             self.cjk.as_ref().unwrap_or(self.select_font(flags))
         } else {
             let primary = self.select_font(flags);
-            // Check if primary font has the glyph, otherwise try CJK
             if primary.lookup_glyph_index(c) != 0 {
                 primary
             } else {
                 self.cjk.as_ref().unwrap_or(primary)
             }
-        };
+        }
+    }
 
+    /// Rasterize a character with the given style flags (grayscale).
+    pub fn rasterize(&self, c: char, flags: CellFlags) -> RasterizedGlyph {
+        let font = self.select_font_for(c, flags);
         let (metrics, bitmap) = font.rasterize(c, self.font_size);
 
         RasterizedGlyph {
@@ -132,6 +134,25 @@ impl FontManager {
             height: metrics.height as u32,
             bearing_x: metrics.xmin as f32,
             bearing_y: metrics.ymin as f32,
+            subpixel: false,
+        }
+    }
+
+    /// Rasterize with subpixel anti-aliasing (RGB, 3 bytes per pixel).
+    /// Returns width that is 3x the original (each pixel = R,G,B coverage).
+    pub fn rasterize_subpixel(&self, c: char, flags: CellFlags) -> RasterizedGlyph {
+        let font = self.select_font_for(c, flags);
+        let (metrics, bitmap) = font.rasterize_subpixel(c, self.font_size);
+        // fontdue returns width * 3, height unchanged
+        // Each group of 3 bytes = R, G, B coverage for one logical pixel
+
+        RasterizedGlyph {
+            bitmap,
+            width: (metrics.width / 3) as u32, // logical pixel width
+            height: metrics.height as u32,
+            bearing_x: metrics.xmin as f32,
+            bearing_y: metrics.ymin as f32,
+            subpixel: true,
         }
     }
 }
