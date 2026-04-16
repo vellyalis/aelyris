@@ -9,6 +9,7 @@ pub mod lsp;
 pub mod native;
 pub mod pty;
 pub mod session;
+pub mod suggest;
 mod watcher;
 pub mod watchdog;
 pub mod workflow;

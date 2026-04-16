@@ -18,12 +18,13 @@ mod actions;
 mod render;
 mod app_handler;
 pub mod mica;
+mod watcher;
 
 use std::sync::{Arc, Mutex};
 use winit::keyboard::ModifiersState;
 use winit::window::Window;
 
-use crate::config::{AppConfig, load_config};
+use crate::config::{AppConfig, KeybindingsConfig, load_config};
 use crate::db::{Database, db_path};
 use crate::gpu::atlas::GlyphAtlas;
 use crate::gpu::font::FontManager;
@@ -40,6 +41,8 @@ use crate::ui::sidebar::SidebarState;
 use crate::ui::toast::ToastManager;
 use crate::ui::toolkit::ToolkitState;
 use crate::agent::watchdog::WatchdogManager;
+use crate::suggest::SuggestEngine;
+use crate::watchdog::auto_repair::AutoRepairManager;
 
 use self::types::{AgentUpdate, ContentPane, DividerDrag};
 use self::panes::TabState;
@@ -96,11 +99,23 @@ pub struct NativeTerminal {
     pub(crate) activity: ActivityFeed,
     // Analytics
     pub(crate) analytics: AnalyticsState,
+    // Auto-repair pipeline
+    pub(crate) auto_repair: AutoRepairManager,
+    // Ghost typing suggestion
+    pub(crate) suggest_engine: SuggestEngine,
+    pub(crate) ghost_text: Option<String>,
+    // Customizable keybindings
+    pub(crate) keybindings: KeybindingsConfig,
+    // Pane sync: broadcast keystrokes to all panes in active tab
+    pub(crate) pane_sync: bool,
+    // File system watcher
+    pub(crate) fs_watcher_rx: Option<std::sync::mpsc::Receiver<watcher::FsEvent>>,
 }
 
 impl NativeTerminal {
     pub fn new() -> Self {
         let config = load_config();
+        crate::ui::theme::set_theme(&config.appearance.theme);
         let font_size = config.appearance.font_size as f32;
         let line_height = config.appearance.line_height;
         let font = FontManager::new(font_size, line_height);
@@ -155,6 +170,12 @@ impl NativeTerminal {
             watchdog_manager: WatchdogManager::new(),
             activity: ActivityFeed::new(),
             analytics: AnalyticsState::new(),
+            auto_repair: AutoRepairManager::new(),
+            suggest_engine: SuggestEngine::new(),
+            ghost_text: None,
+            keybindings: KeybindingsConfig::load(),
+            pane_sync: false,
+            fs_watcher_rx: None,
         }
     }
 

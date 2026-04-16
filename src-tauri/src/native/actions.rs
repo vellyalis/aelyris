@@ -179,6 +179,33 @@ impl NativeTerminal {
                         Err(e) => self.toasts.error(format!("Cannot open: {}", e)),
                     }
                 }
+                3 => {
+                    // Show Diff — run git diff for this file
+                    if let Some(repo) = self.repo_path() {
+                        let relative = path.strip_prefix(&repo)
+                            .unwrap_or(path)
+                            .to_string_lossy()
+                            .to_string();
+                        match std::process::Command::new("git")
+                            .args(["diff", "HEAD", "--", &relative])
+                            .current_dir(&repo)
+                            .output()
+                        {
+                            Ok(out) if out.status.success() => {
+                                let diff_text = String::from_utf8_lossy(&out.stdout);
+                                if diff_text.trim().is_empty() {
+                                    self.toasts.info("No changes");
+                                } else {
+                                    let diff = crate::ui::diff::DiffState::from_unified_diff(
+                                        relative, &diff_text,
+                                    );
+                                    self.content_pane = ContentPane::Diff(diff);
+                                }
+                            }
+                            _ => self.toasts.info("No diff available"),
+                        }
+                    }
+                }
                 _ => {}
             }
         }
@@ -320,6 +347,14 @@ impl NativeTerminal {
             PaletteAction::OpenAnalytics => {
                 self.content_pane = ContentPane::Analytics;
             }
+            PaletteAction::TogglePaneSync => {
+                self.pane_sync = !self.pane_sync;
+                if self.pane_sync {
+                    self.toasts.info("Pane Sync ON — keystrokes sent to all panes");
+                } else {
+                    self.toasts.info("Pane Sync OFF");
+                }
+            }
             PaletteAction::ShowHelp => {
                 let items = vec![
                     "Ctrl+Shift+P  Command Palette".into(),
@@ -443,6 +478,11 @@ impl NativeTerminal {
             }
             PaletteAction::RunTool(_) => {
                 self.toasts.info("Feature coming soon");
+            }
+            PaletteAction::TogglePaneSync => {
+                self.pane_sync = !self.pane_sync;
+                let state = if self.pane_sync { "ON" } else { "OFF" };
+                self.toasts.info(format!("Pane sync: {}", state));
             }
         }
     }

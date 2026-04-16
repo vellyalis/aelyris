@@ -51,6 +51,7 @@ dependencies = [
  "tauri-plugin-notification",
  "tauri-plugin-opener",
  "tauri-plugin-process",
+ "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "toml 0.8.2",

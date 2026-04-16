@@ -2,6 +2,7 @@ pub mod atlas;
 pub mod commands;
 pub mod cursor;
 pub mod font;
+pub mod ghost;
 pub mod grid;
 pub mod ime;
 pub mod input;

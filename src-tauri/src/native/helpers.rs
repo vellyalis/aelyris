@@ -25,7 +25,14 @@ impl NativeTerminal {
     }
 
     pub(super) fn write_to_pty(&self, data: &[u8]) {
-        if let Some(id) = self.active_pty_id() {
+        if self.pane_sync {
+            // Broadcast to all panes in the active tab
+            if let Some(tab) = self.tab_states.get(self.chrome.active_tab) {
+                for pty_id in tab.root.all_pty_ids() {
+                    let _ = self.pty_manager.write(&pty_id, data);
+                }
+            }
+        } else if let Some(id) = self.active_pty_id() {
             let _ = self.pty_manager.write(id, data);
         }
     }
@@ -106,9 +113,11 @@ impl NativeTerminal {
     pub(super) fn do_switch_worktree(&mut self, path: &str) {
         let path_buf = std::path::Path::new(path).to_path_buf();
         if path_buf.exists() {
-            self.sidebar.set_root(path_buf);
+            self.sidebar.set_root(path_buf.clone());
             self.content_pane = ContentPane::Terminal;
             self.recalc_grid_size();
+            // Start file watcher for new root
+            self.fs_watcher_rx = super::watcher::start_watcher(path_buf);
             log::info!("Switched to worktree: {}", path);
         } else {
             log::warn!("Worktree path does not exist: {}", path);
@@ -565,9 +574,12 @@ impl NativeTerminal {
             self.config.window.maximized = window.is_maximized();
         }
         self.config.window.sidebar_visible = self.sidebar.visible;
-        self.config.window.last_directory = std::env::current_dir()
-            .ok()
-            .map(|p| p.to_string_lossy().into_owned());
+        // Save sidebar root directory for restore
+        self.config.window.last_directory = self.sidebar.file_tree
+            .as_ref()
+            .map(|ft| ft.root.to_string_lossy().into_owned())
+            .or_else(|| std::env::current_dir().ok().map(|p| p.to_string_lossy().into_owned()));
+
         if let Err(e) = save_config(&self.config) {
             log::warn!("Failed to save config: {}", e);
         }

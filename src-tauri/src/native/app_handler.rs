@@ -50,6 +50,37 @@ impl ApplicationHandler for NativeTerminal {
 
         self.init_wgpu(window);
         self.spawn_pty();
+
+        // Restore sidebar from last directory
+        if let Some(ref dir) = self.config.window.last_directory {
+            let path = std::path::PathBuf::from(dir);
+            if path.is_dir() {
+                self.sidebar.set_root(path.clone());
+                if self.config.window.sidebar_visible && !self.sidebar.visible {
+                    self.sidebar.toggle();
+                }
+                // Start file watcher
+                self.fs_watcher_rx = super::watcher::start_watcher(path);
+                // Init SCM
+                if let Some(repo) = self.repo_path() {
+                    self.scm.set_repo(repo);
+                }
+            }
+        }
+
+        // Seed suggestion engine from command history
+        if let Ok(commands) = self.db.recent_commands(500) {
+            self.suggest_engine.seed(commands);
+        }
+
+        // Show welcome screen if no project directory is set
+        if self.sidebar.file_tree.is_none() {
+            let mut welcome = crate::ui::welcome::WelcomeState::new();
+            welcome.scan_projects();
+            if !welcome.recent_projects.is_empty() {
+                self.content_pane = ContentPane::Welcome(welcome);
+            }
+        }
     }
 
     fn window_event(
@@ -161,14 +192,59 @@ impl ApplicationHandler for NativeTerminal {
                 }
             });
         }
+        for notif in self.auto_repair.poll() {
+            if notif.is_success {
+                self.toasts.success(notif.message);
+            } else {
+                self.toasts.error(notif.message);
+            }
+        }
         self.toasts.tick();
         self.sidebar.tick();
         self.palette.tick();
+        // File watcher: auto-refresh sidebar and SCM on file changes
+        if let Some(rx) = &self.fs_watcher_rx {
+            if rx.try_recv().is_ok() {
+                if let Some(tree) = &mut self.sidebar.file_tree {
+                    tree.rebuild();
+                }
+                self.scm.refresh();
+            }
+        }
         if let ContentPane::Editor(editor) = &mut self.content_pane {
             editor.tick_blink();
         }
-        if let Some(window) = &self.window {
-            window.request_redraw();
+
+        // Dirty-frame detection: only request GPU redraw when something changed.
+        let mut needs_redraw = false;
+
+        // Check if any grid has pending redraw
+        for tab in &self.tab_states {
+            tab.root.for_each_leaf(&mut |leaf| {
+                if let Ok(grid) = leaf.grid.try_lock() {
+                    if grid.needs_redraw {
+                        needs_redraw = true;
+                    }
+                }
+            });
+        }
+
+        // Check UI animations and interactive state
+        if self.sidebar.is_animating() { needs_redraw = true; }
+        if self.palette.should_render() { needs_redraw = true; }
+        if !self.toasts.is_empty() { needs_redraw = true; }
+        if self.context_menu.is_some() { needs_redraw = true; }
+        if self.sidebar_menu.is_some() { needs_redraw = true; }
+        if self.divider_drag.is_some() { needs_redraw = true; }
+        if self.mouse_pressed { needs_redraw = true; }
+        if let ContentPane::Editor(e) = &self.content_pane {
+            if e.cursor_visible { needs_redraw = true; }
+        }
+
+        if needs_redraw {
+            if let Some(window) = &self.window {
+                window.request_redraw();
+            }
         }
     }
 }
@@ -271,6 +347,24 @@ impl NativeTerminal {
                     && (mx as f64) < self.sidebar.width() as f64
                     && my > ui::CHROME_TOP
                 {
+                    // Check toolkit button click first (bottom of sidebar)
+                    if self.toolkit.visible && !self.toolkit.tools.is_empty() {
+                        let config = self.surface_config.as_ref();
+                        let window_h = config.map(|c| c.height as f32).unwrap_or(700.0);
+                        let tk_h = self.toolkit.panel_height(&self.font);
+                        let tk_y = window_h - ui::STATUS_BAR_HEIGHT - tk_h;
+                        if my >= tk_y {
+                            if let Some(idx) = self.toolkit.tool_at_y(my, tk_y) {
+                                let cmd = self.toolkit.tools[idx].command.clone();
+                                self.content_pane = ContentPane::Terminal;
+                                self.write_to_pty(cmd.as_bytes());
+                                self.write_to_pty(b"\r");
+                                self.toasts.info(format!("Running: {}", self.toolkit.tools[idx].name));
+                                return;
+                            }
+                        }
+                    }
+
                     let mut open_path: Option<std::path::PathBuf> = None;
                     if let Some(tree) = &mut self.sidebar.file_tree {
                         let content_top = ui::CHROME_TOP + 28.0;
