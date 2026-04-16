@@ -2,11 +2,8 @@ pub mod agent;
 pub mod config;
 pub mod db;
 pub mod git;
-pub mod gpu;
 mod ipc;
-pub mod ui;
 pub mod lsp;
-pub mod native;
 pub mod pty;
 pub mod session;
 pub mod suggest;
@@ -42,7 +39,6 @@ pub fn run() {
             let (tx, _rx) = std::sync::mpsc::channel();
             lsp::LspManager::new(tx)
         })
-        .manage(std::sync::Arc::new(gpu::GpuTerminalManager::new()))
         .setup(move |app| {
             // Initialize database as managed state
             let db_path = db::db_path();
@@ -151,19 +147,6 @@ pub fn run() {
             ipc::lsp_stop,
             ipc::lsp_list,
             ipc::list_all_files,
-            // GPU terminal commands
-            gpu::commands::gpu_spawn_terminal,
-            gpu::commands::gpu_write_terminal,
-            gpu::commands::gpu_resize_terminal,
-            gpu::commands::gpu_reposition_terminal,
-            gpu::commands::gpu_close_terminal,
-            gpu::commands::gpu_search_terminal,
-            gpu::commands::gpu_get_selection,
-            gpu::commands::gpu_detect_links,
-            gpu::commands::gpu_focus_terminal,
-            gpu::commands::gpu_set_opacity,
-            gpu::commands::get_terminal_renderer,
-            gpu::commands::gpu_get_grid_state,
             // Interactive agent session commands
             ipc::spawn_interactive_agent,
             ipc::stop_interactive_agent,
