@@ -391,8 +391,8 @@ impl NativeTerminal {
 
         // Drop shadow + bordered background
         rects.extend(ui::shadow::menu_shadow([mx, my], [menu_w, menu_h], 8.0));
-        rects.push(RectInstance::bordered([mx, my], [menu_w, menu_h], ui::cat::pm(30, 30, 46, 245), 8.0, 1.0, 0.8));
-        rects.push(RectInstance::new([mx, my], [menu_w, 1.0], ui::cat::pm(69, 71, 90, 200)));
+        rects.push(RectInstance::bordered([mx, my], [menu_w, menu_h], ui::cat::GLASS_DENSE, 8.0, 1.0, 0.8));
+        rects.push(RectInstance::new([mx, my], [menu_w, 1.0], ui::cat::BORDER_STRONG));
 
         let hover_idx = self.chrome.mouse_pos.and_then(|(hx, hy)| {
             if hx >= mx && hx < mx + menu_w && hy >= my + 4.0 && hy < my + menu_h {
@@ -405,7 +405,7 @@ impl NativeTerminal {
         for (i, label) in ITEMS.iter().enumerate() {
             let iy = my + 4.0 + i as f32 * item_h;
             if hover_idx == Some(i) {
-                rects.push(RectInstance::rounded([mx + 2.0, iy], [menu_w - 4.0, item_h], ui::cat::pm(69, 71, 90, 150), 4.0));
+                rects.push(RectInstance::rounded([mx + 2.0, iy], [menu_w - 4.0, item_h], ui::cat::ACTIVE, 4.0));
             }
             let text_y = iy + (item_h - font.cell_height) / 2.0;
             ui::render_text(font, atlas, label, mx + 12.0, text_y, ui::cat::text(), &mut glyphs);
@@ -436,7 +436,7 @@ impl NativeTerminal {
 
         // Drop shadow + bordered background
         rects.extend(ui::shadow::menu_shadow([mx, my], [menu_w, menu_h], 8.0));
-        rects.push(RectInstance::bordered([mx, my], [menu_w, menu_h], ui::cat::pm(30, 30, 46, 245), 8.0, 1.0, 0.8));
+        rects.push(RectInstance::bordered([mx, my], [menu_w, menu_h], ui::cat::GLASS_DENSE, 8.0, 1.0, 0.8));
 
         let hover_idx = self.chrome.mouse_pos.and_then(|(hx, hy)| {
             if hx >= mx && hx < mx + menu_w && hy >= my + 4.0 && hy < my + menu_h {
@@ -449,7 +449,7 @@ impl NativeTerminal {
         for (i, label) in items.iter().enumerate() {
             let iy = my + 4.0 + i as f32 * item_h;
             if hover_idx == Some(i) {
-                rects.push(RectInstance::rounded([mx + 2.0, iy], [menu_w - 4.0, item_h], ui::cat::pm(69, 71, 90, 150), 4.0));
+                rects.push(RectInstance::rounded([mx + 2.0, iy], [menu_w - 4.0, item_h], ui::cat::ACTIVE, 4.0));
             }
             let text_y = iy + (item_h - font.cell_height) / 2.0;
             ui::render_text(font, atlas, label, mx + 12.0, text_y, ui::cat::text(), &mut glyphs);
@@ -816,7 +816,7 @@ pub fn render_pane_tree(
                 summary_rects.push(RectInstance::rounded(
                     [x + inset, summary_y],
                     [block_w, cell_h],
-                    ui::cat::pm(49, 50, 68, 80),
+                    ui::cat::HOVER,
                     4.0,
                 ));
                 // Summary text
@@ -848,7 +848,7 @@ pub fn render_pane_tree(
                     let divider = 2.0;
                     let second_w = w - first_w - divider;
                     render_pane_tree(first, focused_id, font, atlas, x, y, first_w, h, rects, glyphs);
-                    rects.push(RectInstance::new([x + first_w, y], [divider, h], ui::cat::pm(69, 71, 90, 200)));
+                    rects.push(RectInstance::new([x + first_w, y], [divider, h], ui::cat::BORDER_STRONG));
                     render_pane_tree(second, focused_id, font, atlas, x + first_w + divider, y, second_w, h, rects, glyphs);
                 }
                 SplitDir::Vertical => {
@@ -856,7 +856,7 @@ pub fn render_pane_tree(
                     let divider = 2.0;
                     let second_h = h - first_h - divider;
                     render_pane_tree(first, focused_id, font, atlas, x, y, w, first_h, rects, glyphs);
-                    rects.push(RectInstance::new([x, y + first_h], [w, divider], ui::cat::pm(69, 71, 90, 200)));
+                    rects.push(RectInstance::new([x, y + first_h], [w, divider], ui::cat::BORDER_STRONG));
                     render_pane_tree(second, focused_id, font, atlas, x, y + first_h + divider, w, second_h, rects, glyphs);
                 }
             }

@@ -128,11 +128,11 @@ impl DiffState {
         let mut glyphs = Vec::new();
 
         // Background
-        rects.push(RectInstance::new([x, y], [w, h], cat::pm(24, 24, 37, 240)));
+        rects.push(RectInstance::new([x, y], [w, h], cat::GLASS_SOLID));
 
         // File header
         let header_h = 28.0;
-        rects.push(RectInstance::new([x, y], [w, header_h], cat::pm(30, 30, 46, 220)));
+        rects.push(RectInstance::new([x, y], [w, header_h], cat::GLASS_STANDARD));
         let header_y = y + (header_h - font.cell_height) / 2.0;
         let icon = super::icons::file_icon(&self.file_path, false);
         super::render_text(font, atlas, &icon.to_string(), x + 8.0, header_y, cat::blue(), &mut glyphs);

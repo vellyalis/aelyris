@@ -94,7 +94,7 @@ impl AnalyticsState {
         rects.push(RectInstance::rounded(
             [x, y],
             [w, h],
-            cat::pm(24, 24, 37, 230),
+            cat::GLASS_SOLID,
             8.0,
         ));
 
@@ -146,13 +146,13 @@ impl AnalyticsState {
         rects.push(RectInstance::new(
             [chart_left, chart_top],
             [1.0, chart_h],
-            cat::pm(69, 71, 90, 180),
+            cat::BORDER_STRONG,
         ));
         // X axis
         rects.push(RectInstance::new(
             [chart_left, chart_bottom],
             [chart_w, 1.0],
-            cat::pm(69, 71, 90, 180),
+            cat::BORDER_STRONG,
         ));
 
         // Aggregate cost per day for last 7 days
@@ -193,7 +193,7 @@ impl AnalyticsState {
             rects.push(RectInstance::new(
                 [dx, chart_top],
                 [1.0, chart_h],
-                cat::pm(69, 71, 90, 40),
+                cat::BORDER,
             ));
             // Label
             let label_y = chart_bottom + 4.0;

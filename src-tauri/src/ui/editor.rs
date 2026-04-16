@@ -798,13 +798,13 @@ impl EditorState {
         let max_cols = (text_area_w / font.cell_width).floor() as usize;
 
         // Editor background (Catppuccin Base)
-        rects.push(RectInstance::new([x_offset, y_offset], [content_w, content_h], cat::pm(30, 30, 46, 250)));
+        rects.push(RectInstance::new([x_offset, y_offset], [content_w, content_h], cat::GLASS_DENSE));
 
         // Gutter background (Catppuccin Mantle)
-        rects.push(RectInstance::new([x_offset, y_offset], [gutter_w, content_h], cat::pm(24, 24, 37, 250)));
+        rects.push(RectInstance::new([x_offset, y_offset], [gutter_w, content_h], cat::GLASS_SOLID));
 
         // Gutter divider
-        rects.push(RectInstance::new([x_offset + gutter_w - 1.0, y_offset], [1.0, content_h], cat::pm(49, 50, 68, 180)));
+        rects.push(RectInstance::new([x_offset + gutter_w - 1.0, y_offset], [1.0, content_h], cat::BORDER_STRONG));
 
         let total = self.total_lines();
         let end_line = self.scroll_offset
@@ -823,7 +823,7 @@ impl EditorState {
 
             // Current line highlight
             if i == self.cursor_line {
-                rects.push(RectInstance::new([x_offset + gutter_w, line_y], [content_w - gutter_w, font.cell_height], cat::pm(49, 50, 68, 100)));
+                rects.push(RectInstance::new([x_offset + gutter_w, line_y], [content_w - gutter_w, font.cell_height], cat::HOVER));
             }
 
             // Line number
@@ -979,7 +979,7 @@ impl EditorState {
 
             // Find bar background with border
             rects.extend(super::shadow::card_shadow([bar_x, bar_y], [bar_w, bar_h], 6.0));
-            rects.push(RectInstance::bordered([bar_x, bar_y], [bar_w, bar_h], cat::pm(30, 30, 46, 240), 6.0, 1.0, 0.6));
+            rects.push(RectInstance::bordered([bar_x, bar_y], [bar_w, bar_h], cat::GLASS_DENSE, 6.0, 1.0, 0.6));
 
             // Find input
             let find_y = bar_y + 6.0;
@@ -1042,7 +1042,7 @@ impl EditorState {
             };
             // Drop shadow + bordered background
             rects.extend(super::shadow::menu_shadow([popup_x, popup_y], [popup_w, popup_h], 6.0));
-            rects.push(RectInstance::bordered([popup_x, popup_y], [popup_w, popup_h], cat::pm(30, 30, 46, 245), 6.0, 1.0, 0.8));
+            rects.push(RectInstance::bordered([popup_x, popup_y], [popup_w, popup_h], cat::GLASS_DENSE, 6.0, 1.0, 0.8));
 
             let scroll_start = if self.completion_selected >= popup_max {
                 self.completion_selected - popup_max + 1
@@ -1055,7 +1055,7 @@ impl EditorState {
                 if ci == self.completion_selected {
                     rects.push(RectInstance::rounded(
                         [popup_x + 2.0, iy], [popup_w - 4.0, popup_item_h],
-                        cat::pm(69, 71, 90, 180), 4.0,
+                        cat::ACTIVE, 4.0,
                     ));
                 }
                 let text_y = iy + (popup_item_h - font.cell_height) / 2.0;
@@ -1085,7 +1085,7 @@ impl EditorState {
             let tip_x = tip_x.min(x_offset + content_w - tip_w);
             // Drop shadow + bordered tooltip
             rects.extend(super::shadow::card_shadow([tip_x, tip_y], [tip_w, tip_h], 6.0));
-            rects.push(RectInstance::bordered([tip_x, tip_y], [tip_w, tip_h], cat::pm(30, 30, 46, 240), 6.0, 1.0, 0.6));
+            rects.push(RectInstance::bordered([tip_x, tip_y], [tip_w, tip_h], cat::GLASS_DENSE, 6.0, 1.0, 0.6));
             for (i, line) in hover_lines.iter().enumerate() {
                 let ly = tip_y + 4.0 + i as f32 * font.cell_height;
                 let display = if line.len() > max_line_len { &line[..max_line_len] } else { line };

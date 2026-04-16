@@ -94,7 +94,7 @@ impl ActivityFeed {
         let mut glyphs = Vec::new();
 
         // Background
-        rects.push(RectInstance::new([x, y], [w, h], cat::pm(24, 24, 37, 220)));
+        rects.push(RectInstance::new([x, y], [w, h], cat::GLASS_SOLID));
 
         // Header
         let header_h = 28.0;
@@ -109,7 +109,7 @@ impl ActivityFeed {
         rects.push(RectInstance::new(
             [x, y + header_h],
             [w, 1.0],
-            cat::pm(69, 71, 90, 150),
+            cat::BORDER_STRONG,
         ));
 
         let entry_h = 36.0;

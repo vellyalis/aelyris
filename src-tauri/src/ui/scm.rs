@@ -119,7 +119,7 @@ impl ScmState {
         let mut cy = y;
 
         // Header: branch name
-        rects.push(RectInstance::new([x, cy], [w, HEADER_HEIGHT], cat::pm(24, 24, 37, 200)));
+        rects.push(RectInstance::new([x, cy], [w, HEADER_HEIGHT], cat::GLASS_THICK));
         let header_text = format!("SCM: {}", status.branch);
         let text_y = cy + (HEADER_HEIGHT - font.cell_height) / 2.0;
         super::render_text(font, atlas, &header_text, x + 8.0, text_y, cat::text(), &mut glyphs);
@@ -163,7 +163,7 @@ impl ScmState {
 
         // Commit input area
         if cy - y + COMMIT_INPUT_HEIGHT < max_h {
-            rects.push(RectInstance::bordered([x + 4.0, cy + 4.0], [w - 8.0, COMMIT_INPUT_HEIGHT], cat::pm(24, 24, 37, 220), 6.0, 1.0, 0.5));
+            rects.push(RectInstance::bordered([x + 4.0, cy + 4.0], [w - 8.0, COMMIT_INPUT_HEIGHT], cat::GLASS_SOLID, 6.0, 1.0, 0.5));
             let input_y = cy + 4.0 + (COMMIT_INPUT_HEIGHT - font.cell_height) / 2.0;
             let display = if self.commit_message.is_empty() {
                 "Commit message..."

@@ -149,7 +149,7 @@ impl WelcomeState {
                     rects.push(RectInstance::rounded(
                         [list_x, row_y],
                         [list_w, row_h],
-                        cat::pm(49, 50, 68, 200),
+                        cat::ACTIVE,
                         6.0,
                     ));
                 }

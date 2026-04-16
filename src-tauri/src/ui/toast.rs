@@ -2,7 +2,7 @@
 
 use crate::gpu::atlas::GlyphAtlas;
 use crate::gpu::font::FontManager;
-use crate::gpu::renderer::{GlyphInstance, RectInstance};
+use crate::gpu::renderer::{GlyphInstance, GradientRectInstance, RectInstance};
 
 const TOAST_WIDTH: f32 = 320.0;
 const TOAST_HEIGHT: f32 = 32.0;

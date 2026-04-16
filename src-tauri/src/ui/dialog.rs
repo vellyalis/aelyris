@@ -6,7 +6,7 @@
 
 use crate::gpu::atlas::GlyphAtlas;
 use crate::gpu::font::FontManager;
-use crate::gpu::renderer::{GlyphInstance, RectInstance};
+use crate::gpu::renderer::{GlyphInstance, GradientRectInstance, RectInstance};
 use super::cat;
 
 const DIALOG_WIDTH: f32 = 380.0;
@@ -97,6 +97,7 @@ pub struct DialogState {
 pub struct DialogOutput {
     pub rects: Vec<RectInstance>,
     pub glyphs: Vec<GlyphInstance>,
+    pub gradient_rects: Vec<GradientRectInstance>,
 }
 
 impl DialogState {
@@ -174,9 +175,10 @@ impl DialogState {
     ) -> DialogOutput {
         let mut rects = Vec::new();
         let mut glyphs = Vec::new();
+        let mut gradient_rects = Vec::new();
 
         if !self.visible {
-            return DialogOutput { rects, glyphs };
+            return DialogOutput { rects, glyphs, gradient_rects };
         }
 
         // Calculate total dialog height
@@ -199,20 +201,20 @@ impl DialogState {
             [0.0, 0.0, 0.0, 0.5],
         ));
 
-        // Shadow behind dialog — rgba(0,0,0,0.5)
-        rects.push(RectInstance::rounded(
-            [dialog_x + SHADOW_OFFSET, dialog_y + SHADOW_OFFSET],
-            [DIALOG_WIDTH + 8.0, dialog_h + 8.0],
-            [0.0, 0.0, 0.0, 0.5],
-            CORNER_RADIUS + 4.0,
+        // GPU SDF shadow (24px blur) + glass-solid background
+        gradient_rects.push(GradientRectInstance::shadowed(
+            [dialog_x, dialog_y],
+            [DIALOG_WIDTH, dialog_h],
+            cat::GLASS_SOLID,
+            CORNER_RADIUS,
+            24.0, 0.5,
         ));
 
-        // Dialog background — rgba(24,24,24,0.92) near-solid
         // Border: 1px rgba(255,255,255,0.1)
         rects.push(RectInstance::bordered(
             [dialog_x, dialog_y],
             [DIALOG_WIDTH, dialog_h],
-            cat::pm(24, 24, 24, 234), // 0.92 * 255 ≈ 234
+            [0.0, 0.0, 0.0, 0.0],
             CORNER_RADIUS,
             1.0,
             0.1,
@@ -364,14 +366,12 @@ impl DialogState {
             &mut glyphs,
         );
 
-        // Confirm button — gold #c8a050 background, dark text, radius 8
+        // Confirm button — 18K gold gradient, dark text, radius 8
         let confirm_x = cancel_x + button_w + button_gap;
-        let gold_bg: [f32; 4] = [200.0 / 255.0, 160.0 / 255.0, 80.0 / 255.0, 1.0]; // #c8a050
         let dark_text: [f32; 4] = [0.1, 0.1, 0.1, 1.0]; // dark text on gold
-        rects.push(RectInstance::rounded(
+        gradient_rects.push(GradientRectInstance::gold_button(
             [confirm_x, button_y],
             [button_w, BUTTON_HEIGHT],
-            gold_bg,
             FIELD_RADIUS,
         ));
         let confirm_text_x = confirm_x
@@ -387,7 +387,7 @@ impl DialogState {
             &mut glyphs,
         );
 
-        DialogOutput { rects, glyphs }
+        DialogOutput { rects, glyphs, gradient_rects }
     }
 }
 

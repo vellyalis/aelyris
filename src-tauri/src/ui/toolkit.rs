@@ -118,7 +118,7 @@ impl ToolkitState {
         rects.push(RectInstance::new(
             [x, sep_y],
             [w, 1.0],
-            cat::pm(69, 71, 90, 150),
+            cat::BORDER_STRONG,
         ));
 
         let button_start_y = sep_y + TOOL_PAD;

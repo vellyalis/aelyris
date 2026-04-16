@@ -6,7 +6,7 @@
 
 use crate::gpu::atlas::GlyphAtlas;
 use crate::gpu::font::FontManager;
-use crate::gpu::renderer::{GlyphInstance, RectInstance};
+use crate::gpu::renderer::{GlyphInstance, GradientRectInstance, RectInstance};
 
 use super::animation::AnimatedValue;
 use super::cat;
@@ -168,6 +168,7 @@ const COMMANDS: &[PaletteCommand] = &[
 pub struct PaletteOutput {
     pub rects: Vec<RectInstance>,
     pub glyphs: Vec<GlyphInstance>,
+    pub gradient_rects: Vec<GradientRectInstance>,
 }
 
 /// Command palette state.
@@ -608,9 +609,10 @@ impl PaletteState {
     ) -> PaletteOutput {
         let mut rects = Vec::new();
         let mut glyphs = Vec::new();
+        let mut gradient_rects = Vec::new();
 
         if !self.should_render() {
-            return PaletteOutput { rects, glyphs };
+            return PaletteOutput { rects, glyphs, gradient_rects };
         }
 
         let palette_x = (window_w - PALETTE_WIDTH) / 2.0;
@@ -630,8 +632,10 @@ impl PaletteState {
         };
         let palette_h = INPUT_HEIGHT + item_count as f32 * ITEM_HEIGHT + PADDING * 2.0;
 
+        let opacity = self.render_opacity();
+
         // Dark scrim overlay (rgba(0,0,0,0.5))
-        let scrim_alpha = 0.5 * self.render_opacity();
+        let scrim_alpha = 0.5 * opacity;
         if scrim_alpha > 0.001 {
             rects.push(RectInstance::new(
                 [0.0, 0.0],
@@ -640,19 +644,23 @@ impl PaletteState {
             ));
         }
 
-        // Drop shadow: offset +4px, size +8px, rgba(0,0,0,0.5), radius 12
-        rects.push(RectInstance::rounded(
-            [palette_x + 4.0, palette_y + 4.0],
-            [PALETTE_WIDTH + 8.0, palette_h + 8.0],
-            [0.0, 0.0, 0.0, 0.5 * self.render_opacity()],
-            12.0,
+        // GPU SDF shadow (24px blur) + glass-dense background
+        gradient_rects.push(GradientRectInstance::shadowed(
+            [palette_x, palette_y],
+            [PALETTE_WIDTH, palette_h],
+            [
+                22.0 / 255.0 * 0.62 * opacity,
+                22.0 / 255.0 * 0.62 * opacity,
+                22.0 / 255.0 * 0.62 * opacity,
+                0.62 * opacity,
+            ],
+            8.0, 24.0, 0.5 * opacity,
         ));
 
-        // Palette background — glass-dense rgba(22,22,22,0.62)
         // Border: 1px rgba(255,255,255,0.06), corner radius 8
         rects.push(RectInstance::bordered(
             [palette_x, palette_y], [PALETTE_WIDTH, palette_h],
-            cat::pm(22, 22, 22, 158), 8.0, 1.0, 0.06,
+            [0.0, 0.0, 0.0, 0.0], 8.0, 1.0, 0.06,
         ));
 
         // Input area: no background (transparent), bottom border 1px rgba(255,255,255,0.06)
@@ -791,7 +799,7 @@ impl PaletteState {
             }
         }
 
-        PaletteOutput { rects, glyphs }
+        PaletteOutput { rects, glyphs, gradient_rects }
     }
 
     fn build_command_list(

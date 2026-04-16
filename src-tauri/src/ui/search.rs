@@ -121,13 +121,13 @@ impl SearchState {
         let mut glyphs = Vec::new();
 
         // Background
-        rects.push(RectInstance::new([x, y], [w, h], cat::pm(24, 24, 37, 240)));
+        rects.push(RectInstance::new([x, y], [w, h], cat::GLASS_SOLID));
 
         // Search header with query
         rects.push(RectInstance::bordered(
             [x + PAD, y + 6.0],
             [w - PAD * 2.0, INPUT_HEIGHT],
-            cat::pm(30, 30, 46, 220), 6.0, 1.0, 0.5,
+            cat::GLASS_STANDARD, 6.0, 1.0, 0.5,
         ));
         let query_y = y + 6.0 + (INPUT_HEIGHT - font.cell_height) / 2.0;
         let query_display = if self.query.is_empty() {
@@ -152,7 +152,7 @@ impl SearchState {
                 rects.push(RectInstance::new(
                     [x, cy],
                     [w, FILE_HEADER_HEIGHT],
-                    cat::pm(30, 30, 46, 150),
+                    cat::GLASS_FRAME,
                 ));
                 let file_y = cy + (FILE_HEADER_HEIGHT - font.cell_height) / 2.0;
                 let icon = super::icons::file_icon(&file.path, false);
@@ -182,7 +182,7 @@ impl SearchState {
                         rects.push(RectInstance::rounded(
                             [x + 4.0, cy],
                             [w - 8.0, RESULT_HEIGHT],
-                            cat::pm(69, 71, 90, 150),
+                            cat::ACTIVE,
                             4.0,
                         ));
                     }

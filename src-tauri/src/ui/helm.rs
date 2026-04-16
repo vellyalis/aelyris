@@ -119,7 +119,7 @@ impl HelmState {
         let mut glyphs = Vec::new();
 
         // Background
-        rects.push(RectInstance::new([x, y], [w, h], cat::pm(24, 24, 37, 240)));
+        rects.push(RectInstance::new([x, y], [w, h], cat::GLASS_SOLID));
 
         // Header
         let header = format!("Tasks — {}/{} done", self.done_count(), self.tasks.len());
@@ -137,7 +137,7 @@ impl HelmState {
             if is_selected {
                 rects.push(RectInstance::rounded(
                     [x + 4.0, ty], [w - 8.0, task_h],
-                    cat::pm(69, 71, 90, 150), 4.0,
+                    cat::ACTIVE, 4.0,
                 ));
             }
 
