@@ -391,6 +391,17 @@ impl NativeTerminal {
             PaletteAction::SpawnAgent { cli, model } => {
                 self.handle_spawn_agent(cli, model);
             }
+            PaletteAction::SpawnShell(name) => {
+                let shell = match name.as_str() {
+                    "PowerShell" => ShellType::PowerShell,
+                    "CMD" => ShellType::Cmd,
+                    "Git Bash" => ShellType::GitBash,
+                    "WSL" => ShellType::Wsl,
+                    _ => ShellType::PowerShell,
+                };
+                self.spawn_pty_with_shell(shell);
+                self.content_pane = ContentPane::Terminal;
+            }
             PaletteAction::None => {}
         }
     }
@@ -538,8 +549,16 @@ impl NativeTerminal {
 
     /// Spawn a new PTY tab.
     pub(super) fn spawn_pty(&mut self) {
-        let shell = ShellType::PowerShell;
-        let shell_name = "PowerShell".to_string();
+        self.spawn_pty_with_shell(ShellType::PowerShell);
+    }
+
+    pub(super) fn spawn_pty_with_shell(&mut self, shell: ShellType) {
+        let shell_name = match &shell {
+            ShellType::PowerShell => "PowerShell".to_string(),
+            ShellType::Cmd => "CMD".to_string(),
+            ShellType::GitBash => "Git Bash".to_string(),
+            ShellType::Wsl => "WSL".to_string(),
+        };
 
         let size = self
             .window
@@ -557,7 +576,7 @@ impl NativeTerminal {
             Ok(id) => {
                 log::info!("PTY spawned: {} ({}x{})", id, cols, rows);
                 self.spawn_pty_reader(&id, grid.clone());
-                self.chrome.add_tab(id.clone(), shell_name, "PowerShell".into());
+                self.chrome.add_tab(id.clone(), shell_name.clone(), shell_name.clone());
                 self.tab_states.push(TabState::new_single(id, grid, None));
                 self.chrome.active_tab = self.tab_states.len() - 1;
             }

@@ -105,12 +105,14 @@ pub enum PaletteAction {
     ShowWatchdog,
     OpenSettings,
     ChangeSetting { category: String, value: String },
+    SpawnShell(String),
     None,
 }
 
 /// Built-in commands.
 const COMMANDS: &[PaletteCommand] = &[
     PaletteCommand { id: "new_tab", label: "New Terminal Tab", shortcut: "" },
+    PaletteCommand { id: "new_tab_shell", label: "New Terminal (Select Shell)", shortcut: "" },
     PaletteCommand { id: "close_tab", label: "Close Tab", shortcut: "" },
     PaletteCommand { id: "toggle_sidebar", label: "Toggle Sidebar", shortcut: "Ctrl+B" },
     PaletteCommand { id: "save_file", label: "Save File", shortcut: "Ctrl+S" },
@@ -312,6 +314,20 @@ impl PaletteState {
                 let action = if let Some(&cmd_idx) = self.filtered.get(self.selected) {
                     match COMMANDS[cmd_idx].id {
                         "new_tab" => PaletteAction::NewTab,
+                        "new_tab_shell" => {
+                            // Enter settings mode with shell options
+                            let shells: Vec<String> = crate::pty::ShellType::detect_available()
+                                .iter()
+                                .map(|s| match s {
+                                    crate::pty::ShellType::PowerShell => "PowerShell".to_string(),
+                                    crate::pty::ShellType::Cmd => "CMD".to_string(),
+                                    crate::pty::ShellType::GitBash => "Git Bash".to_string(),
+                                    crate::pty::ShellType::Wsl => "WSL".to_string(),
+                                })
+                                .collect();
+                            self.enter_settings(shells, "shell_select".to_string());
+                            return PaletteAction::None;
+                        }
                         "close_tab" => PaletteAction::CloseTab,
                         "toggle_sidebar" => PaletteAction::ToggleSidebar,
                         "save_file" => PaletteAction::SaveFile,
@@ -412,6 +428,11 @@ impl PaletteState {
             PaletteMode::Settings { items, category } => {
                 if let Some(&idx) = self.filtered.get(self.selected) {
                     if let Some(value) = items.get(idx) {
+                        if category == "shell_select" {
+                            let shell = value.clone();
+                            self.close();
+                            return PaletteAction::SpawnShell(shell);
+                        }
                         let action = PaletteAction::ChangeSetting {
                             category: category.clone(),
                             value: value.clone(),
