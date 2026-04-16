@@ -50,6 +50,20 @@ impl ApplicationHandler for NativeTerminal {
 
         self.init_wgpu(window);
         self.spawn_pty();
+
+        // Seed suggestion engine from command history
+        if let Ok(commands) = self.db.recent_commands(500) {
+            self.suggest_engine.seed(commands);
+        }
+
+        // Show welcome screen if no project directory is set
+        if self.sidebar.file_tree.is_none() {
+            let mut welcome = crate::ui::welcome::WelcomeState::new();
+            welcome.scan_projects();
+            if !welcome.recent_projects.is_empty() {
+                self.content_pane = ContentPane::Welcome(welcome);
+            }
+        }
     }
 
     fn window_event(
@@ -161,14 +175,50 @@ impl ApplicationHandler for NativeTerminal {
                 }
             });
         }
+        for notif in self.auto_repair.poll() {
+            if notif.is_success {
+                self.toasts.success(notif.message);
+            } else {
+                self.toasts.error(notif.message);
+            }
+        }
         self.toasts.tick();
         self.sidebar.tick();
         self.palette.tick();
         if let ContentPane::Editor(editor) = &mut self.content_pane {
             editor.tick_blink();
         }
-        if let Some(window) = &self.window {
-            window.request_redraw();
+
+        // Dirty-frame detection: only request GPU redraw when something changed.
+        let mut needs_redraw = false;
+
+        // Check if any grid has pending redraw
+        for tab in &self.tab_states {
+            tab.root.for_each_leaf(&mut |leaf| {
+                if let Ok(grid) = leaf.grid.try_lock() {
+                    if grid.needs_redraw {
+                        needs_redraw = true;
+                    }
+                }
+            });
+        }
+
+        // Check UI animations and interactive state
+        if self.sidebar.is_animating() { needs_redraw = true; }
+        if self.palette.should_render() { needs_redraw = true; }
+        if !self.toasts.is_empty() { needs_redraw = true; }
+        if self.context_menu.is_some() { needs_redraw = true; }
+        if self.sidebar_menu.is_some() { needs_redraw = true; }
+        if self.divider_drag.is_some() { needs_redraw = true; }
+        if self.mouse_pressed { needs_redraw = true; }
+        if let ContentPane::Editor(e) = &self.content_pane {
+            if e.cursor_visible { needs_redraw = true; }
+        }
+
+        if needs_redraw {
+            if let Some(window) = &self.window {
+                window.request_redraw();
+            }
         }
     }
 }

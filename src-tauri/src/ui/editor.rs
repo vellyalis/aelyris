@@ -1025,6 +1025,76 @@ impl EditorState {
             }
         }
 
+        // --- Completion popup overlay ---
+        if self.completion_visible && !self.completions.is_empty() {
+            let popup_max = 8.min(self.completions.len());
+            let popup_item_h = 22.0_f32;
+            let popup_w = 300.0_f32.min(content_w * 0.6);
+            let popup_h = popup_max as f32 * popup_item_h + 4.0;
+            // Position below cursor
+            let popup_x = x_offset + gutter_w + (self.cursor_col.saturating_sub(self.scroll_col)) as f32 * font.cell_width;
+            let popup_y = y_offset + (self.cursor_line.saturating_sub(self.scroll_offset) + 1) as f32 * font.cell_height;
+            // Clamp to content area
+            let popup_x = popup_x.min(x_offset + content_w - popup_w);
+            let popup_y = if popup_y + popup_h > y_offset + content_h {
+                popup_y - popup_h - font.cell_height // flip above cursor
+            } else {
+                popup_y
+            };
+            // Background
+            rects.push(RectInstance::rounded([popup_x, popup_y], [popup_w, popup_h], cat::pm(30, 30, 46, 245), 6.0));
+            // Border
+            rects.push(RectInstance::new([popup_x, popup_y], [popup_w, 1.0], cat::pm(69, 71, 90, 200)));
+
+            let scroll_start = if self.completion_selected >= popup_max {
+                self.completion_selected - popup_max + 1
+            } else {
+                0
+            };
+            for (vi, ci) in (scroll_start..self.completions.len().min(scroll_start + popup_max)).enumerate() {
+                let item = &self.completions[ci];
+                let iy = popup_y + 2.0 + vi as f32 * popup_item_h;
+                if ci == self.completion_selected {
+                    rects.push(RectInstance::rounded(
+                        [popup_x + 2.0, iy], [popup_w - 4.0, popup_item_h],
+                        cat::pm(69, 71, 90, 180), 4.0,
+                    ));
+                }
+                let text_y = iy + (popup_item_h - font.cell_height) / 2.0;
+                // Kind icon
+                let icon = item.kind.icon().to_string();
+                super::render_text(font, atlas, &icon, popup_x + 6.0, text_y, cat::BLUE, &mut glyphs);
+                // Label
+                let max_label = ((popup_w - 30.0) / font.cell_width) as usize;
+                let label = if item.label.len() > max_label {
+                    format!("{}...", &item.label[..max_label.saturating_sub(3)])
+                } else {
+                    item.label.clone()
+                };
+                super::render_text(font, atlas, &label, popup_x + 6.0 + font.cell_width * 2.0, text_y, cat::TEXT, &mut glyphs);
+            }
+        }
+
+        // --- Hover tooltip overlay ---
+        if let Some(ref hover) = self.hover_text {
+            let hover_lines: Vec<&str> = hover.lines().take(8).collect();
+            let max_line_len = hover_lines.iter().map(|l| l.len()).max().unwrap_or(20).min(60);
+            let tip_w = (max_line_len as f32 + 2.0) * font.cell_width;
+            let tip_h = hover_lines.len() as f32 * font.cell_height + 8.0;
+            let tip_x = x_offset + gutter_w + (self.cursor_col.saturating_sub(self.scroll_col)) as f32 * font.cell_width;
+            let tip_y = y_offset + (self.cursor_line.saturating_sub(self.scroll_offset)) as f32 * font.cell_height - tip_h - 2.0;
+            let tip_y = tip_y.max(y_offset);
+            let tip_x = tip_x.min(x_offset + content_w - tip_w);
+            // Background
+            rects.push(RectInstance::rounded([tip_x, tip_y], [tip_w, tip_h], cat::pm(30, 30, 46, 240), 6.0));
+            rects.push(RectInstance::new([tip_x, tip_y], [tip_w, 1.0], cat::pm(137, 180, 250, 150)));
+            for (i, line) in hover_lines.iter().enumerate() {
+                let ly = tip_y + 4.0 + i as f32 * font.cell_height;
+                let display = if line.len() > max_line_len { &line[..max_line_len] } else { line };
+                super::render_text(font, atlas, display, tip_x + 6.0, ly, cat::TEXT, &mut glyphs);
+            }
+        }
+
         EditorOutput { rects, glyphs }
     }
 }

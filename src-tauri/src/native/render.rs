@@ -122,6 +122,21 @@ impl NativeTerminal {
                         &mut all_r, &mut all_g,
                     );
                 }
+                // Ghost typing overlay
+                if let Some(ref suggestion) = self.ghost_text {
+                    if let Some(g) = self.active_grid() {
+                        if let Ok(grid) = g.lock() {
+                            let (gx, gy) = crate::gpu::ghost::ghost_position(
+                                &self.font, grid.cursor.col as usize, grid.cursor.row as usize,
+                                sidebar_w, ui::CHROME_TOP,
+                            );
+                            let ghost_glyphs = crate::gpu::ghost::render_ghost_text(
+                                &self.font, &mut atlas, suggestion, gx, gy,
+                            );
+                            all_g.extend(ghost_glyphs);
+                        }
+                    }
+                }
                 (all_r, all_g)
             }
             ContentPane::Editor(editor) => {
@@ -242,6 +257,9 @@ impl NativeTerminal {
         all_glyphs.extend(palette_out.glyphs);
         all_glyphs.extend(toast_glyphs);
 
+        // Fluent Design "Reveal Highlight" — radial glow following the mouse cursor
+        apply_reveal_highlight(&mut all_rects, self.chrome.mouse_pos, &self.hit_regions);
+
         match surface.get_current_texture() {
             Ok(texture) => {
                 let view = texture.texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -320,7 +338,7 @@ impl NativeTerminal {
         let items: &[&str] = if is_dir {
             &["New File", "New Folder", "Delete"]
         } else {
-            &["Rename", "Delete", "Open"]
+            &["Rename", "Delete", "Open", "Show Diff"]
         };
         let item_h = 26.0f32;
         let menu_w = 160.0f32;
@@ -643,6 +661,45 @@ pub fn render_pane_tree(
                     render_pane_tree(second, focused_id, font, atlas, x, y + first_h + divider, w, second_h, rects, glyphs);
                 }
             }
+        }
+    }
+}
+
+/// Fluent Design "Reveal Highlight" -- a subtle radial glow that follows the mouse
+/// cursor over interactive chrome elements (buttons, tabs).
+fn apply_reveal_highlight(
+    rects: &mut Vec<RectInstance>,
+    mouse_pos: Option<(f32, f32)>,
+    hit_regions: &[ui::HitRegion],
+) {
+    let (mx, my) = match mouse_pos {
+        Some(pos) => pos,
+        None => return,
+    };
+
+    // For each hit region the mouse is near, add a subtle radial gradient overlay
+    let proximity = 20.0_f32;
+    for region in hit_regions {
+        let in_x = mx >= region.x - proximity && mx <= region.x + region.w + proximity;
+        let in_y = my >= region.y - proximity && my <= region.y + region.h + proximity;
+        if !in_x || !in_y {
+            continue;
+        }
+
+        // Add a small highlight rect at mouse position, clipped to region bounds
+        let highlight_size = 60.0_f32;
+        let hx = (mx - highlight_size / 2.0).max(region.x);
+        let hy = (my - highlight_size / 2.0).max(region.y);
+        let hw = highlight_size.min(region.x + region.w - hx);
+        let hh = highlight_size.min(region.y + region.h - hy);
+
+        if hw > 0.0 && hh > 0.0 {
+            rects.push(RectInstance::rounded(
+                [hx, hy],
+                [hw, hh],
+                [1.0, 1.0, 1.0, 0.03], // Very subtle white glow
+                8.0,
+            ));
         }
     }
 }

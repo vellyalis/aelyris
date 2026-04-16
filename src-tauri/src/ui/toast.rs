@@ -64,6 +64,11 @@ impl ToastManager {
         self.show(msg.into(), ToastLevel::Error);
     }
 
+    /// Whether there are no active toasts.
+    pub fn is_empty(&self) -> bool {
+        self.toasts.is_empty()
+    }
+
     /// Tick — decrement timers and remove expired.
     pub fn tick(&mut self) {
         for toast in &mut self.toasts {

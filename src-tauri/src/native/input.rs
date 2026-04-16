@@ -188,6 +188,7 @@ impl NativeTerminal {
             Key::Named(NamedKey::Enter) => {
                 let cmd = self.command_buffer.trim().to_string();
                 if !cmd.is_empty() {
+                    self.suggest_engine.record(&cmd);
                     let pty_id = self.active_pty_id().unwrap_or("?").to_string();
                     let cwd = std::env::current_dir()
                         .map(|p| p.to_string_lossy().into_owned())
@@ -204,8 +205,14 @@ impl NativeTerminal {
                 vec![0x7f]
             }
             Key::Named(NamedKey::Tab) => {
-                self.command_buffer.clear();
-                vec![b'\t']
+                if let Some(ghost) = self.ghost_text.take() {
+                    // Accept ghost suggestion: send the suffix to PTY
+                    self.command_buffer.push_str(&ghost);
+                    ghost.into_bytes()
+                } else {
+                    self.command_buffer.clear();
+                    vec![b'\t']
+                }
             }
             Key::Named(NamedKey::Escape) => vec![0x1b],
             Key::Named(NamedKey::ArrowUp) | Key::Named(NamedKey::ArrowDown) => {
@@ -222,6 +229,8 @@ impl NativeTerminal {
             Key::Named(NamedKey::Delete) => b"\x1b[3~".to_vec(),
             _ => return,
         };
+        // Update ghost suggestion based on current command buffer
+        self.ghost_text = self.suggest_engine.suggest(&self.command_buffer);
         self.write_to_pty(&data);
     }
 

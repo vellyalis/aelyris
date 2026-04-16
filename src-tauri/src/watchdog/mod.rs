@@ -1,3 +1,4 @@
+pub mod auto_repair;
 pub mod engine;
 mod monitor;
 pub mod pane_watcher;
