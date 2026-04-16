@@ -34,8 +34,11 @@ pub const STATUS_BAR_HEIGHT: f32 = 24.0;
 pub const CHROME_TOP: f32 = TITLE_BAR_HEIGHT + TAB_BAR_HEIGHT;
 pub const BTN_WIDTH: f32 = 46.0;
 
-// Catppuccin Mocha palette (premultiplied where needed)
+// Dynamic palette — reads from active theme at runtime.
+// `pm()` is a pure math helper (premultiplied alpha). Named colors delegate to theme.
 pub mod cat {
+    use super::theme;
+
     /// Premultiplied RGBA from 0-255 components.
     pub const fn pm(r: u8, g: u8, b: u8, a: u8) -> [f32; 4] {
         let af = a as f32 / 255.0;
@@ -46,20 +49,54 @@ pub mod cat {
             af,
         ]
     }
-    pub const MANTLE_BG: [f32; 4] = pm(24, 24, 37, 240);
-    pub const TAB_BAR_BG: [f32; 4] = pm(20, 20, 33, 235);
-    pub const TAB_ACTIVE: [f32; 4] = pm(49, 50, 68, 245);
-    pub const STATUS_BG: [f32; 4] = pm(24, 24, 37, 235);
-    pub const CLOSE_HOVER: [f32; 4] = pm(200, 60, 60, 180);
-    pub const BTN_HOVER: [f32; 4] = pm(69, 71, 90, 120);
 
-    // Non-premultiplied text colors (shader handles premultiplication)
+    /// Premultiply a non-premultiplied color with a given alpha.
+    pub fn pm_color(c: [f32; 4], alpha: u8) -> [f32; 4] {
+        let af = alpha as f32 / 255.0;
+        [c[0] * af, c[1] * af, c[2] * af, af]
+    }
+
+    // Chrome backgrounds — derived from theme with specific alphas
+    pub fn mantle_bg() -> [f32; 4] { pm_color(theme::current().mantle, 240) }
+    pub fn tab_bar_bg() -> [f32; 4] { theme::current().tab_bar_bg }
+    pub fn tab_active() -> [f32; 4] { theme::current().tab_active }
+    pub fn status_bg() -> [f32; 4] { theme::current().status_bg }
+    pub fn close_hover() -> [f32; 4] { theme::current().close_hover }
+    pub fn btn_hover() -> [f32; 4] { theme::current().btn_hover }
+
+    // Backward-compatible constants — these read from the theme.
+    // Used as `cat::TEXT`, `cat::BLUE`, etc. throughout the codebase.
+    // Since Rust doesn't allow `const fn` to call non-const, we keep these
+    // as Catppuccin Mocha defaults. The chrome colors above are dynamic.
+    // TODO: migrate all call sites to use cat::text() etc. for full theme support.
     pub const TEXT: [f32; 4] = [0.81, 0.83, 0.88, 1.0];
     pub const SUBTEXT1: [f32; 4] = [0.73, 0.76, 0.87, 1.0];
     pub const SUBTEXT0: [f32; 4] = [0.65, 0.68, 0.78, 1.0];
     pub const OVERLAY0: [f32; 4] = [0.42, 0.44, 0.53, 1.0];
     pub const BLUE: [f32; 4] = [0.54, 0.71, 0.98, 1.0];
     pub const GREEN: [f32; 4] = [0.65, 0.89, 0.63, 1.0];
+
+    // Dynamic text color functions — use these for theme-aware rendering
+    pub fn text() -> [f32; 4] { theme::current().text }
+    pub fn subtext1() -> [f32; 4] { theme::current().subtext1 }
+    pub fn subtext0() -> [f32; 4] { theme::current().subtext0 }
+    pub fn overlay0() -> [f32; 4] { theme::current().overlay0 }
+    pub fn blue() -> [f32; 4] { theme::current().blue }
+    pub fn green() -> [f32; 4] { theme::current().green }
+    pub fn red() -> [f32; 4] { theme::current().red }
+    pub fn yellow() -> [f32; 4] { theme::current().yellow }
+    pub fn peach() -> [f32; 4] { theme::current().peach }
+    pub fn mauve() -> [f32; 4] { theme::current().mauve }
+    pub fn teal() -> [f32; 4] { theme::current().teal }
+    pub fn pink() -> [f32; 4] { theme::current().pink }
+
+    // Backward compat aliases (const, will be phased out)
+    pub const MANTLE_BG: [f32; 4] = pm(24, 24, 37, 240);
+    pub const TAB_BAR_BG: [f32; 4] = pm(20, 20, 33, 235);
+    pub const TAB_ACTIVE: [f32; 4] = pm(49, 50, 68, 245);
+    pub const STATUS_BG: [f32; 4] = pm(24, 24, 37, 235);
+    pub const CLOSE_HOVER: [f32; 4] = pm(200, 60, 60, 180);
+    pub const BTN_HOVER: [f32; 4] = pm(69, 71, 90, 120);
 }
 
 pub struct Tab {
@@ -175,7 +212,7 @@ impl ChromeState {
         hits: &mut Vec<HitRegion>,
     ) {
         // Background
-        rects.push(RectInstance::new([0.0, 0.0], [w, TITLE_BAR_HEIGHT], cat::MANTLE_BG));
+        rects.push(RectInstance::new([0.0, 0.0], [w, TITLE_BAR_HEIGHT], cat::mantle_bg()));
 
         // Title text
         let title_y = (TITLE_BAR_HEIGHT - font.cell_height) / 2.0;
@@ -190,11 +227,11 @@ impl ChromeState {
         if let Some((mx, my)) = self.mouse_pos {
             if my < TITLE_BAR_HEIGHT {
                 if mx >= btn_x_close {
-                    rects.push(RectInstance::new([btn_x_close, 0.0], [BTN_WIDTH, TITLE_BAR_HEIGHT], cat::CLOSE_HOVER));
+                    rects.push(RectInstance::new([btn_x_close, 0.0], [BTN_WIDTH, TITLE_BAR_HEIGHT], cat::close_hover()));
                 } else if mx >= btn_x_max {
-                    rects.push(RectInstance::new([btn_x_max, 0.0], [BTN_WIDTH, TITLE_BAR_HEIGHT], cat::BTN_HOVER));
+                    rects.push(RectInstance::new([btn_x_max, 0.0], [BTN_WIDTH, TITLE_BAR_HEIGHT], cat::btn_hover()));
                 } else if mx >= btn_x_min {
-                    rects.push(RectInstance::new([btn_x_min, 0.0], [BTN_WIDTH, TITLE_BAR_HEIGHT], cat::BTN_HOVER));
+                    rects.push(RectInstance::new([btn_x_min, 0.0], [BTN_WIDTH, TITLE_BAR_HEIGHT], cat::btn_hover()));
                 }
             }
         }
@@ -239,7 +276,7 @@ impl ChromeState {
         let bar_y = TITLE_BAR_HEIGHT;
 
         // Background
-        rects.push(RectInstance::new([0.0, bar_y], [w, TAB_BAR_HEIGHT], cat::TAB_BAR_BG));
+        rects.push(RectInstance::new([0.0, bar_y], [w, TAB_BAR_HEIGHT], cat::tab_bar_bg()));
 
         let tab_h = TAB_BAR_HEIGHT - 4.0;
         let tab_y = bar_y + 2.0;
@@ -255,10 +292,10 @@ impl ChromeState {
 
             // Tab background (active tab is highlighted)
             if is_active {
-                rects.push(RectInstance::rounded([x, tab_y], [tab_w, tab_h], cat::TAB_ACTIVE, 6.0));
+                rects.push(RectInstance::rounded([x, tab_y], [tab_w, tab_h], cat::tab_active(), 6.0));
             } else if let Some((mx, my)) = self.mouse_pos {
                 if mx >= x && mx < x + tab_w && my >= tab_y && my < tab_y + tab_h {
-                    rects.push(RectInstance::rounded([x, tab_y], [tab_w, tab_h], cat::BTN_HOVER, 6.0));
+                    rects.push(RectInstance::rounded([x, tab_y], [tab_w, tab_h], cat::btn_hover(), 6.0));
                 }
             }
 
@@ -288,7 +325,7 @@ impl ChromeState {
         render_text(font, atlas, "+", x + 8.0, text_y, cat::OVERLAY0, glyphs);
         if let Some((mx, my)) = self.mouse_pos {
             if mx >= x && mx < x + add_w && my >= tab_y && my < tab_y + tab_h {
-                rects.push(RectInstance::rounded([x, tab_y], [add_w, tab_h], cat::BTN_HOVER, 6.0));
+                rects.push(RectInstance::rounded([x, tab_y], [add_w, tab_h], cat::btn_hover(), 6.0));
             }
         }
         hits.push(HitRegion {
@@ -310,7 +347,7 @@ impl ChromeState {
         let bar_y = h - STATUS_BAR_HEIGHT;
 
         // Background
-        rects.push(RectInstance::new([0.0, bar_y], [w, STATUS_BAR_HEIGHT], cat::STATUS_BG));
+        rects.push(RectInstance::new([0.0, bar_y], [w, STATUS_BAR_HEIGHT], cat::status_bg()));
 
         let text_y = bar_y + (STATUS_BAR_HEIGHT - font.cell_height) / 2.0;
         let mut x = 10.0;
