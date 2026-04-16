@@ -260,7 +260,7 @@ impl SidebarState {
                         && my < row_y + ROW_HEIGHT
                         && my >= content_top
                     {
-                        rects.push(RectInstance::rounded([2.0, row_y], [SIDEBAR_WIDTH - 3.0, ROW_HEIGHT], cat::BTN_HOVER, 4.0));
+                        rects.push(RectInstance::rounded([2.0, row_y], [SIDEBAR_WIDTH - 3.0, ROW_HEIGHT], cat::btn_hover(), 4.0));
                     }
                 }
 

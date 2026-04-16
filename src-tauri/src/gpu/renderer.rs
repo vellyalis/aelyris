@@ -48,28 +48,17 @@ struct Uniforms {
     _padding: [f32; 2],
 }
 
-/// Catppuccin Mocha ANSI color palette (matches the React theme).
-const ANSI_COLORS: [[f32; 3]; 16] = [
-    [0.19, 0.20, 0.27],  // 0  black    (Surface0)
-    [0.95, 0.55, 0.66],  // 1  red
-    [0.65, 0.89, 0.63],  // 2  green
-    [0.98, 0.88, 0.53],  // 3  yellow
-    [0.54, 0.71, 0.98],  // 4  blue
-    [0.80, 0.62, 0.95],  // 5  magenta
-    [0.58, 0.89, 0.87],  // 6  cyan
-    [0.73, 0.75, 0.80],  // 7  white    (Subtext1)
-    [0.36, 0.38, 0.46],  // 8  bright black  (Surface2)
-    [0.95, 0.55, 0.66],  // 9  bright red
-    [0.65, 0.89, 0.63],  // 10 bright green
-    [0.98, 0.88, 0.53],  // 11 bright yellow
-    [0.54, 0.71, 0.98],  // 12 bright blue
-    [0.80, 0.62, 0.95],  // 13 bright magenta
-    [0.58, 0.89, 0.87],  // 14 bright cyan
-    [0.81, 0.83, 0.88],  // 15 bright white (Text)
-];
+/// Get ANSI color palette from the active theme.
+fn ansi_colors() -> [[f32; 3]; 16] {
+    crate::ui::theme::current().ansi
+}
 
-const DEFAULT_FG: [f32; 4] = [0.81, 0.83, 0.88, 1.0]; // Catppuccin Text
-const DEFAULT_BG: [f32; 4] = [0.0, 0.0, 0.0, 0.0];     // Transparent
+/// Get default foreground from the active theme.
+fn default_fg() -> [f32; 4] {
+    crate::ui::theme::current().text
+}
+
+const DEFAULT_BG: [f32; 4] = [0.0, 0.0, 0.0, 0.0]; // Transparent (theme-independent)
 
 /// Resolve foreground and background colors for a cell, handling inverse.
 pub fn resolve_cell_colors(cell: &Cell) -> ([f32; 4], [f32; 4]) {
@@ -82,10 +71,11 @@ pub fn resolve_cell_colors(cell: &Cell) -> ([f32; 4], [f32; 4]) {
 
 fn color_to_rgba(c: Color, is_fg: bool) -> [f32; 4] {
     match c {
-        Color::Default => if is_fg { DEFAULT_FG } else { DEFAULT_BG },
+        Color::Default => if is_fg { default_fg() } else { DEFAULT_BG },
         Color::Indexed(idx) => {
             if (idx as usize) < 16 {
-                let rgb = ANSI_COLORS[idx as usize];
+                let colors = ansi_colors();
+                let rgb = colors[idx as usize];
                 [rgb[0], rgb[1], rgb[2], 1.0]
             } else if idx < 232 {
                 // 216 color cube (16..231)
