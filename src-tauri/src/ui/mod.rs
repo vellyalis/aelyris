@@ -7,6 +7,7 @@ pub mod activity;
 pub mod analytics;
 pub mod animation;
 pub mod block;
+pub mod dialog;
 pub mod diff;
 pub mod editor;
 pub mod helm;
@@ -19,8 +20,10 @@ pub mod sidebar;
 pub mod syntax;
 pub mod theme;
 pub mod toast;
+pub mod tokens;
 pub mod toolkit;
 pub mod welcome;
+pub mod widgets;
 
 use crate::gpu::atlas::GlyphAtlas;
 use crate::gpu::font::FontManager;
@@ -64,19 +67,7 @@ pub mod cat {
     pub fn close_hover() -> [f32; 4] { theme::current().close_hover }
     pub fn btn_hover() -> [f32; 4] { theme::current().btn_hover }
 
-    // Backward-compatible constants — these read from the theme.
-    // Used as `cat::TEXT`, `cat::BLUE`, etc. throughout the codebase.
-    // Since Rust doesn't allow `const fn` to call non-const, we keep these
-    // as Catppuccin Mocha defaults. The chrome colors above are dynamic.
-    // TODO: migrate all call sites to use cat::text() etc. for full theme support.
-    pub const TEXT: [f32; 4] = [0.81, 0.83, 0.88, 1.0];
-    pub const SUBTEXT1: [f32; 4] = [0.73, 0.76, 0.87, 1.0];
-    pub const SUBTEXT0: [f32; 4] = [0.65, 0.68, 0.78, 1.0];
-    pub const OVERLAY0: [f32; 4] = [0.42, 0.44, 0.53, 1.0];
-    pub const BLUE: [f32; 4] = [0.54, 0.71, 0.98, 1.0];
-    pub const GREEN: [f32; 4] = [0.65, 0.89, 0.63, 1.0];
-
-    // Dynamic text color functions — use these for theme-aware rendering
+    // Dynamic text color functions — theme-aware rendering
     pub fn text() -> [f32; 4] { theme::current().text }
     pub fn subtext1() -> [f32; 4] { theme::current().subtext1 }
     pub fn subtext0() -> [f32; 4] { theme::current().subtext0 }
@@ -89,14 +80,6 @@ pub mod cat {
     pub fn mauve() -> [f32; 4] { theme::current().mauve }
     pub fn teal() -> [f32; 4] { theme::current().teal }
     pub fn pink() -> [f32; 4] { theme::current().pink }
-
-    // Backward compat aliases (const, will be phased out)
-    pub const MANTLE_BG: [f32; 4] = pm(24, 24, 37, 240);
-    pub const TAB_BAR_BG: [f32; 4] = pm(20, 20, 33, 235);
-    pub const TAB_ACTIVE: [f32; 4] = pm(49, 50, 68, 245);
-    pub const STATUS_BG: [f32; 4] = pm(24, 24, 37, 235);
-    pub const CLOSE_HOVER: [f32; 4] = pm(200, 60, 60, 180);
-    pub const BTN_HOVER: [f32; 4] = pm(69, 71, 90, 120);
 }
 
 pub struct Tab {
@@ -216,7 +199,7 @@ impl ChromeState {
 
         // Title text
         let title_y = (TITLE_BAR_HEIGHT - font.cell_height) / 2.0;
-        render_text(font, atlas, "Aether Terminal", 12.0, title_y, cat::SUBTEXT1, glyphs);
+        render_text(font, atlas, "Aether Terminal", 12.0, title_y, cat::subtext1(), glyphs);
 
         // Window control buttons (right-aligned)
         let btn_x_close = w - BTN_WIDTH;
@@ -239,10 +222,10 @@ impl ChromeState {
         // Button icons (centered in each button area)
         let icon_y = title_y;
         let icon_offset = (BTN_WIDTH - font.cell_width) / 2.0;
-        render_text(font, atlas, "\u{2715}", btn_x_close + icon_offset, icon_y, cat::SUBTEXT1, glyphs);
+        render_text(font, atlas, "\u{2715}", btn_x_close + icon_offset, icon_y, cat::subtext1(), glyphs);
         let max_icon = if self.is_maximized { "\u{2752}" } else { "\u{25A1}" };
-        render_text(font, atlas, max_icon, btn_x_max + icon_offset, icon_y, cat::SUBTEXT1, glyphs);
-        render_text(font, atlas, "\u{2500}", btn_x_min + icon_offset, icon_y, cat::SUBTEXT1, glyphs);
+        render_text(font, atlas, max_icon, btn_x_max + icon_offset, icon_y, cat::subtext1(), glyphs);
+        render_text(font, atlas, "\u{2500}", btn_x_min + icon_offset, icon_y, cat::subtext1(), glyphs);
 
         // Hit regions: buttons first (higher priority), then drag area
         hits.push(HitRegion {
@@ -300,12 +283,12 @@ impl ChromeState {
             }
 
             // Tab title
-            let text_color = if is_active { cat::TEXT } else { cat::SUBTEXT0 };
+            let text_color = if is_active { cat::text() } else { cat::subtext0() };
             render_text(font, atlas, title, x + 8.0, text_y, text_color, glyphs);
 
             // Close button on tab
             let close_x = x + 8.0 + tab_text_w + 4.0;
-            render_text(font, atlas, "\u{2715}", close_x, text_y, cat::OVERLAY0, glyphs);
+            render_text(font, atlas, "\u{2715}", close_x, text_y, cat::overlay0(), glyphs);
 
             // Tab click region (switch) — push first so CloseTab wins in reverse iteration
             hits.push(HitRegion {
@@ -322,7 +305,7 @@ impl ChromeState {
 
         // New tab button
         let add_w = font.cell_width + 16.0;
-        render_text(font, atlas, "+", x + 8.0, text_y, cat::OVERLAY0, glyphs);
+        render_text(font, atlas, "+", x + 8.0, text_y, cat::overlay0(), glyphs);
         if let Some((mx, my)) = self.mouse_pos {
             if mx >= x && mx < x + add_w && my >= tab_y && my < tab_y + tab_h {
                 rects.push(RectInstance::rounded([x, tab_y], [add_w, tab_h], cat::btn_hover(), 6.0));
@@ -354,35 +337,35 @@ impl ChromeState {
 
         if let Some(so) = &self.status_override {
             // Editor mode status bar
-            render_text(font, atlas, &so.label, x, text_y, cat::BLUE, glyphs);
+            render_text(font, atlas, &so.label, x, text_y, cat::blue(), glyphs);
             x += so.label.chars().count() as f32 * font.cell_width + 8.0;
 
-            render_text(font, atlas, "|", x, text_y, cat::OVERLAY0, glyphs);
+            render_text(font, atlas, "|", x, text_y, cat::overlay0(), glyphs);
             x += font.cell_width + 8.0;
 
-            render_text(font, atlas, &so.detail, x, text_y, cat::SUBTEXT1, glyphs);
+            render_text(font, atlas, &so.detail, x, text_y, cat::subtext1(), glyphs);
             x += so.detail.chars().count() as f32 * font.cell_width + 8.0;
 
-            render_text(font, atlas, "|", x, text_y, cat::OVERLAY0, glyphs);
+            render_text(font, atlas, "|", x, text_y, cat::overlay0(), glyphs);
             x += font.cell_width + 8.0;
 
-            render_text(font, atlas, &so.indicator, x, text_y, cat::GREEN, glyphs);
+            render_text(font, atlas, &so.indicator, x, text_y, cat::green(), glyphs);
         } else if let Some(tab) = self.tabs.get(self.active_tab) {
             // Terminal mode status bar
-            render_text(font, atlas, &tab.shell, x, text_y, cat::BLUE, glyphs);
+            render_text(font, atlas, &tab.shell, x, text_y, cat::blue(), glyphs);
             x += tab.shell.chars().count() as f32 * font.cell_width + 8.0;
 
-            render_text(font, atlas, "|", x, text_y, cat::OVERLAY0, glyphs);
+            render_text(font, atlas, "|", x, text_y, cat::overlay0(), glyphs);
             x += font.cell_width + 8.0;
 
             let branch = self.git_branch.as_deref().unwrap_or("—");
-            render_text(font, atlas, branch, x, text_y, cat::GREEN, glyphs);
+            render_text(font, atlas, branch, x, text_y, cat::green(), glyphs);
             x += branch.chars().count() as f32 * font.cell_width + 8.0;
 
-            render_text(font, atlas, "|", x, text_y, cat::OVERLAY0, glyphs);
+            render_text(font, atlas, "|", x, text_y, cat::overlay0(), glyphs);
             x += font.cell_width + 8.0;
 
-            render_text(font, atlas, "UTF-8", x, text_y, cat::SUBTEXT0, glyphs);
+            render_text(font, atlas, "UTF-8", x, text_y, cat::subtext0(), glyphs);
         }
     }
 }

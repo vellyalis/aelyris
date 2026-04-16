@@ -829,9 +829,9 @@ impl EditorState {
             // Line number
             let num_str = format!("{:>width$}", i + 1, width = line_digits);
             let num_color = if i == self.cursor_line {
-                cat::SUBTEXT1
+                cat::subtext1()
             } else {
-                cat::OVERLAY0
+                cat::overlay0()
             };
             super::render_text(
                 font,
@@ -910,7 +910,7 @@ impl EditorState {
                     &display,
                     text_x,
                     line_y,
-                    cat::TEXT,
+                    cat::text(),
                     &mut glyphs,
                 );
             }
@@ -921,7 +921,7 @@ impl EditorState {
                 if self.cursor_col >= self.scroll_col && cursor_display_col < max_cols {
                     let cursor_x = x_offset + gutter_w + 4.0
                         + cursor_display_col as f32 * font.cell_width;
-                    rects.push(RectInstance::new([cursor_x, line_y], [2.0, font.cell_height], cat::TEXT));
+                    rects.push(RectInstance::new([cursor_x, line_y], [2.0, font.cell_height], cat::text()));
                 }
             }
 
@@ -989,7 +989,7 @@ impl EditorState {
             } else {
                 &self.find.query
             };
-            let find_color = if self.find.query.is_empty() { cat::OVERLAY0 } else { cat::TEXT };
+            let find_color = if self.find.query.is_empty() { cat::overlay0() } else { cat::text() };
             super::render_text(font, atlas, find_text, bar_x + 4.0, find_y, find_color, &mut glyphs);
 
             // Match count
@@ -999,12 +999,12 @@ impl EditorState {
                 format!("{}/{}", self.find.current_match + 1, self.find.matches.len())
             };
             let count_w = count_str.chars().count() as f32 * font.cell_width;
-            super::render_text(font, atlas, &count_str, bar_x + bar_w - count_w - 4.0, find_y, cat::OVERLAY0, &mut glyphs);
+            super::render_text(font, atlas, &count_str, bar_x + bar_w - count_w - 4.0, find_y, cat::overlay0(), &mut glyphs);
 
             // Cursor in find field
             if self.find.focus == 0 {
                 let cursor_x = bar_x + 4.0 + self.find.query.chars().count() as f32 * font.cell_width;
-                rects.push(RectInstance::new([cursor_x, find_y], [2.0, font.cell_height], cat::TEXT));
+                rects.push(RectInstance::new([cursor_x, find_y], [2.0, font.cell_height], cat::text()));
             }
 
             // Replace input
@@ -1015,12 +1015,12 @@ impl EditorState {
                 } else {
                     &self.find.replace
                 };
-                let rep_color = if self.find.replace.is_empty() { cat::OVERLAY0 } else { cat::TEXT };
+                let rep_color = if self.find.replace.is_empty() { cat::overlay0() } else { cat::text() };
                 super::render_text(font, atlas, rep_text, bar_x + 4.0, rep_y, rep_color, &mut glyphs);
 
                 if self.find.focus == 1 {
                     let cursor_x = bar_x + 4.0 + self.find.replace.chars().count() as f32 * font.cell_width;
-                    rects.push(RectInstance::new([cursor_x, rep_y], [2.0, font.cell_height], cat::TEXT));
+                    rects.push(RectInstance::new([cursor_x, rep_y], [2.0, font.cell_height], cat::text()));
                 }
             }
         }
@@ -1063,7 +1063,7 @@ impl EditorState {
                 let text_y = iy + (popup_item_h - font.cell_height) / 2.0;
                 // Kind icon
                 let icon = item.kind.icon().to_string();
-                super::render_text(font, atlas, &icon, popup_x + 6.0, text_y, cat::BLUE, &mut glyphs);
+                super::render_text(font, atlas, &icon, popup_x + 6.0, text_y, cat::blue(), &mut glyphs);
                 // Label
                 let max_label = ((popup_w - 30.0) / font.cell_width) as usize;
                 let label = if item.label.len() > max_label {
@@ -1071,7 +1071,7 @@ impl EditorState {
                 } else {
                     item.label.clone()
                 };
-                super::render_text(font, atlas, &label, popup_x + 6.0 + font.cell_width * 2.0, text_y, cat::TEXT, &mut glyphs);
+                super::render_text(font, atlas, &label, popup_x + 6.0 + font.cell_width * 2.0, text_y, cat::text(), &mut glyphs);
             }
         }
 
@@ -1091,7 +1091,7 @@ impl EditorState {
             for (i, line) in hover_lines.iter().enumerate() {
                 let ly = tip_y + 4.0 + i as f32 * font.cell_height;
                 let display = if line.len() > max_line_len { &line[..max_line_len] } else { line };
-                super::render_text(font, atlas, display, tip_x + 6.0, ly, cat::TEXT, &mut glyphs);
+                super::render_text(font, atlas, display, tip_x + 6.0, ly, cat::text(), &mut glyphs);
             }
         }
 

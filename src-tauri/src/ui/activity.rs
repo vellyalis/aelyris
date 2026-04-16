@@ -23,14 +23,14 @@ impl ActivityType {
     /// Dot color for each event type.
     pub fn dot_color(&self) -> [f32; 4] {
         match self {
-            Self::SessionStarted => cat::GREEN,                    // green
-            Self::SessionEnded => cat::SUBTEXT0,                   // gray
+            Self::SessionStarted => cat::green(),                    // green
+            Self::SessionEnded => cat::subtext0(),                   // gray
             Self::AgentThinking => [0.98, 0.75, 0.15, 1.0],       // amber
-            Self::AgentCoding => cat::GREEN,                       // green
-            Self::AgentDone => cat::BLUE,                          // blue
+            Self::AgentCoding => cat::green(),                       // green
+            Self::AgentDone => cat::blue(),                          // blue
             Self::WatchdogTriggered => [0.98, 0.88, 0.53, 1.0],   // yellow
-            Self::ToolExecuted => cat::BLUE,                       // blue
-            Self::CommitCreated => cat::GREEN,                     // green
+            Self::ToolExecuted => cat::blue(),                       // blue
+            Self::CommitCreated => cat::green(),                     // green
             Self::ErrorOccurred => [0.95, 0.55, 0.66, 1.0],       // red
         }
     }
@@ -99,11 +99,11 @@ impl ActivityFeed {
         // Header
         let header_h = 28.0;
         let header_text_y = y + (header_h - font.cell_height) / 2.0;
-        super::render_text(font, atlas, "ACTIVITY", x + 8.0, header_text_y, cat::OVERLAY0, &mut glyphs);
+        super::render_text(font, atlas, "ACTIVITY", x + 8.0, header_text_y, cat::overlay0(), &mut glyphs);
 
         let count_str = format!("{}", self.entries.len());
         let count_x = x + 8.0 + 9.0 * font.cell_width;
-        super::render_text(font, atlas, &count_str, count_x, header_text_y, cat::BLUE, &mut glyphs);
+        super::render_text(font, atlas, &count_str, count_x, header_text_y, cat::blue(), &mut glyphs);
 
         // Separator line
         rects.push(RectInstance::new(
@@ -147,20 +147,20 @@ impl ActivityFeed {
             let elapsed = format_elapsed(entry.timestamp);
             let time_x = x + 18.0;
             let line1_y = ey + 4.0;
-            super::render_text(font, atlas, &elapsed, time_x, line1_y, cat::OVERLAY0, &mut glyphs);
+            super::render_text(font, atlas, &elapsed, time_x, line1_y, cat::overlay0(), &mut glyphs);
 
             // Session name (truncated)
             let time_chars = elapsed.chars().count();
             let name_x = time_x + (time_chars as f32 + 1.0) * font.cell_width;
             let max_name_chars = ((w - (name_x - x) - 8.0) / font.cell_width).max(1.0) as usize;
             let name_display = truncate_str(&entry.session_name, max_name_chars);
-            super::render_text(font, atlas, &name_display, name_x, line1_y, cat::SUBTEXT1, &mut glyphs);
+            super::render_text(font, atlas, &name_display, name_x, line1_y, cat::subtext1(), &mut glyphs);
 
             // Summary text (truncated, second line)
             let line2_y = ey + 4.0 + font.cell_height + 2.0;
             let max_summary_chars = ((w - 18.0 - 8.0) / font.cell_width).max(1.0) as usize;
             let summary_display = truncate_str(&entry.summary, max_summary_chars);
-            super::render_text(font, atlas, &summary_display, x + 18.0, line2_y, cat::OVERLAY0, &mut glyphs);
+            super::render_text(font, atlas, &summary_display, x + 18.0, line2_y, cat::overlay0(), &mut glyphs);
         }
 
         ActivityOutput { rects, glyphs }

@@ -121,10 +121,11 @@ impl ToastManager {
             } else {
                 toast.message.clone()
             };
+            let base = cat::text();
             let text_color = [
-                cat::TEXT[0] * alpha,
-                cat::TEXT[1] * alpha,
-                cat::TEXT[2] * alpha,
+                base[0] * alpha,
+                base[1] * alpha,
+                base[2] * alpha,
                 alpha,
             ];
             super::render_text(font, atlas, &display, x + 10.0, text_y, text_color, &mut glyphs);

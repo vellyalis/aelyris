@@ -56,6 +56,24 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             ON command_history(terminal_id);
         CREATE INDEX IF NOT EXISTS idx_command_history_command
             ON command_history(command);
+
+        CREATE TABLE IF NOT EXISTS activity_log (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp   TEXT NOT NULL DEFAULT (datetime('now')),
+            session_name TEXT NOT NULL,
+            event_type  TEXT NOT NULL,
+            summary     TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_activity_ts ON activity_log(timestamp DESC);
+
+        CREATE TABLE IF NOT EXISTS usage_log (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp   TEXT NOT NULL DEFAULT (datetime('now')),
+            cli         TEXT NOT NULL,
+            cost        REAL NOT NULL DEFAULT 0,
+            tokens      INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_usage_ts ON usage_log(timestamp DESC);
         ",
     )?;
 

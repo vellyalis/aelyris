@@ -137,12 +137,12 @@ impl SearchState {
             format!("\"{}\" — {} matches in {} files",
                 self.query, self.total_matches, self.results.len())
         };
-        let query_color = if self.query.is_empty() { cat::OVERLAY0 } else { cat::TEXT };
+        let query_color = if self.query.is_empty() { cat::overlay0() } else { cat::text() };
         super::render_text(font, atlas, &query_display, x + PAD + 8.0, query_y, query_color, &mut glyphs);
 
         // Results
         let content_top = y + INPUT_HEIGHT + 12.0;
-        let content_h = h - INPUT_HEIGHT - 12.0;
+        let _content_h = h - INPUT_HEIGHT - 12.0;
         let mut cy = content_top - self.scroll_offset;
 
         for (fi, file) in self.results.iter().enumerate() {
@@ -158,7 +158,7 @@ impl SearchState {
                 let file_y = cy + (FILE_HEADER_HEIGHT - font.cell_height) / 2.0;
                 let icon = super::icons::file_icon(&file.path, false);
                 let icon_str = icon.to_string();
-                super::render_text(font, atlas, &icon_str, x + PAD, file_y, cat::BLUE, &mut glyphs);
+                super::render_text(font, atlas, &icon_str, x + PAD, file_y, cat::blue(), &mut glyphs);
 
                 let max_chars = ((w - PAD * 2.0 - font.cell_width * 3.0) / font.cell_width) as usize;
                 let display_path = if file.path.len() > max_chars {
@@ -166,11 +166,11 @@ impl SearchState {
                 } else {
                     file.path.clone()
                 };
-                super::render_text(font, atlas, &display_path, x + PAD + font.cell_width * 2.0, file_y, cat::TEXT, &mut glyphs);
+                super::render_text(font, atlas, &display_path, x + PAD + font.cell_width * 2.0, file_y, cat::text(), &mut glyphs);
 
                 let count = format!("({})", file.matches.len());
                 let count_x = x + w - PAD - count.len() as f32 * font.cell_width;
-                super::render_text(font, atlas, &count, count_x, file_y, cat::OVERLAY0, &mut glyphs);
+                super::render_text(font, atlas, &count, count_x, file_y, cat::overlay0(), &mut glyphs);
             }
             cy += FILE_HEADER_HEIGHT;
 
@@ -191,7 +191,7 @@ impl SearchState {
                     let line_y = cy + (RESULT_HEIGHT - font.cell_height) / 2.0;
                     // Line number
                     let line_num = format!("{:>4}", m.line_num + 1);
-                    super::render_text(font, atlas, &line_num, x + PAD, line_y, cat::OVERLAY0, &mut glyphs);
+                    super::render_text(font, atlas, &line_num, x + PAD, line_y, cat::overlay0(), &mut glyphs);
 
                     // Line text (truncated)
                     let text_x = x + PAD + font.cell_width * 5.0;
@@ -201,7 +201,7 @@ impl SearchState {
                     } else {
                         m.line_text.clone()
                     };
-                    super::render_text(font, atlas, &display_text, text_x, line_y, cat::SUBTEXT1, &mut glyphs);
+                    super::render_text(font, atlas, &display_text, text_x, line_y, cat::subtext1(), &mut glyphs);
                 }
                 cy += RESULT_HEIGHT;
             }

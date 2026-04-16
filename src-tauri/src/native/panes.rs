@@ -96,6 +96,17 @@ impl PaneNode {
         }
     }
 
+    /// Apply a mutable function to all leaves.
+    pub fn for_each_leaf_mut<F: FnMut(&mut PaneLeaf)>(&mut self, f: &mut F) {
+        match self {
+            PaneNode::Leaf(leaf) => f(leaf),
+            PaneNode::Split { first, second, .. } => {
+                first.for_each_leaf_mut(f);
+                second.for_each_leaf_mut(f);
+            }
+        }
+    }
+
     /// Remove a leaf pane by ID. Returns the PTY ID of the removed pane, or None.
     pub fn close_leaf(&mut self, target_id: u32) -> Option<String> {
         match self {

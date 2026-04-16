@@ -485,6 +485,57 @@ impl Database {
         rows.collect::<Result<Vec<_>, _>>()
             .map_err(|e| format!("Collect: {}", e))
     }
+
+    // --- Activity Log ---
+
+    /// Save an activity event to persistent storage.
+    pub fn save_activity(&self, session_name: &str, event_type: &str, summary: &str) -> Result<(), String> {
+        self.conn
+            .execute(
+                "INSERT INTO activity_log (session_name, event_type, summary) VALUES (?1, ?2, ?3)",
+                params![session_name, event_type, summary],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Save a usage record to persistent storage.
+    pub fn save_usage(&self, cli: &str, cost: f64, tokens: u64) -> Result<(), String> {
+        self.conn
+            .execute(
+                "INSERT INTO usage_log (cli, cost, tokens) VALUES (?1, ?2, ?3)",
+                params![cli, cost, tokens as i64],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Retrieve recent activity entries (timestamp, session_name, event_type, summary).
+    pub fn recent_activity(&self, limit: usize) -> Result<Vec<(String, String, String, String)>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT timestamp, session_name, event_type, summary FROM activity_log ORDER BY id DESC LIMIT ?1",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![limit as i64], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
+    }
+
+    /// Get total usage across all CLI sessions (total_cost, total_tokens).
+    pub fn total_usage(&self) -> Result<(f64, i64), String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT COALESCE(SUM(cost), 0), COALESCE(SUM(tokens), 0) FROM usage_log")
+            .map_err(|e| e.to_string())?;
+        stmt.query_row([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .map_err(|e| e.to_string())
+    }
 }
 
 #[cfg(test)]

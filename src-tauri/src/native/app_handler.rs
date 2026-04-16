@@ -181,6 +181,8 @@ impl ApplicationHandler for NativeTerminal {
         }
         self.process_lsp_messages();
         self.process_agent_updates();
+        // Process watchdog evaluations from PTY reader threads
+        self.process_watchdog_channel();
         // Check for bell in all active grids
         for tab in &self.tab_states {
             tab.root.for_each_leaf(&mut |leaf| {
@@ -197,6 +199,13 @@ impl ApplicationHandler for NativeTerminal {
                 self.toasts.success(notif.message);
             } else {
                 self.toasts.error(notif.message);
+            }
+        }
+        // Port auto-detection: scan terminal output for localhost:XXXX patterns
+        let detected = self.detect_ports();
+        for url in detected {
+            if self.notified_ports.insert(url.clone()) {
+                self.toasts.info(format!("Port detected: {}", url));
             }
         }
         self.toasts.tick();
@@ -284,6 +293,11 @@ impl NativeTerminal {
                 let button = if self.mouse_pressed { 32 } else { 35 };
                 self.send_mouse_event(button, col, row, true);
             }
+        }
+
+        // Editor hover: request LSP hover when mouse moves in editor content area
+        if matches!(self.content_pane, ContentPane::Editor(_)) && self.is_in_content(position.x, position.y) {
+            self.request_lsp_hover();
         }
 
         // Selection drag
@@ -428,6 +442,17 @@ impl NativeTerminal {
                 }
             }
 
+            // Block collapse toggle: detect click on prompt row's collapse indicator
+            if matches!(self.content_pane, ContentPane::Terminal) {
+                if let Some((mx, my)) = self.chrome.mouse_pos {
+                    if self.is_in_content(mx as f64, my as f64) {
+                        if self.try_toggle_block_collapse(mx, my) {
+                            return;
+                        }
+                    }
+                }
+            }
+
             // Content area: hyperlink, mouse reporting, or selection
             if let Some((mx, my)) = self.chrome.mouse_pos {
                 if self.is_in_content(mx as f64, my as f64) {
@@ -560,5 +585,61 @@ impl NativeTerminal {
                 }
             }
         }
+    }
+
+    /// Check if the click is on a block collapse toggle indicator.
+    ///
+    /// The indicator is drawn at the left edge of the block header (prompt row).
+    /// Returns true if a toggle was performed.
+    fn try_toggle_block_collapse(&mut self, mx: f32, my: f32) -> bool {
+        let tab = match self.tab_states.get_mut(self.chrome.active_tab) {
+            Some(t) => t,
+            None => return false,
+        };
+        let leaf = match tab.focused_leaf_mut() {
+            Some(l) => l,
+            None => return false,
+        };
+        let grid = match leaf.grid.lock() {
+            Ok(g) => g,
+            Err(_) => return false,
+        };
+
+        let cell_h = self.font.cell_height;
+        let cell_w = self.font.cell_width;
+        let sidebar_w = self.sidebar.width();
+
+        // Compute the screen row the click falls on (relative to content area)
+        let content_y = my - ui::CHROME_TOP;
+        if content_y < 0.0 {
+            return false;
+        }
+        let screen_row = (content_y / cell_h) as usize;
+
+        // Check how far from the left edge -- indicator is at inset (4px) + ~2 cells
+        let content_x = mx - sidebar_w;
+        if content_x < 0.0 || content_x > cell_w * 4.0 {
+            return false; // click is not near the collapse indicator
+        }
+
+        // Convert screen row to absolute row
+        let sb_len = grid.scrollback.len();
+        let abs_row = if grid.viewport_offset == 0 {
+            sb_len + screen_row
+        } else {
+            let sb_start = sb_len.saturating_sub(grid.viewport_offset);
+            sb_start + screen_row
+        };
+
+        // Check if this absolute row is the prompt row of any block
+        if let Some((block_idx, block)) = leaf.block_tracker.block_at_row(abs_row) {
+            if block.prompt_row == abs_row {
+                drop(grid);
+                leaf.block_tracker.toggle_collapse(block_idx);
+                return true;
+            }
+        }
+
+        false
     }
 }

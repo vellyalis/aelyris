@@ -35,6 +35,7 @@ use crate::pty::PtyManager;
 use crate::ui::{ChromeState, HitRegion};
 use crate::ui::activity::ActivityFeed;
 use crate::ui::analytics::AnalyticsState;
+use crate::ui::dialog::DialogState;
 use crate::ui::palette::PaletteState;
 use crate::ui::scm::ScmState;
 use crate::ui::sidebar::SidebarState;
@@ -91,6 +92,9 @@ pub struct NativeTerminal {
     // SCM + Toasts
     pub(crate) scm: ScmState,
     pub(crate) toasts: ToastManager,
+    // Modal dialog (used by future confirmation flows)
+    #[allow(dead_code)]
+    pub(crate) dialog: DialogState,
     // Toolkit
     pub(crate) toolkit: ToolkitState,
     // Watchdog
@@ -110,6 +114,15 @@ pub struct NativeTerminal {
     pub(crate) pane_sync: bool,
     // File system watcher
     pub(crate) fs_watcher_rx: Option<std::sync::mpsc::Receiver<watcher::FsEvent>>,
+    // Port detection: already-notified URLs to avoid duplicate toasts
+    pub(crate) notified_ports: std::collections::HashSet<String>,
+    // UI widgets state
+    pub(crate) scrollbar_drag: crate::ui::widgets::scrollbar::ScrollBarDrag,
+    #[allow(dead_code)]
+    pub(crate) tooltip: crate::ui::widgets::tooltip::TooltipState,
+    // Watchdog channel: PTY reader threads send (pty_id, output_text) for evaluation
+    pub(crate) watchdog_tx: std::sync::mpsc::SyncSender<(String, String)>,
+    pub(crate) watchdog_rx: std::sync::mpsc::Receiver<(String, String)>,
 }
 
 impl NativeTerminal {
@@ -121,6 +134,7 @@ impl NativeTerminal {
         let font = FontManager::new(font_size, line_height);
         let (lsp_tx, lsp_rx) = std::sync::mpsc::channel();
         let (agent_tx, agent_rx) = std::sync::mpsc::sync_channel(512);
+        let (watchdog_tx, watchdog_rx) = std::sync::mpsc::sync_channel(256);
         let db = Database::open(&db_path()).unwrap_or_else(|e| {
             log::warn!("Failed to open DB, using in-memory: {}", e);
             Database::open_memory().expect("in-memory DB should always succeed")
@@ -159,6 +173,7 @@ impl NativeTerminal {
             sidebar_menu: None,
             scm: ScmState::new(),
             toasts: ToastManager::new(),
+            dialog: DialogState::new(),
             toolkit: {
                 let mut tk = ToolkitState::new();
                 if let Ok(cwd) = std::env::current_dir() {
@@ -176,6 +191,11 @@ impl NativeTerminal {
             keybindings: KeybindingsConfig::load(),
             pane_sync: false,
             fs_watcher_rx: None,
+            notified_ports: std::collections::HashSet::new(),
+            scrollbar_drag: crate::ui::widgets::scrollbar::ScrollBarDrag::default(),
+            tooltip: crate::ui::widgets::tooltip::TooltipState::new(),
+            watchdog_tx,
+            watchdog_rx,
         }
     }
 
