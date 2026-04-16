@@ -102,7 +102,7 @@ impl ToastManager {
             };
 
             // Background
-            rects.push(RectInstance::rounded([x, y], [TOAST_WIDTH, TOAST_HEIGHT], cat::pm(30, 30, 46, (230.0 * alpha) as u8), 6.0));
+            rects.push(RectInstance::rounded([x, y], [TOAST_WIDTH, TOAST_HEIGHT], cat::pm(30, 30, 46, (230.0 * alpha) as u8), 8.0));
 
             // Left border
             rects.push(RectInstance::new([x, y], [3.0, TOAST_HEIGHT], border_color));

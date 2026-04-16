@@ -245,13 +245,13 @@ impl SidebarState {
                         && my < row_y + ROW_HEIGHT
                         && my >= content_top
                     {
-                        rects.push(RectInstance::new([0.0, row_y], [SIDEBAR_WIDTH - 1.0, ROW_HEIGHT], cat::BTN_HOVER));
+                        rects.push(RectInstance::rounded([2.0, row_y], [SIDEBAR_WIDTH - 3.0, ROW_HEIGHT], cat::BTN_HOVER, 4.0));
                     }
                 }
 
                 // Selected highlight
                 if tree.selected == Some(i) {
-                    rects.push(RectInstance::new([0.0, row_y], [SIDEBAR_WIDTH - 1.0, ROW_HEIGHT], cat::pm(49, 50, 68, 180)));
+                    rects.push(RectInstance::rounded([2.0, row_y], [SIDEBAR_WIDTH - 3.0, ROW_HEIGHT], cat::pm(49, 50, 68, 180), 4.0));
                 }
 
                 // Icon + name

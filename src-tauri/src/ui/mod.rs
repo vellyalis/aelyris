@@ -3,6 +3,7 @@
 //! Uses the same RectInstance + GlyphInstance as the terminal grid.
 //! No external UI framework dependency.
 
+pub mod animation;
 pub mod editor;
 pub mod kanban;
 pub mod palette;
@@ -244,10 +245,10 @@ impl ChromeState {
 
             // Tab background (active tab is highlighted)
             if is_active {
-                rects.push(RectInstance::new([x, tab_y], [tab_w, tab_h], cat::TAB_ACTIVE));
+                rects.push(RectInstance::rounded([x, tab_y], [tab_w, tab_h], cat::TAB_ACTIVE, 6.0));
             } else if let Some((mx, my)) = self.mouse_pos {
                 if mx >= x && mx < x + tab_w && my >= tab_y && my < tab_y + tab_h {
-                    rects.push(RectInstance::new([x, tab_y], [tab_w, tab_h], cat::BTN_HOVER));
+                    rects.push(RectInstance::rounded([x, tab_y], [tab_w, tab_h], cat::BTN_HOVER, 6.0));
                 }
             }
 
@@ -277,7 +278,7 @@ impl ChromeState {
         render_text(font, atlas, "+", x + 8.0, text_y, cat::OVERLAY0, glyphs);
         if let Some((mx, my)) = self.mouse_pos {
             if mx >= x && mx < x + add_w && my >= tab_y && my < tab_y + tab_h {
-                rects.push(RectInstance::new([x, tab_y], [add_w, tab_h], cat::BTN_HOVER));
+                rects.push(RectInstance::rounded([x, tab_y], [add_w, tab_h], cat::BTN_HOVER, 6.0));
             }
         }
         hits.push(HitRegion {

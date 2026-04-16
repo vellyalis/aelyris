@@ -163,7 +163,7 @@ impl ScmState {
 
         // Commit input area
         if cy - y + COMMIT_INPUT_HEIGHT < max_h {
-            rects.push(RectInstance::new([x + 4.0, cy + 4.0], [w - 8.0, COMMIT_INPUT_HEIGHT], cat::pm(24, 24, 37, 220)));
+            rects.push(RectInstance::rounded([x + 4.0, cy + 4.0], [w - 8.0, COMMIT_INPUT_HEIGHT], cat::pm(24, 24, 37, 220), 6.0));
             let input_y = cy + 4.0 + (COMMIT_INPUT_HEIGHT - font.cell_height) / 2.0;
             let display = if self.commit_message.is_empty() {
                 "Commit message..."

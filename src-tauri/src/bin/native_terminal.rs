@@ -1825,7 +1825,7 @@ impl NativeTerminal {
         let menu_h = ITEMS.len() as f32 * item_h + 8.0;
 
         // Background
-        rects.push(RectInstance::new([mx, my], [menu_w, menu_h], ui::cat::pm(30, 30, 46, 245)));
+        rects.push(RectInstance::rounded([mx, my], [menu_w, menu_h], ui::cat::pm(30, 30, 46, 245), 8.0));
         // Border
         rects.push(RectInstance::new([mx, my], [menu_w, 1.0], ui::cat::pm(69, 71, 90, 200)));
 
@@ -1841,7 +1841,7 @@ impl NativeTerminal {
         for (i, label) in ITEMS.iter().enumerate() {
             let iy = my + 4.0 + i as f32 * item_h;
             if hover_idx == Some(i) {
-                rects.push(RectInstance::new([mx + 2.0, iy], [menu_w - 4.0, item_h], ui::cat::pm(69, 71, 90, 150)));
+                rects.push(RectInstance::rounded([mx + 2.0, iy], [menu_w - 4.0, item_h], ui::cat::pm(69, 71, 90, 150), 4.0));
             }
             let text_y = iy + (item_h - font.cell_height) / 2.0;
             ui::render_text(font, atlas, label, mx + 12.0, text_y, ui::cat::TEXT, &mut glyphs);
@@ -1962,7 +1962,7 @@ impl NativeTerminal {
 
             // Active highlight
             if is_active {
-                rects.push(RectInstance::new([0.0, y], [sidebar_w, 36.0], ui::cat::pm(69, 71, 90, 80)));
+                rects.push(RectInstance::rounded([2.0, y], [sidebar_w - 4.0, 36.0], ui::cat::pm(69, 71, 90, 80), 6.0));
             }
 
             // Status indicator dot (4px circle approximated as square)
@@ -2078,7 +2078,7 @@ impl NativeTerminal {
         let menu_w = 160.0f32;
         let menu_h = items.len() as f32 * item_h + 8.0;
 
-        rects.push(RectInstance::new([mx, my], [menu_w, menu_h], ui::cat::pm(30, 30, 46, 245)));
+        rects.push(RectInstance::rounded([mx, my], [menu_w, menu_h], ui::cat::pm(30, 30, 46, 245), 8.0));
         rects.push(RectInstance::new([mx, my], [menu_w, 1.0], ui::cat::pm(69, 71, 90, 200)));
 
         let hover_idx = self.chrome.mouse_pos.and_then(|(hx, hy)| {
@@ -2092,7 +2092,7 @@ impl NativeTerminal {
         for (i, label) in items.iter().enumerate() {
             let iy = my + 4.0 + i as f32 * item_h;
             if hover_idx == Some(i) {
-                rects.push(RectInstance::new([mx + 2.0, iy], [menu_w - 4.0, item_h], ui::cat::pm(69, 71, 90, 150)));
+                rects.push(RectInstance::rounded([mx + 2.0, iy], [menu_w - 4.0, item_h], ui::cat::pm(69, 71, 90, 150), 4.0));
             }
             let text_y = iy + (item_h - font.cell_height) / 2.0;
             ui::render_text(font, atlas, label, mx + 12.0, text_y, ui::cat::TEXT, &mut glyphs);

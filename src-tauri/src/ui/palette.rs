@@ -485,7 +485,7 @@ impl PaletteState {
         rects.push(RectInstance::new([0.0, 0.0], [window_w, 2000.0], [0.0, 0.0, 0.0, 0.4]));
 
         // Palette background
-        rects.push(RectInstance::rounded([palette_x, palette_y], [PALETTE_WIDTH, palette_h], cat::pm(30, 30, 46, 250), 8.0));
+        rects.push(RectInstance::rounded([palette_x, palette_y], [PALETTE_WIDTH, palette_h], cat::pm(30, 30, 46, 250), 12.0));
 
         // Border — color varies by mode
         let border_color = match &self.mode {
@@ -503,7 +503,7 @@ impl PaletteState {
 
         // Input background
         let input_y = palette_y + PADDING;
-        rects.push(RectInstance::rounded([palette_x + PADDING, input_y], [PALETTE_WIDTH - PADDING * 2.0, INPUT_HEIGHT], cat::pm(24, 24, 37, 250), 4.0));
+        rects.push(RectInstance::rounded([palette_x + PADDING, input_y], [PALETTE_WIDTH - PADDING * 2.0, INPUT_HEIGHT], cat::pm(24, 24, 37, 250), 6.0));
 
         // Input text — placeholder depends on mode
         let text_y = input_y + (INPUT_HEIGHT - font.cell_height) / 2.0;
@@ -625,7 +625,7 @@ impl PaletteState {
 
             // Selected highlight
             if i == self.selected {
-                rects.push(RectInstance::new([palette_x + PADDING, item_y], [PALETTE_WIDTH - PADDING * 2.0, ITEM_HEIGHT], cat::pm(69, 71, 90, 150)));
+                rects.push(RectInstance::rounded([palette_x + PADDING, item_y], [PALETTE_WIDTH - PADDING * 2.0, ITEM_HEIGHT], cat::pm(69, 71, 90, 150), 4.0));
             }
 
             // Command label
@@ -681,7 +681,7 @@ impl PaletteState {
                 } else {
                     cat::pm(69, 71, 90, 150)
                 };
-                rects.push(RectInstance::new([palette_x + PADDING, item_y], [PALETTE_WIDTH - PADDING * 2.0, ITEM_HEIGHT], color));
+                rects.push(RectInstance::rounded([palette_x + PADDING, item_y], [PALETTE_WIDTH - PADDING * 2.0, ITEM_HEIGHT], color, 4.0));
             }
 
             let label_y = item_y + (ITEM_HEIGHT - font.cell_height) / 2.0;
@@ -740,7 +740,7 @@ impl PaletteState {
             };
 
             if i == self.selected {
-                rects.push(RectInstance::new([palette_x + PADDING, item_y], [PALETTE_WIDTH - PADDING * 2.0, ITEM_HEIGHT], cat::pm(69, 71, 90, 150)));
+                rects.push(RectInstance::rounded([palette_x + PADDING, item_y], [PALETTE_WIDTH - PADDING * 2.0, ITEM_HEIGHT], cat::pm(69, 71, 90, 150), 4.0));
             }
 
             let label_y = item_y + (ITEM_HEIGHT - font.cell_height) / 2.0;
