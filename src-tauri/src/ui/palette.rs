@@ -127,6 +127,7 @@ pub enum PaletteAction {
     SpawnShell(String),
     OpenFileSearch,
     OpenHelm,
+    OpenAnalytics,
     RunTool(usize),
     None,
 }
@@ -156,6 +157,7 @@ const COMMANDS: &[PaletteCommand] = &[
     PaletteCommand { id: "watchdog", label: "Watchdog: Edit Rules", shortcut: "" },
     PaletteCommand { id: "file_search", label: "Search in Files", shortcut: "Ctrl+Shift+G" },
     PaletteCommand { id: "helm", label: "Tasks (Helm)", shortcut: "" },
+    PaletteCommand { id: "analytics", label: "View Analytics", shortcut: "" },
     PaletteCommand { id: "agent_claude", label: "Agent: Start Claude", shortcut: "" },
     PaletteCommand { id: "agent_codex", label: "Agent: Start Codex", shortcut: "" },
     PaletteCommand { id: "agent_gemini", label: "Agent: Start Gemini", shortcut: "" },
@@ -384,6 +386,7 @@ impl PaletteState {
                         "kanban" => PaletteAction::OpenKanban,
                         "file_search" => PaletteAction::OpenFileSearch,
                         "helm" => PaletteAction::OpenHelm,
+                        "analytics" => PaletteAction::OpenAnalytics,
                         "help" => PaletteAction::ShowHelp,
                         "about" => PaletteAction::ShowAbout,
                         "watchdog" => PaletteAction::ShowWatchdog,

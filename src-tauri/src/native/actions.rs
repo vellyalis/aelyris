@@ -11,6 +11,7 @@ use crate::ui;
 use crate::ui::editor::EditorState;
 use crate::ui::kanban::KanbanState;
 use crate::ui::palette::PaletteAction;
+use crate::ui::activity::ActivityType;
 use crate::ui::{ChromeAction};
 use super::NativeTerminal;
 use super::types::{AgentStatus, AgentTabInfo, AgentUpdate, ContentPane};
@@ -59,6 +60,9 @@ impl NativeTerminal {
                     }
                     self.should_exit = true;
                 } else if idx < self.tab_states.len() {
+                    let tab_title = self.chrome.tabs.get(idx)
+                        .map(|t| t.title.clone())
+                        .unwrap_or_else(|| "Unknown".to_string());
                     for pty_id in self.tab_states[idx].root.all_pty_ids() {
                         let _ = self.pty_manager.close(&pty_id);
                     }
@@ -67,6 +71,11 @@ impl NativeTerminal {
                     if self.chrome.active_tab >= self.chrome.tabs.len() {
                         self.chrome.active_tab = self.chrome.tabs.len().saturating_sub(1);
                     }
+                    self.activity.push(
+                        tab_title,
+                        ActivityType::SessionEnded,
+                        "Session closed".to_string(),
+                    );
                 }
             }
             ChromeAction::SwitchTab(idx) => {
@@ -307,6 +316,9 @@ impl NativeTerminal {
             }
             PaletteAction::OpenHelm => {
                 self.content_pane = ContentPane::Helm(crate::ui::helm::HelmState::load());
+            }
+            PaletteAction::OpenAnalytics => {
+                self.content_pane = ContentPane::Analytics;
             }
             PaletteAction::ShowHelp => {
                 let items = vec![
@@ -617,6 +629,11 @@ impl NativeTerminal {
                 self.chrome.add_tab(id.clone(), shell_name.clone(), shell_name.clone());
                 self.tab_states.push(TabState::new_single(id, grid, None));
                 self.chrome.active_tab = self.tab_states.len() - 1;
+                self.activity.push(
+                    shell_name.clone(),
+                    ActivityType::SessionStarted,
+                    format!("New {} session", shell_name),
+                );
             }
             Err(e) => log::error!("Failed to spawn PTY: {}", e),
         }

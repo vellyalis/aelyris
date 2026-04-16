@@ -78,6 +78,30 @@ impl NativeTerminal {
             self.handle_helm_key(key);
             return;
         }
+        if matches!(self.content_pane, ContentPane::Diff(_)) {
+            if matches!(key, Key::Named(NamedKey::Escape)) {
+                self.content_pane = ContentPane::Terminal;
+                return;
+            }
+            if let ContentPane::Diff(diff) = &mut self.content_pane {
+                match key {
+                    Key::Named(NamedKey::ArrowUp) | Key::Named(NamedKey::PageUp) => {
+                        diff.scroll(-60.0);
+                    }
+                    Key::Named(NamedKey::ArrowDown) | Key::Named(NamedKey::PageDown) => {
+                        diff.scroll(60.0);
+                    }
+                    _ => {}
+                }
+            }
+            return;
+        }
+        if matches!(self.content_pane, ContentPane::Analytics) {
+            if matches!(key, Key::Named(NamedKey::Escape)) {
+                self.content_pane = ContentPane::Terminal;
+            }
+            return;
+        }
 
         // --- Terminal mode ---
 
@@ -203,8 +227,17 @@ impl NativeTerminal {
 
     /// Handle key input when in editor mode.
     pub(super) fn handle_editor_key(&mut self, key: Key, ctrl: bool, shift: bool) {
+        // Escape: dismiss completion/hover first, then find bar, then exit editor
         if matches!(key, Key::Named(NamedKey::Escape)) {
             if let ContentPane::Editor(editor) = &mut self.content_pane {
+                if editor.completion_visible {
+                    editor.completion_visible = false;
+                    return;
+                }
+                if editor.hover_text.is_some() {
+                    editor.hover_text = None;
+                    return;
+                }
                 if editor.find.active {
                     editor.find.active = false;
                     return;
@@ -212,6 +245,51 @@ impl NativeTerminal {
             }
             self.content_pane = ContentPane::Terminal;
             log::info!("Back to terminal");
+            return;
+        }
+
+        // Completion popup navigation
+        if let ContentPane::Editor(editor) = &mut self.content_pane {
+            if editor.completion_visible {
+                match key {
+                    Key::Named(NamedKey::ArrowUp) => {
+                        if editor.completion_selected > 0 {
+                            editor.completion_selected -= 1;
+                        }
+                        return;
+                    }
+                    Key::Named(NamedKey::ArrowDown) => {
+                        if editor.completion_selected + 1 < editor.completions.len() {
+                            editor.completion_selected += 1;
+                        }
+                        return;
+                    }
+                    Key::Named(NamedKey::Enter) | Key::Named(NamedKey::Tab) => {
+                        // Accept selected completion
+                        if let Some(item) = editor.completions.get(editor.completion_selected).cloned() {
+                            let text = item.insert_text.as_deref().unwrap_or(&item.label);
+                            editor.insert_text(text);
+                        }
+                        editor.completion_visible = false;
+                        editor.completions.clear();
+                        return;
+                    }
+                    _ => {
+                        editor.completion_visible = false;
+                    }
+                }
+            }
+        }
+
+        // F12: Go to definition
+        if matches!(key, Key::Named(NamedKey::F12)) {
+            self.request_lsp_definition();
+            return;
+        }
+
+        // Ctrl+Space: Trigger completion
+        if ctrl && matches!(key, Key::Named(NamedKey::Space)) {
+            self.request_lsp_completion();
             return;
         }
 

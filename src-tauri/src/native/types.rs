@@ -2,6 +2,7 @@
 
 use crate::agent::interactive::AgentCli;
 use crate::agent::output_monitor::DetectedStatus;
+use crate::ui::diff::DiffState;
 use crate::ui::editor::EditorState;
 use crate::ui::helm::HelmState;
 use crate::ui::kanban::KanbanState;
@@ -16,6 +17,8 @@ pub enum ContentPane {
     Search(SearchState),
     Welcome(WelcomeState),
     Helm(HelmState),
+    Diff(DiffState),
+    Analytics,
 }
 
 /// Agent status for display.

@@ -150,6 +150,17 @@ impl ApplicationHandler for NativeTerminal {
         }
         self.process_lsp_messages();
         self.process_agent_updates();
+        // Check for bell in all active grids
+        for tab in &self.tab_states {
+            tab.root.for_each_leaf(&mut |leaf| {
+                if let Ok(mut grid) = leaf.grid.lock() {
+                    if grid.bell_pending {
+                        grid.bell_pending = false;
+                        // Flash tab title or show toast
+                    }
+                }
+            });
+        }
         self.toasts.tick();
         self.sidebar.tick();
         self.palette.tick();

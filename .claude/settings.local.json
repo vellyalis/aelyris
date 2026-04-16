@@ -51,7 +51,8 @@
       "Bash(ls *)",
       "Bash(RUST_LOG=info timeout 5 ./src-tauri/target/release/native-terminal.exe)",
       "Bash(RUST_LOG=info timeout 4 ./src-tauri/target/release/native-terminal.exe)",
-      "Bash(wc *)"
+      "Bash(wc *)",
+      "Bash(find \"C:\\\\Users\\\\owner\\\\Aether_Terminal\" -type f -name \"*.rs\" -exec grep -l \"textDocument\\\\|PublishDiagnostics\\\\|Diagnostic\" {} \\\\;)"
     ]
   }
 }

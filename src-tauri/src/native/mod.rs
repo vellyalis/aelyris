@@ -32,6 +32,8 @@ use crate::gpu::renderer::TerminalRenderer;
 use crate::lsp::{LspManager, LspMessage};
 use crate::pty::PtyManager;
 use crate::ui::{ChromeState, HitRegion};
+use crate::ui::activity::ActivityFeed;
+use crate::ui::analytics::AnalyticsState;
 use crate::ui::palette::PaletteState;
 use crate::ui::scm::ScmState;
 use crate::ui::sidebar::SidebarState;
@@ -90,6 +92,10 @@ pub struct NativeTerminal {
     pub(crate) toolkit: ToolkitState,
     // Watchdog
     pub(crate) watchdog_manager: WatchdogManager,
+    // Activity feed
+    pub(crate) activity: ActivityFeed,
+    // Analytics
+    pub(crate) analytics: AnalyticsState,
 }
 
 impl NativeTerminal {
@@ -147,6 +153,8 @@ impl NativeTerminal {
                 tk
             },
             watchdog_manager: WatchdogManager::new(),
+            activity: ActivityFeed::new(),
+            analytics: AnalyticsState::new(),
         }
     }
 

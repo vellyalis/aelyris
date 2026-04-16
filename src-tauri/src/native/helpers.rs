@@ -9,7 +9,8 @@ use crate::ui::palette::WorktreeEntry;
 use crate::config::save_config;
 use crate::git;
 use super::NativeTerminal;
-use super::types::{AgentTabInfo, AgentUpdate, ContentPane};
+use crate::ui::activity::ActivityType;
+use super::types::{AgentStatus, AgentTabInfo, AgentUpdate, ContentPane};
 use super::panes::PaneNode;
 
 impl NativeTerminal {
@@ -150,11 +151,31 @@ impl NativeTerminal {
         while let Ok(update) = self.agent_rx.try_recv() {
             match update {
                 AgentUpdate::Status(ref pty_id, ref status) => {
+                    // Find the tab name for activity logging
+                    let tab_name = self.chrome.tabs.iter()
+                        .find(|t| t.id == *pty_id)
+                        .map(|t| t.title.clone())
+                        .unwrap_or_else(|| "Agent".to_string());
+
+                    let activity_event = match status {
+                        AgentStatus::Thinking => Some((ActivityType::AgentThinking, "Agent thinking...")),
+                        AgentStatus::Coding => Some((ActivityType::AgentCoding, "Agent writing code")),
+                        AgentStatus::Done => Some((ActivityType::AgentDone, "Agent finished")),
+                        _ => None,
+                    };
+                    if let Some((event_type, summary)) = activity_event {
+                        self.activity.push(tab_name, event_type, summary.to_string());
+                    }
+
                     apply_agent_update_to_tree(&mut self.tab_states, pty_id, |info| {
                         info.status = status.clone();
                     });
                 }
                 AgentUpdate::Usage(ref pty_id, cost, tokens) => {
+                    // Determine CLI name for analytics recording
+                    let cli_name = find_agent_cli_name(&self.tab_states, pty_id);
+                    self.analytics.record(cli_name, cost, tokens);
+
                     apply_agent_update_to_tree(&mut self.tab_states, pty_id, |info| {
                         if cost > info.cost { info.cost = cost; }
                         if tokens > info.tokens_used { info.tokens_used = tokens; }
@@ -251,17 +272,172 @@ impl NativeTerminal {
         id
     }
 
-    /// Process pending LSP messages and update editor diagnostics.
+    /// Process pending LSP messages and update editor diagnostics/completions/hover.
     pub(super) fn process_lsp_messages(&mut self) {
+        use crate::ui::editor::{CompletionItem, CompletionKind};
         while let Ok(msg) = self.lsp_receiver.try_recv() {
             if let Ok(json) = serde_json::from_str::<serde_json::Value>(&msg.json) {
+                // Notification: diagnostics
                 if json.get("method").and_then(|m| m.as_str()) == Some("textDocument/publishDiagnostics") {
                     if let Some(params) = json.get("params") {
                         self.handle_diagnostics(params);
                     }
+                    continue;
+                }
+                // Response: check for result with id
+                if let Some(result) = json.get("result") {
+                    if let ContentPane::Editor(editor) = &mut self.content_pane {
+                        // Completion response
+                        if let Some(items) = result.get("items").and_then(|i| i.as_array())
+                            .or_else(|| result.as_array())
+                        {
+                            let completions: Vec<CompletionItem> = items.iter().filter_map(|item| {
+                                let label = item.get("label")?.as_str()?.to_string();
+                                let kind_num = item.get("kind").and_then(|k| k.as_u64()).unwrap_or(1);
+                                let detail = item.get("detail").and_then(|d| d.as_str()).map(|s| s.to_string());
+                                let insert_text = item.get("insertText").and_then(|t| t.as_str()).map(|s| s.to_string());
+                                Some(CompletionItem {
+                                    label,
+                                    kind: CompletionKind::from_lsp(kind_num),
+                                    detail,
+                                    insert_text,
+                                })
+                            }).take(20).collect();
+                            if !completions.is_empty() {
+                                editor.completions = completions;
+                                editor.completion_selected = 0;
+                                editor.completion_visible = true;
+                            }
+                            continue;
+                        }
+                        // Hover response
+                        if let Some(contents) = result.get("contents") {
+                            let hover_text = if let Some(s) = contents.as_str() {
+                                Some(s.to_string())
+                            } else if let Some(obj) = contents.as_object() {
+                                obj.get("value").and_then(|v| v.as_str()).map(|s| s.to_string())
+                            } else if let Some(arr) = contents.as_array() {
+                                arr.first().and_then(|v| {
+                                    v.as_str().map(|s| s.to_string())
+                                        .or_else(|| v.get("value").and_then(|v| v.as_str()).map(|s| s.to_string()))
+                                })
+                            } else {
+                                None
+                            };
+                            editor.hover_text = hover_text;
+                            continue;
+                        }
+                        // Go-to-definition response
+                        if let Some(uri) = result.get("uri").and_then(|u| u.as_str())
+                            .or_else(|| result.as_array().and_then(|a| a.first()).and_then(|v| v.get("uri")).and_then(|u| u.as_str()))
+                        {
+                            let line = result.get("range")
+                                .or_else(|| result.as_array().and_then(|a| a.first()).and_then(|v| v.get("range")))
+                                .and_then(|r| r.get("start"))
+                                .and_then(|s| s.get("line"))
+                                .and_then(|l| l.as_u64())
+                                .unwrap_or(0) as usize;
+                            // Convert file URI to path
+                            let path_str = uri.strip_prefix("file:///").unwrap_or(uri);
+                            let path = std::path::Path::new(path_str);
+                            if path.exists() {
+                                if let Ok(mut new_editor) = crate::ui::editor::EditorState::open(path) {
+                                    let visible = new_editor.visible_count(400.0, self.font.cell_height);
+                                    new_editor.cursor_line = line;
+                                    new_editor.ensure_cursor_visible(visible);
+                                    self.content_pane = ContentPane::Editor(new_editor);
+                                }
+                            }
+                            continue;
+                        }
+                    }
                 }
             }
         }
+    }
+
+    /// Request LSP completion at current cursor position.
+    pub(super) fn request_lsp_completion(&mut self) {
+        let (file_path, line, col) = match &self.content_pane {
+            ContentPane::Editor(editor) => {
+                (editor.file_path.clone(), editor.cursor_line, editor.cursor_col)
+            }
+            _ => return,
+        };
+        let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        let language = match crate::lsp::LspLanguage::from_extension(ext) {
+            Some(l) => l,
+            None => return,
+        };
+        let root = file_path.parent().unwrap_or(&file_path).to_string_lossy().into_owned();
+        let file_uri = format!("file:///{}", file_path.to_string_lossy().replace('\\', "/"));
+        let id = self.next_request_id();
+        let request = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": "textDocument/completion",
+            "params": {
+                "textDocument": { "uri": file_uri },
+                "position": { "line": line, "character": col }
+            }
+        });
+        let _ = self.lsp_manager.send(&language, &root, &request.to_string());
+    }
+
+    /// Request LSP hover at current cursor position.
+    pub(super) fn request_lsp_hover(&mut self) {
+        let (file_path, line, col) = match &self.content_pane {
+            ContentPane::Editor(editor) => {
+                (editor.file_path.clone(), editor.cursor_line, editor.cursor_col)
+            }
+            _ => return,
+        };
+        let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        let language = match crate::lsp::LspLanguage::from_extension(ext) {
+            Some(l) => l,
+            None => return,
+        };
+        let root = file_path.parent().unwrap_or(&file_path).to_string_lossy().into_owned();
+        let file_uri = format!("file:///{}", file_path.to_string_lossy().replace('\\', "/"));
+        let id = self.next_request_id();
+        let request = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": "textDocument/hover",
+            "params": {
+                "textDocument": { "uri": file_uri },
+                "position": { "line": line, "character": col }
+            }
+        });
+        let _ = self.lsp_manager.send(&language, &root, &request.to_string());
+    }
+
+    /// Request LSP go-to-definition at current cursor position.
+    pub(super) fn request_lsp_definition(&mut self) {
+        let (file_path, line, col) = match &self.content_pane {
+            ContentPane::Editor(editor) => {
+                (editor.file_path.clone(), editor.cursor_line, editor.cursor_col)
+            }
+            _ => return,
+        };
+        let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        let language = match crate::lsp::LspLanguage::from_extension(ext) {
+            Some(l) => l,
+            None => return,
+        };
+        let root = file_path.parent().unwrap_or(&file_path).to_string_lossy().into_owned();
+        let file_uri = format!("file:///{}", file_path.to_string_lossy().replace('\\', "/"));
+        let id = self.next_request_id();
+        let request = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": "textDocument/definition",
+            "params": {
+                "textDocument": { "uri": file_uri },
+                "position": { "line": line, "character": col }
+            }
+        });
+        let _ = self.lsp_manager.send(&language, &root, &request.to_string());
     }
 
     fn handle_diagnostics(&mut self, params: &serde_json::Value) {
@@ -508,4 +684,35 @@ fn apply_agent_update_to_tree(
             return;
         }
     }
+}
+
+/// Find the CLI name for an agent by PTY ID (used for analytics recording).
+fn find_agent_cli_name(
+    tab_states: &[super::panes::TabState],
+    pty_id: &str,
+) -> String {
+    fn find_in_tree(node: &PaneNode, pty_id: &str) -> Option<String> {
+        match node {
+            PaneNode::Leaf(leaf) if leaf.pty_id == pty_id => {
+                leaf.agent_info.as_ref().map(|info| {
+                    match &info.cli {
+                        crate::agent::interactive::AgentCli::Claude => "claude".to_string(),
+                        crate::agent::interactive::AgentCli::Codex => "codex".to_string(),
+                        crate::agent::interactive::AgentCli::Gemini => "gemini".to_string(),
+                        crate::agent::interactive::AgentCli::Custom(s) => s.clone(),
+                    }
+                })
+            }
+            PaneNode::Split { first, second, .. } => {
+                find_in_tree(first, pty_id).or_else(|| find_in_tree(second, pty_id))
+            }
+            _ => None,
+        }
+    }
+    for tab in tab_states {
+        if let Some(name) = find_in_tree(&tab.root, pty_id) {
+            return name;
+        }
+    }
+    "unknown".to_string()
 }

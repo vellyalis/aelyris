@@ -71,6 +71,63 @@ pub struct Diagnostic {
     pub message: String,
 }
 
+/// LSP completion item kind (simplified).
+#[derive(Clone, Copy, PartialEq)]
+pub enum CompletionKind {
+    Function,
+    Variable,
+    Field,
+    Keyword,
+    Snippet,
+    Module,
+    Type,
+    Other,
+}
+
+impl CompletionKind {
+    pub fn from_lsp(kind: u64) -> Self {
+        match kind {
+            1 => Self::Other,     // Text
+            2 => Self::Function,  // Method
+            3 => Self::Function,  // Function
+            4 => Self::Function,  // Constructor
+            5 => Self::Field,     // Field
+            6 => Self::Variable,  // Variable
+            7 => Self::Type,      // Class
+            8 => Self::Type,      // Interface
+            9 => Self::Module,    // Module
+            10 => Self::Field,    // Property
+            14 => Self::Keyword,  // Keyword
+            15 => Self::Snippet,  // Snippet
+            22 => Self::Type,     // Struct
+            23 => Self::Type,     // Enum
+            _ => Self::Other,
+        }
+    }
+
+    pub fn icon(&self) -> char {
+        match self {
+            Self::Function => '\u{f0295}',  // ƒ
+            Self::Variable => '\u{f0ae7}',  // x
+            Self::Field => '\u{f0b17}',     // .
+            Self::Keyword => '\u{f0a7b}',   // K
+            Self::Snippet => '\u{f0b19}',   // S
+            Self::Module => '\u{f0668}',    // M
+            Self::Type => '\u{f0a7a}',      // T
+            Self::Other => '\u{f12a}',      // •
+        }
+    }
+}
+
+/// A single LSP completion item.
+#[derive(Clone)]
+pub struct CompletionItem {
+    pub label: String,
+    pub kind: CompletionKind,
+    pub detail: Option<String>,
+    pub insert_text: Option<String>,
+}
+
 /// Find/replace state.
 pub struct FindState {
     pub active: bool,
@@ -122,6 +179,13 @@ pub struct EditorState {
     syntax_dirty: bool,
     // LSP diagnostics
     pub diagnostics: Vec<Diagnostic>,
+    // LSP completion
+    pub completions: Vec<CompletionItem>,
+    pub completion_selected: usize,
+    pub completion_visible: bool,
+    // LSP hover
+    pub hover_text: Option<String>,
+    pub hover_pos: Option<(usize, usize)>, // (line, col) where hover was requested
     // Git diff markers (line index → status)
     pub git_markers: Vec<(usize, GitLineStatus)>,
     // Cursor blink
@@ -195,6 +259,11 @@ impl EditorState {
             syntax,
             syntax_dirty: false,
             diagnostics: Vec::new(),
+            completions: Vec::new(),
+            completion_selected: 0,
+            completion_visible: false,
+            hover_text: None,
+            hover_pos: None,
             git_markers: compute_git_markers(path),
             cursor_visible: true,
             blink_counter: 0,
@@ -259,7 +328,7 @@ impl EditorState {
     }
 
     /// Ensure cursor is visible by adjusting scroll offsets.
-    fn ensure_cursor_visible(&mut self, visible: usize) {
+    pub fn ensure_cursor_visible(&mut self, visible: usize) {
         if self.cursor_line < self.scroll_offset {
             self.scroll_offset = self.cursor_line;
         } else if self.cursor_line >= self.scroll_offset.saturating_add(visible) {

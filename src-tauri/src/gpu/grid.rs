@@ -195,6 +195,8 @@ pub struct Grid {
     pub dirty_rows: Vec<bool>,
     /// True if any row is dirty and a frame should be rendered.
     pub needs_redraw: bool,
+    /// Bell character was received (consumed by the app after checking).
+    pub bell_pending: bool,
     /// Viewport offset into scrollback (0 = live view, >0 = scrolled back).
     pub viewport_offset: usize,
     /// Current text selection.
@@ -227,6 +229,7 @@ impl Grid {
             mode: TerminalMode { auto_wrap: true, ..Default::default() },
             dirty_rows: vec![true; rows as usize],
             needs_redraw: true,
+            bell_pending: false,
             viewport_offset: 0,
             selection: Selection::default(),
             title: None,
@@ -792,7 +795,7 @@ impl<'a> Perform for GridPerformer<'a> {
             0x0d => self.grid.carriage_return(),                 // CR
             0x09 => self.grid.tab(),                             // HT
             0x08 => self.grid.backspace(),                       // BS
-            0x07 => {}                                           // BEL (ignore)
+            0x07 => { self.grid.bell_pending = true; }            // BEL
             _ => {}
         }
     }

@@ -85,6 +85,20 @@ impl NativeTerminal {
                     indicator: "Helm".to_string(),
                 })
             }
+            ContentPane::Diff(d) => {
+                Some(ui::StatusOverride {
+                    label: format!("Diff: {}", d.file_path),
+                    detail: format!("{} lines", d.lines.len()),
+                    indicator: "Diff".to_string(),
+                })
+            }
+            ContentPane::Analytics => {
+                Some(ui::StatusOverride {
+                    label: "Analytics".to_string(),
+                    detail: format!("${:.2} total", self.analytics.total_cost()),
+                    indicator: "Usage".to_string(),
+                })
+            }
         };
 
         let mut atlas = self.atlas.lock().unwrap();
@@ -141,6 +155,18 @@ impl NativeTerminal {
                 );
                 (out.rects, out.glyphs)
             }
+            ContentPane::Diff(diff) => {
+                let out = diff.build(
+                    &self.font, &mut atlas, sidebar_w, ui::CHROME_TOP, content_w, content_h,
+                );
+                (out.rects, out.glyphs)
+            }
+            ContentPane::Analytics => {
+                let out = self.analytics.build(
+                    &self.font, &mut atlas, sidebar_w, ui::CHROME_TOP, content_w, content_h,
+                );
+                (out.rects, out.glyphs)
+            }
         };
 
         let (agent_rects, agent_glyphs) =
@@ -167,6 +193,21 @@ impl NativeTerminal {
             }
         };
 
+        let activity_out = if self.sidebar.visible {
+            let act_h = 300.0_f32.min(content_h * 0.4);
+            let act_y = (window_h - ui::STATUS_BAR_HEIGHT - act_h).max(ui::CHROME_TOP);
+            self.activity.build(
+                &self.font, &mut atlas,
+                0.0, act_y, sidebar_w, act_h,
+                self.chrome.mouse_pos,
+            )
+        } else {
+            crate::ui::activity::ActivityOutput {
+                rects: Vec::new(),
+                glyphs: Vec::new(),
+            }
+        };
+
         let (sb_menu_rects, sb_menu_glyphs) = self.build_sidebar_menu(&self.font, &mut atlas);
         let (ctx_rects, ctx_glyphs) = self.build_context_menu(&self.font, &mut atlas);
         let palette_out = self.palette.build(&self.font, &mut atlas, window_w);
@@ -183,6 +224,7 @@ impl NativeTerminal {
         all_rects.extend(scm_rects);
         all_rects.extend(agent_rects);
         all_rects.extend(toolkit_out.rects);
+        all_rects.extend(activity_out.rects);
         all_rects.extend(content_rects);
         all_rects.extend(ctx_rects);
         all_rects.extend(sb_menu_rects);
@@ -193,6 +235,7 @@ impl NativeTerminal {
         all_glyphs.extend(scm_glyphs);
         all_glyphs.extend(agent_glyphs);
         all_glyphs.extend(toolkit_out.glyphs);
+        all_glyphs.extend(activity_out.glyphs);
         all_glyphs.extend(content_glyphs);
         all_glyphs.extend(ctx_glyphs);
         all_glyphs.extend(sb_menu_glyphs);

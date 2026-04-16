@@ -3,8 +3,11 @@
 //! Uses the same RectInstance + GlyphInstance as the terminal grid.
 //! No external UI framework dependency.
 
+pub mod activity;
+pub mod analytics;
 pub mod animation;
 pub mod block;
+pub mod diff;
 pub mod editor;
 pub mod helm;
 pub mod icons;
