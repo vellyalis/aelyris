@@ -71,19 +71,11 @@ fn vs_main(
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    // Sample per-subpixel coverage from the RGBA atlas.
-    // R,G,B = independent subpixel coverage (ClearType-style).
-    // A = max(R,G,B) for compositing.
-    let coverage = textureSample(atlas_texture, atlas_sampler, in.uv);
+    // Sample glyph coverage from the R8 atlas.
+    let glyph_alpha = textureSample(atlas_texture, atlas_sampler, in.uv).r;
 
-    // Per-channel subpixel compositing:
-    // Each color channel is multiplied by its own coverage independently,
-    // producing sharper text with reduced color fringing.
-    let r = in.fg_color.r * in.fg_color.a * coverage.r;
-    let g = in.fg_color.g * in.fg_color.a * coverage.g;
-    let b = in.fg_color.b * in.fg_color.a * coverage.b;
-    let a = max(max(coverage.r, coverage.g), coverage.b) * in.fg_color.a;
+    let alpha = in.fg_color.a * glyph_alpha;
 
     // Output premultiplied RGBA.
-    return vec4<f32>(r, g, b, a);
+    return vec4<f32>(in.fg_color.rgb * alpha, alpha);
 }

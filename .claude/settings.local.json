@@ -53,7 +53,11 @@
       "Bash(RUST_LOG=info timeout 4 ./src-tauri/target/release/native-terminal.exe)",
       "Bash(wc *)",
       "Bash(find \"C:\\\\Users\\\\owner\\\\Aether_Terminal\" -type f -name \"*.rs\" -exec grep -l \"textDocument\\\\|PublishDiagnostics\\\\|Diagnostic\" {} \\\\;)",
-      "Bash(xargs -I {} wc -l {})"
+      "Bash(xargs -I {} wc -l {})",
+      "Bash(taskkill /F /IM native-terminal.exe)",
+      "WebFetch(domain:news.ycombinator.com)",
+      "WebFetch(domain:www.boringcactus.com)",
+      "WebFetch(domain:deepwiki.com)"
     ]
   }
 }

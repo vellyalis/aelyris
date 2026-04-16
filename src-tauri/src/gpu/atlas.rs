@@ -18,12 +18,9 @@ pub struct AtlasEntry {
 }
 
 /// CPU-side glyph atlas with bin-packing and pixel buffer.
-///
-/// Uses RGBA8 format for subpixel anti-aliasing (ClearType-style).
-/// Each pixel stores per-subpixel coverage in R, G, B channels.
 pub struct GlyphAtlas {
     cache: HashMap<GlyphKey, AtlasEntry>,
-    /// Raw pixel data (RGBA8 format) for GPU upload.
+    /// Raw pixel data (R8 format) for GPU upload.
     pub pixels: Vec<u8>,
     cursor_x: u32,
     cursor_y: u32,
@@ -37,7 +34,7 @@ impl GlyphAtlas {
     pub fn new(width: u32, height: u32) -> Self {
         Self {
             cache: HashMap::new(),
-            pixels: vec![0u8; (width * height * 4) as usize],
+            pixels: vec![0u8; (width * height) as usize],
             cursor_x: 0,
             cursor_y: 0,
             row_height: 0,
@@ -59,13 +56,13 @@ impl GlyphAtlas {
         self.dirty = false;
     }
 
-    /// Get a cached entry or rasterize and insert (with subpixel AA).
+    /// Get a cached entry or rasterize and insert.
     pub fn get_or_insert(&mut self, c: char, flags: CellFlags, font: &FontManager) -> AtlasEntry {
         let key = GlyphKey { c, flags };
         if let Some(entry) = self.cache.get(&key) {
             return entry.clone();
         }
-        let glyph = font.rasterize_subpixel(c, flags);
+        let glyph = font.rasterize(c, flags);
         self.insert(key, &glyph)
     }
 
@@ -101,38 +98,13 @@ impl GlyphAtlas {
             return entry;
         }
 
-        // Copy bitmap into RGBA pixel buffer
-        if glyph.subpixel {
-            // Subpixel: bitmap is RGB (3 bytes per logical pixel) → pack into RGBA
-            for row in 0..h {
-                for col in 0..w {
-                    let src = (row * w * 3 + col * 3) as usize;
-                    let dst = ((self.cursor_y + row) * self.atlas_width + self.cursor_x + col) as usize * 4;
-                    if src + 2 < glyph.bitmap.len() && dst + 3 < self.pixels.len() {
-                        let r = glyph.bitmap[src];
-                        let g = glyph.bitmap[src + 1];
-                        let b = glyph.bitmap[src + 2];
-                        self.pixels[dst] = r;
-                        self.pixels[dst + 1] = g;
-                        self.pixels[dst + 2] = b;
-                        self.pixels[dst + 3] = r.max(g).max(b);
-                    }
-                }
-            }
-        } else {
-            // Grayscale: 1 byte per pixel → replicate to all RGBA channels
-            for row in 0..h {
-                for col in 0..w {
-                    let src = (row * w + col) as usize;
-                    let dst = ((self.cursor_y + row) * self.atlas_width + self.cursor_x + col) as usize * 4;
-                    if src < glyph.bitmap.len() && dst + 3 < self.pixels.len() {
-                        let v = glyph.bitmap[src];
-                        self.pixels[dst] = v;
-                        self.pixels[dst + 1] = v;
-                        self.pixels[dst + 2] = v;
-                        self.pixels[dst + 3] = v;
-                    }
-                }
+        // Copy bitmap into pixel buffer (R8 grayscale)
+        for row in 0..h {
+            let src = (row * w) as usize;
+            let dst = ((self.cursor_y + row) * self.atlas_width + self.cursor_x) as usize;
+            if src + w as usize <= glyph.bitmap.len() && dst + w as usize <= self.pixels.len() {
+                self.pixels[dst..dst + w as usize]
+                    .copy_from_slice(&glyph.bitmap[src..src + w as usize]);
             }
         }
 
