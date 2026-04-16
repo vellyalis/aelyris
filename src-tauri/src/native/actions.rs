@@ -300,6 +300,14 @@ impl NativeTerminal {
             PaletteAction::OpenKanban => {
                 self.content_pane = ContentPane::Kanban(KanbanState::load());
             }
+            PaletteAction::OpenFileSearch => {
+                let mut search = crate::ui::search::SearchState::new();
+                // Pre-populate with query from palette input if any
+                self.content_pane = ContentPane::Search(search);
+            }
+            PaletteAction::OpenHelm => {
+                self.content_pane = ContentPane::Helm(crate::ui::helm::HelmState::load());
+            }
             PaletteAction::ShowHelp => {
                 let items = vec![
                     "Ctrl+Shift+P  Command Palette".into(),
@@ -331,17 +339,7 @@ impl NativeTerminal {
                 self.palette.enter_command_history(items);
             }
             PaletteAction::ShowWatchdog => {
-                if let Some(path) = self.repo_path() {
-                    let rules_path = std::path::Path::new(&path).join(".aether").join("watchdog.json");
-                    if rules_path.exists() {
-                        match EditorState::open(&rules_path) {
-                            Ok(editor) => self.content_pane = ContentPane::Editor(editor),
-                            Err(e) => self.toasts.error(format!("Cannot open watchdog: {}", e)),
-                        }
-                    } else {
-                        self.toasts.info("No watchdog rules found. Create .aether/watchdog.json");
-                    }
-                }
+                self.palette.enter_watchdog_create();
             }
             PaletteAction::OpenSettings => {
                 let items = vec![
@@ -403,6 +401,37 @@ impl NativeTerminal {
                 self.content_pane = ContentPane::Terminal;
             }
             PaletteAction::None => {}
+            PaletteAction::CreateWatchdog { name, instructions, target_pty_id } => {
+                match self.watchdog_manager.create(
+                    name.clone(),
+                    instructions,
+                    target_pty_id,
+                    vec![],  // approve patterns configured via watchdog.json later
+                    vec![],  // deny patterns configured via watchdog.json later
+                ) {
+                    Ok(idx) => {
+                        self.toasts.success(format!("Watchdog '{}' created (idx={})", name, idx));
+                    }
+                    Err(e) => {
+                        self.toasts.error(format!("Watchdog create failed: {}", e));
+                    }
+                }
+            }
+            PaletteAction::PauseWatchdog(idx) => {
+                self.watchdog_manager.pause(idx);
+                self.toasts.info(format!("Watchdog {} paused", idx));
+            }
+            PaletteAction::ResumeWatchdog(idx) => {
+                self.watchdog_manager.resume(idx);
+                self.toasts.info(format!("Watchdog {} resumed", idx));
+            }
+            PaletteAction::RemoveWatchdog(idx) => {
+                self.watchdog_manager.remove(idx);
+                self.toasts.info(format!("Watchdog {} removed", idx));
+            }
+            PaletteAction::RunTool(_) => {
+                self.toasts.info("Feature coming soon");
+            }
         }
     }
 
@@ -452,6 +481,15 @@ impl NativeTerminal {
                         kanban.add_card(col, model);
                         self.toasts.success("Card added");
                     }
+                }
+            }
+            return;
+        }
+        if cli == "__helm__" {
+            if !model.is_empty() {
+                if let ContentPane::Helm(helm) = &mut self.content_pane {
+                    helm.add_task(model);
+                    self.toasts.success("Task added");
                 }
             }
             return;

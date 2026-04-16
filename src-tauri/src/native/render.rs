@@ -64,6 +64,27 @@ impl NativeTerminal {
                     indicator: "Tasks".to_string(),
                 })
             }
+            ContentPane::Search(s) => {
+                Some(ui::StatusOverride {
+                    label: format!("Search: \"{}\"", s.query),
+                    detail: format!("{} matches", s.total_matches),
+                    indicator: "Search".to_string(),
+                })
+            }
+            ContentPane::Welcome(_) => {
+                Some(ui::StatusOverride {
+                    label: "Welcome".to_string(),
+                    detail: "Select a project to open".to_string(),
+                    indicator: "Home".to_string(),
+                })
+            }
+            ContentPane::Helm(h) => {
+                Some(ui::StatusOverride {
+                    label: "Tasks".to_string(),
+                    detail: format!("{}/{} done", h.done_count(), h.tasks.len()),
+                    indicator: "Helm".to_string(),
+                })
+            }
         };
 
         let mut atlas = self.atlas.lock().unwrap();
@@ -102,6 +123,24 @@ impl NativeTerminal {
                 );
                 (out.rects, out.glyphs)
             }
+            ContentPane::Search(search) => {
+                let out = search.build(
+                    &self.font, &mut atlas, sidebar_w, ui::CHROME_TOP, content_w, content_h,
+                );
+                (out.rects, out.glyphs)
+            }
+            ContentPane::Welcome(welcome) => {
+                let out = welcome.build(
+                    &self.font, &mut atlas, sidebar_w, ui::CHROME_TOP, content_w, content_h,
+                );
+                (out.rects, out.glyphs)
+            }
+            ContentPane::Helm(helm) => {
+                let out = helm.build(
+                    &self.font, &mut atlas, sidebar_w, ui::CHROME_TOP, content_w, content_h,
+                );
+                (out.rects, out.glyphs)
+            }
         };
 
         let (agent_rects, agent_glyphs) =
@@ -112,6 +151,20 @@ impl NativeTerminal {
             self.scm.build(&self.font, &mut atlas, 0.0, scm_y.max(ui::CHROME_TOP + 200.0), sidebar_w, 280.0)
         } else {
             (Vec::new(), Vec::new())
+        };
+
+        let toolkit_out = if self.sidebar.visible {
+            let tk_h = self.toolkit.panel_height(&self.font);
+            let tk_y = window_h - ui::STATUS_BAR_HEIGHT - tk_h;
+            self.toolkit.build(
+                &self.font, &mut atlas, 0.0, tk_y, sidebar_w, tk_h,
+                self.chrome.mouse_pos,
+            )
+        } else {
+            crate::ui::toolkit::ToolkitOutput {
+                rects: Vec::new(),
+                glyphs: Vec::new(),
+            }
         };
 
         let (sb_menu_rects, sb_menu_glyphs) = self.build_sidebar_menu(&self.font, &mut atlas);
@@ -129,6 +182,7 @@ impl NativeTerminal {
         all_rects.extend(sidebar_out.rects);
         all_rects.extend(scm_rects);
         all_rects.extend(agent_rects);
+        all_rects.extend(toolkit_out.rects);
         all_rects.extend(content_rects);
         all_rects.extend(ctx_rects);
         all_rects.extend(sb_menu_rects);
@@ -138,6 +192,7 @@ impl NativeTerminal {
         all_glyphs.extend(sidebar_out.glyphs);
         all_glyphs.extend(scm_glyphs);
         all_glyphs.extend(agent_glyphs);
+        all_glyphs.extend(toolkit_out.glyphs);
         all_glyphs.extend(content_glyphs);
         all_glyphs.extend(ctx_glyphs);
         all_glyphs.extend(sb_menu_glyphs);

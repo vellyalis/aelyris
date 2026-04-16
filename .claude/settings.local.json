@@ -42,7 +42,16 @@
       "Bash(git stash:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(rustc --version)"
+      "Bash(rustc --version)",
+      "Bash(rtk proxy *)",
+      "WebSearch",
+      "WebFetch(domain:crates.io)",
+      "Bash(taskkill //F //IM native-terminal.exe)",
+      "Bash(find /c/Users/owner/Aether_Terminal/src/features -maxdepth 1 -type d -exec basename {} \\\\;)",
+      "Bash(ls *)",
+      "Bash(RUST_LOG=info timeout 5 ./src-tauri/target/release/native-terminal.exe)",
+      "Bash(RUST_LOG=info timeout 4 ./src-tauri/target/release/native-terminal.exe)",
+      "Bash(wc *)"
     ]
   }
 }

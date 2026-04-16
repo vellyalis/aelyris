@@ -3,13 +3,19 @@
 use crate::agent::interactive::AgentCli;
 use crate::agent::output_monitor::DetectedStatus;
 use crate::ui::editor::EditorState;
+use crate::ui::helm::HelmState;
 use crate::ui::kanban::KanbanState;
+use crate::ui::search::SearchState;
+use crate::ui::welcome::WelcomeState;
 
 /// What occupies the main content area.
 pub enum ContentPane {
     Terminal,
     Editor(EditorState),
     Kanban(KanbanState),
+    Search(SearchState),
+    Welcome(WelcomeState),
+    Helm(HelmState),
 }
 
 /// Agent status for display.

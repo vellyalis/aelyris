@@ -66,6 +66,18 @@ impl NativeTerminal {
             self.handle_kanban_key(key);
             return;
         }
+        if matches!(self.content_pane, ContentPane::Search(_)) {
+            self.handle_search_key(key, ctrl);
+            return;
+        }
+        if matches!(self.content_pane, ContentPane::Welcome(_)) {
+            self.handle_welcome_key(key);
+            return;
+        }
+        if matches!(self.content_pane, ContentPane::Helm(_)) {
+            self.handle_helm_key(key);
+            return;
+        }
 
         // --- Terminal mode ---
 
@@ -336,6 +348,94 @@ impl NativeTerminal {
             Key::Named(NamedKey::Backspace) => self.palette.backspace(),
             Key::Character(ref c) => self.palette.insert_char(c),
             _ => {}
+        }
+    }
+
+    /// Handle key input in search mode.
+    pub(super) fn handle_search_key(&mut self, key: Key, ctrl: bool) {
+        if matches!(key, Key::Named(NamedKey::Escape)) {
+            self.content_pane = ContentPane::Terminal;
+            return;
+        }
+        if let ContentPane::Search(search) = &mut self.content_pane {
+            match key {
+                Key::Named(NamedKey::ArrowUp) => search.select_prev(),
+                Key::Named(NamedKey::ArrowDown) => search.select_next(),
+                Key::Named(NamedKey::Enter) => {
+                    if search.query.is_empty() {
+                        // Execute search with current input
+                        if let Some(root) = self.sidebar.file_tree.as_ref().map(|ft| ft.root.clone())
+                            .or_else(|| std::env::current_dir().ok())
+                        {
+                            search.search(&root);
+                        }
+                    } else if let Some((path, _line)) = search.selected_location() {
+                        // Open selected file in editor
+                        let base = self.sidebar.file_tree.as_ref()
+                            .map(|ft| ft.root.clone())
+                            .or_else(|| std::env::current_dir().ok())
+                            .unwrap_or_default();
+                        let full_path = base.join(&path);
+                        if let Ok(editor) = crate::ui::editor::EditorState::open(&full_path) {
+                            self.content_pane = ContentPane::Editor(editor);
+                        }
+                        return;
+                    }
+                }
+                Key::Named(NamedKey::Backspace) => {
+                    search.query.pop();
+                }
+                Key::Character(ref c) if !ctrl => {
+                    search.query.push_str(c);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Handle key input in welcome screen.
+    pub(super) fn handle_welcome_key(&mut self, key: Key) {
+        if matches!(key, Key::Named(NamedKey::Escape)) {
+            self.content_pane = ContentPane::Terminal;
+            return;
+        }
+        if let ContentPane::Welcome(welcome) = &mut self.content_pane {
+            match key {
+                Key::Named(NamedKey::ArrowUp) => welcome.select_up(),
+                Key::Named(NamedKey::ArrowDown) => welcome.select_down(),
+                Key::Named(NamedKey::Enter) => {
+                    if let Some(path) = welcome.selected_path().map(|s| s.to_string()) {
+                        let path_buf = std::path::PathBuf::from(&path);
+                        self.sidebar.set_root(path_buf);
+                        self.content_pane = ContentPane::Terminal;
+                        self.recalc_grid_size();
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Handle key input in helm (tasks) mode.
+    pub(super) fn handle_helm_key(&mut self, key: Key) {
+        if matches!(key, Key::Named(NamedKey::Escape)) {
+            self.content_pane = ContentPane::Terminal;
+            return;
+        }
+        if let ContentPane::Helm(helm) = &mut self.content_pane {
+            match key {
+                Key::Named(NamedKey::ArrowUp) => helm.select_up(),
+                Key::Named(NamedKey::ArrowDown) => helm.select_down(),
+                Key::Named(NamedKey::Space) => helm.toggle_selected(),
+                Key::Named(NamedKey::Delete) | Key::Named(NamedKey::Backspace) => {
+                    helm.delete_selected();
+                }
+                Key::Named(NamedKey::Enter) => {
+                    // Add task via palette input
+                    self.palette.enter_agent_spawn("__helm__".to_string());
+                }
+                _ => {}
+            }
         }
     }
 }

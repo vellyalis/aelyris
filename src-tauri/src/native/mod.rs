@@ -36,6 +36,8 @@ use crate::ui::palette::PaletteState;
 use crate::ui::scm::ScmState;
 use crate::ui::sidebar::SidebarState;
 use crate::ui::toast::ToastManager;
+use crate::ui::toolkit::ToolkitState;
+use crate::agent::watchdog::WatchdogManager;
 
 use self::types::{AgentUpdate, ContentPane, DividerDrag};
 use self::panes::TabState;
@@ -84,6 +86,10 @@ pub struct NativeTerminal {
     // SCM + Toasts
     pub(crate) scm: ScmState,
     pub(crate) toasts: ToastManager,
+    // Toolkit
+    pub(crate) toolkit: ToolkitState,
+    // Watchdog
+    pub(crate) watchdog_manager: WatchdogManager,
 }
 
 impl NativeTerminal {
@@ -132,6 +138,15 @@ impl NativeTerminal {
             sidebar_menu: None,
             scm: ScmState::new(),
             toasts: ToastManager::new(),
+            toolkit: {
+                let mut tk = ToolkitState::new();
+                if let Ok(cwd) = std::env::current_dir() {
+                    let toolkit_path = cwd.join(".aether").join("toolkit.toml");
+                    tk.load_from_file(&toolkit_path);
+                }
+                tk
+            },
+            watchdog_manager: WatchdogManager::new(),
         }
     }
 

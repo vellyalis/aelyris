@@ -6,14 +6,18 @@
 pub mod animation;
 pub mod block;
 pub mod editor;
+pub mod helm;
 pub mod icons;
 pub mod kanban;
 pub mod palette;
 pub mod scm;
+pub mod search;
 pub mod sidebar;
 pub mod syntax;
 pub mod theme;
 pub mod toast;
+pub mod toolkit;
+pub mod welcome;
 
 use crate::gpu::atlas::GlyphAtlas;
 use crate::gpu::font::FontManager;

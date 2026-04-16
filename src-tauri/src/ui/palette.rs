@@ -34,6 +34,14 @@ pub struct WorktreeEntry {
     pub is_main: bool,
 }
 
+/// Step within the watchdog creation wizard.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WatchdogCreateStep {
+    EnterName,
+    EnterInstructions,
+    SelectTarget,
+}
+
 /// Palette operating mode.
 #[derive(Debug)]
 pub enum PaletteMode {
@@ -64,6 +72,13 @@ pub enum PaletteMode {
     Settings {
         items: Vec<String>,
         category: String,
+    },
+    /// Watchdog creation wizard (multi-step).
+    WatchdogCreate {
+        step: WatchdogCreateStep,
+        name: String,
+        instructions: String,
+        target_pty_id: String,
     },
 }
 
@@ -103,9 +118,16 @@ pub enum PaletteAction {
     ShowHelp,
     ShowAbout,
     ShowWatchdog,
+    CreateWatchdog { name: String, instructions: String, target_pty_id: String },
+    PauseWatchdog(usize),
+    ResumeWatchdog(usize),
+    RemoveWatchdog(usize),
     OpenSettings,
     ChangeSetting { category: String, value: String },
     SpawnShell(String),
+    OpenFileSearch,
+    OpenHelm,
+    RunTool(usize),
     None,
 }
 
@@ -132,6 +154,8 @@ const COMMANDS: &[PaletteCommand] = &[
     PaletteCommand { id: "help", label: "Help: Keyboard Shortcuts", shortcut: "Ctrl+?" },
     PaletteCommand { id: "about", label: "About Aether Terminal", shortcut: "" },
     PaletteCommand { id: "watchdog", label: "Watchdog: Edit Rules", shortcut: "" },
+    PaletteCommand { id: "file_search", label: "Search in Files", shortcut: "Ctrl+Shift+G" },
+    PaletteCommand { id: "helm", label: "Tasks (Helm)", shortcut: "" },
     PaletteCommand { id: "agent_claude", label: "Agent: Start Claude", shortcut: "" },
     PaletteCommand { id: "agent_codex", label: "Agent: Start Codex", shortcut: "" },
     PaletteCommand { id: "agent_gemini", label: "Agent: Start Gemini", shortcut: "" },
@@ -244,7 +268,8 @@ impl PaletteState {
             | PaletteMode::Settings { .. } => self.filtered.len(),
             PaletteMode::WorktreeCreate
             | PaletteMode::AgentSpawn { .. }
-            | PaletteMode::TerminalSearch => 0,
+            | PaletteMode::TerminalSearch
+            | PaletteMode::WatchdogCreate { .. } => 0,
         };
         if self.selected + 1 < count {
             self.selected += 1;
@@ -307,6 +332,19 @@ impl PaletteState {
         self.selected = 0;
     }
 
+    /// Enter watchdog creation wizard at the name entry step.
+    pub fn enter_watchdog_create(&mut self) {
+        self.mode = PaletteMode::WatchdogCreate {
+            step: WatchdogCreateStep::EnterName,
+            name: String::new(),
+            instructions: String::new(),
+            target_pty_id: String::new(),
+        };
+        self.input.clear();
+        self.selected = 0;
+        self.filtered.clear();
+    }
+
     /// Execute the selected command or confirm the current sub-mode.
     pub fn execute(&mut self) -> PaletteAction {
         match &self.mode {
@@ -344,6 +382,8 @@ impl PaletteState {
                         "wf_list" => PaletteAction::WorkflowList,
                         "wf_status" => PaletteAction::WorkflowStatus,
                         "kanban" => PaletteAction::OpenKanban,
+                        "file_search" => PaletteAction::OpenFileSearch,
+                        "helm" => PaletteAction::OpenHelm,
                         "help" => PaletteAction::ShowHelp,
                         "about" => PaletteAction::ShowAbout,
                         "watchdog" => PaletteAction::ShowWatchdog,
@@ -364,7 +404,8 @@ impl PaletteState {
                     | PaletteAction::BeginAgentClaude
                     | PaletteAction::BeginAgentCodex
                     | PaletteAction::BeginAgentGemini
-                    | PaletteAction::OpenSettings => {}
+                    | PaletteAction::OpenSettings
+                    | PaletteAction::ShowWatchdog => {}
                     _ => self.close(),
                 }
                 action
@@ -443,6 +484,48 @@ impl PaletteState {
                 }
                 PaletteAction::None
             }
+            PaletteMode::WatchdogCreate { step, name, instructions, target_pty_id } => {
+                let input_val = self.input.trim().to_string();
+                match step {
+                    WatchdogCreateStep::EnterName => {
+                        if input_val.is_empty() {
+                            return PaletteAction::None;
+                        }
+                        // Advance to instructions step
+                        self.mode = PaletteMode::WatchdogCreate {
+                            step: WatchdogCreateStep::EnterInstructions,
+                            name: input_val,
+                            instructions: String::new(),
+                            target_pty_id: target_pty_id.clone(),
+                        };
+                        self.input.clear();
+                        PaletteAction::None
+                    }
+                    WatchdogCreateStep::EnterInstructions => {
+                        // Advance to target selection step
+                        self.mode = PaletteMode::WatchdogCreate {
+                            step: WatchdogCreateStep::SelectTarget,
+                            name: name.clone(),
+                            instructions: input_val,
+                            target_pty_id: String::new(),
+                        };
+                        self.input.clear();
+                        PaletteAction::None
+                    }
+                    WatchdogCreateStep::SelectTarget => {
+                        if input_val.is_empty() {
+                            return PaletteAction::None;
+                        }
+                        let action = PaletteAction::CreateWatchdog {
+                            name: name.clone(),
+                            instructions: instructions.clone(),
+                            target_pty_id: input_val,
+                        };
+                        self.close();
+                        action
+                    }
+                }
+            }
         }
     }
 
@@ -472,7 +555,8 @@ impl PaletteState {
             }
             PaletteMode::WorktreeCreate
             | PaletteMode::AgentSpawn { .. }
-            | PaletteMode::TerminalSearch => {
+            | PaletteMode::TerminalSearch
+            | PaletteMode::WatchdogCreate { .. } => {
                 // No filtering in input mode
             }
             PaletteMode::CommandHistory { commands } => {
@@ -534,7 +618,8 @@ impl PaletteState {
             | PaletteMode::Settings { .. } => self.filtered.len().min(MAX_VISIBLE_ITEMS),
             PaletteMode::WorktreeCreate
             | PaletteMode::AgentSpawn { .. }
-            | PaletteMode::TerminalSearch => 1,
+            | PaletteMode::TerminalSearch
+            | PaletteMode::WatchdogCreate { .. } => 1,
         };
         let palette_h = INPUT_HEIGHT + item_count as f32 * ITEM_HEIGHT + PADDING * 2.0;
 
@@ -555,6 +640,7 @@ impl PaletteState {
             PaletteMode::TerminalSearch => cat::pm(249, 226, 175, 200),     // Yellow
             PaletteMode::FileSearch { .. } => cat::pm(166, 227, 161, 200), // Green
             PaletteMode::Settings { .. } => cat::pm(245, 194, 231, 200),  // Pink
+            PaletteMode::WatchdogCreate { .. } => cat::pm(250, 179, 135, 200), // Peach
         };
         rects.push(RectInstance::new([palette_x, palette_y], [PALETTE_WIDTH, 1.0], border_color));
 
@@ -575,6 +661,11 @@ impl PaletteState {
                 PaletteMode::TerminalSearch => "Search terminal output...",
                 PaletteMode::FileSearch { .. } => "Open file...",
                 PaletteMode::Settings { .. } => "Select option...",
+                PaletteMode::WatchdogCreate { step, .. } => match step {
+                    WatchdogCreateStep::EnterName => "Watchdog name...",
+                    WatchdogCreateStep::EnterInstructions => "Instructions (what to watch for)...",
+                    WatchdogCreateStep::SelectTarget => "Target PTY ID...",
+                },
             };
             (placeholder, cat::OVERLAY0)
         } else {
@@ -592,7 +683,7 @@ impl PaletteState {
 
         // Cursor in input (always visible in create mode, otherwise only when text present)
         if !self.input.is_empty()
-            || matches!(self.mode, PaletteMode::WorktreeCreate | PaletteMode::AgentSpawn { .. } | PaletteMode::TerminalSearch)
+            || matches!(self.mode, PaletteMode::WorktreeCreate | PaletteMode::AgentSpawn { .. } | PaletteMode::TerminalSearch | PaletteMode::WatchdogCreate { .. })
         {
             let cursor_x = palette_x + PADDING + 4.0
                 + self.input.chars().count() as f32 * font.cell_width;
@@ -656,6 +747,23 @@ impl PaletteState {
                     font,
                     atlas,
                     &hint,
+                    palette_x + PADDING + 8.0,
+                    hint_y,
+                    cat::OVERLAY0,
+                    &mut glyphs,
+                );
+            }
+            PaletteMode::WatchdogCreate { step, .. } => {
+                let hint_y = list_y + (ITEM_HEIGHT - font.cell_height) / 2.0;
+                let hint = match step {
+                    WatchdogCreateStep::EnterName => "Step 1/3: Enter watchdog name, then press Enter",
+                    WatchdogCreateStep::EnterInstructions => "Step 2/3: Enter instructions, then press Enter",
+                    WatchdogCreateStep::SelectTarget => "Step 3/3: Enter target PTY ID, then press Enter",
+                };
+                super::render_text(
+                    font,
+                    atlas,
+                    hint,
                     palette_x + PADDING + 8.0,
                     hint_y,
                     cat::OVERLAY0,
