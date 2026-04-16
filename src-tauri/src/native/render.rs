@@ -4,7 +4,7 @@ use crate::agent::interactive::AgentCli;
 use crate::gpu::atlas::GlyphAtlas;
 use crate::gpu::font::FontManager;
 use crate::gpu::grid::Grid;
-use crate::gpu::renderer::{GlyphInstance, RectInstance};
+use crate::gpu::renderer::{GlyphInstance, GradientRectInstance, RectInstance};
 use crate::ui;
 use crate::ui::block::BlockTracker;
 use super::NativeTerminal;
@@ -259,8 +259,66 @@ impl NativeTerminal {
         }
         drop(atlas);
 
-        // Light leak rects at Z=0 (before chrome, after clear)
-        let mut all_rects = build_light_leaks(window_w, window_h);
+        // --- Gradient rects (shadows, light leaks) ---
+        let mut all_gradient_rects = build_light_leaks(window_w, window_h);
+
+        // Palette shadow (rendered before regular rects for correct layering)
+        if self.palette.should_render() {
+            let opacity = self.palette.render_opacity();
+            let palette_x = (window_w - 480.0) / 2.0;
+            let palette_y = 80.0_f32;
+            // Estimate palette height: INPUT(44) + up to 10 items * 36 + padding(16)
+            let palette_h = 44.0 + 10.0 * 36.0 + 16.0;
+            all_gradient_rects.push(GradientRectInstance::shadowed(
+                [palette_x - 4.0, palette_y - 4.0],
+                [488.0, palette_h + 8.0],
+                [0.0, 0.0, 0.0, 0.0], // transparent fill (shadow only)
+                12.0, 24.0, 0.5 * opacity,
+            ));
+        }
+
+        // Context menu shadow
+        if let Some((mx, my)) = self.context_menu {
+            let menu_w = 140.0_f32;
+            let menu_h = 5.0 * 26.0 + 8.0; // 5 items * 26 + padding
+            all_gradient_rects.push(GradientRectInstance::shadowed(
+                [mx - 2.0, my - 2.0],
+                [menu_w + 4.0, menu_h + 4.0],
+                [0.0, 0.0, 0.0, 0.0],
+                4.0, 16.0, 0.4,
+            ));
+        }
+
+        // Sidebar context menu shadow
+        if let Some((mx, my, _, is_dir)) = &self.sidebar_menu {
+            let item_count = if *is_dir { 3.0 } else { 4.0 };
+            let menu_w = 160.0_f32;
+            let menu_h = item_count * 26.0 + 8.0;
+            all_gradient_rects.push(GradientRectInstance::shadowed(
+                [mx - 2.0, my - 2.0],
+                [menu_w + 4.0, menu_h + 4.0],
+                [0.0, 0.0, 0.0, 0.0],
+                4.0, 16.0, 0.4,
+            ));
+        }
+
+        // Toast gradient shadows — only when toasts are visible.
+        // ToastManager builds its own shadow rects internally; gradient shadows
+        // add a higher-quality Gaussian falloff layer underneath.
+        if !self.toasts.is_empty() {
+            // Approximate: place a single shadow behind the toast stack area.
+            let tx = window_w - 320.0 - 8.0;
+            let ty = window_h - (32.0 + 8.0) - 30.0;
+            all_gradient_rects.push(GradientRectInstance::shadowed(
+                [tx - 2.0, ty - 2.0],
+                [324.0, 36.0],
+                [0.0, 0.0, 0.0, 0.0],
+                8.0, 16.0, 0.3,
+            ));
+        }
+
+        // --- Regular rects (chrome, content, overlays) ---
+        let mut all_rects: Vec<RectInstance> = Vec::new();
         all_rects.extend(chrome_out.rects);
         all_rects.extend(sidebar_out.rects);
         all_rects.extend(scm_rects);
@@ -290,10 +348,11 @@ impl NativeTerminal {
         match surface.get_current_texture() {
             Ok(texture) => {
                 let view = texture.texture.create_view(&wgpu::TextureViewDescriptor::default());
-                renderer.render_frame(
+                renderer.render_frame_full(
                     &view,
                     &all_glyphs,
                     &all_rects,
+                    &all_gradient_rects,
                     wgpu::Color {
                         r: 0.047, // 12/255
                         g: 0.047,
@@ -805,31 +864,27 @@ pub fn render_pane_tree(
     }
 }
 
-/// Build "Boucheron luxury" light leak rects — radial gradient-simulating overlays
-/// placed at Z=0 before chrome for a subtle ambient glow.
-fn build_light_leaks(window_w: f32, window_h: f32) -> Vec<RectInstance> {
-    let mut rects = Vec::new();
-
-    // Top-left gold radial glow
-    // Simulated with a large, very faint rect
-    let glow_size = window_w * 0.4;
-    rects.push(RectInstance::rounded(
-        [-glow_size * 0.3, -glow_size * 0.3],
-        [glow_size, glow_size],
-        [200.0 / 255.0 * 0.08, 160.0 / 255.0 * 0.08, 80.0 / 255.0 * 0.08, 0.08], // gold at 8% opacity
-        glow_size * 0.5, // large radius = circle-like
-    ));
-
-    // Bottom-right cyan radial glow
-    let cyan_size = window_w * 0.35;
-    rects.push(RectInstance::rounded(
-        [window_w - cyan_size * 0.6, window_h - cyan_size * 0.6],
-        [cyan_size, cyan_size],
-        [148.0 / 255.0 * 0.05, 226.0 / 255.0 * 0.05, 213.0 / 255.0 * 0.05, 0.05], // cyan at 5%
-        cyan_size * 0.5,
-    ));
-
-    rects
+/// Build "Boucheron luxury" light leak gradient rects — SDF rounded rects with
+/// gradient falloff placed at Z=0 before chrome for a subtle ambient glow.
+fn build_light_leaks(window_w: f32, window_h: f32) -> Vec<GradientRectInstance> {
+    vec![
+        // Gold glow top-left
+        GradientRectInstance::gradient_v(
+            [-window_w * 0.12, -window_h * 0.12],
+            [window_w * 0.4, window_h * 0.4],
+            [0.784 * 0.08, 0.627 * 0.08, 0.314 * 0.08, 0.08], // gold 8%
+            [0.0, 0.0, 0.0, 0.0], // fade to transparent
+            window_w * 0.2,
+        ),
+        // Cyan glow bottom-right
+        GradientRectInstance::gradient_v(
+            [window_w * 0.65, window_h * 0.65],
+            [window_w * 0.35, window_h * 0.35],
+            [0.0, 0.0, 0.0, 0.0],
+            [0.58 * 0.05, 0.886 * 0.05, 0.835 * 0.05, 0.05], // cyan 5%
+            window_w * 0.17,
+        ),
+    ]
 }
 
 /// Fluent Design "Reveal Highlight" -- a subtle radial glow that follows the mouse

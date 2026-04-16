@@ -260,7 +260,7 @@ impl ChromeState {
 
         // Title text — TEXT_PRIMARY at 14px weight 600
         let title_y = (TITLE_BAR_HEIGHT - font.cell_height) / 2.0;
-        render_text(font, atlas, "Aether Terminal", 12.0, title_y, cat::TEXT_PRIMARY, glyphs);
+        render_text_bold(font, atlas, "Aether Terminal", 12.0, title_y, cat::TEXT_PRIMARY, glyphs);
 
         // Window control buttons (right-aligned)
         let btn_x_close = w - BTN_WIDTH;
@@ -465,6 +465,41 @@ impl Default for ChromeState {
 }
 
 /// Render a text string as glyph instances using the terminal font.
+/// Render text with specified style flags (bold, italic).
+pub fn render_text_styled(
+    font: &FontManager,
+    atlas: &mut GlyphAtlas,
+    text: &str,
+    x: f32,
+    y: f32,
+    color: [f32; 4],
+    flags: CellFlags,
+    glyphs: &mut Vec<GlyphInstance>,
+) {
+    let mut offset_x = 0.0;
+    for ch in text.chars() {
+        if ch == ' ' { offset_x += font.cell_width; continue; }
+        let entry = atlas.get_or_insert(ch, flags, font);
+        if entry.width == 0 || entry.height == 0 { offset_x += font.cell_width; continue; }
+        let gx = x + offset_x + entry.bearing_x;
+        let gy = y + font.baseline - entry.bearing_y - entry.height as f32;
+        glyphs.push(GlyphInstance {
+            pos: [gx, gy], uv_rect: entry.uv, fg_color: color,
+            bg_color: [0.0; 4], size: [entry.width as f32, entry.height as f32],
+        });
+        offset_x += font.cell_width;
+    }
+}
+
+/// Render bold text.
+pub fn render_text_bold(
+    font: &FontManager, atlas: &mut GlyphAtlas,
+    text: &str, x: f32, y: f32, color: [f32; 4],
+    glyphs: &mut Vec<GlyphInstance>,
+) {
+    render_text_styled(font, atlas, text, x, y, color, CellFlags { bold: true, ..Default::default() }, glyphs);
+}
+
 pub fn render_text(
     font: &FontManager,
     atlas: &mut GlyphAtlas,

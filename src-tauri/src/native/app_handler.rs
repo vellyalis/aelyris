@@ -312,6 +312,38 @@ impl NativeTerminal {
                 grid.needs_redraw = true;
             }
         }
+
+        // Cursor icon: pointer for interactive elements, text for terminal content
+        if let Some(window) = &self.window {
+            let (mx, my) = (position.x as f32, position.y as f32);
+            let cursor = if my < ui::TITLE_BAR_HEIGHT {
+                // Title bar buttons
+                let btn_x = window.inner_size().width as f32 - ui::BTN_WIDTH * 3.0;
+                if mx >= btn_x {
+                    winit::window::CursorIcon::Pointer
+                } else {
+                    winit::window::CursorIcon::Default
+                }
+            } else if my < ui::CHROME_TOP {
+                // Tab bar — tabs are clickable
+                winit::window::CursorIcon::Pointer
+            } else if mx < self.sidebar.width() {
+                // Sidebar — tree items, toolkit buttons
+                winit::window::CursorIcon::Pointer
+            } else if self.palette.visible || self.context_menu.is_some() || self.sidebar_menu.is_some() {
+                winit::window::CursorIcon::Pointer
+            } else if matches!(self.content_pane, ContentPane::Editor(_)) {
+                winit::window::CursorIcon::Text
+            } else if self.divider_drag.is_some() {
+                winit::window::CursorIcon::ColResize
+            } else if self.is_in_content(position.x, position.y) {
+                // Terminal content area
+                winit::window::CursorIcon::Text
+            } else {
+                winit::window::CursorIcon::Default
+            };
+            window.set_cursor(cursor);
+        }
     }
 
     fn handle_left_mouse(&mut self, state: winit::event::ElementState) {

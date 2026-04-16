@@ -6,6 +6,9 @@ pub struct RasterizedGlyph {
     pub height: u32,
     pub bearing_x: f32,
     pub bearing_y: f32,
+    /// If true, bitmap is RGB (3 bytes/pixel) for subpixel AA.
+    /// If false, bitmap is grayscale (1 byte/pixel).
+    pub subpixel: bool,
 }
 
 /// Font loading and rasterization via fontdue.

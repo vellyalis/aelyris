@@ -17,48 +17,148 @@ pub struct GlyphInstance {
 }
 
 /// Per-instance data for rectangles (cursor, selection, decorations).
+///
+/// Supports: solid fill, rounded corners (SDF), borders, and linear gradients.
+/// 64 bytes per instance — GPU aligned.
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct RectInstance {
     pub pos: [f32; 2],
     pub size: [f32; 2],
     pub color: [f32; 4],
-    /// Border radius in pixels (0 = sharp corners).
+    /// Corner radius (px). 0 = sharp.
     pub border_radius: f32,
-    pub _pad: [f32; 3],
+    /// Border thickness (px). 0 = no border.
+    pub border_width: f32,
+    /// Border brightness adjustment (-1..1). Lightens/darkens fill color for border.
+    pub border_brightness: f32,
+    /// Gradient angle (radians). 0 = no gradient. PI/2 = top-to-bottom.
+    pub gradient_angle: f32,
+    /// Gradient end color (premultiplied RGBA). Ignored when gradient_angle == 0.
+    pub color2: [f32; 4],
 }
 
 impl RectInstance {
-    /// Create a rect with sharp corners (backward compatible).
+    /// Solid rect with sharp corners.
     pub fn new(pos: [f32; 2], size: [f32; 2], color: [f32; 4]) -> Self {
-        Self { pos, size, color, border_radius: 0.0, _pad: [0.0; 3] }
+        Self {
+            pos, size, color,
+            border_radius: 0.0, border_width: 0.0, border_brightness: 0.0,
+            gradient_angle: 0.0, color2: [0.0; 4],
+        }
     }
 
-    /// Create a rect with rounded corners.
+    /// Rounded corners.
     pub fn rounded(pos: [f32; 2], size: [f32; 2], color: [f32; 4], radius: f32) -> Self {
-        Self { pos, size, color, border_radius: radius, _pad: [0.0; 3] }
+        Self {
+            pos, size, color,
+            border_radius: radius, border_width: 0.0, border_brightness: 0.0,
+            gradient_angle: 0.0, color2: [0.0; 4],
+        }
     }
 
-    /// Create a rect with rounded corners and a border.
-    ///
-    /// * `border_width` — border thickness in pixels (typically 1.0)
-    /// * `border_brightness` — how much to lighten (>0) or darken (<0) the fill
-    ///   color for the border. Range: -1.0 to 1.0. 1.0 = fully bright border.
+    /// Rounded corners with a border.
     pub fn bordered(
-        pos: [f32; 2],
-        size: [f32; 2],
-        color: [f32; 4],
-        radius: f32,
-        border_width: f32,
-        border_brightness: f32,
+        pos: [f32; 2], size: [f32; 2], color: [f32; 4],
+        radius: f32, border_width: f32, border_brightness: f32,
     ) -> Self {
         Self {
-            pos,
-            size,
-            color,
-            border_radius: radius,
-            _pad: [border_width, border_brightness, 0.0],
+            pos, size, color,
+            border_radius: radius, border_width, border_brightness,
+            gradient_angle: 0.0, color2: [0.0; 4],
         }
+    }
+
+    /// Linear gradient fill (top-to-bottom by default).
+    pub fn gradient(
+        pos: [f32; 2], size: [f32; 2],
+        color_start: [f32; 4], color_end: [f32; 4],
+        radius: f32, angle: f32,
+    ) -> Self {
+        Self {
+            pos, size, color: color_start,
+            border_radius: radius, border_width: 0.0, border_brightness: 0.0,
+            gradient_angle: angle, color2: color_end,
+        }
+    }
+}
+
+/// Per-instance data for gradient rectangles (shadows, gradient fills, rounded corners).
+///
+/// Separate pipeline from RectInstance so existing rect layout is untouched.
+/// 64 bytes per instance — GPU aligned.
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct GradientRectInstance {
+    pub pos: [f32; 2],
+    pub size: [f32; 2],
+    pub color_start: [f32; 4],
+    pub color_end: [f32; 4],
+    pub corner_radius: f32,
+    pub gradient_angle: f32,    // radians (0 = top-to-bottom, PI/2 = left-to-right)
+    pub shadow_blur: f32,       // shadow blur radius (px). 0 = no shadow
+    pub shadow_alpha: f32,      // shadow opacity (0..1)
+}
+
+impl GradientRectInstance {
+    /// Solid color with drop shadow.
+    pub fn shadowed(
+        pos: [f32; 2], size: [f32; 2], color: [f32; 4],
+        radius: f32, shadow_blur: f32, shadow_alpha: f32,
+    ) -> Self {
+        Self {
+            pos, size,
+            color_start: color,
+            color_end: color,
+            corner_radius: radius,
+            gradient_angle: 0.0,
+            shadow_blur,
+            shadow_alpha,
+        }
+    }
+
+    /// Vertical gradient (top to bottom).
+    pub fn gradient_v(
+        pos: [f32; 2], size: [f32; 2],
+        top: [f32; 4], bottom: [f32; 4],
+        radius: f32,
+    ) -> Self {
+        Self {
+            pos, size,
+            color_start: top,
+            color_end: bottom,
+            corner_radius: radius,
+            gradient_angle: std::f32::consts::FRAC_PI_2,
+            shadow_blur: 0.0,
+            shadow_alpha: 0.0,
+        }
+    }
+
+    /// Vertical gradient with drop shadow.
+    pub fn gradient_v_shadowed(
+        pos: [f32; 2], size: [f32; 2],
+        top: [f32; 4], bottom: [f32; 4],
+        radius: f32, shadow_blur: f32, shadow_alpha: f32,
+    ) -> Self {
+        Self {
+            pos, size,
+            color_start: top,
+            color_end: bottom,
+            corner_radius: radius,
+            gradient_angle: std::f32::consts::FRAC_PI_2,
+            shadow_blur,
+            shadow_alpha,
+        }
+    }
+
+    /// Gold button gradient (18K gold surface).
+    pub fn gold_button(pos: [f32; 2], size: [f32; 2], radius: f32) -> Self {
+        Self::gradient_v(
+            pos, size,
+            [0.91, 0.77, 0.50, 1.0],  // #e8c580 top
+            [0.66, 0.50, 0.19, 1.0],  // #a88030 bottom
+            radius,
+        )
     }
 }
 
@@ -122,16 +222,19 @@ pub struct TerminalRenderer {
     queue: Arc<wgpu::Queue>,
     glyph_pipeline: wgpu::RenderPipeline,
     rect_pipeline: wgpu::RenderPipeline,
+    gradient_pipeline: wgpu::RenderPipeline,
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
     atlas_texture: wgpu::Texture,
     atlas_bind_group: wgpu::BindGroup,
     glyph_instance_buffer: wgpu::Buffer,
     rect_instance_buffer: wgpu::Buffer,
+    gradient_instance_buffer: wgpu::Buffer,
     pub width: u32,
     pub height: u32,
     max_glyph_instances: u32,
     max_rect_instances: u32,
+    max_gradient_instances: u32,
 }
 
 impl TerminalRenderer {
@@ -292,7 +395,10 @@ impl TerminalRenderer {
             1 => Float32x2,  // size
             2 => Float32x4,  // color
             3 => Float32,    // border_radius
-            4 => Float32x3,  // _pad
+            4 => Float32,    // border_width
+            5 => Float32,    // border_brightness
+            6 => Float32,    // gradient_angle
+            7 => Float32x4,  // color2 (gradient end)
         ];
 
         let rect_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -328,9 +434,66 @@ impl TerminalRenderer {
             cache: None,
         });
 
+        // --- Gradient rect pipeline ---
+        let gradient_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("gradient_rect_shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/gradient_rect.wgsl").into()),
+        });
+
+        let gradient_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("gradient_pipeline_layout"),
+            bind_group_layouts: &[&uniform_bgl],
+            push_constant_ranges: &[],
+        });
+
+        let gradient_instance_attrs = wgpu::vertex_attr_array![
+            0 => Float32x2,  // pos
+            1 => Float32x2,  // size
+            2 => Float32x4,  // color_start
+            3 => Float32x4,  // color_end
+            4 => Float32,    // corner_radius
+            5 => Float32,    // gradient_angle
+            6 => Float32,    // shadow_blur
+            7 => Float32,    // shadow_alpha
+        ];
+
+        let gradient_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("gradient_pipeline"),
+            layout: Some(&gradient_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &gradient_shader,
+                entry_point: Some("vs_main"),
+                buffers: &[wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<GradientRectInstance>() as u64,
+                    step_mode: wgpu::VertexStepMode::Instance,
+                    attributes: &gradient_instance_attrs,
+                }],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &gradient_shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: wgpu::TextureFormat::Bgra8Unorm,
+                    blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                ..Default::default()
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+            cache: None,
+        });
+
         // --- Instance buffers (pre-allocated for max grid size) ---
         let max_glyph_instances = 300 * 100; // 300 cols × 100 rows max
         let max_rect_instances = 300 * 100 + 100; // cells + cursor + decorations
+        let max_gradient_instances: u32 = 256; // UI chrome: panels, buttons, cards
 
         let glyph_instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("glyph_instances"),
@@ -346,14 +509,21 @@ impl TerminalRenderer {
             mapped_at_creation: false,
         });
 
+        let gradient_instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("gradient_instances"),
+            size: (max_gradient_instances as usize * std::mem::size_of::<GradientRectInstance>()) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         Self {
             device, queue,
-            glyph_pipeline, rect_pipeline,
+            glyph_pipeline, rect_pipeline, gradient_pipeline,
             uniform_buffer, uniform_bind_group,
             atlas_texture, atlas_bind_group,
-            glyph_instance_buffer, rect_instance_buffer,
+            glyph_instance_buffer, rect_instance_buffer, gradient_instance_buffer,
             width, height,
-            max_glyph_instances, max_rect_instances,
+            max_glyph_instances, max_rect_instances, max_gradient_instances,
         }
     }
 
@@ -463,9 +633,22 @@ impl TerminalRenderer {
         rect_instances: &[RectInstance],
         clear_color: wgpu::Color,
     ) {
+        self.render_frame_full(view, glyph_instances, rect_instances, &[], clear_color);
+    }
+
+    /// Render a frame with all three pipelines: rects, gradient rects, then glyphs.
+    pub fn render_frame_full(
+        &self,
+        view: &wgpu::TextureView,
+        glyph_instances: &[GlyphInstance],
+        rect_instances: &[RectInstance],
+        gradient_instances: &[GradientRectInstance],
+        clear_color: wgpu::Color,
+    ) {
         // Upload instance data (clamped to buffer capacity)
         let glyph_count = glyph_instances.len().min(self.max_glyph_instances as usize);
         let rect_count = rect_instances.len().min(self.max_rect_instances as usize);
+        let gradient_count = gradient_instances.len().min(self.max_gradient_instances as usize);
         if glyph_count > 0 {
             let data = bytemuck::cast_slice(&glyph_instances[..glyph_count]);
             self.queue.write_buffer(&self.glyph_instance_buffer, 0, data);
@@ -473,6 +656,10 @@ impl TerminalRenderer {
         if rect_count > 0 {
             let data = bytemuck::cast_slice(&rect_instances[..rect_count]);
             self.queue.write_buffer(&self.rect_instance_buffer, 0, data);
+        }
+        if gradient_count > 0 {
+            let data = bytemuck::cast_slice(&gradient_instances[..gradient_count]);
+            self.queue.write_buffer(&self.gradient_instance_buffer, 0, data);
         }
 
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -502,7 +689,15 @@ impl TerminalRenderer {
                 pass.draw(0..6, 0..rect_count as u32);
             }
 
-            // 2. Draw glyphs (text)
+            // 2. Draw gradient rects (panels, buttons, cards with shadows)
+            if gradient_count > 0 {
+                pass.set_pipeline(&self.gradient_pipeline);
+                pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                pass.set_vertex_buffer(0, self.gradient_instance_buffer.slice(..));
+                pass.draw(0..6, 0..gradient_count as u32);
+            }
+
+            // 3. Draw glyphs (text)
             if glyph_count > 0 {
                 pass.set_pipeline(&self.glyph_pipeline);
                 pass.set_bind_group(0, &self.uniform_bind_group, &[]);
@@ -510,6 +705,48 @@ impl TerminalRenderer {
                 pass.set_vertex_buffer(0, self.glyph_instance_buffer.slice(..));
                 pass.draw(0..6, 0..glyph_count as u32);
             }
+        }
+
+        self.queue.submit(std::iter::once(encoder.finish()));
+    }
+
+    /// Render gradient rects as a standalone pass (load existing content, no clear).
+    ///
+    /// Useful for overlaying gradient panels on top of an already-rendered frame.
+    pub fn render_gradient_rects(
+        &self,
+        view: &wgpu::TextureView,
+        instances: &[GradientRectInstance],
+    ) {
+        let count = instances.len().min(self.max_gradient_instances as usize);
+        if count == 0 { return; }
+
+        let data = bytemuck::cast_slice(&instances[..count]);
+        self.queue.write_buffer(&self.gradient_instance_buffer, 0, data);
+
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("gradient_rect_pass"),
+        });
+
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("gradient_rects"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                ..Default::default()
+            });
+
+            pass.set_pipeline(&self.gradient_pipeline);
+            pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+            pass.set_vertex_buffer(0, self.gradient_instance_buffer.slice(..));
+            pass.draw(0..6, 0..count as u32);
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));

@@ -1,4 +1,5 @@
 pub mod atlas;
+pub mod blur;
 pub mod commands;
 pub mod cursor;
 pub mod font;
