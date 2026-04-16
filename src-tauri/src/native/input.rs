@@ -493,9 +493,13 @@ impl NativeTerminal {
                 Key::Named(NamedKey::Enter) => {
                     if let Some(path) = welcome.selected_path().map(|s| s.to_string()) {
                         let path_buf = std::path::PathBuf::from(&path);
-                        self.sidebar.set_root(path_buf);
+                        self.sidebar.set_root(path_buf.clone());
                         self.content_pane = ContentPane::Terminal;
                         self.recalc_grid_size();
+                        self.fs_watcher_rx = super::watcher::start_watcher(path_buf);
+                        if let Some(repo) = self.repo_path() {
+                            self.scm.set_repo(repo);
+                        }
                     }
                 }
                 _ => {}

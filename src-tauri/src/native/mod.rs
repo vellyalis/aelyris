@@ -18,6 +18,7 @@ mod actions;
 mod render;
 mod app_handler;
 pub mod mica;
+mod watcher;
 
 use std::sync::{Arc, Mutex};
 use winit::keyboard::ModifiersState;
@@ -105,6 +106,10 @@ pub struct NativeTerminal {
     pub(crate) ghost_text: Option<String>,
     // Customizable keybindings
     pub(crate) keybindings: KeybindingsConfig,
+    // Pane sync: broadcast keystrokes to all panes in active tab
+    pub(crate) pane_sync: bool,
+    // File system watcher
+    pub(crate) fs_watcher_rx: Option<std::sync::mpsc::Receiver<watcher::FsEvent>>,
 }
 
 impl NativeTerminal {
@@ -169,6 +174,8 @@ impl NativeTerminal {
             suggest_engine: SuggestEngine::new(),
             ghost_text: None,
             keybindings: KeybindingsConfig::load(),
+            pane_sync: false,
+            fs_watcher_rx: None,
         }
     }
 

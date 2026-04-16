@@ -185,6 +185,15 @@ impl ApplicationHandler for NativeTerminal {
         self.toasts.tick();
         self.sidebar.tick();
         self.palette.tick();
+        // File watcher: auto-refresh sidebar and SCM on file changes
+        if let Some(rx) = &self.fs_watcher_rx {
+            if rx.try_recv().is_ok() {
+                if let Some(tree) = &mut self.sidebar.file_tree {
+                    tree.rebuild();
+                }
+                self.scm.refresh();
+            }
+        }
         if let ContentPane::Editor(editor) = &mut self.content_pane {
             editor.tick_blink();
         }
@@ -321,6 +330,24 @@ impl NativeTerminal {
                     && (mx as f64) < self.sidebar.width() as f64
                     && my > ui::CHROME_TOP
                 {
+                    // Check toolkit button click first (bottom of sidebar)
+                    if self.toolkit.visible && !self.toolkit.tools.is_empty() {
+                        let config = self.surface_config.as_ref();
+                        let window_h = config.map(|c| c.height as f32).unwrap_or(700.0);
+                        let tk_h = self.toolkit.panel_height(&self.font);
+                        let tk_y = window_h - ui::STATUS_BAR_HEIGHT - tk_h;
+                        if my >= tk_y {
+                            if let Some(idx) = self.toolkit.tool_at_y(my, tk_y) {
+                                let cmd = self.toolkit.tools[idx].command.clone();
+                                self.content_pane = ContentPane::Terminal;
+                                self.write_to_pty(cmd.as_bytes());
+                                self.write_to_pty(b"\r");
+                                self.toasts.info(format!("Running: {}", self.toolkit.tools[idx].name));
+                                return;
+                            }
+                        }
+                    }
+
                     let mut open_path: Option<std::path::PathBuf> = None;
                     if let Some(tree) = &mut self.sidebar.file_tree {
                         let content_top = ui::CHROME_TOP + 28.0;

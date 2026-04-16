@@ -128,6 +128,7 @@ pub enum PaletteAction {
     OpenFileSearch,
     OpenHelm,
     OpenAnalytics,
+    TogglePaneSync,
     RunTool(usize),
     None,
 }
@@ -152,6 +153,7 @@ const COMMANDS: &[PaletteCommand] = &[
     PaletteCommand { id: "wf_list", label: "Workflow: List", shortcut: "" },
     PaletteCommand { id: "wf_status", label: "Workflow: Status", shortcut: "" },
     PaletteCommand { id: "kanban", label: "Kanban Board", shortcut: "" },
+    PaletteCommand { id: "pane_sync", label: "Toggle Pane Sync", shortcut: "" },
     PaletteCommand { id: "help", label: "Help: Keyboard Shortcuts", shortcut: "Ctrl+?" },
     PaletteCommand { id: "about", label: "About Aether Terminal", shortcut: "" },
     PaletteCommand { id: "watchdog", label: "Watchdog: Edit Rules", shortcut: "" },
@@ -384,6 +386,7 @@ impl PaletteState {
                         "wf_list" => PaletteAction::WorkflowList,
                         "wf_status" => PaletteAction::WorkflowStatus,
                         "kanban" => PaletteAction::OpenKanban,
+                        "pane_sync" => PaletteAction::TogglePaneSync,
                         "file_search" => PaletteAction::OpenFileSearch,
                         "helm" => PaletteAction::OpenHelm,
                         "analytics" => PaletteAction::OpenAnalytics,

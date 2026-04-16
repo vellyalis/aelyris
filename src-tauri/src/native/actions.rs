@@ -347,6 +347,14 @@ impl NativeTerminal {
             PaletteAction::OpenAnalytics => {
                 self.content_pane = ContentPane::Analytics;
             }
+            PaletteAction::TogglePaneSync => {
+                self.pane_sync = !self.pane_sync;
+                if self.pane_sync {
+                    self.toasts.info("Pane Sync ON — keystrokes sent to all panes");
+                } else {
+                    self.toasts.info("Pane Sync OFF");
+                }
+            }
             PaletteAction::ShowHelp => {
                 let items = vec![
                     "Ctrl+Shift+P  Command Palette".into(),
@@ -470,6 +478,11 @@ impl NativeTerminal {
             }
             PaletteAction::RunTool(_) => {
                 self.toasts.info("Feature coming soon");
+            }
+            PaletteAction::TogglePaneSync => {
+                self.pane_sync = !self.pane_sync;
+                let state = if self.pane_sync { "ON" } else { "OFF" };
+                self.toasts.info(format!("Pane sync: {}", state));
             }
         }
     }
