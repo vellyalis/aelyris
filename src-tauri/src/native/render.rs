@@ -3,8 +3,10 @@
 use crate::agent::interactive::AgentCli;
 use crate::gpu::atlas::GlyphAtlas;
 use crate::gpu::font::FontManager;
+use crate::gpu::grid::Grid;
 use crate::gpu::renderer::{GlyphInstance, RectInstance};
 use crate::ui;
+use crate::ui::block::BlockTracker;
 use super::NativeTerminal;
 use super::types::ContentPane;
 use super::panes::{PaneNode, SplitDir};
@@ -78,9 +80,9 @@ impl NativeTerminal {
             ContentPane::Terminal => {
                 let mut all_r = Vec::new();
                 let mut all_g = Vec::new();
-                if let Some(tab) = self.tab_states.get(self.chrome.active_tab) {
+                if let Some(tab) = self.tab_states.get_mut(self.chrome.active_tab) {
                     render_pane_tree(
-                        &tab.root, tab.focused_pane_id, &self.font, &mut atlas,
+                        &mut tab.root, tab.focused_pane_id, &self.font, &mut atlas,
                         sidebar_w, ui::CHROME_TOP, content_w, content_h,
                         &mut all_r, &mut all_g,
                     );
@@ -312,9 +314,177 @@ impl NativeTerminal {
     }
 }
 
+/// Extract the text content of a visible row from the grid.
+fn row_text(grid: &Grid, screen_row: usize) -> String {
+    let cells = grid.visible_row(screen_row);
+    let text: String = cells.iter().map(|c| c.c).collect();
+    text.trim_end().to_string()
+}
+
+/// Scan visible grid rows and feed new prompt lines to the BlockTracker.
+///
+/// The block tracker uses prompt regex detection, so we scan each visible row
+/// and process it. To avoid re-processing, we use the scrollback length + row
+/// index as an absolute row identifier.
+fn feed_block_tracker(grid: &Grid, tracker: &mut BlockTracker) {
+    let sb_len = grid.scrollback.len();
+    let visible_rows = grid.rows as usize;
+    for screen_row in 0..visible_rows {
+        // Compute the absolute row index (scrollback offset + screen row).
+        let abs_row = if grid.viewport_offset == 0 {
+            sb_len + screen_row
+        } else {
+            let sb_start = sb_len.saturating_sub(grid.viewport_offset);
+            sb_start + screen_row
+        };
+        let text = row_text(grid, screen_row);
+        if !text.is_empty() {
+            tracker.process_line(abs_row, &text);
+        }
+    }
+}
+
+/// Build block decoration rects and glyphs for visible command blocks.
+///
+/// Draws:
+/// - A rounded rect border (radius=8, semi-transparent) around each block
+/// - A small header showing the command text and exit code
+/// - A collapse/expand indicator at the right edge of the header
+fn build_block_decorations(
+    grid: &Grid,
+    block_tracker: &BlockTracker,
+    font: &FontManager,
+    atlas: &mut GlyphAtlas,
+    offset_x: f32,
+    offset_y: f32,
+    content_w: f32,
+) -> (Vec<RectInstance>, Vec<GlyphInstance>) {
+    let mut dec_rects = Vec::new();
+    let mut dec_glyphs = Vec::new();
+
+    let sb_len = grid.scrollback.len();
+    let visible_rows = grid.rows as usize;
+
+    // Determine the absolute row range currently visible on screen.
+    let viewport_start = if grid.viewport_offset == 0 {
+        sb_len
+    } else {
+        sb_len.saturating_sub(grid.viewport_offset)
+    };
+    let viewport_end = viewport_start + visible_rows.saturating_sub(1);
+
+    let visible = block_tracker.visible_blocks(viewport_start, viewport_end);
+    if visible.is_empty() {
+        return (dec_rects, dec_glyphs);
+    }
+
+    let cell_h = font.cell_height;
+    let cell_w = font.cell_width;
+
+    // Border color: semi-transparent surface overlay
+    let border_color = ui::cat::pm(69, 71, 90, 100);
+    // Header background: very subtle tint
+    let header_bg = ui::cat::pm(49, 50, 68, 60);
+    let radius = 8.0_f32;
+    let border_thickness = 1.5_f32;
+    let inset = 4.0_f32; // horizontal inset from pane edge
+    let block_w = content_w - inset * 2.0;
+
+    for (_idx, block) in &visible {
+        // Convert absolute row to screen pixel position.
+        let prompt_screen_row = block.prompt_row.saturating_sub(viewport_start);
+        let block_end_abs = block.output_end.unwrap_or(viewport_end);
+        let end_screen_row = block_end_abs.saturating_sub(viewport_start);
+
+        // Clamp to visible range.
+        let first_row = prompt_screen_row.min(visible_rows.saturating_sub(1));
+        let last_row = end_screen_row.min(visible_rows.saturating_sub(1));
+
+        // Skip blocks that are entirely offscreen.
+        if first_row > visible_rows || last_row < first_row {
+            continue;
+        }
+
+        // Pixel coordinates relative to the pane.
+        let block_y = first_row as f32 * cell_h;
+        let block_h = ((last_row - first_row + 1) as f32 * cell_h).max(cell_h);
+        let bx = offset_x + inset;
+        let by = offset_y + block_y;
+
+        // Draw rounded border (four edges as thin rects for a border-only effect).
+        // Top edge
+        dec_rects.push(RectInstance::rounded(
+            [bx, by],
+            [block_w, border_thickness],
+            border_color,
+            radius,
+        ));
+        // Bottom edge
+        dec_rects.push(RectInstance::rounded(
+            [bx, by + block_h - border_thickness],
+            [block_w, border_thickness],
+            border_color,
+            radius,
+        ));
+        // Left edge
+        dec_rects.push(RectInstance::new(
+            [bx, by + radius],
+            [border_thickness, (block_h - radius * 2.0).max(0.0)],
+            border_color,
+        ));
+        // Right edge
+        dec_rects.push(RectInstance::new(
+            [bx + block_w - border_thickness, by + radius],
+            [border_thickness, (block_h - radius * 2.0).max(0.0)],
+            border_color,
+        ));
+
+        // Header background (prompt row area).
+        dec_rects.push(RectInstance::rounded(
+            [bx, by],
+            [block_w, cell_h],
+            header_bg,
+            radius,
+        ));
+
+        // Header text: command name (truncated to fit).
+        let cmd = &block.command;
+        let max_cmd_chars = ((block_w - 40.0) / cell_w).max(1.0) as usize;
+        let display_cmd = if cmd.len() > max_cmd_chars {
+            format!("{}...", &cmd[..max_cmd_chars.saturating_sub(3)])
+        } else {
+            cmd.clone()
+        };
+
+        // Collapse indicator at left edge.
+        let indicator = if block.collapsed { "\u{25B8}" } else { "\u{25BE}" }; // triangle right / down
+        let indicator_x = bx + 4.0;
+        let text_y = by + (cell_h - font.cell_height) / 2.0;
+        ui::render_text(font, atlas, indicator, indicator_x, text_y, ui::cat::OVERLAY0, &mut dec_glyphs);
+
+        // Command text after indicator.
+        let cmd_x = indicator_x + cell_w * 2.0;
+        ui::render_text(font, atlas, &display_cmd, cmd_x, text_y, ui::cat::SUBTEXT1, &mut dec_glyphs);
+
+        // Exit code badge (if available).
+        if let Some(code) = block.exit_code {
+            let badge = if code == 0 {
+                "\u{2713}".to_string() // checkmark
+            } else {
+                format!("E{}", code)
+            };
+            let badge_color = if code == 0 { ui::cat::GREEN } else { [0.95, 0.55, 0.66, 1.0] };
+            let badge_x = bx + block_w - (badge.len() as f32 + 1.0) * cell_w;
+            ui::render_text(font, atlas, &badge, badge_x, text_y, badge_color, &mut dec_glyphs);
+        }
+    }
+
+    (dec_rects, dec_glyphs)
+}
+
 /// Recursively render a pane tree at the given screen rect.
 pub fn render_pane_tree(
-    node: &PaneNode,
+    node: &mut PaneNode,
     focused_id: u32,
     font: &FontManager,
     atlas: &mut GlyphAtlas,
@@ -340,9 +510,18 @@ pub fn render_pane_tree(
                 r.pos[0] += x;
                 r.pos[1] += y;
             }
+
+            // Feed visible rows to block tracker and build decorations.
+            feed_block_tracker(&grid, &mut leaf.block_tracker);
+            let (blk_rects, blk_glyphs) = build_block_decorations(
+                &grid, &leaf.block_tracker, font, atlas, x, y, w,
+            );
+
             grid.clear_dirty();
             rects.extend(term_rects);
             glyphs.extend(term_glyphs);
+            rects.extend(blk_rects);
+            glyphs.extend(blk_glyphs);
             if is_focused {
                 rects.push(RectInstance::new([x, y], [w, 1.0], ui::cat::pm(137, 180, 250, 120)));
             }
@@ -350,7 +529,7 @@ pub fn render_pane_tree(
         PaneNode::Split { dir, ratio, first, second } => {
             match dir {
                 SplitDir::Horizontal => {
-                    let first_w = (w * ratio).floor();
+                    let first_w = (w * *ratio).floor();
                     let divider = 2.0;
                     let second_w = w - first_w - divider;
                     render_pane_tree(first, focused_id, font, atlas, x, y, first_w, h, rects, glyphs);
@@ -358,7 +537,7 @@ pub fn render_pane_tree(
                     render_pane_tree(second, focused_id, font, atlas, x + first_w + divider, y, second_w, h, rects, glyphs);
                 }
                 SplitDir::Vertical => {
-                    let first_h = (h * ratio).floor();
+                    let first_h = (h * *ratio).floor();
                     let divider = 2.0;
                     let second_h = h - first_h - divider;
                     render_pane_tree(first, focused_id, font, atlas, x, y, w, first_h, rects, glyphs);

@@ -511,6 +511,7 @@ impl NativeTerminal {
             }
             "Theme" => {
                 self.config.appearance.theme = value.to_string();
+                crate::ui::theme::set_theme(value);
                 let _ = save_config(&self.config);
                 log::info!("Theme changed to: {}", value);
             }
@@ -692,6 +693,7 @@ impl NativeTerminal {
                         pty_id: id,
                         grid,
                         agent_info: None,
+                        block_tracker: crate::ui::block::BlockTracker::new(),
                     };
                     let target_id = tab.focused_pane_id;
                     if tab.root.split_leaf(target_id, dir, new_leaf) {

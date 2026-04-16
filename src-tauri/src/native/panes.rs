@@ -2,6 +2,7 @@
 
 use std::sync::{Arc, Mutex};
 use crate::gpu::grid::Grid;
+use crate::ui::block::BlockTracker;
 use super::types::AgentTabInfo;
 
 /// Split direction for pane splitting.
@@ -17,6 +18,8 @@ pub struct PaneLeaf {
     pub pty_id: String,
     pub grid: Arc<Mutex<Grid>>,
     pub agent_info: Option<AgentTabInfo>,
+    /// Tracks command blocks (prompt detection + collapse state).
+    pub block_tracker: BlockTracker,
 }
 
 /// Pane tree node — either a leaf or a split.
@@ -109,6 +112,7 @@ impl PaneNode {
                             id: 0, pty_id: String::new(),
                             grid: Arc::new(Mutex::new(Grid::new(1, 1, 0))),
                             agent_info: None,
+                            block_tracker: BlockTracker::new(),
                         }),
                     );
                     *self = sibling;
@@ -126,6 +130,7 @@ impl PaneNode {
                             id: 0, pty_id: String::new(),
                             grid: Arc::new(Mutex::new(Grid::new(1, 1, 0))),
                             agent_info: None,
+                            block_tracker: BlockTracker::new(),
                         }),
                     );
                     *self = sibling;
@@ -169,6 +174,7 @@ impl PaneNode {
                         pty_id: String::new(),
                         grid: Arc::new(Mutex::new(Grid::new(1, 1, 0))),
                         agent_info: None,
+                        block_tracker: BlockTracker::new(),
                     }),
                 );
                 *self = PaneNode::Split {
@@ -201,7 +207,7 @@ pub struct TabState {
 impl TabState {
     pub fn new_single(pty_id: String, grid: Arc<Mutex<Grid>>, agent_info: Option<AgentTabInfo>) -> Self {
         Self {
-            root: PaneNode::Leaf(PaneLeaf { id: 0, pty_id, grid, agent_info }),
+            root: PaneNode::Leaf(PaneLeaf { id: 0, pty_id, grid, agent_info, block_tracker: BlockTracker::new() }),
             focused_pane_id: 0,
             next_pane_id: 1,
         }

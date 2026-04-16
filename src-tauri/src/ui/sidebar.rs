@@ -272,6 +272,14 @@ impl SidebarState {
                 // Icon + name
                 let text_y = row_y + (ROW_HEIGHT - font.cell_height) / 2.0;
 
+                // Nerd Font icon for file/folder
+                let icon_char = super::icons::file_icon(&entry.name, entry.is_dir);
+                let icon_color = if entry.is_dir {
+                    cat::BLUE
+                } else {
+                    icon_color_for_ext(&entry.name)
+                };
+
                 if entry.is_dir {
                     let arrow = if tree.expanded.contains(&entry.path) {
                         "\u{25BE}" // ▾
@@ -279,34 +287,25 @@ impl SidebarState {
                         "\u{25B8}" // ▸
                     };
                     super::render_text(font, atlas, arrow, indent, text_y, cat::OVERLAY0, &mut glyphs);
-                    let icon_w = font.cell_width;
-                    // Truncate name to fit sidebar
+                    let cw = font.cell_width;
+                    // Icon after arrow
+                    let icon_str = icon_char.to_string();
+                    super::render_text(font, atlas, &icon_str, indent + cw, text_y, icon_color, &mut glyphs);
+                    // Name after icon
                     let max_chars =
-                        ((SIDEBAR_WIDTH - indent - icon_w * 2.0) / font.cell_width) as usize;
+                        ((SIDEBAR_WIDTH - indent - cw * 3.0) / font.cell_width) as usize;
                     let display_name = truncate_name(&entry.name, max_chars);
-                    super::render_text(
-                        font,
-                        atlas,
-                        &display_name,
-                        indent + icon_w,
-                        text_y,
-                        cat::TEXT,
-                        &mut glyphs,
-                    );
+                    super::render_text(font, atlas, &display_name, indent + cw * 2.5, text_y, cat::TEXT, &mut glyphs);
                 } else {
-                    // File — dim color, no arrow
+                    let cw = font.cell_width;
+                    // Icon (aligned with dir icon position)
+                    let icon_str = icon_char.to_string();
+                    super::render_text(font, atlas, &icon_str, indent + cw, text_y, icon_color, &mut glyphs);
+                    // Name after icon
                     let max_chars =
-                        ((SIDEBAR_WIDTH - indent - font.cell_width) / font.cell_width) as usize;
+                        ((SIDEBAR_WIDTH - indent - cw * 3.0) / font.cell_width) as usize;
                     let display_name = truncate_name(&entry.name, max_chars);
-                    super::render_text(
-                        font,
-                        atlas,
-                        &display_name,
-                        indent + font.cell_width, // align with dir names
-                        text_y,
-                        cat::SUBTEXT1,
-                        &mut glyphs,
-                    );
+                    super::render_text(font, atlas, &display_name, indent + cw * 2.5, text_y, cat::SUBTEXT1, &mut glyphs);
                 }
             }
         }
@@ -324,6 +323,26 @@ impl Default for SidebarState {
 pub struct SidebarOutput {
     pub rects: Vec<RectInstance>,
     pub glyphs: Vec<GlyphInstance>,
+}
+
+/// Map file extension to an accent color for the icon.
+fn icon_color_for_ext(name: &str) -> [f32; 4] {
+    let ext = name.rsplit('.').next().unwrap_or("");
+    match ext.to_lowercase().as_str() {
+        "rs" => cat::pm(250, 179, 135, 255),      // Peach for Rust
+        "py" => cat::pm(249, 226, 175, 255),       // Yellow for Python
+        "js" | "jsx" => cat::pm(249, 226, 175, 255), // Yellow for JS
+        "ts" | "tsx" => cat::pm(137, 180, 250, 255), // Blue for TS
+        "go" => cat::pm(148, 226, 213, 255),       // Teal for Go
+        "json" | "yaml" | "yml" | "toml" => cat::pm(249, 226, 175, 255), // Yellow
+        "html" | "htm" => cat::pm(250, 179, 135, 255), // Peach
+        "css" | "scss" | "sass" => cat::pm(137, 180, 250, 255), // Blue
+        "md" | "mdx" => cat::pm(137, 180, 250, 255), // Blue
+        "sh" | "bash" | "zsh" | "ps1" => cat::pm(166, 227, 161, 255), // Green
+        "lock" => cat::OVERLAY0,
+        "gitignore" => cat::pm(243, 139, 168, 255), // Red
+        _ => cat::SUBTEXT0,
+    }
 }
 
 fn truncate_name(name: &str, max: usize) -> String {
