@@ -122,6 +122,31 @@ impl NativeTerminal {
                         &mut all_r, &mut all_g,
                     );
                 }
+                // Terminal scrollbar
+                if let Some(g) = self.active_grid() {
+                    if let Ok(grid) = g.lock() {
+                        let total_lines = grid.scrollback.len() + grid.rows as usize;
+                        let viewport_lines = grid.rows as usize;
+                        if total_lines > viewport_lines {
+                            let sb_state = crate::ui::widgets::scrollbar::ScrollBarState {
+                                content_height: total_lines as f32 * self.font.cell_height,
+                                viewport_height: viewport_lines as f32 * self.font.cell_height,
+                                scroll_offset: (grid.scrollback.len() - grid.viewport_offset) as f32
+                                    * self.font.cell_height,
+                            };
+                            let sb_x = sidebar_w + content_w - crate::ui::tokens::SCROLLBAR_WIDTH;
+                            let sb_out = crate::ui::widgets::scrollbar::build(
+                                &sb_state,
+                                sb_x,
+                                ui::CHROME_TOP,
+                                content_h,
+                                self.chrome.mouse_pos,
+                                &self.scrollbar_drag,
+                            );
+                            all_r.extend(sb_out.rects);
+                        }
+                    }
+                }
                 // Ghost typing overlay
                 if let Some(ref suggestion) = self.ghost_text {
                     if let Some(g) = self.active_grid() {
@@ -225,7 +250,7 @@ impl NativeTerminal {
 
         let (sb_menu_rects, sb_menu_glyphs) = self.build_sidebar_menu(&self.font, &mut atlas);
         let (ctx_rects, ctx_glyphs) = self.build_context_menu(&self.font, &mut atlas);
-        let palette_out = self.palette.build(&self.font, &mut atlas, window_w);
+        let palette_out = self.palette.build(&self.font, &mut atlas, window_w, window_h);
         let (toast_rects, toast_glyphs) = self.toasts.build(&self.font, &mut atlas, window_w, window_h);
 
         if atlas.dirty {
@@ -301,7 +326,9 @@ impl NativeTerminal {
         let menu_w = 140.0f32;
         let menu_h = ITEMS.len() as f32 * item_h + 8.0;
 
-        rects.push(RectInstance::rounded([mx, my], [menu_w, menu_h], ui::cat::pm(30, 30, 46, 245), 8.0));
+        // Drop shadow + bordered background
+        rects.extend(ui::shadow::menu_shadow([mx, my], [menu_w, menu_h], 8.0));
+        rects.push(RectInstance::bordered([mx, my], [menu_w, menu_h], ui::cat::pm(30, 30, 46, 245), 8.0, 1.0, 0.8));
         rects.push(RectInstance::new([mx, my], [menu_w, 1.0], ui::cat::pm(69, 71, 90, 200)));
 
         let hover_idx = self.chrome.mouse_pos.and_then(|(hx, hy)| {
@@ -318,7 +345,7 @@ impl NativeTerminal {
                 rects.push(RectInstance::rounded([mx + 2.0, iy], [menu_w - 4.0, item_h], ui::cat::pm(69, 71, 90, 150), 4.0));
             }
             let text_y = iy + (item_h - font.cell_height) / 2.0;
-            ui::render_text(font, atlas, label, mx + 12.0, text_y, ui::cat::TEXT, &mut glyphs);
+            ui::render_text(font, atlas, label, mx + 12.0, text_y, ui::cat::text(), &mut glyphs);
         }
         (rects, glyphs)
     }
@@ -344,8 +371,9 @@ impl NativeTerminal {
         let menu_w = 160.0f32;
         let menu_h = items.len() as f32 * item_h + 8.0;
 
-        rects.push(RectInstance::rounded([mx, my], [menu_w, menu_h], ui::cat::pm(30, 30, 46, 245), 8.0));
-        rects.push(RectInstance::new([mx, my], [menu_w, 1.0], ui::cat::pm(69, 71, 90, 200)));
+        // Drop shadow + bordered background
+        rects.extend(ui::shadow::menu_shadow([mx, my], [menu_w, menu_h], 8.0));
+        rects.push(RectInstance::bordered([mx, my], [menu_w, menu_h], ui::cat::pm(30, 30, 46, 245), 8.0, 1.0, 0.8));
 
         let hover_idx = self.chrome.mouse_pos.and_then(|(hx, hy)| {
             if hx >= mx && hx < mx + menu_w && hy >= my + 4.0 && hy < my + menu_h {
@@ -361,7 +389,7 @@ impl NativeTerminal {
                 rects.push(RectInstance::rounded([mx + 2.0, iy], [menu_w - 4.0, item_h], ui::cat::pm(69, 71, 90, 150), 4.0));
             }
             let text_y = iy + (item_h - font.cell_height) / 2.0;
-            ui::render_text(font, atlas, label, mx + 12.0, text_y, ui::cat::TEXT, &mut glyphs);
+            ui::render_text(font, atlas, label, mx + 12.0, text_y, ui::cat::text(), &mut glyphs);
         }
         (rects, glyphs)
     }
@@ -391,11 +419,11 @@ impl NativeTerminal {
         let panel_h = 28.0 + agent_tabs.len() as f32 * 36.0;
         let panel_y = window_h - ui::STATUS_BAR_HEIGHT - panel_h;
 
-        rects.push(RectInstance::new([0.0, panel_y], [sidebar_w, panel_h], ui::cat::pm(24, 24, 37, 220)));
+        rects.push(RectInstance::bordered([0.0, panel_y], [sidebar_w, panel_h], ui::cat::pm(24, 24, 37, 220), 0.0, 1.0, 0.5));
         rects.push(RectInstance::new([0.0, panel_y], [sidebar_w, 1.0], ui::cat::pm(69, 71, 90, 150)));
 
         let header_y = panel_y + (28.0 - font.cell_height) / 2.0;
-        ui::render_text(font, atlas, "AGENTS", 8.0, header_y, ui::cat::OVERLAY0, &mut glyphs);
+        ui::render_text(font, atlas, "AGENTS", 8.0, header_y, ui::cat::overlay0(), &mut glyphs);
 
         let count_str = format!("{}", agent_tabs.len());
         let count_x = 8.0 + 7.0 * font.cell_width;
@@ -420,11 +448,11 @@ impl NativeTerminal {
                 AgentCli::Custom(s) => s.as_str(),
             };
             let label = format!("{} ({})", cli_name, info.model);
-            ui::render_text(font, atlas, &label, 18.0, text_y1, ui::cat::TEXT, &mut glyphs);
+            ui::render_text(font, atlas, &label, 18.0, text_y1, ui::cat::text(), &mut glyphs);
 
             let text_y2 = y + 4.0 + font.cell_height + 2.0;
             let detail = format!("{} ${:.3}", info.status.label(), info.cost);
-            ui::render_text(font, atlas, &detail, 18.0, text_y2, ui::cat::OVERLAY0, &mut glyphs);
+            ui::render_text(font, atlas, &detail, 18.0, text_y2, ui::cat::overlay0(), &mut glyphs);
         }
         (rects, glyphs)
     }
@@ -576,11 +604,11 @@ fn build_block_decorations(
         let indicator = if block.collapsed { "\u{25B8}" } else { "\u{25BE}" }; // triangle right / down
         let indicator_x = bx + 4.0;
         let text_y = by + (cell_h - font.cell_height) / 2.0;
-        ui::render_text(font, atlas, indicator, indicator_x, text_y, ui::cat::OVERLAY0, &mut dec_glyphs);
+        ui::render_text(font, atlas, indicator, indicator_x, text_y, ui::cat::overlay0(), &mut dec_glyphs);
 
         // Command text after indicator.
         let cmd_x = indicator_x + cell_w * 2.0;
-        ui::render_text(font, atlas, &display_cmd, cmd_x, text_y, ui::cat::SUBTEXT1, &mut dec_glyphs);
+        ui::render_text(font, atlas, &display_cmd, cmd_x, text_y, ui::cat::subtext1(), &mut dec_glyphs);
 
         // Exit code badge (if available).
         if let Some(code) = block.exit_code {
@@ -589,13 +617,57 @@ fn build_block_decorations(
             } else {
                 format!("E{}", code)
             };
-            let badge_color = if code == 0 { ui::cat::GREEN } else { [0.95, 0.55, 0.66, 1.0] };
+            let badge_color = if code == 0 { ui::cat::green() } else { [0.95, 0.55, 0.66, 1.0] };
             let badge_x = bx + block_w - (badge.len() as f32 + 1.0) * cell_w;
             ui::render_text(font, atlas, &badge, badge_x, text_y, badge_color, &mut dec_glyphs);
         }
     }
 
     (dec_rects, dec_glyphs)
+}
+
+/// Build a list of collapsed row ranges as (first_screen_row, last_screen_row, line_count).
+///
+/// For each collapsed block, the output rows (output_start..=output_end) are hidden.
+/// Returns screen-relative row ranges clamped to the visible viewport.
+fn build_collapsed_ranges(
+    tracker: &BlockTracker,
+    viewport_start: usize,
+    viewport_end: usize,
+    visible_rows: usize,
+) -> Vec<(usize, usize, usize)> {
+    let mut ranges = Vec::new();
+    for block in tracker.blocks() {
+        if !block.collapsed {
+            continue;
+        }
+        let output_end = match block.output_end {
+            Some(end) => end,
+            None => viewport_end, // still running — collapse up to viewport end
+        };
+        // Only collapse if there are output rows to hide
+        if block.output_start > output_end {
+            continue;
+        }
+        // Check overlap with viewport
+        if block.output_start > viewport_end || output_end < viewport_start {
+            continue;
+        }
+        let first_abs = block.output_start.max(viewport_start);
+        let last_abs = output_end.min(viewport_end);
+        let first_screen = first_abs.saturating_sub(viewport_start);
+        let last_screen = last_abs.saturating_sub(viewport_start).min(visible_rows.saturating_sub(1));
+        if first_screen <= last_screen {
+            let line_count = output_end.saturating_sub(block.output_start) + 1;
+            ranges.push((first_screen, last_screen, line_count));
+        }
+    }
+    ranges
+}
+
+/// Check if a screen row falls within any collapsed range.
+fn is_row_collapsed(screen_row: usize, ranges: &[(usize, usize, usize)]) -> bool {
+    ranges.iter().any(|(first, last, _)| screen_row >= *first && screen_row <= *last)
 }
 
 /// Recursively render a pane tree at the given screen rect.
@@ -618,6 +690,39 @@ pub fn render_pane_tree(
             let mut term_rects = crate::gpu::build_bg_rects(&grid, font);
             let is_focused = leaf.id == focused_id;
             term_rects.extend(crate::gpu::build_cursor_rects(&grid, font, is_focused));
+
+            // Feed visible rows to block tracker and build decorations.
+            feed_block_tracker(&grid, &mut leaf.block_tracker);
+
+            // Compute collapsed row ranges (screen-relative) for output hiding.
+            let cell_h = font.cell_height;
+            let cell_w = font.cell_width;
+            let sb_len = grid.scrollback.len();
+            let visible_rows = grid.rows as usize;
+            let viewport_start = if grid.viewport_offset == 0 {
+                sb_len
+            } else {
+                sb_len.saturating_sub(grid.viewport_offset)
+            };
+            let viewport_end = viewport_start + visible_rows.saturating_sub(1);
+
+            let collapsed_ranges = build_collapsed_ranges(
+                &leaf.block_tracker, viewport_start, viewport_end, visible_rows,
+            );
+
+            // Filter out glyphs and rects that fall within collapsed output rows.
+            if !collapsed_ranges.is_empty() {
+                term_glyphs.retain(|g| {
+                    let screen_row = (g.pos[1] / cell_h) as usize;
+                    !is_row_collapsed(screen_row, &collapsed_ranges)
+                });
+                term_rects.retain(|r| {
+                    let screen_row = (r.pos[1] / cell_h) as usize;
+                    !is_row_collapsed(screen_row, &collapsed_ranges)
+                });
+            }
+
+            // Offset all instances to pane position.
             for g in &mut term_glyphs {
                 g.pos[0] += x;
                 g.pos[1] += y;
@@ -627,8 +732,27 @@ pub fn render_pane_tree(
                 r.pos[1] += y;
             }
 
-            // Feed visible rows to block tracker and build decorations.
-            feed_block_tracker(&grid, &mut leaf.block_tracker);
+            // Draw "... N lines hidden ..." summary for each collapsed block.
+            let mut summary_rects = Vec::new();
+            let mut summary_glyphs = Vec::new();
+            for (first_row, _last_row, line_count) in &collapsed_ranges {
+                let summary_y = y + *first_row as f32 * cell_h;
+                let inset = 4.0_f32;
+                let block_w = w - inset * 2.0;
+                // Background bar
+                summary_rects.push(RectInstance::rounded(
+                    [x + inset, summary_y],
+                    [block_w, cell_h],
+                    ui::cat::pm(49, 50, 68, 80),
+                    4.0,
+                ));
+                // Summary text
+                let label = format!("  \u{2026} {} lines hidden \u{2026}", line_count);
+                let text_y = summary_y + (cell_h - font.cell_height) / 2.0;
+                let text_x = x + inset + cell_w * 2.0;
+                ui::render_text(font, atlas, &label, text_x, text_y, ui::cat::overlay0(), &mut summary_glyphs);
+            }
+
             let (blk_rects, blk_glyphs) = build_block_decorations(
                 &grid, &leaf.block_tracker, font, atlas, x, y, w,
             );
@@ -638,6 +762,8 @@ pub fn render_pane_tree(
             glyphs.extend(term_glyphs);
             rects.extend(blk_rects);
             glyphs.extend(blk_glyphs);
+            rects.extend(summary_rects);
+            glyphs.extend(summary_glyphs);
             if is_focused {
                 rects.push(RectInstance::new([x, y], [w, 1.0], ui::cat::pm(137, 180, 250, 120)));
             }

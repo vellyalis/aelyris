@@ -173,7 +173,17 @@ impl NativeTerminal {
                         _ => None,
                     };
                     if let Some((event_type, summary)) = activity_event {
-                        self.activity.push(tab_name, event_type, summary.to_string());
+                        self.activity.push(tab_name.clone(), event_type.clone(), summary.to_string());
+                        let _ = self.db.save_activity(&tab_name, &format!("{:?}", event_type), summary);
+                    }
+
+                    // Flash the taskbar icon when an agent finishes
+                    if matches!(status, AgentStatus::Done) {
+                        if let Some(window) = &self.window {
+                            window.request_user_attention(
+                                Some(winit::window::UserAttentionType::Informational),
+                            );
+                        }
                     }
 
                     apply_agent_update_to_tree(&mut self.tab_states, pty_id, |info| {
@@ -183,12 +193,56 @@ impl NativeTerminal {
                 AgentUpdate::Usage(ref pty_id, cost, tokens) => {
                     // Determine CLI name for analytics recording
                     let cli_name = find_agent_cli_name(&self.tab_states, pty_id);
-                    self.analytics.record(cli_name, cost, tokens);
+                    self.analytics.record(cli_name.clone(), cost, tokens);
+                    let _ = self.db.save_usage(&cli_name, cost, tokens);
 
                     apply_agent_update_to_tree(&mut self.tab_states, pty_id, |info| {
                         if cost > info.cost { info.cost = cost; }
                         if tokens > info.tokens_used { info.tokens_used = tokens; }
                     });
+                }
+            }
+        }
+    }
+
+    /// Drain the watchdog channel and evaluate PTY output for permission prompts.
+    pub(super) fn process_watchdog_channel(&mut self) {
+        use crate::agent::watchdog::WatchdogAction;
+        while let Ok((pty_id, text)) = self.watchdog_rx.try_recv() {
+            if let Some((idx, action)) = self.watchdog_manager.evaluate(&pty_id, &text) {
+                match action {
+                    WatchdogAction::AutoApprove => {
+                        let _ = self.pty_manager.write(&pty_id, b"y\n");
+                        self.watchdog_manager.log_action(idx, "auto", "approved");
+                        self.toasts.info("Watchdog: Auto-approved");
+                        self.activity.push(
+                            "Watchdog".into(),
+                            ActivityType::WatchdogTriggered,
+                            "Auto-approved".into(),
+                        );
+                    }
+                    WatchdogAction::AutoDeny => {
+                        let _ = self.pty_manager.write(&pty_id, b"n\n");
+                        self.watchdog_manager.log_action(idx, "auto", "denied");
+                        self.toasts.info("Watchdog: Auto-denied");
+                        self.activity.push(
+                            "Watchdog".into(),
+                            ActivityType::WatchdogTriggered,
+                            "Auto-denied".into(),
+                        );
+                    }
+                    WatchdogAction::AskUser => {
+                        self.toasts.show(
+                            "Watchdog: Permission requested — check terminal".into(),
+                            crate::ui::toast::ToastLevel::Warning,
+                        );
+                        if let Some(w) = &self.window {
+                            w.request_user_attention(
+                                Some(winit::window::UserAttentionType::Informational),
+                            );
+                        }
+                    }
+                    WatchdogAction::Ignore => {}
                 }
             }
         }
@@ -603,10 +657,45 @@ impl NativeTerminal {
         }
     }
 
+    /// Scan visible grid rows for port patterns (e.g. localhost:3000, 127.0.0.1:8080).
+    /// Returns detected URLs for notification.
+    pub(super) fn detect_ports(&self) -> Vec<String> {
+        let mut found = Vec::new();
+        let port_re = regex::Regex::new(
+            r"(?:https?://)?(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})"
+        ).unwrap();
+
+        for tab in &self.tab_states {
+            tab.root.for_each_leaf(&mut |leaf| {
+                if let Ok(grid) = leaf.grid.lock() {
+                    // Scan last 5 visible rows for port patterns
+                    let start = grid.rows.saturating_sub(5) as usize;
+                    for r in start..grid.rows as usize {
+                        let text: String = grid.visible_row(r).iter().map(|c| c.c).collect();
+                        for cap in port_re.captures_iter(&text) {
+                            let url = cap.get(0).unwrap().as_str();
+                            let normalized = if url.starts_with("http") {
+                                url.to_string()
+                            } else {
+                                format!("http://{}", url)
+                            };
+                            if !found.contains(&normalized) {
+                                found.push(normalized);
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        found
+    }
+
     /// Spawn a new PTY reader thread for a grid.
     pub(super) fn spawn_pty_reader(&self, pty_id: &str, grid: Arc<Mutex<Grid>>) {
         if let Ok(reader) = self.pty_manager.take_reader(pty_id) {
             let grid_clone = grid;
+            let watchdog_tx = self.watchdog_tx.clone();
+            let pty_id_clone = pty_id.to_string();
             std::thread::spawn(move || {
                 let mut reader = reader;
                 let mut parser = vte::Parser::new();
@@ -624,6 +713,14 @@ impl NativeTerminal {
                                 parser.advance(&mut performer, *byte);
                             }
                             g.needs_redraw = true;
+                            drop(g);
+
+                            // Send output to watchdog for evaluation
+                            let text = String::from_utf8_lossy(&buf[..n]);
+                            let stripped = crate::agent::output_monitor::strip_ansi(&text);
+                            if !stripped.trim().is_empty() {
+                                let _ = watchdog_tx.try_send((pty_id_clone.clone(), stripped));
+                            }
                         }
                         Err(_) => break,
                     }

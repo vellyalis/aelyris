@@ -72,10 +72,11 @@ impl NativeTerminal {
                         self.chrome.active_tab = self.chrome.tabs.len().saturating_sub(1);
                     }
                     self.activity.push(
-                        tab_title,
+                        tab_title.clone(),
                         ActivityType::SessionEnded,
                         "Session closed".to_string(),
                     );
+                    let _ = self.db.save_activity(&tab_title, "SessionEnded", "Session closed");
                 }
             }
             ChromeAction::SwitchTab(idx) => {
@@ -337,7 +338,7 @@ impl NativeTerminal {
                 self.content_pane = ContentPane::Kanban(KanbanState::load());
             }
             PaletteAction::OpenFileSearch => {
-                let mut search = crate::ui::search::SearchState::new();
+                let search = crate::ui::search::SearchState::new();
                 // Pre-populate with query from palette input if any
                 self.content_pane = ContentPane::Search(search);
             }
@@ -479,11 +480,7 @@ impl NativeTerminal {
             PaletteAction::RunTool(_) => {
                 self.toasts.info("Feature coming soon");
             }
-            PaletteAction::TogglePaneSync => {
-                self.pane_sync = !self.pane_sync;
-                let state = if self.pane_sync { "ON" } else { "OFF" };
-                self.toasts.info(format!("Pane sync: {}", state));
-            }
+            // TogglePaneSync handled above
         }
     }
 
@@ -669,11 +666,13 @@ impl NativeTerminal {
                 self.chrome.add_tab(id.clone(), shell_name.clone(), shell_name.clone());
                 self.tab_states.push(TabState::new_single(id, grid, None));
                 self.chrome.active_tab = self.tab_states.len() - 1;
+                let summary = format!("New {} session", shell_name);
                 self.activity.push(
                     shell_name.clone(),
                     ActivityType::SessionStarted,
-                    format!("New {} session", shell_name),
+                    summary.clone(),
                 );
+                let _ = self.db.save_activity(&shell_name, "SessionStarted", &summary);
             }
             Err(e) => log::error!("Failed to spawn PTY: {}", e),
         }
@@ -707,6 +706,7 @@ impl NativeTerminal {
                 if let Ok(reader) = self.pty_manager.take_reader(&id) {
                     let grid_clone = grid.clone();
                     let agent_tx = self.agent_tx.clone();
+                    let watchdog_tx = self.watchdog_tx.clone();
                     let pty_id_clone = id.clone();
                     let parser = output_monitor::create_parser(&cli);
                     std::thread::spawn(move || {
@@ -730,6 +730,12 @@ impl NativeTerminal {
 
                                     let text = String::from_utf8_lossy(&buf[..n]);
                                     let stripped = output_monitor::strip_ansi(&text);
+
+                                    // Send to watchdog for permission prompt evaluation
+                                    if !stripped.trim().is_empty() {
+                                        let _ = watchdog_tx.try_send((pty_id_clone.clone(), stripped.clone()));
+                                    }
+
                                     let result = parser.parse_chunk(&stripped);
                                     if let Some(status) = result.status {
                                         if agent_tx.send(AgentUpdate::Status(

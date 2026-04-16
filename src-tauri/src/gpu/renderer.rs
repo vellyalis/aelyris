@@ -38,6 +38,28 @@ impl RectInstance {
     pub fn rounded(pos: [f32; 2], size: [f32; 2], color: [f32; 4], radius: f32) -> Self {
         Self { pos, size, color, border_radius: radius, _pad: [0.0; 3] }
     }
+
+    /// Create a rect with rounded corners and a border.
+    ///
+    /// * `border_width` — border thickness in pixels (typically 1.0)
+    /// * `border_brightness` — how much to lighten (>0) or darken (<0) the fill
+    ///   color for the border. Range: -1.0 to 1.0. 1.0 = fully bright border.
+    pub fn bordered(
+        pos: [f32; 2],
+        size: [f32; 2],
+        color: [f32; 4],
+        radius: f32,
+        border_width: f32,
+        border_brightness: f32,
+    ) -> Self {
+        Self {
+            pos,
+            size,
+            color,
+            border_radius: radius,
+            _pad: [border_width, border_brightness, 0.0],
+        }
+    }
 }
 
 /// Uniform buffer shared between glyph and rect shaders.

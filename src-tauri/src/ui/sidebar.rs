@@ -230,7 +230,7 @@ impl SidebarState {
             "EXPLORER",
             TEXT_PAD_LEFT,
             header_y,
-            cat::SUBTEXT0,
+            cat::subtext0(),
             &mut glyphs,
         );
 
@@ -275,7 +275,7 @@ impl SidebarState {
                 // Nerd Font icon for file/folder
                 let icon_char = super::icons::file_icon(&entry.name, entry.is_dir);
                 let icon_color = if entry.is_dir {
-                    cat::BLUE
+                    cat::blue()
                 } else {
                     icon_color_for_ext(&entry.name)
                 };
@@ -286,7 +286,7 @@ impl SidebarState {
                     } else {
                         "\u{25B8}" // ▸
                     };
-                    super::render_text(font, atlas, arrow, indent, text_y, cat::OVERLAY0, &mut glyphs);
+                    super::render_text(font, atlas, arrow, indent, text_y, cat::overlay0(), &mut glyphs);
                     let cw = font.cell_width;
                     // Icon after arrow
                     let icon_str = icon_char.to_string();
@@ -295,7 +295,7 @@ impl SidebarState {
                     let max_chars =
                         ((SIDEBAR_WIDTH - indent - cw * 3.0) / font.cell_width) as usize;
                     let display_name = truncate_name(&entry.name, max_chars);
-                    super::render_text(font, atlas, &display_name, indent + cw * 2.5, text_y, cat::TEXT, &mut glyphs);
+                    super::render_text(font, atlas, &display_name, indent + cw * 2.5, text_y, cat::text(), &mut glyphs);
                 } else {
                     let cw = font.cell_width;
                     // Icon (aligned with dir icon position)
@@ -305,7 +305,7 @@ impl SidebarState {
                     let max_chars =
                         ((SIDEBAR_WIDTH - indent - cw * 3.0) / font.cell_width) as usize;
                     let display_name = truncate_name(&entry.name, max_chars);
-                    super::render_text(font, atlas, &display_name, indent + cw * 2.5, text_y, cat::SUBTEXT1, &mut glyphs);
+                    super::render_text(font, atlas, &display_name, indent + cw * 2.5, text_y, cat::subtext1(), &mut glyphs);
                 }
             }
         }
@@ -339,9 +339,9 @@ fn icon_color_for_ext(name: &str) -> [f32; 4] {
         "css" | "scss" | "sass" => cat::pm(137, 180, 250, 255), // Blue
         "md" | "mdx" => cat::pm(137, 180, 250, 255), // Blue
         "sh" | "bash" | "zsh" | "ps1" => cat::pm(166, 227, 161, 255), // Green
-        "lock" => cat::OVERLAY0,
+        "lock" => cat::overlay0(),
         "gitignore" => cat::pm(243, 139, 168, 255), // Red
-        _ => cat::SUBTEXT0,
+        _ => cat::subtext0(),
     }
 }
 

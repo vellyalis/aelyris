@@ -197,7 +197,7 @@ impl KanbanState {
                 0 => cat::pm(137, 180, 250, 255), // Blue
                 1 => cat::pm(249, 226, 175, 255), // Yellow
                 2 => cat::pm(166, 227, 161, 255), // Green
-                _ => cat::TEXT,
+                _ => cat::text(),
             };
             let header_y = y + (HEADER_HEIGHT - font.cell_height) / 2.0;
             let header_text = format!("{} ({})", col.name, col.cards.len());
@@ -232,7 +232,7 @@ impl KanbanState {
                 } else {
                     card.title.clone()
                 };
-                super::render_text(font, atlas, &display, cx + CARD_PAD + 4.0, text_y, cat::TEXT, &mut glyphs);
+                super::render_text(font, atlas, &display, cx + CARD_PAD + 4.0, text_y, cat::text(), &mut glyphs);
             }
         }
 

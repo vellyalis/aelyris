@@ -604,6 +604,7 @@ impl PaletteState {
         font: &FontManager,
         atlas: &mut GlyphAtlas,
         window_w: f32,
+        window_h: f32,
     ) -> PaletteOutput {
         let mut rects = Vec::new();
         let mut glyphs = Vec::new();
@@ -629,13 +630,28 @@ impl PaletteState {
         };
         let palette_h = INPUT_HEIGHT + item_count as f32 * ITEM_HEIGHT + PADDING * 2.0;
 
-        // Dimmed backdrop
-        rects.push(RectInstance::new([0.0, 0.0], [window_w, 2000.0], [0.0, 0.0, 0.0, 0.4]));
+        // Dark scrim overlay (simulates blur/frosted glass)
+        let scrim_alpha = 0.4 * self.render_opacity();
+        if scrim_alpha > 0.001 {
+            rects.push(RectInstance::new(
+                [0.0, 0.0],
+                [window_w, window_h],
+                [0.0, 0.0, 0.0, scrim_alpha],
+            ));
+        }
 
-        // Palette background
-        rects.push(RectInstance::rounded([palette_x, palette_y], [PALETTE_WIDTH, palette_h], cat::pm(30, 30, 46, 250), 12.0));
+        // Drop shadow
+        rects.extend(super::shadow::panel_shadow(
+            [palette_x, palette_y], [PALETTE_WIDTH, palette_h], 12.0,
+        ));
 
-        // Border — color varies by mode
+        // Palette background with border
+        rects.push(RectInstance::bordered(
+            [palette_x, palette_y], [PALETTE_WIDTH, palette_h],
+            cat::pm(30, 30, 46, 250), 12.0, 1.0, 1.0,
+        ));
+
+        // Border accent — color varies by mode
         let border_color = match &self.mode {
             PaletteMode::Command => cat::pm(137, 180, 250, 200),
             PaletteMode::WorktreeCreate => cat::pm(166, 227, 161, 200),
@@ -650,9 +666,13 @@ impl PaletteState {
         };
         rects.push(RectInstance::new([palette_x, palette_y], [PALETTE_WIDTH, 1.0], border_color));
 
-        // Input background
+        // Input background with subtle border
         let input_y = palette_y + PADDING;
-        rects.push(RectInstance::rounded([palette_x + PADDING, input_y], [PALETTE_WIDTH - PADDING * 2.0, INPUT_HEIGHT], cat::pm(24, 24, 37, 250), 6.0));
+        rects.push(RectInstance::bordered(
+            [palette_x + PADDING, input_y],
+            [PALETTE_WIDTH - PADDING * 2.0, INPUT_HEIGHT],
+            cat::pm(24, 24, 37, 250), 6.0, 1.0, 0.5,
+        ));
 
         // Input text — placeholder depends on mode
         let text_y = input_y + (INPUT_HEIGHT - font.cell_height) / 2.0;
@@ -673,9 +693,9 @@ impl PaletteState {
                     WatchdogCreateStep::SelectTarget => "Target PTY ID...",
                 },
             };
-            (placeholder, cat::OVERLAY0)
+            (placeholder, cat::overlay0())
         } else {
-            (self.input.as_str(), cat::TEXT)
+            (self.input.as_str(), cat::text())
         };
         super::render_text(
             font,
@@ -693,7 +713,7 @@ impl PaletteState {
         {
             let cursor_x = palette_x + PADDING + 4.0
                 + self.input.chars().count() as f32 * font.cell_width;
-            rects.push(RectInstance::new([cursor_x, text_y], [2.0, font.cell_height], cat::TEXT));
+            rects.push(RectInstance::new([cursor_x, text_y], [2.0, font.cell_height], cat::text()));
         }
 
         // Item list — depends on mode
@@ -710,7 +730,7 @@ impl PaletteState {
                     "Press Enter to create, Esc to cancel",
                     palette_x + PADDING + 8.0,
                     hint_y,
-                    cat::OVERLAY0,
+                    cat::overlay0(),
                     &mut glyphs,
                 );
             }
@@ -742,7 +762,7 @@ impl PaletteState {
                     "Enter to search, Esc to clear",
                     palette_x + PADDING + 8.0,
                     hint_y,
-                    cat::OVERLAY0,
+                    cat::overlay0(),
                     &mut glyphs,
                 );
             }
@@ -755,7 +775,7 @@ impl PaletteState {
                     &hint,
                     palette_x + PADDING + 8.0,
                     hint_y,
-                    cat::OVERLAY0,
+                    cat::overlay0(),
                     &mut glyphs,
                 );
             }
@@ -772,7 +792,7 @@ impl PaletteState {
                     hint,
                     palette_x + PADDING + 8.0,
                     hint_y,
-                    cat::OVERLAY0,
+                    cat::overlay0(),
                     &mut glyphs,
                 );
             }
@@ -807,7 +827,7 @@ impl PaletteState {
                 cmd.label,
                 palette_x + PADDING + 8.0,
                 label_y,
-                cat::TEXT,
+                cat::text(),
                 glyphs,
             );
 
@@ -820,7 +840,7 @@ impl PaletteState {
                     cmd.shortcut,
                     palette_x + PALETTE_WIDTH - PADDING - 8.0 - shortcut_w,
                     label_y,
-                    cat::OVERLAY0,
+                    cat::overlay0(),
                     glyphs,
                 );
             }
@@ -864,9 +884,9 @@ impl PaletteState {
                 entry.branch.clone()
             };
             let label_color = if delete && entry.is_main {
-                cat::OVERLAY0 // dimmed — cannot delete main
+                cat::overlay0() // dimmed — cannot delete main
             } else {
-                cat::TEXT
+                cat::text()
             };
             super::render_text(
                 font,
@@ -887,7 +907,7 @@ impl PaletteState {
                 &path_display,
                 palette_x + PALETTE_WIDTH - PADDING - 8.0 - path_w,
                 label_y,
-                cat::OVERLAY0,
+                cat::overlay0(),
                 glyphs,
             );
         }
@@ -929,7 +949,7 @@ impl PaletteState {
                 &display,
                 palette_x + PADDING + 8.0,
                 label_y,
-                cat::TEXT,
+                cat::text(),
                 glyphs,
             );
         }

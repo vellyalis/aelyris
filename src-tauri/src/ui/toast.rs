@@ -106,11 +106,22 @@ impl ToastManager {
                 ToastLevel::Error => cat::pm(243, 139, 168, (200.0 * alpha) as u8),
             };
 
-            // Background
-            rects.push(RectInstance::rounded([x, y], [TOAST_WIDTH, TOAST_HEIGHT], cat::pm(30, 30, 46, (230.0 * alpha) as u8), 8.0));
+            // Drop shadow (scaled by alpha for fade-out)
+            if alpha > 0.3 {
+                for mut sr in super::shadow::toast_shadow([x, y], [TOAST_WIDTH, TOAST_HEIGHT], 8.0) {
+                    sr.color[3] *= alpha;
+                    rects.push(sr);
+                }
+            }
 
-            // Left border
-            rects.push(RectInstance::new([x, y], [3.0, TOAST_HEIGHT], border_color));
+            // Background with border
+            rects.push(RectInstance::bordered(
+                [x, y], [TOAST_WIDTH, TOAST_HEIGHT],
+                cat::pm(30, 30, 46, (230.0 * alpha) as u8), 8.0, 1.0, 0.6,
+            ));
+
+            // Left accent border
+            rects.push(RectInstance::rounded([x, y], [3.0, TOAST_HEIGHT], border_color, 8.0));
 
             // Text
             let text_y = y + (TOAST_HEIGHT - font.cell_height) / 2.0;
@@ -121,10 +132,11 @@ impl ToastManager {
             } else {
                 toast.message.clone()
             };
+            let base = cat::text();
             let text_color = [
-                cat::TEXT[0] * alpha,
-                cat::TEXT[1] * alpha,
-                cat::TEXT[2] * alpha,
+                base[0] * alpha,
+                base[1] * alpha,
+                base[2] * alpha,
                 alpha,
             ];
             super::render_text(font, atlas, &display, x + 10.0, text_y, text_color, &mut glyphs);
