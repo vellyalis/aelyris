@@ -259,8 +259,13 @@ impl ChromeState {
     ) {
         let bar_y = TITLE_BAR_HEIGHT;
 
-        // Background
+        // Background + bottom separator
         rects.push(RectInstance::new([0.0, bar_y], [w, TAB_BAR_HEIGHT], cat::tab_bar_bg()));
+        rects.push(RectInstance::new(
+            [0.0, bar_y + TAB_BAR_HEIGHT - 1.0],
+            [w, 1.0],
+            cat::pm(69, 71, 90, 80),
+        ));
 
         let tab_h = TAB_BAR_HEIGHT - 4.0;
         let tab_y = bar_y + 2.0;
@@ -274,9 +279,16 @@ impl ChromeState {
             let close_w = font.cell_width + 8.0; // close button space
             let tab_w = 16.0 + tab_text_w + close_w; // padding + text + close
 
-            // Tab background (active tab is highlighted)
+            // Tab background (active tab is highlighted with accent indicator)
             if is_active {
                 rects.push(RectInstance::rounded([x, tab_y], [tab_w, tab_h], cat::tab_active(), 6.0));
+                // Bottom accent indicator (2px line in blue)
+                rects.push(RectInstance::rounded(
+                    [x + 4.0, tab_y + tab_h - 2.0],
+                    [tab_w - 8.0, 2.0],
+                    cat::blue(),
+                    1.0,
+                ));
             } else if let Some((mx, my)) = self.mouse_pos {
                 if mx >= x && mx < x + tab_w && my >= tab_y && my < tab_y + tab_h {
                     rects.push(RectInstance::rounded([x, tab_y], [tab_w, tab_h], cat::btn_hover(), 6.0));
@@ -330,8 +342,9 @@ impl ChromeState {
     ) {
         let bar_y = h - STATUS_BAR_HEIGHT;
 
-        // Background
-        rects.push(RectInstance::new([0.0, bar_y], [w, STATUS_BAR_HEIGHT], cat::status_bg()));
+        // Top separator + background
+        rects.push(RectInstance::new([0.0, bar_y], [w, 1.0], cat::pm(69, 71, 90, 80)));
+        rects.push(RectInstance::new([0.0, bar_y + 1.0], [w, STATUS_BAR_HEIGHT - 1.0], cat::status_bg()));
 
         let text_y = bar_y + (STATUS_BAR_HEIGHT - font.cell_height) / 2.0;
         let mut x = 10.0;

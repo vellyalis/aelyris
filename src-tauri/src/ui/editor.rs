@@ -977,10 +977,9 @@ impl EditorState {
             let bar_x = x_offset + content_w - bar_w - 8.0;
             let bar_y = y_offset + 4.0;
 
-            // Background
-            rects.push(RectInstance::new([bar_x, bar_y], [bar_w, bar_h], cat::pm(30, 30, 46, 240)));
-            // Border
-            rects.push(RectInstance::new([bar_x, bar_y], [bar_w, 1.0], cat::pm(137, 180, 250, 180)));
+            // Find bar background with border
+            rects.extend(super::shadow::card_shadow([bar_x, bar_y], [bar_w, bar_h], 6.0));
+            rects.push(RectInstance::bordered([bar_x, bar_y], [bar_w, bar_h], cat::pm(30, 30, 46, 240), 6.0, 1.0, 0.6));
 
             // Find input
             let find_y = bar_y + 6.0;

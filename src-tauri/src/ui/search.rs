@@ -124,11 +124,10 @@ impl SearchState {
         rects.push(RectInstance::new([x, y], [w, h], cat::pm(24, 24, 37, 240)));
 
         // Search header with query
-        rects.push(RectInstance::rounded(
+        rects.push(RectInstance::bordered(
             [x + PAD, y + 6.0],
             [w - PAD * 2.0, INPUT_HEIGHT],
-            cat::pm(30, 30, 46, 220),
-            6.0,
+            cat::pm(30, 30, 46, 220), 6.0, 1.0, 0.5,
         ));
         let query_y = y + 6.0 + (INPUT_HEIGHT - font.cell_height) / 2.0;
         let query_display = if self.query.is_empty() {
