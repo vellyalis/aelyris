@@ -8,6 +8,7 @@ use crate::gpu::atlas::GlyphAtlas;
 use crate::gpu::font::FontManager;
 use crate::gpu::renderer::{GlyphInstance, RectInstance};
 
+use super::animation::AnimatedValue;
 use super::cat;
 
 const PALETTE_WIDTH: f32 = 500.0;
@@ -146,6 +147,10 @@ pub struct PaletteState {
     pub selected: usize,
     filtered: Vec<usize>,
     mode: PaletteMode,
+    /// Opacity animation for smooth show/hide.
+    opacity: AnimatedValue,
+    /// Scale animation for subtle pop-in effect.
+    scale: AnimatedValue,
 }
 
 impl PaletteState {
@@ -157,22 +162,53 @@ impl PaletteState {
             selected: 0,
             filtered,
             mode: PaletteMode::Command,
+            opacity: AnimatedValue::ease_out(0.0, 9), // ~150ms at 60fps
+            scale: AnimatedValue::ease_out(1.0, 9),
         }
     }
 
     pub fn toggle(&mut self) {
-        self.visible = !self.visible;
         if self.visible {
+            self.close();
+        } else {
+            self.visible = true;
             self.input.clear();
             self.selected = 0;
             self.mode = PaletteMode::Command;
             self.update_filter();
+            self.opacity.set_target(1.0);
+            self.scale.set_target(1.0);
+            // Start from slightly scaled down
+            self.scale.current = 0.97;
+            self.scale.easing = super::animation::EasingMode::EaseOutCubic {
+                duration_frames: 9,
+                elapsed: 0,
+                origin: 0.97,
+            };
         }
     }
 
     pub fn close(&mut self) {
         self.visible = false;
         self.mode = PaletteMode::Command;
+        self.opacity.set_target(0.0);
+        self.scale.snap(); // no exit animation for scale
+    }
+
+    /// Advance palette animation by one frame.
+    pub fn tick(&mut self) {
+        self.opacity.tick();
+        self.scale.tick();
+    }
+
+    /// Current opacity for rendering (0.0 = invisible, 1.0 = fully visible).
+    pub fn render_opacity(&self) -> f32 {
+        self.opacity.current.clamp(0.0, 1.0)
+    }
+
+    /// Whether the palette should be drawn at all.
+    pub fn should_render(&self) -> bool {
+        self.visible || self.opacity.current > 0.01
     }
 
     /// Insert a character into the input.
@@ -461,7 +497,7 @@ impl PaletteState {
         let mut rects = Vec::new();
         let mut glyphs = Vec::new();
 
-        if !self.visible {
+        if !self.should_render() {
             return PaletteOutput { rects, glyphs };
         }
 

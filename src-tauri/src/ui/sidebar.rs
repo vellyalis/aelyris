@@ -10,6 +10,7 @@ use crate::gpu::atlas::GlyphAtlas;
 use crate::gpu::font::FontManager;
 use crate::gpu::renderer::{GlyphInstance, RectInstance};
 
+use super::animation::AnimatedValue;
 use super::cat;
 
 pub const SIDEBAR_WIDTH: f32 = 260.0;
@@ -148,6 +149,8 @@ impl FileTreeState {
 pub struct SidebarState {
     pub visible: bool,
     pub file_tree: Option<FileTreeState>,
+    /// Animated width for smooth open/close transitions.
+    width_anim: AnimatedValue,
 }
 
 impl SidebarState {
@@ -155,16 +158,22 @@ impl SidebarState {
         Self {
             visible: false,
             file_tree: None,
+            width_anim: AnimatedValue::spring(0.0, 400.0, 35.0),
         }
     }
 
     pub fn toggle(&mut self) {
         self.visible = !self.visible;
-        if self.visible && self.file_tree.is_none() {
-            // Default to current working directory
-            if let Ok(cwd) = std::env::current_dir() {
-                self.file_tree = Some(FileTreeState::new(cwd));
+        if self.visible {
+            self.width_anim.set_target(SIDEBAR_WIDTH);
+            if self.file_tree.is_none() {
+                // Default to current working directory
+                if let Ok(cwd) = std::env::current_dir() {
+                    self.file_tree = Some(FileTreeState::new(cwd));
+                }
             }
+        } else {
+            self.width_anim.set_target(0.0);
         }
     }
 
@@ -174,13 +183,19 @@ impl SidebarState {
         self.file_tree = Some(FileTreeState::new(path));
     }
 
-    /// Get the sidebar width (0 if hidden).
+    /// Advance the sidebar animation by one frame.
+    pub fn tick(&mut self) {
+        self.width_anim.tick();
+    }
+
+    /// Returns true if the sidebar is currently animating.
+    pub fn is_animating(&self) -> bool {
+        self.width_anim.is_animating()
+    }
+
+    /// Get the sidebar width (animated, 0 when fully hidden).
     pub fn width(&self) -> f32 {
-        if self.visible {
-            SIDEBAR_WIDTH
-        } else {
-            0.0
-        }
+        self.width_anim.current
     }
 
     /// Build sidebar visual instances.
