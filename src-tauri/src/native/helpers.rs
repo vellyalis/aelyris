@@ -574,9 +574,12 @@ impl NativeTerminal {
             self.config.window.maximized = window.is_maximized();
         }
         self.config.window.sidebar_visible = self.sidebar.visible;
-        self.config.window.last_directory = std::env::current_dir()
-            .ok()
-            .map(|p| p.to_string_lossy().into_owned());
+        // Save sidebar root directory for restore
+        self.config.window.last_directory = self.sidebar.file_tree
+            .as_ref()
+            .map(|ft| ft.root.to_string_lossy().into_owned())
+            .or_else(|| std::env::current_dir().ok().map(|p| p.to_string_lossy().into_owned()));
+
         if let Err(e) = save_config(&self.config) {
             log::warn!("Failed to save config: {}", e);
         }

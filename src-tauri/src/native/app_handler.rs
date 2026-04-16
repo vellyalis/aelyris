@@ -51,6 +51,23 @@ impl ApplicationHandler for NativeTerminal {
         self.init_wgpu(window);
         self.spawn_pty();
 
+        // Restore sidebar from last directory
+        if let Some(ref dir) = self.config.window.last_directory {
+            let path = std::path::PathBuf::from(dir);
+            if path.is_dir() {
+                self.sidebar.set_root(path.clone());
+                if self.config.window.sidebar_visible && !self.sidebar.visible {
+                    self.sidebar.toggle();
+                }
+                // Start file watcher
+                self.fs_watcher_rx = super::watcher::start_watcher(path);
+                // Init SCM
+                if let Some(repo) = self.repo_path() {
+                    self.scm.set_repo(repo);
+                }
+            }
+        }
+
         // Seed suggestion engine from command history
         if let Ok(commands) = self.db.recent_commands(500) {
             self.suggest_engine.seed(commands);
