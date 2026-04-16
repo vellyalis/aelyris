@@ -11,9 +11,9 @@ use crate::gpu::renderer::{GlyphInstance, RectInstance};
 use super::animation::AnimatedValue;
 use super::cat;
 
-const PALETTE_WIDTH: f32 = 500.0;
-const INPUT_HEIGHT: f32 = 32.0;
-const ITEM_HEIGHT: f32 = 26.0;
+const PALETTE_WIDTH: f32 = 480.0;
+const INPUT_HEIGHT: f32 = 44.0;
+const ITEM_HEIGHT: f32 = 36.0;
 const MAX_VISIBLE_ITEMS: usize = 10;
 const PADDING: f32 = 8.0;
 
@@ -630,8 +630,8 @@ impl PaletteState {
         };
         let palette_h = INPUT_HEIGHT + item_count as f32 * ITEM_HEIGHT + PADDING * 2.0;
 
-        // Dark scrim overlay (simulates blur/frosted glass)
-        let scrim_alpha = 0.4 * self.render_opacity();
+        // Dark scrim overlay (rgba(0,0,0,0.5))
+        let scrim_alpha = 0.5 * self.render_opacity();
         if scrim_alpha > 0.001 {
             rects.push(RectInstance::new(
                 [0.0, 0.0],
@@ -640,42 +640,35 @@ impl PaletteState {
             ));
         }
 
-        // Drop shadow
-        rects.extend(super::shadow::panel_shadow(
-            [palette_x, palette_y], [PALETTE_WIDTH, palette_h], 12.0,
+        // Drop shadow: offset +4px, size +8px, rgba(0,0,0,0.5), radius 12
+        rects.push(RectInstance::rounded(
+            [palette_x + 4.0, palette_y + 4.0],
+            [PALETTE_WIDTH + 8.0, palette_h + 8.0],
+            [0.0, 0.0, 0.0, 0.5 * self.render_opacity()],
+            12.0,
         ));
 
-        // Palette background with border
+        // Palette background — glass-dense rgba(22,22,22,0.62)
+        // Border: 1px rgba(255,255,255,0.06), corner radius 8
         rects.push(RectInstance::bordered(
             [palette_x, palette_y], [PALETTE_WIDTH, palette_h],
-            cat::pm(30, 30, 46, 250), 12.0, 1.0, 1.0,
+            cat::pm(22, 22, 22, 158), 8.0, 1.0, 0.06,
         ));
 
-        // Border accent — color varies by mode
-        let border_color = match &self.mode {
-            PaletteMode::Command => cat::pm(137, 180, 250, 200),
-            PaletteMode::WorktreeCreate => cat::pm(166, 227, 161, 200),
-            PaletteMode::WorktreeSelect { delete: true, .. } => cat::pm(243, 139, 168, 200),
-            PaletteMode::WorktreeSelect { delete: false, .. } => cat::pm(250, 179, 135, 200),
-            PaletteMode::CommandHistory { .. } => cat::pm(203, 166, 247, 200), // Mauve
-            PaletteMode::AgentSpawn { .. } => cat::pm(148, 226, 213, 200),   // Teal
-            PaletteMode::TerminalSearch => cat::pm(249, 226, 175, 200),     // Yellow
-            PaletteMode::FileSearch { .. } => cat::pm(166, 227, 161, 200), // Green
-            PaletteMode::Settings { .. } => cat::pm(245, 194, 231, 200),  // Pink
-            PaletteMode::WatchdogCreate { .. } => cat::pm(250, 179, 135, 200), // Peach
-        };
-        rects.push(RectInstance::new([palette_x, palette_y], [PALETTE_WIDTH, 1.0], border_color));
-
-        // Input background with subtle border
+        // Input area: no background (transparent), bottom border 1px rgba(255,255,255,0.06)
         let input_y = palette_y + PADDING;
-        rects.push(RectInstance::bordered(
-            [palette_x + PADDING, input_y],
-            [PALETTE_WIDTH - PADDING * 2.0, INPUT_HEIGHT],
-            cat::pm(24, 24, 37, 250), 6.0, 1.0, 0.5,
+        // Bottom divider below input
+        rects.push(RectInstance::new(
+            [palette_x, input_y + INPUT_HEIGHT],
+            [PALETTE_WIDTH, 1.0],
+            [0.06, 0.06, 0.06, 0.06], // rgba(255,255,255,0.06) premultiplied
         ));
 
         // Input text — placeholder depends on mode
+        // Padding: 12px left, text-primary rgba(255,255,255,0.88), placeholder text-muted rgba(255,255,255,0.3)
         let text_y = input_y + (INPUT_HEIGHT - font.cell_height) / 2.0;
+        let text_muted: [f32; 4] = [0.3, 0.3, 0.3, 0.3]; // rgba(255,255,255,0.3) premultiplied
+        let text_primary: [f32; 4] = [0.88, 0.88, 0.88, 0.88]; // rgba(255,255,255,0.88) premultiplied
         let (display_input, input_color) = if self.input.is_empty() {
             let placeholder = match &self.mode {
                 PaletteMode::Command => "> Type a command...",
@@ -693,15 +686,15 @@ impl PaletteState {
                     WatchdogCreateStep::SelectTarget => "Target PTY ID...",
                 },
             };
-            (placeholder, cat::overlay0())
+            (placeholder, text_muted)
         } else {
-            (self.input.as_str(), cat::text())
+            (self.input.as_str(), text_primary)
         };
         super::render_text(
             font,
             atlas,
             display_input,
-            palette_x + PADDING + 4.0,
+            palette_x + 12.0,
             text_y,
             input_color,
             &mut glyphs,
@@ -711,9 +704,9 @@ impl PaletteState {
         if !self.input.is_empty()
             || matches!(self.mode, PaletteMode::WorktreeCreate | PaletteMode::AgentSpawn { .. } | PaletteMode::TerminalSearch | PaletteMode::WatchdogCreate { .. })
         {
-            let cursor_x = palette_x + PADDING + 4.0
+            let cursor_x = palette_x + 12.0
                 + self.input.chars().count() as f32 * font.cell_width;
-            rects.push(RectInstance::new([cursor_x, text_y], [2.0, font.cell_height], cat::text()));
+            rects.push(RectInstance::new([cursor_x, text_y], [2.0, font.cell_height], text_primary));
         }
 
         // Item list — depends on mode
@@ -728,9 +721,9 @@ impl PaletteState {
                     font,
                     atlas,
                     "Press Enter to create, Esc to cancel",
-                    palette_x + PADDING + 8.0,
+                    palette_x + 12.0,
                     hint_y,
-                    cat::overlay0(),
+                    [0.3, 0.3, 0.3, 0.3], // text-muted
                     &mut glyphs,
                 );
             }
@@ -760,9 +753,9 @@ impl PaletteState {
                     font,
                     atlas,
                     "Enter to search, Esc to clear",
-                    palette_x + PADDING + 8.0,
+                    palette_x + 12.0,
                     hint_y,
-                    cat::overlay0(),
+                    [0.3, 0.3, 0.3, 0.3], // text-muted
                     &mut glyphs,
                 );
             }
@@ -773,9 +766,9 @@ impl PaletteState {
                     font,
                     atlas,
                     &hint,
-                    palette_x + PADDING + 8.0,
+                    palette_x + 12.0,
                     hint_y,
-                    cat::overlay0(),
+                    [0.3, 0.3, 0.3, 0.3], // text-muted
                     &mut glyphs,
                 );
             }
@@ -790,9 +783,9 @@ impl PaletteState {
                     font,
                     atlas,
                     hint,
-                    palette_x + PADDING + 8.0,
+                    palette_x + 12.0,
                     hint_y,
-                    cat::overlay0(),
+                    [0.3, 0.3, 0.3, 0.3], // text-muted
                     &mut glyphs,
                 );
             }
@@ -810,37 +803,67 @@ impl PaletteState {
         rects: &mut Vec<RectInstance>,
         glyphs: &mut Vec<GlyphInstance>,
     ) {
+        let text_secondary: [f32; 4] = [0.5, 0.5, 0.5, 0.5]; // rgba(255,255,255,0.5)
+        let text_primary: [f32; 4] = [0.88, 0.88, 0.88, 0.88]; // rgba(255,255,255,0.88)
+        let hover_bg: [f32; 4] = [0.06, 0.06, 0.06, 0.06]; // rgba(255,255,255,0.06)
+        let selected_bg: [f32; 4] = [0.1, 0.1, 0.1, 0.1]; // rgba(255,255,255,0.1)
+        let badge_bg: [f32; 4] = [0.06, 0.06, 0.06, 0.06]; // rgba(255,255,255,0.06)
+        let badge_text: [f32; 4] = [0.3, 0.3, 0.3, 0.3]; // rgba(255,255,255,0.3)
+
         for (i, &cmd_idx) in self.filtered.iter().enumerate().take(MAX_VISIBLE_ITEMS) {
             let item_y = list_y + i as f32 * ITEM_HEIGHT;
             let cmd = &COMMANDS[cmd_idx];
 
-            // Selected highlight
+            // Item background: selected = rgba(255,255,255,0.1), radius 8
+            let (item_bg, label_color) = if i == self.selected {
+                (selected_bg, text_primary)
+            } else {
+                (hover_bg, text_secondary) // transparent with hover hint; text-secondary
+            };
+            // Only draw background for selected item (hover is handled at input level)
             if i == self.selected {
-                rects.push(RectInstance::rounded([palette_x + PADDING, item_y], [PALETTE_WIDTH - PADDING * 2.0, ITEM_HEIGHT], cat::pm(69, 71, 90, 150), 4.0));
+                rects.push(RectInstance::rounded(
+                    [palette_x + 12.0, item_y],
+                    [PALETTE_WIDTH - 24.0, ITEM_HEIGHT],
+                    item_bg,
+                    8.0,
+                ));
             }
 
-            // Command label
+            // Command label — 12px horizontal padding, 8px vertical padding
             let label_y = item_y + (ITEM_HEIGHT - font.cell_height) / 2.0;
             super::render_text(
                 font,
                 atlas,
                 cmd.label,
-                palette_x + PADDING + 8.0,
+                palette_x + 12.0,
                 label_y,
-                cat::text(),
+                label_color,
                 glyphs,
             );
 
-            // Shortcut (right-aligned)
+            // Shortcut badge (right-aligned): bg rgba(255,255,255,0.06), radius 4, monospace 12px text
             if !cmd.shortcut.is_empty() {
                 let shortcut_w = cmd.shortcut.chars().count() as f32 * font.cell_width;
+                let badge_padding = 6.0;
+                let badge_w = shortcut_w + badge_padding * 2.0;
+                let badge_h = font.cell_height + 4.0;
+                let badge_x = palette_x + PALETTE_WIDTH - 12.0 - badge_w;
+                let badge_y = item_y + (ITEM_HEIGHT - badge_h) / 2.0;
+
+                rects.push(RectInstance::rounded(
+                    [badge_x, badge_y],
+                    [badge_w, badge_h],
+                    badge_bg,
+                    4.0,
+                ));
                 super::render_text(
                     font,
                     atlas,
                     cmd.shortcut,
-                    palette_x + PALETTE_WIDTH - PADDING - 8.0 - shortcut_w,
-                    label_y,
-                    cat::overlay0(),
+                    badge_x + badge_padding,
+                    badge_y + 2.0,
+                    badge_text,
                     glyphs,
                 );
             }
@@ -858,6 +881,11 @@ impl PaletteState {
         rects: &mut Vec<RectInstance>,
         glyphs: &mut Vec<GlyphInstance>,
     ) {
+        let text_secondary: [f32; 4] = [0.5, 0.5, 0.5, 0.5];
+        let text_primary: [f32; 4] = [0.88, 0.88, 0.88, 0.88];
+        let text_muted: [f32; 4] = [0.3, 0.3, 0.3, 0.3];
+        let selected_bg: [f32; 4] = [0.1, 0.1, 0.1, 0.1];
+
         for (i, &entry_idx) in self.filtered.iter().enumerate().take(MAX_VISIBLE_ITEMS) {
             let item_y = list_y + i as f32 * ITEM_HEIGHT;
             let entry = match entries.get(entry_idx) {
@@ -865,14 +893,14 @@ impl PaletteState {
                 None => continue,
             };
 
-            // Selected highlight
+            // Selected highlight — radius 8
             if i == self.selected {
                 let color = if delete {
                     cat::pm(243, 139, 168, 40)
                 } else {
-                    cat::pm(69, 71, 90, 150)
+                    selected_bg
                 };
-                rects.push(RectInstance::rounded([palette_x + PADDING, item_y], [PALETTE_WIDTH - PADDING * 2.0, ITEM_HEIGHT], color, 4.0));
+                rects.push(RectInstance::rounded([palette_x + 12.0, item_y], [PALETTE_WIDTH - 24.0, ITEM_HEIGHT], color, 8.0));
             }
 
             let label_y = item_y + (ITEM_HEIGHT - font.cell_height) / 2.0;
@@ -884,15 +912,17 @@ impl PaletteState {
                 entry.branch.clone()
             };
             let label_color = if delete && entry.is_main {
-                cat::overlay0() // dimmed — cannot delete main
+                text_muted // dimmed — cannot delete main
+            } else if i == self.selected {
+                text_primary
             } else {
-                cat::text()
+                text_secondary
             };
             super::render_text(
                 font,
                 atlas,
                 &label,
-                palette_x + PADDING + 8.0,
+                palette_x + 12.0,
                 label_y,
                 label_color,
                 glyphs,
@@ -905,9 +935,9 @@ impl PaletteState {
                 font,
                 atlas,
                 &path_display,
-                palette_x + PALETTE_WIDTH - PADDING - 8.0 - path_w,
+                palette_x + PALETTE_WIDTH - 12.0 - path_w,
                 label_y,
-                cat::overlay0(),
+                text_muted,
                 glyphs,
             );
         }
@@ -923,6 +953,10 @@ impl PaletteState {
         rects: &mut Vec<RectInstance>,
         glyphs: &mut Vec<GlyphInstance>,
     ) {
+        let text_secondary: [f32; 4] = [0.5, 0.5, 0.5, 0.5];
+        let text_primary: [f32; 4] = [0.88, 0.88, 0.88, 0.88];
+        let selected_bg: [f32; 4] = [0.1, 0.1, 0.1, 0.1];
+
         for (i, &cmd_idx) in self.filtered.iter().enumerate().take(MAX_VISIBLE_ITEMS) {
             let item_y = list_y + i as f32 * ITEM_HEIGHT;
             let cmd = match commands.get(cmd_idx) {
@@ -931,25 +965,26 @@ impl PaletteState {
             };
 
             if i == self.selected {
-                rects.push(RectInstance::rounded([palette_x + PADDING, item_y], [PALETTE_WIDTH - PADDING * 2.0, ITEM_HEIGHT], cat::pm(69, 71, 90, 150), 4.0));
+                rects.push(RectInstance::rounded([palette_x + 12.0, item_y], [PALETTE_WIDTH - 24.0, ITEM_HEIGHT], selected_bg, 8.0));
             }
 
             let label_y = item_y + (ITEM_HEIGHT - font.cell_height) / 2.0;
             // Truncate long commands for display
-            let max_chars = ((PALETTE_WIDTH - PADDING * 2.0 - 16.0) / font.cell_width) as usize;
+            let max_chars = ((PALETTE_WIDTH - 24.0) / font.cell_width) as usize;
             let display = if cmd.chars().count() > max_chars {
                 let truncated: String = cmd.chars().take(max_chars.saturating_sub(3)).collect();
                 format!("{}...", truncated)
             } else {
                 cmd.clone()
             };
+            let label_color = if i == self.selected { text_primary } else { text_secondary };
             super::render_text(
                 font,
                 atlas,
                 &display,
-                palette_x + PADDING + 8.0,
+                palette_x + 12.0,
                 label_y,
-                cat::text(),
+                label_color,
                 glyphs,
             );
         }

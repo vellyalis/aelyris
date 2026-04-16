@@ -13,11 +13,43 @@ use crate::gpu::renderer::{GlyphInstance, RectInstance};
 use super::animation::AnimatedValue;
 use super::cat;
 
-pub const SIDEBAR_WIDTH: f32 = 260.0;
+pub const SIDEBAR_WIDTH: f32 = 180.0;
 const ROW_HEIGHT: f32 = 22.0;
 const INDENT_PX: f32 = 16.0;
-const TEXT_PAD_LEFT: f32 = 6.0;
-const HEADER_HEIGHT: f32 = 28.0;
+const TEXT_PAD_LEFT: f32 = 8.0;
+const HEADER_HEIGHT: f32 = 32.0;
+
+// --- Tauri Design System colors (premultiplied RGBA) ---
+
+/// Glass-standard background: rgba(20, 20, 20, 0.55)
+const GLASS_STANDARD: [f32; 4] = [20.0 / 255.0 * 0.55, 20.0 / 255.0 * 0.55, 20.0 / 255.0 * 0.55, 0.55];
+/// Border / divider: rgba(255, 255, 255, 0.06)
+const BORDER: [f32; 4] = [0.06, 0.06, 0.06, 0.06];
+/// Text primary: rgba(255, 255, 255, 0.88) — directory names
+const TEXT_PRIMARY: [f32; 4] = [0.88, 0.88, 0.88, 0.88];
+/// Text secondary: rgba(255, 255, 255, 0.5) — file names
+const TEXT_SECONDARY: [f32; 4] = [0.5, 0.5, 0.5, 0.5];
+/// Text muted: rgba(255, 255, 255, 0.3) — headers
+const TEXT_MUTED: [f32; 4] = [0.3, 0.3, 0.3, 0.3];
+/// Arrow / chevron: rgba(255, 255, 255, 0.25)
+const ARROW_COLOR: [f32; 4] = [0.25, 0.25, 0.25, 0.25];
+/// Hover highlight: rgba(255, 255, 255, 0.04)
+const HOVER_BG: [f32; 4] = [0.04, 0.04, 0.04, 0.04];
+/// Selected highlight: rgba(255, 255, 255, 0.06)
+const SELECTED_BG: [f32; 4] = [0.06, 0.06, 0.06, 0.06];
+/// 18K Gold accent: #c8a050
+const GOLD_ACCENT: [f32; 4] = [0.784, 0.627, 0.314, 1.0];
+/// Git modified dot: #fbbf24 (amber)
+const GIT_MODIFIED: [f32; 4] = [0.984, 0.749, 0.141, 1.0];
+/// Git added dot: #4ade80 (green)
+const GIT_ADDED: [f32; 4] = [0.290, 0.871, 0.502, 1.0];
+
+/// Git change status for a file entry.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum GitStatus {
+    Modified,
+    Added,
+}
 
 /// A flattened entry in the file tree.
 #[derive(Clone)]
@@ -26,6 +58,8 @@ pub struct TreeEntry {
     pub path: PathBuf,
     pub is_dir: bool,
     pub depth: u16,
+    /// Git change status (if any).
+    pub git_status: Option<GitStatus>,
 }
 
 /// File tree state for one root directory.
@@ -83,6 +117,7 @@ impl FileTreeState {
                 path,
                 is_dir,
                 depth,
+                git_status: None,
             };
             if is_dir {
                 dirs.push(te);
@@ -216,13 +251,13 @@ impl SidebarState {
 
         let sidebar_h = window_h - chrome_top - super::STATUS_BAR_HEIGHT;
 
-        // Sidebar background
-        rects.push(RectInstance::new([0.0, chrome_top], [SIDEBAR_WIDTH, sidebar_h], cat::pm(20, 20, 33, 240)));
+        // Sidebar background — glass-standard
+        rects.push(RectInstance::new([0.0, chrome_top], [SIDEBAR_WIDTH, sidebar_h], GLASS_STANDARD));
 
-        // Divider line (right edge)
-        rects.push(RectInstance::new([SIDEBAR_WIDTH - 1.0, chrome_top], [1.0, sidebar_h], cat::pm(49, 50, 68, 200)));
+        // Divider line (right edge) — border
+        rects.push(RectInstance::new([SIDEBAR_WIDTH - 1.0, chrome_top], [1.0, sidebar_h], BORDER));
 
-        // Header: "EXPLORER"
+        // Header: "EXPLORER" — text-muted, uppercase
         let header_y = chrome_top + (HEADER_HEIGHT - font.cell_height) / 2.0;
         super::render_text(
             font,
@@ -230,7 +265,7 @@ impl SidebarState {
             "EXPLORER",
             TEXT_PAD_LEFT,
             header_y,
-            cat::subtext0(),
+            TEXT_MUTED,
             &mut glyphs,
         );
 
@@ -253,20 +288,22 @@ impl SidebarState {
 
                 let indent = TEXT_PAD_LEFT + entry.depth as f32 * INDENT_PX;
 
-                // Hover highlight
+                // Hover highlight — subtle white overlay
                 if let Some((mx, my)) = mouse_pos {
                     if mx < SIDEBAR_WIDTH
                         && my >= row_y
                         && my < row_y + ROW_HEIGHT
                         && my >= content_top
                     {
-                        rects.push(RectInstance::rounded([2.0, row_y], [SIDEBAR_WIDTH - 3.0, ROW_HEIGHT], cat::btn_hover(), 4.0));
+                        rects.push(RectInstance::rounded([0.0, row_y], [SIDEBAR_WIDTH, ROW_HEIGHT], HOVER_BG, 4.0));
                     }
                 }
 
-                // Selected highlight
+                // Selected highlight — white overlay + gold left border
                 if tree.selected == Some(i) {
-                    rects.push(RectInstance::rounded([2.0, row_y], [SIDEBAR_WIDTH - 3.0, ROW_HEIGHT], cat::pm(49, 50, 68, 180), 4.0));
+                    rects.push(RectInstance::rounded([0.0, row_y], [SIDEBAR_WIDTH, ROW_HEIGHT], SELECTED_BG, 4.0));
+                    // 2px gold left accent bar
+                    rects.push(RectInstance::new([0.0, row_y], [2.0, ROW_HEIGHT], GOLD_ACCENT));
                 }
 
                 // Icon + name
@@ -286,26 +323,38 @@ impl SidebarState {
                     } else {
                         "\u{25B8}" // ▸
                     };
-                    super::render_text(font, atlas, arrow, indent, text_y, cat::overlay0(), &mut glyphs);
+                    super::render_text(font, atlas, arrow, indent, text_y, ARROW_COLOR, &mut glyphs);
                     let cw = font.cell_width;
                     // Icon after arrow
                     let icon_str = icon_char.to_string();
                     super::render_text(font, atlas, &icon_str, indent + cw, text_y, icon_color, &mut glyphs);
-                    // Name after icon
+                    // Name after icon — text-primary for directories
                     let max_chars =
                         ((SIDEBAR_WIDTH - indent - cw * 3.0) / font.cell_width) as usize;
                     let display_name = truncate_name(&entry.name, max_chars);
-                    super::render_text(font, atlas, &display_name, indent + cw * 2.5, text_y, cat::text(), &mut glyphs);
+                    super::render_text(font, atlas, &display_name, indent + cw * 2.5, text_y, TEXT_PRIMARY, &mut glyphs);
                 } else {
                     let cw = font.cell_width;
                     // Icon (aligned with dir icon position)
                     let icon_str = icon_char.to_string();
                     super::render_text(font, atlas, &icon_str, indent + cw, text_y, icon_color, &mut glyphs);
-                    // Name after icon
+                    // Name after icon — text-secondary for files
                     let max_chars =
                         ((SIDEBAR_WIDTH - indent - cw * 3.0) / font.cell_width) as usize;
                     let display_name = truncate_name(&entry.name, max_chars);
-                    super::render_text(font, atlas, &display_name, indent + cw * 2.5, text_y, cat::subtext1(), &mut glyphs);
+                    super::render_text(font, atlas, &display_name, indent + cw * 2.5, text_y, TEXT_SECONDARY, &mut glyphs);
+                }
+
+                // Git status dot — 5x5 circle at the right edge of the row
+                if let Some(status) = entry.git_status {
+                    let dot_color = match status {
+                        GitStatus::Modified => GIT_MODIFIED,
+                        GitStatus::Added => GIT_ADDED,
+                    };
+                    let dot_size = 5.0;
+                    let dot_x = SIDEBAR_WIDTH - dot_size - 8.0;
+                    let dot_y = row_y + (ROW_HEIGHT - dot_size) / 2.0;
+                    rects.push(RectInstance::rounded([dot_x, dot_y], [dot_size, dot_size], dot_color, 2.5));
                 }
             }
         }

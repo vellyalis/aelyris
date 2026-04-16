@@ -31,15 +31,16 @@ use crate::gpu::font::FontManager;
 use crate::gpu::grid::CellFlags;
 use crate::gpu::renderer::{GlyphInstance, RectInstance};
 
-// Layout constants (pixels)
-pub const TITLE_BAR_HEIGHT: f32 = 32.0;
-pub const TAB_BAR_HEIGHT: f32 = 34.0;
+// Layout constants (pixels) — matches Tauri design system
+pub const TITLE_BAR_HEIGHT: f32 = 48.0;
+pub const TAB_BAR_HEIGHT: f32 = 28.0;
 pub const STATUS_BAR_HEIGHT: f32 = 24.0;
-pub const CHROME_TOP: f32 = TITLE_BAR_HEIGHT + TAB_BAR_HEIGHT;
+pub const CHROME_TOP: f32 = TITLE_BAR_HEIGHT + TAB_BAR_HEIGHT; // 76.0
 pub const BTN_WIDTH: f32 = 46.0;
 
 // Dynamic palette — reads from active theme at runtime.
 // `pm()` is a pure math helper (premultiplied alpha). Named colors delegate to theme.
+// Design system constants follow the Tauri glass hierarchy.
 pub mod cat {
     use super::theme;
 
@@ -60,13 +61,72 @@ pub mod cat {
         [c[0] * af, c[1] * af, c[2] * af, af]
     }
 
-    // Chrome backgrounds — derived from theme with specific alphas
-    pub fn mantle_bg() -> [f32; 4] { pm_color(theme::current().mantle, 240) }
-    pub fn tab_bar_bg() -> [f32; 4] { theme::current().tab_bar_bg }
-    pub fn tab_active() -> [f32; 4] { theme::current().tab_active }
-    pub fn status_bg() -> [f32; 4] { theme::current().status_bg }
-    pub fn close_hover() -> [f32; 4] { theme::current().close_hover }
-    pub fn btn_hover() -> [f32; 4] { theme::current().btn_hover }
+    // -----------------------------------------------------------------------
+    // Glass hierarchy (premultiplied RGBA) — Tauri design system
+    // -----------------------------------------------------------------------
+    pub const GLASS_CLEAR: [f32; 4] = pm(12, 12, 12, 5);       // 0.02 alpha
+    pub const GLASS_GROUND: [f32; 4] = pm(10, 10, 10, 217);     // 0.85
+    pub const GLASS_FRAME: [f32; 4] = pm(16, 16, 16, 115);      // 0.45
+    pub const GLASS_STANDARD: [f32; 4] = pm(20, 20, 20, 140);   // 0.55
+    pub const GLASS_DENSE: [f32; 4] = pm(22, 22, 22, 158);      // 0.62
+    pub const GLASS_THICK: [f32; 4] = pm(28, 28, 28, 184);      // 0.72
+    pub const GLASS_SOLID: [f32; 4] = pm(26, 26, 26, 209);      // 0.82
+
+    // -----------------------------------------------------------------------
+    // Gold accent (18K gold)
+    // -----------------------------------------------------------------------
+    pub const GOLD: [f32; 4] = [0.784, 0.627, 0.314, 1.0];                             // #c8a050
+    pub const GOLD_DIM: [f32; 4] = [0.784 * 0.4, 0.627 * 0.4, 0.314 * 0.4, 0.4];
+
+    // -----------------------------------------------------------------------
+    // Text hierarchy (premultiplied white)
+    // -----------------------------------------------------------------------
+    pub const TEXT_PRIMARY: [f32; 4] = [0.88, 0.88, 0.88, 0.88];
+    pub const TEXT_SECONDARY: [f32; 4] = [0.5, 0.5, 0.5, 0.5];
+    pub const TEXT_MUTED: [f32; 4] = [0.3, 0.3, 0.3, 0.3];
+
+    // -----------------------------------------------------------------------
+    // Borders
+    // -----------------------------------------------------------------------
+    pub const BORDER: [f32; 4] = [0.06, 0.06, 0.06, 0.06];
+    pub const BORDER_STRONG: [f32; 4] = [0.1, 0.1, 0.1, 0.1];
+
+    // -----------------------------------------------------------------------
+    // Status colors
+    // -----------------------------------------------------------------------
+    pub const STATUS_IDLE: [f32; 4] = [0.29, 0.87, 0.50, 1.0];      // #4ade80
+    pub const STATUS_THINKING: [f32; 4] = [0.80, 0.65, 0.97, 1.0];  // #cba6f7
+    pub const STATUS_ERROR: [f32; 4] = [0.95, 0.55, 0.66, 1.0];     // #f38ba8
+    pub const STATUS_DONE: [f32; 4] = [0.54, 0.71, 0.98, 1.0];      // #89b4fa
+
+    // -----------------------------------------------------------------------
+    // Catppuccin ANSI (kept for terminal rendering)
+    // -----------------------------------------------------------------------
+    pub const CTP_RED: [f32; 4] = [0.95, 0.55, 0.66, 1.0];
+    pub const CTP_GREEN: [f32; 4] = [0.65, 0.89, 0.63, 1.0];
+    pub const CTP_BLUE: [f32; 4] = [0.54, 0.71, 0.98, 1.0];
+    pub const CTP_PEACH: [f32; 4] = [0.98, 0.70, 0.53, 1.0];
+
+    // -----------------------------------------------------------------------
+    // Hover / active states
+    // -----------------------------------------------------------------------
+    pub const HOVER: [f32; 4] = [0.06, 0.06, 0.06, 0.06];           // white 6%
+    pub const ACTIVE: [f32; 4] = [0.1, 0.1, 0.1, 0.1];              // white 10%
+    pub const CLOSE_HOVER: [f32; 4] = [0.95, 0.55, 0.66, 0.7];      // ctp-red 70%
+
+    // -----------------------------------------------------------------------
+    // Chrome backgrounds — design system defaults used by build_* methods
+    // -----------------------------------------------------------------------
+    pub fn title_bar_bg() -> [f32; 4] { GLASS_FRAME }
+    pub fn tab_bar_bg() -> [f32; 4] { GLASS_FRAME }
+    pub fn status_bar_bg() -> [f32; 4] { pm(15, 15, 15, 107) }      // rgba(15,15,15,0.42)
+
+    // Legacy chrome background functions (kept for backward compat)
+    pub fn mantle_bg() -> [f32; 4] { GLASS_FRAME }
+    pub fn tab_active() -> [f32; 4] { ACTIVE }
+    pub fn status_bg() -> [f32; 4] { pm(15, 15, 15, 107) }
+    pub fn close_hover() -> [f32; 4] { CLOSE_HOVER }
+    pub fn btn_hover() -> [f32; 4] { HOVER }
 
     // Dynamic text color functions — theme-aware rendering
     pub fn text() -> [f32; 4] { theme::current().text }
@@ -195,27 +255,27 @@ impl ChromeState {
         glyphs: &mut Vec<GlyphInstance>,
         hits: &mut Vec<HitRegion>,
     ) {
-        // Background
-        rects.push(RectInstance::new([0.0, 0.0], [w, TITLE_BAR_HEIGHT], cat::mantle_bg()));
+        // Background — glass-frame
+        rects.push(RectInstance::new([0.0, 0.0], [w, TITLE_BAR_HEIGHT], cat::title_bar_bg()));
 
-        // Title text
+        // Title text — TEXT_PRIMARY at 14px weight 600
         let title_y = (TITLE_BAR_HEIGHT - font.cell_height) / 2.0;
-        render_text(font, atlas, "Aether Terminal", 12.0, title_y, cat::subtext1(), glyphs);
+        render_text(font, atlas, "Aether Terminal", 12.0, title_y, cat::TEXT_PRIMARY, glyphs);
 
         // Window control buttons (right-aligned)
         let btn_x_close = w - BTN_WIDTH;
         let btn_x_max = w - BTN_WIDTH * 2.0;
         let btn_x_min = w - BTN_WIDTH * 3.0;
 
-        // Hover highlights
+        // Hover highlights — proper hover states
         if let Some((mx, my)) = self.mouse_pos {
             if my < TITLE_BAR_HEIGHT {
                 if mx >= btn_x_close {
-                    rects.push(RectInstance::new([btn_x_close, 0.0], [BTN_WIDTH, TITLE_BAR_HEIGHT], cat::close_hover()));
+                    rects.push(RectInstance::new([btn_x_close, 0.0], [BTN_WIDTH, TITLE_BAR_HEIGHT], cat::CLOSE_HOVER));
                 } else if mx >= btn_x_max {
-                    rects.push(RectInstance::new([btn_x_max, 0.0], [BTN_WIDTH, TITLE_BAR_HEIGHT], cat::btn_hover()));
+                    rects.push(RectInstance::new([btn_x_max, 0.0], [BTN_WIDTH, TITLE_BAR_HEIGHT], cat::HOVER));
                 } else if mx >= btn_x_min {
-                    rects.push(RectInstance::new([btn_x_min, 0.0], [BTN_WIDTH, TITLE_BAR_HEIGHT], cat::btn_hover()));
+                    rects.push(RectInstance::new([btn_x_min, 0.0], [BTN_WIDTH, TITLE_BAR_HEIGHT], cat::HOVER));
                 }
             }
         }
@@ -223,10 +283,10 @@ impl ChromeState {
         // Button icons (centered in each button area)
         let icon_y = title_y;
         let icon_offset = (BTN_WIDTH - font.cell_width) / 2.0;
-        render_text(font, atlas, "\u{2715}", btn_x_close + icon_offset, icon_y, cat::subtext1(), glyphs);
+        render_text(font, atlas, "\u{2715}", btn_x_close + icon_offset, icon_y, cat::TEXT_SECONDARY, glyphs);
         let max_icon = if self.is_maximized { "\u{2752}" } else { "\u{25A1}" };
-        render_text(font, atlas, max_icon, btn_x_max + icon_offset, icon_y, cat::subtext1(), glyphs);
-        render_text(font, atlas, "\u{2500}", btn_x_min + icon_offset, icon_y, cat::subtext1(), glyphs);
+        render_text(font, atlas, max_icon, btn_x_max + icon_offset, icon_y, cat::TEXT_SECONDARY, glyphs);
+        render_text(font, atlas, "\u{2500}", btn_x_min + icon_offset, icon_y, cat::TEXT_SECONDARY, glyphs);
 
         // Hit regions: buttons first (higher priority), then drag area
         hits.push(HitRegion {
@@ -259,12 +319,12 @@ impl ChromeState {
     ) {
         let bar_y = TITLE_BAR_HEIGHT;
 
-        // Background + bottom separator
+        // Background — glass-frame + bottom border
         rects.push(RectInstance::new([0.0, bar_y], [w, TAB_BAR_HEIGHT], cat::tab_bar_bg()));
         rects.push(RectInstance::new(
             [0.0, bar_y + TAB_BAR_HEIGHT - 1.0],
             [w, 1.0],
-            cat::pm(69, 71, 90, 80),
+            cat::BORDER,
         ));
 
         let tab_h = TAB_BAR_HEIGHT - 4.0;
@@ -279,29 +339,43 @@ impl ChromeState {
             let close_w = font.cell_width + 8.0; // close button space
             let tab_w = 16.0 + tab_text_w + close_w; // padding + text + close
 
-            // Tab background (active tab is highlighted with accent indicator)
+            // Tab background — active: ACTIVE (white 10%) with radius 4
             if is_active {
-                rects.push(RectInstance::rounded([x, tab_y], [tab_w, tab_h], cat::tab_active(), 6.0));
-                // Bottom accent indicator (2px line in blue)
+                rects.push(RectInstance::rounded([x, tab_y], [tab_w, tab_h], cat::ACTIVE, 4.0));
+                // Bottom accent indicator (gold)
                 rects.push(RectInstance::rounded(
                     [x + 4.0, tab_y + tab_h - 2.0],
                     [tab_w - 8.0, 2.0],
-                    cat::blue(),
+                    cat::GOLD_DIM,
                     1.0,
                 ));
             } else if let Some((mx, my)) = self.mouse_pos {
                 if mx >= x && mx < x + tab_w && my >= tab_y && my < tab_y + tab_h {
-                    rects.push(RectInstance::rounded([x, tab_y], [tab_w, tab_h], cat::btn_hover(), 6.0));
+                    rects.push(RectInstance::rounded([x, tab_y], [tab_w, tab_h], cat::HOVER, 4.0));
                 }
             }
 
-            // Tab title
-            let text_color = if is_active { cat::text() } else { cat::subtext0() };
+            // Tab title — 10px text
+            let text_color = if is_active { cat::TEXT_PRIMARY } else { cat::TEXT_SECONDARY };
             render_text(font, atlas, title, x + 8.0, text_y, text_color, glyphs);
 
-            // Close button on tab
+            // Close button on tab — only visible on hover (opacity 0 → 0.5 → 1.0)
             let close_x = x + 8.0 + tab_text_w + 4.0;
-            render_text(font, atlas, "\u{2715}", close_x, text_y, cat::overlay0(), glyphs);
+            let close_visible = if let Some((mx, my)) = self.mouse_pos {
+                mx >= x && mx < x + tab_w && my >= tab_y && my < tab_y + tab_h
+            } else {
+                false
+            };
+            if close_visible {
+                let close_hovered = if let Some((mx, _)) = self.mouse_pos {
+                    mx >= close_x && mx < close_x + close_w
+                } else {
+                    false
+                };
+                let close_alpha = if close_hovered { 1.0 } else { 0.5 };
+                let close_color = [close_alpha, close_alpha, close_alpha, close_alpha];
+                render_text(font, atlas, "\u{2715}", close_x, text_y, close_color, glyphs);
+            }
 
             // Tab click region (switch) — push first so CloseTab wins in reverse iteration
             hits.push(HitRegion {
@@ -318,10 +392,10 @@ impl ChromeState {
 
         // New tab button
         let add_w = font.cell_width + 16.0;
-        render_text(font, atlas, "+", x + 8.0, text_y, cat::overlay0(), glyphs);
+        render_text(font, atlas, "+", x + 8.0, text_y, cat::TEXT_SECONDARY, glyphs);
         if let Some((mx, my)) = self.mouse_pos {
             if mx >= x && mx < x + add_w && my >= tab_y && my < tab_y + tab_h {
-                rects.push(RectInstance::rounded([x, tab_y], [add_w, tab_h], cat::btn_hover(), 6.0));
+                rects.push(RectInstance::rounded([x, tab_y], [add_w, tab_h], cat::HOVER, 4.0));
             }
         }
         hits.push(HitRegion {
@@ -342,44 +416,44 @@ impl ChromeState {
     ) {
         let bar_y = h - STATUS_BAR_HEIGHT;
 
-        // Top separator + background
-        rects.push(RectInstance::new([0.0, bar_y], [w, 1.0], cat::pm(69, 71, 90, 80)));
-        rects.push(RectInstance::new([0.0, bar_y + 1.0], [w, STATUS_BAR_HEIGHT - 1.0], cat::status_bg()));
+        // Top separator + background — rgba(15,15,15, 0.42) darker status bar
+        rects.push(RectInstance::new([0.0, bar_y], [w, 1.0], cat::BORDER));
+        rects.push(RectInstance::new([0.0, bar_y + 1.0], [w, STATUS_BAR_HEIGHT - 1.0], cat::status_bar_bg()));
 
         let text_y = bar_y + (STATUS_BAR_HEIGHT - font.cell_height) / 2.0;
         let mut x = 10.0;
 
         if let Some(so) = &self.status_override {
-            // Editor mode status bar
-            render_text(font, atlas, &so.label, x, text_y, cat::blue(), glyphs);
+            // Editor mode status bar — TEXT_MUTED at 11px
+            render_text(font, atlas, &so.label, x, text_y, cat::TEXT_MUTED, glyphs);
             x += so.label.chars().count() as f32 * font.cell_width + 8.0;
 
-            render_text(font, atlas, "|", x, text_y, cat::overlay0(), glyphs);
+            render_text(font, atlas, "|", x, text_y, cat::TEXT_MUTED, glyphs);
             x += font.cell_width + 8.0;
 
-            render_text(font, atlas, &so.detail, x, text_y, cat::subtext1(), glyphs);
+            render_text(font, atlas, &so.detail, x, text_y, cat::TEXT_MUTED, glyphs);
             x += so.detail.chars().count() as f32 * font.cell_width + 8.0;
 
-            render_text(font, atlas, "|", x, text_y, cat::overlay0(), glyphs);
+            render_text(font, atlas, "|", x, text_y, cat::TEXT_MUTED, glyphs);
             x += font.cell_width + 8.0;
 
-            render_text(font, atlas, &so.indicator, x, text_y, cat::green(), glyphs);
+            render_text(font, atlas, &so.indicator, x, text_y, cat::STATUS_IDLE, glyphs);
         } else if let Some(tab) = self.tabs.get(self.active_tab) {
-            // Terminal mode status bar
-            render_text(font, atlas, &tab.shell, x, text_y, cat::blue(), glyphs);
+            // Terminal mode status bar — TEXT_MUTED at 11px
+            render_text(font, atlas, &tab.shell, x, text_y, cat::TEXT_MUTED, glyphs);
             x += tab.shell.chars().count() as f32 * font.cell_width + 8.0;
 
-            render_text(font, atlas, "|", x, text_y, cat::overlay0(), glyphs);
+            render_text(font, atlas, "|", x, text_y, cat::TEXT_MUTED, glyphs);
             x += font.cell_width + 8.0;
 
             let branch = self.git_branch.as_deref().unwrap_or("—");
-            render_text(font, atlas, branch, x, text_y, cat::green(), glyphs);
+            render_text(font, atlas, branch, x, text_y, cat::STATUS_IDLE, glyphs);
             x += branch.chars().count() as f32 * font.cell_width + 8.0;
 
-            render_text(font, atlas, "|", x, text_y, cat::overlay0(), glyphs);
+            render_text(font, atlas, "|", x, text_y, cat::TEXT_MUTED, glyphs);
             x += font.cell_width + 8.0;
 
-            render_text(font, atlas, "UTF-8", x, text_y, cat::subtext0(), glyphs);
+            render_text(font, atlas, "UTF-8", x, text_y, cat::TEXT_MUTED, glyphs);
         }
     }
 }

@@ -4,9 +4,7 @@ use crate::gpu::atlas::GlyphAtlas;
 use crate::gpu::font::FontManager;
 use crate::gpu::renderer::{GlyphInstance, RectInstance};
 
-use super::cat;
-
-const TOAST_WIDTH: f32 = 300.0;
+const TOAST_WIDTH: f32 = 320.0;
 const TOAST_HEIGHT: f32 = 32.0;
 const TOAST_MARGIN: f32 = 8.0;
 const TOAST_DURATION: u32 = 180; // ~3 seconds at 60fps
@@ -99,11 +97,12 @@ impl ToastManager {
                 1.0
             };
 
-            let border_color = match toast.level {
-                ToastLevel::Info => cat::pm(137, 180, 250, (200.0 * alpha) as u8),
-                ToastLevel::Success => cat::pm(166, 227, 161, (200.0 * alpha) as u8),
-                ToastLevel::Warning => cat::pm(249, 226, 175, (200.0 * alpha) as u8),
-                ToastLevel::Error => cat::pm(243, 139, 168, (200.0 * alpha) as u8),
+            // Left accent stripe colors (3px)
+            let stripe_color = match toast.level {
+                ToastLevel::Info => [0.537 * alpha, 0.706 * alpha, 0.980 * alpha, alpha],    // #89b4fa
+                ToastLevel::Success => [0.651 * alpha, 0.890 * alpha, 0.631 * alpha, alpha], // #a6e3a1
+                ToastLevel::Warning => [0.976 * alpha, 0.886 * alpha, 0.686 * alpha, alpha], // #f9e2af
+                ToastLevel::Error => [0.953 * alpha, 0.545 * alpha, 0.659 * alpha, alpha],   // #f38ba8
             };
 
             // Drop shadow (scaled by alpha for fade-out)
@@ -114,31 +113,28 @@ impl ToastManager {
                 }
             }
 
-            // Background with border
+            // Background: rgba(28,28,28,0.72) — glass-thick
+            // Border: 1px rgba(255,255,255,0.1), corner radius 8
+            let bg_alpha = 0.72 * alpha;
+            let bg_r = 28.0 / 255.0 * bg_alpha;
             rects.push(RectInstance::bordered(
                 [x, y], [TOAST_WIDTH, TOAST_HEIGHT],
-                cat::pm(30, 30, 46, (230.0 * alpha) as u8), 8.0, 1.0, 0.6,
+                [bg_r, bg_r, bg_r, bg_alpha], 8.0, 1.0, 0.1,
             ));
 
-            // Left accent border
-            rects.push(RectInstance::rounded([x, y], [3.0, TOAST_HEIGHT], border_color, 8.0));
+            // Left accent stripe (3px)
+            rects.push(RectInstance::rounded([x, y], [3.0, TOAST_HEIGHT], stripe_color, 8.0));
 
-            // Text
+            // Text: rgba(255,255,255,0.88) — text-primary
             let text_y = y + (TOAST_HEIGHT - font.cell_height) / 2.0;
-            let max_chars = ((TOAST_WIDTH - 16.0) / font.cell_width) as usize;
+            let max_chars = ((TOAST_WIDTH - 24.0) / font.cell_width) as usize;
             let display = if toast.message.chars().count() > max_chars {
                 let t: String = toast.message.chars().take(max_chars.saturating_sub(3)).collect();
                 format!("{}...", t)
             } else {
                 toast.message.clone()
             };
-            let base = cat::text();
-            let text_color = [
-                base[0] * alpha,
-                base[1] * alpha,
-                base[2] * alpha,
-                alpha,
-            ];
+            let text_color = [0.88 * alpha, 0.88 * alpha, 0.88 * alpha, 0.88 * alpha];
             super::render_text(font, atlas, &display, x + 10.0, text_y, text_color, &mut glyphs);
         }
 

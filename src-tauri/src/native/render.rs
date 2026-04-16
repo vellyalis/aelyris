@@ -259,7 +259,9 @@ impl NativeTerminal {
         }
         drop(atlas);
 
-        let mut all_rects = chrome_out.rects;
+        // Light leak rects at Z=0 (before chrome, after clear)
+        let mut all_rects = build_light_leaks(window_w, window_h);
+        all_rects.extend(chrome_out.rects);
         all_rects.extend(sidebar_out.rects);
         all_rects.extend(scm_rects);
         all_rects.extend(agent_rects);
@@ -293,8 +295,10 @@ impl NativeTerminal {
                     &all_glyphs,
                     &all_rects,
                     wgpu::Color {
-                        r: 0.0, g: 0.0, b: 0.0,
-                        a: self.config.appearance.opacity as f64,
+                        r: 0.047, // 12/255
+                        g: 0.047,
+                        b: 0.047,
+                        a: 0.02, // glass-clear — nearly transparent, Mica shows through
                     },
                 );
                 texture.present();
@@ -419,8 +423,9 @@ impl NativeTerminal {
         let panel_h = 28.0 + agent_tabs.len() as f32 * 36.0;
         let panel_y = window_h - ui::STATUS_BAR_HEIGHT - panel_h;
 
-        rects.push(RectInstance::bordered([0.0, panel_y], [sidebar_w, panel_h], ui::cat::pm(24, 24, 37, 220), 0.0, 1.0, 0.5));
-        rects.push(RectInstance::new([0.0, panel_y], [sidebar_w, 1.0], ui::cat::pm(69, 71, 90, 150)));
+        // Panel background: glass-thick rgba(28,28,28,0.72)
+        rects.push(RectInstance::bordered([0.0, panel_y], [sidebar_w, panel_h], ui::cat::GLASS_THICK, 0.0, 1.0, 0.5));
+        rects.push(RectInstance::new([0.0, panel_y], [sidebar_w, 1.0], ui::cat::BORDER));
 
         let header_y = panel_y + (28.0 - font.cell_height) / 2.0;
         ui::render_text(font, atlas, "AGENTS", 8.0, header_y, ui::cat::overlay0(), &mut glyphs);
@@ -435,7 +440,8 @@ impl NativeTerminal {
             let is_active = *tab_idx == self.chrome.active_tab;
 
             if is_active {
-                rects.push(RectInstance::rounded([2.0, y], [sidebar_w - 4.0, 36.0], ui::cat::pm(69, 71, 90, 80), 6.0));
+                // Agent entry active: rgba(255,255,255,0.06)
+                rects.push(RectInstance::rounded([2.0, y], [sidebar_w - 4.0, 36.0], ui::cat::HOVER, 6.0));
             }
             let dot_y = y + (36.0 - 4.0) / 2.0;
             rects.push(RectInstance::new([8.0, dot_y], [4.0, 4.0], info.status.color()));
@@ -447,12 +453,20 @@ impl NativeTerminal {
                 AgentCli::Gemini => "Gemini",
                 AgentCli::Custom(s) => s.as_str(),
             };
-            let label = format!("{} ({})", cli_name, info.model);
-            ui::render_text(font, atlas, &label, 18.0, text_y1, ui::cat::text(), &mut glyphs);
+            // CLI name: text-primary rgba(255,255,255,0.88)
+            ui::render_text(font, atlas, cli_name, 18.0, text_y1, ui::cat::TEXT_PRIMARY, &mut glyphs);
+            // Model text: #89b4fa (ctp-blue)
+            let model_x = 18.0 + (cli_name.len() as f32 + 1.0) * font.cell_width;
+            let model_label = format!("({})", info.model);
+            ui::render_text(font, atlas, &model_label, model_x, text_y1, ui::cat::CTP_BLUE, &mut glyphs);
 
             let text_y2 = y + 4.0 + font.cell_height + 2.0;
-            let detail = format!("{} ${:.3}", info.status.label(), info.cost);
-            ui::render_text(font, atlas, &detail, 18.0, text_y2, ui::cat::overlay0(), &mut glyphs);
+            // Status label + cost text: #fab387 (ctp-peach)
+            let status_label = info.status.label();
+            ui::render_text(font, atlas, status_label, 18.0, text_y2, ui::cat::overlay0(), &mut glyphs);
+            let cost_str = format!(" ${:.3}", info.cost);
+            let cost_x = 18.0 + status_label.len() as f32 * font.cell_width;
+            ui::render_text(font, atlas, &cost_str, cost_x, text_y2, ui::cat::CTP_PEACH, &mut glyphs);
         }
         (rects, glyphs)
     }
@@ -525,10 +539,10 @@ fn build_block_decorations(
     let cell_h = font.cell_height;
     let cell_w = font.cell_width;
 
-    // Border color: semi-transparent surface overlay
-    let border_color = ui::cat::pm(69, 71, 90, 100);
-    // Header background: very subtle tint
-    let header_bg = ui::cat::pm(49, 50, 68, 60);
+    // Border color: rgba(255,255,255,0.06) — design system border
+    let border_color = ui::cat::BORDER;
+    // Header background: rgba(255,255,255,0.03)
+    let header_bg = [0.03, 0.03, 0.03, 0.03];
     let radius = 8.0_f32;
     let border_thickness = 1.5_f32;
     let inset = 4.0_f32; // horizontal inset from pane edge
@@ -617,7 +631,7 @@ fn build_block_decorations(
             } else {
                 format!("E{}", code)
             };
-            let badge_color = if code == 0 { ui::cat::green() } else { [0.95, 0.55, 0.66, 1.0] };
+            let badge_color = if code == 0 { ui::cat::STATUS_IDLE } else { ui::cat::STATUS_ERROR };
             let badge_x = bx + block_w - (badge.len() as f32 + 1.0) * cell_w;
             ui::render_text(font, atlas, &badge, badge_x, text_y, badge_color, &mut dec_glyphs);
         }
@@ -789,6 +803,33 @@ pub fn render_pane_tree(
             }
         }
     }
+}
+
+/// Build "Boucheron luxury" light leak rects — radial gradient-simulating overlays
+/// placed at Z=0 before chrome for a subtle ambient glow.
+fn build_light_leaks(window_w: f32, window_h: f32) -> Vec<RectInstance> {
+    let mut rects = Vec::new();
+
+    // Top-left gold radial glow
+    // Simulated with a large, very faint rect
+    let glow_size = window_w * 0.4;
+    rects.push(RectInstance::rounded(
+        [-glow_size * 0.3, -glow_size * 0.3],
+        [glow_size, glow_size],
+        [200.0 / 255.0 * 0.08, 160.0 / 255.0 * 0.08, 80.0 / 255.0 * 0.08, 0.08], // gold at 8% opacity
+        glow_size * 0.5, // large radius = circle-like
+    ));
+
+    // Bottom-right cyan radial glow
+    let cyan_size = window_w * 0.35;
+    rects.push(RectInstance::rounded(
+        [window_w - cyan_size * 0.6, window_h - cyan_size * 0.6],
+        [cyan_size, cyan_size],
+        [148.0 / 255.0 * 0.05, 226.0 / 255.0 * 0.05, 213.0 / 255.0 * 0.05, 0.05], // cyan at 5%
+        cyan_size * 0.5,
+    ));
+
+    rects
 }
 
 /// Fluent Design "Reveal Highlight" -- a subtle radial glow that follows the mouse

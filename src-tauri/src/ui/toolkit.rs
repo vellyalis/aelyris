@@ -128,13 +128,19 @@ impl ToolkitState {
             let btn_x = x + TOOL_PAD;
             let btn_w = w - TOOL_PAD * 2.0;
 
-            // Default button background
-            let mut bg_color = cat::pm(49, 50, 68, 120);
+            // Default button background: glass-thick rgba(28,28,28,0.72)
+            let mut bg_color = cat::GLASS_THICK;
 
-            // Hover highlight
+            // Hover highlight: rgba(255,255,255,0.06)
             if let Some((mx, my)) = mouse_pos {
                 if mx >= btn_x && mx < btn_x + btn_w && my >= btn_y && my < btn_y + TOOL_HEIGHT {
-                    bg_color = cat::pm(69, 71, 90, 180);
+                    // Blend glass-thick + hover overlay
+                    bg_color = [
+                        bg_color[0] + cat::HOVER[0],
+                        bg_color[1] + cat::HOVER[1],
+                        bg_color[2] + cat::HOVER[2],
+                        (bg_color[3] + cat::HOVER[3]).min(1.0),
+                    ];
                 }
             }
 

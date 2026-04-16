@@ -9,12 +9,12 @@ use crate::gpu::font::FontManager;
 use crate::gpu::renderer::{GlyphInstance, RectInstance};
 use super::cat;
 
-const DIALOG_WIDTH: f32 = 420.0;
+const DIALOG_WIDTH: f32 = 380.0;
 const FIELD_HEIGHT: f32 = 28.0;
 const BUTTON_HEIGHT: f32 = 32.0;
 const PADDING: f32 = 16.0;
 const CORNER_RADIUS: f32 = 12.0;
-const FIELD_RADIUS: f32 = 6.0;
+const FIELD_RADIUS: f32 = 8.0;
 const SHADOW_OFFSET: f32 = 4.0;
 const LABEL_FIELD_GAP: f32 = 4.0;
 
@@ -192,47 +192,44 @@ impl DialogState {
         let dialog_x = (window_w - DIALOG_WIDTH) / 2.0;
         let dialog_y = (window_h - dialog_h) / 2.0;
 
-        // Dark scrim overlay (same as palette)
+        // Dark scrim overlay — rgba(0,0,0,0.5)
         rects.push(RectInstance::new(
             [0.0, 0.0],
             [window_w, window_h],
             [0.0, 0.0, 0.0, 0.5],
         ));
 
-        // Shadow behind dialog
+        // Shadow behind dialog — rgba(0,0,0,0.5)
         rects.push(RectInstance::rounded(
             [dialog_x + SHADOW_OFFSET, dialog_y + SHADOW_OFFSET],
-            [DIALOG_WIDTH, dialog_h],
-            [0.0, 0.0, 0.0, 0.3],
-            CORNER_RADIUS,
+            [DIALOG_WIDTH + 8.0, dialog_h + 8.0],
+            [0.0, 0.0, 0.0, 0.5],
+            CORNER_RADIUS + 4.0,
         ));
 
-        // Dialog background
-        rects.push(RectInstance::rounded(
+        // Dialog background — rgba(24,24,24,0.92) near-solid
+        // Border: 1px rgba(255,255,255,0.1)
+        rects.push(RectInstance::bordered(
             [dialog_x, dialog_y],
             [DIALOG_WIDTH, dialog_h],
-            cat::pm(30, 30, 46, 250),
+            cat::pm(24, 24, 24, 234), // 0.92 * 255 ≈ 234
             CORNER_RADIUS,
-        ));
-
-        // Top border accent (blue)
-        rects.push(RectInstance::new(
-            [dialog_x, dialog_y],
-            [DIALOG_WIDTH, 1.0],
-            cat::pm(137, 180, 250, 200),
+            1.0,
+            0.1,
         ));
 
         let mut cursor_y = dialog_y + PADDING;
 
-        // Title text
+        // Title text — 15px, weight 600, rgba(255,255,255,0.88) text-primary
         let title_text_y = cursor_y + (font.cell_height - font.cell_height) / 2.0;
+        let text_primary: [f32; 4] = [0.88, 0.88, 0.88, 0.88];
         super::render_text(
             font,
             atlas,
             &self.title,
             dialog_x + PADDING,
             title_text_y,
-            cat::text(),
+            text_primary,
             &mut glyphs,
         );
         cursor_y += title_row_h;
@@ -242,22 +239,25 @@ impl DialogState {
         for (i, field) in self.fields.iter().enumerate() {
             let is_focused = i == self.focused_field;
 
-            // Label
+            // Label — text-secondary
+            let text_secondary: [f32; 4] = [0.5, 0.5, 0.5, 0.5];
             super::render_text(
                 font,
                 atlas,
                 field.label(),
                 dialog_x + PADDING,
                 cursor_y,
-                cat::subtext1(),
+                text_secondary,
                 &mut glyphs,
             );
             cursor_y += font.cell_height + LABEL_FIELD_GAP;
 
             let input_h = field.input_height(font.cell_height);
 
-            // Input field background
-            let field_bg = cat::pm(24, 24, 37, 250);
+            // Input field background: rgba(255,255,255,0.04)
+            // Border: 1px rgba(255,255,255,0.1), focus border: gold #c8a050
+            // Corner radius: 8 (FIELD_RADIUS)
+            let field_bg: [f32; 4] = [0.04, 0.04, 0.04, 0.04]; // rgba(255,255,255,0.04)
             rects.push(RectInstance::rounded(
                 [dialog_x + PADDING, cursor_y],
                 [inner_w, input_h],
@@ -265,9 +265,15 @@ impl DialogState {
                 FIELD_RADIUS,
             ));
 
-            // Focused field gets a blue border (drawn as 4 thin rects around the field)
-            if is_focused {
-                let border_color = cat::blue();
+            // Field border (4 thin rects)
+            {
+                let border_color = if is_focused {
+                    // gold #c8a050 — focus border
+                    [200.0 / 255.0, 160.0 / 255.0, 80.0 / 255.0, 1.0]
+                } else {
+                    // rgba(255,255,255,0.1)
+                    [0.1, 0.1, 0.1, 0.1]
+                };
                 let bx = dialog_x + PADDING;
                 let by = cursor_y;
                 // Top
@@ -291,6 +297,7 @@ impl DialogState {
             // Field text or placeholder
             let text_y = cursor_y + (input_h - font.cell_height) / 2.0;
             let text_x = dialog_x + PADDING + 6.0;
+            let text_muted: [f32; 4] = [0.3, 0.3, 0.3, 0.3]; // rgba(255,255,255,0.3)
             if field.value().is_empty() {
                 super::render_text(
                     font,
@@ -298,7 +305,7 @@ impl DialogState {
                     field.placeholder(),
                     text_x,
                     text_y,
-                    cat::overlay0(),
+                    text_muted,
                     &mut glyphs,
                 );
             } else {
@@ -308,7 +315,7 @@ impl DialogState {
                     field.value(),
                     text_x,
                     text_y,
-                    cat::text(),
+                    text_primary,
                     &mut glyphs,
                 );
             }
@@ -319,7 +326,7 @@ impl DialogState {
                 rects.push(RectInstance::new(
                     [cursor_x, text_y],
                     [2.0, font.cell_height],
-                    cat::text(),
+                    text_primary,
                 ));
             }
 
@@ -333,14 +340,16 @@ impl DialogState {
         let buttons_total_w = button_w * 2.0 + button_gap;
         let buttons_x = dialog_x + DIALOG_WIDTH - PADDING - buttons_total_w;
 
-        // Cancel button
+        // Cancel button — transparent bg, 1px border rgba(255,255,255,0.1), radius 8
         let cancel_x = buttons_x;
-        rects.push(RectInstance::rounded(
-            [cancel_x, button_y],
-            [button_w, BUTTON_HEIGHT],
-            cat::pm(49, 50, 68, 200),
-            FIELD_RADIUS,
-        ));
+        // Draw border for cancel button (4 thin rects)
+        {
+            let bcolor: [f32; 4] = [0.1, 0.1, 0.1, 0.1]; // rgba(255,255,255,0.1)
+            rects.push(RectInstance::new([cancel_x, button_y], [button_w, 1.0], bcolor));
+            rects.push(RectInstance::new([cancel_x, button_y + BUTTON_HEIGHT - 1.0], [button_w, 1.0], bcolor));
+            rects.push(RectInstance::new([cancel_x, button_y], [1.0, BUTTON_HEIGHT], bcolor));
+            rects.push(RectInstance::new([cancel_x + button_w - 1.0, button_y], [1.0, BUTTON_HEIGHT], bcolor));
+        }
         let cancel_text = "Cancel";
         let cancel_text_x =
             cancel_x + (button_w - cancel_text.chars().count() as f32 * font.cell_width) / 2.0;
@@ -351,16 +360,18 @@ impl DialogState {
             cancel_text,
             cancel_text_x,
             cancel_text_y,
-            cat::subtext1(),
+            text_primary,
             &mut glyphs,
         );
 
-        // Confirm button
+        // Confirm button — gold #c8a050 background, dark text, radius 8
         let confirm_x = cancel_x + button_w + button_gap;
+        let gold_bg: [f32; 4] = [200.0 / 255.0, 160.0 / 255.0, 80.0 / 255.0, 1.0]; // #c8a050
+        let dark_text: [f32; 4] = [0.1, 0.1, 0.1, 1.0]; // dark text on gold
         rects.push(RectInstance::rounded(
             [confirm_x, button_y],
             [button_w, BUTTON_HEIGHT],
-            cat::pm(137, 180, 250, 200),
+            gold_bg,
             FIELD_RADIUS,
         ));
         let confirm_text_x = confirm_x
@@ -372,7 +383,7 @@ impl DialogState {
             &self.confirm_label,
             confirm_text_x,
             confirm_text_y,
-            cat::text(),
+            dark_text,
             &mut glyphs,
         );
 
