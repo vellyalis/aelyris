@@ -255,8 +255,13 @@ impl ChromeState {
         glyphs: &mut Vec<GlyphInstance>,
         hits: &mut Vec<HitRegion>,
     ) {
-        // Background — glass-frame
-        rects.push(RectInstance::new([0.0, 0.0], [w, TITLE_BAR_HEIGHT], cat::title_bar_bg()));
+        // Background — subtle vertical gradient (slightly lighter at top for depth)
+        rects.push(RectInstance::gradient(
+            [0.0, 0.0], [w, TITLE_BAR_HEIGHT],
+            cat::pm(20, 20, 22, 120),  // top: slightly lighter
+            cat::pm(14, 14, 16, 115),  // bottom: darker
+            0.0, std::f32::consts::FRAC_PI_2,
+        ));
 
         // Title text — TEXT_PRIMARY at 14px weight 600
         let title_y = (TITLE_BAR_HEIGHT - font.cell_height) / 2.0;

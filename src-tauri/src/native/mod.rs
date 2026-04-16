@@ -57,6 +57,9 @@ pub struct NativeTerminal {
     pub(crate) queue: Option<Arc<wgpu::Queue>>,
     pub(crate) surface_config: Option<wgpu::SurfaceConfiguration>,
     pub(crate) renderer: Option<TerminalRenderer>,
+    pub(crate) blur_pipeline: Option<crate::gpu::blur::BlurPipeline>,
+    /// Offscreen texture for backdrop blur (lazily created, cached).
+    pub(crate) scene_texture: Option<(wgpu::Texture, wgpu::TextureView, u32, u32)>,
     // Terminal state
     pub(crate) tab_states: Vec<TabState>,
     pub(crate) atlas: Mutex<GlyphAtlas>,
@@ -146,6 +149,8 @@ impl NativeTerminal {
             queue: None,
             surface_config: None,
             renderer: None,
+            blur_pipeline: None,
+            scene_texture: None,
             tab_states: Vec::new(),
             atlas: Mutex::new(GlyphAtlas::new(2048, 2048)),
             font,
@@ -262,11 +267,14 @@ impl NativeTerminal {
             size.height.max(1),
         );
 
+        let blur = crate::gpu::blur::BlurPipeline::new(&device, wgpu::TextureFormat::Bgra8Unorm);
+
         self.window = Some(window);
         self.surface = Some(surface);
         self.device = Some(device);
         self.queue = Some(queue);
         self.surface_config = Some(config);
         self.renderer = Some(renderer);
+        self.blur_pipeline = Some(blur);
     }
 }

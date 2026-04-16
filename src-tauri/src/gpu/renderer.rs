@@ -251,7 +251,7 @@ impl TerminalRenderer {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        // --- Atlas texture (2048x2048 R8) ---
+        // --- Atlas texture (2048x2048 RGBA8 for subpixel AA) ---
         let atlas_size = wgpu::Extent3d { width: 2048, height: 2048, depth_or_array_layers: 1 };
         let atlas_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("glyph_atlas"),
@@ -259,7 +259,7 @@ impl TerminalRenderer {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::R8Unorm,
+            format: wgpu::TextureFormat::Rgba8Unorm,
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
@@ -539,7 +539,7 @@ impl TerminalRenderer {
             &atlas.pixels,
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(atlas.atlas_width),
+                bytes_per_row: Some(atlas.atlas_width * 4),
                 rows_per_image: Some(atlas.atlas_height),
             },
             wgpu::Extent3d {
@@ -747,6 +747,73 @@ impl TerminalRenderer {
             pass.set_bind_group(0, &self.uniform_bind_group, &[]);
             pass.set_vertex_buffer(0, self.gradient_instance_buffer.slice(..));
             pass.draw(0..6, 0..count as u32);
+        }
+
+        self.queue.submit(std::iter::once(encoder.finish()));
+    }
+
+    /// Render overlay rects + glyphs on top of existing content (no clear).
+    ///
+    /// Used for rendering palette/menus AFTER a blur pass.
+    pub fn render_overlay(
+        &self,
+        view: &wgpu::TextureView,
+        glyph_instances: &[GlyphInstance],
+        rect_instances: &[RectInstance],
+        gradient_instances: &[GradientRectInstance],
+    ) {
+        let glyph_count = glyph_instances.len().min(self.max_glyph_instances as usize);
+        let rect_count = rect_instances.len().min(self.max_rect_instances as usize);
+        let gradient_count = gradient_instances.len().min(self.max_gradient_instances as usize);
+
+        if glyph_count > 0 {
+            self.queue.write_buffer(&self.glyph_instance_buffer, 0, bytemuck::cast_slice(&glyph_instances[..glyph_count]));
+        }
+        if rect_count > 0 {
+            self.queue.write_buffer(&self.rect_instance_buffer, 0, bytemuck::cast_slice(&rect_instances[..rect_count]));
+        }
+        if gradient_count > 0 {
+            self.queue.write_buffer(&self.gradient_instance_buffer, 0, bytemuck::cast_slice(&gradient_instances[..gradient_count]));
+        }
+
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("overlay_pass"),
+        });
+
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("overlay"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                ..Default::default()
+            });
+
+            if rect_count > 0 {
+                pass.set_pipeline(&self.rect_pipeline);
+                pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                pass.set_vertex_buffer(0, self.rect_instance_buffer.slice(..));
+                pass.draw(0..6, 0..rect_count as u32);
+            }
+            if gradient_count > 0 {
+                pass.set_pipeline(&self.gradient_pipeline);
+                pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                pass.set_vertex_buffer(0, self.gradient_instance_buffer.slice(..));
+                pass.draw(0..6, 0..gradient_count as u32);
+            }
+            if glyph_count > 0 {
+                pass.set_pipeline(&self.glyph_pipeline);
+                pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                pass.set_bind_group(1, &self.atlas_bind_group, &[]);
+                pass.set_vertex_buffer(0, self.glyph_instance_buffer.slice(..));
+                pass.draw(0..6, 0..glyph_count as u32);
+            }
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));

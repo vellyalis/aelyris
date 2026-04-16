@@ -51,6 +51,12 @@ impl ApplicationHandler for NativeTerminal {
         self.init_wgpu(window);
         self.spawn_pty();
 
+        // Restore additional tabs from saved tab count
+        let extra_tabs = self.config.window.tab_count.saturating_sub(1);
+        for _ in 0..extra_tabs {
+            self.spawn_pty();
+        }
+
         // Restore sidebar from last directory
         if let Some(ref dir) = self.config.window.last_directory {
             let path = std::path::PathBuf::from(dir);

@@ -111,7 +111,7 @@ impl ToolkitState {
 
         // Header
         let header_y = y + (TOOL_PAD * 2.0 - font.cell_height) / 2.0 + TOOL_PAD;
-        super::render_text(font, atlas, "TOOLKIT", x + 8.0, header_y, cat::overlay0(), &mut glyphs);
+        super::render_text_bold(font, atlas, "TOOLKIT", x + 8.0, header_y, cat::overlay0(), &mut glyphs);
 
         // Separator line below header
         let sep_y = y + TOOL_PAD + font.cell_height + TOOL_PAD;

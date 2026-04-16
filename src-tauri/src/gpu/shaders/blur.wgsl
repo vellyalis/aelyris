@@ -49,6 +49,11 @@ const WEIGHTS: array<f32, 5> = array<f32, 5>(
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    // Passthrough mode: if direction is zero, just sample and return (blit)
+    if dot(blur_uniforms.direction, blur_uniforms.direction) < 0.001 {
+        return textureSample(input_tex, input_sampler, in.uv);
+    }
+
     let pixel_step = blur_uniforms.direction / blur_uniforms.tex_size;
 
     var result = textureSample(input_tex, input_sampler, in.uv) * WEIGHTS[0];

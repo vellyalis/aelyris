@@ -257,9 +257,9 @@ impl SidebarState {
         // Divider line (right edge) — border
         rects.push(RectInstance::new([SIDEBAR_WIDTH - 1.0, chrome_top], [1.0, sidebar_h], BORDER));
 
-        // Header: "EXPLORER" — text-muted, uppercase
+        // Header: "EXPLORER" — bold, text-muted, uppercase
         let header_y = chrome_top + (HEADER_HEIGHT - font.cell_height) / 2.0;
-        super::render_text(
+        super::render_text_bold(
             font,
             atlas,
             "EXPLORER",

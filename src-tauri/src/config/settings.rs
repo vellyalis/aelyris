@@ -24,7 +24,12 @@ pub struct WindowConfig {
     pub sidebar_visible: bool,
     #[serde(default)]
     pub last_directory: Option<String>,
+    /// Number of terminal tabs to restore on startup.
+    #[serde(default = "default_tab_count")]
+    pub tab_count: u32,
 }
+
+fn default_tab_count() -> u32 { 1 }
 
 impl Default for WindowConfig {
     fn default() -> Self {
@@ -36,6 +41,7 @@ impl Default for WindowConfig {
             maximized: false,
             sidebar_visible: false,
             last_directory: None,
+            tab_count: 1,
         }
     }
 }

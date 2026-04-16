@@ -261,14 +261,12 @@ impl NativeTerminal {
 
         // --- Gradient rects (shadows, light leaks, component backgrounds) ---
         let mut all_gradient_rects = build_light_leaks(window_w, window_h);
-        // Component-emitted gradient rects (shadow + background combined)
         all_gradient_rects.extend(agent_grads);
-        all_gradient_rects.extend(palette_out.gradient_rects);
         all_gradient_rects.extend(ctx_grads);
         all_gradient_rects.extend(sb_menu_grads);
         all_gradient_rects.extend(toast_grads);
 
-        // --- Regular rects (chrome, content, overlays) ---
+        // --- Regular rects (chrome, content, overlays — palette kept separate for blur) ---
         let mut all_rects: Vec<RectInstance> = Vec::new();
         all_rects.extend(chrome_out.rects);
         all_rects.extend(sidebar_out.rects);
@@ -279,8 +277,21 @@ impl NativeTerminal {
         all_rects.extend(content_rects);
         all_rects.extend(ctx_rects);
         all_rects.extend(sb_menu_rects);
-        all_rects.extend(palette_out.rects);
         all_rects.extend(toast_rects);
+
+        // Backdrop blur flag: palette/menus trigger 2-pass rendering
+        let needs_blur = self.palette.visible;
+
+        // Palette instances: separate for blur, merged for fast path
+        // When not blurring, palette goes into the main batch.
+        // When blurring, palette_out is consumed later in render_overlay.
+        let overlay_palette = if needs_blur {
+            Some(palette_out)
+        } else {
+            all_rects.extend(palette_out.rects);
+            all_gradient_rects.extend(palette_out.gradient_rects);
+            None
+        };
         let mut all_glyphs = chrome_out.glyphs;
         all_glyphs.extend(sidebar_out.glyphs);
         all_glyphs.extend(scm_glyphs);
@@ -290,27 +301,76 @@ impl NativeTerminal {
         all_glyphs.extend(content_glyphs);
         all_glyphs.extend(ctx_glyphs);
         all_glyphs.extend(sb_menu_glyphs);
-        all_glyphs.extend(palette_out.glyphs);
         all_glyphs.extend(toast_glyphs);
+
+        if let None = &overlay_palette {
+            // palette glyphs already consumed into overlay_palette or merged above
+        }
 
         // Fluent Design "Reveal Highlight" — radial glow following the mouse cursor
         apply_reveal_highlight(&mut all_rects, self.chrome.mouse_pos, &self.hit_regions);
 
+        let clear_color = wgpu::Color {
+            r: 0.047, g: 0.047, b: 0.047,
+            a: 0.02, // glass-clear — nearly transparent, Mica shows through
+        };
+
+        // Backdrop blur: when palette is visible, blur the scene behind it.
+
         match surface.get_current_texture() {
             Ok(texture) => {
                 let view = texture.texture.create_view(&wgpu::TextureViewDescriptor::default());
-                renderer.render_frame_full(
-                    &view,
-                    &all_glyphs,
-                    &all_rects,
-                    &all_gradient_rects,
-                    wgpu::Color {
-                        r: 0.047, // 12/255
-                        g: 0.047,
-                        b: 0.047,
-                        a: 0.02, // glass-clear — nearly transparent, Mica shows through
-                    },
-                );
+
+                if needs_blur {
+                    // 2-pass rendering: scene → blur → overlay
+                    let w = config.width;
+                    let h = config.height;
+
+                    // Ensure offscreen texture exists and matches size
+                    let need_recreate = match &self.scene_texture {
+                        Some((_, _, sw, sh)) => *sw != w || *sh != h,
+                        None => true,
+                    };
+                    if need_recreate {
+                        let device = self.device.as_ref().unwrap();
+                        let tex = device.create_texture(&wgpu::TextureDescriptor {
+                            label: Some("scene_offscreen"),
+                            size: wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+                            mip_level_count: 1, sample_count: 1,
+                            dimension: wgpu::TextureDimension::D2,
+                            format: config.format,
+                            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+                            view_formats: &[],
+                        });
+                        let tv = tex.create_view(&wgpu::TextureViewDescriptor::default());
+                        self.scene_texture = Some((tex, tv, w, h));
+                    }
+
+                    let scene_view = &self.scene_texture.as_ref().unwrap().1;
+
+                    // Phase 1: render full scene to offscreen texture
+                    renderer.render_frame_full(scene_view, &all_glyphs, &all_rects, &all_gradient_rects, clear_color);
+
+                    // Phase 2: blur offscreen → surface
+                    let device = self.device.as_ref().unwrap();
+                    let queue = self.queue.as_ref().unwrap();
+                    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                        label: Some("blur_encoder"),
+                    });
+                    if let Some(blur) = &mut self.blur_pipeline {
+                        blur.blur(device, queue, &mut encoder, scene_view, &view, w, h, config.format, 2);
+                    }
+                    queue.submit(std::iter::once(encoder.finish()));
+
+                    // Phase 3: render palette overlay on top of blurred scene
+                    if let Some(ref p) = overlay_palette {
+                        renderer.render_overlay(&view, &p.glyphs, &p.rects, &p.gradient_rects);
+                    }
+                } else {
+                    // Fast path: single-pass rendering (no blur)
+                    renderer.render_frame_full(&view, &all_glyphs, &all_rects, &all_gradient_rects, clear_color);
+                }
+
                 texture.present();
             }
             Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
@@ -452,7 +512,7 @@ impl NativeTerminal {
         rects.push(RectInstance::new([0.0, panel_y], [sidebar_w, 1.0], ui::cat::BORDER));
 
         let header_y = panel_y + (28.0 - font.cell_height) / 2.0;
-        ui::render_text(font, atlas, "AGENTS", 8.0, header_y, ui::cat::overlay0(), &mut glyphs);
+        ui::render_text_bold(font, atlas, "AGENTS", 8.0, header_y, ui::cat::overlay0(), &mut glyphs);
 
         let count_str = format!("{}", agent_tabs.len());
         let count_x = 8.0 + 7.0 * font.cell_width;

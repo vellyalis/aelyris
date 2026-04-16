@@ -628,6 +628,7 @@ impl NativeTerminal {
             self.config.window.maximized = window.is_maximized();
         }
         self.config.window.sidebar_visible = self.sidebar.visible;
+        self.config.window.tab_count = self.tab_states.len() as u32;
         // Save sidebar root directory for restore
         self.config.window.last_directory = self.sidebar.file_tree
             .as_ref()

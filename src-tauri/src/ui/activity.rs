@@ -99,7 +99,7 @@ impl ActivityFeed {
         // Header
         let header_h = 28.0;
         let header_text_y = y + (header_h - font.cell_height) / 2.0;
-        super::render_text(font, atlas, "ACTIVITY", x + 8.0, header_text_y, cat::overlay0(), &mut glyphs);
+        super::render_text_bold(font, atlas, "ACTIVITY", x + 8.0, header_text_y, cat::overlay0(), &mut glyphs);
 
         let count_str = format!("{}", self.entries.len());
         let count_x = x + 8.0 + 9.0 * font.cell_width;
