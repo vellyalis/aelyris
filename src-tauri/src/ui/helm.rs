@@ -124,7 +124,7 @@ impl HelmState {
         // Header
         let header = format!("Tasks — {}/{} done", self.done_count(), self.tasks.len());
         let header_y = y + (28.0 - font.cell_height) / 2.0;
-        super::render_text(font, atlas, &header, x + 12.0, header_y, cat::SUBTEXT0, &mut glyphs);
+        super::render_text(font, atlas, &header, x + 12.0, header_y, cat::subtext0(), &mut glyphs);
 
         // Tasks
         let task_top = y + 32.0;
@@ -143,10 +143,10 @@ impl HelmState {
 
             let text_y = ty + (task_h - font.cell_height) / 2.0;
             let checkbox = if task.done { "\u{f058} " } else { "\u{f111} " }; // ✓ or ○
-            let check_color = if task.done { cat::GREEN } else { cat::OVERLAY0 };
+            let check_color = if task.done { cat::green() } else { cat::overlay0() };
             super::render_text(font, atlas, checkbox, x + 12.0, text_y, check_color, &mut glyphs);
 
-            let text_color = if task.done { cat::OVERLAY0 } else { cat::TEXT };
+            let text_color = if task.done { cat::overlay0() } else { cat::text() };
             let max_chars = ((w - 48.0) / font.cell_width) as usize;
             let display = if task.text.len() > max_chars {
                 format!("{}...", &task.text[..max_chars.saturating_sub(3)])

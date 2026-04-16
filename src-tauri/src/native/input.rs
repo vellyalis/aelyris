@@ -8,30 +8,73 @@ use super::types::ContentPane;
 use super::panes::SplitDir;
 
 impl NativeTerminal {
+    /// Build a normalized key combo string from the current modifier state and key.
+    fn key_combo_str(&self, key: &Key, ctrl: bool, shift: bool) -> Option<String> {
+        let key_name = match key {
+            Key::Character(c) => c.to_lowercase(),
+            Key::Named(NamedKey::Tab) => "tab".into(),
+            Key::Named(NamedKey::Escape) => "escape".into(),
+            Key::Named(NamedKey::F5) => "f5".into(),
+            Key::Named(NamedKey::F12) => "f12".into(),
+            Key::Named(NamedKey::Space) => "space".into(),
+            Key::Named(NamedKey::Enter) => "enter".into(),
+            _ => return None,
+        };
+        let alt = self.modifiers.contains(winit::keyboard::ModifiersState::ALT);
+        let mut combo = String::new();
+        if ctrl { combo.push_str("ctrl+"); }
+        if shift { combo.push_str("shift+"); }
+        if alt { combo.push_str("alt+"); }
+        combo.push_str(&key_name);
+        Some(combo)
+    }
+
+    /// Dispatch a keybinding action string. Returns true if handled.
+    fn dispatch_keybinding(&mut self, action: &str) -> bool {
+        match action {
+            "command_palette" => { self.palette.toggle(); true }
+            "quick_open" => { self.open_quick_file_search(); true }
+            "toggle_sidebar" => {
+                self.sidebar.toggle();
+                if self.sidebar.visible {
+                    if let Some(path) = self.repo_path() {
+                        self.scm.set_repo(path);
+                    }
+                }
+                self.recalc_grid_size();
+                true
+            }
+            "command_history" => {
+                self.execute_palette_action(PaletteAction::BeginCommandHistory);
+                true
+            }
+            "split_horizontal" => { self.split_focused_pane(SplitDir::Horizontal); true }
+            "split_vertical" => { self.split_focused_pane(SplitDir::Vertical); true }
+            "close_pane" => { self.close_focused_pane(); true }
+            "focus_next_pane" => {
+                if let Some(tab) = self.tab_states.get_mut(self.chrome.active_tab) {
+                    tab.focus_next();
+                }
+                true
+            }
+            "terminal_search" => { self.palette.enter_terminal_search(); true }
+            _ => false,
+        }
+    }
+
     pub(super) fn handle_key_input(&mut self, key: Key) {
         let ctrl = self.modifiers.contains(winit::keyboard::ModifiersState::CONTROL);
         let shift = self.modifiers.contains(winit::keyboard::ModifiersState::SHIFT);
 
-        // Ctrl+Shift shortcuts (works in all modes)
-        if ctrl && shift {
-            if let Key::Character(ref c) = key {
-                match c.to_lowercase().as_str() {
-                    "p" => { self.palette.toggle(); return; }
-                    "h" => { self.split_focused_pane(SplitDir::Horizontal); return; }
-                    "v" => { self.split_focused_pane(SplitDir::Vertical); return; }
-                    "w" => { self.close_focused_pane(); return; }
-                    _ => {}
+        // Customizable keybindings lookup (global shortcuts)
+        if !self.palette.visible {
+            if let Some(combo) = self.key_combo_str(&key, ctrl, shift) {
+                let action = self.keybindings.action_for(&combo).map(|s| s.to_string());
+                if let Some(action) = action {
+                    if self.dispatch_keybinding(&action) {
+                        return;
+                    }
                 }
-            }
-        }
-
-        // Alt+Tab: Switch pane focus
-        if self.modifiers.contains(winit::keyboard::ModifiersState::ALT) {
-            if matches!(key, Key::Named(NamedKey::Tab)) {
-                if let Some(tab) = self.tab_states.get_mut(self.chrome.active_tab) {
-                    tab.focus_next();
-                }
-                return;
             }
         }
 
@@ -39,22 +82,6 @@ impl NativeTerminal {
         if self.palette.visible {
             self.handle_palette_key(key);
             return;
-        }
-
-        // Ctrl+B: Toggle sidebar
-        if ctrl {
-            if let Key::Character(ref c) = key {
-                if c.eq_ignore_ascii_case("b") {
-                    self.sidebar.toggle();
-                    if self.sidebar.visible {
-                        if let Some(path) = self.repo_path() {
-                            self.scm.set_repo(path);
-                        }
-                    }
-                    self.recalc_grid_size();
-                    return;
-                }
-            }
         }
 
         // Dispatch by content pane

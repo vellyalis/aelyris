@@ -118,7 +118,7 @@ impl SyntaxState {
         if idx < self.spans.len() && self.spans[idx].start_byte <= byte_offset {
             self.spans[idx].color
         } else {
-            cat::TEXT
+            cat::text()
         }
     }
 
@@ -234,7 +234,7 @@ fn run_highlight(config: &HighlightConfiguration, source: &str) -> Vec<Highlight
                 let color = HIGHLIGHT_COLORS
                     .get(h.0)
                     .copied()
-                    .unwrap_or(cat::TEXT);
+                    .unwrap_or(cat::text());
                 stack.push(color);
             }
             Ok(HighlightEvent::HighlightEnd) => {

@@ -135,8 +135,8 @@ impl DiffState {
         rects.push(RectInstance::new([x, y], [w, header_h], cat::pm(30, 30, 46, 220)));
         let header_y = y + (header_h - font.cell_height) / 2.0;
         let icon = super::icons::file_icon(&self.file_path, false);
-        super::render_text(font, atlas, &icon.to_string(), x + 8.0, header_y, cat::BLUE, &mut glyphs);
-        super::render_text(font, atlas, &self.file_path, x + 8.0 + font.cell_width * 2.0, header_y, cat::TEXT, &mut glyphs);
+        super::render_text(font, atlas, &icon.to_string(), x + 8.0, header_y, cat::blue(), &mut glyphs);
+        super::render_text(font, atlas, &self.file_path, x + 8.0 + font.cell_width * 2.0, header_y, cat::text(), &mut glyphs);
 
         // Diff lines
         let content_top = y + header_h;
@@ -169,7 +169,7 @@ impl DiffState {
                 }
                 DiffKind::Header => "    ".to_string(),
             };
-            super::render_text(font, atlas, &gutter_text, x + 4.0, text_y, cat::OVERLAY0, &mut glyphs);
+            super::render_text(font, atlas, &gutter_text, x + 4.0, text_y, cat::overlay0(), &mut glyphs);
 
             // Kind indicator
             let indicator = match line.kind {
@@ -179,10 +179,10 @@ impl DiffState {
                 DiffKind::Context => " ",
             };
             let ind_color = match line.kind {
-                DiffKind::Added => cat::GREEN,
+                DiffKind::Added => cat::green(),
                 DiffKind::Removed => [0.95, 0.55, 0.66, 1.0],
-                DiffKind::Header => cat::BLUE,
-                DiffKind::Context => cat::OVERLAY0,
+                DiffKind::Header => cat::blue(),
+                DiffKind::Context => cat::overlay0(),
             };
             super::render_text(font, atlas, indicator, x + GUTTER_WIDTH, text_y, ind_color, &mut glyphs);
 
@@ -195,8 +195,8 @@ impl DiffState {
                 line.text.clone()
             };
             let text_color = match line.kind {
-                DiffKind::Header => cat::BLUE,
-                _ => cat::TEXT,
+                DiffKind::Header => cat::blue(),
+                _ => cat::text(),
             };
             super::render_text(font, atlas, &display, text_x, text_y, text_color, &mut glyphs);
         }

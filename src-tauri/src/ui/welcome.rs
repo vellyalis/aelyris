@@ -120,20 +120,20 @@ impl WelcomeState {
         // Title
         let title = "Aether Terminal";
         let title_w = title.len() as f32 * font.cell_width;
-        super::render_text(font, atlas, title, center_x - title_w / 2.0, cy, cat::TEXT, &mut glyphs);
+        super::render_text(font, atlas, title, center_x - title_w / 2.0, cy, cat::text(), &mut glyphs);
         cy += font.cell_height * 2.0;
 
         // Subtitle
         let subtitle = "Native GPU-Rendered Terminal";
         let sub_w = subtitle.len() as f32 * font.cell_width;
-        super::render_text(font, atlas, subtitle, center_x - sub_w / 2.0, cy, cat::OVERLAY0, &mut glyphs);
+        super::render_text(font, atlas, subtitle, center_x - sub_w / 2.0, cy, cat::overlay0(), &mut glyphs);
         cy += font.cell_height * 3.0;
 
         // Recent projects header
         if !self.recent_projects.is_empty() {
             let header = "Recent Projects";
             let header_w = header.len() as f32 * font.cell_width;
-            super::render_text(font, atlas, header, center_x - header_w / 2.0, cy, cat::SUBTEXT0, &mut glyphs);
+            super::render_text(font, atlas, header, center_x - header_w / 2.0, cy, cat::subtext0(), &mut glyphs);
             cy += font.cell_height * 1.5;
 
             let list_w = 400.0f32.min(w * 0.7);
@@ -157,16 +157,16 @@ impl WelcomeState {
                 // Folder icon
                 let icon = '\u{f07b}';
                 let icon_str = icon.to_string();
-                super::render_text(font, atlas, &icon_str, list_x + 8.0, row_y + 4.0, cat::BLUE, &mut glyphs);
+                super::render_text(font, atlas, &icon_str, list_x + 8.0, row_y + 4.0, cat::blue(), &mut glyphs);
 
                 // Project name
-                super::render_text(font, atlas, &project.name, list_x + 8.0 + font.cell_width * 2.0, row_y + 4.0, cat::TEXT, &mut glyphs);
+                super::render_text(font, atlas, &project.name, list_x + 8.0 + font.cell_width * 2.0, row_y + 4.0, cat::text(), &mut glyphs);
 
                 // Branch (if available)
                 if let Some(branch) = &project.branch {
                     let branch_display = format!(" {}", branch);
                     let name_end = list_x + 8.0 + font.cell_width * 2.0 + project.name.len() as f32 * font.cell_width;
-                    super::render_text(font, atlas, &branch_display, name_end + font.cell_width, row_y + 4.0, cat::GREEN, &mut glyphs);
+                    super::render_text(font, atlas, &branch_display, name_end + font.cell_width, row_y + 4.0, cat::green(), &mut glyphs);
                 }
 
                 // Path (second line, dimmed)
@@ -176,7 +176,7 @@ impl WelcomeState {
                 } else {
                     project.path.clone()
                 };
-                super::render_text(font, atlas, &path_display, list_x + 8.0 + font.cell_width * 2.0, row_y + 4.0 + font.cell_height + 2.0, cat::OVERLAY0, &mut glyphs);
+                super::render_text(font, atlas, &path_display, list_x + 8.0 + font.cell_width * 2.0, row_y + 4.0 + font.cell_height + 2.0, cat::overlay0(), &mut glyphs);
 
                 cy += row_h + 4.0;
             }
@@ -186,7 +186,7 @@ impl WelcomeState {
         cy = y + h - 40.0;
         let hint = "Enter to open  |  Ctrl+Shift+P for commands";
         let hint_w = hint.len() as f32 * font.cell_width;
-        super::render_text(font, atlas, hint, center_x - hint_w / 2.0, cy, cat::OVERLAY0, &mut glyphs);
+        super::render_text(font, atlas, hint, center_x - hint_w / 2.0, cy, cat::overlay0(), &mut glyphs);
 
         WelcomeOutput { rects, glyphs }
     }

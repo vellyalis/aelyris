@@ -122,7 +122,7 @@ impl ScmState {
         rects.push(RectInstance::new([x, cy], [w, HEADER_HEIGHT], cat::pm(24, 24, 37, 200)));
         let header_text = format!("SCM: {}", status.branch);
         let text_y = cy + (HEADER_HEIGHT - font.cell_height) / 2.0;
-        super::render_text(font, atlas, &header_text, x + 8.0, text_y, cat::TEXT, &mut glyphs);
+        super::render_text(font, atlas, &header_text, x + 8.0, text_y, cat::text(), &mut glyphs);
         cy += HEADER_HEIGHT;
 
         // Staged files
@@ -138,7 +138,7 @@ impl ScmState {
                 let fy = cy + (ROW_HEIGHT - font.cell_height) / 2.0;
                 let icon = status_icon(&file.status);
                 let display = format!("{} {}", icon, file.path);
-                super::render_text(font, atlas, &display, x + 16.0, fy, cat::TEXT, &mut glyphs);
+                super::render_text(font, atlas, &display, x + 16.0, fy, cat::text(), &mut glyphs);
                 cy += ROW_HEIGHT;
             }
         }
@@ -156,7 +156,7 @@ impl ScmState {
                 let fy = cy + (ROW_HEIGHT - font.cell_height) / 2.0;
                 let icon = status_icon(&file.status);
                 let display = format!("{} {}", icon, file.path);
-                super::render_text(font, atlas, &display, x + 16.0, fy, cat::TEXT, &mut glyphs);
+                super::render_text(font, atlas, &display, x + 16.0, fy, cat::text(), &mut glyphs);
                 cy += ROW_HEIGHT;
             }
         }
@@ -170,7 +170,7 @@ impl ScmState {
             } else {
                 &self.commit_message
             };
-            let color = if self.commit_message.is_empty() { cat::OVERLAY0 } else { cat::TEXT };
+            let color = if self.commit_message.is_empty() { cat::overlay0() } else { cat::text() };
             super::render_text(font, atlas, display, x + 10.0, input_y, color, &mut glyphs);
         }
 

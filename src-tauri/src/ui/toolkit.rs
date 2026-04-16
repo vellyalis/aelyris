@@ -111,7 +111,7 @@ impl ToolkitState {
 
         // Header
         let header_y = y + (TOOL_PAD * 2.0 - font.cell_height) / 2.0 + TOOL_PAD;
-        super::render_text(font, atlas, "TOOLKIT", x + 8.0, header_y, cat::OVERLAY0, &mut glyphs);
+        super::render_text(font, atlas, "TOOLKIT", x + 8.0, header_y, cat::overlay0(), &mut glyphs);
 
         // Separator line below header
         let sep_y = y + TOOL_PAD + font.cell_height + TOOL_PAD;
@@ -153,7 +153,7 @@ impl ToolkitState {
                 &tool.icon,
                 btn_x + 8.0,
                 text_y,
-                cat::BLUE,
+                cat::blue(),
                 &mut glyphs,
             );
 
@@ -172,7 +172,7 @@ impl ToolkitState {
                 &display_name,
                 name_x,
                 text_y,
-                cat::TEXT,
+                cat::text(),
                 &mut glyphs,
             );
         }

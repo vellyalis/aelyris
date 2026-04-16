@@ -110,8 +110,8 @@ impl AnalyticsState {
         let total_tok_str = format!("Total: {}tok", self.total_tokens());
 
         let card_specs: [(&str, [f32; 4], [f32; 4]); 4] = [
-            (&today_cost_str, cat::pm(166, 227, 161, 40), cat::GREEN),
-            (&today_tok_str, cat::pm(137, 180, 250, 40), cat::BLUE),
+            (&today_cost_str, cat::pm(166, 227, 161, 40), cat::green()),
+            (&today_tok_str, cat::pm(137, 180, 250, 40), cat::blue()),
             (&total_cost_str, cat::pm(166, 227, 161, 25), [0.50, 0.72, 0.48, 1.0]),
             (&total_tok_str, cat::pm(137, 180, 250, 25), [0.42, 0.56, 0.78, 1.0]),
         ];
@@ -204,7 +204,7 @@ impl AnalyticsState {
                 &day_labels[i],
                 label_x,
                 label_y,
-                cat::SUBTEXT0,
+                cat::subtext0(),
                 &mut glyphs,
             );
         }
@@ -218,7 +218,7 @@ impl AnalyticsState {
             &y_label_0,
             x + 4.0,
             chart_bottom - font.cell_height,
-            cat::SUBTEXT0,
+            cat::subtext0(),
             &mut glyphs,
         );
         super::render_text(
@@ -227,11 +227,11 @@ impl AnalyticsState {
             &y_label_max,
             x + 4.0,
             chart_top,
-            cat::SUBTEXT0,
+            cat::subtext0(),
             &mut glyphs,
         );
 
-        // Data points and staircase connections
+        // Data points and smooth line connections
         let dot_radius = 4.0;
         let dot_color = cat::pm(137, 180, 250, 220);
         let line_color = cat::pm(137, 180, 250, 120);
@@ -251,23 +251,10 @@ impl AnalyticsState {
                 dot_radius,
             ));
 
-            // Staircase line from previous point
+            // Connected line segments from previous point
             if let Some((px, py)) = prev_point {
-                // Horizontal segment: from prev_x to curr_x at prev_y
-                let seg_x = px;
-                let seg_w = dx - px;
-                rects.push(RectInstance::new(
-                    [seg_x, py - line_thickness / 2.0],
-                    [seg_w, line_thickness],
-                    line_color,
-                ));
-                // Vertical segment: from prev_y to curr_y at curr_x
-                let seg_y = py.min(dy);
-                let seg_h = (py - dy).abs();
-                rects.push(RectInstance::new(
-                    [dx - line_thickness / 2.0, seg_y],
-                    [line_thickness, seg_h],
-                    line_color,
+                rects.extend(line_segment_rects(
+                    px, py, dx, dy, line_thickness, line_color,
                 ));
             }
 
@@ -281,7 +268,7 @@ impl AnalyticsState {
             "Cost / Last 7 Days",
             chart_left,
             chart_top - font.cell_height - 4.0,
-            cat::SUBTEXT1,
+            cat::subtext1(),
             &mut glyphs,
         );
 
@@ -293,6 +280,39 @@ impl Default for AnalyticsState {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Draw a line segment between two points using thin axis-aligned rects.
+///
+/// Approximates a diagonal line with an L-shaped pair of horizontal + vertical
+/// segments. This avoids rotation (not supported by the rect shader) while
+/// providing a smooth connected-line appearance for charts.
+fn line_segment_rects(
+    x1: f32, y1: f32, x2: f32, y2: f32,
+    width: f32, color: [f32; 4],
+) -> Vec<RectInstance> {
+    let mut rects = Vec::new();
+    // Horizontal segment
+    let min_x = x1.min(x2);
+    let max_x = x1.max(x2);
+    if (max_x - min_x) > 0.5 {
+        rects.push(RectInstance::new(
+            [min_x, y1 - width / 2.0],
+            [max_x - min_x, width],
+            color,
+        ));
+    }
+    // Vertical segment
+    let min_y = y1.min(y2);
+    let max_y = y1.max(y2);
+    if (max_y - min_y) > 0.5 {
+        rects.push(RectInstance::new(
+            [x2 - width / 2.0, min_y],
+            [width, max_y - min_y],
+            color,
+        ));
+    }
+    rects
 }
 
 /// Compute Unix timestamp of midnight today (UTC approximation).
