@@ -640,10 +640,18 @@ impl PaletteState {
             ));
         }
 
-        // Palette background
-        rects.push(RectInstance::rounded([palette_x, palette_y], [PALETTE_WIDTH, palette_h], cat::pm(30, 30, 46, 250), 12.0));
+        // Drop shadow
+        rects.extend(super::shadow::panel_shadow(
+            [palette_x, palette_y], [PALETTE_WIDTH, palette_h], 12.0,
+        ));
 
-        // Border — color varies by mode
+        // Palette background with border
+        rects.push(RectInstance::bordered(
+            [palette_x, palette_y], [PALETTE_WIDTH, palette_h],
+            cat::pm(30, 30, 46, 250), 12.0, 1.0, 1.0,
+        ));
+
+        // Border accent — color varies by mode
         let border_color = match &self.mode {
             PaletteMode::Command => cat::pm(137, 180, 250, 200),
             PaletteMode::WorktreeCreate => cat::pm(166, 227, 161, 200),
@@ -658,9 +666,13 @@ impl PaletteState {
         };
         rects.push(RectInstance::new([palette_x, palette_y], [PALETTE_WIDTH, 1.0], border_color));
 
-        // Input background
+        // Input background with subtle border
         let input_y = palette_y + PADDING;
-        rects.push(RectInstance::rounded([palette_x + PADDING, input_y], [PALETTE_WIDTH - PADDING * 2.0, INPUT_HEIGHT], cat::pm(24, 24, 37, 250), 6.0));
+        rects.push(RectInstance::bordered(
+            [palette_x + PADDING, input_y],
+            [PALETTE_WIDTH - PADDING * 2.0, INPUT_HEIGHT],
+            cat::pm(24, 24, 37, 250), 6.0, 1.0, 0.5,
+        ));
 
         // Input text — placeholder depends on mode
         let text_y = input_y + (INPUT_HEIGHT - font.cell_height) / 2.0;

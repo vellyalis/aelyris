@@ -1041,10 +1041,9 @@ impl EditorState {
             } else {
                 popup_y
             };
-            // Background
-            rects.push(RectInstance::rounded([popup_x, popup_y], [popup_w, popup_h], cat::pm(30, 30, 46, 245), 6.0));
-            // Border
-            rects.push(RectInstance::new([popup_x, popup_y], [popup_w, 1.0], cat::pm(69, 71, 90, 200)));
+            // Drop shadow + bordered background
+            rects.extend(super::shadow::menu_shadow([popup_x, popup_y], [popup_w, popup_h], 6.0));
+            rects.push(RectInstance::bordered([popup_x, popup_y], [popup_w, popup_h], cat::pm(30, 30, 46, 245), 6.0, 1.0, 0.8));
 
             let scroll_start = if self.completion_selected >= popup_max {
                 self.completion_selected - popup_max + 1
@@ -1085,9 +1084,9 @@ impl EditorState {
             let tip_y = y_offset + (self.cursor_line.saturating_sub(self.scroll_offset)) as f32 * font.cell_height - tip_h - 2.0;
             let tip_y = tip_y.max(y_offset);
             let tip_x = tip_x.min(x_offset + content_w - tip_w);
-            // Background
-            rects.push(RectInstance::rounded([tip_x, tip_y], [tip_w, tip_h], cat::pm(30, 30, 46, 240), 6.0));
-            rects.push(RectInstance::new([tip_x, tip_y], [tip_w, 1.0], cat::pm(137, 180, 250, 150)));
+            // Drop shadow + bordered tooltip
+            rects.extend(super::shadow::card_shadow([tip_x, tip_y], [tip_w, tip_h], 6.0));
+            rects.push(RectInstance::bordered([tip_x, tip_y], [tip_w, tip_h], cat::pm(30, 30, 46, 240), 6.0, 1.0, 0.6));
             for (i, line) in hover_lines.iter().enumerate() {
                 let ly = tip_y + 4.0 + i as f32 * font.cell_height;
                 let display = if line.len() > max_line_len { &line[..max_line_len] } else { line };

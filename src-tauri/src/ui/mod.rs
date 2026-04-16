@@ -16,6 +16,7 @@ pub mod kanban;
 pub mod palette;
 pub mod scm;
 pub mod search;
+pub mod shadow;
 pub mod sidebar;
 pub mod syntax;
 pub mod theme;

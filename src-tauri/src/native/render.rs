@@ -326,7 +326,9 @@ impl NativeTerminal {
         let menu_w = 140.0f32;
         let menu_h = ITEMS.len() as f32 * item_h + 8.0;
 
-        rects.push(RectInstance::rounded([mx, my], [menu_w, menu_h], ui::cat::pm(30, 30, 46, 245), 8.0));
+        // Drop shadow + bordered background
+        rects.extend(ui::shadow::menu_shadow([mx, my], [menu_w, menu_h], 8.0));
+        rects.push(RectInstance::bordered([mx, my], [menu_w, menu_h], ui::cat::pm(30, 30, 46, 245), 8.0, 1.0, 0.8));
         rects.push(RectInstance::new([mx, my], [menu_w, 1.0], ui::cat::pm(69, 71, 90, 200)));
 
         let hover_idx = self.chrome.mouse_pos.and_then(|(hx, hy)| {
@@ -369,8 +371,9 @@ impl NativeTerminal {
         let menu_w = 160.0f32;
         let menu_h = items.len() as f32 * item_h + 8.0;
 
-        rects.push(RectInstance::rounded([mx, my], [menu_w, menu_h], ui::cat::pm(30, 30, 46, 245), 8.0));
-        rects.push(RectInstance::new([mx, my], [menu_w, 1.0], ui::cat::pm(69, 71, 90, 200)));
+        // Drop shadow + bordered background
+        rects.extend(ui::shadow::menu_shadow([mx, my], [menu_w, menu_h], 8.0));
+        rects.push(RectInstance::bordered([mx, my], [menu_w, menu_h], ui::cat::pm(30, 30, 46, 245), 8.0, 1.0, 0.8));
 
         let hover_idx = self.chrome.mouse_pos.and_then(|(hx, hy)| {
             if hx >= mx && hx < mx + menu_w && hy >= my + 4.0 && hy < my + menu_h {
@@ -416,7 +419,7 @@ impl NativeTerminal {
         let panel_h = 28.0 + agent_tabs.len() as f32 * 36.0;
         let panel_y = window_h - ui::STATUS_BAR_HEIGHT - panel_h;
 
-        rects.push(RectInstance::new([0.0, panel_y], [sidebar_w, panel_h], ui::cat::pm(24, 24, 37, 220)));
+        rects.push(RectInstance::bordered([0.0, panel_y], [sidebar_w, panel_h], ui::cat::pm(24, 24, 37, 220), 0.0, 1.0, 0.5));
         rects.push(RectInstance::new([0.0, panel_y], [sidebar_w, 1.0], ui::cat::pm(69, 71, 90, 150)));
 
         let header_y = panel_y + (28.0 - font.cell_height) / 2.0;
