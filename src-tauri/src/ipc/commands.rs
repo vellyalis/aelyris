@@ -1327,11 +1327,19 @@ pub fn list_agent_history(app: AppHandle, limit: usize) -> Result<Vec<crate::db:
 
 // ── Command History ──
 
-/// Save a command to history
+/// Save a command to history (DB) and feed the in-memory SuggestEngine
+/// so fish-style autosuggest picks up the new command on the very next
+/// keystroke without waiting for a DB reseed.
 #[tauri::command]
 pub fn save_command_history(app: AppHandle, terminal_id: String, command: String, cwd: String) -> Result<(), String> {
     let db = app.state::<crate::db::ManagedDb>();
-    db.with(|d| d.save_command(&terminal_id, &command, &cwd))
+    db.with(|d| d.save_command(&terminal_id, &command, &cwd))?;
+    if let Some(engine) = app.try_state::<Arc<Mutex<crate::suggest::SuggestEngine>>>() {
+        if let Ok(mut guard) = engine.inner().lock() {
+            guard.record(&command);
+        }
+    }
+    Ok(())
 }
 
 /// Search command history

@@ -20,6 +20,7 @@ use agent::InteractiveSessionManager;
 use db::Database;
 use pty::PtyManager;
 use watchdog::auto_repair::AutoRepairManager;
+use suggest::SuggestEngine;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -49,6 +50,7 @@ pub fn run() {
         .manage(std::sync::Arc::new(std::sync::Mutex::new(
             watchdog::load_watchdog_rules().auto_repair,
         )))
+        .manage(std::sync::Arc::new(std::sync::Mutex::new(SuggestEngine::new())))
         .setup(move |app| {
             // Initialize database as managed state
             let db_path = db::db_path();
@@ -66,6 +68,18 @@ pub fn run() {
                 }
             }
             // Mica/Acrylic applied via tauri.conf.json windowEffects
+
+            // Seed the SuggestEngine from DB command history so fish-style
+            // autosuggest works on the first keystroke of a fresh session.
+            if let (Some(db), Some(engine)) = (
+                app.try_state::<db::ManagedDb>(),
+                app.try_state::<std::sync::Arc<std::sync::Mutex<SuggestEngine>>>(),
+            ) {
+                let recent = db.with(|d| d.recent_commands(500)).unwrap_or_default();
+                if let Ok(mut guard) = engine.inner().lock() {
+                    guard.seed(recent);
+                }
+            }
 
             // Auto-repair polling thread: flush `AutoRepairManager` phase/notification
             // messages every 500ms. Active jobs are re-broadcast on every tick so the
@@ -209,6 +223,9 @@ pub fn run() {
             ipc::trigger_repair_manual,
             ipc::get_auto_repair_config,
             ipc::set_auto_repair_config,
+            // Fish-style command suggestion (Phase 3A-2)
+            ipc::suggest_next,
+            ipc::suggest_record,
             // IME positioning
             ipc::set_ime_position,
         ])

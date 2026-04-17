@@ -70,6 +70,11 @@ export interface TerminalCanvasProps {
   activeSearchMatch?: SearchMatch | null;
   /** Invoked on Ctrl+Click over a detected URL. */
   onOpenUrl?: OpenUrlFn;
+  /** Fish-style suggestion to paint after the cursor (Phase 3A-2). */
+  ghostSuggestion?: string | null;
+  /** Exposes the underlying canvas element so parents can attach input
+   *  mirrors (Phase 3A-2) without duplicating the ref forwarding. */
+  onCanvasRef?: (el: HTMLCanvasElement | null) => void;
 }
 
 interface CellMetrics {
@@ -90,6 +95,8 @@ export function TerminalCanvas({
   searchMatches,
   activeSearchMatch,
   onOpenUrl = defaultOpenUrl,
+  ghostSuggestion,
+  onCanvasRef,
 }: TerminalCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [inputEl, setInputEl] = useState<HTMLCanvasElement | null>(null);
@@ -99,6 +106,7 @@ export function TerminalCanvas({
   const prevHoveredLinkRef = useRef<LinkSpan | null>(null);
   const prevCursorRef = useRef<{ row: number; col: number } | null>(null);
   const prevCursorOnRef = useRef<boolean>(true);
+  const prevGhostRef = useRef<string>("");
   const [hoveredLink, setHoveredLink] = useState<LinkSpan | null>(null);
 
   useTerminalCanvasInput(terminalId, inputEl, writeBytes);
@@ -269,6 +277,11 @@ export function TerminalCanvas({
       if (prevCursor) cursorDirtyRows.add(prevCursor.row);
       cursorDirtyRows.add(cursor.row);
     }
+    // The ghost suggestion lives on the cursor row; any change to its
+    // string flips that row dirty so the trailing glyph count is correct.
+    const ghost = ghostSuggestion ?? "";
+    const ghostChanged = ghost !== prevGhostRef.current;
+    if (ghostChanged) cursorDirtyRows.add(cursor.row);
 
     ctx.textBaseline = "top";
 
@@ -318,6 +331,12 @@ export function TerminalCanvas({
       paintLinkUnderline(ctx, row, hoveredLink, snapshot.cols, cellMetrics);
     }
 
+    // Ghost suggestion band — paint BEFORE the cursor so the cursor block
+    // (if block-shape) covers its first glyph just like on a real shell.
+    if (ghost && !hasPrintableAfterCursor(snapshot)) {
+      paintGhostSuggestion(ctx, snapshot, ghost, cellMetrics, fontSize, fontFamily);
+    }
+
     if (snapshot.cursor.visible && cursorOn) {
       paintCursor(ctx, snapshot, cellMetrics);
     }
@@ -328,6 +347,7 @@ export function TerminalCanvas({
     prevHoveredLinkRef.current = hoveredLink;
     prevCursorRef.current = { row: cursor.row, col: cursor.col };
     prevCursorOnRef.current = cursorOn;
+    prevGhostRef.current = ghost;
   }, [
     snapshot,
     cellMetrics,
@@ -338,6 +358,7 @@ export function TerminalCanvas({
     searchMatches,
     activeSearchMatch,
     hoveredLink,
+    ghostSuggestion,
   ]);
 
   useEffect(() => {
@@ -366,6 +387,7 @@ export function TerminalCanvas({
       ref={(node) => {
         canvasRef.current = node;
         setInputEl(node);
+        onCanvasRef?.(node);
       }}
       width={canvasWidth}
       height={canvasHeight}
@@ -581,6 +603,44 @@ function paintSelectionBand(
   ctx.globalAlpha = 0.45;
   ctx.fillStyle = SELECTION_BG;
   ctx.fillRect(x, y, w, height);
+  ctx.restore();
+}
+
+/** Any printable glyph to the right of the cursor on its row? */
+function hasPrintableAfterCursor(snapshot: GridSnapshot): boolean {
+  const row = snapshot.cells[snapshot.cursor.row];
+  if (!row) return false;
+  for (let col = snapshot.cursor.col; col < row.length; col++) {
+    const cell = row[col];
+    if (!cell) continue;
+    if (cell.ch && cell.ch !== " " && cell.ch !== "\0") return true;
+  }
+  return false;
+}
+
+function paintGhostSuggestion(
+  ctx: CanvasRenderingContext2D,
+  snapshot: GridSnapshot,
+  text: string,
+  { width, height }: CellMetrics,
+  fontSize: number,
+  fontFamily: string,
+) {
+  const { row, col } = snapshot.cursor;
+  const y = row * height;
+  ctx.save();
+  ctx.globalAlpha = 0.45;
+  ctx.fillStyle = "#cdd6f4";
+  ctx.font = `${fontSize}px ${fontFamily}`;
+  ctx.textBaseline = "top";
+  let x = col * width;
+  for (const ch of text) {
+    // Stop drawing if we would overflow the row — shells wrap the echoed
+    // acceptance on their own; we only hint inline.
+    if (x >= snapshot.cols * width) break;
+    ctx.fillText(ch, x, y + 1);
+    x += width;
+  }
   ctx.restore();
 }
 

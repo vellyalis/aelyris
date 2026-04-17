@@ -12,6 +12,7 @@ import type { ShellType } from "../../App";
 import { IMEInputBar } from "./IMEInputBar";
 import { TerminalCanvas } from "./TerminalCanvas";
 import { useAICliDetection } from "./hooks/useAICliDetection";
+import { useInputMirror } from "./hooks/useInputMirror";
 import { useTerminalSnapshot } from "../../shared/hooks/useTerminalSnapshot";
 import {
   findMatches,
@@ -110,6 +111,7 @@ export function NativeTerminalArea({
   subscribeOutput = defaultSubscribeOutput,
 }: NativeTerminalAreaProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [canvasEl, setCanvasEl] = useState<HTMLCanvasElement | null>(null);
   const [terminalId, setTerminalId] = useState<string | null>(null);
   const [dims, setDims] = useState<Dims | null>(null);
   const spawnStartedRef = useRef(false);
@@ -352,6 +354,69 @@ export function NativeTerminalArea({
     [terminalId, writePty],
   );
 
+  // ── Ghost-text suggestion (Phase 3A-2) ──
+  // Only active when a real shell is typing at us — AI CLIs own their own
+  // prompt framing and predictions would race with their live UI.
+  const mirrorEnabled = !!terminalId && !aiCli.active;
+  const [suggestion, setSuggestion] = useState<string | null>(null);
+
+  const acceptSuggestion = useCallback(
+    (suffix: string) => {
+      if (!terminalId) return;
+      void writePty(terminalId, suffix);
+      setSuggestion(null);
+    },
+    [terminalId, writePty],
+  );
+
+  const commitCommand = useCallback(
+    (command: string) => {
+      if (!terminalId) return;
+      setSuggestion(null);
+      void invoke<void>("save_command_history", {
+        terminalId,
+        command,
+        cwd: cwdRef.current ?? ".",
+      }).catch(() => {});
+    },
+    [terminalId],
+  );
+
+  const { buffer, reset: resetMirror } = useInputMirror({
+    element: canvasEl,
+    enabled: mirrorEnabled,
+    suggestion,
+    onAccept: acceptSuggestion,
+    onCommit: commitCommand,
+  });
+
+  useEffect(() => {
+    if (!mirrorEnabled) {
+      setSuggestion(null);
+      resetMirror();
+    }
+  }, [mirrorEnabled, resetMirror]);
+
+  useEffect(() => {
+    if (!mirrorEnabled) return;
+    if (buffer.length < 2) {
+      setSuggestion(null);
+      return;
+    }
+    let cancelled = false;
+    void invoke<string | null>("suggest_next", { prefix: buffer })
+      .then((next) => {
+        if (cancelled) return;
+        setSuggestion(next ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setSuggestion(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [buffer, mirrorEnabled]);
+
   // Keying on terminalId only — including dims causes a full
   // unmount/remount on every resize tick, producing visible flicker.
   // TerminalCanvas already handles cols/rows changes via its own
@@ -422,6 +487,8 @@ export function NativeTerminalArea({
             fontSize={FONT_SIZE}
             searchMatches={searchMatches}
             activeSearchMatch={activeSearchMatch}
+            ghostSuggestion={mirrorEnabled ? suggestion : null}
+            onCanvasRef={setCanvasEl}
           />
         )}
       </div>
