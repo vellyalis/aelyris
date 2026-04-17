@@ -1,24 +1,28 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useTerminalSnapshot } from "../../shared/hooks/useTerminalSnapshot";
-import type { CellSnapshot, GridSnapshot } from "../../shared/types/terminal";
+import {
+  CURSOR_COLOR,
+  DEFAULT_BG,
+  isDefaultBg,
+  resolveColor,
+} from "../../shared/lib/ansiPalette";
+import {
+  CellAttr,
+  hasAttr,
+  type CellSnapshot,
+  type GridSnapshot,
+} from "../../shared/types/terminal";
 
 /**
- * Phase 2 / Task 6 — basic Canvas 2D terminal renderer.
+ * Phase 2 / Task 7 — Canvas 2D terminal renderer with full ANSI attr + color.
  *
- * Subscribes to `useTerminalSnapshot` and paints the grid into a canvas.
+ * Subscribes to `useTerminalSnapshot` and paints the grid cell-by-cell.
  * Only rows whose cell arrays are not reference-equal to the previous
- * render are repainted; `applyDiff` already re-uses old row references
- * for untouched rows so this is effectively a row-level dirty check.
+ * render are repainted (`applyDiff` preserves refs for untouched rows).
  *
- * Scope: monochrome rendering + cursor. ANSI colors / attrs (bold, italic,
- * etc.) arrive in Task 7; input / selection in Task 8-9; feature-flagged
- * mount next to xterm.js in Task 10.
+ * Feature-flagged mount next to xterm.js comes in Task 10.
  */
-
-const DEFAULT_FG = "#cdd6f4"; // Catppuccin Mocha text
-const DEFAULT_BG = "#1e1e2e"; // Catppuccin Mocha base
-const CURSOR_COLOR = "#cba6f7"; // Catppuccin Mocha mauve
 
 export interface TerminalCanvasProps {
   terminalId: string;
@@ -29,6 +33,11 @@ export interface TerminalCanvasProps {
   className?: string;
   /** Overrides the live snapshot hook — used by tests to inject fixtures. */
   snapshotOverride?: GridSnapshot | null;
+}
+
+interface CellMetrics {
+  width: number;
+  height: number;
 }
 
 export function TerminalCanvas({
@@ -42,16 +51,18 @@ export function TerminalCanvas({
 }: TerminalCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const prevSnapshotRef = useRef<GridSnapshot | null>(null);
-  const liveSnapshot = useTerminalSnapshot(snapshotOverride === undefined ? terminalId : null);
-  const snapshot = snapshotOverride !== undefined ? snapshotOverride : liveSnapshot;
+  const liveSnapshot = useTerminalSnapshot(
+    snapshotOverride === undefined ? terminalId : null,
+  );
+  const snapshot =
+    snapshotOverride !== undefined ? snapshotOverride : liveSnapshot;
 
   const [cursorOn, setCursorOn] = useState(true);
 
-  const cellMetrics = useMemo(() => {
+  const cellMetrics: CellMetrics = useMemo(() => {
     // 0.6 approximates an IBM Plex Mono advance at the common weights used
-    // in the UI. Task 7 refines this via ctx.measureText when the canvas is
-    // mounted — for now the dev mode integration target is a 14px / 80x24
-    // shell window so the rounding error is sub-pixel.
+    // in the UI. ctx.measureText-based calibration is deferred — the dev
+    // integration target is 14px / 80×24 so sub-pixel error is fine.
     const width = Math.round(fontSize * 0.6);
     const height = Math.round(fontSize * 1.25);
     return { width, height };
@@ -60,7 +71,6 @@ export function TerminalCanvas({
   const canvasWidth = cols * cellMetrics.width;
   const canvasHeight = rows * cellMetrics.height;
 
-  // Paint dirty rows + cursor.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -78,7 +88,6 @@ export function TerminalCanvas({
     const dimsChanged =
       !prev || prev.cols !== snapshot.cols || prev.rows !== snapshot.rows;
 
-    ctx.font = `${fontSize}px ${fontFamily}`;
     ctx.textBaseline = "top";
 
     if (dimsChanged) {
@@ -88,10 +97,8 @@ export function TerminalCanvas({
 
     for (let row = 0; row < snapshot.rows; row++) {
       const rowCells = snapshot.cells[row];
-      if (!dimsChanged && prev && prev.cells[row] === rowCells) {
-        continue; // unchanged row — applyDiff preserved the reference
-      }
-      paintRow(ctx, rowCells, row, cellMetrics);
+      if (!dimsChanged && prev && prev.cells[row] === rowCells) continue;
+      paintRow(ctx, rowCells, row, cellMetrics, fontSize, fontFamily);
     }
 
     if (snapshot.cursor.visible && cursorOn) {
@@ -101,7 +108,6 @@ export function TerminalCanvas({
     prevSnapshotRef.current = snapshot;
   }, [snapshot, cellMetrics, fontFamily, fontSize, cursorOn]);
 
-  // Cursor blink. Skipped when blinking is off so the cursor stays solid.
   useEffect(() => {
     if (!snapshot?.cursor.blinking) {
       setCursorOn(true);
@@ -129,34 +135,110 @@ export function TerminalCanvas({
   );
 }
 
+function buildFont(
+  cell: CellSnapshot,
+  fontSize: number,
+  fontFamily: string,
+): string {
+  const bold = hasAttr(cell, CellAttr.BOLD);
+  const italic = hasAttr(cell, CellAttr.ITALIC);
+  const weight = bold ? "bold " : "";
+  const style = italic ? "italic " : "";
+  return `${style}${weight}${fontSize}px ${fontFamily}`;
+}
+
 function paintRow(
   ctx: CanvasRenderingContext2D,
   cells: CellSnapshot[],
   row: number,
-  { width, height }: { width: number; height: number },
+  metrics: CellMetrics,
+  fontSize: number,
+  fontFamily: string,
 ) {
+  const { width, height } = metrics;
   const y = row * height;
-  // Full-row clear in the default bg (ANSI bg comes in Task 7).
+
+  // Clear the row in default bg. Per-cell custom bg is painted below.
+  ctx.globalAlpha = 1;
   ctx.fillStyle = DEFAULT_BG;
   ctx.fillRect(0, y, cells.length * width, height);
 
-  ctx.fillStyle = DEFAULT_FG;
   for (let col = 0; col < cells.length; col++) {
-    const ch = cells[col].ch;
-    if (ch === " " || ch === "\0") continue;
-    ctx.fillText(ch, col * width, y + 1);
+    const cell = cells[col];
+
+    // Wide-char spacer occupies the second column of a 2-wide glyph —
+    // paint nothing so the wide glyph from the previous cell isn't covered.
+    if (hasAttr(cell, CellAttr.WIDE_CHAR_SPACER)) continue;
+
+    const inverse = hasAttr(cell, CellAttr.INVERSE);
+    const hidden = hasAttr(cell, CellAttr.HIDDEN);
+    const dim = hasAttr(cell, CellAttr.DIM);
+
+    let fgCss = resolveColor(cell.fg, true);
+    let bgCss = resolveColor(cell.bg, false);
+    if (inverse) {
+      const tmp = fgCss;
+      fgCss = bgCss;
+      bgCss = tmp;
+    }
+
+    const wide = hasAttr(cell, CellAttr.WIDE_CHAR);
+    const cellW = wide ? width * 2 : width;
+
+    const hasCustomBg = inverse || !isDefaultBg(cell.bg);
+    if (hasCustomBg) {
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = bgCss;
+      ctx.fillRect(col * width, y, cellW, height);
+    }
+
+    if (hidden) continue;
+    const ch = cell.ch;
+    const x = col * width;
+    if (ch === " " || ch === "\0") {
+      drawDecorations(ctx, cell, x, y, cellW, height, fgCss, dim);
+      continue;
+    }
+
+    ctx.globalAlpha = dim ? 0.6 : 1;
+    ctx.font = buildFont(cell, fontSize, fontFamily);
+    ctx.fillStyle = fgCss;
+    ctx.fillText(ch, x, y + 1);
+
+    drawDecorations(ctx, cell, x, y, cellW, height, fgCss, dim);
   }
+  ctx.globalAlpha = 1;
+}
+
+function drawDecorations(
+  ctx: CanvasRenderingContext2D,
+  cell: CellSnapshot,
+  x: number,
+  y: number,
+  cellW: number,
+  cellH: number,
+  fgCss: string,
+  dim: boolean,
+) {
+  const underline = hasAttr(cell, CellAttr.UNDERLINE);
+  const strike = hasAttr(cell, CellAttr.STRIKEOUT);
+  if (!underline && !strike) return;
+  ctx.globalAlpha = dim ? 0.6 : 1;
+  ctx.fillStyle = fgCss;
+  if (underline) ctx.fillRect(x, y + cellH - 2, cellW, 1);
+  if (strike) ctx.fillRect(x, y + Math.round(cellH / 2), cellW, 1);
 }
 
 function paintCursor(
   ctx: CanvasRenderingContext2D,
   snapshot: GridSnapshot,
-  { width, height }: { width: number; height: number },
+  { width, height }: CellMetrics,
 ) {
   const { row, col, shape } = snapshot.cursor;
   if (shape === "hidden") return;
   const x = col * width;
   const y = row * height;
+  ctx.globalAlpha = 1;
   ctx.fillStyle = CURSOR_COLOR;
   switch (shape) {
     case "block":
