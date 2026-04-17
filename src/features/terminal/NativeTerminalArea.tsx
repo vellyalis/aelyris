@@ -134,10 +134,27 @@ export function NativeTerminalArea({
     const decoder = new TextDecoder("utf-8");
     let unlisten: UnlistenFn | null = null;
     let cancelled = false;
+    // Accumulate decoded chunks and flush to the AI-CLI detector at most
+    // once per 50ms. Under heavy streaming (AI CLI replies) raw pty-output
+    // can fire ~25×/sec — batching keeps the detector regex off the hot
+    // path without losing text (TextDecoder stream mode preserves partial
+    // UTF-8 across chunks).
+    let buffer = "";
+    let flushTimer: number | null = null;
+    const flush = () => {
+      flushTimer = null;
+      if (!buffer) return;
+      const chunk = buffer;
+      buffer = "";
+      aiCli.feed(chunk);
+    };
     (async () => {
       try {
         unlisten = await subscribeOutput(terminalId, (bytes) => {
-          aiCli.feed(decoder.decode(bytes, { stream: true }));
+          buffer += decoder.decode(bytes, { stream: true });
+          if (flushTimer === null) {
+            flushTimer = window.setTimeout(flush, 50);
+          }
         });
         if (cancelled) {
           unlisten?.();
@@ -149,6 +166,7 @@ export function NativeTerminalArea({
     })();
     return () => {
       cancelled = true;
+      if (flushTimer !== null) window.clearTimeout(flushTimer);
       unlisten?.();
     };
   }, [terminalId, subscribeOutput, aiCli]);
