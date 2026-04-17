@@ -57,12 +57,14 @@ export function SessionCard({
   const lastLog = s.logs.length > 0 ? s.logs[s.logs.length - 1] : null;
   const pct = s.status === "done" ? 100 : s.status === "idle" ? 0 : s.tokensUsed > 0 ? Math.min(99, Math.round((s.tokensUsed / getMaxTokens(s.model)) * 100)) : 2;
   const warning = getBudgetWarning(s, budgetThresholds);
+  const isLive = s.status !== "done" && s.status !== "idle";
 
   return (
     <RadixContextMenu.Root>
       <RadixContextMenu.Trigger asChild>
         <button
           className={`${styles.card} ${s.watchdog ? styles.cardWatchdog : ""} ${isActive ? styles.cardActive : ""} ${isSelected ? styles.cardSelected : ""}`}
+          data-live={isLive || undefined}
           onClick={(e) => {
             if ((e.ctrlKey || e.metaKey) && onToggleSelect) {
               e.preventDefault();
