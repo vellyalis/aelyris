@@ -28,6 +28,9 @@ tokio = { version = "1", features = ["full"] }
 # PTY (terminal backend)
 portable-pty = "0.8"
 
+# Terminal state engine (Phase 2 — replaces xterm.js parsing/grid)
+alacritty_terminal = "0.26"
+
 # Git operations
 git2 = "0.19"
 

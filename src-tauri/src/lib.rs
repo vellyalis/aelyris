@@ -8,6 +8,7 @@ pub mod ui;
 pub mod lsp;
 pub mod pty;
 pub mod session;
+pub mod term;
 pub mod suggest;
 mod watcher;
 pub mod watchdog;
