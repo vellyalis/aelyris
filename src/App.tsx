@@ -3,17 +3,19 @@ import appStyles from "./App.module.css";
 import { ProjectHeaderBar } from "./features/header/ProjectHeaderBar";
 import { MenuBar } from "./features/menubar/MenuBar";
 import { FileTree } from "./features/file-tree/FileTree";
-import { KanbanBoard } from "./features/kanban/KanbanBoard";
 import { PaneTreeContainer } from "./features/terminal/pane-tree";
-const QuickOpen = lazy(() => import("./features/quick-open/QuickOpen").then((m) => ({ default: m.QuickOpen })));
-import { AgentInspector } from "./features/agent-inspector/AgentInspector";
 import { AgentTerminal } from "./features/agent-terminal";
-import { ToolkitPanel } from "./features/toolkit/ToolkitPanel";
-import { WorkflowPanel } from "./features/workflow/WorkflowPanel";
 import { useAppMenus } from "./features/app/useAppMenus";
-import { SCMPanel } from "./features/scm/SCMPanel";
 import { StatusBar } from "./features/statusbar/StatusBar";
 import { WorkspaceTabs } from "./features/workspace-tabs/WorkspaceTabs";
+
+// Right-panel + secondary UIs: lazy-loaded so they do not block first paint.
+const KanbanBoard = lazy(() => import("./features/kanban/KanbanBoard").then((m) => ({ default: m.KanbanBoard })));
+const AgentInspector = lazy(() => import("./features/agent-inspector/AgentInspector").then((m) => ({ default: m.AgentInspector })));
+const ToolkitPanel = lazy(() => import("./features/toolkit/ToolkitPanel").then((m) => ({ default: m.ToolkitPanel })));
+const WorkflowPanel = lazy(() => import("./features/workflow/WorkflowPanel").then((m) => ({ default: m.WorkflowPanel })));
+const SCMPanel = lazy(() => import("./features/scm/SCMPanel").then((m) => ({ default: m.SCMPanel })));
+const QuickOpen = lazy(() => import("./features/quick-open/QuickOpen").then((m) => ({ default: m.QuickOpen })));
 
 const EditorPanel = lazy(() => import("./features/editor/EditorPanel").then((m) => ({ default: m.EditorPanel })));
 const CommandPalette = lazy(() => import("./features/command-palette/CommandPalette").then((m) => ({ default: m.CommandPalette })));
@@ -360,11 +362,15 @@ export function App() {
             <FileTree key={fileTreeKey} rootPath={projectPath} onFileSelect={handleFileSelect} onOpenDiff={handleOpenDiff} changedFiles={changedFiles} />
           </ErrorBoundary>
           <ErrorBoundary>
-            <KanbanBoard onStartAgent={handleStartAgent} projectPath={projectPath} agentStatuses={agentStatuses} />
+            <Suspense fallback={null}>
+              <KanbanBoard onStartAgent={handleStartAgent} projectPath={projectPath} agentStatuses={agentStatuses} />
+            </Suspense>
           </ErrorBoundary>
           {searchVisible && <Suspense fallback={null}><ErrorBoundary><SearchPanel visible rootPath={projectPath} onClose={() => setSearchVisible(false)} onResultClick={(file, line) => { handleFileSelect(file); setEditorLine(line); }} /></ErrorBoundary></Suspense>}
           <ErrorBoundary>
-            <SCMPanel projectPath={projectPath} onOpenFile={handleFileSelect} onOpenDiff={handleOpenDiff} />
+            <Suspense fallback={null}>
+              <SCMPanel projectPath={projectPath} onOpenFile={handleFileSelect} onOpenDiff={handleOpenDiff} />
+            </Suspense>
           </ErrorBoundary>
         </div>
 
@@ -407,22 +413,28 @@ export function App() {
 
         <div className="right-panel" role="complementary" aria-label="Agent inspector">
           <ErrorBoundary>
-            <AgentInspector
-              sessions={sessions} activeSessionId={activeSessionId}
-              onSelectSession={handleSelectSession} onStartAgent={handleStartAgent} onStopAgent={stopAgent}
-              onCreateWorktree={createWorktree} onRemoveWorktree={removeWorktree} onRenameSession={renameSession}
-              interactiveSessions={interactiveSessions}
-              onFocusInteractiveSession={handleFocusInteractiveSession}
-              onStopInteractiveSession={stopInteractiveSession}
-              onEndSessionAndRemoveWorktree={endSessionAndRemoveWorktree}
-              onStartInteractiveSession={handleStartInteractiveSession}
-            />
+            <Suspense fallback={null}>
+              <AgentInspector
+                sessions={sessions} activeSessionId={activeSessionId}
+                onSelectSession={handleSelectSession} onStartAgent={handleStartAgent} onStopAgent={stopAgent}
+                onCreateWorktree={createWorktree} onRemoveWorktree={removeWorktree} onRenameSession={renameSession}
+                interactiveSessions={interactiveSessions}
+                onFocusInteractiveSession={handleFocusInteractiveSession}
+                onStopInteractiveSession={stopInteractiveSession}
+                onEndSessionAndRemoveWorktree={endSessionAndRemoveWorktree}
+                onStartInteractiveSession={handleStartInteractiveSession}
+              />
+            </Suspense>
           </ErrorBoundary>
           <ErrorBoundary>
-            <WorkflowPanel projectPath={projectPath} onStartAgent={handleStartAgent} />
+            <Suspense fallback={null}>
+              <WorkflowPanel projectPath={projectPath} onStartAgent={handleStartAgent} />
+            </Suspense>
           </ErrorBoundary>
           <ErrorBoundary>
-            <ToolkitPanel projectName={projectName} onRunCommand={handleRunCommand} />
+            <Suspense fallback={null}>
+              <ToolkitPanel projectName={projectName} onRunCommand={handleRunCommand} />
+            </Suspense>
           </ErrorBoundary>
         </div>
       </main>
