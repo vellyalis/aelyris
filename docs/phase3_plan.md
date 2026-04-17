@@ -151,7 +151,7 @@
 
 ---
 
-## 3A-3. gpu/ backend 撤去 + 起動速度 second stage
+## 3A-3. gpu/ backend 撤去 + 起動速度 second stage ✅ 完了 (2026-04-18, commit 44e4805)
 
 **目的**: Phase 2 で孤立した `src-tauri/src/gpu/` 30 ファイルの撤去 (現 React 側から完全孤立)。Phase 1 残務の起動速度 second stage も畳む。
 
@@ -188,10 +188,22 @@
 **詳細は 3A 完了時点で確定**。スケルトンのみ:
 
 ## 3B-1. Orchestra mode
-- role-based multi-agent (implementer / tester / documenter / reviewer)
-- SessionCard に role assignment UI、HandoffDialog 拡張で role 指定引き継ぎ
-- 司令室 view: ReactFlow で agent 間の依存グラフを表示
-- conflict detection: 同一ファイルに複数 agent 書き込み → warning
+
+### 3B-1 MVP ✅ 完了 (2026-04-18, commit 7c675fc)
+- OrchestraRoleId + icon/color、AgentSession.role / handoffFrom、useAgentManager が meta を永続化
+- OrchestraDialog (task textarea + 4 role checkboxes)、AgentInspector の ♫ ボタンから起動
+- SessionCard: role badge + conflict badge (peach FileWarning icon)
+- AgentInspector parallel view: conflictsByPath サマリ chip
+- detectFileConflicts() で active session 間のファイル重複検出
+- tests: orchestraRoles 14 + OrchestraDialog 5
+
+### 3B-1c ✅ 完了 (2026-04-18, commit f3e17bc)
+- `shared/lib/conductorLayout.ts` — 純粋 layout (column = role、row = startedAt)、edge = handoffFrom
+- `features/agent-inspector/ConductorView.tsx` — ReactFlow で role-colored node + 動的 edge
+- AgentInspector に "conductor" タブ追加 (Share2 icon)
+- HandoffResult に `role` 追加、HandoffDialog に role dropdown
+- AgentInspector.handleHandoff で `handoffFrom: session.id` + `role` を startAgent meta に渡す
+- tests: conductorLayout 6 + HandoffDialogRole 4
 
 ## 3B-2. Semantic history search
 - embedding provider: Claude API (既存環境) or 小型ローカルモデル (candle-core)
