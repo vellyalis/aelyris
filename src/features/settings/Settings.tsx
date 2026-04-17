@@ -162,15 +162,6 @@ export function Settings({ visible, onClose }: SettingsProps) {
                     <span>Cursor Blink</span>
                   </label>
                 </div>
-                <div className={styles.field}>
-                  <label className={styles.label}>Renderer</label>
-                  <select className={styles.select} value={localStorage.getItem("aether:renderer") ?? "xterm"} onChange={(e) => { localStorage.setItem("aether:renderer", e.target.value); window.dispatchEvent(new StorageEvent("storage")); }}>
-                    <option value="xterm">xterm.js (stable)</option>
-                    <option value="wgpu">GPU Canvas (experimental)</option>
-                    <option value="native">Native Rust engine (Phase 2, experimental)</option>
-                  </select>
-                  <span className={styles.hint}>Native engine requires `AETHER_TERM_NATIVE=1` on the backend. Renderer change applies to newly opened terminals.</span>
-                </div>
               </section>
 
               <section className={styles.section}>

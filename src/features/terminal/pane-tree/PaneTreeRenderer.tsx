@@ -1,10 +1,7 @@
 import { useRef, useEffect, useMemo, useState, useCallback } from "react";
 import type { PaneNode, SplitDirection } from "./types";
-import { TerminalArea } from "../TerminalArea";
-import { WebGpuTerminal } from "../WebGpuTerminal";
 import { NativeTerminalArea } from "../NativeTerminalArea";
 import { TerminalInfoBar } from "../TerminalInfoBar";
-import { useGpuRenderer, type RendererMode } from "../../../shared/hooks/useGpuRenderer";
 import { SplitPane } from "../../../shared/ui/SplitPane";
 import styles from "./PaneTreeRenderer.module.css";
 
@@ -12,7 +9,6 @@ interface PaneTreeRendererProps {
   tree: PaneNode;
   activePaneId: string | null;
   maximizedPaneId: string | null;
-  syncMode: boolean;
   onFocusPane: (id: string) => void;
   onSplit: (id: string, direction: SplitDirection) => void;
   onClose: (id: string) => void;
@@ -40,27 +36,26 @@ interface LeafInfo {
  *
  * Design:
  * 1. SplitPane layout tree renders invisible "slot" divs (for sizing only)
- * 2. All TerminalArea components are rendered in a FLAT list with stable keys
- * 3. Each TerminalArea is absolutely positioned to match its slot's rect
+ * 2. All NativeTerminalArea components are rendered in a FLAT list with stable keys
+ * 3. Each NativeTerminalArea is absolutely positioned to match its slot's rect
  * 4. ResizeObserver on each slot updates the position
  *
- * This guarantees TerminalArea is NEVER unmounted on split/maximize/close.
+ * This guarantees NativeTerminalArea is NEVER unmounted on split/maximize/close.
  * The flat list only grows (on split) or shrinks (on close).
  */
 export function PaneTreeRenderer({
-  tree, activePaneId, maximizedPaneId, syncMode,
+  tree, activePaneId, maximizedPaneId,
   onFocusPane, onSplit, onClose, onResize, onToggleMaximize, onTerminalReady, canClose,
 }: PaneTreeRendererProps) {
-  const rendererMode = useGpuRenderer();
   const rootRef = useRef<HTMLDivElement>(null);
 
   // Accumulate all leaves ever seen (never remove — React handles unmount via key removal)
   const leavesRef = useRef(new Map<string, LeafInfo>());
   // Track which leaves have ever had a non-zero rect.  Once true, we keep
-  // TerminalArea mounted even if the rect later goes to zero (e.g. maximize
-  // sets the non-maxed slots to `display: none`, collapsing their rect).
-  // Without this, hidden panes would unmount → xterm dispose → new PTY on
-  // restore, losing the previous shell/CLI state.
+  // NativeTerminalArea mounted even if the rect later goes to zero (e.g.
+  // maximize sets the non-maxed slots to `display: none`, collapsing their
+  // rect).  Without this, hidden panes would unmount → PTY dropped → new
+  // PTY on restore, losing the previous shell/CLI state.
   const initializedRef = useRef(new Set<string>());
   const currentLeaves = useMemo(() => collectLeaves(tree), [tree]);
 
@@ -213,19 +208,17 @@ export function PaneTreeRenderer({
       </div>
 
       {/* Layer 2: Stable terminal instances (absolute positioned).
-          We gate TerminalArea mounting on a non-zero rect so xterm.js measures
-          the container at its real size. Otherwise term.open() runs while the
-          mount is display:none (rect not yet populated by ResizeObserver),
-          xterm/fitAddon compute cols=0, and the PTY spawns at the default
-          80x24 — Claude Code (Ink) then renders at 80 cols and the output
-          never realigns until the window is resized by hand. */}
+          We gate NativeTerminalArea mounting on a non-zero rect so the
+          first measurement produces real cols/rows. Otherwise the PTY
+          spawns at the MIN_COLS/MIN_ROWS fallback and programs render at
+          the wrong width until the user resizes by hand. */}
       {stableLeaves.map((leaf) => {
         const rect = slotRects.get(leaf.id);
         const isVisible = maximizedPaneId ? leaf.id === maximizedPaneId : currentIds.has(leaf.id);
         const isActive = leaf.id === activePaneId;
         const isMaximized = leaf.id === maximizedPaneId;
         const hasRealSize = !!rect && rect.width > 0 && rect.height > 0;
-        // Latch the "has been real size" bit — once a TerminalArea has
+        // Latch the "has been real size" bit — once a NativeTerminalArea has
         // mounted at non-zero dimensions, keep it mounted for the lifetime
         // of the pane.  This survives maximize (non-max slots get rect=0
         // via display:none) without unmounting and re-spawning the PTY.
@@ -255,8 +248,12 @@ export function PaneTreeRenderer({
               onToggleMaximize={() => onToggleMaximize(leaf.id)}
               onClose={canClose ? () => onClose(leaf.id) : undefined}
             />
-            {shouldMount && renderTerminal(rendererMode, leaf, syncMode, (tid) =>
-              onTerminalReady(leaf.id, tid),
+            {shouldMount && (
+              <NativeTerminalArea
+                shell={leaf.shell as ShellKind}
+                cwd={leaf.cwd}
+                onTerminalReady={(tid) => onTerminalReady(leaf.id, tid)}
+              />
             )}
           </div>
         );
@@ -266,31 +263,6 @@ export function PaneTreeRenderer({
 }
 
 type ShellKind = "powershell" | "cmd" | "gitbash" | "wsl";
-
-function renderTerminal(
-  mode: RendererMode,
-  leaf: LeafInfo,
-  syncMode: boolean,
-  onReady: (terminalId: string) => void,
-): React.ReactElement {
-  const shell = leaf.shell as ShellKind;
-  switch (mode) {
-    case "wgpu":
-      return <WebGpuTerminal shell={shell} cwd={leaf.cwd} onTerminalReady={onReady} />;
-    case "native":
-      return <NativeTerminalArea shell={shell} cwd={leaf.cwd} onTerminalReady={onReady} />;
-    case "xterm":
-    default:
-      return (
-        <TerminalArea
-          shell={shell}
-          cwd={leaf.cwd}
-          syncMode={syncMode}
-          onTerminalReady={onReady}
-        />
-      );
-  }
-}
 
 /** Render the layout tree — only empty sizing divs, no terminals */
 function renderLayout(

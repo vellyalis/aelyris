@@ -8,12 +8,8 @@ import type { GridDiff, GridSnapshot } from "../types/terminal";
  * Subscribe to the native terminal engine's `term:diff-<id>` stream and
  * keep a materialised `GridSnapshot` in sync.
  *
- * The hook is a no-op when the native engine is disabled (env flag
- * `AETHER_TERM_NATIVE=1` not set on the backend) — `snapshot` stays null
- * and the legacy xterm.js path continues to drive rendering.
- *
- * Task 5 scope: plumbing only. TerminalCanvas (Task 6) will consume the
- * returned snapshot and paint from it.
+ * Returns `null` until the first snapshot or diff arrives. The caller
+ * (TerminalCanvas) displays nothing until that happens.
  */
 export function useTerminalSnapshot(terminalId: string | null): GridSnapshot | null {
   const [snapshot, setSnapshot] = useState<GridSnapshot | null>(null);
@@ -29,9 +25,6 @@ export function useTerminalSnapshot(terminalId: string | null): GridSnapshot | n
 
     (async () => {
       try {
-        const enabled = await invoke<boolean>("term_native_enabled");
-        if (cancelled || !enabled) return;
-
         const initial = await invoke<GridSnapshot | null>("term_snapshot", { id: terminalId });
         if (cancelled) return;
         if (initial) setSnapshot(initial);
@@ -40,7 +33,7 @@ export function useTerminalSnapshot(terminalId: string | null): GridSnapshot | n
           setSnapshot((prev) => applyDiff(prev, event.payload));
         });
       } catch {
-        // Native engine is optional — silently fall back.
+        // Backend unreachable (e.g. vitest jsdom) — stay null.
       }
     })();
 

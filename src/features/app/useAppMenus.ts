@@ -78,9 +78,10 @@ export function useAppMenus(opts: UseAppMenusOptions) {
           const filtered = await invoke<Array<{ command: string }>>( "search_command_history", { query, limit: 10 });
           if (filtered.length > 0) {
             const cmd = filtered[0].command;
-            const { getActivePtyId } = await import("../../features/terminal/hooks/useTerminal");
-            const activeId = getActivePtyId();
-            if (activeId) await invoke("write_terminal", { id: activeId, data: cmd + "\r" });
+            const terminals = await invoke<string[]>("list_terminals");
+            if (terminals.length > 0) {
+              await invoke("write_terminal", { id: terminals[0], data: cmd + "\r" });
+            }
           }
         }
       } catch { /* not in Tauri */ }

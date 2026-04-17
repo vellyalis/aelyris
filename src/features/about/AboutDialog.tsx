@@ -22,7 +22,7 @@ export function AboutDialog({ visible, onClose }: AboutDialogProps) {
         <p className={styles.desc}>AI Workspace for Windows</p>
         <div className={styles.info}>
           <div className={styles.row}><span>Framework</span><span>Tauri v2 + React 19</span></div>
-          <div className={styles.row}><span>Terminal</span><span>xterm.js + WebGL</span></div>
+          <div className={styles.row}><span>Terminal</span><span>alacritty_terminal + Canvas 2D</span></div>
           <div className={styles.row}><span>Editor</span><span>Monaco Editor</span></div>
           <div className={styles.row}><span>Backend</span><span>Rust + ConPTY</span></div>
           <div className={styles.row}><span>Git</span><span>libgit2 (git2-rs)</span></div>

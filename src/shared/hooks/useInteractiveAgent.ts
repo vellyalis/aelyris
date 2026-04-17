@@ -4,7 +4,7 @@ import { toast } from "../store/toastStore";
 
 /**
  * Manages interactive agent sessions (PTY-based, works with any AI CLI).
- * Sessions are spawned in the Rust backend and output is streamed to xterm.js terminals.
+ * Sessions are spawned in the Rust backend and rendered in the native TerminalCanvas.
  */
 export function useInteractiveAgent() {
   const [sessions, setSessions] = useState<InteractiveSession[]>([]);

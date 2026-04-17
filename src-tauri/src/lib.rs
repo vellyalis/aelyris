@@ -72,7 +72,6 @@ pub fn run() {
             ipc::list_terminals,
             ipc::detect_shells,
             ipc::term_snapshot,
-            ipc::term_native_enabled,
             ipc::discover_projects,
             ipc::list_branches,
             ipc::list_worktrees,

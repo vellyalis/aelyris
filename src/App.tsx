@@ -45,7 +45,6 @@ import { useKeyboardShortcuts } from "./shared/hooks/useKeyboardShortcuts";
 import { useTerminalNotifications } from "./shared/hooks/useTerminalNotifications";
 import { useAppStore } from "./shared/store/appStore";
 import { useThemeApplier } from "./shared/hooks/useTheme";
-import { getActivePtyId } from "./features/terminal/hooks/useTerminal";
 import { markFirstPaint } from "./shared/lib/bootMetrics";
 
 export type ShellType = "powershell" | "cmd" | "gitbash" | "wsl";
@@ -175,11 +174,6 @@ export function App() {
   const handleRunCommand = useCallback(async (command: string) => {
     try {
       const { invoke } = await import("@tauri-apps/api/core");
-      const activeId = getActivePtyId();
-      if (activeId) {
-        await invoke("write_terminal", { id: activeId, data: command + "\r" });
-        return;
-      }
       const terminals = await invoke<string[]>("list_terminals");
       if (terminals.length > 0) {
         await invoke("write_terminal", { id: terminals[0], data: command + "\r" });

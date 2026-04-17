@@ -2,9 +2,7 @@
 //!
 //! One `NativeSession` per PTY id: owns a `TermEngine` fed by the PTY read
 //! loop and a `DiffTracker` that yields coalesced `GridDiff`s to emit over
-//! IPC. Controlled by the `AETHER_TERM_NATIVE=1` env flag — when disabled,
-//! every method is a cheap no-op so the existing xterm.js pipeline keeps
-//! running untouched.
+//! IPC. Every PTY that flows through the native pipeline registers here.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -24,33 +22,16 @@ struct NativeSession {
 }
 
 pub struct NativeTerminalRegistry {
-    enabled: bool,
     sessions: Mutex<HashMap<String, NativeSession>>,
 }
 
 impl NativeTerminalRegistry {
     pub fn new() -> Self {
-        Self::with_enabled(Self::env_enabled())
+        Self { sessions: Mutex::new(HashMap::new()) }
     }
 
-    /// Test hook — bypass the env check.
-    pub fn with_enabled(enabled: bool) -> Self {
-        Self { enabled, sessions: Mutex::new(HashMap::new()) }
-    }
-
-    fn env_enabled() -> bool {
-        std::env::var("AETHER_TERM_NATIVE").ok().as_deref() == Some("1")
-    }
-
-    pub fn is_enabled(&self) -> bool {
-        self.enabled
-    }
-
-    /// Create a session for `id`. No-op if the registry is disabled.
+    /// Create a session for `id`.
     pub fn create(&self, id: &str, cols: u16, rows: u16) -> Result<(), String> {
-        if !self.enabled {
-            return Ok(());
-        }
         let engine = TermEngine::new(cols as usize, rows as usize).map_err(|e| e.to_string())?;
         let session = NativeSession {
             engine,
@@ -66,12 +47,9 @@ impl NativeTerminalRegistry {
     }
 
     /// Feed PTY bytes into the engine and return a diff if the coalesce
-    /// window has elapsed. Returns `None` when disabled, missing, or within
-    /// the window.
+    /// window has elapsed. Returns `None` when the session is missing or
+    /// within the coalesce window.
     pub fn advance(&self, id: &str, bytes: &[u8]) -> Option<GridDiff> {
-        if !self.enabled {
-            return None;
-        }
         let mut guard = self.lock().ok()?;
         let session = guard.get_mut(id)?;
         session.engine.advance(bytes);
@@ -91,9 +69,6 @@ impl NativeTerminalRegistry {
     /// Force-emit any pending state, ignoring the coalesce window. Used on
     /// resize / reconnect so the UI doesn't miss the final frame.
     pub fn flush(&self, id: &str) -> Option<GridDiff> {
-        if !self.enabled {
-            return None;
-        }
         let mut guard = self.lock().ok()?;
         let session = guard.get_mut(id)?;
         let diff = session.tracker.diff(&session.engine);
@@ -104,12 +79,9 @@ impl NativeTerminalRegistry {
         Some(diff)
     }
 
-    /// Resize the engine for `id`. Returns a full-frame diff if enabled and
-    /// the session exists.
+    /// Resize the engine for `id`. Returns a full-frame diff if the session
+    /// exists.
     pub fn resize(&self, id: &str, cols: u16, rows: u16) -> Result<Option<GridDiff>, String> {
-        if !self.enabled {
-            return Ok(None);
-        }
         let mut guard = self.lock()?;
         let Some(session) = guard.get_mut(id) else {
             return Ok(None);
@@ -124,18 +96,12 @@ impl NativeTerminalRegistry {
     /// Build a fresh full snapshot without touching the diff tracker. Used
     /// when the frontend (re)mounts and needs to bootstrap from scratch.
     pub fn snapshot(&self, id: &str) -> Option<GridSnapshot> {
-        if !self.enabled {
-            return None;
-        }
         let guard = self.lock().ok()?;
         let session = guard.get(id)?;
         Some(session.engine.snapshot())
     }
 
     pub fn remove(&self, id: &str) {
-        if !self.enabled {
-            return;
-        }
         if let Ok(mut guard) = self.lock() {
             guard.remove(id);
         }
@@ -157,19 +123,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn disabled_registry_is_noop() {
-        let reg = NativeTerminalRegistry::with_enabled(false);
-        assert!(!reg.is_enabled());
-        assert!(reg.create("x", 10, 5).is_ok());
-        assert!(reg.advance("x", b"hi").is_none());
-        assert!(reg.snapshot("x").is_none());
-        assert!(reg.resize("x", 20, 5).unwrap().is_none());
-        reg.remove("x");
-    }
-
-    #[test]
     fn first_advance_emits_full_frame() {
-        let reg = NativeTerminalRegistry::with_enabled(true);
+        let reg = NativeTerminalRegistry::new();
         reg.create("t", 10, 2).expect("create");
         let diff = reg.advance("t", b"hi").expect("emit");
         assert!(diff.full);
@@ -178,7 +133,7 @@ mod tests {
 
     #[test]
     fn coalesce_window_suppresses_second_emit() {
-        let reg = NativeTerminalRegistry::with_enabled(true);
+        let reg = NativeTerminalRegistry::new();
         reg.create("t", 10, 2).expect("create");
         assert!(reg.advance("t", b"a").is_some());
         // Immediately followed — still inside the 16ms window.
@@ -187,7 +142,7 @@ mod tests {
 
     #[test]
     fn flush_bypasses_window() {
-        let reg = NativeTerminalRegistry::with_enabled(true);
+        let reg = NativeTerminalRegistry::new();
         reg.create("t", 10, 2).expect("create");
         assert!(reg.advance("t", b"a").is_some());
         assert!(reg.advance("t", b"b").is_none()); // coalesced
@@ -200,7 +155,7 @@ mod tests {
 
     #[test]
     fn resize_emits_full_frame() {
-        let reg = NativeTerminalRegistry::with_enabled(true);
+        let reg = NativeTerminalRegistry::new();
         reg.create("t", 10, 2).expect("create");
         let _ = reg.advance("t", b"x");
         let diff = reg.resize("t", 20, 3).expect("ok").expect("some");
@@ -211,7 +166,7 @@ mod tests {
 
     #[test]
     fn remove_drops_session() {
-        let reg = NativeTerminalRegistry::with_enabled(true);
+        let reg = NativeTerminalRegistry::new();
         reg.create("t", 4, 1).expect("create");
         assert!(reg.snapshot("t").is_some());
         reg.remove("t");
@@ -221,7 +176,7 @@ mod tests {
 
     #[test]
     fn snapshot_matches_engine_state() {
-        let reg = NativeTerminalRegistry::with_enabled(true);
+        let reg = NativeTerminalRegistry::new();
         reg.create("t", 5, 1).expect("create");
         let _ = reg.advance("t", b"abc");
         let snap = reg.snapshot("t").expect("some");

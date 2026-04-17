@@ -1,10 +1,13 @@
 use std::io::Read;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter, Manager};
 use serde::{Deserialize, Serialize};
 
 use crate::agent::{InteractiveSessionManager, InteractiveSessionInfo, AgentCli};
 use crate::agent::output_monitor;
 use crate::pty::PtyManager;
+use crate::term::NativeTerminalRegistry;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SpawnResult {
@@ -118,15 +121,49 @@ pub fn spawn_interactive_agent(
     let session_mgr = app.state::<InteractiveSessionManager>();
     session_mgr.register(info)?;
 
+    // Register the PTY with the native engine so the frontend's
+    // TerminalCanvas can subscribe to its grid diffs.
+    let native_registry = app.state::<Arc<NativeTerminalRegistry>>().inner().clone();
+    if let Err(e) = native_registry.create(&pty_id, cols, rows) {
+        log::warn!("native engine create failed for agent {}: {}", pty_id, e);
+    }
+
+    // Per-PTY flush ticker: matches the regular terminal pipeline so the
+    // last unsettled diff doesn't stay stuck inside the 16ms coalesce.
+    let flush_alive = Arc::new(AtomicBool::new(true));
+    {
+        let alive = flush_alive.clone();
+        let flush_registry = native_registry.clone();
+        let flush_handle = app.clone();
+        let flush_id = pty_id.clone();
+        std::thread::spawn(move || {
+            while alive.load(Ordering::Acquire) {
+                std::thread::sleep(std::time::Duration::from_millis(33));
+                if let Some(diff) = flush_registry.flush(&flush_id) {
+                    let _ = flush_handle.emit(&format!("term:diff-{}", flush_id), diff);
+                }
+            }
+        });
+    }
+
     // Start output monitoring thread
     // Reads PTY output, applies CLI-specific parser, and emits session updates
     let reader = pty_manager.take_reader(&pty_id)?;
     let app_handle = app.clone();
     let sid = session_id.clone();
     let monitor_cli = cli.clone();
+    let monitor_registry = native_registry.clone();
+    let monitor_alive = flush_alive.clone();
 
     std::thread::spawn(move || {
-        run_output_monitor(reader, &sid, &monitor_cli, &app_handle);
+        run_output_monitor(
+            reader,
+            &sid,
+            &monitor_cli,
+            &app_handle,
+            monitor_registry,
+            monitor_alive,
+        );
     });
 
     // Emit initial session list
@@ -163,6 +200,9 @@ pub fn stop_interactive_agent(app: AppHandle, id: String) -> Result<(), String> 
     // Close PTY (kills the process, output monitor thread will exit on read EOF)
     let _ = pty_manager.close(&pty_id);
 
+    // Tear down native engine session for this PTY.
+    app.state::<Arc<NativeTerminalRegistry>>().remove(&pty_id);
+
     // Unregister session
     session_mgr.unregister(&id)?;
 
@@ -183,6 +223,9 @@ pub fn end_session_and_remove_worktree(app: AppHandle, id: String) -> Result<(),
     let pty_manager = app.state::<PtyManager>();
     let pty_id = info.as_ref().map(|s| s.pty_id.clone()).unwrap_or_else(|| id.clone());
     let _ = pty_manager.close(&pty_id);
+
+    // Tear down native engine session for this PTY.
+    app.state::<Arc<NativeTerminalRegistry>>().remove(&pty_id);
 
     // Remove worktree if one was created
     if let Some(session) = &info {
@@ -216,12 +259,15 @@ fn emit_interactive_sessions(app: &AppHandle, mgr: &InteractiveSessionManager) {
 }
 
 /// Reads PTY output in a background thread, applies CLI parser, emits status updates.
-/// Also emits the raw output as `pty-output-{id}` for xterm.js rendering (same as regular PTY).
+/// Also emits the raw output as `pty-output-{id}` and feeds the native engine
+/// so TerminalCanvas can render the agent PTY.
 fn run_output_monitor(
     mut reader: Box<dyn Read + Send>,
     session_id: &str,
     cli: &AgentCli,
     app: &AppHandle,
+    native_registry: Arc<NativeTerminalRegistry>,
+    flush_alive: Arc<AtomicBool>,
 ) {
     let parser = output_monitor::create_parser(cli);
     let session_mgr = app.state::<InteractiveSessionManager>();
@@ -238,6 +284,11 @@ fn run_output_monitor(
                 let bytes_vec: Vec<u8> = chunk.to_vec();
                 let event = format!("pty-output-{}", session_id);
                 let _ = app.emit(&event, bytes_vec);
+
+                // Fan out to native engine for grid-based rendering.
+                if let Some(diff) = native_registry.advance(session_id, chunk) {
+                    let _ = app.emit(&format!("term:diff-{}", session_id), diff);
+                }
 
                 // Parse for status/cost (strip ANSI first)
                 if let Ok(text) = std::str::from_utf8(chunk) {
@@ -279,6 +330,9 @@ fn run_output_monitor(
             Err(_) => break, // read error — PTY closed
         }
     }
+
+    // Stop the flush ticker so the background thread can exit.
+    flush_alive.store(false, Ordering::Release);
 
     // Process exited — update status
     let _ = session_mgr.update_status(session_id, "done");

@@ -112,7 +112,7 @@ pub fn spawn_terminal(
     let shell_name = format!("{:?}", shell).to_lowercase();
     pane_registry.register(&id, &shell_name, cwd.as_deref().unwrap_or("."));
 
-    // Native engine session (Phase 2) — opt-in via AETHER_TERM_NATIVE=1.
+    // Native engine session (Phase 2).
     let native_registry = app.state::<Arc<NativeTerminalRegistry>>().inner().clone();
     if let Err(e) = native_registry.create(&id, cols, rows) {
         log::warn!("native engine create failed for {}: {}", id, e);
@@ -123,7 +123,7 @@ pub fn spawn_terminal(
     // char and stops). The ticker bypasses the window and ships any pending
     // diff so the canvas never lags behind alacritty's grid.
     let flush_alive = Arc::new(std::sync::atomic::AtomicBool::new(true));
-    if native_registry.is_enabled() {
+    {
         let alive = flush_alive.clone();
         let flush_registry = native_registry.clone();
         let flush_handle = app_handle.clone();
@@ -253,12 +253,6 @@ pub fn term_snapshot(
     id: String,
 ) -> Option<crate::term::GridSnapshot> {
     app.state::<Arc<NativeTerminalRegistry>>().snapshot(&id)
-}
-
-/// Whether the native terminal engine is active (env flag).
-#[tauri::command]
-pub fn term_native_enabled(app: AppHandle) -> bool {
-    app.state::<Arc<NativeTerminalRegistry>>().is_enabled()
 }
 
 /// List active terminals

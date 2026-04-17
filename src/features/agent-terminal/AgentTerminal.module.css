@@ -45,11 +45,21 @@
 .terminalContainer {
   flex: 1;
   overflow: hidden;
+  position: relative;
 }
 
-.terminalContainer :global(.xterm),
-.terminalContainer :global(.xterm-viewport) {
-  background-color: transparent;
+.exitOverlay {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  padding: 4px 8px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  color: var(--ctp-subtext0);
+  background: rgba(30, 30, 46, 0.8);
+  border: 1px solid rgba(88, 91, 112, 0.4);
+  border-radius: 4px;
+  pointer-events: none;
 }
 
 /* Accent glow on active */

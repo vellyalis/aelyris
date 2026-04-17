@@ -7,14 +7,13 @@ import type { ShellType } from "../../../App";
 interface PaneTreeContainerProps {
   shell: ShellType;
   cwd?: string;
-  syncMode?: boolean;
 }
 
 /**
  * Container that owns the PaneTree state for a single tab.
  * Connects the usePaneTree hook to the PaneTreeRenderer.
  */
-export function PaneTreeContainer({ shell, cwd, syncMode = false }: PaneTreeContainerProps) {
+export function PaneTreeContainer({ shell, cwd }: PaneTreeContainerProps) {
   const {
     tree, activePaneId, maximizedPaneId,
     setActivePaneId, split, close, closeAllPtys, resize, toggleMaximize, registerTerminal,
@@ -32,7 +31,6 @@ export function PaneTreeContainer({ shell, cwd, syncMode = false }: PaneTreeCont
       tree={tree}
       activePaneId={activePaneId}
       maximizedPaneId={maximizedPaneId}
-      syncMode={syncMode}
       onFocusPane={setActivePaneId}
       onSplit={split}
       onClose={close}

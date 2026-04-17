@@ -44,13 +44,11 @@ const defaultOpenUrl: OpenUrlFn = async (url) => {
 };
 
 /**
- * Phase 2 / Task 7 — Canvas 2D terminal renderer with full ANSI attr + color.
+ * Canvas 2D terminal renderer with full ANSI attr + color.
  *
  * Subscribes to `useTerminalSnapshot` and paints the grid cell-by-cell.
  * Only rows whose cell arrays are not reference-equal to the previous
  * render are repainted (`applyDiff` preserves refs for untouched rows).
- *
- * Feature-flagged mount next to xterm.js comes in Task 10.
  */
 
 export interface TerminalCanvasProps {
