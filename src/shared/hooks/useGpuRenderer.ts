@@ -5,14 +5,9 @@ export type RendererMode = "xterm" | "wgpu" | "native";
 const STORAGE_KEY = "aether:renderer";
 
 function readRenderer(): RendererMode {
-  // Phase 2 lockdown: both `wgpu` and `native` hang the webview on startup
-  // (visual-verification 2026-04-17). Until those paths are diagnosed we
-  // hard-pin to `xterm` and normalise any stale localStorage value so users
-  // cannot be stranded in a frozen app. Revert this block — and re-enable
-  // the Settings dropdown options — once the hangs are fixed.
   try {
     const val = localStorage.getItem(STORAGE_KEY);
-    if (val && val !== "xterm") localStorage.setItem(STORAGE_KEY, "xterm");
+    if (val === "wgpu" || val === "native" || val === "xterm") return val;
   } catch {
     /* ignore */
   }

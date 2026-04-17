@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { openUrl as tauriOpenUrl } from "@tauri-apps/plugin-opener";
 
 import { useTerminalSnapshot } from "../../shared/hooks/useTerminalSnapshot";
 import {
@@ -34,8 +35,7 @@ export type OpenUrlFn = (url: string) => Promise<void> | void;
 
 const defaultOpenUrl: OpenUrlFn = async (url) => {
   try {
-    const mod = await import("@tauri-apps/plugin-opener");
-    await mod.openUrl(url);
+    await tauriOpenUrl(url);
   } catch {
     if (typeof window !== "undefined") {
       window.open(url, "_blank", "noopener,noreferrer");
@@ -334,6 +334,18 @@ export function TerminalCanvas({
     const id = window.setInterval(() => setCursorOn((v) => !v), 500);
     return () => window.clearInterval(id);
   }, [snapshot?.cursor.blinking]);
+
+  // Auto-focus the canvas the first time the terminal is mounted so the user
+  // can type immediately without first clicking. Only fires once per mount —
+  // subsequent renders do not steal focus from other widgets.
+  const autoFocusedRef = useRef(false);
+  useEffect(() => {
+    if (autoFocusedRef.current) return;
+    const el = inputEl;
+    if (!el) return;
+    autoFocusedRef.current = true;
+    el.focus();
+  }, [inputEl]);
 
   return (
     <canvas

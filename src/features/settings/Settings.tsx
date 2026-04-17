@@ -164,10 +164,12 @@ export function Settings({ visible, onClose }: SettingsProps) {
                 </div>
                 <div className={styles.field}>
                   <label className={styles.label}>Renderer</label>
-                  <select className={styles.select} value="xterm" disabled>
+                  <select className={styles.select} value={localStorage.getItem("aether:renderer") ?? "xterm"} onChange={(e) => { localStorage.setItem("aether:renderer", e.target.value); window.dispatchEvent(new StorageEvent("storage")); }}>
                     <option value="xterm">xterm.js (stable)</option>
+                    <option value="wgpu">GPU Canvas (experimental)</option>
+                    <option value="native">Native Rust engine (Phase 2, experimental)</option>
                   </select>
-                  <span className={styles.hint}>GPU Canvas と Native Rust engine は現在 webview をフリーズさせる既知の不具合があり、Phase 2 の検証完了まで一時的に無効化しています。</span>
+                  <span className={styles.hint}>Native engine requires `AETHER_TERM_NATIVE=1` on the backend. Renderer change applies to newly opened terminals.</span>
                 </div>
               </section>
 

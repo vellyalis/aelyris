@@ -60,6 +60,8 @@ export function useTerminalSelection({
   const [selection, setSelection] = useState<SelectionRange | null>(null);
   const snapshotRef = useRef<GridSnapshot | null>(snapshot);
   snapshotRef.current = snapshot;
+  const selectionRef = useRef<SelectionRange | null>(selection);
+  selectionRef.current = selection;
   const draggingRef = useRef(false);
 
   const clear = useCallback(() => setSelection(null), []);
@@ -87,16 +89,18 @@ export function useTerminalSelection({
 
     const onMouseDown = (ev: MouseEvent) => {
       if (ev.button !== 0) return;
-      if (ev.shiftKey && selection) {
+      const currentSelection = selectionRef.current;
+      if (ev.shiftKey && currentSelection) {
         const point = cellAt(ev.clientX, ev.clientY);
         if (!point) return;
         setSelection({
-          anchor: selection.anchor,
+          anchor: currentSelection.anchor,
           focus: point,
           mode: "char",
         });
         draggingRef.current = true;
         ev.preventDefault();
+        element.focus();
         return;
       }
       const point = cellAt(ev.clientX, ev.clientY);
@@ -108,6 +112,7 @@ export function useTerminalSelection({
         mode: "char",
       });
       ev.preventDefault();
+      element.focus();
     };
 
     const onMouseMove = (ev: MouseEvent) => {
@@ -160,7 +165,7 @@ export function useTerminalSelection({
       element.removeEventListener("dblclick", onDoubleClick);
       element.removeEventListener("click", onClick);
     };
-  }, [element, cellAt, selection]);
+  }, [element, cellAt]);
 
   const copy = useCallback(async () => {
     const snap = snapshotRef.current;
