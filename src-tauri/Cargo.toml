@@ -4,15 +4,10 @@ version = "0.1.0"
 description = "Windows-native AI workspace terminal"
 authors = ["vellyalis"]
 edition = "2021"
-default-run = "aether-terminal"
 
 [lib]
 name = "aether_terminal_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
-
-[[bin]]
-name = "native-terminal"
-path = "src/bin/native_terminal.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -83,8 +78,6 @@ fontdue = "0.9"
 unicode-width = "0.2"
 bytemuck = { version = "1", features = ["derive"] }
 raw-window-handle = "0.6"
-winit = "0.30"
-pollster = "0.4"
 arboard = "3"
 
 [target.'cfg(windows)'.dependencies.windows]

@@ -6,7 +6,6 @@ pub mod gpu;
 mod ipc;
 pub mod ui;
 pub mod lsp;
-pub mod native;
 pub mod pty;
 pub mod session;
 pub mod suggest;
