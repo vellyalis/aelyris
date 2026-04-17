@@ -86,4 +86,36 @@ describe("useAICliDetection", () => {
     act(() => result.current.feed("PS C:\\> codex\r\n"));
     expect(result.current.active).toBe(true);
   });
+
+  it("ignores TUI-internal prompts during an active session (claude/codex redraw on SIGWINCH)", () => {
+    const { result } = renderHook(() => useAICliDetection());
+    act(() => result.current.feed("PS C:\\Users\\dev> claude\r\n"));
+    expect(result.current.active).toBe(true);
+
+    // Claude's input-box prompt — must NOT look like a shell prompt end.
+    act(() => result.current.feed("> \r\n"));
+    expect(result.current.active).toBe(true);
+
+    act(() => result.current.feed("❯ something\r\n"));
+    expect(result.current.active).toBe(true);
+
+    // Only a real host shell prompt should end the session.
+    act(() => result.current.feed("PS C:\\Users\\dev> \r\n"));
+    expect(result.current.active).toBe(false);
+  });
+
+  it("survives a full TUI frame redraw (box drawing + inner prompt)", () => {
+    const { result } = renderHook(() => useAICliDetection());
+    act(() => result.current.feed("PS C:\\> claude\r\n"));
+    expect(result.current.active).toBe(true);
+
+    const claudeRedraw =
+      "╭─ claude ──────────────╮\r\n" +
+      "│                       │\r\n" +
+      "│ > Ask me anything     │\r\n" +
+      "│                       │\r\n" +
+      "╰───────────────────────╯\r\n";
+    act(() => result.current.feed(claudeRedraw));
+    expect(result.current.active).toBe(true);
+  });
 });
