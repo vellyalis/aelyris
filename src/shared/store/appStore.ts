@@ -42,6 +42,12 @@ interface AppState {
   agentBudget: { spent: number; limit: number };
   addAgentCost: (cost: number) => void;
   setAgentBudgetLimit: (limit: number) => void;
+  /** Per-session cost cap in USD. Exceeding triggers a warning badge. */
+  perSessionCostCap: number;
+  setPerSessionCostCap: (cap: number) => void;
+  /** Context usage percent (0-100) above which the session is flagged. */
+  contextWarnPct: number;
+  setContextWarnPct: (pct: number) => void;
 
   // Kanban
   kanbanTasks: KanbanTask[];
@@ -138,6 +144,26 @@ export const useAppStore = create<AppState>((set, get) => ({
     try { localStorage.setItem("aether:budget", JSON.stringify(budget)); } catch {}
     return { agentBudget: budget };
   }),
+  perSessionCostCap: (() => {
+    try {
+      const v = Number(localStorage.getItem("aether:perSessionCostCap") ?? "2");
+      return Number.isFinite(v) && v > 0 ? v : 2;
+    } catch { return 2; }
+  })(),
+  setPerSessionCostCap: (cap) => {
+    set({ perSessionCostCap: cap });
+    try { localStorage.setItem("aether:perSessionCostCap", String(cap)); } catch {}
+  },
+  contextWarnPct: (() => {
+    try {
+      const v = Number(localStorage.getItem("aether:contextWarnPct") ?? "85");
+      return Number.isFinite(v) && v > 0 && v <= 100 ? v : 85;
+    } catch { return 85; }
+  })(),
+  setContextWarnPct: (pct) => {
+    set({ contextWarnPct: pct });
+    try { localStorage.setItem("aether:contextWarnPct", String(pct)); } catch {}
+  },
 
   // Kanban
   kanbanTasks: (() => {

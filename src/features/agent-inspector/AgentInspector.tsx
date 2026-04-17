@@ -5,10 +5,11 @@ import { MODEL_OPTIONS, getModelById, getMaxTokens } from "../../shared/types/mo
 import { showPrompt } from "../../shared/ui/PromptDialog";
 import { showHandoff } from "../../shared/ui/HandoffDialog";
 import { buildHandoffPrompt } from "../../shared/lib/handoffPrompt";
+import { getBudgetWarning, countOverBudget, type BudgetThresholds } from "../../shared/lib/budgetStatus";
 import { useAppStore } from "../../shared/store/appStore";
 import { PixelAvatar } from "../../shared/ui/PixelAvatar";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
-import { ClipboardCopy, Plus, Activity, Layers, GitCompare } from "lucide-react";
+import { ClipboardCopy, Plus, Activity, Layers, GitCompare, AlertTriangle, X } from "lucide-react";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { ToolBadge } from "../../shared/ui/ToolBadge";
 import { extractToolName } from "../../shared/types/toolBadge";
@@ -40,7 +41,20 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
   const [tab, setTab] = useState<"sessions" | "activity" | "parallel" | "diffs">("sessions");
   const [showPromptInput, setShowPromptInput] = useState(false);
   const [promptText, setPromptText] = useState("");
-  const { selectedModel, setSelectedModel, rootProjectPath } = useAppStore();
+  const { selectedModel, setSelectedModel, rootProjectPath, perSessionCostCap, contextWarnPct } = useAppStore();
+  const budgetThresholds = useMemo<BudgetThresholds>(
+    () => ({ perSessionCostCap, contextWarnPct }),
+    [perSessionCostCap, contextWarnPct],
+  );
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
   const activeSession = sessions.find((s) => s.id === activeSessionId);
 
   const [worktreeInputId, setWorktreeInputId] = useState<string | null>(null);
@@ -73,6 +87,41 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
     () => sessions.reduce((sum, s) => sum + s.cost, 0),
     [sessions],
   );
+
+  const overBudgetCount = useMemo(
+    () => countOverBudget(sessions, budgetThresholds),
+    [sessions, budgetThresholds],
+  );
+
+  const handleStopOverBudget = useCallback(() => {
+    if (!onStopAgent) return;
+    for (const s of sessions) {
+      if (getBudgetWarning(s, budgetThresholds) && s.status !== "done" && s.status !== "idle") {
+        onStopAgent(s.id);
+      }
+    }
+  }, [sessions, budgetThresholds, onStopAgent]);
+
+  const handleStopSelected = useCallback(() => {
+    if (!onStopAgent) return;
+    for (const id of selectedIds) {
+      const s = sessions.find((x) => x.id === id);
+      if (s && s.status !== "done" && s.status !== "idle") onStopAgent(id);
+    }
+    clearSelection();
+  }, [selectedIds, sessions, onStopAgent, clearSelection]);
+
+  // Prune selection when sessions vanish
+  useEffect(() => {
+    if (selectedIds.size === 0) return;
+    const existing = new Set(sessions.map((s) => s.id));
+    let changed = false;
+    const next = new Set<string>();
+    for (const id of selectedIds) {
+      if (existing.has(id)) next.add(id); else changed = true;
+    }
+    if (changed) setSelectedIds(next);
+  }, [sessions, selectedIds]);
 
   const prevActiveCount = useRef(activeSessions.length);
   useEffect(() => {
@@ -136,12 +185,41 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
           <GitCompare size={11} style={{ marginRight: 3, verticalAlign: -1 }} />
         </button>
         <div className={styles.tabActions}>
+          {overBudgetCount > 0 && onStopAgent && (
+            <button
+              className={styles.overBudgetChip}
+              title={`Stop ${overBudgetCount} over-budget session${overBudgetCount === 1 ? "" : "s"}`}
+              onClick={handleStopOverBudget}
+            >
+              <AlertTriangle size={9} style={{ verticalAlign: -1, marginRight: 2 }} />
+              {overBudgetCount} over budget
+            </button>
+          )}
           {totalCost > 0 && <span className={styles.totalCost} title="Total session cost">${totalCost.toFixed(2)}</span>}
           <button className={styles.iconBtn} title="Copy session info" onClick={() => { if (activeSession) handleCopySessionInfo(activeSession); }}><ClipboardCopy size={12} /></button>
           <button className={styles.iconBtn} title="Orchestra mode (3 agents)" onClick={handleOrchestra}>♫</button>
           <button className={styles.iconBtn} title="Add session" onClick={() => setShowPromptInput(true)}><Plus size={12} /></button>
         </div>
       </div>
+
+      {selectedIds.size > 0 && (
+        <div className={styles.bulkBar} role="toolbar" aria-label="Bulk session actions">
+          <span className={styles.bulkCount}>{selectedIds.size} selected</span>
+          {onStopAgent && (
+            <button className={styles.bulkAction} data-variant="danger" onClick={handleStopSelected}>
+              Stop selected
+            </button>
+          )}
+          <button
+            className={`${styles.bulkAction} ${styles.bulkClose}`}
+            onClick={clearSelection}
+            title="Clear selection"
+            aria-label="Clear selection"
+          >
+            <X size={10} />
+          </button>
+        </div>
+      )}
 
       {/* Prompt input + model selector */}
       {showPromptInput && (
@@ -217,6 +295,9 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
                 onRemoveWorktree={onRemoveWorktree}
                 onStartAgent={onStartAgent}
                 onHandoff={onStartAgent ? handleHandoff : undefined}
+                budgetThresholds={budgetThresholds}
+                isSelected={selectedIds.has(s.id)}
+                onToggleSelect={toggleSelect}
                 worktreeInputId={worktreeInputId}
                 worktreeBranch={worktreeBranch}
                 onWorktreeBranchChange={setWorktreeBranch}
@@ -224,7 +305,7 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
                 onWorktreeCancel={() => { setWorktreeInputId(null); setWorktreeBranch(""); }}
               />
             ))}
-            <div className={styles.navHint}>Ctrl+0-9 Jump · Ctrl+[ Prev · Ctrl+] Next</div>
+            <div className={styles.navHint}>Ctrl+0-9 Jump · Ctrl+[ Prev · Ctrl+] Next · Ctrl+Click to multi-select</div>
           </div>
 
           {/* Log viewer for selected session */}

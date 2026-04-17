@@ -4,7 +4,8 @@ import { PixelAvatar } from "../../shared/ui/PixelAvatar";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
 import { ContextGauge } from "../../shared/ui/ContextGauge";
 import * as RadixContextMenu from "@radix-ui/react-context-menu";
-import { Pencil, GitBranch, Globe, Shield, BarChart3, Send } from "lucide-react";
+import { Pencil, GitBranch, Globe, Shield, BarChart3, Send, AlertTriangle } from "lucide-react";
+import { getBudgetWarning, type BudgetThresholds } from "../../shared/lib/budgetStatus";
 import styles from "./AgentInspector.module.css";
 
 interface SessionCardProps {
@@ -20,6 +21,9 @@ interface SessionCardProps {
   onStartAgent?: (prompt: string) => void;
   onHandoff?: (session: AgentSession) => void;
   onViewDiffs?: (id: string) => void;
+  budgetThresholds?: BudgetThresholds;
+  isSelected?: boolean;
+  onToggleSelect?: (id: string) => void;
   worktreeInputId: string | null;
   worktreeBranch: string;
   onWorktreeBranchChange: (value: string) => void;
@@ -40,6 +44,9 @@ export function SessionCard({
   onStartAgent,
   onHandoff,
   onViewDiffs,
+  budgetThresholds,
+  isSelected,
+  onToggleSelect,
   worktreeInputId,
   worktreeBranch,
   onWorktreeBranchChange,
@@ -49,13 +56,21 @@ export function SessionCard({
   const sColor = getSessionColor(s.id);
   const lastLog = s.logs.length > 0 ? s.logs[s.logs.length - 1] : null;
   const pct = s.status === "done" ? 100 : s.status === "idle" ? 0 : s.tokensUsed > 0 ? Math.min(99, Math.round((s.tokensUsed / getMaxTokens(s.model)) * 100)) : 2;
+  const warning = getBudgetWarning(s, budgetThresholds);
 
   return (
     <RadixContextMenu.Root>
       <RadixContextMenu.Trigger asChild>
         <button
-          className={`${styles.card} ${s.watchdog ? styles.cardWatchdog : ""} ${isActive ? styles.cardActive : ""}`}
-          onClick={() => onSelect(s.id)}
+          className={`${styles.card} ${s.watchdog ? styles.cardWatchdog : ""} ${isActive ? styles.cardActive : ""} ${isSelected ? styles.cardSelected : ""}`}
+          onClick={(e) => {
+            if ((e.ctrlKey || e.metaKey) && onToggleSelect) {
+              e.preventDefault();
+              onToggleSelect(s.id);
+              return;
+            }
+            onSelect(s.id);
+          }}
           style={{
             "--session-accent": sColor.accent,
             "--session-dim": sColor.dim,
@@ -86,6 +101,15 @@ export function SessionCard({
                 )}
                 {pct > 0 && pct < 100 && <span className={styles.cardPct}>{pct}%</span>}
                 {s.filesChanged !== undefined && s.filesChanged > 0 && <span className={styles.cardFiles}>📎{s.filesChanged}</span>}
+                {warning && (
+                  <span
+                    className={styles.budgetWarn}
+                    data-kind={warning}
+                    title={warning === "cost" ? `Cost $${s.cost.toFixed(2)} exceeds per-session cap` : `Context ${pct}% exceeds warning threshold`}
+                  >
+                    <AlertTriangle size={8} />{warning === "cost" ? "$" : `${pct}%`}
+                  </span>
+                )}
                 <span className={styles.cardAge}>{formatAge(s.startedAt)}</span>
               </div>
             </div>
