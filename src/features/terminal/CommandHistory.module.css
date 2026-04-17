@@ -21,8 +21,8 @@
   position: absolute;
   bottom: 100%;
   right: 0;
-  width: 320px;
-  max-height: 280px;
+  width: 420px;
+  max-height: 360px;
   background: var(--glass-dense);
   backdrop-filter: blur(16px);
   border: 1px solid var(--border);
@@ -70,16 +70,47 @@
 
 .item {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--white-4);
-  gap: var(--space-2);
+  gap: var(--space-1);
 }
 .item:hover { background: var(--white-4); }
 .item:last-child { border-bottom: none; }
 
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.chevron {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px;
+}
+.chevron:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--white-6);
+}
+.chevron:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
 .command {
   flex: 1;
+  min-width: 0;
   font-size: 10px;
   font-family: var(--font-mono);
   color: var(--text-primary);
@@ -88,7 +119,16 @@
   white-space: nowrap;
 }
 
+.duration {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
 .actions {
+  flex-shrink: 0;
   display: flex;
   gap: 2px;
   opacity: 0;
@@ -102,8 +142,25 @@
   cursor: pointer;
   padding: 2px;
   border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .actionBtn:hover { color: var(--text-primary); background: var(--white-6); }
+
+.output {
+  margin: 0;
+  padding: var(--space-2);
+  background: var(--white-4);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 180px;
+  overflow-y: auto;
+}
 
 .empty {
   padding: var(--space-4);

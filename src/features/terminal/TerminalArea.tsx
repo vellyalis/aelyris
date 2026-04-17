@@ -212,7 +212,7 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
   // IME: let xterm.js handle natively — no custom overlay
   // useIMEOverlay(term, containerRef);
 
-  const { commandHistory, processOutput } = useTerminalOutput({
+  const { blocks, processOutput } = useTerminalOutput({
     term, cwd, onStartAgent,
   });
 
@@ -309,12 +309,12 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
           onClose={closeImeBar}
         />
       )}
-      {commandHistory.length > 0 && (
+      {blocks.length > 0 && (
         <div className={styles.historyBar}>
           <CommandHistory
-            commands={commandHistory}
+            blocks={blocks}
             onRerun={(cmd) => writeToPty(cmd + "\r")}
-            onCopy={(cmd) => navigator.clipboard.writeText(cmd).catch(() => {})}
+            onCopy={(text) => navigator.clipboard.writeText(text).catch(() => {})}
           />
         </div>
       )}

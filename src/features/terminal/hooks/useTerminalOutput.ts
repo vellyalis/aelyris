@@ -1,8 +1,12 @@
 import { useState, useCallback, useRef } from "react";
 import type { Terminal } from "@xterm/xterm";
+import type { CommandBlock } from "../commandBlock";
 import { CommandBlockTracker, detectPrompt } from "../commandBlock";
 import { detectError } from "../../../shared/lib/errorDetector";
 import { useToastStore } from "../../../shared/store/toastStore";
+
+/** Cap the in-memory block list so long sessions don't balloon memory. */
+const MAX_BLOCKS_IN_MEMORY = 500;
 
 interface UseTerminalOutputOptions {
   term: Terminal | null;
@@ -14,11 +18,11 @@ interface UseTerminalOutputOptions {
  * Processes PTY output: command block tracking, error detection, history persistence.
  *
  * Returns a stable `processOutput` callback for usePtyConnection to call,
- * and the accumulated `commandHistory` for the CommandHistory UI.
+ * and the accumulated `blocks` for the CommandHistory UI.
  */
 export function useTerminalOutput({ term, cwd, onStartAgent }: UseTerminalOutputOptions) {
   const blockTrackerRef = useRef(new CommandBlockTracker());
-  const [commandHistory, setCommandHistory] = useState<string[]>([]);
+  const [blocks, setBlocks] = useState<readonly CommandBlock[]>([]);
   const lastErrorTimeRef = useRef(0);
   const lastPromptLineRef = useRef(-1);
 
@@ -51,16 +55,18 @@ export function useTerminalOutput({ term, cwd, onStartAgent }: UseTerminalOutput
         }
       }
 
-      // Prompt detection → history update + decoration + SQLite persist
+      // Prompt detection → block list update + decoration + SQLite persist
       const detected = detectPrompt(line);
       if (detected) {
-        // Update in-memory history
-        const blocks = blockTracker.getBlocks();
-        const cmds = blocks.map((b) => b.command).filter((c) => c.length > 0);
-        setCommandHistory(cmds);
+        // Keep the block list bounded so long sessions don't grow memory
+        // linearly — the BlockHistory dropdown only shows the tail anyway.
+        blockTracker.prune(MAX_BLOCKS_IN_MEMORY);
+        // Snapshot to a mutable array React can treat as a new reference.
+        setBlocks(blockTracker.getBlocks().slice());
 
         // Persist last completed command to SQLite
-        const lastBlock = blocks.length > 0 ? blocks[blocks.length - 1] : null;
+        const all = blockTracker.getBlocks();
+        const lastBlock = all.length > 0 ? all[all.length - 1] : null;
         if (lastBlock && lastBlock.command.trim()) {
           import("@tauri-apps/api/core").then(({ invoke }) => {
             invoke("save_command_history", {
@@ -98,5 +104,5 @@ export function useTerminalOutput({ term, cwd, onStartAgent }: UseTerminalOutput
     }
   }, [term, cwd, onStartAgent]);
 
-  return { blockTracker: blockTrackerRef.current, commandHistory, processOutput };
+  return { blockTracker: blockTrackerRef.current, blocks, processOutput };
 }

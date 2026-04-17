@@ -131,4 +131,79 @@ describe("CommandBlockTracker", () => {
     tracker.addLine("$ cmd3");
     expect(tracker.blockCount).toBe(2);
   });
+
+  it("captures output lines into the block", () => {
+    const tracker = new CommandBlockTracker();
+    tracker.addLine("$ ls");
+    tracker.addLine("file1.txt");
+    tracker.addLine("file2.txt");
+    tracker.addLine("file3.txt");
+    tracker.addLine("$ ");
+
+    const block = tracker.getBlocks()[0];
+    expect(block.outputLines).toEqual(["file1.txt", "file2.txt", "file3.txt"]);
+  });
+
+  it("does not capture prompt line as its own output", () => {
+    const tracker = new CommandBlockTracker();
+    tracker.addLine("$ echo hi");
+    tracker.addLine("hi");
+    tracker.addLine("$ echo bye");
+
+    const block = tracker.getBlocks()[0];
+    expect(block.outputLines).toEqual(["hi"]);
+  });
+
+  it("assigns monotonic ids", () => {
+    const tracker = new CommandBlockTracker();
+    tracker.addLine("$ a");
+    tracker.addLine("$ b");
+    tracker.addLine("$ c");
+
+    const blocks = tracker.getBlocks();
+    expect(blocks[0].id).toBe("blk-0");
+    expect(blocks[1].id).toBe("blk-1");
+  });
+
+  it("records timestamps and closes endedAt on next prompt", () => {
+    const tracker = new CommandBlockTracker();
+    const before = Date.now();
+    tracker.addLine("$ cmd1");
+    tracker.addLine("output");
+    tracker.addLine("$ cmd2");
+    const after = Date.now();
+
+    const [block] = tracker.getBlocks();
+    expect(block.startedAt).toBeGreaterThanOrEqual(before);
+    expect(block.startedAt).toBeLessThanOrEqual(after);
+    expect(block.endedAt).not.toBeNull();
+    expect(block.endedAt!).toBeGreaterThanOrEqual(block.startedAt);
+  });
+
+  it("currentBlock has endedAt null while it is still open", () => {
+    const tracker = new CommandBlockTracker();
+    tracker.addLine("$ npm test");
+    tracker.addLine("still running");
+
+    const cur = tracker.getCurrentBlock();
+    expect(cur).not.toBeNull();
+    expect(cur!.endedAt).toBeNull();
+    expect(cur!.outputLines).toEqual(["still running"]);
+  });
+
+  it("prune keeps only the most recent N blocks", () => {
+    const tracker = new CommandBlockTracker();
+    for (let i = 0; i < 10; i++) {
+      tracker.addLine(`$ cmd${i}`);
+      tracker.addLine(`out${i}`);
+    }
+    tracker.addLine("$ ");
+    expect(tracker.blockCount).toBe(10);
+
+    tracker.prune(3);
+    expect(tracker.blockCount).toBe(3);
+    const blocks = tracker.getBlocks();
+    expect(blocks[0].command).toBe("cmd7");
+    expect(blocks[2].command).toBe("cmd9");
+  });
 });
