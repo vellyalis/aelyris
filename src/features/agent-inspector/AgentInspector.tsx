@@ -6,10 +6,11 @@ import { showPrompt } from "../../shared/ui/PromptDialog";
 import { showHandoff } from "../../shared/ui/HandoffDialog";
 import { buildHandoffPrompt } from "../../shared/lib/handoffPrompt";
 import { getBudgetWarning, countOverBudget, type BudgetThresholds } from "../../shared/lib/budgetStatus";
+import { collectActivity, filterActivity, LOG_TYPES, type LogType } from "../../shared/lib/activityFilter";
 import { useAppStore } from "../../shared/store/appStore";
 import { PixelAvatar } from "../../shared/ui/PixelAvatar";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
-import { ClipboardCopy, Plus, Activity, Layers, GitCompare, AlertTriangle, X } from "lucide-react";
+import { ClipboardCopy, Plus, Activity, Layers, GitCompare, AlertTriangle, X, Search } from "lucide-react";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { ToolBadge } from "../../shared/ui/ToolBadge";
 import { extractToolName } from "../../shared/types/toolBadge";
@@ -55,6 +56,37 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
     });
   }, []);
   const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
+
+  // Activity tab filter state
+  const [activityQuery, setActivityQuery] = useState("");
+  const [activityTypes, setActivityTypes] = useState<Set<LogType>>(() => new Set());
+  const [activitySessions, setActivitySessions] = useState<Set<string>>(() => new Set());
+  const toggleType = useCallback((t: LogType) => {
+    setActivityTypes((prev) => {
+      const next = new Set(prev);
+      if (next.has(t)) next.delete(t); else next.add(t);
+      return next;
+    });
+  }, []);
+  const toggleActivitySession = useCallback((id: string) => {
+    setActivitySessions((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+  const resetActivityFilter = useCallback(() => {
+    setActivityQuery("");
+    setActivityTypes(new Set());
+    setActivitySessions(new Set());
+  }, []);
+
+  const allActivity = useMemo(() => collectActivity(sessions), [sessions]);
+  const filteredActivity = useMemo(
+    () => filterActivity(allActivity, { query: activityQuery, types: activityTypes, sessionIds: activitySessions }),
+    [allActivity, activityQuery, activityTypes, activitySessions],
+  );
+  const activityFilterActive = activityQuery.trim().length > 0 || activityTypes.size > 0 || activitySessions.size > 0;
   const activeSession = sessions.find((s) => s.id === activeSessionId);
 
   const [worktreeInputId, setWorktreeInputId] = useState<string | null>(null);
@@ -341,13 +373,64 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
         </>
       ) : tab === "activity" ? (
         <div className={styles.logSection} style={{ flex: 1 }}>
-          <div className={styles.logHeader}>All Activity</div>
+          <div className={styles.activityFilters}>
+            <div className={styles.activitySearchRow}>
+              <Search size={11} className={styles.activitySearchIcon} />
+              <input
+                type="text"
+                className={styles.activitySearch}
+                placeholder="Filter activity..."
+                value={activityQuery}
+                onChange={(e) => setActivityQuery(e.target.value)}
+              />
+              {activityFilterActive && (
+                <button
+                  className={styles.activityResetBtn}
+                  onClick={resetActivityFilter}
+                  title="Clear filters"
+                  aria-label="Clear filters"
+                >
+                  <X size={10} />
+                </button>
+              )}
+            </div>
+            <div className={styles.activityChips}>
+              {LOG_TYPES.map((t) => (
+                <button
+                  key={t}
+                  className={styles.activityChip}
+                  data-active={activityTypes.has(t) || undefined}
+                  onClick={() => toggleType(t)}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+            {sessions.length > 1 && (
+              <div className={styles.activityChips}>
+                {sessions.map((s) => {
+                  const c = getSessionColor(s.id);
+                  return (
+                    <button
+                      key={s.id}
+                      className={styles.activityChip}
+                      data-active={activitySessions.has(s.id) || undefined}
+                      onClick={() => toggleActivitySession(s.id)}
+                      style={{ "--session-accent": c.accent } as React.CSSProperties}
+                    >
+                      <span className={styles.activityDot} style={{ background: c.accent }} />
+                      {s.name}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          <div className={styles.logHeader}>
+            {activityFilterActive ? `${filteredActivity.length} of ${allActivity.length}` : "All Activity"}
+          </div>
           <div className={styles.logList}>
-            {sessions
-              .flatMap((s) => s.logs.map((log) => ({ ...log, sessionName: s.name, sessionId: s.id })))
-              .sort((a, b) => b.timestamp - a.timestamp)
-              .slice(0, 100)
-              .map((log, i) => {
+            {filteredActivity.slice(0, 200).map((log, i) => {
                 const tool = log.type === "tool_use" ? extractToolName(log.content) : null;
                 const logColor = getSessionColor(log.sessionId);
                 return (
@@ -361,8 +444,11 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
                   <span className={styles.logContent}>{log.content}</span>
                 </div>
                 ); })}
-            {sessions.flatMap((s) => s.logs).length === 0 && (
+            {allActivity.length === 0 && (
               <EmptyState icon={<Activity size={20} />} title="No activity yet" description="Agent logs will appear here" />
+            )}
+            {allActivity.length > 0 && filteredActivity.length === 0 && (
+              <EmptyState icon={<Search size={20} />} title="No matching activity" description="Try a different search or clear filters" />
             )}
           </div>
         </div>
