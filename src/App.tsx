@@ -33,6 +33,7 @@ import { ErrorBoundary } from "./shared/ui/ErrorBoundary";
 import { TooltipProvider } from "./shared/ui/Tooltip";
 import { ToastProvider } from "./shared/ui/Toast";
 import { PromptDialog } from "./shared/ui/PromptDialog";
+import { HandoffDialog } from "./shared/ui/HandoffDialog";
 import { OnboardingOverlay } from "./shared/ui/OnboardingOverlay";
 import { useTabManager } from "./shared/hooks/useTabManager";
 import { useAgentManager } from "./shared/hooks/useAgentManager";
@@ -472,6 +473,7 @@ export function App() {
       {prInspectorVisible && <Suspense fallback={null}><PRInspector visible projectPath={projectPath} onClose={() => setPrInspectorVisible(false)} onStartReview={handleStartAgent} /></Suspense>}
       {quickOpenMode && <Suspense fallback={null}><QuickOpen projectPath={projectPath} openFiles={openFiles} onSelectFile={handleFileSelect} onClose={() => setQuickOpenMode(null)} initialMode={quickOpenMode} /></Suspense>}
       <PromptDialog />
+      <HandoffDialog />
       <OnboardingOverlay />
     </div>
     </ToastProvider></TooltipProvider>

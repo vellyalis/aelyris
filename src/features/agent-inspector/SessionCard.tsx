@@ -4,7 +4,7 @@ import { PixelAvatar } from "../../shared/ui/PixelAvatar";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
 import { ContextGauge } from "../../shared/ui/ContextGauge";
 import * as RadixContextMenu from "@radix-ui/react-context-menu";
-import { Pencil, GitBranch, Globe, Shield, BarChart3 } from "lucide-react";
+import { Pencil, GitBranch, Globe, Shield, BarChart3, Send } from "lucide-react";
 import styles from "./AgentInspector.module.css";
 
 interface SessionCardProps {
@@ -18,6 +18,7 @@ interface SessionCardProps {
   onCreateWorktree?: (id: string) => void;
   onRemoveWorktree?: (id: string) => void;
   onStartAgent?: (prompt: string) => void;
+  onHandoff?: (session: AgentSession) => void;
   onViewDiffs?: (id: string) => void;
   worktreeInputId: string | null;
   worktreeBranch: string;
@@ -37,6 +38,7 @@ export function SessionCard({
   onCreateWorktree,
   onRemoveWorktree,
   onStartAgent,
+  onHandoff,
   onViewDiffs,
   worktreeInputId,
   worktreeBranch,
@@ -142,6 +144,11 @@ export function SessionCard({
           {(s.filesChanged ?? 0) > 0 && (
             <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => onViewDiffs?.(s.id)}>
               <GitBranch size={10} style={{ marginRight: 4 }} />View Diffs ({s.filesChanged})
+            </RadixContextMenu.Item>
+          )}
+          {onHandoff && (
+            <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => onHandoff(s)}>
+              <Send size={10} style={{ marginRight: 4 }} />Hand off to new agent…
             </RadixContextMenu.Item>
           )}
           <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => onCopyInfo(s)}>Copy Info</RadixContextMenu.Item>

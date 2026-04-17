@@ -3,6 +3,8 @@ import { type AgentSession, type AgentStatus, STATUS_COLORS, STATUS_LABELS, getS
 import type { InteractiveSession } from "../../shared/types/interactiveAgent";
 import { MODEL_OPTIONS, getModelById, getMaxTokens } from "../../shared/types/model";
 import { showPrompt } from "../../shared/ui/PromptDialog";
+import { showHandoff } from "../../shared/ui/HandoffDialog";
+import { buildHandoffPrompt } from "../../shared/lib/handoffPrompt";
 import { useAppStore } from "../../shared/store/appStore";
 import { PixelAvatar } from "../../shared/ui/PixelAvatar";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
@@ -89,6 +91,18 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
       onRenameSession?.(session.id, newName);
     }
   }, [onRenameSession]);
+
+  const handleHandoff = useCallback(async (session: AgentSession) => {
+    if (!onStartAgent) return;
+    const result = await showHandoff({
+      sourceName: session.name,
+      defaultPrompt: buildHandoffPrompt(session),
+      defaultModelId: selectedModel,
+    });
+    if (!result) return;
+    const target = getModelById(result.modelId);
+    onStartAgent(result.prompt, target?.modelArg);
+  }, [onStartAgent, selectedModel]);
 
   const handleCopySessionInfo = useCallback((session: AgentSession) => {
     const info = `Session: ${session.name}\nModel: ${session.model}\nStatus: ${STATUS_LABELS[session.status]}\nCost: $${session.cost.toFixed(2)}\nTokens: ${session.tokensUsed}`;
@@ -202,6 +216,7 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
                 onCreateWorktree={(id) => { setWorktreeInputId(id); setWorktreeBranch(""); }}
                 onRemoveWorktree={onRemoveWorktree}
                 onStartAgent={onStartAgent}
+                onHandoff={onStartAgent ? handleHandoff : undefined}
                 worktreeInputId={worktreeInputId}
                 worktreeBranch={worktreeBranch}
                 onWorktreeBranchChange={setWorktreeBranch}
