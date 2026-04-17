@@ -120,6 +120,103 @@ describe("useAICliDetection", () => {
     expect(result.current.active).toBe(true);
   });
 
+  describe("feedInput (user keystroke path)", () => {
+    it("activates when the user types `gemini` + Enter", () => {
+      const { result } = renderHook(() => useAICliDetection());
+      act(() => {
+        for (const ch of "gemini") result.current.feedInput(ch);
+        result.current.feedInput("\r");
+      });
+      expect(result.current.active).toBe(true);
+    });
+
+    it("handles backspace", () => {
+      const { result } = renderHook(() => useAICliDetection());
+      act(() => {
+        // type "gemxni", backspace the "x" and "n", add "ni", then Enter
+        for (const ch of "gemxni") result.current.feedInput(ch);
+        result.current.feedInput("\x7f"); // delete "i"
+        result.current.feedInput("\x7f"); // delete "n"
+        result.current.feedInput("\x7f"); // delete "x"
+        result.current.feedInput("i");
+        result.current.feedInput("n");
+        result.current.feedInput("i");
+        result.current.feedInput("\r");
+      });
+      expect(result.current.active).toBe(true);
+    });
+
+    it("Ctrl+C clears the buffer so the aborted `claude` does not count", () => {
+      const { result } = renderHook(() => useAICliDetection());
+      act(() => {
+        for (const ch of "claude") result.current.feedInput(ch);
+        result.current.feedInput("\x03"); // Ctrl+C
+      });
+      expect(result.current.active).toBe(false);
+      // Following Enter on empty buffer should NOT trigger.
+      act(() => result.current.feedInput("\r"));
+      expect(result.current.active).toBe(false);
+    });
+
+    it("Ctrl+U clears the buffer", () => {
+      const { result } = renderHook(() => useAICliDetection());
+      act(() => {
+        for (const ch of "claude") result.current.feedInput(ch);
+        result.current.feedInput("\x15"); // Ctrl+U
+        result.current.feedInput("\r");
+      });
+      expect(result.current.active).toBe(false);
+    });
+
+    it("Ctrl+W deletes the last word", () => {
+      const { result } = renderHook(() => useAICliDetection());
+      act(() => {
+        for (const ch of "ls claude") result.current.feedInput(ch);
+        result.current.feedInput("\x17"); // Ctrl+W — removes "claude"
+        result.current.feedInput("\r");
+      });
+      expect(result.current.active).toBe(false);
+    });
+
+    it("ignores arrow-key escape sequences (no spurious chars in buffer)", () => {
+      const { result } = renderHook(() => useAICliDetection());
+      act(() => {
+        result.current.feedInput("\x1b[A"); // up arrow
+        result.current.feedInput("\x1b[B"); // down arrow
+        for (const ch of "claude") result.current.feedInput(ch);
+        result.current.feedInput("\r");
+      });
+      expect(result.current.active).toBe(true);
+    });
+
+    it("does not double-trigger while already in session", () => {
+      const { result } = renderHook(() => useAICliDetection());
+      act(() => {
+        for (const ch of "claude") result.current.feedInput(ch);
+        result.current.feedInput("\r");
+      });
+      expect(result.current.active).toBe(true);
+
+      // User types inside claude — shouldn't flip state.
+      act(() => {
+        for (const ch of "hello") result.current.feedInput(ch);
+        result.current.feedInput("\r");
+      });
+      expect(result.current.active).toBe(true);
+    });
+
+    it("accepts chunked input (one key per call)", () => {
+      const { result } = renderHook(() => useAICliDetection());
+      act(() => result.current.feedInput("c"));
+      act(() => result.current.feedInput("o"));
+      act(() => result.current.feedInput("d"));
+      act(() => result.current.feedInput("e"));
+      act(() => result.current.feedInput("x"));
+      act(() => result.current.feedInput("\r"));
+      expect(result.current.active).toBe(true);
+    });
+  });
+
   it("survives a full TUI frame redraw (box drawing + inner prompt)", () => {
     const { result } = renderHook(() => useAICliDetection());
     act(() => result.current.feed("PS C:\\> claude\r\n"));

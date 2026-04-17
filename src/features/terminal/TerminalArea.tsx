@@ -49,6 +49,10 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
   // Ref wrapper so the one-shot keydown listener (registered in the init
   // effect with empty deps) always calls the latest toggleImeBar closure.
   const toggleImeBarRef = useRef<() => void>(() => {});
+  // Ref to the stable `feedInput` function so the init effect's onData
+  // listener can reach it without re-registering on aiCli identity churn.
+  const feedInputRef = useRef(aiCli.feedInput);
+  feedInputRef.current = aiCli.feedInput;
 
   const themeId = useAppStore((s) => s.themeId);
   const xtermTheme = useXtermTheme(themeId);
@@ -103,6 +107,15 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
 
     termRef.current = term;
     searchAddonRef.current = searchAddon;
+
+    // Watch user keystrokes for AI CLI invocations.  Output-based detection
+    // can miss narrow panes where PSReadLine wraps the prompt across lines
+    // with embedded newlines; watching the input line directly is immune
+    // to that.  We only need the buffer while NOT in a session, and the
+    // hook guards internally, so this is cheap per keystroke.
+    const aiInputDisposable = term.onData((data) => {
+      feedInputRef.current(data);
+    });
 
     // Clipboard paste (Ctrl+V with image support)
     const handleCtrlV = async (e: KeyboardEvent) => {
@@ -186,6 +199,7 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
       resizeObserver.disconnect();
       if (rafId !== 0) cancelAnimationFrame(rafId);
       window.removeEventListener("keydown", handleKeyDown);
+      aiInputDisposable.dispose();
       term.dispose();
       termRef.current = null;
       searchAddonRef.current = null;

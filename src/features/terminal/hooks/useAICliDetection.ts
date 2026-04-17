@@ -60,6 +60,8 @@ export interface UseAICliDetection {
   readonly active: boolean;
   /** Feed a raw PTY output chunk (already UTF-8 decoded). */
   readonly feed: (text: string) => void;
+  /** Feed a raw user-input chunk (what xterm.onData delivers). */
+  readonly feedInput: (data: string) => void;
   /** Force-reset the detector (e.g. PTY restart). */
   readonly reset: () => void;
 }
@@ -85,6 +87,12 @@ export interface UseAICliDetection {
 export function useAICliDetection(): UseAICliDetection {
   const [active, setActive] = useState(false);
   const inSessionRef = useRef(false);
+  // Accumulates printable chars the user types at the shell.  On Enter we
+  // check this buffer against AI_CLI_COMMAND — a far more reliable signal
+  // than output parsing on narrow panes, where PSReadLine wraps the prompt
+  // across multiple lines with embedded newlines and the "prompt + echoed
+  // command" can no longer be matched by a single-line prompt regex.
+  const inputBufferRef = useRef("");
 
   const feed = useCallback((text: string) => {
     if (!text) return;
@@ -117,10 +125,70 @@ export function useAICliDetection(): UseAICliDetection {
     }
   }, []);
 
+  /**
+   * Input-side detector — watches user keystrokes and activates when the
+   * line the user submits at the shell starts with an AI CLI command.
+   * Only relevant when NOT already in a session (AI CLIs eat keystrokes
+   * themselves and shouldn't drive our state).
+   *
+   * Handles the minimal set of line-editing controls so the buffer stays
+   * accurate for normal typed invocations:
+   *
+   *   \r / \n         Enter — commit and evaluate the buffer
+   *   \x7f / \b       Backspace — delete last char
+   *   \x03            Ctrl-C — abandon the line
+   *   \x15            Ctrl-U — clear the line
+   *   \x17            Ctrl-W — delete last word (PSReadLine / bash style)
+   *   \x1b…           Escape sequences (arrow keys, etc.) — skipped
+   *
+   * History navigation and tab completion can bypass this tracker — if a
+   * user fires up `claude` via `Up+Enter` the input path misses it.  The
+   * output-based detector still catches that case when the prompt isn't
+   * wrapped.
+   */
+  const feedInput = useCallback((data: string) => {
+    if (inSessionRef.current) return;
+    if (!data) return;
+
+    for (let i = 0; i < data.length; i++) {
+      const ch = data[i];
+      if (ch === "\r" || ch === "\n") {
+        const line = inputBufferRef.current.trim();
+        inputBufferRef.current = "";
+        if (line && AI_CLI_COMMAND.test(line)) {
+          inSessionRef.current = true;
+          setActive(true);
+          return;
+        }
+      } else if (ch === "\x7f" || ch === "\b") {
+        inputBufferRef.current = inputBufferRef.current.slice(0, -1);
+      } else if (ch === "\x03" || ch === "\x15") {
+        inputBufferRef.current = "";
+      } else if (ch === "\x17") {
+        // Ctrl-W: delete the last whitespace-separated word.
+        const s = inputBufferRef.current.replace(/\s*\S*$/, "");
+        inputBufferRef.current = s;
+      } else if (ch === "\x1b") {
+        // Skip the full escape sequence (CSI: \x1b[...A-Za-z, or 2-char
+        // simple: \x1bX).  Arrow keys etc. do not change the buffer.
+        const tail = data.slice(i);
+        const csiMatch = tail.match(/^\x1b\[[0-9;?]*[A-Za-z]/);
+        if (csiMatch) {
+          i += csiMatch[0].length - 1;
+        } else if (tail.length >= 2) {
+          i += 1;
+        }
+      } else if (ch >= " ") {
+        inputBufferRef.current += ch;
+      }
+    }
+  }, []);
+
   const reset = useCallback(() => {
     inSessionRef.current = false;
+    inputBufferRef.current = "";
     setActive(false);
   }, []);
 
-  return { active, feed, reset };
+  return { active, feed, feedInput, reset };
 }
