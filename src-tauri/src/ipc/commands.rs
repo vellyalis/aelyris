@@ -6,6 +6,8 @@ use tauri::{AppHandle, Emitter, Manager};
 use crate::pty::{PtyManager, ShellType};
 use crate::pty::buffer::{OutputBuffer, strip_ansi};
 use crate::term::NativeTerminalRegistry;
+use crate::watchdog::auto_repair::AutoRepairManager;
+use crate::watchdog::{pane_watcher, AutoRepairConfig, ErrorContext};
 
 /// Global registry of output buffers for capture-pane
 #[derive(Clone)]
@@ -139,6 +141,9 @@ pub fn spawn_terminal(
         });
     }
     let reader_alive = flush_alive.clone();
+    let repair_cwd = cwd.clone();
+    let repair_pane = shell_name.clone();
+    let repair_app = app_handle.clone();
 
     std::thread::spawn(move || {
         let mut reader = reader;
@@ -156,6 +161,19 @@ pub fn spawn_terminal(
                     // Feed raw text into capture buffer
                     let text = String::from_utf8_lossy(data);
                     buffer_registry.feed(&terminal_id, &text);
+
+                    // Auto-repair pattern detection (Phase 3A-1). Cheap when
+                    // disabled: one mutex lock, one bool check. Enabled path
+                    // scans each line against the configured pattern and
+                    // forwards the first hit to `AutoRepairManager` — the
+                    // 60s debounce there keeps repeated matches from piling
+                    // up worktrees.
+                    maybe_trigger_auto_repair(
+                        &repair_app,
+                        &repair_pane,
+                        repair_cwd.as_deref(),
+                        &text,
+                    );
 
                     // Native engine fan-out (Phase 2).
                     if let Some(diff) = native_registry.advance(&terminal_id, data) {
@@ -243,6 +261,47 @@ pub fn close_terminal(app: AppHandle, id: String) -> Result<(), String> {
     app.state::<crate::pty::PaneRegistry>().remove(&id);
     app.state::<Arc<NativeTerminalRegistry>>().remove(&id);
     Ok(())
+}
+
+/// Scan a fresh chunk of PTY text for the auto-repair pattern and, on a
+/// hit, hand it to `AutoRepairManager`. Silently no-ops when the feature is
+/// disabled, the managed state is missing, or the cwd is absent (without a
+/// git root the worker can't create a worktree).
+fn maybe_trigger_auto_repair(
+    app: &AppHandle,
+    source_pane: &str,
+    cwd: Option<&str>,
+    text: &str,
+) {
+    let Some(cfg_state) = app.try_state::<Arc<Mutex<AutoRepairConfig>>>() else {
+        return;
+    };
+    let (enabled, pattern) = match cfg_state.inner().lock() {
+        Ok(guard) => (guard.enabled, guard.pattern.clone()),
+        Err(_) => return,
+    };
+    if !enabled || pattern.trim().is_empty() {
+        return;
+    }
+    let Some(repo_path) = cwd else { return };
+    let clean = strip_ansi(text);
+    let Some(matched) = clean
+        .lines()
+        .find(|line| pane_watcher::matches_trigger(&pattern, line))
+    else {
+        return;
+    };
+    let Some(mgr_state) = app.try_state::<Arc<Mutex<AutoRepairManager>>>() else {
+        return;
+    };
+    let Ok(mut mgr) = mgr_state.inner().lock() else {
+        return;
+    };
+    let ctx = ErrorContext {
+        matched_line: matched.trim().to_string(),
+        source_pane: source_pane.to_string(),
+    };
+    let _ = mgr.trigger(ctx, std::path::Path::new(repo_path));
 }
 
 /// Bootstrap the frontend with a full grid snapshot — used when React

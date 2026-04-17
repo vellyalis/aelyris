@@ -1,0 +1,234 @@
+# Phase 3 Plan — Aether Terminal
+
+**作成**: 2026-04-17
+**前提**: Phase 1 / Phase 2 全タスク完了 (commit d4df53a 時点)。xterm.js は完全除去、native Rust engine (alacritty_terminal + Canvas 2D) が唯一の描画経路。
+**元ネタ**: `docs/analysis_and_ideas.md` + memory `project_strategic_direction.md` (agent management workspace 超 Scape 路線)
+
+## 戦略方針 (Phase 2 から継続)
+
+- ターミナル描画性能勝負ではなく **エージェント管理ワークスペース** としての差別化
+- React UI / デザイン資産維持、Tauri + native Rust engine 構成固定
+- 既存 backend 実装のうち **配線されていない資産** (`watchdog/auto_repair.rs`, `suggest/SuggestEngine`) を最優先で活性化 — memory `feedback_no_infrastructure_without_wiring.md` の教訓
+- 新規追加は「エージェント管理として価値を生むか」で選別
+
+## 全体ロードマップ (着手順)
+
+| Phase | 目的 | 工数目安 |
+|---|---|---|
+| **3A** 既存資産活性化 | infrastructure-without-wiring を解消 + 起動速度残務 | 1-2 週 |
+| **3B** エージェント管理核 | Orchestra mode + semantic history | 2-3 週 |
+| **3C** 差別化大物 | Ghost diff overlay / 並行世界 / タイムトラベル | 月単位 |
+| **3D** 実験枠 | API 化 / インライン viz / 3D map | 都度判断 |
+
+各 phase 内は記載順に実行。phase 跨ぎは前 phase 完了 + 視覚検証済をエントリ条件。
+
+---
+
+# Phase 3A — 既存資産活性化
+
+## 3A-1. 自己修復ターミナル E2E 仕上げ
+
+**目的**: エラー検知 → 隔離 worktree → AI 修正 → テスト → トースト通知の完全自律ループを UI まで開通させる。ideas.md セクション B 後半 + E の実体化。
+
+**前提**:
+- `src-tauri/src/watchdog/auto_repair.rs` 19.7K 実装済、単体テスト 4 本グリーン (確認済)
+- `AutoRepairManager` は `.manage()` 未登録 ← ここが欠け穴
+- `pane_watcher` はあるが `auto_repair.trigger()` への呼び出しなし
+
+**サブタスク**:
+
+1. **Backend 配線 (0.5-1 日)**
+   - `lib.rs` に `.manage(Arc<Mutex<AutoRepairManager>>)` 追加
+   - `ipc/mod.rs` に `repair_commands.rs` 新規 — `list_repair_jobs` / `trigger_repair_manual` / `cancel_repair` IPC
+   - `spawn_terminal` の PTY reader 内で `pane_watcher` が error pattern にヒットしたら `AutoRepairManager::trigger()` を呼ぶ (repo_path は cwd から解決)
+   - フレームポーラー: tauri `spawn_blocking` で 500ms 毎に `poll()` → 通知があれば `app.emit("repair:notification", RepairNotification)` + `app.emit("repair:jobs-updated", jobs())`
+
+2. **Frontend Toast + Jobs Panel (1-2 日)**
+   - `src/shared/hooks/useRepairJobs.ts` — `listen("repair:jobs-updated")` + `listen("repair:notification")` でローカル state 維持
+   - Toast: 既存 `shared/ui/Toast` で success/failure 表示 (動いたら 5s fadeout)
+   - Jobs panel: `src/features/repair/RepairJobsPanel.tsx` — StatusBar から開くポップオーバー。各 job の phase (CreatingWorktree / RunningAgent / RunningTests / Succeeded / Failed) を進捗バー + branch 名 + elapsed で表示
+   - StatusBar に active 数バッジ (`useRepairJobs.active` > 0 で表示)
+
+3. **テスト (0.5 日)**
+   - Rust: `AutoRepairManager::trigger` の capacity / debounce 境界値 (既存テストで概ねカバー)
+   - TS: `useRepairJobs` の listen/accumulate ロジック、RepairJobsPanel のレンダリング (vitest + @testing-library/react)
+
+4. **視覚検証 (0.5 日)**
+   - `pnpm tauri dev` で:
+     - watchdog rule を「cargo error」でトリガ
+     - 意図的にビルドエラー出して error line を PTY に流す
+     - トースト表示 → jobs panel で phase 遷移を確認
+     - worktree が実際に作られ、AI が呼ばれ、成功/失敗で通知が閉じる
+   - debounce: 同じエラーが 60s 内に連発しても job は 1 つのみ
+
+**成果物**:
+- `src-tauri/src/ipc/repair_commands.rs` 新規 (〜100 行)
+- `src-tauri/src/lib.rs` 編集 (状態登録 + invoke_handler 3 コマンド追加)
+- `src-tauri/src/ipc/commands.rs` 編集 (PTY reader 内で auto_repair.trigger 呼び出し)
+- `src/shared/hooks/useRepairJobs.ts` 新規
+- `src/features/repair/RepairJobsPanel.tsx` + module.css 新規
+- `src/features/statusbar/Statusbar.tsx` に repair バッジ追加
+- Rust/TS テスト各 5-8 本
+
+**リスク**:
+- `claude -p` を spawn するので CI の claude 未インストール環境でテストが不安定 → テストでは process::Command をモックするか skip
+- worktree 作成が副作用強い — debounce の境界外れで複数 trigger されるとブランチが大量生成 → `AutoRepairManager::trigger` の capacity 制限 (MAX_CONCURRENT_JOBS=3) に依存
+
+**見積もり**: 2-4 日 (視覚検証含む)
+
+**完了条件**: 視覚検証 5 項目全て OK / vitest + cargo グリーン / commit
+
+---
+
+## 3A-2. Ghost typing 復活 (fish-style)
+
+**目的**: コマンド入力中、履歴ベースの続きを薄灰色でインライン予測表示。Tab で受諾。ideas.md セクション B 前半。
+
+**前提**:
+- `src-tauri/src/suggest/SuggestEngine` 実装済、fish-style prefix match (確認済、12+ テスト)
+- `.manage()` 未登録
+- memory `feedback_ghost_text_cause.md` — 旧 xterm 版は PSReadLine の予測候補消し残しで誤診、Rust 側 `-PredictionSource None` で対処済
+- memory `project_phase2_progress.md` の task 11 末尾 — native path では「プロンプト位置判定が難しく見送り」と記載。**本タスクはこれを克服する**
+
+**設計アプローチ (プロンプト位置の扱い)**:
+
+旧 xterm 版は CommandBlockTracker (削除済) でプロンプト行を検出していた。native path では異なる戦略を取る:
+
+- **入力ミラー方式**: canvas への keypress を `TerminalCanvasInput` で横取り & **PTY に渡す直前でローカル入力バッファに蓄積**
+  - printable ASCII / スペース → buffer に追加
+  - Backspace → buffer から 1 文字削除
+  - Enter (`\r`) → buffer → `SuggestEngine::record()` → buffer クリア
+  - 矢印 / Ctrl+C / Esc → buffer クリア (予測取消)
+  - Tab / Ctrl+Space → 予測受諾: `suggestion` を PTY に write + buffer に追加
+- **予測表示**: buffer が変わるたび `invoke("suggest_next", {prefix: buffer})` → 返値をカーソル直後に薄灰色描画
+- **位置**: `snapshot.cursor.row, cursor.col` の直後
+- **エッジケース**: マルチライン入力は対応しない (単純プロンプト前提)
+
+**サブタスク**:
+
+1. **Backend 配線 (0.5-1 日)**
+   - `lib.rs` に `.manage(Arc<Mutex<SuggestEngine>>)` 追加。起動時 `db.recent_commands(500)` で seed
+   - IPC: `suggest_next(prefix) -> Option<String>` / `suggest_record(command)` 新規
+   - `save_command_history` の内部で `SuggestEngine::record()` も呼ぶ (二重記録を避けるため IPC 側で一箇所にまとめる)
+
+2. **Frontend 入力バッファ (1 日)**
+   - `src/features/terminal/hooks/useInputMirror.ts` 新規 — keyEventToBytes に手を加えず、並列で input buffer state を維持
+   - `NativeTerminalArea` / `AgentTerminal` で使う hook。buffer state を TerminalCanvas に prop で渡す
+   - Tab / Ctrl+Space 受諾ハンドラ — `writeBytes(suggestion.slice(buffer.length))` で PTY に未入力ぶんだけ書く
+
+3. **Frontend 描画 (0.5 日)**
+   - `TerminalCanvas` に `ghostSuggestion?: string` prop 追加
+   - paint effect で cursor 位置の直後に薄灰色 (`#585b70` / opacity 0.6) でテキストを描く
+   - 描画は cursor row だけ dirty mark
+
+4. **テスト (0.5 日)**
+   - Rust: SuggestEngine の既存テストで十分
+   - TS: `useInputMirror` の buffer lifecycle (keydown / Enter / Backspace / Tab accept) vitest
+   - TerminalCanvas の ghostSuggestion 描画テスト (fillText mock)
+
+5. **視覚検証 (0.5 日)**
+   - `git st` → 薄灰色で `atus` が見える
+   - Tab で受諾され `git status` が実行される
+   - 方向キーで候補消える
+   - AI CLI (claude) 実行中は予測が邪魔にならない (AI CLI detected → buffer/予測を無効化)
+   - IME 中は予測なし (composingRef check)
+
+**成果物**:
+- Rust 3 箇所 (lib.rs / ipc / suggest IPC)
+- `src/features/terminal/hooks/useInputMirror.ts` 新規
+- `TerminalCanvas.tsx` に ghostSuggestion 描画追加
+- `NativeTerminalArea.tsx` / `AgentTerminal.tsx` に配線
+- テスト 10+ 本
+
+**リスク**:
+- **入力ミラー方式は prompt 前の状態 (`cd /tmp`) 等で誤爆する可能性** — buffer に溜まるのは "cursor が prompt 行にいる前提"。対策: AI CLI detected や IME composing 中は buffer を無効化
+- Windows ConPTY 側が勝手に echo を返す → buffer と PTY 実状のズレ。native engine の grid snapshot の cursor.col と buffer.length の差分で補正する fallback を用意
+- 予測が誤って実行される (誤タブ受諾) → 受諾時は **PTY に書くだけ、Enter は送らない**
+
+**見積もり**: 3-5 日
+
+**完了条件**: 視覚検証 5 項目 / vitest + cargo グリーン / commit
+
+---
+
+## 3A-3. gpu/ backend 撤去 + 起動速度 second stage
+
+**目的**: Phase 2 で孤立した `src-tauri/src/gpu/` 30 ファイルの撤去 (現 React 側から完全孤立)。Phase 1 残務の起動速度 second stage も畳む。
+
+**前提**:
+- `gpu/*.rs` は `lib.rs` で `GpuTerminalManager` + `gpu::commands::*` の 12 IPC を登録している。frontend は `WebGpuTerminal.tsx` 削除済なので invoke は 0
+- `ui/*` は `gpu::*` 型を import している — これらも wgpu native UI 実装 (未配線) なので併せて撤去候補
+- Phase 1 メモ: `[boot]` マーカー実装済、実測値取得待ち
+
+**サブタスク**:
+
+1. **gpu/ 孤立度確認 (0.5 日)** — `grep` で frontend/backend から `gpu::` を参照している箇所を総ざらい。ui/* が依存しているなら ui/* も撤去対象
+2. **gpu/ + ui/ 物理削除 (1 日)** — 30+ファイル削除 / `lib.rs` から 12 IPC 削除 / `GpuTerminalManager` の `.manage()` 削除 / `Cargo.toml` から wgpu / winit 系依存削除
+3. **起動速度 実測 (0.5 日)** — `pnpm tauri dev` で DevTools の `[boot]` ログ収集。ボトルネックが xterm: first-mount 無関係になったので現状のチャンク分割がまだ有効か再評価
+4. **最適化 (1 日)** — 実測結果次第: monaco-vim 2.75MB の dynamic import 検討 / WorkflowBuilder 184kB は既に lazy 済なので変更なし想定
+5. **視覚検証 (0.5 日)** — 起動 OK / 全機能触って regress なし / `[boot]` 時間を memory に記録
+
+**成果物**:
+- net -数千行 (gpu/ui 撤去)
+- `Cargo.toml` から wgpu / winit 系削除
+- ボトルネック実測の記録 (memory 更新)
+
+**リスク**:
+- ui/ は `lib.rs` で managed state として登録されているか? → 事前確認必須
+- wgpu / winit 依存を削るとビルド時間短縮
+
+**見積もり**: 2-3 日
+
+**完了条件**: cargo / vitest / build グリーン / 視覚検証 / commit
+
+---
+
+# Phase 3B — エージェント管理核
+
+**詳細は 3A 完了時点で確定**。スケルトンのみ:
+
+## 3B-1. Orchestra mode
+- role-based multi-agent (implementer / tester / documenter / reviewer)
+- SessionCard に role assignment UI、HandoffDialog 拡張で role 指定引き継ぎ
+- 司令室 view: ReactFlow で agent 間の依存グラフを表示
+- conflict detection: 同一ファイルに複数 agent 書き込み → warning
+
+## 3B-2. Semantic history search
+- embedding provider: Claude API (既存環境) or 小型ローカルモデル (candle-core)
+- vec store: sqlite-vec extension または LMDB
+- パイプライン: command output → embed (async) → store → 自然言語クエリで検索
+- UI: Ctrl+R の拡張で「3 日前のビルドエラー」系検索
+
+---
+
+# Phase 3C — 差別化大物
+
+**詳細は 3B 完了時点で確定**。スケルトンのみ:
+
+- **3C-1 Ghost diff overlay** — 別 worktree の AI 修正を現画面に半透明重ね (ideas.md D1)
+- **3C-2 並行世界のターミナル** — ブランチ切替を UI レイヤー重ね表示 (ideas.md F)
+- **3C-3 タイムトラベルデバッグ** — PTY 状態スナップショット + replay (ideas.md A 後半)
+
+---
+
+# Phase 3D — 実験枠
+
+**都度判断**:
+
+- **3D-1 Terminal-as-an-API** (ideas.md H) — HTTP/WS で PTY 公開
+- **3D-2 インライン viz** (ideas.md C1) — ログ内数値の動的グラフ
+- **3D-3 3D project map** (ideas.md C3) — LSP 依存の 3D 可視化
+
+---
+
+# 進行管理
+
+- 各タスク開始時: このドキュメントを参照 + memory の `project_phase3_progress.md` (完成時作成) を参照
+- 各タスク完了時: commit + 本ドキュメントに完了マーク + memory 更新
+- phase 跨ぎ: 前 phase の視覚検証が 100% 済でないと先に進まない
+
+# 非スコープ (Phase 3 では扱わない)
+
+- フルネイティブ wgpu 版への再移行 — 戦略確定済で見送り
+- macOS/Linux 対応 — Windows 11 に集中
+- マルチユーザ / 共同編集 — 単独開発者向けに固定

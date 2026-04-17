@@ -5,7 +5,8 @@ pub mod pane_watcher;
 mod rules;
 
 pub use monitor::SessionMonitor;
-pub use rules::{AutoApproveRule, WatchdogRules};
+pub use auto_repair::{ErrorContext, RepairJobInfo, RepairNotification, RepairPhase};
+pub use rules::{AutoApproveRule, AutoRepairConfig, WatchdogRules};
 
 use std::path::PathBuf;
 

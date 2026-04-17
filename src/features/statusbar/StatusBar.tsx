@@ -1,4 +1,7 @@
-import { GitBranch, FileText, Cpu } from "lucide-react";
+import { useState } from "react";
+import { GitBranch, FileText, Cpu, Wrench } from "lucide-react";
+import { useRepairJobs } from "../../shared/hooks/useRepairJobs";
+import { RepairJobsPanel } from "../repair/RepairJobsPanel";
 import styles from "./StatusBar.module.css";
 
 interface StatusBarProps {
@@ -10,6 +13,11 @@ interface StatusBarProps {
 }
 
 export function StatusBar({ shell, branch, changedCount, encoding = "UTF-8", agentStatus }: StatusBarProps) {
+  const [repairOpen, setRepairOpen] = useState(false);
+  const { jobs, activeCount, config, setEnabled } = useRepairJobs();
+
+  const repairActive = config.enabled || activeCount > 0;
+
   return (
     <div className={styles.statusbar}>
       <div className={styles.left}>
@@ -34,10 +42,29 @@ export function StatusBar({ shell, branch, changedCount, encoding = "UTF-8", age
             {agentStatus}
           </span>
         )}
+        <button
+          type="button"
+          className={`${styles.repairBtn} ${repairActive ? styles.repairActive : ""}`}
+          onClick={() => setRepairOpen((v) => !v)}
+          title={config.enabled ? "Auto-repair watching" : "Auto-repair disabled"}
+          aria-label="Auto-repair"
+          aria-expanded={repairOpen}
+        >
+          <Wrench size={11} />
+          {activeCount > 0 && <span className={styles.repairBadge}>{activeCount}</span>}
+        </button>
         <span className={styles.item}>{encoding}</span>
         <span className={styles.item}>LF</span>
         <span className={styles.item}>Aether v0.1.0</span>
       </div>
+      {repairOpen && (
+        <RepairJobsPanel
+          jobs={jobs}
+          config={config}
+          onToggleEnabled={setEnabled}
+          onClose={() => setRepairOpen(false)}
+        />
+      )}
     </div>
   );
 }

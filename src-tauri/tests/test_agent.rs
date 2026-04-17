@@ -131,6 +131,7 @@ fn test_watchdog_evaluates_parsed_events() {
                 description: "Block rm commands".to_string(),
             },
         ],
+        auto_repair: Default::default(),
     };
 
     let engine = WatchdogEngine::new(rules);

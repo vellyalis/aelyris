@@ -14,11 +14,12 @@ mod watcher;
 pub mod watchdog;
 pub mod workflow;
 
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use agent::AgentManager;
 use agent::InteractiveSessionManager;
 use db::Database;
 use pty::PtyManager;
+use watchdog::auto_repair::AutoRepairManager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -44,6 +45,10 @@ pub fn run() {
         })
         .manage(std::sync::Arc::new(gpu::GpuTerminalManager::new()))
         .manage(std::sync::Arc::new(term::NativeTerminalRegistry::new()))
+        .manage(std::sync::Arc::new(std::sync::Mutex::new(AutoRepairManager::new())))
+        .manage(std::sync::Arc::new(std::sync::Mutex::new(
+            watchdog::load_watchdog_rules().auto_repair,
+        )))
         .setup(move |app| {
             // Initialize database as managed state
             let db_path = db::db_path();
@@ -61,6 +66,34 @@ pub fn run() {
                 }
             }
             // Mica/Acrylic applied via tauri.conf.json windowEffects
+
+            // Auto-repair polling thread: flush `AutoRepairManager` phase/notification
+            // messages every 500ms. Active jobs are re-broadcast on every tick so the
+            // UI's elapsed timers stay live without a separate clock.
+            let repair_handle = app.handle().clone();
+            std::thread::Builder::new()
+                .name("auto-repair-poller".into())
+                .spawn(move || {
+                    loop {
+                        std::thread::sleep(std::time::Duration::from_millis(500));
+                        let Some(mgr) = repair_handle
+                            .try_state::<std::sync::Arc<std::sync::Mutex<AutoRepairManager>>>()
+                        else {
+                            continue;
+                        };
+                        let mgr = mgr.inner().clone();
+                        let (notifications, jobs) = match mgr.lock() {
+                            Ok(mut g) => (g.poll(), g.jobs()),
+                            Err(_) => continue,
+                        };
+                        for notif in notifications {
+                            let _ = repair_handle.emit("repair:notification", notif);
+                        }
+                        let _ = repair_handle.emit("repair:jobs-updated", jobs);
+                    }
+                })
+                .ok();
+
             log::info!("Setup complete in {:?}", t0.elapsed());
             Ok(())
         })
@@ -171,6 +204,11 @@ pub fn run() {
             ipc::stop_interactive_agent,
             ipc::end_session_and_remove_worktree,
             ipc::list_interactive_agents,
+            // Auto-repair pipeline (Phase 3A-1)
+            ipc::list_repair_jobs,
+            ipc::trigger_repair_manual,
+            ipc::get_auto_repair_config,
+            ipc::set_auto_repair_config,
             // IME positioning
             ipc::set_ime_position,
         ])
