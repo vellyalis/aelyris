@@ -235,20 +235,42 @@ export function NativeTerminalArea({
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const measure = () => {
+    let pending: number | null = null;
+    const computeDims = (): Dims | null => {
       const w = el.clientWidth;
       const h = el.clientHeight;
-      if (w <= 0 || h <= 0) return;
-      const cols = Math.max(MIN_COLS, Math.floor(w / CELL_W));
-      const rows = Math.max(MIN_ROWS, Math.floor(h / CELL_H));
+      if (w <= 0 || h <= 0) return null;
+      return {
+        cols: Math.max(MIN_COLS, Math.floor(w / CELL_W)),
+        rows: Math.max(MIN_ROWS, Math.floor(h / CELL_H)),
+      };
+    };
+    const apply = () => {
+      pending = null;
+      const next = computeDims();
+      if (!next) return;
       setDims((prev) =>
-        prev && prev.cols === cols && prev.rows === rows ? prev : { cols, rows },
+        prev && prev.cols === next.cols && prev.rows === next.rows
+          ? prev
+          : next,
       );
     };
-    measure();
-    const ro = new ResizeObserver(measure);
+    const schedule = () => {
+      // Trailing-edge debounce ~120ms — only fires after the window stops
+      // resizing for the full window. Leading-edge would still snap every
+      // 100ms during a continuous drag, repainting the whole canvas and
+      // causing the visible text flicker.
+      if (pending !== null) window.clearTimeout(pending);
+      pending = window.setTimeout(apply, 120);
+    };
+    // First mount: apply immediately so PTY spawns without waiting.
+    apply();
+    const ro = new ResizeObserver(schedule);
     ro.observe(el);
-    return () => ro.disconnect();
+    return () => {
+      if (pending !== null) window.clearTimeout(pending);
+      ro.disconnect();
+    };
   }, []);
 
   useEffect(() => {
@@ -312,10 +334,11 @@ export function NativeTerminalArea({
     [terminalId, writePty],
   );
 
-  const canvasKey = useMemo(
-    () => (terminalId && dims ? `${terminalId}:${dims.cols}x${dims.rows}` : null),
-    [terminalId, dims],
-  );
+  // Keying on terminalId only — including dims causes a full
+  // unmount/remount on every resize tick, producing visible flicker.
+  // TerminalCanvas already handles cols/rows changes via its own
+  // dimsChanged path inside the paint effect.
+  const canvasKey = terminalId;
 
   return (
     <div className={styles.terminalArea}>

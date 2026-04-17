@@ -99,6 +99,8 @@ export function TerminalCanvas({
   const prevSelectionRef = useRef<SelectionRange | null>(null);
   const prevMatchesKeyRef = useRef<string>("");
   const prevHoveredLinkRef = useRef<LinkSpan | null>(null);
+  const prevCursorRef = useRef<{ row: number; col: number } | null>(null);
+  const prevCursorOnRef = useRef<boolean>(true);
   const [hoveredLink, setHoveredLink] = useState<LinkSpan | null>(null);
 
   useTerminalCanvasInput(terminalId, inputEl, writeBytes);
@@ -259,6 +261,16 @@ export function TerminalCanvas({
     const matchesChanged = matchesKey !== prevMatchesKeyRef.current;
     const prevHover = prevHoveredLinkRef.current;
     const hoverChanged = prevHover !== hoveredLink;
+    const prevCursor = prevCursorRef.current;
+    const cursor = snapshot.cursor;
+    const cursorMoved =
+      !prevCursor || prevCursor.row !== cursor.row || prevCursor.col !== cursor.col;
+    const cursorBlinkToggled = prevCursorOnRef.current !== cursorOn;
+    const cursorDirtyRows = new Set<number>();
+    if (cursorMoved || cursorBlinkToggled) {
+      if (prevCursor) cursorDirtyRows.add(prevCursor.row);
+      cursorDirtyRows.add(cursor.row);
+    }
 
     ctx.textBaseline = "top";
 
@@ -282,11 +294,13 @@ export function TerminalCanvas({
         selectionChanged && (inOld !== null || inNew !== null);
       const matchDirtyRow = matchesChanged && affectedBySearch.has(row);
       const hoverDirtyRow = hoverChanged && affectedByHover.has(row);
+      const cursorDirtyRow = cursorDirtyRows.has(row);
       if (
         !dimsChanged &&
         !selDirtyRow &&
         !matchDirtyRow &&
         !hoverDirtyRow &&
+        !cursorDirtyRow &&
         prev &&
         prev.cells[row] === rowCells
       ) {
@@ -314,6 +328,8 @@ export function TerminalCanvas({
     prevSelectionRef.current = selection;
     prevMatchesKeyRef.current = matchesKey;
     prevHoveredLinkRef.current = hoveredLink;
+    prevCursorRef.current = { row: cursor.row, col: cursor.col };
+    prevCursorOnRef.current = cursorOn;
   }, [
     snapshot,
     cellMetrics,

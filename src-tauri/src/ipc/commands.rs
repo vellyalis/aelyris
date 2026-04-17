@@ -118,6 +118,28 @@ pub fn spawn_terminal(
         log::warn!("native engine create failed for {}: {}", id, e);
     }
 
+    // Per-terminal flush ticker: the 16ms coalesce in `advance()` swallows
+    // the very last edit if no follow-up bytes arrive (e.g., user types one
+    // char and stops). The ticker bypasses the window and ships any pending
+    // diff so the canvas never lags behind alacritty's grid.
+    let flush_alive = Arc::new(std::sync::atomic::AtomicBool::new(true));
+    if native_registry.is_enabled() {
+        let alive = flush_alive.clone();
+        let flush_registry = native_registry.clone();
+        let flush_handle = app_handle.clone();
+        let flush_id = terminal_id.clone();
+        std::thread::spawn(move || {
+            use std::sync::atomic::Ordering;
+            while alive.load(Ordering::Acquire) {
+                std::thread::sleep(std::time::Duration::from_millis(33));
+                if let Some(diff) = flush_registry.flush(&flush_id) {
+                    let _ = flush_handle.emit(&format!("term:diff-{}", flush_id), diff);
+                }
+            }
+        });
+    }
+    let reader_alive = flush_alive.clone();
+
     std::thread::spawn(move || {
         let mut reader = reader;
         let mut buf = [0u8; 4096];
@@ -173,7 +195,8 @@ pub fn spawn_terminal(
                 Err(_) => break,
             }
         }
-        // Terminal exited
+        // Terminal exited — stop the native flush ticker so it can join.
+        reader_alive.store(false, std::sync::atomic::Ordering::Release);
         let _ = app_handle.emit(&format!("pty-exit-{}", terminal_id), ());
     });
 
