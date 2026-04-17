@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useTerminalSnapshot } from "../../shared/hooks/useTerminalSnapshot";
 import {
@@ -8,6 +8,9 @@ import {
 import {
   CURSOR_COLOR,
   DEFAULT_BG,
+  LINK_HOVER_FG,
+  SEARCH_ACTIVE_BG,
+  SEARCH_MATCH_BG,
   SELECTION_BG,
   isDefaultBg,
   resolveColor,
@@ -18,11 +21,27 @@ import {
   type CellSnapshot,
   type GridSnapshot,
 } from "../../shared/types/terminal";
+import { pixelToCell } from "./keymap";
+import { linkAt, scanLinks, type LinkSpan } from "./links";
+import type { SearchMatch } from "./search";
 import { rowSelection, type SelectionRange } from "./selection";
 import {
   useTerminalSelection,
   type CopyTextFn,
 } from "./hooks/useTerminalSelection";
+
+export type OpenUrlFn = (url: string) => Promise<void> | void;
+
+const defaultOpenUrl: OpenUrlFn = async (url) => {
+  try {
+    const mod = await import("@tauri-apps/plugin-opener");
+    await mod.openUrl(url);
+  } catch {
+    if (typeof window !== "undefined") {
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+  }
+};
 
 /**
  * Phase 2 / Task 7 — Canvas 2D terminal renderer with full ANSI attr + color.
@@ -47,6 +66,12 @@ export interface TerminalCanvasProps {
   writeBytes?: WriteBytesFn;
   /** Injectable clipboard writer — defaults to `navigator.clipboard.writeText`. */
   copyText?: CopyTextFn;
+  /** Search matches to highlight with a dim yellow band. */
+  searchMatches?: readonly SearchMatch[];
+  /** Active match gets a brighter band on top of the dim highlight. */
+  activeSearchMatch?: SearchMatch | null;
+  /** Invoked on Ctrl+Click over a detected URL. */
+  onOpenUrl?: OpenUrlFn;
 }
 
 interface CellMetrics {
@@ -64,11 +89,17 @@ export function TerminalCanvas({
   snapshotOverride,
   writeBytes,
   copyText,
+  searchMatches,
+  activeSearchMatch,
+  onOpenUrl = defaultOpenUrl,
 }: TerminalCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [inputEl, setInputEl] = useState<HTMLCanvasElement | null>(null);
   const prevSnapshotRef = useRef<GridSnapshot | null>(null);
   const prevSelectionRef = useRef<SelectionRange | null>(null);
+  const prevMatchesKeyRef = useRef<string>("");
+  const prevHoveredLinkRef = useRef<LinkSpan | null>(null);
+  const [hoveredLink, setHoveredLink] = useState<LinkSpan | null>(null);
 
   useTerminalCanvasInput(terminalId, inputEl, writeBytes);
   const liveSnapshot = useTerminalSnapshot(
@@ -98,6 +129,86 @@ export function TerminalCanvas({
     cellHeight: cellMetrics.height,
     copyText,
   });
+
+  const links = useMemo(() => scanLinks(snapshot), [snapshot]);
+
+  useEffect(() => {
+    const el = inputEl;
+    if (!el) return;
+    const onMove = (ev: MouseEvent) => {
+      const snap = snapshot;
+      if (!snap || links.length === 0) {
+        setHoveredLink((prev) => (prev === null ? prev : null));
+        return;
+      }
+      const rect = el.getBoundingClientRect();
+      const point = pixelToCell(
+        ev.clientX,
+        ev.clientY,
+        rect,
+        cellMetrics.width,
+        cellMetrics.height,
+        snap.cols,
+        snap.rows,
+      );
+      if (!point) {
+        setHoveredLink((prev) => (prev === null ? prev : null));
+        return;
+      }
+      const hit = linkAt(links, point.row, point.col);
+      if (ev.ctrlKey && hit) {
+        el.style.cursor = "pointer";
+      } else {
+        el.style.cursor = "";
+      }
+      setHoveredLink((prev) => (prev === hit ? prev : hit));
+    };
+    const onLeave = () => {
+      setHoveredLink((prev) => (prev === null ? prev : null));
+      el.style.cursor = "";
+    };
+    el.addEventListener("mousemove", onMove);
+    el.addEventListener("mouseleave", onLeave);
+    return () => {
+      el.removeEventListener("mousemove", onMove);
+      el.removeEventListener("mouseleave", onLeave);
+      el.style.cursor = "";
+    };
+  }, [inputEl, snapshot, links, cellMetrics.width, cellMetrics.height]);
+
+  const handleLinkClick = useCallback(
+    (ev: MouseEvent) => {
+      if (!ev.ctrlKey || ev.button !== 0) return;
+      const snap = snapshot;
+      if (!snap || links.length === 0 || !inputEl) return;
+      const rect = inputEl.getBoundingClientRect();
+      const point = pixelToCell(
+        ev.clientX,
+        ev.clientY,
+        rect,
+        cellMetrics.width,
+        cellMetrics.height,
+        snap.cols,
+        snap.rows,
+      );
+      if (!point) return;
+      const hit = linkAt(links, point.row, point.col);
+      if (!hit) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (onOpenUrl) {
+        void onOpenUrl(hit.url);
+      }
+    },
+    [snapshot, links, inputEl, cellMetrics.width, cellMetrics.height, onOpenUrl],
+  );
+
+  useEffect(() => {
+    const el = inputEl;
+    if (!el) return;
+    el.addEventListener("mousedown", handleLinkClick, true);
+    return () => el.removeEventListener("mousedown", handleLinkClick, true);
+  }, [inputEl, handleLinkClick]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -144,6 +255,10 @@ export function TerminalCanvas({
       !prev || prev.cols !== snapshot.cols || prev.rows !== snapshot.rows;
     const prevSel = prevSelectionRef.current;
     const selectionChanged = prevSel !== selection;
+    const matchesKey = buildMatchesKey(searchMatches, activeSearchMatch);
+    const matchesChanged = matchesKey !== prevMatchesKeyRef.current;
+    const prevHover = prevHoveredLinkRef.current;
+    const hoverChanged = prevHover !== hoveredLink;
 
     ctx.textBaseline = "top";
 
@@ -152,24 +267,43 @@ export function TerminalCanvas({
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 
+    const affectedBySearch = buildRowMask(
+      searchMatches,
+      activeSearchMatch,
+      snapshot.rows,
+    );
+    const affectedByHover = rowsCoveredByLink(hoveredLink, prevHover);
+
     for (let row = 0; row < snapshot.rows; row++) {
       const rowCells = snapshot.cells[row];
       const inOld = prevSel ? rowSelection(row, prevSel, snapshot.cols) : null;
       const inNew = selection ? rowSelection(row, selection, snapshot.cols) : null;
       const selDirtyRow =
         selectionChanged && (inOld !== null || inNew !== null);
+      const matchDirtyRow = matchesChanged && affectedBySearch.has(row);
+      const hoverDirtyRow = hoverChanged && affectedByHover.has(row);
       if (
         !dimsChanged &&
         !selDirtyRow &&
+        !matchDirtyRow &&
+        !hoverDirtyRow &&
         prev &&
         prev.cells[row] === rowCells
       ) {
         continue;
       }
       paintRow(ctx, rowCells, row, cellMetrics, fontSize, fontFamily);
+      paintSearchBands(
+        ctx,
+        row,
+        searchMatches,
+        activeSearchMatch,
+        cellMetrics,
+      );
       if (inNew) {
         paintSelectionBand(ctx, row, inNew, cellMetrics);
       }
+      paintLinkUnderline(ctx, row, hoveredLink, snapshot.cols, cellMetrics);
     }
 
     if (snapshot.cursor.visible && cursorOn) {
@@ -178,7 +312,19 @@ export function TerminalCanvas({
 
     prevSnapshotRef.current = snapshot;
     prevSelectionRef.current = selection;
-  }, [snapshot, cellMetrics, fontFamily, fontSize, cursorOn, selection]);
+    prevMatchesKeyRef.current = matchesKey;
+    prevHoveredLinkRef.current = hoveredLink;
+  }, [
+    snapshot,
+    cellMetrics,
+    fontFamily,
+    fontSize,
+    cursorOn,
+    selection,
+    searchMatches,
+    activeSearchMatch,
+    hoveredLink,
+  ]);
 
   useEffect(() => {
     if (!snapshot?.cursor.blinking) {
@@ -304,6 +450,95 @@ function drawDecorations(
   ctx.fillStyle = fgCss;
   if (underline) ctx.fillRect(x, y + cellH - 2, cellW, 1);
   if (strike) ctx.fillRect(x, y + Math.round(cellH / 2), cellW, 1);
+}
+
+function buildMatchesKey(
+  matches: readonly SearchMatch[] | undefined,
+  active: SearchMatch | null | undefined,
+): string {
+  if (!matches || matches.length === 0) return active ? "@active" : "";
+  let s = "";
+  for (const m of matches) s += `${m.row},${m.startCol},${m.endCol};`;
+  if (active) s += `@${active.row},${active.startCol},${active.endCol}`;
+  return s;
+}
+
+function buildRowMask(
+  matches: readonly SearchMatch[] | undefined,
+  active: SearchMatch | null | undefined,
+  totalRows: number,
+): Set<number> {
+  const rows = new Set<number>();
+  if (matches) {
+    for (const m of matches) {
+      if (m.row >= 0 && m.row < totalRows) rows.add(m.row);
+    }
+  }
+  if (active && active.row >= 0 && active.row < totalRows) rows.add(active.row);
+  return rows;
+}
+
+function rowsCoveredByLink(
+  ...links: Array<LinkSpan | null | undefined>
+): Set<number> {
+  const rows = new Set<number>();
+  for (const link of links) {
+    if (!link) continue;
+    for (let r = link.startRow; r <= link.endRow; r++) rows.add(r);
+  }
+  return rows;
+}
+
+function paintSearchBands(
+  ctx: CanvasRenderingContext2D,
+  row: number,
+  matches: readonly SearchMatch[] | undefined,
+  active: SearchMatch | null | undefined,
+  metrics: CellMetrics,
+) {
+  if (!matches || matches.length === 0) return;
+  for (const m of matches) {
+    if (m.row !== row) continue;
+    const isActive =
+      !!active &&
+      active.row === m.row &&
+      active.startCol === m.startCol &&
+      active.endCol === m.endCol;
+    const { width, height } = metrics;
+    const x = m.startCol * width;
+    const y = m.row * height;
+    const w = (m.endCol - m.startCol + 1) * width;
+    if (w <= 0) continue;
+    ctx.save();
+    ctx.globalAlpha = isActive ? 0.65 : 0.4;
+    ctx.fillStyle = isActive ? SEARCH_ACTIVE_BG : SEARCH_MATCH_BG;
+    ctx.fillRect(x, y, w, height);
+    ctx.restore();
+  }
+}
+
+function paintLinkUnderline(
+  ctx: CanvasRenderingContext2D,
+  row: number,
+  link: LinkSpan | null,
+  totalCols: number,
+  metrics: CellMetrics,
+) {
+  if (!link) return;
+  if (row < link.startRow || row > link.endRow) return;
+  const startCol = row === link.startRow ? link.startCol : 0;
+  const endColExclusive =
+    row === link.endRow ? link.endCol + 1 : totalCols;
+  const { width, height } = metrics;
+  const x = startCol * width;
+  const y = row * height;
+  const w = (endColExclusive - startCol) * width;
+  if (w <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = LINK_HOVER_FG;
+  ctx.fillRect(x, y + height - 1, w, 1);
+  ctx.restore();
 }
 
 function paintSelectionBand(

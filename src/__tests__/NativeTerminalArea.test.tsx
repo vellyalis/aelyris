@@ -1,4 +1,10 @@
-import { act, render, cleanup, waitFor } from "@testing-library/react";
+import {
+  act,
+  render,
+  cleanup,
+  fireEvent,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NativeTerminalArea } from "../features/terminal/NativeTerminalArea";
@@ -74,6 +80,7 @@ describe("NativeTerminalArea", () => {
         onTerminalReady={onReady}
         spawnPty={spawnPty}
         resizePty={resizePty}
+        subscribeOutput={async () => () => {}}
       />,
     );
 
@@ -100,12 +107,100 @@ describe("NativeTerminalArea", () => {
     );
   });
 
+  it("opens IMEInputBar when AI CLI session is detected via PTY output", async () => {
+    const spawnPty = vi.fn().mockResolvedValue("term-ai");
+    const resizePty = vi.fn();
+    let pushBytes: ((bytes: Uint8Array) => void) | null = null;
+    const subscribeOutput = vi.fn(async (_id, onBytes) => {
+      pushBytes = onBytes;
+      return () => {};
+    });
+
+    const { container } = render(
+      <NativeTerminalArea
+        shell="powershell"
+        spawnPty={spawnPty}
+        resizePty={resizePty}
+        subscribeOutput={subscribeOutput}
+      />,
+    );
+
+    await waitFor(() => expect(subscribeOutput).toHaveBeenCalled());
+    // Simulate ConPTY echoing the user's "claude" invocation on the prompt line.
+    const enc = new TextEncoder();
+    await act(async () => {
+      pushBytes?.(enc.encode("PS C:\\Users\\dev> claude\r\n"));
+    });
+    await waitFor(() =>
+      expect(container.querySelector("[role='dialog']")).not.toBeNull(),
+    );
+  });
+
+  it("toggles IMEInputBar on Ctrl+Shift+J", async () => {
+    const spawnPty = vi.fn().mockResolvedValue("term-j");
+    const { container } = render(
+      <NativeTerminalArea
+        spawnPty={spawnPty}
+        subscribeOutput={async () => () => {}}
+      />,
+    );
+    await waitFor(() =>
+      expect(container.querySelector("[data-testid='terminal-canvas']")).not.toBeNull(),
+    );
+    const area = container.querySelector("div")!;
+    (area.querySelector("[data-testid='terminal-canvas']") as HTMLCanvasElement)?.focus();
+    await act(async () => {
+      fireEvent.keyDown(window, { key: "j", ctrlKey: true, shiftKey: true });
+    });
+    await waitFor(() =>
+      expect(container.querySelector("[role='dialog']")).not.toBeNull(),
+    );
+    await act(async () => {
+      fireEvent.keyDown(window, { key: "j", ctrlKey: true, shiftKey: true });
+    });
+    await waitFor(() =>
+      expect(container.querySelector("[role='dialog']")).toBeNull(),
+    );
+  });
+
+  it("opens the search bar on Ctrl+F and focuses the input", async () => {
+    const spawnPty = vi.fn().mockResolvedValue("term-f");
+    const { container } = render(
+      <NativeTerminalArea
+        spawnPty={spawnPty}
+        subscribeOutput={async () => () => {}}
+      />,
+    );
+    await waitFor(() =>
+      expect(container.querySelector("[data-testid='terminal-canvas']")).not.toBeNull(),
+    );
+    (container.querySelector("[data-testid='terminal-canvas']") as HTMLCanvasElement)?.focus();
+    await act(async () => {
+      fireEvent.keyDown(window, { key: "f", ctrlKey: true });
+    });
+    await waitFor(() =>
+      expect(container.querySelector("input[placeholder='Search...']")).not.toBeNull(),
+    );
+    const input = container.querySelector("input[placeholder='Search...']") as HTMLInputElement;
+    // Esc closes the search bar.
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Escape" });
+    });
+    await waitFor(() =>
+      expect(container.querySelector("input[placeholder='Search...']")).toBeNull(),
+    );
+  });
+
   it("leaves the canvas unmounted when PTY spawn fails", async () => {
     const spawnPty = vi.fn().mockRejectedValue(new Error("boom"));
     const onReady = vi.fn();
 
     const { container } = render(
-      <NativeTerminalArea spawnPty={spawnPty} onTerminalReady={onReady} />,
+      <NativeTerminalArea
+        spawnPty={spawnPty}
+        onTerminalReady={onReady}
+        subscribeOutput={async () => () => {}}
+      />,
     );
 
     await waitFor(() => expect(spawnPty).toHaveBeenCalled());

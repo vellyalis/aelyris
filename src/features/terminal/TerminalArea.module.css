@@ -55,6 +55,13 @@
   color: var(--text-muted);
 }
 
+.searchCount {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+}
+
 .searchBtn {
   background: none;
   border: none;
