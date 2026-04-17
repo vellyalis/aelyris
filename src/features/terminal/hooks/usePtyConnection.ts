@@ -34,6 +34,14 @@ export function usePtyConnection({
     if (!term) return;
     let cancelled = false;
 
+    // Single streaming decoder for this PTY connection.  Without
+    // `{stream: true}`, a multi-byte UTF-8 codepoint that happens to
+    // straddle two Tauri event chunks (e.g. a Japanese character split
+    // across 2 bytes + 1 byte) would be decoded as two replacement
+    // characters, corrupting the output stream and breaking prompt /
+    // AI-CLI detection downstream.
+    const decoder = new TextDecoder("utf-8");
+
     (async () => {
       try {
         const { invoke } = await import("@tauri-apps/api/core");
@@ -60,7 +68,7 @@ export function usePtyConnection({
         const unlistenOutput = await listen<number[]>(`pty-output-${id}`, (event) => {
           const bytes = new Uint8Array(event.payload);
           term.write(bytes);
-          onOutput?.(new TextDecoder().decode(bytes), id);
+          onOutput?.(decoder.decode(bytes, { stream: true }), id);
         });
 
         const unlistenExit = await listen(`pty-exit-${id}`, () => {
@@ -73,8 +81,11 @@ export function usePtyConnection({
           return;
         }
 
-        // Input forwarding
-        term.onData((data) => {
+        // Input forwarding — keep the disposable so we can detach the
+        // listener on unmount.  Without this, a TerminalArea whose xterm
+        // is re-created (e.g. via a shell/cwd prop change) would have a
+        // dangling onData firing against a stale PTY id.
+        const dataDisposable = term.onData((data) => {
           if (syncModeRef.current) {
             invoke("broadcast_keys", { data }).catch(() => {});
           } else {
@@ -83,7 +94,7 @@ export function usePtyConnection({
         });
 
         // Resize forwarding
-        term.onResize(({ cols, rows }) => {
+        const resizeDisposable = term.onResize(({ cols, rows }) => {
           invoke("resize_terminal", { id, cols, rows }).catch(() => {});
         });
 
@@ -99,9 +110,25 @@ export function usePtyConnection({
             .catch(() => {});
         }
 
+        // Final race window: if unmount fired between the two listen()
+        // awaits above and the onData/onResize registrations below,
+        // `cancelled` is true but `cleanupRef` is still null, so the
+        // effect's teardown ran as a no-op.  Dispose inline instead of
+        // relying on the ref, otherwise these listeners would leak and
+        // continue to invoke into a dead PTY id.
+        if (cancelled) {
+          unlistenOutput();
+          unlistenExit();
+          dataDisposable.dispose();
+          resizeDisposable.dispose();
+          return;
+        }
+
         cleanupRef.current = () => {
           unlistenOutput();
           unlistenExit();
+          dataDisposable.dispose();
+          resizeDisposable.dispose();
         };
       } catch (err) {
         if (!cancelled) {

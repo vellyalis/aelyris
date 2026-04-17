@@ -116,17 +116,30 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
         }
 
         // Forward user input to PTY
-        term.onData((data) => {
+        const dataDisposable = term.onData((data) => {
           invoke("write_terminal", { id: ptyId, data }).catch(() => {});
         });
 
-        term.onResize(({ cols, rows }) => {
+        const resizeDisposable = term.onResize(({ cols, rows }) => {
           invoke("resize_terminal", { id: ptyId, cols, rows }).catch(() => {});
         });
+
+        // Cover the race window between the cancelled check above and
+        // cleanupRef assignment: if unmount fires here, the effect's
+        // teardown already ran as a no-op, so dispose inline.
+        if (cancelled) {
+          unlistenOutput();
+          unlistenExit();
+          dataDisposable.dispose();
+          resizeDisposable.dispose();
+          return;
+        }
 
         cleanupRef.current = () => {
           unlistenOutput();
           unlistenExit();
+          dataDisposable.dispose();
+          resizeDisposable.dispose();
         };
       } catch (err) {
         if (!cancelled) {

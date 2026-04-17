@@ -55,6 +55,12 @@ export function PaneTreeRenderer({
 
   // Accumulate all leaves ever seen (never remove — React handles unmount via key removal)
   const leavesRef = useRef(new Map<string, LeafInfo>());
+  // Track which leaves have ever had a non-zero rect.  Once true, we keep
+  // TerminalArea mounted even if the rect later goes to zero (e.g. maximize
+  // sets the non-maxed slots to `display: none`, collapsing their rect).
+  // Without this, hidden panes would unmount → xterm dispose → new PTY on
+  // restore, losing the previous shell/CLI state.
+  const initializedRef = useRef(new Set<string>());
   const currentLeaves = useMemo(() => collectLeaves(tree), [tree]);
 
   // Update the accumulated leaf map
@@ -69,6 +75,7 @@ export function PaneTreeRenderer({
   for (const id of leavesRef.current.keys()) {
     if (!currentIds.has(id)) {
       leavesRef.current.delete(id);
+      initializedRef.current.delete(id);
     }
   }
 
@@ -217,6 +224,12 @@ export function PaneTreeRenderer({
         const isActive = leaf.id === activePaneId;
         const isMaximized = leaf.id === maximizedPaneId;
         const hasRealSize = !!rect && rect.width > 0 && rect.height > 0;
+        // Latch the "has been real size" bit — once a TerminalArea has
+        // mounted at non-zero dimensions, keep it mounted for the lifetime
+        // of the pane.  This survives maximize (non-max slots get rect=0
+        // via display:none) without unmounting and re-spawning the PTY.
+        if (hasRealSize) initializedRef.current.add(leaf.id);
+        const shouldMount = hasRealSize || initializedRef.current.has(leaf.id);
 
         return (
           <div
@@ -241,7 +254,7 @@ export function PaneTreeRenderer({
               onToggleMaximize={() => onToggleMaximize(leaf.id)}
               onClose={canClose ? () => onClose(leaf.id) : undefined}
             />
-            {hasRealSize && (rendererMode === "wgpu" ? (
+            {shouldMount && (rendererMode === "wgpu" ? (
               <WebGpuTerminal
                 shell={leaf.shell as "powershell" | "cmd" | "gitbash" | "wsl"}
                 cwd={leaf.cwd}
