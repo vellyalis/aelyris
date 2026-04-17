@@ -3,7 +3,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { useGpuRenderer } from "../shared/hooks/useGpuRenderer";
 
-describe("useGpuRenderer", () => {
+// Phase 2 lockdown (2026-04-17): wgpu/native paths hang the webview on
+// startup, so `useGpuRenderer` hard-pins to `xterm` and normalises any
+// stale localStorage value. These tests reflect the lockdown behaviour —
+// the earlier round-trip tests for wgpu/native are parked until those
+// renderers are diagnosed and re-enabled.
+describe("useGpuRenderer (Phase 2 lockdown)", () => {
   beforeEach(() => {
     localStorage.clear();
   });
@@ -16,36 +21,39 @@ describe("useGpuRenderer", () => {
     expect(result.current).toBe("xterm");
   });
 
-  it("reads a stored wgpu preference", () => {
+  it("forces a stored wgpu preference back to xterm", () => {
     localStorage.setItem("aether:renderer", "wgpu");
     const { result } = renderHook(() => useGpuRenderer());
-    expect(result.current).toBe("wgpu");
+    expect(result.current).toBe("xterm");
+    expect(localStorage.getItem("aether:renderer")).toBe("xterm");
   });
 
-  it("reads a stored native preference", () => {
+  it("forces a stored native preference back to xterm", () => {
     localStorage.setItem("aether:renderer", "native");
     const { result } = renderHook(() => useGpuRenderer());
-    expect(result.current).toBe("native");
+    expect(result.current).toBe("xterm");
+    expect(localStorage.getItem("aether:renderer")).toBe("xterm");
   });
 
-  it("falls back to xterm for unknown stored values", () => {
+  it("normalises unknown stored values to xterm", () => {
     localStorage.setItem("aether:renderer", "bogus");
     const { result } = renderHook(() => useGpuRenderer());
     expect(result.current).toBe("xterm");
+    expect(localStorage.getItem("aether:renderer")).toBe("xterm");
   });
 
-  it("reacts to storage events", () => {
+  it("ignores storage events — always resolves to xterm", () => {
     const { result } = renderHook(() => useGpuRenderer());
     expect(result.current).toBe("xterm");
     act(() => {
       localStorage.setItem("aether:renderer", "native");
       window.dispatchEvent(new StorageEvent("storage"));
     });
-    expect(result.current).toBe("native");
+    expect(result.current).toBe("xterm");
     act(() => {
       localStorage.setItem("aether:renderer", "wgpu");
       window.dispatchEvent(new StorageEvent("storage"));
     });
-    expect(result.current).toBe("wgpu");
+    expect(result.current).toBe("xterm");
   });
 });
