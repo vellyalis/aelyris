@@ -34,6 +34,7 @@ import { TooltipProvider } from "./shared/ui/Tooltip";
 import { ToastProvider } from "./shared/ui/Toast";
 import { PromptDialog } from "./shared/ui/PromptDialog";
 import { HandoffDialog } from "./shared/ui/HandoffDialog";
+import { OrchestraDialog } from "./shared/ui/OrchestraDialog";
 import { OnboardingOverlay } from "./shared/ui/OnboardingOverlay";
 import { useTabManager } from "./shared/hooks/useTabManager";
 import { useAgentManager } from "./shared/hooks/useAgentManager";
@@ -149,9 +150,13 @@ export function App() {
     clearFiles();
   }, [setActiveTabId, clearFiles]);
 
-  const handleStartAgent = useCallback(async (prompt: string, model?: string) => {
+  const handleStartAgent = useCallback(async (
+    prompt: string,
+    model?: string,
+    meta?: { role?: import("./shared/lib/orchestrator").OrchestraRoleId; handoffFrom?: string },
+  ) => {
     try {
-      return await startAgent(prompt, projectPath, model);
+      return await startAgent(prompt, projectPath, model, meta);
     } catch { return undefined; }
   }, [startAgent, projectPath]);
 
@@ -468,6 +473,7 @@ export function App() {
       {quickOpenMode && <Suspense fallback={null}><QuickOpen projectPath={projectPath} openFiles={openFiles} onSelectFile={handleFileSelect} onClose={() => setQuickOpenMode(null)} initialMode={quickOpenMode} /></Suspense>}
       <PromptDialog />
       <HandoffDialog />
+      <OrchestraDialog />
       <OnboardingOverlay />
     </div>
     </ToastProvider></TooltipProvider>

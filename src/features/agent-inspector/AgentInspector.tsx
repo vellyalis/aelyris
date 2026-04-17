@@ -15,7 +15,12 @@ import { EmptyState } from "../../shared/ui/EmptyState";
 import { ToolBadge } from "../../shared/ui/ToolBadge";
 import { extractToolName } from "../../shared/types/toolBadge";
 import { parseToolUse } from "../../shared/lib/agentLogParser";
-import { buildOrchestraPrompts } from "../../shared/lib/orchestrator";
+import {
+  buildOrchestraPrompts,
+  detectFileConflicts,
+  type OrchestraRoleId,
+} from "../../shared/lib/orchestrator";
+import { showOrchestra } from "../../shared/ui/OrchestraDialog";
 import { SessionAnalytics } from "../analytics/SessionAnalytics";
 import { SessionCard } from "./SessionCard";
 import { InteractiveSessionCard } from "./InteractiveSessionCard";
@@ -26,7 +31,7 @@ interface AgentInspectorProps {
   sessions: AgentSession[];
   activeSessionId: string | null;
   onSelectSession: (id: string) => void;
-  onStartAgent?: (prompt: string, model?: string) => void;
+  onStartAgent?: (prompt: string, model?: string, meta?: { role?: OrchestraRoleId; handoffFrom?: string }) => void;
   onStopAgent?: (id: string) => void;
   onCreateWorktree?: (sessionId: string, branchName: string) => Promise<import("../../shared/types/agent").WorktreeInfo | null>;
   onRemoveWorktree?: (sessionId: string) => void;
@@ -125,6 +130,24 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
     [sessions, budgetThresholds],
   );
 
+  // File-path → session-ids map for conflict badges. Only consider active
+  // sessions so a long-done agent's old edits don't light up a live one.
+  const conflictsByPath = useMemo(
+    () => detectFileConflicts(activeSessions),
+    [activeSessions],
+  );
+  const conflictPathsBySession = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const conflict of conflictsByPath) {
+      for (const id of conflict.sessionIds) {
+        const list = map.get(id) ?? [];
+        list.push(conflict.path);
+        map.set(id, list);
+      }
+    }
+    return map;
+  }, [conflictsByPath]);
+
   const handleStopOverBudget = useCallback(() => {
     if (!onStopAgent) return;
     for (const s of sessions) {
@@ -191,15 +214,16 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
   }, []);
 
   const handleOrchestra = useCallback(async () => {
-    const task = await showPrompt("Orchestra Mode", { placeholder: "What should the team work on?" });
-    if (!task || !onStartAgent || !rootProjectPath) return;
+    if (!onStartAgent || !rootProjectPath) return;
+    const result = await showOrchestra();
+    if (!result || result.roles.length === 0) return;
     const prompts = buildOrchestraPrompts({
-      task,
-      roles: ["implementer", "tester", "reviewer"],
+      task: result.task,
+      roles: result.roles,
       projectPath: rootProjectPath,
     });
     for (const p of prompts) {
-      onStartAgent(p.prompt, p.model);
+      onStartAgent(p.prompt, p.model, { role: p.roleId as OrchestraRoleId });
     }
   }, [onStartAgent, rootProjectPath]);
 
@@ -335,6 +359,7 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
                 onWorktreeBranchChange={setWorktreeBranch}
                 onWorktreeSubmit={handleCreateWorktree}
                 onWorktreeCancel={() => { setWorktreeInputId(null); setWorktreeBranch(""); }}
+                conflictingPaths={conflictPathsBySession.get(s.id)}
               />
             ))}
             <div className={styles.navHint}>Ctrl+0-9 Jump · Ctrl+[ Prev · Ctrl+] Next · Ctrl+Click to multi-select</div>
@@ -458,6 +483,18 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
             <div className={styles.parallelSummary}>
               <span>{activeSessions.length} agents running</span>
               <span className={styles.parallelCost}>${activeSessions.reduce((s, a) => s + a.cost, 0).toFixed(2)}</span>
+              {conflictsByPath.length > 0 && (
+                <span
+                  className={styles.parallelConflicts}
+                  title={conflictsByPath
+                    .slice(0, 8)
+                    .map((c) => `${c.path} — ${c.sessionIds.length} agents`)
+                    .join("\n") + (conflictsByPath.length > 8 ? `\n+${conflictsByPath.length - 8} more` : "")}
+                >
+                  <AlertTriangle size={10} style={{ verticalAlign: -1, marginRight: 2 }} />
+                  {conflictsByPath.length} file conflict{conflictsByPath.length === 1 ? "" : "s"}
+                </span>
+              )}
               <button className={styles.stopAllBtn} onClick={() => activeSessions.forEach((s) => onStopAgent?.(s.id))} title="Stop all agents">Stop All</button>
             </div>
           )}

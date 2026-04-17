@@ -35,6 +35,10 @@ export interface AgentSession {
   worktree?: WorktreeInfo;
   permissionMode?: "full" | "edit" | "plan" | "readonly";
   detectedPort?: number;
+  /** Orchestra role assigned at launch (Phase 3B-1). */
+  role?: import("../lib/orchestrator").OrchestraRoleId;
+  /** Optional parent session id when spawned via handoff. */
+  handoffFrom?: string;
 }
 
 export interface AgentLog {

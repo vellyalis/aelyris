@@ -1,0 +1,193 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(var(--space-4));
+  -webkit-backdrop-filter: blur(var(--space-4));
+}
+
+.panel {
+  position: fixed;
+  top: 40%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: calc(var(--z-modal) + 1);
+  width: 560px;
+  max-width: calc(100vw - var(--space-12));
+  background: rgba(24, 24, 24, 0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--white-10);
+  border-radius: var(--radius-lg);
+  padding: var(--space-8);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  animation: orchestraIn 0.15s var(--ease-out);
+}
+
+@keyframes orchestraIn {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.96); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+.title {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.conductor {
+  color: var(--gold);
+  font-size: var(--text-2xl);
+  line-height: 1;
+}
+
+.subtitle {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  margin-top: calc(-1 * var(--space-2));
+}
+
+.textarea {
+  width: 100%;
+  padding: var(--space-4) var(--space-5);
+  background: var(--white-4);
+  border: 1px solid var(--white-10);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  font-family: var(--font-mono);
+  line-height: 1.5;
+  outline: none;
+  transition: border-color var(--duration-fast);
+  resize: vertical;
+  min-height: 110px;
+}
+.textarea:hover { border-color: var(--white-15); }
+.textarea:focus-visible { border-color: var(--gold); }
+.textarea::placeholder { color: var(--text-muted); }
+
+.rolesHeader {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.roles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.role {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--white-3);
+  border: 1px solid var(--white-8);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color var(--duration-fast), background var(--duration-fast);
+  user-select: none;
+}
+
+.role:hover {
+  background: var(--white-6);
+  border-color: var(--white-15);
+}
+
+.roleChecked {
+  border-color: var(--role-color, var(--gold));
+  background: color-mix(in srgb, var(--role-color, var(--gold)) 12%, transparent);
+}
+
+.roleCheckbox {
+  accent-color: var(--role-color, var(--gold));
+  cursor: pointer;
+}
+
+.roleIcon {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  color: rgba(0, 0, 0, 0.75);
+}
+
+.roleBody {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.roleLabel {
+  font-size: var(--text-md);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-weight: var(--weight-semibold);
+}
+
+.roleModel {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  text-transform: lowercase;
+}
+
+.hint {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-4);
+  justify-content: flex-end;
+}
+
+.cancelBtn {
+  background: none;
+  border: 1px solid var(--white-10);
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+  font-family: var(--font-ui);
+  padding: var(--space-2) var(--space-6);
+  cursor: pointer;
+  transition: background var(--duration-fast);
+}
+.cancelBtn:hover { background: var(--white-6); }
+
+.submitBtn {
+  background: var(--gold);
+  border: none;
+  border-radius: var(--radius);
+  color: var(--aether-bg);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  font-family: var(--font-ui);
+  padding: var(--space-2) var(--space-6);
+  cursor: pointer;
+  transition: opacity var(--duration-fast);
+}
+.submitBtn:hover { opacity: 0.9; }
+.submitBtn:disabled { opacity: var(--state-disabled-opacity); cursor: default; }

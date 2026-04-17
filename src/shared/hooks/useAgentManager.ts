@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { AgentSession, AgentLog, AgentStatus } from "../types/agent";
 import { parseFileChange } from "../lib/agentFileChanges";
+import type { OrchestraRoleId } from "../lib/orchestrator";
 
 interface AgentSessionRaw {
   id: string;
@@ -18,6 +19,11 @@ export function useAgentManager() {
   const [sessions, setSessions] = useState<AgentSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const unlistenRefs = useRef<Map<string, UnlistenFn[]>>(new Map());
+  // Role / handoff metadata is frontend-only (the backend doesn't track it)
+  // so we stash it keyed by session id and apply it on every merge pass.
+  const roleMetaRef = useRef<
+    Map<string, { role?: OrchestraRoleId; handoffFrom?: string }>
+  >(new Map());
 
   // Push-based session updates from Rust via Tauri events
   useEffect(() => {
@@ -32,6 +38,7 @@ export function useAgentManager() {
           const map = new Map(prev.map((s) => [s.id, s]));
           return raw.map((r) => {
             const existing = map.get(r.id);
+            const meta = roleMetaRef.current.get(r.id);
             return {
               id: r.id,
               name: existing?.name ?? r.cwd.split("/").filter(Boolean).pop() ?? "Agent",
@@ -42,6 +49,8 @@ export function useAgentManager() {
               logs: existing?.logs ?? [],
               cost: r.cost,
               tokensUsed: r.tokens_used,
+              role: existing?.role ?? meta?.role,
+              handoffFrom: existing?.handoffFrom ?? meta?.handoffFrom,
             };
           });
         });
@@ -147,38 +156,61 @@ export function useAgentManager() {
     }
   }, []);
 
-  const startAgent = useCallback(async (prompt: string, cwd: string, model?: string) => {
-    try {
-      const id = await invoke<string>("start_agent", { prompt, cwd, model: model ?? null });
-      setActiveSessionId(id);
-      await subscribeToSession(id);
-      // Add initial log entry
-      setSessions((prev) =>
-        prev.map((s) => s.id === id ? {
-          ...s,
-          logs: [{ timestamp: Date.now(), type: "system" as const, content: `Starting agent: ${prompt.slice(0, 100)}` }],
-        } : s)
-      );
-      return id;
-    } catch (err) {
-      // Create a failed session entry for UI feedback
-      const errorId = `error-${Date.now()}`;
-      const errorSession: AgentSession = {
-        id: errorId,
-        name: "Failed",
-        status: "error",
-        model: model ?? "sonnet",
-        prompt,
-        startedAt: Date.now(),
-        logs: [{ timestamp: Date.now(), type: "error", content: `Failed to start: ${String(err)}. Is 'claude' CLI installed?` }],
-        cost: 0,
-        tokensUsed: 0,
-      };
-      setSessions((prev) => [...prev, errorSession]);
-      setActiveSessionId(errorId);
-      return errorId;
-    }
-  }, [subscribeToSession]);
+  const startAgent = useCallback(
+    async (
+      prompt: string,
+      cwd: string,
+      model?: string,
+      meta?: { role?: OrchestraRoleId; handoffFrom?: string },
+    ) => {
+      try {
+        const id = await invoke<string>("start_agent", { prompt, cwd, model: model ?? null });
+        if (meta && (meta.role || meta.handoffFrom)) {
+          roleMetaRef.current.set(id, meta);
+        }
+        setActiveSessionId(id);
+        await subscribeToSession(id);
+        // Add initial log entry and stamp metadata so the UI paints the
+        // role badge as soon as the card renders (before the first
+        // agent-sessions-updated merge arrives).
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id === id
+              ? {
+                  ...s,
+                  logs: [
+                    { timestamp: Date.now(), type: "system" as const, content: `Starting agent: ${prompt.slice(0, 100)}` },
+                  ],
+                  role: meta?.role ?? s.role,
+                  handoffFrom: meta?.handoffFrom ?? s.handoffFrom,
+                }
+              : s,
+          ),
+        );
+        return id;
+      } catch (err) {
+        // Create a failed session entry for UI feedback
+        const errorId = `error-${Date.now()}`;
+        const errorSession: AgentSession = {
+          id: errorId,
+          name: "Failed",
+          status: "error",
+          model: model ?? "sonnet",
+          prompt,
+          startedAt: Date.now(),
+          logs: [{ timestamp: Date.now(), type: "error", content: `Failed to start: ${String(err)}. Is 'claude' CLI installed?` }],
+          cost: 0,
+          tokensUsed: 0,
+          role: meta?.role,
+          handoffFrom: meta?.handoffFrom,
+        };
+        setSessions((prev) => [...prev, errorSession]);
+        setActiveSessionId(errorId);
+        return errorId;
+      }
+    },
+    [subscribeToSession],
+  );
 
   const stopAgent = useCallback(async (id: string) => {
     try {
@@ -188,6 +220,7 @@ export function useAgentManager() {
     const unlistens = unlistenRefs.current.get(id);
     unlistens?.forEach((fn) => fn());
     unlistenRefs.current.delete(id);
+    roleMetaRef.current.delete(id);
     // Mark session as done immediately (don't wait for event)
     setSessions((prev) =>
       prev.map((s) => s.id === id ? { ...s, status: "done" as AgentStatus } : s)

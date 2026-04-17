@@ -4,8 +4,9 @@ import { PixelAvatar } from "../../shared/ui/PixelAvatar";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
 import { ContextGauge } from "../../shared/ui/ContextGauge";
 import * as RadixContextMenu from "@radix-ui/react-context-menu";
-import { Pencil, GitBranch, Globe, Shield, BarChart3, Send, AlertTriangle } from "lucide-react";
+import { Pencil, GitBranch, Globe, Shield, BarChart3, Send, AlertTriangle, FileWarning } from "lucide-react";
 import { getBudgetWarning, type BudgetThresholds } from "../../shared/lib/budgetStatus";
+import { getRole } from "../../shared/lib/orchestrator";
 import styles from "./AgentInspector.module.css";
 
 interface SessionCardProps {
@@ -29,6 +30,8 @@ interface SessionCardProps {
   onWorktreeBranchChange: (value: string) => void;
   onWorktreeSubmit: (id: string) => void;
   onWorktreeCancel: () => void;
+  /** Paths this session edits that another session is also editing. */
+  conflictingPaths?: readonly string[];
 }
 
 export function SessionCard({
@@ -52,12 +55,15 @@ export function SessionCard({
   onWorktreeBranchChange,
   onWorktreeSubmit,
   onWorktreeCancel,
+  conflictingPaths,
 }: SessionCardProps) {
   const sColor = getSessionColor(s.id);
   const lastLog = s.logs.length > 0 ? s.logs[s.logs.length - 1] : null;
   const pct = s.status === "done" ? 100 : s.status === "idle" ? 0 : s.tokensUsed > 0 ? Math.min(99, Math.round((s.tokensUsed / getMaxTokens(s.model)) * 100)) : 2;
   const warning = getBudgetWarning(s, budgetThresholds);
   const isLive = s.status !== "done" && s.status !== "idle";
+  const role = getRole(s.role);
+  const conflictCount = conflictingPaths?.length ?? 0;
 
   return (
     <RadixContextMenu.Root>
@@ -85,6 +91,18 @@ export function SessionCard({
             <div className={styles.cardInfo}>
               <div className={styles.cardNameRow}>
                 <span className={styles.cardName}>{s.name}</span>
+                {role && (
+                  <span
+                    className={styles.roleBadge}
+                    style={{
+                      background: role.color,
+                      color: "rgba(0,0,0,0.78)",
+                    }}
+                    title={`Orchestra role: ${role.label}`}
+                  >
+                    {role.icon} {role.label}
+                  </span>
+                )}
                 {s.branch && <span className={styles.cardBranch}>⚡{s.branch}</span>}
                 <span className={styles.cardIcons}><Pencil size={9} /></span>
               </div>
@@ -110,6 +128,14 @@ export function SessionCard({
                     title={warning === "cost" ? `Cost $${s.cost.toFixed(2)} exceeds per-session cap` : `Context ${pct}% exceeds warning threshold`}
                   >
                     <AlertTriangle size={8} />{warning === "cost" ? "$" : `${pct}%`}
+                  </span>
+                )}
+                {conflictCount > 0 && (
+                  <span
+                    className={styles.conflictBadge}
+                    title={`File conflict with another session:\n${(conflictingPaths ?? []).slice(0, 5).join("\n")}${conflictCount > 5 ? `\n+${conflictCount - 5} more` : ""}`}
+                  >
+                    <FileWarning size={8} />{conflictCount}
                   </span>
                 )}
                 <span className={styles.cardAge}>{formatAge(s.startedAt)}</span>
