@@ -104,6 +104,22 @@ describe("useAICliDetection", () => {
     expect(result.current.active).toBe(false);
   });
 
+  it("collapses PSReadLine inline-redraw snapshots to the final state", () => {
+    const { result } = renderHook(() => useAICliDetection());
+    // PSReadLine writes `\r<prompt><buffer>` for every keystroke.  By the
+    // time Enter fires, the single logical output "line" between two `\n`s
+    // holds many stacked snapshots — only the substring after the last `\r`
+    // is what's actually on screen.
+    const snapshot =
+      "\rPS C:\\Users\\owner> \r" +
+      "PS C:\\Users\\owner> c\r" +
+      "PS C:\\Users\\owner> cl\r" +
+      "PS C:\\Users\\owner> cla\r" +
+      "PS C:\\Users\\owner> claude\r\n";
+    act(() => result.current.feed(snapshot));
+    expect(result.current.active).toBe(true);
+  });
+
   it("survives a full TUI frame redraw (box drawing + inner prompt)", () => {
     const { result } = renderHook(() => useAICliDetection());
     act(() => result.current.feed("PS C:\\> claude\r\n"));

@@ -91,7 +91,17 @@ export function useAICliDetection(): UseAICliDetection {
     // Strip CSI sequences before line splitting so prompt regex anchors work.
     const clean = text.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
     const lines = clean.split(/\r?\n/);
-    for (const line of lines) {
+    for (const rawLine of lines) {
+      // PSReadLine repaints the current input by writing `\r<prompt><buf>`
+      // for every keystroke, so a single logical line between two `\n` bursts
+      // may hold a dozen stacked snapshots like
+      //   `\rPS C:\> c\rPS C:\> cl\rPS C:\> claude`.
+      // Only the substring after the last `\r` reflects the final on-screen
+      // state, so that's what we feed to the matchers.  Without this step,
+      // the prompt regex's `(.*)` capture eats all the earlier snapshots as
+      // "command", and AI_CLI_COMMAND fails because the captured string
+      // starts with `\r…` instead of `claude`.
+      const line = rawLine.slice(rawLine.lastIndexOf("\r") + 1);
       if (!line.trim()) continue;
 
       if (!inSessionRef.current) {

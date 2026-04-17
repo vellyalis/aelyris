@@ -39,10 +39,17 @@ export function usePtyConnection({
         const { invoke } = await import("@tauri-apps/api/core");
         const { listen } = await import("@tauri-apps/api/event");
 
+        // Capture the dimensions we ask the PTY to spawn with — the user
+        // or ResizeObserver may change `term.cols/rows` while this async
+        // spawn is in flight, so we need to know the before/after to
+        // detect and repair a drift.
+        const spawnCols = term.cols;
+        const spawnRows = term.rows;
+
         const id = await invoke<string>("spawn_terminal", {
           shell,
-          cols: term.cols,
-          rows: term.rows,
+          cols: spawnCols,
+          rows: spawnRows,
           cwd: cwd ?? null,
         });
 
@@ -79,6 +86,18 @@ export function usePtyConnection({
         term.onResize(({ cols, rows }) => {
           invoke("resize_terminal", { id, cols, rows }).catch(() => {});
         });
+
+        // Repair drift: if xterm resized while `spawn_terminal` was in
+        // flight, its onResize callback was not yet attached, so the new
+        // dimensions never reached the PTY.  This is how the third pane
+        // ended up rendering `PS C:\Usgemininer\…` garbage — PTY cols
+        // and xterm cols disagreed, so PSReadLine's absolute cursor
+        // positioning landed in the wrong columns.  One post-spawn push
+        // closes the gap.
+        if (term.cols !== spawnCols || term.rows !== spawnRows) {
+          invoke("resize_terminal", { id, cols: term.cols, rows: term.rows })
+            .catch(() => {});
+        }
 
         cleanupRef.current = () => {
           unlistenOutput();
