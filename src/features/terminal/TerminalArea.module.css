@@ -3,6 +3,10 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  /* position:relative here is safe — no padding on this element, so it does not
+     shift the xterm IME composition helper's coordinate system. Required for
+     the IME input bar's position:absolute to anchor to the terminal area. */
+  position: relative;
 }
 
 .terminalContainer {

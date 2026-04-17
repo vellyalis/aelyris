@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
@@ -14,7 +14,9 @@ import { CommandHistory } from "./CommandHistory";
 // import { useIMEOverlay } from "./hooks/useIMEOverlay";
 import { useTerminalOutput } from "./hooks/useTerminalOutput";
 import { usePtyConnection } from "./hooks/usePtyConnection";
+import { useAICliDetection } from "./hooks/useAICliDetection";
 // import { useGhostSuggest } from "./hooks/useGhostSuggest";
+import { IMEInputBar } from "./IMEInputBar";
 import styles from "./TerminalArea.module.css";
 
 interface TerminalAreaProps {
@@ -35,6 +37,18 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
   const [searchVisible, setSearchVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [imeInputVisible, setImeInputVisible] = useState(false);
+
+  // AI CLI detection: when the user runs `claude`, `codex`, `gemini`, …
+  // the xterm IME helper textarea sits at the PTY cursor, which rarely
+  // matches where the AI CLI is drawing its prompt — so we pop up the
+  // dedicated IME bar automatically.  Tracks dismissal to avoid
+  // re-opening the bar the user just closed during the same session.
+  const aiCli = useAICliDetection();
+  const aiDismissedRef = useRef(false);
+  // Ref wrapper so the one-shot keydown listener (registered in the init
+  // effect with empty deps) always calls the latest toggleImeBar closure.
+  const toggleImeBarRef = useRef<() => void>(() => {});
 
   const themeId = useAppStore((s) => s.themeId);
   const xtermTheme = useXtermTheme(themeId);
@@ -76,13 +90,13 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
     term.open(containerRef.current);
     term.unicode.activeVersion = "11";
 
-    // WebGL renderer with transparency (supported since addon-webgl 0.18+)
+    // WebGL renderer with transparency (supported since addon-webgl 0.18+).
     try {
       const webgl = new WebglAddon();
       webgl.onContextLoss(() => webgl.dispose());
       term.loadAddon(webgl);
     } catch {
-      // WebGL unavailable — Canvas fallback is automatic
+      // WebGL unavailable — DOM renderer fallback is automatic
     }
 
     fitAddon.fit();
@@ -130,16 +144,34 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
     };
     document.addEventListener("keydown", handleCtrlV, { capture: true });
 
-    // Resize observer (debounced)
-    let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+    // Resize observer — coalesce notifications into a single fit() per
+    // animation frame.  setTimeout(…, 50) would lag a full 50 ms behind the
+    // paint during a split-pane drag; rAF keeps xterm's cell grid in step
+    // with the container size for the duration of the gesture.
+    let rafId = 0;
     const resizeObserver = new ResizeObserver(() => {
-      if (resizeTimer) clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(() => fitAddon.fit(), 50);
+      if (rafId !== 0) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = 0;
+        // `fit()` can throw if the terminal has been disposed between
+        // schedule and invoke — swallow that to avoid unmount warnings.
+        try { fitAddon.fit(); } catch { /* terminal gone */ }
+      });
     });
     resizeObserver.observe(containerRef.current);
 
-    // Search shortcut (Ctrl+F)
+    // Search shortcut (Ctrl+F) + IME input bar toggle (Ctrl+Shift+J)
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+Shift+J toggles IME input — accept from anywhere inside this TerminalArea,
+      // including from within the IME bar itself (so user can close it with the shortcut).
+      const areaRoot = containerRef.current?.closest<HTMLElement>(`.${styles.terminalArea}`);
+      const insideArea = areaRoot?.contains(document.activeElement) ?? false;
+      if (e.ctrlKey && e.shiftKey && (e.key === "J" || e.key === "j")) {
+        if (!insideArea && !containerRef.current?.contains(document.activeElement)) return;
+        e.preventDefault();
+        toggleImeBarRef.current();
+        return;
+      }
       if (!containerRef.current?.contains(document.activeElement)) return;
       if (e.ctrlKey && e.key === "f") {
         e.preventDefault();
@@ -152,7 +184,7 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
     return () => {
       document.removeEventListener("keydown", handleCtrlV, { capture: true } as EventListenerOptions);
       resizeObserver.disconnect();
-      if (resizeTimer) clearTimeout(resizeTimer);
+      if (rafId !== 0) cancelAnimationFrame(rafId);
       window.removeEventListener("keydown", handleKeyDown);
       term.dispose();
       termRef.current = null;
@@ -170,11 +202,54 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
     term, cwd, onStartAgent,
   });
 
+  // Fan out PTY output to both the command-block tracker and the AI CLI
+  // detector.  Stable identity so `usePtyConnection` doesn't re-subscribe.
+  const handlePtyOutput = useCallback((text: string, ptyId: string) => {
+    processOutput(text, ptyId);
+    aiCli.feed(text);
+  }, [processOutput, aiCli]);
+
   const { writeToPty } = usePtyConnection({
     term, shell, cwd, syncModeRef,
     onReady: onTerminalReady,
-    onOutput: processOutput,
+    onOutput: handlePtyOutput,
   });
+
+  // AI session start → open IME bar unless user dismissed it in this session.
+  // AI session end     → hide IME bar and clear the dismissal flag so the
+  //                      next AI invocation pops the bar again.
+  useEffect(() => {
+    if (aiCli.active) {
+      if (!aiDismissedRef.current) setImeInputVisible(true);
+    } else {
+      aiDismissedRef.current = false;
+      setImeInputVisible(false);
+    }
+  }, [aiCli.active]);
+
+  const closeImeBar = useCallback(() => {
+    if (aiCli.active) aiDismissedRef.current = true;
+    setImeInputVisible(false);
+    termRef.current?.focus();
+  }, [aiCli.active]);
+
+  const toggleImeBar = useCallback(() => {
+    setImeInputVisible((v) => {
+      if (v) {
+        if (aiCli.active) aiDismissedRef.current = true;
+        return false;
+      }
+      // Opening explicitly — clear dismissal so the auto-close/open logic
+      // works normally afterwards.
+      aiDismissedRef.current = false;
+      return true;
+    });
+  }, [aiCli.active]);
+
+  // Keep the ref used by the static keydown handler in sync.
+  useEffect(() => {
+    toggleImeBarRef.current = toggleImeBar;
+  }, [toggleImeBar]);
 
   // Ghost suggest disabled — causes burn-in with TUI apps (gemini/claude)
   // TODO: re-enable when properly scoped to shell prompt only
@@ -214,6 +289,12 @@ export function TerminalArea({ shell = "powershell", cwd, syncMode, onTerminalRe
         </div>
       )}
       <div ref={containerRef} className={styles.terminalContainer} />
+      {imeInputVisible && (
+        <IMEInputBar
+          onSubmit={(text) => writeToPty(text)}
+          onClose={closeImeBar}
+        />
+      )}
       {commandHistory.length > 0 && (
         <div className={styles.historyBar}>
           <CommandHistory

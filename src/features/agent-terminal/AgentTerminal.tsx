@@ -83,7 +83,7 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
       webgl.onContextLoss(() => webgl.dispose());
       term.loadAddon(webgl);
     } catch {
-      // WebGL unavailable — Canvas fallback is automatic
+      // WebGL unavailable — DOM renderer fallback is automatic
     }
 
     fitAddon.fit();

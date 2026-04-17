@@ -9,38 +9,57 @@
   font-size: var(--text-sm);
   color: var(--text-muted);
   flex-shrink: 0;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .shell {
   color: var(--text-secondary);
   font-weight: 500;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .cwd {
   font-family: var(--font-mono);
   color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex-shrink: 1;
 }
 
 .branch {
   color: var(--status-idle);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex-shrink: 1;
 }
 
 .meta {
   font-size: var(--text-xs);
   color: var(--white-40);
   font-family: var(--font-mono);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .cost {
   font-size: var(--text-xs);
   color: var(--ctp-peach);
   font-family: var(--font-mono);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .spacer {
   flex: 1;
+  min-width: 0;
 }
 
 .toggleBtn {
@@ -51,6 +70,7 @@
   cursor: pointer;
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
+  flex-shrink: 0;
 }
 
 .toggleBtn:hover {

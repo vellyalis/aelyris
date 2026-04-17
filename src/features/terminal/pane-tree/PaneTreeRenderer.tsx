@@ -78,48 +78,108 @@ export function PaneTreeRenderer({
   // Slot rects: paneId → DOMRect (updated by ResizeObserver)
   const [slotRects, setSlotRects] = useState<Map<string, DOMRect>>(new Map());
   const slotEls = useRef(new Map<string, HTMLDivElement>());
+  const observerRef = useRef<ResizeObserver | null>(null);
+  const rafRef = useRef(0);
 
-  const registerSlot = useCallback((id: string, el: HTMLDivElement | null) => {
-    if (el) {
-      slotEls.current.set(id, el);
-    } else {
-      slotEls.current.delete(id);
+  // Read current slot geometry and push it into `slotRects` only when a
+  // value actually changed — saves a React re-render for every frame that
+  // ResizeObserver fires with no-op dimensions (common during the settling
+  // phase of a split-pane drag).  We compare in sub-pixel-rounded space so
+  // browser layout noise (e.g. 512.0001 → 512) does not count as change.
+  const updateRects = useCallback(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const rootRect = root.getBoundingClientRect();
+    const next = new Map<string, DOMRect>();
+    for (const [id, el] of slotEls.current) {
+      const r = el.getBoundingClientRect();
+      next.set(id, new DOMRect(
+        Math.round(r.left - rootRect.left),
+        Math.round(r.top - rootRect.top),
+        Math.round(r.width),
+        Math.round(r.height),
+      ));
     }
+    setSlotRects((prev) => (rectsEqual(prev, next) ? prev : next));
   }, []);
 
-  // ResizeObserver to track slot positions
+  // rAF-coalesced version used by the ResizeObserver callback and by
+  // tree/maximize transitions.  Multiple observer hits within a single
+  // frame collapse to a single measurement pass.
+  const scheduleUpdate = useCallback(() => {
+    if (rafRef.current !== 0) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = 0;
+      updateRects();
+    });
+  }, [updateRects]);
+
+  const registerSlot = useCallback((id: string, el: HTMLDivElement | null) => {
+    const observer = observerRef.current;
+    const prev = slotEls.current.get(id);
+    if (el) {
+      if (prev === el) return;
+      if (prev && observer) observer.unobserve(prev);
+      slotEls.current.set(id, el);
+      observer?.observe(el);
+      scheduleUpdate();
+    } else if (prev) {
+      if (observer) observer.unobserve(prev);
+      slotEls.current.delete(id);
+      scheduleUpdate();
+    }
+  }, [scheduleUpdate]);
+
+  // React re-invokes inline ref callbacks on every parent render — an
+  // unobserve/observe churn every frame during drag.  Cache one stable
+  // callback per pane id so the observer registration survives renders.
+  const slotRefCache = useRef(new Map<string, (el: HTMLDivElement | null) => void>());
+  const getSlotRef = useCallback((id: string) => {
+    const cache = slotRefCache.current;
+    let cb = cache.get(id);
+    if (!cb) {
+      cb = (el: HTMLDivElement | null) => registerSlot(id, el);
+      cache.set(id, cb);
+    }
+    return cb;
+  }, [registerSlot]);
+
+  // Drop cached ref callbacks for leaves that no longer exist, so the
+  // cache doesn't grow unbounded as panes are created and closed.
+  useEffect(() => {
+    const cache = slotRefCache.current;
+    for (const id of cache.keys()) {
+      if (!currentIds.has(id)) cache.delete(id);
+    }
+  });
+
+  // One long-lived ResizeObserver covering the root + every current slot.
+  // Slots are attached/detached via `registerSlot` above, so this effect
+  // only runs once — we do NOT depend on [tree, maximizedPaneId] so the
+  // observer is preserved across layout changes (no teardown/re-create).
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
-
-    const updateRects = () => {
-      const rootRect = root.getBoundingClientRect();
-      const newRects = new Map<string, DOMRect>();
-      for (const [id, el] of slotEls.current) {
-        const r = el.getBoundingClientRect();
-        // Relative to root
-        newRects.set(id, new DOMRect(
-          r.left - rootRect.left,
-          r.top - rootRect.top,
-          r.width,
-          r.height,
-        ));
-      }
-      setSlotRects(newRects);
-    };
-
-    const ro = new ResizeObserver(updateRects);
+    const ro = new ResizeObserver(scheduleUpdate);
+    observerRef.current = ro;
     ro.observe(root);
-    // Also observe all slots
-    for (const el of slotEls.current.values()) {
-      ro.observe(el);
-    }
+    for (const el of slotEls.current.values()) ro.observe(el);
+    // Seed the initial rects after the first paint.
+    scheduleUpdate();
+    return () => {
+      ro.disconnect();
+      observerRef.current = null;
+      if (rafRef.current !== 0) cancelAnimationFrame(rafRef.current);
+      rafRef.current = 0;
+    };
+  }, [scheduleUpdate]);
 
-    // Initial measurement
-    requestAnimationFrame(updateRects);
-
-    return () => ro.disconnect();
-  }, [tree, maximizedPaneId]); // Re-setup when tree or maximize changes
+  // Remeasure when the layout topology changes (split, close, maximize) —
+  // the DOM may have reshuffled without any one slot changing size, so the
+  // observer alone won't fire.
+  useEffect(() => {
+    scheduleUpdate();
+  }, [tree, maximizedPaneId, scheduleUpdate]);
 
   return (
     <div ref={rootRef} className={styles.paneRoot}>
@@ -130,7 +190,7 @@ export function PaneTreeRenderer({
             {currentLeaves.map((leaf) => (
               <div
                 key={leaf.id}
-                ref={(el) => registerSlot(leaf.id, el)}
+                ref={getSlotRef(leaf.id)}
                 className={styles.paneSlot}
                 style={leaf.id === maximizedPaneId
                   ? { display: "flex", flex: 1 }
@@ -140,16 +200,23 @@ export function PaneTreeRenderer({
             ))}
           </>
         ) : (
-          renderLayout(tree, registerSlot, onResize)
+          renderLayout(tree, getSlotRef, onResize)
         )}
       </div>
 
-      {/* Layer 2: Stable terminal instances (absolute positioned) */}
+      {/* Layer 2: Stable terminal instances (absolute positioned).
+          We gate TerminalArea mounting on a non-zero rect so xterm.js measures
+          the container at its real size. Otherwise term.open() runs while the
+          mount is display:none (rect not yet populated by ResizeObserver),
+          xterm/fitAddon compute cols=0, and the PTY spawns at the default
+          80x24 — Claude Code (Ink) then renders at 80 cols and the output
+          never realigns until the window is resized by hand. */}
       {stableLeaves.map((leaf) => {
         const rect = slotRects.get(leaf.id);
         const isVisible = maximizedPaneId ? leaf.id === maximizedPaneId : currentIds.has(leaf.id);
         const isActive = leaf.id === activePaneId;
         const isMaximized = leaf.id === maximizedPaneId;
+        const hasRealSize = !!rect && rect.width > 0 && rect.height > 0;
 
         return (
           <div
@@ -174,7 +241,7 @@ export function PaneTreeRenderer({
               onToggleMaximize={() => onToggleMaximize(leaf.id)}
               onClose={canClose ? () => onClose(leaf.id) : undefined}
             />
-            {rendererMode === "wgpu" ? (
+            {hasRealSize && (rendererMode === "wgpu" ? (
               <WebGpuTerminal
                 shell={leaf.shell as "powershell" | "cmd" | "gitbash" | "wsl"}
                 cwd={leaf.cwd}
@@ -187,7 +254,7 @@ export function PaneTreeRenderer({
                 syncMode={syncMode}
                 onTerminalReady={(tid) => onTerminalReady(leaf.id, tid)}
               />
-            )}
+            ))}
           </div>
         );
       })}
@@ -198,14 +265,14 @@ export function PaneTreeRenderer({
 /** Render the layout tree — only empty sizing divs, no terminals */
 function renderLayout(
   node: PaneNode,
-  registerSlot: (id: string, el: HTMLDivElement | null) => void,
+  getSlotRef: (id: string) => (el: HTMLDivElement | null) => void,
   onResize: (splitId: string, ratio: number) => void,
 ): React.ReactElement {
   if (node.type === "terminal") {
     return (
       <div
         key={node.id}
-        ref={(el) => registerSlot(node.id, el)}
+        ref={getSlotRef(node.id)}
         className={styles.paneSlot}
       />
     );
@@ -217,8 +284,8 @@ function renderLayout(
       direction={node.direction}
       defaultRatio={node.ratio}
       onRatioChange={(r) => onResize(node.id, r)}
-      first={renderLayout(node.first, registerSlot, onResize)}
-      second={renderLayout(node.second, registerSlot, onResize)}
+      first={renderLayout(node.first, getSlotRef, onResize)}
+      second={renderLayout(node.second, getSlotRef, onResize)}
     />
   );
 }
@@ -226,4 +293,17 @@ function renderLayout(
 function collectLeaves(tree: PaneNode): LeafInfo[] {
   if (tree.type === "terminal") return [{ id: tree.id, shell: tree.shell, cwd: tree.cwd }];
   return [...collectLeaves(tree.first), ...collectLeaves(tree.second)];
+}
+
+/** Shallow structural equality over two rect maps (same keys, same L/T/W/H). */
+function rectsEqual(a: Map<string, DOMRect>, b: Map<string, DOMRect>): boolean {
+  if (a.size !== b.size) return false;
+  for (const [id, ra] of a) {
+    const rb = b.get(id);
+    if (!rb) return false;
+    if (ra.left !== rb.left || ra.top !== rb.top || ra.width !== rb.width || ra.height !== rb.height) {
+      return false;
+    }
+  }
+  return true;
 }
