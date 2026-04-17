@@ -2,8 +2,9 @@ import { useRef, useEffect, useMemo, useState, useCallback } from "react";
 import type { PaneNode, SplitDirection } from "./types";
 import { TerminalArea } from "../TerminalArea";
 import { WebGpuTerminal } from "../WebGpuTerminal";
+import { NativeTerminalArea } from "../NativeTerminalArea";
 import { TerminalInfoBar } from "../TerminalInfoBar";
-import { useGpuRenderer } from "../../../shared/hooks/useGpuRenderer";
+import { useGpuRenderer, type RendererMode } from "../../../shared/hooks/useGpuRenderer";
 import { SplitPane } from "../../../shared/ui/SplitPane";
 import styles from "./PaneTreeRenderer.module.css";
 
@@ -254,25 +255,41 @@ export function PaneTreeRenderer({
               onToggleMaximize={() => onToggleMaximize(leaf.id)}
               onClose={canClose ? () => onClose(leaf.id) : undefined}
             />
-            {shouldMount && (rendererMode === "wgpu" ? (
-              <WebGpuTerminal
-                shell={leaf.shell as "powershell" | "cmd" | "gitbash" | "wsl"}
-                cwd={leaf.cwd}
-                onTerminalReady={(tid) => onTerminalReady(leaf.id, tid)}
-              />
-            ) : (
-              <TerminalArea
-                shell={leaf.shell as "powershell" | "cmd" | "gitbash" | "wsl"}
-                cwd={leaf.cwd}
-                syncMode={syncMode}
-                onTerminalReady={(tid) => onTerminalReady(leaf.id, tid)}
-              />
-            ))}
+            {shouldMount && renderTerminal(rendererMode, leaf, syncMode, (tid) =>
+              onTerminalReady(leaf.id, tid),
+            )}
           </div>
         );
       })}
     </div>
   );
+}
+
+type ShellKind = "powershell" | "cmd" | "gitbash" | "wsl";
+
+function renderTerminal(
+  mode: RendererMode,
+  leaf: LeafInfo,
+  syncMode: boolean,
+  onReady: (terminalId: string) => void,
+): React.ReactElement {
+  const shell = leaf.shell as ShellKind;
+  switch (mode) {
+    case "wgpu":
+      return <WebGpuTerminal shell={shell} cwd={leaf.cwd} onTerminalReady={onReady} />;
+    case "native":
+      return <NativeTerminalArea shell={shell} cwd={leaf.cwd} onTerminalReady={onReady} />;
+    case "xterm":
+    default:
+      return (
+        <TerminalArea
+          shell={shell}
+          cwd={leaf.cwd}
+          syncMode={syncMode}
+          onTerminalReady={onReady}
+        />
+      );
+  }
 }
 
 /** Render the layout tree — only empty sizing divs, no terminals */
