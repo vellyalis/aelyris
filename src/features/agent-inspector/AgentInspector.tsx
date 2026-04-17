@@ -10,7 +10,7 @@ import { collectActivity, filterActivity, LOG_TYPES, type LogType } from "../../
 import { useAppStore } from "../../shared/store/appStore";
 import { PixelAvatar } from "../../shared/ui/PixelAvatar";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
-import { ClipboardCopy, Plus, Activity, Layers, GitCompare, AlertTriangle, X, Search } from "lucide-react";
+import { ClipboardCopy, Plus, Activity, Layers, GitCompare, AlertTriangle, X, Search, Share2 } from "lucide-react";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { ToolBadge } from "../../shared/ui/ToolBadge";
 import { extractToolName } from "../../shared/types/toolBadge";
@@ -25,6 +25,7 @@ import { SessionAnalytics } from "../analytics/SessionAnalytics";
 import { SessionCard } from "./SessionCard";
 import { InteractiveSessionCard } from "./InteractiveSessionCard";
 import { InlineResultPanel } from "./InlineResultPanel";
+import { ConductorView } from "./ConductorView";
 import styles from "./AgentInspector.module.css";
 
 interface AgentInspectorProps {
@@ -44,7 +45,7 @@ interface AgentInspectorProps {
 }
 
 export function AgentInspector({ sessions, activeSessionId, onSelectSession, onStartAgent, onStopAgent, onCreateWorktree, onRemoveWorktree, onRenameSession, interactiveSessions = [], onFocusInteractiveSession, onStopInteractiveSession, onEndSessionAndRemoveWorktree, onStartInteractiveSession }: AgentInspectorProps) {
-  const [tab, setTab] = useState<"sessions" | "activity" | "parallel" | "diffs">("sessions");
+  const [tab, setTab] = useState<"sessions" | "activity" | "parallel" | "conductor" | "diffs">("sessions");
   const [showPromptInput, setShowPromptInput] = useState(false);
   const [promptText, setPromptText] = useState("");
   const { selectedModel, setSelectedModel, rootProjectPath, perSessionCostCap, contextWarnPct } = useAppStore();
@@ -200,12 +201,17 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
     if (!onStartAgent) return;
     const result = await showHandoff({
       sourceName: session.name,
+      sourceId: session.id,
       defaultPrompt: buildHandoffPrompt(session),
       defaultModelId: selectedModel,
+      defaultRole: session.role ?? null,
     });
     if (!result) return;
     const target = getModelById(result.modelId);
-    onStartAgent(result.prompt, target?.modelArg);
+    onStartAgent(result.prompt, target?.modelArg, {
+      role: result.role ?? undefined,
+      handoffFrom: session.id,
+    });
   }, [onStartAgent, selectedModel]);
 
   const handleCopySessionInfo = useCallback((session: AgentSession) => {
@@ -236,6 +242,13 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
         <button className={`${styles.tab} ${tab === "parallel" ? styles.tabActive : ""}`} onClick={() => setTab("parallel")} title="Parallel session view">
           <Layers size={11} style={{ marginRight: 3, verticalAlign: -1 }} />
           {activeSessions.length > 0 && <span className={styles.tabBadge}>{activeSessions.length}</span>}
+        </button>
+        <button
+          className={`${styles.tab} ${tab === "conductor" ? styles.tabActive : ""}`}
+          onClick={() => setTab("conductor")}
+          title="Conductor DAG — see roles + handoffs at a glance"
+        >
+          <Share2 size={11} style={{ marginRight: 3, verticalAlign: -1 }} />
         </button>
         <button className={`${styles.tab} ${tab === "diffs" ? styles.tabActive : ""}`} onClick={() => setTab("diffs")} title="View file changes">
           <GitCompare size={11} style={{ marginRight: 3, verticalAlign: -1 }} />
@@ -546,6 +559,14 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
             })
           )}
         </div>
+      )}
+
+      {tab === "conductor" && (
+        <ConductorView
+          sessions={sessions}
+          activeSessionId={activeSessionId}
+          onSelectSession={onSelectSession}
+        />
       )}
 
       {tab === "diffs" && (

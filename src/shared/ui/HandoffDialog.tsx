@@ -2,39 +2,54 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { create } from "zustand";
 import { MODEL_OPTIONS, getModelById } from "../types/model";
+import { ORCHESTRA_ROLES, type OrchestraRoleId } from "../lib/orchestrator";
 import styles from "./HandoffDialog.module.css";
 
 export interface HandoffResult {
   prompt: string;
   modelId: string;
+  /** Selected Orchestra role for the target session, or null for no role. */
+  role: OrchestraRoleId | null;
 }
 
 interface HandoffState {
   open: boolean;
   sourceName: string;
+  sourceId: string | null;
   defaultPrompt: string;
   defaultModelId: string;
+  defaultRole: OrchestraRoleId | null;
   resolve: ((value: HandoffResult | null) => void) | null;
 }
 
 interface HandoffStore extends HandoffState {
-  show: (opts: { sourceName: string; defaultPrompt?: string; defaultModelId?: string }) => Promise<HandoffResult | null>;
+  show: (opts: {
+    sourceName: string;
+    sourceId?: string;
+    defaultPrompt?: string;
+    defaultModelId?: string;
+    defaultRole?: OrchestraRoleId | null;
+  }) => Promise<HandoffResult | null>;
   close: (value: HandoffResult | null) => void;
 }
 
 export const useHandoffStore = create<HandoffStore>((set, get) => ({
   open: false,
   sourceName: "",
+  sourceId: null,
   defaultPrompt: "",
   defaultModelId: "claude-sonnet",
+  defaultRole: null,
   resolve: null,
   show: (opts) =>
     new Promise<HandoffResult | null>((resolve) => {
       set({
         open: true,
         sourceName: opts.sourceName,
+        sourceId: opts.sourceId ?? null,
         defaultPrompt: opts.defaultPrompt ?? "",
         defaultModelId: opts.defaultModelId ?? "claude-sonnet",
+        defaultRole: opts.defaultRole ?? null,
         resolve,
       });
     }),
@@ -46,15 +61,17 @@ export const useHandoffStore = create<HandoffStore>((set, get) => ({
 }));
 
 export function HandoffDialog() {
-  const { open, sourceName, defaultPrompt, defaultModelId, close } = useHandoffStore();
+  const { open, sourceName, defaultPrompt, defaultModelId, defaultRole, close } = useHandoffStore();
   const [prompt, setPrompt] = useState("");
   const [modelId, setModelId] = useState(defaultModelId);
+  const [role, setRole] = useState<OrchestraRoleId | "">("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (open) {
       setPrompt(defaultPrompt);
       setModelId(defaultModelId);
+      setRole(defaultRole ?? "");
       requestAnimationFrame(() => {
         const el = textareaRef.current;
         if (el) {
@@ -63,12 +80,18 @@ export function HandoffDialog() {
         }
       });
     }
-  }, [open, defaultPrompt, defaultModelId]);
+  }, [open, defaultPrompt, defaultModelId, defaultRole]);
 
   const handleSubmit = useCallback(() => {
     const trimmed = prompt.trim();
-    if (trimmed) close({ prompt: trimmed, modelId });
-  }, [prompt, modelId, close]);
+    if (trimmed) {
+      close({
+        prompt: trimmed,
+        modelId,
+        role: role === "" ? null : (role as OrchestraRoleId),
+      });
+    }
+  }, [prompt, modelId, role, close]);
 
   const model = getModelById(modelId);
 
@@ -97,6 +120,22 @@ export function HandoffDialog() {
                 style={{ background: model?.color ?? "var(--ctp-blue)" }}
               />
             </div>
+            <label className={styles.modelLabel} style={{ marginLeft: "var(--space-4)" }}>
+              Role
+            </label>
+            <select
+              className={styles.modelSelect}
+              value={role}
+              onChange={(e) => setRole(e.target.value as OrchestraRoleId | "")}
+              aria-label="Target Orchestra role"
+            >
+              <option value="">— none —</option>
+              {ORCHESTRA_ROLES.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.icon} {r.label}
+                </option>
+              ))}
+            </select>
           </div>
           <textarea
             ref={textareaRef}
@@ -131,8 +170,10 @@ export function HandoffDialog() {
 /** Imperative helper, mirroring showPrompt(). */
 export function showHandoff(opts: {
   sourceName: string;
+  sourceId?: string;
   defaultPrompt?: string;
   defaultModelId?: string;
+  defaultRole?: OrchestraRoleId | null;
 }): Promise<HandoffResult | null> {
   return useHandoffStore.getState().show(opts);
 }
