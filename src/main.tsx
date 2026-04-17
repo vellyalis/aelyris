@@ -1,3 +1,7 @@
+// Earliest possible perf marker — before any module side-effects run.
+// Paired with "app:first-paint" in App.tsx; dumped via logBootMetrics().
+performance.mark("app:boot");
+
 import React from "react";
 import ReactDOM from "react-dom/client";
 import "@fontsource/ibm-plex-sans/300.css";

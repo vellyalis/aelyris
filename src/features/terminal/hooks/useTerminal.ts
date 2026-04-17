@@ -7,6 +7,7 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { markBootOnce } from "../../../shared/lib/bootMetrics";
 
 import "@xterm/xterm/css/xterm.css";
 
@@ -89,6 +90,7 @@ export function useTerminal(options: UseTerminalOptions = {}) {
     term.loadAddon(new SearchAddon());
 
     term.open(container);
+    markBootOnce("xterm:first-mount");
 
     // Activate Unicode 11 for proper CJK full-width character handling
     term.unicode.activeVersion = "11";

@@ -45,6 +45,7 @@ import { useTerminalNotifications } from "./shared/hooks/useTerminalNotification
 import { useAppStore } from "./shared/store/appStore";
 import { useThemeApplier } from "./shared/hooks/useTheme";
 import { getActivePtyId } from "./features/terminal/hooks/useTerminal";
+import { markFirstPaint } from "./shared/lib/bootMetrics";
 
 export type ShellType = "powershell" | "cmd" | "gitbash" | "wsl";
 
@@ -64,6 +65,13 @@ export function App() {
     kanbanTasks, moveKanbanTask,
   } = useAppStore();
   useThemeApplier(themeId);
+
+  // Boot perf marker — fires after the first React commit + one frame, so the
+  // number reflects when pixels actually land on screen rather than when JS ran.
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => markFirstPaint());
+    return () => cancelAnimationFrame(raf);
+  }, []);
 
   const [editorLine, setEditorLine] = useState<number | undefined>(undefined);
   const [openInDiff, setOpenInDiff] = useState(false);

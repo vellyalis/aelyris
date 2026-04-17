@@ -11,6 +11,7 @@ import { useAppStore } from "../../shared/store/appStore";
 import { getPalette, isLightTheme, monacoThemeColors } from "../../shared/themes/catppuccin";
 import { useLsp, registerLspProviders } from "./lsp";
 import { toast } from "../../shared/store/toastStore";
+import { markBootOnce } from "../../shared/lib/bootMetrics";
 import styles from "./EditorPanel.module.css";
 
 interface DiffComment {
@@ -221,6 +222,7 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
             language={language}
             theme="vs-dark"
             onMount={(editor, monaco) => {
+              markBootOnce("monaco:first-mount");
               editorRef.current = editor;
               editor.onDidChangeCursorPosition((e) => {
                 setCursorPos({ line: e.position.lineNumber, column: e.position.column });
