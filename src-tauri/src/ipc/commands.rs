@@ -5,6 +5,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::pty::{PtyManager, ShellType};
 use crate::pty::buffer::{OutputBuffer, strip_ansi};
+use crate::term::NativeTerminalRegistry;
 
 /// Global registry of output buffers for capture-pane
 #[derive(Clone)]
@@ -111,6 +112,12 @@ pub fn spawn_terminal(
     let shell_name = format!("{:?}", shell).to_lowercase();
     pane_registry.register(&id, &shell_name, cwd.as_deref().unwrap_or("."));
 
+    // Native engine session (Phase 2) — opt-in via AETHER_TERM_NATIVE=1.
+    let native_registry = app.state::<Arc<NativeTerminalRegistry>>().inner().clone();
+    if let Err(e) = native_registry.create(&id, cols, rows) {
+        log::warn!("native engine create failed for {}: {}", id, e);
+    }
+
     std::thread::spawn(move || {
         let mut reader = reader;
         let mut buf = [0u8; 4096];
@@ -127,6 +134,11 @@ pub fn spawn_terminal(
                     // Feed raw text into capture buffer
                     let text = String::from_utf8_lossy(data);
                     buffer_registry.feed(&terminal_id, &text);
+
+                    // Native engine fan-out (Phase 2).
+                    if let Some(diff) = native_registry.advance(&terminal_id, data) {
+                        let _ = app_handle.emit(&format!("term:diff-{}", terminal_id), diff);
+                    }
 
                     // Port auto-detection: scan for localhost:<port> patterns
                     for segment in text.split_whitespace() {
@@ -188,7 +200,14 @@ pub fn resize_terminal(
     rows: u16,
 ) -> Result<(), String> {
     let pty_manager = app.state::<PtyManager>();
-    pty_manager.resize(&id, cols, rows)
+    pty_manager.resize(&id, cols, rows)?;
+
+    // Native engine resize — emits a full frame so the frontend can reflow.
+    let native_registry = app.state::<Arc<NativeTerminalRegistry>>();
+    if let Some(diff) = native_registry.resize(&id, cols, rows)? {
+        let _ = app.emit(&format!("term:diff-{}", id), diff);
+    }
+    Ok(())
 }
 
 /// Close a terminal
@@ -199,7 +218,24 @@ pub fn close_terminal(app: AppHandle, id: String) -> Result<(), String> {
     // Clean up associated registries
     app.state::<OutputBufferRegistry>().remove(&id);
     app.state::<crate::pty::PaneRegistry>().remove(&id);
+    app.state::<Arc<NativeTerminalRegistry>>().remove(&id);
     Ok(())
+}
+
+/// Bootstrap the frontend with a full grid snapshot — used when React
+/// (re)mounts the TerminalCanvas and needs the starting state.
+#[tauri::command]
+pub fn term_snapshot(
+    app: AppHandle,
+    id: String,
+) -> Option<crate::term::GridSnapshot> {
+    app.state::<Arc<NativeTerminalRegistry>>().snapshot(&id)
+}
+
+/// Whether the native terminal engine is active (env flag).
+#[tauri::command]
+pub fn term_native_enabled(app: AppHandle) -> bool {
+    app.state::<Arc<NativeTerminalRegistry>>().is_enabled()
 }
 
 /// List active terminals

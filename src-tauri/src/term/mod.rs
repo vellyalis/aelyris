@@ -6,8 +6,10 @@
 
 pub mod diff;
 pub mod engine;
+pub mod native;
 pub mod snapshot;
 
 pub use diff::{DiffTracker, GridDiff, RowDiff, diff_snapshots};
 pub use engine::{TermEngine, TermEngineError};
+pub use native::NativeTerminalRegistry;
 pub use snapshot::{CellSnapshot, CursorShapeSnapshot, CursorSnapshot, GridSnapshot, attr};

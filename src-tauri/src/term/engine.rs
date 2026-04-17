@@ -91,6 +91,19 @@ impl TermEngine {
         &self.term
     }
 
+    /// Resize the underlying grid. No-op if dimensions are unchanged.
+    pub fn resize(&mut self, cols: usize, rows: usize) -> Result<(), TermEngineError> {
+        if cols == 0 || rows == 0 {
+            return Err(TermEngineError::InvalidDimensions { cols, rows });
+        }
+        if cols == self.size.cols && rows == self.size.rows {
+            return Ok(());
+        }
+        self.size = Size { cols, rows };
+        self.term.resize(self.size);
+        Ok(())
+    }
+
     /// Read a screen row as a plain `String`, trimming trailing spaces.
     /// `line` is 0-indexed from the top of the visible screen.
     pub fn row_text(&self, line: usize) -> Result<String, TermEngineError> {

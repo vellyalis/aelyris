@@ -82,3 +82,17 @@ export interface GridSnapshot {
 export function hasAttr(cell: CellSnapshot, flag: CellAttrFlag): boolean {
   return (cell.attrs & flag) !== 0;
 }
+
+export interface RowDiff {
+  row: number;
+  cells: CellSnapshot[];
+}
+
+export interface GridDiff {
+  cols: number;
+  rows_total: number;
+  full: boolean;
+  rows: RowDiff[];
+  cursor: CursorSnapshot;
+  cursor_changed: boolean;
+}

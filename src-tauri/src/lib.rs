@@ -43,6 +43,7 @@ pub fn run() {
             lsp::LspManager::new(tx)
         })
         .manage(std::sync::Arc::new(gpu::GpuTerminalManager::new()))
+        .manage(std::sync::Arc::new(term::NativeTerminalRegistry::new()))
         .setup(move |app| {
             // Initialize database as managed state
             let db_path = db::db_path();
@@ -70,6 +71,8 @@ pub fn run() {
             ipc::close_terminal,
             ipc::list_terminals,
             ipc::detect_shells,
+            ipc::term_snapshot,
+            ipc::term_native_enabled,
             ipc::discover_projects,
             ipc::list_branches,
             ipc::list_worktrees,
