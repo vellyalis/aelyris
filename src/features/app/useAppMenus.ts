@@ -1,4 +1,19 @@
 import { useMemo } from "react";
+import {
+  Terminal as TerminalIcon,
+  X as CloseIcon,
+  Settings as SettingsIcon,
+  FolderOpen,
+  FolderX,
+  Shield,
+  GitPullRequest,
+  Globe,
+  Info,
+  Bot,
+  Search,
+  History,
+  FileX,
+} from "lucide-react";
 import { showPrompt } from "../../shared/ui/PromptDialog";
 import type { Menu } from "../menubar/MenuBar";
 import type { CommandItem } from "../command-palette/CommandPalette";
@@ -35,25 +50,25 @@ export function useAppMenus(opts: UseAppMenusOptions) {
   } = opts;
 
   const commands: CommandItem[] = useMemo(() => [
-    { id: "new-tab-ps", label: "New Terminal: PowerShell", shortcut: "Ctrl+Shift+T", action: () => addTab("powershell") },
-    { id: "new-tab-cmd", label: "New Terminal: CMD", action: () => addTab("cmd") },
-    { id: "new-tab-gitbash", label: "New Terminal: Git Bash", action: () => addTab("gitbash") },
-    { id: "new-tab-wsl", label: "New Terminal: WSL", action: () => addTab("wsl") },
-    { id: "close-tab", label: "Close Current Tab", shortcut: "Ctrl+Shift+W", action: () => closeTab(activeTabId) },
-    { id: "open-settings", label: "Open Settings", shortcut: "Ctrl+,", action: () => setSettingsVisible(true) },
-    { id: "close-editor", label: "Close Editor", action: () => activeFile && handleCloseFile(activeFile) },
-    { id: "open-folder", label: "Open Folder", action: handleOpenFolder },
-    { id: "create-watchdog", label: "Create Watchdog", action: () => setWatchdogVisible(true) },
-    { id: "pull-requests", label: "View Pull Requests", action: () => setPrInspectorVisible(true) },
-    { id: "web-inspector", label: "Web Inspector", action: () => setWebInspectorVisible(true) },
-    { id: "about", label: "About Aether Terminal", action: () => setAboutVisible(true) },
-    { id: "start-agent", label: "Start Claude Agent", shortcut: "Ctrl+Shift+A", action: async () => {
+    { id: "new-tab-ps", label: "New Terminal: PowerShell", description: "Open a new PowerShell tab", shortcut: "Ctrl+Shift+T", category: "Terminal", icon: TerminalIcon, keywords: ["pwsh", "shell"], action: () => addTab("powershell") },
+    { id: "new-tab-cmd", label: "New Terminal: CMD", description: "Open a new CMD tab", category: "Terminal", icon: TerminalIcon, keywords: ["cmd.exe", "prompt"], action: () => addTab("cmd") },
+    { id: "new-tab-gitbash", label: "New Terminal: Git Bash", description: "Open a new Git Bash tab", category: "Terminal", icon: TerminalIcon, keywords: ["bash", "unix"], action: () => addTab("gitbash") },
+    { id: "new-tab-wsl", label: "New Terminal: WSL", description: "Open a new WSL tab", category: "Terminal", icon: TerminalIcon, keywords: ["linux", "ubuntu"], action: () => addTab("wsl") },
+    { id: "close-tab", label: "Close Current Tab", description: "Close the active terminal tab", shortcut: "Ctrl+Shift+W", category: "Terminal", icon: CloseIcon, action: () => closeTab(activeTabId) },
+    { id: "open-settings", label: "Open Settings", description: "Edit preferences and model config", shortcut: "Ctrl+,", category: "View", icon: SettingsIcon, action: () => setSettingsVisible(true) },
+    { id: "close-editor", label: "Close Editor", description: "Close the currently open file", category: "File", icon: FileX, action: () => activeFile && handleCloseFile(activeFile) },
+    { id: "open-folder", label: "Open Folder", description: "Switch to a different project", category: "File", icon: FolderOpen, action: handleOpenFolder },
+    { id: "create-watchdog", label: "Create Watchdog", description: "Auto-respond to agent prompts", category: "Agent", icon: Shield, action: () => setWatchdogVisible(true) },
+    { id: "pull-requests", label: "View Pull Requests", description: "Open the PR inspector", category: "View", icon: GitPullRequest, action: () => setPrInspectorVisible(true) },
+    { id: "web-inspector", label: "Web Inspector", description: "Inspect a web page", category: "View", icon: Globe, action: () => setWebInspectorVisible(true) },
+    { id: "about", label: "About Aether Terminal", description: "Version and credits", category: "Help", icon: Info, action: () => setAboutVisible(true) },
+    { id: "start-agent", label: "Start Claude Agent", description: "Spawn a new agent with a custom prompt", shortcut: "Ctrl+Shift+A", category: "Agent", icon: Bot, action: async () => {
       const p = await showPrompt("Enter prompt for agent", { placeholder: "What should the agent do?" });
       if (p) handleStartAgent(p);
     }},
-    { id: "close-folder", label: "Close Folder", action: handleCloseFolder },
-    { id: "search-files", label: "Search in Files", shortcut: "Ctrl+Shift+F", action: () => setSearchVisible(true) },
-    { id: "search-history", label: "Search Command History", action: async () => {
+    { id: "close-folder", label: "Close Folder", description: "Return to the project picker", category: "File", icon: FolderX, action: handleCloseFolder },
+    { id: "search-files", label: "Search in Files", description: "Full-text search across the project", shortcut: "Ctrl+Shift+F", category: "View", icon: Search, action: () => setSearchVisible(true) },
+    { id: "search-history", label: "Search Command History", description: "Find and replay a past terminal command", category: "History", icon: History, action: async () => {
       try {
         const { invoke } = await import("@tauri-apps/api/core");
         const results = await invoke<string[]>("recent_commands", { limit: 50 });
