@@ -8,6 +8,7 @@ import {
 import {
   CURSOR_COLOR,
   DEFAULT_BG,
+  SELECTION_BG,
   isDefaultBg,
   resolveColor,
 } from "../../shared/lib/ansiPalette";
@@ -17,6 +18,11 @@ import {
   type CellSnapshot,
   type GridSnapshot,
 } from "../../shared/types/terminal";
+import { rowSelection, type SelectionRange } from "./selection";
+import {
+  useTerminalSelection,
+  type CopyTextFn,
+} from "./hooks/useTerminalSelection";
 
 /**
  * Phase 2 / Task 7 — Canvas 2D terminal renderer with full ANSI attr + color.
@@ -39,6 +45,8 @@ export interface TerminalCanvasProps {
   snapshotOverride?: GridSnapshot | null;
   /** Injectable PTY writer — defaults to `invoke("write_terminal", ...)`. */
   writeBytes?: WriteBytesFn;
+  /** Injectable clipboard writer — defaults to `navigator.clipboard.writeText`. */
+  copyText?: CopyTextFn;
 }
 
 interface CellMetrics {
@@ -55,10 +63,12 @@ export function TerminalCanvas({
   className,
   snapshotOverride,
   writeBytes,
+  copyText,
 }: TerminalCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [inputEl, setInputEl] = useState<HTMLCanvasElement | null>(null);
   const prevSnapshotRef = useRef<GridSnapshot | null>(null);
+  const prevSelectionRef = useRef<SelectionRange | null>(null);
 
   useTerminalCanvasInput(terminalId, inputEl, writeBytes);
   const liveSnapshot = useTerminalSnapshot(
@@ -81,6 +91,41 @@ export function TerminalCanvas({
   const canvasWidth = cols * cellMetrics.width;
   const canvasHeight = rows * cellMetrics.height;
 
+  const { selection, clear: clearSelection, copy } = useTerminalSelection({
+    element: inputEl,
+    snapshot,
+    cellWidth: cellMetrics.width,
+    cellHeight: cellMetrics.height,
+    copyText,
+  });
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const clearOnType = (ev: KeyboardEvent) => {
+      if (ev.ctrlKey && ev.shiftKey) return;
+      if (!selection) return;
+      clearSelection();
+    };
+    canvas.addEventListener("keydown", clearOnType);
+    return () => canvas.removeEventListener("keydown", clearOnType);
+  }, [selection, clearSelection]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const handler = (ev: KeyboardEvent) => {
+      if (ev.ctrlKey && ev.shiftKey && (ev.key === "c" || ev.key === "C")) {
+        if (!selection) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        void copy();
+      }
+    };
+    canvas.addEventListener("keydown", handler);
+    return () => canvas.removeEventListener("keydown", handler);
+  }, [selection, copy]);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -97,6 +142,8 @@ export function TerminalCanvas({
     const prev = prevSnapshotRef.current;
     const dimsChanged =
       !prev || prev.cols !== snapshot.cols || prev.rows !== snapshot.rows;
+    const prevSel = prevSelectionRef.current;
+    const selectionChanged = prevSel !== selection;
 
     ctx.textBaseline = "top";
 
@@ -107,8 +154,22 @@ export function TerminalCanvas({
 
     for (let row = 0; row < snapshot.rows; row++) {
       const rowCells = snapshot.cells[row];
-      if (!dimsChanged && prev && prev.cells[row] === rowCells) continue;
+      const inOld = prevSel ? rowSelection(row, prevSel, snapshot.cols) : null;
+      const inNew = selection ? rowSelection(row, selection, snapshot.cols) : null;
+      const selDirtyRow =
+        selectionChanged && (inOld !== null || inNew !== null);
+      if (
+        !dimsChanged &&
+        !selDirtyRow &&
+        prev &&
+        prev.cells[row] === rowCells
+      ) {
+        continue;
+      }
       paintRow(ctx, rowCells, row, cellMetrics, fontSize, fontFamily);
+      if (inNew) {
+        paintSelectionBand(ctx, row, inNew, cellMetrics);
+      }
     }
 
     if (snapshot.cursor.visible && cursorOn) {
@@ -116,7 +177,8 @@ export function TerminalCanvas({
     }
 
     prevSnapshotRef.current = snapshot;
-  }, [snapshot, cellMetrics, fontFamily, fontSize, cursorOn]);
+    prevSelectionRef.current = selection;
+  }, [snapshot, cellMetrics, fontFamily, fontSize, cursorOn, selection]);
 
   useEffect(() => {
     if (!snapshot?.cursor.blinking) {
@@ -242,6 +304,23 @@ function drawDecorations(
   ctx.fillStyle = fgCss;
   if (underline) ctx.fillRect(x, y + cellH - 2, cellW, 1);
   if (strike) ctx.fillRect(x, y + Math.round(cellH / 2), cellW, 1);
+}
+
+function paintSelectionBand(
+  ctx: CanvasRenderingContext2D,
+  row: number,
+  band: { startCol: number; endColExclusive: number },
+  { width, height }: CellMetrics,
+) {
+  const x = band.startCol * width;
+  const y = row * height;
+  const w = (band.endColExclusive - band.startCol) * width;
+  if (w <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = 0.45;
+  ctx.fillStyle = SELECTION_BG;
+  ctx.fillRect(x, y, w, height);
+  ctx.restore();
 }
 
 function paintCursor(

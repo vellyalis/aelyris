@@ -26,6 +26,7 @@ import {
 export const DEFAULT_FG = "#cdd6f4"; // Catppuccin Mocha text
 export const DEFAULT_BG = "#1e1e2e"; // Catppuccin Mocha base
 export const CURSOR_COLOR = "#cba6f7"; // Catppuccin Mocha mauve
+export const SELECTION_BG = "#585b70"; // Catppuccin Mocha surface2
 export const BRIGHT_FG = "#ffffff";
 export const DIM_FG = "#7f849c"; // Catppuccin Mocha overlay1
 
