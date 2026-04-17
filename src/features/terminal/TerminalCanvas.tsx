@@ -2,6 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useTerminalSnapshot } from "../../shared/hooks/useTerminalSnapshot";
 import {
+  useTerminalCanvasInput,
+  type WriteBytesFn,
+} from "./hooks/useTerminalCanvasInput";
+import {
   CURSOR_COLOR,
   DEFAULT_BG,
   isDefaultBg,
@@ -33,6 +37,8 @@ export interface TerminalCanvasProps {
   className?: string;
   /** Overrides the live snapshot hook — used by tests to inject fixtures. */
   snapshotOverride?: GridSnapshot | null;
+  /** Injectable PTY writer — defaults to `invoke("write_terminal", ...)`. */
+  writeBytes?: WriteBytesFn;
 }
 
 interface CellMetrics {
@@ -48,9 +54,13 @@ export function TerminalCanvas({
   fontFamily = "'IBM Plex Mono', 'Cascadia Code', monospace",
   className,
   snapshotOverride,
+  writeBytes,
 }: TerminalCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [inputEl, setInputEl] = useState<HTMLCanvasElement | null>(null);
   const prevSnapshotRef = useRef<GridSnapshot | null>(null);
+
+  useTerminalCanvasInput(terminalId, inputEl, writeBytes);
   const liveSnapshot = useTerminalSnapshot(
     snapshotOverride === undefined ? terminalId : null,
   );
@@ -119,17 +129,22 @@ export function TerminalCanvas({
 
   return (
     <canvas
-      ref={canvasRef}
+      ref={(node) => {
+        canvasRef.current = node;
+        setInputEl(node);
+      }}
       width={canvasWidth}
       height={canvasHeight}
       className={className}
       data-testid="terminal-canvas"
       data-terminal-id={terminalId}
+      tabIndex={0}
       style={{
         width: `${canvasWidth}px`,
         height: `${canvasHeight}px`,
         background: DEFAULT_BG,
         imageRendering: "pixelated",
+        outline: "none",
       }}
     />
   );
