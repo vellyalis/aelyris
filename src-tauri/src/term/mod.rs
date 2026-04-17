@@ -5,5 +5,7 @@
 //! raw PTY bytes to the frontend.
 
 pub mod engine;
+pub mod snapshot;
 
 pub use engine::{TermEngine, TermEngineError};
+pub use snapshot::{CellSnapshot, CursorShapeSnapshot, CursorSnapshot, GridSnapshot, attr};

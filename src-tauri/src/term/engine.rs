@@ -86,6 +86,11 @@ impl TermEngine {
         self.size.rows
     }
 
+    /// Borrow the inner `Term` so sibling modules (e.g. `snapshot`) can read grid state.
+    pub(super) fn term(&self) -> &Term<VoidListener> {
+        &self.term
+    }
+
     /// Read a screen row as a plain `String`, trimming trailing spaces.
     /// `line` is 0-indexed from the top of the visible screen.
     pub fn row_text(&self, line: usize) -> Result<String, TermEngineError> {
