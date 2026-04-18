@@ -322,6 +322,220 @@ describe("useGhostPaintForFile (integration)", () => {
     expect(fake.zoneAddCount()).toBe(0);
   });
 
+  it("hasHunkAtLine / hunksAtLine resolve the anchor at the base line", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "list_ghost_layers") {
+        return Promise.resolve([makeLayer("l1", ["src/foo.ts"])]);
+      }
+      if (cmd === "get_ghost_layer_file") {
+        return Promise.resolve(makeDelta("src/foo.ts"));
+      }
+      return Promise.reject(new Error(`unexpected ${cmd}`));
+    });
+
+    const fake = makeFakeEditor();
+    const { result } = renderHook(() =>
+      useGhostPaintForFile({
+        editor: fake.editor,
+        monaco: fake.monaco,
+        filePath: "/repo/src/foo.ts",
+        projectPath: "/repo",
+      }),
+    );
+
+    await waitFor(() => expect(result.current.layerCount).toBe(1));
+    // makeDelta creates a pure-add hunk anchored at line 10.
+    expect(result.current.hasHunkAtLine(10)).toBe(true);
+    expect(result.current.hasHunkAtLine(5)).toBe(false);
+
+    const hits = result.current.hunksAtLine(10);
+    expect(hits).toHaveLength(1);
+    expect(hits[0].layerId).toBe("l1");
+    expect(hits[0].hunkIndex).toBe(0);
+  });
+
+  it("acceptHunkAtLine invokes apply_ghost_hunk and returns updated content", async () => {
+    invokeMock.mockImplementation((cmd: string, args: Record<string, unknown>) => {
+      if (cmd === "list_ghost_layers") {
+        return Promise.resolve([makeLayer("l1", ["src/foo.ts"])]);
+      }
+      if (cmd === "get_ghost_layer_file") {
+        return Promise.resolve(makeDelta("src/foo.ts"));
+      }
+      if (cmd === "apply_ghost_hunk") {
+        expect(args.layerId).toBe("l1");
+        expect(args.filePath).toBe("src/foo.ts");
+        expect(args.hunkIndex).toBe(0);
+        return Promise.resolve({
+          updatedContent: "patched body",
+          filePath: "/repo/src/foo.ts",
+          remainingHunks: 0,
+        });
+      }
+      return Promise.reject(new Error(`unexpected ${cmd}`));
+    });
+
+    const fake = makeFakeEditor();
+    const { result } = renderHook(() =>
+      useGhostPaintForFile({
+        editor: fake.editor,
+        monaco: fake.monaco,
+        filePath: "/repo/src/foo.ts",
+        projectPath: "/repo",
+      }),
+    );
+
+    await waitFor(() => expect(result.current.layerCount).toBe(1));
+    const next = await act(() => result.current.acceptHunkAtLine(10));
+    expect(next).toBe("patched body");
+  });
+
+  it("acceptHunkAtLine returns null when no hunk anchors the line", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "list_ghost_layers") {
+        return Promise.resolve([makeLayer("l1", ["src/foo.ts"])]);
+      }
+      if (cmd === "get_ghost_layer_file") {
+        return Promise.resolve(makeDelta("src/foo.ts"));
+      }
+      return Promise.reject(new Error(`unexpected ${cmd}`));
+    });
+
+    const fake = makeFakeEditor();
+    const { result } = renderHook(() =>
+      useGhostPaintForFile({
+        editor: fake.editor,
+        monaco: fake.monaco,
+        filePath: "/repo/src/foo.ts",
+        projectPath: "/repo",
+      }),
+    );
+
+    await waitFor(() => expect(result.current.layerCount).toBe(1));
+    const next = await act(() => result.current.acceptHunkAtLine(999));
+    expect(next).toBeNull();
+    // apply_ghost_hunk must not be invoked.
+    expect(
+      invokeMock.mock.calls.some(([cmd]) => cmd === "apply_ghost_hunk"),
+    ).toBe(false);
+  });
+
+  it("acceptAllInFile invokes apply_ghost_file once per layer", async () => {
+    invokeMock.mockImplementation((cmd: string, args: Record<string, unknown>) => {
+      if (cmd === "list_ghost_layers") {
+        return Promise.resolve([
+          makeLayer("l1", ["src/foo.ts"]),
+          makeLayer("l2", ["src/foo.ts"]),
+        ]);
+      }
+      if (cmd === "get_ghost_layer_file") {
+        return Promise.resolve(makeDelta("src/foo.ts"));
+      }
+      if (cmd === "apply_ghost_file") {
+        return Promise.resolve({
+          updatedContent: `after-${args.layerId}`,
+          filePath: "/repo/src/foo.ts",
+          remainingHunks: 0,
+        });
+      }
+      return Promise.reject(new Error(`unexpected ${cmd}`));
+    });
+
+    const fake = makeFakeEditor();
+    const { result } = renderHook(() =>
+      useGhostPaintForFile({
+        editor: fake.editor,
+        monaco: fake.monaco,
+        filePath: "/repo/src/foo.ts",
+        projectPath: "/repo",
+      }),
+    );
+
+    await waitFor(() => expect(result.current.layerCount).toBe(2));
+    const next = await act(() => result.current.acceptAllInFile());
+    // Newest layer is applied last, so its updatedContent wins.
+    expect(next).toBe("after-l2");
+
+    const applyCalls = invokeMock.mock.calls.filter(
+      ([cmd]) => cmd === "apply_ghost_file",
+    );
+    expect(applyCalls).toHaveLength(2);
+  });
+
+  it("dismissFileLayers invokes dismiss_ghost_file per layer with the relative path", async () => {
+    invokeMock.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "list_ghost_layers") {
+        return Promise.resolve([
+          makeLayer("l1", ["src/foo.ts", "src/bar.ts"]),
+          makeLayer("l2", ["src/foo.ts"]),
+        ]);
+      }
+      if (cmd === "get_ghost_layer_file") {
+        return Promise.resolve(makeDelta("src/foo.ts"));
+      }
+      if (cmd === "dismiss_ghost_file") {
+        // Must target only the open file, never the layer wholesale.
+        expect(args?.filePath).toBe("src/foo.ts");
+        return Promise.resolve(true);
+      }
+      if (cmd === "dismiss_ghost_layer") {
+        throw new Error("dismiss_ghost_layer must not be called from Esc");
+      }
+      return Promise.reject(new Error(`unexpected ${cmd}`));
+    });
+
+    const fake = makeFakeEditor();
+    const { result } = renderHook(() =>
+      useGhostPaintForFile({
+        editor: fake.editor,
+        monaco: fake.monaco,
+        filePath: "/repo/src/foo.ts",
+        projectPath: "/repo",
+      }),
+    );
+
+    await waitFor(() => expect(result.current.layerCount).toBe(2));
+    const count = await act(() => result.current.dismissFileLayers());
+    expect(count).toBe(2);
+    const dismissCalls = invokeMock.mock.calls.filter(
+      ([cmd]) => cmd === "dismiss_ghost_file",
+    );
+    expect(dismissCalls).toHaveLength(2);
+  });
+
+  it("dismissFileLayers reports only layers that actually cleared", async () => {
+    invokeMock.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "list_ghost_layers") {
+        return Promise.resolve([
+          makeLayer("l1", ["src/foo.ts"]),
+          makeLayer("l2", ["src/foo.ts"]),
+        ]);
+      }
+      if (cmd === "get_ghost_layer_file") {
+        return Promise.resolve(makeDelta("src/foo.ts"));
+      }
+      if (cmd === "dismiss_ghost_file") {
+        // l1 already had no hunks (e.g. racing mark-complete); l2 clears.
+        return Promise.resolve(args?.layerId === "l2");
+      }
+      return Promise.reject(new Error(`unexpected ${cmd}`));
+    });
+
+    const fake = makeFakeEditor();
+    const { result } = renderHook(() =>
+      useGhostPaintForFile({
+        editor: fake.editor,
+        monaco: fake.monaco,
+        filePath: "/repo/src/foo.ts",
+        projectPath: "/repo",
+      }),
+    );
+
+    await waitFor(() => expect(result.current.layerCount).toBe(2));
+    const count = await act(() => result.current.dismissFileLayers());
+    expect(count).toBe(1);
+  });
+
   it("swallows editor-disposed exceptions during paint teardown", async () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "list_ghost_layers") {

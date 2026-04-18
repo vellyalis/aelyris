@@ -365,7 +365,9 @@ pub fn run() {
             ipc::list_ghost_layers,
             ipc::get_ghost_layer_file,
             ipc::dismiss_ghost_layer,
+            ipc::dismiss_ghost_file,
             ipc::apply_ghost_hunk,
+            ipc::apply_ghost_file,
             // IME positioning
             ipc::set_ime_position,
         ])

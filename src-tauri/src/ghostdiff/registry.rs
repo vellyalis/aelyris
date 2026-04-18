@@ -174,6 +174,14 @@ impl LayerRegistry {
         }
     }
 
+    /// Repo path for a layer — IPC uses this to resolve the main file target
+    /// when the user accepts a hunk back into main.
+    pub fn repo_path(&self, id: &str) -> Option<PathBuf> {
+        let guard = self.layers.lock().ok()?;
+        let layer = guard.get(id)?;
+        layer.repo_path().cloned()
+    }
+
     /// Whether a layer id is currently registered.
     pub fn contains(&self, id: &str) -> bool {
         self.layers
@@ -211,6 +219,67 @@ impl LayerRegistry {
         let guard = self.layers.lock().ok()?;
         let layer = guard.get(id)?;
         layer.find_file(path).cloned()
+    }
+
+    /// Remove one hunk from a file delta after the caller has patched main
+    /// on disk. Returns the snapshot that was removed so callers can log /
+    /// verify. Silently no-ops if the layer/file/hunk isn't registered.
+    pub fn remove_hunk(
+        &self,
+        id: &str,
+        file_path: &str,
+        hunk_index: usize,
+    ) -> Result<Option<super::layer::DiffHunk>, String> {
+        let (taken, summary) = {
+            let mut guard = self.lock_layers()?;
+            let Some(layer) = guard.get_mut(id) else {
+                return Ok(None);
+            };
+            let taken = match &mut layer.content {
+                LayerContent::Diff { files, .. } => {
+                    let Some(file) = files.iter_mut().find(|f| f.path == file_path) else {
+                        return Ok(None);
+                    };
+                    if hunk_index >= file.hunks.len() {
+                        return Ok(None);
+                    }
+                    let taken = file.hunks.remove(hunk_index);
+                    // Drop files that ran out of hunks so the panel's file
+                    // count reflects reality.
+                    if file.hunks.is_empty() {
+                        let orphan = file.path.clone();
+                        files.retain(|f| f.path != orphan);
+                    }
+                    taken
+                }
+            };
+            (taken, layer.summary())
+        };
+        let _ = self.tx.send(LayerEvent::Updated(summary));
+        Ok(Some(taken))
+    }
+
+    /// Drop every hunk for a file — used by Shift+Tab / file-level accept
+    /// after the caller has written the full `head_content` to main.
+    pub fn clear_file_hunks(&self, id: &str, file_path: &str) -> Result<bool, String> {
+        let (removed, summary) = {
+            let mut guard = self.lock_layers()?;
+            let Some(layer) = guard.get_mut(id) else {
+                return Ok(false);
+            };
+            let removed = match &mut layer.content {
+                LayerContent::Diff { files, .. } => {
+                    let before = files.len();
+                    files.retain(|f| f.path != file_path);
+                    before != files.len()
+                }
+            };
+            (removed, layer.summary())
+        };
+        if removed {
+            let _ = self.tx.send(LayerEvent::Updated(summary));
+        }
+        Ok(removed)
     }
 
     /// Drain pending events. Call from the main-thread poller.
@@ -403,5 +472,114 @@ mod tests {
         r.refresh("j1", vec![make_delta("a.ts")]).unwrap();
         assert!(r.get_file("j1", "a.ts").is_some());
         assert!(r.get_file("j1", "missing").is_none());
+    }
+
+    fn make_delta_two_hunks(path: &str) -> FileDelta {
+        FileDelta {
+            path: path.into(),
+            hunks: vec![
+                DiffHunk {
+                    base_start: 1,
+                    base_len: 1,
+                    head_start: 1,
+                    head_len: 1,
+                    lines: vec![HunkLine::Remove("a".into()), HunkLine::Add("b".into())],
+                },
+                DiffHunk {
+                    base_start: 10,
+                    base_len: 1,
+                    head_start: 10,
+                    head_len: 1,
+                    lines: vec![HunkLine::Remove("x".into()), HunkLine::Add("y".into())],
+                },
+            ],
+            base_content: "a\n...\nx".into(),
+            head_content: "b\n...\ny".into(),
+        }
+    }
+
+    #[test]
+    fn remove_hunk_drops_one_and_keeps_others() {
+        let r = LayerRegistry::new();
+        reg_layer(&r, "j1", 0);
+        r.refresh("j1", vec![make_delta_two_hunks("a.ts")]).unwrap();
+        let _ = r.poll();
+
+        let taken = r.remove_hunk("j1", "a.ts", 0).unwrap();
+        assert!(taken.is_some());
+        let events = r.poll();
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            LayerEvent::Updated(s) => {
+                assert_eq!(s.hunk_count, 1);
+                assert_eq!(s.file_count, 1);
+            }
+            _ => panic!("expected Updated"),
+        }
+    }
+
+    #[test]
+    fn remove_hunk_drops_empty_file_from_layer() {
+        let r = LayerRegistry::new();
+        reg_layer(&r, "j1", 0);
+        r.refresh("j1", vec![make_delta("a.ts")]).unwrap();
+        let _ = r.poll();
+
+        let taken = r.remove_hunk("j1", "a.ts", 0).unwrap();
+        assert!(taken.is_some());
+        // No remaining hunks → file drops from the layer.
+        let summaries = r.list();
+        assert_eq!(summaries[0].file_count, 0);
+    }
+
+    #[test]
+    fn remove_hunk_silent_on_unknown_layer() {
+        let r = LayerRegistry::new();
+        let taken = r.remove_hunk("nope", "a.ts", 0).unwrap();
+        assert!(taken.is_none());
+        assert!(r.poll().is_empty());
+    }
+
+    #[test]
+    fn remove_hunk_silent_on_out_of_range_index() {
+        let r = LayerRegistry::new();
+        reg_layer(&r, "j1", 0);
+        r.refresh("j1", vec![make_delta("a.ts")]).unwrap();
+        let _ = r.poll();
+        let taken = r.remove_hunk("j1", "a.ts", 99).unwrap();
+        assert!(taken.is_none());
+        assert!(r.poll().is_empty());
+    }
+
+    #[test]
+    fn clear_file_hunks_drops_file_and_emits_updated() {
+        let r = LayerRegistry::new();
+        reg_layer(&r, "j1", 0);
+        r.refresh(
+            "j1",
+            vec![make_delta_two_hunks("a.ts"), make_delta("b.ts")],
+        )
+        .unwrap();
+        let _ = r.poll();
+
+        let removed = r.clear_file_hunks("j1", "a.ts").unwrap();
+        assert!(removed);
+        let list = r.list();
+        assert_eq!(list[0].file_count, 1);
+        assert_eq!(list[0].file_paths, vec!["b.ts"]);
+        let events = r.poll();
+        assert_eq!(events.len(), 1);
+        assert!(matches!(events[0], LayerEvent::Updated(_)));
+    }
+
+    #[test]
+    fn clear_file_hunks_returns_false_on_missing_file() {
+        let r = LayerRegistry::new();
+        reg_layer(&r, "j1", 0);
+        r.refresh("j1", vec![make_delta("a.ts")]).unwrap();
+        let _ = r.poll();
+        let removed = r.clear_file_hunks("j1", "missing.ts").unwrap();
+        assert!(!removed);
+        assert!(r.poll().is_empty());
     }
 }

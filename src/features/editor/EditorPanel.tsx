@@ -97,17 +97,38 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
     },
     [],
   );
-  const {
-    conflictCount: ghostConflictCount,
-    deferredCount: ghostDeferredCount,
-    layerCount: ghostLayerCount,
-  } = useGhostPaintForFile({
+  // Suppresses dirty-range broadcast while we programmatically replace the
+  // editor value (e.g. after accepting a ghost hunk). Without this the
+  // setValue call would mark every remaining line as user-dirty and make
+  // the next hunk look like a conflict.
+  const suppressModelChangesRef = useRef(false);
+  const ghostPaint = useGhostPaintForFile({
     editor: ghostEditor,
     monaco: ghostMonaco,
     filePath,
     projectPath,
     subscribeToModelChanges,
   });
+  const {
+    conflictCount: ghostConflictCount,
+    deferredCount: ghostDeferredCount,
+    layerCount: ghostLayerCount,
+  } = ghostPaint;
+  // Latest hook result for the command handlers — they fire outside the
+  // React render cycle so a ref is the only safe way to reach current state.
+  const ghostPaintRef = useRef(ghostPaint);
+  ghostPaintRef.current = ghostPaint;
+  // Monaco IContextKey handles — updated in a useEffect from the hook
+  // output so the preconditions on addCommand react to state changes.
+  type CtxKey = { set: (value: boolean) => void };
+  const ghostHunkKeyRef = useRef<CtxKey | null>(null);
+  const ghostInFileKeyRef = useRef<CtxKey | null>(null);
+  useEffect(() => {
+    ghostInFileKeyRef.current?.set(ghostPaint.layerCount > 0);
+    ghostHunkKeyRef.current?.set(
+      ghostPaint.hasHunkAtLine(cursorPos.line),
+    );
+  }, [ghostPaint, cursorPos.line]);
 
   const toggleVim = useCallback(async () => {
     if (vimMode) {
@@ -272,6 +293,7 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
                 setCursorPos({ line: e.position.lineNumber, column: e.position.column });
               });
               editor.onDidChangeModelContent((ev) => {
+                if (suppressModelChangesRef.current) return;
                 const ranges: LineRange[] = ev.changes.map((c) => ({
                   start: c.range.startLineNumber,
                   end: Math.max(c.range.startLineNumber, c.range.endLineNumber),
@@ -279,6 +301,89 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
                 if (ranges.length === 0) return;
                 modelChangeSubscribersRef.current.forEach((fn) => fn(ranges));
               });
+
+              // ─── Ghost diff hotkeys (Phase 3C-1c) ──────────────────────
+              // Context keys let us preempt Monaco's default Tab / Esc only
+              // when ghost paint is actually present + the cursor is on it.
+              const ghostHunkKey = editor.createContextKey<boolean>(
+                "aetherGhostHunkAtCursor",
+                false,
+              );
+              const ghostInFileKey = editor.createContextKey<boolean>(
+                "aetherGhostInFile",
+                false,
+              );
+              ghostHunkKeyRef.current = ghostHunkKey;
+              ghostInFileKeyRef.current = ghostInFileKey;
+
+              const replaceModelValue = (next: string) => {
+                suppressModelChangesRef.current = true;
+                editor.setValue(next);
+                setContent(next);
+                // setValue moves the cursor to (1,1). Keep it roughly where
+                // the user had it so the next keystroke is not surprising.
+                queueMicrotask(() => {
+                  suppressModelChangesRef.current = false;
+                });
+              };
+
+              editor.addCommand(
+                monaco.KeyCode.Tab,
+                () => {
+                  const pos = editor.getPosition();
+                  if (!pos) return;
+                  ghostPaintRef.current
+                    .acceptHunkAtLine(pos.lineNumber)
+                    .then((next) => {
+                      if (next !== null) {
+                        replaceModelValue(next);
+                        toast.success("Ghost hunk applied");
+                      }
+                    })
+                    .catch((err: unknown) => {
+                      toast.error("Apply failed", String(err));
+                    });
+                },
+                "aetherGhostHunkAtCursor && !suggestWidgetVisible && !editorHasSelection",
+              );
+
+              editor.addCommand(
+                monaco.KeyMod.Shift | monaco.KeyCode.Tab,
+                () => {
+                  ghostPaintRef.current
+                    .acceptAllInFile()
+                    .then((next) => {
+                      if (next !== null) {
+                        replaceModelValue(next);
+                        toast.success("All ghost hunks applied");
+                      } else if (ghostPaintRef.current.layerCount > 0) {
+                        // acceptAllInFile swallows per-layer errors and
+                        // returns null when every layer failed. Break the
+                        // silence so the user knows Shift+Tab did nothing.
+                        toast.error("Apply-all failed", "All layers failed to apply");
+                      }
+                    })
+                    .catch((err: unknown) => {
+                      toast.error("Apply-all failed", String(err));
+                    });
+                },
+                "aetherGhostInFile && !suggestWidgetVisible && !editorHasSelection",
+              );
+
+              editor.addCommand(
+                monaco.KeyCode.Escape,
+                () => {
+                  ghostPaintRef.current
+                    .dismissFileLayers()
+                    .then((n) => {
+                      if (n > 0) toast.info("Ghost layers dismissed");
+                    })
+                    .catch(() => {
+                      /* already dismissed */
+                    });
+                },
+                "aetherGhostInFile && !suggestWidgetVisible && !findWidgetVisible",
+              );
               monaco.editor.defineTheme("aether-theme", {
                 base: light ? "vs" : "vs-dark",
                 inherit: true,

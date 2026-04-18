@@ -12,7 +12,7 @@ export default defineConfig(async () => ({
     environment: "jsdom",
     globals: true,
     setupFiles: [],
-    exclude: ["node_modules", "e2e"],
+    exclude: ["node_modules", "e2e", ".claude/worktrees/**"],
   },
 
   build: {

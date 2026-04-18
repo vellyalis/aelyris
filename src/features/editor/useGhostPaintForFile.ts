@@ -7,18 +7,33 @@
  * skipping hunks that conflict with the user's in-flight edits.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 
 import { useGhostLayers } from "../../shared/hooks/useGhostLayers";
 import type { FileDelta, LayerSummary } from "../../shared/types/ghostdiff";
 
-import { detectHunkConflicts, type LineRange } from "./ghostConflict";
+import { detectHunkConflicts, hunkBaseRange, type LineRange } from "./ghostConflict";
 import {
   installGhostPaint,
   type GhostEditor,
   type GhostPaintHandle,
   type MonacoNs,
 } from "./ghostPaint";
+
+interface ApplyHunkResult {
+  updatedContent: string;
+  filePath: string;
+  remainingHunks: number;
+}
+
+/** Per-layer hunk metadata used to find a hunk at a given editor line. */
+export interface HunkAnchor {
+  layerId: string;
+  hunkIndex: number;
+  baseStart: number;
+  baseLen: number;
+}
 
 interface UseGhostPaintArgs {
   editor: GhostEditor | null;
@@ -43,6 +58,20 @@ export interface UseGhostPaintResult {
   deferredCount: number;
   /** Distinct layers currently painting on this file. */
   layerCount: number;
+  /** `true` when at least one hunk overlaps `line`. */
+  hasHunkAtLine: (line: number) => boolean;
+  /** Every hunk anchor covering `line`, newest layer first. */
+  hunksAtLine: (line: number) => HunkAnchor[];
+  /**
+   * Apply the first accepted hunk at `line` back to main. Returns the main
+   * file's updated content on success (so the editor can replace its model
+   * value), or `null` when nothing was at the line.
+   */
+  acceptHunkAtLine: (line: number) => Promise<string | null>;
+  /** Accept every non-conflicting hunk for the open file. */
+  acceptAllInFile: () => Promise<string | null>;
+  /** Dismiss every layer currently painting the open file. */
+  dismissFileLayers: () => Promise<number>;
 }
 
 /** Normalize a Windows/Unix absolute path to forward slashes + no trailing "/". */
@@ -171,6 +200,11 @@ export function useGhostPaintForFile(
     layerCount: 0,
   });
 
+  // Hunk anchors used by Tab / Shift+Tab / Esc for cursor-line lookups.
+  // Populated after each paint pass; newest layer last so "newest first"
+  // iteration in acceptHunkAtLine walks the array in reverse.
+  const [hunkAnchors, setHunkAnchors] = useState<HunkAnchor[]>([]);
+
   useEffect(() => {
     // Always dispose prior paint before considering a reinstall.
     for (const h of paintHandlesRef.current) h.dispose();
@@ -184,6 +218,7 @@ export function useGhostPaintForFile(
     let conflictCount = 0;
     let deferredCount = 0;
     let layerCount = 0;
+    const anchors: HunkAnchor[] = [];
 
     // Paint in layer order so newer layers sit on top of older ones.
     const ordered = relevantLayers.filter((l) => deltasById.has(l.id));
@@ -204,9 +239,23 @@ export function useGhostPaintForFile(
       conflictCount += conflicts.size;
       deferredCount += handle.deferredIndices.length;
       layerCount += 1;
+
+      // Anchor every non-conflicting hunk for cursor-based accept. Conflicts
+      // stay hidden so we deliberately exclude them.
+      for (let i = 0; i < delta.hunks.length; i++) {
+        if (conflicts.has(i)) continue;
+        const hunk = delta.hunks[i];
+        anchors.push({
+          layerId: layer.id,
+          hunkIndex: i,
+          baseStart: hunk.baseStart,
+          baseLen: hunk.baseLen,
+        });
+      }
     }
 
     setPaintSummary({ conflictCount, deferredCount, layerCount });
+    setHunkAnchors(anchors);
 
     return () => {
       for (const h of paintHandlesRef.current) h.dispose();
@@ -214,5 +263,109 @@ export function useGhostPaintForFile(
     };
   }, [editor, monaco, relevantLayers, deltasById, dirtyVersion]);
 
-  return paintSummary;
+  // ─── cursor-line lookups ────────────────────────────────────────────────
+
+  const hunksAtLine = useCallback(
+    (line: number): HunkAnchor[] => {
+      const hits: HunkAnchor[] = [];
+      for (const a of hunkAnchors) {
+        const range = hunkBaseRange({
+          baseStart: a.baseStart,
+          baseLen: a.baseLen,
+          headStart: a.baseStart,
+          headLen: a.baseLen,
+          lines: [],
+        });
+        if (line >= range.start && line <= range.end) hits.push(a);
+      }
+      // Reverse so the newest (last-painted) layer wins.
+      hits.reverse();
+      return hits;
+    },
+    [hunkAnchors],
+  );
+
+  const hasHunkAtLine = useCallback(
+    (line: number): boolean => hunksAtLine(line).length > 0,
+    [hunksAtLine],
+  );
+
+  // ─── accept / dismiss actions ───────────────────────────────────────────
+
+  const layersRef = useRef(relevantLayers);
+  layersRef.current = relevantLayers;
+  const relativePathRef = useRef(relativePath);
+  relativePathRef.current = relativePath;
+
+  const acceptHunkAtLine = useCallback(
+    async (line: number): Promise<string | null> => {
+      const hits = hunksAtLine(line);
+      if (hits.length === 0) return null;
+      const target = hits[0];
+      const rel = relativePathRef.current;
+      if (!rel) return null;
+      const result = await invoke<ApplyHunkResult>("apply_ghost_hunk", {
+        layerId: target.layerId,
+        filePath: rel,
+        hunkIndex: target.hunkIndex,
+      });
+      return result.updatedContent;
+    },
+    [hunksAtLine],
+  );
+
+  const acceptAllInFile = useCallback(async (): Promise<string | null> => {
+    const rel = relativePathRef.current;
+    if (!rel) return null;
+    const layersNow = layersRef.current;
+    if (layersNow.length === 0) return null;
+    // Apply the newest layer last so its head_content wins if multiple
+    // layers touch the same file. `apply_ghost_file` overwrites main, so
+    // sequencing matters.
+    let latest: string | null = null;
+    for (const layer of layersNow) {
+      try {
+        const result = await invoke<ApplyHunkResult>("apply_ghost_file", {
+          layerId: layer.id,
+          filePath: rel,
+        });
+        latest = result.updatedContent;
+      } catch {
+        // Surface via toast at the caller; keep going so other layers still
+        // clear and the user isn't left with orphaned ghost paint.
+      }
+    }
+    return latest;
+  }, []);
+
+  const dismissFileLayers = useCallback(async (): Promise<number> => {
+    const layersNow = layersRef.current;
+    const rel = relativePathRef.current;
+    if (!rel) return 0;
+    // Drop only this file from each layer — `dismiss_ghost_layer` would wipe
+    // the layer wholesale, killing ghost paint on the layer's other files
+    // too. Plan calls for "現ファイルの ghost 全 dismiss (他ファイル・他 layer には触れない)".
+    let dismissed = 0;
+    for (const layer of layersNow) {
+      try {
+        const cleared = await invoke<boolean>("dismiss_ghost_file", {
+          layerId: layer.id,
+          filePath: rel,
+        });
+        if (cleared) dismissed += 1;
+      } catch {
+        /* backend may have already removed it */
+      }
+    }
+    return dismissed;
+  }, []);
+
+  return {
+    ...paintSummary,
+    hasHunkAtLine,
+    hunksAtLine,
+    acceptHunkAtLine,
+    acceptAllInFile,
+    dismissFileLayers,
+  };
 }

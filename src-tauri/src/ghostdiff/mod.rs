@@ -11,6 +11,7 @@
 //! Public surface kept small: callers register a worktree, the registry
 //! keeps the diff fresh, and the frontend subscribes via IPC events.
 
+pub mod apply;
 pub mod diff_engine;
 pub mod layer;
 pub mod registry;
