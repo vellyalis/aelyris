@@ -338,11 +338,15 @@
 - Esc で ghost 消える (再度開くと復活)
 - apply 失敗時 toast エラー (main が変わっていて patch 当たらない等)
 
-#### 3C-1d. Live mode flag (0.5 日、optional)
+#### 3C-1d. Live mode flag ✅ 完了 (2026-04-18, commit 25016df)
 
-- `aether.ghostDiff.liveMode` 設定追加 (default false、settings UI から toggle)
-- true の時 `LayerRegistry` は is_complete 待たず refresh を emit
-- Rust 側は flag 判定分岐のみの小変更
+- `config.toml [ghost_diff]` に `live_mode: bool` (default false、serde default で legacy toml 互換)
+- Settings UI に "Ghost Diff Overlay" セクション追加、toggle + 説明文
+- `appStore.ghostDiffLiveMode` (localStorage bootstrap → Settings open 時に config.toml から rehydrate)
+- `useGhostPaintForFile` に `liveMode` arg、`layersForFile` で `(liveMode || l.isComplete)` フィルタ
+- 既定: completed layer のみ paint / live ON: in-progress layer も paint
+- Rust 側は `LayerRegistry` 変更不要 (現状 refresh emit は常時発火、frontend 側で filter)
+- tests: Rust 3 (default/legacy/round-trip) + TS 2 (off skip / on paint)
 
 ### リスク
 
