@@ -317,7 +317,7 @@
 - 自分が 55 行編集中、agent も 55 行 touch → ghost 非表示 + breadcrumb warning badge
 - ファイル閉じると ghost 消える (layer は残る)
 
-#### 3C-1c. Hotkey accept/reject + apply (1-2 日)
+#### 3C-1c. Hotkey accept/reject + apply ✅ 完了 (2026-04-18, commit 3e06521)
 
 **Frontend** — EditorPanel keybind
 - Tab (editor focus、ghost hunk がカーソル位置): hunk accept → `invoke("apply_ghost_hunk", ...)` → 成功で editor reload
