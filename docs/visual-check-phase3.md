@@ -8,6 +8,53 @@
 
 ---
 
+## そもそも「Ghost Diff Overlay」ってなんだっけ
+
+Phase 3C のテーマは **「別世界のコードを今の画面に半透明で重ねて見せる」** こと。
+
+Aether Terminal は AI agent や別ブランチのコードを**別の git worktree** で動かすことが多い。でもそれをレビューするには:
+- worktree を開き直す
+- ブランチを切り替える
+- `git diff` を眺める
+
+みたいに**コンテキストスイッチ**が発生する。これが面倒。
+
+Ghost Diff Overlay は「別世界 (別 worktree / 別ブランチ / 過去スナップショット) のファイル内容」を、**今開いているエディタ上に半透明の幽霊 (ghost) として重ね描き**する機能。切り替えずに俯瞰できる。
+
+### 3C の中のサブ機能
+
+Phase 3C-1 **Ghost Diff Overlay 基本** (実装済、前セッションで 1a/1b/1c/1d 完了):
+- **3C-1a**: ghost layer の登録・panel 一覧表示の基盤
+- **3C-1b**: エディタ内に ghost 行を半透明描画 (add 行 = 薄緑 phantom、delete 行 = 取消線)
+- **3C-1c**: キーバインド — **Tab で hunk accept**、Shift+Tab で全 accept、Esc で dismiss
+- **3C-1d**: **Live mode** 設定 (default off) — agent 実行中のファイル変更をリアルタイムで ghost 表示するか、完了してからまとめて表示するかの切替
+
+Phase 3C-2 **Branch Comparison** (今セッションで実装、未検証):
+- **「別のブランチの同じファイル」が今ここでどう違って見えるかを ghost で表示**
+- 例: 今 `refactor/xxx` ブランチで作業中、`main` ブランチの同じファイルがどう違うかを**切り替えずに**見たい
+- コマンドパレット → **Compare Branch...** → 比較したいブランチ名入力
+- 裏で `git diff 現ブランチ..指定ブランチ` が走り、結果が ghost として編集中のエディタに重なる
+- **読み取り専用**: Tab/Shift+Tab は効かない (他人のブランチを勝手に merge しないため)。消すのは Esc か panel の dismiss ボタン
+- 使い所: main との差分可視化、レビュー前の変更確認、rebase の下見
+
+### 3C-1 と 3C-2 の関係図
+
+```
+ 別 worktree (AI 編集中)  ─┐
+                          ├──→ [ Ghost Diff Overlay ] ──→ Editor に重ね描き
+ 別ブランチ (main 等)      ─┘         ↑
+                                 共通パイプライン
+                                (Layer + FileDelta + GhostPainter)
+                                      ↑
+                      3C-1 (write-capable) と 3C-2 (read-only) は
+                      **同じ描画エンジンを使ってる**。違いは source の kind と
+                      「Tab で accept できるか」だけ。
+```
+
+今回の検証 **A** はこの 3C-2 を触る。**B** は 3C-1c のキーバインド、**C** は 3C-1d の live mode を触る。
+
+---
+
 ## 0. 画面全体の地図
 
 起動後の画面レイアウト (プロジェクト開いた状態):
@@ -64,6 +111,19 @@ StatusBar は画面の**最下部**、横幅いっぱい。アイコンは Statu
 ---
 
 # 🔴 A. Branch Comparison (3C-2 の新機能) — 約 5 分
+
+**これは何?**
+別ブランチに切り替えずに、そのブランチのコードが今の画面でどう違って見えるかを **半透明 ghost で重ね表示** する機能。
+
+**どういうシーンで使うか?**
+- 「main に対して自分のブランチで何を変えてきたか」を視覚的に振り返る
+- PR 出す前にチーム同僚のブランチを軽くプレビュー
+- rebase/merge 前の下見
+
+**普通の `git diff` と何が違う?**
+git diff は CLI でテキスト表示、行番号と実ファイルの対応が頭で追いにくい。Ghost overlay なら**エディタで今のファイル上に直接差分が浮く**ので、前後の文脈込みで一目。
+
+**重要な性質**: **読み取り専用**。Tab で accept はできない (他人のブランチを勝手に自分に取り込まない)。見るだけ、消すだけ。
 
 ## A-1. コマンドパレットから起動
 
@@ -236,7 +296,16 @@ ghost paint が見えてる行にカーソル置いた状態で:
 
 # 🔴 B. Tab/Shift+Tab/Esc で hunk 操作 (3C-1c) — 約 5 分
 
-**前提**: write-capable (accept 可能) な ghost layer が必要。A の branch comparison は read-only なので別の layer を作る必要あり。
+**これは何?**
+エディタに ghost layer (AI agent が別 worktree で編集中のファイル差分) が見えている状態で、その ghost を**自分のコードに取り込む** or **捨てる**ためのショートカット。
+
+- **Tab**: カーソル位置にある 1 個の hunk を accept → 実際のファイルに書き込む
+- **Shift+Tab**: ファイル内の全 hunk をまとめて accept
+- **Esc**: 現ファイルの ghost を dismiss (捨てる。実ファイルには触れない)
+
+**なぜこれが必要?** AI が worktree で書いたコードを、1 つずつ自分のメインブランチに取り込みたい時がある。今までは worktree 切替 → cherry-pick みたいなことしてたのを、エディタ上でキー 1 発で済ませる。
+
+**A の branch comparison との違い**: branch comparison は read-only だから Tab が効かない。B のテストには **Orchestra AI agent を起動して worktree layer を作る**必要がある (write-capable だから accept できる)。
 
 ## B-1. Orchestra で agent 起動 (セットアップ)
 
@@ -366,6 +435,19 @@ ghost paint が見えてる行にカーソル置いた状態で:
 ---
 
 # 🔴 C. Live mode toggle (3C-1d) — 約 3 分
+
+**これは何?**
+AI agent が worktree でファイルを書いている最中に、その途中結果を ghost でリアルタイム表示するかどうかの **on/off トグル**。
+
+**3 つの挙動**:
+| 設定 | AI agent 実行中 | AI agent 完了時 |
+|---|---|---|
+| Live mode **OFF** (default) | 何も表示されない | そこで初めて ghost が全部出る |
+| Live mode **ON** | agent が書くたび ghost もリアルタイム更新 | そのまま表示継続 |
+
+**なぜ default OFF?** AI は試行錯誤で書いて消してを繰り返すので、途中結果を逐一見せられるとチラついて集中を切られる。完了してから一括で見る方が落ち着く。ただしライブコーディングを「見たい」派もいるので opt-in で ON にできる。
+
+**保存先**: `%USERPROFILE%\.aether\config.toml` の `[ghost_diff].live_mode` として永続化される。アプリ再起動しても設定は残る。
 
 ## C-1. Settings 画面を開く
 
