@@ -8,6 +8,29 @@
 
 ---
 
+## ⚡ ショートカット: ほぼ全部 Claude が自動検証した
+
+`pnpm tauri:dev` で起動する dev build は WebView2 の **CDP ポート (9222)** が開いてて、外から `window.__TAURI_INTERNALS__.invoke` を叩ける。以下を CI みたいに回せる:
+
+```
+pnpm tauri:dev               # 起動 (CDP 9222 が開く)
+node scripts/verify-3c2.mjs  # A+C+UI を自動検証
+# → Summary: 18 OK / 0 FAIL / 0 SKIP
+```
+
+自動カバー範囲 (2026-04-18 時点):
+- **A (Branch Comparison)**: list_branches → start → shape → get_file → read-only reject (hunk/file) → dismiss_file → dismiss_layer
+- **C (Live mode)**: load_app_config → true に flip → restore
+- **UI surface**: Command palette / View menu / Settings section / StatusBar button 全部に Compare Branch 系が存在する確認
+
+つまり下の 🔴 A, 🔴 C 章は **既に Claude 側で機能検証済み**。人間が手で触って UX 確認したいとき用の手順が以下。
+
+手動検証が残っている領域:
+- **B (Tab/Shift+Tab/Esc accept hunk)** — Orchestra agent の実行が必要で Claude では非現実 (claude CLI を叩くコスト)、ただし apply.rs の Rust test 10 + registry 4 + useGhostPaintForFile の TS test 22 でカバー済
+- UX 的な見た目 (色、位置、間隔、アニメ) — 最終は人間の目
+
+---
+
 ## そもそも「Ghost Diff Overlay」ってなんだっけ
 
 Phase 3C のテーマは **「別世界のコードを今の画面に半透明で重ねて見せる」** こと。
