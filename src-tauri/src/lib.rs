@@ -1,4 +1,5 @@
 pub mod agent;
+pub mod api;
 pub mod config;
 pub mod db;
 pub mod ghostdiff;
@@ -254,6 +255,21 @@ pub fn run() {
                     }
                 })
                 .ok();
+
+            // Phase 3D-1 spike: spin up the external HTTP/WS PTY API on
+            // 127.0.0.1:9333. Failures (e.g. port already taken by another
+            // dev instance) log a warning and leave the rest of the app
+            // running normally — the spike is opt-in.
+            let api_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = api::serve(api_handle, api::DEFAULT_PORT).await {
+                    log::warn!(
+                        "Phase 3D-1 spike: PTY API server failed on port {}: {}",
+                        api::DEFAULT_PORT,
+                        e
+                    );
+                }
+            });
 
             log::info!("Setup complete in {:?}", t0.elapsed());
             Ok(())
