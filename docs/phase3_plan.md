@@ -220,8 +220,8 @@
 
 3B 完了済 (2026-04-18)。**3C-1 は以下で詳細化**。3C-2 / 3C-3 は 3C-1 の LayerRegistry 完成時点で再確定する (revision / snapshot 差し替えで再利用する想定)。
 
-- **3C-1 Ghost diff overlay** — 別 worktree の AI 修正を editor に inline ghost 重ね (ideas.md D1) ← 本 phase の主眼
-- **3C-2 並行世界のターミナル** — ブランチ切替を UI レイヤー重ね表示 (ideas.md F)
+- **3C-1 Ghost diff overlay** — 別 worktree の AI 修正を editor に inline ghost 重ね (ideas.md D1) ✅ 完了
+- **3C-2 並行世界のターミナル** ✅ MVP 完了 (2026-04-18, commit 0e28dd4) — ブランチ比較 overlay で MVP。拡張 3C-2b/c/d は後続判断
 - **3C-3 タイムトラベルデバッグ** — PTY 状態スナップショット + replay (ideas.md A 後半)
 
 ---
