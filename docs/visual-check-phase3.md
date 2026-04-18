@@ -1,319 +1,513 @@
-# Phase 3 視覚検証チェックリスト
+# Phase 3 視覚検証手順書
 
 **最終更新**: 2026-04-18
-**対象コミット**: 0e28dd4 (Phase 3C-2 MVP 完了時点)
-**所要時間**: コア (3C-2 + 3C-1c) で約 15 分、全項目で約 45 分
+**対象コミット**: 0e28dd4 (3C-2 MVP)
 
-Claude から Tauri window 操作ができないので、実機検証はユーザーが行う必要がある。
-このドキュメントは「何を触って、何を見て、何なら OK か」を手順レベルで書き下した版。
-
-## 事前準備 (1 回)
-
-- [ ] `pnpm tauri dev` が起動中 (既に起動しているはず — port 1420 占有してる)
-- [ ] Tauri window で Aether Terminal が開いている
-- [ ] `C:\Users\owner\Aether_Terminal` を **Open Folder** で開く (複数ブランチある必要があるので、このリポジトリ自体が最適)
-- [ ] 左サイドバーでファイルツリーが見える状態
-
-トラブル時:
-- window が反応しない → タスクマネージャで `aether-terminal.exe` 終了 → `pnpm tauri dev` 再起動
-- HMR で挙動が変 → window 再起動
+画面を開きながら、上から順にやるだけで検証が終わる手順書。
+分からなくなったら途中で止めて「○番で詰まった」と報告してほしい。
 
 ---
 
-# 🔴 コア検証 (必ずやる、所要 15 分)
+## 0. 画面全体の地図
 
-## A. 3C-2 Branch Comparison — 新規機能 (所要 5 分)
+起動後の画面レイアウト (プロジェクト開いた状態):
 
-### A-1. コマンドパレットから起動
+```
+┌──────────────────────────────────────────────────────────────┐
+│ メニューバー (File / Edit / View …)                           │ ← 一番上
+├──────┬──────────────────────────────────────┬────────────────┤
+│      │                                      │                │
+│      │                                      │                │
+│ 左   │   メイン領域                          │   右パネル      │
+│サイド│   (ターミナル or エディタ)            │ (AgentInspector)│
+│バー  │                                      │                │
+│      │                                      │                │
+│ファイ│                                      │ ♫ + … のボタン群│
+│ル /  │                                      │  は右パネル上端  │
+│タスク│                                      │  タブバー右端に  │
+│ / エ │                                      │  ある            │
+│ージ  │                                      │                │
+│ェント│                                      │                │
+│      │                                      │                │
+├──────┴──────────────────────────────────────┴────────────────┤
+│ powershell │ git branch │ 3 changed ⋯ cpu ⋯ 🔧 ⧉ UTF-8 LF v… │ ← StatusBar (最下部)
+└──────────────────────────────────────────────────────────────┘
+                                              ↑      ↑
+                                     Wrench   Layers
+                                  (Auto-repair) (Ghost diff)
+```
 
-1. **Ctrl+Shift+P** でコマンドパレット開く
-2. `compare` と入力
-3. 「**Compare Branch...**」が View カテゴリに現れる → 選択
-4. プロンプトが出る:
-   - タイトル: `Compare <現在のブランチ> against branch`
-   - プレースホルダー: 非 HEAD / 非 remote の branch 名が 8 個まで列挙 (例: `main, xxx, yyy`)
-5. `main` と入力 → Enter
-   - 現在が `refactor/tauri-react-migration` なら base = それ、head = `main`
+**キーワード対応**:
+- 🔧 = `Wrench` アイコン (レンチ) = Auto-repair 用
+- ⧉ = `Layers` アイコン (四角が重なった絵) = **Ghost diff パネル起動**
+- ♫ = 音符マーク = **Orchestra ダイアログ起動**
 
-**✅ 期待**:
-- toast `Branch comparison started` + `<base> ← main` 表示
-
-**❌ 失敗パターン**:
-- toast `base and head must differ` → 現在ブランチ名を入れたので `main` 以外にする
-- toast `Compare Branch: Open a folder first` → プロジェクト未選択
-- toast `Branch comparison failed` → Rust 側エラー。`pnpm tauri dev` ログ確認
-
-### A-2. Ghost Diff Panel で確認
-
-1. StatusBar (画面下) の **Layers ボタン** (⧉ アイコン) をクリック
-2. panel pop
-
-**✅ 期待**:
-- レイヤーエントリ 1 つ
-- sky blue のドット (tint `#89dceb`)
-- `branch` ラベル
-- **`read-only` バッジ** (sky 色背景、sky ボーダー)
-- caption: `refactor/tauri-react-migration ← main` (矢印付き)
-- `N files · M hunks` 表示
-- `✓` (Check icon) で完了マーク — spinner ではなく静的
-
-**❌ 失敗パターン**:
-- spinner 回ってる → is_complete=true が効いてない
-- `read-only` badge ない → CSS class 合ってない
-- caption に branch 名しか出ない → layerCaption 関数のバグ
-
-### A-3. Editor で inline ghost 確認
-
-1. main と refactor ブランチで差があるファイルを開く (例: `src-tauri/src/lib.rs` or `src-tauri/src/ghostdiff/mod.rs`)
-2. 画面右の Editor で差分位置にスクロール
-
-**✅ 期待**:
-- add 行 → 薄い sky 色の phantom 行
-- delete 行 → 取消線 + 赤背景
-- EditorBreadcrumb に `Sparkles` アイコン + layer 数バッジ
-
-**❌ 失敗パターン**:
-- 何も表示されない → `get_ghost_layer_file` が branch comparison でファイル返してない
-- 色が mauve / peach → tint が auto-repair / orchestra のまま
-
-### A-4. Read-only 性の確認 (最重要)
-
-ghost が見える行にカーソルを置いて:
-
-1. **Tab** を押す
-   - **✅ 期待**: **何も起きない**。toast 出ない、ghost もそのまま。Monaco の default (indent 挿入) も発動しない (`aetherGhostHunkAtCursor = false` で context key preempt されない → Monaco default)
-   - **❌ NG**: toast `Ghost hunk applied` が出る → read-only reject が効いてない
-2. **Shift+Tab** を押す
-   - **✅ 期待**: 何も起きない (layersNow が空になるため)
-   - **❌ NG**: toast `All ghost hunks applied` 等出る
-3. **Esc** を押す
-   - **✅ 期待**: 現ファイルの ghost 消える、toast `Ghost layers dismissed`、他ファイルの ghost は残る
-   - **❌ NG**: toast エラー
-
-### A-5. 不正入力の検証
-
-1. Ctrl+Shift+P → Compare Branch... → 現ブランチと **同じ名前** 入力
-   - **✅ 期待**: toast `Compare Branch: Base and head must differ`
-2. Ctrl+Shift+P → Compare Branch... → **存在しないブランチ名** (例: `zzz-no-such`) 入力
-   - **✅ 期待**: toast `Branch comparison failed: git diff ... failed: ...`
+StatusBar は画面の**最下部**、横幅いっぱい。アイコンは StatusBar の**右側**に並んでる。
 
 ---
 
-## B. 3C-1c Hotkey accept/reject + apply (所要 5 分)
+## 事前準備 (1 回だけ)
 
-### B-1. セットアップ (ghost layer 作成)
+1. タスクマネージャで `aether-terminal.exe` が既に動いてなければ、ターミナルで:
+   ```
+   cd /c/Users/owner/Aether_Terminal
+   pnpm tauri dev
+   ```
+   (今はもう動いてるはず)
 
-3C-2 の **B-3 まで終わってれば** 比較 layer がある。ただし read-only なので apply 試せない。
-したがって write-capable な **Orchestra agent** か **auto-repair** で worktree layer を作る必要がある。
+2. window が出たら、中央の「**Open Folder**」ボタンをクリック
+3. `C:\Users\owner\Aether_Terminal` を選択して開く
+4. 画面が切り替わって、左に **ファイルツリー**、中央に **ターミナル**、右に **AgentInspector** が出るはず
 
-**手抜きパターン**: 既存の worktree (`dazzling-saha-e4a1b4` worktree 等) があれば、それを ghost layer として別 IPC から push する手はあるが、現実的には Orchestra で小さな agent を起動するのが早い。
+これで準備完了。
 
-1. 右サイドバー下部の **AgentInspector** → **♫ ボタン** (Orchestra dialog)
-2. textarea に `src/App.tsx に // HELLO コメントを 1 行追加して` 等の軽いタスク
-3. `implementer` だけチェック → Start
+---
 
-または **時間かけたくない場合**: 3C-2 の A-2 で作った branch comparison で視覚的 ghost paint だけは見える (ただし accept 試せない)。
+# 🔴 A. Branch Comparison (3C-2 の新機能) — 約 5 分
 
-### B-2. Tab で accept
+## A-1. コマンドパレットから起動
 
-1. Orchestra agent が worktree でファイル編集完了まで待つ (panel で ✓ 付くまで)
-2. EditorPanel で **そのファイル**を開く (panel の file 名クリック or 自分で開く)
-3. ghost の add 行 (薄緑) 行にカーソル置く
-4. **Tab** 押す
+**手順**:
+
+1. **`Ctrl+Shift+P`** を押す
+2. 画面中央に暗い角丸の**パレット** (Command パネル) が上から降りてくる
+3. そこに `compare` と入力
+4. **"Compare Branch..."** という項目が現れる (View カテゴリ、GitBranch アイコン付き)
+5. 矢印キーで選択して Enter、または直接クリック
+
+**ここで出るはずの画面**: パレットが消えて、別のプロンプト (入力ボックス) が中央に現れる。
+
+プロンプトには:
+- タイトル: `Compare refactor/tauri-react-migration against branch`
+  (「refactor/…」部分は**現在の git ブランチ名**)
+- 入力欄 + プレースホルダーテキスト: `main, xxx, yyy` (ローカルブランチ名が最大 8 個並ぶ)
+
+**✅ OK の条件**:
+- プロンプトが出る
+- タイトルに現在のブランチ名が正しく入る
+- プレースホルダーに `main` が含まれる (このリポには main ブランチがある前提)
+
+**❌ NG**:
+- パレットに `Compare Branch...` が出てこない → command palette 登録漏れ
+- プロンプト出た直後に toast `Compare Branch: Open a folder first` → プロジェクト未選択 (事前準備やり直し)
+
+---
+
+## A-2. `main` と入力して実行
+
+**手順**:
+
+1. プロンプトの入力欄に `main` とタイプ
+2. Enter
+
+**ここで出るはずの画面**:
+- プロンプトが消える
+- 画面**右上または右下**に緑系の **toast 通知**:
+  > **Branch comparison started**
+  > `refactor/tauri-react-migration ← main`
+- 約 1 秒で自動消滅
+
+**✅ OK の条件**: 上記 toast が緑で出て消える
+
+**❌ NG**:
+- 赤い toast `Compare Branch: Base and head must differ` → `main` 以外のブランチ名を入れた可能性、または現在が既に main ブランチ。別名を試す
+- 赤い toast `Branch comparison failed: ...` → Rust 側エラー。このときは `pnpm tauri dev` を動かしてるターミナルにエラーログが出てるので、そこを確認して報告
+
+---
+
+## A-3. Ghost Diff Panel で登録確認
+
+**どこにあるか**: StatusBar (画面の**最下部**) の**右側**に並んでるアイコン群。
+
+StatusBar 右側を左から右に見ると:
+```
+cpu? │ 🔧Wrench │ ⧉Layers │ UTF-8 │ LF │ Aether v0.1.0
+```
+
+**⧉ (四角が 2 枚重なった絵) がターゲット**。🔧 Wrench の**右隣**にある。
+
+**手順**:
+
+1. StatusBar の右側、⧉ (Layers) アイコンをクリック
+2. そのボタンの**真上**に小さな popover パネルが出る
+
+**ここで出るはずの画面**:
+
+```
+┌─────────────────────────────────────────┐
+│  ⧉ Ghost diff            1 layer        │
+├─────────────────────────────────────────┤
+│ › ● branch [read-only] refactor/… ← main│
+│     N files · M hunks              ✓  ×│
+└─────────────────────────────────────────┘
+```
+
+行の中身:
+- 先頭 `›` — chevron (展開用)
+- `●` — **sky blue (薄い水色) のドット** (branch comparison の tint)
+- `branch` — role label テキスト
+- `[read-only]` — **sky 色背景 + sky 枠の小さいバッジ** ← これが新機能の目印
+- `refactor/tauri-react-migration ← main` — caption (矢印つき)
+- `N files · M hunks` — 件数
+- `✓` 緑のチェックマーク (spinner じゃない、静止)
+- `×` dismiss ボタン
+
+**✅ OK の条件**:
+- layer が 1 行見える
+- sky blue のドット
+- **`read-only` バッジが確実に見える**
+- caption に矢印 `←` が出る
+- spinner ではなく緑の ✓ が出る
+
+**❌ NG**:
+- spinner が回ってる → `is_complete = true` が効いてない
+- ドットが紫 (mauve) や橙 (peach) → tint が別のものになってる
+- `read-only` バッジが無い → CSS 当たってない、または conditional rendering バグ
+- caption に branch 名 1 つしか出ない (矢印なし) → `layerCaption` 関数のバグ
+
+---
+
+## A-4. Editor で ghost paint 確認 (差分が実際に描画されるか)
+
+**手順**:
+
+1. 左サイドバー (ファイルツリー) から差分がありそうなファイルを探す
+   - `CLAUDE.md` (ブランチ間で内容が結構違う)
+   - `src-tauri/src/lib.rs` など
+2. ファイル名をクリック → 中央のターミナルの代わりに **エディタ (Monaco) が開く**
+3. エディタ画面で上下にスクロール
+
+**ここで出るはずの画面**:
+- 行番号の左に `+` や `-` 的な gutter マーク
+- 追加行: 背景が**薄い sky blue** (半透明)、行頭に `+` 的な色変化
+- 削除行: **取消線** + 赤系の背景 (半透明)
+- 変更混在の hunk は gutter にだけマーク
+
+**Editor 上部 (breadcrumb)**:
+- ファイル名の近くに **黄色い Sparkles (星) アイコン** + 数字バッジ (layer 数)
+
+**✅ OK の条件**:
+- ghost paint が見える (何か半透明の行が出ている)
+- breadcrumb のバッジが出る
+
+**❌ NG**:
+- 何も色が付かない → `get_ghost_layer_file` が branch comparison で file delta 返せてない
+- 色が緑系 (mauve) → tint 貫通してない
+- ghost paint 位置がおかしい → hunk parser バグ
+
+---
+
+## A-5. ⭐ Read-only の確認 (一番大事)
+
+ghost paint が見えてる行にカーソル置いた状態で:
+
+**A-5-a. Tab を押す**
+- **✅ 期待**: **何も起きない**。toast 出ない、ghost paint もそのまま。Monaco の default Tab (indent 挿入) も**発動しない** (context key が false のため)
+- **❌ NG**: toast `Ghost hunk applied` が出る → read-only reject が効いてない (backend の `is_read_only` チェック壊れ)
+
+**A-5-b. Shift+Tab を押す**
+- **✅ 期待**: 何も起きない
+- **❌ NG**: toast `All ghost hunks applied` が出る or エラー toast
+
+**A-5-c. Esc を押す**
+- **✅ 期待**:
+  - toast `Ghost layers dismissed`
+  - 当該ファイルの ghost paint が消える
+  - ⧉ Layers パネルを再度開くと、layer **そのものは残ってる** (他ファイル touch してる可能性あるので)。ただしこのファイルは file list から除外される (panel の chevron 展開で確認可能)
+
+- **❌ NG**: エラー toast / ghost paint が残ったまま
+
+---
+
+## A-6. エラー系の確認 (念のため)
+
+1. **Ctrl+Shift+P** → `Compare Branch...` 選択
+2. プロンプトに**現在と同じブランチ名**を入力 (例: `refactor/tauri-react-migration`) → Enter
+
+**✅ 期待**: 赤い toast `Compare Branch: Base and head must differ`
+
+---
+
+3. もう一度 `Compare Branch...` → **存在しないブランチ名** (例: `zzz-no-such-branch`) → Enter
+
+**✅ 期待**: 赤い toast `Branch comparison failed: git diff ... failed: ...`
+
+---
+
+# 🔴 B. Tab/Shift+Tab/Esc で hunk 操作 (3C-1c) — 約 5 分
+
+**前提**: write-capable (accept 可能) な ghost layer が必要。A の branch comparison は read-only なので別の layer を作る必要あり。
+
+## B-1. Orchestra で agent 起動 (セットアップ)
+
+**どこにあるか**: 画面の**右パネル (AgentInspector)** の一番上、タブバーの**右端**。
+
+タブバーには左から順に「sessions」「parallel」「conductor」「diffs」タブのアイコン、その右端に以下のボタン:
+```
+ $0.00  📋 ♫ +
+```
+
+- `$0.00` 総コスト
+- 📋 ClipboardCopy (session 情報 copy)
+- **♫ 音符マーク — これが Orchestra 起動ボタン**
+- `+` Plus (通常の session 追加)
+
+**手順**:
+
+1. 右パネル上部、♫ ボタンをクリック
+2. **OrchestraDialog** (大きめのダイアログ) が出る:
+   - 上部に **textarea** (task 入力)
+   - 下に 4 つの **役割チェックボックス** (implementer / tester / reviewer / researcher など)
+   - 下に Start ボタン
+3. textarea に軽いタスクを貼る:
+   ```
+   CLAUDE.md に "VERIFY-MARK" という単語を 1 行追加して
+   ```
+4. `implementer` だけにチェック入ってる状態にする (他は外す)
+5. **Start** ボタン押す
+
+**ここで起きること**:
+- ダイアログ閉じる
+- 右パネル (AgentInspector) の sessions タブに **新しいセッションカード**が追加される
+- カードには spinner が回ってて、進捗が動く
+- agent は git worktree を新規作成して、そこで CLAUDE.md 編集する
+
+**待ち時間**: 30 秒 〜 2 分 (Claude CLI 次第)
+
+**完了サイン**:
+- カードの spinner が静止チェックマーク (✓) に変わる
+- StatusBar の ⧉ Layers バッジに数字が出る
+
+---
+
+## B-2. Editor でファイル開いて Tab accept
+
+**手順**:
+
+1. 左サイドバーのファイルツリーで `CLAUDE.md` をクリック → Editor が開く
+2. 画面を見渡して、**sky blue じゃなく mauve (紫) の tint** で ghost 行が出ているはず (Orchestra default tint)
+3. ghost add 行 (薄紫の phantom 行) にカーソル合わせる
+4. **Tab** を押す
 
 **✅ 期待**:
-- toast `Ghost hunk applied`
-- 該当 hunk が **実体化** (ghost paint 消える、通常テキストとして残る)
-- breadcrumb に dot (modified マーク)
-- カーソル位置が **その行付近に留まる** (1,1 に飛ばない) ← M1 fix 確認
+- toast 緑 `Ghost hunk applied`
+- その hunk の ghost paint が消える
+- 代わりに**通常のテキスト**としてその行が実体化される
+- Editor breadcrumb に **modified dot** (未保存マーク) が付く
+- カーソルが ghost 行付近にある (1,1 にジャンプしない) ← M1 fix
 
-**❌ 失敗パターン**:
-- toast `Apply failed: ...` → Rust 側 apply error、dev ログ確認
-- カーソルが (1,1) に飛ぶ → M1 fix 壊れ
-- ghost paint 残る → registry.remove_hunk が発火してない
+**❌ NG**:
+- `Apply failed: ...` → Rust側のapply エラー
+- カーソルが (1,1) に飛ぶ → M1 修正が効いてない
+- ghost paint 残る → registry.remove_hunk が動いてない
 
-### B-3. Tab 連打で 2 回目無視 (H1 fix 確認)
+---
 
-1. 同じファイルに 2 個以上の hunk がある状態を作る (Orchestra で複数箇所編集指示)
-2. 1 個目の hunk 行にカーソル → **Tab を 2 連打**
+## B-3. Tab 連打テスト (H1 fix 確認)
+
+**前提**: 同じファイルに 2 個以上の hunk が欲しい。B-1 のタスクを少し変えて「CLAUDE.md の先頭と末尾に VERIFY-MARK を追加して」にして複数 hunk が出来るようにしても良い。
+
+**手順**:
+
+1. hunk が 2 個以上ある状態で、1 個目の hunk 行にカーソル
+2. **Tab を高速で 2 連打** (キーを 2 回連続プレス)
 
 **✅ 期待**:
-- 最初の Tab で 1 個目 accept + toast
-- **2 回目の Tab は無視される** (2 個目が誤 accept されない)
-- その後、2 個目 hunk 行に移動 → Tab 押せば正常 accept
+- 1 回目の Tab で 1 個目 accept、toast 1 回
+- 2 回目の Tab は**何も起きない** (in-flight lock で無視)
+- 2 個目の hunk は残ったまま
+- カーソルを 2 個目 hunk 行に移動して Tab を押すと、通常通り accept される
 
-**❌ 失敗パターン**:
-- Tab 連打で 2 個目も巻き込んで accept される → inFlightRef 壊れ
+**❌ NG**:
+- 2 個目まで巻き込んで accept され、toast が 2 回出る → in-flight lock 壊れ
 
-### B-4. Shift+Tab で全 accept
+---
 
-1. 複数 hunk ある状態で **Shift+Tab**
+## B-4. Shift+Tab で全 accept
+
+**手順**:
+
+1. まだ hunk 残ってる状態で **Shift+Tab**
 
 **✅ 期待**:
 - toast `All ghost hunks applied`
-- ファイル内全 hunk が実体化、ghost paint すべて消える
+- ファイル内の ghost paint すべて消える
+- 全 hunk が実体化
 
-### B-5. Esc で dismiss
+**❌ NG**:
+- toast `Apply-all failed` → 全 layer apply 失敗時の error toast (#M2 fix 動作確認)
 
-1. ghost 残ってる状態で Editor focus 中に **Esc**
+---
+
+## B-5. Esc で現ファイル dismiss
+
+**手順**:
+
+1. ghost paint が見える状態で (別ファイル開いても OK)、Editor focus 中に **Esc**
 
 **✅ 期待**:
 - toast `Ghost layers dismissed`
-- 現ファイルの ghost 消える
-- panel で **layer 自体は残る** (他ファイルあれば)
-- もしその layer が 1 ファイルしかない場合 → layer の file_paths から該当除外 (hunks空)
-
-### B-6. Ctrl+S で保存
-
-1. Tab で accept した後、**Ctrl+S**
-
-**✅ 期待**:
-- toast `Saved <filename>`
-- ディスクに反映
-- breadcrumb の dot 消える
+- 当該ファイルの ghost paint が消える
+- `⧉ Layers` パネルを開いても、同じ layer の**他ファイル** (あれば) の ghost は残ってる
 
 ---
 
-## C. 3C-1d Live mode toggle (所要 3 分)
+## B-6. Ctrl+S 保存
 
-### C-1. Settings UI
+**手順**:
 
-1. **Ctrl+,** (Settings 開く)
-2. "**Ghost Diff Overlay**" セクションがある
-3. toggle: "Live mode (paint in-progress layers)"
-4. 説明文: "When off, ghost paint appears only after the agent run finishes..."
+1. accept 後、**Ctrl+S**
 
 **✅ 期待**:
-- default **OFF** (初回起動時)
-- toggle UI が他 toggle と同じ見た目
+- toast `Saved CLAUDE.md`
+- breadcrumb の modified dot が消える
+- ディスクにも反映される (git status で見える)
 
-### C-2. Live mode OFF の挙動
+---
 
-1. toggle OFF、Save
-2. Orchestra で agent 起動 (実行に時間かかるタスク)
-3. agent 実行中 (panel で spinner 表示):
-   - Editor でそのファイル開く
+# 🔴 C. Live mode toggle (3C-1d) — 約 3 分
+
+## C-1. Settings 画面を開く
+
+**手順**:
+
+1. **Ctrl+,** (Ctrl + カンマ)
+2. 画面中央にモーダル (Settings パネル) が出る
+
+**ここで出るはずの画面**:
+
+Settings パネルは縦長で、セクションが並んでる:
+- Appearance (theme / font)
+- Terminal (shell / cursor)
+- **Ghost Diff Overlay** ← 新セクション
+- Keyboard Shortcuts (読み取り専用)
+
+---
+
+## C-2. Ghost Diff Overlay セクション確認
+
+Settings パネルを下にスクロールするか、そのまま「Ghost Diff Overlay」セクションを探す。
+
+**ここで出るはずの画面**:
+
+```
+─────────────────────────────────────────
+ GHOST DIFF OVERLAY
+─────────────────────────────────────────
+ ☐ Live mode (paint in-progress layers)
+    When off, ghost paint appears only
+    after the agent run finishes. When
+    on, every fs change from the agent's
+    worktree streams into the editor as
+    it happens.
+```
+
+**✅ OK の条件**:
+- セクション見出し "GHOST DIFF OVERLAY" がある
+- チェックボックス + ラベル "Live mode (paint in-progress layers)"
+- 説明文 (小さい薄灰色) が付く
+- チェックボックスは **default OFF** (初回起動時)
+
+---
+
+## C-3. OFF のまま agent 起動 (完了まで ghost 出ない確認)
+
+**手順**:
+
+1. toggle OFF のまま Save 押して Settings 閉じる
+2. B-1 と同じ手順で Orchestra agent 起動
+3. agent 実行中 (spinner 回ってる最中) に CLAUDE.md を Editor で開く
 
 **✅ 期待**:
-- panel には layer 表示される (spinner 付き)
-- editor には **ghost paint 出ない**
+- `⧉ Layers` panel には layer 表示される (spinner 付き)
+- **Editor には ghost paint が出ない** (agent 完了まで待機)
 - agent 完了 (✓) と同時に ghost paint 出現
 
-### C-3. Live mode ON の挙動
+**❌ NG**:
+- agent 実行中から既に ghost paint 出る → liveMode フィルタ効いてない
 
-1. Settings で toggle ON、Save
-2. 新 agent 起動
-3. agent 実行中に editor 開く
+---
+
+## C-4. ON にして即座 paint 確認
+
+**手順**:
+
+1. Ctrl+, で Settings 再度開く
+2. Live mode チェックボックス **ON**
+3. Save
+4. 新しい Orchestra agent 起動
+5. すぐに Editor で対象ファイル開く
 
 **✅ 期待**:
-- panel には spinner 付き layer
-- editor に **即座に ghost paint**
-- agent 進むごとに ghost paint 動的更新
+- agent 実行中でも **ghost paint が即座に出る**
+- agent が書き進むと ghost paint も動的に更新
 
-### C-4. 永続化
+---
 
-1. Live mode ON で Save
-2. **アプリ完全再起動** (window 閉じる → 再起動)
-3. Settings 再度開く
+## C-5. 永続化確認
+
+**手順**:
+
+1. Live mode を ON にして Save 済みの状態
+2. Tauri window を**完全に閉じる**
+3. `pnpm tauri dev` を止めて、再度起動
+4. プロジェクト再度開いて、Ctrl+, で Settings
 
 **✅ 期待**:
-- toggle が ON のまま
-- `C:\Users\<user>\.aether\config.toml` を開くと `[ghost_diff]` セクションで `live_mode = true`
+- Live mode checkbox が **ON のまま**
+
+また、`C:\Users\owner\.aether\config.toml` をテキストエディタで開くと:
+```toml
+[ghost_diff]
+live_mode = true
+```
+セクションがある。
 
 ---
 
-# 🟡 優先度中 — 既存機能の回帰確認 (所要 15 分)
+# 🟡 D/E: 他の既存機能の回帰確認 (optional、時間あれば)
 
-## D. 3C-1a Ghost diff panel 基本動作
-
-- [ ] StatusBar Layers ボタンに **active count バッジ** (in-progress 数)
-- [ ] panel 開閉で UI ブレなし
-- [ ] layer の chevron で file list 展開/折り畳み
-- [ ] 各 layer の × で panel から dismiss → layer 自体が消える (worktree layer でも branch comparison でも)
-- [ ] panel 外クリックで閉じる
-- [ ] Esc で panel 閉じる
-
-## E. 3C-1b Monaco inline ghost paint 再確認
-
-C-2 で十分カバーされたので、ここでは **conflict** の UX 確認のみ:
-
-1. Orchestra agent が `src/App.tsx` 編集開始
-2. 同じ `src/App.tsx` をユーザー側でも同じ行を編集
-3. 期待:
-   - ghost hunk 非表示
-   - breadcrumb に **red `FileWarning` badge** (conflict count > 0)
-4. dirty を戻す (Ctrl+Z):
-   - ghost 復活、conflict badge → yellow Sparkles
+- **D**: `⧉` Layers panel の chevron で file list 展開 / `×` で layer dismiss / panel 外クリックで閉じる
+- **E**: Orchestra agent がファイル編集中に、同じファイルをユーザーも編集 → ghost paint 消えて breadcrumb に **red FileWarning badge** が出る (conflict)
 
 ---
 
-# 🟢 優先度低 — セットアップ重い or 既確認 (optional)
+# 🟢 F-I: さらに時間があれば (optional)
 
-## F. 3A-1 自己修復 E2E
-
-Watchdog rule 作るのが 3 分、エラー出すのに 2 分、修復待ち 30-60 秒。試したいときだけ。
-
-手順: `docs/phase3_plan.md` の 3A-1 視覚検証節を参照。
-
-## G. 3A-2 Ghost typing
-
-- `git st` 入力 → `atus` が薄灰色
-- Tab で受諾
-- AI CLI 実行中は予測消える
-
-## H. 3B-1 Orchestra role tagging / H-1c Conductor DAG
-
-- ♫ で 3 agent 起動 → role badge が各 SessionCard
-- 2 agent 同ファイル編集 → conflict badge
-- AgentInspector `Conductor` タブ → ReactFlow で role-colored node
-- session 右クリック → Handoff → role 選択 → edge 線
-
-## I. 3B-2 Ctrl+R Semantic history
-
-- Ctrl+R で HistorySearchDialog
-- 入力で debounce 検索
-- ↑↓ Enter で command を入力欄に書く
-- Failed only / This project chip
+F. Auto-repair (Watchdog rule 作ってエラーで走らせる) — セットアップ重いので後回し推奨
+G. Ghost typing — シェルで `git st` → `atus` 薄灰色 → Tab で受諾
+H. Orchestra Conductor タブ — ReactFlow DAG
+I. Ctrl+R History 検索
 
 ---
 
-# 📝 報告フォーマット
+# 📝 報告の仕方
 
-問題見つけたら以下の形式で:
+section 単位で結果ください。例:
 
 ```
-❌ B-3 Tab 連打: 2 回目で 2 個目が accept されてしまう
-   再現手順:
-     1. Orchestra で 2-hunk タスク起動、complete 待ち
-     2. 1 個目 hunk 行にカーソル
-     3. Tab を <100ms 間隔で 2 連打
-   期待: 2 回目は null 返し、何も起きない
-   実際: 2 個目 hunk も実体化、toast 2 回出る
-   備考: dev ログに ... のエラー
+A: OK
+B: B-2 で詰まった。Tab 押しても toast 出ない、ghost paint も残る。
+   pnpm tauri dev のログに "apply_ghost_hunk: layer ... is read-only" と出た
+C: OK
 ```
 
-## 完了条件
+または全部通ったら「A/B/C 全部 OK」で十分。
 
-- 🔴 A, B, C 全項目 ✅ で Phase 3C の積み残し検証クローズ
-- D, E はできれば
-- F-I は optional
+## クイックリファレンス (何がどこ)
 
-報告する粒度は「セクション単位で OK / NG」+ 問題あれば個別報告。
-
----
-
-## クイックリファレンス
-
-| やりたいこと | やり方 |
+| やりたい | どこを触る |
 |---|---|
-| コマンドパレット | Ctrl+Shift+P |
-| Settings | Ctrl+, |
-| Layer panel | StatusBar の Layers ボタン (⧉) |
-| ファイル検索 | Ctrl+P |
-| ghost accept | Tab (ghost 行にカーソル) |
-| ghost accept-all | Shift+Tab |
-| ghost dismiss | Esc (Editor focus 中) |
-| 保存 | Ctrl+S |
-| Orchestra | AgentInspector (右 sidebar) の ♫ |
-| 履歴検索 | Ctrl+R |
-| branch 比較 | Ctrl+Shift+P → Compare Branch... |
+| コマンドパレット | **Ctrl+Shift+P** |
+| Settings | **Ctrl+,** |
+| Ghost diff panel | 画面下 StatusBar 右側の **⧉ (Layers アイコン)** クリック |
+| Auto-repair panel | StatusBar 右側の **🔧 (Wrench アイコン)** クリック |
+| Orchestra 起動 | 右パネル上部タブバー右端の **♫** ボタン |
+| 通常 agent 起動 | 右パネル上部タブバー右端の **+** ボタン |
+| ファイル開く | 左サイドバー (ファイルツリー) でクリック |
+| 履歴検索 | **Ctrl+R** |
+| Branch 比較 | **Ctrl+Shift+P** → Compare Branch... |
+| ghost accept | Editor 内 hunk 行にカーソル → **Tab** |
+| ghost accept 全部 | Editor focus → **Shift+Tab** |
+| ghost dismiss | Editor focus → **Esc** |
+| 保存 | **Ctrl+S** |
