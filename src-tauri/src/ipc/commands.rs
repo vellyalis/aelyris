@@ -5,6 +5,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::pty::{PtyManager, ShellType};
 use crate::pty::buffer::{OutputBuffer, strip_ansi};
+use crate::snapshot::{SnapshotStore, SnapshotTrigger, TerminalSnapshot};
 use crate::term::NativeTerminalRegistry;
 use crate::watchdog::auto_repair::AutoRepairManager;
 use crate::watchdog::{pane_watcher, AutoRepairConfig, ErrorContext};
@@ -221,7 +222,11 @@ pub fn spawn_terminal(
     Ok(id)
 }
 
-/// Write input to a terminal
+/// Write input to a terminal. On Enter (`\r` in the input payload) we also
+/// capture a `TerminalSnapshot` into the session-scoped ring buffer — this is
+/// the time-travel capture point (Phase 3C-3a). The snapshot reflects the
+/// grid *as it was when the user submitted the command*, before the shell
+/// produces output for it.
 #[tauri::command]
 pub fn write_terminal(
     app: AppHandle,
@@ -229,7 +234,44 @@ pub fn write_terminal(
     data: String,
 ) -> Result<(), String> {
     let pty_manager = app.state::<PtyManager>();
-    pty_manager.write(&id, data.as_bytes())
+    pty_manager.write(&id, data.as_bytes())?;
+
+    if data.as_bytes().contains(&b'\r') {
+        capture_user_submit_snapshot(&app, &id);
+    }
+    Ok(())
+}
+
+/// Grab the current grid from the native engine and push it into the snapshot
+/// store, tagged as `UserSubmitted`. Silently no-ops when managed state is
+/// missing (tests / early boot) or the engine has no session for `id` — the
+/// PTY write itself has already succeeded at this point.
+fn capture_user_submit_snapshot(app: &AppHandle, terminal_id: &str) {
+    let Some(native_state) = app.try_state::<Arc<NativeTerminalRegistry>>() else {
+        return;
+    };
+    let Some(store_state) = app.try_state::<Arc<SnapshotStore>>() else {
+        return;
+    };
+    let Some(grid) = native_state.inner().snapshot(terminal_id) else {
+        return;
+    };
+    let captured_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let snap = TerminalSnapshot {
+        id: crate::snapshot::SnapshotId::new(),
+        session_id: terminal_id.to_string(),
+        captured_at,
+        trigger: SnapshotTrigger::UserSubmitted,
+        grid,
+    };
+    let id = store_state.inner().push(snap);
+    let _ = app.emit(
+        &format!("snapshot:captured-{}", terminal_id),
+        serde_json::json!({ "snapshotId": id, "sessionId": terminal_id }),
+    );
 }
 
 /// Resize a terminal
@@ -260,6 +302,9 @@ pub fn close_terminal(app: AppHandle, id: String) -> Result<(), String> {
     app.state::<OutputBufferRegistry>().remove(&id);
     app.state::<crate::pty::PaneRegistry>().remove(&id);
     app.state::<Arc<NativeTerminalRegistry>>().remove(&id);
+    if let Some(store) = app.try_state::<Arc<SnapshotStore>>() {
+        store.inner().remove_session(&id);
+    }
     Ok(())
 }
 

@@ -8,6 +8,7 @@ mod ipc;
 pub mod lsp;
 pub mod pty;
 pub mod session;
+pub mod snapshot;
 pub mod term;
 pub mod suggest;
 mod watcher;
@@ -52,6 +53,7 @@ pub fn run() {
             lsp::LspManager::new(tx)
         })
         .manage(std::sync::Arc::new(term::NativeTerminalRegistry::new()))
+        .manage(std::sync::Arc::new(snapshot::SnapshotStore::new()))
         .manage(std::sync::Arc::new(std::sync::Mutex::new(AutoRepairManager::new())))
         .manage(std::sync::Arc::new(std::sync::Mutex::new(
             watchdog::load_watchdog_rules().auto_repair,
@@ -369,6 +371,10 @@ pub fn run() {
             ipc::apply_ghost_hunk,
             ipc::apply_ghost_file,
             ipc::start_branch_comparison,
+            // Time-travel snapshots (Phase 3C-3a)
+            ipc::list_snapshots,
+            ipc::get_snapshot,
+            ipc::mark_snapshot,
             // IME positioning
             ipc::set_ime_position,
         ])

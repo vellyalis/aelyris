@@ -474,11 +474,15 @@ pub enum LayerSource {
 
 ### サブタスク構成
 
-#### 3C-3a. Snapshot capture + store (4-5 日)
-- `src-tauri/src/snapshot/` 新規 — types + in-memory store + PTY reader hook
-- snapshot_id 払い出し + 上限管理
-- IPC: `list_snapshots(session_id)` / `get_snapshot(snapshot_id)`
-- tests: snapshot round-trip / upper bound eviction
+#### 3C-3a. Snapshot capture + store ✅ 完了 (2026-04-18)
+- ✅ `src-tauri/src/snapshot/` 新規 — `types.rs` (SnapshotId / SnapshotTrigger / TerminalSnapshot / SnapshotSummary) + `store.rs` (per-session `VecDeque` ring buffer, cap 100, O(n) id lookup)
+- ✅ Capture hook: `ipc/commands.rs` の `write_terminal` に追加 — 入力に `\r` が含まれる瞬間に `NativeTerminalRegistry::snapshot()` を呼んで `UserSubmitted` トリガで push
+- ✅ `close_terminal` で `SnapshotStore::remove_session` 呼び出し → session cleanup
+- ✅ IPC: `list_snapshots(sessionId)` / `get_snapshot(snapshotId)` / `mark_snapshot({sessionId, label?})` (3種) を `ipc/snapshot_commands.rs` で実装、`lib.rs` invoke_handler に登録
+- ✅ Rust tests: 26 本 (types + store + serde round-trip) — `cargo test --lib` 269 本グリーン
+- ✅ `scripts/verify-3c3.mjs` 雛形 (CDP 経由) — spawn → Enter → list/get → mark → eviction (130→≤100) → close の 6 ステップ
+
+**Note**: プロンプト検出は「PTY write に `\r` が入った瞬間」= 事前の Enter heuristic。OSC 133 は 3C-3b の拡張へ先送り。
 
 #### 3C-3b. LayerSource::Snapshot + Rust registry 統合 (2-3 日)
 - `layer.rs` に Snapshot variant 追加 — 既存 match 全箇所対応
