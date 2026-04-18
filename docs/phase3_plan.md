@@ -383,6 +383,145 @@
 
 ---
 
+## 3C-3. タイムトラベルデバッグ (ideas.md A 後半)
+
+### 思想 (再確定、2026-04-18)
+
+- **核は「過去のターミナル画面に戻れる」**。コマンド実行前/後の state を復元して、「さっき何が起きたか」を**再現**する
+- 既存 LayerRegistry / GhostPainter を **snapshot 軸で再利用**。3C-2 の read-only 思想をそのまま継承
+- plan 初版の「月単位」見積は過大評価。**MVP は 2-3 週** — snapshot capture + timeline slider + 読み取り専用 replay だけに絞る
+
+### なぜ差別化になるか
+
+- 既存 terminal: scrollback は text のみで cursor / selection / ANSI state が失われる
+- タイムトラベル: **grid 全体 (cells + cursor + flags + scroll offset) を命令単位で保存**、任意時点で画面丸ごと再生可能
+- 「10 コマンド前に何が出てたか」「エラー直前の出力状態」を切替なしで見せる
+- 使い所: AI agent 出力のデバッグ、長時間シェル作業の振り返り、過去エラーへの遡及
+
+### MVP スコープ (2-3 週)
+
+- **対象**: 通常 PTY セッション (AI CLI は除外 — interactive session は別 snapshot 戦略)
+- **粒度**: プロンプト検出 or コマンド実行ごとに 1 snapshot (scrollback 丸ごとじゃない)
+- **UI**: タイムラインスライダー (timeline slider)、クリックで当該時点の grid を read-only で現 terminal 領域に重ね描き
+- **read-only**: 過去画面に戻っても編集不可、Esc で現在に戻る (3C-2 と同じ思想)
+- **保存先**: in-memory のみ (アプリ再起動で消える)。永続化は拡張 3C-3b で
+
+### 非スコープ (後回し)
+
+- 3C-3b: **permanent 保存** (SQLite snapshot 永続化、アプリ再起動で復元)
+- 3C-3c: **replay モード** (タイムライン自動再生で command 履歴を動画的に見る)
+- 3C-3d: AI CLI セッション対応 (interactive_session の state snapshot は別ドメイン)
+- 3C-3e: **edit from past** (過去時点から分岐して "あの時こうしてれば" を試す) — 3C-3 の最終形だが、ターミナル状態の fork は別モデル必要
+
+### 設計方針
+
+#### Snapshot data model
+
+```rust
+// 新設 src-tauri/src/ghostdiff/snapshot.rs
+pub struct TerminalSnapshot {
+    pub id: SnapshotId,         // uuid
+    pub session_id: String,     // PTY session
+    pub captured_at: u64,       // unix seconds
+    pub trigger: SnapshotTrigger, // PromptDetected { line } | UserMarked | CommandExit { code }
+    pub grid: GridSnapshot,     // Vec<Vec<Cell>> + cursor + viewport
+    pub scrollback_tail: Vec<GridLine>, // 直近 N 行、full scrollback は保存しない
+}
+
+pub struct GridSnapshot {
+    pub cells: Vec<Vec<Cell>>,  // current viewport
+    pub cursor: (u16, u16),
+    pub cols: u16,
+    pub rows: u16,
+}
+```
+
+- **Cell** は既存 `alacritty_terminal::Cell` を shallow copy (flags + fg/bg + char)
+- **圧縮**: 連続 snapshot で同一 cell が多いので diff compression は拡張で
+- サイズ目安: 80x24 grid × 4 bytes/cell ≈ 8 KB/snapshot、100 snapshots で 800 KB (MVP は in-memory OK)
+
+#### LayerRegistry への統合
+
+```rust
+pub enum LayerSource {
+    Worktree { ... },         // 3C-1
+    BranchComparison { ... }, // 3C-2
+    Snapshot {                // 3C-3 NEW
+        session_id: String,
+        snapshot_id: SnapshotId,
+        captured_at: u64,
+    },
+}
+```
+
+- `Layer::is_read_only()` は Snapshot も true 返す
+- `LayerContent` は既存 Diff variant を流用しない — snapshot は terminal grid state なので新 variant `LayerContent::TerminalState { grid: GridSnapshot }` 追加
+- GhostPainter は ghost **行** を描くだけ、terminal grid は別 renderer 必要
+
+#### Snapshot capture タイミング
+
+- PTY reader に **プロンプト検出**ロジック追加 (ANSI OSC 7 or heuristic)
+- 検出時、現在の grid 全体を snapshot_store に push
+- 数上限 (例: session あたり 100 snapshots) で古いものから削除
+- CPU/memory 影響: 100 snapshots * 8KB = 800KB、capture は O(cols*rows) で sub-ms
+
+#### UI (新規)
+
+- **TimelineBar** コンポーネント (terminal 上部 or 下部に pinned)
+- 横長バー、snapshot 数に比例して目盛り、hover で preview
+- クリック → `Layer { source: Snapshot {...} }` を `LayerRegistry` に register + terminal viewport を snapshot grid で上書き描画
+- Esc で戻る (既存 dismissFileLayers 流用)
+
+### サブタスク構成
+
+#### 3C-3a. Snapshot capture + store (4-5 日)
+- `src-tauri/src/snapshot/` 新規 — types + in-memory store + PTY reader hook
+- snapshot_id 払い出し + 上限管理
+- IPC: `list_snapshots(session_id)` / `get_snapshot(snapshot_id)`
+- tests: snapshot round-trip / upper bound eviction
+
+#### 3C-3b. LayerSource::Snapshot + Rust registry 統合 (2-3 日)
+- `layer.rs` に Snapshot variant 追加 — 既存 match 全箇所対応
+- `LayerContent::TerminalState { grid }` variant
+- IPC: `start_snapshot_overlay(snapshot_id) -> LayerSummary`
+- 全 apply_* IPC は既存 is_read_only で自動 reject
+
+#### 3C-3c. Frontend TimelineBar (3-4 日)
+- `src/features/timeline/TimelineBar.tsx` 新規
+- `useSnapshots(sessionId)` hook
+- terminal area 上部 pinned、クリックで overlay 起動
+- 既存 terminal renderer に「過去 grid を上書き描く」hook 追加
+
+#### 3C-3d. E2E verify (1 日)
+- `scripts/verify-3c3.mjs` — snapshot capture → list → start_overlay → dismiss の一連を CDP attach で自動検証
+- UI 表面 (TimelineBar の DOM existence) も check
+
+### 見積
+
+| sub | 目安 |
+|---|---|
+| 3C-3a | 4-5 日 |
+| 3C-3b | 2-3 日 |
+| 3C-3c | 3-4 日 |
+| 3C-3d | 1 日 |
+| **合計** | **2-3 週** |
+
+### リスク
+
+- **プロンプト検出精度**: PowerShell / bash / CMD で挙動バラつく。最初は Enter 押下 + PTY quiet window で近似、精度出なければ OSC 133 (最新シェル) 対応
+- **grid snapshot のメモリ圧**: 100 snapshots で 800KB、長時間セッションで増える。上限 + eviction で制御
+- **terminal 描画への侵襲**: 既存 xterm 風 renderer に snapshot overlay を挿入する箇所の設計が微妙。grid を一時差し替えるか、別レイヤで描くか決める必要あり
+- **AI CLI セッションは除外**: interactive session の state snapshot は別問題 (prompt 検出できない)、MVP 後に判断
+
+### 完了条件 (sub ごと)
+
+- Rust tests / TS tests グリーン
+- `scripts/verify-3c3.mjs` で全 check 通過
+- plan + memory 更新
+- commit (sub ごと 1 commit)
+
+---
+
 # Phase 3D — 実験枠
 
 **都度判断**:

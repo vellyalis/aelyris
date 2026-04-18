@@ -41,3 +41,9 @@ src-tauri/target/
 # Playwright
 test-results/
 playwright-report/
+.playwright-mcp/
+
+# Claude Code runtime state (local to each developer)
+.claude/worktrees/
+.claude/scheduled_tasks.lock
+.claude/settings.local.json
