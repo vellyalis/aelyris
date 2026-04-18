@@ -48,6 +48,7 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
   const themeId = useAppStore((s) => s.themeId);
   const markUnsaved = useAppStore((s) => s.markUnsaved);
   const markSaved = useAppStore((s) => s.markSaved);
+  const ghostDiffLiveMode = useAppStore((s) => s.ghostDiffLiveMode);
   const palette = getPalette(themeId);
   const light = isLightTheme(themeId);
   const editorColors = monacoThemeColors(palette, light);
@@ -108,6 +109,7 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
     filePath,
     projectPath,
     subscribeToModelChanges,
+    liveMode: ghostDiffLiveMode,
   });
   const {
     conflictCount: ghostConflictCount,

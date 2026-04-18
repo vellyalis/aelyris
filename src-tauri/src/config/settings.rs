@@ -6,6 +6,23 @@ pub struct AppConfig {
     pub terminal: TerminalConfig,
     #[serde(default)]
     pub window: WindowConfig,
+    #[serde(default)]
+    pub ghost_diff: GhostDiffConfig,
+}
+
+/// Controls for the Ghost Diff Overlay (Phase 3C).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GhostDiffConfig {
+    /// When true, inline ghost paint appears for layers still in progress.
+    /// Default: false — only agent-completed layers paint (plan 3C-1d).
+    #[serde(default)]
+    pub live_mode: bool,
+}
+
+impl Default for GhostDiffConfig {
+    fn default() -> Self {
+        Self { live_mode: false }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -98,6 +115,7 @@ impl Default for AppConfig {
                 cursor_blink: true,
             },
             window: WindowConfig::default(),
+            ghost_diff: GhostDiffConfig::default(),
         }
     }
 }
@@ -143,3 +161,47 @@ fn default_window_height() -> u32 { 700 }
 fn default_shell() -> String { "pwsh.exe".to_string() }
 fn default_scrollback() -> u32 { 10000 }
 fn default_cursor_style() -> String { "bar".to_string() }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_ghost_diff_is_completed_only() {
+        let cfg = AppConfig::default();
+        assert!(!cfg.ghost_diff.live_mode);
+    }
+
+    #[test]
+    fn ghost_diff_missing_from_toml_falls_back_to_default() {
+        // Simulate an older config.toml that predates Phase 3C-1d.
+        let legacy = r#"
+[appearance]
+theme = "aether-dark"
+ui_font_family = "Inter"
+terminal_font_family = "Cascadia Code"
+font_size = 14
+line_height = 1.4
+ligatures = true
+window_effect = "mica"
+opacity = 0.95
+
+[terminal]
+default_shell = "pwsh.exe"
+scrollback = 10000
+cursor_style = "bar"
+cursor_blink = true
+"#;
+        let cfg: AppConfig = toml::from_str(legacy).expect("parse legacy config");
+        assert!(!cfg.ghost_diff.live_mode);
+    }
+
+    #[test]
+    fn ghost_diff_live_mode_round_trips() {
+        let mut cfg = AppConfig::default();
+        cfg.ghost_diff.live_mode = true;
+        let serialized = toml::to_string(&cfg).expect("serialize");
+        let back: AppConfig = toml::from_str(&serialized).expect("deserialize");
+        assert!(back.ghost_diff.live_mode);
+    }
+}

@@ -86,6 +86,9 @@ function makeLayer(
   filePaths: string[],
   overrides: Partial<LayerSummary> = {},
 ): LayerSummary {
+  // Default `isComplete: true` so paint tests exercise the ghost pass
+  // without needing liveMode. Incomplete layers are covered explicitly by
+  // the live-mode tests.
   return {
     id,
     source: {
@@ -95,7 +98,7 @@ function makeLayer(
       repoPath: "/tmp/repo",
     },
     tint: { roleColor: "#cba6f7", roleLabel: "impl" },
-    isComplete: false,
+    isComplete: true,
     createdAt: 0,
     fileCount: filePaths.length,
     hunkCount: filePaths.length,
@@ -534,6 +537,65 @@ describe("useGhostPaintForFile (integration)", () => {
     await waitFor(() => expect(result.current.layerCount).toBe(2));
     const count = await act(() => result.current.dismissFileLayers());
     expect(count).toBe(1);
+  });
+
+  it("skips in-progress layers by default (live mode off)", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "list_ghost_layers") {
+        return Promise.resolve([
+          makeLayer("l1", ["src/foo.ts"], { isComplete: false }),
+        ]);
+      }
+      if (cmd === "get_ghost_layer_file") {
+        return Promise.resolve(makeDelta("src/foo.ts"));
+      }
+      return Promise.reject(new Error(`unexpected ${cmd}`));
+    });
+
+    const fake = makeFakeEditor();
+    const { result } = renderHook(() =>
+      useGhostPaintForFile({
+        editor: fake.editor,
+        monaco: fake.monaco,
+        filePath: "/repo/src/foo.ts",
+        projectPath: "/repo",
+        // liveMode omitted → defaults to false
+      }),
+    );
+
+    // Wait long enough for any paint pass. layerCount must stay 0.
+    await waitFor(() => {
+      expect(result.current.layerCount).toBe(0);
+    });
+    expect(fake.zoneAddCount()).toBe(0);
+  });
+
+  it("paints in-progress layers when live mode is on", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "list_ghost_layers") {
+        return Promise.resolve([
+          makeLayer("l1", ["src/foo.ts"], { isComplete: false }),
+        ]);
+      }
+      if (cmd === "get_ghost_layer_file") {
+        return Promise.resolve(makeDelta("src/foo.ts"));
+      }
+      return Promise.reject(new Error(`unexpected ${cmd}`));
+    });
+
+    const fake = makeFakeEditor();
+    const { result } = renderHook(() =>
+      useGhostPaintForFile({
+        editor: fake.editor,
+        monaco: fake.monaco,
+        filePath: "/repo/src/foo.ts",
+        projectPath: "/repo",
+        liveMode: true,
+      }),
+    );
+
+    await waitFor(() => expect(result.current.layerCount).toBe(1));
+    expect(fake.zoneAddCount()).toBe(1);
   });
 
   it("swallows editor-disposed exceptions during paint teardown", async () => {

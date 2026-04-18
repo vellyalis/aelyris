@@ -71,6 +71,11 @@ interface AppState {
   markUnsaved: (path: string) => void;
   markSaved: (path: string) => void;
   hasUnsavedChanges: () => boolean;
+
+  // Ghost Diff Overlay (Phase 3C-1d)
+  /** When true, inline ghost paint shows layers that are still in progress. */
+  ghostDiffLiveMode: boolean;
+  setGhostDiffLiveMode: (v: boolean) => void;
 }
 
 function toggleOrSet(v: boolean | ((prev: boolean) => boolean), prev: boolean): boolean {
@@ -236,4 +241,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     return { unsavedFiles: next };
   }),
   hasUnsavedChanges: () => get().unsavedFiles.size > 0,
+
+  // Ghost Diff Overlay (Phase 3C-1d) — bootstrap from localStorage for
+  // first paint; Settings load_app_config then rehydrates from config.toml.
+  ghostDiffLiveMode: (() => {
+    try { return localStorage.getItem("aether:ghostDiffLiveMode") === "1"; } catch { return false; }
+  })(),
+  setGhostDiffLiveMode: (v) => {
+    set({ ghostDiffLiveMode: v });
+    try { localStorage.setItem("aether:ghostDiffLiveMode", v ? "1" : "0"); } catch {}
+  },
 }));

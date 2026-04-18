@@ -34,8 +34,28 @@ const SHELLS = [
   { id: "wsl", label: "WSL" },
 ];
 
+interface LoadedConfig {
+  appearance: {
+    theme: string;
+    terminal_font_family: string;
+    font_size: number;
+    line_height: number;
+    ligatures: boolean;
+  };
+  terminal: {
+    default_shell: string;
+    cursor_style: string;
+    cursor_blink: boolean;
+  };
+  ghost_diff?: {
+    live_mode?: boolean;
+  };
+}
+
 export function Settings({ visible, onClose }: SettingsProps) {
   const { themeId: storeTheme, setThemeId } = useAppStore();
+  const ghostDiffLiveMode = useAppStore((s) => s.ghostDiffLiveMode);
+  const setGhostDiffLiveMode = useAppStore((s) => s.setGhostDiffLiveMode);
   const [theme, setTheme] = useState(storeTheme);
   const [font, setFont] = useState("IBM Plex Mono");
   const [fontSize, setFontSize] = useState(14);
@@ -44,9 +64,10 @@ export function Settings({ visible, onClose }: SettingsProps) {
   const [defaultShell, setDefaultShell] = useState("powershell");
   const [cursorStyle, setCursorStyle] = useState("bar");
   const [cursorBlink, setCursorBlink] = useState(true);
+  const [liveMode, setLiveMode] = useState(ghostDiffLiveMode);
 
   useEffect(() => {
-    invoke<{ appearance: { theme: string; terminal_font_family: string; font_size: number; line_height: number; ligatures: boolean }; terminal: { default_shell: string; cursor_style: string; cursor_blink: boolean } }>("load_app_config")
+    invoke<LoadedConfig>("load_app_config")
       .then((cfg) => {
         setTheme(cfg.appearance.theme);
         setFont(cfg.appearance.terminal_font_family.split(",")[0].trim());
@@ -56,16 +77,24 @@ export function Settings({ visible, onClose }: SettingsProps) {
         setDefaultShell(cfg.terminal.default_shell);
         setCursorStyle(cfg.terminal.cursor_style);
         setCursorBlink(cfg.terminal.cursor_blink);
+        // Rehydrate from disk so config.toml is the source of truth — this
+        // corrects the localStorage bootstrap value if the user edited the
+        // file directly.
+        const persisted = cfg.ghost_diff?.live_mode ?? false;
+        setLiveMode(persisted);
+        setGhostDiffLiveMode(persisted);
       })
       .catch(() => {});
-  }, []);
+  }, [setGhostDiffLiveMode]);
 
   const handleSave = () => {
     setThemeId(theme);
+    setGhostDiffLiveMode(liveMode);
     invoke("save_app_config", {
       config: {
         appearance: { theme, ui_font_family: "IBM Plex Sans", terminal_font_family: font, font_size: fontSize, line_height: lineHeight, ligatures, window_effect: "mica", opacity: 0.95 },
         terminal: { default_shell: defaultShell, scrollback: 10000, cursor_style: cursorStyle, cursor_blink: cursorBlink },
+        ghost_diff: { live_mode: liveMode },
       },
     }).catch(() => {});
     onClose();
@@ -161,6 +190,25 @@ export function Settings({ visible, onClose }: SettingsProps) {
                     <input type="checkbox" checked={cursorBlink} onChange={(e) => setCursorBlink(e.target.checked)} />
                     <span>Cursor Blink</span>
                   </label>
+                </div>
+              </section>
+
+              <section className={styles.section}>
+                <h3 className={styles.sectionTitle}>Ghost Diff Overlay</h3>
+                <div className={styles.field}>
+                  <label className={styles.toggle}>
+                    <input
+                      type="checkbox"
+                      checked={liveMode}
+                      onChange={(e) => setLiveMode(e.target.checked)}
+                    />
+                    <span>Live mode (paint in-progress layers)</span>
+                  </label>
+                  <p className={styles.hint}>
+                    When off, ghost paint appears only after the agent run
+                    finishes. When on, every fs change from the agent's
+                    worktree streams into the editor as it happens.
+                  </p>
                 </div>
               </section>
 

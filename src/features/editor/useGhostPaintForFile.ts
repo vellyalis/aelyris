@@ -49,6 +49,11 @@ interface UseGhostPaintArgs {
   subscribeToModelChanges?: (
     listener: (ranges: LineRange[]) => void,
   ) => () => void;
+  /**
+   * When `true`, paint layers that are still in progress (Phase 3C-1d
+   * live-mode flag). Default `false` — only agent-completed layers paint.
+   */
+  liveMode?: boolean;
 }
 
 export interface UseGhostPaintResult {
@@ -104,9 +109,14 @@ export function computeRelativePath(
 function layersForFile(
   layers: LayerSummary[],
   relativePath: string | null,
+  liveMode: boolean,
 ): LayerSummary[] {
   if (!relativePath) return [];
-  return layers.filter((l) => l.filePaths.includes(relativePath));
+  // Default (live=false): only paint layers whose agent has finished. Live
+  // mode (Phase 3C-1d flag) lets the user opt into in-progress diffs too.
+  return layers.filter(
+    (l) => l.filePaths.includes(relativePath) && (liveMode || l.isComplete),
+  );
 }
 
 /**
@@ -116,8 +126,14 @@ function layersForFile(
 export function useGhostPaintForFile(
   args: UseGhostPaintArgs,
 ): UseGhostPaintResult {
-  const { editor, monaco, filePath, projectPath, subscribeToModelChanges } =
-    args;
+  const {
+    editor,
+    monaco,
+    filePath,
+    projectPath,
+    subscribeToModelChanges,
+    liveMode = false,
+  } = args;
   const { layers, getFile } = useGhostLayers();
 
   const relativePath = useMemo(
@@ -126,8 +142,8 @@ export function useGhostPaintForFile(
   );
 
   const relevantLayers = useMemo(
-    () => layersForFile(layers, relativePath),
-    [layers, relativePath],
+    () => layersForFile(layers, relativePath, liveMode),
+    [layers, relativePath, liveMode],
   );
 
   // Stable signature that changes when a matching layer's content does —
