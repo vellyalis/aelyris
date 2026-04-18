@@ -13,9 +13,11 @@ import {
   Search,
   History,
   FileX,
+  GitBranch,
 } from "lucide-react";
 import { showPrompt } from "../../shared/ui/PromptDialog";
 import { showHistorySearch } from "../history/HistorySearchDialog";
+import { toast } from "../../shared/store/toastStore";
 import type { Menu } from "../menubar/MenuBar";
 import type { CommandItem } from "../command-palette/CommandPalette";
 import type { ShellType } from "../../App";
@@ -70,7 +72,51 @@ export function useAppMenus(opts: UseAppMenusOptions) {
     { id: "close-folder", label: "Close Folder", description: "Return to the project picker", category: "File", icon: FolderX, action: handleCloseFolder },
     { id: "search-files", label: "Search in Files", description: "Full-text search across the project", shortcut: "Ctrl+Shift+F", category: "View", icon: Search, action: () => setSearchVisible(true) },
     { id: "search-history", label: "Search Command History", description: "Semantic search across past terminal commands", shortcut: "Ctrl+R", category: "History", icon: History, keywords: ["semantic", "recall"], action: () => showHistorySearch() },
-  ], [addTab, closeTab, activeTabId, activeFile, handleCloseFile, handleStartAgent, handleOpenFolder, handleCloseFolder]);
+    {
+      id: "compare-branch",
+      label: "Compare Branch...",
+      description: "Overlay another branch as a read-only ghost diff",
+      category: "View",
+      icon: GitBranch,
+      keywords: ["diff", "parallel", "ghost"],
+      action: async () => {
+        if (!projectPath) {
+          toast.error("Compare Branch", "Open a folder first");
+          return;
+        }
+        try {
+          const { invoke } = await import("@tauri-apps/api/core");
+          // Pull the branch list so we can show the current branch as the
+          // implicit base in the prompt placeholder.
+          type BranchInfo = { name: string; isHead: boolean; isRemote: boolean };
+          const branches = await invoke<BranchInfo[]>("list_branches", { repoPath: projectPath });
+          const current = branches.find((b) => b.isHead)?.name ?? "(unknown)";
+          const options = branches
+            .filter((b) => !b.isHead && !b.isRemote)
+            .map((b) => b.name)
+            .slice(0, 8)
+            .join(", ");
+          const head = await showPrompt(`Compare ${current} against branch`, {
+            placeholder: options || "Enter a branch name",
+          });
+          const target = head?.trim();
+          if (!target) return;
+          if (target === current) {
+            toast.error("Compare Branch", "Base and head must differ");
+            return;
+          }
+          await invoke("start_branch_comparison", {
+            repoPath: projectPath,
+            baseBranch: current,
+            headBranch: target,
+          });
+          toast.success("Branch comparison started", `${current} \u2190 ${target}`);
+        } catch (e) {
+          toast.error("Branch comparison failed", String(e));
+        }
+      },
+    },
+  ], [addTab, closeTab, activeTabId, activeFile, handleCloseFile, handleStartAgent, handleOpenFolder, handleCloseFolder, projectPath]);
 
   const menus: Menu[] = useMemo(() => [
     {

@@ -10,12 +10,24 @@ export interface LayerTint {
   roleLabel: string;
 }
 
-export type LayerSource = {
-  kind: "worktree";
-  path: string;
-  branch: string;
-  repoPath: string;
-};
+export type LayerSource =
+  | {
+      kind: "worktree";
+      path: string;
+      branch: string;
+      repoPath: string;
+    }
+  | {
+      kind: "branchComparison";
+      repoPath: string;
+      baseBranch: string;
+      headBranch: string;
+    };
+
+/** `true` when Tab / Shift+Tab accept must be disabled for this layer. */
+export function isReadOnlyLayer(src: LayerSource): boolean {
+  return src.kind === "branchComparison";
+}
 
 export interface LayerSummary {
   id: string;

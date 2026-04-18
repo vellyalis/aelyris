@@ -91,9 +91,21 @@ interface LayerRowProps {
   onDismiss: () => void;
 }
 
+function layerCaption(source: LayerSummary["source"]): { caption: string; title: string } {
+  switch (source.kind) {
+    case "worktree":
+      return { caption: source.branch, title: source.branch };
+    case "branchComparison": {
+      const label = `${source.baseBranch} ← ${source.headBranch}`;
+      return { caption: label, title: label };
+    }
+  }
+}
+
 function LayerRow({ layer, expanded, onToggle, onDismiss }: LayerRowProps) {
   const { tint, source, fileCount, hunkCount, isComplete, filePaths } = layer;
-  const branch = source.kind === "worktree" ? source.branch : "";
+  const { caption, title } = layerCaption(source);
+  const readOnly = source.kind === "branchComparison";
 
   return (
     <div className={styles.row}>
@@ -112,8 +124,13 @@ function LayerRow({ layer, expanded, onToggle, onDismiss }: LayerRowProps) {
         </button>
         <span className={styles.tintDot} style={{ background: tint.roleColor }} />
         <span className={styles.roleLabel}>{tint.roleLabel}</span>
-        <code className={styles.branch} title={branch}>
-          {branch}
+        {readOnly && (
+          <span className={styles.readOnlyBadge} title="Read-only — Tab / Shift+Tab disabled">
+            read-only
+          </span>
+        )}
+        <code className={styles.branch} title={title}>
+          {caption}
         </code>
         <span className={styles.counts}>
           {fileCount} file{fileCount === 1 ? "" : "s"} · {hunkCount} hunk

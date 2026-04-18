@@ -368,6 +368,7 @@ pub fn run() {
             ipc::dismiss_ghost_file,
             ipc::apply_ghost_hunk,
             ipc::apply_ghost_file,
+            ipc::start_branch_comparison,
             // IME positioning
             ipc::set_ime_position,
         ])

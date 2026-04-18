@@ -325,6 +325,58 @@ describe("useGhostPaintForFile (integration)", () => {
     expect(fake.zoneAddCount()).toBe(0);
   });
 
+  it("does not anchor read-only (branch comparison) layers for accept", async () => {
+    // Branch comparison layers should still paint, but Tab / Shift+Tab must
+    // not be armed against them.
+    const roLayer: LayerSummary = {
+      id: "bc1",
+      source: {
+        kind: "branchComparison",
+        repoPath: "/tmp/repo",
+        baseBranch: "main",
+        headBranch: "feature",
+      },
+      tint: { roleColor: "#89dceb", roleLabel: "branch" },
+      isComplete: true,
+      createdAt: 0,
+      fileCount: 1,
+      hunkCount: 1,
+      filePaths: ["src/foo.ts"],
+    };
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "list_ghost_layers") {
+        return Promise.resolve([roLayer]);
+      }
+      if (cmd === "get_ghost_layer_file") {
+        return Promise.resolve(makeDelta("src/foo.ts"));
+      }
+      return Promise.reject(new Error(`unexpected ${cmd}`));
+    });
+
+    const fake = makeFakeEditor();
+    const { result } = renderHook(() =>
+      useGhostPaintForFile({
+        editor: fake.editor,
+        monaco: fake.monaco,
+        filePath: "/repo/src/foo.ts",
+        projectPath: "/repo",
+      }),
+    );
+
+    await waitFor(() => expect(result.current.layerCount).toBe(1));
+    // Paint did happen (layerCount=1, zone added) but no accept anchors.
+    expect(fake.zoneAddCount()).toBe(1);
+    expect(result.current.hasHunkAtLine(10)).toBe(false);
+    expect(result.current.hunksAtLine(10)).toHaveLength(0);
+
+    // acceptAllInFile must also skip the layer — no apply IPC fired.
+    const next = await act(() => result.current.acceptAllInFile());
+    expect(next).toBeNull();
+    expect(
+      invokeMock.mock.calls.some(([cmd]) => cmd === "apply_ghost_file"),
+    ).toBe(false);
+  });
+
   it("hasHunkAtLine / hunksAtLine resolve the anchor at the base line", async () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "list_ghost_layers") {

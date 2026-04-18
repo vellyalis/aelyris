@@ -13,6 +13,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useGhostLayers } from "../../shared/hooks/useGhostLayers";
 import type { FileDelta, LayerSummary } from "../../shared/types/ghostdiff";
 
+import { isReadOnlyLayer } from "../../shared/types/ghostdiff";
 import { detectHunkConflicts, hunkBaseRange, type LineRange } from "./ghostConflict";
 import {
   installGhostPaint,
@@ -256,6 +257,12 @@ export function useGhostPaintForFile(
       deferredCount += handle.deferredIndices.length;
       layerCount += 1;
 
+      // Phase 3C-2: branch-comparison (read-only) layers paint just like
+      // agent-owned layers but must not feed accept anchors — Tab / Shift+Tab
+      // stay disarmed so Monaco's default indent keeps working and no IPC
+      // round-trip is wasted on a layer the backend will reject.
+      if (isReadOnlyLayer(layer.source)) continue;
+
       // Anchor every non-conflicting hunk for cursor-based accept. Conflicts
       // stay hidden so we deliberately exclude them.
       for (let i = 0; i < delta.hunks.length; i++) {
@@ -345,7 +352,10 @@ export function useGhostPaintForFile(
     if (applyInFlightRef.current) return null;
     const rel = relativePathRef.current;
     if (!rel) return null;
-    const layersNow = layersRef.current;
+    // Skip read-only layers (branch comparison) — the backend would
+    // refuse them anyway; silently ignoring keeps Shift+Tab from dumping
+    // "Apply-all failed" toasts when a branch comparison is the only layer.
+    const layersNow = layersRef.current.filter((l) => !isReadOnlyLayer(l.source));
     if (layersNow.length === 0) return null;
     applyInFlightRef.current = true;
     // Apply the newest layer last so its head_content wins if multiple

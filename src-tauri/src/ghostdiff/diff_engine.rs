@@ -83,6 +83,65 @@ pub fn compute_diff(worktree_path: &Path, base_sha: &str) -> Result<Vec<FileDelt
     Ok(deltas)
 }
 
+/// Phase 3C-2: diff one branch against another inside the same repo.
+/// Used by the branch-comparison ghost layer (read-only overlay).
+///
+/// Shape mirrors `compute_diff` so the frontend FileDelta contract is
+/// identical — only the `base_content` / `head_content` sources differ
+/// (both come from `git show` at the respective branch tip).
+pub fn compute_branch_comparison(
+    repo_path: &Path,
+    base_branch: &str,
+    head_branch: &str,
+) -> Result<Vec<FileDelta>, String> {
+    let diff_spec = format!("{base_branch}..{head_branch}");
+    let out = Command::new("git")
+        .args(["diff", "--no-color", &diff_spec])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("git diff failed: {e}"))?;
+
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        if stderr.trim().is_empty() {
+            return Ok(Vec::new());
+        }
+        return Err(format!("git diff {diff_spec} failed: {}", stderr.trim()));
+    }
+
+    let text = String::from_utf8_lossy(&out.stdout);
+    let parsed = parse_unified_diff(&text);
+
+    let mut deltas = Vec::with_capacity(parsed.len());
+    for file in parsed {
+        if file.is_binary {
+            continue;
+        }
+        let path = if file.is_deleted { file.old_path } else { file.new_path };
+        if path.is_empty() {
+            continue;
+        }
+        let base_content = if file.is_new {
+            String::new()
+        } else {
+            read_git_show(repo_path, base_branch, &path).unwrap_or_default()
+        };
+        let head_content = if file.is_deleted {
+            String::new()
+        } else {
+            read_git_show(repo_path, head_branch, &path).unwrap_or_default()
+        };
+        deltas.push(FileDelta {
+            path,
+            hunks: file.hunks,
+            base_content,
+            head_content,
+        });
+    }
+
+    Ok(deltas)
+}
+
 fn read_git_show(worktree_path: &Path, sha: &str, rel_path: &str) -> Result<String, String> {
     let out = Command::new("git")
         .args(["show", &format!("{sha}:{rel_path}")])

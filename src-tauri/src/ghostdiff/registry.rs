@@ -93,6 +93,37 @@ impl LayerRegistry {
         Ok(())
     }
 
+    /// Register a read-only "peek at another branch" layer (Phase 3C-2).
+    /// Duplicate IDs are rejected. Diff content is populated by a follow-up
+    /// `refresh()` call from the IPC handler once `git diff` returns.
+    pub fn register_branch_comparison_layer(
+        &self,
+        id: LayerId,
+        repo_path: PathBuf,
+        base_branch: String,
+        head_branch: String,
+        tint: LayerTint,
+        created_at: u64,
+    ) -> Result<(), String> {
+        let mut guard = self.lock_layers()?;
+        if guard.contains_key(&id) {
+            return Err(format!("layer already registered: {id}"));
+        }
+        let layer = Layer::new_branch_comparison(
+            id.clone(),
+            repo_path,
+            base_branch,
+            head_branch,
+            tint,
+            created_at,
+        );
+        let summary = layer.summary();
+        guard.insert(id, layer);
+        drop(guard);
+        let _ = self.tx.send(LayerEvent::Updated(summary));
+        Ok(())
+    }
+
     /// Remove a layer. No-op if unknown.
     pub fn unregister(&self, id: &str) -> Result<(), String> {
         let removed = {
@@ -156,7 +187,8 @@ impl LayerRegistry {
     }
 
     /// Source snapshot for one layer — used by the watcher callback on each
-    /// debounced fs event.
+    /// debounced fs event. Returns `None` for layer kinds that do not back
+    /// a fs watcher (e.g. `BranchComparison`, Phase 3C-2).
     pub fn get_source_snapshot(&self, id: &str) -> Option<LayerSourceSnapshot> {
         let guard = self.layers.lock().ok()?;
         let layer = guard.get(id)?;
@@ -171,7 +203,16 @@ impl LayerRegistry {
                     base_sha,
                 })
             }
+            LayerSource::BranchComparison { .. } => None,
         }
+    }
+
+    /// `true` if this layer refuses `apply_*` operations (e.g. branch
+    /// comparisons, which the user does not own). IPC reads this before
+    /// touching the main worktree.
+    pub fn is_read_only(&self, id: &str) -> bool {
+        let Ok(guard) = self.layers.lock() else { return false };
+        guard.get(id).map(|l| l.is_read_only()).unwrap_or(false)
     }
 
     /// Repo path for a layer — IPC uses this to resolve the main file target
@@ -210,6 +251,10 @@ impl LayerRegistry {
                         base_sha,
                     })
                 }
+                // Branch comparisons (Phase 3C-2) are not fs-watched — they
+                // only refresh on explicit user trigger, so the watcher pool
+                // has nothing to do with them.
+                LayerSource::BranchComparison { .. } => None,
             })
             .collect()
     }
@@ -581,5 +626,85 @@ mod tests {
         let removed = r.clear_file_hunks("j1", "missing.ts").unwrap();
         assert!(!removed);
         assert!(r.poll().is_empty());
+    }
+
+    // ─── Phase 3C-2 branch comparison ────────────────────────────────────
+
+    #[test]
+    fn register_branch_comparison_layer_and_mark_read_only() {
+        let r = LayerRegistry::new();
+        r.register_branch_comparison_layer(
+            "bc1".into(),
+            "/tmp/repo".into(),
+            "main".into(),
+            "feature/foo".into(),
+            LayerTint::branch_comparison(),
+            0,
+        )
+        .expect("register");
+        assert!(r.contains("bc1"));
+        assert!(r.is_read_only("bc1"));
+        // Repo path is reachable (IPC needs it later for resolve_main_path).
+        assert_eq!(
+            r.repo_path("bc1")
+                .map(|p| p.to_string_lossy().to_string()),
+            Some("/tmp/repo".to_string())
+        );
+        // Branch comparisons are not fs-watched — no snapshot returned.
+        assert!(r.get_source_snapshot("bc1").is_none());
+        // Worktree layers remain unaffected.
+        reg_layer(&r, "wt1", 1);
+        assert!(!r.is_read_only("wt1"));
+    }
+
+    #[test]
+    fn is_read_only_false_for_unknown_layer() {
+        let r = LayerRegistry::new();
+        // Missing layers must not look read-only (caller would then get a
+        // confusing reject instead of "not found").
+        assert!(!r.is_read_only("nope"));
+    }
+
+    #[test]
+    fn source_snapshots_skip_branch_comparisons() {
+        let r = LayerRegistry::new();
+        reg_layer(&r, "wt1", 0);
+        r.register_branch_comparison_layer(
+            "bc1".into(),
+            "/tmp/repo".into(),
+            "main".into(),
+            "feature".into(),
+            LayerTint::branch_comparison(),
+            1,
+        )
+        .unwrap();
+        let snaps = r.source_snapshots();
+        assert_eq!(snaps.len(), 1);
+        assert_eq!(snaps[0].id, "wt1");
+    }
+
+    #[test]
+    fn branch_comparison_register_rejects_duplicate_id() {
+        let r = LayerRegistry::new();
+        r.register_branch_comparison_layer(
+            "bc1".into(),
+            "/tmp/repo".into(),
+            "main".into(),
+            "feature".into(),
+            LayerTint::branch_comparison(),
+            0,
+        )
+        .unwrap();
+        let err = r
+            .register_branch_comparison_layer(
+                "bc1".into(),
+                "/tmp/repo".into(),
+                "main".into(),
+                "other".into(),
+                LayerTint::branch_comparison(),
+                0,
+            )
+            .unwrap_err();
+        assert!(err.contains("already registered"));
     }
 }

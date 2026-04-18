@@ -31,6 +31,18 @@ pub enum LayerSource {
         /// Main repository path — diffs are computed against this repo's HEAD.
         repo_path: PathBuf,
     },
+    /// A user-triggered "show me what another branch looks like" overlay
+    /// (Phase 3C-2). Read-only — applying hunks from this layer is rejected
+    /// since the source isn't owned by the user's own session.
+    #[serde(rename_all = "camelCase")]
+    BranchComparison {
+        /// Main repository path — `git diff base..head -- <path>` runs here.
+        repo_path: PathBuf,
+        /// The branch the user is currently on (the "before" in the diff).
+        base_branch: String,
+        /// The branch being peeked at (the "after" in the diff).
+        head_branch: String,
+    },
 }
 
 /// What the layer is showing. Currently a diff against a base revision,
@@ -108,6 +120,15 @@ impl LayerTint {
             role_label: "agent".into(),
         }
     }
+
+    /// Phase 3C-2: read-only overlay comparing another branch. Sky blue to
+    /// visually separate it from the write-capable agent-owned layers.
+    pub fn branch_comparison() -> Self {
+        Self {
+            role_color: "#89dceb".into(), // Catppuccin sky
+            role_label: "branch".into(),
+        }
+    }
 }
 
 /// A ghost layer visible to the UI.
@@ -170,6 +191,48 @@ impl Layer {
         }
     }
 
+    /// Build a read-only "peek at another branch" layer (Phase 3C-2).
+    /// `base_revision` is prefilled with `branch:<head_branch>` so the
+    /// summary reads clearly in the panel.
+    pub fn new_branch_comparison(
+        id: LayerId,
+        repo_path: PathBuf,
+        base_branch: String,
+        head_branch: String,
+        tint: LayerTint,
+        created_at: u64,
+    ) -> Self {
+        let base_revision = format!("branch:{head_branch}");
+        Self {
+            id,
+            source: LayerSource::BranchComparison {
+                repo_path,
+                base_branch,
+                head_branch,
+            },
+            content: LayerContent::Diff {
+                base_revision,
+                files: Vec::new(),
+            },
+            tint,
+            // Branch comparisons are always "complete" — there's no running
+            // agent that will later flip this flag. Rendering with
+            // `is_complete = true` means `liveMode` gating from 3C-1d
+            // doesn't accidentally hide user-triggered comparisons.
+            is_complete: true,
+            created_at,
+        }
+    }
+
+    /// `true` when apply operations against this layer must be rejected —
+    /// the user does not own the source revision (e.g. branch comparisons).
+    pub fn is_read_only(&self) -> bool {
+        match &self.source {
+            LayerSource::Worktree { .. } => false,
+            LayerSource::BranchComparison { .. } => true,
+        }
+    }
+
     pub fn summary(&self) -> LayerSummary {
         let (file_count, hunk_count, file_paths) = match &self.content {
             LayerContent::Diff { files, .. } => {
@@ -191,16 +254,18 @@ impl Layer {
     }
 
     /// Convenience accessor for the worktree path (returns `None` for
-    /// non-worktree sources once 3C-2 lands).
+    /// non-worktree sources — `BranchComparison` has no worktree).
     pub fn worktree_path(&self) -> Option<&PathBuf> {
         match &self.source {
             LayerSource::Worktree { path, .. } => Some(path),
+            LayerSource::BranchComparison { .. } => None,
         }
     }
 
     pub fn repo_path(&self) -> Option<&PathBuf> {
         match &self.source {
             LayerSource::Worktree { repo_path, .. } => Some(repo_path),
+            LayerSource::BranchComparison { repo_path, .. } => Some(repo_path),
         }
     }
 
@@ -359,6 +424,54 @@ mod tests {
         let json = serde_json::to_string(&summary).expect("serialize");
         let back: LayerSummary = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(back, summary);
+    }
+
+    #[test]
+    fn new_branch_comparison_marks_complete_and_read_only() {
+        let layer = Layer::new_branch_comparison(
+            "branch-xyz".into(),
+            "/tmp/repo".into(),
+            "main".into(),
+            "feature/foo".into(),
+            LayerTint::branch_comparison(),
+            42,
+        );
+        // Branch overlays always start complete (no running agent) so the
+        // 3C-1d `liveMode = false` default does not hide them.
+        assert!(layer.is_complete);
+        assert!(layer.is_read_only());
+        assert!(layer.worktree_path().is_none());
+        assert_eq!(
+            layer.repo_path().map(|p| p.to_string_lossy().to_string()),
+            Some("/tmp/repo".to_string())
+        );
+        match &layer.content {
+            LayerContent::Diff { base_revision, .. } => {
+                // base_revision carries the head branch so the panel can
+                // render it without reaching into LayerSource.
+                assert_eq!(base_revision, "branch:feature/foo");
+            }
+        }
+    }
+
+    #[test]
+    fn new_worktree_is_not_read_only() {
+        let layer = Layer::new_worktree(
+            "job".into(),
+            "/w".into(),
+            "b".into(),
+            "/r".into(),
+            LayerTint::auto_repair(),
+            0,
+        );
+        assert!(!layer.is_read_only());
+    }
+
+    #[test]
+    fn tint_branch_comparison_is_sky_blue() {
+        let t = LayerTint::branch_comparison();
+        assert_eq!(t.role_color, "#89dceb");
+        assert_eq!(t.role_label, "branch");
     }
 
     #[test]

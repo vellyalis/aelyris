@@ -1,16 +1,18 @@
-//! Phase 3C-1a+1c: IPC for the Ghost Diff Overlay.
+//! Phase 3C-1a+1c+2: IPC for the Ghost Diff Overlay.
 //!
 //! Exposes the `LayerRegistry` state (registered in `lib.rs`) to the
-//! frontend — list layers, fetch per-file deltas, dismiss a layer, and
-//! accept hunks back into the user's main worktree (3C-1c).
+//! frontend — list layers, fetch per-file deltas, dismiss a layer, accept
+//! hunks back into the user's main worktree (3C-1c), and spin up read-only
+//! branch-comparison overlays (3C-2).
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
-use crate::ghostdiff::{self, FileDelta, LayerRegistry, LayerSummary, WatcherPool};
+use crate::ghostdiff::{self, FileDelta, LayerRegistry, LayerSummary, LayerTint, WatcherPool};
 
 /// All currently-active ghost layers (sorted oldest-first).
 #[tauri::command]
@@ -92,6 +94,14 @@ pub fn apply_ghost_hunk(
         .try_state::<Arc<LayerRegistry>>()
         .ok_or_else(|| "LayerRegistry state missing".to_string())?;
 
+    // Phase 3C-2: read-only layers (e.g. branch comparisons) must refuse
+    // apply operations — the source revision is not owned by the user.
+    if registry.is_read_only(&layer_id) {
+        return Err(format!(
+            "layer {layer_id} is read-only — apply is rejected"
+        ));
+    }
+
     let delta = registry
         .get_file(&layer_id, &file_path)
         .ok_or_else(|| format!("ghost file not found: {layer_id}:{file_path}"))?;
@@ -142,6 +152,12 @@ pub fn apply_ghost_file(
         .try_state::<Arc<LayerRegistry>>()
         .ok_or_else(|| "LayerRegistry state missing".to_string())?;
 
+    if registry.is_read_only(&layer_id) {
+        return Err(format!(
+            "layer {layer_id} is read-only — apply is rejected"
+        ));
+    }
+
     let delta = registry
         .get_file(&layer_id, &file_path)
         .ok_or_else(|| format!("ghost file not found: {layer_id}:{file_path}"))?;
@@ -161,6 +177,62 @@ pub fn apply_ghost_file(
         file_path: target.to_string_lossy().into_owned(),
         remaining_hunks: 0,
     })
+}
+
+/// Phase 3C-2: spin up a read-only overlay comparing `head_branch` against
+/// the user's current `base_branch`. The registered layer shows up in the
+/// panel alongside agent-owned layers but applies / Tab are rejected.
+#[tauri::command]
+pub fn start_branch_comparison(
+    app: AppHandle,
+    repo_path: String,
+    base_branch: String,
+    head_branch: String,
+) -> Result<LayerSummary, String> {
+    if base_branch == head_branch {
+        return Err("base and head branches must differ".into());
+    }
+    let repo = PathBuf::from(&repo_path);
+    if !repo.exists() {
+        return Err(format!("repo path does not exist: {repo_path}"));
+    }
+
+    let registry = app
+        .try_state::<Arc<LayerRegistry>>()
+        .ok_or_else(|| "LayerRegistry state missing".to_string())?;
+
+    let id = format!("branch-{}", uuid::Uuid::new_v4());
+    let created_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    registry.register_branch_comparison_layer(
+        id.clone(),
+        repo.clone(),
+        base_branch.clone(),
+        head_branch.clone(),
+        LayerTint::branch_comparison(),
+        created_at,
+    )?;
+
+    // Populate the diff. On failure, roll back the empty registration so
+    // the panel doesn't show a ghost that will never gain content.
+    let deltas =
+        match ghostdiff::diff_engine::compute_branch_comparison(&repo, &base_branch, &head_branch) {
+            Ok(d) => d,
+            Err(e) => {
+                let _ = registry.unregister(&id);
+                return Err(e);
+            }
+        };
+    let _ = registry.refresh(&id, deltas);
+
+    registry
+        .list()
+        .into_iter()
+        .find(|s| s.id == id)
+        .ok_or_else(|| "layer vanished immediately after registration".to_string())
 }
 
 /// Join `repo_path` and `file_path` safely — reject path traversal attempts.
