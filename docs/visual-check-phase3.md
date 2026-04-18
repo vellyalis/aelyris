@@ -626,3 +626,90 @@ C: OK
 | ghost accept 全部 | Editor focus → **Shift+Tab** |
 | ghost dismiss | Editor focus → **Esc** |
 | 保存 | **Ctrl+S** |
+
+---
+
+# 3C-3 タイムトラベル手動検証手順 (3C-3d)
+
+**対象コミット**: ad30852 (3a) + 2d6f16f (3b) + b9c6d3f (3c)
+**worktree**: `.claude/worktrees/3c-3-timetravel`
+
+## D-0. 自動検証で済む範囲
+
+```bash
+cd C:/Users/owner/Aether_Terminal/.claude/worktrees/3c-3-timetravel
+pnpm tauri:dev                    # 起動 (CDP 9222 開く、初回ビルド数分)
+# 別ターミナルで
+pnpm node scripts/verify-3c3.mjs  # A〜H 全 step 自動検証
+```
+
+自動カバー範囲 (期待値):
+- **A (baseline)**: spawn_terminal 成功
+- **B (Enter capture)**: Enter 送信 → list_snapshots +1、trigger=userSubmitted
+- **C (get_snapshot)**: full grid 取得 + 未知 id は null
+- **D (mark_snapshot)**: label 付きで userMarked として登録
+- **E (eviction)**: 130 Enter 送信後 list ≤ 100
+- **F (cleanup)**: close_terminal で snapshot 0 に
+- **G (overlay lifecycle)**: start_snapshot_overlay → list_ghost_layers に snapshot source で登場 → apply_ghost_hunk/file reject (read-only) → 未知 id reject → dismiss で消える
+- **H (UI surface)**: TimelineBar の DOM presence + TIMELINE label + tick 数
+
+全 step OK なら機能は動いている。
+
+## D-1. 人間の目で確認すべき UX
+
+### D-1-a. TimelineBar の視覚
+- [ ] terminal エリア上部に高さ 28px の横バーが表示されている
+- [ ] 左端に "TIMELINE" のラベル (teal)
+- [ ] snapshot が無い時は "No snapshots yet — press Enter to capture" と表示
+- [ ] 右端に "✛ Mark" ボタン (pink)
+- [ ] ガラス背景 (backdrop-filter: blur) が効いている
+
+### D-1-b. Enter で tick 追加
+- [ ] terminal で `echo hello` + Enter → TimelineBar に tick が 1本追加
+- [ ] 連続で 3-4 コマンド叩くと tick が増える (oldest-to-newest で横並び)
+- [ ] tick は teal 色、userMarked (後述) は pink
+
+### D-1-c. overlay 起動
+- [ ] 過去の tick をクリック → terminal 上に過去の grid が表示される
+- [ ] TimelineBar 右端に "Viewing userSubmitted × (Esc)" pill が出る
+- [ ] 選んだ tick が glow (光る) で active 表示
+- [ ] Ghost Diff panel (StatusBar の ⧉) を開くと teal badge "snapshot" の layer が見える
+- [ ] キャプション形式: `snapshot @ HH:MM:SS`
+- [ ] layer は `read-only` badge 付き
+
+### D-1-d. 復帰
+- [ ] Esc → overlay 消えて live terminal に戻る
+- [ ] 同じ tick を再クリック → 同様に overlay 起動
+- [ ] active tick を再クリック → overlay 消える (toggle)
+- [ ] pill の × ボタン → 消える
+- [ ] Ghost Diff panel の × → 消える (TimelineBar 側も同期で解除)
+
+### D-1-e. Mark ボタン
+- [ ] ✛ Mark クリック → 現在の grid がブックマークされる (pink 太 tick が追加)
+- [ ] hover で "Marked" tooltip
+- [ ] その tick クリックで overlay 起動、trigger=userMarked
+
+### D-1-f. 挙動の確認
+- [ ] overlay 中は Ghost text (fish サジェスト) が描画されない (live 復帰で戻る)
+- [ ] overlay 中も PTY には typing が届く (live shell は動いてる、再表示で確認可)
+- [ ] terminal タブ切替 → overlay 自動 clear (新タブには前タブの overlay が残らない)
+
+### D-1-g. apply_* の拒否
+- Ghost Diff panel で snapshot layer を展開 — file list は空のはず (terminalState に file は無い)
+- panel 上での操作: dismiss のみ可能、accept 系ボタンは出ない
+
+## D-2. エッジケース検証 (推奨)
+
+- [ ] PowerShell 上で bracketed paste (`Ctrl+V`) に `\r` 含む文字列を貼る → 意図せず snapshot される挙動が許容範囲か
+- [ ] `echo a && echo b` のように `&&` を含むコマンド → Enter 1回で snapshot 1件 (OK)
+- [ ] terminal を閉じて再度開く → TimelineBar は空から始まる (memory だけなので永続化なしが仕様)
+- [ ] 2 つの terminal タブを同時に開き、片方で Enter → もう片方の TimelineBar は影響を受けない
+
+## D-3. 既知の制約 (報告不要)
+
+- アプリ再起動で snapshot は消える (in-memory only、永続化は 3C-3b 拡張扱い)
+- AI CLI セッション (`claude`, `codex` など) は未対応 (プロンプト検出が shell と別モデル)
+- overlay 中に PTY 入力が live に届く (意図的、Esc で確認可能)
+- grid サイズが変わった後の overlay は現行 cols/rows に合わない可能性あり
+
+OK なら "3C-3 OK"、NG があれば「D-1-X で X が想定と違う」で報告してほしい。
