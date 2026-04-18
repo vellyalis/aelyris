@@ -235,11 +235,18 @@ pub fn write_terminal(
 ) -> Result<(), String> {
     let pty_manager = app.state::<PtyManager>();
     pty_manager.write(&id, data.as_bytes())?;
-
-    if data.as_bytes().contains(&b'\r') {
-        capture_user_submit_snapshot(&app, &id);
-    }
+    capture_if_enter(&app, &id, data.as_bytes());
     Ok(())
+}
+
+/// Trigger a `UserSubmitted` snapshot when the bytes just written to a PTY
+/// contained an Enter (`\r`). Shared by every write-side IPC so Orchestra /
+/// Helm / `send_keys` / broadcast paths all feed the timeline, not just
+/// `write_terminal`.
+fn capture_if_enter(app: &AppHandle, terminal_id: &str, data: &[u8]) {
+    if data.contains(&b'\r') {
+        capture_user_submit_snapshot(app, terminal_id);
+    }
 }
 
 /// Grab the current grid from the native engine and push it into the snapshot
@@ -1085,12 +1092,16 @@ fn validate_keys_size(data: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Send keystrokes to a specific terminal pane
+/// Send keystrokes to a specific terminal pane. Mirrors `write_terminal`'s
+/// snapshot hook so Orchestra agents that drive a pane through this IPC
+/// also appear on the time-travel timeline.
 #[tauri::command]
 pub fn send_keys(app: AppHandle, terminal_id: String, data: String) -> Result<(), String> {
     validate_keys_size(&data)?;
     let pty_manager = app.state::<PtyManager>();
-    pty_manager.write(&terminal_id, data.as_bytes())
+    pty_manager.write(&terminal_id, data.as_bytes())?;
+    capture_if_enter(&app, &terminal_id, data.as_bytes());
+    Ok(())
 }
 
 /// Capture recent output from a terminal pane
@@ -1117,7 +1128,9 @@ pub fn command_blocks(
     registry.command_blocks(&terminal_id)
 }
 
-/// Send keystrokes to all active terminal panes (synchronize-panes)
+/// Send keystrokes to all active terminal panes (synchronize-panes). Each
+/// successfully written pane also gets its own snapshot captured when the
+/// payload ends a command, so the timeline stays consistent across panes.
 #[tauri::command]
 pub fn broadcast_keys(app: AppHandle, data: String) -> Result<u32, String> {
     validate_keys_size(&data)?;
@@ -1127,6 +1140,7 @@ pub fn broadcast_keys(app: AppHandle, data: String) -> Result<u32, String> {
     for id in &ids {
         if pty_manager.write(id, data.as_bytes()).is_ok() {
             count += 1;
+            capture_if_enter(&app, id, data.as_bytes());
         }
     }
     Ok(count)
@@ -1139,7 +1153,8 @@ pub fn rename_pane(app: AppHandle, terminal_id: String, name: String) -> Result<
     registry.rename(&terminal_id, &name)
 }
 
-/// Send keystrokes to a pane by its user-assigned name
+/// Send keystrokes to a pane by its user-assigned name. Same snapshot
+/// hook as `send_keys` so name-addressed writes appear on the timeline.
 #[tauri::command]
 pub fn send_keys_by_name(app: AppHandle, name: String, data: String) -> Result<(), String> {
     validate_keys_size(&data)?;
@@ -1148,7 +1163,9 @@ pub fn send_keys_by_name(app: AppHandle, name: String, data: String) -> Result<(
         .find_by_name(&name)
         .ok_or_else(|| format!("No pane named '{}'", name))?;
     let pty_manager = app.state::<PtyManager>();
-    pty_manager.write(&terminal_id, data.as_bytes())
+    pty_manager.write(&terminal_id, data.as_bytes())?;
+    capture_if_enter(&app, &terminal_id, data.as_bytes());
+    Ok(())
 }
 
 /// List all registered panes with metadata
