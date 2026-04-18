@@ -52,6 +52,46 @@ export function useAppMenus(opts: UseAppMenusOptions) {
     setWatchdogVisible, setAboutVisible, setHelpVisible, setWebInspectorVisible, setPrInspectorVisible,
   } = opts;
 
+  // Compare Branch action extracted so the palette entry and the View menu
+  // entry share one source of truth. Re-created on projectPath change so
+  // the closure captures the latest repo.
+  const compareBranch = useMemo(() => {
+    return async () => {
+      if (!projectPath) {
+        toast.error("Compare Branch", "Open a folder first");
+        return;
+      }
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        type BranchInfo = { name: string; isHead: boolean; isRemote: boolean };
+        const branches = await invoke<BranchInfo[]>("list_branches", { repoPath: projectPath });
+        const current = branches.find((b) => b.isHead)?.name ?? "(unknown)";
+        const options = branches
+          .filter((b) => !b.isHead && !b.isRemote)
+          .map((b) => b.name)
+          .slice(0, 8)
+          .join(", ");
+        const head = await showPrompt(`Compare ${current} against branch`, {
+          placeholder: options || "Enter a branch name",
+        });
+        const target = head?.trim();
+        if (!target) return;
+        if (target === current) {
+          toast.error("Compare Branch", "Base and head must differ");
+          return;
+        }
+        await invoke("start_branch_comparison", {
+          repoPath: projectPath,
+          baseBranch: current,
+          headBranch: target,
+        });
+        toast.success("Branch comparison started", `${current} \u2190 ${target}`);
+      } catch (e) {
+        toast.error("Branch comparison failed", String(e));
+      }
+    };
+  }, [projectPath]);
+
   const commands: CommandItem[] = useMemo(() => [
     { id: "new-tab-ps", label: "New Terminal: PowerShell", description: "Open a new PowerShell tab", shortcut: "Ctrl+Shift+T", category: "Terminal", icon: TerminalIcon, keywords: ["pwsh", "shell"], action: () => addTab("powershell") },
     { id: "new-tab-cmd", label: "New Terminal: CMD", description: "Open a new CMD tab", category: "Terminal", icon: TerminalIcon, keywords: ["cmd.exe", "prompt"], action: () => addTab("cmd") },
@@ -79,44 +119,9 @@ export function useAppMenus(opts: UseAppMenusOptions) {
       category: "View",
       icon: GitBranch,
       keywords: ["diff", "parallel", "ghost"],
-      action: async () => {
-        if (!projectPath) {
-          toast.error("Compare Branch", "Open a folder first");
-          return;
-        }
-        try {
-          const { invoke } = await import("@tauri-apps/api/core");
-          // Pull the branch list so we can show the current branch as the
-          // implicit base in the prompt placeholder.
-          type BranchInfo = { name: string; isHead: boolean; isRemote: boolean };
-          const branches = await invoke<BranchInfo[]>("list_branches", { repoPath: projectPath });
-          const current = branches.find((b) => b.isHead)?.name ?? "(unknown)";
-          const options = branches
-            .filter((b) => !b.isHead && !b.isRemote)
-            .map((b) => b.name)
-            .slice(0, 8)
-            .join(", ");
-          const head = await showPrompt(`Compare ${current} against branch`, {
-            placeholder: options || "Enter a branch name",
-          });
-          const target = head?.trim();
-          if (!target) return;
-          if (target === current) {
-            toast.error("Compare Branch", "Base and head must differ");
-            return;
-          }
-          await invoke("start_branch_comparison", {
-            repoPath: projectPath,
-            baseBranch: current,
-            headBranch: target,
-          });
-          toast.success("Branch comparison started", `${current} \u2190 ${target}`);
-        } catch (e) {
-          toast.error("Branch comparison failed", String(e));
-        }
-      },
+      action: compareBranch,
     },
-  ], [addTab, closeTab, activeTabId, activeFile, handleCloseFile, handleStartAgent, handleOpenFolder, handleCloseFolder, projectPath]);
+  ], [addTab, closeTab, activeTabId, activeFile, handleCloseFile, handleStartAgent, handleOpenFolder, handleCloseFolder, compareBranch]);
 
   const menus: Menu[] = useMemo(() => [
     {
@@ -158,6 +163,9 @@ export function useAppMenus(opts: UseAppMenusOptions) {
       items: [
         { label: "Command Palette", shortcut: "Ctrl+Shift+P", action: () => setPaletteVisible(true) },
         { label: "Search in Files", shortcut: "Ctrl+Shift+F", action: () => setSearchVisible(true) },
+        { divider: true, label: "" },
+        { label: "Compare Branch...", action: compareBranch },
+        { divider: true, label: "" },
         { label: "Web Inspector", action: () => setWebInspectorVisible((v) => !v) },
         { label: "Pull Requests", action: () => setPrInspectorVisible((v) => !v) },
       ],
@@ -176,7 +184,7 @@ export function useAppMenus(opts: UseAppMenusOptions) {
       { divider: true, label: "" },
       { label: "About Aether Terminal", action: () => setAboutVisible(true) },
     ] },
-  ], [handleOpenFolder, handleCloseFolder, addTab, activeFile, handleCloseFile, projectPath, handleFileSelect]);
+  ], [handleOpenFolder, handleCloseFolder, addTab, activeFile, handleCloseFile, projectPath, handleFileSelect, compareBranch, setPaletteVisible, setSearchVisible, setWebInspectorVisible, setPrInspectorVisible, setSettingsVisible, setHelpVisible, setAboutVisible]);
 
   return { commands, menus };
 }
