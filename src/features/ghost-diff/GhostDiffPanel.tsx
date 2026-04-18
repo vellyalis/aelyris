@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Loader2, Layers, ChevronRight, X } from "lucide-react";
 
-import type { LayerSummary } from "../../shared/types/ghostdiff";
+import { isReadOnlyLayer, type LayerSummary } from "../../shared/types/ghostdiff";
 import styles from "./GhostDiffPanel.module.css";
 
 interface GhostDiffPanelProps {
@@ -99,13 +99,21 @@ function layerCaption(source: LayerSummary["source"]): { caption: string; title:
       const label = `${source.baseBranch} ← ${source.headBranch}`;
       return { caption: label, title: label };
     }
+    case "snapshot": {
+      // Terminal-scoped overlay — show the capture time so two snapshot
+      // layers from the same session don't look identical in the panel.
+      const time = new Date(source.capturedAt * 1000).toLocaleTimeString();
+      const label = `snapshot @ ${time}`;
+      const title = `Session ${source.sessionId.slice(0, 8)} · ${label}`;
+      return { caption: label, title };
+    }
   }
 }
 
 function LayerRow({ layer, expanded, onToggle, onDismiss }: LayerRowProps) {
   const { tint, source, fileCount, hunkCount, isComplete, filePaths } = layer;
   const { caption, title } = layerCaption(source);
-  const readOnly = source.kind === "branchComparison";
+  const readOnly = isReadOnlyLayer(source);
 
   return (
     <div className={styles.row}>

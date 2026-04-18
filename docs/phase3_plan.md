@@ -495,11 +495,20 @@ pub enum LayerSource {
 - ✅ Tests: layer 6 本 + registry 6 本 (read-only / duplicate id reject / source_snapshots skip / refresh no-op / remove_hunk none / clear_file_hunks false) 追加
 - ✅ `scripts/verify-3c3.mjs` に G ステップ追加 — overlay 起動 → list 確認 → apply_* reject × 2 → unknown id reject → dismiss
 
-#### 3C-3c. Frontend TimelineBar (3-4 日)
-- `src/features/timeline/TimelineBar.tsx` 新規
-- `useSnapshots(sessionId)` hook
-- terminal area 上部 pinned、クリックで overlay 起動
-- 既存 terminal renderer に「過去 grid を上書き描く」hook 追加
+#### 3C-3c. Frontend TimelineBar ✅ 完了 (2026-04-18)
+- ✅ `src/shared/types/snapshot.ts` 新規 — SnapshotId / SnapshotTrigger / TerminalSnapshot / SnapshotSummary / SnapshotCapturedEvent TS side。`triggerLabel()` ユーティリティ付き
+- ✅ `src/shared/types/ghostdiff.ts` 拡張 — LayerSource の `snapshot` variant + LayerContent (新規) の `terminalState` variant。`isReadOnlyLayer` は snapshot も true
+- ✅ `src/shared/hooks/useSnapshots.ts` 新規 — `list_snapshots` で初期化 + `snapshot:captured-{sessionId}` イベントで再 fetch。`fetchFullSnapshot` / `startOverlay` / `markSnapshot` もラップ
+- ✅ `src/features/timeline/TimelineBar.tsx` 新規 + `.module.css` — 横長バー、snapshot ごとに tick、userMarked は pink の太 tick、active は teal+glow。empty 状態テキスト / Mark ボタン / "Viewing past state" pill + dismiss
+- ✅ `src/features/terminal/NativeTerminalArea.tsx` 統合:
+  - overlay state `{ layerId, snapshotId, grid }` を保持、terminalId 変化で自動 clear
+  - tick click → `get_snapshot` でフル grid 取得 → `start_snapshot_overlay` で Layer 作成 → `TerminalCanvas snapshotOverride={overlay.grid}` に渡す (既存の test-injection prop を流用)
+  - Esc (terminal area 内フォーカス時) で `dismiss_ghost_layer` + state clear
+  - `ghost-diff:layer-removed` 受信で外部 dismiss も検知
+  - overlay 中は ghostSuggestion を抑制
+- ✅ `GhostDiffPanel.tsx` の `layerCaption` に snapshot arm 追加 — 時刻付きキャプション + セッション ID プレフィックス。`readOnly` を `isReadOnlyLayer` ヘルパ経由に refactor
+- ✅ Tests: `useSnapshots.test.ts` 7本 + `TimelineBar.test.tsx` 7本 = 14本。`pnpm test` 579 passed
+- ✅ `scripts/verify-3c3.mjs` H-step 追加 — TimelineBar DOM presence / label / tick count
 
 #### 3C-3d. E2E verify (1 日)
 - `scripts/verify-3c3.mjs` — snapshot capture → list → start_overlay → dismiss の一連を CDP attach で自動検証

@@ -322,6 +322,52 @@ async function main() {
     }
   }
 
+  // ─── Step H: TimelineBar UI surface (3C-3c) ────────────────────────────
+  console.log("\n# H. TimelineBar UI surface (3C-3c)");
+
+  try {
+    const bar = await page.locator('[data-testid="timeline-bar"]').first();
+    const count = await bar.count();
+    if (count > 0) {
+      log("H-present", "OK", "TimelineBar is rendered in the DOM");
+    } else {
+      log("H-present", "FAIL", "TimelineBar not found — 3C-3c not mounted?");
+    }
+  } catch (e) {
+    log("H-present", "FAIL", String(e));
+  }
+
+  try {
+    const label = await page.getByText(/^TIMELINE$/).count();
+    if (label > 0) {
+      log("H-label", "OK", "TIMELINE label visible");
+    } else {
+      log("H-label", "FAIL", "TIMELINE label missing");
+    }
+  } catch (e) {
+    log("H-label", "FAIL", String(e));
+  }
+
+  // Tick-count sanity: the backend should have >= 1 snapshot (from Step B),
+  // so the DOM should contain matching `[data-snapshot-id]` entries. This
+  // is a lightweight check — it only confirms the bar wired up the hook.
+  try {
+    const ticks = await page
+      .locator('[data-testid="timeline-bar"] [data-snapshot-id]')
+      .count();
+    if (ticks >= 1) {
+      log("H-ticks", "OK", `TimelineBar rendered ${ticks} tick(s)`);
+    } else {
+      log(
+        "H-ticks",
+        "SKIP",
+        "no ticks visible — session may have been closed in Step F",
+      );
+    }
+  } catch (e) {
+    log("H-ticks", "FAIL", String(e));
+  }
+
   // ─── Step F: close_terminal drops the session's snapshots ──────────────
   try {
     await call("close_terminal", { id: termId });

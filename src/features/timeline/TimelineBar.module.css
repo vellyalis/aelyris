@@ -1,0 +1,111 @@
+.root {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  height: 28px;
+  box-sizing: border-box;
+  background: rgba(24, 24, 37, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid rgba(148, 226, 213, 0.15);
+  font: 11px/1 "IBM Plex Mono", "Cascadia Code", monospace;
+  color: #cdd6f4;
+  user-select: none;
+}
+
+.label {
+  color: #94e2d5;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  flex: 0 0 auto;
+}
+
+.ticks {
+  flex: 1 1 auto;
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  min-width: 0;
+}
+
+.ticks::-webkit-scrollbar {
+  display: none;
+}
+
+.tick {
+  flex: 0 0 auto;
+  width: 4px;
+  height: 16px;
+  border-radius: 1px;
+  background: rgba(148, 226, 213, 0.35);
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  transition: background 0.08s, transform 0.08s;
+}
+
+.tick:hover {
+  background: rgba(148, 226, 213, 0.75);
+  transform: scaleY(1.12);
+}
+
+.tick.userMarked {
+  background: rgba(245, 194, 231, 0.55); /* pink for user bookmarks */
+  width: 6px;
+}
+
+.tick.active {
+  background: #94e2d5;
+  box-shadow: 0 0 4px rgba(148, 226, 213, 0.8);
+}
+
+.empty {
+  color: rgba(205, 214, 244, 0.45);
+  font-style: italic;
+  padding-left: 6px;
+}
+
+.activePill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  background: rgba(148, 226, 213, 0.18);
+  border: 1px solid rgba(148, 226, 213, 0.45);
+  border-radius: 10px;
+  color: #94e2d5;
+  font-size: 10px;
+}
+
+.dismissBtn {
+  background: transparent;
+  border: 0;
+  color: #94e2d5;
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.dismissBtn:hover {
+  color: #cdd6f4;
+}
+
+.markBtn {
+  flex: 0 0 auto;
+  background: rgba(245, 194, 231, 0.15);
+  border: 1px solid rgba(245, 194, 231, 0.35);
+  color: #f5c2e7;
+  padding: 2px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+}
+
+.markBtn:hover {
+  background: rgba(245, 194, 231, 0.3);
+}

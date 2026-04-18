@@ -14,6 +14,12 @@ import { TerminalCanvas } from "./TerminalCanvas";
 import { useAICliDetection } from "./hooks/useAICliDetection";
 import { useInputMirror } from "./hooks/useInputMirror";
 import { useTerminalSnapshot } from "../../shared/hooks/useTerminalSnapshot";
+import { useSnapshots } from "../../shared/hooks/useSnapshots";
+import {
+  TimelineBar,
+  type ActiveSnapshotOverlay,
+} from "../timeline/TimelineBar";
+import type { SnapshotSummary } from "../../shared/types/snapshot";
 import {
   findMatches,
   nextMatch,
@@ -125,6 +131,94 @@ export function NativeTerminalArea({
   spawnFnRef.current = spawnPty;
 
   const snapshot = useTerminalSnapshot(terminalId);
+
+  // ── Time-travel overlay (Phase 3C-3c) ──
+  // Keyed per-session: clearing overlay on terminalId change prevents a
+  // stale past-grid from leaking into a freshly spawned shell.
+  const [snapshotOverlay, setSnapshotOverlay] =
+    useState<ActiveSnapshotOverlay | null>(null);
+  useEffect(() => {
+    setSnapshotOverlay(null);
+  }, [terminalId]);
+
+  const {
+    fetchFullSnapshot,
+    startOverlay: startSnapshotOverlay,
+    markSnapshot,
+  } = useSnapshots(terminalId);
+
+  const selectSnapshot = useCallback(
+    async (summary: SnapshotSummary) => {
+      if (!terminalId) return;
+      const full = await fetchFullSnapshot(summary.id);
+      if (!full) return;
+      const layer = await startSnapshotOverlay(summary.id);
+      if (!layer) return;
+      setSnapshotOverlay({
+        layerId: layer.id,
+        snapshotId: summary.id,
+        grid: full.grid,
+      });
+    },
+    [terminalId, fetchFullSnapshot, startSnapshotOverlay],
+  );
+
+  const dismissSnapshotOverlay = useCallback(() => {
+    setSnapshotOverlay((prev) => {
+      if (!prev) return null;
+      void invoke<void>("dismiss_ghost_layer", { layerId: prev.layerId }).catch(
+        () => {},
+      );
+      return null;
+    });
+  }, []);
+
+  const handleMarkSnapshot = useCallback(() => {
+    void markSnapshot();
+  }, [markSnapshot]);
+
+  // Backend-initiated removal (ghost-diff panel X, dismiss IPC from another
+  // caller) — clear the local overlay so the renderer returns to live.
+  useEffect(() => {
+    if (!snapshotOverlay) return;
+    let unlisten: UnlistenFn | null = null;
+    let cancelled = false;
+    (async () => {
+      try {
+        unlisten = await listen<string>("ghost-diff:layer-removed", (ev) => {
+          if (ev.payload === snapshotOverlay.layerId) {
+            setSnapshotOverlay(null);
+          }
+        });
+        if (cancelled) unlisten?.();
+      } catch {
+        /* listen unavailable */
+      }
+    })();
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [snapshotOverlay]);
+
+  // Esc returns to live. Keeps other Escape handlers (search / IME) intact
+  // by only firing when an overlay is active and the target is inside the
+  // terminal area.
+  useEffect(() => {
+    if (!snapshotOverlay) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const areaRoot = containerRef.current?.closest<HTMLElement>(
+        `.${styles.terminalArea}`,
+      );
+      const insideArea = areaRoot?.contains(document.activeElement) ?? false;
+      if (!insideArea) return;
+      e.preventDefault();
+      dismissSnapshotOverlay();
+    };
+    window.addEventListener("keydown", handler, true);
+    return () => window.removeEventListener("keydown", handler, true);
+  }, [snapshotOverlay, dismissSnapshotOverlay]);
 
   // ── AI CLI / IME input bar ──
   const aiCli = useAICliDetection();
@@ -477,6 +571,13 @@ export function NativeTerminalArea({
           </button>
         </div>
       )}
+      <TimelineBar
+        terminalId={terminalId}
+        activeOverlay={snapshotOverlay}
+        onSelectSnapshot={selectSnapshot}
+        onDismissOverlay={dismissSnapshotOverlay}
+        onMarkSnapshot={handleMarkSnapshot}
+      />
       <div ref={containerRef} className={styles.terminalContainer}>
         {terminalId && dims && (
           <TerminalCanvas
@@ -487,7 +588,10 @@ export function NativeTerminalArea({
             fontSize={FONT_SIZE}
             searchMatches={searchMatches}
             activeSearchMatch={activeSearchMatch}
-            ghostSuggestion={mirrorEnabled ? suggestion : null}
+            ghostSuggestion={
+              snapshotOverlay ? null : mirrorEnabled ? suggestion : null
+            }
+            snapshotOverride={snapshotOverlay?.grid}
             onCanvasRef={setCanvasEl}
           />
         )}
