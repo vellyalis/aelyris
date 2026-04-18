@@ -15,6 +15,7 @@ import {
   FileX,
 } from "lucide-react";
 import { showPrompt } from "../../shared/ui/PromptDialog";
+import { showHistorySearch } from "../history/HistorySearchDialog";
 import type { Menu } from "../menubar/MenuBar";
 import type { CommandItem } from "../command-palette/CommandPalette";
 import type { ShellType } from "../../App";
@@ -68,24 +69,7 @@ export function useAppMenus(opts: UseAppMenusOptions) {
     }},
     { id: "close-folder", label: "Close Folder", description: "Return to the project picker", category: "File", icon: FolderX, action: handleCloseFolder },
     { id: "search-files", label: "Search in Files", description: "Full-text search across the project", shortcut: "Ctrl+Shift+F", category: "View", icon: Search, action: () => setSearchVisible(true) },
-    { id: "search-history", label: "Search Command History", description: "Find and replay a past terminal command", category: "History", icon: History, action: async () => {
-      try {
-        const { invoke } = await import("@tauri-apps/api/core");
-        const results = await invoke<string[]>("recent_commands", { limit: 50 });
-        if (results.length === 0) { showPrompt("No command history", { placeholder: "No commands recorded yet" }); return; }
-        const query = await showPrompt("Command History", { placeholder: `${results.length} commands — type to filter...` });
-        if (query) {
-          const filtered = await invoke<Array<{ command: string }>>( "search_command_history", { query, limit: 10 });
-          if (filtered.length > 0) {
-            const cmd = filtered[0].command;
-            const terminals = await invoke<string[]>("list_terminals");
-            if (terminals.length > 0) {
-              await invoke("write_terminal", { id: terminals[0], data: cmd + "\r" });
-            }
-          }
-        }
-      } catch { /* not in Tauri */ }
-    }},
+    { id: "search-history", label: "Search Command History", description: "Semantic search across past terminal commands", shortcut: "Ctrl+R", category: "History", icon: History, keywords: ["semantic", "recall"], action: () => showHistorySearch() },
   ], [addTab, closeTab, activeTabId, activeFile, handleCloseFile, handleStartAgent, handleOpenFolder, handleCloseFolder]);
 
   const menus: Menu[] = useMemo(() => [

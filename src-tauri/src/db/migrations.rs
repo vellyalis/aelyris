@@ -74,6 +74,18 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             tokens      INTEGER NOT NULL DEFAULT 0
         );
         CREATE INDEX IF NOT EXISTS idx_usage_ts ON usage_log(timestamp DESC);
+
+        -- Phase 3B-2: semantic history search. One row per indexed command.
+        -- vector is a little-endian f32 BLOB of length dim*4.
+        CREATE TABLE IF NOT EXISTS command_embeddings (
+            command_id  INTEGER PRIMARY KEY REFERENCES command_history(id) ON DELETE CASCADE,
+            dim         INTEGER NOT NULL,
+            vector      BLOB    NOT NULL,
+            model       TEXT    NOT NULL,
+            indexed_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_command_embeddings_indexed_at
+            ON command_embeddings(indexed_at DESC);
         ",
     )?;
 

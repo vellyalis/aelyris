@@ -2,6 +2,7 @@ pub mod agent;
 pub mod config;
 pub mod db;
 pub mod git;
+pub mod history;
 mod ipc;
 pub mod lsp;
 pub mod pty;
@@ -19,6 +20,12 @@ use db::Database;
 use pty::PtyManager;
 use watchdog::auto_repair::AutoRepairManager;
 use suggest::SuggestEngine;
+use history::{HashingNgramEmbedder, HistoryStore};
+
+/// Store handle managed by Tauri. Wraps the default (char-n-gram) embedder;
+/// the trait object abstraction is intentionally hidden here — if we ever
+/// swap embedders we update this alias + call site.
+pub type ManagedHistoryStore = std::sync::Arc<HistoryStore<HashingNgramEmbedder>>;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -62,6 +69,35 @@ pub fn run() {
                     if let Ok(mem_db) = Database::open_memory() {
                         app.handle().manage(db::ManagedDb::new(mem_db));
                     }
+                }
+            }
+
+            // Phase 3B-2: HistoryStore opens a second connection to the same
+            // SQLite file (WAL mode is on) so semantic indexing writes don't
+            // contend with the PTY-hot save_command_history path.
+            match rusqlite::Connection::open(&db_path).and_then(|c| {
+                db::migrations::run_migrations(&c).map(|_| c)
+            }) {
+                Ok(conn) => {
+                    let store = std::sync::Arc::new(HistoryStore::open(
+                        conn,
+                        HashingNgramEmbedder::new(),
+                    ));
+                    app.handle().manage::<ManagedHistoryStore>(store.clone());
+                    // Backfill on a worker thread so startup stays snappy.
+                    std::thread::Builder::new()
+                        .name("history-backfill".into())
+                        .spawn(move || match store.backfill() {
+                            Ok(n) if n > 0 => log::info!("semantic history: backfilled {n} rows"),
+                            Ok(_) => {}
+                            Err(e) => log::warn!("semantic history backfill failed: {e}"),
+                        })
+                        .ok();
+                }
+                Err(e) => {
+                    log::warn!(
+                        "Failed to open HistoryStore connection (semantic search disabled): {e}"
+                    );
                 }
             }
             // Mica/Acrylic applied via tauri.conf.json windowEffects
@@ -210,6 +246,9 @@ pub fn run() {
             // Fish-style command suggestion (Phase 3A-2)
             ipc::suggest_next,
             ipc::suggest_record,
+            // Semantic history search (Phase 3B-2)
+            ipc::semantic_search_history,
+            ipc::rebuild_history_index,
             // IME positioning
             ipc::set_ime_position,
         ])

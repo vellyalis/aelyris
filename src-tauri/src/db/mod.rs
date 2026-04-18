@@ -1,4 +1,4 @@
-mod migrations;
+pub mod migrations;
 pub mod queries;
 
 pub use queries::{Database, AgentSessionRecord, CommandRecord};

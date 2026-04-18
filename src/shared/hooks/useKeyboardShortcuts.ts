@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { showPrompt } from "../ui/PromptDialog";
+import { showHistorySearch } from "../../features/history/HistorySearchDialog";
 import type { ShellType } from "../../App";
 
 interface UseKeyboardShortcutsOptions {
@@ -44,6 +45,7 @@ export function useKeyboardShortcuts({
         });
       }
       else if (e.ctrlKey && !e.shiftKey && e.key === "p") { e.preventDefault(); setQuickOpenMode?.("files"); }
+      else if (e.ctrlKey && !e.shiftKey && e.key === "r") { e.preventDefault(); showHistorySearch(); }
       else if (e.ctrlKey && e.shiftKey && e.key === "P") { e.preventDefault(); setPaletteVisible((v: boolean) => !v); }
       else if (e.ctrlKey && e.shiftKey && e.key === "T") { e.preventDefault(); addTab("powershell"); }
       else if (e.ctrlKey && e.shiftKey && e.key === "W") { e.preventDefault(); closeTab(activeTabId); }

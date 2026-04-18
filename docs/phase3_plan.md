@@ -205,11 +205,14 @@
 - AgentInspector.handleHandoff で `handoffFrom: session.id` + `role` を startAgent meta に渡す
 - tests: conductorLayout 6 + HandoffDialogRole 4
 
-## 3B-2. Semantic history search
-- embedding provider: Claude API (既存環境) or 小型ローカルモデル (candle-core)
-- vec store: sqlite-vec extension または LMDB
-- パイプライン: command output → embed (async) → store → 自然言語クエリで検索
-- UI: Ctrl+R の拡張で「3 日前のビルドエラー」系検索
+## 3B-2. Semantic history search ✅ 完了 (2026-04-18)
+- embedder: `history::HashingNgramEmbedder` (256-dim char n-gram hashing trick, MODEL_ID `char-ngram-hash-v1`)
+  - 依存ゼロ (fastembed は ONNX/ort で配布+ビルド重いため見送り、`Embedder` trait で将来差し替え可)
+- vec store: SQLite `command_embeddings` テーブル (BLOB f32 LE) + Rust cosine 全件スキャン
+  - history 数万件までは <50ms、sqlite-vec extension 不要
+- パイプライン: `save_command_history` → DB save → 別スレッド embed → insert (PTY reader 非阻害)
+- UI: Ctrl+R で `HistorySearchDialog` (radix-ui、↑↓/Enter/Esc、failed-only + this-project filter chip)、Enter 時は command 書込のみで Enter 未送信 (fish/zsh 流)
+- backfill: 起動時に未インデックス行 (または別モデルで書かれた行) を worker thread で埋める
 
 ---
 

@@ -36,6 +36,8 @@ import { PromptDialog } from "./shared/ui/PromptDialog";
 import { HandoffDialog } from "./shared/ui/HandoffDialog";
 import { OrchestraDialog } from "./shared/ui/OrchestraDialog";
 import { OnboardingOverlay } from "./shared/ui/OnboardingOverlay";
+import { HistorySearchDialog } from "./features/history/HistorySearchDialog";
+import type { SearchHit } from "./shared/types/history";
 import { useTabManager } from "./shared/hooks/useTabManager";
 import { useAgentManager } from "./shared/hooks/useAgentManager";
 import { useInteractiveAgent } from "./shared/hooks/useInteractiveAgent";
@@ -186,6 +188,21 @@ export function App() {
     } catch (err) {
       /* command error */
     }
+  }, []);
+
+  /**
+   * Ctrl+R history hit → stage the command at the current prompt without
+   * pressing Enter. Matches fish/zsh `history-pager` behaviour so the user
+   * can still edit before running.
+   */
+  const handleHistoryAccept = useCallback(async (hit: SearchHit) => {
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      const terminals = await invoke<string[]>("list_terminals");
+      if (terminals.length > 0) {
+        await invoke("write_terminal", { id: terminals[0], data: hit.entry.command });
+      }
+    } catch { /* not in Tauri */ }
   }, []);
 
   const handleSelectSession = useCallback((sessionId: string) => {
@@ -474,6 +491,7 @@ export function App() {
       <PromptDialog />
       <HandoffDialog />
       <OrchestraDialog />
+      <HistorySearchDialog onAccept={handleHistoryAccept} defaultCwdPrefix={projectPath || undefined} />
       <OnboardingOverlay />
     </div>
     </ToastProvider></TooltipProvider>

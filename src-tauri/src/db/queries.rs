@@ -442,6 +442,25 @@ impl Database {
         Ok(())
     }
 
+    /// Return the id of the most recent command_history row that matches the
+    /// given (terminal_id, command) pair. Used by the semantic indexer to
+    /// attach an embedding to the row we just inserted.
+    pub fn last_command_id_for(&self, terminal_id: &str, command: &str) -> Result<Option<i64>, String> {
+        self.conn
+            .query_row(
+                "SELECT id FROM command_history
+                 WHERE terminal_id = ?1 AND command = ?2
+                 ORDER BY id DESC LIMIT 1",
+                params![terminal_id, command],
+                |r| r.get::<_, i64>(0),
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                _ => Err(format!("last_command_id_for: {e}")),
+            })
+    }
+
     /// Search command history by substring match
     pub fn search_commands(&self, query: &str, limit: usize) -> Result<Vec<CommandRecord>, String> {
         let mut stmt = self

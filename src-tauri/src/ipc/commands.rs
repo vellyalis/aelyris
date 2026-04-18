@@ -1330,6 +1330,10 @@ pub fn list_agent_history(app: AppHandle, limit: usize) -> Result<Vec<crate::db:
 /// Save a command to history (DB) and feed the in-memory SuggestEngine
 /// so fish-style autosuggest picks up the new command on the very next
 /// keystroke without waiting for a DB reseed.
+///
+/// Also kicks off a best-effort semantic-index insert on a detached thread
+/// (Phase 3B-2) — we deliberately avoid blocking the PTY reader on the
+/// embedding round-trip even though the default embedder is fast.
 #[tauri::command]
 pub fn save_command_history(app: AppHandle, terminal_id: String, command: String, cwd: String) -> Result<(), String> {
     let db = app.state::<crate::db::ManagedDb>();
@@ -1337,6 +1341,23 @@ pub fn save_command_history(app: AppHandle, terminal_id: String, command: String
     if let Some(engine) = app.try_state::<Arc<Mutex<crate::suggest::SuggestEngine>>>() {
         if let Ok(mut guard) = engine.inner().lock() {
             guard.record(&command);
+        }
+    }
+    // Semantic index. We need the new row id — re-read the latest row for
+    // this (terminal_id, command) pair. `save_command` does not return it.
+    if let Some(store) = app.try_state::<crate::ManagedHistoryStore>() {
+        let last_id = db.with(|d| d.last_command_id_for(&terminal_id, &command))?;
+        if let Some(id) = last_id {
+            let store = store.inner().clone();
+            let cmd = command.clone();
+            std::thread::Builder::new()
+                .name("history-index".into())
+                .spawn(move || {
+                    if let Err(e) = store.index_command(id, &cmd) {
+                        log::warn!("history index failed (id {id}): {e}");
+                    }
+                })
+                .ok();
         }
     }
     Ok(())
