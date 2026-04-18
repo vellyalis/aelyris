@@ -55,7 +55,7 @@ async function main() {
   let termId;
   try {
     termId = await call("spawn_terminal", {
-      shell: "PowerShell",
+      shell: "powershell",
       cols: 80,
       rows: 24,
       cwd: null,
@@ -323,7 +323,22 @@ async function main() {
   }
 
   // ─── Step H: TimelineBar UI surface (3C-3c) ────────────────────────────
+  // TimelineBar lives inside NativeTerminalArea, which only renders when a
+  // terminal tab is active. Fresh app launches show the Welcome screen
+  // until the user opens a tab — we invoke the "New Terminal: PowerShell"
+  // shortcut (Ctrl+Shift+T) to force a tab so the bar actually mounts.
   console.log("\n# H. TimelineBar UI surface (3C-3c)");
+
+  try {
+    await page.keyboard.press("Control+Shift+T");
+    // Wait for the TerminalArea to mount + PTY to spawn + Tauri to wire
+    // up the canvas. 1.5s is generous but matches the dev build's cold
+    // paint; verify-3c2.mjs uses similar waits around keyboard-triggered
+    // UI state changes.
+    await page.waitForTimeout(1500);
+  } catch (e) {
+    log("H-open-tab", "FAIL", `could not open terminal tab: ${e}`);
+  }
 
   try {
     const bar = await page.locator('[data-testid="timeline-bar"]').first();
@@ -348,21 +363,38 @@ async function main() {
     log("H-label", "FAIL", String(e));
   }
 
-  // Tick-count sanity: the backend should have >= 1 snapshot (from Step B),
-  // so the DOM should contain matching `[data-snapshot-id]` entries. This
-  // is a lightweight check — it only confirms the bar wired up the hook.
+  // Tick-count sanity: trigger one snapshot in the visible tab's session
+  // (separate from Step A's IPC-spawned terminal, which we closed in F)
+  // and confirm the DOM picks it up via the `snapshot:captured-*` listener
+  // in useSnapshots.
+  //
+  // We read the canvas's `data-terminal-id` attribute and call the
+  // `write_terminal` IPC with `\r` directly — the keyboard/focus route
+  // trips up Playwright under Tauri's full-window layout.
   try {
-    const ticks = await page
-      .locator('[data-testid="timeline-bar"] [data-snapshot-id]')
-      .count();
-    if (ticks >= 1) {
-      log("H-ticks", "OK", `TimelineBar rendered ${ticks} tick(s)`);
+    const canvasTermId = await page.evaluate(() => {
+      const el = document.querySelector('[data-testid="terminal-canvas"]');
+      return el?.getAttribute("data-terminal-id") ?? null;
+    });
+    if (!canvasTermId) {
+      log("H-ticks", "FAIL", "terminal canvas has no data-terminal-id");
     } else {
-      log(
-        "H-ticks",
-        "SKIP",
-        "no ticks visible — session may have been closed in Step F",
-      );
+      await call("write_terminal", { id: canvasTermId, data: "\r" });
+      // Give the snapshot:captured event + useSnapshots re-fetch a beat
+      // to round-trip before we read the DOM.
+      await page.waitForTimeout(600);
+      const ticks = await page
+        .locator('[data-testid="timeline-bar"] [data-snapshot-id]')
+        .count();
+      if (ticks >= 1) {
+        log("H-ticks", "OK", `TimelineBar rendered ${ticks} tick(s) after Enter`);
+      } else {
+        log(
+          "H-ticks",
+          "FAIL",
+          "no tick appeared after Enter — event plumbing broken?",
+        );
+      }
     }
   } catch (e) {
     log("H-ticks", "FAIL", String(e));
