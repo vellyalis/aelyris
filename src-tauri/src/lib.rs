@@ -375,6 +375,8 @@ pub fn run() {
             ipc::list_snapshots,
             ipc::get_snapshot,
             ipc::mark_snapshot,
+            // Snapshot overlay (Phase 3C-3b)
+            ipc::start_snapshot_overlay,
             // IME positioning
             ipc::set_ime_position,
         ])

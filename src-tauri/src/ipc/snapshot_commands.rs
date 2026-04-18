@@ -7,10 +7,12 @@
 //! risky command.
 
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
+use crate::ghostdiff::{LayerRegistry, LayerSummary, LayerTint};
 use crate::snapshot::{
     SnapshotStore, SnapshotSummary, SnapshotTrigger, TerminalSnapshot,
 };
@@ -87,4 +89,49 @@ pub fn mark_snapshot(
 
     store.inner().push(snap.clone());
     Ok(SnapshotSummary::from_snapshot(&snap))
+}
+
+/// Phase 3C-3b — spin up a read-only overlay from a captured snapshot. The
+/// resulting `Layer` shows up in the ghost-diff panel alongside other
+/// overlays and is dismissed via the existing `dismiss_ghost_layer` IPC.
+/// Apply / Tab operations are automatically rejected via the existing
+/// `is_read_only` gate on `apply_ghost_hunk` / `apply_ghost_file`.
+#[tauri::command]
+pub fn start_snapshot_overlay(
+    app: AppHandle,
+    snapshot_id: String,
+) -> Result<LayerSummary, String> {
+    let store = app
+        .try_state::<Arc<SnapshotStore>>()
+        .ok_or_else(|| "snapshot store missing".to_string())?;
+    let registry = app
+        .try_state::<Arc<LayerRegistry>>()
+        .ok_or_else(|| "LayerRegistry state missing".to_string())?;
+
+    let snap = store
+        .inner()
+        .get(&snapshot_id)
+        .ok_or_else(|| format!("snapshot {snapshot_id} not found — may have been evicted"))?;
+
+    let layer_id = format!("snapshot-{}", uuid::Uuid::new_v4());
+    let created_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    registry.register_snapshot_layer(
+        layer_id.clone(),
+        snap.session_id.clone(),
+        snap.id.0.clone(),
+        snap.captured_at,
+        snap.grid.clone(),
+        LayerTint::snapshot(),
+        created_at,
+    )?;
+
+    registry
+        .list()
+        .into_iter()
+        .find(|s| s.id == layer_id)
+        .ok_or_else(|| "layer vanished immediately after registration".to_string())
 }

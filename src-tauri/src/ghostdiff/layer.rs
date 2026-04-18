@@ -12,6 +12,8 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::term::GridSnapshot;
+
 /// Stable identifier for a layer (mirrors the originating session/job id).
 pub type LayerId = String;
 
@@ -43,11 +45,26 @@ pub enum LayerSource {
         /// The branch being peeked at (the "after" in the diff).
         head_branch: String,
     },
+    /// A terminal state snapshot (Phase 3C-3). Read-only — restoring past
+    /// bytes to a live PTY would desynchronize with the shell; the overlay
+    /// exists only to paint past grid state for the user to read.
+    #[serde(rename_all = "camelCase")]
+    Snapshot {
+        /// PTY session that was captured. The overlay is displayed on this
+        /// session's terminal renderer.
+        session_id: String,
+        /// Id of the captured `TerminalSnapshot` in `SnapshotStore`. Used by
+        /// the frontend to cross-reference the originating timeline entry.
+        snapshot_id: String,
+        /// Unix seconds when the snapshot was captured (mirrors
+        /// `TerminalSnapshot.captured_at`). Duplicated here so the panel can
+        /// render a timestamp without a second IPC round-trip.
+        captured_at: u64,
+    },
 }
 
-/// What the layer is showing. Currently a diff against a base revision,
-/// but `LayerContent` is phrased as an enum so future layer types (e.g.
-/// terminal state snapshots) can slot in without widening `Layer`.
+/// What the layer is showing. Diff (hunks against a base revision) or
+/// TerminalState (a captured grid, for time-travel overlays in 3C-3).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum LayerContent {
@@ -56,6 +73,13 @@ pub enum LayerContent {
         /// e.g. "HEAD" or a concrete SHA. Informational only for now.
         base_revision: String,
         files: Vec<FileDelta>,
+    },
+    /// A point-in-time grid snapshot (Phase 3C-3b). The frontend paints
+    /// these cells into the terminal viewport in place of the live grid
+    /// while the overlay is active.
+    #[serde(rename_all = "camelCase")]
+    TerminalState {
+        grid: GridSnapshot,
     },
 }
 
@@ -129,6 +153,15 @@ impl LayerTint {
             role_label: "branch".into(),
         }
     }
+
+    /// Phase 3C-3b: read-only time-travel snapshot overlay. Teal to
+    /// distinguish from branch comparisons (sky) and agent layers.
+    pub fn snapshot() -> Self {
+        Self {
+            role_color: "#94e2d5".into(), // Catppuccin teal
+            role_label: "snapshot".into(),
+        }
+    }
 }
 
 /// A ghost layer visible to the UI.
@@ -191,6 +224,32 @@ impl Layer {
         }
     }
 
+    /// Build a read-only time-travel snapshot layer (Phase 3C-3b). The grid
+    /// is captured at registration time (unlike branch comparisons which
+    /// populate later via `refresh()`), so `is_complete` is always `true`.
+    pub fn new_snapshot(
+        id: LayerId,
+        session_id: String,
+        snapshot_id: String,
+        captured_at: u64,
+        grid: GridSnapshot,
+        tint: LayerTint,
+        created_at: u64,
+    ) -> Self {
+        Self {
+            id,
+            source: LayerSource::Snapshot {
+                session_id,
+                snapshot_id,
+                captured_at,
+            },
+            content: LayerContent::TerminalState { grid },
+            tint,
+            is_complete: true,
+            created_at,
+        }
+    }
+
     /// Build a read-only "peek at another branch" layer (Phase 3C-2).
     /// `base_revision` is prefilled with `branch:<head_branch>` so the
     /// summary reads clearly in the panel.
@@ -225,11 +284,13 @@ impl Layer {
     }
 
     /// `true` when apply operations against this layer must be rejected —
-    /// the user does not own the source revision (e.g. branch comparisons).
+    /// the user does not own the source revision (e.g. branch comparisons,
+    /// time-travel snapshots).
     pub fn is_read_only(&self) -> bool {
         match &self.source {
             LayerSource::Worktree { .. } => false,
             LayerSource::BranchComparison { .. } => true,
+            LayerSource::Snapshot { .. } => true,
         }
     }
 
@@ -240,6 +301,10 @@ impl Layer {
                 let paths = files.iter().map(|f| f.path.clone()).collect();
                 (files.len(), hunks, paths)
             }
+            // Terminal state overlays have no files / hunks. The panel uses
+            // the 0 counts as a signal to render a "snapshot" badge instead
+            // of the usual "N files / M hunks" summary row.
+            LayerContent::TerminalState { .. } => (0usize, 0usize, Vec::new()),
         };
         LayerSummary {
             id: self.id.clone(),
@@ -254,11 +319,12 @@ impl Layer {
     }
 
     /// Convenience accessor for the worktree path (returns `None` for
-    /// non-worktree sources — `BranchComparison` has no worktree).
+    /// non-worktree sources — `BranchComparison` / `Snapshot` have none).
     pub fn worktree_path(&self) -> Option<&PathBuf> {
         match &self.source {
             LayerSource::Worktree { path, .. } => Some(path),
             LayerSource::BranchComparison { .. } => None,
+            LayerSource::Snapshot { .. } => None,
         }
     }
 
@@ -266,13 +332,30 @@ impl Layer {
         match &self.source {
             LayerSource::Worktree { repo_path, .. } => Some(repo_path),
             LayerSource::BranchComparison { repo_path, .. } => Some(repo_path),
+            // Snapshots are terminal-scoped; no repo to write back to.
+            LayerSource::Snapshot { .. } => None,
         }
     }
 
-    /// Locate a single file delta by repo-relative path.
+    /// Locate a single file delta by repo-relative path. Snapshot overlays
+    /// carry no files — they return `None` unconditionally.
     pub fn find_file(&self, path: &str) -> Option<&FileDelta> {
         match &self.content {
             LayerContent::Diff { files, .. } => files.iter().find(|f| f.path == path),
+            LayerContent::TerminalState { .. } => {
+                let _ = path;
+                None
+            }
+        }
+    }
+
+    /// Phase 3C-3b accessor: the captured `GridSnapshot` when the layer is a
+    /// TerminalState overlay, `None` otherwise. Used by the terminal renderer
+    /// bridge to paint past grid state.
+    pub fn terminal_grid(&self) -> Option<&GridSnapshot> {
+        match &self.content {
+            LayerContent::TerminalState { grid } => Some(grid),
+            LayerContent::Diff { .. } => None,
         }
     }
 }
@@ -451,6 +534,9 @@ mod tests {
                 // render it without reaching into LayerSource.
                 assert_eq!(base_revision, "branch:feature/foo");
             }
+            LayerContent::TerminalState { .. } => {
+                panic!("branch comparison layer must have Diff content");
+            }
         }
     }
 
@@ -472,6 +558,124 @@ mod tests {
         let t = LayerTint::branch_comparison();
         assert_eq!(t.role_color, "#89dceb");
         assert_eq!(t.role_label, "branch");
+    }
+
+    fn blank_grid() -> GridSnapshot {
+        use crate::term::{CellSnapshot, CursorShapeSnapshot, CursorSnapshot};
+        GridSnapshot {
+            cols: 3,
+            rows: 1,
+            cells: vec![vec![
+                CellSnapshot::blank(),
+                CellSnapshot::blank(),
+                CellSnapshot::blank(),
+            ]],
+            cursor: CursorSnapshot {
+                row: 0,
+                col: 0,
+                shape: CursorShapeSnapshot::Block,
+                blinking: false,
+                visible: true,
+            },
+        }
+    }
+
+    #[test]
+    fn new_snapshot_is_read_only_and_complete() {
+        let layer = Layer::new_snapshot(
+            "snap-1".into(),
+            "session-x".into(),
+            "snap-id-abc".into(),
+            1_700_000_000,
+            blank_grid(),
+            LayerTint::snapshot(),
+            1_700_000_001,
+        );
+        assert!(layer.is_read_only());
+        // Snapshots are captured whole; no incomplete state.
+        assert!(layer.is_complete);
+        assert!(layer.worktree_path().is_none());
+        assert!(layer.repo_path().is_none());
+        match &layer.source {
+            LayerSource::Snapshot { session_id, snapshot_id, captured_at } => {
+                assert_eq!(session_id, "session-x");
+                assert_eq!(snapshot_id, "snap-id-abc");
+                assert_eq!(*captured_at, 1_700_000_000);
+            }
+            _ => panic!("expected Snapshot source"),
+        }
+        let grid = layer.terminal_grid().expect("terminal grid on snapshot layer");
+        assert_eq!(grid.cols, 3);
+    }
+
+    #[test]
+    fn snapshot_layer_summary_is_zero_files() {
+        let layer = Layer::new_snapshot(
+            "snap-1".into(),
+            "s".into(),
+            "sid".into(),
+            0,
+            blank_grid(),
+            LayerTint::snapshot(),
+            0,
+        );
+        let s = layer.summary();
+        assert_eq!(s.file_count, 0);
+        assert_eq!(s.hunk_count, 0);
+        assert!(s.file_paths.is_empty());
+        assert!(s.is_complete);
+    }
+
+    #[test]
+    fn snapshot_layer_find_file_returns_none() {
+        let layer = Layer::new_snapshot(
+            "snap-1".into(),
+            "s".into(),
+            "sid".into(),
+            0,
+            blank_grid(),
+            LayerTint::snapshot(),
+            0,
+        );
+        assert!(layer.find_file("src/any.ts").is_none());
+    }
+
+    #[test]
+    fn diff_layer_terminal_grid_is_none() {
+        let layer = Layer::new_worktree(
+            "j".into(),
+            "/w".into(),
+            "b".into(),
+            "/r".into(),
+            LayerTint::auto_repair(),
+            0,
+        );
+        assert!(layer.terminal_grid().is_none());
+    }
+
+    #[test]
+    fn snapshot_layer_serde_round_trip() {
+        let layer = Layer::new_snapshot(
+            "snap-1".into(),
+            "session-x".into(),
+            "snap-id-abc".into(),
+            42,
+            blank_grid(),
+            LayerTint::snapshot(),
+            99,
+        );
+        let json = serde_json::to_string(&layer).expect("serialize");
+        assert!(json.contains("\"kind\":\"snapshot\""));
+        assert!(json.contains("\"kind\":\"terminalState\""));
+        let back: Layer = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back, layer);
+    }
+
+    #[test]
+    fn tint_snapshot_is_teal() {
+        let t = LayerTint::snapshot();
+        assert_eq!(t.role_color, "#94e2d5");
+        assert_eq!(t.role_label, "snapshot");
     }
 
     #[test]

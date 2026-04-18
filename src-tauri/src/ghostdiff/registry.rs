@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use super::layer::{
     FileDelta, Layer, LayerContent, LayerId, LayerSource, LayerSummary, LayerTint,
 };
+use crate::term::GridSnapshot;
 
 /// Snapshot the watcher needs to recompute a diff for one layer.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -81,11 +82,12 @@ impl LayerRegistry {
         );
         // Replace the default "HEAD" with the captured SHA so subsequent diffs
         // are stable even after the agent commits inside the worktree.
-        let LayerContent::Diff {
-            ref mut base_revision,
-            ..
-        } = layer.content;
-        *base_revision = base_sha;
+        // `new_worktree` always builds `LayerContent::Diff` so this branch is
+        // taken in practice, but `if let` keeps the match exhaustive now that
+        // `LayerContent` has more than one variant (3C-3b).
+        if let LayerContent::Diff { base_revision, .. } = &mut layer.content {
+            *base_revision = base_sha;
+        }
         let summary = layer.summary();
         guard.insert(id, layer);
         drop(guard);
@@ -124,6 +126,40 @@ impl LayerRegistry {
         Ok(())
     }
 
+    /// Register a read-only time-travel snapshot layer (Phase 3C-3b). The
+    /// captured grid is embedded directly so the frontend can render the
+    /// past terminal state without a follow-up fetch.
+    #[allow(clippy::too_many_arguments)]
+    pub fn register_snapshot_layer(
+        &self,
+        id: LayerId,
+        session_id: String,
+        snapshot_id: String,
+        captured_at: u64,
+        grid: GridSnapshot,
+        tint: LayerTint,
+        created_at: u64,
+    ) -> Result<(), String> {
+        let mut guard = self.lock_layers()?;
+        if guard.contains_key(&id) {
+            return Err(format!("layer already registered: {id}"));
+        }
+        let layer = Layer::new_snapshot(
+            id.clone(),
+            session_id,
+            snapshot_id,
+            captured_at,
+            grid,
+            tint,
+            created_at,
+        );
+        let summary = layer.summary();
+        guard.insert(id, layer);
+        drop(guard);
+        let _ = self.tx.send(LayerEvent::Updated(summary));
+        Ok(())
+    }
+
     /// Remove a layer. No-op if unknown.
     pub fn unregister(&self, id: &str) -> Result<(), String> {
         let removed = {
@@ -137,8 +173,8 @@ impl LayerRegistry {
     }
 
     /// Replace a layer's file deltas with freshly computed ones and emit an
-    /// `Updated` event. If the layer isn't registered this is a silent no-op
-    /// (racy unregister during a refresh shouldn't spam errors).
+    /// `Updated` event. Silently no-ops for snapshot layers (their content
+    /// is terminal state, not file hunks) or for unknown ids.
     pub fn refresh(&self, id: &str, files: Vec<FileDelta>) -> Result<(), String> {
         let summary = {
             let mut guard = self.lock_layers()?;
@@ -148,6 +184,17 @@ impl LayerRegistry {
             match &mut layer.content {
                 LayerContent::Diff { files: stored, .. } => {
                     *stored = files;
+                }
+                // Snapshot layers have no file deltas — refreshing them with
+                // `Vec<FileDelta>` is a category error from the caller.
+                // Dropping the payload silently keeps the invariant and
+                // avoids a panic path in the watcher pool.
+                LayerContent::TerminalState { .. } => {
+                    log::debug!(
+                        "refresh(files) on snapshot layer {id} ignored — \
+                         snapshot content is immutable after registration"
+                    );
+                    return Ok(());
                 }
             }
             layer.summary()
@@ -187,8 +234,8 @@ impl LayerRegistry {
     }
 
     /// Source snapshot for one layer — used by the watcher callback on each
-    /// debounced fs event. Returns `None` for layer kinds that do not back
-    /// a fs watcher (e.g. `BranchComparison`, Phase 3C-2).
+    /// debounced fs event. Returns `None` for layer kinds that do not back a
+    /// fs watcher (`BranchComparison` / `Snapshot`, Phases 3C-2 / 3C-3).
     pub fn get_source_snapshot(&self, id: &str) -> Option<LayerSourceSnapshot> {
         let guard = self.layers.lock().ok()?;
         let layer = guard.get(id)?;
@@ -196,6 +243,11 @@ impl LayerRegistry {
             LayerSource::Worktree { path, .. } => {
                 let base_sha = match &layer.content {
                     LayerContent::Diff { base_revision, .. } => base_revision.clone(),
+                    // Unreachable in practice: worktree layers are only ever
+                    // constructed with Diff content via `Layer::new_worktree`.
+                    // Use a sentinel instead of `unreachable!()` so a future
+                    // refactor can't turn this into a runtime panic.
+                    LayerContent::TerminalState { .. } => String::new(),
                 };
                 Some(LayerSourceSnapshot {
                     id: layer.id.clone(),
@@ -204,6 +256,7 @@ impl LayerRegistry {
                 })
             }
             LayerSource::BranchComparison { .. } => None,
+            LayerSource::Snapshot { .. } => None,
         }
     }
 
@@ -244,6 +297,7 @@ impl LayerRegistry {
                 LayerSource::Worktree { path, .. } => {
                     let base_sha = match &l.content {
                         LayerContent::Diff { base_revision, .. } => base_revision.clone(),
+                        LayerContent::TerminalState { .. } => String::new(),
                     };
                     Some(LayerSourceSnapshot {
                         id: l.id.clone(),
@@ -251,10 +305,11 @@ impl LayerRegistry {
                         base_sha,
                     })
                 }
-                // Branch comparisons (Phase 3C-2) are not fs-watched — they
-                // only refresh on explicit user trigger, so the watcher pool
-                // has nothing to do with them.
+                // Branch comparisons (3C-2) and snapshot overlays (3C-3) are
+                // not fs-watched — they only refresh on explicit user
+                // trigger, so the watcher pool has nothing to do with them.
                 LayerSource::BranchComparison { .. } => None,
+                LayerSource::Snapshot { .. } => None,
             })
             .collect()
     }
@@ -297,6 +352,10 @@ impl LayerRegistry {
                     }
                     taken
                 }
+                // Snapshot layers carry no hunks — any remove request is a
+                // category error from the caller. IPC already rejects via
+                // `is_read_only`, but we handle it here too for safety.
+                LayerContent::TerminalState { .. } => return Ok(None),
             };
             (taken, layer.summary())
         };
@@ -318,6 +377,8 @@ impl LayerRegistry {
                     files.retain(|f| f.path != file_path);
                     before != files.len()
                 }
+                // Snapshot layers have no per-file content.
+                LayerContent::TerminalState { .. } => false,
             };
             (removed, layer.summary())
         };
@@ -681,6 +742,112 @@ mod tests {
         let snaps = r.source_snapshots();
         assert_eq!(snaps.len(), 1);
         assert_eq!(snaps[0].id, "wt1");
+    }
+
+    // ─── Phase 3C-3b snapshot overlays ────────────────────────────────────
+
+    fn blank_grid(cols: u16, rows: u16) -> GridSnapshot {
+        use crate::term::{CellSnapshot, CursorShapeSnapshot, CursorSnapshot};
+        let row: Vec<_> = (0..cols).map(|_| CellSnapshot::blank()).collect();
+        GridSnapshot {
+            cols,
+            rows,
+            cells: (0..rows).map(|_| row.clone()).collect(),
+            cursor: CursorSnapshot {
+                row: 0,
+                col: 0,
+                shape: CursorShapeSnapshot::Block,
+                blinking: false,
+                visible: true,
+            },
+        }
+    }
+
+    fn reg_snapshot(r: &LayerRegistry, id: &str, created_at: u64) {
+        r.register_snapshot_layer(
+            id.into(),
+            format!("session-{id}"),
+            format!("snap-id-{id}"),
+            42,
+            blank_grid(4, 2),
+            LayerTint::snapshot(),
+            created_at,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn register_snapshot_layer_marks_read_only_and_complete() {
+        let r = LayerRegistry::new();
+        reg_snapshot(&r, "s1", 10);
+        assert!(r.contains("s1"));
+        assert!(r.is_read_only("s1"));
+        // No repo_path / worktree source → fs-watch skipped.
+        assert!(r.get_source_snapshot("s1").is_none());
+        assert!(r.repo_path("s1").is_none());
+        let list = r.list();
+        assert_eq!(list.len(), 1);
+        assert!(list[0].is_complete);
+        assert_eq!(list[0].file_count, 0);
+        assert_eq!(list[0].hunk_count, 0);
+    }
+
+    #[test]
+    fn register_snapshot_layer_rejects_duplicate_id() {
+        let r = LayerRegistry::new();
+        reg_snapshot(&r, "s1", 0);
+        let err = r
+            .register_snapshot_layer(
+                "s1".into(),
+                "session-x".into(),
+                "snap-x".into(),
+                0,
+                blank_grid(2, 1),
+                LayerTint::snapshot(),
+                0,
+            )
+            .unwrap_err();
+        assert!(err.contains("already registered"));
+    }
+
+    #[test]
+    fn source_snapshots_skip_snapshot_overlays() {
+        let r = LayerRegistry::new();
+        reg_layer(&r, "wt1", 0);
+        reg_snapshot(&r, "s1", 1);
+        let snaps = r.source_snapshots();
+        assert_eq!(snaps.len(), 1);
+        assert_eq!(snaps[0].id, "wt1");
+    }
+
+    #[test]
+    fn refresh_on_snapshot_layer_is_noop() {
+        let r = LayerRegistry::new();
+        reg_snapshot(&r, "s1", 0);
+        let _ = r.poll(); // drain the register Updated event
+        // Refresh with a bogus file delta must silently no-op — snapshot
+        // content is immutable after registration.
+        r.refresh("s1", vec![make_delta("a.ts")]).unwrap();
+        assert!(r.poll().is_empty(), "snapshot refresh should emit nothing");
+        // File count stays zero because the TerminalState content is unchanged.
+        let list = r.list();
+        assert_eq!(list[0].file_count, 0);
+    }
+
+    #[test]
+    fn remove_hunk_on_snapshot_layer_returns_none() {
+        let r = LayerRegistry::new();
+        reg_snapshot(&r, "s1", 0);
+        let taken = r.remove_hunk("s1", "any.ts", 0).unwrap();
+        assert!(taken.is_none());
+    }
+
+    #[test]
+    fn clear_file_hunks_on_snapshot_layer_returns_false() {
+        let r = LayerRegistry::new();
+        reg_snapshot(&r, "s1", 0);
+        let removed = r.clear_file_hunks("s1", "any.ts").unwrap();
+        assert!(!removed);
     }
 
     #[test]

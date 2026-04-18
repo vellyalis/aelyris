@@ -201,6 +201,127 @@ async function main() {
     log("E-eviction", "FAIL", String(e));
   }
 
+  // ─── Step G: start_snapshot_overlay → layer registered read-only ──────
+  // (3C-3b) — done before cleanup so we can tear down both cleanly.
+  console.log("\n# G. Snapshot overlay lifecycle (3C-3b)");
+
+  // Ensure we have at least one snapshot to overlay. The eviction step
+  // may have left many — just pick the latest.
+  let overlayId;
+  let overlayLayer;
+  try {
+    const list = await call("list_snapshots", { sessionId: termId });
+    if (list.length === 0) {
+      log("G-pre", "FAIL", "no snapshots to overlay");
+    } else {
+      const target = list[list.length - 1];
+      overlayLayer = await call("start_snapshot_overlay", {
+        snapshotId: target.id,
+      });
+      overlayId = overlayLayer.id;
+      const ok =
+        overlayLayer.source?.kind === "snapshot" &&
+        overlayLayer.source.sessionId === termId &&
+        overlayLayer.source.snapshotId === target.id &&
+        overlayLayer.isComplete === true &&
+        overlayLayer.tint?.roleColor?.toLowerCase() === "#94e2d5" &&
+        overlayLayer.tint?.roleLabel === "snapshot" &&
+        overlayLayer.fileCount === 0 &&
+        overlayLayer.hunkCount === 0;
+      if (ok) {
+        log(
+          "G-start",
+          "OK",
+          `overlay ${overlayId.slice(0, 16)}… registered, source=snapshot, tint=teal`,
+        );
+      } else {
+        log(
+          "G-start",
+          "FAIL",
+          `unexpected layer shape: ${JSON.stringify(overlayLayer).slice(0, 260)}`,
+        );
+      }
+    }
+  } catch (e) {
+    log("G-start", "FAIL", String(e));
+  }
+
+  // Appears in list_ghost_layers
+  if (overlayId) {
+    try {
+      const layers = await call("list_ghost_layers", {});
+      const hit = layers.find((l) => l.id === overlayId);
+      if (hit && hit.source?.kind === "snapshot") {
+        log("G-list", "OK", "overlay visible in list_ghost_layers with snapshot source");
+      } else {
+        log("G-list", "FAIL", `overlay missing or wrong source: ${JSON.stringify(hit)}`);
+      }
+    } catch (e) {
+      log("G-list", "FAIL", String(e));
+    }
+  }
+
+  // apply_ghost_hunk must be rejected (read-only gate)
+  if (overlayId) {
+    try {
+      await call("apply_ghost_hunk", {
+        layerId: overlayId,
+        filePath: "any.ts",
+        hunkIndex: 0,
+      });
+      log("G-readonly hunk", "FAIL", "apply_ghost_hunk should reject snapshot layer");
+    } catch (e) {
+      const msg = String(e);
+      if (msg.includes("read-only")) {
+        log("G-readonly hunk", "OK", "apply_ghost_hunk rejected with 'read-only'");
+      } else {
+        log("G-readonly hunk", "FAIL", `wrong rejection: ${msg}`);
+      }
+    }
+
+    try {
+      await call("apply_ghost_file", {
+        layerId: overlayId,
+        filePath: "any.ts",
+      });
+      log("G-readonly file", "FAIL", "apply_ghost_file should reject snapshot layer");
+    } catch (e) {
+      const msg = String(e);
+      if (msg.includes("read-only")) {
+        log("G-readonly file", "OK", "apply_ghost_file rejected with 'read-only'");
+      } else {
+        log("G-readonly file", "FAIL", `wrong rejection: ${msg}`);
+      }
+    }
+  }
+
+  // Unknown snapshot id → error
+  try {
+    await call("start_snapshot_overlay", { snapshotId: "nope-missing-id" });
+    log("G-unknown", "FAIL", "expected rejection on unknown snapshot id");
+  } catch (e) {
+    if (String(e).includes("not found") || String(e).includes("evicted")) {
+      log("G-unknown", "OK", "unknown snapshot id rejected as not found");
+    } else {
+      log("G-unknown", "FAIL", `wrong rejection: ${e}`);
+    }
+  }
+
+  // Dismiss the overlay via the existing ghost-diff IPC
+  if (overlayId) {
+    try {
+      await call("dismiss_ghost_layer", { layerId: overlayId });
+      const layers = await call("list_ghost_layers", {});
+      if (layers.some((l) => l.id === overlayId)) {
+        log("G-dismiss", "FAIL", "overlay still present after dismiss");
+      } else {
+        log("G-dismiss", "OK", "overlay fully removed via dismiss_ghost_layer");
+      }
+    } catch (e) {
+      log("G-dismiss", "FAIL", String(e));
+    }
+  }
+
   // ─── Step F: close_terminal drops the session's snapshots ──────────────
   try {
     await call("close_terminal", { id: termId });

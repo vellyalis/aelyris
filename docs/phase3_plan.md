@@ -484,11 +484,16 @@ pub enum LayerSource {
 
 **Note**: プロンプト検出は「PTY write に `\r` が入った瞬間」= 事前の Enter heuristic。OSC 133 は 3C-3b の拡張へ先送り。
 
-#### 3C-3b. LayerSource::Snapshot + Rust registry 統合 (2-3 日)
-- `layer.rs` に Snapshot variant 追加 — 既存 match 全箇所対応
-- `LayerContent::TerminalState { grid }` variant
-- IPC: `start_snapshot_overlay(snapshot_id) -> LayerSummary`
-- 全 apply_* IPC は既存 is_read_only で自動 reject
+#### 3C-3b. LayerSource::Snapshot + Rust registry 統合 ✅ 完了 (2026-04-18)
+- ✅ `layer.rs` に `LayerSource::Snapshot { session_id, snapshot_id, captured_at }` + `LayerContent::TerminalState { grid: GridSnapshot }` variant 追加。`is_read_only` / `worktree_path` / `repo_path` / `summary` / `find_file` を exhaustive 化。新アクセサ `terminal_grid() -> Option<&GridSnapshot>`
+- ✅ `LayerTint::snapshot()` — Catppuccin teal (#94e2d5) + label "snapshot"
+- ✅ `Layer::new_snapshot` 構築関数 — is_complete=true (snapshot は registration 時点で確定)
+- ✅ `registry.rs` 全 match site 更新: `register_worktree_layer` の irrefutable let-pattern を if-let 化、`refresh` / `get_source_snapshot` / `source_snapshots` / `remove_hunk` / `clear_file_hunks` に TerminalState 対応 arm 追加 (すべて no-op)
+- ✅ `LayerRegistry::register_snapshot_layer` 追加 — grid 埋め込みで 1 回の呼び出しで完結
+- ✅ IPC: `start_snapshot_overlay(snapshotId) -> LayerSummary` を `snapshot_commands.rs` に実装、`lib.rs` invoke_handler 登録。dismiss は既存 `dismiss_ghost_layer` 流用
+- ✅ Read-only enforcement: `apply_ghost_hunk` / `apply_ghost_file` は既存の `registry.is_read_only()` gate で自動 reject (snapshot source が true を返す)
+- ✅ Tests: layer 6 本 + registry 6 本 (read-only / duplicate id reject / source_snapshots skip / refresh no-op / remove_hunk none / clear_file_hunks false) 追加
+- ✅ `scripts/verify-3c3.mjs` に G ステップ追加 — overlay 起動 → list 確認 → apply_* reject × 2 → unknown id reject → dismiss
 
 #### 3C-3c. Frontend TimelineBar (3-4 日)
 - `src/features/timeline/TimelineBar.tsx` 新規
