@@ -1,6 +1,5 @@
 import { useCallback, useMemo } from "react";
 
-import { useSnapshots } from "../../shared/hooks/useSnapshots";
 import {
   triggerLabel,
   type SnapshotSummary,
@@ -15,8 +14,15 @@ export interface ActiveSnapshotOverlay {
 }
 
 export interface TimelineBarProps {
-  /** PTY session id whose snapshots should be listed. Null hides the bar. */
+  /** PTY session id whose snapshots are being displayed. Null hides the
+   *  Mark button (but the bar itself still renders the empty hint). */
   terminalId: string | null;
+  /**
+   * Snapshots to render, oldest-to-newest. Lifted from the parent so a
+   * single `useSnapshots(terminalId)` subscription lives at the terminal
+   * area level instead of being instantiated twice per terminal.
+   */
+  snapshots: SnapshotSummary[];
   /** Active overlay — when non-null, the bar highlights the matching tick. */
   activeOverlay: ActiveSnapshotOverlay | null;
   /**
@@ -29,8 +35,6 @@ export interface TimelineBarProps {
   onDismissOverlay: () => void;
   /** Explicit bookmark button — label is omitted at MVP. */
   onMarkSnapshot?: () => void;
-  /** Testing hook — override the snapshots list to skip the IPC hook. */
-  snapshotsOverride?: SnapshotSummary[];
 }
 
 /**
@@ -43,17 +47,12 @@ export interface TimelineBarProps {
  */
 export function TimelineBar({
   terminalId,
+  snapshots,
   activeOverlay,
   onSelectSnapshot,
   onDismissOverlay,
   onMarkSnapshot,
-  snapshotsOverride,
 }: TimelineBarProps) {
-  const { snapshots: liveSnapshots } = useSnapshots(
-    snapshotsOverride === undefined ? terminalId : null,
-  );
-  const snapshots = snapshotsOverride ?? liveSnapshots;
-
   const handleClick = useCallback(
     (summary: SnapshotSummary) => {
       if (activeOverlay?.snapshotId === summary.id) {

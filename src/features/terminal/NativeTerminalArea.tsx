@@ -133,15 +133,41 @@ export function NativeTerminalArea({
   const snapshot = useTerminalSnapshot(terminalId);
 
   // ── Time-travel overlay (Phase 3C-3c) ──
-  // Keyed per-session: clearing overlay on terminalId change prevents a
-  // stale past-grid from leaking into a freshly spawned shell.
+  // A ref mirrors the state so async paths (dismiss IPC, listener) can
+  // see the current overlay without the effect re-registering. This closes
+  // the "rapid tick click leaks a layer" race flagged in code review:
+  // every start path dismisses the previous overlay first, and a
+  // terminalId change dismisses the pending backend layer via the cleanup
+  // in the id-change effect instead of just clearing local state.
   const [snapshotOverlay, setSnapshotOverlay] =
     useState<ActiveSnapshotOverlay | null>(null);
+  const snapshotOverlayRef = useRef<ActiveSnapshotOverlay | null>(null);
+  useEffect(() => {
+    snapshotOverlayRef.current = snapshotOverlay;
+  }, [snapshotOverlay]);
+
+  // Fire-and-forget dismiss — the registry dismiss is idempotent on the
+  // backend, so losing the response is fine.
+  const dismissBackendLayer = useCallback((layerId: string) => {
+    void invoke<void>("dismiss_ghost_layer", { layerId }).catch(() => {});
+  }, []);
+
+  // Terminal id change: dismiss the outstanding backend layer, then let
+  // the state effect below clear local state when the new id lands. The
+  // cleanup fires before the next effect, so the order is
+  //   previous cleanup (dismiss backend) → setSnapshotOverlay(null).
   useEffect(() => {
     setSnapshotOverlay(null);
-  }, [terminalId]);
+    return () => {
+      const stale = snapshotOverlayRef.current;
+      if (stale) {
+        dismissBackendLayer(stale.layerId);
+      }
+    };
+  }, [terminalId, dismissBackendLayer]);
 
   const {
+    snapshots: timelineSnapshots,
     fetchFullSnapshot,
     startOverlay: startSnapshotOverlay,
     markSnapshot,
@@ -150,43 +176,54 @@ export function NativeTerminalArea({
   const selectSnapshot = useCallback(
     async (summary: SnapshotSummary) => {
       if (!terminalId) return;
+      // Dismiss the previous overlay (if any) before starting the new
+      // one — without this, rapid tick clicks pile up undismissed layers
+      // in the backend registry.
+      const prev = snapshotOverlayRef.current;
+      if (prev) {
+        dismissBackendLayer(prev.layerId);
+      }
       const full = await fetchFullSnapshot(summary.id);
       if (!full) return;
       const layer = await startSnapshotOverlay(summary.id);
-      if (!layer) return;
+      if (!layer) {
+        return;
+      }
       setSnapshotOverlay({
         layerId: layer.id,
         snapshotId: summary.id,
         grid: full.grid,
       });
     },
-    [terminalId, fetchFullSnapshot, startSnapshotOverlay],
+    [terminalId, fetchFullSnapshot, startSnapshotOverlay, dismissBackendLayer],
   );
 
   const dismissSnapshotOverlay = useCallback(() => {
-    setSnapshotOverlay((prev) => {
-      if (!prev) return null;
-      void invoke<void>("dismiss_ghost_layer", { layerId: prev.layerId }).catch(
-        () => {},
-      );
-      return null;
-    });
-  }, []);
+    const cur = snapshotOverlayRef.current;
+    if (!cur) return;
+    dismissBackendLayer(cur.layerId);
+    setSnapshotOverlay((prev) =>
+      prev && prev.layerId === cur.layerId ? null : prev,
+    );
+  }, [dismissBackendLayer]);
 
   const handleMarkSnapshot = useCallback(() => {
     void markSnapshot();
   }, [markSnapshot]);
 
   // Backend-initiated removal (ghost-diff panel X, dismiss IPC from another
-  // caller) — clear the local overlay so the renderer returns to live.
+  // caller). Listener is registered once at mount and reads the overlay ref
+  // so a `layer-removed` event that arrives *between* the IPC returning a
+  // layer and the `setSnapshotOverlay` commit is still reflected (the ref
+  // update commits in the same tick as setState).
   useEffect(() => {
-    if (!snapshotOverlay) return;
     let unlisten: UnlistenFn | null = null;
     let cancelled = false;
     (async () => {
       try {
         unlisten = await listen<string>("ghost-diff:layer-removed", (ev) => {
-          if (ev.payload === snapshotOverlay.layerId) {
+          const cur = snapshotOverlayRef.current;
+          if (cur && ev.payload === cur.layerId) {
             setSnapshotOverlay(null);
           }
         });
@@ -199,7 +236,7 @@ export function NativeTerminalArea({
       cancelled = true;
       unlisten?.();
     };
-  }, [snapshotOverlay]);
+  }, []);
 
   // Esc returns to live. Keeps other Escape handlers (search / IME) intact
   // by only firing when an overlay is active and the target is inside the
@@ -573,6 +610,7 @@ export function NativeTerminalArea({
       )}
       <TimelineBar
         terminalId={terminalId}
+        snapshots={timelineSnapshots}
         activeOverlay={snapshotOverlay}
         onSelectSnapshot={selectSnapshot}
         onDismissOverlay={dismissSnapshotOverlay}

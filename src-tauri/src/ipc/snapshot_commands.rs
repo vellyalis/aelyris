@@ -54,6 +54,27 @@ pub struct MarkSnapshotArgs {
     pub label: Option<String>,
 }
 
+/// Max bytes for a user-supplied mark label. Anything longer is truncated
+/// at the UTF-8 boundary so we don't let a single mark balloon every
+/// subsequent `list_snapshots` payload.
+const MAX_LABEL_LEN: usize = 256;
+
+fn sanitize_label(raw: Option<String>) -> Option<String> {
+    let s = raw?;
+    if s.is_empty() {
+        return None;
+    }
+    if s.len() <= MAX_LABEL_LEN {
+        return Some(s);
+    }
+    // Truncate without splitting a multi-byte char.
+    let mut end = MAX_LABEL_LEN;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    Some(s[..end].to_string())
+}
+
 /// Explicitly capture a snapshot for `session_id` regardless of Enter — the
 /// "bookmark now" entry point. Returns the summary of the new snapshot so
 /// the UI can scroll the timeline to it.
@@ -83,12 +104,54 @@ pub fn mark_snapshot(
         id: crate::snapshot::SnapshotId::new(),
         session_id: args.session_id.clone(),
         captured_at,
-        trigger: SnapshotTrigger::UserMarked { label: args.label },
+        trigger: SnapshotTrigger::UserMarked {
+            label: sanitize_label(args.label),
+        },
         grid,
     };
 
     store.inner().push(snap.clone());
     Ok(SnapshotSummary::from_snapshot(&snap))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sanitize_label_passes_short_strings() {
+        assert_eq!(sanitize_label(Some("hi".into())).as_deref(), Some("hi"));
+    }
+
+    #[test]
+    fn sanitize_label_empty_becomes_none() {
+        assert!(sanitize_label(Some(String::new())).is_none());
+    }
+
+    #[test]
+    fn sanitize_label_none_stays_none() {
+        assert!(sanitize_label(None).is_none());
+    }
+
+    #[test]
+    fn sanitize_label_truncates_at_max() {
+        let long = "x".repeat(MAX_LABEL_LEN + 10);
+        let out = sanitize_label(Some(long)).expect("some");
+        assert_eq!(out.len(), MAX_LABEL_LEN);
+    }
+
+    #[test]
+    fn sanitize_label_truncates_on_char_boundary() {
+        // 6 multi-byte characters — each 3 bytes. Strings of different
+        // multiples of 3 near MAX_LABEL_LEN exercise the boundary walker.
+        let mut s = "あ".repeat((MAX_LABEL_LEN / 3) + 5);
+        // Pad with an extra "あ" to make sure len > MAX_LABEL_LEN.
+        s.push('あ');
+        let out = sanitize_label(Some(s)).expect("some");
+        assert!(out.len() <= MAX_LABEL_LEN);
+        // Output is still valid UTF-8 (no split byte).
+        assert_eq!(out, String::from_utf8(out.as_bytes().to_vec()).unwrap());
+    }
 }
 
 /// Phase 3C-3b — spin up a read-only overlay from a captured snapshot. The

@@ -8,17 +8,6 @@ import {
 import type { SnapshotSummary } from "../shared/types/snapshot";
 import type { GridSnapshot } from "../shared/types/terminal";
 
-// useSnapshots internals reach for Tauri globals that don't exist in jsdom;
-// the component honours `snapshotsOverride` as a test escape hatch so we
-// never hit the hook's real IPC path. Still, mock the modules so an
-// accidental activation doesn't blow up.
-vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn(() => Promise.resolve([])),
-}));
-vi.mock("@tauri-apps/api/event", () => ({
-  listen: vi.fn(() => Promise.resolve(() => {})),
-}));
-
 function snap(
   partial: Partial<SnapshotSummary> & { id: string },
 ): SnapshotSummary {
@@ -55,10 +44,10 @@ describe("TimelineBar", () => {
     render(
       <TimelineBar
         terminalId="t1"
+        snapshots={[]}
         activeOverlay={null}
         onSelectSnapshot={() => {}}
         onDismissOverlay={() => {}}
-        snapshotsOverride={[]}
       />,
     );
     expect(screen.getByTestId("timeline-bar")).toBeTruthy();
@@ -73,10 +62,10 @@ describe("TimelineBar", () => {
     const { container } = render(
       <TimelineBar
         terminalId="t1"
+        snapshots={snapshots}
         activeOverlay={null}
         onSelectSnapshot={() => {}}
         onDismissOverlay={() => {}}
-        snapshotsOverride={snapshots}
       />,
     );
     const ticks = container.querySelectorAll("[data-snapshot-id]");
@@ -94,10 +83,10 @@ describe("TimelineBar", () => {
     const { container } = render(
       <TimelineBar
         terminalId="t1"
+        snapshots={snapshots}
         activeOverlay={null}
         onSelectSnapshot={onSelect}
         onDismissOverlay={onDismiss}
-        snapshotsOverride={snapshots}
       />,
     );
     const tick = container.querySelector("[data-snapshot-id='x']");
@@ -120,10 +109,10 @@ describe("TimelineBar", () => {
     const { container } = render(
       <TimelineBar
         terminalId="t1"
+        snapshots={snapshots}
         activeOverlay={overlay}
         onSelectSnapshot={onSelect}
         onDismissOverlay={onDismiss}
-        snapshotsOverride={snapshots}
       />,
     );
     const tick = container.querySelector("[data-snapshot-id='x']");
@@ -142,10 +131,10 @@ describe("TimelineBar", () => {
     render(
       <TimelineBar
         terminalId="t1"
+        snapshots={[snap({ id: "x" })]}
         activeOverlay={overlay}
         onSelectSnapshot={() => {}}
         onDismissOverlay={onDismiss}
-        snapshotsOverride={[snap({ id: "x" })]}
       />,
     );
     const btn = screen.getByLabelText(/Return to live/i);
@@ -158,11 +147,11 @@ describe("TimelineBar", () => {
     const { rerender } = render(
       <TimelineBar
         terminalId={null}
+        snapshots={[]}
         activeOverlay={null}
         onSelectSnapshot={() => {}}
         onDismissOverlay={() => {}}
         onMarkSnapshot={onMark}
-        snapshotsOverride={[]}
       />,
     );
     // terminalId null → no mark button.
@@ -171,11 +160,11 @@ describe("TimelineBar", () => {
     rerender(
       <TimelineBar
         terminalId="t1"
+        snapshots={[]}
         activeOverlay={null}
         onSelectSnapshot={() => {}}
         onDismissOverlay={() => {}}
         onMarkSnapshot={onMark}
-        snapshotsOverride={[]}
       />,
     );
     const btn = screen.getByLabelText(/Bookmark/i);
@@ -193,10 +182,10 @@ describe("TimelineBar", () => {
     const { container } = render(
       <TimelineBar
         terminalId="t1"
+        snapshots={snapshots}
         activeOverlay={overlay}
         onSelectSnapshot={() => {}}
         onDismissOverlay={() => {}}
-        snapshotsOverride={snapshots}
       />,
     );
     const ticks = Array.from(

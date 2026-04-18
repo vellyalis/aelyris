@@ -510,9 +510,20 @@ pub enum LayerSource {
 - ✅ Tests: `useSnapshots.test.ts` 7本 + `TimelineBar.test.tsx` 7本 = 14本。`pnpm test` 579 passed
 - ✅ `scripts/verify-3c3.mjs` H-step 追加 — TimelineBar DOM presence / label / tick count
 
-#### 3C-3d. E2E verify (1 日)
-- `scripts/verify-3c3.mjs` — snapshot capture → list → start_overlay → dismiss の一連を CDP attach で自動検証
-- UI 表面 (TimelineBar の DOM existence) も check
+#### 3C-3d. E2E verify (1 日) — 人間検証待ち
+- `scripts/verify-3c3.mjs` A〜H 自動検証はコード完了 (3C-3a/b/c で随時追加)
+- 実走は `pnpm tauri:dev` 前提、GUI 長時間プロセスなので手動キック必要
+- 手順書: `docs/visual-check-phase3.md` の 3C-3 タイムトラベル手動検証章
+
+### Post-review follow-up (2026-04-18)
+code-reviewer agent の結果に対応する fix を別 commit で実施:
+- **HIGH**: tick 高速クリックで LayerRegistry に未 dismiss 残る → `snapshotOverlayRef` + `selectSnapshot` で「新 overlay 起動前に既存を dismiss」
+- **MEDIUM 1**: terminalId 変化で backend layer 未 dismiss → terminalId effect の cleanup で dismiss
+- **MEDIUM 2**: ghost-diff:layer-removed listener 登録レース → mount 時に ref 経由で unconditional 登録
+- **MEDIUM 3**: useSnapshots 二重インスタンス → TimelineBar 側の hook 呼び削除、NativeTerminalArea から `snapshots` prop で注入
+- **LOW 2**: mark_snapshot label 無上限 → 256 バイト cap (`sanitize_label` + 5 unit tests)
+- **LOW 1 (send_keys bypass)**: `send_keys` IPC は snapshot 捕捉しない既存バグ、3C-3 スコープ外 → memory に「send_keys 経路は timeline に乗らない」と記録のみ
+- **LOW 3 (overlay 中 typing)**: 仕様通り live shell に届く、`docs/visual-check-phase3.md` D-1-f に注記済み
 
 ### 見積
 
