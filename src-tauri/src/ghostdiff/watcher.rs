@@ -131,6 +131,11 @@ fn is_noise(path: &std::path::Path) -> bool {
         || norm.contains("/node_modules/")
         || norm.contains("/target/")
         || norm.contains("/.next/")
+        || norm.contains("/dist/")
+        || norm.contains("/coverage/")
+        || norm.contains("/.cache/")
+        || norm.contains("/.turbo/")
+        || norm.contains("/.vite/")
 }
 
 #[cfg(test)]
@@ -150,6 +155,15 @@ mod tests {
         assert!(is_noise(Path::new("/tmp/repo/node_modules/foo/index.js")));
         assert!(is_noise(Path::new("/tmp/repo/target/debug/foo.rlib")));
         assert!(is_noise(Path::new("/tmp/repo/.next/static/chunks/a.js")));
+    }
+
+    #[test]
+    fn is_noise_filters_extended_build_output() {
+        assert!(is_noise(Path::new("/tmp/repo/dist/main.js")));
+        assert!(is_noise(Path::new("/tmp/repo/coverage/lcov.info")));
+        assert!(is_noise(Path::new("/tmp/repo/.cache/parcel/a.json")));
+        assert!(is_noise(Path::new("/tmp/repo/.turbo/cache/x")));
+        assert!(is_noise(Path::new("/tmp/repo/.vite/deps/x.js")));
     }
 
     #[test]

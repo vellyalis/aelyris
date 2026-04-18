@@ -313,43 +313,59 @@ export function useGhostPaintForFile(
   const relativePathRef = useRef(relativePath);
   relativePathRef.current = relativePath;
 
+  // In-flight lock — blocks Tab / Shift+Tab bursts from racing past the
+  // backend's `remove_hunk` mutation and accidentally applying the next
+  // hunk (indexes shift left after a remove). See code-review H1 + H2.
+  const applyInFlightRef = useRef(false);
+
   const acceptHunkAtLine = useCallback(
     async (line: number): Promise<string | null> => {
+      if (applyInFlightRef.current) return null;
       const hits = hunksAtLine(line);
       if (hits.length === 0) return null;
       const target = hits[0];
       const rel = relativePathRef.current;
       if (!rel) return null;
-      const result = await invoke<ApplyHunkResult>("apply_ghost_hunk", {
-        layerId: target.layerId,
-        filePath: rel,
-        hunkIndex: target.hunkIndex,
-      });
-      return result.updatedContent;
+      applyInFlightRef.current = true;
+      try {
+        const result = await invoke<ApplyHunkResult>("apply_ghost_hunk", {
+          layerId: target.layerId,
+          filePath: rel,
+          hunkIndex: target.hunkIndex,
+        });
+        return result.updatedContent;
+      } finally {
+        applyInFlightRef.current = false;
+      }
     },
     [hunksAtLine],
   );
 
   const acceptAllInFile = useCallback(async (): Promise<string | null> => {
+    if (applyInFlightRef.current) return null;
     const rel = relativePathRef.current;
     if (!rel) return null;
     const layersNow = layersRef.current;
     if (layersNow.length === 0) return null;
+    applyInFlightRef.current = true;
     // Apply the newest layer last so its head_content wins if multiple
     // layers touch the same file. `apply_ghost_file` overwrites main, so
     // sequencing matters.
     let latest: string | null = null;
-    for (const layer of layersNow) {
-      try {
-        const result = await invoke<ApplyHunkResult>("apply_ghost_file", {
-          layerId: layer.id,
-          filePath: rel,
-        });
-        latest = result.updatedContent;
-      } catch {
-        // Surface via toast at the caller; keep going so other layers still
-        // clear and the user isn't left with orphaned ghost paint.
+    try {
+      for (const layer of layersNow) {
+        try {
+          const result = await invoke<ApplyHunkResult>("apply_ghost_file", {
+            layerId: layer.id,
+            filePath: rel,
+          });
+          latest = result.updatedContent;
+        } catch (e) {
+          console.warn(`apply_ghost_file failed for ${layer.id}:`, e);
+        }
       }
+    } finally {
+      applyInFlightRef.current = false;
     }
     return latest;
   }, []);
@@ -369,8 +385,11 @@ export function useGhostPaintForFile(
           filePath: rel,
         });
         if (cleared) dismissed += 1;
-      } catch {
-        /* backend may have already removed it */
+      } catch (e) {
+        // Backend may have already removed the layer, but log so genuine
+        // failures (registry lock poisoned, etc.) are at least visible in
+        // the console instead of silently eaten.
+        console.warn(`dismiss_ghost_file failed for ${layer.id}:`, e);
       }
     }
     return dismissed;

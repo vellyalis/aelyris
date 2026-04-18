@@ -393,6 +393,58 @@ describe("useGhostPaintForFile (integration)", () => {
     expect(next).toBe("patched body");
   });
 
+  it("acceptHunkAtLine drops the second concurrent call (in-flight lock)", async () => {
+    let resolveApply!: (v: unknown) => void;
+    const applyPromise = new Promise((res) => {
+      resolveApply = res;
+    });
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "list_ghost_layers") {
+        return Promise.resolve([makeLayer("l1", ["src/foo.ts"])]);
+      }
+      if (cmd === "get_ghost_layer_file") {
+        return Promise.resolve(makeDelta("src/foo.ts"));
+      }
+      if (cmd === "apply_ghost_hunk") {
+        // First call hangs until we release it — gives us a window for
+        // the second call to race past. With the in-flight lock the
+        // second call must return null without invoking the backend.
+        return applyPromise;
+      }
+      return Promise.reject(new Error(`unexpected ${cmd}`));
+    });
+
+    const fake = makeFakeEditor();
+    const { result } = renderHook(() =>
+      useGhostPaintForFile({
+        editor: fake.editor,
+        monaco: fake.monaco,
+        filePath: "/repo/src/foo.ts",
+        projectPath: "/repo",
+      }),
+    );
+
+    await waitFor(() => expect(result.current.layerCount).toBe(1));
+
+    // Fire both without awaiting the first — simulates Tab burst.
+    const firstPromise = result.current.acceptHunkAtLine(10);
+    const second = await result.current.acceptHunkAtLine(10);
+    expect(second).toBeNull();
+    // Only one apply_ghost_hunk call must have hit the backend.
+    const applyCalls = invokeMock.mock.calls.filter(
+      ([cmd]) => cmd === "apply_ghost_hunk",
+    );
+    expect(applyCalls).toHaveLength(1);
+
+    // Let the first one finish so the test doesn't dangle a promise.
+    resolveApply({
+      updatedContent: "patched",
+      filePath: "/repo/src/foo.ts",
+      remainingHunks: 0,
+    });
+    await firstPromise;
+  });
+
   it("acceptHunkAtLine returns null when no hunk anchors the line", async () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "list_ghost_layers") {

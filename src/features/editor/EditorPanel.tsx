@@ -319,11 +319,23 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
               ghostInFileKeyRef.current = ghostInFileKey;
 
               const replaceModelValue = (next: string) => {
+                // Snapshot cursor before setValue — Monaco resets it to
+                // (1, 1) on setValue and we want the user to keep roughly
+                // their prior spot (plan: "カーソル位置がおおむね保たれている").
+                const priorPos = editor.getPosition();
                 suppressModelChangesRef.current = true;
                 editor.setValue(next);
                 setContent(next);
-                // setValue moves the cursor to (1,1). Keep it roughly where
-                // the user had it so the next keystroke is not surprising.
+                if (priorPos) {
+                  const model = editor.getModel();
+                  const maxLine = model ? model.getLineCount() : priorPos.lineNumber;
+                  const clamped = {
+                    lineNumber: Math.min(priorPos.lineNumber, maxLine),
+                    column: priorPos.column,
+                  };
+                  editor.setPosition(clamped);
+                  editor.revealLineInCenterIfOutsideViewport(clamped.lineNumber);
+                }
                 queueMicrotask(() => {
                   suppressModelChangesRef.current = false;
                 });
