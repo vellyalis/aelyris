@@ -6,7 +6,7 @@ import { FileTree } from "./features/file-tree/FileTree";
 import { PaneTreeContainer } from "./features/terminal/pane-tree";
 import { AgentTerminal } from "./features/agent-terminal";
 import { useAppMenus } from "./features/app/useAppMenus";
-import { StatusBar } from "./features/statusbar/StatusBar";
+import { StatusBar } from "./features/statusbar/Statusbar";
 import { WorkspaceTabs } from "./features/workspace-tabs/WorkspaceTabs";
 
 // Right-panel + secondary UIs: lazy-loaded so they do not block first paint.

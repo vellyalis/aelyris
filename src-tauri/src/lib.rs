@@ -1,6 +1,7 @@
 pub mod agent;
 pub mod config;
 pub mod db;
+pub mod ghostdiff;
 pub mod git;
 pub mod history;
 mod ipc;
@@ -17,8 +18,9 @@ use tauri::{Emitter, Manager};
 use agent::AgentManager;
 use agent::InteractiveSessionManager;
 use db::Database;
+use ghostdiff::{LayerEvent, LayerRegistry, LayerTint, WatcherPool};
 use pty::PtyManager;
-use watchdog::auto_repair::AutoRepairManager;
+use watchdog::auto_repair::{AutoRepairManager, RepairPhase};
 use suggest::SuggestEngine;
 use history::{HashingNgramEmbedder, HistoryStore};
 
@@ -55,6 +57,8 @@ pub fn run() {
             watchdog::load_watchdog_rules().auto_repair,
         )))
         .manage(std::sync::Arc::new(std::sync::Mutex::new(SuggestEngine::new())))
+        .manage(std::sync::Arc::new(LayerRegistry::new()))
+        .manage(std::sync::Arc::new(WatcherPool::new()))
         .setup(move |app| {
             // Initialize database as managed state
             let db_path = db::db_path();
@@ -117,26 +121,134 @@ pub fn run() {
             // Auto-repair polling thread: flush `AutoRepairManager` phase/notification
             // messages every 500ms. Active jobs are re-broadcast on every tick so the
             // UI's elapsed timers stay live without a separate clock.
+            //
+            // Phase 3C-1a: the same tick drives ghostdiff — every repair job that
+            // has a live worktree gets mirrored into `LayerRegistry` so its diff
+            // is visible to the ghost-diff panel, and layer events are drained
+            // and re-emitted to the frontend.
             let repair_handle = app.handle().clone();
             std::thread::Builder::new()
                 .name("auto-repair-poller".into())
                 .spawn(move || {
+                    use std::collections::{HashMap, HashSet};
+                    let mut prev_ids: HashSet<String> = HashSet::new();
+                    let mut prev_terminal: HashMap<String, bool> = HashMap::new();
                     loop {
                         std::thread::sleep(std::time::Duration::from_millis(500));
-                        let Some(mgr) = repair_handle
+                        let Some(mgr_state) = repair_handle
                             .try_state::<std::sync::Arc<std::sync::Mutex<AutoRepairManager>>>()
                         else {
                             continue;
                         };
-                        let mgr = mgr.inner().clone();
-                        let (notifications, jobs) = match mgr.lock() {
+                        let mgr_arc = mgr_state.inner().clone();
+                        let (notifications, jobs) = match mgr_arc.lock() {
                             Ok(mut g) => (g.poll(), g.jobs()),
                             Err(_) => continue,
                         };
                         for notif in notifications {
                             let _ = repair_handle.emit("repair:notification", notif);
                         }
-                        let _ = repair_handle.emit("repair:jobs-updated", jobs);
+                        let _ = repair_handle.emit("repair:jobs-updated", &jobs);
+
+                        // --- Ghost layer sync ---
+                        let (Some(layer_reg), Some(pool_state)) = (
+                            repair_handle.try_state::<std::sync::Arc<LayerRegistry>>(),
+                            repair_handle.try_state::<std::sync::Arc<WatcherPool>>(),
+                        ) else {
+                            continue;
+                        };
+                        let registry = layer_reg.inner().clone();
+                        let watcher_pool = pool_state.inner().clone();
+                        let cur_ids: HashSet<String> =
+                            jobs.iter().map(|j| j.id.clone()).collect();
+
+                        for gone in prev_ids.difference(&cur_ids) {
+                            ghostdiff::unregister_and_unwatch(
+                                &registry,
+                                &watcher_pool,
+                                gone,
+                            );
+                        }
+
+                        for job in &jobs {
+                            let is_terminal = matches!(
+                                job.phase,
+                                RepairPhase::Succeeded | RepairPhase::Failed(_)
+                            );
+
+                            // Register once the worktree exists on disk (fs
+                            // watcher needs a real path). Empty `repo_path`
+                            // would make `predict_worktree_path` resolve
+                            // against the process CWD — skip those jobs.
+                            if !registry.contains(&job.id)
+                                && !job.repo_path.is_empty()
+                                && !matches!(job.phase, RepairPhase::CreatingWorktree)
+                            {
+                                let worktree_path = crate::git::predict_worktree_path(
+                                    &job.repo_path,
+                                    &job.branch,
+                                );
+                                if worktree_path.exists() {
+                                    if let Err(e) = ghostdiff::register_worktree_and_watch(
+                                        &registry,
+                                        &watcher_pool,
+                                        job.id.clone(),
+                                        worktree_path,
+                                        job.branch.clone(),
+                                        std::path::PathBuf::from(&job.repo_path),
+                                        LayerTint::auto_repair(),
+                                    ) {
+                                        log::warn!(
+                                            "ghostdiff: auto-repair register failed for {}: {e}",
+                                            job.id
+                                        );
+                                    }
+                                }
+                            }
+
+                            let was_terminal =
+                                *prev_terminal.get(&job.id).unwrap_or(&false);
+                            if is_terminal
+                                && !was_terminal
+                                && registry.contains(&job.id)
+                            {
+                                let _ = registry.mark_complete(&job.id);
+                                watcher_pool.unwatch(&job.id);
+                            }
+                        }
+
+                        prev_ids = cur_ids;
+                        prev_terminal = jobs
+                            .iter()
+                            .map(|j| {
+                                (
+                                    j.id.clone(),
+                                    matches!(
+                                        j.phase,
+                                        RepairPhase::Succeeded | RepairPhase::Failed(_)
+                                    ),
+                                )
+                            })
+                            .collect();
+
+                        // Drain and re-emit ghost layer events (covers both
+                        // auto-repair and orchestra-owned layers).
+                        for ev in registry.poll() {
+                            match ev {
+                                LayerEvent::Updated(s) => {
+                                    let _ = repair_handle
+                                        .emit("ghost-diff:layer-updated", s);
+                                }
+                                LayerEvent::Completed(id) => {
+                                    let _ = repair_handle
+                                        .emit("ghost-diff:layer-completed", id);
+                                }
+                                LayerEvent::Removed(id) => {
+                                    let _ = repair_handle
+                                        .emit("ghost-diff:layer-removed", id);
+                                }
+                            }
+                        }
                     }
                 })
                 .ok();
@@ -249,6 +361,11 @@ pub fn run() {
             // Semantic history search (Phase 3B-2)
             ipc::semantic_search_history,
             ipc::rebuild_history_index,
+            // Ghost diff overlay (Phase 3C-1a)
+            ipc::list_ghost_layers,
+            ipc::get_ghost_layer_file,
+            ipc::dismiss_ghost_layer,
+            ipc::apply_ghost_hunk,
             // IME positioning
             ipc::set_ime_position,
         ])

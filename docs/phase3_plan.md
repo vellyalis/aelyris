@@ -218,11 +218,164 @@
 
 # Phase 3C — 差別化大物
 
-**詳細は 3B 完了時点で確定**。スケルトンのみ:
+3B 完了済 (2026-04-18)。**3C-1 は以下で詳細化**。3C-2 / 3C-3 は 3C-1 の LayerRegistry 完成時点で再確定する (revision / snapshot 差し替えで再利用する想定)。
 
-- **3C-1 Ghost diff overlay** — 別 worktree の AI 修正を現画面に半透明重ね (ideas.md D1)
+- **3C-1 Ghost diff overlay** — 別 worktree の AI 修正を editor に inline ghost 重ね (ideas.md D1) ← 本 phase の主眼
 - **3C-2 並行世界のターミナル** — ブランチ切替を UI レイヤー重ね表示 (ideas.md F)
 - **3C-3 タイムトラベルデバッグ** — PTY 状態スナップショット + replay (ideas.md A 後半)
+
+---
+
+## 3C-1. Ghost Diff Overlay
+
+### 思想 (確定済、2026-04-18)
+
+- **核は inline ghost line**: 自分が編集中のファイルに、別 worktree の AI 修正が Monaco decoration + view zone として半透明で浮かぶ。side-by-side DiffEditor は MVP 外
+- **2 打完結 accept/reject**: hunk 単位で Tab accept / Esc reject。パネル経由のボタンは補助のみ
+- **Layer engine として抽象化**: `ghostdiff::LayerRegistry` は source (worktree path + revision) / content (file deltas) / presentation (tint/opacity) を抽象化。3C-2 は revision 差し替え、3C-3 は snapshot 差し替えで再利用
+- **デフォルト completed、flag で live**: agent exit まで buffer し、完了後に ghost 出現。`aether.ghostDiff.liveMode = true` で中間状態も流す
+- **hunk 衝突時は ghost を譲る**: ユーザー dirty hunk と ghost hunk が交差する行は ghost 非表示、EditorBreadcrumb に file-level badge 退避。非衝突 hunk は inline ghost 表示
+
+### 前提
+
+- `auto_repair::AutoRepairManager` / Orchestra `AgentManager` が worktree を active に持つ (3A-1 / 3B-1 で配線済)
+- `notify` / `notify-debouncer-mini` は既存依存 (`src-tauri/src/watcher.rs` で使用)
+- `git_diff_file` / `git_file_original` IPC は main worktree 向けで、**worktree 指定版**が未実装 → 本 phase で追加
+- Monaco `editor.deltaDecorations()` + `editor.changeViewZones()` は `editorRef.current` 経由で操作可能 (`EditorPanel.tsx` の ref 使用)
+
+### サブタスク構成
+
+#### 3C-1a. Layer engine + backend + panel サマリ ✅ 実装完了 (2026-04-18、commit 前)
+
+**Rust 新規** — `src-tauri/src/ghostdiff/` 配下
+- `mod.rs` — 公開 API re-export
+- `layer.rs` — 型定義
+  - `Layer { id: LayerId, source: LayerSource, content: LayerContent, is_complete: bool, tint: LayerTint }`
+  - `LayerSource::Worktree { path: PathBuf, branch: String }` (3C-2/3C-3 で variant 追加予定)
+  - `LayerContent::Diff { base_revision: String, files: Vec<FileDelta> }`
+  - `FileDelta { path: String, hunks: Vec<DiffHunk>, base_content: String, head_content: String }`
+  - `DiffHunk { base_start, base_len, head_start, head_len, lines: Vec<HunkLine> }`
+  - `LayerTint { role_color: String }` (Orchestra role 由来、auto-repair は固定 `peach`)
+- `registry.rs` — `LayerRegistry { layers: DashMap<LayerId, Layer> }` + register/unregister/refresh/mark_complete
+- `watcher.rs` — per-worktree fs watcher (notify-debouncer-mini、300ms debounce)。変更時 `LayerRegistry::refresh(id)` → diff 再計算 → event emit
+- `diff_engine.rs` — `git diff --no-color HEAD` を Command 実行 → `FileDelta` に parse
+
+**Rust 配線**
+- `AutoRepairManager::trigger()` で worktree 作成後 `LayerRegistry::register_worktree_layer(job_id, worktree_path, branch, tint=peach)`
+- `InteractiveSessionManager` spawn 時に同じ登録 (Orchestra role color を tint に)
+- Phase 完了時 (`RepairPhase::Succeeded` / `Failed`、Orchestra session stop) で `mark_complete(layer_id)`
+- `lib.rs` で `LayerRegistry` を `.manage()` 登録 + 500ms poller スレッド (repair と同様) で差分 event emit
+
+**IPC 新規** — `src-tauri/src/ipc/ghostdiff_commands.rs`
+- `list_ghost_layers() -> Vec<LayerSummary>`
+- `get_ghost_layer_file(layer_id, file_path) -> FileDelta`
+- `apply_ghost_hunk(layer_id, file_path, hunk_index) -> Result<()>` (3C-1c で実装、a では stub)
+- `dismiss_ghost_layer(layer_id) -> ()`
+
+**Event**
+- `ghost-diff:layer-updated` (payload: LayerSummary)
+- `ghost-diff:layer-completed` (payload: layer_id)
+- `ghost-diff:layer-removed` (payload: layer_id)
+
+**Frontend 新規** — `src/features/ghost-diff/`
+- `useGhostLayers.ts` — event 購読 + state 管理
+- `GhostDiffPanel.tsx` — layer リスト (source badge / file count / hunk count / completed マーク)。file 展開で既存 `DiffViewer` 再利用
+- `src/features/statusbar/Statusbar.tsx` に active layer 数バッジ追加
+
+**テスト**
+- Rust: `LayerRegistry` ライフサイクル (8+)、`diff_engine` parse 正確性 (4+)
+- TS: `useGhostLayers` event accumulate (5+)、`GhostDiffPanel` render (3+)
+
+**視覚検証**
+- auto-repair 1 件走らせる → layer が panel に 1 秒以内出現 / completed マーク
+- Orchestra で 2 agent 起動 → layer 2 つ並ぶ (role color で区別)
+- agent が 2 回書いた時 panel の file 数が動く
+- dismiss で layer 消える
+
+#### 3C-1b. Monaco inline ghost paint (2-3 日)
+
+**Frontend 新規** — `src/features/editor/ghostPaint.ts`
+- `GhostPainter { install(editor, monaco, hunks, tint): Disposable }`
+- add hunks → `changeViewZones` でファントム行挿入 + dim 緑背景
+- delete hunks → `deltaDecorations` で取消線 + dim 赤背景
+- modify hunks → `after` inline widget で新内容を半透明重ね
+- **MVP は add-only inline、add+delete 混在 hunk は gutter アイコンで退避** (詳細は 3C-1c)
+
+**EditorPanel.tsx 編集**
+- mount 時 `useGhostLayers()` から当該 filePath に該当する FileDelta を取得
+- filePath / dirty 状態から **衝突 hunk 判定** (`detectHunkConflict(userDirtyRanges, ghostHunks)`)
+- 非衝突 hunk のみ `GhostPainter.install()`
+- 衝突 hunk は `EditorBreadcrumb` に「N 件の提案あり (conflict)」badge 表示
+
+**テスト**
+- `ghostPaint.ts` の decoration / view zone 生成 (monaco mock、5+)
+- `detectHunkConflict` の hunk 交差判定 (8+ 本、境界値 / 同一行 / 前後隣接 / 包含)
+
+**視覚検証**
+- auto-repair が `src/foo.ts` を touch → EditorPanel で開いていると薄緑 ghost 行が add 位置に出現
+- 自分が 50 行編集中、agent が 55 行 touch → 非衝突、ghost 表示
+- 自分が 55 行編集中、agent も 55 行 touch → ghost 非表示 + breadcrumb warning badge
+- ファイル閉じると ghost 消える (layer は残る)
+
+#### 3C-1c. Hotkey accept/reject + apply (1-2 日)
+
+**Frontend** — EditorPanel keybind
+- Tab (editor focus、ghost hunk がカーソル位置): hunk accept → `invoke("apply_ghost_hunk", ...)` → 成功で editor reload
+- Shift+Tab: file 内全 hunk accept
+- Esc: 現ファイルの ghost 全 dismiss (他ファイル・他 layer には触れない)
+
+**Rust 実装** — `apply_ghost_hunk`
+- 対象 hunk の `head_content` を main worktree ファイルに patch 適用
+- `diffy` crate 追加して unified hunk apply
+- 適用後 `LayerRegistry::refresh_layer(layer_id)` で diff 再計算 → layer 側からも該当 hunk が消える
+
+**gutter アイコン** (3C-1b から持ち越した複雑 hunk の表示)
+- add+delete 混在 hunk は gutter アイコンで退避、click で popover に hunk 詳細 + Apply ボタン
+
+**視覚検証**
+- Tab で hunk accept → ghost 実体化 / ファイル modified マーク
+- Shift+Tab で file 内全 accept
+- Esc で ghost 消える (再度開くと復活)
+- apply 失敗時 toast エラー (main が変わっていて patch 当たらない等)
+
+#### 3C-1d. Live mode flag (0.5 日、optional)
+
+- `aether.ghostDiff.liveMode` 設定追加 (default false、settings UI から toggle)
+- true の時 `LayerRegistry` は is_complete 待たず refresh を emit
+- Rust 側は flag 判定分岐のみの小変更
+
+### リスク
+
+- **diff_engine の精度**: git CLI 経由 unified diff parse は format fragile。MVP は git CLI、問題出れば `git2` diff API に移行
+- **Monaco view zone と scroll 協調**: ghost add 行を view zone で入れると実ファイル行番号と表示行番号がズレる。cursor 位置変換の helper を共通化する
+- **fs watch の雷鳴**: 1 回の agent 実行で数十 file write → 300ms debounce で吸収 (既存 100ms より長め、diff 計算コスト考慮)
+- **apply 時の race**: ghost 表示中にユーザーが同ファイルを編集 → apply で conflict。toast で「main が変化、手動 merge」誘導
+- **Orchestra 2 agent 同一 hunk 衝突**: tint 色を重ねて z-index は startedAt 順 (3B-1 conflict detection と同じ発想)
+
+### 成果物まとめ
+
+- Rust: `src-tauri/src/ghostdiff/` 4 ファイル (~600 行) + `ipc/ghostdiff_commands.rs` (~150 行)
+- `Cargo.toml`: `diffy = "0.4"` 追加
+- Rust テスト: 20+ 本
+- TS: `src/features/ghost-diff/` (panel + hook、~400 行) + `src/features/editor/ghostPaint.ts` (~300 行) + EditorPanel 編集
+- TS テスト: 25+ 本
+
+### 見積もり
+
+| sub | 目安 |
+|---|---|
+| 3C-1a | 2-3 日 |
+| 3C-1b | 2-3 日 |
+| 3C-1c | 1-2 日 |
+| 3C-1d | 0.5 日 |
+| **合計** | **6-9 日** (視覚検証含む) |
+
+### 完了条件 (sub ごと)
+
+- 視覚検証全項目クリア
+- cargo test / vitest / tsc / build 全グリーン
+- memory `project_phase3_progress.md` 更新
+- commit (sub ごと 1 commit を想定、3C-1c と 3C-1d は纏めても可)
 
 ---
 

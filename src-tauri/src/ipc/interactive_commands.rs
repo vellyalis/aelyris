@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::agent::{InteractiveSessionManager, InteractiveSessionInfo, AgentCli};
 use crate::agent::output_monitor;
+use crate::ghostdiff::{self, LayerRegistry, LayerTint, WatcherPool};
 use crate::pty::PtyManager;
 use crate::term::NativeTerminalRegistry;
 
@@ -110,9 +111,9 @@ pub fn spawn_interactive_agent(
         model: model_str.to_string(),
         initial_prompt: initial_prompt.clone(),
         cwd: resolved_cwd,
-        worktree_branch,
+        worktree_branch: worktree_branch.clone(),
         worktree_path: worktree_path.clone(),
-        repo_path,
+        repo_path: repo_path.clone(),
         cost: 0.0,
         tokens_used: 0,
         started_at: now,
@@ -120,6 +121,34 @@ pub fn spawn_interactive_agent(
 
     let session_mgr = app.state::<InteractiveSessionManager>();
     session_mgr.register(info)?;
+
+    // Phase 3C-1a: orchestra agents running in a worktree get mirrored as
+    // a ghost layer so the panel (and later editor ghosts) see their work.
+    // Non-worktree sessions are skipped — there's no isolated diff to show.
+    if let (Some(wt_path), Some(wt_branch), Some(repo)) = (
+        worktree_path.clone(),
+        worktree_branch.clone(),
+        repo_path.clone(),
+    ) {
+        if let (Some(layer_reg), Some(pool)) = (
+            app.try_state::<Arc<LayerRegistry>>(),
+            app.try_state::<Arc<WatcherPool>>(),
+        ) {
+            let registry = layer_reg.inner().clone();
+            let watcher_pool = pool.inner().clone();
+            if let Err(e) = ghostdiff::register_worktree_and_watch(
+                &registry,
+                &watcher_pool,
+                session_id.clone(),
+                std::path::PathBuf::from(&wt_path),
+                wt_branch,
+                std::path::PathBuf::from(&repo),
+                LayerTint::orchestra_default(),
+            ) {
+                log::warn!("ghostdiff: orchestra register failed for {}: {e}", session_id);
+            }
+        }
+    }
 
     // Register the PTY with the native engine so the frontend's
     // TerminalCanvas can subscribe to its grid diffs.
@@ -203,6 +232,16 @@ pub fn stop_interactive_agent(app: AppHandle, id: String) -> Result<(), String> 
     // Tear down native engine session for this PTY.
     app.state::<Arc<NativeTerminalRegistry>>().remove(&pty_id);
 
+    // Remove ghost layer if one was registered.
+    if let (Some(layer_reg), Some(pool)) = (
+        app.try_state::<Arc<LayerRegistry>>(),
+        app.try_state::<Arc<WatcherPool>>(),
+    ) {
+        let registry = layer_reg.inner().clone();
+        let watcher_pool = pool.inner().clone();
+        ghostdiff::unregister_and_unwatch(&registry, &watcher_pool, &id);
+    }
+
     // Unregister session
     session_mgr.unregister(&id)?;
 
@@ -226,6 +265,17 @@ pub fn end_session_and_remove_worktree(app: AppHandle, id: String) -> Result<(),
 
     // Tear down native engine session for this PTY.
     app.state::<Arc<NativeTerminalRegistry>>().remove(&pty_id);
+
+    // Remove ghost layer *before* the worktree disappears so the watcher
+    // doesn't get a storm of fs events from the deletion itself.
+    if let (Some(layer_reg), Some(pool)) = (
+        app.try_state::<Arc<LayerRegistry>>(),
+        app.try_state::<Arc<WatcherPool>>(),
+    ) {
+        let registry = layer_reg.inner().clone();
+        let watcher_pool = pool.inner().clone();
+        ghostdiff::unregister_and_unwatch(&registry, &watcher_pool, &id);
+    }
 
     // Remove worktree if one was created
     if let Some(session) = &info {

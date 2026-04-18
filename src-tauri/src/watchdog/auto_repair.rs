@@ -60,6 +60,10 @@ pub struct RepairJobInfo {
     pub branch: String,
     pub error_line: String,
     pub elapsed_secs: u64,
+    /// Main repo path the job was triggered against. Needed so listeners
+    /// (e.g. ghostdiff) can predict the worktree path without duplicating
+    /// the naming rule.
+    pub repo_path: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -71,6 +75,7 @@ struct RepairJob {
     phase: RepairPhase,
     branch: String,
     error_line: String,
+    repo_path: String,
     started_at: Instant,
 }
 
@@ -143,6 +148,7 @@ impl AutoRepairManager {
             phase: RepairPhase::CreatingWorktree,
             branch: branch.clone(),
             error_line: error.matched_line.clone(),
+            repo_path: repo_path.to_string_lossy().to_string(),
             started_at: now,
         });
 
@@ -212,6 +218,7 @@ impl AutoRepairManager {
                 branch: j.branch.clone(),
                 error_line: j.error_line.clone(),
                 elapsed_secs: j.started_at.elapsed().as_secs(),
+                repo_path: j.repo_path.clone(),
             })
             .collect()
     }
