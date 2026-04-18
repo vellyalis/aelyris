@@ -12,6 +12,9 @@ import { getPalette, isLightTheme, monacoThemeColors } from "../../shared/themes
 import { useLsp, registerLspProviders } from "./lsp";
 import { toast } from "../../shared/store/toastStore";
 import { markBootOnce } from "../../shared/lib/bootMetrics";
+import { useGhostPaintForFile } from "./useGhostPaintForFile";
+import type { GhostEditor, MonacoNs } from "./ghostPaint";
+import type { LineRange } from "./ghostConflict";
 import styles from "./EditorPanel.module.css";
 
 interface DiffComment {
@@ -77,6 +80,35 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const vimRef = useRef<{ dispose: () => void } | null>(null);
 
+  // Ghost paint wiring — editor + monaco need to become state so the hook
+  // re-runs once onMount hands them over. Reset to null whenever filePath
+  // changes so stale editor references never reach the painter.
+  const [ghostEditor, setGhostEditor] = useState<GhostEditor | null>(null);
+  const [ghostMonaco, setGhostMonaco] = useState<MonacoNs | null>(null);
+  const modelChangeSubscribersRef = useRef<
+    Set<(ranges: LineRange[]) => void>
+  >(new Set());
+  const subscribeToModelChanges = useCallback(
+    (listener: (ranges: LineRange[]) => void) => {
+      modelChangeSubscribersRef.current.add(listener);
+      return () => {
+        modelChangeSubscribersRef.current.delete(listener);
+      };
+    },
+    [],
+  );
+  const {
+    conflictCount: ghostConflictCount,
+    deferredCount: ghostDeferredCount,
+    layerCount: ghostLayerCount,
+  } = useGhostPaintForFile({
+    editor: ghostEditor,
+    monaco: ghostMonaco,
+    filePath,
+    projectPath,
+    subscribeToModelChanges,
+  });
+
   const toggleVim = useCallback(async () => {
     if (vimMode) {
       vimRef.current?.dispose();
@@ -115,6 +147,10 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
     setModified(false);
     if (filePath) markSaved(filePath);
     setDiffMode(false);
+    // Drop the previous editor instance so the ghost painter's effect
+    // tears down its decorations before the new Editor mount fires.
+    setGhostEditor(null);
+    setGhostMonaco(null);
 
     (async () => {
       try {
@@ -193,7 +229,13 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
 
   return (
     <div className={styles.panel}>
-      <EditorBreadcrumb filePath={filePath} projectPath={projectPath} />
+      <EditorBreadcrumb
+        filePath={filePath}
+        projectPath={projectPath}
+        ghostLayerCount={ghostLayerCount}
+        ghostConflictCount={ghostConflictCount}
+        ghostDeferredCount={ghostDeferredCount}
+      />
       <div className={styles.header}>
         <span className={styles.fileName}>
           {modified && <span className={styles.modDot}>●</span>}
@@ -224,8 +266,18 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
             onMount={(editor, monaco) => {
               markBootOnce("monaco:first-mount");
               editorRef.current = editor;
+              setGhostEditor(editor);
+              setGhostMonaco(monaco);
               editor.onDidChangeCursorPosition((e) => {
                 setCursorPos({ line: e.position.lineNumber, column: e.position.column });
+              });
+              editor.onDidChangeModelContent((ev) => {
+                const ranges: LineRange[] = ev.changes.map((c) => ({
+                  start: c.range.startLineNumber,
+                  end: Math.max(c.range.startLineNumber, c.range.endLineNumber),
+                }));
+                if (ranges.length === 0) return;
+                modelChangeSubscribersRef.current.forEach((fn) => fn(ranges));
               });
               monaco.editor.defineTheme("aether-theme", {
                 base: light ? "vs" : "vs-dark",

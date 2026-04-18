@@ -245,7 +245,7 @@
 
 ### サブタスク構成
 
-#### 3C-1a. Layer engine + backend + panel サマリ ✅ 実装完了 (2026-04-18、commit 前)
+#### 3C-1a. Layer engine + backend + panel サマリ ✅ 完了 (2026-04-18, commit 75ac4bf)
 
 **Rust 新規** — `src-tauri/src/ghostdiff/` 配下
 - `mod.rs` — 公開 API re-export
@@ -292,7 +292,7 @@
 - agent が 2 回書いた時 panel の file 数が動く
 - dismiss で layer 消える
 
-#### 3C-1b. Monaco inline ghost paint (2-3 日)
+#### 3C-1b. Monaco inline ghost paint ✅ 完了 (2026-04-18)
 
 **Frontend 新規** — `src/features/editor/ghostPaint.ts`
 - `GhostPainter { install(editor, monaco, hunks, tint): Disposable }`

@@ -368,3 +368,50 @@ button:disabled, [role="button"][aria-disabled="true"] {
 @media (max-width: 700px) {
   .left-panel { display: none; }
 }
+
+/* ─── Ghost Diff Overlay (Phase 3C-1b) ─── */
+
+/* Phantom view-zone holding added lines from a ghost layer. */
+.aether-ghost-add-zone {
+  --aether-ghost-tint: #cba6f7;
+  display: flex;
+  flex-direction: column;
+  padding: 1px 0;
+  background: color-mix(in srgb, var(--aether-ghost-tint) 8%, transparent);
+  border-left: 2px solid var(--aether-ghost-tint);
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.aether-ghost-add-line {
+  color: var(--aether-ghost-tint);
+  opacity: 0.55;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 20px;
+  padding: 0 var(--space-6);
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Strikethrough overlay for a pure-delete ghost hunk. */
+.aether-ghost-delete-line {
+  background: rgba(243, 139, 168, 0.08); /* catppuccin red, faint */
+  text-decoration: line-through;
+  text-decoration-color: rgba(243, 139, 168, 0.55);
+  text-decoration-thickness: 1px;
+}
+
+.aether-ghost-delete-gutter {
+  background: rgba(243, 139, 168, 0.45);
+  width: 2px !important;
+  margin-left: 2px;
+}
+
+/* Gutter marker for mixed-kind hunks that retreat from inline paint. */
+.aether-ghost-modify-gutter {
+  background: rgba(249, 226, 175, 0.6); /* catppuccin yellow */
+  width: 2px !important;
+  margin-left: 2px;
+}
