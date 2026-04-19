@@ -107,36 +107,25 @@ describe("NativeTerminalArea", () => {
     );
   });
 
-  it("opens IMEInputBar when AI CLI session is detected via PTY output", async () => {
-    const spawnPty = vi.fn().mockResolvedValue("term-ai");
-    const resizePty = vi.fn();
-    let pushBytes: ((bytes: Uint8Array) => void) | null = null;
-    const subscribeOutput = vi.fn(async (_id, onBytes) => {
-      pushBytes = onBytes;
-      return () => {};
-    });
-
+  it("renders the IME input bar on mount (always visible)", async () => {
+    const spawnPty = vi.fn().mockResolvedValue("term-perm");
     const { container } = render(
       <NativeTerminalArea
-        shell="powershell"
         spawnPty={spawnPty}
-        resizePty={resizePty}
-        subscribeOutput={subscribeOutput}
+        subscribeOutput={async () => () => {}}
       />,
     );
-
-    await waitFor(() => expect(subscribeOutput).toHaveBeenCalled());
-    // Simulate ConPTY echoing the user's "claude" invocation on the prompt line.
-    const enc = new TextEncoder();
-    await act(async () => {
-      pushBytes?.(enc.encode("PS C:\\Users\\dev> claude\r\n"));
-    });
     await waitFor(() =>
-      expect(container.querySelector("[role='dialog']")).not.toBeNull(),
+      expect(container.querySelector("[data-testid='terminal-canvas']")).not.toBeNull(),
     );
+    // The bar sits at the bottom and is always mounted; we don't conditionally
+    // render it based on AI-CLI detection.
+    expect(
+      container.querySelector("[aria-label='ターミナル入力バー']"),
+    ).not.toBeNull();
   });
 
-  it("toggles IMEInputBar on Ctrl+Shift+J", async () => {
+  it("Ctrl+Shift+J moves focus into the IME input bar", async () => {
     const spawnPty = vi.fn().mockResolvedValue("term-j");
     const { container } = render(
       <NativeTerminalArea
@@ -147,20 +136,18 @@ describe("NativeTerminalArea", () => {
     await waitFor(() =>
       expect(container.querySelector("[data-testid='terminal-canvas']")).not.toBeNull(),
     );
-    const area = container.querySelector("div")!;
-    (area.querySelector("[data-testid='terminal-canvas']") as HTMLCanvasElement)?.focus();
+    const canvas = container.querySelector(
+      "[data-testid='terminal-canvas']",
+    ) as HTMLCanvasElement;
+    canvas.focus();
     await act(async () => {
       fireEvent.keyDown(window, { key: "j", ctrlKey: true, shiftKey: true });
     });
-    await waitFor(() =>
-      expect(container.querySelector("[role='dialog']")).not.toBeNull(),
-    );
-    await act(async () => {
-      fireEvent.keyDown(window, { key: "j", ctrlKey: true, shiftKey: true });
-    });
-    await waitFor(() =>
-      expect(container.querySelector("[role='dialog']")).toBeNull(),
-    );
+    const bar = container.querySelector(
+      "[aria-label='ターミナル入力バー']",
+    ) as HTMLElement;
+    const textarea = bar.querySelector("textarea") as HTMLTextAreaElement;
+    expect(document.activeElement).toBe(textarea);
   });
 
   it("opens the search bar on Ctrl+F and focuses the input", async () => {

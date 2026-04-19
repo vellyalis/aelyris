@@ -9,7 +9,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 import type { ShellType } from "../../App";
-import { IMEInputBar } from "./IMEInputBar";
+import { IMEInputBar, type IMEInputBarHandle } from "./IMEInputBar";
 import { TerminalCanvas } from "./TerminalCanvas";
 import { useAICliDetection } from "./hooks/useAICliDetection";
 import { useInputMirror } from "./hooks/useInputMirror";
@@ -98,9 +98,11 @@ async function defaultSubscribeOutput(
  *
  * Spawns the PTY, mounts `<TerminalCanvas>`, and layers the ergonomics that
  * sit outside the canvas:
- *   - Ctrl+Shift+J toggles `<IMEInputBar>`; it also auto-opens while a known
- *     AI CLI (claude, codex, gemini, ...) is in the foreground and resets
- *     when the session ends.
+ *   - `<IMEInputBar>` is docked at the bottom and always rendered. Japanese
+ *     / Chinese / Korean input has nowhere to land on the native canvas
+ *     (Phase 2 removed xterm.js and with it the composition helper), so a
+ *     dedicated text field is the only way to type multi-byte input at all.
+ *     Ctrl+Shift+J moves focus into the bar.
  *   - Ctrl+F opens an inline search bar that drives TerminalCanvas's
  *     `searchMatches` / `activeSearchMatch` highlights.
  *
@@ -257,10 +259,12 @@ export function NativeTerminalArea({
     return () => window.removeEventListener("keydown", handler, true);
   }, [snapshotOverlay, dismissSnapshotOverlay]);
 
-  // ── AI CLI / IME input bar ──
+  // ── AI CLI detection ──
+  // Still used to disable ghost-text autosuggest while an AI CLI owns the
+  // prompt. The bar itself is always visible, so we no longer derive its
+  // visibility from this state.
   const aiCli = useAICliDetection();
-  const aiDismissedRef = useRef(false);
-  const [imeInputVisible, setImeInputVisible] = useState(false);
+  const imeBarRef = useRef<IMEInputBarHandle>(null);
 
   useEffect(() => {
     if (!terminalId) return;
@@ -304,33 +308,13 @@ export function NativeTerminalArea({
     };
   }, [terminalId, subscribeOutput, aiCli]);
 
-  useEffect(() => {
-    if (aiCli.active) {
-      if (!aiDismissedRef.current) setImeInputVisible(true);
-    } else {
-      aiDismissedRef.current = false;
-      setImeInputVisible(false);
-    }
-  }, [aiCli.active]);
+  const focusImeBar = useCallback(() => {
+    imeBarRef.current?.focus();
+  }, []);
 
-  const closeImeBar = useCallback(() => {
-    if (aiCli.active) aiDismissedRef.current = true;
-    setImeInputVisible(false);
-  }, [aiCli.active]);
-
-  const toggleImeBar = useCallback(() => {
-    setImeInputVisible((v) => {
-      if (v) {
-        if (aiCli.active) aiDismissedRef.current = true;
-        return false;
-      }
-      aiDismissedRef.current = false;
-      return true;
-    });
-  }, [aiCli.active]);
-
-  const toggleImeBarRef = useRef(toggleImeBar);
-  toggleImeBarRef.current = toggleImeBar;
+  const focusCanvas = useCallback(() => {
+    canvasEl?.focus();
+  }, [canvasEl]);
 
   // ── Search UI state ──
   const [searchVisible, setSearchVisible] = useState(false);
@@ -463,7 +447,7 @@ export function NativeTerminalArea({
       if (e.ctrlKey && e.shiftKey && (e.key === "J" || e.key === "j")) {
         if (!insideArea) return;
         e.preventDefault();
-        toggleImeBarRef.current();
+        focusImeBar();
         return;
       }
       if (!insideArea) return;
@@ -475,7 +459,7 @@ export function NativeTerminalArea({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, []);
+  }, [focusImeBar]);
 
   const sendIMEBytes = useCallback(
     (text: string) => {
@@ -634,9 +618,11 @@ export function NativeTerminalArea({
           />
         )}
       </div>
-      {imeInputVisible && (
-        <IMEInputBar onSubmit={sendIMEBytes} onClose={closeImeBar} />
-      )}
+      <IMEInputBar
+        ref={imeBarRef}
+        onSubmit={sendIMEBytes}
+        onRequestCanvasFocus={focusCanvas}
+      />
     </div>
   );
 }
