@@ -61,9 +61,17 @@ export function useCanvasIME({
   textarea,
   writeBytes = defaultWriteBytes,
 }: UseCanvasIMEArgs) {
-  // Track composition state across listeners via a ref so handlers stay
+  // Track composition state across listeners via refs so handlers stay
   // stable under React's re-renders.
   const composingRef = useRef(false);
+  // Remembers the most recent interim composition text so we can fall back
+  // to it on `compositionend` if the browser/IME fires the two events in the
+  // TSF order `input(isComposing, data=final)` → `compositionend(data="")`.
+  const pendingCompositionRef = useRef<string>("");
+  // When we commit from `compositionend`, Chromium fires a trailing
+  // `input(isComposing=false, data=final)` with the same text. This flag
+  // tells that next `input` handler to drop the duplicate.
+  const skipNextCommittedInputRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!textarea || !terminalId) return;
@@ -87,39 +95,61 @@ export function useCanvasIME({
 
     const onInput = (e: Event) => {
       const ev = e as InputEvent;
-      // During composition the browser fires interim `input` events with
-      // `isComposing=true`; we ignore those and wait for the final
-      // compositionend → input pair.
+      // During composition, record the latest interim text so we can
+      // recover it on `compositionend` if the browser/IME commits through
+      // the interim path (Windows TSF: some Japanese IMEs fire the final
+      // `input` while `isComposing` is still `true`, then `compositionend`
+      // with an empty `data`).
       if (ev.isComposing || composingRef.current) {
-        // Keep the value clear so the committed text on compositionend
-        // lands on an empty buffer rather than accumulating — some IMEs
-        // leave interim text behind.
+        if (ev.data) pendingCompositionRef.current = ev.data;
+        // Keep the backing value clear so a later commit lands on an empty
+        // buffer — some IMEs otherwise leave interim text behind.
         textarea.value = "";
         return;
       }
+
       const data = ev.data ?? textarea.value;
       textarea.value = "";
-      if (data && data.length > 0) {
-        writeBytes(terminalId, data);
+      if (!data || data.length === 0) return;
+
+      // Chromium fires `compositionend` before the final `input` event;
+      // we already sent the committed text from the compositionend handler,
+      // so drop the duplicate echo here.
+      if (skipNextCommittedInputRef.current === data) {
+        skipNextCommittedInputRef.current = null;
+        return;
       }
+      skipNextCommittedInputRef.current = null;
+
+      writeBytes(terminalId, data);
     };
 
     const onCompositionStart = () => {
       composingRef.current = true;
+      pendingCompositionRef.current = "";
+      skipNextCommittedInputRef.current = null;
     };
 
     const onCompositionEnd = (e: CompositionEvent) => {
       composingRef.current = false;
-      // Some browsers fire `compositionend` with the final text in `data`
-      // and DO fire a subsequent `input` event.  Chromium fires
-      // compositionend BEFORE the final input event, so clearing here
-      // would swallow the next input's `data`.  Leave it alone — the
-      // input handler sees `!isComposing` and sends the text.
-      void e;
+      // Prefer the compositionend event's own `data` (Chromium / WebKit
+      // spec-compliant path). Fall back to whatever the last interim
+      // `input(isComposing=true)` reported — the TSF order on Windows.
+      const text = e.data || pendingCompositionRef.current;
+      pendingCompositionRef.current = "";
+      textarea.value = "";
+      if (!text || text.length === 0) return;
+
+      writeBytes(terminalId, text);
+      // Arm the dedup flag so the trailing `input(!isComposing, data=text)`
+      // we expect on Chromium doesn't send the same characters twice.
+      skipNextCommittedInputRef.current = text;
     };
 
     const onPaste = (e: ClipboardEvent) => {
-      const text = e.clipboardData?.getData("text");
+      const text =
+        e.clipboardData?.getData("text") ??
+        e.clipboardData?.getData("text/plain");
       if (!text) return;
       e.preventDefault();
       e.stopPropagation();

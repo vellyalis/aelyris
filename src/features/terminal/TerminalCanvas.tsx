@@ -236,21 +236,23 @@ export function TerminalCanvas({
     return () => el.removeEventListener("mousedown", handleLinkClick, true);
   }, [inputEl, handleLinkClick]);
 
+  // Selection clears the moment the user types a character. After Phase B
+  // the textarea owns keydown (the canvas is focus-forwarded), so these
+  // listeners must attach to the textarea — binding to the canvas would
+  // silently break.
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!textareaEl) return;
     const clearOnType = (ev: KeyboardEvent) => {
       if (ev.ctrlKey && ev.shiftKey) return;
       if (!selection) return;
       clearSelection();
     };
-    canvas.addEventListener("keydown", clearOnType);
-    return () => canvas.removeEventListener("keydown", clearOnType);
-  }, [selection, clearSelection]);
+    textareaEl.addEventListener("keydown", clearOnType);
+    return () => textareaEl.removeEventListener("keydown", clearOnType);
+  }, [textareaEl, selection, clearSelection]);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!textareaEl) return;
     const handler = (ev: KeyboardEvent) => {
       if (ev.ctrlKey && ev.shiftKey && (ev.key === "c" || ev.key === "C")) {
         if (!selection) return;
@@ -259,9 +261,9 @@ export function TerminalCanvas({
         void copy();
       }
     };
-    canvas.addEventListener("keydown", handler);
-    return () => canvas.removeEventListener("keydown", handler);
-  }, [selection, copy]);
+    textareaEl.addEventListener("keydown", handler);
+    return () => textareaEl.removeEventListener("keydown", handler);
+  }, [textareaEl, selection, copy]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -422,7 +424,15 @@ export function TerminalCanvas({
         position: "relative",
         width: `${canvasWidth}px`,
         height: `${canvasHeight}px`,
+        outline: "none",
       }}
+      // Keep the pane reachable via Tab by making the container the
+      // focus-target: its `onFocus` forwards into the hidden textarea so
+      // the keyboard-input element gets focus in one hop. `mousedown`
+      // covers click-to-type since the canvas itself is no longer natively
+      // focusable (see canvas `tabIndex={-1}` below).
+      tabIndex={0}
+      onFocus={focusTextarea}
       onMouseDown={focusTextarea}
     >
       <canvas
@@ -435,7 +445,11 @@ export function TerminalCanvas({
         height={canvasHeight}
         data-testid="terminal-canvas"
         data-terminal-id={terminalId}
-        tabIndex={0}
+        // `-1` keeps the canvas programmatically focus-able (tests /
+        // external `canvas.focus()` callers still work and flow through
+        // `onFocus` to the textarea) without giving it native click-to-
+        // focus behaviour that would fight the container's focus-forward.
+        tabIndex={-1}
         onFocus={focusTextarea}
         style={{
           display: "block",

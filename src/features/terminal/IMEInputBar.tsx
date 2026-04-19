@@ -155,7 +155,10 @@ export const IMEInputBar = forwardRef<IMEInputBarHandle, IMEInputBarProps>(
           e.preventDefault();
           e.stopPropagation();
           if (historyIndexRef.current === null) {
-            draftRef.current = value;
+            // Read the live DOM value — it's always current even if React
+            // hasn't re-rendered yet, and survives future edits to this
+            // callback's dep array.
+            draftRef.current = textareaRef.current?.value ?? value;
             historyIndexRef.current = hist.length - 1;
           } else if (historyIndexRef.current > 0) {
             historyIndexRef.current -= 1;

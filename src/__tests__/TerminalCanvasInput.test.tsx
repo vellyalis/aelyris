@@ -139,11 +139,49 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
     expect(pasteEvent.defaultPrevented).toBe(true);
   });
 
-  it("canvas remains focusable and its focus forwards to the IME textarea", () => {
+  it("container owns tabIndex=0; canvas stays at -1 to avoid focus-loop with the container", () => {
+    const { canvas } = renderCanvas();
+    const container = canvas.parentElement!;
+    expect(container.tabIndex).toBe(0);
+    expect(canvas.tabIndex).toBe(-1);
+  });
+
+  it("programmatic canvas.focus() still redirects to the IME textarea", () => {
     const { canvas, textarea } = renderCanvas();
-    expect(canvas.tabIndex).toBe(0);
     canvas.focus();
     expect(document.activeElement).toBe(textarea);
+  });
+
+  it("tabbing into the container also forwards focus into the textarea", () => {
+    const { canvas, textarea } = renderCanvas();
+    const container = canvas.parentElement!;
+    container.focus();
+    expect(document.activeElement).toBe(textarea);
+  });
+
+  it("sends a composed IME commit from compositionend when the `input` event fired while isComposing=true (Windows TSF order)", () => {
+    const writeBytes = vi.fn();
+    const { textarea } = renderCanvas(writeBytes);
+    fireEvent.compositionStart(textarea);
+    // Windows TSF path: final text arrives as an interim input while
+    // isComposing is still true.
+    fireEvent.input(textarea, { data: "今日", isComposing: true });
+    expect(writeBytes).not.toHaveBeenCalled();
+    // Then compositionend fires with empty data (some TSF IMEs do this).
+    fireEvent.compositionEnd(textarea, { data: "" });
+    expect(writeBytes).toHaveBeenCalledWith("t1", "今日");
+  });
+
+  it("does not double-send the Chromium trailing `input` event after a compositionend commit", () => {
+    const writeBytes = vi.fn();
+    const { textarea } = renderCanvas(writeBytes);
+    fireEvent.compositionStart(textarea);
+    // Chromium path: compositionend carries the final text.
+    fireEvent.compositionEnd(textarea, { data: "こんにちは" });
+    // Trailing input echo that Chromium fires with the same text.
+    fireEvent.input(textarea, { data: "こんにちは" });
+    expect(writeBytes).toHaveBeenCalledTimes(1);
+    expect(writeBytes).toHaveBeenCalledWith("t1", "こんにちは");
   });
 
   it("mousedown on the container focuses the textarea (click-to-type)", () => {
