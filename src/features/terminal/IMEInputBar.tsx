@@ -188,8 +188,11 @@ export const IMEInputBar = forwardRef<IMEInputBarHandle, IMEInputBarProps>(
     const handleChange = useCallback(
       (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         setValue(e.target.value);
-        // Any free-form edit breaks the "navigating history" state.
+        // Any free-form edit breaks the "navigating history" state. Also
+        // clear the stashed draft so the invariant "draftRef is only
+        // meaningful while historyIndexRef !== null" always holds.
         historyIndexRef.current = null;
+        draftRef.current = "";
       },
       [],
     );

@@ -50,6 +50,7 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
   const [exited, setExited] = useState(false);
   const imeBarRef = useRef<IMEInputBarHandle>(null);
   const canvasElRef = useRef<HTMLCanvasElement | null>(null);
+  const canvasInputElRef = useRef<HTMLTextAreaElement | null>(null);
 
   // Measure container → cols/rows, trailing-edge debounced so a continuous
   // resize drag doesn't thrash the backend with resize_terminal calls.
@@ -140,7 +141,10 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
   );
 
   const focusCanvas = useCallback(() => {
-    canvasElRef.current?.focus();
+    // Prefer the IME textarea — the canvas has tabIndex=-1 after Phase B
+    // and focusing it only works by bouncing through its React onFocus
+    // handler, which can miss during Strict Mode unmount/remount cycles.
+    (canvasInputElRef.current ?? canvasElRef.current)?.focus();
   }, []);
 
   const accent = accentColor ?? getCliColor(cli);
@@ -170,6 +174,7 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
             rows={dims.rows}
             fontSize={FONT_SIZE}
             onCanvasRef={(el) => (canvasElRef.current = el)}
+            onInputRef={(el) => (canvasInputElRef.current = el)}
           />
         )}
         {exited && (

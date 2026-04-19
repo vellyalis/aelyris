@@ -61,6 +61,16 @@ export function useCanvasIME({
   textarea,
   writeBytes = defaultWriteBytes,
 }: UseCanvasIMEArgs) {
+  // Hold `writeBytes` in a ref so its identity does NOT appear in the
+  // effect's dependency array. If it did, any parent passing an inline
+  // function literal (common in tests, easy in production) would
+  // re-register all five listeners on every render — and an unlucky
+  // re-register during a live `compositionstart → …` flow would reset
+  // `composingRef` / `pendingCompositionRef` below and silently drop the
+  // in-flight IME commit.
+  const writeBytesRef = useRef(writeBytes);
+  writeBytesRef.current = writeBytes;
+
   // Track composition state across listeners via refs so handlers stay
   // stable under React's re-renders.
   const composingRef = useRef(false);
@@ -90,7 +100,7 @@ export function useCanvasIME({
       if (bytes === null) return;
       e.preventDefault();
       e.stopPropagation();
-      writeBytes(terminalId, bytes);
+      writeBytesRef.current(terminalId, bytes);
     };
 
     const onInput = (e: Event) => {
@@ -121,13 +131,14 @@ export function useCanvasIME({
       }
       skipNextCommittedInputRef.current = null;
 
-      writeBytes(terminalId, data);
+      writeBytesRef.current(terminalId, data);
     };
 
     const onCompositionStart = () => {
       composingRef.current = true;
       pendingCompositionRef.current = "";
-      skipNextCommittedInputRef.current = null;
+      // Deliberately leave `skipNextCommittedInputRef` alone — see the
+      // block comment below `onCompositionEnd`.
     };
 
     const onCompositionEnd = (e: CompositionEvent) => {
@@ -140,7 +151,7 @@ export function useCanvasIME({
       textarea.value = "";
       if (!text || text.length === 0) return;
 
-      writeBytes(terminalId, text);
+      writeBytesRef.current(terminalId, text);
       // Arm the dedup flag so the trailing `input(!isComposing, data=text)`
       // we expect on Chromium doesn't send the same characters twice.
       skipNextCommittedInputRef.current = text;
@@ -154,7 +165,7 @@ export function useCanvasIME({
       e.preventDefault();
       e.stopPropagation();
       textarea.value = "";
-      writeBytes(terminalId, text);
+      writeBytesRef.current(terminalId, text);
     };
 
     textarea.addEventListener("keydown", onKeyDown);
@@ -170,7 +181,7 @@ export function useCanvasIME({
       textarea.removeEventListener("compositionend", onCompositionEnd);
       textarea.removeEventListener("paste", onPaste);
     };
-  }, [terminalId, textarea, writeBytes]);
+  }, [terminalId, textarea]);
 }
 
 export interface UseImePositionArgs {

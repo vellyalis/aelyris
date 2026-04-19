@@ -184,6 +184,47 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
     expect(writeBytes).toHaveBeenCalledWith("t1", "こんにちは");
   });
 
+  it("does not drop an in-flight composition when the parent re-renders with a new writeBytes identity", () => {
+    // Guards against a latent HIGH regression: if `useCanvasIME` put
+    // `writeBytes` in its effect dep array, a parent passing an inline
+    // function literal would re-register listeners mid-composition and
+    // silently reset the internal pendingComposition / skip refs.
+    const initialWrite = vi.fn();
+    const { container, rerender } = render(
+      <TerminalCanvas
+        terminalId="t1"
+        cols={4}
+        rows={2}
+        snapshotOverride={null}
+        writeBytes={initialWrite}
+      />,
+    );
+    const textarea = container.querySelector(
+      "[data-testid='terminal-ime-textarea']",
+    ) as HTMLTextAreaElement;
+
+    fireEvent.compositionStart(textarea);
+    fireEvent.input(textarea, { data: "きょ", isComposing: true });
+
+    // Force a new writeBytes reference mid-composition.
+    const swappedWrite = vi.fn();
+    rerender(
+      <TerminalCanvas
+        terminalId="t1"
+        cols={4}
+        rows={2}
+        snapshotOverride={null}
+        writeBytes={swappedWrite}
+      />,
+    );
+
+    fireEvent.compositionEnd(textarea, { data: "今日" });
+    // The new writeBytes wins (ref is swapped live); the old function must
+    // NOT be called, and the commit must NOT be dropped.
+    expect(initialWrite).not.toHaveBeenCalled();
+    expect(swappedWrite).toHaveBeenCalledWith("t1", "今日");
+  });
+
   it("mousedown on the container focuses the textarea (click-to-type)", () => {
     const writeBytes = vi.fn();
     const { canvas, textarea } = renderCanvas(writeBytes);
