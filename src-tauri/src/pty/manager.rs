@@ -26,7 +26,12 @@ pub struct TerminalInfo {
     pub uptime_secs: u64,
 }
 
-/// Manages multiple PTY sessions
+/// Manages multiple PTY sessions.
+///
+/// Cloning is cheap — internal state is `Arc<Mutex<...>>` so all clones share
+/// the same session map. Used by `api::serve` to share ownership with the
+/// external HTTP/WS server without going through Tauri's managed state.
+#[derive(Clone)]
 pub struct PtyManager {
     instances: Arc<Mutex<HashMap<String, PtyInstance>>>,
 }
@@ -138,28 +143,34 @@ impl PtyManager {
         Ok(())
     }
 
-    /// Get a reader for a PTY (for streaming output via events)
-    pub fn take_reader(&self, id: &str) -> Result<Box<dyn Read + Send>, String> {
+    /// Get a reader for a PTY (for streaming output via events).
+    ///
+    /// Despite the name, this **clones** the master PTY's reader — it does
+    /// not consume or remove it — so multiple callers (Tauri UI + external
+    /// API) can read the same session concurrently. The lock is held for
+    /// the duration of the clone syscall; on Windows this is cheap.
+    pub fn take_reader(&self, id: &str) -> Result<Box<dyn Read + Send>, PtyError> {
         let instances = self.lock_instances()?;
 
         let instance = instances
             .get(id)
-            .ok_or_else(|| PtyError::NotFound(id.to_string()).to_string())?;
+            .ok_or_else(|| PtyError::NotFound(id.to_string()))?;
 
         instance
             .pair
             .master
             .try_clone_reader()
-            .map_err(|e| format!("Failed to clone reader: {}", e))
+            .map_err(|e| PtyError::Other(format!("clone reader: {}", e)))
     }
 
-    /// Resize a PTY
-    pub fn resize(&self, id: &str, cols: u16, rows: u16) -> Result<(), String> {
+    /// Resize a PTY. Typed errors so callers can distinguish NotFound from
+    /// a real failure without string-matching.
+    pub fn resize(&self, id: &str, cols: u16, rows: u16) -> Result<(), PtyError> {
         let instances = self.lock_instances()?;
 
         let instance = instances
             .get(id)
-            .ok_or_else(|| PtyError::NotFound(id.to_string()).to_string())?;
+            .ok_or_else(|| PtyError::NotFound(id.to_string()))?;
 
         instance
             .pair
@@ -170,14 +181,14 @@ impl PtyManager {
                 pixel_width: 0,
                 pixel_height: 0,
             })
-            .map_err(|e| format!("Resize error: {}", e))
+            .map_err(|e| PtyError::Other(format!("resize: {}", e)))
     }
 
-    /// Close and remove a PTY session
-    pub fn close(&self, id: &str) -> Result<(), String> {
+    /// Close and remove a PTY session.
+    pub fn close(&self, id: &str) -> Result<(), PtyError> {
         self.lock_instances()?
             .remove(id)
-            .ok_or_else(|| PtyError::NotFound(id.to_string()).to_string())?;
+            .ok_or_else(|| PtyError::NotFound(id.to_string()))?;
 
         log::info!("Closed terminal {}", id);
         Ok(())
@@ -213,7 +224,12 @@ impl PtyManager {
             .unwrap_or_default()
     }
 
-    /// Close all PTY sessions (called on app exit)
+    /// Close all PTY sessions. Called explicitly from the app-exit hook.
+    ///
+    /// We deliberately do **not** hook this into `Drop`: `PtyManager` is
+    /// `Clone`, and every clone goes through `Drop` when it leaves scope —
+    /// so a drop-driven `close_all` would wipe the shared session map every
+    /// time a handler's `State<_>` extraction was released.
     pub fn close_all(&self) {
         if let Ok(mut instances) = self.instances.lock() {
             let count = instances.len();
@@ -222,15 +238,7 @@ impl PtyManager {
         }
     }
 
-    fn lock_instances(&self) -> Result<std::sync::MutexGuard<'_, HashMap<String, PtyInstance>>, String> {
-        self.instances
-            .lock()
-            .map_err(|_| PtyError::LockPoisoned.to_string())
-    }
-}
-
-impl Drop for PtyManager {
-    fn drop(&mut self) {
-        self.close_all();
+    fn lock_instances(&self) -> Result<std::sync::MutexGuard<'_, HashMap<String, PtyInstance>>, PtyError> {
+        self.instances.lock().map_err(|_| PtyError::LockPoisoned)
     }
 }
