@@ -150,11 +150,28 @@ describe("TerminalCanvas — selection + copy (Task 9)", () => {
       />,
     );
     const canvas = getByTestId("terminal-canvas") as HTMLCanvasElement;
+    const textarea = getByTestId(
+      "terminal-ime-textarea",
+    ) as HTMLTextAreaElement;
 
     await act(async () => {
       downUpDrag(canvas, { x: 0, y: 0 }, { x: 4 * 8 + 1, y: 0 });
     });
 
+    // Plain printable typing now flows through the textarea's `input`
+    // event path (Phase B). Dispatch both keydown + input to mimic the
+    // browser's real sequence.
+    await act(async () => {
+      textarea.dispatchEvent(
+        new KeyboardEvent("keydown", { bubbles: true, key: "a" }),
+      );
+      textarea.dispatchEvent(
+        new InputEvent("input", { bubbles: true, data: "a" }),
+      );
+    });
+    // Selection listener is on the canvas and watches for keydown on it
+    // to clear the selection. Send the same keydown there so the existing
+    // behaviour fires.
     await act(async () => {
       canvas.dispatchEvent(
         new KeyboardEvent("keydown", { bubbles: true, key: "a" }),

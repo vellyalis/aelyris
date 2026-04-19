@@ -120,6 +120,12 @@ export function NativeTerminalArea({
 }: NativeTerminalAreaProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [canvasEl, setCanvasEl] = useState<HTMLCanvasElement | null>(null);
+  // Phase B: the hidden IME textarea on the canvas is the real keyboard-
+  // input element. `useInputMirror` (ghost-text buffer) and focus-restore
+  // shortcuts both target this element.
+  const [canvasInputEl, setCanvasInputEl] = useState<HTMLTextAreaElement | null>(
+    null,
+  );
   const [terminalId, setTerminalId] = useState<string | null>(null);
   const [dims, setDims] = useState<Dims | null>(null);
   const spawnStartedRef = useRef(false);
@@ -313,8 +319,11 @@ export function NativeTerminalArea({
   }, []);
 
   const focusCanvas = useCallback(() => {
-    canvasEl?.focus();
-  }, [canvasEl]);
+    // Prefer the IME textarea; fall back to the canvas for the initial-mount
+    // race where the textarea ref hasn't resolved yet (canvas's onFocus
+    // forwards there anyway).
+    (canvasInputEl ?? canvasEl)?.focus();
+  }, [canvasInputEl, canvasEl]);
 
   // ── Search UI state ──
   const [searchVisible, setSearchVisible] = useState(false);
@@ -498,7 +507,7 @@ export function NativeTerminalArea({
   );
 
   const { buffer, reset: resetMirror } = useInputMirror({
-    element: canvasEl,
+    element: canvasInputEl,
     enabled: mirrorEnabled,
     suggestion,
     onAccept: acceptSuggestion,
@@ -615,6 +624,7 @@ export function NativeTerminalArea({
             }
             snapshotOverride={snapshotOverlay?.grid}
             onCanvasRef={setCanvasEl}
+            onInputRef={setCanvasInputEl}
           />
         )}
       </div>

@@ -1,4 +1,4 @@
-import { render, cleanup } from "@testing-library/react";
+import { render, cleanup, fireEvent } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TerminalCanvas } from "../features/terminal/TerminalCanvas";
@@ -29,7 +29,24 @@ function dispatchKey(
   return event;
 }
 
-describe("TerminalCanvas — input wiring (Task 8)", () => {
+function renderCanvas(writeBytes?: (id: string, data: string) => void) {
+  const utils = render(
+    <TerminalCanvas
+      terminalId="t1"
+      cols={4}
+      rows={2}
+      snapshotOverride={null}
+      writeBytes={writeBytes}
+    />,
+  );
+  const canvas = utils.getByTestId("terminal-canvas") as HTMLCanvasElement;
+  const textarea = utils.getByTestId(
+    "terminal-ime-textarea",
+  ) as HTMLTextAreaElement;
+  return { ...utils, canvas, textarea };
+}
+
+describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", () => {
   beforeEach(() => {
     installCanvasMock();
   });
@@ -39,105 +56,103 @@ describe("TerminalCanvas — input wiring (Task 8)", () => {
     vi.restoreAllMocks();
   });
 
-  it("forwards a printable keystroke to writeBytes", () => {
+  it("forwards a printable keystroke via the textarea's input event", () => {
     const writeBytes = vi.fn();
-    const { getByTestId } = render(
-      <TerminalCanvas
-        terminalId="t1"
-        cols={4}
-        rows={2}
-        snapshotOverride={null}
-        writeBytes={writeBytes}
-      />,
-    );
-    const canvas = getByTestId("terminal-canvas") as HTMLCanvasElement;
-    dispatchKey(canvas, { key: "a" });
+    const { textarea } = renderCanvas(writeBytes);
+    // Simulate a plain keystroke: keydown (no consume) then input event.
+    dispatchKey(textarea, { key: "a" });
+    fireEvent.input(textarea, { data: "a" });
     expect(writeBytes).toHaveBeenCalledWith("t1", "a");
   });
 
-  it("emits the expected CSI sequence for ArrowUp", () => {
+  it("emits the expected CSI sequence for ArrowUp via keydown", () => {
     const writeBytes = vi.fn();
-    const { getByTestId } = render(
-      <TerminalCanvas
-        terminalId="t42"
-        cols={2}
-        rows={2}
-        snapshotOverride={null}
-        writeBytes={writeBytes}
-      />,
-    );
-    const canvas = getByTestId("terminal-canvas") as HTMLCanvasElement;
-    dispatchKey(canvas, { key: "ArrowUp" });
-    expect(writeBytes).toHaveBeenCalledWith("t42", "\x1b[A");
+    const { textarea } = renderCanvas(writeBytes);
+    const e = dispatchKey(textarea, { key: "ArrowUp" });
+    expect(writeBytes).toHaveBeenCalledWith("t1", "\x1b[A");
+    expect(e.defaultPrevented).toBe(true);
   });
 
-  it("preventDefaults consumed keys and ignores IME composition", () => {
+  it("Enter submits \\r and preventDefaults", () => {
     const writeBytes = vi.fn();
-    const { getByTestId } = render(
-      <TerminalCanvas
-        terminalId="t1"
-        cols={2}
-        rows={2}
-        snapshotOverride={null}
-        writeBytes={writeBytes}
-      />,
-    );
-    const canvas = getByTestId("terminal-canvas") as HTMLCanvasElement;
-
-    const consumed = dispatchKey(canvas, { key: "Enter" });
-    expect(consumed.defaultPrevented).toBe(true);
+    const { textarea } = renderCanvas(writeBytes);
+    const e = dispatchKey(textarea, { key: "Enter" });
     expect(writeBytes).toHaveBeenLastCalledWith("t1", "\r");
-
-    // IME composition: key should bubble, writeBytes must not be called.
-    writeBytes.mockClear();
-    const composing = dispatchKey(canvas, { key: "a", isComposing: true });
-    expect(composing.defaultPrevented).toBe(false);
-    expect(writeBytes).not.toHaveBeenCalled();
+    expect(e.defaultPrevented).toBe(true);
   });
 
-  it("does not consume Ctrl+Shift combos (let app shortcuts bubble)", () => {
+  it("ignores IME composition keydowns so the PTY doesn't see the raw key", () => {
     const writeBytes = vi.fn();
-    const { getByTestId } = render(
-      <TerminalCanvas
-        terminalId="t1"
-        cols={2}
-        rows={2}
-        snapshotOverride={null}
-        writeBytes={writeBytes}
-      />,
-    );
-    const canvas = getByTestId("terminal-canvas") as HTMLCanvasElement;
-    const e = dispatchKey(canvas, { key: "J", ctrlKey: true, shiftKey: true });
+    const { textarea } = renderCanvas(writeBytes);
+    const e = dispatchKey(textarea, { key: "a", isComposing: true });
     expect(writeBytes).not.toHaveBeenCalled();
     expect(e.defaultPrevented).toBe(false);
   });
 
-  it("sends Ctrl+C as 0x03", () => {
+  it("sends Ctrl+C as 0x03 via keydown (modifier combos bypass input event)", () => {
     const writeBytes = vi.fn();
-    const { getByTestId } = render(
-      <TerminalCanvas
-        terminalId="t1"
-        cols={2}
-        rows={2}
-        snapshotOverride={null}
-        writeBytes={writeBytes}
-      />,
-    );
-    const canvas = getByTestId("terminal-canvas") as HTMLCanvasElement;
-    dispatchKey(canvas, { key: "c", ctrlKey: true });
+    const { textarea } = renderCanvas(writeBytes);
+    dispatchKey(textarea, { key: "c", ctrlKey: true });
     expect(writeBytes).toHaveBeenCalledWith("t1", "\x03");
   });
 
-  it("marks the canvas focusable (tabIndex=0)", () => {
-    const { getByTestId } = render(
-      <TerminalCanvas
-        terminalId="t1"
-        cols={2}
-        rows={2}
-        snapshotOverride={null}
-      />,
-    );
-    const canvas = getByTestId("terminal-canvas") as HTMLCanvasElement;
+  it("does not consume Ctrl+Shift combos (app shortcuts bubble to window)", () => {
+    const writeBytes = vi.fn();
+    const { textarea } = renderCanvas(writeBytes);
+    const e = dispatchKey(textarea, { key: "J", ctrlKey: true, shiftKey: true });
+    expect(writeBytes).not.toHaveBeenCalled();
+    expect(e.defaultPrevented).toBe(false);
+  });
+
+  it("sends composed IME text via the input event after compositionend", () => {
+    const writeBytes = vi.fn();
+    const { textarea } = renderCanvas(writeBytes);
+    fireEvent.compositionStart(textarea);
+    // Interim composition input — isComposing=true, ignored.
+    fireEvent.input(textarea, { data: "き", isComposing: true });
+    expect(writeBytes).not.toHaveBeenCalled();
+    // compositionend flips the flag, then the final input fires with the
+    // committed text.
+    fireEvent.compositionEnd(textarea);
+    fireEvent.input(textarea, { data: "今日" });
+    expect(writeBytes).toHaveBeenCalledWith("t1", "今日");
+  });
+
+  it("paste events go directly to the PTY as a single write", () => {
+    const writeBytes = vi.fn();
+    const { textarea } = renderCanvas(writeBytes);
+    // jsdom doesn't implement DataTransfer; hand-roll a minimal shim that
+    // matches the clipboardData.getData("text") contract we rely on.
+    const clipboardData = {
+      getData: (type: string) =>
+        type === "text" || type === "text/plain" ? "git status\n" : "",
+    } as unknown as DataTransfer;
+    const pasteEvent = new Event("paste", {
+      bubbles: true,
+      cancelable: true,
+    }) as ClipboardEvent;
+    Object.defineProperty(pasteEvent, "clipboardData", {
+      value: clipboardData,
+    });
+    textarea.dispatchEvent(pasteEvent);
+    expect(writeBytes).toHaveBeenCalledWith("t1", "git status\n");
+    expect(pasteEvent.defaultPrevented).toBe(true);
+  });
+
+  it("canvas remains focusable and its focus forwards to the IME textarea", () => {
+    const { canvas, textarea } = renderCanvas();
     expect(canvas.tabIndex).toBe(0);
+    canvas.focus();
+    expect(document.activeElement).toBe(textarea);
+  });
+
+  it("mousedown on the container focuses the textarea (click-to-type)", () => {
+    const writeBytes = vi.fn();
+    const { canvas, textarea } = renderCanvas(writeBytes);
+    // Blur first so we can measure the change.
+    (document.activeElement as HTMLElement | null)?.blur();
+    const container = canvas.parentElement!;
+    fireEvent.mouseDown(container);
+    expect(document.activeElement).toBe(textarea);
   });
 });
