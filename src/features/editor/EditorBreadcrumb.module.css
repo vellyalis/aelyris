@@ -14,11 +14,13 @@
   display: flex;
   align-items: center;
   white-space: nowrap;
+  /* Match .active weight so switching between path segments doesn't
+   * cause subpixel layout jitter. */
+  font-weight: var(--weight-medium);
 }
 
 .active {
   color: var(--text-primary);
-  font-weight: var(--weight-medium);
   display: flex;
   align-items: center;
   white-space: nowrap;

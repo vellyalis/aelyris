@@ -75,6 +75,8 @@
   color: var(--text-muted);
   font-size: var(--text-sm);
   font-family: var(--font-ui);
+  /* Lock the weight so the nav label doesn't reflow when activated. */
+  font-weight: var(--weight-medium);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
   cursor: pointer;
@@ -87,7 +89,7 @@
 .navActive {
   color: var(--text-primary);
   background: var(--white-6);
-  font-weight: var(--weight-medium);
+  /* font-weight intentionally matches .navItem to avoid layout shift. */
 }
 
 .content {

@@ -345,12 +345,13 @@ export function AgentInspector({
             <ClipboardCopy size={12} />
           </button>
           <button
-            className={styles.iconBtn}
-            title="Orchestra mode (3 agents)"
+            className={styles.orchestraBtn}
+            title="Orchestra mode (3 agents working together)"
             aria-label="Orchestra mode"
             onClick={handleOrchestra}
           >
             <Users size={12} strokeWidth={1.75} aria-hidden="true" />
+            <span>Orchestra</span>
           </button>
           <button className={styles.iconBtn} title="Add session" onClick={() => setShowPromptInput(true)}>
             <Plus size={12} />

@@ -53,7 +53,12 @@
   cursor: pointer;
   padding: var(--space-2) var(--space-4);
   border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-  font-weight: var(--weight-normal);
+  /* Keep the tab label's visual weight stable across :hover and .tabActive
+   * so switching tabs doesn't shift layout. Active state is communicated
+   * by color + border-bottom only (plus the gold accent). IBM Plex Sans
+   * 400 → 600 shifts glyph advance width by ~4% which reads as text
+   * "jumping" between tabs — the 2026-04-24 live review flagged this. */
+  font-weight: var(--weight-medium);
   transition:
     color var(--duration-fast),
     background var(--duration-fast),
@@ -69,7 +74,7 @@
 }
 .tabActive {
   color: var(--text-primary);
-  font-weight: var(--weight-semibold);
+  /* font-weight intentionally NOT changed — see the note on .tab. */
   border-bottom-color: var(--gold);
 }
 .tabActions {
@@ -98,6 +103,38 @@
 .iconBtn:hover {
   color: var(--text-primary);
   background: var(--white-6);
+}
+
+/* Orchestra entrypoint — distinct from the icon-only .iconBtn cluster so
+ * the marquee multi-agent flow is actually findable. Labeled pill, gold
+ * outline that only lights up on hover so the panel header stays calm. */
+.orchestraBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-4);
+  border: 1px solid var(--gold-subtle);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--gold) 6%, transparent);
+  color: var(--gold);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast),
+    border-color var(--duration-fast),
+    color var(--duration-fast);
+}
+.orchestraBtn:hover {
+  background: color-mix(in srgb, var(--gold) 14%, transparent);
+  border-color: var(--gold);
+  color: var(--text-primary);
+}
+.orchestraBtn:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 1px;
 }
 
 /* ─── Session Cards ─── */
