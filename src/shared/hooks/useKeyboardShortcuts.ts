@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import type { ShellType } from "../../App";
 import { showHistorySearch } from "../../features/history/HistorySearchDialog";
 import { showPrompt } from "../ui/PromptDialog";
+import { isEditableTarget } from "./useEditableTargetGuard";
 
 interface UseKeyboardShortcutsOptions {
   projectPath: string;
@@ -48,9 +49,18 @@ export function useKeyboardShortcuts({
 }: UseKeyboardShortcutsOptions) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      // Bail out when the user is typing into an editable surface so
+      // Ctrl+N/P/R/W don't steal keystrokes from Kanban task labels,
+      // Watchdog rule inputs, Monaco, xterm, etc. F1 + the chord
+      // shortcuts (Ctrl+Shift+*) stay global — those are app chrome,
+      // not text input.
       if (e.key === "F1") {
         e.preventDefault();
         setHelpVisible?.((v: boolean) => !v);
+        return;
+      }
+      const editableTarget = isEditableTarget(e.target);
+      if (editableTarget && !(e.ctrlKey && e.shiftKey)) {
         return;
       }
       if (e.ctrlKey && !e.shiftKey && e.key === "n") {

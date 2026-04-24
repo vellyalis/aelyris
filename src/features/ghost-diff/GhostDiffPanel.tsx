@@ -2,6 +2,7 @@ import { Check, ChevronRight, Layers, Loader2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { isReadOnlyLayer, type LayerSummary } from "../../shared/types/ghostdiff";
+import { EmptyState } from "../../shared/ui/EmptyState";
 import styles from "./GhostDiffPanel.module.css";
 
 interface GhostDiffPanelProps {
@@ -63,7 +64,11 @@ export function GhostDiffPanel({ layers, onDismiss, onClose }: GhostDiffPanelPro
       </div>
       <div className={styles.list}>
         {layers.length === 0 ? (
-          <div className={styles.empty}>Agents in worktrees will appear here with live file diffs.</div>
+          <EmptyState
+            icon={<Layers size={20} strokeWidth={1.5} />}
+            title="No active ghost layers"
+            description="Agents in worktrees will appear here with live file diffs."
+          />
         ) : (
           layers.map((layer) => (
             <LayerRow

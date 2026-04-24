@@ -1,7 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
-import { X } from "lucide-react";
+import { FolderSearch, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useRef, useState } from "react";
+import { EmptyState } from "../../shared/ui/EmptyState";
+import { LoadingSkeleton } from "../../shared/ui/LoadingSkeleton";
 import styles from "./SearchPanel.module.css";
 
 interface GrepResult {
@@ -82,8 +84,14 @@ export function SearchPanel({ visible, rootPath, onClose, onResultClick }: Searc
             </button>
           </div>
           <div className={styles.results}>
-            {searching && <div className={styles.status}>Searching...</div>}
-            {!searching && query && results.length === 0 && <div className={styles.status}>No results</div>}
+            {searching && <LoadingSkeleton variant="row" count={5} label="Searching" />}
+            {!searching && query && results.length === 0 && (
+              <EmptyState
+                icon={<FolderSearch size={20} strokeWidth={1.5} />}
+                title="No matches"
+                description={`Nothing in this project matches "${query}".`}
+              />
+            )}
             {[...grouped.entries()].map(([file, matches]) => {
               const shortFile = file.replace(rootPath + "/", "");
               return (
@@ -98,7 +106,9 @@ export function SearchPanel({ visible, rootPath, onClose, onResultClick }: Searc
                 </div>
               );
             })}
-            {!searching && !query && <div className={styles.status}>Type to search across all files</div>}
+            {!searching && !query && (
+              <EmptyState preset="files" title="Search across files" description="Type to find text anywhere in this project." />
+            )}
           </div>
         </motion.div>
       )}

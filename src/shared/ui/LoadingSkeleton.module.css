@@ -1,0 +1,56 @@
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+}
+
+.row {
+  height: var(--row-h-dense);
+  border-radius: var(--radius-sm);
+  background: var(--white-3);
+  position: relative;
+  overflow: hidden;
+}
+
+.card {
+  height: 60px;
+  border-radius: var(--radius);
+  background: var(--white-3);
+  position: relative;
+  overflow: hidden;
+}
+
+.line {
+  height: 10px;
+  border-radius: var(--radius-sm);
+  background: var(--white-3);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Shimmer is painted with the global --shimmer keyframe defined in
+ * global.css. Honors prefers-reduced-motion via the global @media rule. */
+.row::after,
+.card::after,
+.line::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, var(--white-6) 50%, transparent 100%);
+  animation: skeletonShimmer 1.8s var(--ease-apple) infinite;
+}
+
+@keyframes skeletonShimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Disable shimmer — used when parent wants a static placeholder */
+.static::after {
+  display: none;
+}

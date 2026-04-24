@@ -15,6 +15,8 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { EmptyState } from "../../shared/ui/EmptyState";
+import { LoadingSkeleton } from "../../shared/ui/LoadingSkeleton";
 import styles from "./PRInspector.module.css";
 
 interface CheckRun {
@@ -192,7 +194,7 @@ export function PRInspector({ visible, projectPath, onClose, onViewDiff, onStart
             </button>
           </div>
           <div className={styles.list}>
-            {loading && <div className={styles.status}>Loading PRs...</div>}
+            {loading && <LoadingSkeleton variant="card" count={3} label="Loading pull requests" />}
             {error && <div className={styles.error}>{error}</div>}
             {prs.map((pr) => (
               <PrRow
@@ -204,7 +206,13 @@ export function PRInspector({ visible, projectPath, onClose, onViewDiff, onStart
                 onStartReview={onStartReview}
               />
             ))}
-            {!loading && prs.length === 0 && !error && <div className={styles.status}>No open PRs</div>}
+            {!loading && prs.length === 0 && !error && (
+              <EmptyState
+                icon={<GitPullRequest size={20} strokeWidth={1.5} />}
+                title="No open pull requests"
+                description="Pull requests on this repository will appear here."
+              />
+            )}
           </div>
         </motion.div>
       )}
