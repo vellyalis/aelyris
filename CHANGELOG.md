@@ -3,7 +3,7 @@
 All notable changes to Aether Terminal are tracked here. Dates are listed in
 `YYYY-MM-DD`. Commit hashes reference `refactor/tauri-react-migration`.
 
-## [0.2.1] — unreleased
+## [0.2.1] — 2026-04-25
 
 Focus: **Apple-class UI per-feature audit closure** + **Liquid Glass
 material pass**. Three rounds of audit —

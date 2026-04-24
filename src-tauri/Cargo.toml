@@ -1,6 +1,6 @@
 [package]
 name = "aether-terminal"
-version = "0.2.0"
+version = "0.2.1"
 description = "Windows-native AI workspace terminal"
 authors = ["vellyalis"]
 edition = "2021"
