@@ -184,10 +184,20 @@ export function KanbanBoard({
                   {tasks.map((t) => (
                     <div
                       key={t.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Activate task: ${t.title}`}
+                      aria-pressed={t.id === activeTaskId}
                       className={`${styles.item} ${t.id === activeTaskId ? styles.itemActive : ""}`}
                       draggable
                       onDragStart={(e) => e.dataTransfer.setData("taskId", t.id)}
                       onClick={() => handleActivate(t.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          handleActivate(t.id);
+                        }
+                      }}
                     >
                       <span
                         className={styles.priorityDot}

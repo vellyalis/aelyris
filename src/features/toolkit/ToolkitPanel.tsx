@@ -180,7 +180,7 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
     setImportParsed(items);
   }, []);
 
-  const handleImport = useCallback(() => {
+  const handleImport = useCallback(async () => {
     if (!importParsed || importParsed.length === 0) return;
     // Check for dangerous commands in import
     const dangers = importParsed
@@ -188,7 +188,13 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
       .filter((d) => d.warning !== null);
     if (dangers.length > 0) {
       const msg = dangers.map((d) => `${d.label}: ${d.warning}`).join("\n");
-      if (!confirm(`Warning: imported commands contain dangerous patterns:\n\n${msg}\n\nImport anyway?`)) return;
+      const ok = await showConfirm({
+        title: "Dangerous commands detected",
+        description: `Imported commands contain dangerous patterns:\n\n${msg}\n\nImport anyway?`,
+        confirmLabel: "Import",
+        tone: "danger",
+      });
+      if (!ok) return;
     }
     const updated = [...actions, ...importParsed];
     setActions(updated);

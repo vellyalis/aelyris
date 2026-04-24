@@ -53,7 +53,7 @@ import { useWorktreeActions } from "./shared/hooks/useWorktreeActions";
 import { markFirstPaint } from "./shared/lib/bootMetrics";
 import { useAppStore } from "./shared/store/appStore";
 import type { SearchHit } from "./shared/types/history";
-import { ConfirmDialog } from "./shared/ui/ConfirmDialog";
+import { ConfirmDialog, showConfirm } from "./shared/ui/ConfirmDialog";
 import { ErrorBoundary } from "./shared/ui/ErrorBoundary";
 import { HandoffDialog } from "./shared/ui/HandoffDialog";
 import { OnboardingOverlay } from "./shared/ui/OnboardingOverlay";
@@ -243,8 +243,16 @@ export function App() {
 
   const unsavedFiles = useAppStore((s) => s.unsavedFiles);
   const handleCloseFile = useCallback(
-    (path: string) => {
-      if (unsavedFiles.has(path) && !window.confirm("You have unsaved changes. Close anyway?")) return;
+    async (path: string) => {
+      if (unsavedFiles.has(path)) {
+        const ok = await showConfirm({
+          title: "Unsaved changes",
+          description: "You have unsaved changes. Close anyway?",
+          confirmLabel: "Close",
+          tone: "danger",
+        });
+        if (!ok) return;
+      }
       closeFile(path);
     },
     [closeFile, unsavedFiles],
@@ -421,8 +429,20 @@ export function App() {
 
             const { unsavedFiles } = useAppStore.getState();
             if (unsavedFiles.size > 0) {
-              const ok = window.confirm(`${unsavedFiles.size} file(s) have unsaved changes. Close anyway?`);
-              if (!ok) event.preventDefault();
+              // Preserve the native close-request semantics (synchronous
+              // preventDefault) while still showing the themed confirm
+              // asynchronously. If the user confirms, we tear the window
+              // down ourselves.
+              event.preventDefault();
+              const ok = await showConfirm({
+                title: "Unsaved changes",
+                description: `${unsavedFiles.size} file(s) have unsaved changes. Close anyway?`,
+                confirmLabel: "Close",
+                tone: "danger",
+              });
+              if (ok) {
+                await win.close();
+              }
             }
           })
           .catch(() => {});

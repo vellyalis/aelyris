@@ -22,6 +22,7 @@ import { showOrchestra } from "../../shared/ui/OrchestraDialog";
 import { PixelAvatar } from "../../shared/ui/PixelAvatar";
 import { showPrompt } from "../../shared/ui/PromptDialog";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
+import { StopButton } from "../../shared/ui/StopButton";
 import { ToolBadge } from "../../shared/ui/ToolBadge";
 import { SessionAnalytics } from "../analytics/SessionAnalytics";
 import styles from "./AgentInspector.module.css";
@@ -655,6 +656,10 @@ export function AgentInspector({
               return (
                 <div
                   key={s.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Select session ${s.name}`}
+                  aria-pressed={s.id === activeSessionId}
                   className={`${styles.parallelPane} ${s.id === activeSessionId ? styles.parallelPaneActive : ""}`}
                   style={
                     {
@@ -664,6 +669,12 @@ export function AgentInspector({
                     } as React.CSSProperties
                   }
                   onClick={() => onSelectSession(s.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onSelectSession(s.id);
+                    }
+                  }}
                 >
                   <div className={styles.parallelHeader}>
                     <PixelAvatar seed={s.id} size={20} />
@@ -674,15 +685,11 @@ export function AgentInspector({
                     </span>
                     {pct > 0 && pct < 100 && <span className={styles.parallelPct}>{pct}%</span>}
                     {s.status !== "done" && s.status !== "idle" && (
-                      <span
+                      <StopButton
                         className={styles.stopBtn}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onStopAgent?.(s.id);
-                        }}
-                      >
-                        ■
-                      </span>
+                        label={`Stop session ${s.name}`}
+                        onStop={() => onStopAgent?.(s.id)}
+                      />
                     )}
                   </div>
                   <div className={styles.parallelProgress}>

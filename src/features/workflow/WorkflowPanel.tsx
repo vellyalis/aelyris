@@ -264,9 +264,19 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
                     return (
                       <div key={p.name} className={styles.stepWrapper}>
                         <div
+                          role="button"
+                          tabIndex={0}
+                          aria-expanded={isExpanded}
+                          aria-label={`${p.name}: ${p.status}. Click to ${isExpanded ? "collapse" : "expand"}`}
                           className={`${styles.step} ${styles[`step_${p.status}`]}`}
                           title={`${p.name}: ${p.status} (click to expand)`}
                           onClick={() => setExpandedPhase(isExpanded ? null : phaseKey)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setExpandedPhase(isExpanded ? null : phaseKey);
+                            }
+                          }}
                           style={{ cursor: "pointer" }}
                         >
                           {STATUS_ICON[p.status]}

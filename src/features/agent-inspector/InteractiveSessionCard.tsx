@@ -6,6 +6,7 @@ import { getCliColor, getCliLabel } from "../../shared/types/interactiveAgent";
 import { ContextGauge } from "../../shared/ui/ContextGauge";
 import { PixelAvatar } from "../../shared/ui/PixelAvatar";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
+import { StopButton } from "../../shared/ui/StopButton";
 import styles from "./AgentInspector.module.css";
 
 interface InteractiveSessionCardProps {
@@ -82,15 +83,11 @@ export function InteractiveSessionCard({
             <span className={styles.cardModel}>{is.model}</span>
             <span className={styles.cardCost}>&lt;${is.cost.toFixed(2)}</span>
             {is.status !== "done" && is.status !== "idle" && (
-              <span
+              <StopButton
                 className={styles.stopBtn}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onStop?.(is.id);
-                }}
-              >
-                ■
-              </span>
+                label={`Stop interactive session ${is.id}`}
+                onStop={() => onStop?.(is.id)}
+              />
             )}
           </div>
           <div className={styles.progressTrack}>

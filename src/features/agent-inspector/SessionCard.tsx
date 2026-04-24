@@ -17,6 +17,7 @@ import { getMaxTokens } from "../../shared/types/model";
 import { ContextGauge } from "../../shared/ui/ContextGauge";
 import { PixelAvatar } from "../../shared/ui/PixelAvatar";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
+import { StopButton } from "../../shared/ui/StopButton";
 import styles from "./AgentInspector.module.css";
 
 interface SessionCardProps {
@@ -201,15 +202,11 @@ export function SessionCard({
             <span className={styles.cardModel}>{s.model}</span>
             <span className={styles.cardCost}>&lt;${s.cost.toFixed(2)}</span>
             {s.status !== "done" && s.status !== "idle" && (
-              <span
+              <StopButton
                 className={styles.stopBtn}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onStop?.(s.id);
-                }}
-              >
-                ■
-              </span>
+                label={`Stop session ${s.name}`}
+                onStop={() => onStop?.(s.id)}
+              />
             )}
           </div>
           <div className={styles.progressTrack}>

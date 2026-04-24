@@ -1,4 +1,5 @@
 import * as Tabs from "@radix-ui/react-tabs";
+import { GitBranch, Plus, X } from "lucide-react";
 import { useCallback, useState } from "react";
 import type { ShellType } from "../../App";
 import type { Tab } from "../../shared/hooks/useTabManager";
@@ -89,18 +90,31 @@ export function WorkspaceTabs({
                 <PixelAvatar seed={tab.label} size={12} />
                 {activityTabs?.has(tab.id) && <span className={styles.activityDot} />}
                 <span className={styles.tabLabel}>{tab.label}</span>
-                {tab.worktreeBranch && <span className={styles.branchBadge}>⚡{tab.worktreeBranch}</span>}
+                {tab.worktreeBranch && (
+                  <span className={styles.branchBadge}>
+                    <GitBranch size={10} aria-hidden="true" />
+                    {tab.worktreeBranch}
+                  </span>
+                )}
                 {tabs.length > 1 && (
                   <span
                     className={styles.tabClose}
                     role="button"
+                    tabIndex={0}
                     aria-label={`Close ${tab.label}`}
                     onClick={(e) => {
                       e.stopPropagation();
                       onCloseTab(tab.id);
                     }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onCloseTab(tab.id);
+                      }
+                    }}
                   >
-                    ×
+                    <X size={10} aria-hidden="true" />
                   </span>
                 )}
               </button>
@@ -111,17 +125,30 @@ export function WorkspaceTabs({
               <button>
                 <span className={styles.agentDot} style={{ background: getCliColor(session.cli) }} />
                 <span className={styles.tabLabel}>{getCliLabel(session.cli)}</span>
-                {session.worktree_branch && <span className={styles.branchBadge}>⚡{session.worktree_branch}</span>}
+                {session.worktree_branch && (
+                  <span className={styles.branchBadge}>
+                    <GitBranch size={10} aria-hidden="true" />
+                    {session.worktree_branch}
+                  </span>
+                )}
                 <span
                   className={styles.tabClose}
                   role="button"
+                  tabIndex={0}
                   aria-label={`Close ${getCliLabel(session.cli)} session`}
                   onClick={(e) => {
                     e.stopPropagation();
                     onCloseInteractive?.(session.id);
                   }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onCloseInteractive?.(session.id);
+                    }
+                  }}
                 >
-                  ×
+                  <X size={10} aria-hidden="true" />
                 </span>
               </button>
             </Tabs.Trigger>
@@ -129,7 +156,7 @@ export function WorkspaceTabs({
         </Tabs.List>
       </Tabs.Root>
       <button className={styles.addBtn} onClick={() => onNewTab("powershell")} aria-label="New terminal tab">
-        +
+        <Plus size={12} aria-hidden="true" />
       </button>
     </div>
   );
