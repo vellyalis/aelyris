@@ -5,7 +5,7 @@ import { PixelAvatar } from "../../shared/ui/PixelAvatar";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
 import { ContextGauge } from "../../shared/ui/ContextGauge";
 import * as RadixContextMenu from "@radix-ui/react-context-menu";
-import { TerminalSquare, GitBranch } from "lucide-react";
+import { TerminalSquare, GitBranch, Zap } from "lucide-react";
 import styles from "./AgentInspector.module.css";
 
 interface InteractiveSessionCardProps {
@@ -39,7 +39,12 @@ export function InteractiveSessionCard({ session: is, onFocus, onStop, onEndAndR
               <div className={styles.cardNameRow}>
                 <TerminalSquare size={10} style={{ color: cliColor }} />
                 <span className={styles.cardName}>{getCliLabel(is.cli)}</span>
-                {is.worktree_branch && <span className={styles.cardBranch}>⚡{is.worktree_branch}</span>}
+                {is.worktree_branch && (
+                  <span className={styles.cardBranch} title={`Worktree branch: ${is.worktree_branch}`}>
+                    <Zap size={9} strokeWidth={1.75} aria-hidden="true" />
+                    {is.worktree_branch}
+                  </span>
+                )}
               </div>
               <div className={styles.cardStatusRow}>
                 <StatusIcon status={is.status as AgentStatus} size={10} />

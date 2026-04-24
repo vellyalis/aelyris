@@ -270,11 +270,43 @@
 .cardNameRow { display: flex; align-items: center; gap: var(--space-3); }
 .cardStatusRow { display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-2); }
 .cardStatusLabel { font-size: var(--text-sm); }
-.cardBranch { font-size: var(--text-xs); color: var(--ctp-green); font-family: var(--font-mono); }
+.cardBranch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--text-xs);
+  color: var(--ctp-green);
+  font-family: var(--font-mono);
+}
 .cardIcons { font-size: var(--text-xs); opacity: 0; transition: opacity 0.1s; }
 .card:hover .cardIcons { opacity: 0.5; }
 .cardAge { font-size: var(--text-xs); color: var(--text-muted); margin-left: auto; }
-.cardFiles { font-size: var(--text-xs); color: var(--text-muted); }
+.cardFiles {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+/* Overflow icon for secondary session metadata (permission mode + detected
+   port). Collapses 2 pill badges into a single MoreHorizontal glyph with a
+   `title`-driven readout — keeps the status row under 5 visible chips. */
+.moreInfo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+  cursor: help;
+  border-radius: var(--radius-sm);
+  transition: background var(--duration-fast), color var(--duration-fast);
+}
+.moreInfo:hover {
+  color: var(--text-secondary);
+  background: var(--white-6);
+}
 
 /* Watchdog variant */
 .cardWatchdog { border-color: rgba(124, 58, 237, 0.15); }

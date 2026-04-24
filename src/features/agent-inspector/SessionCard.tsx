@@ -4,7 +4,7 @@ import { PixelAvatar } from "../../shared/ui/PixelAvatar";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
 import { ContextGauge } from "../../shared/ui/ContextGauge";
 import * as RadixContextMenu from "@radix-ui/react-context-menu";
-import { Pencil, GitBranch, Globe, Shield, BarChart3, Send, AlertTriangle, FileWarning } from "lucide-react";
+import { Pencil, GitBranch, BarChart3, Send, AlertTriangle, FileWarning, Paperclip, Zap, MoreHorizontal } from "lucide-react";
 import { getBudgetWarning, type BudgetThresholds } from "../../shared/lib/budgetStatus";
 import { getRole } from "../../shared/lib/orchestrator";
 import styles from "./AgentInspector.module.css";
@@ -65,6 +65,14 @@ export function SessionCard({
   const role = getRole(s.role);
   const conflictCount = conflictingPaths?.length ?? 0;
 
+  // Secondary info folded behind a single MoreHorizontal badge so the status
+  // row no longer carries 8+ pill-shaped chips. Branch / model ID / cost live
+  // in .cardMeta already; these are the "nice-to-know, not eye-anchor" bits.
+  const secondaryInfo: string[] = [];
+  if (s.permissionMode) secondaryInfo.push(`Permission: ${s.permissionMode === "full" ? "auto" : s.permissionMode}`);
+  if (s.detectedPort) secondaryInfo.push(`Port: localhost:${s.detectedPort}`);
+  const secondaryTitle = secondaryInfo.join("\n");
+
   return (
     <RadixContextMenu.Root>
       <RadixContextMenu.Trigger asChild>
@@ -103,24 +111,33 @@ export function SessionCard({
                     {role.icon} {role.label}
                   </span>
                 )}
-                {s.branch && <span className={styles.cardBranch}>⚡{s.branch}</span>}
+                {s.branch && (
+                  <span className={styles.cardBranch} title={`Branch: ${s.branch}`}>
+                    <Zap size={9} strokeWidth={1.75} aria-hidden="true" />
+                    {s.branch}
+                  </span>
+                )}
                 <span className={styles.cardIcons}><Pencil size={9} /></span>
               </div>
               <div className={styles.cardStatusRow}>
                 <StatusIcon status={s.status} size={10} />
                 <span className={styles.cardStatusLabel} style={{ color: STATUS_COLORS[s.status] }}>{STATUS_LABELS[s.status]}</span>
-                {s.permissionMode && (
-                  <span className={styles.permBadge} data-mode={s.permissionMode} title={`Permission: ${s.permissionMode}`}>
-                    <Shield size={8} />{s.permissionMode === "full" ? "auto" : s.permissionMode}
-                  </span>
-                )}
-                {s.detectedPort && (
-                  <span className={styles.portBadge} title={`localhost:${s.detectedPort}`}>
-                    <Globe size={8} />:{s.detectedPort}
-                  </span>
-                )}
                 {pct > 0 && pct < 100 && <span className={styles.cardPct}>{pct}%</span>}
-                {s.filesChanged !== undefined && s.filesChanged > 0 && <span className={styles.cardFiles}>📎{s.filesChanged}</span>}
+                {s.filesChanged !== undefined && s.filesChanged > 0 && (
+                  <span className={styles.cardFiles} title={`${s.filesChanged} file${s.filesChanged === 1 ? "" : "s"} changed`}>
+                    <Paperclip size={9} strokeWidth={1.75} aria-hidden="true" />
+                    {s.filesChanged}
+                  </span>
+                )}
+                {secondaryInfo.length > 0 && (
+                  <span
+                    className={styles.moreInfo}
+                    title={secondaryTitle}
+                    aria-label={`More details: ${secondaryTitle.replace(/\n/g, ", ")}`}
+                  >
+                    <MoreHorizontal size={10} strokeWidth={1.75} aria-hidden="true" />
+                  </span>
+                )}
                 {warning && (
                   <span
                     className={styles.budgetWarn}
