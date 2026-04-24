@@ -105,14 +105,14 @@ _(none — all P0 items closed in 4eec6df)_
 4. ✅ QuickOpen snapped to CommandPalette chrome — same surface/blur/radius/positioning/border/shadow. Consumes `--dialog-width-md` + scrim tokens.
 5. ⚠️ Partial — Escape + token alignment landed for OnboardingOverlay + SessionAnalytics. Full Radix Dialog migration for Analytics/Onboarding/QuickOpen remains for a follow-up pass (HandoffDialog and OrchestraDialog were already Radix).
 
-### P3 — composition polish
-1. **SCMPanel** — commit textarea rows=3 autogrow, add branch name + ahead/behind, show upstream, `renamed` group classifier
-2. **Welcome** — logo rhythm, greeting fallback, resting drop zone, `has_changes` dot, `⚡` → Lucide GitBranch
-3. **StatusBar hierarchy** — elevate branch as eye-anchor, separate actionable Wrench/Layers from passive spans, move version to About
-4. **FileTree** — arrow-key nav, virtualization, empty state, replace `confirm()` with ConfirmDialog
-5. **KanbanBoard** — drop placeholder, `setDragImage`
-6. **AgentInspector** — card info budget (collapse secondary badges into overflow), clarify 3 states
-7. **ProjectHeaderBar** — ctrlBtn stretch-align to 48px, add separator between Refresh/Settings and window controls, mute `.changes`
+### P3 — composition polish — ✅ mostly closed in `fe58aa1`
+1. ✅ **SCMPanel** — commit textarea rows=3 + autogrow, branch bar with upstream + ahead/behind, `renamed` group, `confirm()` → `showConfirm` danger tone, `<EmptyState>` for clean tree. Backend `git_status` extended with `upstream / ahead / behind` via `graph_ahead_behind`.
+2. ✅ **Welcome** — logo gap tightened, greeting fallback, resting `.dropZone`, `has_changes` dot, `⚡` → Lucide GitBranch.
+3. ✅ **StatusBar** — branch eye-anchor, passive/actionable split via separators, version moved to About (which now reads from package.json).
+4. ⚠️ **FileTree** — empty state + `confirm()` → `showConfirm` + `.changesBar` a11y landed. Arrow-key nav + virtualization deferred (separate 10k-file perf pass).
+5. ✅ **KanbanBoard** — drop placeholder + pulse inside the column, `setDragImage` pins ghost to the card, Lucide X on delete.
+6. ⚠️ **AgentInspector** — tab labels (Conductor/Diffs) + selected state contrast (2px gold border-bottom + focus ring) landed. Card info-budget collapse is deferred (larger refactor of session-card layout).
+7. ✅ **ProjectHeaderBar** — `.headerBtn` stretched to 48px, `.controlsSeparator` between app actions and window controls, `.changes` muted.
 
 ### P4 — cross-cluster unification
 1. Hover token unification (`--row-hover`?)
