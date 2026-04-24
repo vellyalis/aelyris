@@ -1,6 +1,9 @@
+/* The tree is a flex column; `.list` carries the scroll now so that
+   virtualization can attach scroll listeners to a stable container without
+   stealing scroll events from the search box / breadcrumb / root header. */
 .tree {
   flex: 1;
-  overflow-y: auto;
+  min-height: 0;
   font-size: var(--text-base);
   display: flex;
   flex-direction: column;
@@ -34,7 +37,25 @@
   letter-spacing: 0.03em;
 }
 .rootName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.list { padding-bottom: var(--space-4); }
+.list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: var(--space-4);
+}
+
+/* Virtualization spacer — height set inline to `flatEntries.length * 22` so
+   the scrollbar always reflects the full list size. Rows render absolutely
+   positioned inside it within the visible window only. */
+.virtualSpacer {
+  position: relative;
+  width: 100%;
+}
+.virtualRow {
+  position: absolute;
+  left: 0;
+  right: 0;
+}
 .row {
   display: flex;
   align-items: center;

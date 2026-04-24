@@ -78,6 +78,17 @@ function flattenVisible(
   return out;
 }
 
+// Fixed row height in the tree (mirrors .row { height: 22px } in
+// FileTree.module.css). Virtualization uses this to compute the absolute
+// row offsets without having to measure each node.
+const ROW_HEIGHT = 22;
+// Number of rows rendered above/below the viewport to keep scroll-edge
+// motion smooth. 12 rows × 22px = ~264px of overdraw on either side.
+const OVERSCAN = 12;
+// Below this many visible rows virtualization adds more overhead than it
+// saves; we just render the list in full.
+const VIRTUALIZE_THRESHOLD = 200;
+
 export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = [] }: FileTreeProps) {
   const [currentRoot, setCurrentRoot] = useState(rootPath);
   const [searchQuery, setSearchQuery] = useState("");
@@ -88,6 +99,9 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
   const [loading, setLoading] = useState<Set<string>>(new Set());
   const [focusedPath, setFocusedPath] = useState<string | null>(null);
   const rowRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const listScrollRef = useRef<HTMLDivElement | null>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(0);
 
   useEffect(() => { setCurrentRoot(rootPath); }, [rootPath]);
 
@@ -223,6 +237,73 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
     setFocusedPath(flatEntries[0].path);
   }, [flatEntries, focusedPath]);
 
+  // Track scroll position + viewport height on the list container so the
+  // windowed slice below can be kept current. Also observed via ResizeObserver
+  // to handle split-pane drags that change the available height.
+  useEffect(() => {
+    const el = listScrollRef.current;
+    if (!el) return;
+    const update = () => {
+      setScrollTop(el.scrollTop);
+      setViewportHeight(el.clientHeight);
+    };
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener("scroll", update);
+      ro.disconnect();
+    };
+  }, []);
+
+  const shouldVirtualize = flatEntries.length > VIRTUALIZE_THRESHOLD;
+
+  // Visible window — when not virtualizing, every row is in-window.
+  const visibleRange = useMemo(() => {
+    if (!shouldVirtualize) return { start: 0, end: flatEntries.length };
+    if (viewportHeight === 0) {
+      // First paint — assume 400px viewport so the initial render isn't empty.
+      return { start: 0, end: Math.min(flatEntries.length, Math.ceil(400 / ROW_HEIGHT) + OVERSCAN) };
+    }
+    const start = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
+    const end = Math.min(
+      flatEntries.length,
+      Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + OVERSCAN,
+    );
+    return { start, end };
+  }, [shouldVirtualize, scrollTop, viewportHeight, flatEntries.length]);
+
+  // Focus a row by path — scrolls it into view first when virtualizing so the
+  // button exists in the DOM before we try to call .focus() on it.
+  const focusEntry = useCallback(
+    (path: string) => {
+      setFocusedPath(path);
+      const el = listScrollRef.current;
+      if (!el || !shouldVirtualize) {
+        rowRefs.current.get(path)?.focus();
+        return;
+      }
+      const idx = flatEntries.findIndex((e) => e.path === path);
+      if (idx < 0) return;
+      const rowTop = idx * ROW_HEIGHT;
+      const rowBottom = rowTop + ROW_HEIGHT;
+      const viewTop = el.scrollTop;
+      const viewBottom = viewTop + el.clientHeight;
+      if (rowTop < viewTop) {
+        el.scrollTop = rowTop;
+      } else if (rowBottom > viewBottom) {
+        el.scrollTop = rowBottom - el.clientHeight;
+      }
+      // Scroll updates scrollTop state → virtualization window renders the
+      // target row. Defer focus until after the render commit.
+      requestAnimationFrame(() => {
+        rowRefs.current.get(path)?.focus();
+      });
+    },
+    [flatEntries, shouldVirtualize],
+  );
+
   const moveFocus = useCallback(
     (delta: number) => {
       if (flatEntries.length === 0) return;
@@ -231,12 +312,9 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
         : -1;
       const nextIdx = Math.max(0, Math.min(flatEntries.length - 1, (idx < 0 ? 0 : idx) + delta));
       const next = flatEntries[nextIdx];
-      if (next) {
-        setFocusedPath(next.path);
-        rowRefs.current.get(next.path)?.focus();
-      }
+      if (next) focusEntry(next.path);
     },
-    [flatEntries, focusedPath],
+    [flatEntries, focusedPath, focusEntry],
   );
 
   const handleTreeKeyDown = useCallback(
@@ -258,19 +336,13 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
           return;
         case "Home":
           e.preventDefault();
-          if (flatEntries[0]) {
-            setFocusedPath(flatEntries[0].path);
-            rowRefs.current.get(flatEntries[0].path)?.focus();
-          }
+          if (flatEntries[0]) focusEntry(flatEntries[0].path);
           return;
         case "End":
           e.preventDefault();
           {
             const last = flatEntries[flatEntries.length - 1];
-            if (last) {
-              setFocusedPath(last.path);
-              rowRefs.current.get(last.path)?.focus();
-            }
+            if (last) focusEntry(last.path);
           }
           return;
         case "ArrowRight":
@@ -281,10 +353,7 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
           } else if (current.is_dir && current.isOpen) {
             // Into the first child.
             const next = flatEntries[idx + 1];
-            if (next && next.depth > current.depth) {
-              setFocusedPath(next.path);
-              rowRefs.current.get(next.path)?.focus();
-            }
+            if (next && next.depth > current.depth) focusEntry(next.path);
           }
           return;
         case "ArrowLeft":
@@ -293,8 +362,7 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
           if (current.is_dir && current.isOpen) {
             toggleDir(current.path);
           } else if (current.parent && current.parent !== currentRoot) {
-            setFocusedPath(current.parent);
-            rowRefs.current.get(current.parent)?.focus();
+            focusEntry(current.parent);
           }
           return;
         case "Enter":
@@ -309,7 +377,7 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
           return;
       }
     },
-    [flatEntries, focusedPath, toggleDir, onFileSelect, currentRoot, moveFocus],
+    [flatEntries, focusedPath, toggleDir, onFileSelect, currentRoot, moveFocus, focusEntry],
   );
 
   const registerRow = useCallback(
@@ -373,11 +441,42 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
             <FileIcon type="folder" isOpen />
             <span className={styles.rootName}>{currentRoot.split("/").filter(Boolean).pop() ?? "project"}</span>
           </div>
-          <div className={styles.list}>
+          <div className={styles.list} ref={listScrollRef}>
             {flatEntries.length === 0 && !loading.has(currentRoot) ? (
               <EmptyState preset="files" title="Folder is empty" description="No files or subfolders here." />
+            ) : shouldVirtualize ? (
+              <div
+                className={styles.virtualSpacer}
+                style={{ height: flatEntries.length * ROW_HEIGHT }}
+                role="presentation"
+              >
+                {flatEntries.slice(visibleRange.start, visibleRange.end).map((entry, i) => {
+                  const absoluteIdx = visibleRange.start + i;
+                  return (
+                    <div
+                      key={entry.path}
+                      className={styles.virtualRow}
+                      style={{ top: absoluteIdx * ROW_HEIGHT, height: ROW_HEIGHT }}
+                    >
+                      <TreeRow
+                        entry={entry}
+                        isFocused={focusedPath === entry.path}
+                        isLoadingChildren={loading.has(entry.path)}
+                        isChanged={changedSet.has(entry.path)}
+                        changeStatus={changedStatusMap.get(entry.path)}
+                        onFocus={() => setFocusedPath(entry.path)}
+                        onActivate={() => entry.is_dir ? toggleDir(entry.path) : onFileSelect?.(entry.path)}
+                        rowRef={registerRow(entry.path)}
+                        actions={actions}
+                        posInSet={absoluteIdx + 1}
+                        setSize={flatEntries.length}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
             ) : (
-              flatEntries.map((entry) => (
+              flatEntries.map((entry, i) => (
                 <TreeRow
                   key={entry.path}
                   entry={entry}
@@ -389,6 +488,8 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
                   onActivate={() => entry.is_dir ? toggleDir(entry.path) : onFileSelect?.(entry.path)}
                   rowRef={registerRow(entry.path)}
                   actions={actions}
+                  posInSet={i + 1}
+                  setSize={flatEntries.length}
                 />
               ))
             )}
@@ -418,6 +519,11 @@ interface TreeRowProps {
   onActivate: () => void;
   rowRef: (el: HTMLButtonElement | null) => void;
   actions: TreeActions;
+  /** 1-based position within the visible flat list — required so screen
+   *  readers announce "3 of 412" correctly even when the row is rendered
+   *  out of a virtualized window. */
+  posInSet?: number;
+  setSize?: number;
 }
 
 function TreeRow({
@@ -430,6 +536,8 @@ function TreeRow({
   onActivate,
   rowRef,
   actions,
+  posInSet,
+  setSize,
 }: TreeRowProps) {
   const dir = entry.is_dir ? entry.path : entry.path.split("/").slice(0, -1).join("/");
 
@@ -445,6 +553,8 @@ function TreeRow({
             aria-level={entry.depth + 1}
             aria-expanded={entry.is_dir ? entry.isOpen : undefined}
             aria-selected={isFocused}
+            aria-setsize={setSize}
+            aria-posinset={posInSet}
             tabIndex={isFocused ? 0 : -1}
             onClick={onActivate}
             onFocus={onFocus}
