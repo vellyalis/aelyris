@@ -239,19 +239,28 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
       <div className={styles.tabBar}>
         <button className={`${styles.tab} ${tab === "sessions" ? styles.tabActive : ""}`} onClick={() => setTab("sessions")}>Sessions</button>
         <button className={`${styles.tab} ${tab === "activity" ? styles.tabActive : ""}`} onClick={() => setTab("activity")}>Activity</button>
-        <button className={`${styles.tab} ${tab === "parallel" ? styles.tabActive : ""}`} onClick={() => setTab("parallel")} title="Parallel session view">
-          <Layers size={11} style={{ marginRight: 3, verticalAlign: -1 }} />
+        <button className={`${styles.tab} ${tab === "parallel" ? styles.tabActive : ""}`} onClick={() => setTab("parallel")} title="Parallel session view" aria-label="Parallel sessions">
+          <Layers size={11} strokeWidth={1.75} aria-hidden="true" />
+          Parallel
           {activeSessions.length > 0 && <span className={styles.tabBadge}>{activeSessions.length}</span>}
         </button>
         <button
           className={`${styles.tab} ${tab === "conductor" ? styles.tabActive : ""}`}
           onClick={() => setTab("conductor")}
           title="Conductor DAG — see roles + handoffs at a glance"
+          aria-label="Conductor DAG"
         >
-          <Share2 size={11} style={{ marginRight: 3, verticalAlign: -1 }} />
+          <Share2 size={11} strokeWidth={1.75} aria-hidden="true" />
+          Conductor
         </button>
-        <button className={`${styles.tab} ${tab === "diffs" ? styles.tabActive : ""}`} onClick={() => setTab("diffs")} title="View file changes">
-          <GitCompare size={11} style={{ marginRight: 3, verticalAlign: -1 }} />
+        <button
+          className={`${styles.tab} ${tab === "diffs" ? styles.tabActive : ""}`}
+          onClick={() => setTab("diffs")}
+          title="View file changes"
+          aria-label="File diffs"
+        >
+          <GitCompare size={11} strokeWidth={1.75} aria-hidden="true" />
+          Diffs
         </button>
         <div className={styles.tabActions}>
           {overBudgetCount > 0 && onStopAgent && (

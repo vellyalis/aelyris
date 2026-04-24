@@ -30,41 +30,45 @@ export function StatusBar({ shell, branch, changedCount, encoding = "UTF-8", age
   return (
     <div className={styles.statusbar}>
       <div className={styles.left}>
-        <span className={styles.item}>{shell}</span>
         {branch && (
-          <span className={styles.item}>
-            <GitBranch size={11} />
+          <span className={`${styles.item} ${styles.branchAnchor}`} title={`Current branch: ${branch}`}>
+            <GitBranch size={11} strokeWidth={1.75} aria-hidden="true" />
             {branch}
           </span>
         )}
         {changedCount > 0 && (
-          <span className={styles.item}>
-            <FileText size={11} />
+          <span className={styles.item} title={`${changedCount} files changed`}>
+            <FileText size={11} strokeWidth={1.75} aria-hidden="true" />
             {changedCount} changed
           </span>
         )}
+        <span className={styles.separator} aria-hidden="true" />
+        <span className={`${styles.item} ${styles.passive}`}>{shell}</span>
       </div>
       <div className={styles.right}>
         {agentStatus && (
-          <span className={styles.item}>
-            <Cpu size={11} />
+          <span className={`${styles.item} ${styles.passive}`}>
+            <Cpu size={11} strokeWidth={1.75} aria-hidden="true" />
             {agentStatus}
           </span>
         )}
+        <span className={`${styles.item} ${styles.passive}`}>{encoding}</span>
+        <span className={`${styles.item} ${styles.passive}`}>LF</span>
+        <span className={styles.separator} aria-hidden="true" />
         <button
           type="button"
-          className={`${styles.repairBtn} ${repairActive ? styles.repairActive : ""}`}
+          className={`${styles.actionBtn} ${repairActive ? styles.actionBtnActive : ""}`}
           onClick={() => setRepairOpen((v) => !v)}
           title={config.enabled ? "Auto-repair watching" : "Auto-repair disabled"}
           aria-label="Auto-repair"
           aria-expanded={repairOpen}
         >
-          <Wrench size={11} />
+          <Wrench size={11} strokeWidth={1.75} aria-hidden="true" />
           {activeCount > 0 && <span className={styles.repairBadge}>{activeCount}</span>}
         </button>
         <button
           type="button"
-          className={`${styles.repairBtn} ${ghostActive ? styles.repairActive : ""}`}
+          className={`${styles.actionBtn} ${ghostActive ? styles.actionBtnActive : ""}`}
           onClick={() => setGhostOpen((v) => !v)}
           title={
             ghostLayers.length === 0
@@ -74,14 +78,11 @@ export function StatusBar({ shell, branch, changedCount, encoding = "UTF-8", age
           aria-label="Ghost diff"
           aria-expanded={ghostOpen}
         >
-          <Layers size={11} />
+          <Layers size={11} strokeWidth={1.75} aria-hidden="true" />
           {ghostActiveCount > 0 && (
             <span className={styles.repairBadge}>{ghostActiveCount}</span>
           )}
         </button>
-        <span className={styles.item}>{encoding}</span>
-        <span className={styles.item}>LF</span>
-        <span className={styles.item}>Aether v0.1.0</span>
       </div>
       {repairOpen && (
         <RepairJobsPanel

@@ -97,6 +97,22 @@
   background: rgba(200, 160, 80, 0.06);
 }
 
+/* Placeholder rendered inside .colCards while a card is being dragged over
+   this column. Silhouette of a card — no content — so the user sees where
+   the card will land. Pulse ties it visually to the drag loop. */
+.dropPlaceholder {
+  height: 48px;
+  border: 1.5px dashed var(--gold);
+  border-radius: var(--radius);
+  background: rgba(200, 160, 80, 0.06);
+  margin-top: var(--space-2);
+  animation: dropPulse 1.2s ease-in-out infinite;
+}
+@keyframes dropPulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
 .groupHeader {
   display: flex;
   align-items: center;

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { motion } from "motion/react";
+import { GitBranch, FolderOpen, Upload } from "lucide-react";
 import logoSvg from "../../assets/logo.svg";
 import styles from "./WelcomeScreen.module.css";
 
@@ -112,22 +113,24 @@ export function WelcomeScreen({ onOpenProject }: WelcomeScreenProps) {
           <img src={logoSvg} alt="Aether" width={48} height={48} className={styles.logoIcon} />
           <h1 className={styles.title}>Aether Terminal</h1>
         </motion.div>
-        {userName && (
-          <motion.p
-            className={styles.greeting}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.15 }}
-          >
-            {getGreeting()}, {userName}.
-          </motion.p>
-        )}
+        <motion.p
+          className={styles.greeting}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.15 }}
+        >
+          {userName ? `${getGreeting()}, ${userName}.` : `${getGreeting()}.`}
+        </motion.p>
         <p className={styles.subtitle}>AI Workspace for Windows</p>
 
         <button className={styles.openBtn} onClick={handleOpenFolder}>
+          <FolderOpen size={14} strokeWidth={1.75} aria-hidden="true" />
           Open Folder
         </button>
-        <p className={styles.dropHint}>or drop a folder here</p>
+        <div className={`${styles.dropZone} ${dragOver ? styles.dropZoneActive : ""}`} aria-hidden="true">
+          <Upload size={12} strokeWidth={1.75} aria-hidden="true" />
+          <span>{dragOver ? "Release to open" : "or drop a folder here"}</span>
+        </div>
 
         <div className={styles.recentHeader}>Recent Projects</div>
         <div className={styles.recentList}>
@@ -153,9 +156,22 @@ export function WelcomeScreen({ onOpenProject }: WelcomeScreenProps) {
                 {p.name.slice(0, 2).toUpperCase()}
               </div>
               <div className={styles.projectInfo}>
-                <div className={styles.projectName}>{p.name}</div>
+                <div className={styles.projectName}>
+                  {p.name}
+                  {p.has_changes && (
+                    <span
+                      className={styles.changesDot}
+                      title="Working tree has uncommitted changes"
+                      aria-label="Has uncommitted changes"
+                    />
+                  )}
+                </div>
                 <div className={styles.projectPath}>
-                  {p.path} · <span className={styles.branch}>⚡{p.branch}</span>
+                  {p.path}
+                  <span className={styles.branch}>
+                    <GitBranch size={10} strokeWidth={1.75} aria-hidden="true" />
+                    {p.branch}
+                  </span>
                 </div>
               </div>
             </motion.button>

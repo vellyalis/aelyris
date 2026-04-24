@@ -24,8 +24,8 @@
 .logo {
   display: flex;
   align-items: center;
-  gap: var(--space-6);
-  margin-bottom: var(--space-4);
+  gap: var(--space-4);
+  margin-bottom: var(--space-3);
 }
 
 .logoIcon {
@@ -63,14 +63,10 @@
   margin-bottom: var(--space-16);
 }
 
-.dropHint {
-  font-size: var(--text-md);
-  color: var(--text-muted);
-  margin-top: var(--space-4);
-  margin-bottom: var(--space-12);
-}
-
 .openBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
   padding: var(--space-5) var(--space-16);
   border: none;
   border-radius: var(--radius);
@@ -80,13 +76,37 @@
   font-weight: 600;
   font-family: var(--font-ui);
   cursor: pointer;
-  transition: opacity 0.15s;
-  margin-bottom: var(--space-16);
+  transition: opacity 0.15s, box-shadow var(--duration-fast), transform var(--duration-fast);
+  margin-bottom: var(--space-6);
 }
 
 .openBtn:hover {
   box-shadow: 0 4px 16px rgba(200, 160, 80, 0.3), 0 0 20px rgba(200, 160, 80, 0.2);
   transform: translateY(-1px);
+}
+.openBtn:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+
+/* Resting drop zone — visible before the drag starts so users know folder-
+   drop is a first-class affordance. Switches to the active state via
+   .dropZoneActive when dragOver fires. */
+.dropZone {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-8);
+  margin-bottom: var(--space-12);
+  font-size: var(--text-md);
+  font-family: var(--font-ui);
+  color: var(--text-muted);
+  border: 1px dashed var(--white-15);
+  border-radius: var(--radius);
+  background: transparent;
+  transition: border-color var(--duration-fast), color var(--duration-fast), background var(--duration-fast);
+}
+.dropZoneActive {
+  border-color: var(--gold);
+  color: var(--text-primary);
+  background: rgba(200, 160, 80, 0.08);
 }
 
 .recentHeader {
@@ -150,12 +170,27 @@
 }
 
 .projectName {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   font-size: var(--text-lg);
   font-weight: 500;
   color: var(--text-primary);
 }
 
+.changesDot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ctp-yellow);
+  flex-shrink: 0;
+}
+
 .projectPath {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
   font-size: var(--text-sm);
   color: var(--text-muted);
   font-family: var(--font-mono);
@@ -165,6 +200,9 @@
 }
 
 .branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   color: var(--status-idle);
 }
 

@@ -1,4 +1,4 @@
-import { memo, useCallback } from "react";
+import { memo, useCallback, useState } from "react";
 import type { KanbanTask, KanbanColumnId } from "../../shared/types/kanban";
 import { KanbanCard } from "./KanbanCard";
 import styles from "./KanbanBoard.module.css";
@@ -18,25 +18,32 @@ interface KanbanColumnProps {
 export const KanbanColumn = memo(function KanbanColumn({
   columnId, label, color, tasks, activeTaskId, onDrop, onStartAgent, onDelete, onActivate,
 }: KanbanColumnProps) {
+  const [dragHover, setDragHover] = useState(false);
+
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
-    e.currentTarget.classList.add(styles.dropHover);
+    e.dataTransfer.dropEffect = "move";
+    setDragHover(true);
   }, []);
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.currentTarget.classList.remove(styles.dropHover);
+    // Only clear when the pointer actually leaves the column — dragleave also
+    // fires for nested children, which would otherwise flicker the placeholder.
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setDragHover(false);
+    }
   }, []);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
-    e.currentTarget.classList.remove(styles.dropHover);
+    setDragHover(false);
     const taskId = e.dataTransfer.getData("taskId");
     if (taskId) onDrop(taskId, columnId);
   }, [onDrop, columnId]);
 
   return (
     <div
-      className={styles.column}
+      className={`${styles.column} ${dragHover ? styles.dropHover : ""}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -57,6 +64,9 @@ export const KanbanColumn = memo(function KanbanColumn({
             onActivate={onActivate}
           />
         ))}
+        {dragHover && (
+          <div className={styles.dropPlaceholder} aria-hidden="true" />
+        )}
       </div>
     </div>
   );

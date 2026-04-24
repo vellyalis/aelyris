@@ -72,6 +72,7 @@ export function ProjectHeaderBar({
       <div className={styles.right}>
         <button className={styles.headerBtn} onClick={onRefresh} aria-label="Refresh"><RefreshCw size={14} /></button>
         <button className={styles.headerBtn} onClick={onOpenSettings} aria-label="Settings"><Settings size={14} /></button>
+        <span className={styles.controlsSeparator} aria-hidden="true" />
         {/* Window controls — right side for Windows UX */}
         <div className={styles.controls}>
           <button className={`${styles.ctrlBtn} ${styles.minimizeBtn}`} onClick={handleMinimize} aria-label="Minimize">

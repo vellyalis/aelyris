@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import * as RadixContextMenu from "@radix-ui/react-context-menu";
 import { showPrompt } from "../../shared/ui/PromptDialog";
+import { showConfirm } from "../../shared/ui/ConfirmDialog";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { GitStatusPip } from "../../shared/ui/GitStatusPip";
 import { FileIcon } from "./FileIcon";
@@ -87,7 +88,13 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
 
   const handleDelete = useCallback(async (path: string) => {
     const name = path.split("/").pop() ?? "";
-    if (!confirm(`Delete "${name}"?`)) return;
+    const ok = await showConfirm({
+      title: `Delete "${name}"?`,
+      description: "This moves the entry to the OS trash where possible.",
+      confirmLabel: "Delete",
+      tone: "danger",
+    });
+    if (!ok) return;
     const parentDir = path.split("/").slice(0, -1).join("/");
     try {
       await invoke("delete_path", { path });
@@ -205,10 +212,22 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
             <span className={styles.rootName}>{currentRoot.split("/").filter(Boolean).pop() ?? "project"}</span>
           </div>
           <div className={styles.list}>
-            {renderEntries(contents.get(currentRoot) ?? [], 0, expanded, contents, loading, toggleDir, onFileSelect, changedSet, changedStatusMap, actions)}
+            {(() => {
+              const entries = contents.get(currentRoot) ?? [];
+              if (entries.length === 0 && !loading.has(currentRoot)) {
+                return <EmptyState preset="files" title="Folder is empty" description="No files or subfolders here." />;
+              }
+              return renderEntries(entries, 0, expanded, contents, loading, toggleDir, onFileSelect, changedSet, changedStatusMap, actions);
+            })()}
           </div>
           {changedFiles.length > 0 && (
-            <div className={styles.changesBar}>Show {changedFiles.length} changes</div>
+            <button
+              type="button"
+              className={styles.changesBar}
+              aria-label={`${changedFiles.length} files with changes`}
+            >
+              Show {changedFiles.length} change{changedFiles.length === 1 ? "" : "s"}
+            </button>
           )}
         </>
       )}

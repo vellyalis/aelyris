@@ -1,5 +1,27 @@
 .panel { display: flex; flex-direction: column; overflow: hidden; flex: 1; }
 
+/* Branch / tracking summary */
+.branchBar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-6);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+.branchName { color: var(--text-primary); font-weight: var(--weight-medium); }
+.upstream { color: var(--text-muted); opacity: 0.8; }
+.syncPair { display: inline-flex; align-items: center; gap: var(--space-2); margin-left: auto; }
+.ahead, .behind {
+  display: inline-flex; align-items: center; gap: 2px;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-sm);
+}
+.ahead { color: var(--ctp-green); background: color-mix(in srgb, var(--ctp-green) 10%, transparent); }
+.behind { color: var(--ctp-peach); background: color-mix(in srgb, var(--ctp-peach) 10%, transparent); }
+
 /* Commit area */
 .commitArea { padding: var(--space-4) var(--space-6); border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: var(--space-3); }
 .commitInput {
