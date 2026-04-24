@@ -98,12 +98,12 @@ _(none — all P0 items closed in 4eec6df)_
 6. ✅ **WorkflowPanel gate → Lucide** (22px tap targets, focus ring) + WorkflowBuilder "Save & Run" CTA wired via `handleStartRef`; traffic-light phase-gate swapped to `ShieldCheck`
 7. ✅ **OnboardingOverlay** — PromptDialog chrome (rgba 0.92 / blur 20 / radius-lg), magic margin-left:280 / margin-right:300 removed, focus rings on Skip/Next
 
-### P2 — shared primitives (once-and-done payoff)
-1. `shared/ui/GitStatusPip` — M/A/D/R/?/! mapping + color tokens, consume in SCM + PR + GhostDiff + FileTree
-2. `shared/ui/PanelHeader` — single primitive for right-panel surfaces (Kanban/Helm/Toolkit/AgentInspector/InlineResultPanel)
-3. Dialog tokens in global.css: `--radius-dialog`, `--radius-panel`, `--scrim-standard-bg/-blur`, `--scrim-heavy-bg/-blur`, `--dialog-width-xs/sm/md/lg`
-4. Snap QuickOpen to CommandPalette chrome (they should be identical)
-5. Migrate non-Radix modals (Analytics, Handoff, Orchestra, OnboardingOverlay, QuickOpen) to Radix Dialog — focus trap + Escape for free
+### P2 — shared primitives (once-and-done payoff) — ✅ closed in `68e4e7d`
+1. ✅ `shared/ui/GitStatusPip` — `letter` + `dot` variants, non-color differentiation (deleted ring / untracked hollow), consumed by SCMPanel + FileTree. PR/GhostDiff do not render per-file status today, so no retrofit needed there.
+2. ✅ `shared/ui/PanelHeader` — single primitive with title/subtitle/count/leadingIcon/actions/collapsible slots. Rolled out to Kanban/Helm/Toolkit/InlineResultPanel. AgentInspector's tab bar stays bespoke.
+3. ✅ Dialog tokens added to `global.css`: `--radius-dialog`, `--radius-panel`, `--scrim-standard-bg/-blur`, `--scrim-heavy-bg/-blur`, `--dialog-width-xs|sm|md|lg`, `--dialog-surface`, `--dialog-surface-blur`.
+4. ✅ QuickOpen snapped to CommandPalette chrome — same surface/blur/radius/positioning/border/shadow. Consumes `--dialog-width-md` + scrim tokens.
+5. ⚠️ Partial — Escape + token alignment landed for OnboardingOverlay + SessionAnalytics. Full Radix Dialog migration for Analytics/Onboarding/QuickOpen remains for a follow-up pass (HandoffDialog and OrchestraDialog were already Radix).
 
 ### P3 — composition polish
 1. **SCMPanel** — commit textarea rows=3 autogrow, add branch name + ahead/behind, show upstream, `renamed` group classifier
