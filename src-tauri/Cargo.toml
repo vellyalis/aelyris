@@ -62,6 +62,10 @@ serde_yaml = "0.9"
 notify = { version = "7", features = ["macos_kqueue"] }
 notify-debouncer-mini = "0.5"
 
+# Phase 3D-1 spike: HTTP/WebSocket external PTY API
+axum = { version = "0.7", features = ["ws"] }
+futures-util = "0.3"
+
 # Window effects: Mica/Acrylic via tauri.conf.json windowEffects (no external crate needed)
 
 [target.'cfg(windows)'.dependencies.windows]
@@ -78,3 +82,6 @@ features = [
 
 [dev-dependencies]
 tempfile = "3"
+# Phase 3D-1: integration tests for external PTY API
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
+tokio-tungstenite = "0.24"

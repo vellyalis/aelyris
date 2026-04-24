@@ -1,4 +1,5 @@
 pub mod agent;
+pub mod api;
 pub mod config;
 pub mod db;
 pub mod ghostdiff;
@@ -255,6 +256,26 @@ pub fn run() {
                 })
                 .ok();
 
+            // Phase 3D-1: spin up the external HTTP/WS PTY API on
+            // 127.0.0.1:9333. Failures (e.g. port already taken by another
+            // dev instance) log a warning and leave the rest of the app
+            // running normally. The API shares the Tauri PtyManager (Clone
+            // gives a handle to the same inner Arc), so sessions created via
+            // HTTP show up in the UI's list_terminals and vice versa.
+            let pty: PtyManager = app.state::<PtyManager>().inner().clone();
+            let api_state = api::ApiState::new(pty, api::AuthConfig::from_env());
+            app.manage(api_state.clone());
+            let serve_state = api_state.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = api::serve(serve_state, api::DEFAULT_PORT).await {
+                    log::warn!(
+                        "3D-1: PTY API server failed on port {}: {}",
+                        api::DEFAULT_PORT,
+                        e
+                    );
+                }
+            });
+
             log::info!("Setup complete in {:?}", t0.elapsed());
             Ok(())
         })
@@ -380,6 +401,22 @@ pub fn run() {
             // IME positioning
             ipc::set_ime_position,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Aether Terminal");
+        .build(tauri::generate_context!())
+        .expect("error while building Aether Terminal")
+        .run(|app, event| {
+            if let tauri::RunEvent::ExitRequested { .. } = event {
+                // Phase 3D-1: tell the API server to drain WS clients before
+                // the process tears down. Fire-and-forget — the Notify wakes
+                // the axum graceful-shutdown future, which closes the listener
+                // and aborts live WS tasks.
+                if let Some(state) = app.try_state::<api::ApiState>() {
+                    state.trigger_shutdown();
+                }
+                // Explicit session cleanup (used to live in `Drop for PtyManager`,
+                // but Clone made that unsafe — see manager.rs for context).
+                if let Some(pty) = app.try_state::<PtyManager>() {
+                    pty.close_all();
+                }
+            }
+        });
 }
