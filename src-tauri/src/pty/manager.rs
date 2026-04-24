@@ -3,10 +3,15 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
+use tokio::sync::broadcast;
 use uuid::Uuid;
 
 use super::error::PtyError;
 use super::shell::ShellType;
+
+/// Broadcast channel capacity per PTY. Sized for burst safety: at 4 KiB per
+/// chunk this is ~4 MiB of backlog before a slow subscriber starts lagging.
+const OUTPUT_BROADCAST_CAPACITY: usize = 1024;
 
 /// A single PTY instance with its reader/writer and metadata
 struct PtyInstance {
@@ -15,6 +20,11 @@ struct PtyInstance {
     shell_type: ShellType,
     cwd: String,
     spawned_at: Instant,
+    /// Fan-out sender for master PTY output. A single OS-level reader thread
+    /// owned by this instance feeds every subscriber through this channel,
+    /// so Tauri UI and the external API can read the same byte stream
+    /// without racing for bytes on the physical master.
+    output_tx: broadcast::Sender<Vec<u8>>,
 }
 
 /// Info about an active terminal, safe to serialize and send to frontend
@@ -113,12 +123,30 @@ impl PtyManager {
             .take_writer()
             .map_err(|e| format!("Failed to get PTY writer: {}", e))?;
 
+        // Clone the master reader once, before insertion, so a failure here
+        // surfaces as a spawn error rather than a half-constructed session.
+        let reader = pair
+            .master
+            .try_clone_reader()
+            .map_err(|e| format!("Failed to clone PTY reader: {}", e))?;
+
+        let (output_tx, _initial_rx) = broadcast::channel::<Vec<u8>>(OUTPUT_BROADCAST_CAPACITY);
+
+        // Drop the initial receiver so the channel is empty-consumer until the
+        // first subscribe_output call. Keeping the Sender alive in the
+        // PtyInstance plus the Sender clone the reader thread holds is all
+        // that's needed — Receivers are created lazily by subscribers.
+        drop(_initial_rx);
+
+        spawn_reader_thread(id.clone(), reader, output_tx.clone());
+
         let instance = PtyInstance {
             pair,
             writer,
             shell_type: ShellType::PowerShell, // placeholder for non-shell commands
             cwd: resolved_cwd,
             spawned_at: Instant::now(),
+            output_tx,
         };
 
         self.lock_instances()?
@@ -143,24 +171,25 @@ impl PtyManager {
         Ok(())
     }
 
-    /// Get a reader for a PTY (for streaming output via events).
+    /// Subscribe to a PTY's output stream.
     ///
-    /// Despite the name, this **clones** the master PTY's reader — it does
-    /// not consume or remove it — so multiple callers (Tauri UI + external
-    /// API) can read the same session concurrently. The lock is held for
-    /// the duration of the clone syscall; on Windows this is cheap.
-    pub fn take_reader(&self, id: &str) -> Result<Box<dyn Read + Send>, PtyError> {
+    /// Returns a fresh `broadcast::Receiver` on every call. A single
+    /// OS-level reader thread, spawned when the PTY starts, fans out master
+    /// bytes to every subscriber, so UI and API can read the same byte
+    /// stream without racing each other on the physical master.
+    ///
+    /// Slow subscribers may observe `RecvError::Lagged(n)` when the
+    /// capacity-[`OUTPUT_BROADCAST_CAPACITY`] ring overwrites unread chunks.
+    /// Callers pick their own policy (e.g. the API surfaces a sentinel,
+    /// the UI drops silently).
+    pub fn subscribe_output(&self, id: &str) -> Result<broadcast::Receiver<Vec<u8>>, PtyError> {
         let instances = self.lock_instances()?;
 
         let instance = instances
             .get(id)
             .ok_or_else(|| PtyError::NotFound(id.to_string()))?;
 
-        instance
-            .pair
-            .master
-            .try_clone_reader()
-            .map_err(|e| PtyError::Other(format!("clone reader: {}", e)))
+        Ok(instance.output_tx.subscribe())
     }
 
     /// Resize a PTY. Typed errors so callers can distinguish NotFound from
@@ -241,4 +270,45 @@ impl PtyManager {
     fn lock_instances(&self) -> Result<std::sync::MutexGuard<'_, HashMap<String, PtyInstance>>, PtyError> {
         self.instances.lock().map_err(|_| PtyError::LockPoisoned)
     }
+}
+
+/// Spawn the single OS-level reader thread for a PTY.
+///
+/// Runs on a plain `std::thread` because `Read::read` on the portable-pty
+/// master is blocking and must not park a tokio worker. The thread exits
+/// when the PTY emits EOF or a read error — that normally happens when
+/// the owning `PtyInstance` is dropped and its `PtyPair` closes the master,
+/// which in turn signals the child to exit.
+///
+/// `send` failures are intentionally ignored: during the gap between
+/// `spawn_command` returning and the first `subscribe_output`, there are
+/// no receivers, so bytes would otherwise pile up in the OS pipe buffer
+/// until the child process blocks on write. Draining the pipe into the
+/// broadcast channel (and letting the channel drop bytes on the floor when
+/// no one is listening) keeps the child unblocked.
+fn spawn_reader_thread(
+    id: String,
+    mut reader: Box<dyn Read + Send>,
+    tx: broadcast::Sender<Vec<u8>>,
+) {
+    std::thread::spawn(move || {
+        let mut buf = [0u8; 4096];
+        loop {
+            match reader.read(&mut buf) {
+                Ok(0) => {
+                    log::debug!("pty {} reader EOF", id);
+                    break;
+                }
+                Ok(n) => {
+                    // `send` returns Err when there are no active receivers;
+                    // that's expected (see doc comment) and not an error.
+                    let _ = tx.send(buf[..n].to_vec());
+                }
+                Err(e) => {
+                    log::debug!("pty {} reader error: {}", id, e);
+                    break;
+                }
+            }
+        }
+    });
 }

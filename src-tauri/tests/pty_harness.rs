@@ -4,14 +4,11 @@
 //! Spawns real shells as child processes and validates stdin/stdout behavior.
 
 use aether_terminal_lib::pty::{PtyManager, ShellType};
-use std::io::Read;
 use std::time::{Duration, Instant};
+use tokio::sync::broadcast;
 
 /// Default timeout for PTY output reads
 pub const DEFAULT_TIMEOUT_MS: u64 = 5000;
-
-/// Buffer size for reading PTY output
-const READ_BUF_SIZE: usize = 4096;
 
 /// Spawn a PTY, send input, collect output until timeout or expected string found.
 ///
@@ -25,50 +22,51 @@ pub fn spawn_and_exec(
 ) -> Result<(String, String), String> {
     let id = manager.spawn(shell, 120, 30, None)?;
 
+    // Subscribe *before* sending input so the first bytes echoed back by
+    // the shell are not dropped (broadcast discards bytes when no receiver
+    // is live).
+    let mut rx = manager
+        .subscribe_output(&id)
+        .map_err(|e| format!("subscribe_output: {}", e))?;
+
     // Small delay to let the shell initialize
     std::thread::sleep(Duration::from_millis(300));
 
-    // Send input if provided
-    if let Some(cmd) = input {
-        manager.write(&id, cmd.as_bytes())?;
+    if let Some(payload) = input {
+        manager.write(&id, payload.as_bytes())?;
     }
 
-    // Read output
-    let mut reader = manager.take_reader(&id)?;
-    let mut output = String::new();
-    let mut buf = [0u8; READ_BUF_SIZE];
-    let start = Instant::now();
-    let timeout = Duration::from_millis(timeout_ms);
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| format!("tokio runtime: {}", e))?;
 
-    loop {
-        if start.elapsed() >= timeout {
-            break;
-        }
-
-        match reader.read(&mut buf) {
-            Ok(0) => break,
-            Ok(n) => {
-                let chunk = String::from_utf8_lossy(&buf[..n]);
-                output.push_str(&chunk);
-
-                if let Some(expected) = wait_for {
-                    if output.contains(expected) {
-                        break;
+    let output = rt.block_on(async {
+        let mut acc = String::new();
+        let start = Instant::now();
+        let total = Duration::from_millis(timeout_ms);
+        loop {
+            let elapsed = start.elapsed();
+            if elapsed >= total {
+                break;
+            }
+            let remaining = total - elapsed;
+            match tokio::time::timeout(remaining, rx.recv()).await {
+                Ok(Ok(chunk)) => {
+                    acc.push_str(&String::from_utf8_lossy(&chunk));
+                    if let Some(expected) = wait_for {
+                        if acc.contains(expected) {
+                            break;
+                        }
                     }
                 }
-            }
-            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                std::thread::sleep(Duration::from_millis(50));
-            }
-            Err(e) => {
-                // On Windows ConPTY, broken pipe means process exited
-                if e.kind() == std::io::ErrorKind::BrokenPipe {
-                    break;
-                }
-                return Err(format!("Read error: {}", e));
+                Ok(Err(broadcast::error::RecvError::Lagged(_))) => continue,
+                Ok(Err(broadcast::error::RecvError::Closed)) => break,
+                Err(_) => break, // recv timeout
             }
         }
-    }
+        acc
+    });
 
     let _ = manager.close(&id);
 
