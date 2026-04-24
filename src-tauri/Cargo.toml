@@ -93,3 +93,12 @@ tempfile = "3"
 # feature list explicitly.
 reqwest = { version = "0.12", default-features = false, features = ["json"] }
 tokio-tungstenite = "0.24"
+# Criterion for terminal-engine microbenchmarks. `html_reports` is a
+# default feature that pulls in a lot of transitive graph-drawing deps we
+# do not need on CI; turning default features off keeps the dev build
+# fast and limits cargo audit surface.
+criterion = { version = "0.5", default-features = false }
+
+[[bench]]
+name = "term_engine"
+harness = false
