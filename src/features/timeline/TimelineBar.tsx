@@ -1,3 +1,4 @@
+import { Bookmark, X } from "lucide-react";
 import { useCallback, useMemo } from "react";
 
 import { type SnapshotSummary, triggerLabel } from "../../shared/types/snapshot";
@@ -103,7 +104,8 @@ export function TimelineBar({
           onClick={onMarkSnapshot}
           aria-label="Bookmark current terminal state"
         >
-          ✛ Mark
+          <Bookmark size={10} aria-hidden="true" />
+          Mark
         </button>
       )}
       {activeOverlay && (
@@ -116,7 +118,7 @@ export function TimelineBar({
             aria-label="Return to live terminal (Esc)"
             title="Return to live (Esc)"
           >
-            ×
+            <X size={10} aria-hidden="true" />
           </button>
         </div>
       )}

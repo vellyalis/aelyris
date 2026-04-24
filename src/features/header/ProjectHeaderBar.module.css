@@ -177,6 +177,13 @@
     color var(--duration-fast);
 }
 
+/* Inset focus ring so the global 2px gold outline is not clipped against
+ * the title-bar edge (window controls sit flush with the top). */
+.ctrlBtn:focus-visible {
+  outline: 2px solid var(--gold) !important;
+  outline-offset: -3px;
+}
+
 .minimizeBtn:hover {
   background: var(--white-10);
   color: var(--white-90);

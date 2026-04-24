@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useRef, useState } from "react";
 import styles from "./SearchPanel.module.css";
@@ -77,7 +78,7 @@ export function SearchPanel({ visible, rootPath, onClose, onResultClick }: Searc
               onKeyDown={(e) => e.key === "Escape" && onClose()}
             />
             <button type="button" className={styles.closeBtn} onClick={onClose} aria-label="Close search">
-              <span aria-hidden="true">×</span>
+              <X size={12} aria-hidden="true" />
             </button>
           </div>
           <div className={styles.results}>

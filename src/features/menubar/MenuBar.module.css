@@ -64,13 +64,18 @@
   font-family: var(--font-ui);
   cursor: pointer;
   text-align: left;
-  outline: none;
 }
 
-/* Radix uses data-highlighted for keyboard/hover focus */
+/* Mouse hover mirrors Radix keyboard highlight — both share row-hover. */
+.item:hover,
 .item[data-highlighted] {
-  background: var(--white-6);
+  background: var(--row-hover);
   color: var(--text-primary);
+}
+
+.item:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: -2px;
 }
 
 .item[data-disabled] {

@@ -1,4 +1,4 @@
-import { Plus } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { PanelHeader } from "../../shared/ui/PanelHeader";
@@ -112,8 +112,12 @@ export function HelmPanel() {
               className={styles.checkbox}
             />
             <span className={styles.taskLabel}>{t.label}</span>
-            <button className={styles.deleteBtn} onClick={() => deleteTask(t.id)}>
-              ×
+            <button
+              className={styles.deleteBtn}
+              onClick={() => deleteTask(t.id)}
+              aria-label={`Delete task: ${t.label}`}
+            >
+              <X size={10} aria-hidden="true" />
             </button>
           </div>
         ))}

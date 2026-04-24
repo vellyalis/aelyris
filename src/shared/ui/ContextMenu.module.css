@@ -37,12 +37,20 @@
   font-family: var(--font-ui);
   cursor: pointer;
   text-align: left;
-  outline: none;
 }
 
+/* Both mouse hover and Radix keyboard highlight drive the same visual
+ * state — previously only `data-highlighted` was styled, so mouse users
+ * got no hover feedback. */
+.item:hover,
 .item[data-highlighted] {
-  background: var(--white-6);
+  background: var(--row-hover);
   color: var(--text-primary);
+}
+
+.item:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: -2px;
 }
 
 .item[data-disabled] {

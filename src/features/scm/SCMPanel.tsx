@@ -1,5 +1,17 @@
 import { invoke } from "@tauri-apps/api/core";
-import { ArrowDown, ArrowUp, Check, ChevronRight, FileText, GitBranch, Minus, Plus, Undo2, Upload } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowRight,
+  ArrowUp,
+  Check,
+  ChevronRight,
+  FileText,
+  GitBranch,
+  Minus,
+  Plus,
+  Undo2,
+  Upload,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "../../shared/store/toastStore";
 import { showConfirm } from "../../shared/ui/ConfirmDialog";
@@ -184,7 +196,8 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
           </span>
           {upstream && (
             <span className={styles.upstream} title={`Upstream: ${upstream}`}>
-              ⇢ {upstream.replace(/^origin\//, "")}
+              <ArrowRight size={10} strokeWidth={2} aria-hidden="true" />
+              {upstream.replace(/^origin\//, "")}
             </span>
           )}
           {(ahead > 0 || behind > 0) && (

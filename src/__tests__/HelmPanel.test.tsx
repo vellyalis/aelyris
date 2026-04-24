@@ -49,12 +49,12 @@ describe("HelmPanel", () => {
     expect(container.textContent).toContain("1/1");
   });
 
-  it("deletes task on × click", () => {
+  it("deletes task on delete-button click", () => {
     localStorage.setItem("aether:helm:tasks", JSON.stringify([{ id: "t-1", label: "Delete me", done: false }]));
     const { container } = render(<HelmPanel />);
     expect(container.textContent).toContain("Delete me");
-    // Find delete button (×)
-    const deleteBtn = Array.from(container.querySelectorAll("button")).find((b) => b.textContent === "×");
+    // Lucide X replaced the raw "×" glyph — locate by aria-label instead.
+    const deleteBtn = container.querySelector('button[aria-label^="Delete task"]') as HTMLButtonElement | null;
     expect(deleteBtn).not.toBeNull();
     fireEvent.click(deleteBtn!);
     expect(container.textContent).not.toContain("Delete me");

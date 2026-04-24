@@ -1,3 +1,4 @@
+import { MotionConfig } from "motion/react";
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import appStyles from "./App.module.css";
 import { AgentTerminal } from "./features/agent-terminal";
@@ -566,6 +567,13 @@ export function App() {
   ) : null;
 
   return (
+    /* MotionConfig reducedMotion="user" tells every motion.* child in the
+     * tree to honor the OS prefers-reduced-motion setting. CSS already
+     * zeroes transition-duration and transform on :hover under that
+     * query — this adds the missing JS-side respect for Framer-driven
+     * springs across CommandPalette/WelcomeScreen/SearchPanel/PRInspector/
+     * WebInspector/OnboardingOverlay. */
+    <MotionConfig reducedMotion="user">
     <TooltipProvider>
       <ToastProvider>
         <div className="app-container">
@@ -798,5 +806,6 @@ export function App() {
         </div>
       </ToastProvider>
     </TooltipProvider>
+    </MotionConfig>
   );
 }
