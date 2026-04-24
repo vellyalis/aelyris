@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { motion, AnimatePresence } from "motion/react";
+import * as Dialog from "@radix-ui/react-dialog";
 import { useAppStore } from "../../shared/store/appStore";
 import styles from "./Settings.module.css";
 
@@ -100,41 +100,22 @@ export function Settings({ visible, onClose }: SettingsProps) {
     onClose();
   };
 
-  useEffect(() => {
-    if (!visible) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { e.stopPropagation(); onClose(); }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [visible, onClose]);
-
   return (
-    <AnimatePresence>
-      {visible && (
-        <motion.div
-          className={styles.overlay}
-          onClick={onClose}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.12 }}
-        >
-          <motion.div
-            className={styles.panel}
-            onClick={(e) => e.stopPropagation()}
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            transition={{ type: "spring", stiffness: 400, damping: 30 }}
-          >
-            <div className={styles.header}>
-              <h2 className={styles.title}>Settings</h2>
-              <div style={{ display: "flex", gap: 6 }}>
-                <button className={styles.saveBtn} onClick={handleSave}>Save</button>
-                <button className={styles.closeBtn} aria-label="Close" onClick={onClose}>×</button>
-              </div>
+    <Dialog.Root open={visible} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className={styles.overlay} />
+        <Dialog.Content className={styles.panel} aria-describedby={undefined}>
+          <div className={styles.header}>
+            <Dialog.Title className={styles.title}>Settings</Dialog.Title>
+            <div style={{ display: "flex", gap: "var(--space-3)" }}>
+              <button type="button" className={styles.saveBtn} onClick={handleSave}>Save</button>
+              <Dialog.Close asChild>
+                <button type="button" className={styles.closeBtn} aria-label="Close settings">
+                  <span aria-hidden="true">×</span>
+                </button>
+              </Dialog.Close>
             </div>
+          </div>
 
             <div className={styles.content}>
               <section className={styles.section}>
@@ -243,9 +224,8 @@ export function Settings({ visible, onClose }: SettingsProps) {
                 </div>
               </section>
             </div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }

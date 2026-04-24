@@ -4,13 +4,13 @@
   right: 20px;
   width: 480px;
   height: 400px;
-  background: var(--aether-bg);
+  background: var(--glass-thick);
   border: 1px solid var(--white-10);
   border-radius: var(--radius);
   box-shadow: var(--shadow-lg);
   display: flex;
   flex-direction: column;
-  z-index: 70;
+  z-index: var(--z-overlay);
   overflow: hidden;
   resize: both;
 }
@@ -56,5 +56,7 @@
 .frame {
   flex: 1;
   border: none;
-  background: #fff;
+  /* Let the embedded page supply its own background; forcing #fff produced
+   * a jarring flash against the dark glass chrome. */
+  background: transparent;
 }

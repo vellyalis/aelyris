@@ -67,10 +67,12 @@
 .fileStatus[data-status="added"] { color: var(--ctp-green); }
 .fileStatus[data-status="deleted"] { color: var(--ctp-red); }
 .fileStatus[data-status="untracked"] { color: var(--text-muted); }
-.fileStatus[data-status="conflicted"] { color: var(--ctp-red); font-weight: 800; }
+.fileStatus[data-status="conflicted"] { color: var(--ctp-red); font-weight: var(--weight-semibold); }
 .fileStatus[data-status="renamed"] { color: var(--ctp-cyan); }
 
 .fileName {
+  background: none; border: none; padding: 0; margin: 0;
+  font: inherit; text-align: left;
   color: var(--text-primary); cursor: pointer; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap;
 }

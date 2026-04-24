@@ -37,8 +37,8 @@
   align-items: center;
   justify-content: center;
   font-size: var(--text-2xl);
-  font-weight: 700;
-  color: #fff;
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
 }
 
 .title {
@@ -138,8 +138,8 @@
   align-items: center;
   justify-content: center;
   font-size: var(--text-md);
-  font-weight: 700;
-  color: #fff;
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
   flex-shrink: 0;
 }
 

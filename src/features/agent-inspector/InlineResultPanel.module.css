@@ -53,10 +53,10 @@
 .fileTabActive { color: var(--text-primary); background: var(--white-6); font-weight: 500; }
 
 .fileAction {
-  font-size: 9px;
-  font-weight: 700;
-  width: 14px;
-  height: 14px;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  width: 16px;
+  height: 16px;
   display: inline-flex;
   align-items: center;
   justify-content: center;

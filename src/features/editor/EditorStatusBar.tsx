@@ -28,11 +28,25 @@ export const EditorStatusBar = memo(function EditorStatusBar({
       <span className={styles.item}>Spaces: {tabSize}</span>
       <span className={styles.item}>{encoding}</span>
       <span className={styles.item}>{language}</span>
-      <button className={styles.toggleBtn} onClick={onToggleWordWrap} title={wordWrap ? "Disable Word Wrap" : "Enable Word Wrap"}>
-        <WrapText size={11} style={{ opacity: wordWrap ? 1 : 0.4 }} />
+      <button
+        type="button"
+        className={styles.toggleBtn}
+        onClick={onToggleWordWrap}
+        aria-pressed={wordWrap}
+        aria-label="Toggle word wrap"
+        title={wordWrap ? "Disable Word Wrap" : "Enable Word Wrap"}
+      >
+        <WrapText size={11} aria-hidden="true" style={{ opacity: wordWrap ? 1 : 0.4 }} />
       </button>
-      <button className={styles.toggleBtn} onClick={onToggleMinimap} title={minimapEnabled ? "Hide Minimap" : "Show Minimap"}>
-        <Columns2 size={11} style={{ opacity: minimapEnabled ? 1 : 0.4 }} />
+      <button
+        type="button"
+        className={styles.toggleBtn}
+        onClick={onToggleMinimap}
+        aria-pressed={minimapEnabled}
+        aria-label="Toggle minimap"
+        title={minimapEnabled ? "Hide Minimap" : "Show Minimap"}
+      >
+        <Columns2 size={11} aria-hidden="true" style={{ opacity: minimapEnabled ? 1 : 0.4 }} />
       </button>
     </div>
   );

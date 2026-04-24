@@ -11,7 +11,7 @@
   letter-spacing: 0.05em;
   color: var(--text-muted);
 }
-.title { color: var(--ctp-peach); font-weight: 700; }
+.title { color: var(--ctp-peach); font-weight: var(--weight-semibold); }
 .project {
   font-weight: 400;
   color: var(--text-muted);

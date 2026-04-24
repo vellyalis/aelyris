@@ -160,13 +160,13 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
               {/* Group-level actions */}
               {g.id === "changes" && (
                 <span className={styles.groupActions} onClick={(e) => e.stopPropagation()}>
-                  <button onClick={() => handleStage(g.files.map((f) => f.path))} title="Stage all"><Plus size={10} /></button>
-                  <button onClick={() => handleDiscard(g.files.map((f) => f.path))} title="Discard all"><Undo2 size={10} /></button>
+                  <button type="button" onClick={() => handleStage(g.files.map((f) => f.path))} aria-label="Stage all changes" title="Stage all"><Plus size={10} aria-hidden="true" /></button>
+                  <button type="button" onClick={() => handleDiscard(g.files.map((f) => f.path))} aria-label="Discard all changes" title="Discard all"><Undo2 size={10} aria-hidden="true" /></button>
                 </span>
               )}
               {g.id === "staged" && (
                 <span className={styles.groupActions} onClick={(e) => e.stopPropagation()}>
-                  <button onClick={() => handleUnstage(g.files.map((f) => f.path))} title="Unstage all"><Minus size={10} /></button>
+                  <button type="button" onClick={() => handleUnstage(g.files.map((f) => f.path))} aria-label="Unstage all files" title="Unstage all"><Minus size={10} aria-hidden="true" /></button>
                 </span>
               )}
             </button>
@@ -175,18 +175,26 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
                 {g.files.map((f) => (
                   <div key={f.path} className={styles.fileRow}>
                     <span className={styles.fileStatus} data-status={f.status}>{STATUS_ICON[f.status] ?? "?"}</span>
-                    <span className={styles.fileName} onClick={() => onOpenDiff?.(f.path)} title={f.path}>{fileName(f.path)}</span>
+                    <button
+                      type="button"
+                      className={styles.fileName}
+                      onClick={() => onOpenDiff?.(f.path)}
+                      aria-label={`Open diff for ${f.path}`}
+                      title={f.path}
+                    >
+                      {fileName(f.path)}
+                    </button>
                     <span className={styles.filePath}>{f.path.replace(fileName(f.path), "")}</span>
                     <span className={styles.fileActions}>
                       {g.id === "changes" || g.id === "untracked" ? (
                         <>
-                          <button onClick={() => handleStage([f.path])} title="Stage"><Plus size={10} /></button>
-                          {g.id === "changes" && <button onClick={() => handleDiscard([f.path])} title="Discard"><Undo2 size={10} /></button>}
+                          <button type="button" onClick={() => handleStage([f.path])} aria-label={`Stage ${f.path}`} title="Stage"><Plus size={10} aria-hidden="true" /></button>
+                          {g.id === "changes" && <button type="button" onClick={() => handleDiscard([f.path])} aria-label={`Discard ${f.path}`} title="Discard"><Undo2 size={10} aria-hidden="true" /></button>}
                         </>
                       ) : g.id === "staged" ? (
-                        <button onClick={() => handleUnstage([f.path])} title="Unstage"><Minus size={10} /></button>
+                        <button type="button" onClick={() => handleUnstage([f.path])} aria-label={`Unstage ${f.path}`} title="Unstage"><Minus size={10} aria-hidden="true" /></button>
                       ) : null}
-                      <button onClick={() => onOpenFile?.(projectPath + "/" + f.path)} title="Open"><FileText size={10} /></button>
+                      <button type="button" onClick={() => onOpenFile?.(projectPath + "/" + f.path)} aria-label={`Open ${f.path}`} title="Open"><FileText size={10} aria-hidden="true" /></button>
                     </span>
                   </div>
                 ))}

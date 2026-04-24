@@ -1,8 +1,14 @@
 .helm {
+  /*
+   * Sits inside .right-panel which already runs backdrop-filter: blur(24px).
+   * Stacking another blur here produced the washed-out purple haze flagged
+   * by the 2026-04-24 glass audit. Lean on the parent's blur and carry the
+   * tint via opacity on top of --glass-dense instead.
+   */
   border-top: 1px solid var(--white-6);
-  background: rgba(110, 50, 220, 0.12);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
+  background:
+    linear-gradient(var(--purple-dim), var(--purple-dim)),
+    var(--glass-dense);
   min-height: 60px;
   max-height: 180px;
   display: flex;
@@ -103,7 +109,7 @@
 .deleteBtn {
   background: none;
   border: none;
-  color: rgba(167, 139, 250, 0.3);
+  color: var(--white-30);
   font-size: var(--text-sm);
   cursor: pointer;
   opacity: 0;

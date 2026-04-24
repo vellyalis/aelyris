@@ -136,6 +136,9 @@ export function KanbanBoard({ onStartAgent, onActivateTask, onMoveWithSideEffect
                 <span className={styles.groupLabel}>{col.label}</span>
                 <span className={styles.groupCount}>{tasks.length}</span>
               </button>
+              {!isCollapsed && tasks.length === 0 && (
+                <div className={styles.groupEmpty}>Drop a task here</div>
+              )}
               {!isCollapsed && tasks.length > 0 && (
                 <div className={styles.groupItems}>
                   {tasks.map((t) => (

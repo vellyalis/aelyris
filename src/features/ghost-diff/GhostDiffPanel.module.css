@@ -1,20 +1,26 @@
+/* Ghost Diff Panel — migrated to design tokens in the 2026-04-24 UI pass.
+ * Previous revision relied on undefined fallback vars (--glass-2, --text,
+ * --text-dim, --accent, --error, --success, --glass-border) that silently
+ * shipped their raw-hex fallbacks. Everything below now flows through
+ * `src/styles/global.css`. */
+
 .panel {
   position: absolute;
-  bottom: calc(100% + 4px);
-  right: 12px;
+  bottom: calc(100% + var(--space-2));
+  right: var(--space-6);
   width: 380px;
   max-height: 440px;
   display: flex;
   flex-direction: column;
-  background: var(--glass-2, rgba(30, 30, 46, 0.94));
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  border: 1px solid var(--glass-border, rgba(205, 214, 244, 0.1));
-  border-radius: 10px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
-  z-index: 200;
-  color: var(--text, #cdd6f4);
-  font-size: 12px;
+  background: var(--glass-thick);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--aether-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  z-index: var(--z-sticky);
+  color: var(--text-primary);
+  font-size: var(--text-md);
   overflow: hidden;
 }
 
@@ -22,40 +28,40 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--glass-border, rgba(205, 214, 244, 0.08));
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--aether-border);
 }
 
 .headerTitle {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-weight: 600;
+  gap: var(--space-3);
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.02em;
 }
 
 .subtitle {
-  color: var(--text-dim, #a6adc8);
-  font-size: 11px;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
 }
 
 .list {
   flex: 1;
   overflow-y: auto;
-  padding: 4px 0;
+  padding: var(--space-2) 0;
 }
 
 .empty {
-  padding: 16px 12px;
-  color: var(--text-dim, #a6adc8);
-  font-size: 11px;
+  padding: var(--space-8) var(--space-6);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
   text-align: center;
-  line-height: 1.5;
+  line-height: var(--leading-normal);
 }
 
 .row {
-  padding: 6px 10px;
-  border-bottom: 1px solid rgba(205, 214, 244, 0.04);
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--white-3);
 }
 
 .row:last-child {
@@ -65,7 +71,7 @@
 .rowHeader {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-3);
 }
 
 .expandBtn {
@@ -76,18 +82,18 @@
   justify-content: center;
   background: transparent;
   border: none;
-  color: var(--text-dim, #a6adc8);
+  color: var(--text-secondary);
   cursor: pointer;
   padding: 0;
 }
 
 .expandBtn:hover {
-  color: var(--text, #cdd6f4);
+  color: var(--text-primary);
 }
 
 .chevronOpen {
   transform: rotate(90deg);
-  transition: transform 120ms ease;
+  transition: transform var(--duration-fast) var(--ease-silk);
 }
 
 .tintDot {
@@ -99,28 +105,28 @@
 
 .roleLabel {
   text-transform: lowercase;
-  font-weight: 500;
-  color: var(--text, #cdd6f4);
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
 }
 
 .readOnlyBadge {
-  font-size: 9.5px;
+  font-size: var(--text-2xs);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--text-dim, #a6adc8);
-  background: rgba(137, 220, 235, 0.12);
-  border: 1px solid rgba(137, 220, 235, 0.25);
-  padding: 1px 5px;
-  border-radius: 3px;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--ctp-cyan) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ctp-cyan) 25%, transparent);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
 }
 
 .branch {
-  font-family: "Cascadia Code", "IBM Plex Mono", monospace;
-  font-size: 11px;
-  color: var(--accent, #f9e2af);
-  background: rgba(249, 226, 175, 0.08);
-  padding: 1px 5px;
-  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--ctp-yellow);
+  background: color-mix(in srgb, var(--ctp-yellow) 10%, transparent);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
   max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -129,8 +135,8 @@
 
 .counts {
   margin-left: auto;
-  color: var(--text-dim, #a6adc8);
-  font-size: 10.5px;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
 }
 
 .statusIcon {
@@ -140,11 +146,11 @@
 
 .iconActive {
   animation: gd-spin 1.2s linear infinite;
-  color: var(--accent, #f9e2af);
+  color: var(--ctp-yellow);
 }
 
 .iconComplete {
-  color: var(--success, #a6e3a1);
+  color: var(--ctp-green);
 }
 
 @keyframes gd-spin {
@@ -164,40 +170,42 @@
   justify-content: center;
   background: transparent;
   border: none;
-  border-radius: 4px;
-  color: var(--text-dim, #a6adc8);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
   cursor: pointer;
   padding: 0;
 }
 
 .dismissBtn:hover {
-  background: rgba(243, 139, 168, 0.12);
-  color: var(--error, #f38ba8);
+  background: color-mix(in srgb, var(--ctp-red) 12%, transparent);
+  color: var(--ctp-red);
 }
 
 .fileList {
   list-style: none;
-  margin: 6px 0 0;
-  padding: 4px 8px 4px 28px;
-  background: rgba(17, 17, 27, 0.5);
-  border-radius: 5px;
+  margin: var(--space-3) 0 0;
+  /* 28px indent = chevron(16) + gap(6) + tintDot(8); align files under the
+   * role label rather than the chevron. */
+  padding: var(--space-2) var(--space-4) var(--space-2) calc(var(--space-16) + var(--space-3));
+  background: var(--white-3);
+  border-radius: var(--radius-sm);
   max-height: 150px;
   overflow-y: auto;
 }
 
 .fileRow {
-  font-family: "Cascadia Code", "IBM Plex Mono", monospace;
-  font-size: 11px;
-  color: var(--text-dim, #a6adc8);
-  padding: 2px 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  padding: var(--space-1) 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .emptyFiles {
-  padding: 4px 28px;
-  color: var(--text-dim, #a6adc8);
-  font-size: 11px;
+  padding: var(--space-2) calc(var(--space-16) + var(--space-3));
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
   font-style: italic;
 }

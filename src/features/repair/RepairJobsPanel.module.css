@@ -135,13 +135,13 @@
 }
 
 .iconActive {
-  color: var(--ctp-sapphire, #74c7ec);
+  color: var(--ctp-sapphire);
   animation: repair-spin 1.5s linear infinite;
   flex-shrink: 0;
 }
 
 .iconSuccess {
-  color: var(--ctp-green, #a6e3a1);
+  color: var(--ctp-green);
   flex-shrink: 0;
 }
 

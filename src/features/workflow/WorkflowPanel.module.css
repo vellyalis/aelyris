@@ -46,19 +46,19 @@
 .step_failed { color: var(--ctp-red); }
 .stepName { }
 .stepCost { color: var(--ctp-peach); }
-.arrow { color: var(--text-muted); opacity: 0.4; }
+.arrow { color: var(--white-25); }
 
-.gateActions { display: inline-flex; gap: 2px; margin-left: 2px; }
+.gateActions { display: inline-flex; gap: var(--space-1); margin-left: var(--space-1); }
 .approveBtn, .rejectBtn {
-  background: none; border: none; cursor: pointer; font-size: 11px; padding: 0 2px;
+  background: none; border: none; cursor: pointer; font-size: var(--text-sm); padding: 0 var(--space-1);
 }
 .approveBtn { color: var(--ctp-green); }
-.approveBtn:hover { color: #fff; }
+.approveBtn:hover { color: var(--text-primary); }
 .rejectBtn { color: var(--ctp-red); }
-.rejectBtn:hover { color: #fff; }
+.rejectBtn:hover { color: var(--text-primary); }
 
 /* Icons */
-.iconMuted { color: var(--text-muted); opacity: 0.5; }
+.iconMuted { color: var(--text-muted); }
 .iconRunning { color: var(--ctp-green); animation: spin 1s linear infinite; }
 .iconWaiting { color: var(--ctp-yellow); }
 .iconPassed { color: var(--ctp-green); }

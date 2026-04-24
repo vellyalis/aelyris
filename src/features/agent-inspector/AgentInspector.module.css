@@ -64,9 +64,10 @@
   padding: var(--space-5) var(--space-5) var(--space-5) var(--space-6);
   border: 1px solid var(--white-10);
   border-radius: var(--radius);
-  background: linear-gradient(135deg, rgba(28, 28, 28, 0.72) 0%, rgba(24, 24, 24, 0.62) 100%);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: var(--glass-thick);
+  /* Parent .right-panel already runs backdrop-filter: blur(24px); stacking
+   * another 20px here multiplied the blur radius and washed the card out.
+   * (2026-04-24 glass audit.) */
   color: var(--text-secondary);
   font-family: var(--font-ui);
   cursor: pointer;
@@ -700,9 +701,8 @@
   border: 1px solid var(--white-6);
   border-left: 3px solid var(--session-accent, var(--gold));
   border-radius: var(--radius);
-  background: linear-gradient(135deg, rgba(28, 28, 28, 0.62) 0%, rgba(20, 20, 20, 0.52) 100%);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: var(--glass-dense);
+  /* Parent panel already blurred; see .card note above. */
   overflow: hidden;
   cursor: pointer;
   transition:

@@ -163,7 +163,7 @@
   padding-top: 2px;
 }
 
-.failed { color: var(--red, #f38ba8); }
+.failed { color: var(--status-error); }
 
 .empty {
   color: var(--text-muted);

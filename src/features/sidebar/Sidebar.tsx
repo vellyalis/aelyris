@@ -20,12 +20,15 @@ export function Sidebar() {
         {NAV_ITEMS.map(({ id, icon: Icon, label }) => (
           <Tooltip key={id} content={label} side="right" delay={300}>
             <button
+              type="button"
               className={`${styles.navBtn} ${section === id ? styles.active : ""}`}
               onClick={() => setSection(id)}
               aria-label={label}
+              aria-pressed={section === id}
+              aria-current={section === id ? "page" : undefined}
             >
-              <Icon size={20} strokeWidth={1.5} />
-              {section === id && <div className={styles.indicator} />}
+              <Icon size={20} strokeWidth={1.5} aria-hidden="true" />
+              {section === id && <div className={styles.indicator} aria-hidden="true" />}
             </button>
           </Tooltip>
         ))}

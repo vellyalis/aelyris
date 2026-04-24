@@ -1,22 +1,27 @@
+/* Timeline bar — migrated to design tokens in the 2026-04-24 UI pass.
+ * Previous revision embedded raw Catppuccin hex (`#cdd6f4`, `#94e2d5`,
+ * `#f5c2e7`) and rgba alpha literals; everything now flows through
+ * `src/styles/global.css` + color-mix() for tinted alpha tiers. */
+
 .root {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 10px;
-  height: 28px;
+  gap: var(--space-4);
+  padding: var(--space-2) var(--space-6);
+  height: var(--bottom-tabs-height);
   box-sizing: border-box;
-  background: rgba(24, 24, 37, 0.7);
+  background: var(--glass-frame);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  border-bottom: 1px solid rgba(148, 226, 213, 0.15);
-  font: 11px/1 "IBM Plex Mono", "Cascadia Code", monospace;
-  color: #cdd6f4;
+  border-bottom: 1px solid var(--white-6);
+  font: var(--text-sm)/1 var(--font-mono);
+  color: var(--text-primary);
   user-select: none;
 }
 
 .label {
-  color: #94e2d5;
-  font-weight: 600;
+  color: var(--ctp-cyan);
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.03em;
   flex: 0 0 auto;
 }
@@ -24,7 +29,7 @@
 .ticks {
   flex: 1 1 auto;
   display: flex;
-  gap: 2px;
+  gap: var(--space-1);
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
@@ -40,72 +45,74 @@
   width: 4px;
   height: 16px;
   border-radius: 1px;
-  background: rgba(148, 226, 213, 0.35);
+  background: color-mix(in srgb, var(--ctp-cyan) 35%, transparent);
   border: 0;
   padding: 0;
   cursor: pointer;
-  transition: background 0.08s, transform 0.08s;
+  transition:
+    background var(--duration-fast) var(--ease-silk),
+    transform var(--duration-fast) var(--ease-silk);
 }
 
 .tick:hover {
-  background: rgba(148, 226, 213, 0.75);
+  background: color-mix(in srgb, var(--ctp-cyan) 75%, transparent);
   transform: scaleY(1.12);
 }
 
 .tick.userMarked {
-  background: rgba(245, 194, 231, 0.55); /* pink for user bookmarks */
+  background: color-mix(in srgb, var(--ctp-magenta) 55%, transparent);
   width: 6px;
 }
 
 .tick.active {
-  background: #94e2d5;
-  box-shadow: 0 0 4px rgba(148, 226, 213, 0.8);
+  background: var(--ctp-cyan);
+  box-shadow: 0 0 4px color-mix(in srgb, var(--ctp-cyan) 80%, transparent);
 }
 
 .empty {
-  color: rgba(205, 214, 244, 0.45);
+  color: var(--text-muted);
   font-style: italic;
-  padding-left: 6px;
+  padding-left: var(--space-3);
 }
 
 .activePill {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 2px 8px;
-  background: rgba(148, 226, 213, 0.18);
-  border: 1px solid rgba(148, 226, 213, 0.45);
-  border-radius: 10px;
-  color: #94e2d5;
-  font-size: 10px;
+  gap: var(--space-3);
+  padding: var(--space-1) var(--space-4);
+  background: color-mix(in srgb, var(--ctp-cyan) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ctp-cyan) 45%, transparent);
+  border-radius: var(--radius-lg);
+  color: var(--ctp-cyan);
+  font-size: var(--text-xs);
 }
 
 .dismissBtn {
   background: transparent;
   border: 0;
-  color: #94e2d5;
+  color: var(--ctp-cyan);
   cursor: pointer;
-  padding: 0 2px;
-  font-size: 13px;
+  padding: 0 var(--space-1);
+  font-size: var(--text-base);
   line-height: 1;
 }
 
 .dismissBtn:hover {
-  color: #cdd6f4;
+  color: var(--text-primary);
 }
 
 .markBtn {
   flex: 0 0 auto;
-  background: rgba(245, 194, 231, 0.15);
-  border: 1px solid rgba(245, 194, 231, 0.35);
-  color: #f5c2e7;
-  padding: 2px 8px;
-  border-radius: 10px;
+  background: color-mix(in srgb, var(--ctp-magenta) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ctp-magenta) 35%, transparent);
+  color: var(--ctp-magenta);
+  padding: var(--space-1) var(--space-4);
+  border-radius: var(--radius-lg);
   cursor: pointer;
   font: inherit;
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 
 .markBtn:hover {
-  background: rgba(245, 194, 231, 0.3);
+  background: color-mix(in srgb, var(--ctp-magenta) 30%, transparent);
 }

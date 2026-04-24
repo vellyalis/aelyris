@@ -170,6 +170,19 @@
   padding: var(--space-1) 0;
 }
 
+/* Empty-state placeholder for columns with no tasks. Also acts as a visible
+ * drop target so users know where to drag cards. */
+.groupEmpty {
+  padding: var(--space-4) var(--space-8);
+  font-size: var(--text-sm);
+  font-family: var(--font-ui);
+  color: var(--text-muted);
+  text-align: center;
+  border: 1px dashed var(--white-6);
+  border-radius: var(--radius-sm);
+  margin: var(--space-1) var(--space-6) var(--space-3);
+}
+
 .item {
   display: flex;
   align-items: center;

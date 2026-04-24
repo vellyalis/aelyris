@@ -97,18 +97,18 @@
 }
 
 .repairActive {
-  color: var(--accent, #74c7ec);
+  color: var(--status-done);
 }
 
 .repairBadge {
-  min-width: 14px;
-  height: 14px;
-  padding: 0 4px;
-  border-radius: 7px;
-  background: var(--ctp-sapphire, #74c7ec);
-  color: var(--aether-bg-surface, #0f0f0f);
+  min-width: 16px;
+  height: 16px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius);
+  background: var(--status-done);
+  color: var(--aether-bg-surface);
   font-size: var(--text-xs);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   display: inline-flex;
   align-items: center;
   justify-content: center;

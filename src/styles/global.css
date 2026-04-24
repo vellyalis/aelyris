@@ -121,6 +121,10 @@
   --ctp-surface0: #313244;
   --ctp-surface1: #45475a;
   --ctp-surface2: #585b70;
+  /* Catppuccin sapphire — "in-progress / queued" indicator across StatusBar
+   * and RepairJobsPanel. Added after the 2026-04-24 color audit found both
+   * sites relying on an undefined `var(--ctp-sapphire, #74c7ec)` fallback. */
+  --ctp-sapphire: #74c7ec;
 
   /* Typography — line heights */
   --leading-tight: 1.25;

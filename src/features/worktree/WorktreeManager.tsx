@@ -63,11 +63,24 @@ export function WorktreeManager({ projectPath, onSwitch }: WorktreeManagerProps)
     <div className={styles.container}>
       <div className={styles.header}>
         <span className={styles.headerTitle}>Worktrees</span>
-        <button className={styles.headerBtn} onClick={() => setShowCreate(!showCreate)} title="New Worktree">
-          <Plus size={14} />
+        <button
+          type="button"
+          className={styles.headerBtn}
+          onClick={() => setShowCreate(!showCreate)}
+          aria-expanded={showCreate}
+          aria-label="New worktree"
+          title="New Worktree"
+        >
+          <Plus size={14} aria-hidden="true" />
         </button>
-        <button className={styles.headerBtn} onClick={loadWorktrees} title="Refresh">
-          <RefreshCw size={12} />
+        <button
+          type="button"
+          className={styles.headerBtn}
+          onClick={loadWorktrees}
+          aria-label="Refresh worktrees"
+          title="Refresh"
+        >
+          <RefreshCw size={12} aria-hidden="true" />
         </button>
       </div>
 
@@ -76,6 +89,7 @@ export function WorktreeManager({ projectPath, onSwitch }: WorktreeManagerProps)
           <input
             className={styles.createInput}
             placeholder="Branch name..."
+            aria-label="New worktree branch name"
             value={newBranch}
             onChange={(e) => setNewBranch(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); if (e.key === "Escape") setShowCreate(false); }}
@@ -93,12 +107,15 @@ export function WorktreeManager({ projectPath, onSwitch }: WorktreeManagerProps)
           <EmptyState preset="worktrees" title="No worktrees" description="Create a worktree to work on a branch in parallel" />
         )}
         {worktrees.map((wt) => (
-          <div
+          <button
             key={wt.path}
+            type="button"
             className={`${styles.card} ${wt.path === activePath ? styles.cardActive : ""}`}
             onClick={() => handleSwitch(wt.path)}
+            aria-pressed={wt.path === activePath}
+            aria-label={`Switch to worktree ${wt.branch}${wt.is_main ? " (main)" : ""}`}
           >
-            <GitBranch size={14} className={styles.cardIcon} />
+            <GitBranch size={14} className={styles.cardIcon} aria-hidden="true" />
             <div className={styles.cardInfo}>
               <div className={styles.cardBranch}>
                 {wt.branch}
@@ -108,12 +125,18 @@ export function WorktreeManager({ projectPath, onSwitch }: WorktreeManagerProps)
             </div>
             {!wt.is_main && (
               <div className={styles.cardActions}>
-                <button className={styles.deleteBtn} onClick={(e) => { e.stopPropagation(); }} title="Remove Worktree">
-                  <Trash2 size={11} />
+                <button
+                  type="button"
+                  className={styles.deleteBtn}
+                  onClick={(e) => { e.stopPropagation(); }}
+                  aria-label={`Remove worktree ${wt.branch}`}
+                  title="Remove Worktree"
+                >
+                  <Trash2 size={11} aria-hidden="true" />
                 </button>
               </div>
             )}
-          </div>
+          </button>
         ))}
       </div>
     </div>

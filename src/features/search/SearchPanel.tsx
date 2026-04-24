@@ -63,11 +63,14 @@ export function SearchPanel({ visible, rootPath, onClose, onResultClick }: Searc
           autoFocus
           className={styles.input}
           placeholder="Search in files..."
+          aria-label="Search in files"
           value={query}
           onChange={(e) => handleSearch(e.target.value)}
           onKeyDown={(e) => e.key === "Escape" && onClose()}
         />
-        <button className={styles.closeBtn} onClick={onClose}>×</button>
+        <button type="button" className={styles.closeBtn} onClick={onClose} aria-label="Close search">
+          <span aria-hidden="true">×</span>
+        </button>
       </div>
       <div className={styles.results}>
         {searching && <div className={styles.status}>Searching...</div>}
