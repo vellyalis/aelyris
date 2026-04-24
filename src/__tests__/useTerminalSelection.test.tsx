@@ -111,15 +111,18 @@ describe("TerminalCanvas — selection + copy (Task 9)", () => {
       />,
     );
     const canvas = getByTestId("terminal-canvas") as HTMLCanvasElement;
+    const textarea = getByTestId(
+      "terminal-ime-textarea",
+    ) as HTMLTextAreaElement;
 
     // Drag from cell (0,0) to (0,4) → should select "hello".
     await act(async () => {
       downUpDrag(canvas, { x: 0, y: 0 }, { x: 4 * 8 + 1, y: 0 });
     });
 
-    // Ctrl+Shift+C.
+    // Ctrl+Shift+C — after Phase B the textarea owns keydown.
     await act(async () => {
-      canvas.dispatchEvent(
+      textarea.dispatchEvent(
         new KeyboardEvent("keydown", {
           bubbles: true,
           key: "C",
@@ -150,19 +153,28 @@ describe("TerminalCanvas — selection + copy (Task 9)", () => {
       />,
     );
     const canvas = getByTestId("terminal-canvas") as HTMLCanvasElement;
+    const textarea = getByTestId(
+      "terminal-ime-textarea",
+    ) as HTMLTextAreaElement;
 
     await act(async () => {
       downUpDrag(canvas, { x: 0, y: 0 }, { x: 4 * 8 + 1, y: 0 });
     });
 
+    // After Phase B the textarea owns both the write-bytes path and the
+    // selection-clear listener. Fire keydown + input on the textarea so
+    // both fire together.
     await act(async () => {
-      canvas.dispatchEvent(
+      textarea.dispatchEvent(
         new KeyboardEvent("keydown", { bubbles: true, key: "a" }),
       );
+      textarea.dispatchEvent(
+        new InputEvent("input", { bubbles: true, data: "a" }),
+      );
     });
-    // Copy should now do nothing because selection is cleared.
+    // Ctrl+Shift+C must also target the textarea.
     await act(async () => {
-      canvas.dispatchEvent(
+      textarea.dispatchEvent(
         new KeyboardEvent("keydown", {
           bubbles: true,
           key: "c",

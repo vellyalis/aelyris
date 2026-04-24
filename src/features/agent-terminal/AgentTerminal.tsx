@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 import { TerminalCanvas } from "../terminal/TerminalCanvas";
-import { IMEInputBar } from "../terminal/IMEInputBar";
+import { IMEInputBar, type IMEInputBarHandle } from "../terminal/IMEInputBar";
 import { getCliLabel, getCliColor, type AgentCliType } from "../../shared/types/interactiveAgent";
 import { STATUS_COLORS, STATUS_LABELS, type AgentStatus } from "../../shared/types/agent";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
@@ -39,16 +39,18 @@ interface Dims {
  * grid diffs.
  *
  * Layout: status overlay bar (CLI / model / status / cost) on top, grid
- * canvas in the middle, IME input bar docked at the bottom. Ctrl+Shift+J
- * toggles the IME bar; it starts visible because every agent session is an
- * AI CLI that the dedicated bar is designed for.
+ * canvas in the middle, IME input bar docked at the bottom. The bar is
+ * always rendered — every agent session is an AI CLI that the bar exists to
+ * serve — and Ctrl+Shift+J moves focus into it.
  */
 export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: AgentTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const areaRef = useRef<HTMLDivElement>(null);
   const [dims, setDims] = useState<Dims | null>(null);
   const [exited, setExited] = useState(false);
-  const [imeVisible, setImeVisible] = useState(true);
+  const imeBarRef = useRef<IMEInputBarHandle>(null);
+  const canvasElRef = useRef<HTMLCanvasElement | null>(null);
+  const canvasInputElRef = useRef<HTMLTextAreaElement | null>(null);
 
   // Measure container → cols/rows, trailing-edge debounced so a continuous
   // resize drag doesn't thrash the backend with resize_terminal calls.
@@ -115,7 +117,7 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
     };
   }, [ptyId]);
 
-  // Ctrl+Shift+J toggles the IME bar. Scope matches NativeTerminalArea:
+  // Ctrl+Shift+J focuses the IME bar. Scope matches NativeTerminalArea:
   // only when the key comes from inside this component's subtree.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -125,7 +127,7 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
       const inside = root.contains(document.activeElement);
       if (!inside) return;
       e.preventDefault();
-      setImeVisible((v) => !v);
+      imeBarRef.current?.focus();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -138,7 +140,12 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
     [ptyId],
   );
 
-  const closeIme = useCallback(() => setImeVisible(false), []);
+  const focusCanvas = useCallback(() => {
+    // Prefer the IME textarea — the canvas has tabIndex=-1 after Phase B
+    // and focusing it only works by bouncing through its React onFocus
+    // handler, which can miss during Strict Mode unmount/remount cycles.
+    (canvasInputElRef.current ?? canvasElRef.current)?.focus();
+  }, []);
 
   const accent = accentColor ?? getCliColor(cli);
 
@@ -166,13 +173,19 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
             cols={dims.cols}
             rows={dims.rows}
             fontSize={FONT_SIZE}
+            onCanvasRef={(el) => (canvasElRef.current = el)}
+            onInputRef={(el) => (canvasInputElRef.current = el)}
           />
         )}
         {exited && (
           <div className={styles.exitOverlay}>[Agent process exited]</div>
         )}
       </div>
-      {imeVisible && <IMEInputBar onSubmit={submitIme} onClose={closeIme} />}
+      <IMEInputBar
+        ref={imeBarRef}
+        onSubmit={submitIme}
+        onRequestCanvasFocus={focusCanvas}
+      />
     </div>
   );
 }

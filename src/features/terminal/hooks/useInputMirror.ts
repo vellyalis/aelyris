@@ -6,8 +6,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * on Tab.
  *
  * This hook only tracks buffer state — it does NOT send anything to the
- * PTY. The normal `useTerminalCanvasInput` listener still handles that
- * on the same element. We attach in the capture phase so Tab-with-
+ * PTY. The `useCanvasIME` listener on the same element handles that.
+ * We attach in the capture phase so Tab-with-
  * suggestion can stopPropagation before the default `\t` is written.
  *
  * Buffer lifecycle (when `enabled`):

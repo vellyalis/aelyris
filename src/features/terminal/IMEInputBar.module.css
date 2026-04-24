@@ -1,25 +1,40 @@
 .bar {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  position: relative;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
-  background: rgba(30, 30, 46, 0.96);
-  border-top: 1px solid var(--gold);
+  background: rgba(30, 30, 46, 0.88);
+  border-top: 1px solid rgba(180, 140, 80, 0.35);
   backdrop-filter: blur(8px);
-  z-index: 50;
-  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.3);
+  transition: border-top-color 160ms ease, background 160ms ease,
+    box-shadow 160ms ease;
 }
 
-.icon {
+.bar.focused {
+  background: rgba(30, 30, 46, 0.96);
+  border-top-color: var(--gold);
+  box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(180, 140, 80, 0.12) inset;
+}
+
+.indicator {
+  min-width: 20px;
+  text-align: center;
   color: var(--gold);
-  font-size: 11px;
+  font-size: 13px;
   font-family: var(--font-mono);
-  white-space: nowrap;
-  opacity: 0.85;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  opacity: 0.55;
+  line-height: 1.4;
+  padding: var(--space-1) 0;
+  transition: opacity 160ms ease;
+  user-select: none;
+}
+
+.bar.focused .indicator {
+  opacity: 1;
 }
 
 .input {
@@ -32,10 +47,21 @@
   font-size: 14px;
   line-height: 1.4;
   padding: var(--space-1) 0;
+  resize: none;
+  overflow-y: auto;
+  min-height: calc(14px * 1.4);
+  max-height: calc(14px * 1.4 * 5);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
 }
 
 .input::placeholder {
   color: var(--text-muted);
+  opacity: 0.65;
+}
+
+.bar:not(.focused) .input::placeholder {
+  opacity: 0.4;
 }
 
 .hint {
@@ -43,21 +69,8 @@
   font-size: 11px;
   font-family: var(--font-mono);
   white-space: nowrap;
-  opacity: 0.7;
-}
-
-.close {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-sm);
-  font-size: 14px;
-  line-height: 1;
-}
-
-.close:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--text-primary);
+  opacity: 0.55;
+  line-height: 1.4;
+  padding: var(--space-1) 0;
+  user-select: none;
 }

@@ -3,9 +3,10 @@ import { openUrl as tauriOpenUrl } from "@tauri-apps/plugin-opener";
 
 import { useTerminalSnapshot } from "../../shared/hooks/useTerminalSnapshot";
 import {
-  useTerminalCanvasInput,
+  useCanvasIME,
+  useImePosition,
   type WriteBytesFn,
-} from "./hooks/useTerminalCanvasInput";
+} from "./hooks/useCanvasIME";
 import {
   CURSOR_COLOR,
   DEFAULT_BG,
@@ -75,6 +76,11 @@ export interface TerminalCanvasProps {
   /** Exposes the underlying canvas element so parents can attach input
    *  mirrors (Phase 3A-2) without duplicating the ref forwarding. */
   onCanvasRef?: (el: HTMLCanvasElement | null) => void;
+  /** Exposes the hidden IME textarea so parents can attach keystroke
+   *  observers (ghost-text mirror, history trackers). The textarea is the
+   *  true "keyboard input element" since Phase B of the native-IME work —
+   *  the canvas itself no longer receives keydowns. */
+  onInputRef?: (el: HTMLTextAreaElement | null) => void;
 }
 
 interface CellMetrics {
@@ -97,9 +103,16 @@ export function TerminalCanvas({
   onOpenUrl = defaultOpenUrl,
   ghostSuggestion,
   onCanvasRef,
+  onInputRef,
 }: TerminalCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [inputEl, setInputEl] = useState<HTMLCanvasElement | null>(null);
+  const [canvasEl, setCanvasEl] = useState<HTMLCanvasElement | null>(null);
+  const [textareaEl, setTextareaEl] = useState<HTMLTextAreaElement | null>(
+    null,
+  );
+  // Alias kept so existing mouse-related effects (selection, link hover)
+  // read the canvas element under their original name.
+  const inputEl = canvasEl;
   const prevSnapshotRef = useRef<GridSnapshot | null>(null);
   const prevSelectionRef = useRef<SelectionRange | null>(null);
   const prevMatchesKeyRef = useRef<string>("");
@@ -109,12 +122,17 @@ export function TerminalCanvas({
   const prevGhostRef = useRef<string>("");
   const [hoveredLink, setHoveredLink] = useState<LinkSpan | null>(null);
 
-  useTerminalCanvasInput(terminalId, inputEl, writeBytes);
+  useCanvasIME({ terminalId, textarea: textareaEl, writeBytes });
   const liveSnapshot = useTerminalSnapshot(
     snapshotOverride === undefined ? terminalId : null,
   );
   const snapshot =
     snapshotOverride !== undefined ? snapshotOverride : liveSnapshot;
+
+  useEffect(() => {
+    onInputRef?.(textareaEl);
+    return () => onInputRef?.(null);
+  }, [textareaEl, onInputRef]);
 
   const [cursorOn, setCursorOn] = useState(true);
 
@@ -218,21 +236,23 @@ export function TerminalCanvas({
     return () => el.removeEventListener("mousedown", handleLinkClick, true);
   }, [inputEl, handleLinkClick]);
 
+  // Selection clears the moment the user types a character. After Phase B
+  // the textarea owns keydown (the canvas is focus-forwarded), so these
+  // listeners must attach to the textarea — binding to the canvas would
+  // silently break.
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!textareaEl) return;
     const clearOnType = (ev: KeyboardEvent) => {
       if (ev.ctrlKey && ev.shiftKey) return;
       if (!selection) return;
       clearSelection();
     };
-    canvas.addEventListener("keydown", clearOnType);
-    return () => canvas.removeEventListener("keydown", clearOnType);
-  }, [selection, clearSelection]);
+    textareaEl.addEventListener("keydown", clearOnType);
+    return () => textareaEl.removeEventListener("keydown", clearOnType);
+  }, [textareaEl, selection, clearSelection]);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!textareaEl) return;
     const handler = (ev: KeyboardEvent) => {
       if (ev.ctrlKey && ev.shiftKey && (ev.key === "c" || ev.key === "C")) {
         if (!selection) return;
@@ -241,9 +261,9 @@ export function TerminalCanvas({
         void copy();
       }
     };
-    canvas.addEventListener("keydown", handler);
-    return () => canvas.removeEventListener("keydown", handler);
-  }, [selection, copy]);
+    textareaEl.addEventListener("keydown", handler);
+    return () => textareaEl.removeEventListener("keydown", handler);
+  }, [textareaEl, selection, copy]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -370,39 +390,116 @@ export function TerminalCanvas({
     return () => window.clearInterval(id);
   }, [snapshot?.cursor.blinking]);
 
-  // Auto-focus the canvas the first time the terminal is mounted so the user
-  // can type immediately without first clicking. Only fires once per mount —
-  // subsequent renders do not steal focus from other widgets.
+  // Auto-focus the invisible textarea the first time the terminal is mounted
+  // so the user can type immediately without first clicking. Only fires once
+  // per mount — subsequent renders do not steal focus from other widgets.
   const autoFocusedRef = useRef(false);
   useEffect(() => {
     if (autoFocusedRef.current) return;
-    const el = inputEl;
-    if (!el) return;
+    if (!textareaEl) return;
     autoFocusedRef.current = true;
-    el.focus();
-  }, [inputEl]);
+    textareaEl.focus();
+  }, [textareaEl]);
+
+  // Keep the hidden textarea parked at the cursor position and tell Windows
+  // where to anchor the IME candidate window.
+  useImePosition({
+    textarea: textareaEl,
+    cursor: snapshot?.cursor
+      ? { row: snapshot.cursor.row, col: snapshot.cursor.col }
+      : null,
+    cellWidth: cellMetrics.width,
+    cellHeight: cellMetrics.height,
+    canvas: canvasEl,
+  });
+
+  const focusTextarea = useCallback(() => {
+    textareaEl?.focus();
+  }, [textareaEl]);
 
   return (
-    <canvas
-      ref={(node) => {
-        canvasRef.current = node;
-        setInputEl(node);
-        onCanvasRef?.(node);
-      }}
-      width={canvasWidth}
-      height={canvasHeight}
+    <div
       className={className}
-      data-testid="terminal-canvas"
-      data-terminal-id={terminalId}
-      tabIndex={0}
       style={{
+        position: "relative",
         width: `${canvasWidth}px`,
         height: `${canvasHeight}px`,
-        background: DEFAULT_BG,
-        imageRendering: "pixelated",
         outline: "none",
       }}
-    />
+      // Keep the pane reachable via Tab by making the container the
+      // focus-target: its `onFocus` forwards into the hidden textarea so
+      // the keyboard-input element gets focus in one hop. `mousedown`
+      // covers click-to-type since the canvas itself is no longer natively
+      // focusable (see canvas `tabIndex={-1}` below).
+      tabIndex={0}
+      onFocus={focusTextarea}
+      onMouseDown={focusTextarea}
+    >
+      <canvas
+        ref={(node) => {
+          canvasRef.current = node;
+          setCanvasEl(node);
+          onCanvasRef?.(node);
+        }}
+        width={canvasWidth}
+        height={canvasHeight}
+        data-testid="terminal-canvas"
+        data-terminal-id={terminalId}
+        // `-1` keeps the canvas programmatically focus-able (tests /
+        // external `canvas.focus()` callers still work and flow through
+        // `onFocus` to the textarea) without giving it native click-to-
+        // focus behaviour that would fight the container's focus-forward.
+        tabIndex={-1}
+        onFocus={focusTextarea}
+        style={{
+          display: "block",
+          width: `${canvasWidth}px`,
+          height: `${canvasHeight}px`,
+          background: DEFAULT_BG,
+          imageRendering: "pixelated",
+          outline: "none",
+        }}
+      />
+      {/*
+        Hidden IME textarea. `aria-hidden` + explicit offscreen placement
+        hides it from screen readers and the visible layout; `opacity: 0`
+        + `pointer-events: none` keeps it invisible and non-blocking to
+        mouse selection on the canvas. Its `left`/`top` style is updated
+        by `useImePosition` so IME candidate windows anchor at the caret.
+      */}
+      <textarea
+        ref={setTextareaEl}
+        data-testid="terminal-ime-textarea"
+        aria-hidden="true"
+        tabIndex={-1}
+        autoComplete="off"
+        autoCorrect="off"
+        spellCheck={false}
+        style={{
+          position: "absolute",
+          left: 0,
+          top: 0,
+          width: `${cellMetrics.width}px`,
+          height: `${cellMetrics.height}px`,
+          opacity: 0,
+          pointerEvents: "none",
+          border: "none",
+          outline: "none",
+          resize: "none",
+          background: "transparent",
+          color: "transparent",
+          // Match the rendered font so the IME candidate sizing matches.
+          fontFamily,
+          fontSize: `${fontSize}px`,
+          lineHeight: `${cellMetrics.height}px`,
+          padding: 0,
+          margin: 0,
+          overflow: "hidden",
+          // Caret would flash in the wrong position; hide it.
+          caretColor: "transparent",
+        }}
+      />
+    </div>
   );
 }
 
