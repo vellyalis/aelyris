@@ -1,6 +1,7 @@
 import { openUrl as tauriOpenUrl } from "@tauri-apps/plugin-opener";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { useScrollback } from "../../shared/hooks/useScrollback";
 import { useTerminalSnapshot } from "../../shared/hooks/useTerminalSnapshot";
 import {
   CURSOR_COLOR,
@@ -111,6 +112,13 @@ export function TerminalCanvas({
   useCanvasIME({ terminalId, textarea: textareaEl, writeBytes });
   const liveSnapshot = useTerminalSnapshot(snapshotOverride === undefined ? terminalId : null);
   const snapshot = snapshotOverride !== undefined ? snapshotOverride : liveSnapshot;
+  // Scrollback: feed it the *live-source* terminal id so the test path
+  // (snapshotOverride) never reaches out to IPC.
+  const scrollback = useScrollback(
+    snapshotOverride !== undefined ? null : terminalId,
+    snapshot,
+  );
+  const scrolledUp = scrollback.scrollOffset > 0;
 
   useEffect(() => {
     onInputRef?.(textareaEl);
@@ -223,6 +231,30 @@ export function TerminalCanvas({
     return () => el.removeEventListener("mousedown", handleLinkClick, true);
   }, [inputEl, handleLinkClick]);
 
+  // Mouse-wheel scrollback. Positive deltaY (wheel-down) pulls the
+  // viewport toward the live screen; negative deltaY (wheel-up) reveals
+  // older history. We call `preventDefault` unconditionally so the app
+  // window never scrolls as a side effect of scrolling a terminal pane.
+  useEffect(() => {
+    const el = inputEl;
+    if (!el) return;
+    const onWheel = (ev: WheelEvent) => {
+      // Normalise to cell rows. deltaMode 1 (line) and 0 (pixel) are the
+      // only modes browsers emit in practice on mouse wheels / trackpads.
+      const pixelsPerRow = cellMetrics.height || 18;
+      const rowsPerLine = 3;
+      const deltaRows =
+        ev.deltaMode === 1
+          ? Math.round(ev.deltaY) * rowsPerLine
+          : Math.round(ev.deltaY / pixelsPerRow);
+      if (deltaRows === 0) return;
+      ev.preventDefault();
+      scrollback.scrollBy(-deltaRows);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [inputEl, cellMetrics.height, scrollback]);
+
   // Selection clears the moment the user types a character. After Phase B
   // the textarea owns keydown (the canvas is focus-forwarded), so these
   // listeners must attach to the textarea — binding to the canvas would
@@ -298,14 +330,26 @@ export function TerminalCanvas({
     const affectedBySearch = buildRowMask(searchMatches, activeSearchMatch, snapshot.rows);
     const affectedByHover = rowsCoveredByLink(hoveredLink, prevHover);
 
+    // When the viewport is in scrollback, use the composed grid (history
+    // rows on top, live rows below). Overlays (selection / search /
+    // hover / cursor / ghost) are anchored to the live coordinate system,
+    // so we suppress them here; returning to `scrollToLive()` reinstates
+    // every overlay at once.
+    const viewCells = scrolledUp && scrollback.compositeCells
+      ? scrollback.compositeCells
+      : snapshot.cells;
+
     for (let row = 0; row < snapshot.rows; row++) {
-      const rowCells = snapshot.cells[row];
+      const rowCells = viewCells[row];
       const inOld = prevSel ? rowSelection(row, prevSel, snapshot.cols) : null;
-      const inNew = selection ? rowSelection(row, selection, snapshot.cols) : null;
+      const inNew = !scrolledUp && selection ? rowSelection(row, selection, snapshot.cols) : null;
       const selDirtyRow = selectionChanged && (inOld !== null || inNew !== null);
       const matchDirtyRow = matchesChanged && affectedBySearch.has(row);
       const hoverDirtyRow = hoverChanged && affectedByHover.has(row);
       const cursorDirtyRow = cursorDirtyRows.has(row);
+      // Composite rows are freshly allocated each scroll tick, so
+      // ref-equality never short-circuits while scrolled up — which is
+      // exactly what we want (the whole viewport must repaint).
       if (
         !dimsChanged &&
         !selDirtyRow &&
@@ -318,20 +362,25 @@ export function TerminalCanvas({
         continue;
       }
       paintRow(ctx, rowCells, row, cellMetrics, fontSize, fontFamily);
-      paintSearchBands(ctx, row, searchMatches, activeSearchMatch, cellMetrics);
-      if (inNew) {
-        paintSelectionBand(ctx, row, inNew, cellMetrics);
+      if (!scrolledUp) {
+        paintSearchBands(ctx, row, searchMatches, activeSearchMatch, cellMetrics);
+        if (inNew) {
+          paintSelectionBand(ctx, row, inNew, cellMetrics);
+        }
+        paintLinkUnderline(ctx, row, hoveredLink, snapshot.cols, cellMetrics);
       }
-      paintLinkUnderline(ctx, row, hoveredLink, snapshot.cols, cellMetrics);
     }
 
     // Ghost suggestion band — paint BEFORE the cursor so the cursor block
     // (if block-shape) covers its first glyph just like on a real shell.
-    if (ghost && !hasPrintableAfterCursor(snapshot)) {
+    if (!scrolledUp && ghost && !hasPrintableAfterCursor(snapshot)) {
       paintGhostSuggestion(ctx, snapshot, ghost, cellMetrics, fontSize, fontFamily);
     }
 
-    if (snapshot.cursor.visible && cursorOn) {
+    // Cursor only makes sense on the live view — suppress it when
+    // scrolled up so users don't mistake scrollback content for the
+    // active prompt line.
+    if (!scrolledUp && snapshot.cursor.visible && cursorOn) {
       paintCursor(ctx, snapshot, cellMetrics);
     }
 
