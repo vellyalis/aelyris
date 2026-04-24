@@ -175,14 +175,15 @@ impl PtyManager {
     pub fn write(&self, id: &str, data: &[u8]) -> Result<(), String> {
         let mut instances = self.lock_instances()?;
 
-        let instance = instances
-            .get_mut(id)
-            .ok_or_else(|| PtyError::NotFound(id.to_string()).to_string())?;
+        let instance = instances.get_mut(id).ok_or_else(|| {
+            log::warn!("pty write: unknown terminal id={id}");
+            PtyError::NotFound(id.to_string()).to_string()
+        })?;
 
-        instance
-            .writer
-            .write_all(data)
-            .map_err(|e| format!("Write error: {}", e))?;
+        instance.writer.write_all(data).map_err(|e| {
+            log::error!("pty write error id={id}: {e}");
+            format!("Write error: {}", e)
+        })?;
 
         Ok(())
     }
@@ -245,9 +246,10 @@ impl PtyManager {
 
     /// Close and remove a PTY session.
     pub fn close(&self, id: &str) -> Result<(), PtyError> {
-        self.lock_instances()?
-            .remove(id)
-            .ok_or_else(|| PtyError::NotFound(id.to_string()))?;
+        self.lock_instances()?.remove(id).ok_or_else(|| {
+            log::debug!("pty close: unknown terminal id={id}");
+            PtyError::NotFound(id.to_string())
+        })?;
 
         log::info!("Closed terminal {}", id);
         Ok(())

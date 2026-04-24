@@ -59,11 +59,17 @@ impl WorkflowExecutor {
             project_path: project_path.to_string(),
         };
 
+        let phase_count = instance.status.phases.len();
+        let workflow_name = instance.status.workflow_name.clone();
         self.instances
             .lock()
             .map_err(|_| "Lock poisoned".to_string())?
             .insert(id.clone(), instance);
 
+        log::info!(
+            "workflow start id={} name={:?} task={:?} phases={}",
+            id, workflow_name, task_title, phase_count,
+        );
         Ok(id)
     }
 

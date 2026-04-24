@@ -44,7 +44,11 @@ impl NativeTerminalRegistry {
 
     /// Create a session for `id`.
     pub fn create(&self, id: &str, cols: u16, rows: u16) -> Result<(), String> {
-        let engine = TermEngine::new(cols as usize, rows as usize).map_err(|e| e.to_string())?;
+        log::debug!("native session create id={id} cols={cols} rows={rows}");
+        let engine = TermEngine::new(cols as usize, rows as usize).map_err(|e| {
+            log::error!("native session create rejected id={id}: {e}");
+            e.to_string()
+        })?;
         let session = NativeSession {
             engine,
             tracker: DiffTracker::new(),
@@ -67,12 +71,21 @@ impl NativeTerminalRegistry {
     /// for "jump to prompt" to feel responsive.
     pub fn advance(&self, id: &str, bytes: &[u8]) -> AdvanceResult {
         let Ok(mut guard) = self.lock() else {
+            log::warn!("native advance: registry mutex poisoned, dropping {} bytes", bytes.len());
             return AdvanceResult::default();
         };
         let Some(session) = guard.get_mut(id) else {
+            log::debug!("native advance: unknown session id={id}, dropping {} bytes", bytes.len());
             return AdvanceResult::default();
         };
         let new_marks = session.engine.advance(bytes);
+        if !new_marks.is_empty() {
+            log::debug!(
+                "native advance id={id} parsed {} OSC 133 mark(s) (latest kind={:?})",
+                new_marks.len(),
+                new_marks.last().map(|m| m.kind),
+            );
+        }
 
         let now = Instant::now();
         if now.duration_since(session.last_emit_at) < COALESCE_INTERVAL {
@@ -161,7 +174,9 @@ impl NativeTerminalRegistry {
 
     pub fn remove(&self, id: &str) {
         if let Ok(mut guard) = self.lock() {
-            guard.remove(id);
+            if guard.remove(id).is_some() {
+                log::debug!("native session removed id={id}");
+            }
         }
     }
 

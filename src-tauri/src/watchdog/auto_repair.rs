@@ -123,6 +123,11 @@ impl AutoRepairManager {
         let key = debounce_key(&error.matched_line);
         if let Some(last) = self.debounce.get(&key) {
             if now.duration_since(*last) < Duration::from_secs(DEBOUNCE_SECS) {
+                log::debug!(
+                    "auto-repair debounced (same error within {}s): {}",
+                    DEBOUNCE_SECS,
+                    error.matched_line.chars().take(80).collect::<String>(),
+                );
                 return None;
             }
         }
@@ -134,6 +139,12 @@ impl AutoRepairManager {
             .filter(|j| !matches!(j.phase, RepairPhase::Succeeded | RepairPhase::Failed(_)))
             .count();
         if active >= MAX_CONCURRENT_JOBS {
+            log::warn!(
+                "auto-repair at capacity ({}/{}), dropping new trigger: {}",
+                active,
+                MAX_CONCURRENT_JOBS,
+                error.matched_line.chars().take(80).collect::<String>(),
+            );
             return None;
         }
 
@@ -142,6 +153,12 @@ impl AutoRepairManager {
         let id = format!("repair-{}", self.next_id);
         self.next_id += 1;
         let branch = format!("fix/auto-{}", short_hash(&error.matched_line));
+        log::info!(
+            "auto-repair trigger id={} branch={} line={}",
+            id,
+            branch,
+            error.matched_line.chars().take(80).collect::<String>(),
+        );
 
         self.jobs.push(RepairJob {
             id: id.clone(),
@@ -188,6 +205,11 @@ impl AutoRepairManager {
                         } else {
                             RepairPhase::Failed(notif.message.clone())
                         };
+                    }
+                    if notif.is_success {
+                        log::info!("auto-repair success id={} msg={}", job_id, notif.message);
+                    } else {
+                        log::warn!("auto-repair failed id={} msg={}", job_id, notif.message);
                     }
                     notifications.push(notif);
                 }

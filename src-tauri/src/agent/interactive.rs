@@ -111,6 +111,10 @@ impl InteractiveSessionManager {
 
     /// Register a new interactive session
     pub fn register(&self, info: InteractiveSessionInfo) -> Result<(), String> {
+        log::info!(
+            "interactive session register id={} cli={:?} model={}",
+            info.id, info.cli, info.model
+        );
         self.lock_sessions()?
             .insert(info.id.clone(), info);
         Ok(())
@@ -118,7 +122,14 @@ impl InteractiveSessionManager {
 
     /// Remove a session
     pub fn unregister(&self, id: &str) -> Result<Option<InteractiveSessionInfo>, String> {
-        Ok(self.lock_sessions()?.remove(id))
+        let removed = self.lock_sessions()?.remove(id);
+        if let Some(ref info) = removed {
+            log::info!(
+                "interactive session unregister id={} cost=${:.2} tokens={}",
+                info.id, info.cost, info.tokens_used,
+            );
+        }
+        Ok(removed)
     }
 
     /// Get a single session's info
@@ -129,6 +140,12 @@ impl InteractiveSessionManager {
     /// Update session status (e.g. "thinking", "coding", "idle", "done")
     pub fn update_status(&self, id: &str, status: &str) -> Result<(), String> {
         if let Some(session) = self.lock_sessions()?.get_mut(id) {
+            if session.status != status {
+                log::debug!(
+                    "interactive session id={} status {} -> {}",
+                    id, session.status, status,
+                );
+            }
             session.status = status.to_string();
         }
         Ok(())

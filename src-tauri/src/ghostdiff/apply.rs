@@ -63,19 +63,34 @@ pub fn apply_hunk_to_main(main: &str, hunk: &DiffHunk) -> Result<String, String>
         .map(|(i, _)| i)
         .collect();
     match positions.len() {
-        0 => Err(
-            "hunk base context not found in main file — main may have diverged from the layer"
-                .into(),
-        ),
+        0 => {
+            log::warn!(
+                "ghost diff apply: hunk base context not found (base_start={}, base_lines={})",
+                hunk.base_start,
+                hunk.lines.len(),
+            );
+            Err(
+                "hunk base context not found in main file — main may have diverged from the layer"
+                    .into(),
+            )
+        }
         1 => {
             let pos = positions[0];
             let mut out = String::with_capacity(main.len() + after_view.len());
             out.push_str(&main[..pos]);
             out.push_str(&after_view);
             out.push_str(&main[pos + base_view.len()..]);
+            log::debug!("ghost diff apply ok pos={} hunk_lines={}", pos, hunk.lines.len());
             Ok(out)
         }
-        _ => Err("hunk base context is ambiguous in main file — refuse to patch".into()),
+        _ => {
+            log::warn!(
+                "ghost diff apply: ambiguous base context ({} matches) at base_start={}",
+                positions.len(),
+                hunk.base_start,
+            );
+            Err("hunk base context is ambiguous in main file — refuse to patch".into())
+        }
     }
 }
 
