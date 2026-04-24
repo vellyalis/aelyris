@@ -1,0 +1,353 @@
+//! Phase 3D-1 v2b: integration tests for the upgrade-ticket WS auth path.
+//!
+//! Covered:
+//! - `POST /sessions/:id/stream-ticket` mints a ticket for an existing session
+//! - `POST /sessions/:id/stream-ticket` 404s for a nonexistent session
+//! - `POST /sessions/:id/stream-ticket` 401s without a bearer
+//! - Ticket redemption succeeds exactly once
+//! - Ticket bound to the wrong session is rejected
+//! - Legacy `?token=` path still works (deprecated)
+//!
+//! WS-level redemption tests use the same `spawn_server` pattern as
+//! `test_api_3d1.rs` and only run on Windows where ConPTY is available for
+//! session creation.
+
+use std::sync::Arc;
+use std::time::Duration;
+
+use aether_terminal_lib::api::{
+    self, ApiState, AuthConfig, RateLimiter, TicketRegistry, TICKET_TTL_SECS,
+};
+use aether_terminal_lib::pty::PtyManager;
+use reqwest::header::AUTHORIZATION;
+use reqwest::StatusCode;
+use serde_json::json;
+
+const TOKEN: &str = "v2b-secret";
+
+async fn spawn(state: ApiState) -> (String, ApiState, tokio::task::JoinHandle<()>) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind 127.0.0.1:0");
+    let addr = listener.local_addr().expect("local_addr");
+    let serve_state = state.clone();
+    let join = tokio::spawn(async move {
+        let _ = api::serve_on_listener(serve_state, listener).await;
+    });
+    tokio::task::yield_now().await;
+    (format!("http://{}", addr), state, join)
+}
+
+fn client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .unwrap()
+}
+
+fn base_state() -> ApiState {
+    ApiState::new(PtyManager::new(), AuthConfig::with_token(TOKEN))
+        .with_rate_limiter(Arc::new(RateLimiter::unlimited()))
+}
+
+// ─── Registry unit-ish checks ───────────────────────────────────────────────
+
+#[test]
+fn registry_issues_unique_tickets() {
+    let reg = TicketRegistry::new();
+    let (t1, ttl1) = reg.issue("sess-a");
+    let (t2, ttl2) = reg.issue("sess-a");
+    assert_ne!(t1, t2, "each issue must produce a fresh uuid");
+    assert_eq!(ttl1, Duration::from_secs(TICKET_TTL_SECS));
+    assert_eq!(ttl2, Duration::from_secs(TICKET_TTL_SECS));
+    assert_eq!(reg.live_count(), 2);
+}
+
+#[test]
+fn registry_redeem_is_single_use() {
+    let reg = TicketRegistry::new();
+    let (ticket, _) = reg.issue("sess-a");
+    assert!(reg.redeem_for_session(&ticket, "sess-a"));
+    assert!(
+        !reg.redeem_for_session(&ticket, "sess-a"),
+        "ticket must not be redeemable twice"
+    );
+    assert_eq!(reg.live_count(), 0);
+}
+
+#[test]
+fn registry_rejects_session_mismatch() {
+    let reg = TicketRegistry::new();
+    let (ticket, _) = reg.issue("sess-a");
+    assert!(
+        !reg.redeem_for_session(&ticket, "sess-b"),
+        "ticket minted for sess-a must not redeem against sess-b"
+    );
+    // And the ticket must still be intact for the right session.
+    assert!(reg.redeem_for_session(&ticket, "sess-a"));
+}
+
+#[test]
+fn registry_rejects_unknown_ticket() {
+    let reg = TicketRegistry::new();
+    reg.issue("sess-a");
+    let bogus = aether_terminal_lib::api::TicketId::from("unknown-ticket".to_string());
+    assert!(!reg.redeem_for_session(&bogus, "sess-a"));
+}
+
+// ─── HTTP endpoint ──────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn stream_ticket_without_auth_returns_401() {
+    let (base, state, join) = spawn(base_state()).await;
+
+    let res = client()
+        .post(format!("{}/sessions/abc/stream-ticket", base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+
+    state.trigger_shutdown();
+    let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
+}
+
+#[tokio::test]
+async fn stream_ticket_for_nonexistent_session_returns_404() {
+    let (base, state, join) = spawn(base_state()).await;
+
+    let res = client()
+        .post(format!("{}/sessions/nonexistent/stream-ticket", base))
+        .header(AUTHORIZATION, format!("Bearer {}", TOKEN))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+
+    state.trigger_shutdown();
+    let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
+}
+
+#[cfg(target_os = "windows")]
+#[tokio::test]
+async fn stream_ticket_for_existing_session_returns_uuid_and_ttl() {
+    let (base, state, join) = spawn(base_state()).await;
+    let c = client();
+
+    let create_res = c
+        .post(format!("{}/sessions", base))
+        .header(AUTHORIZATION, format!("Bearer {}", TOKEN))
+        .json(&json!({"shell": "cmd", "cols": 80, "rows": 24}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create_res.status(), StatusCode::OK);
+    let id: String = create_res
+        .json::<serde_json::Value>()
+        .await
+        .unwrap()
+        .get("id")
+        .and_then(|v| v.as_str().map(ToString::to_string))
+        .expect("id in response");
+
+    let ticket_res = c
+        .post(format!("{}/sessions/{}/stream-ticket", base, id))
+        .header(AUTHORIZATION, format!("Bearer {}", TOKEN))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(ticket_res.status(), StatusCode::OK);
+    let body: serde_json::Value = ticket_res.json().await.unwrap();
+    let ticket = body
+        .get("ticket")
+        .and_then(|v| v.as_str())
+        .expect("ticket string");
+    // UUIDv4 string length = 36 (8-4-4-4-12).
+    assert_eq!(ticket.len(), 36);
+    let expires_in_ms = body
+        .get("expires_in_ms")
+        .and_then(|v| v.as_u64())
+        .expect("expires_in_ms number");
+    assert_eq!(expires_in_ms, TICKET_TTL_SECS * 1000);
+
+    // Cleanup — close the session so the PtyManager Drop path doesn't have
+    // to leak on shutdown.
+    let _ = c
+        .delete(format!("{}/sessions/{}", base, id))
+        .header(AUTHORIZATION, format!("Bearer {}", TOKEN))
+        .send()
+        .await;
+
+    state.trigger_shutdown();
+    let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
+}
+
+// ─── WS redemption via ticket + legacy token ────────────────────────────────
+
+#[cfg(target_os = "windows")]
+#[tokio::test]
+async fn ws_accepts_ticket_query_param() {
+    use tokio_tungstenite::tungstenite::Message;
+
+    let (base, state, join) = spawn(base_state()).await;
+    let c = client();
+
+    // Create session.
+    let id: String = c
+        .post(format!("{}/sessions", base))
+        .header(AUTHORIZATION, format!("Bearer {}", TOKEN))
+        .json(&json!({"shell": "cmd", "cols": 80, "rows": 24}))
+        .send()
+        .await
+        .unwrap()
+        .json::<serde_json::Value>()
+        .await
+        .unwrap()
+        .get("id")
+        .and_then(|v| v.as_str().map(ToString::to_string))
+        .unwrap();
+
+    // Mint a ticket.
+    let ticket: String = c
+        .post(format!("{}/sessions/{}/stream-ticket", base, id))
+        .header(AUTHORIZATION, format!("Bearer {}", TOKEN))
+        .send()
+        .await
+        .unwrap()
+        .json::<serde_json::Value>()
+        .await
+        .unwrap()
+        .get("ticket")
+        .and_then(|v| v.as_str().map(ToString::to_string))
+        .unwrap();
+
+    // WS connect using the ticket (no Authorization header).
+    let ws_url = base.replacen("http://", "ws://", 1);
+    let url = format!(
+        "{}/sessions/{}/stream?ticket={}",
+        ws_url, id, ticket
+    );
+    let (mut ws, _resp) = tokio_tungstenite::connect_async(&url)
+        .await
+        .expect("ws connect with ticket");
+    // We should get at least one inbound frame (PTY banner). Timing out is
+    // a test failure, not an expected quiet period.
+    let first = tokio::time::timeout(Duration::from_secs(3), {
+        use futures_util::StreamExt;
+        ws.next()
+    })
+    .await
+    .expect("frame within 3s")
+    .expect("stream yields Some")
+    .expect("frame is Ok");
+    assert!(matches!(first, Message::Binary(_) | Message::Text(_)));
+
+    // Redeeming the same ticket again must fail.
+    let url2 = format!(
+        "{}/sessions/{}/stream?ticket={}",
+        ws_url, id, ticket
+    );
+    let second = tokio_tungstenite::connect_async(&url2).await;
+    assert!(
+        second.is_err(),
+        "second redemption of the same ticket must fail"
+    );
+
+    // Cleanup.
+    let _ = c
+        .delete(format!("{}/sessions/{}", base, id))
+        .header(AUTHORIZATION, format!("Bearer {}", TOKEN))
+        .send()
+        .await;
+
+    state.trigger_shutdown();
+    let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
+}
+
+#[cfg(target_os = "windows")]
+#[tokio::test]
+async fn ws_still_accepts_legacy_token_query_param() {
+    // v2b keeps `?token=` working so existing scripts and early tickets
+    // adopters have a deprecation grace period. The deprecation itself is
+    // surfaced via `log::warn!` — we don't assert on the log here, only
+    // that auth still succeeds.
+    let (base, state, join) = spawn(base_state()).await;
+    let c = client();
+
+    let id: String = c
+        .post(format!("{}/sessions", base))
+        .header(AUTHORIZATION, format!("Bearer {}", TOKEN))
+        .json(&json!({"shell": "cmd", "cols": 80, "rows": 24}))
+        .send()
+        .await
+        .unwrap()
+        .json::<serde_json::Value>()
+        .await
+        .unwrap()
+        .get("id")
+        .and_then(|v| v.as_str().map(ToString::to_string))
+        .unwrap();
+
+    let ws_url = base.replacen("http://", "ws://", 1);
+    let url = format!(
+        "{}/sessions/{}/stream?token={}",
+        ws_url, id, TOKEN
+    );
+    let connect_res = tokio_tungstenite::connect_async(&url).await;
+    assert!(
+        connect_res.is_ok(),
+        "legacy ?token= must still authenticate: {:?}",
+        connect_res.err()
+    );
+
+    let _ = c
+        .delete(format!("{}/sessions/{}", base, id))
+        .header(AUTHORIZATION, format!("Bearer {}", TOKEN))
+        .send()
+        .await;
+
+    state.trigger_shutdown();
+    let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
+}
+
+#[tokio::test]
+async fn ws_rejects_unknown_ticket() {
+    let (base, state, join) = spawn(base_state()).await;
+
+    let ws_url = base.replacen("http://", "ws://", 1);
+    let url = format!(
+        "{}/sessions/any/stream?ticket=00000000-0000-0000-0000-000000000000",
+        ws_url
+    );
+    let connect_res = tokio_tungstenite::connect_async(&url).await;
+    assert!(
+        connect_res.is_err(),
+        "unknown ticket must not authenticate"
+    );
+
+    state.trigger_shutdown();
+    let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
+}
+
+#[tokio::test]
+async fn ticket_bound_to_different_session_is_rejected_on_ws() {
+    // Even if the ticket exists in the registry, redemption must fail when
+    // the path session_id doesn't match what the ticket was minted for.
+    let reg = Arc::new(TicketRegistry::new());
+    let (ticket, _) = reg.issue("sess-a");
+    let state = ApiState::new(PtyManager::new(), AuthConfig::with_token(TOKEN))
+        .with_rate_limiter(Arc::new(RateLimiter::unlimited()))
+        .with_tickets(reg);
+    let (base, state, join) = spawn(state).await;
+
+    let ws_url = base.replacen("http://", "ws://", 1);
+    let url = format!("{}/sessions/sess-b/stream?ticket={}", ws_url, ticket.as_str());
+    let connect_res = tokio_tungstenite::connect_async(&url).await;
+    assert!(
+        connect_res.is_err(),
+        "ticket minted for sess-a must not unlock sess-b"
+    );
+
+    state.trigger_shutdown();
+    let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
+}
