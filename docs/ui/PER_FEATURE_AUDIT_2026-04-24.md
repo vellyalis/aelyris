@@ -114,10 +114,12 @@ _(none — all P0 items closed in 4eec6df)_
 6. ⚠️ **AgentInspector** — tab labels (Conductor/Diffs) + selected state contrast (2px gold border-bottom + focus ring) landed. Card info-budget collapse is deferred (larger refactor of session-card layout).
 7. ✅ **ProjectHeaderBar** — `.headerBtn` stretched to 48px, `.controlsSeparator` between app actions and window controls, `.changes` muted.
 
-### P4 — cross-cluster unification
-1. Hover token unification (`--row-hover`?)
-2. Plus icon standardization
-3. Panel header primitive rollout
+### P4 — cross-cluster unification — ✅ closed in `444c615`
+1. ✅ `--row-hover` + `--row-hover-strong` tokens added; retrofitted SCM/Kanban/Helm (was purple)/SubagentList/FileTree/CommandPalette/QuickOpen/HistorySearch/RepairJobs.
+2. ✅ Plus icon size normalized to 12 across panel-header add buttons (Kanban/Worktree/Watchdog were 14). SCM inline stage stays at 10 (deliberate density).
+3. ✅ Git-icon density collapsed from 9/10/11/14 range to 10–12 in tight-row context; Worktree card icon 14 → 12, Kanban branch icons 9 → 10.
+4. ✅ PanelHeader rolled out to WorktreeManager (header + action cluster).
+5. ✅ Full Radix Dialog migration landed for SessionAnalytics, OnboardingOverlay, and QuickOpen — focus trap + Escape now inherited from Radix, global `.sr-only` utility hoisted into `global.css`.
 
 ---
 
