@@ -1006,8 +1006,9 @@ async fn issue_stream_ticket(
 ) -> ApiResult<Json<StreamTicket>> {
     // Session must already exist — avoids minting tickets for nonexistent
     // ids, which would otherwise look like a successful ticket issuance
-    // but fail loudly on WS upgrade.
-    if !state.pty.list().iter().any(|s| s == &id) {
+    // but fail loudly on WS upgrade. `contains` is O(1) on the HashMap;
+    // `list` was O(n) with an allocation per id.
+    if !state.pty.contains(&id) {
         return Err(ApiError::NotFound(id));
     }
     let (ticket, ttl) = state.tickets.issue(&id);

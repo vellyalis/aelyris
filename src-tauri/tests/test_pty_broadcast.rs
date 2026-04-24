@@ -49,6 +49,19 @@ fn subscribe_output_unknown_id_returns_notfound() {
 }
 
 #[test]
+fn contains_tracks_session_lifecycle() {
+    let mgr = PtyManager::new();
+
+    assert!(!mgr.contains("no-such-id"));
+
+    let id = mgr.spawn(&ShellType::Cmd, 80, 24, None).expect("spawn");
+    assert!(mgr.contains(&id), "spawned id must be tracked");
+
+    mgr.close(&id).expect("close");
+    assert!(!mgr.contains(&id), "closed id must not be tracked");
+}
+
+#[test]
 fn subscribe_output_after_close_returns_notfound() {
     // Guards against a regression where `close` would remove the
     // `PtyInstance` from the map but leave the `broadcast::Sender` reachable

@@ -187,6 +187,20 @@ impl PtyManager {
         Ok(())
     }
 
+    /// Check whether a session with the given id is currently tracked.
+    ///
+    /// Cheaper than `list()` when the caller only needs existence: `list`
+    /// clones every id plus its `Instant` and sorts them, while `contains`
+    /// is one `HashMap::contains_key`. Used by the API's
+    /// `issue_stream_ticket` to validate the session exists before minting
+    /// a ticket.
+    pub fn contains(&self, id: &str) -> bool {
+        self.instances
+            .lock()
+            .map(|i| i.contains_key(id))
+            .unwrap_or(false)
+    }
+
     /// Subscribe to a PTY's output stream.
     ///
     /// Returns a fresh `broadcast::Receiver` on every call. A single
