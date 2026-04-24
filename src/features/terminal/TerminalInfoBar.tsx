@@ -8,12 +8,20 @@ import {
   X,
 } from "lucide-react";
 import { memo } from "react";
+import { lastCommandEnd, usePromptMarks } from "../../shared/hooks/usePromptMarks";
 import styles from "./TerminalInfoBar.module.css";
 
 interface TerminalInfoBarProps {
   shell: string;
   cwd?: string;
   branch?: string;
+  /**
+   * PTY id. When present, the bar subscribes to OSC 133 prompt marks and
+   * renders a coloured dot for the last command's exit status. Pass `null`
+   * when the terminal has not finished spawning yet — the indicator simply
+   * stays hidden until the first mark arrives.
+   */
+  terminalId?: string | null;
   activeAgent?: { model: string; cost: number } | null;
   isActive?: boolean;
   isMaximized?: boolean;
@@ -29,6 +37,7 @@ export const TerminalInfoBar = memo(function TerminalInfoBar({
   shell,
   cwd,
   branch,
+  terminalId,
   activeAgent,
   isActive: _isActive,
   isMaximized,
@@ -40,10 +49,16 @@ export const TerminalInfoBar = memo(function TerminalInfoBar({
   onClose,
 }: TerminalInfoBarProps) {
   const dir = cwd?.split("/").filter(Boolean).slice(-2).join("/") ?? "";
+  // Hook is always called (React rules); it no-ops when terminalId is null.
+  const marks = usePromptMarks(terminalId ?? null);
+  const lastEnd = lastCommandEnd(marks);
 
   return (
     <div className={styles.bar}>
       <span className={styles.shell}>{shell}</span>
+      {lastEnd && (
+        <ExitStatusDot exitCode={lastEnd.exitCode} />
+      )}
       {dir && <span className={styles.cwd}>~/{dir}</span>}
       {branch && (
         <span className={styles.branch}>
@@ -118,3 +133,41 @@ export const TerminalInfoBar = memo(function TerminalInfoBar({
     </div>
   );
 });
+
+interface ExitStatusDotProps {
+  exitCode: number | null;
+}
+
+/**
+ * Small coloured dot reporting the last command's exit status. Powered by
+ * OSC 133;D — only rendered after a shell integration script has emitted
+ * at least one CommandEnd mark, so sessions without the integration show
+ * nothing (rather than a misleading "green, all good" state).
+ *
+ * - `exit 0`   → green  (success)
+ * - `exit !=0` → red    (failure, with the code in the tooltip)
+ * - `null`     → muted  (shell signalled an end but did not report a code)
+ */
+function ExitStatusDot({ exitCode }: ExitStatusDotProps) {
+  const color =
+    exitCode === null
+      ? "var(--text-muted)"
+      : exitCode === 0
+        ? "var(--ctp-green)"
+        : "var(--ctp-red)";
+  const label =
+    exitCode === null
+      ? "Last command finished (exit code unreported)"
+      : exitCode === 0
+        ? "Last command succeeded (exit 0)"
+        : `Last command failed (exit ${exitCode})`;
+  return (
+    <span
+      className={styles.exitDot}
+      style={{ background: color }}
+      role="status"
+      aria-label={label}
+      title={label}
+    />
+  );
+}

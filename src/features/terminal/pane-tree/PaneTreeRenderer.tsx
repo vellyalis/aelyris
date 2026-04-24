@@ -9,6 +9,11 @@ interface PaneTreeRendererProps {
   tree: PaneNode;
   activePaneId: string | null;
   maximizedPaneId: string | null;
+  /**
+   * paneId → PTY terminalId. `undefined` until the terminal finishes
+   * spawning; consumers must gracefully fall back while it is absent.
+   */
+  terminalIds: Map<string, string>;
   onFocusPane: (id: string) => void;
   onSplit: (id: string, direction: SplitDirection) => void;
   onClose: (id: string) => void;
@@ -47,6 +52,7 @@ export function PaneTreeRenderer({
   tree,
   activePaneId,
   maximizedPaneId,
+  terminalIds,
   onFocusPane,
   onSplit,
   onClose,
@@ -259,6 +265,7 @@ export function PaneTreeRenderer({
             <TerminalInfoBar
               shell={SHELL_LABELS[leaf.shell] ?? leaf.shell}
               cwd={leaf.cwd}
+              terminalId={terminalIds.get(leaf.id) ?? null}
               isActive={isActive}
               isMaximized={isMaximized}
               onSplitRight={() => onSplit(leaf.id, "right")}

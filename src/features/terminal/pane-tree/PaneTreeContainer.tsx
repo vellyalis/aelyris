@@ -18,6 +18,7 @@ export function PaneTreeContainer({ shell, cwd }: PaneTreeContainerProps) {
     tree,
     activePaneId,
     maximizedPaneId,
+    terminalIds,
     setActivePaneId,
     split,
     close,
@@ -41,6 +42,7 @@ export function PaneTreeContainer({ shell, cwd }: PaneTreeContainerProps) {
       tree={tree}
       activePaneId={activePaneId}
       maximizedPaneId={maximizedPaneId}
+      terminalIds={terminalIds}
       onFocusPane={setActivePaneId}
       onSplit={split}
       onClose={close}
