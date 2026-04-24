@@ -52,6 +52,19 @@
   height: 22px;
 }
 .row:hover { background: var(--row-hover); color: var(--text-primary); }
+/* Keyboard-nav cursor — `rowFocused` marks the current treeitem under the
+   arrow-key cursor. Paints like a hover so focus-visible + cursor stay in
+   sync, but survives mouse-leave so the cursor position is still legible
+   after the user moved the mouse away. */
+.row.rowFocused {
+  background: var(--row-hover);
+  color: var(--text-primary);
+  box-shadow: inset 2px 0 0 var(--gold);
+}
+.row:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: -2px;
+}
 .searchInput:hover { border-color: var(--white-10); }
 .arrow {
   font-size: var(--text-2xs);

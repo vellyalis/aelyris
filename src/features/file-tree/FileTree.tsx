@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import * as RadixContextMenu from "@radix-ui/react-context-menu";
 import { showPrompt } from "../../shared/ui/PromptDialog";
@@ -39,6 +39,45 @@ interface TreeActions {
   changedSet: Set<string>;
 }
 
+interface FlatEntry {
+  name: string;
+  path: string;
+  is_dir: boolean;
+  file_type: string;
+  depth: number;
+  isOpen: boolean;
+  parent: string | null;
+}
+
+function flattenVisible(
+  root: string,
+  entries: Map<string, FileEntry[]>,
+  expanded: Set<string>,
+): FlatEntry[] {
+  const out: FlatEntry[] = [];
+  const walk = (dir: string, depth: number) => {
+    const items = entries.get(dir);
+    if (!items) return;
+    for (const item of items) {
+      const isOpen = expanded.has(item.path);
+      out.push({
+        name: item.name,
+        path: item.path,
+        is_dir: item.is_dir,
+        file_type: item.file_type,
+        depth,
+        isOpen,
+        parent: dir,
+      });
+      if (item.is_dir && isOpen) {
+        walk(item.path, depth + 1);
+      }
+    }
+  };
+  walk(root, 0);
+  return out;
+}
+
 export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = [] }: FileTreeProps) {
   const [currentRoot, setCurrentRoot] = useState(rootPath);
   const [searchQuery, setSearchQuery] = useState("");
@@ -47,6 +86,8 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set([rootPath]));
   const [contents, setContents] = useState<Map<string, FileEntry[]>>(new Map());
   const [loading, setLoading] = useState<Set<string>>(new Set());
+  const [focusedPath, setFocusedPath] = useState<string | null>(null);
+  const rowRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
 
   useEffect(() => { setCurrentRoot(rootPath); }, [rootPath]);
 
@@ -166,8 +207,129 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
     changedSet,
   };
 
+  // Flat ordered list of visible rows — drives both the keyboard cursor and
+  // roving tabindex. Recomputed only when the tree shape changes.
+  const flatEntries = useMemo(
+    () => flattenVisible(currentRoot, contents, expanded),
+    [currentRoot, contents, expanded],
+  );
+
+  // Seed focus onto the first visible row once data arrives so Tab into the
+  // tree lands somewhere sensible. Preserved across tree edits unless the
+  // focused path disappears.
+  useEffect(() => {
+    if (flatEntries.length === 0) return;
+    if (focusedPath && flatEntries.some((e) => e.path === focusedPath)) return;
+    setFocusedPath(flatEntries[0].path);
+  }, [flatEntries, focusedPath]);
+
+  const moveFocus = useCallback(
+    (delta: number) => {
+      if (flatEntries.length === 0) return;
+      const idx = focusedPath
+        ? flatEntries.findIndex((e) => e.path === focusedPath)
+        : -1;
+      const nextIdx = Math.max(0, Math.min(flatEntries.length - 1, (idx < 0 ? 0 : idx) + delta));
+      const next = flatEntries[nextIdx];
+      if (next) {
+        setFocusedPath(next.path);
+        rowRefs.current.get(next.path)?.focus();
+      }
+    },
+    [flatEntries, focusedPath],
+  );
+
+  const handleTreeKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (flatEntries.length === 0) return;
+      const idx = focusedPath
+        ? flatEntries.findIndex((e) => e.path === focusedPath)
+        : -1;
+      const current = idx >= 0 ? flatEntries[idx] : null;
+
+      switch (e.key) {
+        case "ArrowDown":
+          e.preventDefault();
+          moveFocus(1);
+          return;
+        case "ArrowUp":
+          e.preventDefault();
+          moveFocus(-1);
+          return;
+        case "Home":
+          e.preventDefault();
+          if (flatEntries[0]) {
+            setFocusedPath(flatEntries[0].path);
+            rowRefs.current.get(flatEntries[0].path)?.focus();
+          }
+          return;
+        case "End":
+          e.preventDefault();
+          {
+            const last = flatEntries[flatEntries.length - 1];
+            if (last) {
+              setFocusedPath(last.path);
+              rowRefs.current.get(last.path)?.focus();
+            }
+          }
+          return;
+        case "ArrowRight":
+          if (!current) return;
+          e.preventDefault();
+          if (current.is_dir && !current.isOpen) {
+            toggleDir(current.path);
+          } else if (current.is_dir && current.isOpen) {
+            // Into the first child.
+            const next = flatEntries[idx + 1];
+            if (next && next.depth > current.depth) {
+              setFocusedPath(next.path);
+              rowRefs.current.get(next.path)?.focus();
+            }
+          }
+          return;
+        case "ArrowLeft":
+          if (!current) return;
+          e.preventDefault();
+          if (current.is_dir && current.isOpen) {
+            toggleDir(current.path);
+          } else if (current.parent && current.parent !== currentRoot) {
+            setFocusedPath(current.parent);
+            rowRefs.current.get(current.parent)?.focus();
+          }
+          return;
+        case "Enter":
+        case " ":
+          if (!current) return;
+          e.preventDefault();
+          if (current.is_dir) {
+            toggleDir(current.path);
+          } else {
+            onFileSelect?.(current.path);
+          }
+          return;
+      }
+    },
+    [flatEntries, focusedPath, toggleDir, onFileSelect, currentRoot, moveFocus],
+  );
+
+  const registerRow = useCallback(
+    (path: string) => (el: HTMLButtonElement | null) => {
+      if (el) {
+        rowRefs.current.set(path, el);
+      } else {
+        rowRefs.current.delete(path);
+      }
+    },
+    [],
+  );
+
   return (
-    <div className={styles.tree} role="tree" aria-label="File explorer">
+    <div
+      className={styles.tree}
+      role="tree"
+      aria-label="File explorer"
+      onKeyDown={handleTreeKeyDown}
+    >
       <div className={styles.searchBox}>
         <input
           className={styles.searchInput}
@@ -212,13 +374,24 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
             <span className={styles.rootName}>{currentRoot.split("/").filter(Boolean).pop() ?? "project"}</span>
           </div>
           <div className={styles.list}>
-            {(() => {
-              const entries = contents.get(currentRoot) ?? [];
-              if (entries.length === 0 && !loading.has(currentRoot)) {
-                return <EmptyState preset="files" title="Folder is empty" description="No files or subfolders here." />;
-              }
-              return renderEntries(entries, 0, expanded, contents, loading, toggleDir, onFileSelect, changedSet, changedStatusMap, actions);
-            })()}
+            {flatEntries.length === 0 && !loading.has(currentRoot) ? (
+              <EmptyState preset="files" title="Folder is empty" description="No files or subfolders here." />
+            ) : (
+              flatEntries.map((entry) => (
+                <TreeRow
+                  key={entry.path}
+                  entry={entry}
+                  isFocused={focusedPath === entry.path}
+                  isLoadingChildren={loading.has(entry.path)}
+                  isChanged={changedSet.has(entry.path)}
+                  changeStatus={changedStatusMap.get(entry.path)}
+                  onFocus={() => setFocusedPath(entry.path)}
+                  onActivate={() => entry.is_dir ? toggleDir(entry.path) : onFileSelect?.(entry.path)}
+                  rowRef={registerRow(entry.path)}
+                  actions={actions}
+                />
+              ))
+            )}
           </div>
           {changedFiles.length > 0 && (
             <button
@@ -235,78 +408,87 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
   );
 }
 
-function renderEntries(
-  entries: { name: string; path: string; is_dir: boolean; file_type: string }[],
-  depth: number,
-  expanded: Set<string>,
-  contents: Map<string, { name: string; path: string; is_dir: boolean; file_type: string }[]>,
-  loading: Set<string>,
-  toggleDir: (path: string) => void,
-  onFileSelect: ((path: string) => void) | undefined,
-  changedSet: Set<string>,
-  changedStatusMap: Map<string, string>,
-  actions: TreeActions,
-): React.ReactNode {
-  return entries.map((entry) => {
-    const isOpen = expanded.has(entry.path);
-    const isLoading = loading.has(entry.path);
-    const isChanged = changedSet.has(entry.path);
-    const changeStatus = changedStatusMap.get(entry.path);
-    const dir = entry.is_dir ? entry.path : entry.path.split("/").slice(0, -1).join("/");
+interface TreeRowProps {
+  entry: FlatEntry;
+  isFocused: boolean;
+  isLoadingChildren: boolean;
+  isChanged: boolean;
+  changeStatus: string | undefined;
+  onFocus: () => void;
+  onActivate: () => void;
+  rowRef: (el: HTMLButtonElement | null) => void;
+  actions: TreeActions;
+}
 
-    return (
-      <div key={entry.path}>
-        <RadixContextMenu.Root>
-          <RadixContextMenu.Trigger asChild>
-            <button
-              className={styles.row}
-              style={{ paddingLeft: 8 + depth * 16 }}
-              onClick={() => entry.is_dir ? toggleDir(entry.path) : onFileSelect?.(entry.path)}
-            >
-              {entry.is_dir && (
-                <span className={`${styles.arrow} ${isOpen ? styles.arrowOpen : ""}`}>▸</span>
-              )}
-              {!entry.is_dir && <span className={styles.arrowSpacer} />}
-              <FileIcon type={entry.file_type} isOpen={isOpen} />
-              <span className={`${styles.fileName} ${isChanged ? styles.fileChanged : ""}`}
-                data-status={changeStatus}
-              >{entry.name}</span>
-              {isChanged && changeStatus && (
-                <GitStatusPip status={changeStatus} variant="dot" className={styles.changeDot} />
-              )}
-              {isLoading && <span className={styles.spinner}>…</span>}
-            </button>
-          </RadixContextMenu.Trigger>
-          <RadixContextMenu.Portal>
-            <RadixContextMenu.Content className={styles.ctxMenu}>
-              <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => actions.onNewFile(dir)}>
-                New File
-              </RadixContextMenu.Item>
-              <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => actions.onNewFolder(dir)}>
-                New Folder
-              </RadixContextMenu.Item>
-              {!entry.is_dir && actions.changedSet.has(entry.path) && actions.onOpenDiff && (
-                <>
-                  <RadixContextMenu.Separator className={styles.ctxDivider} />
-                  <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => actions.onOpenDiff!(entry.path)}>
-                    Open Diff
-                  </RadixContextMenu.Item>
-                </>
-              )}
-              <RadixContextMenu.Separator className={styles.ctxDivider} />
-              <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => actions.onRename(entry.path)}>
-                Rename
-              </RadixContextMenu.Item>
-              <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => actions.onDelete(entry.path)}>
-                Delete
-              </RadixContextMenu.Item>
-            </RadixContextMenu.Content>
-          </RadixContextMenu.Portal>
-        </RadixContextMenu.Root>
-        {entry.is_dir && isOpen && contents.has(entry.path) && (
-          renderEntries(contents.get(entry.path)!, depth + 1, expanded, contents, loading, toggleDir, onFileSelect, changedSet, changedStatusMap, actions)
-        )}
-      </div>
-    );
-  });
+function TreeRow({
+  entry,
+  isFocused,
+  isLoadingChildren,
+  isChanged,
+  changeStatus,
+  onFocus,
+  onActivate,
+  rowRef,
+  actions,
+}: TreeRowProps) {
+  const dir = entry.is_dir ? entry.path : entry.path.split("/").slice(0, -1).join("/");
+
+  return (
+    <div>
+      <RadixContextMenu.Root>
+        <RadixContextMenu.Trigger asChild>
+          <button
+            ref={rowRef}
+            className={`${styles.row} ${isFocused ? styles.rowFocused : ""}`}
+            style={{ paddingLeft: 8 + entry.depth * 16 }}
+            role="treeitem"
+            aria-level={entry.depth + 1}
+            aria-expanded={entry.is_dir ? entry.isOpen : undefined}
+            aria-selected={isFocused}
+            tabIndex={isFocused ? 0 : -1}
+            onClick={onActivate}
+            onFocus={onFocus}
+          >
+            {entry.is_dir && (
+              <span className={`${styles.arrow} ${entry.isOpen ? styles.arrowOpen : ""}`} aria-hidden="true">▸</span>
+            )}
+            {!entry.is_dir && <span className={styles.arrowSpacer} aria-hidden="true" />}
+            <FileIcon type={entry.file_type} isOpen={entry.isOpen} />
+            <span className={`${styles.fileName} ${isChanged ? styles.fileChanged : ""}`}
+              data-status={changeStatus}
+            >{entry.name}</span>
+            {isChanged && changeStatus && (
+              <GitStatusPip status={changeStatus} variant="dot" className={styles.changeDot} />
+            )}
+            {isLoadingChildren && <span className={styles.spinner} aria-hidden="true">…</span>}
+          </button>
+        </RadixContextMenu.Trigger>
+        <RadixContextMenu.Portal>
+          <RadixContextMenu.Content className={styles.ctxMenu}>
+            <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => actions.onNewFile(dir)}>
+              New File
+            </RadixContextMenu.Item>
+            <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => actions.onNewFolder(dir)}>
+              New Folder
+            </RadixContextMenu.Item>
+            {!entry.is_dir && actions.changedSet.has(entry.path) && actions.onOpenDiff && (
+              <>
+                <RadixContextMenu.Separator className={styles.ctxDivider} />
+                <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => actions.onOpenDiff!(entry.path)}>
+                  Open Diff
+                </RadixContextMenu.Item>
+              </>
+            )}
+            <RadixContextMenu.Separator className={styles.ctxDivider} />
+            <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => actions.onRename(entry.path)}>
+              Rename
+            </RadixContextMenu.Item>
+            <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => actions.onDelete(entry.path)}>
+              Delete
+            </RadixContextMenu.Item>
+          </RadixContextMenu.Content>
+        </RadixContextMenu.Portal>
+      </RadixContextMenu.Root>
+    </div>
+  );
 }
