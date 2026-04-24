@@ -12,7 +12,7 @@ import { useInputMirror } from "./hooks/useInputMirror";
 import { IMEInputBar, type IMEInputBarHandle } from "./IMEInputBar";
 import { findMatches, nextMatch, previousMatch, type SearchMatch } from "./search";
 import styles from "./TerminalArea.module.css";
-import { TerminalCanvas } from "./TerminalCanvas";
+import { TerminalCanvas, type TerminalNav } from "./TerminalCanvas";
 
 interface NativeTerminalAreaProps {
   shell?: ShellType;
@@ -234,6 +234,13 @@ export function NativeTerminalArea({
   // visibility from this state.
   const aiCli = useAICliDetection();
   const imeBarRef = useRef<IMEInputBarHandle>(null);
+  // Latest nav bundle from <TerminalCanvas>. Stored in a ref so the
+  // keybinding effect below depends only on the ref identity, not on
+  // state that changes every prompt-mark event.
+  const navRef = useRef<TerminalNav | null>(null);
+  const setNav = useCallback((nav: TerminalNav | null) => {
+    navRef.current = nav;
+  }, []);
 
   useEffect(() => {
     if (!terminalId) return;
@@ -417,6 +424,31 @@ export function NativeTerminalArea({
         e.preventDefault();
         setSearchVisible(true);
         requestAnimationFrame(() => searchInputRef.current?.focus());
+        return;
+      }
+      // Scrollback navigation — use Ctrl+Shift to avoid colliding with
+      // shell line-history bindings (Ctrl+P / Ctrl+N in zsh/bash, and
+      // Ctrl+Up/Down in PSReadLine). The nav bundle is provided by
+      // <TerminalCanvas> once a terminal has spawned.
+      if (e.ctrlKey && e.shiftKey && e.key === "ArrowUp") {
+        const nav = navRef.current;
+        if (!nav || !nav.hasHistory()) return;
+        e.preventDefault();
+        nav.jumpToPrevPrompt();
+        return;
+      }
+      if (e.ctrlKey && e.shiftKey && e.key === "ArrowDown") {
+        const nav = navRef.current;
+        if (!nav) return;
+        e.preventDefault();
+        nav.jumpToNextPrompt();
+        return;
+      }
+      if (e.ctrlKey && e.shiftKey && e.key === "End") {
+        const nav = navRef.current;
+        if (!nav) return;
+        e.preventDefault();
+        nav.scrollToLive();
       }
     };
     window.addEventListener("keydown", handler);
@@ -559,6 +591,7 @@ export function NativeTerminalArea({
             snapshotOverride={snapshotOverlay?.grid}
             onCanvasRef={setCanvasEl}
             onInputRef={setCanvasInputEl}
+            onRegisterNav={setNav}
           />
         )}
       </div>

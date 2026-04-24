@@ -129,9 +129,12 @@ impl TermEngine {
                     // parser's cursor reflects the shell's prompt line.
                     self.parser.advance(&mut self.term, &combined[consumed..i]);
                     let (line, _col) = cursor_of(&self.term);
-                    let recorded = self
-                        .prompt_marks
-                        .record(mark, line.min(u16::MAX as usize) as u16);
+                    let history_at_record = self.term.grid().history_size();
+                    let recorded = self.prompt_marks.record(
+                        mark,
+                        line.min(u16::MAX as usize) as u16,
+                        history_at_record.min(u32::MAX as usize) as u32,
+                    );
                     new_marks.push(recorded);
                     // Forward the OSC bytes to alacritty too. Alacritty
                     // ignores unknown OSCs, so this is a no-op for grid
@@ -479,5 +482,39 @@ mod tests {
         assert!(hs >= 2);
         assert!(engine.history_row_text(hs).is_none());
         assert!(engine.history_row_text(hs + 1000).is_none());
+    }
+
+    #[test]
+    fn prompt_marks_capture_history_size_at_record_time() {
+        // Mark recorded on an empty engine sees history_size=0. Push a few
+        // lines through (which scrolls some into history), then record a
+        // second mark — its history_size must reflect the growth. The
+        // delta is what the frontend uses to locate the older mark in
+        // scrollback after the view has moved on.
+        let mut engine = TermEngine::new(20, 3).expect("engine");
+
+        let first = engine.advance(b"\x1b]133;A\x07first\r\n");
+        assert_eq!(first.len(), 1);
+        assert_eq!(first[0].history_size, 0, "first mark should see empty history");
+
+        // Drop five more lines to push content into scrollback.
+        for i in 0..5 {
+            engine.advance_str(&format!("line-{i}\r\n"));
+        }
+        let hs_before_second = engine.history_size();
+        assert!(hs_before_second >= 3);
+
+        let second = engine.advance(b"\x1b]133;A\x07second\r\n");
+        assert_eq!(second.len(), 1);
+        assert_eq!(
+            second[0].history_size as usize, hs_before_second,
+            "second mark should see grown history",
+        );
+        assert!(
+            second[0].history_size > first[0].history_size,
+            "history_size must be monotonic: {} > {}",
+            second[0].history_size,
+            first[0].history_size,
+        );
     }
 }

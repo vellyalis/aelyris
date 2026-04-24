@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ColorKind, type CellSnapshot, type GridSnapshot } from "../types/terminal";
+import type { PromptMark } from "./usePromptMarks";
 
 const BLANK_CELL: CellSnapshot = {
   ch: " ",
@@ -23,8 +24,16 @@ export interface ScrollbackState {
   canScrollDown: boolean;
   /** Positive delta = scroll up into history; negative = toward live. */
   scrollBy: (delta: number) => void;
+  /** Set the offset directly. Clamped to `[0, historySize]`. */
+  scrollToOffset: (offset: number) => void;
   /** Jump straight to the live screen (equivalent to `End` key behaviour). */
   scrollToLive: () => void;
+  /**
+   * Scroll so the given prompt mark lands at the top of the viewport.
+   * Returns `true` on success, `false` when the mark is still in live view
+   * and no scroll was needed, or when the snapshot is missing.
+   */
+  scrollToMark: (mark: PromptMark) => boolean;
   /**
    * The viewport's current cell grid. Equal to `snapshot.cells` when
    * `scrollOffset === 0` (reference-equal so downstream memoisation stays
@@ -128,7 +137,41 @@ export function useScrollback(
     [historySize],
   );
 
+  const scrollToOffset = useCallback(
+    (offset: number) => {
+      if (offset <= 0) {
+        setScrollOffset(0);
+        return;
+      }
+      setScrollOffset(Math.min(offset, historySize));
+    },
+    [historySize],
+  );
+
   const scrollToLive = useCallback(() => setScrollOffset(0), []);
+
+  const scrollToMark = useCallback(
+    (mark: PromptMark): boolean => {
+      if (!snapshot) return false;
+      // Lines added to history since the mark was recorded. Equal to the
+      // number of rows that scrolled off the top of the live screen.
+      const delta = historySize - mark.historySize;
+      if (delta <= mark.screenLine) {
+        // Mark is still on the live screen — no scroll needed. Reset to
+        // live so a stale scrollback view doesn't hide the answer.
+        setScrollOffset(0);
+        return false;
+      }
+      // `n` = history index where the mark row now lives (0 = row
+      // immediately above the live screen, growing downward into
+      // scrollback). `offset = n + 1` puts that row at viewport top.
+      const n = delta - 1 - mark.screenLine;
+      const target = Math.min(historySize, n + 1);
+      setScrollOffset(target);
+      return true;
+    },
+    [snapshot, historySize],
+  );
 
   const compositeCells = useMemo<CellSnapshot[][] | null>(() => {
     if (!snapshot) return null;
@@ -163,7 +206,54 @@ export function useScrollback(
     canScrollUp,
     canScrollDown,
     scrollBy,
+    scrollToOffset,
     scrollToLive,
+    scrollToMark,
     compositeCells,
   };
+}
+
+/**
+ * Find the `PromptStart` mark that should become the target of a
+ * jump-to-prev-prompt action, given the current scrollback state.
+ *
+ * Strategy: walk the marks newest-first and return the first whose
+ * current history index is *strictly greater* than the current viewport
+ * top. That is the most-recent prompt that sits above what the user is
+ * currently looking at.
+ */
+export function findPrevPromptMark(
+  marks: readonly PromptMark[],
+  scrollOffset: number,
+  historySize: number,
+): PromptMark | null {
+  // Viewport top measured in history-index space. At offset 0 the top
+  // sits *just below* history row 0, so we treat it as `-1` for the
+  // comparison below.
+  const topN = scrollOffset === 0 ? -1 : scrollOffset - 1;
+  for (let i = marks.length - 1; i >= 0; i--) {
+    const mark = marks[i];
+    if (mark.kind !== "promptStart") continue;
+    const n = historySize - mark.historySize - 1 - mark.screenLine;
+    if (n > topN) return mark;
+  }
+  return null;
+}
+
+/**
+ * Counterpart to `findPrevPromptMark`: the oldest `PromptStart` mark
+ * strictly below the current viewport top.
+ */
+export function findNextPromptMark(
+  marks: readonly PromptMark[],
+  scrollOffset: number,
+  historySize: number,
+): PromptMark | null {
+  const topN = scrollOffset === 0 ? -1 : scrollOffset - 1;
+  for (const mark of marks) {
+    if (mark.kind !== "promptStart") continue;
+    const n = historySize - mark.historySize - 1 - mark.screenLine;
+    if (n < topN) return mark;
+  }
+  return null;
 }

@@ -17,7 +17,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 function mark(sequence: number, kind: PromptMark["kind"], exitCode: number | null = null): PromptMark {
-  return { kind, screenLine: 0, exitCode, sequence };
+  return { kind, screenLine: 0, exitCode, sequence, historySize: 0 };
 }
 
 describe("usePromptMarks", () => {

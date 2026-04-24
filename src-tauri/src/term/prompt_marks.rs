@@ -50,6 +50,13 @@ pub struct PromptMark {
     /// Monotonic counter across the engine's lifetime. Gives the frontend a
     /// stable ordering even after scrollback eviction shifts line numbers.
     pub sequence: u64,
+    /// Snapshot of `history_size()` at the moment the mark was recorded.
+    /// Combined with the current history size this lets consumers compute
+    /// where the mark *is now* — as lines scroll off the live screen into
+    /// history, the delta `history_size_now - history_size_at_mark` tells
+    /// the frontend how far back in scrollback the mark sits.
+    #[serde(rename = "historySize")]
+    pub history_size: u32,
 }
 
 /// Upper bound on retained marks. A very long session is capped at ~1k
@@ -173,12 +180,18 @@ impl PromptMarkLog {
         Self::default()
     }
 
-    pub fn record(&mut self, payload: PromptMarkPayload, screen_line: u16) -> PromptMark {
+    pub fn record(
+        &mut self,
+        payload: PromptMarkPayload,
+        screen_line: u16,
+        history_size: u32,
+    ) -> PromptMark {
         let mark = PromptMark {
             kind: payload.kind,
             screen_line,
             exit_code: payload.exit_code,
             sequence: self.next_sequence,
+            history_size,
         };
         self.next_sequence += 1;
         if self.marks.len() >= MAX_MARKS {
@@ -291,8 +304,8 @@ mod tests {
     #[test]
     fn log_records_in_order_with_monotonic_sequence() {
         let mut log = PromptMarkLog::new();
-        let a = log.record(PromptMarkPayload { kind: PromptMarkKind::PromptStart, exit_code: None }, 3);
-        let b = log.record(PromptMarkPayload { kind: PromptMarkKind::CommandEnd, exit_code: Some(0) }, 5);
+        let a = log.record(PromptMarkPayload { kind: PromptMarkKind::PromptStart, exit_code: None }, 3, 0);
+        let b = log.record(PromptMarkPayload { kind: PromptMarkKind::CommandEnd, exit_code: Some(0) }, 5, 0);
         assert_eq!(a.sequence, 0);
         assert_eq!(b.sequence, 1);
         assert_eq!(log.len(), 2);
@@ -307,6 +320,7 @@ mod tests {
             log.record(
                 PromptMarkPayload { kind: PromptMarkKind::PromptStart, exit_code: None },
                 0,
+                0,
             );
         }
         assert_eq!(log.len(), MAX_MARKS);
@@ -319,11 +333,12 @@ mod tests {
     #[test]
     fn clear_drops_marks_but_keeps_sequence_counter() {
         let mut log = PromptMarkLog::new();
-        log.record(PromptMarkPayload { kind: PromptMarkKind::PromptStart, exit_code: None }, 0);
-        log.record(PromptMarkPayload { kind: PromptMarkKind::CommandEnd, exit_code: Some(0) }, 0);
+        log.record(PromptMarkPayload { kind: PromptMarkKind::PromptStart, exit_code: None }, 0, 0);
+        log.record(PromptMarkPayload { kind: PromptMarkKind::CommandEnd, exit_code: Some(0) }, 0, 0);
         log.clear();
         let next = log.record(
             PromptMarkPayload { kind: PromptMarkKind::PromptStart, exit_code: None },
+            0,
             0,
         );
         assert_eq!(next.sequence, 2, "sequence counter must stay monotonic across clears");

@@ -1,8 +1,9 @@
 import { openUrl as tauriOpenUrl } from "@tauri-apps/plugin-opener";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { useScrollback } from "../../shared/hooks/useScrollback";
+import { findNextPromptMark, findPrevPromptMark, useScrollback } from "../../shared/hooks/useScrollback";
 import { useTerminalSnapshot } from "../../shared/hooks/useTerminalSnapshot";
+import { usePromptMarks } from "../../shared/hooks/usePromptMarks";
 import {
   CURSOR_COLOR,
   DEFAULT_BG,
@@ -70,6 +71,21 @@ export interface TerminalCanvasProps {
    *  true "keyboard input element" since Phase B of the native-IME work —
    *  the canvas itself no longer receives keydowns. */
   onInputRef?: (el: HTMLTextAreaElement | null) => void;
+  /**
+   * Hands the parent a bundle of scrollback navigation actions. Called
+   * with the same bundle on every prompt-mark or scroll-state change —
+   * the parent should stash the latest in a ref and invoke from its
+   * global keybinding handler. Called with `null` on unmount so the
+   * parent's ref clears cleanly.
+   */
+  onRegisterNav?: (nav: TerminalNav | null) => void;
+}
+
+export interface TerminalNav {
+  jumpToPrevPrompt(): void;
+  jumpToNextPrompt(): void;
+  scrollToLive(): void;
+  hasHistory(): boolean;
 }
 
 interface CellMetrics {
@@ -93,6 +109,7 @@ export function TerminalCanvas({
   ghostSuggestion,
   onCanvasRef,
   onInputRef,
+  onRegisterNav,
 }: TerminalCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [canvasEl, setCanvasEl] = useState<HTMLCanvasElement | null>(null);
@@ -114,11 +131,45 @@ export function TerminalCanvas({
   const snapshot = snapshotOverride !== undefined ? snapshotOverride : liveSnapshot;
   // Scrollback: feed it the *live-source* terminal id so the test path
   // (snapshotOverride) never reaches out to IPC.
-  const scrollback = useScrollback(
-    snapshotOverride !== undefined ? null : terminalId,
-    snapshot,
-  );
+  const scrollbackTerminalId = snapshotOverride !== undefined ? null : terminalId;
+  const scrollback = useScrollback(scrollbackTerminalId, snapshot);
   const scrolledUp = scrollback.scrollOffset > 0;
+  const promptMarks = usePromptMarks(scrollbackTerminalId);
+
+  // Re-export a stable-identity nav bundle so the parent can drive
+  // scrollback navigation from global keybindings without entangling its
+  // state with this component's lifecycle.
+  useEffect(() => {
+    if (!onRegisterNav) return;
+    const nav: TerminalNav = {
+      jumpToPrevPrompt: () => {
+        const mark = findPrevPromptMark(
+          promptMarks,
+          scrollback.scrollOffset,
+          scrollback.historySize,
+        );
+        if (mark) scrollback.scrollToMark(mark);
+      },
+      jumpToNextPrompt: () => {
+        const mark = findNextPromptMark(
+          promptMarks,
+          scrollback.scrollOffset,
+          scrollback.historySize,
+        );
+        if (mark) {
+          scrollback.scrollToMark(mark);
+        } else {
+          // No more marks below — returning to the live screen matches
+          // the Warp / iTerm2 convention.
+          scrollback.scrollToLive();
+        }
+      },
+      scrollToLive: () => scrollback.scrollToLive(),
+      hasHistory: () => scrollback.historySize > 0,
+    };
+    onRegisterNav(nav);
+    return () => onRegisterNav(null);
+  }, [onRegisterNav, promptMarks, scrollback]);
 
   useEffect(() => {
     onInputRef?.(textareaEl);

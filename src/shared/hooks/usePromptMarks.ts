@@ -9,6 +9,13 @@ export interface PromptMark {
   screenLine: number;
   exitCode: number | null;
   sequence: number;
+  /**
+   * `history_size()` at the moment the mark was recorded. Combined with
+   * the engine's *current* history size this lets the UI compute how far
+   * the mark has scrolled into history since recording — essential for
+   * jump-to-prompt navigation (see `useScrollback.scrollToMark`).
+   */
+  historySize: number;
 }
 
 /**
