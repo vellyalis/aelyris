@@ -1,4 +1,15 @@
-import { Activity, AlertTriangle, ClipboardCopy, GitCompare, Layers, Plus, Search, Share2, X } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  ClipboardCopy,
+  GitCompare,
+  Layers,
+  Plus,
+  Search,
+  Share2,
+  Users,
+  X,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { collectActivity, filterActivity, LOG_TYPES, type LogType } from "../../shared/lib/activityFilter";
 import { parseToolUse } from "../../shared/lib/agentLogParser";
@@ -333,8 +344,13 @@ export function AgentInspector({
           >
             <ClipboardCopy size={12} />
           </button>
-          <button className={styles.iconBtn} title="Orchestra mode (3 agents)" onClick={handleOrchestra}>
-            ♫
+          <button
+            className={styles.iconBtn}
+            title="Orchestra mode (3 agents)"
+            aria-label="Orchestra mode"
+            onClick={handleOrchestra}
+          >
+            <Users size={12} strokeWidth={1.75} aria-hidden="true" />
           </button>
           <button className={styles.iconBtn} title="Add session" onClick={() => setShowPromptInput(true)}>
             <Plus size={12} />

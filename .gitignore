@@ -42,6 +42,12 @@ src-tauri/target/
 test-results/
 playwright-report/
 .playwright-mcp/
+# Ad-hoc screenshots from Playwright MCP saved at repo root
+*-page.png
+aether-*.png
+after-*.png
+no-*.png
+settings-*.png
 
 # Claude Code runtime state (local to each developer)
 .claude/worktrees/
