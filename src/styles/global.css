@@ -194,6 +194,116 @@
   --text-4xl: 21px;
   --text-5xl: 25px;
 
+  /* ─────────────────────────────────────────────────────────────────
+   * Liquid Glass + Apple HIG extensions (introduced 2026-04-24)
+   * Reference: Apple Liquid Glass (iOS 26 / macOS 26), Linear's
+   * luminance-stacking model. See docs/ui/LIQUID_GLASS_AUDIT_2026-04-24.md
+   * ─────────────────────────────────────────────────────────────────
+   */
+
+  /* Specular rim — the 1px inner top highlight that makes glass feel lit.
+     Apply via `box-shadow: var(--rim-top), <rest>`. */
+  --rim-top: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --rim-top-strong: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+
+  /* Inset shadow — "recessed" panel affordance (Linear Level 2b). */
+  --inset-recessed: inset 0 0 12px rgba(0, 0, 0, 0.2);
+
+  /* Chromatic lensing — subtle warm/cool caustic at glass edges. */
+  --lens-edge: linear-gradient(
+    135deg,
+    rgba(200, 160, 80, 0.04) 0%,
+    transparent 30%,
+    transparent 70%,
+    rgba(148, 226, 213, 0.03) 100%
+  );
+
+  /* Three-stack shadow system (Apple ambient + key + contact).
+     Compose with `box-shadow: var(--rim-top), var(--shadow-elevated);` */
+  --shadow-ambient: 0 1px 1px rgba(0, 0, 0, 0.08);
+  --shadow-key: 0 4px 12px rgba(0, 0, 0, 0.24);
+  --shadow-contact: 0 12px 32px rgba(0, 0, 0, 0.4);
+  --shadow-elevated: var(--shadow-ambient), var(--shadow-key), var(--shadow-contact);
+
+  /* Dialog shadow — Linear's 5-stop stack for popovers / modals. */
+  --shadow-dialog:
+    0 0 0 1px rgba(0, 0, 0, 0.08),
+    0 1px 1px rgba(0, 0, 0, 0.08),
+    0 3px 2px rgba(0, 0, 0, 0.07),
+    0 5px 2px rgba(0, 0, 0, 0.04),
+    0 8px 2px rgba(0, 0, 0, 0.01);
+
+  /* Semantic elevation tiers (retrofit target for raw one-off box-shadows). */
+  --shadow-elev-1: 0 1px 2px rgba(0, 0, 0, 0.12);
+  --shadow-elev-2: 0 2px 6px rgba(0, 0, 0, 0.2);
+  --shadow-elev-3: var(--shadow-elevated);
+  --shadow-elev-4: var(--shadow-dialog);
+
+  /* Apple spring easing — primary gentle and press-bounce variants.
+     `--ease-silk` is kept as an alias for one release to avoid churn. */
+  --ease-apple: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-apple-bounce: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
+  /* Semantic duration scale (alongside the legacy fast/normal/slow/luxe).
+     Use these for new code; old tokens remain valid. */
+  --duration-hover: 150ms;
+  --duration-state: 200ms;
+  --duration-panel: 300ms;
+
+  /* Letter-spacing scale — Apple/Linear/Geist all apply negative tracking.
+     Expressed in `em` so it scales with font-size automatically. */
+  --tracking-display: -0.025em;
+  --tracking-heading: -0.015em;
+  --tracking-body: -0.011em;
+  --tracking-caption: -0.006em;
+  --tracking-micro: 0;
+  --tracking-label: 0.05em; /* positive, for uppercase UI labels */
+
+  /* Line-height additions to fill the tight/normal gap. */
+  --leading-display: 1.1;
+  --leading-snug: 1.4;
+
+  /* OpenType feature baselines. IBM Plex supports `ss03` (stylistic set for
+     alternate terminals), `cv11/cv13` (character variants), and `tnum` for
+     tabular figures. Apply on html/body + numeric columns respectively. */
+  --font-features-ui: "ss03" 1, "cv11" 1, "cv13" 1, "kern" 1;
+  --font-features-mono: "zero" 1, "kern" 1;
+  --font-features-num: "tnum" 1, "lnum" 1;
+
+  /* Row height tiers — converges FileTree/SCM/Kanban/Helm/Conductor drift. */
+  --row-h-dense: 24px; /* FileTree, SCM fileRow, Conductor chip */
+  --row-h-standard: 28px; /* Kanban card, Helm task, WorkspaceTabs */
+  --row-h-comfortable: 32px; /* AgentInspector-style cards */
+
+  /* Icon size tiers (goal: 3 tiers across the whole app). */
+  --icon-sm: 10px; /* dense lists, status pips */
+  --icon-md: 14px; /* standard toolbar / inline icons */
+  --icon-lg: 20px; /* feature buttons, onboarding illos */
+
+  /* Missing radius keyword — full pill used by badges/chips. */
+  --radius-pill: 9999px;
+
+  /* Focus ring tokens — neutral white alt for gold-on-gold surfaces. */
+  --focus-ring: rgba(255, 255, 255, 0.8);
+  --focus-ring-on-gold: rgba(24, 24, 24, 0.85);
+
+  /* Link tokens — introduces a semantic channel separate from gold accent. */
+  --color-link: var(--ctp-blue);
+  --color-link-hover: #b4bffd;
+
+  /* Status alias — collapses the two parallel "green idle" / "red error" /
+     "yellow edit" palettes onto Catppuccin to eliminate dual sources.
+     NOTE: legacy --status-idle/-error/-edit literals are preserved above;
+     consumers should migrate to these aliases over time. */
+  --status-idle-ctp: var(--ctp-green);
+  --status-error-ctp: var(--ctp-red);
+  --status-edit-ctp: var(--ctp-yellow);
+
+  /* AgentTerminal — previously referenced `--agent-accent-rgb` without a
+     definition. Pin to Catppuccin mauve numeric triplet so
+     `rgb(var(--agent-accent-rgb) / α)` composes cleanly. */
+  --agent-accent-rgb: 203, 166, 247;
+
   /* Common rgba patterns as variables (reduces duplication) */
   --white-2: rgba(255, 255, 255, 0.02);
   --white-3: rgba(255, 255, 255, 0.03);
@@ -241,6 +351,8 @@ body,
   overflow: hidden;
   background: transparent;
   font-family: var(--font-ui);
+  font-feature-settings: var(--font-features-ui);
+  letter-spacing: var(--tracking-body);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   position: relative;
@@ -393,7 +505,9 @@ button:disabled,
   pointer-events: none;
 }
 
-/* Reduced motion preference */
+/* Reduced motion preference — also zero transforms so hover lifts do not
+ * snap-pop for users who opted out. JS-driven springs (motion/react) are
+ * handled per-component via `useReducedMotion()`. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -401,6 +515,9 @@ button:disabled,
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+  *:hover {
+    transform: none !important;
   }
 }
 
