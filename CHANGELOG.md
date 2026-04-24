@@ -144,13 +144,25 @@ hardening) and PTY refinements are also included.
 - `pnpm build` — clean
 - `cargo build --release` — clean
 
+### Lint baseline
+
+- `biome format --write src/` normalised line endings (CRLF → LF on 220
+  files) and whitespace across every `.ts` / `.tsx` / `.css` in `src/`.
+- `biome check --write src/` applied safe autofixes on 147 files (mostly
+  `assist/source/organizeImports`).
+- Real a11y / correctness fixes in `App.tsx`: editor-tab invalid button
+  nesting split into `<div role="tab">` + inner `<button type="button">`
+  with keyboard activation; landmark `role` attributes replaced with
+  semantic elements (`<nav>`, `<section>`, `<aside>`, bare `<main>`).
+- `biome.json` demotes `noNonNullAssertion` + `useTemplate` to warn (the
+  remaining callsites are deliberate guard-rails in test code) and
+  disables `noImportantStyles` entirely (remaining `!important` usages
+  are legitimate focus-ring / reduced-motion / Monaco-inline overrides).
+- Lint baseline: 593 errors → 227 (mostly `noNonNullAssertion` warnings
+  in test helpers). Further churn deferred.
+
 ### Known follow-ups
 
-- Biome lint currently reports a pre-existing baseline of ~600 findings
-  (mostly CRLF line endings from Windows checkouts + legacy `!important`
-  usage). These are not new in this release; the biome.json fix restored
-  the ability to run the linter at all. A dedicated lint-baseline pass is
-  tracked separately.
 - IME canvas integration (half-width/full-width candidate positioning,
   commit text → PTY, persistent `IMEInputBar` toggle) still needs a
   live-build smoke test on Windows before this patch can be tagged.
