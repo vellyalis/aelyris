@@ -17,13 +17,13 @@
 //! token is generated and logged once so the running user can copy it.
 //!
 //! Sessions created via this API land in the same `PtyManager` as Tauri-spawned
-//! sessions, so they show up in `list_terminals` etc. Simultaneous UI +
-//! external control of the same session is possible for reading (readers are
-//! cloned, not consumed) but input/resize will race — a broadcast layer is
-//! deferred to v2.
+//! sessions, so they show up in `list_terminals` etc. Reads are fanned out
+//! through `PtyManager::subscribe_output` (v2c) so the UI and the API can
+//! concurrently consume the same byte stream without racing on the physical
+//! master. Input/resize from multiple clients still races — the PTY has a
+//! single write side by design; higher-level arbitration is out of scope.
 
 use std::collections::HashMap;
-use std::io::Read;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -46,13 +46,37 @@ use axum::{
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tokio::sync::Notify;
+use tokio::sync::{broadcast, Notify};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use subtle::ConstantTimeEq;
 
 use crate::pty::{PtyError, PtyManager, ShellType, TerminalInfo};
 
 pub const DEFAULT_PORT: u16 = 9333;
+
+/// Per-frame write deadline for the WS send half.
+///
+/// A well-behaved consumer drains bytes as fast as the PTY produces them,
+/// so `sender.send(...)` is effectively non-blocking. A misbehaving
+/// consumer that authenticates and then stops reading TCP would otherwise
+/// pin the reader task indefinitely while keeping the broadcast ring
+/// close to full. Timing out the write disconnects that client and lets
+/// the ring drain for the rest.
+const WS_WRITE_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Server-controlled sentinel template for broadcast `Lagged` events.
+///
+/// Encoded as a dim-rendered ANSI sequence so a client that renders the
+/// WS binary stream straight into a terminal sees a visible gap marker.
+/// The only variable substitution is the numeric `n` (a `u64` chunk
+/// count) produced by `tokio::sync::broadcast::RecvError::Lagged(n)`:
+/// the server controls the surrounding bytes in full, so nothing
+/// attacker-influenced can reach the sentinel — but downstream tools
+/// that replay raw WS binary into other terminals should be aware that
+/// the API may emit bare ANSI.
+fn lag_sentinel_bytes(n: u64) -> Vec<u8> {
+    format!("\x1b[2m[dropped {} chunks]\x1b[0m", n).into_bytes()
+}
 
 /// Hard cap on concurrent PTY sessions attributable to the API. Guards
 /// against a misbehaving authorized client looping `POST /sessions` until
@@ -1022,62 +1046,75 @@ async fn ws_session(
     State(state): State<ApiState>,
     Path(id): Path<String>,
 ) -> Response {
-    // Clone the reader before upgrade so errors surface as normal HTTP
-    // responses rather than an opaque WS handshake failure.
-    let reader = match state.pty.take_reader(&id) {
+    // Subscribe before the upgrade so a missing/closed session surfaces as a
+    // normal HTTP error instead of an opaque WS handshake failure.
+    let rx = match state.pty.subscribe_output(&id) {
         Ok(r) => r,
         Err(e) => return map_pty_err(&id, e).into_response(),
     };
-    ws.on_upgrade(move |socket| handle_ws(socket, state, id, reader))
+    ws.on_upgrade(move |socket| handle_ws(socket, state, id, rx))
 }
 
 async fn handle_ws(
     socket: WebSocket,
     state: ApiState,
     id: String,
-    mut reader: Box<dyn Read + Send>,
+    mut rx: broadcast::Receiver<Vec<u8>>,
 ) {
     log::info!("api: WS session {} opened", id);
     let (mut sender, mut receiver) = socket.split();
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
 
-    // Reader task: blocking PTY read -> tokio mpsc. Ends when PTY closes or
-    // when `tx` is dropped (which happens as soon as `send_task` finishes).
+    // Send task: broadcast rx -> WS.
     //
-    // Note: `abort()` on a `spawn_blocking` handle does NOT interrupt the
-    // blocking `reader.read()`. The task only really exits when the PTY
-    // produces data (and `tx.blocking_send` fails because the channel is
-    // closed) or when the PTY itself is dropped and the read returns EOF/err.
-    // For graceful shutdown this is fine: the `ExitRequested` hook calls
-    // `PtyManager::close_all`, which drops `PtyInstance` / master, which
-    // unblocks the read.
+    // `Lagged(n)` injects the dim-rendered sentinel produced by
+    // [`lag_sentinel_bytes`] so a slow client sees that bytes were skipped
+    // instead of silently diverging from the server's view.
+    //
+    // Each `sender.send(...)` is wrapped in a [`WS_WRITE_TIMEOUT`]: a
+    // client that TCP-stalls on the receive side would otherwise pin the
+    // task forever and keep the broadcast ring perpetually near-full.
+    // Hitting the timeout disconnects the misbehaving client and lets the
+    // ring drain for everyone else.
     let read_id = id.clone();
-    let read_task = tokio::task::spawn_blocking(move || {
-        let mut buf = [0u8; 4096];
+    let mut send_task = tokio::spawn(async move {
         loop {
-            match reader.read(&mut buf) {
-                Ok(0) => {
-                    log::debug!("api: PTY {} EOF", read_id);
-                    break;
-                }
-                Ok(n) => {
-                    if tx.blocking_send(buf[..n].to_vec()).is_err() {
-                        break;
+            match rx.recv().await {
+                Ok(chunk) => {
+                    match tokio::time::timeout(
+                        WS_WRITE_TIMEOUT,
+                        sender.send(Message::Binary(chunk)),
+                    )
+                    .await
+                    {
+                        Ok(Ok(())) => {}
+                        Ok(Err(_)) => break,
+                        Err(_) => {
+                            log::warn!(
+                                "api: WS {} write stalled beyond {:?}, closing",
+                                read_id,
+                                WS_WRITE_TIMEOUT,
+                            );
+                            break;
+                        }
                     }
                 }
-                Err(e) => {
-                    log::debug!("api: PTY {} read error: {}", read_id, e);
+                Err(broadcast::error::RecvError::Lagged(n)) => {
+                    log::warn!("api: WS {} lagged, dropped {} chunks", read_id, n);
+                    let sentinel = lag_sentinel_bytes(n);
+                    match tokio::time::timeout(
+                        WS_WRITE_TIMEOUT,
+                        sender.send(Message::Binary(sentinel)),
+                    )
+                    .await
+                    {
+                        Ok(Ok(())) => {}
+                        Ok(Err(_)) | Err(_) => break,
+                    }
+                }
+                Err(broadcast::error::RecvError::Closed) => {
+                    log::debug!("api: PTY {} broadcast closed", read_id);
                     break;
                 }
-            }
-        }
-    });
-
-    // Forward task: rx -> WS sender.
-    let mut send_task = tokio::spawn(async move {
-        while let Some(chunk) = rx.recv().await {
-            if sender.send(Message::Binary(chunk)).await.is_err() {
-                break;
             }
         }
     });
@@ -1110,15 +1147,6 @@ async fn handle_ws(
             recv_task.abort();
         }
     }
-
-    // Detach the blocking read task. The spawn_blocking documentation
-    // intentionally leaks the JoinHandle if it is not awaited — that is
-    // acceptable here because (a) the abort() below is a best-effort signal
-    // that the task no longer needs to park its thread, and (b) the task
-    // self-terminates as soon as its PTY reader is dropped (see close_all in
-    // the ExitRequested hook). Tracking the handle explicitly keeps the
-    // lifecycle visible.
-    read_task.abort();
 
     log::info!("api: WS session {} closed", id);
 }

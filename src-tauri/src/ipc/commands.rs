@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::io::BufRead;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager};
+use tokio::sync::broadcast;
 
 use crate::pty::{PtyManager, ShellType};
 use crate::pty::buffer::{OutputBuffer, strip_ansi};
@@ -103,8 +104,12 @@ pub fn spawn_terminal(
     let pty_manager = app.state::<PtyManager>();
     let id = pty_manager.spawn(&shell, cols, rows, cwd.as_deref())?;
 
-    // Start streaming PTY output via events + capture buffer
-    let reader = pty_manager.take_reader(&id)?;
+    // Start streaming PTY output via events + capture buffer. Subscribing
+    // returns a broadcast receiver — the single OS-level reader thread
+    // inside `PtyManager` fans every byte out to every subscriber, so the
+    // API side can read the same session concurrently without stealing
+    // bytes from this loop.
+    let mut rx = pty_manager.subscribe_output(&id)?;
     let terminal_id = id.clone();
     let app_handle = app.clone();
     let buffer_registry = app.state::<OutputBufferRegistry>().inner().clone();
@@ -146,19 +151,15 @@ pub fn spawn_terminal(
     let repair_pane = shell_name.clone();
     let repair_app = app_handle.clone();
 
-    std::thread::spawn(move || {
-        let mut reader = reader;
-        let mut buf = [0u8; 4096];
+    tauri::async_runtime::spawn(async move {
         let mut detected_ports = std::collections::HashSet::new();
         loop {
-            match reader.read(&mut buf) {
-                Ok(0) => break,
-                Ok(n) => {
-                    let data = &buf[..n];
+            match rx.recv().await {
+                Ok(chunk) => {
+                    let data: &[u8] = &chunk;
                     let event_name = format!("pty-output-{}", terminal_id);
                     // Send as number array — avoids base64 encode/decode overhead
-                    let bytes_vec: Vec<u8> = data.to_vec();
-                    let _ = app_handle.emit(&event_name, bytes_vec);
+                    let _ = app_handle.emit(&event_name, chunk.clone());
                     // Feed raw text into capture buffer
                     let text = String::from_utf8_lossy(data);
                     buffer_registry.feed(&terminal_id, &text);
@@ -211,7 +212,16 @@ pub fn spawn_terminal(
                         }));
                     }
                 }
-                Err(_) => break,
+                Err(broadcast::error::RecvError::Lagged(n)) => {
+                    // UI cannot meaningfully "show" a gap the way API can, so
+                    // we just note the drop and keep going. Falling behind
+                    // usually means the user scrolled a firehose (seq, big
+                    // build log) — accepting the loss is preferable to
+                    // stalling the PTY.
+                    log::warn!("ui: terminal {} lagged, dropped {} chunks", terminal_id, n);
+                    continue;
+                }
+                Err(broadcast::error::RecvError::Closed) => break,
             }
         }
         // Terminal exited — stop the native flush ticker so it can join.
@@ -1025,8 +1035,6 @@ fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
     }
     Ok(buf)
 }
-
-use std::io::Read;
 
 // --- Session management commands ---
 

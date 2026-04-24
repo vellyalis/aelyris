@@ -1,4 +1,4 @@
-use std::io::Read;
+use tokio::sync::broadcast;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter, Manager};
@@ -175,24 +175,28 @@ pub fn spawn_interactive_agent(
         });
     }
 
-    // Start output monitoring thread
-    // Reads PTY output, applies CLI-specific parser, and emits session updates
-    let reader = pty_manager.take_reader(&pty_id)?;
+    // Start output monitoring task.
+    //
+    // Subscribes to the PtyManager broadcast so this monitor can coexist
+    // with the external API on the same session without stealing bytes
+    // from each other (3D-1 v2c).
+    let rx = pty_manager.subscribe_output(&pty_id)?;
     let app_handle = app.clone();
     let sid = session_id.clone();
     let monitor_cli = cli.clone();
     let monitor_registry = native_registry.clone();
     let monitor_alive = flush_alive.clone();
 
-    std::thread::spawn(move || {
+    tauri::async_runtime::spawn(async move {
         run_output_monitor(
-            reader,
+            rx,
             &sid,
             &monitor_cli,
             &app_handle,
             monitor_registry,
             monitor_alive,
-        );
+        )
+        .await;
     });
 
     // Emit initial session list
@@ -308,11 +312,11 @@ fn emit_interactive_sessions(app: &AppHandle, mgr: &InteractiveSessionManager) {
     let _ = app.emit("interactive-sessions-updated", &sessions);
 }
 
-/// Reads PTY output in a background thread, applies CLI parser, emits status updates.
-/// Also emits the raw output as `pty-output-{id}` and feeds the native engine
-/// so TerminalCanvas can render the agent PTY.
-fn run_output_monitor(
-    mut reader: Box<dyn Read + Send>,
+/// Reads PTY output from the broadcast channel, applies CLI parser, emits
+/// status updates. Also emits the raw output as `pty-output-{id}` and feeds
+/// the native engine so TerminalCanvas can render the agent PTY.
+async fn run_output_monitor(
+    mut rx: broadcast::Receiver<Vec<u8>>,
     session_id: &str,
     cli: &AgentCli,
     app: &AppHandle,
@@ -321,27 +325,24 @@ fn run_output_monitor(
 ) {
     let parser = output_monitor::create_parser(cli);
     let session_mgr = app.state::<InteractiveSessionManager>();
-    let mut buf = [0u8; 4096];
     let mut last_status = String::new();
 
     loop {
-        match reader.read(&mut buf) {
-            Ok(0) => break, // EOF — process exited
-            Ok(n) => {
-                let chunk = &buf[..n];
+        match rx.recv().await {
+            Ok(chunk) => {
+                let data: &[u8] = &chunk;
 
                 // Emit raw output as byte array (no base64 overhead)
-                let bytes_vec: Vec<u8> = chunk.to_vec();
                 let event = format!("pty-output-{}", session_id);
-                let _ = app.emit(&event, bytes_vec);
+                let _ = app.emit(&event, chunk.clone());
 
                 // Fan out to native engine for grid-based rendering.
-                if let Some(diff) = native_registry.advance(session_id, chunk) {
+                if let Some(diff) = native_registry.advance(session_id, data) {
                     let _ = app.emit(&format!("term:diff-{}", session_id), diff);
                 }
 
                 // Parse for status/cost (strip ANSI first)
-                if let Ok(text) = std::str::from_utf8(chunk) {
+                if let Ok(text) = std::str::from_utf8(data) {
                     let clean = output_monitor::strip_ansi(text);
                     let result = parser.parse_chunk(&clean);
 
@@ -377,7 +378,14 @@ fn run_output_monitor(
                     }
                 }
             }
-            Err(_) => break, // read error — PTY closed
+            Err(broadcast::error::RecvError::Lagged(n)) => {
+                // Missing a chunk means the CLI parser sees a discontinuity,
+                // but status/cost detection is self-healing: the next chunk
+                // will re-trigger detection. Logging is enough.
+                log::warn!("ui: agent {} monitor lagged, dropped {} chunks", session_id, n);
+                continue;
+            }
+            Err(broadcast::error::RecvError::Closed) => break,
         }
     }
 
