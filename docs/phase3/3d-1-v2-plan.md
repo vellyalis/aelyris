@@ -82,9 +82,9 @@ Landed as `feat/3d-1-v2b-upgrade-ticket`, merged into
   oldest-by-expiry eviction on overflow. Under multi-tenant auth this would
   let one tenant starve another's live tickets. Switch to per-tenant quotas
   before landing any multi-tenant change.
-- **`PtyManager::contains(id)`.** `issue_stream_ticket` currently does an
-  `O(n)` scan via `pty.list()`. Fine at `MAX_PTY_SESSIONS=32`; promote to a
-  dedicated method when `PtyManager` is touched anyway (expected during v2c).
+- **`PtyManager::contains(id)`.** ✅ Landed in the v2c follow-up pass —
+  `issue_stream_ticket` now uses the O(1) HashMap check instead of the
+  O(n) list scan.
 - **`?token=` removal.** One release after v2b lands, remove the legacy
   query-string path entirely. Tracked here so it doesn't get forgotten.
 
