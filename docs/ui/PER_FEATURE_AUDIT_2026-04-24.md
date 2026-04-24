@@ -89,14 +89,14 @@ ReactFlow chrome** subset. Everything below is what remains.
 ### P0 — ship-blockers / safety
 _(none — all P0 items closed in 4eec6df)_
 
-### P1 — composition-level RED (user-visible broken features)
-1. **DiffViewer** — add split/unified toggle, empty state, binary guard, register theme in beforeMount
-2. **EditorPanel** — unify diff rendering (use DiffViewer, kill inline DiffEditor), add empty state, Monaco font from token, replace 🔧✓💬 with Lucide
-3. **MarkdownPreview iframe flash** — iframe element background to `var(--aether-bg)`, register theme in beforeMount
-4. **SubagentTree** — either rebuild as a real tree OR rename to SubagentList and drop the decorative connector line
-5. **PRInspector card** — render state pill / author / CI / review / updated-at; all fields are already in the interface
-6. **WorkflowPanel ✓✗ → Lucide** (+ WorkflowBuilder "Save & Run" CTA)
-7. **OnboardingOverlay rebuild on PromptDialog chrome**
+### P1 — composition-level RED (user-visible broken features) — ✅ closed in `47f9b5e`
+1. ✅ **DiffViewer** — split/unified segmented toggle, empty + binary + too-large guards, theme registered in beforeMount, `onGlyphMarginClick` prop exposed
+2. ✅ **EditorPanel** — now routes through DiffViewer (inline DiffEditor deleted), empty state on no file, Monaco font via new `getMonoFontStack()`, comment badges → Lucide Wrench/Check/MessageSquare
+3. ✅ **MarkdownPreview iframe flash** — iframe element background set to `var(--aether-bg)`
+4. ✅ **SubagentTree → SubagentList** — flat list, decorative connector + static chevron removed, keyboard activation + focus ring
+5. ✅ **PRInspector card** — state pill + author + CI rollup + review decision + relative updated-at; backend extended to fetch isDraft / updatedAt / reviewDecision / statusCheckRollup
+6. ✅ **WorkflowPanel gate → Lucide** (22px tap targets, focus ring) + WorkflowBuilder "Save & Run" CTA wired via `handleStartRef`; traffic-light phase-gate swapped to `ShieldCheck`
+7. ✅ **OnboardingOverlay** — PromptDialog chrome (rgba 0.92 / blur 20 / radius-lg), magic margin-left:280 / margin-right:300 removed, focus rings on Skip/Next
 
 ### P2 — shared primitives (once-and-done payoff)
 1. `shared/ui/GitStatusPip` — M/A/D/R/?/! mapping + color tokens, consume in SCM + PR + GhostDiff + FileTree
