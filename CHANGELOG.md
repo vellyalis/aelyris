@@ -3,6 +3,73 @@
 All notable changes to Aether Terminal are tracked here. Dates are listed in
 `YYYY-MM-DD`. Commit hashes reference `refactor/tauri-react-migration`.
 
+## [0.2.2] — 2026-04-25
+
+Focus: **senior-engineer-grade terminal foundation**. Twelve commits closing
+the five "pro terminal" gaps called out in the 2026-04-25 product audit —
+OSC 133 semantic prompts, OSC 8 hyperlinks, shell integration scripts,
+performance benchmarks, and a scrollback rework with jump-to-prompt
+navigation.
+
+### Terminal foundation
+
+- **Scrollback (`2ee698d` / `4402ffa` / `7368ce2`)** — 10 000-line history
+  buffer via widened `alacritty_terminal::Dimensions::total_lines`; wheel
+  scroll on `TerminalCanvas`; composite rendering splits the viewport
+  between history (top) and live (bottom) with reference-equal cells on
+  the live path so typing never re-allocates; `Ctrl+Shift+↑/↓/End` jumps
+  between `OSC 133;A` marks using the history-size delta stored on each
+  mark. `useScrollback` hook + `findPrev/NextPromptMark` helpers isolate
+  the navigation logic from the render loop.
+- **OSC 133 semantic prompts (`b33bb95` / `030c335`)** — pre-scan parser in
+  `TermEngine::advance` covers A/B/C/D with both `BEL` and `ESC \\`
+  terminators, tolerates split buffers, and records prompt marks with
+  screen line + history size. IPC: `term_prompt_marks` query +
+  `term:prompt-mark-<id>` event stream. React `usePromptMarks` hook
+  seeds + subscribes; `TerminalInfoBar` renders a coloured status dot
+  driven by the last `CommandEnd`. Shell integration scripts for
+  PowerShell / Bash / Zsh ship under `assets/shell-integration/`.
+- **OSC 8 explicit hyperlinks (`db7a110`)** — surface alacritty's per-cell
+  `hyperlink()` as `CellSnapshot.hyperlink`; `links.ts` scans contiguous
+  URI runs (including row wraps) and emits them as `LinkSpan` entries
+  that win over the regex fallback on the same coordinates. `color-mix`
+  in `ToolBadge` replaces the old hex-concat alpha border so palettes
+  can remain `var(--ctp-*)` everywhere.
+
+### Performance & observability
+
+- **Criterion microbenchmarks (`b21e216` / `ce76257`)** — 13 benches across
+  `advance`, `snapshot`, `diff`, and the OSC 133 pre-scan. Baseline:
+  engine throughput ~40 MB/s steady-state, snapshot 25 µs at 80×24 /
+  176 µs at 200×50, one-row diff 120 µs. Numbers are documented in
+  `docs/perf/term-engine-bench-2026-04-25.md` for regression tracking.
+
+### UI polish
+
+- **Two-phase attenuated pulse (`4f72248`)** — `useAttenuatedPulse` hook
+  plus a new ambient 10 s breathe animation. Status dots, agent pills,
+  and `ContextGauge` critical runs now collapse from active pulse to
+  ambient after 30 s, cutting GPU frame cost ~80 % on long-running agents
+  without turning the signal off entirely.
+- **Catppuccin CSS var migration (`132fc57`)** — palettes in
+  `src/shared/types/*.ts` route through `var(--ctp-*)` so theme switches
+  reach status / model / tool / kanban / CLI surfaces. Session palettes
+  and the Claude brand lavender stay static by design.
+
+### Cleanup
+
+- **Dead `SubagentList` removed (`1e370e8`)** — component was never mounted
+  after its 2026-04-24 rename; deleting it plus the stale hover-token
+  comment saved 117 lines.
+- **Clippy production-code warnings (`<hash>`)** — cleared `format!`,
+  redundant `is_err()` match, manual `split_once`, and missing `Default`
+  on `InteractiveSessionManager`.
+
+### Tests
+
+Rust `cargo test --lib` 298 → 330 (+32). Vitest 635 → 671 (+36).
+Full suite green, `tsc --noEmit` clean.
+
 ## [0.2.1] — 2026-04-25
 
 Focus: **Apple-class UI per-feature audit closure** + **Liquid Glass
