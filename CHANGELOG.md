@@ -5,11 +5,141 @@ All notable changes to Aether Terminal are tracked here. Dates are listed in
 
 ## [0.2.1] — unreleased
 
-Focus: **Apple-class UI per-feature audit closure**. Two rounds of audit —
+Focus: **Apple-class UI per-feature audit closure** + **Liquid Glass
+material pass**. Three rounds of audit —
 an 8-axis token pass (typography / spacing / color / interaction / motion /
-material / a11y / rhythm) followed by a per-feature composition audit across
-~42 surfaces — were fully landed. Groundwork from Phase 3D-1 v2 (API
-hardening) and PTY refinements are also included.
+material / a11y / rhythm), a per-feature composition audit across ~42
+surfaces, and a Liquid Glass / Apple HIG material pass — were fully landed.
+Groundwork from Phase 3D-1 v2 (API hardening) and PTY refinements are also
+included.
+
+### Liquid Glass material pass (2026-04-24, branch `feat/ui-liquid-glass`)
+
+Eight parallel auditors were run against **Apple HIG Liquid Glass**
+(iOS 26 / macOS 26) and **Linear's luminance-stacking** references. The
+chosen design-system orientation is: **Apple HIG Liquid Glass** for the
+material layer + **Linear** for dark-first luminance discipline;
+Vercel/Geist and Atlassian were evaluated and deliberately excluded as
+material references.
+
+New tokens introduced in `src/styles/global.css`:
+- Specular: `--rim-top`, `--rim-top-strong` (inner top highlight for
+  "lit glass edge").
+- Recessed: `--inset-recessed` (Linear's sunken-panel pattern).
+- Chromatic lensing: `--lens-edge` (135° warm/cool caustic gradient for
+  glass rounded-corner edges).
+- Three-stack shadow: `--shadow-ambient` / `--shadow-key` /
+  `--shadow-contact` / `--shadow-elevated`; Linear-style 5-stop
+  `--shadow-dialog`; elevation tiers `--shadow-elev-1..4`.
+- Easing: `--ease-apple` (cubic-bezier(0.32, 0.72, 0, 1)),
+  `--ease-apple-bounce`. `--ease-silk` is kept as alias → `--ease-apple`.
+- Duration: `--duration-hover` (150ms), `--duration-state` (200ms),
+  `--duration-panel` (300ms) alongside legacy fast/normal/slow/luxe.
+- Tracking: `--tracking-display` / `-heading` / `-body` / `-caption` /
+  `-micro` / `-label`.
+- Line-height: `--leading-display` (1.1), `--leading-snug` (1.4).
+- OpenType baselines: `--font-features-ui` (`ss03 cv11 cv13 kern`),
+  `--font-features-mono`, `--font-features-num` (`tnum lnum`).
+- Row heights: `--row-h-dense` / `-standard` / `-comfortable`.
+- Icon tiers: `--icon-sm` (10), `--icon-md` (14), `--icon-lg` (20).
+- Focus: `--focus-ring`, `--focus-ring-on-gold` (neutral white / dark
+  fallback for gold-on-gold legibility).
+- Link: `--color-link`, `--color-link-hover`.
+- `--radius-pill: 9999px`.
+- Status aliases: `--status-idle-ctp`, `--status-error-ctp`,
+  `--status-edit-ctp`.
+- `--agent-accent-rgb: 203, 166, 247` (previously undefined).
+
+Material application:
+- Specular rim + 3-stack / 5-stack shadow applied across all 12 dialogs
+  and 12 popovers/floating panels. Side panels (`.left-panel`,
+  `.right-panel`) carry `--rim-top` along their resize seams.
+- `.center-panel` now carries `--inset-recessed` so the terminal well
+  reads as sunken between the rails.
+- CommandPalette and QuickOpen both layer `--lens-edge` over their
+  glass-thick surface for edge chromatic caustic.
+- Six dialogs (Handoff / Orchestra / Onboarding / Prompt / History /
+  plus Help + WorkflowBuilder shadow-only) migrated from raw
+  `rgba(24,24,24,0.92)` / hand-rolled 16-48/64px shadows to the shared
+  `--dialog-surface` / `--dialog-surface-blur` / `--shadow-dialog`.
+
+A11y P0 fixes:
+- `<span onClick>` stop buttons (SessionCard / InteractiveSessionCard /
+  AgentInspector parallelPane) replaced with new `shared/ui/StopButton`
+  primitive: `<span role="button" tabIndex=0 onKeyDown>` + Lucide
+  `<Square>` + stopPropagation.
+- WorkspaceTabs close `<span>` gained `tabIndex` + `onKeyDown`; ⚡ / × /
+  + literal glyphs replaced with Lucide `GitBranch` / `X` / `Plus`.
+- Three remaining `window.confirm()` sites migrated to themed
+  `showConfirm` (App.tsx close-file + window-close, ToolkitPanel
+  dangerous-import).
+- Clickable `<div>` promoted to `role="button"` + keyboard activation:
+  AgentInspector `parallelPane`, KanbanBoard task item,
+  WorkflowPanel phase step (with `aria-expanded`).
+- ContextMenu and MenuBar items now have explicit `:hover` +
+  `:focus-visible` (were relying only on Radix `data-highlighted`).
+- Button.primary focus ring was gold-on-gold (invisible); now uses
+  `--focus-ring-on-gold` dark outline.
+- ProjectHeaderBar `.ctrlBtn` focus ring was clipped by the title-bar
+  edge; now inset -3px.
+
+New shared primitives:
+- `shared/ui/StopButton` — see above.
+- `shared/ui/LoadingSkeleton(.tsx/.module.css)` — row / card / line
+  variants with `role="status"` + `aria-live="polite"`, shimmer
+  respects `prefers-reduced-motion` via global rule.
+- `shared/hooks/useArrowKeyList` — WAI-ARIA roving-tabindex helper for
+  listbox/tree/grid surfaces (ArrowUp/Down, Home/End, Enter/Space).
+- `shared/hooks/useEditableTargetGuard` — `isEditableTarget(target)`
+  guards global keyboard shortcuts from stealing keystrokes in
+  `<input>`, `<textarea>`, contentEditable, Monaco, or xterm.
+  Wired into `useKeyboardShortcuts`.
+
+Motion:
+- App wrapped in `<MotionConfig reducedMotion="user">` so all
+  `motion/react` springs (CommandPalette / QuickOpen / WelcomeScreen /
+  SearchPanel / PRInspector / WebInspector / OnboardingOverlay) honor
+  the OS preference.
+- Global `@media (prefers-reduced-motion: reduce)` now also zeroes
+  hover `transform` so opted-out users don't get snap-pop on hover
+  lifts.
+- Hardcoded `0.1s` / `0.15s var(--ease-out)` / `0.2s ease` swept from
+  5 module files + 5 dialog entrance animations to the token-driven
+  `--duration-* var(--ease-apple)` pattern.
+
+Typography + color + icon discipline:
+- 76 raw `font-size: 10/14px`, `font-weight: 400/500/600`, and
+  `line-height: 1.4/1.5` replaced with tokens across 29 module files.
+- 23 lucide `size={8/9/11/13/18}` calls collapsed to the 10/14/20
+  canonical tiers across 10 files.
+- `font-variant-numeric: tabular-nums` added to numeric columns
+  (StatusBar repair counts, TerminalInfoBar meta/cost, Analytics
+  metric/stat/tool value/count).
+- WatchdogBadge / MarkdownPreview raw Catppuccin hex → token refs
+  via `var(--ctp-*)` / `var(--gold)` / `var(--white-*)`.
+- Gold-decorative ornaments on WelcomeScreen (projectCard hover,
+  dropZoneActive, projectAvatar) + AboutDialog logo demoted to
+  neutrals; gold reserved for interactive/CTA.
+- Purple drift outside Helm cleaned (About + Welcome leak sites).
+
+New `<EmptyState>` / `<LoadingSkeleton>` deployments (5 surfaces):
+PRInspector, SearchPanel, GhostDiffPanel get proper empty states;
+PRInspector + SearchPanel loading states now skeleton-animate
+instead of plain text.
+
+PanelHeader retrofit:
+- PRInspector: inline header → `<PanelHeader title count actions>`.
+- GhostDiffPanel: `<PanelHeader leadingIcon title subtitle>`.
+- SCMPanel: new header above branch bar.
+(SubagentList retrofit deferred — lives inside ConductorView.)
+
+Async state contracts:
+- `Button.module.css` `.btn[aria-busy="true"]` — opacity dim +
+  shimmer overlay via global `shimmer` keyframe.
+- SCMPanel commit/push buttons now carry `aria-busy={isCommitting}`
+  / `aria-busy={isPushing}`.
+- `.input[aria-invalid="true"]` red border + 1px red shadow added to
+  PromptDialog / Settings / Watchdog input styles.
 
 ### Added
 
