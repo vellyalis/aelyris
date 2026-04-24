@@ -54,6 +54,30 @@ use crate::pty::{PtyError, PtyManager, ShellType, TerminalInfo};
 
 pub const DEFAULT_PORT: u16 = 9333;
 
+/// Per-frame write deadline for the WS send half.
+///
+/// A well-behaved consumer drains bytes as fast as the PTY produces them,
+/// so `sender.send(...)` is effectively non-blocking. A misbehaving
+/// consumer that authenticates and then stops reading TCP would otherwise
+/// pin the reader task indefinitely while keeping the broadcast ring
+/// close to full. Timing out the write disconnects that client and lets
+/// the ring drain for the rest.
+const WS_WRITE_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Server-controlled sentinel template for broadcast `Lagged` events.
+///
+/// Encoded as a dim-rendered ANSI sequence so a client that renders the
+/// WS binary stream straight into a terminal sees a visible gap marker.
+/// The only variable substitution is the numeric `n` (a `u64` chunk
+/// count) produced by `tokio::sync::broadcast::RecvError::Lagged(n)`:
+/// the server controls the surrounding bytes in full, so nothing
+/// attacker-influenced can reach the sentinel — but downstream tools
+/// that replay raw WS binary into other terminals should be aware that
+/// the API may emit bare ANSI.
+fn lag_sentinel_bytes(n: u64) -> Vec<u8> {
+    format!("\x1b[2m[dropped {} chunks]\x1b[0m", n).into_bytes()
+}
+
 /// Hard cap on concurrent PTY sessions attributable to the API. Guards
 /// against a misbehaving authorized client looping `POST /sessions` until
 /// the host runs out of file descriptors. Applies to the total `PtyManager`
@@ -1040,24 +1064,51 @@ async fn handle_ws(
     log::info!("api: WS session {} opened", id);
     let (mut sender, mut receiver) = socket.split();
 
-    // Send task: broadcast rx -> WS. `Lagged(n)` injects a dim-rendered
-    // sentinel so a slow client sees that bytes were skipped instead of
-    // silently diverging from the server's view. `Closed` ends the task
-    // cleanly when the PTY exits.
+    // Send task: broadcast rx -> WS.
+    //
+    // `Lagged(n)` injects the dim-rendered sentinel produced by
+    // [`lag_sentinel_bytes`] so a slow client sees that bytes were skipped
+    // instead of silently diverging from the server's view.
+    //
+    // Each `sender.send(...)` is wrapped in a [`WS_WRITE_TIMEOUT`]: a
+    // client that TCP-stalls on the receive side would otherwise pin the
+    // task forever and keep the broadcast ring perpetually near-full.
+    // Hitting the timeout disconnects the misbehaving client and lets the
+    // ring drain for everyone else.
     let read_id = id.clone();
     let mut send_task = tokio::spawn(async move {
         loop {
             match rx.recv().await {
                 Ok(chunk) => {
-                    if sender.send(Message::Binary(chunk)).await.is_err() {
-                        break;
+                    match tokio::time::timeout(
+                        WS_WRITE_TIMEOUT,
+                        sender.send(Message::Binary(chunk)),
+                    )
+                    .await
+                    {
+                        Ok(Ok(())) => {}
+                        Ok(Err(_)) => break,
+                        Err(_) => {
+                            log::warn!(
+                                "api: WS {} write stalled beyond {:?}, closing",
+                                read_id,
+                                WS_WRITE_TIMEOUT,
+                            );
+                            break;
+                        }
                     }
                 }
                 Err(broadcast::error::RecvError::Lagged(n)) => {
                     log::warn!("api: WS {} lagged, dropped {} chunks", read_id, n);
-                    let sentinel = format!("\x1b[2m[dropped {} chunks]\x1b[0m", n).into_bytes();
-                    if sender.send(Message::Binary(sentinel)).await.is_err() {
-                        break;
+                    let sentinel = lag_sentinel_bytes(n);
+                    match tokio::time::timeout(
+                        WS_WRITE_TIMEOUT,
+                        sender.send(Message::Binary(sentinel)),
+                    )
+                    .await
+                    {
+                        Ok(Ok(())) => {}
+                        Ok(Err(_)) | Err(_) => break,
                     }
                 }
                 Err(broadcast::error::RecvError::Closed) => {

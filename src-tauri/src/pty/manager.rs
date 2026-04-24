@@ -1,6 +1,7 @@
 use portable_pty::{native_pty_system, CommandBuilder, PtyPair, PtySize};
 use std::collections::HashMap;
 use std::io::{Read, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tokio::sync::broadcast;
@@ -25,6 +26,19 @@ struct PtyInstance {
     /// so Tauri UI and the external API can read the same byte stream
     /// without racing for bytes on the physical master.
     output_tx: broadcast::Sender<Vec<u8>>,
+    /// Shutdown signal for the reader thread. Cleared in `Drop` so the
+    /// thread exits on its next read boundary instead of running until the
+    /// child process happens to close master. Belt-and-suspenders on top of
+    /// the master-drop EOF path — matters when a child lingers (e.g. a
+    /// Windows cmd.exe that never got `exit`) after the `PtyInstance` has
+    /// already left the session map.
+    reader_alive: Arc<AtomicBool>,
+}
+
+impl Drop for PtyInstance {
+    fn drop(&mut self) {
+        self.reader_alive.store(false, Ordering::Release);
+    }
 }
 
 /// Info about an active terminal, safe to serialize and send to frontend
@@ -138,7 +152,8 @@ impl PtyManager {
         // that's needed — Receivers are created lazily by subscribers.
         drop(_initial_rx);
 
-        spawn_reader_thread(id.clone(), reader, output_tx.clone());
+        let reader_alive = Arc::new(AtomicBool::new(true));
+        spawn_reader_thread(id.clone(), reader, output_tx.clone(), reader_alive.clone());
 
         let instance = PtyInstance {
             pair,
@@ -147,6 +162,7 @@ impl PtyManager {
             cwd: resolved_cwd,
             spawned_at: Instant::now(),
             output_tx,
+            reader_alive,
         };
 
         self.lock_instances()?
@@ -276,9 +292,16 @@ impl PtyManager {
 ///
 /// Runs on a plain `std::thread` because `Read::read` on the portable-pty
 /// master is blocking and must not park a tokio worker. The thread exits
-/// when the PTY emits EOF or a read error — that normally happens when
-/// the owning `PtyInstance` is dropped and its `PtyPair` closes the master,
-/// which in turn signals the child to exit.
+/// when any of the following is true:
+///   1. `reader.read` returns `Ok(0)` or an error (normal EOF path — the
+///      owning `PtyInstance` dropped, which closed master, which signals
+///      the child to exit).
+///   2. `reader_alive` flips to `false`. `Drop for PtyInstance` sets this
+///      after the instance leaves the session map, so a child that lingers
+///      past teardown cannot keep the thread and its broadcast backlog
+///      alive. The check happens after each chunk — in-flight reads still
+///      need to complete, but no further chunks will be published once the
+///      flag is down.
 ///
 /// `send` failures are intentionally ignored: during the gap between
 /// `spawn_command` returning and the first `subscribe_output`, there are
@@ -290,10 +313,15 @@ fn spawn_reader_thread(
     id: String,
     mut reader: Box<dyn Read + Send>,
     tx: broadcast::Sender<Vec<u8>>,
+    reader_alive: Arc<AtomicBool>,
 ) {
     std::thread::spawn(move || {
         let mut buf = [0u8; 4096];
         loop {
+            if !reader_alive.load(Ordering::Acquire) {
+                log::debug!("pty {} reader signalled to stop", id);
+                break;
+            }
             match reader.read(&mut buf) {
                 Ok(0) => {
                     log::debug!("pty {} reader EOF", id);

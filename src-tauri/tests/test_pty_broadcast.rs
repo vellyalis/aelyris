@@ -49,6 +49,54 @@ fn subscribe_output_unknown_id_returns_notfound() {
 }
 
 #[test]
+fn subscribe_output_after_close_returns_notfound() {
+    // Guards against a regression where `close` would remove the
+    // `PtyInstance` from the map but leave the `broadcast::Sender` reachable
+    // via an Arc cycle — a late subscriber would then silently get a
+    // never-producing receiver instead of an explicit NotFound.
+    let mgr = PtyManager::new();
+    let id = mgr.spawn(&ShellType::Cmd, 80, 24, None).expect("spawn");
+
+    // Subscribe once so the Sender has a known live external handle.
+    let _rx = mgr.subscribe_output(&id).expect("subscribe pre-close");
+
+    mgr.close(&id).expect("close");
+
+    let res = mgr.subscribe_output(&id);
+    assert!(res.is_err(), "subscribe after close must fail");
+}
+
+#[test]
+fn existing_receiver_sees_closed_after_close() {
+    // Companion to the NotFound check: a receiver that was issued *before*
+    // close must eventually observe `RecvError::Closed`, not hang forever.
+    let mgr = PtyManager::new();
+    let id = mgr.spawn(&ShellType::Cmd, 80, 24, None).expect("spawn");
+
+    let mut rx = mgr.subscribe_output(&id).expect("subscribe");
+
+    mgr.close(&id).expect("close");
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("rt");
+
+    let outcome = rt.block_on(async {
+        loop {
+            match tokio::time::timeout(Duration::from_secs(5), rx.recv()).await {
+                Ok(Ok(_)) => continue, // buffered data still flushing — keep draining
+                Ok(Err(broadcast::error::RecvError::Closed)) => return Ok(()),
+                Ok(Err(broadcast::error::RecvError::Lagged(_))) => continue,
+                Err(_) => return Err("timed out waiting for Closed"),
+            }
+        }
+    });
+
+    assert!(outcome.is_ok(), "receiver never observed Closed: {:?}", outcome);
+}
+
+#[test]
 fn two_subscribers_receive_same_marker() {
     let mgr = PtyManager::new();
     let id = mgr.spawn(&ShellType::Cmd, 80, 24, None).expect("spawn");
