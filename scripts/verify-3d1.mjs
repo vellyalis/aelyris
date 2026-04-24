@@ -42,6 +42,41 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+function arrayBufferToString(data) {
+  if (data instanceof ArrayBuffer) {
+    return new TextDecoder().decode(new Uint8Array(data));
+  }
+  return String(data);
+}
+
+function waitOpen(ws, timeoutMs) {
+  return new Promise((resolve) => {
+    const t = setTimeout(() => resolve(false), timeoutMs);
+    ws.addEventListener("open", () => {
+      clearTimeout(t);
+      resolve(true);
+    });
+    ws.addEventListener("error", () => {
+      clearTimeout(t);
+      resolve(false);
+    });
+  });
+}
+
+async function mintTicket(sessionId) {
+  try {
+    const res = await fetch(`${HTTP}/sessions/${sessionId}/stream-ticket`, {
+      method: "POST",
+      headers: AUTH_HEADERS,
+    });
+    if (!res.ok) return null;
+    const body = await res.json();
+    return typeof body.ticket === "string" ? body.ticket : null;
+  } catch {
+    return null;
+  }
+}
+
 async function waitForServer(retries = 10, delayMs = 500) {
   for (let i = 0; i < retries; i++) {
     try {
@@ -224,7 +259,11 @@ async function main() {
     }
     return false;
   })();
-  record("WS input is executed by PTY (marker echo)", matched);
+  record(
+    "WS input is executed by PTY (marker echo)",
+    matched,
+    matched ? "" : `received[len=${received.length}] tail=${JSON.stringify(received.slice(-300))}`,
+  );
 
   ws.close();
   await sleep(200);
@@ -280,6 +319,63 @@ async function main() {
     });
   });
   record("WS without token/ticket is rejected", !badOpened);
+
+  // ─── v2c: broadcast fan-out — two WS subscribers see the same echo ──────
+  //
+  // Mints two fresh tickets for the same session, opens both, writes a
+  // single echo from WS_A, and asserts both WS_A and WS_B receive the
+  // marker. Before v2c this raced on the physical master reader and one
+  // socket would lose bytes to the other.
+  {
+    const ticketA = await mintTicket(id);
+    const ticketB = await mintTicket(id);
+    record(
+      "v2c: two fresh tickets for same session",
+      typeof ticketA === "string" && typeof ticketB === "string" && ticketA !== ticketB,
+    );
+
+    const wsA = new WebSocket(`${WS}/sessions/${id}/stream?ticket=${encodeURIComponent(ticketA ?? "")}`);
+    const wsB = new WebSocket(`${WS}/sessions/${id}/stream?ticket=${encodeURIComponent(ticketB ?? "")}`);
+    wsA.binaryType = "arraybuffer";
+    wsB.binaryType = "arraybuffer";
+
+    const openBoth = await Promise.all([
+      waitOpen(wsA, 3000),
+      waitOpen(wsB, 3000),
+    ]);
+    record("v2c: two WS subscribers open concurrently", openBoth[0] && openBoth[1]);
+
+    let recvA = "";
+    let recvB = "";
+    wsA.addEventListener("message", (ev) => {
+      recvA += arrayBufferToString(ev.data);
+    });
+    wsB.addEventListener("message", (ev) => {
+      recvB += arrayBufferToString(ev.data);
+    });
+
+    await sleep(300);
+    const v2cMarker = `${MARKER}-v2c`;
+    wsA.send(new TextEncoder().encode(`echo ${v2cMarker}\r\n`));
+
+    const bothSaw = await (async () => {
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        if (recvA.includes(v2cMarker) && recvB.includes(v2cMarker)) return true;
+        await sleep(100);
+      }
+      return false;
+    })();
+    record(
+      "v2c: both WS subscribers receive the same marker (no byte-race)",
+      bothSaw,
+      `A=${recvA.includes(v2cMarker)} B=${recvB.includes(v2cMarker)}`,
+    );
+
+    wsA.close();
+    wsB.close();
+    await sleep(200);
+  }
 
   try {
     const res = await fetch(`${HTTP}/sessions/${id}`, {
