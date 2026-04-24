@@ -67,6 +67,9 @@ axum = { version = "0.7", features = ["ws"] }
 futures-util = "0.3"
 # Phase 3D-1 v2a: CORS middleware
 tower-http = { version = "0.5", features = ["cors"] }
+# Phase 3D-1 v2b: audited constant-time byte equality for token / ticket
+# comparisons. Replaces the hand-rolled implementation in api/mod.rs.
+subtle = "2"
 
 # Window effects: Mica/Acrylic via tauri.conf.json windowEffects (no external crate needed)
 

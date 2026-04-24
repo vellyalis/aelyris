@@ -25,8 +25,9 @@
 use std::collections::HashMap;
 use std::io::Read;
 use std::net::{IpAddr, SocketAddr};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use axum::{
     extract::{
@@ -47,6 +48,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::sync::Notify;
 use tower_http::cors::{AllowOrigin, CorsLayer};
+use subtle::ConstantTimeEq;
 
 use crate::pty::{PtyError, PtyManager, ShellType, TerminalInfo};
 
@@ -75,6 +77,11 @@ pub const REST_REFILL_PER_SEC: f64 = 1.0;
 pub const WS_BURST: f64 = 3.0;
 pub const WS_REFILL_PER_SEC: f64 = 1.0;
 
+/// Once-per-process latch for the `?token=` deprecation warning. The
+/// message is informational — repeating it per request would just pollute
+/// the log without adding signal. Reset on process restart.
+static LEGACY_TOKEN_WARNED: AtomicBool = AtomicBool::new(false);
+
 // ─── State ──────────────────────────────────────────────────────────────────
 
 /// Runtime state shared by all handlers.
@@ -98,6 +105,10 @@ pub struct ApiState {
     /// from other origins get no `Access-Control-Allow-Origin` header and
     /// will fail the preflight.
     pub cors_origins: Vec<HeaderValue>,
+    /// One-shot WebSocket upgrade tickets (v2b). Issued by
+    /// `POST /sessions/:id/stream-ticket`, consumed by the WS upgrade's
+    /// `?ticket=<uuid>` query parameter.
+    pub tickets: Arc<TicketRegistry>,
 }
 
 impl ApiState {
@@ -109,6 +120,7 @@ impl ApiState {
             max_sessions: MAX_PTY_SESSIONS,
             rate_limiter: Arc::new(RateLimiter::new()),
             cors_origins: default_cors_origins(),
+            tickets: Arc::new(TicketRegistry::new()),
         }
     }
 
@@ -131,6 +143,13 @@ impl ApiState {
     /// behaviour without mutating the process env.
     pub fn with_cors_origins(mut self, origins: Vec<HeaderValue>) -> Self {
         self.cors_origins = origins;
+        self
+    }
+
+    /// Swap the ticket registry. Used by tests that want to pre-populate
+    /// tickets or share a registry across multiple `ApiState` clones.
+    pub fn with_tickets(mut self, tickets: Arc<TicketRegistry>) -> Self {
+        self.tickets = tickets;
         self
     }
 
@@ -379,6 +398,161 @@ impl Default for RateLimiter {
     }
 }
 
+// ─── WebSocket upgrade tickets (v2b) ────────────────────────────────────────
+
+/// Seconds a freshly issued stream ticket is accepted for. The WS upgrade
+/// is expected immediately after the ticket is issued — 10s covers
+/// realistic browser roundtrips without extending the window an attacker
+/// could brute-force a leaked ticket in.
+pub const TICKET_TTL_SECS: u64 = 10;
+
+/// Hard cap on the number of live (unredeemed, unexpired) tickets. Prevents
+/// a pathological client from accumulating tickets by issuing without
+/// redeeming. Expired entries are pruned lazily on every operation.
+pub const MAX_LIVE_TICKETS: usize = 1024;
+
+/// Opaque ticket identifier. Newtype over `String` rather than a bare
+/// `&str`/`String` so API signatures like `redeem_for_session(ticket,
+/// session_id)` cannot silently swap the two arguments (they would still
+/// compile but the wrong one would take the wrong slot). Cheap to clone.
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct TicketId(String);
+
+impl TicketId {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub fn into_string(self) -> String {
+        self.0
+    }
+}
+
+impl From<String> for TicketId {
+    fn from(s: String) -> Self {
+        TicketId(s)
+    }
+}
+
+impl std::fmt::Display for TicketId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+/// One-shot WebSocket upgrade tickets. Clients exchange their long-lived
+/// bearer token for a short-lived ticket via `POST /sessions/:id/stream-ticket`,
+/// then present the ticket on the WS upgrade URL as `?ticket=<uuid>`. This
+/// lets browsers avoid putting the long-lived token in URL query strings
+/// (which tend to leak into proxy logs and browser history).
+///
+/// Each ticket is bound to a specific session_id: redemption only succeeds
+/// when the redeemed ticket's session_id matches the WS URL's path.
+///
+/// Eviction semantics (single-tenant assumption): when `max_live` is hit
+/// we evict the oldest-by-expiry entry. This is safe for Aether's
+/// single-token, single-user deployment — any authenticated caller is
+/// already trusted. If this module ever grows multi-tenant auth, swap
+/// this policy for per-tenant quotas before landing the multi-tenant
+/// change. See `docs/phase3/3d-1-v2-plan.md` for the follow-up note.
+pub struct TicketRegistry {
+    tickets: Mutex<HashMap<TicketId, TicketEntry>>,
+    max_live: usize,
+    ttl: Duration,
+}
+
+struct TicketEntry {
+    session_id: String,
+    expires_at: Instant,
+}
+
+impl TicketRegistry {
+    pub fn new() -> Self {
+        Self {
+            tickets: Mutex::new(HashMap::new()),
+            max_live: MAX_LIVE_TICKETS,
+            ttl: Duration::from_secs(TICKET_TTL_SECS),
+        }
+    }
+
+    /// Issue a fresh ticket for `session_id`. Returns `(ticket, ttl)`; the
+    /// HTTP handler converts `ttl` to `expires_in_ms` for the JSON
+    /// response. `Duration` is the more idiomatic shape for the internal
+    /// API — callers that want milliseconds can call `.as_millis()`.
+    pub fn issue(&self, session_id: &str) -> (TicketId, Duration) {
+        let now = Instant::now();
+        let mut map = self.tickets.lock().unwrap();
+        Self::prune_expired(&mut map, now);
+        // If we're at cap, drop the oldest-by-expiry. In the single-tenant
+        // model this is acceptable; see the `TicketRegistry` doc-comment
+        // for the multi-tenant consideration.
+        if map.len() >= self.max_live {
+            if let Some(oldest_key) = map
+                .iter()
+                .min_by_key(|(_, e)| e.expires_at)
+                .map(|(k, _)| k.clone())
+            {
+                map.remove(&oldest_key);
+            }
+        }
+        let ticket = TicketId(uuid::Uuid::new_v4().to_string());
+        let expires_at = now + self.ttl;
+        map.insert(
+            ticket.clone(),
+            TicketEntry {
+                session_id: session_id.to_string(),
+                expires_at,
+            },
+        );
+        (ticket, self.ttl)
+    }
+
+    /// Redeem a ticket for a specific session. Returns `true` on the first
+    /// redemption of a valid ticket that was issued for `session_id` and
+    /// has not yet expired; all other cases (unknown ticket, expired,
+    /// already redeemed, session mismatch) return `false`. The `TicketId`
+    /// newtype ensures the arguments cannot be silently swapped.
+    pub fn redeem_for_session(&self, ticket: &TicketId, session_id: &str) -> bool {
+        let now = Instant::now();
+        let mut map = self.tickets.lock().unwrap();
+        Self::prune_expired(&mut map, now);
+        let Some(entry) = map.get(ticket) else {
+            return false;
+        };
+        if entry.session_id != session_id {
+            return false;
+        }
+        if entry.expires_at <= now {
+            // Shouldn't happen after prune, but defensive.
+            map.remove(ticket);
+            return false;
+        }
+        // One-shot: remove on successful redeem.
+        map.remove(ticket);
+        true
+    }
+
+    fn prune_expired(map: &mut HashMap<TicketId, TicketEntry>, now: Instant) {
+        map.retain(|_, e| e.expires_at > now);
+    }
+
+    /// Test-only accessor for the number of live tickets. Kept as
+    /// `#[doc(hidden)] pub` rather than `#[cfg(test)]` because integration
+    /// tests live in a separate crate and do NOT see items gated on
+    /// `cfg(test)` of the library crate; `doc(hidden)` is the narrowest
+    /// scope that still exposes the accessor to them.
+    #[doc(hidden)]
+    pub fn live_count(&self) -> usize {
+        self.tickets.lock().unwrap().len()
+    }
+}
+
+impl Default for TicketRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 // ─── Auth ───────────────────────────────────────────────────────────────────
 
 #[derive(Clone)]
@@ -421,8 +595,10 @@ impl AuthConfig {
     }
 
     /// Check an `Authorization` header value against the configured token.
-    /// Uses a constant-time comparison to avoid leaking token length / prefix
-    /// via timing side channels.
+    /// Uses the `subtle` crate's audited constant-time comparison to avoid
+    /// leaking token length / prefix via timing side channels. Length
+    /// mismatches short-circuit to false — the length itself is not secret
+    /// (it's either the configured token's length or a client guess).
     pub fn verify(&self, header: Option<&str>) -> bool {
         let Some(required) = self.token.as_deref() else {
             return true;
@@ -431,7 +607,7 @@ impl AuthConfig {
         let Some(provided) = h.strip_prefix("Bearer ") else {
             return false;
         };
-        constant_time_eq(provided.as_bytes(), required.as_bytes())
+        ct_eq(provided.as_bytes(), required.as_bytes())
     }
 
     /// Check a bare token string (e.g. from a query-string parameter).
@@ -440,22 +616,18 @@ impl AuthConfig {
         let Some(required) = self.token.as_deref() else {
             return true;
         };
-        constant_time_eq(provided.as_bytes(), required.as_bytes())
+        ct_eq(provided.as_bytes(), required.as_bytes())
     }
 }
 
-/// Constant-time byte equality. Returns false for length mismatch (length is
-/// not a secret here — it's either the full configured token or a client
-/// guess, both low-sensitivity).
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+/// Constant-time byte equality via the `subtle` crate. Length mismatches
+/// short-circuit to `false`; this is intentional (the length of either input
+/// is not a secret in this module's threat model).
+fn ct_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
         return false;
     }
-    let mut diff = 0u8;
-    for (x, y) in a.iter().zip(b.iter()) {
-        diff |= x ^ y;
-    }
-    diff == 0
+    bool::from(a.ct_eq(b))
 }
 
 async fn auth_middleware(
@@ -472,23 +644,50 @@ async fn auth_middleware(
     let authorized = if state.auth.verify(header) {
         true
     } else if is_ws {
-        // Query-string fallback: browsers and Node's built-in WebSocket can't
-        // set custom headers on the upgrade request, so we also accept
-        // `?token=<t>` on WS endpoints. Everywhere else the header path is
-        // the only supported form.
+        // WebSocket query-string auth. Preferred path (v2b+): single-use
+        // `?ticket=<uuid>` minted by `POST /sessions/:id/stream-ticket`.
+        // Legacy path (v1): `?token=<long-lived>`; accepted for backward
+        // compatibility but logged as deprecated — to be removed one
+        // release after v2b lands.
         //
         // SECURITY NOTE: URLs tend to leak into logs (access logs,
-        // reverse-proxy logs, `RUST_LOG` trace output). We do not log request
-        // URIs anywhere in this module, but future additions must scrub
-        // `?token=` before emitting any log line that includes a full URI.
+        // reverse-proxy logs, `RUST_LOG` trace output). We do not log
+        // request URIs anywhere in this module; tickets are short-lived
+        // (10s) and single-use so a leaked ticket is much less damaging
+        // than a leaked long-lived token.
+        let path = req.uri().path().to_string();
         req.uri()
             .query()
             .map(|q| {
-                q.split('&').any(|pair| {
-                    pair.strip_prefix("token=")
-                        .map(|raw| state.auth.verify_token(&percent_decode(raw)))
-                        .unwrap_or(false)
-                })
+                for pair in q.split('&') {
+                    if let Some(raw) = pair.strip_prefix("ticket=") {
+                        let decoded = percent_decode(raw);
+                        if let Some(session_id) = extract_stream_session_id(&path) {
+                            let ticket = TicketId::from(decoded);
+                            if state.tickets.redeem_for_session(&ticket, session_id) {
+                                return true;
+                            }
+                        }
+                    } else if let Some(raw) = pair.strip_prefix("token=") {
+                        let decoded = percent_decode(raw);
+                        if state.auth.verify_token(&decoded) {
+                            // Throttle: a client that reconnects on every
+                            // network blip would otherwise spam the log
+                            // with identical deprecation warnings. One
+                            // warn per process is enough — the message is
+                            // a reminder, not a per-event audit trail.
+                            if !LEGACY_TOKEN_WARNED.swap(true, Ordering::Relaxed) {
+                                log::warn!(
+                                    "api: WS ?token= query-string auth is \
+                                     deprecated, use POST /sessions/:id/stream-ticket \
+                                     then ?ticket=<uuid>"
+                                );
+                            }
+                            return true;
+                        }
+                    }
+                }
+                false
             })
             .unwrap_or(false)
     } else {
@@ -631,6 +830,7 @@ pub fn router(state: ApiState) -> Router {
         .route("/sessions", post(create_session).get(list_sessions))
         .route("/sessions/:id", delete(close_session))
         .route("/sessions/:id/resize", post(resize_session))
+        .route("/sessions/:id/stream-ticket", post(issue_stream_ticket))
         .route("/sessions/:id/stream", get(ws_session))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
@@ -771,6 +971,50 @@ async fn resize_session(
         .resize(&id, body.cols, body.rows)
         .map_err(|e| map_pty_err(&id, e))?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// v2b: mint a one-shot WebSocket upgrade ticket bound to `:id`. The client
+/// then opens `ws://.../sessions/:id/stream?ticket=<uuid>` within
+/// `TICKET_TTL_SECS`.
+async fn issue_stream_ticket(
+    State(state): State<ApiState>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<StreamTicket>> {
+    // Session must already exist — avoids minting tickets for nonexistent
+    // ids, which would otherwise look like a successful ticket issuance
+    // but fail loudly on WS upgrade.
+    if !state.pty.list().iter().any(|s| s == &id) {
+        return Err(ApiError::NotFound(id));
+    }
+    let (ticket, ttl) = state.tickets.issue(&id);
+    Ok(Json(StreamTicket {
+        ticket: ticket.into_string(),
+        expires_in_ms: ttl.as_millis() as u64,
+    }))
+}
+
+#[derive(Serialize)]
+struct StreamTicket {
+    ticket: String,
+    /// Duration until the ticket expires, in milliseconds. Relative rather
+    /// than absolute so clients don't have to reason about server-vs-client
+    /// clock skew.
+    expires_in_ms: u64,
+}
+
+/// Extract `<id>` from a WS upgrade path of the shape `/sessions/<id>/stream`.
+/// Returns `None` for any other shape. Used by `auth_middleware` to scope a
+/// ticket redemption to the right session.
+///
+/// NOTE: this runs in the auth middleware on the raw pre-routing URI path,
+/// which is still percent-encoded. The session-id path segment in Aether
+/// is always a UUID v4 (hex + dashes) — neither character needs escaping —
+/// so a direct `strip_prefix` / `strip_suffix` is safe. If the session-id
+/// format ever changes to allow characters that URL-encode, this function
+/// must decode the segment before comparing.
+fn extract_stream_session_id(path: &str) -> Option<&str> {
+    path.strip_prefix("/sessions/")
+        .and_then(|rest| rest.strip_suffix("/stream"))
 }
 
 async fn ws_session(
@@ -935,11 +1179,11 @@ mod tests {
     }
 
     #[test]
-    fn constant_time_eq_matches_stdlib_for_equal_len() {
-        assert!(constant_time_eq(b"abc", b"abc"));
-        assert!(!constant_time_eq(b"abc", b"abd"));
-        assert!(!constant_time_eq(b"abc", b"abcd"));
-        assert!(constant_time_eq(b"", b""));
+    fn ct_eq_matches_stdlib_for_equal_len() {
+        assert!(ct_eq(b"abc", b"abc"));
+        assert!(!ct_eq(b"abc", b"abd"));
+        assert!(!ct_eq(b"abc", b"abcd"));
+        assert!(ct_eq(b"", b""));
     }
 
     #[test]

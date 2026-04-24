@@ -143,10 +143,44 @@ async function main() {
     record("resize unknown id -> 404", false, String(e));
   }
 
-  // WebSocket — query-string token fallback, since native WebSocket can't set
-  // custom headers on the upgrade request.
+  // v2b: mint a single-use ticket, then open the WS with `?ticket=<uuid>`.
+  // Legacy `?token=` is still accepted but deprecated; we re-verify it
+  // further down so the compatibility contract holds.
+  let ticket = null;
+  try {
+    const res = await fetch(`${HTTP}/sessions/${id}/stream-ticket`, {
+      method: "POST",
+      headers: AUTH_HEADERS,
+    });
+    if (res.ok) {
+      const body = await res.json();
+      ticket = body.ticket;
+      record(
+        "POST /sessions/:id/stream-ticket returns { ticket, expires_in_ms }",
+        typeof ticket === "string" && ticket.length === 36 && typeof body.expires_in_ms === "number",
+        `expires_in_ms=${body.expires_in_ms}`,
+      );
+    } else {
+      record("POST /sessions/:id/stream-ticket returns { ticket, expires_in_ms }", false, `status=${res.status}`);
+    }
+  } catch (e) {
+    record("POST /sessions/:id/stream-ticket returns { ticket, expires_in_ms }", false, String(e));
+  }
+
+  // stream-ticket for unknown session → 404
+  try {
+    const res = await fetch(`${HTTP}/sessions/does-not-exist/stream-ticket`, {
+      method: "POST",
+      headers: AUTH_HEADERS,
+    });
+    record("stream-ticket unknown id -> 404", res.status === 404, `status=${res.status}`);
+  } catch (e) {
+    record("stream-ticket unknown id -> 404", false, String(e));
+  }
+
+  // WebSocket via ?ticket=
   const ws = new WebSocket(
-    `${WS}/sessions/${id}/stream?token=${encodeURIComponent(TOKEN)}`,
+    `${WS}/sessions/${id}/stream?ticket=${encodeURIComponent(ticket ?? "")}`,
   );
   ws.binaryType = "arraybuffer";
 
@@ -161,7 +195,7 @@ async function main() {
       resolve(false);
     });
   });
-  record("WS opens with ?token=", opened);
+  record("WS opens with ?ticket=", opened);
   if (!opened) {
     return finish();
   }
@@ -195,7 +229,44 @@ async function main() {
   ws.close();
   await sleep(200);
 
-  // WebSocket — missing token should fail handshake.
+  // Same ticket must not redeem twice (one-shot semantics).
+  const reuseTicketWs = new WebSocket(
+    `${WS}/sessions/${id}/stream?ticket=${encodeURIComponent(ticket ?? "")}`,
+  );
+  const reuseOpened = await new Promise((resolve) => {
+    const timeout = setTimeout(() => resolve(false), 2000);
+    reuseTicketWs.addEventListener("open", () => {
+      clearTimeout(timeout);
+      resolve(true);
+    });
+    reuseTicketWs.addEventListener("error", () => {
+      clearTimeout(timeout);
+      resolve(false);
+    });
+  });
+  record("WS rejects replayed ticket", !reuseOpened);
+
+  // Legacy ?token= path — still works one release past v2b so callers can
+  // migrate. Remove this when ?token= is deleted.
+  const legacyWs = new WebSocket(
+    `${WS}/sessions/${id}/stream?token=${encodeURIComponent(TOKEN)}`,
+  );
+  const legacyOpened = await new Promise((resolve) => {
+    const timeout = setTimeout(() => resolve(false), 3000);
+    legacyWs.addEventListener("open", () => {
+      clearTimeout(timeout);
+      resolve(true);
+    });
+    legacyWs.addEventListener("error", () => {
+      clearTimeout(timeout);
+      resolve(false);
+    });
+  });
+  record("WS legacy ?token= still authenticates (deprecated)", legacyOpened);
+  legacyWs.close();
+  await sleep(200);
+
+  // WebSocket — missing token/ticket should fail handshake.
   const badWs = new WebSocket(`${WS}/sessions/${id}/stream`);
   const badOpened = await new Promise((resolve) => {
     const timeout = setTimeout(() => resolve(false), 2000);
@@ -208,7 +279,7 @@ async function main() {
       resolve(false);
     });
   });
-  record("WS without token is rejected", !badOpened);
+  record("WS without token/ticket is rejected", !badOpened);
 
   try {
     const res = await fetch(`${HTTP}/sessions/${id}`, {
