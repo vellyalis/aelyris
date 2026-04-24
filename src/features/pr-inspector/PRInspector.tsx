@@ -17,6 +17,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { LoadingSkeleton } from "../../shared/ui/LoadingSkeleton";
+import { PanelHeader } from "../../shared/ui/PanelHeader";
 import styles from "./PRInspector.module.css";
 
 interface CheckRun {
@@ -184,15 +185,20 @@ export function PRInspector({ visible, projectPath, onClose, onViewDiff, onStart
           exit={{ opacity: 0, scale: 0.95 }}
           transition={{ type: "spring", stiffness: 400, damping: 30 }}
         >
-          <div className={styles.header}>
-            <span className={styles.title}>Pull Requests</span>
-            <button className={styles.iconBtn} onClick={loadPRs} title="Refresh" aria-label="Refresh">
-              <RefreshCw size={12} strokeWidth={1.75} aria-hidden="true" />
-            </button>
-            <button className={styles.iconBtn} onClick={onClose} title="Close" aria-label="Close">
-              <X size={12} strokeWidth={1.75} aria-hidden="true" />
-            </button>
-          </div>
+          <PanelHeader
+            title="Pull Requests"
+            count={prs.length}
+            actions={
+              <>
+                <button className={styles.iconBtn} onClick={loadPRs} title="Refresh" aria-label="Refresh">
+                  <RefreshCw size={12} strokeWidth={1.75} aria-hidden="true" />
+                </button>
+                <button className={styles.iconBtn} onClick={onClose} title="Close" aria-label="Close">
+                  <X size={12} strokeWidth={1.75} aria-hidden="true" />
+                </button>
+              </>
+            }
+          />
           <div className={styles.list}>
             {loading && <LoadingSkeleton variant="card" count={3} label="Loading pull requests" />}
             {error && <div className={styles.error}>{error}</div>}

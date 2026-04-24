@@ -286,7 +286,7 @@ export function AgentInspector({
           title="Parallel session view"
           aria-label="Parallel sessions"
         >
-          <Layers size={11} strokeWidth={1.75} aria-hidden="true" />
+          <Layers size={10} strokeWidth={1.75} aria-hidden="true" />
           Parallel
           {activeSessions.length > 0 && <span className={styles.tabBadge}>{activeSessions.length}</span>}
         </button>
@@ -296,7 +296,7 @@ export function AgentInspector({
           title="Conductor DAG — see roles + handoffs at a glance"
           aria-label="Conductor DAG"
         >
-          <Share2 size={11} strokeWidth={1.75} aria-hidden="true" />
+          <Share2 size={10} strokeWidth={1.75} aria-hidden="true" />
           Conductor
         </button>
         <button
@@ -305,7 +305,7 @@ export function AgentInspector({
           title="View file changes"
           aria-label="File diffs"
         >
-          <GitCompare size={11} strokeWidth={1.75} aria-hidden="true" />
+          <GitCompare size={10} strokeWidth={1.75} aria-hidden="true" />
           Diffs
         </button>
         <div className={styles.tabActions}>
@@ -315,7 +315,7 @@ export function AgentInspector({
               title={`Stop ${overBudgetCount} over-budget session${overBudgetCount === 1 ? "" : "s"}`}
               onClick={handleStopOverBudget}
             >
-              <AlertTriangle size={9} style={{ verticalAlign: -1, marginRight: 2 }} />
+              <AlertTriangle size={10} style={{ verticalAlign: -1, marginRight: 2 }} />
               {overBudgetCount} over budget
             </button>
           )}
@@ -516,7 +516,7 @@ export function AgentInspector({
         <div className={styles.logSection} style={{ flex: 1 }}>
           <div className={styles.activityFilters}>
             <div className={styles.activitySearchRow}>
-              <Search size={11} className={styles.activitySearchIcon} />
+              <Search size={10} className={styles.activitySearchIcon} />
               <input
                 type="text"
                 className={styles.activitySearch}

@@ -17,6 +17,7 @@ import { toast } from "../../shared/store/toastStore";
 import { showConfirm } from "../../shared/ui/ConfirmDialog";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { GitStatusPip } from "../../shared/ui/GitStatusPip";
+import { PanelHeader } from "../../shared/ui/PanelHeader";
 import styles from "./SCMPanel.module.css";
 
 interface ChangedFile {
@@ -60,6 +61,8 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [commitMsg, setCommitMsg] = useState("");
   const [loading, setLoading] = useState(false);
+  const [isCommitting, setIsCommitting] = useState(false);
+  const [isPushing, setIsPushing] = useState(false);
   const commitInputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const refresh = useCallback(async () => {
@@ -145,6 +148,7 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
   const handleCommit = useCallback(async () => {
     if (!commitMsg.trim()) return;
     setLoading(true);
+    setIsCommitting(true);
     try {
       await invoke("git_commit", { repoPath: projectPath, message: commitMsg.trim() });
       setCommitMsg("");
@@ -154,12 +158,14 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
       toast.error("Commit failed", String(e));
     } finally {
       setLoading(false);
+      setIsCommitting(false);
     }
   }, [commitMsg, projectPath, refresh]);
 
   const handleCommitAndPush = useCallback(async () => {
     if (!commitMsg.trim()) return;
     setLoading(true);
+    setIsPushing(true);
     try {
       await invoke("git_commit", { repoPath: projectPath, message: commitMsg.trim() });
       await invoke("git_push", { repoPath: projectPath });
@@ -170,6 +176,7 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
       toast.error("Commit & push failed", String(e));
     } finally {
       setLoading(false);
+      setIsPushing(false);
     }
   }, [commitMsg, projectPath, refresh]);
 
@@ -187,10 +194,11 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
 
   return (
     <div className={styles.panel}>
+      <PanelHeader title="Source control" count={stagedCount} />
       {/* Branch + tracking summary */}
       {branch && (
         <div className={styles.branchBar}>
-          <GitBranch size={11} strokeWidth={1.75} aria-hidden="true" />
+          <GitBranch size={10} strokeWidth={1.75} aria-hidden="true" />
           <span className={styles.branchName} title={upstream ? `Tracking ${upstream}` : "No upstream configured"}>
             {branch}
           </span>
@@ -240,6 +248,7 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
             className={styles.commitBtn}
             onClick={handleCommit}
             disabled={!commitMsg.trim() || stagedCount === 0 || loading}
+            aria-busy={isCommitting}
           >
             <Check size={10} /> Commit {stagedCount > 0 && `(${stagedCount})`}
           </button>
@@ -247,6 +256,7 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
             className={styles.pushBtn}
             onClick={handleCommitAndPush}
             disabled={!commitMsg.trim() || stagedCount === 0 || loading}
+            aria-busy={isPushing}
             title="Commit & Push"
           >
             <Upload size={10} />
@@ -259,7 +269,7 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
         {grouped.map((g) => (
           <div key={g.id} className={styles.group}>
             <button className={styles.groupHeader} onClick={() => setCollapsed((c) => ({ ...c, [g.id]: !c[g.id] }))}>
-              <ChevronRight size={11} className={`${styles.chevron} ${!collapsed[g.id] ? styles.chevronOpen : ""}`} />
+              <ChevronRight size={10} className={`${styles.chevron} ${!collapsed[g.id] ? styles.chevronOpen : ""}`} />
               <span className={styles.groupDot} style={{ background: g.color }} />
               <span className={styles.groupLabel}>{g.label}</span>
               <span className={styles.groupCount}>{g.files.length}</span>

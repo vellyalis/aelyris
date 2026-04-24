@@ -9,14 +9,15 @@ interface WatchdogBadgeProps {
   rule?: string;
 }
 
-const CONFIG: Record<WatchdogDecisionType, { icon: typeof ShieldCheck; color: string; label: string }> = {
-  approved: { icon: ShieldCheck, color: "#a6e3a1", label: "Approved" },
-  denied: { icon: ShieldX, color: "#f38ba8", label: "Denied" },
-  manual: { icon: ShieldQuestion, color: "#f9e2af", label: "Manual" },
+const CONFIG: Record<WatchdogDecisionType, { icon: typeof ShieldCheck; colorVar: string; label: string }> = {
+  approved: { icon: ShieldCheck, colorVar: "--ctp-green", label: "Approved" },
+  denied: { icon: ShieldX, colorVar: "--ctp-red", label: "Denied" },
+  manual: { icon: ShieldQuestion, colorVar: "--ctp-yellow", label: "Manual" },
 };
 
 export const WatchdogBadge = memo(function WatchdogBadge({ decision, tool, rule }: WatchdogBadgeProps) {
-  const { icon: Icon, color, label } = CONFIG[decision];
+  const { icon: Icon, colorVar, label } = CONFIG[decision];
+  const color = `var(${colorVar})`;
 
   return (
     <span
@@ -26,8 +27,8 @@ export const WatchdogBadge = memo(function WatchdogBadge({ decision, tool, rule 
         gap: 3,
         padding: "1px 6px",
         borderRadius: 3,
-        background: `${color}15`,
-        border: `1px solid ${color}30`,
+        background: `color-mix(in srgb, ${color} 8%, transparent)`,
+        border: `1px solid color-mix(in srgb, ${color} 18%, transparent)`,
         fontSize: 9,
         color,
         fontFamily: "var(--font-mono)",

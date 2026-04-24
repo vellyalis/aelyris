@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { isReadOnlyLayer, type LayerSummary } from "../../shared/types/ghostdiff";
 import { EmptyState } from "../../shared/ui/EmptyState";
+import { PanelHeader } from "../../shared/ui/PanelHeader";
 import styles from "./GhostDiffPanel.module.css";
 
 interface GhostDiffPanelProps {
@@ -53,15 +54,13 @@ export function GhostDiffPanel({ layers, onDismiss, onClose }: GhostDiffPanelPro
 
   return (
     <div ref={rootRef} className={styles.panel} role="dialog" aria-label="Ghost diff layers">
-      <div className={styles.header}>
-        <div className={styles.headerTitle}>
-          <Layers size={12} />
-          <span>Ghost diff</span>
-        </div>
-        <span className={styles.subtitle}>
-          {layers.length === 0 ? "No active layers" : `${layers.length} layer${layers.length === 1 ? "" : "s"}`}
-        </span>
-      </div>
+      <PanelHeader
+        leadingIcon={<Layers size={12} />}
+        title="Ghost diff"
+        subtitle={
+          layers.length === 0 ? "No active layers" : `${layers.length} layer${layers.length === 1 ? "" : "s"}`
+        }
+      />
       <div className={styles.list}>
         {layers.length === 0 ? (
           <EmptyState
@@ -156,7 +155,7 @@ function LayerRow({ layer, expanded, onToggle, onDismiss }: LayerRowProps) {
           title="Dismiss layer"
           aria-label="Dismiss layer"
         >
-          <X size={11} />
+          <X size={10} />
         </button>
       </div>
       {expanded && filePaths.length > 0 && (

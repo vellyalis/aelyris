@@ -56,7 +56,7 @@ export function InteractiveSessionCard({
                 <span className={styles.cardName}>{getCliLabel(is.cli)}</span>
                 {is.worktree_branch && (
                   <span className={styles.cardBranch} title={`Worktree branch: ${is.worktree_branch}`}>
-                    <Zap size={9} strokeWidth={1.75} aria-hidden="true" />
+                    <Zap size={10} strokeWidth={1.75} aria-hidden="true" />
                     {is.worktree_branch}
                   </span>
                 )}

@@ -147,6 +147,10 @@
   outline: none !important;
   border-color: var(--ctp-mauve);
 }
+.input[aria-invalid="true"] {
+  border-color: var(--ctp-red);
+  box-shadow: 0 0 0 1px var(--ctp-red);
+}
 .input::placeholder {
   color: var(--text-muted);
 }

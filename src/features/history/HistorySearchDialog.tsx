@@ -109,7 +109,7 @@ export function HistorySearchDialog({ onAccept, defaultCwdPrefix }: HistorySearc
         <Dialog.Overlay className={styles.overlay} />
         <Dialog.Content className={styles.panel} aria-describedby={undefined}>
           <div className={styles.header}>
-            <History size={18} aria-hidden />
+            <History size={20} aria-hidden />
             <Dialog.Title className={styles.title}>Semantic History</Dialog.Title>
             <input
               ref={inputRef}

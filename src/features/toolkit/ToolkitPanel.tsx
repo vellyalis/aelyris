@@ -398,7 +398,7 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
 
             <div className={styles.importActions}>
               <button className={styles.importFileBtn} onClick={handleImportFile} title="Load .json file">
-                <FileUp size={13} /> File
+                <FileUp size={14} /> File
               </button>
               <div className={styles.importActionsSpacer} />
               <Dialog.Close asChild>

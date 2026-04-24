@@ -188,7 +188,7 @@ export function WorktreeManager({ projectPath, onSwitch }: WorktreeManagerProps)
                   aria-label={`Remove worktree ${wt.branch}`}
                   title="Remove Worktree"
                 >
-                  <Trash2 size={11} aria-hidden="true" />
+                  <Trash2 size={10} aria-hidden="true" />
                 </button>
               </div>
             )}

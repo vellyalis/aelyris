@@ -215,7 +215,7 @@ export function KanbanBoard({
                           }}
                           title={`Agent: ${agentStatuses[t.assignedAgentId].status}`}
                         >
-                          <Bot size={9} />
+                          <Bot size={10} />
                         </span>
                       )}
                       {(t.column === "todo" || t.column === "in_progress") && !t.assignedAgentId && onStartAgent && (

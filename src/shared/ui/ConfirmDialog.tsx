@@ -84,7 +84,7 @@ export function ConfirmDialog() {
           aria-describedby={description ? "confirm-desc" : undefined}
         >
           <div className={styles.header}>
-            {tone === "danger" && <AlertTriangle size={18} aria-hidden="true" className={styles.icon} />}
+            {tone === "danger" && <AlertTriangle size={20} aria-hidden="true" className={styles.icon} />}
             <Dialog.Title className={styles.title}>{title}</Dialog.Title>
           </div>
           {description && (

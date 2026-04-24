@@ -7,8 +7,8 @@
   transition: background 0.2s ease;
 }
 .dragOver {
-  background: rgba(124, 58, 237, 0.08);
-  outline: 2px dashed var(--purple);
+  background: var(--white-4);
+  outline: 2px dashed var(--gold);
   outline-offset: -8px;
 }
 
@@ -32,7 +32,7 @@
   width: 40px;
   height: 40px;
   border-radius: var(--radius);
-  background: var(--purple);
+  background: var(--gold);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -117,7 +117,7 @@
 .dropZoneActive {
   border-color: var(--gold);
   color: var(--text-primary);
-  background: rgba(200, 160, 80, 0.08);
+  background: var(--row-hover);
 }
 
 .recentHeader {
@@ -162,7 +162,7 @@
   background: var(--white-4);
   box-shadow:
     0 4px 16px rgba(0, 0, 0, 0.3),
-    0 0 12px rgba(200, 160, 80, 0.2);
+    0 0 12px var(--white-10);
   transform: translateY(-2px);
 }
 
@@ -170,7 +170,7 @@
   width: 32px;
   height: 32px;
   border-radius: var(--radius-sm);
-  background: var(--purple);
+  background: var(--white-10);
   display: flex;
   align-items: center;
   justify-content: center;

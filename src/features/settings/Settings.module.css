@@ -117,6 +117,12 @@
   border-color: var(--accent);
 }
 
+.input[aria-invalid="true"],
+.select[aria-invalid="true"] {
+  border-color: var(--ctp-red);
+  box-shadow: 0 0 0 1px var(--ctp-red);
+}
+
 .row {
   display: flex;
   gap: var(--space-6);

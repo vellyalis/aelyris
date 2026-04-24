@@ -45,7 +45,7 @@ export const EditorStatusBar = memo(function EditorStatusBar({
         aria-label="Toggle word wrap"
         title={wordWrap ? "Disable Word Wrap" : "Enable Word Wrap"}
       >
-        <WrapText size={11} aria-hidden="true" style={{ opacity: wordWrap ? 1 : 0.4 }} />
+        <WrapText size={10} aria-hidden="true" style={{ opacity: wordWrap ? 1 : 0.4 }} />
       </button>
       <button
         type="button"
@@ -55,7 +55,7 @@ export const EditorStatusBar = memo(function EditorStatusBar({
         aria-label="Toggle minimap"
         title={minimapEnabled ? "Hide Minimap" : "Show Minimap"}
       >
-        <Columns2 size={11} aria-hidden="true" style={{ opacity: minimapEnabled ? 1 : 0.4 }} />
+        <Columns2 size={10} aria-hidden="true" style={{ opacity: minimapEnabled ? 1 : 0.4 }} />
       </button>
     </div>
   );

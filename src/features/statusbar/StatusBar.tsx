@@ -28,13 +28,13 @@ export function StatusBar({ shell, branch, changedCount, encoding = "UTF-8", age
       <div className={styles.left}>
         {branch && (
           <span className={`${styles.item} ${styles.branchAnchor}`} title={`Current branch: ${branch}`}>
-            <GitBranch size={11} strokeWidth={1.75} aria-hidden="true" />
+            <GitBranch size={10} strokeWidth={1.75} aria-hidden="true" />
             {branch}
           </span>
         )}
         {changedCount > 0 && (
           <span className={styles.item} title={`${changedCount} files changed`}>
-            <FileText size={11} strokeWidth={1.75} aria-hidden="true" />
+            <FileText size={10} strokeWidth={1.75} aria-hidden="true" />
             {changedCount} changed
           </span>
         )}
@@ -44,7 +44,7 @@ export function StatusBar({ shell, branch, changedCount, encoding = "UTF-8", age
       <div className={styles.right}>
         {agentStatus && (
           <span className={`${styles.item} ${styles.passive}`}>
-            <Cpu size={11} strokeWidth={1.75} aria-hidden="true" />
+            <Cpu size={10} strokeWidth={1.75} aria-hidden="true" />
             {agentStatus}
           </span>
         )}
@@ -59,7 +59,7 @@ export function StatusBar({ shell, branch, changedCount, encoding = "UTF-8", age
           aria-label="Auto-repair"
           aria-expanded={repairOpen}
         >
-          <Wrench size={11} strokeWidth={1.75} aria-hidden="true" />
+          <Wrench size={10} strokeWidth={1.75} aria-hidden="true" />
           {activeCount > 0 && <span className={styles.repairBadge}>{activeCount}</span>}
         </button>
         <button
@@ -74,7 +74,7 @@ export function StatusBar({ shell, branch, changedCount, encoding = "UTF-8", age
           aria-label="Ghost diff"
           aria-expanded={ghostOpen}
         >
-          <Layers size={11} strokeWidth={1.75} aria-hidden="true" />
+          <Layers size={10} strokeWidth={1.75} aria-hidden="true" />
           {ghostActiveCount > 0 && <span className={styles.repairBadge}>{ghostActiveCount}</span>}
         </button>
       </div>

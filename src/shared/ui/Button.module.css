@@ -100,6 +100,25 @@
   pointer-events: none;
 }
 
+/* Loading — set aria-busy="true" to dim the label and overlay a subtle
+ * shimmer sweep. Reuses the global `shimmer` keyframe in global.css. */
+.btn[aria-busy="true"] {
+  cursor: progress;
+  pointer-events: none;
+}
+.btn[aria-busy="true"] > * {
+  opacity: 0.6;
+}
+.btn[aria-busy="true"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.12), transparent);
+  background-size: 200px 100%;
+  animation: shimmer 1.5s infinite;
+  pointer-events: none;
+}
+
 /* Size variants */
 .sm {
   padding: var(--space-1) var(--space-4);

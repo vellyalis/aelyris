@@ -133,12 +133,12 @@ export function SessionCard({
                 )}
                 {s.branch && (
                   <span className={styles.cardBranch} title={`Branch: ${s.branch}`}>
-                    <Zap size={9} strokeWidth={1.75} aria-hidden="true" />
+                    <Zap size={10} strokeWidth={1.75} aria-hidden="true" />
                     {s.branch}
                   </span>
                 )}
                 <span className={styles.cardIcons}>
-                  <Pencil size={9} />
+                  <Pencil size={10} />
                 </span>
               </div>
               <div className={styles.cardStatusRow}>
@@ -152,7 +152,7 @@ export function SessionCard({
                     className={styles.cardFiles}
                     title={`${s.filesChanged} file${s.filesChanged === 1 ? "" : "s"} changed`}
                   >
-                    <Paperclip size={9} strokeWidth={1.75} aria-hidden="true" />
+                    <Paperclip size={10} strokeWidth={1.75} aria-hidden="true" />
                     {s.filesChanged}
                   </span>
                 )}
@@ -175,7 +175,7 @@ export function SessionCard({
                         : `Context ${pct}% exceeds warning threshold`
                     }
                   >
-                    <AlertTriangle size={8} />
+                    <AlertTriangle size={10} />
                     {warning === "cost" ? "$" : `${pct}%`}
                   </span>
                 )}
@@ -184,7 +184,7 @@ export function SessionCard({
                     className={styles.conflictBadge}
                     title={`File conflict with another session:\n${(conflictingPaths ?? []).slice(0, 5).join("\n")}${conflictCount > 5 ? `\n+${conflictCount - 5} more` : ""}`}
                   >
-                    <FileWarning size={8} />
+                    <FileWarning size={10} />
                     {conflictCount}
                   </span>
                 )}
