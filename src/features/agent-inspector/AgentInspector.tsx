@@ -4,6 +4,7 @@ import {
   ClipboardCopy,
   GitCompare,
   Layers,
+  ListChecks,
   Plus,
   Search,
   Share2,
@@ -277,19 +278,29 @@ export function AgentInspector({
 
   return (
     <div className={styles.inspector} role="region" aria-label="Agent sessions">
-      {/* Tab toggle */}
+      {/* Tab toggle — active tab shows icon + label, inactive tabs show
+       * icon only with title/aria tooltip. At 320px right-panel width
+       * there isn't room for five full labels plus the Orchestra pill +
+       * actions; the 2026-04-24 live review measured 515px needed for
+       * full labels (overflowed by ~195px). */}
       <div className={styles.tabBar}>
         <button
           className={`${styles.tab} ${tab === "sessions" ? styles.tabActive : ""}`}
           onClick={() => setTab("sessions")}
+          title="Sessions"
+          aria-label="Sessions"
         >
-          Sessions
+          <ListChecks size={12} strokeWidth={1.75} aria-hidden="true" />
+          {tab === "sessions" && <span className={styles.tabLabel}>Sessions</span>}
         </button>
         <button
           className={`${styles.tab} ${tab === "activity" ? styles.tabActive : ""}`}
           onClick={() => setTab("activity")}
+          title="Activity"
+          aria-label="Activity"
         >
-          Activity
+          <Activity size={12} strokeWidth={1.75} aria-hidden="true" />
+          {tab === "activity" && <span className={styles.tabLabel}>Activity</span>}
         </button>
         <button
           className={`${styles.tab} ${tab === "parallel" ? styles.tabActive : ""}`}
@@ -297,8 +308,8 @@ export function AgentInspector({
           title="Parallel session view"
           aria-label="Parallel sessions"
         >
-          <Layers size={10} strokeWidth={1.75} aria-hidden="true" />
-          Parallel
+          <Layers size={12} strokeWidth={1.75} aria-hidden="true" />
+          {tab === "parallel" && <span className={styles.tabLabel}>Parallel</span>}
           {activeSessions.length > 0 && <span className={styles.tabBadge}>{activeSessions.length}</span>}
         </button>
         <button
@@ -307,8 +318,8 @@ export function AgentInspector({
           title="Conductor DAG — see roles + handoffs at a glance"
           aria-label="Conductor DAG"
         >
-          <Share2 size={10} strokeWidth={1.75} aria-hidden="true" />
-          Conductor
+          <Share2 size={12} strokeWidth={1.75} aria-hidden="true" />
+          {tab === "conductor" && <span className={styles.tabLabel}>Conductor</span>}
         </button>
         <button
           className={`${styles.tab} ${tab === "diffs" ? styles.tabActive : ""}`}
@@ -316,8 +327,8 @@ export function AgentInspector({
           title="View file changes"
           aria-label="File diffs"
         >
-          <GitCompare size={10} strokeWidth={1.75} aria-hidden="true" />
-          Diffs
+          <GitCompare size={12} strokeWidth={1.75} aria-hidden="true" />
+          {tab === "diffs" && <span className={styles.tabLabel}>Diffs</span>}
         </button>
         <div className={styles.tabActions}>
           {overBudgetCount > 0 && onStopAgent && (
