@@ -10,12 +10,7 @@
  * produce surprising selections that span the terminal width.
  */
 
-import {
-  CellAttr,
-  hasAttr,
-  type CellSnapshot,
-  type GridSnapshot,
-} from "../../shared/types/terminal";
+import { CellAttr, type CellSnapshot, type GridSnapshot, hasAttr } from "../../shared/types/terminal";
 import type { SelectionRange } from "./selection";
 
 export interface SearchMatch {
@@ -29,11 +24,7 @@ export interface SearchOptions {
   caseSensitive?: boolean;
 }
 
-export function findMatches(
-  snapshot: GridSnapshot | null,
-  query: string,
-  options: SearchOptions = {},
-): SearchMatch[] {
+export function findMatches(snapshot: GridSnapshot | null, query: string, options: SearchOptions = {}): SearchMatch[] {
   if (!snapshot || !query) return [];
 
   const caseSensitive = options.caseSensitive ?? false;
@@ -69,33 +60,21 @@ export function matchToRange(match: SearchMatch): SelectionRange {
 }
 
 /** Walk `matches` in reading order and pick the next one after `current`. */
-export function nextMatch(
-  matches: readonly SearchMatch[],
-  current: SearchMatch | null,
-): SearchMatch | null {
+export function nextMatch(matches: readonly SearchMatch[], current: SearchMatch | null): SearchMatch | null {
   if (matches.length === 0) return null;
   if (!current) return matches[0];
   const idx = matches.findIndex(
-    (m) =>
-      m.row === current.row &&
-      m.startCol === current.startCol &&
-      m.endCol === current.endCol,
+    (m) => m.row === current.row && m.startCol === current.startCol && m.endCol === current.endCol,
   );
   if (idx < 0) return matches[0];
   return matches[(idx + 1) % matches.length];
 }
 
-export function previousMatch(
-  matches: readonly SearchMatch[],
-  current: SearchMatch | null,
-): SearchMatch | null {
+export function previousMatch(matches: readonly SearchMatch[], current: SearchMatch | null): SearchMatch | null {
   if (matches.length === 0) return null;
   if (!current) return matches[matches.length - 1];
   const idx = matches.findIndex(
-    (m) =>
-      m.row === current.row &&
-      m.startCol === current.startCol &&
-      m.endCol === current.endCol,
+    (m) => m.row === current.row && m.startCol === current.startCol && m.endCol === current.endCol,
   );
   if (idx < 0) return matches[matches.length - 1];
   return matches[(idx - 1 + matches.length) % matches.length];

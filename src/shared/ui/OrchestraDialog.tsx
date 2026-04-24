@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { create } from "zustand";
 
 import { ORCHESTRA_ROLES, type OrchestraRoleId } from "../lib/orchestrator";
@@ -19,10 +19,7 @@ interface OrchestraState {
 }
 
 interface OrchestraStore extends OrchestraState {
-  show: (opts?: {
-    defaultTask?: string;
-    defaultRoles?: OrchestraRoleId[];
-  }) => Promise<OrchestraResult | null>;
+  show: (opts?: { defaultTask?: string; defaultRoles?: OrchestraRoleId[] }) => Promise<OrchestraResult | null>;
   close: (value: OrchestraResult | null) => void;
 }
 
@@ -52,9 +49,7 @@ export const useOrchestraStore = create<OrchestraStore>((set, get) => ({
 export function OrchestraDialog() {
   const { open, defaultTask, defaultRoles, close } = useOrchestraStore();
   const [task, setTask] = useState("");
-  const [selected, setSelected] = useState<Set<OrchestraRoleId>>(
-    () => new Set(defaultRoles),
-  );
+  const [selected, setSelected] = useState<Set<OrchestraRoleId>>(() => new Set(defaultRoles));
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -81,25 +76,26 @@ export function OrchestraDialog() {
   const handleSubmit = useCallback(() => {
     const trimmed = task.trim();
     if (!trimmed || selected.size === 0) return;
-    const roles: OrchestraRoleId[] = ORCHESTRA_ROLES
-      .map((r) => r.id)
-      .filter((id) => selected.has(id));
+    const roles: OrchestraRoleId[] = ORCHESTRA_ROLES.map((r) => r.id).filter((id) => selected.has(id));
     close({ task: trimmed, roles });
   }, [task, selected, close]);
 
   const canSubmit = task.trim().length > 0 && selected.size > 0;
 
   return (
-    <Dialog.Root open={open} onOpenChange={(o) => { if (!o) close(null); }}>
+    <Dialog.Root
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) close(null);
+      }}
+    >
       <Dialog.Portal>
         <Dialog.Overlay className={styles.overlay} />
         <Dialog.Content className={styles.panel} aria-describedby={undefined}>
           <Dialog.Title className={styles.title}>
             <span className={styles.conductor}>♫</span> Orchestra mode
           </Dialog.Title>
-          <div className={styles.subtitle}>
-            Dispatch multiple agents in parallel, each with a specific role.
-          </div>
+          <div className={styles.subtitle}>Dispatch multiple agents in parallel, each with a specific role.</div>
           <textarea
             ref={textareaRef}
             className={styles.textarea}
@@ -149,11 +145,7 @@ export function OrchestraDialog() {
             <button className={styles.cancelBtn} onClick={() => close(null)}>
               Cancel
             </button>
-            <button
-              className={styles.submitBtn}
-              onClick={handleSubmit}
-              disabled={!canSubmit}
-            >
+            <button className={styles.submitBtn} onClick={handleSubmit} disabled={!canSubmit}>
               Dispatch {selected.size} agent{selected.size === 1 ? "" : "s"}
             </button>
           </div>

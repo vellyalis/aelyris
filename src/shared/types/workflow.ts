@@ -23,9 +23,25 @@ export const DEFAULT_WORKFLOWS: Workflow[] = [
     description: "Plan → Code → Test → Review",
     steps: [
       { name: "Plan", prompt: "Plan the implementation for: {{task}}", model: "claude-opus", watchdogPreset: "strict" },
-      { name: "Implement", prompt: "Implement the plan from the previous step", model: "claude-sonnet", watchdogPreset: "permissive" },
-      { name: "Test", prompt: "Write tests for the implementation", model: "claude-sonnet", watchdogPreset: "permissive", qualityGate: { command: "pnpm test", successPattern: "passed" } },
-      { name: "Review", prompt: "Review the code changes for quality and security issues", model: "claude-opus", watchdogPreset: "readonly" },
+      {
+        name: "Implement",
+        prompt: "Implement the plan from the previous step",
+        model: "claude-sonnet",
+        watchdogPreset: "permissive",
+      },
+      {
+        name: "Test",
+        prompt: "Write tests for the implementation",
+        model: "claude-sonnet",
+        watchdogPreset: "permissive",
+        qualityGate: { command: "pnpm test", successPattern: "passed" },
+      },
+      {
+        name: "Review",
+        prompt: "Review the code changes for quality and security issues",
+        model: "claude-opus",
+        watchdogPreset: "readonly",
+      },
     ],
   },
   {
@@ -33,9 +49,25 @@ export const DEFAULT_WORKFLOWS: Workflow[] = [
     name: "Fix Bug",
     description: "Investigate → Fix → Verify",
     steps: [
-      { name: "Investigate", prompt: "Investigate the bug: {{task}}", model: "claude-sonnet", watchdogPreset: "strict" },
-      { name: "Fix", prompt: "Fix the bug based on the investigation", model: "claude-sonnet", watchdogPreset: "permissive" },
-      { name: "Verify", prompt: "Verify the fix by running tests", model: "claude-haiku", watchdogPreset: "permissive", qualityGate: { command: "pnpm test", successPattern: "passed" } },
+      {
+        name: "Investigate",
+        prompt: "Investigate the bug: {{task}}",
+        model: "claude-sonnet",
+        watchdogPreset: "strict",
+      },
+      {
+        name: "Fix",
+        prompt: "Fix the bug based on the investigation",
+        model: "claude-sonnet",
+        watchdogPreset: "permissive",
+      },
+      {
+        name: "Verify",
+        prompt: "Verify the fix by running tests",
+        model: "claude-haiku",
+        watchdogPreset: "permissive",
+        qualityGate: { command: "pnpm test", successPattern: "passed" },
+      },
     ],
   },
 ];

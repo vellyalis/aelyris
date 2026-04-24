@@ -1,13 +1,13 @@
-import { memo } from "react";
 import {
-  GitBranch,
-  SplitSquareVertical,
-  SplitSquareHorizontal,
   ArrowLeftRight,
+  GitBranch,
   Maximize2,
   Minimize2,
+  SplitSquareHorizontal,
+  SplitSquareVertical,
   X,
 } from "lucide-react";
+import { memo } from "react";
 import styles from "./TerminalInfoBar.module.css";
 
 interface TerminalInfoBarProps {
@@ -25,7 +25,20 @@ interface TerminalInfoBarProps {
   onClose?: () => void;
 }
 
-export const TerminalInfoBar = memo(function TerminalInfoBar({ shell, cwd, branch, activeAgent, isActive: _isActive, isMaximized, onToggleMaximize, syncMode, onToggleSync, onSplitRight, onSplitDown, onClose }: TerminalInfoBarProps) {
+export const TerminalInfoBar = memo(function TerminalInfoBar({
+  shell,
+  cwd,
+  branch,
+  activeAgent,
+  isActive: _isActive,
+  isMaximized,
+  onToggleMaximize,
+  syncMode,
+  onToggleSync,
+  onSplitRight,
+  onSplitDown,
+  onClose,
+}: TerminalInfoBarProps) {
   const dir = cwd?.split("/").filter(Boolean).slice(-2).join("/") ?? "";
 
   return (

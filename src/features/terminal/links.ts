@@ -7,12 +7,7 @@
  * rows is detected and reported with its two-row span.
  */
 
-import {
-  CellAttr,
-  hasAttr,
-  type CellSnapshot,
-  type GridSnapshot,
-} from "../../shared/types/terminal";
+import { CellAttr, type CellSnapshot, type GridSnapshot, hasAttr } from "../../shared/types/terminal";
 
 export interface LinkSpan {
   url: string;
@@ -58,11 +53,7 @@ export function scanLinks(snapshot: GridSnapshot | null): LinkSpan[] {
   return out;
 }
 
-export function linkAt(
-  links: readonly LinkSpan[],
-  row: number,
-  col: number,
-): LinkSpan | null {
+export function linkAt(links: readonly LinkSpan[], row: number, col: number): LinkSpan | null {
   for (const link of links) {
     if (isCellInLink(link, row, col)) return link;
   }
@@ -93,8 +84,7 @@ function buildLogicalLines(snapshot: GridSnapshot): LogicalLine[] {
     if (!cells) continue;
     if (!current) current = { text: "", positions: [] };
     appendRow(current, cells, row);
-    const isWrapped =
-      cells.length > 0 && hasAttr(cells[cells.length - 1], CellAttr.WRAPLINE);
+    const isWrapped = cells.length > 0 && hasAttr(cells[cells.length - 1], CellAttr.WRAPLINE);
     if (!isWrapped) {
       lines.push(current);
       current = null;

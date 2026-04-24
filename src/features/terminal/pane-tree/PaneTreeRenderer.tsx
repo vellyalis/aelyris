@@ -1,9 +1,9 @@
-import { useRef, useEffect, useMemo, useState, useCallback } from "react";
-import type { PaneNode, SplitDirection } from "./types";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { SplitPane } from "../../../shared/ui/SplitPane";
 import { NativeTerminalArea } from "../NativeTerminalArea";
 import { TerminalInfoBar } from "../TerminalInfoBar";
-import { SplitPane } from "../../../shared/ui/SplitPane";
 import styles from "./PaneTreeRenderer.module.css";
+import type { PaneNode, SplitDirection } from "./types";
 
 interface PaneTreeRendererProps {
   tree: PaneNode;
@@ -44,8 +44,16 @@ interface LeafInfo {
  * The flat list only grows (on split) or shrinks (on close).
  */
 export function PaneTreeRenderer({
-  tree, activePaneId, maximizedPaneId,
-  onFocusPane, onSplit, onClose, onResize, onToggleMaximize, onTerminalReady, canClose,
+  tree,
+  activePaneId,
+  maximizedPaneId,
+  onFocusPane,
+  onSplit,
+  onClose,
+  onResize,
+  onToggleMaximize,
+  onTerminalReady,
+  canClose,
 }: PaneTreeRendererProps) {
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -96,12 +104,15 @@ export function PaneTreeRenderer({
     const next = new Map<string, DOMRect>();
     for (const [id, el] of slotEls.current) {
       const r = el.getBoundingClientRect();
-      next.set(id, new DOMRect(
-        Math.round(r.left - rootRect.left),
-        Math.round(r.top - rootRect.top),
-        Math.round(r.width),
-        Math.round(r.height),
-      ));
+      next.set(
+        id,
+        new DOMRect(
+          Math.round(r.left - rootRect.left),
+          Math.round(r.top - rootRect.top),
+          Math.round(r.width),
+          Math.round(r.height),
+        ),
+      );
     }
     setSlotRects((prev) => (rectsEqual(prev, next) ? prev : next));
   }, []);
@@ -117,35 +128,41 @@ export function PaneTreeRenderer({
     });
   }, [updateRects]);
 
-  const registerSlot = useCallback((id: string, el: HTMLDivElement | null) => {
-    const observer = observerRef.current;
-    const prev = slotEls.current.get(id);
-    if (el) {
-      if (prev === el) return;
-      if (prev && observer) observer.unobserve(prev);
-      slotEls.current.set(id, el);
-      observer?.observe(el);
-      scheduleUpdate();
-    } else if (prev) {
-      if (observer) observer.unobserve(prev);
-      slotEls.current.delete(id);
-      scheduleUpdate();
-    }
-  }, [scheduleUpdate]);
+  const registerSlot = useCallback(
+    (id: string, el: HTMLDivElement | null) => {
+      const observer = observerRef.current;
+      const prev = slotEls.current.get(id);
+      if (el) {
+        if (prev === el) return;
+        if (prev && observer) observer.unobserve(prev);
+        slotEls.current.set(id, el);
+        observer?.observe(el);
+        scheduleUpdate();
+      } else if (prev) {
+        if (observer) observer.unobserve(prev);
+        slotEls.current.delete(id);
+        scheduleUpdate();
+      }
+    },
+    [scheduleUpdate],
+  );
 
   // React re-invokes inline ref callbacks on every parent render — an
   // unobserve/observe churn every frame during drag.  Cache one stable
   // callback per pane id so the observer registration survives renders.
   const slotRefCache = useRef(new Map<string, (el: HTMLDivElement | null) => void>());
-  const getSlotRef = useCallback((id: string) => {
-    const cache = slotRefCache.current;
-    let cb = cache.get(id);
-    if (!cb) {
-      cb = (el: HTMLDivElement | null) => registerSlot(id, el);
-      cache.set(id, cb);
-    }
-    return cb;
-  }, [registerSlot]);
+  const getSlotRef = useCallback(
+    (id: string) => {
+      const cache = slotRefCache.current;
+      let cb = cache.get(id);
+      if (!cb) {
+        cb = (el: HTMLDivElement | null) => registerSlot(id, el);
+        cache.set(id, cb);
+      }
+      return cb;
+    },
+    [registerSlot],
+  );
 
   // Drop cached ref callbacks for leaves that no longer exist, so the
   // cache doesn't grow unbounded as panes are created and closed.
@@ -195,10 +212,7 @@ export function PaneTreeRenderer({
                 key={leaf.id}
                 ref={getSlotRef(leaf.id)}
                 className={styles.paneSlot}
-                style={leaf.id === maximizedPaneId
-                  ? { display: "flex", flex: 1 }
-                  : { display: "none" }
-                }
+                style={leaf.id === maximizedPaneId ? { display: "flex", flex: 1 } : { display: "none" }}
               />
             ))}
           </>
@@ -229,13 +243,17 @@ export function PaneTreeRenderer({
           <div
             key={leaf.id}
             className={styles.terminalMount}
-            style={rect && isVisible ? {
-              position: "absolute",
-              left: rect.left,
-              top: rect.top,
-              width: rect.width,
-              height: rect.height,
-            } : { display: "none" }}
+            style={
+              rect && isVisible
+                ? {
+                    position: "absolute",
+                    left: rect.left,
+                    top: rect.top,
+                    width: rect.width,
+                    height: rect.height,
+                  }
+                : { display: "none" }
+            }
             onMouseDown={() => onFocusPane(leaf.id)}
           >
             <TerminalInfoBar
@@ -271,13 +289,7 @@ function renderLayout(
   onResize: (splitId: string, ratio: number) => void,
 ): React.ReactElement {
   if (node.type === "terminal") {
-    return (
-      <div
-        key={node.id}
-        ref={getSlotRef(node.id)}
-        className={styles.paneSlot}
-      />
-    );
+    return <div key={node.id} ref={getSlotRef(node.id)} className={styles.paneSlot} />;
   }
 
   return (

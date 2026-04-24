@@ -1,31 +1,22 @@
-import { useMemo } from "react";
 import {
   Background,
   Controls,
-  MarkerType,
-  ReactFlow,
-  Handle,
-  Position,
   type Edge,
+  Handle,
+  MarkerType,
   type Node,
   type NodeTypes,
+  Position,
+  ReactFlow,
 } from "@xyflow/react";
+import { useMemo } from "react";
 import "@xyflow/react/dist/style.css";
 
-import { EmptyState } from "../../shared/ui/EmptyState";
 import { Layers } from "lucide-react";
-import {
-  layoutConductor,
-  NODE_HEIGHT,
-  NODE_WIDTH,
-} from "../../shared/lib/conductorLayout";
+import { layoutConductor, NODE_HEIGHT, NODE_WIDTH } from "../../shared/lib/conductorLayout";
 import { getRole } from "../../shared/lib/orchestrator";
-import {
-  STATUS_COLORS,
-  STATUS_LABELS,
-  getSessionColor,
-  type AgentSession,
-} from "../../shared/types/agent";
+import { type AgentSession, getSessionColor, STATUS_COLORS, STATUS_LABELS } from "../../shared/types/agent";
+import { EmptyState } from "../../shared/ui/EmptyState";
 import styles from "./ConductorView.module.css";
 
 interface ConductorViewProps {
@@ -57,19 +48,13 @@ function ConductorNode({ data }: { data: ConductorNodeData }) {
       <div className={styles.nodeHeader}>
         <span className={styles.nodeName}>{session.name}</span>
         {roleLabel && roleColor && (
-          <span
-            className={styles.nodeRole}
-            style={{ background: roleColor, color: "rgba(0,0,0,0.78)" }}
-          >
+          <span className={styles.nodeRole} style={{ background: roleColor, color: "rgba(0,0,0,0.78)" }}>
             {roleIcon} {roleLabel}
           </span>
         )}
       </div>
       <div className={styles.nodeMeta}>
-        <span
-          className={styles.nodeStatus}
-          style={{ color: STATUS_COLORS[session.status] }}
-        >
+        <span className={styles.nodeStatus} style={{ color: STATUS_COLORS[session.status] }}>
           {STATUS_LABELS[session.status]}
         </span>
         <span className={styles.nodeCost}>${session.cost.toFixed(2)}</span>

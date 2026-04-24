@@ -2,9 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   classifyHunk,
-  installGhostPaint,
   type DeltaDecoration,
   type GhostEditor,
+  installGhostPaint,
   type MonacoNs,
   type RangeLike,
   type ViewZone,
@@ -155,9 +155,7 @@ describe("installGhostPaint", () => {
     });
     expect(zonesAdded).toHaveLength(0);
     expect(added).toHaveLength(1);
-    expect(added[0].options.linesDecorationsClassName).toBe(
-      "aether-ghost-modify-gutter",
-    );
+    expect(added[0].options.linesDecorationsClassName).toBe("aether-ghost-modify-gutter");
     expect(handle.deferredIndices).toEqual([0]);
     expect(handle.paintedIndices).toEqual([]);
   });
@@ -165,10 +163,7 @@ describe("installGhostPaint", () => {
   it("skips hunks whose indices are in skipHunkIndices", () => {
     const { editor, added, zonesAdded } = makeFakeEditor();
     const handle = installGhostPaint(editor, monaco, {
-      hunks: [
-        hunk(5, 0, ["add"], ["new"]),
-        hunk(20, 2, ["remove", "remove"]),
-      ],
+      hunks: [hunk(5, 0, ["add"], ["new"]), hunk(20, 2, ["remove", "remove"])],
       tint,
       skipHunkIndices: new Set([0]),
       layerId: "layer-d",
@@ -194,10 +189,7 @@ describe("installGhostPaint", () => {
   it("dispose removes decorations and zones it installed", () => {
     const { editor, removedIds, zonesRemoved } = makeFakeEditor();
     const handle = installGhostPaint(editor, monaco, {
-      hunks: [
-        hunk(5, 0, ["add"], ["added"]),
-        hunk(10, 2, ["remove", "remove"]),
-      ],
+      hunks: [hunk(5, 0, ["add"], ["added"]), hunk(10, 2, ["remove", "remove"])],
       tint,
       layerId: "layer-f",
     });

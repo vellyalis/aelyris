@@ -1,6 +1,6 @@
-import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
+import { useState } from "react";
 import styles from "./HelpDialog.module.css";
 
 interface HelpDialogProps {
@@ -94,7 +94,7 @@ const HELP_CONTENT: Record<HelpSection, { title: string; items: string[] }> = {
       "Import: Paste JSON or load a .json file to import tool definitions.",
       "Dangerous command detection: Warnings shown before running risky commands.",
       "Commit & Push: Prompts for a commit message before executing.",
-      "Placeholder syntax: Use {name} in commands for runtime prompts (e.g., git commit -m \"{message}\").",
+      'Placeholder syntax: Use {name} in commands for runtime prompts (e.g., git commit -m "{message}").',
     ],
   },
   shortcuts: {
@@ -124,7 +124,12 @@ export function HelpDialog({ visible, onClose }: HelpDialogProps) {
   const content = HELP_CONTENT[section];
 
   return (
-    <Dialog.Root open={visible} onOpenChange={(o) => { if (!o) onClose(); }}>
+    <Dialog.Root
+      open={visible}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+    >
       <Dialog.Portal>
         <Dialog.Overlay className={styles.overlay} />
         <Dialog.Content className={styles.dialog} aria-describedby={undefined}>
@@ -154,7 +159,9 @@ export function HelpDialog({ visible, onClose }: HelpDialogProps) {
               <h3 className={styles.sectionTitle}>{content.title}</h3>
               <ul className={styles.list}>
                 {content.items.map((item, i) => (
-                  <li key={i} className={styles.item}>{item}</li>
+                  <li key={i} className={styles.item}>
+                    {item}
+                  </li>
                 ))}
               </ul>
             </div>

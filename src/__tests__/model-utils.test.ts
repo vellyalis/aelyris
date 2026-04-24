@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { MODEL_OPTIONS, getModelById, getMaxTokens, DEFAULT_MODEL_ID } from "../shared/types/model";
+import { describe, expect, it } from "vitest";
+import { DEFAULT_MODEL_ID, getMaxTokens, getModelById, MODEL_OPTIONS } from "../shared/types/model";
 
 describe("MODEL_OPTIONS", () => {
   it("has at least 3 models", () => {

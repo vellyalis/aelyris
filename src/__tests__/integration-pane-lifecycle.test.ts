@@ -1,5 +1,12 @@
-import { describe, it, expect } from "vitest";
-import { createLeaf, splitPane, removePane, collectLeafIds, countLeaves, updateRatio } from "../features/terminal/pane-tree/operations";
+import { describe, expect, it } from "vitest";
+import {
+  collectLeafIds,
+  countLeaves,
+  createLeaf,
+  removePane,
+  splitPane,
+  updateRatio,
+} from "../features/terminal/pane-tree/operations";
 import type { PaneNode } from "../features/terminal/pane-tree/types";
 
 /**

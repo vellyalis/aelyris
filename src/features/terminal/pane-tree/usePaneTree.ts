@@ -1,7 +1,7 @@
-import { useState, useCallback } from "react";
-import type { PaneNode, SplitDirection } from "./types";
-import { createLeaf, splitPane, removePane, updateRatio, collectLeafIds, countLeaves } from "./operations";
+import { useCallback, useState } from "react";
 import type { ShellType } from "../../../App";
+import { collectLeafIds, countLeaves, createLeaf, removePane, splitPane, updateRatio } from "./operations";
+import type { PaneNode, SplitDirection } from "./types";
 
 interface UsePaneTreeOptions {
   initialShell: ShellType;
@@ -14,10 +14,13 @@ export function usePaneTree({ initialShell, initialCwd }: UsePaneTreeOptions) {
   const [maximizedPaneId, setMaximizedPaneId] = useState<string | null>(null);
   const [terminalIds, setTerminalIds] = useState<Map<string, string>>(new Map());
 
-  const split = useCallback((targetId: string, direction: SplitDirection) => {
-    setTree((prev) => splitPane(prev, targetId, direction, initialShell, initialCwd));
-    setMaximizedPaneId(null);
-  }, [initialShell, initialCwd]);
+  const split = useCallback(
+    (targetId: string, direction: SplitDirection) => {
+      setTree((prev) => splitPane(prev, targetId, direction, initialShell, initialCwd));
+      setMaximizedPaneId(null);
+    },
+    [initialShell, initialCwd],
+  );
 
   const close = useCallback((targetId: string) => {
     // Close the PTY on the Rust side before removing from tree
@@ -37,8 +40,8 @@ export function usePaneTree({ initialShell, initialCwd }: UsePaneTreeOptions) {
       if (countLeaves(prev) <= 1) return prev;
       return removePane(prev, targetId) ?? prev;
     });
-    setActivePaneId((prev) => prev === targetId ? null : prev);
-    setMaximizedPaneId((prev) => prev === targetId ? null : prev);
+    setActivePaneId((prev) => (prev === targetId ? null : prev));
+    setMaximizedPaneId((prev) => (prev === targetId ? null : prev));
   }, []);
 
   const resize = useCallback((splitId: string, ratio: number) => {
@@ -46,7 +49,7 @@ export function usePaneTree({ initialShell, initialCwd }: UsePaneTreeOptions) {
   }, []);
 
   const toggleMaximize = useCallback((paneId: string) => {
-    setMaximizedPaneId((prev) => prev === paneId ? null : paneId);
+    setMaximizedPaneId((prev) => (prev === paneId ? null : paneId));
   }, []);
 
   const registerTerminal = useCallback((paneId: string, terminalId: string) => {
@@ -65,13 +68,16 @@ export function usePaneTree({ initialShell, initialCwd }: UsePaneTreeOptions) {
     });
   }, []);
 
-  const navigate = useCallback((delta: 1 | -1) => {
-    const leafIds = collectLeafIds(tree);
-    if (leafIds.length <= 1) return;
-    const currentIdx = activePaneId ? leafIds.indexOf(activePaneId) : -1;
-    const nextIdx = (currentIdx + delta + leafIds.length) % leafIds.length;
-    setActivePaneId(leafIds[nextIdx]);
-  }, [tree, activePaneId]);
+  const navigate = useCallback(
+    (delta: 1 | -1) => {
+      const leafIds = collectLeafIds(tree);
+      if (leafIds.length <= 1) return;
+      const currentIdx = activePaneId ? leafIds.indexOf(activePaneId) : -1;
+      const nextIdx = (currentIdx + delta + leafIds.length) % leafIds.length;
+      setActivePaneId(leafIds[nextIdx]);
+    },
+    [tree, activePaneId],
+  );
 
   return {
     tree,

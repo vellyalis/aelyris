@@ -1,28 +1,26 @@
-import { useEffect, useState, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import Editor, { type OnMount } from "@monaco-editor/react";
 import { invoke } from "@tauri-apps/api/core";
-import { marked } from "marked";
 import DOMPurify from "dompurify";
-import { Wrench, Check, MessageSquare } from "lucide-react";
-import { EditorBreadcrumb } from "./EditorBreadcrumb";
-import { EditorStatusBar } from "./EditorStatusBar";
-import { DiffCommentInput } from "./DiffCommentInput";
-import { MarkdownPreview } from "./MarkdownPreview";
-import { useAppStore } from "../../shared/store/appStore";
-import { getPalette, isLightTheme, monacoThemeColors } from "../../shared/themes/catppuccin";
-import { useLsp, registerLspProviders } from "./lsp";
-import { toast } from "../../shared/store/toastStore";
+import { Check, MessageSquare, Wrench } from "lucide-react";
+import { marked } from "marked";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { markBootOnce } from "../../shared/lib/bootMetrics";
 import { getMonoFontStack } from "../../shared/lib/fontStack";
+import { useAppStore } from "../../shared/store/appStore";
+import { toast } from "../../shared/store/toastStore";
+import { getPalette, isLightTheme, monacoThemeColors } from "../../shared/themes/catppuccin";
 import { EmptyState } from "../../shared/ui/EmptyState";
-import { useGhostPaintForFile } from "./useGhostPaintForFile";
-import type { GhostEditor, MonacoNs } from "./ghostPaint";
-import type { LineRange } from "./ghostConflict";
+import { DiffCommentInput } from "./DiffCommentInput";
+import { EditorBreadcrumb } from "./EditorBreadcrumb";
 import styles from "./EditorPanel.module.css";
+import { EditorStatusBar } from "./EditorStatusBar";
+import type { LineRange } from "./ghostConflict";
+import type { GhostEditor, MonacoNs } from "./ghostPaint";
+import { registerLspProviders, useLsp } from "./lsp";
+import { MarkdownPreview } from "./MarkdownPreview";
+import { useGhostPaintForFile } from "./useGhostPaintForFile";
 
-const DiffViewer = lazy(() =>
-  import("../diff-viewer/DiffViewer").then((m) => ({ default: m.DiffViewer }))
-);
+const DiffViewer = lazy(() => import("../diff-viewer/DiffViewer").then((m) => ({ default: m.DiffViewer })));
 
 interface DiffComment {
   lineNumber: number;
@@ -40,10 +38,23 @@ interface EditorPanelProps {
 }
 
 const EXT_TO_LANG: Record<string, string> = {
-  ts: "typescript", tsx: "typescript", js: "javascript", jsx: "javascript",
-  json: "json", md: "markdown", rs: "rust", toml: "toml",
-  css: "css", scss: "scss", html: "html", yaml: "yaml", yml: "yaml",
-  py: "python", sh: "shell", bash: "shell", sql: "sql",
+  ts: "typescript",
+  tsx: "typescript",
+  js: "javascript",
+  jsx: "javascript",
+  json: "json",
+  md: "markdown",
+  rs: "rust",
+  toml: "toml",
+  css: "css",
+  scss: "scss",
+  html: "html",
+  yaml: "yaml",
+  yml: "yaml",
+  py: "python",
+  sh: "shell",
+  bash: "shell",
+  sql: "sql",
 };
 
 function detectLanguage(path: string): string {
@@ -51,7 +62,14 @@ function detectLanguage(path: string): string {
   return EXT_TO_LANG[ext] ?? "plaintext";
 }
 
-export function EditorPanel({ filePath, onClose, projectPath, initialLine, initialDiffMode, onStartAgent }: EditorPanelProps) {
+export function EditorPanel({
+  filePath,
+  onClose,
+  projectPath,
+  initialLine,
+  initialDiffMode,
+  onStartAgent,
+}: EditorPanelProps) {
   const themeId = useAppStore((s) => s.themeId);
   const markUnsaved = useAppStore((s) => s.markUnsaved);
   const markSaved = useAppStore((s) => s.markSaved);
@@ -81,7 +99,9 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
 
   // Cleanup LSP providers on unmount
   useEffect(() => {
-    return () => { lspDispose.current?.(); };
+    return () => {
+      lspDispose.current?.();
+    };
   }, []);
   const [saved, setSaved] = useState(false);
   const [previewMode, setPreviewMode] = useState(false);
@@ -93,18 +113,13 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
   // changes so stale editor references never reach the painter.
   const [ghostEditor, setGhostEditor] = useState<GhostEditor | null>(null);
   const [ghostMonaco, setGhostMonaco] = useState<MonacoNs | null>(null);
-  const modelChangeSubscribersRef = useRef<
-    Set<(ranges: LineRange[]) => void>
-  >(new Set());
-  const subscribeToModelChanges = useCallback(
-    (listener: (ranges: LineRange[]) => void) => {
-      modelChangeSubscribersRef.current.add(listener);
-      return () => {
-        modelChangeSubscribersRef.current.delete(listener);
-      };
-    },
-    [],
-  );
+  const modelChangeSubscribersRef = useRef<Set<(ranges: LineRange[]) => void>>(new Set());
+  const subscribeToModelChanges = useCallback((listener: (ranges: LineRange[]) => void) => {
+    modelChangeSubscribersRef.current.add(listener);
+    return () => {
+      modelChangeSubscribersRef.current.delete(listener);
+    };
+  }, []);
   // Suppresses dirty-range broadcast while we programmatically replace the
   // editor value (e.g. after accepting a ghost hunk). Without this the
   // setValue call would mark every remaining line as user-dirty and make
@@ -134,9 +149,7 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
   const ghostInFileKeyRef = useRef<CtxKey | null>(null);
   useEffect(() => {
     ghostInFileKeyRef.current?.set(ghostPaint.layerCount > 0);
-    ghostHunkKeyRef.current?.set(
-      ghostPaint.hasHunkAtLine(cursorPos.line),
-    );
+    ghostHunkKeyRef.current?.set(ghostPaint.hasHunkAtLine(cursorPos.line));
   }, [ghostPaint, cursorPos.line]);
 
   const toggleVim = useCallback(async () => {
@@ -153,11 +166,16 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
       const vim = initVimMode(editorRef.current, statusEl);
       vimRef.current = vim;
       setVimMode(true);
-    } catch { /* monaco-vim not available */ }
+    } catch {
+      /* monaco-vim not available */
+    }
   }, [vimMode]);
 
   const toggleDiff = useCallback(async () => {
-    if (diffMode) { setDiffMode(false); return; }
+    if (diffMode) {
+      setDiffMode(false);
+      return;
+    }
     if (!filePath || !projectPath) return;
     try {
       const original = await invoke<string>("git_file_original", { repoPath: projectPath, filePath });
@@ -190,9 +208,15 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
         if (initialDiffMode && projectPath) {
           try {
             const orig = await invoke<string>("git_file_original", { repoPath: projectPath, filePath });
-            if (!cancelled) { setOriginalContent(orig); setDiffMode(true); }
+            if (!cancelled) {
+              setOriginalContent(orig);
+              setDiffMode(true);
+            }
           } catch {
-            if (!cancelled) { setOriginalContent(""); setDiffMode(true); }
+            if (!cancelled) {
+              setOriginalContent("");
+              setDiffMode(true);
+            }
           }
         }
       } catch (err) {
@@ -202,7 +226,9 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [filePath]);
 
   // Reload file when window regains focus (external change detection)
@@ -215,7 +241,9 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
           setContent(diskContent);
           editorRef.current?.setValue(diskContent);
         }
-      } catch { /* file may have been deleted */ }
+      } catch {
+        /* file may have been deleted */
+      }
     };
     window.addEventListener("focus", handleFocus);
     return () => window.removeEventListener("focus", handleFocus);
@@ -291,16 +319,20 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
             {previewMode ? "Edit" : "Preview"}
           </button>
         )}
-        <button className={styles.diffBtn} onClick={toggleVim} title="Toggle Vim mode">{vimMode ? "Vim ✓" : "Vim"}</button>
-        <button className={styles.diffBtn} onClick={toggleDiff} title="Toggle diff">{diffMode ? "Editor" : "Diff"}</button>
-        <button className={styles.closeBtn} onClick={onClose}>×</button>
+        <button className={styles.diffBtn} onClick={toggleVim} title="Toggle Vim mode">
+          {vimMode ? "Vim ✓" : "Vim"}
+        </button>
+        <button className={styles.diffBtn} onClick={toggleDiff} title="Toggle diff">
+          {diffMode ? "Editor" : "Diff"}
+        </button>
+        <button className={styles.closeBtn} onClick={onClose}>
+          ×
+        </button>
       </div>
       <div className={styles.body}>
         {loading && <div className={styles.status}>Loading...</div>}
         {error && <div className={styles.error}>{error}</div>}
-        {content !== null && !loading && previewMode && isMarkdown && (
-          <MarkdownPreview html={renderedHtml} />
-        )}
+        {content !== null && !loading && previewMode && isMarkdown && <MarkdownPreview html={renderedHtml} />}
         {content !== null && !loading && !diffMode && !previewMode && (
           <Editor
             key={filePath}
@@ -328,14 +360,8 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
               // ─── Ghost diff hotkeys (Phase 3C-1c) ──────────────────────
               // Context keys let us preempt Monaco's default Tab / Esc only
               // when ghost paint is actually present + the cursor is on it.
-              const ghostHunkKey = editor.createContextKey<boolean>(
-                "aetherGhostHunkAtCursor",
-                false,
-              );
-              const ghostInFileKey = editor.createContextKey<boolean>(
-                "aetherGhostInFile",
-                false,
-              );
+              const ghostHunkKey = editor.createContextKey<boolean>("aetherGhostHunkAtCursor", false);
+              const ghostInFileKey = editor.createContextKey<boolean>("aetherGhostInFile", false);
               ghostHunkKeyRef.current = ghostHunkKey;
               ghostInFileKeyRef.current = ghostInFileKey;
 
@@ -453,7 +479,10 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
                 }
               }
             }}
-            onChange={() => { setModified(true); if (filePath) markUnsaved(filePath); }}
+            onChange={() => {
+              setModified(true);
+              if (filePath) markUnsaved(filePath);
+            }}
             options={{
               fontSize: 13,
               fontFamily: monoFontStack,
@@ -507,7 +536,10 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
               setCommentLine(null);
               setCommentText("");
             }}
-            onCancel={() => { setCommentLine(null); setCommentText(""); }}
+            onCancel={() => {
+              setCommentLine(null);
+              setCommentText("");
+            }}
           />
         )}
         {/* Comment badges */}
@@ -517,8 +549,7 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
               const Icon = c.status === "fixing" ? Wrench : c.status === "resolved" ? Check : MessageSquare;
               return (
                 <span key={i} className={styles.commentBadge} data-status={c.status} title={c.comment}>
-                  <Icon size={10} strokeWidth={1.75} aria-hidden="true" />
-                  L{c.lineNumber}: {c.comment.slice(0, 30)}
+                  <Icon size={10} strokeWidth={1.75} aria-hidden="true" />L{c.lineNumber}: {c.comment.slice(0, 30)}
                 </span>
               );
             })}
@@ -547,4 +578,3 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
     </div>
   );
 }
-

@@ -17,7 +17,9 @@ export function loadRecentCommands(): string[] {
 /** Move commandId to the front of the recent list, dedupe, cap at MAX_RECENT. */
 export function recordRecentCommand(commandId: string): string[] {
   const next = dedupePrepend(loadRecentCommands(), commandId).slice(0, MAX_RECENT);
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch {}
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  } catch {}
   return next;
 }
 

@@ -1,14 +1,7 @@
 import { memo } from "react";
 import styles from "./GitStatusPip.module.css";
 
-export type GitStatus =
-  | "modified"
-  | "added"
-  | "deleted"
-  | "renamed"
-  | "untracked"
-  | "conflicted"
-  | "ignored";
+export type GitStatus = "modified" | "added" | "deleted" | "renamed" | "untracked" | "conflicted" | "ignored";
 
 interface GitStatusPipProps {
   status: GitStatus | string;
@@ -26,24 +19,20 @@ interface StatusMeta {
 }
 
 const STATUS_META: Record<GitStatus, StatusMeta> = {
-  modified:   { letter: "M", label: "Modified",   tone: "var(--ctp-yellow)" },
-  added:      { letter: "A", label: "Added",      tone: "var(--ctp-green)"  },
-  deleted:    { letter: "D", label: "Deleted",    tone: "var(--ctp-red)"    },
-  renamed:    { letter: "R", label: "Renamed",    tone: "var(--ctp-cyan)"   },
-  untracked:  { letter: "?", label: "Untracked",  tone: "var(--ctp-green)"  },
-  conflicted: { letter: "!", label: "Conflicted", tone: "var(--ctp-red)"    },
-  ignored:    { letter: "•", label: "Ignored",    tone: "var(--text-muted)" },
+  modified: { letter: "M", label: "Modified", tone: "var(--ctp-yellow)" },
+  added: { letter: "A", label: "Added", tone: "var(--ctp-green)" },
+  deleted: { letter: "D", label: "Deleted", tone: "var(--ctp-red)" },
+  renamed: { letter: "R", label: "Renamed", tone: "var(--ctp-cyan)" },
+  untracked: { letter: "?", label: "Untracked", tone: "var(--ctp-green)" },
+  conflicted: { letter: "!", label: "Conflicted", tone: "var(--ctp-red)" },
+  ignored: { letter: "•", label: "Ignored", tone: "var(--text-muted)" },
 };
 
 function resolveMeta(status: string): StatusMeta {
   return STATUS_META[status as GitStatus] ?? STATUS_META.modified;
 }
 
-export const GitStatusPip = memo(function GitStatusPip({
-  status,
-  variant = "letter",
-  className,
-}: GitStatusPipProps) {
+export const GitStatusPip = memo(function GitStatusPip({ status, variant = "letter", className }: GitStatusPipProps) {
   const meta = resolveMeta(status);
   const classes = [styles.pip, styles[variant], className].filter(Boolean).join(" ");
 

@@ -1,5 +1,5 @@
-import { useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { useState } from "react";
 import styles from "./MenuBar.module.css";
 
 export interface MenuItem {
@@ -40,11 +40,7 @@ export function MenuBar({ menus }: MenuBarProps) {
           </DropdownMenu.Trigger>
 
           <DropdownMenu.Portal>
-            <DropdownMenu.Content
-              className={styles.dropdown}
-              sideOffset={2}
-              align="start"
-            >
+            <DropdownMenu.Content className={styles.dropdown} sideOffset={2} align="start">
               {menu.items.map((item, j) =>
                 item.divider ? (
                   <DropdownMenu.Separator key={`sep-${j}`} className={styles.divider} />
@@ -56,11 +52,9 @@ export function MenuBar({ menus }: MenuBarProps) {
                     onSelect={() => item.action?.()}
                   >
                     <span>{item.label}</span>
-                    {item.shortcut && (
-                      <span className={styles.shortcut}>{item.shortcut}</span>
-                    )}
+                    {item.shortcut && <span className={styles.shortcut}>{item.shortcut}</span>}
                   </DropdownMenu.Item>
-                )
+                ),
               )}
             </DropdownMenu.Content>
           </DropdownMenu.Portal>

@@ -1,14 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
 /**
  * Tests for ToolkitPanel placeholder interpolation logic.
  * Extracted from the component's onClick handler.
  */
 
-function interpolatePlaceholders(
-  command: string,
-  values: Record<string, string>,
-): string | null {
+function interpolatePlaceholders(command: string, values: Record<string, string>): string | null {
   const placeholders = command.match(/\{(\w+)\}/g);
   if (!placeholders) return command;
 
@@ -28,51 +25,33 @@ describe("Toolkit placeholder interpolation", () => {
   });
 
   it("replaces single placeholder", () => {
-    const result = interpolatePlaceholders(
-      'git commit -m "{message}"',
-      { message: "fix bug" },
-    );
+    const result = interpolatePlaceholders('git commit -m "{message}"', { message: "fix bug" });
     expect(result).toBe('git commit -m "fix bug"');
   });
 
   it("replaces multiple different placeholders", () => {
-    const result = interpolatePlaceholders(
-      'echo "{greeting} {name}"',
-      { greeting: "Hello", name: "World" },
-    );
+    const result = interpolatePlaceholders('echo "{greeting} {name}"', { greeting: "Hello", name: "World" });
     expect(result).toBe('echo "Hello World"');
   });
 
   it("replaces duplicate placeholders", () => {
-    const result = interpolatePlaceholders(
-      "{x} and {x}",
-      { x: "same" },
-    );
+    const result = interpolatePlaceholders("{x} and {x}", { x: "same" });
     expect(result).toBe("same and same");
   });
 
   it("escapes double quotes in values", () => {
-    const result = interpolatePlaceholders(
-      'git commit -m "{message}"',
-      { message: 'fix "important" bug' },
-    );
+    const result = interpolatePlaceholders('git commit -m "{message}"', { message: 'fix "important" bug' });
     expect(result).toBe('git commit -m "fix \\"important\\" bug"');
   });
 
   it("returns null when a placeholder value is missing", () => {
-    const result = interpolatePlaceholders(
-      'git commit -m "{message}"',
-      {},
-    );
+    const result = interpolatePlaceholders('git commit -m "{message}"', {});
     expect(result).toBeNull();
   });
 
   it("handles empty string as valid value", () => {
     // Empty string is a valid user input, different from undefined/cancelled
-    const result = interpolatePlaceholders(
-      "{prefix}command",
-      { prefix: "" },
-    );
+    const result = interpolatePlaceholders("{prefix}command", { prefix: "" });
     expect(result).toBe("command");
   });
 });

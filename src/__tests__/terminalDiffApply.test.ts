@@ -1,12 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { applyDiff } from "../shared/hooks/useTerminalSnapshot";
-import type {
-  CellSnapshot,
-  CursorSnapshot,
-  GridDiff,
-  GridSnapshot,
-} from "../shared/types/terminal";
+import type { CellSnapshot, CursorSnapshot, GridDiff, GridSnapshot } from "../shared/types/terminal";
 
 const cursor: CursorSnapshot = {
   row: 0,
@@ -63,7 +58,10 @@ describe("applyDiff", () => {
     const prev: GridSnapshot = {
       cols: 2,
       rows: 2,
-      cells: [[cell("a"), cell("b")], [cell("c"), cell("d")]],
+      cells: [
+        [cell("a"), cell("b")],
+        [cell("c"), cell("d")],
+      ],
       cursor,
     };
     const diff: GridDiff = {

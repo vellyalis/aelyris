@@ -76,15 +76,23 @@
   font-weight: 600;
   font-family: var(--font-ui);
   cursor: pointer;
-  transition: opacity 0.15s, box-shadow var(--duration-fast), transform var(--duration-fast);
+  transition:
+    opacity 0.15s,
+    box-shadow var(--duration-fast),
+    transform var(--duration-fast);
   margin-bottom: var(--space-6);
 }
 
 .openBtn:hover {
-  box-shadow: 0 4px 16px rgba(200, 160, 80, 0.3), 0 0 20px rgba(200, 160, 80, 0.2);
+  box-shadow:
+    0 4px 16px rgba(200, 160, 80, 0.3),
+    0 0 20px rgba(200, 160, 80, 0.2);
   transform: translateY(-1px);
 }
-.openBtn:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+.openBtn:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 3px;
+}
 
 /* Resting drop zone — visible before the drag starts so users know folder-
    drop is a first-class affordance. Switches to the active state via
@@ -101,7 +109,10 @@
   border: 1px dashed var(--white-15);
   border-radius: var(--radius);
   background: transparent;
-  transition: border-color var(--duration-fast), color var(--duration-fast), background var(--duration-fast);
+  transition:
+    border-color var(--duration-fast),
+    color var(--duration-fast),
+    background var(--duration-fast);
 }
 .dropZoneActive {
   border-color: var(--gold);
@@ -141,13 +152,17 @@
   font-family: var(--font-ui);
   cursor: pointer;
   text-align: left;
-  transition: border-color 0.15s, background 0.1s;
+  transition:
+    border-color 0.15s,
+    background 0.1s;
 }
 
 .projectCard:hover {
   border-color: var(--gold-dim);
   background: var(--white-4);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3), 0 0 12px rgba(200, 160, 80, 0.2);
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.3),
+    0 0 12px rgba(200, 160, 80, 0.2);
   transform: translateY(-2px);
 }
 
@@ -245,6 +260,11 @@
   animation: shimmer 1.5s ease-in-out infinite;
 }
 @keyframes shimmer {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 0.8; }
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.8;
+  }
 }

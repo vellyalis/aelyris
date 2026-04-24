@@ -1,14 +1,14 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import * as RadixContextMenu from "@radix-ui/react-context-menu";
-import { showPrompt } from "../../shared/ui/PromptDialog";
+import { invoke } from "@tauri-apps/api/core";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "../../shared/store/toastStore";
 import { showConfirm } from "../../shared/ui/ConfirmDialog";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { GitStatusPip } from "../../shared/ui/GitStatusPip";
+import { showPrompt } from "../../shared/ui/PromptDialog";
 import { FileIcon } from "./FileIcon";
-import { flattenVisible, type FlatEntry } from "./flattenVisible";
-import { toast } from "../../shared/store/toastStore";
 import styles from "./FileTree.module.css";
+import { type FlatEntry, flattenVisible } from "./flattenVisible";
 
 interface FileEntry {
   name: string;
@@ -65,79 +65,112 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
 
-  useEffect(() => { setCurrentRoot(rootPath); }, [rootPath]);
+  useEffect(() => {
+    setCurrentRoot(rootPath);
+  }, [rootPath]);
 
   const reloadDir = useCallback(async (dir: string) => {
     try {
       const entries = await invoke<FileEntry[]>("list_directory", { path: dir });
       setContents((prev) => new Map(prev).set(dir, entries));
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }, []);
 
-  const handleNewFile = useCallback(async (dir: string) => {
-    const name = await showPrompt("New File", { placeholder: "file name..." });
-    if (!name) return;
-    try {
-      await invoke("create_file", { path: `${dir}/${name}` });
-      reloadDir(dir);
-    } catch (e) { toast.error("Failed to create file", String(e)); }
-  }, [reloadDir]);
-
-  const handleNewFolder = useCallback(async (dir: string) => {
-    const name = await showPrompt("New Folder", { placeholder: "folder name..." });
-    if (!name) return;
-    try {
-      await invoke("create_directory", { path: `${dir}/${name}` });
-      reloadDir(dir);
-    } catch (e) { toast.error("Failed to create folder", String(e)); }
-  }, [reloadDir]);
-
-  const handleRename = useCallback(async (path: string) => {
-    const oldName = path.split("/").pop() ?? "";
-    const newName = await showPrompt("Rename", { placeholder: "new name...", defaultValue: oldName });
-    if (!newName || newName === oldName) return;
-    const parentDir = path.split("/").slice(0, -1).join("/");
-    try {
-      await invoke("rename_path", { oldPath: path, newPath: `${parentDir}/${newName}` });
-      reloadDir(parentDir);
-    } catch (e) { toast.error("Rename failed", String(e)); }
-  }, [reloadDir]);
-
-  const handleDelete = useCallback(async (path: string) => {
-    const name = path.split("/").pop() ?? "";
-    const ok = await showConfirm({
-      title: `Delete "${name}"?`,
-      description: "This moves the entry to the OS trash where possible.",
-      confirmLabel: "Delete",
-      tone: "danger",
-    });
-    if (!ok) return;
-    const parentDir = path.split("/").slice(0, -1).join("/");
-    try {
-      await invoke("delete_path", { path });
-      reloadDir(parentDir);
-    } catch (e) { toast.error("Delete failed", String(e)); }
-  }, [reloadDir]);
-
-  const toggleDir = useCallback(async (dirPath: string) => {
-    const next = new Set(expanded);
-    if (next.has(dirPath)) {
-      next.delete(dirPath);
-      setExpanded(next);
-      return;
-    }
-    next.add(dirPath);
-    setExpanded(next);
-
-    if (!contents.has(dirPath)) {
-      setLoading((prev) => new Set(prev).add(dirPath));
+  const handleNewFile = useCallback(
+    async (dir: string) => {
+      const name = await showPrompt("New File", { placeholder: "file name..." });
+      if (!name) return;
       try {
-        const entries = await invoke<FileEntry[]>("list_directory", { path: dirPath });
-        setContents((prev) => new Map(prev).set(dirPath, entries));
-      } catch { /* ignore */ }
-      setLoading((prev) => { const n = new Set(prev); n.delete(dirPath); return n; });
-    }
-  }, [expanded, contents]);
+        await invoke("create_file", { path: `${dir}/${name}` });
+        reloadDir(dir);
+      } catch (e) {
+        toast.error("Failed to create file", String(e));
+      }
+    },
+    [reloadDir],
+  );
+
+  const handleNewFolder = useCallback(
+    async (dir: string) => {
+      const name = await showPrompt("New Folder", { placeholder: "folder name..." });
+      if (!name) return;
+      try {
+        await invoke("create_directory", { path: `${dir}/${name}` });
+        reloadDir(dir);
+      } catch (e) {
+        toast.error("Failed to create folder", String(e));
+      }
+    },
+    [reloadDir],
+  );
+
+  const handleRename = useCallback(
+    async (path: string) => {
+      const oldName = path.split("/").pop() ?? "";
+      const newName = await showPrompt("Rename", { placeholder: "new name...", defaultValue: oldName });
+      if (!newName || newName === oldName) return;
+      const parentDir = path.split("/").slice(0, -1).join("/");
+      try {
+        await invoke("rename_path", { oldPath: path, newPath: `${parentDir}/${newName}` });
+        reloadDir(parentDir);
+      } catch (e) {
+        toast.error("Rename failed", String(e));
+      }
+    },
+    [reloadDir],
+  );
+
+  const handleDelete = useCallback(
+    async (path: string) => {
+      const name = path.split("/").pop() ?? "";
+      const ok = await showConfirm({
+        title: `Delete "${name}"?`,
+        description: "This moves the entry to the OS trash where possible.",
+        confirmLabel: "Delete",
+        tone: "danger",
+      });
+      if (!ok) return;
+      const parentDir = path.split("/").slice(0, -1).join("/");
+      try {
+        await invoke("delete_path", { path });
+        reloadDir(parentDir);
+      } catch (e) {
+        toast.error("Delete failed", String(e));
+      }
+    },
+    [reloadDir],
+  );
+
+  const toggleDir = useCallback(
+    async (dirPath: string) => {
+      const next = new Set(expanded);
+      if (next.has(dirPath)) {
+        next.delete(dirPath);
+        setExpanded(next);
+        return;
+      }
+      next.add(dirPath);
+      setExpanded(next);
+
+      if (!contents.has(dirPath)) {
+        setLoading((prev) => new Set(prev).add(dirPath));
+        try {
+          const entries = await invoke<FileEntry[]>("list_directory", { path: dirPath });
+          setContents((prev) => new Map(prev).set(dirPath, entries));
+        } catch {
+          /* ignore */
+        }
+        setLoading((prev) => {
+          const n = new Set(prev);
+          n.delete(dirPath);
+          return n;
+        });
+      }
+    },
+    [expanded, contents],
+  );
 
   // Load root directory on mount or when root changes
   useEffect(() => {
@@ -150,26 +183,42 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
         if (!cancelled) {
           setContents((prev) => new Map(prev).set(currentRoot, entries));
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
       if (!cancelled) {
-        setLoading((prev) => { const n = new Set(prev); n.delete(currentRoot); return n; });
+        setLoading((prev) => {
+          const n = new Set(prev);
+          n.delete(currentRoot);
+          return n;
+        });
       }
     }
     loadRoot();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [currentRoot]);
 
-  const handleSearch = useCallback((query: string) => {
-    setSearchQuery(query);
-    if (searchTimer.current) clearTimeout(searchTimer.current);
-    if (!query.trim()) { setSearchResults(null); return; }
-    searchTimer.current = setTimeout(async () => {
-      try {
-        const results = await invoke<FileEntry[]>("search_files", { rootPath, query, maxResults: 30 });
-        setSearchResults(results);
-      } catch { setSearchResults([]); }
-    }, 200);
-  }, [rootPath]);
+  const handleSearch = useCallback(
+    (query: string) => {
+      setSearchQuery(query);
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+      if (!query.trim()) {
+        setSearchResults(null);
+        return;
+      }
+      searchTimer.current = setTimeout(async () => {
+        try {
+          const results = await invoke<FileEntry[]>("search_files", { rootPath, query, maxResults: 30 });
+          setSearchResults(results);
+        } catch {
+          setSearchResults([]);
+        }
+      }, 200);
+    },
+    [rootPath],
+  );
 
   const changedSet = new Set(changedFiles.map((f) => f.path.replace(/\\/g, "/")));
   const changedStatusMap = new Map(changedFiles.map((f) => [f.path.replace(/\\/g, "/"), f.status]));
@@ -185,10 +234,7 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
 
   // Flat ordered list of visible rows — drives both the keyboard cursor and
   // roving tabindex. Recomputed only when the tree shape changes.
-  const flatEntries = useMemo(
-    () => flattenVisible(currentRoot, contents, expanded),
-    [currentRoot, contents, expanded],
-  );
+  const flatEntries = useMemo(() => flattenVisible(currentRoot, contents, expanded), [currentRoot, contents, expanded]);
 
   // Seed focus onto the first visible row once data arrives so Tab into the
   // tree lands somewhere sensible. Preserved across tree edits unless the
@@ -229,10 +275,7 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
       return { start: 0, end: Math.min(flatEntries.length, Math.ceil(400 / ROW_HEIGHT) + OVERSCAN) };
     }
     const start = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
-    const end = Math.min(
-      flatEntries.length,
-      Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + OVERSCAN,
-    );
+    const end = Math.min(flatEntries.length, Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + OVERSCAN);
     return { start, end };
   }, [shouldVirtualize, scrollTop, viewportHeight, flatEntries.length]);
 
@@ -269,9 +312,7 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
   const moveFocus = useCallback(
     (delta: number) => {
       if (flatEntries.length === 0) return;
-      const idx = focusedPath
-        ? flatEntries.findIndex((e) => e.path === focusedPath)
-        : -1;
+      const idx = focusedPath ? flatEntries.findIndex((e) => e.path === focusedPath) : -1;
       const nextIdx = Math.max(0, Math.min(flatEntries.length - 1, (idx < 0 ? 0 : idx) + delta));
       const next = flatEntries[nextIdx];
       if (next) focusEntry(next.path);
@@ -282,9 +323,7 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
   const handleTreeKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
       if (flatEntries.length === 0) return;
-      const idx = focusedPath
-        ? flatEntries.findIndex((e) => e.path === focusedPath)
-        : -1;
+      const idx = focusedPath ? flatEntries.findIndex((e) => e.path === focusedPath) : -1;
       const current = idx >= 0 ? flatEntries[idx] : null;
 
       switch (e.key) {
@@ -354,12 +393,7 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
   );
 
   return (
-    <div
-      className={styles.tree}
-      role="tree"
-      aria-label="File explorer"
-      onKeyDown={handleTreeKeyDown}
-    >
+    <div className={styles.tree} role="tree" aria-label="File explorer" onKeyDown={handleTreeKeyDown}>
       <div className={styles.searchBox}>
         <input
           className={styles.searchInput}
@@ -384,7 +418,9 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
               <span className={styles.searchPath}>{entry.path.replace(rootPath + "/", "")}</span>
             </button>
           ))}
-          {searchResults.length === 0 && <EmptyState preset="files" title="No matches" description="Try a different search term" />}
+          {searchResults.length === 0 && (
+            <EmptyState preset="files" title="No matches" description="Try a different search term" />
+          )}
         </div>
       ) : (
         <>
@@ -427,7 +463,7 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
                         isChanged={changedSet.has(entry.path)}
                         changeStatus={changedStatusMap.get(entry.path)}
                         onFocus={() => setFocusedPath(entry.path)}
-                        onActivate={() => entry.is_dir ? toggleDir(entry.path) : onFileSelect?.(entry.path)}
+                        onActivate={() => (entry.is_dir ? toggleDir(entry.path) : onFileSelect?.(entry.path))}
                         rowRef={registerRow(entry.path)}
                         actions={actions}
                         posInSet={absoluteIdx + 1}
@@ -447,7 +483,7 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
                   isChanged={changedSet.has(entry.path)}
                   changeStatus={changedStatusMap.get(entry.path)}
                   onFocus={() => setFocusedPath(entry.path)}
-                  onActivate={() => entry.is_dir ? toggleDir(entry.path) : onFileSelect?.(entry.path)}
+                  onActivate={() => (entry.is_dir ? toggleDir(entry.path) : onFileSelect?.(entry.path))}
                   rowRef={registerRow(entry.path)}
                   actions={actions}
                   posInSet={i + 1}
@@ -522,17 +558,23 @@ function TreeRow({
             onFocus={onFocus}
           >
             {entry.is_dir && (
-              <span className={`${styles.arrow} ${entry.isOpen ? styles.arrowOpen : ""}`} aria-hidden="true">▸</span>
+              <span className={`${styles.arrow} ${entry.isOpen ? styles.arrowOpen : ""}`} aria-hidden="true">
+                ▸
+              </span>
             )}
             {!entry.is_dir && <span className={styles.arrowSpacer} aria-hidden="true" />}
             <FileIcon type={entry.file_type} isOpen={entry.isOpen} />
-            <span className={`${styles.fileName} ${isChanged ? styles.fileChanged : ""}`}
-              data-status={changeStatus}
-            >{entry.name}</span>
+            <span className={`${styles.fileName} ${isChanged ? styles.fileChanged : ""}`} data-status={changeStatus}>
+              {entry.name}
+            </span>
             {isChanged && changeStatus && (
               <GitStatusPip status={changeStatus} variant="dot" className={styles.changeDot} />
             )}
-            {isLoadingChildren && <span className={styles.spinner} aria-hidden="true">…</span>}
+            {isLoadingChildren && (
+              <span className={styles.spinner} aria-hidden="true">
+                …
+              </span>
+            )}
           </button>
         </RadixContextMenu.Trigger>
         <RadixContextMenu.Portal>

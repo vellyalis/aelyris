@@ -14,7 +14,7 @@
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--white-6);
-  font: var(--text-sm)/1 var(--font-mono);
+  font: var(--text-sm) / 1 var(--font-mono);
   color: var(--text-primary);
   user-select: none;
 }

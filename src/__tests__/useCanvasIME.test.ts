@@ -2,9 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { isSpecialKeyEvent } from "../features/terminal/hooks/useCanvasIME";
 
-function ev(
-  overrides: Partial<Parameters<typeof isSpecialKeyEvent>[0]> = {},
-): Parameters<typeof isSpecialKeyEvent>[0] {
+function ev(overrides: Partial<Parameters<typeof isSpecialKeyEvent>[0]> = {}): Parameters<typeof isSpecialKeyEvent>[0] {
   return {
     key: "a",
     ctrlKey: false,
@@ -43,17 +41,13 @@ describe("isSpecialKeyEvent", () => {
   });
 
   it("returns false during IME composition so the IME keeps the key", () => {
-    expect(isSpecialKeyEvent(ev({ key: "Enter", isComposing: true }))).toBe(
-      false,
-    );
+    expect(isSpecialKeyEvent(ev({ key: "Enter", isComposing: true }))).toBe(false);
     expect(isSpecialKeyEvent(ev({ key: "a", keyCode: 229 }))).toBe(false);
   });
 
   it("Shift alone on a printable key stays printable", () => {
     // Shift-A is still a single-char event that flows through input event
     // (the browser emits `key: 'A'`).
-    expect(isSpecialKeyEvent({ ...ev({ key: "A" }), ctrlKey: false })).toBe(
-      false,
-    );
+    expect(isSpecialKeyEvent({ ...ev({ key: "A" }), ctrlKey: false })).toBe(false);
   });
 });

@@ -1,7 +1,7 @@
 import { useEffect } from "react";
-import { showPrompt } from "../ui/PromptDialog";
-import { showHistorySearch } from "../../features/history/HistorySearchDialog";
 import type { ShellType } from "../../App";
+import { showHistorySearch } from "../../features/history/HistorySearchDialog";
+import { showPrompt } from "../ui/PromptDialog";
 
 interface UseKeyboardShortcutsOptions {
   projectPath: string;
@@ -26,14 +26,33 @@ interface UseKeyboardShortcutsOptions {
 }
 
 export function useKeyboardShortcuts({
-  projectPath, tabs, addTab, closeTab, activeTabId, setActiveTabId, activeFile,
-  sessions, activeSessionId, setActiveSessionId,
-  setPaletteVisible, setSettingsVisible, setSearchVisible,
-  handleOpenFolder, handleCloseFile, handleFileSelect, handleStartAgent, setQuickOpenMode, setHelpVisible,
+  projectPath,
+  tabs,
+  addTab,
+  closeTab,
+  activeTabId,
+  setActiveTabId,
+  activeFile,
+  sessions,
+  activeSessionId,
+  setActiveSessionId,
+  setPaletteVisible,
+  setSettingsVisible,
+  setSearchVisible,
+  handleOpenFolder,
+  handleCloseFile,
+  handleFileSelect,
+  handleStartAgent,
+  setQuickOpenMode,
+  setHelpVisible,
 }: UseKeyboardShortcutsOptions) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "F1") { e.preventDefault(); setHelpVisible?.((v: boolean) => !v); return; }
+      if (e.key === "F1") {
+        e.preventDefault();
+        setHelpVisible?.((v: boolean) => !v);
+        return;
+      }
       if (e.ctrlKey && !e.shiftKey && e.key === "n") {
         e.preventDefault();
         showPrompt("New File", { placeholder: "file name..." }).then(async (name) => {
@@ -43,56 +62,72 @@ export function useKeyboardShortcuts({
             handleFileSelect(`${projectPath}/${name}`);
           }
         });
-      }
-      else if (e.ctrlKey && !e.shiftKey && e.key === "p") { e.preventDefault(); setQuickOpenMode?.("files"); }
-      else if (e.ctrlKey && !e.shiftKey && e.key === "r") { e.preventDefault(); showHistorySearch(); }
-      else if (e.ctrlKey && e.shiftKey && e.key === "P") { e.preventDefault(); setPaletteVisible((v: boolean) => !v); }
-      else if (e.ctrlKey && e.shiftKey && e.key === "T") { e.preventDefault(); addTab("powershell"); }
-      else if (e.ctrlKey && e.shiftKey && e.key === "W") { e.preventDefault(); closeTab(activeTabId); }
-      else if (e.ctrlKey && e.shiftKey && e.key === "F") { e.preventDefault(); setSearchVisible((v: boolean) => !v); }
-      else if (e.ctrlKey && e.shiftKey && e.key === "O") { e.preventDefault(); handleOpenFolder(); }
-      else if (e.ctrlKey && e.shiftKey && e.key === "E") { e.preventDefault(); setSearchVisible(false); }
-      else if (e.ctrlKey && e.shiftKey && e.key === "A") {
+      } else if (e.ctrlKey && !e.shiftKey && e.key === "p") {
         e.preventDefault();
-        showPrompt("Start Agent", { placeholder: "What should the agent do?" }).then((p) => { if (p) handleStartAgent(p); });
-      }
-      else if (e.ctrlKey && e.key === "`") {
+        setQuickOpenMode?.("files");
+      } else if (e.ctrlKey && !e.shiftKey && e.key === "r") {
+        e.preventDefault();
+        showHistorySearch();
+      } else if (e.ctrlKey && e.shiftKey && e.key === "P") {
+        e.preventDefault();
+        setPaletteVisible((v: boolean) => !v);
+      } else if (e.ctrlKey && e.shiftKey && e.key === "T") {
+        e.preventDefault();
+        addTab("powershell");
+      } else if (e.ctrlKey && e.shiftKey && e.key === "W") {
+        e.preventDefault();
+        closeTab(activeTabId);
+      } else if (e.ctrlKey && e.shiftKey && e.key === "F") {
+        e.preventDefault();
+        setSearchVisible((v: boolean) => !v);
+      } else if (e.ctrlKey && e.shiftKey && e.key === "O") {
+        e.preventDefault();
+        handleOpenFolder();
+      } else if (e.ctrlKey && e.shiftKey && e.key === "E") {
+        e.preventDefault();
+        setSearchVisible(false);
+      } else if (e.ctrlKey && e.shiftKey && e.key === "A") {
+        e.preventDefault();
+        showPrompt("Start Agent", { placeholder: "What should the agent do?" }).then((p) => {
+          if (p) handleStartAgent(p);
+        });
+      } else if (e.ctrlKey && e.key === "`") {
         // Ctrl+` — focus the active terminal pane
         e.preventDefault();
         // Find the visible terminal's textarea (inside active tab pane)
-        const activePane = document.querySelector("[data-active='true'] .xterm-helper-textarea") as HTMLTextAreaElement | null;
+        const activePane = document.querySelector(
+          "[data-active='true'] .xterm-helper-textarea",
+        ) as HTMLTextAreaElement | null;
         const fallback = document.querySelector(".xterm-helper-textarea") as HTMLTextAreaElement | null;
         (activePane ?? fallback)?.focus();
-      }
-      else if (e.ctrlKey && !e.shiftKey && e.key === "w") { e.preventDefault(); if (activeFile) handleCloseFile(activeFile); }
-      else if (e.ctrlKey && e.key === ",") { e.preventDefault(); setSettingsVisible((v: boolean) => !v); }
-      else if (e.ctrlKey && e.key === "[") {
+      } else if (e.ctrlKey && !e.shiftKey && e.key === "w") {
+        e.preventDefault();
+        if (activeFile) handleCloseFile(activeFile);
+      } else if (e.ctrlKey && e.key === ",") {
+        e.preventDefault();
+        setSettingsVisible((v: boolean) => !v);
+      } else if (e.ctrlKey && e.key === "[") {
         e.preventDefault();
         if (sessions.length > 0) {
           const idx = sessions.findIndex((s) => s.id === activeSessionId);
           const next = Math.max(0, (idx === -1 ? 0 : idx) - 1);
           setActiveSessionId(sessions[next].id);
         }
-      }
-      else if (e.ctrlKey && e.key === "]") {
+      } else if (e.ctrlKey && e.key === "]") {
         e.preventDefault();
         if (sessions.length > 0) {
           const idx = sessions.findIndex((s) => s.id === activeSessionId);
           const next = Math.min(sessions.length - 1, (idx === -1 ? 0 : idx) + 1);
           setActiveSessionId(sessions[next].id);
         }
-      }
-      else if (e.ctrlKey && e.key === "Tab") {
+      } else if (e.ctrlKey && e.key === "Tab") {
         e.preventDefault();
         if (tabs.length > 1) {
           const idx = tabs.findIndex((t) => t.id === activeTabId);
-          const next = e.shiftKey
-            ? (idx - 1 + tabs.length) % tabs.length
-            : (idx + 1) % tabs.length;
+          const next = e.shiftKey ? (idx - 1 + tabs.length) % tabs.length : (idx + 1) % tabs.length;
           setActiveTabId(tabs[next].id);
         }
-      }
-      else if (e.ctrlKey && e.key >= "0" && e.key <= "9") {
+      } else if (e.ctrlKey && e.key >= "0" && e.key <= "9") {
         e.preventDefault();
         const idx = parseInt(e.key);
         if (idx < sessions.length) setActiveSessionId(sessions[idx].id);
@@ -101,9 +136,24 @@ export function useKeyboardShortcuts({
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [
-    projectPath, tabs, addTab, closeTab, activeTabId, setActiveTabId, activeFile,
-    sessions, activeSessionId, setActiveSessionId,
-    setPaletteVisible, setSettingsVisible, setSearchVisible,
-    handleOpenFolder, handleCloseFile, handleFileSelect, handleStartAgent, setQuickOpenMode, setHelpVisible,
+    projectPath,
+    tabs,
+    addTab,
+    closeTab,
+    activeTabId,
+    setActiveTabId,
+    activeFile,
+    sessions,
+    activeSessionId,
+    setActiveSessionId,
+    setPaletteVisible,
+    setSettingsVisible,
+    setSearchVisible,
+    handleOpenFolder,
+    handleCloseFile,
+    handleFileSelect,
+    handleStartAgent,
+    setQuickOpenMode,
+    setHelpVisible,
   ]);
 }

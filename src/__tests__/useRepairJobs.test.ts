@@ -12,8 +12,7 @@ const listeners: Record<string, ListenHandler<unknown>> = {};
 const unlistenMock = vi.fn();
 
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: (cmd: string, args?: Record<string, unknown>) =>
-    (invokeMock as unknown as InvokeFn)(cmd, args),
+  invoke: (cmd: string, args?: Record<string, unknown>) => (invokeMock as unknown as InvokeFn)(cmd, args),
 }));
 
 vi.mock("@tauri-apps/api/event", () => ({
@@ -71,8 +70,7 @@ describe("useRepairJobs", () => {
   it("applies repair:jobs-updated events", async () => {
     (invokeMock as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd) => {
       if (cmd === "list_repair_jobs") return Promise.resolve([]);
-      if (cmd === "get_auto_repair_config")
-        return Promise.resolve({ enabled: false, pattern: "x" });
+      if (cmd === "get_auto_repair_config") return Promise.resolve({ enabled: false, pattern: "x" });
       return Promise.reject(new Error(`unexpected ${cmd}`));
     });
 
@@ -100,8 +98,7 @@ describe("useRepairJobs", () => {
   it("pushes a success toast on notification", async () => {
     (invokeMock as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd) => {
       if (cmd === "list_repair_jobs") return Promise.resolve([]);
-      if (cmd === "get_auto_repair_config")
-        return Promise.resolve({ enabled: false, pattern: "e" });
+      if (cmd === "get_auto_repair_config") return Promise.resolve({ enabled: false, pattern: "e" });
       return Promise.reject(new Error(`unexpected ${cmd}`));
     });
     renderHook(() => useRepairJobs());
@@ -122,8 +119,7 @@ describe("useRepairJobs", () => {
   it("pushes an error toast on failed notification", async () => {
     (invokeMock as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd) => {
       if (cmd === "list_repair_jobs") return Promise.resolve([]);
-      if (cmd === "get_auto_repair_config")
-        return Promise.resolve({ enabled: false, pattern: "e" });
+      if (cmd === "get_auto_repair_config") return Promise.resolve({ enabled: false, pattern: "e" });
       return Promise.reject(new Error(`unexpected ${cmd}`));
     });
     renderHook(() => useRepairJobs());
@@ -142,10 +138,8 @@ describe("useRepairJobs", () => {
   it("sends set_auto_repair_config when toggling", async () => {
     (invokeMock as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd) => {
       if (cmd === "list_repair_jobs") return Promise.resolve([]);
-      if (cmd === "get_auto_repair_config")
-        return Promise.resolve({ enabled: false, pattern: "p" });
-      if (cmd === "set_auto_repair_config")
-        return Promise.resolve({ enabled: true, pattern: "p" });
+      if (cmd === "get_auto_repair_config") return Promise.resolve({ enabled: false, pattern: "p" });
+      if (cmd === "set_auto_repair_config") return Promise.resolve({ enabled: true, pattern: "p" });
       return Promise.reject(new Error(`unexpected ${cmd}`));
     });
 

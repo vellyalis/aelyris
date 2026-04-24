@@ -29,8 +29,14 @@
 }
 
 @keyframes orchestraIn {
-  from { opacity: 0; transform: translate(-50%, -50%) scale(0.96); }
-  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
 }
 
 .title {
@@ -71,9 +77,15 @@
   resize: vertical;
   min-height: 110px;
 }
-.textarea:hover { border-color: var(--white-15); }
-.textarea:focus-visible { border-color: var(--gold); }
-.textarea::placeholder { color: var(--text-muted); }
+.textarea:hover {
+  border-color: var(--white-15);
+}
+.textarea:focus-visible {
+  border-color: var(--gold);
+}
+.textarea::placeholder {
+  color: var(--text-muted);
+}
 
 .rolesHeader {
   font-size: var(--text-sm);
@@ -99,7 +111,9 @@
   border: 1px solid var(--white-8);
   border-radius: var(--radius);
   cursor: pointer;
-  transition: border-color var(--duration-fast), background var(--duration-fast);
+  transition:
+    border-color var(--duration-fast),
+    background var(--duration-fast);
   user-select: none;
 }
 
@@ -175,7 +189,9 @@
   cursor: pointer;
   transition: background var(--duration-fast);
 }
-.cancelBtn:hover { background: var(--white-6); }
+.cancelBtn:hover {
+  background: var(--white-6);
+}
 
 .submitBtn {
   background: var(--gold);
@@ -189,5 +205,10 @@
   cursor: pointer;
   transition: opacity var(--duration-fast);
 }
-.submitBtn:hover { opacity: 0.9; }
-.submitBtn:disabled { opacity: var(--state-disabled-opacity); cursor: default; }
+.submitBtn:hover {
+  opacity: 0.9;
+}
+.submitBtn:disabled {
+  opacity: var(--state-disabled-opacity);
+  cursor: default;
+}

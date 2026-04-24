@@ -1,11 +1,11 @@
+import { CheckCircle2, Loader2, Wrench, XCircle } from "lucide-react";
 import { useEffect, useRef } from "react";
-import { Wrench, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import {
+  type AutoRepairConfig,
   isPhaseActive,
-  repairPhaseLabel,
   type RepairJobInfo,
   type RepairPhase,
-  type AutoRepairConfig,
+  repairPhaseLabel,
 } from "../../shared/types/repair";
 import styles from "./RepairJobsPanel.module.css";
 
@@ -23,12 +23,7 @@ interface RepairJobsPanelProps {
  * Display only — no job-specific actions yet. `AutoRepairManager` has no
  * cancel method today; when it grows one, add a row-level button here.
  */
-export function RepairJobsPanel({
-  jobs,
-  config,
-  onToggleEnabled,
-  onClose,
-}: RepairJobsPanelProps) {
+export function RepairJobsPanel({ jobs, config, onToggleEnabled, onClose }: RepairJobsPanelProps) {
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -69,11 +64,7 @@ export function RepairJobsPanel({
           <span>Auto-repair</span>
         </div>
         <label className={styles.toggle}>
-          <input
-            type="checkbox"
-            checked={config.enabled}
-            onChange={(e) => onToggleEnabled(e.target.checked)}
-          />
+          <input type="checkbox" checked={config.enabled} onChange={(e) => onToggleEnabled(e.target.checked)} />
           <span>{config.enabled ? "Watching" : "Disabled"}</span>
         </label>
       </div>
@@ -85,9 +76,7 @@ export function RepairJobsPanel({
       <div className={styles.list}>
         {sortedJobs.length === 0 ? (
           <div className={styles.empty}>
-            {config.enabled
-              ? "No active jobs. Waiting for error output..."
-              : "Auto-repair is off."}
+            {config.enabled ? "No active jobs. Waiting for error output..." : "Auto-repair is off."}
           </div>
         ) : (
           sortedJobs.map((job) => <JobRow key={job.id} job={job} />)

@@ -1,12 +1,22 @@
-import { type AgentSession, STATUS_COLORS, STATUS_LABELS, getSessionColor } from "../../shared/types/agent";
+import * as RadixContextMenu from "@radix-ui/react-context-menu";
+import {
+  AlertTriangle,
+  BarChart3,
+  FileWarning,
+  GitBranch,
+  MoreHorizontal,
+  Paperclip,
+  Pencil,
+  Send,
+  Zap,
+} from "lucide-react";
+import { type BudgetThresholds, getBudgetWarning } from "../../shared/lib/budgetStatus";
+import { getRole } from "../../shared/lib/orchestrator";
+import { type AgentSession, getSessionColor, STATUS_COLORS, STATUS_LABELS } from "../../shared/types/agent";
 import { getMaxTokens } from "../../shared/types/model";
+import { ContextGauge } from "../../shared/ui/ContextGauge";
 import { PixelAvatar } from "../../shared/ui/PixelAvatar";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
-import { ContextGauge } from "../../shared/ui/ContextGauge";
-import * as RadixContextMenu from "@radix-ui/react-context-menu";
-import { Pencil, GitBranch, BarChart3, Send, AlertTriangle, FileWarning, Paperclip, Zap, MoreHorizontal } from "lucide-react";
-import { getBudgetWarning, type BudgetThresholds } from "../../shared/lib/budgetStatus";
-import { getRole } from "../../shared/lib/orchestrator";
 import styles from "./AgentInspector.module.css";
 
 interface SessionCardProps {
@@ -59,7 +69,14 @@ export function SessionCard({
 }: SessionCardProps) {
   const sColor = getSessionColor(s.id);
   const lastLog = s.logs.length > 0 ? s.logs[s.logs.length - 1] : null;
-  const pct = s.status === "done" ? 100 : s.status === "idle" ? 0 : s.tokensUsed > 0 ? Math.min(99, Math.round((s.tokensUsed / getMaxTokens(s.model)) * 100)) : 2;
+  const pct =
+    s.status === "done"
+      ? 100
+      : s.status === "idle"
+        ? 0
+        : s.tokensUsed > 0
+          ? Math.min(99, Math.round((s.tokensUsed / getMaxTokens(s.model)) * 100))
+          : 2;
   const warning = getBudgetWarning(s, budgetThresholds);
   const isLive = s.status !== "done" && s.status !== "idle";
   const role = getRole(s.role);
@@ -87,12 +104,14 @@ export function SessionCard({
             }
             onSelect(s.id);
           }}
-          style={{
-            "--session-accent": sColor.accent,
-            "--session-dim": sColor.dim,
-            "--session-subtle": sColor.subtle,
-            "--session-glow": sColor.glow,
-          } as React.CSSProperties}
+          style={
+            {
+              "--session-accent": sColor.accent,
+              "--session-dim": sColor.dim,
+              "--session-subtle": sColor.subtle,
+              "--session-glow": sColor.glow,
+            } as React.CSSProperties
+          }
         >
           <div className={styles.cardTop}>
             <PixelAvatar seed={s.id} size={36} />
@@ -117,14 +136,21 @@ export function SessionCard({
                     {s.branch}
                   </span>
                 )}
-                <span className={styles.cardIcons}><Pencil size={9} /></span>
+                <span className={styles.cardIcons}>
+                  <Pencil size={9} />
+                </span>
               </div>
               <div className={styles.cardStatusRow}>
                 <StatusIcon status={s.status} size={10} />
-                <span className={styles.cardStatusLabel} style={{ color: STATUS_COLORS[s.status] }}>{STATUS_LABELS[s.status]}</span>
+                <span className={styles.cardStatusLabel} style={{ color: STATUS_COLORS[s.status] }}>
+                  {STATUS_LABELS[s.status]}
+                </span>
                 {pct > 0 && pct < 100 && <span className={styles.cardPct}>{pct}%</span>}
                 {s.filesChanged !== undefined && s.filesChanged > 0 && (
-                  <span className={styles.cardFiles} title={`${s.filesChanged} file${s.filesChanged === 1 ? "" : "s"} changed`}>
+                  <span
+                    className={styles.cardFiles}
+                    title={`${s.filesChanged} file${s.filesChanged === 1 ? "" : "s"} changed`}
+                  >
                     <Paperclip size={9} strokeWidth={1.75} aria-hidden="true" />
                     {s.filesChanged}
                   </span>
@@ -142,9 +168,14 @@ export function SessionCard({
                   <span
                     className={styles.budgetWarn}
                     data-kind={warning}
-                    title={warning === "cost" ? `Cost $${s.cost.toFixed(2)} exceeds per-session cap` : `Context ${pct}% exceeds warning threshold`}
+                    title={
+                      warning === "cost"
+                        ? `Cost $${s.cost.toFixed(2)} exceeds per-session cap`
+                        : `Context ${pct}% exceeds warning threshold`
+                    }
                   >
-                    <AlertTriangle size={8} />{warning === "cost" ? "$" : `${pct}%`}
+                    <AlertTriangle size={8} />
+                    {warning === "cost" ? "$" : `${pct}%`}
                   </span>
                 )}
                 {conflictCount > 0 && (
@@ -152,7 +183,8 @@ export function SessionCard({
                     className={styles.conflictBadge}
                     title={`File conflict with another session:\n${(conflictingPaths ?? []).slice(0, 5).join("\n")}${conflictCount > 5 ? `\n+${conflictCount - 5} more` : ""}`}
                   >
-                    <FileWarning size={8} />{conflictCount}
+                    <FileWarning size={8} />
+                    {conflictCount}
                   </span>
                 )}
                 <span className={styles.cardAge}>{formatAge(s.startedAt)}</span>
@@ -169,7 +201,15 @@ export function SessionCard({
             <span className={styles.cardModel}>{s.model}</span>
             <span className={styles.cardCost}>&lt;${s.cost.toFixed(2)}</span>
             {s.status !== "done" && s.status !== "idle" && (
-              <span className={styles.stopBtn} onClick={(e) => { e.stopPropagation(); onStop?.(s.id); }}>■</span>
+              <span
+                className={styles.stopBtn}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onStop?.(s.id);
+                }}
+              >
+                ■
+              </span>
             )}
           </div>
           <div className={styles.progressTrack}>
@@ -179,7 +219,9 @@ export function SessionCard({
             <div className={styles.worktreeInfo}>
               <GitBranch size={10} />
               <span className={styles.worktreeBranch}>{s.worktree.branch}</span>
-              <span className={styles.worktreeStatus} data-status={s.worktree.status}>{s.worktree.status === "Clean" ? "✓" : s.worktree.status === "Modified" ? "●" : "⚠"}</span>
+              <span className={styles.worktreeStatus} data-status={s.worktree.status}>
+                {s.worktree.status === "Clean" ? "✓" : s.worktree.status === "Modified" ? "●" : "⚠"}
+              </span>
             </div>
           ) : worktreeInputId === s.id ? (
             <div className={styles.worktreeCreate} onClick={(e) => e.stopPropagation()}>
@@ -195,32 +237,41 @@ export function SessionCard({
                   if (e.key === "Escape") onWorktreeCancel();
                 }}
               />
-              <button className={styles.worktreeBtn} onClick={() => onWorktreeSubmit(s.id)}>Create</button>
+              <button className={styles.worktreeBtn} onClick={() => onWorktreeSubmit(s.id)}>
+                Create
+              </button>
             </div>
           ) : null}
-          {s.watchdog && (
-            <div className={styles.watchdogInfo}>🐕 {s.watchdog}</div>
-          )}
+          {s.watchdog && <div className={styles.watchdogInfo}>🐕 {s.watchdog}</div>}
         </button>
       </RadixContextMenu.Trigger>
       <RadixContextMenu.Portal>
         <RadixContextMenu.Content className={styles.ctxMenu}>
-          <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => onSelect(s.id)}>Switch to Session</RadixContextMenu.Item>
-          <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => onRename(s)}>Rename</RadixContextMenu.Item>
+          <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => onSelect(s.id)}>
+            Switch to Session
+          </RadixContextMenu.Item>
+          <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => onRename(s)}>
+            Rename
+          </RadixContextMenu.Item>
           <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => onViewAnalytics(s.id)}>
-            <BarChart3 size={10} style={{ marginRight: 4 }} />View Analytics
+            <BarChart3 size={10} style={{ marginRight: 4 }} />
+            View Analytics
           </RadixContextMenu.Item>
           {(s.filesChanged ?? 0) > 0 && (
             <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => onViewDiffs?.(s.id)}>
-              <GitBranch size={10} style={{ marginRight: 4 }} />View Diffs ({s.filesChanged})
+              <GitBranch size={10} style={{ marginRight: 4 }} />
+              View Diffs ({s.filesChanged})
             </RadixContextMenu.Item>
           )}
           {onHandoff && (
             <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => onHandoff(s)}>
-              <Send size={10} style={{ marginRight: 4 }} />Hand off to new agent…
+              <Send size={10} style={{ marginRight: 4 }} />
+              Hand off to new agent…
             </RadixContextMenu.Item>
           )}
-          <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => onCopyInfo(s)}>Copy Info</RadixContextMenu.Item>
+          <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => onCopyInfo(s)}>
+            Copy Info
+          </RadixContextMenu.Item>
           <RadixContextMenu.Separator className={styles.ctxDivider} />
           {s.worktree ? (
             <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => onRemoveWorktree?.(s.id)}>
@@ -231,9 +282,18 @@ export function SessionCard({
               Create Worktree
             </RadixContextMenu.Item>
           )}
-          <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => onStartAgent?.(`Attach watchdog to ${s.name}`)}>Attach Watchdog</RadixContextMenu.Item>
+          <RadixContextMenu.Item
+            className={styles.ctxItem}
+            onSelect={() => onStartAgent?.(`Attach watchdog to ${s.name}`)}
+          >
+            Attach Watchdog
+          </RadixContextMenu.Item>
           <RadixContextMenu.Separator className={styles.ctxDivider} />
-          <RadixContextMenu.Item className={styles.ctxItem} disabled={s.status === "idle" || s.status === "done"} onSelect={() => onStop?.(s.id)}>
+          <RadixContextMenu.Item
+            className={styles.ctxItem}
+            disabled={s.status === "idle" || s.status === "done"}
+            onSelect={() => onStop?.(s.id)}
+          >
             End Session
           </RadixContextMenu.Item>
         </RadixContextMenu.Content>

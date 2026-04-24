@@ -1,4 +1,4 @@
-import type { AgentSession, AgentLog } from "../types/agent";
+import type { AgentLog, AgentSession } from "../types/agent";
 import { extractToolName } from "../types/toolBadge";
 
 export type LogType = AgentLog["type"];

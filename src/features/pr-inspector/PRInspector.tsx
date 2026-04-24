@@ -1,20 +1,20 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { motion, AnimatePresence } from "motion/react";
 import {
-  GitPullRequest,
-  GitPullRequestDraft,
-  GitPullRequestClosed,
+  AlertCircle,
+  CheckCircle2,
+  CircleDashed,
+  Clock,
   GitMerge,
+  GitPullRequest,
+  GitPullRequestClosed,
+  GitPullRequestDraft,
+  MessageSquare,
   RefreshCw,
   X,
-  CheckCircle2,
   XCircle,
-  Clock,
-  CircleDashed,
-  MessageSquare,
-  AlertCircle,
 } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import styles from "./PRInspector.module.css";
 
 interface CheckRun {
@@ -152,56 +152,62 @@ export function PRInspector({ visible, projectPath, onClose, onViewDiff, onStart
     setLoading(false);
   }, [projectPath]);
 
-  useEffect(() => { if (visible) loadPRs(); }, [loadPRs, visible]);
+  useEffect(() => {
+    if (visible) loadPRs();
+  }, [loadPRs, visible]);
 
   const viewDiff = async (prNumber: number) => {
-    if (expandedPr === prNumber) { setExpandedPr(null); setDiff(null); return; }
+    if (expandedPr === prNumber) {
+      setExpandedPr(null);
+      setDiff(null);
+      return;
+    }
     setExpandedPr(prNumber);
     try {
       const d = await invoke<string>("get_pr_diff", { cwd: projectPath, prNumber });
       setDiff(d);
       onViewDiff?.(d, prNumber);
-    } catch { setDiff("Failed to load diff"); }
+    } catch {
+      setDiff("Failed to load diff");
+    }
   };
 
   return (
     <AnimatePresence>
-    {visible && (
-    <motion.div
-      className={styles.panel}
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      transition={{ type: "spring", stiffness: 400, damping: 30 }}
-    >
-      <div className={styles.header}>
-        <span className={styles.title}>Pull Requests</span>
-        <button className={styles.iconBtn} onClick={loadPRs} title="Refresh" aria-label="Refresh">
-          <RefreshCw size={12} strokeWidth={1.75} aria-hidden="true" />
-        </button>
-        <button className={styles.iconBtn} onClick={onClose} title="Close" aria-label="Close">
-          <X size={12} strokeWidth={1.75} aria-hidden="true" />
-        </button>
-      </div>
-      <div className={styles.list}>
-        {loading && <div className={styles.status}>Loading PRs...</div>}
-        {error && <div className={styles.error}>{error}</div>}
-        {prs.map((pr) => (
-          <PrRow
-            key={pr.number}
-            pr={pr}
-            expanded={expandedPr === pr.number}
-            diff={expandedPr === pr.number ? diff : null}
-            onExpand={() => viewDiff(pr.number)}
-            onStartReview={onStartReview}
-          />
-        ))}
-        {!loading && prs.length === 0 && !error && (
-          <div className={styles.status}>No open PRs</div>
-        )}
-      </div>
-    </motion.div>
-    )}
+      {visible && (
+        <motion.div
+          className={styles.panel}
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.95 }}
+          transition={{ type: "spring", stiffness: 400, damping: 30 }}
+        >
+          <div className={styles.header}>
+            <span className={styles.title}>Pull Requests</span>
+            <button className={styles.iconBtn} onClick={loadPRs} title="Refresh" aria-label="Refresh">
+              <RefreshCw size={12} strokeWidth={1.75} aria-hidden="true" />
+            </button>
+            <button className={styles.iconBtn} onClick={onClose} title="Close" aria-label="Close">
+              <X size={12} strokeWidth={1.75} aria-hidden="true" />
+            </button>
+          </div>
+          <div className={styles.list}>
+            {loading && <div className={styles.status}>Loading PRs...</div>}
+            {error && <div className={styles.error}>{error}</div>}
+            {prs.map((pr) => (
+              <PrRow
+                key={pr.number}
+                pr={pr}
+                expanded={expandedPr === pr.number}
+                diff={expandedPr === pr.number ? diff : null}
+                onExpand={() => viewDiff(pr.number)}
+                onStartReview={onStartReview}
+              />
+            ))}
+            {!loading && prs.length === 0 && !error && <div className={styles.status}>No open PRs</div>}
+          </div>
+        </motion.div>
+      )}
     </AnimatePresence>
   );
 }
@@ -239,9 +245,7 @@ function PrRow({ pr, expanded, diff, onExpand, onStartReview }: PrRowProps) {
           <span className={styles.prTitle}>{pr.title}</span>
         </div>
         <div className={styles.prMeta}>
-          {pr.author?.login && (
-            <span className={styles.metaItem}>@{pr.author.login}</span>
-          )}
+          {pr.author?.login && <span className={styles.metaItem}>@{pr.author.login}</span>}
           <span className={styles.prBranch}>{pr.headRefName}</span>
           <span className={styles.metaItem} style={{ color: CI_META[ciState].color }} title={CI_META[ciState].label}>
             <CiIcon size={10} strokeWidth={2} aria-hidden="true" />
@@ -258,7 +262,10 @@ function PrRow({ pr, expanded, diff, onExpand, onStartReview }: PrRowProps) {
       </button>
       {expanded && diff && (
         <>
-          <pre className={styles.diffPreview}>{diff.slice(0, 2000)}{diff.length > 2000 ? "\n..." : ""}</pre>
+          <pre className={styles.diffPreview}>
+            {diff.slice(0, 2000)}
+            {diff.length > 2000 ? "\n..." : ""}
+          </pre>
           {onStartReview && (
             <button
               className={styles.reviewBtn}

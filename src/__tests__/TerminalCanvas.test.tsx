@@ -1,13 +1,9 @@
-import { render, cleanup } from "@testing-library/react";
+import { cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TerminalCanvas } from "../features/terminal/TerminalCanvas";
+import type { CellSnapshot, CursorSnapshot, GridSnapshot } from "../shared/types/terminal";
 import { CellAttr } from "../shared/types/terminal";
-import type {
-  CellSnapshot,
-  CursorSnapshot,
-  GridSnapshot,
-} from "../shared/types/terminal";
 
 // jsdom's HTMLCanvasElement.getContext returns null by default — stub a
 // minimal 2D context so the component can exercise its paint logic.
@@ -85,13 +81,7 @@ describe("TerminalCanvas", () => {
 
   it("renders a <canvas> sized from cols/rows/fontSize", () => {
     const { getByTestId } = render(
-      <TerminalCanvas
-        terminalId="t1"
-        cols={10}
-        rows={3}
-        fontSize={14}
-        snapshotOverride={null}
-      />,
+      <TerminalCanvas terminalId="t1" cols={10} rows={3} fontSize={14} snapshotOverride={null} />,
     );
     const canvas = getByTestId("terminal-canvas") as HTMLCanvasElement;
     expect(canvas.width).toBe(10 * Math.round(14 * 0.6));
@@ -101,17 +91,8 @@ describe("TerminalCanvas", () => {
 
   it("paints cell characters via fillText when a snapshot is provided", () => {
     const snap = snapshot([[cell("h"), cell("i"), cell(" ")]]);
-    render(
-      <TerminalCanvas
-        terminalId="t1"
-        cols={3}
-        rows={1}
-        snapshotOverride={snap}
-      />,
-    );
-    const drawnChars = calls
-      .filter((c) => c.op === "fillText")
-      .map((c) => c.args[0] as string);
+    render(<TerminalCanvas terminalId="t1" cols={3} rows={1} snapshotOverride={snap} />);
+    const drawnChars = calls.filter((c) => c.op === "fillText").map((c) => c.args[0] as string);
     expect(drawnChars).toContain("h");
     expect(drawnChars).toContain("i");
     // Space cells must not trigger fillText — they're cleared by the row wipe.
@@ -122,14 +103,7 @@ describe("TerminalCanvas", () => {
     const row0 = [cell("a"), cell("b")];
     const row1 = [cell("c"), cell("d")];
     const first = snapshot([row0, row1]);
-    const { rerender } = render(
-      <TerminalCanvas
-        terminalId="t1"
-        cols={2}
-        rows={2}
-        snapshotOverride={first}
-      />,
-    );
+    const { rerender } = render(<TerminalCanvas terminalId="t1" cols={2} rows={2} snapshotOverride={first} />);
     const baselineFillText = calls.filter((c) => c.op === "fillText").length;
 
     const row0New = [cell("A"), cell("B")];
@@ -137,14 +111,7 @@ describe("TerminalCanvas", () => {
       ...first,
       cells: [row0New, row1],
     };
-    rerender(
-      <TerminalCanvas
-        terminalId="t1"
-        cols={2}
-        rows={2}
-        snapshotOverride={second}
-      />,
-    );
+    rerender(<TerminalCanvas terminalId="t1" cols={2} rows={2} snapshotOverride={second} />);
 
     const newFillText = calls
       .filter((c) => c.op === "fillText")
@@ -156,19 +123,8 @@ describe("TerminalCanvas", () => {
   });
 
   it("draws a block cursor as a filled rect", () => {
-    const snap = snapshot(
-      [[cell("x"), cell("y")]],
-      { row: 0, col: 1, shape: "block" },
-    );
-    render(
-      <TerminalCanvas
-        terminalId="t1"
-        cols={2}
-        rows={1}
-        fontSize={10}
-        snapshotOverride={snap}
-      />,
-    );
+    const snap = snapshot([[cell("x"), cell("y")]], { row: 0, col: 1, shape: "block" });
+    render(<TerminalCanvas terminalId="t1" cols={2} rows={1} fontSize={10} snapshotOverride={snap} />);
     const cellW = Math.round(10 * 0.6);
     const cellH = Math.round(10 * 1.25);
     const cursorRect = calls.find(
@@ -184,139 +140,59 @@ describe("TerminalCanvas", () => {
 
   it("draws a beam cursor as a 2px vertical bar", () => {
     const snap = snapshot([[cell(" ")]], { row: 0, col: 0, shape: "beam" });
-    render(
-      <TerminalCanvas
-        terminalId="t1"
-        cols={1}
-        rows={1}
-        fontSize={10}
-        snapshotOverride={snap}
-      />,
-    );
+    render(<TerminalCanvas terminalId="t1" cols={1} rows={1} fontSize={10} snapshotOverride={snap} />);
     const cellH = Math.round(10 * 1.25);
     const beam = calls.find(
-      (c) =>
-        c.op === "fillRect" &&
-        (c.args[2] as number) === 2 &&
-        (c.args[3] as number) === cellH,
+      (c) => c.op === "fillRect" && (c.args[2] as number) === 2 && (c.args[3] as number) === cellH,
     );
     expect(beam).toBeDefined();
   });
 
   it("hides the cursor when shape is 'hidden'", () => {
     const snap = snapshot([[cell("x")]], { shape: "hidden", visible: true });
-    render(
-      <TerminalCanvas
-        terminalId="t1"
-        cols={1}
-        rows={1}
-        snapshotOverride={snap}
-      />,
-    );
-    const cursorFills = calls.filter(
-      (c) => c.op === "fillStyle" && (c.args[0] as string) === "#cba6f7",
-    );
+    render(<TerminalCanvas terminalId="t1" cols={1} rows={1} snapshotOverride={snap} />);
+    const cursorFills = calls.filter((c) => c.op === "fillStyle" && (c.args[0] as string) === "#cba6f7");
     expect(cursorFills).toHaveLength(0);
   });
 
   it("resolves truecolor fg and uses it for fillText", () => {
     const magenta = rgb(0xab, 0xcd, 0xef);
     const snap = snapshot([[cell("M", { fg: magenta })]], { shape: "hidden" });
-    render(
-      <TerminalCanvas
-        terminalId="t1"
-        cols={1}
-        rows={1}
-        snapshotOverride={snap}
-      />,
-    );
-    const styles = calls
-      .filter((c) => c.op === "fillStyle")
-      .map((c) => c.args[0] as string);
+    render(<TerminalCanvas terminalId="t1" cols={1} rows={1} snapshotOverride={snap} />);
+    const styles = calls.filter((c) => c.op === "fillStyle").map((c) => c.args[0] as string);
     expect(styles).toContain("#abcdef");
   });
 
   it("builds a bold italic font string for BOLD+ITALIC cells", () => {
-    const snap = snapshot(
-      [[cell("B", { attrs: CellAttr.BOLD | CellAttr.ITALIC })]],
-      { shape: "hidden" },
-    );
-    render(
-      <TerminalCanvas
-        terminalId="t1"
-        cols={1}
-        rows={1}
-        fontSize={14}
-        snapshotOverride={snap}
-      />,
-    );
-    const fonts = calls
-      .filter((c) => c.op === "font")
-      .map((c) => c.args[0] as string);
+    const snap = snapshot([[cell("B", { attrs: CellAttr.BOLD | CellAttr.ITALIC })]], { shape: "hidden" });
+    render(<TerminalCanvas terminalId="t1" cols={1} rows={1} fontSize={14} snapshotOverride={snap} />);
+    const fonts = calls.filter((c) => c.op === "font").map((c) => c.args[0] as string);
     expect(fonts.some((f) => f.includes("italic") && f.includes("bold"))).toBe(true);
   });
 
   it("swaps fg and bg when INVERSE is set", () => {
     const red = NAMED_RED; // NamedColor::Red → Catppuccin #f38ba8
-    const snap = snapshot(
-      [[cell(" ", { fg: red, attrs: CellAttr.INVERSE })]],
-      { shape: "hidden" },
-    );
-    render(
-      <TerminalCanvas
-        terminalId="t1"
-        cols={1}
-        rows={1}
-        snapshotOverride={snap}
-      />,
-    );
+    const snap = snapshot([[cell(" ", { fg: red, attrs: CellAttr.INVERSE })]], { shape: "hidden" });
+    render(<TerminalCanvas terminalId="t1" cols={1} rows={1} snapshotOverride={snap} />);
     // Bg fill for the inverted cell should be the original fg (red).
-    const fillStyles = calls
-      .filter((c) => c.op === "fillStyle")
-      .map((c) => c.args[0] as string);
+    const fillStyles = calls.filter((c) => c.op === "fillStyle").map((c) => c.args[0] as string);
     expect(fillStyles).toContain("#f38ba8");
   });
 
   it("skips WIDE_CHAR_SPACER cells entirely", () => {
     const snap = snapshot(
-      [
-        [
-          cell("漢", { attrs: CellAttr.WIDE_CHAR }),
-          cell(" ", { attrs: CellAttr.WIDE_CHAR_SPACER }),
-        ],
-      ],
+      [[cell("漢", { attrs: CellAttr.WIDE_CHAR }), cell(" ", { attrs: CellAttr.WIDE_CHAR_SPACER })]],
       { shape: "hidden" },
     );
-    render(
-      <TerminalCanvas
-        terminalId="t1"
-        cols={2}
-        rows={1}
-        fontSize={10}
-        snapshotOverride={snap}
-      />,
-    );
-    const chars = calls
-      .filter((c) => c.op === "fillText")
-      .map((c) => c.args[0] as string);
+    render(<TerminalCanvas terminalId="t1" cols={2} rows={1} fontSize={10} snapshotOverride={snap} />);
+    const chars = calls.filter((c) => c.op === "fillText").map((c) => c.args[0] as string);
     expect(chars).toContain("漢");
     expect(chars).not.toContain(" ");
   });
 
   it("draws an underline for UNDERLINE cells", () => {
-    const snap = snapshot(
-      [[cell("U", { attrs: CellAttr.UNDERLINE })]],
-      { shape: "hidden" },
-    );
-    render(
-      <TerminalCanvas
-        terminalId="t1"
-        cols={1}
-        rows={1}
-        fontSize={10}
-        snapshotOverride={snap}
-      />,
-    );
+    const snap = snapshot([[cell("U", { attrs: CellAttr.UNDERLINE })]], { shape: "hidden" });
+    render(<TerminalCanvas terminalId="t1" cols={1} rows={1} fontSize={10} snapshotOverride={snap} />);
     const cellW = Math.round(10 * 0.6);
     const cellH = Math.round(10 * 1.25);
     // 1px tall bar near the baseline.
@@ -332,40 +208,16 @@ describe("TerminalCanvas", () => {
   });
 
   it("applies DIM via globalAlpha=0.6", () => {
-    const snap = snapshot(
-      [[cell("d", { attrs: CellAttr.DIM })]],
-      { shape: "hidden" },
-    );
-    render(
-      <TerminalCanvas
-        terminalId="t1"
-        cols={1}
-        rows={1}
-        snapshotOverride={snap}
-      />,
-    );
-    const alphas = calls
-      .filter((c) => c.op === "globalAlpha")
-      .map((c) => c.args[0] as number);
+    const snap = snapshot([[cell("d", { attrs: CellAttr.DIM })]], { shape: "hidden" });
+    render(<TerminalCanvas terminalId="t1" cols={1} rows={1} snapshotOverride={snap} />);
+    const alphas = calls.filter((c) => c.op === "globalAlpha").map((c) => c.args[0] as number);
     expect(alphas).toContain(0.6);
   });
 
   it("skips fillText when HIDDEN is set", () => {
-    const snap = snapshot(
-      [[cell("S", { attrs: CellAttr.HIDDEN })]],
-      { shape: "hidden" },
-    );
-    render(
-      <TerminalCanvas
-        terminalId="t1"
-        cols={1}
-        rows={1}
-        snapshotOverride={snap}
-      />,
-    );
-    const chars = calls
-      .filter((c) => c.op === "fillText")
-      .map((c) => c.args[0] as string);
+    const snap = snapshot([[cell("S", { attrs: CellAttr.HIDDEN })]], { shape: "hidden" });
+    render(<TerminalCanvas terminalId="t1" cols={1} rows={1} snapshotOverride={snap} />);
+    const chars = calls.filter((c) => c.op === "fillText").map((c) => c.args[0] as string);
     expect(chars).not.toContain("S");
   });
 });

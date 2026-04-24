@@ -1,10 +1,10 @@
-import { useMemo, useState } from "react";
 import { DiffEditor } from "@monaco-editor/react";
-import { Columns2, Rows2, FileX2 } from "lucide-react";
+import { Columns2, FileX2, Rows2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { getMonoFontStack } from "../../shared/lib/fontStack";
 import { useAppStore } from "../../shared/store/appStore";
 import { getPalette, isLightTheme, monacoThemeColors } from "../../shared/themes/catppuccin";
 import { EmptyState } from "../../shared/ui/EmptyState";
-import { getMonoFontStack } from "../../shared/lib/fontStack";
 import styles from "./DiffViewer.module.css";
 
 interface DiffViewerProps {

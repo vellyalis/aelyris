@@ -1,8 +1,8 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { matchSorter } from "match-sorter";
-import { useFileList } from "./useFileList";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import styles from "./QuickOpen.module.css";
+import { useFileList } from "./useFileList";
 
 type QuickOpenMode = "files" | "buffers";
 
@@ -36,7 +36,9 @@ export function QuickOpen({ projectPath, openFiles, onSelectFile, onClose, initi
   }, [sourceList, query]);
 
   // Reset selection when results change
-  useEffect(() => { setSelectedIdx(0); }, [results]);
+  useEffect(() => {
+    setSelectedIdx(0);
+  }, [results]);
 
   // Scroll selected into view
   useEffect(() => {
@@ -46,25 +48,32 @@ export function QuickOpen({ projectPath, openFiles, onSelectFile, onClose, initi
     selected?.scrollIntoView({ block: "nearest" });
   }, [selectedIdx]);
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === "ArrowDown") { e.preventDefault(); setSelectedIdx((i) => Math.min(i + 1, results.length - 1)); }
-    else if (e.key === "ArrowUp") { e.preventDefault(); setSelectedIdx((i) => Math.max(i - 1, 0)); }
-    else if (e.key === "Enter") {
-      e.preventDefault();
-      const file = results[selectedIdx];
-      if (file) {
-        const fullPath = mode === "buffers" ? file : `${projectPath}/${file}`;
-        onSelectFile(fullPath);
-        onClose();
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSelectedIdx((i) => Math.min(i + 1, results.length - 1));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSelectedIdx((i) => Math.max(i - 1, 0));
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        const file = results[selectedIdx];
+        if (file) {
+          const fullPath = mode === "buffers" ? file : `${projectPath}/${file}`;
+          onSelectFile(fullPath);
+          onClose();
+        }
       }
-    }
-    // Escape is handled by Radix Dialog itself — no local listener needed.
-    else if (e.key === "Tab") {
-      e.preventDefault();
-      setMode((m) => m === "files" ? "buffers" : "files");
-      setQuery("");
-    }
-  }, [results, selectedIdx, projectPath, mode, onSelectFile, onClose]);
+      // Escape is handled by Radix Dialog itself — no local listener needed.
+      else if (e.key === "Tab") {
+        e.preventDefault();
+        setMode((m) => (m === "files" ? "buffers" : "files"));
+        setQuery("");
+      }
+    },
+    [results, selectedIdx, projectPath, mode, onSelectFile, onClose],
+  );
 
   const fileName = (path: string) => path.split("/").pop() ?? path;
   const dirName = (path: string) => {
@@ -73,7 +82,12 @@ export function QuickOpen({ projectPath, openFiles, onSelectFile, onClose, initi
   };
 
   return (
-    <Dialog.Root open onOpenChange={(o) => { if (!o) onClose(); }}>
+    <Dialog.Root
+      open
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+    >
       <Dialog.Portal>
         <Dialog.Overlay className={styles.overlay} />
         <Dialog.Content
@@ -86,7 +100,9 @@ export function QuickOpen({ projectPath, openFiles, onSelectFile, onClose, initi
             inputRef.current?.focus();
           }}
         >
-          <Dialog.Title className="sr-only">{mode === "files" ? "Quick Open: Files" : "Quick Open: Buffers"}</Dialog.Title>
+          <Dialog.Title className="sr-only">
+            {mode === "files" ? "Quick Open: Files" : "Quick Open: Buffers"}
+          </Dialog.Title>
           <div className={styles.inputRow}>
             <span className={styles.modeTag}>{mode === "files" ? "Files" : "Buffers"}</span>
             <input
@@ -117,12 +133,12 @@ export function QuickOpen({ projectPath, openFiles, onSelectFile, onClose, initi
                 <span className={styles.itemDir}>{dirName(path)}</span>
               </div>
             ))}
-            {!loading && results.length === 0 && (
-              <div className={styles.empty}>No matches</div>
-            )}
+            {!loading && results.length === 0 && <div className={styles.empty}>No matches</div>}
           </div>
           <div className={styles.footer}>
-            <span>{results.length} / {sourceList.length} files</span>
+            <span>
+              {results.length} / {sourceList.length} files
+            </span>
             <span>↑↓ navigate · Enter open · Esc close</span>
           </div>
         </Dialog.Content>

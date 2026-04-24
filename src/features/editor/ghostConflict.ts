@@ -68,10 +68,7 @@ export function hunkBaseRange(hunk: DiffHunk): LineRange {
  * ranges. Callers paint only the non-conflicting hunks inline and report the
  * conflict count to the breadcrumb badge.
  */
-export function detectHunkConflicts(
-  dirtyRanges: LineRange[],
-  hunks: DiffHunk[],
-): Set<number> {
+export function detectHunkConflicts(dirtyRanges: LineRange[], hunks: DiffHunk[]): Set<number> {
   const merged = mergeRanges(dirtyRanges);
   const conflicts = new Set<number>();
   if (merged.length === 0) return conflicts;

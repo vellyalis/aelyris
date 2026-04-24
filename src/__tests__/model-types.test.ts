@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { MODEL_OPTIONS, DEFAULT_MODEL_ID, getModelById } from "../shared/types/model";
+import { describe, expect, it } from "vitest";
+import { DEFAULT_MODEL_ID, getModelById, MODEL_OPTIONS } from "../shared/types/model";
 
 describe("Model Types", () => {
   it("all options have required fields", () => {

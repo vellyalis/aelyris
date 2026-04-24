@@ -10,11 +10,7 @@
  * - documenter: Updates documentation
  */
 
-export type OrchestraRoleId =
-  | "implementer"
-  | "tester"
-  | "reviewer"
-  | "documenter";
+export type OrchestraRoleId = "implementer" | "tester" | "reviewer" | "documenter";
 
 export interface OrchestraRole {
   id: OrchestraRoleId;
@@ -34,7 +30,8 @@ export const ORCHESTRA_ROLES: OrchestraRole[] = [
     model: "sonnet",
     icon: "I",
     color: "#89b4fa",
-    promptTemplate: "Implement the following task:\n\n{task}\n\nFocus on writing clean, working code. Follow existing patterns in the codebase.",
+    promptTemplate:
+      "Implement the following task:\n\n{task}\n\nFocus on writing clean, working code. Follow existing patterns in the codebase.",
   },
   {
     id: "tester",
@@ -42,7 +39,8 @@ export const ORCHESTRA_ROLES: OrchestraRole[] = [
     model: "sonnet",
     icon: "T",
     color: "#a6e3a1",
-    promptTemplate: "Write comprehensive tests for the following task:\n\n{task}\n\nCover happy path, edge cases, and error scenarios. Aim for 80%+ coverage.",
+    promptTemplate:
+      "Write comprehensive tests for the following task:\n\n{task}\n\nCover happy path, edge cases, and error scenarios. Aim for 80%+ coverage.",
   },
   {
     id: "reviewer",
@@ -50,7 +48,8 @@ export const ORCHESTRA_ROLES: OrchestraRole[] = [
     model: "opus",
     icon: "R",
     color: "#cba6f7",
-    promptTemplate: "Review the codebase for the following task:\n\n{task}\n\nCheck for bugs, security issues, performance problems, and code quality. Report findings.",
+    promptTemplate:
+      "Review the codebase for the following task:\n\n{task}\n\nCheck for bugs, security issues, performance problems, and code quality. Report findings.",
   },
   {
     id: "documenter",
@@ -58,7 +57,8 @@ export const ORCHESTRA_ROLES: OrchestraRole[] = [
     model: "haiku",
     icon: "D",
     color: "#f9e2af",
-    promptTemplate: "Update documentation for the following task:\n\n{task}\n\nUpdate README, add inline comments where needed, and create usage examples.",
+    promptTemplate:
+      "Update documentation for the following task:\n\n{task}\n\nUpdate README, add inline comments where needed, and create usage examples.",
   },
 ];
 

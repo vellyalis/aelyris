@@ -12,7 +12,10 @@
   -webkit-app-region: drag;
 }
 
-.logo { border-radius: var(--radius-sm); flex-shrink: 0; }
+.logo {
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
 
 /* Left group: avatar + project info (2 rows) */
 .left {
@@ -23,7 +26,9 @@
   min-width: 0;
   -webkit-app-region: drag;
 }
-.left > * { -webkit-app-region: no-drag; }
+.left > * {
+  -webkit-app-region: no-drag;
+}
 
 .projectInfo {
   display: flex;
@@ -127,13 +132,18 @@
   align-items: center;
   justify-content: center;
   -webkit-app-region: no-drag;
-  transition: background var(--duration-fast), color var(--duration-fast);
+  transition:
+    background var(--duration-fast),
+    color var(--duration-fast);
 }
 .headerBtn:hover {
   background: var(--white-6);
   color: var(--white-70);
 }
-.headerBtn:focus-visible { outline: 2px solid var(--gold); outline-offset: -3px; }
+.headerBtn:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: -3px;
+}
 
 /* 1px vertical separator between the app-action cluster (Refresh/Settings)
    and the platform window controls — keeps them from reading as one row. */
@@ -162,7 +172,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background var(--duration-fast) var(--ease-silk), color var(--duration-fast);
+  transition:
+    background var(--duration-fast) var(--ease-silk),
+    color var(--duration-fast);
 }
 
 .minimizeBtn:hover {

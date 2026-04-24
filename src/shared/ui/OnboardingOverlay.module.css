@@ -24,7 +24,9 @@
   justify-content: center;
   pointer-events: none;
 }
-.contentWrapper > * { pointer-events: auto; }
+.contentWrapper > * {
+  pointer-events: auto;
+}
 
 .card {
   width: 420px;
@@ -44,10 +46,14 @@
 /* Position variants kept for future pointer-based highlighting, but snapped
    back to the overlay's flex centering so the panel no longer floats against
    a hardcoded margin (the magic 280/300px values pre-audit). */
-.center { }
-.left { }
-.right { }
-.bottom { }
+.center {
+}
+.left {
+}
+.right {
+}
+.bottom {
+}
 
 .stepIndicator {
   display: flex;
@@ -60,7 +66,9 @@
   height: var(--space-3);
   border-radius: 50%;
   background: var(--white-15);
-  transition: background var(--duration-normal), transform var(--duration-fast);
+  transition:
+    background var(--duration-normal),
+    transform var(--duration-fast);
 }
 
 .dotActive {
@@ -115,10 +123,18 @@
   font-family: var(--font-ui);
   cursor: pointer;
   padding: var(--space-2) var(--space-6);
-  transition: background var(--duration-fast), color var(--duration-fast);
+  transition:
+    background var(--duration-fast),
+    color var(--duration-fast);
 }
-.skipBtn:hover { background: var(--white-6); color: var(--text-primary); }
-.skipBtn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.skipBtn:hover {
+  background: var(--white-6);
+  color: var(--text-primary);
+}
+.skipBtn:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
 
 .nextBtn {
   background: var(--gold);
@@ -132,5 +148,10 @@
   cursor: pointer;
   transition: opacity var(--duration-fast);
 }
-.nextBtn:hover { opacity: 0.9; }
-.nextBtn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.nextBtn:hover {
+  opacity: 0.9;
+}
+.nextBtn:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}

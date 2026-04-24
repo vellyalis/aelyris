@@ -12,8 +12,7 @@ const listeners: Record<string, ListenHandler<unknown>> = {};
 const unlistenMock = vi.fn();
 
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: (cmd: string, args?: Record<string, unknown>) =>
-    (invokeMock as unknown as InvokeFn)(cmd, args),
+  invoke: (cmd: string, args?: Record<string, unknown>) => (invokeMock as unknown as InvokeFn)(cmd, args),
 }));
 
 vi.mock("@tauri-apps/api/event", () => ({
@@ -90,8 +89,7 @@ describe("useGhostLayers", () => {
 
   it("flips isComplete on ghost-diff:layer-completed", async () => {
     (invokeMock as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd) => {
-      if (cmd === "list_ghost_layers")
-        return Promise.resolve([makeLayer({ id: "j1" })]);
+      if (cmd === "list_ghost_layers") return Promise.resolve([makeLayer({ id: "j1" })]);
       return Promise.reject(new Error(`unexpected ${cmd}`));
     });
     const { result } = renderHook(() => useGhostLayers());
@@ -107,11 +105,7 @@ describe("useGhostLayers", () => {
 
   it("drops layers on ghost-diff:layer-removed", async () => {
     (invokeMock as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd) => {
-      if (cmd === "list_ghost_layers")
-        return Promise.resolve([
-          makeLayer({ id: "a" }),
-          makeLayer({ id: "b" }),
-        ]);
+      if (cmd === "list_ghost_layers") return Promise.resolve([makeLayer({ id: "a" }), makeLayer({ id: "b" })]);
       return Promise.reject(new Error(`unexpected ${cmd}`));
     });
     const { result } = renderHook(() => useGhostLayers());

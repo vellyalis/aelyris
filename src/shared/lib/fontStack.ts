@@ -7,8 +7,6 @@ export function getMonoFontStack(): string {
   if (typeof window === "undefined" || typeof document === "undefined") {
     return FALLBACK_MONO;
   }
-  const resolved = getComputedStyle(document.documentElement)
-    .getPropertyValue("--font-mono")
-    .trim();
+  const resolved = getComputedStyle(document.documentElement).getPropertyValue("--font-mono").trim();
   return resolved.length > 0 ? resolved : FALLBACK_MONO;
 }

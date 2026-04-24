@@ -9,11 +9,7 @@ interface LspBridge {
  * Register Monaco completion and hover providers that delegate to an LSP server.
  * Returns a dispose function to unregister the providers.
  */
-export function registerLspProviders(
-  monaco: typeof Monaco,
-  languageId: string,
-  bridge: LspBridge,
-): () => void {
+export function registerLspProviders(monaco: typeof Monaco, languageId: string, bridge: LspBridge): () => void {
   const disposables: Monaco.IDisposable[] = [];
 
   // Completion provider
@@ -28,9 +24,7 @@ export function registerLspProviders(
         });
         if (!resp?.result) return { suggestions: [] };
 
-        const items = Array.isArray(resp.result)
-          ? resp.result
-          : (resp.result as { items?: unknown[] }).items ?? [];
+        const items = Array.isArray(resp.result) ? resp.result : ((resp.result as { items?: unknown[] }).items ?? []);
 
         const suggestions = items.map((item: Record<string, unknown>) => ({
           label: (item.label as string) ?? "",
@@ -57,7 +51,10 @@ export function registerLspProviders(
         });
         if (!resp?.result) return null;
 
-        const result = resp.result as { contents?: unknown; range?: { start: { line: number; character: number }; end: { line: number; character: number } } };
+        const result = resp.result as {
+          contents?: unknown;
+          range?: { start: { line: number; character: number }; end: { line: number; character: number } };
+        };
         const contents = formatHoverContents(result.contents);
         if (!contents) return null;
 
@@ -111,7 +108,7 @@ function formatHoverContents(contents: unknown): string | null {
     return (contents as { value: string }).value;
   }
   if (Array.isArray(contents)) {
-    return contents.map((c) => (typeof c === "string" ? c : (c as { value?: string }).value ?? "")).join("\n\n");
+    return contents.map((c) => (typeof c === "string" ? c : ((c as { value?: string }).value ?? ""))).join("\n\n");
   }
   return null;
 }

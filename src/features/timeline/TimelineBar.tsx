@@ -1,9 +1,6 @@
 import { useCallback, useMemo } from "react";
 
-import {
-  triggerLabel,
-  type SnapshotSummary,
-} from "../../shared/types/snapshot";
+import { type SnapshotSummary, triggerLabel } from "../../shared/types/snapshot";
 import type { GridSnapshot } from "../../shared/types/terminal";
 import styles from "./TimelineBar.module.css";
 
@@ -70,11 +67,7 @@ export function TimelineBar({
   }, [snapshots, activeOverlay]);
 
   return (
-    <div
-      className={styles.root}
-      data-testid="timeline-bar"
-      aria-label="Timeline"
-    >
+    <div className={styles.root} data-testid="timeline-bar" aria-label="Timeline">
       <span className={styles.label}>TIMELINE</span>
       {snapshots.length === 0 ? (
         <span className={styles.empty}>No snapshots yet — press Enter to capture</span>
@@ -83,11 +76,7 @@ export function TimelineBar({
           {snapshots.map((snap) => {
             const isActive = activeOverlay?.snapshotId === snap.id;
             const kind = snap.trigger.kind;
-            const classes = [
-              styles.tick,
-              kind === "userMarked" ? styles.userMarked : "",
-              isActive ? styles.active : "",
-            ]
+            const classes = [styles.tick, kind === "userMarked" ? styles.userMarked : "", isActive ? styles.active : ""]
               .filter(Boolean)
               .join(" ");
             return (
@@ -119,9 +108,7 @@ export function TimelineBar({
       )}
       {activeOverlay && (
         <div className={styles.activePill} role="status" aria-live="polite">
-          <span>
-            Viewing {activeSummary ? triggerLabel(activeSummary.trigger) : "past state"}
-          </span>
+          <span>Viewing {activeSummary ? triggerLabel(activeSummary.trigger) : "past state"}</span>
           <button
             type="button"
             className={styles.dismissBtn}

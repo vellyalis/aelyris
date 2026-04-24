@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
+import { AlertTriangle, History, Search } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { create } from "zustand";
-import { History, Search, AlertTriangle } from "lucide-react";
 import { useSemanticHistory } from "../../shared/hooks/useSemanticHistory";
 import { formatExecutedAt, type SearchFilters, type SearchHit } from "../../shared/types/history";
 import styles from "./HistorySearchDialog.module.css";
@@ -99,7 +99,12 @@ export function HistorySearchDialog({ onAccept, defaultCwdPrefix }: HistorySearc
   );
 
   return (
-    <Dialog.Root open={open} onOpenChange={(o) => { if (!o) close(); }}>
+    <Dialog.Root
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) close();
+      }}
+    >
       <Dialog.Portal>
         <Dialog.Overlay className={styles.overlay} />
         <Dialog.Content className={styles.panel} aria-describedby={undefined}>
@@ -136,7 +141,11 @@ export function HistorySearchDialog({ onAccept, defaultCwdPrefix }: HistorySearc
               </button>
             )}
             {loading && <span>searching…</span>}
-            {error && <span className={styles.failed}><AlertTriangle size={10} /> {error}</span>}
+            {error && (
+              <span className={styles.failed}>
+                <AlertTriangle size={10} /> {error}
+              </span>
+            )}
           </div>
 
           <div className={styles.results} ref={listRef}>
@@ -159,7 +168,9 @@ export function HistorySearchDialog({ onAccept, defaultCwdPrefix }: HistorySearc
                 <div className={styles.rowMain}>
                   <span className={styles.command}>{hit.entry.command}</span>
                   <span className={styles.meta}>
-                    <span className={styles.cwd} title={hit.entry.cwd}>{hit.entry.cwd}</span>
+                    <span className={styles.cwd} title={hit.entry.cwd}>
+                      {hit.entry.cwd}
+                    </span>
                     <span>{formatExecutedAt(hit.entry.executed_at)}</span>
                     {hit.entry.exit_code != null && hit.entry.exit_code !== 0 && (
                       <span className={styles.failed}>exit {hit.entry.exit_code}</span>
@@ -173,9 +184,15 @@ export function HistorySearchDialog({ onAccept, defaultCwdPrefix }: HistorySearc
 
           <div className={styles.footer}>
             <div className={styles.footerHints}>
-              <span><span className={styles.kbd}>↑↓</span> navigate</span>
-              <span><span className={styles.kbd}>Enter</span> run</span>
-              <span><span className={styles.kbd}>Esc</span> close</span>
+              <span>
+                <span className={styles.kbd}>↑↓</span> navigate
+              </span>
+              <span>
+                <span className={styles.kbd}>Enter</span> run
+              </span>
+              <span>
+                <span className={styles.kbd}>Esc</span> close
+              </span>
             </div>
             <span>{hits.length} hits</span>
           </div>

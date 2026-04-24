@@ -1,13 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
-import { pixelToCell } from "../keymap";
-import {
-  extractSelection,
-  lineRangeAt,
-  wordRangeAt,
-  type SelectionRange,
-} from "../selection";
 import type { GridSnapshot } from "../../../shared/types/terminal";
+import { pixelToCell } from "../keymap";
+import { extractSelection, lineRangeAt, type SelectionRange, wordRangeAt } from "../selection";
 
 /**
  * Phase 2 / Task 9 — Mouse selection + copy wiring for TerminalCanvas.
@@ -26,11 +20,7 @@ import type { GridSnapshot } from "../../../shared/types/terminal";
 export type CopyTextFn = (text: string) => Promise<void> | void;
 
 const defaultCopyText: CopyTextFn = (text) => {
-  if (
-    typeof navigator !== "undefined" &&
-    navigator.clipboard &&
-    typeof navigator.clipboard.writeText === "function"
-  ) {
+  if (typeof navigator !== "undefined" && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
     return navigator.clipboard.writeText(text).catch(() => {});
   }
   return undefined;
@@ -71,15 +61,7 @@ export function useTerminalSelection({
       const snap = snapshotRef.current;
       if (!element || !snap) return null;
       const rect = element.getBoundingClientRect();
-      return pixelToCell(
-        clientX,
-        clientY,
-        rect,
-        cellWidth,
-        cellHeight,
-        snap.cols,
-        snap.rows,
-      );
+      return pixelToCell(clientX, clientY, rect, cellWidth, cellHeight, snap.cols, snap.rows);
     },
     [element, cellWidth, cellHeight],
   );
@@ -119,9 +101,7 @@ export function useTerminalSelection({
       if (!draggingRef.current) return;
       const point = cellAt(ev.clientX, ev.clientY);
       if (!point) return;
-      setSelection((prev) =>
-        prev ? { ...prev, focus: point } : prev,
-      );
+      setSelection((prev) => (prev ? { ...prev, focus: point } : prev));
     };
 
     const onMouseUp = () => {
@@ -175,8 +155,5 @@ export function useTerminalSelection({
     await copyText(text);
   }, [selection, copyText]);
 
-  return useMemo(
-    () => ({ selection, clear, copy }),
-    [selection, clear, copy],
-  );
+  return useMemo(() => ({ selection, clear, copy }), [selection, clear, copy]);
 }

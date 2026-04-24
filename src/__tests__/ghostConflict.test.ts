@@ -1,18 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  detectHunkConflicts,
-  hunkBaseRange,
-  mergeRanges,
-  rangesIntersect,
-} from "../features/editor/ghostConflict";
+import { detectHunkConflicts, hunkBaseRange, mergeRanges, rangesIntersect } from "../features/editor/ghostConflict";
 import type { DiffHunk } from "../shared/types/ghostdiff";
 
-function hunk(
-  baseStart: number,
-  baseLen: number,
-  kinds: ("add" | "remove" | "context")[] = ["add"],
-): DiffHunk {
+function hunk(baseStart: number, baseLen: number, kinds: ("add" | "remove" | "context")[] = ["add"]): DiffHunk {
   return {
     baseStart,
     baseLen,
@@ -30,27 +21,19 @@ function hunk(
 
 describe("rangesIntersect", () => {
   it("returns true when ranges overlap by one line", () => {
-    expect(rangesIntersect({ start: 10, end: 20 }, { start: 20, end: 30 })).toBe(
-      true,
-    );
+    expect(rangesIntersect({ start: 10, end: 20 }, { start: 20, end: 30 })).toBe(true);
   });
 
   it("returns false when ranges are strictly disjoint", () => {
-    expect(rangesIntersect({ start: 10, end: 15 }, { start: 20, end: 30 })).toBe(
-      false,
-    );
+    expect(rangesIntersect({ start: 10, end: 15 }, { start: 20, end: 30 })).toBe(false);
   });
 
   it("returns true when one range contains the other", () => {
-    expect(rangesIntersect({ start: 10, end: 100 }, { start: 30, end: 40 })).toBe(
-      true,
-    );
+    expect(rangesIntersect({ start: 10, end: 100 }, { start: 30, end: 40 })).toBe(true);
   });
 
   it("returns false for adjacent-but-not-touching ranges", () => {
-    expect(rangesIntersect({ start: 10, end: 15 }, { start: 16, end: 20 })).toBe(
-      false,
-    );
+    expect(rangesIntersect({ start: 10, end: 15 }, { start: 16, end: 20 })).toBe(false);
   });
 });
 

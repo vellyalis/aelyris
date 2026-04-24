@@ -56,9 +56,10 @@ describe("useSemanticHistory", () => {
     let resolveFirst: ((v: SearchHit[]) => void) | null = null;
     invokeMock
       .mockImplementationOnce(
-        () => new Promise<SearchHit[]>((r) => {
-          resolveFirst = r;
-        }),
+        () =>
+          new Promise<SearchHit[]>((r) => {
+            resolveFirst = r;
+          }),
       )
       .mockResolvedValueOnce([hit("second", 0.95)]);
 
@@ -96,9 +97,6 @@ describe("useSemanticHistory", () => {
     const { result } = renderHook(() => useSemanticHistory(filters, 5, 0));
     act(() => result.current.setQuery("build"));
     await waitFor(() => expect(invokeMock).toHaveBeenCalled());
-    expect(invokeMock).toHaveBeenCalledWith(
-      "semantic_search_history",
-      expect.objectContaining({ filters, limit: 5 }),
-    );
+    expect(invokeMock).toHaveBeenCalledWith("semantic_search_history", expect.objectContaining({ filters, limit: 5 }));
   });
 });

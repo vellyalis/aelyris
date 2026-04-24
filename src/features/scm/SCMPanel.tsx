@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { ChevronRight, Plus, Minus, Undo2, Check, Upload, FileText, GitBranch, ArrowUp, ArrowDown } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, ChevronRight, FileText, GitBranch, Minus, Plus, Undo2, Upload } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "../../shared/store/toastStore";
 import { showConfirm } from "../../shared/ui/ConfirmDialog";
-import { GitStatusPip } from "../../shared/ui/GitStatusPip";
 import { EmptyState } from "../../shared/ui/EmptyState";
+import { GitStatusPip } from "../../shared/ui/GitStatusPip";
 import styles from "./SCMPanel.module.css";
 
 interface ChangedFile {
@@ -58,19 +58,27 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
       setUpstream(info.upstream);
       setAhead(info.ahead);
       setBehind(info.behind);
-    } catch { /* not a git repo */ }
+    } catch {
+      /* not a git repo */
+    }
   }, [projectPath]);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
   // Refresh on fs:changed events
   useEffect(() => {
     let unlisten: (() => void) | null = null;
     import("@tauri-apps/api/event").then(({ listen }) => {
       listen<{ root: string }>("fs:changed", (e) => {
         if (e.payload.root === projectPath) refresh();
-      }).then((u) => { unlisten = u; });
+      }).then((u) => {
+        unlisten = u;
+      });
     });
-    return () => { unlisten?.(); };
+    return () => {
+      unlisten?.();
+    };
   }, [projectPath, refresh]);
 
   const classify = (f: ChangedFile): GroupId => {
@@ -86,27 +94,36 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
     files: files.filter((f) => classify(f) === g.id),
   })).filter((g) => g.files.length > 0);
 
-  const handleStage = useCallback(async (paths: string[]) => {
-    await invoke("git_stage", { repoPath: projectPath, paths });
-    refresh();
-  }, [projectPath, refresh]);
+  const handleStage = useCallback(
+    async (paths: string[]) => {
+      await invoke("git_stage", { repoPath: projectPath, paths });
+      refresh();
+    },
+    [projectPath, refresh],
+  );
 
-  const handleUnstage = useCallback(async (paths: string[]) => {
-    await invoke("git_unstage", { repoPath: projectPath, paths });
-    refresh();
-  }, [projectPath, refresh]);
+  const handleUnstage = useCallback(
+    async (paths: string[]) => {
+      await invoke("git_unstage", { repoPath: projectPath, paths });
+      refresh();
+    },
+    [projectPath, refresh],
+  );
 
-  const handleDiscard = useCallback(async (paths: string[]) => {
-    const ok = await showConfirm({
-      title: paths.length === 1 ? `Discard changes in ${paths[0]}?` : `Discard changes in ${paths.length} files?`,
-      description: "This cannot be undone.",
-      confirmLabel: "Discard",
-      tone: "danger",
-    });
-    if (!ok) return;
-    await invoke("git_discard", { repoPath: projectPath, paths });
-    refresh();
-  }, [projectPath, refresh]);
+  const handleDiscard = useCallback(
+    async (paths: string[]) => {
+      const ok = await showConfirm({
+        title: paths.length === 1 ? `Discard changes in ${paths[0]}?` : `Discard changes in ${paths.length} files?`,
+        description: "This cannot be undone.",
+        confirmLabel: "Discard",
+        tone: "danger",
+      });
+      if (!ok) return;
+      await invoke("git_discard", { repoPath: projectPath, paths });
+      refresh();
+    },
+    [projectPath, refresh],
+  );
 
   const handleStageAll = useCallback(async () => {
     await invoke("git_stage_all", { repoPath: projectPath });
@@ -123,7 +140,9 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
       refresh();
     } catch (e) {
       toast.error("Commit failed", String(e));
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   }, [commitMsg, projectPath, refresh]);
 
   const handleCommitAndPush = useCallback(async () => {
@@ -137,7 +156,9 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
       refresh();
     } catch (e) {
       toast.error("Commit & push failed", String(e));
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   }, [commitMsg, projectPath, refresh]);
 
   const stagedCount = files.filter((f) => f.staged).length;
@@ -158,20 +179,26 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
       {branch && (
         <div className={styles.branchBar}>
           <GitBranch size={11} strokeWidth={1.75} aria-hidden="true" />
-          <span className={styles.branchName} title={upstream ? `Tracking ${upstream}` : "No upstream configured"}>{branch}</span>
+          <span className={styles.branchName} title={upstream ? `Tracking ${upstream}` : "No upstream configured"}>
+            {branch}
+          </span>
           {upstream && (
-            <span className={styles.upstream} title={`Upstream: ${upstream}`}>⇢ {upstream.replace(/^origin\//, "")}</span>
+            <span className={styles.upstream} title={`Upstream: ${upstream}`}>
+              ⇢ {upstream.replace(/^origin\//, "")}
+            </span>
           )}
           {(ahead > 0 || behind > 0) && (
             <span className={styles.syncPair}>
               {ahead > 0 && (
                 <span className={styles.ahead} title={`${ahead} commit${ahead === 1 ? "" : "s"} ahead of upstream`}>
-                  <ArrowUp size={10} strokeWidth={2} aria-hidden="true" />{ahead}
+                  <ArrowUp size={10} strokeWidth={2} aria-hidden="true" />
+                  {ahead}
                 </span>
               )}
               {behind > 0 && (
                 <span className={styles.behind} title={`${behind} commit${behind === 1 ? "" : "s"} behind upstream`}>
-                  <ArrowDown size={10} strokeWidth={2} aria-hidden="true" />{behind}
+                  <ArrowDown size={10} strokeWidth={2} aria-hidden="true" />
+                  {behind}
                 </span>
               )}
             </span>
@@ -188,16 +215,27 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
           value={commitMsg}
           onChange={handleCommitMsgChange}
           rows={3}
-          onKeyDown={(e) => { if (e.ctrlKey && e.key === "Enter") handleCommit(); }}
+          onKeyDown={(e) => {
+            if (e.ctrlKey && e.key === "Enter") handleCommit();
+          }}
         />
         <div className={styles.commitActions}>
           <button className={styles.stageAllBtn} onClick={handleStageAll} title="Stage All">
             <Plus size={10} /> Stage All
           </button>
-          <button className={styles.commitBtn} onClick={handleCommit} disabled={!commitMsg.trim() || stagedCount === 0 || loading}>
+          <button
+            className={styles.commitBtn}
+            onClick={handleCommit}
+            disabled={!commitMsg.trim() || stagedCount === 0 || loading}
+          >
             <Check size={10} /> Commit {stagedCount > 0 && `(${stagedCount})`}
           </button>
-          <button className={styles.pushBtn} onClick={handleCommitAndPush} disabled={!commitMsg.trim() || stagedCount === 0 || loading} title="Commit & Push">
+          <button
+            className={styles.pushBtn}
+            onClick={handleCommitAndPush}
+            disabled={!commitMsg.trim() || stagedCount === 0 || loading}
+            title="Commit & Push"
+          >
             <Upload size={10} />
           </button>
         </div>
@@ -215,13 +253,34 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
               {/* Group-level actions */}
               {g.id === "changes" && (
                 <span className={styles.groupActions} onClick={(e) => e.stopPropagation()}>
-                  <button type="button" onClick={() => handleStage(g.files.map((f) => f.path))} aria-label="Stage all changes" title="Stage all"><Plus size={10} aria-hidden="true" /></button>
-                  <button type="button" onClick={() => handleDiscard(g.files.map((f) => f.path))} aria-label="Discard all changes" title="Discard all"><Undo2 size={10} aria-hidden="true" /></button>
+                  <button
+                    type="button"
+                    onClick={() => handleStage(g.files.map((f) => f.path))}
+                    aria-label="Stage all changes"
+                    title="Stage all"
+                  >
+                    <Plus size={10} aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDiscard(g.files.map((f) => f.path))}
+                    aria-label="Discard all changes"
+                    title="Discard all"
+                  >
+                    <Undo2 size={10} aria-hidden="true" />
+                  </button>
                 </span>
               )}
               {g.id === "staged" && (
                 <span className={styles.groupActions} onClick={(e) => e.stopPropagation()}>
-                  <button type="button" onClick={() => handleUnstage(g.files.map((f) => f.path))} aria-label="Unstage all files" title="Unstage all"><Minus size={10} aria-hidden="true" /></button>
+                  <button
+                    type="button"
+                    onClick={() => handleUnstage(g.files.map((f) => f.path))}
+                    aria-label="Unstage all files"
+                    title="Unstage all"
+                  >
+                    <Minus size={10} aria-hidden="true" />
+                  </button>
                 </span>
               )}
             </button>
@@ -243,13 +302,43 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
                     <span className={styles.fileActions}>
                       {g.id === "changes" || g.id === "untracked" ? (
                         <>
-                          <button type="button" onClick={() => handleStage([f.path])} aria-label={`Stage ${f.path}`} title="Stage"><Plus size={10} aria-hidden="true" /></button>
-                          {g.id === "changes" && <button type="button" onClick={() => handleDiscard([f.path])} aria-label={`Discard ${f.path}`} title="Discard"><Undo2 size={10} aria-hidden="true" /></button>}
+                          <button
+                            type="button"
+                            onClick={() => handleStage([f.path])}
+                            aria-label={`Stage ${f.path}`}
+                            title="Stage"
+                          >
+                            <Plus size={10} aria-hidden="true" />
+                          </button>
+                          {g.id === "changes" && (
+                            <button
+                              type="button"
+                              onClick={() => handleDiscard([f.path])}
+                              aria-label={`Discard ${f.path}`}
+                              title="Discard"
+                            >
+                              <Undo2 size={10} aria-hidden="true" />
+                            </button>
+                          )}
                         </>
                       ) : g.id === "staged" ? (
-                        <button type="button" onClick={() => handleUnstage([f.path])} aria-label={`Unstage ${f.path}`} title="Unstage"><Minus size={10} aria-hidden="true" /></button>
+                        <button
+                          type="button"
+                          onClick={() => handleUnstage([f.path])}
+                          aria-label={`Unstage ${f.path}`}
+                          title="Unstage"
+                        >
+                          <Minus size={10} aria-hidden="true" />
+                        </button>
                       ) : null}
-                      <button type="button" onClick={() => onOpenFile?.(projectPath + "/" + f.path)} aria-label={`Open ${f.path}`} title="Open"><FileText size={10} aria-hidden="true" /></button>
+                      <button
+                        type="button"
+                        onClick={() => onOpenFile?.(projectPath + "/" + f.path)}
+                        aria-label={`Open ${f.path}`}
+                        title="Open"
+                      >
+                        <FileText size={10} aria-hidden="true" />
+                      </button>
                     </span>
                   </div>
                 ))}

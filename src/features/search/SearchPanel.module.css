@@ -30,8 +30,13 @@
   outline: none;
 }
 
-.input:focus-visible { outline: none !important; border-color: var(--gold); }
-.input::placeholder { color: var(--text-muted); }
+.input:focus-visible {
+  outline: none !important;
+  border-color: var(--gold);
+}
+.input::placeholder {
+  color: var(--text-muted);
+}
 
 .closeBtn {
   background: none;

@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+import type { AgentSession, WorktreeInfo } from "../shared/types/agent";
 import { getSessionColor } from "../shared/types/agent";
-import type { WorktreeInfo, AgentSession } from "../shared/types/agent";
 
 describe("WorktreeInfo type", () => {
   it("can represent a clean main worktree", () => {

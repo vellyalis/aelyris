@@ -1,4 +1,4 @@
-import { render, cleanup } from "@testing-library/react";
+import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TerminalCanvas } from "../features/terminal/TerminalCanvas";
@@ -36,9 +36,7 @@ function blankSnapshot(): GridSnapshot {
   return {
     cols: 40,
     rows: 3,
-    cells: Array.from({ length: 3 }, () =>
-      Array.from({ length: 40 }, () => ({ ch: " ", fg: 256, bg: 257, attrs: 0 })),
-    ),
+    cells: Array.from({ length: 3 }, () => Array.from({ length: 40 }, () => ({ ch: " ", fg: 256, bg: 257, attrs: 0 }))),
     cursor: { row: 0, col: 6, shape: "hidden", visible: true, blinking: false },
   };
 }
@@ -61,9 +59,7 @@ describe("TerminalCanvas ghost suggestion", () => {
         ghostSuggestion="tatus"
       />,
     );
-    const charCalls = ops
-      .filter((o) => o.type === "text")
-      .map((o) => String(o.args[0]));
+    const charCalls = ops.filter((o) => o.type === "text").map((o) => String(o.args[0]));
     // Every glyph of the suggestion should have been drawn.
     for (const ch of "tatus") {
       expect(charCalls).toContain(ch);
@@ -82,9 +78,7 @@ describe("TerminalCanvas ghost suggestion", () => {
         ghostSuggestion={null}
       />,
     );
-    const charCalls = ops
-      .filter((o) => o.type === "text")
-      .map((o) => String(o.args[0]));
+    const charCalls = ops.filter((o) => o.type === "text").map((o) => String(o.args[0]));
     // No stray ghost glyphs — the default blank snapshot has only " ".
     expect(charCalls.filter((c) => /[a-z]/.test(c))).toHaveLength(0);
   });
@@ -104,9 +98,7 @@ describe("TerminalCanvas ghost suggestion", () => {
         ghostSuggestion="tatus"
       />,
     );
-    const charCalls = ops
-      .filter((o) => o.type === "text")
-      .map((o) => String(o.args[0]));
+    const charCalls = ops.filter((o) => o.type === "text").map((o) => String(o.args[0]));
     expect(charCalls).toContain("x"); // real char was painted
     expect(charCalls.filter((c) => c === "t")).toHaveLength(0); // ghost suppressed
   });

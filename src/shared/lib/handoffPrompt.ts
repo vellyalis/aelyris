@@ -13,9 +13,8 @@ export function buildHandoffPrompt(session: AgentSession): string {
   const results = session.logs.filter((l) => l.type === "tool_result" && l.content.trim().length > 0);
   const lastResult = results[results.length - 1]?.content.trim() ?? "";
 
-  const filesNote = session.filesChanged && session.filesChanged > 0
-    ? `\n\nFiles changed so far: ${session.filesChanged}.`
-    : "";
+  const filesNote =
+    session.filesChanged && session.filesChanged > 0 ? `\n\nFiles changed so far: ${session.filesChanged}.` : "";
 
   const parts: string[] = [];
   parts.push(`Context from "${session.name}" (${session.model}):`);

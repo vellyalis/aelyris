@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  DEFAULT_BG,
-  DEFAULT_FG,
-  isDefaultBg,
-  isDefaultFg,
-  resolveColor,
-} from "../shared/lib/ansiPalette";
+import { DEFAULT_BG, DEFAULT_FG, isDefaultBg, isDefaultFg, resolveColor } from "../shared/lib/ansiPalette";
 
 // Packed color encoding (must mirror src-tauri/src/term/snapshot.rs).
 function packNamed(index: number): number {

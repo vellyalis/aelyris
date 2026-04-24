@@ -2,10 +2,7 @@ import { act, fireEvent, render } from "@testing-library/react";
 import { createRef } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  IMEInputBar,
-  type IMEInputBarHandle,
-} from "../features/terminal/IMEInputBar";
+import { IMEInputBar, type IMEInputBarHandle } from "../features/terminal/IMEInputBar";
 
 function renderBar(
   props: Partial<React.ComponentProps<typeof IMEInputBar>> & {
@@ -19,16 +16,9 @@ function renderBar(
     maxHistory: props.maxHistory,
   };
   const utils = render(
-    <IMEInputBar
-      ref={props.ref}
-      onSubmit={onSubmit}
-      onRequestCanvasFocus={onRequestCanvasFocus}
-      {...rest}
-    />,
+    <IMEInputBar ref={props.ref} onSubmit={onSubmit} onRequestCanvasFocus={onRequestCanvasFocus} {...rest} />,
   );
-  const textarea = utils.container.querySelector(
-    "textarea",
-  ) as HTMLTextAreaElement;
+  const textarea = utils.container.querySelector("textarea") as HTMLTextAreaElement;
   return { ...utils, textarea, onSubmit, onRequestCanvasFocus };
 }
 
@@ -150,23 +140,12 @@ describe("IMEInputBar", () => {
 
   it("indicator switches to あ during IME composition and back to A after commit", () => {
     const { textarea, container } = renderBar();
-    const indicator = container.querySelector(
-      "[aria-label='ASCII'], [aria-label='IME composing']",
-    ) as HTMLElement;
+    const indicator = container.querySelector("[aria-label='ASCII'], [aria-label='IME composing']") as HTMLElement;
     expect(indicator.textContent).toBe("A");
     fireEvent.compositionStart(textarea);
-    expect(
-      (
-        container.querySelector(
-          "[aria-label='IME composing']",
-        ) as HTMLElement
-      ).textContent,
-    ).toBe("あ");
+    expect((container.querySelector("[aria-label='IME composing']") as HTMLElement).textContent).toBe("あ");
     fireEvent.compositionEnd(textarea);
-    expect(
-      (container.querySelector("[aria-label='ASCII']") as HTMLElement)
-        .textContent,
-    ).toBe("A");
+    expect((container.querySelector("[aria-label='ASCII']") as HTMLElement).textContent).toBe("A");
   });
 
   it("imperative handle focus() moves keyboard focus into the textarea", () => {

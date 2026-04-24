@@ -1,17 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  findMatches,
-  matchToRange,
-  nextMatch,
-  previousMatch,
-  type SearchMatch,
-} from "../features/terminal/search";
-import {
-  ColorKind,
-  type CellSnapshot,
-  type GridSnapshot,
-} from "../shared/types/terminal";
+import { findMatches, matchToRange, nextMatch, previousMatch, type SearchMatch } from "../features/terminal/search";
+import { type CellSnapshot, ColorKind, type GridSnapshot } from "../shared/types/terminal";
 
 function packNamed(n: number): number {
   return (ColorKind.NAMED << 24) | n;

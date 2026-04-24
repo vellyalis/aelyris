@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { AgentSession } from "../types/agent";
 import type { KanbanTask } from "../types/kanban";
 

@@ -73,7 +73,7 @@ const ERROR_PATTERNS: ErrorPattern[] = [
   {
     pattern: /ERR_MODULE_NOT_FOUND|Cannot find module '([^']+)'/,
     type: "dependency_error",
-    extractMessage: (m) => m[1] ? `Module not found: ${m[1]}` : "Module not found",
+    extractMessage: (m) => (m[1] ? `Module not found: ${m[1]}` : "Module not found"),
     promptTemplate: "Fix missing dependency: {message}",
   },
   {

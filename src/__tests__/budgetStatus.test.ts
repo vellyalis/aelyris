@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { getBudgetWarning, countOverBudget } from "../shared/lib/budgetStatus";
+import { describe, expect, it } from "vitest";
+import { countOverBudget, getBudgetWarning } from "../shared/lib/budgetStatus";
 import type { AgentSession } from "../shared/types/agent";
 
 function makeSession(overrides: Partial<AgentSession> = {}): AgentSession {
@@ -45,8 +45,8 @@ describe("countOverBudget", () => {
   it("counts sessions above any threshold", () => {
     const sessions = [
       makeSession({ id: "a", cost: 0.1 }),
-      makeSession({ id: "b", cost: 3 }),               // over cost
-      makeSession({ id: "c", tokensUsed: 180_000 }),   // over context
+      makeSession({ id: "b", cost: 3 }), // over cost
+      makeSession({ id: "c", tokensUsed: 180_000 }), // over context
       makeSession({ id: "d", cost: 1 }),
     ];
     expect(countOverBudget(sessions)).toBe(2);

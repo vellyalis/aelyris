@@ -26,7 +26,12 @@ export const KeyboardShortcut = memo(function KeyboardShortcut({ keys }: Keyboar
             {key}
           </kbd>
           {i < keys.length - 1 && (
-            <span aria-hidden="true" style={{ fontSize: "var(--text-2xs)", color: "var(--text-muted)", margin: "0 var(--space-1)" }}>+</span>
+            <span
+              aria-hidden="true"
+              style={{ fontSize: "var(--text-2xs)", color: "var(--text-muted)", margin: "0 var(--space-1)" }}
+            >
+              +
+            </span>
           )}
         </span>
       ))}

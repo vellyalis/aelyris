@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   CellAttr,
-  ColorKind,
   type CellSnapshot,
-  type GridSnapshot,
+  ColorKind,
   decodeColor,
+  type GridSnapshot,
   hasAttr,
 } from "../shared/types/terminal";
 

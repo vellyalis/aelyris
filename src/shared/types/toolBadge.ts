@@ -1,4 +1,14 @@
-export type ToolName = "Read" | "Edit" | "Write" | "Bash" | "Glob" | "Grep" | "Search" | "TodoRead" | "TodoWrite" | "Agent";
+export type ToolName =
+  | "Read"
+  | "Edit"
+  | "Write"
+  | "Bash"
+  | "Glob"
+  | "Grep"
+  | "Search"
+  | "TodoRead"
+  | "TodoWrite"
+  | "Agent";
 
 export const TOOL_COLORS: Record<ToolName, string> = {
   Edit: "#f9e2af",

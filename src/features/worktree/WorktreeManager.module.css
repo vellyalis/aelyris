@@ -23,7 +23,10 @@
   color: var(--text-primary);
   background: var(--white-6);
 }
-.headerBtn:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+.headerBtn:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 1px;
+}
 
 .list {
   flex: 1;
@@ -43,7 +46,9 @@
   border: 1px solid var(--aether-border);
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: border-color var(--duration-fast), box-shadow var(--duration-normal);
+  transition:
+    border-color var(--duration-fast),
+    box-shadow var(--duration-normal);
 }
 
 .card:hover {
@@ -138,6 +143,7 @@
   outline: none;
 }
 
-.createInput:focus-visible { outline: none !important;
+.createInput:focus-visible {
+  outline: none !important;
   border-color: var(--ctp-blue);
 }

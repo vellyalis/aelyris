@@ -24,8 +24,13 @@ button.header {
   cursor: pointer;
   transition: background var(--duration-fast);
 }
-button.header:hover { background: var(--white-4); }
-button.header:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
+button.header:hover {
+  background: var(--white-4);
+}
+button.header:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: -2px;
+}
 
 .dense {
   padding: var(--space-3) var(--space-5);
@@ -35,7 +40,9 @@ button.header:focus-visible { outline: 2px solid var(--gold); outline-offset: -2
   color: var(--text-muted);
   transition: transform var(--duration-fast) var(--ease-silk);
 }
-.chevronOpen { transform: rotate(90deg); }
+.chevronOpen {
+  transform: rotate(90deg);
+}
 
 .leading {
   display: inline-flex;

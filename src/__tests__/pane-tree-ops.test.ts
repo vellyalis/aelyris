@@ -1,7 +1,13 @@
-import { describe, it, expect } from "vitest";
-import { createLeaf, splitPane, removePane, collectLeafIds, countLeaves } from "../features/terminal/pane-tree/operations";
-import { splitDirectionToTree } from "../features/terminal/pane-tree/types";
+import { describe, expect, it } from "vitest";
+import {
+  collectLeafIds,
+  countLeaves,
+  createLeaf,
+  removePane,
+  splitPane,
+} from "../features/terminal/pane-tree/operations";
 import type { PaneNode } from "../features/terminal/pane-tree/types";
+import { splitDirectionToTree } from "../features/terminal/pane-tree/types";
 
 describe("createLeaf", () => {
   it("creates a terminal leaf with unique id", () => {

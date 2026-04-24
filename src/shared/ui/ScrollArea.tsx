@@ -10,9 +10,7 @@ interface ScrollAreaProps {
 export function ScrollArea({ children, className }: ScrollAreaProps) {
   return (
     <RadixScrollArea.Root className={`${styles.root} ${className ?? ""}`}>
-      <RadixScrollArea.Viewport className={styles.viewport}>
-        {children}
-      </RadixScrollArea.Viewport>
+      <RadixScrollArea.Viewport className={styles.viewport}>{children}</RadixScrollArea.Viewport>
       <RadixScrollArea.Scrollbar className={styles.scrollbar} orientation="vertical">
         <RadixScrollArea.Thumb className={styles.thumb} />
       </RadixScrollArea.Scrollbar>

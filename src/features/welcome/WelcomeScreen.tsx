@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { FolderOpen, GitBranch, Upload } from "lucide-react";
 import { motion } from "motion/react";
-import { GitBranch, FolderOpen, Upload } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import logoSvg from "../../assets/logo.svg";
 import styles from "./WelcomeScreen.module.css";
 
@@ -44,42 +44,55 @@ export function WelcomeScreen({ onOpenProject }: WelcomeScreenProps) {
       try {
         const dirs = await invoke<string[]>("default_project_scan_dirs");
         if (dirs.length > 0) scanDirs = dirs;
-      } catch { /* fall through to fallback */ }
+      } catch {
+        /* fall through to fallback */
+      }
       if (cancelled) return;
       try {
         const projects = await invoke<ProjectInfo[]>("discover_projects", { scanDirs });
         if (!cancelled) setRecentProjects(projects);
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
       if (!cancelled) setLoading(false);
     })();
 
     // Try to get git user name for personalization
     invoke<string>("get_git_user_name")
-      .then((name) => { if (!cancelled && name) setUserName(name); })
-      .catch(() => { /* not available yet */ });
+      .then((name) => {
+        if (!cancelled && name) setUserName(name);
+      })
+      .catch(() => {
+        /* not available yet */
+      });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const [dragOver, setDragOver] = useState(false);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    const items = e.dataTransfer.items;
-    if (items.length > 0) {
-      const entry = items[0].webkitGetAsEntry?.();
-      if (entry?.isDirectory) {
-        onOpenProject(entry.fullPath || entry.name);
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragOver(false);
+      const items = e.dataTransfer.items;
+      if (items.length > 0) {
+        const entry = items[0].webkitGetAsEntry?.();
+        if (entry?.isDirectory) {
+          onOpenProject(entry.fullPath || entry.name);
+        }
       }
-    }
-    // Also try files
-    const files = e.dataTransfer.files;
-    if (files.length > 0) {
-      const path = (files[0] as unknown as { path?: string }).path;
-      if (path) onOpenProject(path.replace(/\\/g, "/"));
-    }
-  }, [onOpenProject]);
+      // Also try files
+      const files = e.dataTransfer.files;
+      if (files.length > 0) {
+        const path = (files[0] as unknown as { path?: string }).path;
+        if (path) onOpenProject(path.replace(/\\/g, "/"));
+      }
+    },
+    [onOpenProject],
+  );
 
   const handleOpenFolder = async () => {
     try {
@@ -88,13 +101,18 @@ export function WelcomeScreen({ onOpenProject }: WelcomeScreenProps) {
       if (selected) {
         onOpenProject(typeof selected === "string" ? selected : selected[0]);
       }
-    } catch { /* cancelled or not in Tauri */ }
+    } catch {
+      /* cancelled or not in Tauri */
+    }
   };
 
   return (
     <div
       className={`${styles.container} ${dragOver ? styles.dragOver : ""}`}
-      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        setDragOver(true);
+      }}
       onDragLeave={() => setDragOver(false)}
       onDrop={handleDrop}
     >
@@ -134,15 +152,16 @@ export function WelcomeScreen({ onOpenProject }: WelcomeScreenProps) {
 
         <div className={styles.recentHeader}>Recent Projects</div>
         <div className={styles.recentList}>
-          {loading && Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className={styles.skeletonCard}>
-              <div className={styles.skeletonAvatar} />
-              <div className={styles.skeletonText}>
-                <div className={styles.skeletonLine} style={{ width: `${60 + i * 10}%` }} />
-                <div className={styles.skeletonLine} style={{ width: `${40 + i * 8}%` }} />
+          {loading &&
+            Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className={styles.skeletonCard}>
+                <div className={styles.skeletonAvatar} />
+                <div className={styles.skeletonText}>
+                  <div className={styles.skeletonLine} style={{ width: `${60 + i * 10}%` }} />
+                  <div className={styles.skeletonLine} style={{ width: `${40 + i * 8}%` }} />
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
           {recentProjects.map((p, i) => (
             <motion.button
               key={p.path}
@@ -152,9 +171,7 @@ export function WelcomeScreen({ onOpenProject }: WelcomeScreenProps) {
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.1 + i * 0.04, type: "spring", stiffness: 300, damping: 25 }}
             >
-              <div className={styles.projectAvatar}>
-                {p.name.slice(0, 2).toUpperCase()}
-              </div>
+              <div className={styles.projectAvatar}>{p.name.slice(0, 2).toUpperCase()}</div>
               <div className={styles.projectInfo}>
                 <div className={styles.projectName}>
                   {p.name}

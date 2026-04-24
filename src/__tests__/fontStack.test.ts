@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getMonoFontStack } from "../shared/lib/fontStack";
 
 const FALLBACK = "'IBM Plex Mono', 'Cascadia Code', monospace";
@@ -20,10 +20,7 @@ describe("getMonoFontStack", () => {
   });
 
   it("resolves --font-mono from the document root when set", () => {
-    document.documentElement.style.setProperty(
-      "--font-mono",
-      "'JetBrains Mono', monospace",
-    );
+    document.documentElement.style.setProperty("--font-mono", "'JetBrains Mono', monospace");
     expect(getMonoFontStack()).toBe("'JetBrains Mono', monospace");
   });
 
@@ -33,10 +30,7 @@ describe("getMonoFontStack", () => {
   });
 
   it("trims whitespace from the resolved value", () => {
-    document.documentElement.style.setProperty(
-      "--font-mono",
-      "  'Fira Code', monospace  ",
-    );
+    document.documentElement.style.setProperty("--font-mono", "  'Fira Code', monospace  ");
     expect(getMonoFontStack()).toBe("'Fira Code', monospace");
   });
 });

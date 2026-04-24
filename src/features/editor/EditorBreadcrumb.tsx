@@ -1,7 +1,7 @@
-import { memo } from "react";
 import { ChevronRight, FileWarning, Sparkles } from "lucide-react";
-import { computeRelativePath } from "./useGhostPaintForFile";
+import { memo } from "react";
 import styles from "./EditorBreadcrumb.module.css";
+import { computeRelativePath } from "./useGhostPaintForFile";
 
 interface EditorBreadcrumbProps {
   filePath: string;

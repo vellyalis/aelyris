@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ShellType } from "../../App";
 
 export interface Tab {
@@ -18,9 +18,7 @@ const SHELL_LABELS: Record<ShellType, string> = {
 
 function createTab(shell: ShellType, cwd?: string): Tab {
   const id = `tab-${crypto.randomUUID().slice(0, 8)}`;
-  const label = cwd
-    ? cwd.split("/").filter(Boolean).pop() ?? SHELL_LABELS[shell]
-    : SHELL_LABELS[shell];
+  const label = cwd ? (cwd.split("/").filter(Boolean).pop() ?? SHELL_LABELS[shell]) : SHELL_LABELS[shell];
   return { id, label, shell, cwd };
 }
 
@@ -33,7 +31,9 @@ function loadSavedTabs(): Tab[] | null {
         return parsed;
       }
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return null;
 }
 
@@ -41,7 +41,9 @@ function saveTabs(tabs: Tab[], activeId: string) {
   try {
     localStorage.setItem("aether:tabs", JSON.stringify(tabs));
     localStorage.setItem("aether:activeTab", activeId);
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 
 export function useTabManager(defaultShell: ShellType = "powershell") {
@@ -52,9 +54,7 @@ export function useTabManager(defaultShell: ShellType = "powershell") {
     let activeId: string;
     try {
       const savedActive = localStorage.getItem("aether:activeTab");
-      activeId = savedActive && tabs.some((t) => t.id === savedActive)
-        ? savedActive
-        : tabs[0]?.id ?? "";
+      activeId = savedActive && tabs.some((t) => t.id === savedActive) ? savedActive : (tabs[0]?.id ?? "");
     } catch {
       activeId = tabs[0]?.id ?? "";
     }
@@ -64,7 +64,9 @@ export function useTabManager(defaultShell: ShellType = "powershell") {
   const [activeTabId, setActiveTabId] = useState<string>(initialState.activeId);
 
   // Persist tabs on change
-  useEffect(() => { saveTabs(tabs, activeTabId); }, [tabs, activeTabId]);
+  useEffect(() => {
+    saveTabs(tabs, activeTabId);
+  }, [tabs, activeTabId]);
 
   const addTab = useCallback((shell: ShellType) => {
     const tab = createTab(shell);
@@ -132,5 +134,16 @@ export function useTabManager(defaultShell: ShellType = "powershell") {
     });
   }, []);
 
-  return { tabs, activeTab, activeTabId, setActiveTabId: selectTab, addTab, closeTab, addTabWithCwd, activityTabs, markTabActivity, reorderTab };
+  return {
+    tabs,
+    activeTab,
+    activeTabId,
+    setActiveTabId: selectTab,
+    addTab,
+    closeTab,
+    addTabWithCwd,
+    activityTabs,
+    markTabActivity,
+    reorderTab,
+  };
 }

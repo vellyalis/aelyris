@@ -6,9 +6,7 @@
    * tint via opacity on top of --glass-dense instead.
    */
   border-top: 1px solid var(--white-6);
-  background:
-    linear-gradient(var(--purple-dim), var(--purple-dim)),
-    var(--glass-dense);
+  background: linear-gradient(var(--purple-dim), var(--purple-dim)), var(--glass-dense);
   min-height: 60px;
   max-height: 180px;
   display: flex;
@@ -29,8 +27,14 @@
   align-items: center;
   justify-content: center;
 }
-.addBtn:hover { background: var(--white-6); color: var(--text-primary); }
-.addBtn:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+.addBtn:hover {
+  background: var(--white-6);
+  color: var(--text-primary);
+}
+.addBtn:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 1px;
+}
 
 .content {
   flex: 1;
@@ -50,9 +54,16 @@
   outline: none;
   margin-bottom: var(--space-3);
 }
-.addInput:hover { border-color: var(--white-10); }
-.addInput:focus-visible { outline: none !important; border-color: var(--gold); }
-.addInput::placeholder { color: var(--text-muted); }
+.addInput:hover {
+  border-color: var(--white-10);
+}
+.addInput:focus-visible {
+  outline: none !important;
+  border-color: var(--gold);
+}
+.addInput::placeholder {
+  color: var(--text-muted);
+}
 
 .task {
   display: flex;
@@ -63,9 +74,14 @@
   font-size: var(--text-md);
   transition: background var(--duration-fast);
 }
-.task:hover { background: var(--row-hover); }
+.task:hover {
+  background: var(--row-hover);
+}
 
-.taskDone .taskLabel { text-decoration: line-through; opacity: 0.4; }
+.taskDone .taskLabel {
+  text-decoration: line-through;
+  opacity: 0.4;
+}
 
 .checkbox {
   accent-color: var(--purple-text);
@@ -94,5 +110,9 @@
   padding: 0 var(--space-1);
   transition: opacity 0.1s;
 }
-.task:hover .deleteBtn { opacity: 1; }
-.deleteBtn:hover { color: var(--ctp-red); }
+.task:hover .deleteBtn {
+  opacity: 1;
+}
+.deleteBtn:hover {
+  color: var(--ctp-red);
+}

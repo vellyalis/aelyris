@@ -1,36 +1,24 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { openUrl as tauriOpenUrl } from "@tauri-apps/plugin-opener";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useTerminalSnapshot } from "../../shared/hooks/useTerminalSnapshot";
 import {
-  useCanvasIME,
-  useImePosition,
-  type WriteBytesFn,
-} from "./hooks/useCanvasIME";
-import {
   CURSOR_COLOR,
   DEFAULT_BG,
+  isDefaultBg,
   LINK_HOVER_FG,
+  resolveColor,
   SEARCH_ACTIVE_BG,
   SEARCH_MATCH_BG,
   SELECTION_BG,
-  isDefaultBg,
-  resolveColor,
 } from "../../shared/lib/ansiPalette";
-import {
-  CellAttr,
-  hasAttr,
-  type CellSnapshot,
-  type GridSnapshot,
-} from "../../shared/types/terminal";
+import { CellAttr, type CellSnapshot, type GridSnapshot, hasAttr } from "../../shared/types/terminal";
+import { useCanvasIME, useImePosition, type WriteBytesFn } from "./hooks/useCanvasIME";
+import { type CopyTextFn, useTerminalSelection } from "./hooks/useTerminalSelection";
 import { pixelToCell } from "./keymap";
-import { linkAt, scanLinks, type LinkSpan } from "./links";
+import { type LinkSpan, linkAt, scanLinks } from "./links";
 import type { SearchMatch } from "./search";
 import { rowSelection, type SelectionRange } from "./selection";
-import {
-  useTerminalSelection,
-  type CopyTextFn,
-} from "./hooks/useTerminalSelection";
 
 export type OpenUrlFn = (url: string) => Promise<void> | void;
 
@@ -107,9 +95,7 @@ export function TerminalCanvas({
 }: TerminalCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [canvasEl, setCanvasEl] = useState<HTMLCanvasElement | null>(null);
-  const [textareaEl, setTextareaEl] = useState<HTMLTextAreaElement | null>(
-    null,
-  );
+  const [textareaEl, setTextareaEl] = useState<HTMLTextAreaElement | null>(null);
   // Alias kept so existing mouse-related effects (selection, link hover)
   // read the canvas element under their original name.
   const inputEl = canvasEl;
@@ -123,11 +109,8 @@ export function TerminalCanvas({
   const [hoveredLink, setHoveredLink] = useState<LinkSpan | null>(null);
 
   useCanvasIME({ terminalId, textarea: textareaEl, writeBytes });
-  const liveSnapshot = useTerminalSnapshot(
-    snapshotOverride === undefined ? terminalId : null,
-  );
-  const snapshot =
-    snapshotOverride !== undefined ? snapshotOverride : liveSnapshot;
+  const liveSnapshot = useTerminalSnapshot(snapshotOverride === undefined ? terminalId : null);
+  const snapshot = snapshotOverride !== undefined ? snapshotOverride : liveSnapshot;
 
   useEffect(() => {
     onInputRef?.(textareaEl);
@@ -148,7 +131,11 @@ export function TerminalCanvas({
   const canvasWidth = cols * cellMetrics.width;
   const canvasHeight = rows * cellMetrics.height;
 
-  const { selection, clear: clearSelection, copy } = useTerminalSelection({
+  const {
+    selection,
+    clear: clearSelection,
+    copy,
+  } = useTerminalSelection({
     element: inputEl,
     snapshot,
     cellWidth: cellMetrics.width,
@@ -279,8 +266,7 @@ export function TerminalCanvas({
     }
 
     const prev = prevSnapshotRef.current;
-    const dimsChanged =
-      !prev || prev.cols !== snapshot.cols || prev.rows !== snapshot.rows;
+    const dimsChanged = !prev || prev.cols !== snapshot.cols || prev.rows !== snapshot.rows;
     const prevSel = prevSelectionRef.current;
     const selectionChanged = prevSel !== selection;
     const matchesKey = buildMatchesKey(searchMatches, activeSearchMatch);
@@ -289,8 +275,7 @@ export function TerminalCanvas({
     const hoverChanged = prevHover !== hoveredLink;
     const prevCursor = prevCursorRef.current;
     const cursor = snapshot.cursor;
-    const cursorMoved =
-      !prevCursor || prevCursor.row !== cursor.row || prevCursor.col !== cursor.col;
+    const cursorMoved = !prevCursor || prevCursor.row !== cursor.row || prevCursor.col !== cursor.col;
     const cursorBlinkToggled = prevCursorOnRef.current !== cursorOn;
     const cursorDirtyRows = new Set<number>();
     if (cursorMoved || cursorBlinkToggled) {
@@ -310,19 +295,14 @@ export function TerminalCanvas({
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 
-    const affectedBySearch = buildRowMask(
-      searchMatches,
-      activeSearchMatch,
-      snapshot.rows,
-    );
+    const affectedBySearch = buildRowMask(searchMatches, activeSearchMatch, snapshot.rows);
     const affectedByHover = rowsCoveredByLink(hoveredLink, prevHover);
 
     for (let row = 0; row < snapshot.rows; row++) {
       const rowCells = snapshot.cells[row];
       const inOld = prevSel ? rowSelection(row, prevSel, snapshot.cols) : null;
       const inNew = selection ? rowSelection(row, selection, snapshot.cols) : null;
-      const selDirtyRow =
-        selectionChanged && (inOld !== null || inNew !== null);
+      const selDirtyRow = selectionChanged && (inOld !== null || inNew !== null);
       const matchDirtyRow = matchesChanged && affectedBySearch.has(row);
       const hoverDirtyRow = hoverChanged && affectedByHover.has(row);
       const cursorDirtyRow = cursorDirtyRows.has(row);
@@ -338,13 +318,7 @@ export function TerminalCanvas({
         continue;
       }
       paintRow(ctx, rowCells, row, cellMetrics, fontSize, fontFamily);
-      paintSearchBands(
-        ctx,
-        row,
-        searchMatches,
-        activeSearchMatch,
-        cellMetrics,
-      );
+      paintSearchBands(ctx, row, searchMatches, activeSearchMatch, cellMetrics);
       if (inNew) {
         paintSelectionBand(ctx, row, inNew, cellMetrics);
       }
@@ -405,9 +379,7 @@ export function TerminalCanvas({
   // where to anchor the IME candidate window.
   useImePosition({
     textarea: textareaEl,
-    cursor: snapshot?.cursor
-      ? { row: snapshot.cursor.row, col: snapshot.cursor.col }
-      : null,
+    cursor: snapshot?.cursor ? { row: snapshot.cursor.row, col: snapshot.cursor.col } : null,
     cellWidth: cellMetrics.width,
     cellHeight: cellMetrics.height,
     canvas: canvasEl,
@@ -503,11 +475,7 @@ export function TerminalCanvas({
   );
 }
 
-function buildFont(
-  cell: CellSnapshot,
-  fontSize: number,
-  fontFamily: string,
-): string {
+function buildFont(cell: CellSnapshot, fontSize: number, fontFamily: string): string {
   const bold = hasAttr(cell, CellAttr.BOLD);
   const italic = hasAttr(cell, CellAttr.ITALIC);
   const weight = bold ? "bold " : "";
@@ -597,10 +565,7 @@ function drawDecorations(
   if (strike) ctx.fillRect(x, y + Math.round(cellH / 2), cellW, 1);
 }
 
-function buildMatchesKey(
-  matches: readonly SearchMatch[] | undefined,
-  active: SearchMatch | null | undefined,
-): string {
+function buildMatchesKey(matches: readonly SearchMatch[] | undefined, active: SearchMatch | null | undefined): string {
   if (!matches || matches.length === 0) return active ? "@active" : "";
   let s = "";
   for (const m of matches) s += `${m.row},${m.startCol},${m.endCol};`;
@@ -623,9 +588,7 @@ function buildRowMask(
   return rows;
 }
 
-function rowsCoveredByLink(
-  ...links: Array<LinkSpan | null | undefined>
-): Set<number> {
+function rowsCoveredByLink(...links: Array<LinkSpan | null | undefined>): Set<number> {
   const rows = new Set<number>();
   for (const link of links) {
     if (!link) continue;
@@ -644,11 +607,7 @@ function paintSearchBands(
   if (!matches || matches.length === 0) return;
   for (const m of matches) {
     if (m.row !== row) continue;
-    const isActive =
-      !!active &&
-      active.row === m.row &&
-      active.startCol === m.startCol &&
-      active.endCol === m.endCol;
+    const isActive = !!active && active.row === m.row && active.startCol === m.startCol && active.endCol === m.endCol;
     const { width, height } = metrics;
     const x = m.startCol * width;
     const y = m.row * height;
@@ -672,8 +631,7 @@ function paintLinkUnderline(
   if (!link) return;
   if (row < link.startRow || row > link.endRow) return;
   const startCol = row === link.startRow ? link.startCol : 0;
-  const endColExclusive =
-    row === link.endRow ? link.endCol + 1 : totalCols;
+  const endColExclusive = row === link.endRow ? link.endCol + 1 : totalCols;
   const { width, height } = metrics;
   const x = startCol * width;
   const y = row * height;
@@ -741,11 +699,7 @@ function paintGhostSuggestion(
   ctx.restore();
 }
 
-function paintCursor(
-  ctx: CanvasRenderingContext2D,
-  snapshot: GridSnapshot,
-  { width, height }: CellMetrics,
-) {
+function paintCursor(ctx: CanvasRenderingContext2D, snapshot: GridSnapshot, { width, height }: CellMetrics) {
   const { row, col, shape } = snapshot.cursor;
   if (shape === "hidden") return;
   const x = col * width;

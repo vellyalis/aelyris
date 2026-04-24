@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { render, fireEvent } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
+import { beforeEach, describe, expect, it } from "vitest";
 import { HelmPanel } from "../features/helm/HelmPanel";
 
 beforeEach(() => {
@@ -39,9 +39,7 @@ describe("HelmPanel", () => {
 
   it("toggles task done on checkbox click", () => {
     // Pre-populate localStorage
-    localStorage.setItem("aether:helm:tasks", JSON.stringify([
-      { id: "t-1", label: "Test task", done: false },
-    ]));
+    localStorage.setItem("aether:helm:tasks", JSON.stringify([{ id: "t-1", label: "Test task", done: false }]));
     const { container } = render(<HelmPanel />);
     const checkbox = container.querySelector("input[type='checkbox']") as HTMLInputElement;
     expect(checkbox).not.toBeNull();
@@ -52,9 +50,7 @@ describe("HelmPanel", () => {
   });
 
   it("deletes task on × click", () => {
-    localStorage.setItem("aether:helm:tasks", JSON.stringify([
-      { id: "t-1", label: "Delete me", done: false },
-    ]));
+    localStorage.setItem("aether:helm:tasks", JSON.stringify([{ id: "t-1", label: "Delete me", done: false }]));
     const { container } = render(<HelmPanel />);
     expect(container.textContent).toContain("Delete me");
     // Find delete button (×)

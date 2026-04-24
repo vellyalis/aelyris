@@ -1,5 +1,5 @@
+import { Check, ChevronRight, Layers, Loader2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Check, Loader2, Layers, ChevronRight, X } from "lucide-react";
 
 import { isReadOnlyLayer, type LayerSummary } from "../../shared/types/ghostdiff";
 import styles from "./GhostDiffPanel.module.css";
@@ -58,16 +58,12 @@ export function GhostDiffPanel({ layers, onDismiss, onClose }: GhostDiffPanelPro
           <span>Ghost diff</span>
         </div>
         <span className={styles.subtitle}>
-          {layers.length === 0
-            ? "No active layers"
-            : `${layers.length} layer${layers.length === 1 ? "" : "s"}`}
+          {layers.length === 0 ? "No active layers" : `${layers.length} layer${layers.length === 1 ? "" : "s"}`}
         </span>
       </div>
       <div className={styles.list}>
         {layers.length === 0 ? (
-          <div className={styles.empty}>
-            Agents in worktrees will appear here with live file diffs.
-          </div>
+          <div className={styles.empty}>Agents in worktrees will appear here with live file diffs.</div>
         ) : (
           layers.map((layer) => (
             <LayerRow
@@ -125,10 +121,7 @@ function LayerRow({ layer, expanded, onToggle, onDismiss }: LayerRowProps) {
           aria-expanded={expanded}
           aria-label={expanded ? "Collapse files" : "Expand files"}
         >
-          <ChevronRight
-            size={12}
-            className={expanded ? styles.chevronOpen : undefined}
-          />
+          <ChevronRight size={12} className={expanded ? styles.chevronOpen : undefined} />
         </button>
         <span className={styles.tintDot} style={{ background: tint.roleColor }} />
         <span className={styles.roleLabel}>{tint.roleLabel}</span>
@@ -170,9 +163,7 @@ function LayerRow({ layer, expanded, onToggle, onDismiss }: LayerRowProps) {
           ))}
         </ul>
       )}
-      {expanded && filePaths.length === 0 && (
-        <div className={styles.emptyFiles}>No file changes yet.</div>
-      )}
+      {expanded && filePaths.length === 0 && <div className={styles.emptyFiles}>No file changes yet.</div>}
     </div>
   );
 }

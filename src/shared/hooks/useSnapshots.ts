@@ -1,13 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { useCallback, useEffect, useState } from "react";
 
 import type { LayerSummary } from "../types/ghostdiff";
-import type {
-  SnapshotCapturedEvent,
-  SnapshotSummary,
-  TerminalSnapshot,
-} from "../types/snapshot";
+import type { SnapshotCapturedEvent, SnapshotSummary, TerminalSnapshot } from "../types/snapshot";
 
 interface UseSnapshotsResult {
   snapshots: SnapshotSummary[];
@@ -52,12 +48,9 @@ export function useSnapshots(sessionId: string | null): UseSnapshotsResult {
     (async () => {
       await refresh();
       try {
-        unlistenCaptured = await listen<SnapshotCapturedEvent>(
-          `snapshot:captured-${sessionId}`,
-          () => {
-            void refresh();
-          },
-        );
+        unlistenCaptured = await listen<SnapshotCapturedEvent>(`snapshot:captured-${sessionId}`, () => {
+          void refresh();
+        });
       } catch {
         /* listen unavailable */
       }
@@ -73,32 +66,26 @@ export function useSnapshots(sessionId: string | null): UseSnapshotsResult {
     };
   }, [sessionId]);
 
-  const fetchFullSnapshot = useCallback(
-    async (snapshotId: string): Promise<TerminalSnapshot | null> => {
-      try {
-        const res = await invoke<TerminalSnapshot | null>("get_snapshot", {
-          snapshotId,
-        });
-        return res ?? null;
-      } catch {
-        return null;
-      }
-    },
-    [],
-  );
+  const fetchFullSnapshot = useCallback(async (snapshotId: string): Promise<TerminalSnapshot | null> => {
+    try {
+      const res = await invoke<TerminalSnapshot | null>("get_snapshot", {
+        snapshotId,
+      });
+      return res ?? null;
+    } catch {
+      return null;
+    }
+  }, []);
 
-  const startOverlay = useCallback(
-    async (snapshotId: string): Promise<LayerSummary | null> => {
-      try {
-        return await invoke<LayerSummary>("start_snapshot_overlay", {
-          snapshotId,
-        });
-      } catch {
-        return null;
-      }
-    },
-    [],
-  );
+  const startOverlay = useCallback(async (snapshotId: string): Promise<LayerSummary | null> => {
+    try {
+      return await invoke<LayerSummary>("start_snapshot_overlay", {
+        snapshotId,
+      });
+    } catch {
+      return null;
+    }
+  }, []);
 
   const markSnapshot = useCallback(
     async (label?: string): Promise<SnapshotSummary | null> => {

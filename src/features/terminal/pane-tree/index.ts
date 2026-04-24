@@ -1,4 +1,4 @@
-export type { PaneNode, TerminalLeaf, SplitNode, SplitDirection } from "./types";
-export { createLeaf, splitPane, removePane, collectLeafIds, countLeaves } from "./operations";
-export { usePaneTree } from "./usePaneTree";
+export { collectLeafIds, countLeaves, createLeaf, removePane, splitPane } from "./operations";
 export { PaneTreeContainer } from "./PaneTreeContainer";
+export type { PaneNode, SplitDirection, SplitNode, TerminalLeaf } from "./types";
+export { usePaneTree } from "./usePaneTree";

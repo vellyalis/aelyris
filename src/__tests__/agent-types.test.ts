@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { STATUS_COLORS, STATUS_LABELS } from "../shared/types/agent";
+import { describe, expect, it } from "vitest";
 import type { AgentStatus } from "../shared/types/agent";
+import { STATUS_COLORS, STATUS_LABELS } from "../shared/types/agent";
 
 describe("Agent Types", () => {
   const ALL_STATUSES: AgentStatus[] = ["idle", "thinking", "coding", "waiting", "error", "done", "generating"];

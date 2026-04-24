@@ -1,14 +1,12 @@
-import { useState, useEffect, useMemo, lazy, Suspense } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { FileText, X, ChevronLeft, ChevronRight, Check, RotateCcw } from "lucide-react";
-import type { AgentSession, FileChangeDetail } from "../../shared/types/agent";
+import { Check, ChevronLeft, ChevronRight, FileText, RotateCcw, X } from "lucide-react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { toast } from "../../shared/store/toastStore";
+import type { AgentSession, FileChangeDetail } from "../../shared/types/agent";
 import { PanelHeader } from "../../shared/ui/PanelHeader";
 import styles from "./InlineResultPanel.module.css";
 
-const DiffViewer = lazy(() =>
-  import("../diff-viewer/DiffViewer").then((m) => ({ default: m.DiffViewer }))
-);
+const DiffViewer = lazy(() => import("../diff-viewer/DiffViewer").then((m) => ({ default: m.DiffViewer })));
 
 interface InlineResultPanelProps {
   session: AgentSession;
@@ -28,10 +26,23 @@ interface FileDiffData {
 function detectLanguage(path: string): string {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
   const map: Record<string, string> = {
-    ts: "typescript", tsx: "typescript", js: "javascript", jsx: "javascript",
-    rs: "rust", py: "python", go: "go", css: "css", html: "html",
-    json: "json", yaml: "yaml", yml: "yaml", md: "markdown", toml: "toml",
-    sql: "sql", sh: "shell", bash: "shell",
+    ts: "typescript",
+    tsx: "typescript",
+    js: "javascript",
+    jsx: "javascript",
+    rs: "rust",
+    py: "python",
+    go: "go",
+    css: "css",
+    html: "html",
+    json: "json",
+    yaml: "yaml",
+    yml: "yaml",
+    md: "markdown",
+    toml: "toml",
+    sql: "sql",
+    sh: "shell",
+    bash: "shell",
   };
   return map[ext] ?? "plaintext";
 }
@@ -91,7 +102,9 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [activeFile, projectPath, diffs]);
 
   if (uniqueFiles.length === 0) {
@@ -99,7 +112,9 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
       <div className={styles.panel}>
         <div className={styles.header}>
           <span className={styles.title}>No file changes</span>
-          <button className={styles.closeBtn} onClick={onClose} aria-label="Close"><X size={12} /></button>
+          <button className={styles.closeBtn} onClick={onClose} aria-label="Close">
+            <X size={12} />
+          </button>
         </div>
         <div className={styles.empty}>This agent session has not modified any files yet.</div>
       </div>
@@ -117,7 +132,9 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
         title={session.name}
         subtitle={`${uniqueFiles.length} file${uniqueFiles.length !== 1 ? "s" : ""} changed`}
         actions={
-          <button className={styles.closeBtn} onClick={onClose} aria-label="Close"><X size={12} /></button>
+          <button className={styles.closeBtn} onClick={onClose} aria-label="Close">
+            <X size={12} />
+          </button>
         }
       />
 
@@ -151,7 +168,9 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
         >
           <ChevronLeft size={12} />
         </button>
-        <span className={styles.navLabel}>{activeIndex + 1} / {uniqueFiles.length}</span>
+        <span className={styles.navLabel}>
+          {activeIndex + 1} / {uniqueFiles.length}
+        </span>
         <button
           className={styles.navBtn}
           onClick={() => setActiveIndex((i) => Math.min(uniqueFiles.length - 1, i + 1))}
@@ -172,9 +191,15 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
                   await invoke("write_file", { path: activeFile.path, content: original });
                   toast.success("Reverted", activeFile.path.split(/[/\\]/).pop() ?? "");
                   // Reload diff
-                  setDiffs((prev) => { const next = new Map(prev); next.delete(activeFile.path); return next; });
+                  setDiffs((prev) => {
+                    const next = new Map(prev);
+                    next.delete(activeFile.path);
+                    return next;
+                  });
                 }
-              } catch (err) { toast.error("Revert failed", String(err)); }
+              } catch (err) {
+                toast.error("Revert failed", String(err));
+              }
             }}
             title="Revert to original"
             aria-label="Revert file"
@@ -200,7 +225,9 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
               className={styles.aiFixBtn}
               onClick={() => {
                 const fileName = activeFile?.path.split(/[/\\]/).pop() ?? "";
-                onStartAgent(`Review and improve the changes in ${fileName}. Check for bugs, style issues, and missing edge cases.`);
+                onStartAgent(
+                  `Review and improve the changes in ${fileName}. Check for bugs, style issues, and missing edge cases.`,
+                );
               }}
               title="Ask AI to review this file"
               aria-label="Ask AI to review"

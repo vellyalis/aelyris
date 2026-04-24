@@ -91,7 +91,10 @@
   padding: var(--space-2) var(--space-6);
   cursor: pointer;
 }
-.cancelBtn:hover { background: var(--white-6); color: var(--text-primary); }
+.cancelBtn:hover {
+  background: var(--white-6);
+  color: var(--text-primary);
+}
 
 .confirmBtn {
   background: var(--gold);
@@ -104,10 +107,14 @@
   padding: var(--space-2) var(--space-6);
   cursor: pointer;
 }
-.confirmBtn:hover { opacity: 0.9; }
+.confirmBtn:hover {
+  opacity: 0.9;
+}
 
 .confirmBtnDanger {
   background: var(--ctp-red);
   color: var(--text-primary);
 }
-.confirmBtnDanger:hover { opacity: 0.9; }
+.confirmBtnDanger:hover {
+  opacity: 0.9;
+}

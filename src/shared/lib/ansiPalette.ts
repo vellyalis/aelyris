@@ -17,11 +17,7 @@
  * grayscale ramp.
  */
 
-import {
-  ColorKind,
-  type TerminalColor,
-  decodeColor,
-} from "../types/terminal";
+import { ColorKind, decodeColor, type TerminalColor } from "../types/terminal";
 
 export const DEFAULT_FG = "#cdd6f4"; // Catppuccin Mocha text
 export const DEFAULT_BG = "#1e1e2e"; // Catppuccin Mocha base
@@ -127,15 +123,11 @@ export function resolveColor(packed: number, isFg: boolean): string {
 /** `true` when the packed color is the Named Background sentinel (257). */
 export function isDefaultBg(packed: number): boolean {
   const decoded = decodeColor(packed);
-  return (
-    decoded.kind === ColorKind.NAMED && decoded.named === NAMED.BACKGROUND
-  );
+  return decoded.kind === ColorKind.NAMED && decoded.named === NAMED.BACKGROUND;
 }
 
 /** `true` when the packed color is the Named Foreground sentinel (256). */
 export function isDefaultFg(packed: number): boolean {
   const decoded = decodeColor(packed);
-  return (
-    decoded.kind === ColorKind.NAMED && decoded.named === NAMED.FOREGROUND
-  );
+  return decoded.kind === ColorKind.NAMED && decoded.named === NAMED.FOREGROUND;
 }

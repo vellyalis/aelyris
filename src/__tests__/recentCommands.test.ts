@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { loadRecentCommands, recordRecentCommand, dedupePrepend, MAX_RECENT } from "../shared/lib/recentCommands";
+import { beforeEach, describe, expect, it } from "vitest";
+import { dedupePrepend, loadRecentCommands, MAX_RECENT, recordRecentCommand } from "../shared/lib/recentCommands";
 
 describe("dedupePrepend", () => {
   it("moves an existing id to the front", () => {

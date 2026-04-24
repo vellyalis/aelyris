@@ -1,5 +1,5 @@
-import { memo } from "react";
 import { Columns2, WrapText } from "lucide-react";
+import { memo } from "react";
 import styles from "./EditorStatusBar.module.css";
 
 interface EditorStatusBarProps {
@@ -16,13 +16,22 @@ interface EditorStatusBarProps {
 }
 
 export const EditorStatusBar = memo(function EditorStatusBar({
-  line, column, language, encoding = "UTF-8", tabSize,
-  minimapEnabled, wordWrap, saved,
-  onToggleMinimap, onToggleWordWrap,
+  line,
+  column,
+  language,
+  encoding = "UTF-8",
+  tabSize,
+  minimapEnabled,
+  wordWrap,
+  saved,
+  onToggleMinimap,
+  onToggleWordWrap,
 }: EditorStatusBarProps) {
   return (
     <div className={styles.bar}>
-      <span className={styles.item}>Ln {line}, Col {column}</span>
+      <span className={styles.item}>
+        Ln {line}, Col {column}
+      </span>
       {saved && <span className={styles.saved}>Saved</span>}
       <div className={styles.spacer} />
       <span className={styles.item}>Spaces: {tabSize}</span>

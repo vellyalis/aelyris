@@ -1,8 +1,8 @@
-import { memo } from "react";
 import { Shield } from "lucide-react";
-import { StatusIcon } from "../../shared/ui/StatusIcon";
-import { EmptyState } from "../../shared/ui/EmptyState";
+import { memo } from "react";
 import type { AgentStatus } from "../../shared/types/agent";
+import { EmptyState } from "../../shared/ui/EmptyState";
+import { StatusIcon } from "../../shared/ui/StatusIcon";
 import styles from "./SubagentList.module.css";
 
 interface AgentNode {
@@ -28,9 +28,7 @@ const PERM_COLORS: Record<string, string> = {
 
 export const SubagentList = memo(function SubagentList({ agents, activeId, onSelect }: SubagentListProps) {
   if (agents.length === 0) {
-    return (
-      <EmptyState preset="agents" title="No active agents" description="Start an agent to see its subagents" />
-    );
+    return <EmptyState preset="agents" title="No active agents" description="Start an agent to see its subagents" />;
   }
 
   return (
@@ -55,7 +53,11 @@ export const SubagentList = memo(function SubagentList({ agents, activeId, onSel
             <StatusIcon status={agent.status} size={12} />
             <span className={styles.name}>{agent.name}</span>
             <span className={styles.model}>{agent.model.split("-").pop()}</span>
-            <Shield size={10} color={PERM_COLORS[agent.permissionMode]} aria-label={`Permission: ${agent.permissionMode}`} />
+            <Shield
+              size={10}
+              color={PERM_COLORS[agent.permissionMode]}
+              aria-label={`Permission: ${agent.permissionMode}`}
+            />
           </li>
         );
       })}

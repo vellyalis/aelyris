@@ -1,21 +1,21 @@
-import { useState, useCallback } from "react";
 import {
-  ReactFlow,
-  Background,
-  Controls,
-  MarkerType,
   addEdge,
-  useNodesState,
-  useEdgesState,
-  type Node,
-  type Edge,
+  Background,
   type Connection,
-  type NodeTypes,
+  Controls,
+  type Edge,
   Handle,
+  MarkerType,
+  type Node,
+  type NodeTypes,
   Position,
+  ReactFlow,
+  useEdgesState,
+  useNodesState,
 } from "@xyflow/react";
+import { useCallback, useState } from "react";
 import "@xyflow/react/dist/style.css";
-import { Plus, Upload, X, Save, PlayCircle, ShieldCheck } from "lucide-react";
+import { PlayCircle, Plus, Save, ShieldCheck, Upload, X } from "lucide-react";
 import styles from "./WorkflowBuilder.module.css";
 
 // ── Custom node types ──
@@ -58,9 +58,36 @@ const PRESETS: { name: string; nodes: Node[]; edges: Edge[] }[] = [
   {
     name: "Feature (plan→implement→review)",
     nodes: [
-      { id: "plan", type: "phase", position: { x: 50, y: 100 }, data: { label: "Plan", model: "opus", prompt: "{task_title}の実装計画", maxCost: 0.5, gateType: "human_review" } },
-      { id: "implement", type: "phase", position: { x: 300, y: 100 }, data: { label: "Implement", model: "sonnet", prompt: "計画に基づいて実装 (TDD)", maxCost: 2.0, gateType: "test_pass" } },
-      { id: "review", type: "phase", position: { x: 550, y: 100 }, data: { label: "Review", model: "opus", prompt: "実装をレビュー", maxCost: 0.5, gateType: "human_review" } },
+      {
+        id: "plan",
+        type: "phase",
+        position: { x: 50, y: 100 },
+        data: {
+          label: "Plan",
+          model: "opus",
+          prompt: "{task_title}の実装計画",
+          maxCost: 0.5,
+          gateType: "human_review",
+        },
+      },
+      {
+        id: "implement",
+        type: "phase",
+        position: { x: 300, y: 100 },
+        data: {
+          label: "Implement",
+          model: "sonnet",
+          prompt: "計画に基づいて実装 (TDD)",
+          maxCost: 2.0,
+          gateType: "test_pass",
+        },
+      },
+      {
+        id: "review",
+        type: "phase",
+        position: { x: 550, y: 100 },
+        data: { label: "Review", model: "opus", prompt: "実装をレビュー", maxCost: 0.5, gateType: "human_review" },
+      },
     ],
     edges: [
       { id: "e1", source: "plan", target: "implement" },
@@ -70,9 +97,30 @@ const PRESETS: { name: string; nodes: Node[]; edges: Edge[] }[] = [
   {
     name: "Bug Fix (reproduce→fix→verify)",
     nodes: [
-      { id: "reproduce", type: "phase", position: { x: 50, y: 100 }, data: { label: "Reproduce", model: "sonnet", prompt: "バグを再現するテスト", maxCost: 0.5, gateType: "test_pass" } },
-      { id: "fix", type: "phase", position: { x: 300, y: 100 }, data: { label: "Fix", model: "sonnet", prompt: "テストを通るよう修正", maxCost: 1.5, gateType: "test_pass" } },
-      { id: "verify", type: "phase", position: { x: 550, y: 100 }, data: { label: "Verify", model: "sonnet", prompt: "回帰テスト実行", maxCost: 0.5, gateType: null } },
+      {
+        id: "reproduce",
+        type: "phase",
+        position: { x: 50, y: 100 },
+        data: {
+          label: "Reproduce",
+          model: "sonnet",
+          prompt: "バグを再現するテスト",
+          maxCost: 0.5,
+          gateType: "test_pass",
+        },
+      },
+      {
+        id: "fix",
+        type: "phase",
+        position: { x: 300, y: 100 },
+        data: { label: "Fix", model: "sonnet", prompt: "テストを通るよう修正", maxCost: 1.5, gateType: "test_pass" },
+      },
+      {
+        id: "verify",
+        type: "phase",
+        position: { x: 550, y: 100 },
+        data: { label: "Verify", model: "sonnet", prompt: "回帰テスト実行", maxCost: 0.5, gateType: null },
+      },
     ],
     edges: [
       { id: "e1", source: "reproduce", target: "fix" },
@@ -82,10 +130,48 @@ const PRESETS: { name: string; nodes: Node[]; edges: Edge[] }[] = [
   {
     name: "Refactoring (analyze→refactor→test→review)",
     nodes: [
-      { id: "analyze", type: "phase", position: { x: 50, y: 100 }, data: { label: "Analyze", model: "opus", prompt: "コードの問題点と改善方針を分析", maxCost: 0.5, gateType: "human_review" } },
-      { id: "refactor", type: "phase", position: { x: 300, y: 100 }, data: { label: "Refactor", model: "sonnet", prompt: "分析結果に基づきリファクタリング実施", maxCost: 2.0, gateType: "test_pass" } },
-      { id: "test", type: "phase", position: { x: 550, y: 100 }, data: { label: "Test", model: "sonnet", prompt: "リファクタリング後の全テスト実行", maxCost: 0.5, gateType: "test_pass" } },
-      { id: "review", type: "phase", position: { x: 800, y: 100 }, data: { label: "Review", model: "opus", prompt: "変更差分をレビュー", maxCost: 0.5, gateType: "human_review" } },
+      {
+        id: "analyze",
+        type: "phase",
+        position: { x: 50, y: 100 },
+        data: {
+          label: "Analyze",
+          model: "opus",
+          prompt: "コードの問題点と改善方針を分析",
+          maxCost: 0.5,
+          gateType: "human_review",
+        },
+      },
+      {
+        id: "refactor",
+        type: "phase",
+        position: { x: 300, y: 100 },
+        data: {
+          label: "Refactor",
+          model: "sonnet",
+          prompt: "分析結果に基づきリファクタリング実施",
+          maxCost: 2.0,
+          gateType: "test_pass",
+        },
+      },
+      {
+        id: "test",
+        type: "phase",
+        position: { x: 550, y: 100 },
+        data: {
+          label: "Test",
+          model: "sonnet",
+          prompt: "リファクタリング後の全テスト実行",
+          maxCost: 0.5,
+          gateType: "test_pass",
+        },
+      },
+      {
+        id: "review",
+        type: "phase",
+        position: { x: 800, y: 100 },
+        data: { label: "Review", model: "opus", prompt: "変更差分をレビュー", maxCost: 0.5, gateType: "human_review" },
+      },
     ],
     edges: [
       { id: "e1", source: "analyze", target: "refactor" },
@@ -96,9 +182,42 @@ const PRESETS: { name: string; nodes: Node[]; edges: Edge[] }[] = [
   {
     name: "Code Review (scan→review→report)",
     nodes: [
-      { id: "scan", type: "phase", position: { x: 50, y: 100 }, data: { label: "Scan", model: "sonnet", prompt: "コードベースをスキャンして問題検出", maxCost: 1.0, gateType: null } },
-      { id: "review", type: "phase", position: { x: 300, y: 100 }, data: { label: "Review", model: "opus", prompt: "検出された問題を深掘りレビュー", maxCost: 1.0, gateType: "human_review" } },
-      { id: "report", type: "phase", position: { x: 550, y: 100 }, data: { label: "Report", model: "sonnet", prompt: "レビュー結果をMarkdownレポート作成", maxCost: 0.5, gateType: null } },
+      {
+        id: "scan",
+        type: "phase",
+        position: { x: 50, y: 100 },
+        data: {
+          label: "Scan",
+          model: "sonnet",
+          prompt: "コードベースをスキャンして問題検出",
+          maxCost: 1.0,
+          gateType: null,
+        },
+      },
+      {
+        id: "review",
+        type: "phase",
+        position: { x: 300, y: 100 },
+        data: {
+          label: "Review",
+          model: "opus",
+          prompt: "検出された問題を深掘りレビュー",
+          maxCost: 1.0,
+          gateType: "human_review",
+        },
+      },
+      {
+        id: "report",
+        type: "phase",
+        position: { x: 550, y: 100 },
+        data: {
+          label: "Report",
+          model: "sonnet",
+          prompt: "レビュー結果をMarkdownレポート作成",
+          maxCost: 0.5,
+          gateType: null,
+        },
+      },
     ],
     edges: [
       { id: "e1", source: "scan", target: "review" },
@@ -119,9 +238,12 @@ export function WorkflowBuilder({ onClose, onExport }: WorkflowBuilderProps) {
   const [edges, setEdges, onEdgesChange] = useEdgesState(PRESETS[0].edges);
   const [workflowName, setWorkflowName] = useState("New Workflow");
 
-  const onConnect = useCallback((conn: Connection) => {
-    setEdges((eds) => addEdge(conn, eds));
-  }, [setEdges]);
+  const onConnect = useCallback(
+    (conn: Connection) => {
+      setEdges((eds) => addEdge(conn, eds));
+    },
+    [setEdges],
+  );
 
   const addPhase = useCallback(() => {
     const id = `phase-${Date.now()}`;
@@ -137,11 +259,14 @@ export function WorkflowBuilder({ onClose, onExport }: WorkflowBuilderProps) {
     ]);
   }, [nodes, setNodes]);
 
-  const loadPreset = useCallback((idx: number) => {
-    setNodes(PRESETS[idx].nodes);
-    setEdges(PRESETS[idx].edges);
-    setWorkflowName(PRESETS[idx].name.split(" (")[0]);
-  }, [setNodes, setEdges]);
+  const loadPreset = useCallback(
+    (idx: number) => {
+      setNodes(PRESETS[idx].nodes);
+      setEdges(PRESETS[idx].edges);
+      setWorkflowName(PRESETS[idx].name.split(" (")[0]);
+    },
+    [setNodes, setEdges],
+  );
 
   const buildYaml = useCallback((): string => {
     const phaseNodes = nodes.filter((n) => n.type === "phase");
@@ -238,7 +363,8 @@ export function WorkflowBuilder({ onClose, onExport }: WorkflowBuilderProps) {
               currentPhase = { name: trimmed.slice(7).trim() };
             } else if (currentPhase) {
               if (trimmed.startsWith("model:")) currentPhase.model = trimmed.slice(6).trim();
-              else if (trimmed.startsWith("prompt:")) currentPhase.prompt = trimmed.slice(7).trim().replace(/^"|"$/g, "");
+              else if (trimmed.startsWith("prompt:"))
+                currentPhase.prompt = trimmed.slice(7).trim().replace(/^"|"$/g, "");
               else if (trimmed.startsWith("max_cost:")) currentPhase.max_cost = parseFloat(trimmed.slice(9).trim());
               else if (trimmed.startsWith("type:")) currentPhase.gate_type = trimmed.slice(5).trim();
             }
@@ -268,7 +394,9 @@ export function WorkflowBuilder({ onClose, onExport }: WorkflowBuilderProps) {
             setEdges(importedEdges);
             setWorkflowName(name);
           }
-        } catch { /* invalid YAML */ }
+        } catch {
+          /* invalid YAML */
+        }
       };
       reader.readAsText(file);
     };
@@ -282,14 +410,26 @@ export function WorkflowBuilder({ onClose, onExport }: WorkflowBuilderProps) {
           <input className={styles.nameInput} value={workflowName} onChange={(e) => setWorkflowName(e.target.value)} />
           <div className={styles.presets}>
             {PRESETS.map((p, i) => (
-              <button key={i} className={styles.presetBtn} onClick={() => loadPreset(i)}>{p.name.split(" (")[0]}</button>
+              <button key={i} className={styles.presetBtn} onClick={() => loadPreset(i)}>
+                {p.name.split(" (")[0]}
+              </button>
             ))}
           </div>
-          <button className={styles.addBtn} onClick={addPhase}><Plus size={12} /> Phase</button>
-          <button className={styles.exportBtn} onClick={importYaml}><Upload size={12} /> Import</button>
-          <button className={styles.exportBtn} onClick={exportYaml}><Save size={12} /> Save</button>
-          <button className={styles.runBtn} onClick={saveAndRun} title="Save then start a run"><PlayCircle size={12} /> Save &amp; Run</button>
-          <button className={styles.closeBtn} onClick={onClose}><X size={14} /></button>
+          <button className={styles.addBtn} onClick={addPhase}>
+            <Plus size={12} /> Phase
+          </button>
+          <button className={styles.exportBtn} onClick={importYaml}>
+            <Upload size={12} /> Import
+          </button>
+          <button className={styles.exportBtn} onClick={exportYaml}>
+            <Save size={12} /> Save
+          </button>
+          <button className={styles.runBtn} onClick={saveAndRun} title="Save then start a run">
+            <PlayCircle size={12} /> Save &amp; Run
+          </button>
+          <button className={styles.closeBtn} onClick={onClose}>
+            <X size={14} />
+          </button>
         </div>
         <div className={styles.canvas}>
           <ReactFlow

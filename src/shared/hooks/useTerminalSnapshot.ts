@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { useEffect, useState } from "react";
 
 import type { GridDiff, GridSnapshot } from "../types/terminal";
 

@@ -29,12 +29,5 @@ export function MarkdownPreview({ html }: MarkdownPreviewProps) {
   hr { border: none; border-top: 1px solid rgba(255,255,255,0.1); }
 </style></head><body>${html}</body></html>`;
 
-  return (
-    <iframe
-      className={styles.mdPreview}
-      srcDoc={srcdoc}
-      sandbox="allow-same-origin"
-      title="Markdown Preview"
-    />
-  );
+  return <iframe className={styles.mdPreview} srcDoc={srcdoc} sandbox="allow-same-origin" title="Markdown Preview" />;
 }

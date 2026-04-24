@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { buildHandoffPrompt } from "../shared/lib/handoffPrompt";
 import type { AgentSession } from "../shared/types/agent";
 
@@ -62,9 +62,7 @@ describe("buildHandoffPrompt", () => {
 
   it("truncates very long text logs", () => {
     const huge = "x".repeat(5000);
-    const prompt = buildHandoffPrompt(
-      makeSession({ logs: [{ timestamp: 1, type: "text", content: huge }] }),
-    );
+    const prompt = buildHandoffPrompt(makeSession({ logs: [{ timestamp: 1, type: "text", content: huge }] }));
     expect(prompt).toContain("truncated");
     expect(prompt.length).toBeLessThan(5000);
   });

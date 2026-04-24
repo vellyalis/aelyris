@@ -34,9 +34,7 @@ export function parseToolUse(content: string): ParsedToolUse {
     if (pathMatch) filePath = pathMatch[1];
   }
 
-  const summary = filePath
-    ? `${tool} → ${filePath.split("/").pop()}`
-    : `${tool}(${argsStr.slice(0, 60)})`;
+  const summary = filePath ? `${tool} → ${filePath.split("/").pop()}` : `${tool}(${argsStr.slice(0, 60)})`;
 
   return { tool, filePath, isFileChange, summary };
 }

@@ -1,11 +1,7 @@
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  OrchestraDialog,
-  showOrchestra,
-  useOrchestraStore,
-} from "../shared/ui/OrchestraDialog";
+import { OrchestraDialog, showOrchestra, useOrchestraStore } from "../shared/ui/OrchestraDialog";
 
 describe("OrchestraDialog", () => {
   afterEach(() => {

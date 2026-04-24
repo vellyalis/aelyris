@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
 import { render } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
 import { GitStatusPip } from "../shared/ui/GitStatusPip";
 
 describe("GitStatusPip", () => {
@@ -14,10 +14,10 @@ describe("GitStatusPip", () => {
 
     it("maps each known status to its canonical glyph", () => {
       const cases: Array<[string, string, string]> = [
-        ["added",      "A", "Added"],
-        ["deleted",    "D", "Deleted"],
-        ["renamed",    "R", "Renamed"],
-        ["untracked",  "?", "Untracked"],
+        ["added", "A", "Added"],
+        ["deleted", "D", "Deleted"],
+        ["renamed", "R", "Renamed"],
+        ["untracked", "?", "Untracked"],
         ["conflicted", "!", "Conflicted"],
       ];
       for (const [status, glyph, label] of cases) {

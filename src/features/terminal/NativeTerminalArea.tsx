@@ -1,53 +1,31 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { ShellType } from "../../App";
-import { IMEInputBar, type IMEInputBarHandle } from "./IMEInputBar";
-import { TerminalCanvas } from "./TerminalCanvas";
+import { useSnapshots } from "../../shared/hooks/useSnapshots";
+import { useTerminalSnapshot } from "../../shared/hooks/useTerminalSnapshot";
+import type { SnapshotSummary } from "../../shared/types/snapshot";
+import { type ActiveSnapshotOverlay, TimelineBar } from "../timeline/TimelineBar";
 import { useAICliDetection } from "./hooks/useAICliDetection";
 import { useInputMirror } from "./hooks/useInputMirror";
-import { useTerminalSnapshot } from "../../shared/hooks/useTerminalSnapshot";
-import { useSnapshots } from "../../shared/hooks/useSnapshots";
-import {
-  TimelineBar,
-  type ActiveSnapshotOverlay,
-} from "../timeline/TimelineBar";
-import type { SnapshotSummary } from "../../shared/types/snapshot";
-import {
-  findMatches,
-  nextMatch,
-  previousMatch,
-  type SearchMatch,
-} from "./search";
+import { IMEInputBar, type IMEInputBarHandle } from "./IMEInputBar";
+import { findMatches, nextMatch, previousMatch, type SearchMatch } from "./search";
 import styles from "./TerminalArea.module.css";
+import { TerminalCanvas } from "./TerminalCanvas";
 
 interface NativeTerminalAreaProps {
   shell?: ShellType;
   cwd?: string;
   onTerminalReady?: (terminalId: string) => void;
   /** Override for tests — defaults to `invoke("spawn_terminal", ...)`. */
-  spawnPty?: (args: {
-    shell: string;
-    cols: number;
-    rows: number;
-    cwd?: string;
-  }) => Promise<string>;
+  spawnPty?: (args: { shell: string; cols: number; rows: number; cwd?: string }) => Promise<string>;
   /** Override for tests — defaults to `invoke("resize_terminal", ...)`. */
   resizePty?: (id: string, cols: number, rows: number) => Promise<void> | void;
   /** Override for tests — defaults to `invoke("write_terminal", ...)`. */
   writePty?: (id: string, data: string) => Promise<void> | void;
   /** Override for tests — defaults to Tauri `listen("pty-output-<id>")`. */
-  subscribeOutput?: (
-    terminalId: string,
-    onBytes: (bytes: Uint8Array) => void,
-  ) => Promise<UnlistenFn>;
+  subscribeOutput?: (terminalId: string, onBytes: (bytes: Uint8Array) => void) => Promise<UnlistenFn>;
 }
 
 const FONT_SIZE = 14;
@@ -61,12 +39,7 @@ interface Dims {
   rows: number;
 }
 
-function defaultSpawn(args: {
-  shell: string;
-  cols: number;
-  rows: number;
-  cwd?: string;
-}): Promise<string> {
+function defaultSpawn(args: { shell: string; cols: number; rows: number; cwd?: string }): Promise<string> {
   return invoke<string>("spawn_terminal", {
     shell: args.shell,
     cols: args.cols,
@@ -83,10 +56,7 @@ function defaultWrite(id: string, data: string): Promise<void> {
   return invoke<void>("write_terminal", { id, data }).catch(() => {});
 }
 
-async function defaultSubscribeOutput(
-  terminalId: string,
-  onBytes: (bytes: Uint8Array) => void,
-): Promise<UnlistenFn> {
+async function defaultSubscribeOutput(terminalId: string, onBytes: (bytes: Uint8Array) => void): Promise<UnlistenFn> {
   return listen<number[]>(`pty-output-${terminalId}`, (event) => {
     onBytes(new Uint8Array(event.payload));
   });
@@ -123,9 +93,7 @@ export function NativeTerminalArea({
   // Phase B: the hidden IME textarea on the canvas is the real keyboard-
   // input element. `useInputMirror` (ghost-text buffer) and focus-restore
   // shortcuts both target this element.
-  const [canvasInputEl, setCanvasInputEl] = useState<HTMLTextAreaElement | null>(
-    null,
-  );
+  const [canvasInputEl, setCanvasInputEl] = useState<HTMLTextAreaElement | null>(null);
   const [terminalId, setTerminalId] = useState<string | null>(null);
   const [dims, setDims] = useState<Dims | null>(null);
   const spawnStartedRef = useRef(false);
@@ -147,8 +115,7 @@ export function NativeTerminalArea({
   // every start path dismisses the previous overlay first, and a
   // terminalId change dismisses the pending backend layer via the cleanup
   // in the id-change effect instead of just clearing local state.
-  const [snapshotOverlay, setSnapshotOverlay] =
-    useState<ActiveSnapshotOverlay | null>(null);
+  const [snapshotOverlay, setSnapshotOverlay] = useState<ActiveSnapshotOverlay | null>(null);
   const snapshotOverlayRef = useRef<ActiveSnapshotOverlay | null>(null);
   useEffect(() => {
     snapshotOverlayRef.current = snapshotOverlay;
@@ -210,9 +177,7 @@ export function NativeTerminalArea({
     const cur = snapshotOverlayRef.current;
     if (!cur) return;
     dismissBackendLayer(cur.layerId);
-    setSnapshotOverlay((prev) =>
-      prev && prev.layerId === cur.layerId ? null : prev,
-    );
+    setSnapshotOverlay((prev) => (prev && prev.layerId === cur.layerId ? null : prev));
   }, [dismissBackendLayer]);
 
   const handleMarkSnapshot = useCallback(() => {
@@ -253,9 +218,7 @@ export function NativeTerminalArea({
     if (!snapshotOverlay) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      const areaRoot = containerRef.current?.closest<HTMLElement>(
-        `.${styles.terminalArea}`,
-      );
+      const areaRoot = containerRef.current?.closest<HTMLElement>(`.${styles.terminalArea}`);
       const insideArea = areaRoot?.contains(document.activeElement) ?? false;
       if (!insideArea) return;
       e.preventDefault();
@@ -331,10 +294,7 @@ export function NativeTerminalArea({
   const [activeMatchIdx, setActiveMatchIdx] = useState<number | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  const searchMatches: SearchMatch[] = useMemo(
-    () => findMatches(snapshot, searchQuery),
-    [snapshot, searchQuery],
-  );
+  const searchMatches: SearchMatch[] = useMemo(() => findMatches(snapshot, searchQuery), [snapshot, searchQuery]);
 
   useEffect(() => {
     if (searchMatches.length === 0) {
@@ -348,8 +308,7 @@ export function NativeTerminalArea({
     });
   }, [searchMatches]);
 
-  const activeSearchMatch =
-    activeMatchIdx !== null ? searchMatches[activeMatchIdx] ?? null : null;
+  const activeSearchMatch = activeMatchIdx !== null ? (searchMatches[activeMatchIdx] ?? null) : null;
 
   const gotoNext = useCallback(() => {
     if (searchMatches.length === 0) return;
@@ -393,11 +352,7 @@ export function NativeTerminalArea({
       pending = null;
       const next = computeDims();
       if (!next) return;
-      setDims((prev) =>
-        prev && prev.cols === next.cols && prev.rows === next.rows
-          ? prev
-          : next,
-      );
+      setDims((prev) => (prev && prev.cols === next.cols && prev.rows === next.rows ? prev : next));
     };
     const schedule = () => {
       // Trailing-edge debounce ~120ms — only fires after the window stops
@@ -449,9 +404,7 @@ export function NativeTerminalArea({
   // ── Global keybindings ──
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      const areaRoot = containerRef.current?.closest<HTMLElement>(
-        `.${styles.terminalArea}`,
-      );
+      const areaRoot = containerRef.current?.closest<HTMLElement>(`.${styles.terminalArea}`);
       const insideArea = areaRoot?.contains(document.activeElement) ?? false;
       if (e.ctrlKey && e.shiftKey && (e.key === "J" || e.key === "j")) {
         if (!insideArea) return;
@@ -571,32 +524,15 @@ export function NativeTerminalArea({
             placeholder="Search..."
           />
           <span className={styles.searchCount}>
-            {searchMatches.length > 0
-              ? `${(activeMatchIdx ?? 0) + 1}/${searchMatches.length}`
-              : "0/0"}
+            {searchMatches.length > 0 ? `${(activeMatchIdx ?? 0) + 1}/${searchMatches.length}` : "0/0"}
           </span>
-          <button
-            type="button"
-            className={styles.searchBtn}
-            onClick={gotoPrev}
-            aria-label="前のマッチ"
-          >
+          <button type="button" className={styles.searchBtn} onClick={gotoPrev} aria-label="前のマッチ">
             ↑
           </button>
-          <button
-            type="button"
-            className={styles.searchBtn}
-            onClick={gotoNext}
-            aria-label="次のマッチ"
-          >
+          <button type="button" className={styles.searchBtn} onClick={gotoNext} aria-label="次のマッチ">
             ↓
           </button>
-          <button
-            type="button"
-            className={styles.searchBtn}
-            onClick={closeSearch}
-            aria-label="閉じる"
-          >
+          <button type="button" className={styles.searchBtn} onClick={closeSearch} aria-label="閉じる">
             ×
           </button>
         </div>
@@ -619,20 +555,14 @@ export function NativeTerminalArea({
             fontSize={FONT_SIZE}
             searchMatches={searchMatches}
             activeSearchMatch={activeSearchMatch}
-            ghostSuggestion={
-              snapshotOverlay ? null : mirrorEnabled ? suggestion : null
-            }
+            ghostSuggestion={snapshotOverlay ? null : mirrorEnabled ? suggestion : null}
             snapshotOverride={snapshotOverlay?.grid}
             onCanvasRef={setCanvasEl}
             onInputRef={setCanvasInputEl}
           />
         )}
       </div>
-      <IMEInputBar
-        ref={imeBarRef}
-        onSubmit={sendIMEBytes}
-        onRequestCanvasFocus={focusCanvas}
-      />
+      <IMEInputBar ref={imeBarRef} onSubmit={sendIMEBytes} onRequestCanvasFocus={focusCanvas} />
     </div>
   );
 }

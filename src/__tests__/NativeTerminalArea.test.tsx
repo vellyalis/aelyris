@@ -1,10 +1,4 @@
-import {
-  act,
-  render,
-  cleanup,
-  fireEvent,
-  waitFor,
-} from "@testing-library/react";
+import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NativeTerminalArea } from "../features/terminal/NativeTerminalArea";
@@ -93,89 +87,52 @@ describe("NativeTerminalArea", () => {
     expect(args.rows).toBeGreaterThanOrEqual(5);
 
     await waitFor(() => expect(onReady).toHaveBeenCalledWith("term-42"));
-    await waitFor(() =>
-      expect(container.querySelector("[data-testid='terminal-canvas']")).not.toBeNull(),
-    );
+    await waitFor(() => expect(container.querySelector("[data-testid='terminal-canvas']")).not.toBeNull());
 
-    const canvas = container.querySelector(
-      "[data-testid='terminal-canvas']",
-    ) as HTMLCanvasElement;
+    const canvas = container.querySelector("[data-testid='terminal-canvas']") as HTMLCanvasElement;
     expect(canvas.getAttribute("data-terminal-id")).toBe("term-42");
 
-    await waitFor(() =>
-      expect(resizePty).toHaveBeenCalledWith("term-42", args.cols, args.rows),
-    );
+    await waitFor(() => expect(resizePty).toHaveBeenCalledWith("term-42", args.cols, args.rows));
   });
 
   it("renders the IME input bar on mount (always visible)", async () => {
     const spawnPty = vi.fn().mockResolvedValue("term-perm");
-    const { container } = render(
-      <NativeTerminalArea
-        spawnPty={spawnPty}
-        subscribeOutput={async () => () => {}}
-      />,
-    );
-    await waitFor(() =>
-      expect(container.querySelector("[data-testid='terminal-canvas']")).not.toBeNull(),
-    );
+    const { container } = render(<NativeTerminalArea spawnPty={spawnPty} subscribeOutput={async () => () => {}} />);
+    await waitFor(() => expect(container.querySelector("[data-testid='terminal-canvas']")).not.toBeNull());
     // The bar sits at the bottom and is always mounted; we don't conditionally
     // render it based on AI-CLI detection.
-    expect(
-      container.querySelector("[aria-label='ターミナル入力バー']"),
-    ).not.toBeNull();
+    expect(container.querySelector("[aria-label='ターミナル入力バー']")).not.toBeNull();
   });
 
   it("Ctrl+Shift+J moves focus into the IME input bar", async () => {
     const spawnPty = vi.fn().mockResolvedValue("term-j");
-    const { container } = render(
-      <NativeTerminalArea
-        spawnPty={spawnPty}
-        subscribeOutput={async () => () => {}}
-      />,
-    );
-    await waitFor(() =>
-      expect(container.querySelector("[data-testid='terminal-canvas']")).not.toBeNull(),
-    );
-    const canvas = container.querySelector(
-      "[data-testid='terminal-canvas']",
-    ) as HTMLCanvasElement;
+    const { container } = render(<NativeTerminalArea spawnPty={spawnPty} subscribeOutput={async () => () => {}} />);
+    await waitFor(() => expect(container.querySelector("[data-testid='terminal-canvas']")).not.toBeNull());
+    const canvas = container.querySelector("[data-testid='terminal-canvas']") as HTMLCanvasElement;
     canvas.focus();
     await act(async () => {
       fireEvent.keyDown(window, { key: "j", ctrlKey: true, shiftKey: true });
     });
-    const bar = container.querySelector(
-      "[aria-label='ターミナル入力バー']",
-    ) as HTMLElement;
+    const bar = container.querySelector("[aria-label='ターミナル入力バー']") as HTMLElement;
     const textarea = bar.querySelector("textarea") as HTMLTextAreaElement;
     expect(document.activeElement).toBe(textarea);
   });
 
   it("opens the search bar on Ctrl+F and focuses the input", async () => {
     const spawnPty = vi.fn().mockResolvedValue("term-f");
-    const { container } = render(
-      <NativeTerminalArea
-        spawnPty={spawnPty}
-        subscribeOutput={async () => () => {}}
-      />,
-    );
-    await waitFor(() =>
-      expect(container.querySelector("[data-testid='terminal-canvas']")).not.toBeNull(),
-    );
+    const { container } = render(<NativeTerminalArea spawnPty={spawnPty} subscribeOutput={async () => () => {}} />);
+    await waitFor(() => expect(container.querySelector("[data-testid='terminal-canvas']")).not.toBeNull());
     (container.querySelector("[data-testid='terminal-canvas']") as HTMLCanvasElement)?.focus();
     await act(async () => {
       fireEvent.keyDown(window, { key: "f", ctrlKey: true });
     });
-    await waitFor(() =>
-      expect(container.querySelector("input[placeholder='Search...']")).not.toBeNull(),
-    );
+    await waitFor(() => expect(container.querySelector("input[placeholder='Search...']")).not.toBeNull());
     const input = container.querySelector("input[placeholder='Search...']") as HTMLInputElement;
     // Esc closes the search bar.
     await act(async () => {
       fireEvent.keyDown(input, { key: "Escape" });
     });
-    await waitFor(() =>
-      expect(container.querySelector("input[placeholder='Search...']")).toBeNull(),
-    );
+    await waitFor(() => expect(container.querySelector("input[placeholder='Search...']")).toBeNull());
   });
 
   it("leaves the canvas unmounted when PTY spawn fails", async () => {
@@ -183,11 +140,7 @@ describe("NativeTerminalArea", () => {
     const onReady = vi.fn();
 
     const { container } = render(
-      <NativeTerminalArea
-        spawnPty={spawnPty}
-        onTerminalReady={onReady}
-        subscribeOutput={async () => () => {}}
-      />,
+      <NativeTerminalArea spawnPty={spawnPty} onTerminalReady={onReady} subscribeOutput={async () => () => {}} />,
     );
 
     await waitFor(() => expect(spawnPty).toHaveBeenCalled());

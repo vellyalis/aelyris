@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { AgentLog, AgentStatus } from "../shared/types/agent";
 
 /**
@@ -71,27 +71,31 @@ describe("Agent session merge", () => {
   });
 
   it("preserves existing logs on merge", () => {
-    const existing: AgentSession[] = [{
-      id: "abc123",
-      name: "MyAgent",
-      status: "thinking",
-      model: "sonnet",
-      prompt: "fix the bug",
-      startedAt: 1000,
-      logs: [{ timestamp: 1000, type: "text", content: "Starting..." }],
-      cost: 0.01,
-      tokensUsed: 500,
-    }];
-    const updated: AgentSessionRaw[] = [{
-      ...baseRaw,
-      status: "coding",
-      cost: 0.10,
-      tokens_used: 2000,
-    }];
+    const existing: AgentSession[] = [
+      {
+        id: "abc123",
+        name: "MyAgent",
+        status: "thinking",
+        model: "sonnet",
+        prompt: "fix the bug",
+        startedAt: 1000,
+        logs: [{ timestamp: 1000, type: "text", content: "Starting..." }],
+        cost: 0.01,
+        tokensUsed: 500,
+      },
+    ];
+    const updated: AgentSessionRaw[] = [
+      {
+        ...baseRaw,
+        status: "coding",
+        cost: 0.1,
+        tokens_used: 2000,
+      },
+    ];
 
     const result = mergeSessions(existing, updated);
     expect(result[0].status).toBe("coding");
-    expect(result[0].cost).toBe(0.10);
+    expect(result[0].cost).toBe(0.1);
     expect(result[0].tokensUsed).toBe(2000);
     // Preserved from existing:
     expect(result[0].name).toBe("MyAgent");
@@ -100,36 +104,42 @@ describe("Agent session merge", () => {
   });
 
   it("removes sessions no longer in raw data", () => {
-    const existing: AgentSession[] = [{
-      id: "old",
-      name: "Old",
-      status: "done",
-      model: "sonnet",
-      prompt: "old task",
-      startedAt: 500,
-      logs: [],
-      cost: 0,
-      tokensUsed: 0,
-    }];
+    const existing: AgentSession[] = [
+      {
+        id: "old",
+        name: "Old",
+        status: "done",
+        model: "sonnet",
+        prompt: "old task",
+        startedAt: 500,
+        logs: [],
+        cost: 0,
+        tokensUsed: 0,
+      },
+    ];
     const result = mergeSessions(existing, [baseRaw]);
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe("abc123");
   });
 
   it("extracts name from cwd path", () => {
-    const raw: AgentSessionRaw[] = [{
-      ...baseRaw,
-      cwd: "C:/Users/dev/my-project",
-    }];
+    const raw: AgentSessionRaw[] = [
+      {
+        ...baseRaw,
+        cwd: "C:/Users/dev/my-project",
+      },
+    ];
     const result = mergeSessions([], raw);
     expect(result[0].name).toBe("my-project");
   });
 
   it("falls back to Agent when cwd is empty", () => {
-    const raw: AgentSessionRaw[] = [{
-      ...baseRaw,
-      cwd: "",
-    }];
+    const raw: AgentSessionRaw[] = [
+      {
+        ...baseRaw,
+        cwd: "",
+      },
+    ];
     const result = mergeSessions([], raw);
     expect(result[0].name).toBe("Agent");
   });
@@ -152,9 +162,15 @@ describe("Agent log parsing", () => {
       const parsed = JSON.parse(line);
       if (parsed.type === "assistant") {
         return { type: "text", content: parsed.message?.content?.[0]?.text ?? line };
-      } else if (parsed.type === "tool_use" || parsed.message?.content?.some?.((c: { type: string }) => c.type === "tool_use")) {
+      } else if (
+        parsed.type === "tool_use" ||
+        parsed.message?.content?.some?.((c: { type: string }) => c.type === "tool_use")
+      ) {
         const toolUse = parsed.message?.content?.find?.((c: { type: string }) => c.type === "tool_use");
-        return { type: "tool_use", content: toolUse ? `${toolUse.name}(${JSON.stringify(toolUse.input).slice(0, 100)})` : line };
+        return {
+          type: "tool_use",
+          content: toolUse ? `${toolUse.name}(${JSON.stringify(toolUse.input).slice(0, 100)})` : line,
+        };
       } else if (parsed.type === "tool_result") {
         return { type: "tool_result", content: parsed.content?.slice?.(0, 200) ?? line };
       } else if (parsed.type === "result") {

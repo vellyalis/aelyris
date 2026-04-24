@@ -1,15 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { layoutConductor, COL_WIDTH, ROW_HEIGHT } from "../shared/lib/conductorLayout";
-import type { AgentSession } from "../shared/types/agent";
+import { COL_WIDTH, layoutConductor, ROW_HEIGHT } from "../shared/lib/conductorLayout";
 import type { OrchestraRoleId } from "../shared/lib/orchestrator";
+import type { AgentSession } from "../shared/types/agent";
 
-function session(
-  id: string,
-  role: OrchestraRoleId | undefined,
-  startedAt: number,
-  handoffFrom?: string,
-): AgentSession {
+function session(id: string, role: OrchestraRoleId | undefined, startedAt: number, handoffFrom?: string): AgentSession {
   return {
     id,
     name: id,
@@ -33,11 +28,7 @@ describe("layoutConductor", () => {
       session("c", "tester", 3),
     ]);
     // Columns visible in order: implementer, tester, reviewer.
-    expect(layout.columns.map((c) => c.id)).toEqual([
-      "implementer",
-      "tester",
-      "reviewer",
-    ]);
+    expect(layout.columns.map((c) => c.id)).toEqual(["implementer", "tester", "reviewer"]);
     expect(layout.columns[0].x).toBe(0);
     expect(layout.columns[1].x).toBe(COL_WIDTH);
     expect(layout.columns[2].x).toBe(2 * COL_WIDTH);
@@ -57,32 +48,21 @@ describe("layoutConductor", () => {
   });
 
   it("puts role-less sessions into the ad-hoc column", () => {
-    const layout = layoutConductor([
-      session("a", undefined, 1),
-      session("b", "implementer", 2),
-    ]);
-    expect(layout.columns.map((c) => c.id)).toEqual([
-      "implementer",
-      "unassigned",
-    ]);
+    const layout = layoutConductor([session("a", undefined, 1), session("b", "implementer", 2)]);
+    expect(layout.columns.map((c) => c.id)).toEqual(["implementer", "unassigned"]);
     const ad = layout.nodes.find((n) => n.id === "a");
     expect(ad?.column).toBe("unassigned");
   });
 
   it("skips empty columns — only used columns get laid out", () => {
-    const layout = layoutConductor([
-      session("a", "reviewer", 1),
-    ]);
+    const layout = layoutConductor([session("a", "reviewer", 1)]);
     expect(layout.columns).toHaveLength(1);
     expect(layout.columns[0].id).toBe("reviewer");
     expect(layout.columns[0].x).toBe(0);
   });
 
   it("creates an edge for every handoffFrom pointing to an existing node", () => {
-    const layout = layoutConductor([
-      session("parent", "implementer", 1),
-      session("child", "reviewer", 2, "parent"),
-    ]);
+    const layout = layoutConductor([session("parent", "implementer", 1), session("child", "reviewer", 2, "parent")]);
     expect(layout.edges).toHaveLength(1);
     expect(layout.edges[0].source).toBe("parent");
     expect(layout.edges[0].target).toBe("child");
@@ -90,9 +70,7 @@ describe("layoutConductor", () => {
   });
 
   it("ignores handoffFrom when the parent is not in the set", () => {
-    const layout = layoutConductor([
-      session("orphan", "reviewer", 1, "ghost"),
-    ]);
+    const layout = layoutConductor([session("orphan", "reviewer", 1, "ghost")]);
     expect(layout.edges).toHaveLength(0);
   });
 });

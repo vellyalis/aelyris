@@ -1,11 +1,7 @@
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  HandoffDialog,
-  showHandoff,
-  useHandoffStore,
-} from "../shared/ui/HandoffDialog";
+import { HandoffDialog, showHandoff, useHandoffStore } from "../shared/ui/HandoffDialog";
 
 describe("HandoffDialog role selection", () => {
   afterEach(() => {

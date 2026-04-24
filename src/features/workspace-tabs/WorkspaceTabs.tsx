@@ -1,9 +1,9 @@
-import { useState, useCallback } from "react";
 import * as Tabs from "@radix-ui/react-tabs";
+import { useCallback, useState } from "react";
+import type { ShellType } from "../../App";
 import type { Tab } from "../../shared/hooks/useTabManager";
 import type { InteractiveSession } from "../../shared/types/interactiveAgent";
-import { getCliLabel, getCliColor } from "../../shared/types/interactiveAgent";
-import type { ShellType } from "../../App";
+import { getCliColor, getCliLabel } from "../../shared/types/interactiveAgent";
 import { PixelAvatar } from "../../shared/ui/PixelAvatar";
 import styles from "./WorkspaceTabs.module.css";
 
@@ -22,8 +22,17 @@ interface WorkspaceTabsProps {
 }
 
 export function WorkspaceTabs({
-  tabs, activeTabId, activityTabs, onSelectTab, onCloseTab, onNewTab, onReorderTab,
-  interactiveSessions = [], activeInteractiveId, onSelectInteractive, onCloseInteractive,
+  tabs,
+  activeTabId,
+  activityTabs,
+  onSelectTab,
+  onCloseTab,
+  onNewTab,
+  onReorderTab,
+  interactiveSessions = [],
+  activeInteractiveId,
+  onSelectInteractive,
+  onCloseInteractive,
 }: WorkspaceTabsProps) {
   const effectiveActiveId = activeInteractiveId ? `agent-${activeInteractiveId}` : activeTabId;
   const [dragOverId, setDragOverId] = useState<string | null>(null);
@@ -47,14 +56,17 @@ export function WorkspaceTabs({
     setDragOverId(tabId);
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent, toId: string) => {
-    e.preventDefault();
-    const fromId = e.dataTransfer.getData("text/plain");
-    if (fromId && fromId !== toId) {
-      onReorderTab?.(fromId, toId);
-    }
-    setDragOverId(null);
-  }, [onReorderTab]);
+  const handleDrop = useCallback(
+    (e: React.DragEvent, toId: string) => {
+      e.preventDefault();
+      const fromId = e.dataTransfer.getData("text/plain");
+      if (fromId && fromId !== toId) {
+        onReorderTab?.(fromId, toId);
+      }
+      setDragOverId(null);
+    },
+    [onReorderTab],
+  );
 
   const handleDragEnd = useCallback(() => {
     setDragOverId(null);
@@ -83,8 +95,13 @@ export function WorkspaceTabs({
                     className={styles.tabClose}
                     role="button"
                     aria-label={`Close ${tab.label}`}
-                    onClick={(e) => { e.stopPropagation(); onCloseTab(tab.id); }}
-                  >×</span>
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onCloseTab(tab.id);
+                    }}
+                  >
+                    ×
+                  </span>
                 )}
               </button>
             </Tabs.Trigger>
@@ -99,14 +116,21 @@ export function WorkspaceTabs({
                   className={styles.tabClose}
                   role="button"
                   aria-label={`Close ${getCliLabel(session.cli)} session`}
-                  onClick={(e) => { e.stopPropagation(); onCloseInteractive?.(session.id); }}
-                >×</span>
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCloseInteractive?.(session.id);
+                  }}
+                >
+                  ×
+                </span>
               </button>
             </Tabs.Trigger>
           ))}
         </Tabs.List>
       </Tabs.Root>
-      <button className={styles.addBtn} onClick={() => onNewTab("powershell")} aria-label="New terminal tab">+</button>
+      <button className={styles.addBtn} onClick={() => onNewTab("powershell")} aria-label="New terminal tab">
+        +
+      </button>
     </div>
   );
 }

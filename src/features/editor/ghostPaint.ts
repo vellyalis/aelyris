@@ -53,12 +53,7 @@ export interface ViewZone {
 
 /** Subset of the `monaco` namespace. */
 export interface MonacoNs {
-  Range: new (
-    startLine: number,
-    startColumn: number,
-    endLine: number,
-    endColumn: number,
-  ) => RangeLike;
+  Range: new (startLine: number, startColumn: number, endLine: number, endColumn: number) => RangeLike;
 }
 
 export interface GhostPaintOptions {
@@ -113,11 +108,7 @@ function clampLine(n: number): number {
  * alive for the lifetime of the painted view; `dispose()` removes every
  * decoration and view zone this call produced.
  */
-export function installGhostPaint(
-  editor: GhostEditor,
-  monaco: MonacoNs,
-  options: GhostPaintOptions,
-): GhostPaintHandle {
+export function installGhostPaint(editor: GhostEditor, monaco: MonacoNs, options: GhostPaintOptions): GhostPaintHandle {
   const { hunks, tint, layerId } = options;
   const skip = options.skipHunkIndices ?? new Set<number>();
 
@@ -182,10 +173,7 @@ export function installGhostPaint(
     }
   });
 
-  const decorationIds =
-    deltaDecorations.length > 0
-      ? editor.deltaDecorations([], deltaDecorations)
-      : [];
+  const decorationIds = deltaDecorations.length > 0 ? editor.deltaDecorations([], deltaDecorations) : [];
 
   let disposed = false;
   return {
@@ -216,12 +204,7 @@ export function installGhostPaint(
   };
 }
 
-function buildAddZoneNode(
-  lines: string[],
-  tint: LayerTint,
-  layerId: string,
-  hunkIndex: number,
-): HTMLElement {
+function buildAddZoneNode(lines: string[], tint: LayerTint, layerId: string, hunkIndex: number): HTMLElement {
   const root = document.createElement("div");
   root.className = "aether-ghost-add-zone";
   root.dataset.aetherLayer = layerId;

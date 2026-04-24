@@ -1,6 +1,6 @@
-import { useEffect, useRef } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { AlertTriangle } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { create } from "zustand";
 import styles from "./ConfirmDialog.module.css";
 
@@ -71,7 +71,12 @@ export function ConfirmDialog() {
   }, [open]);
 
   return (
-    <Dialog.Root open={open} onOpenChange={(o) => { if (!o) close(false); }}>
+    <Dialog.Root
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) close(false);
+      }}
+    >
       <Dialog.Portal>
         <Dialog.Overlay className={styles.overlay} />
         <Dialog.Content
@@ -79,9 +84,7 @@ export function ConfirmDialog() {
           aria-describedby={description ? "confirm-desc" : undefined}
         >
           <div className={styles.header}>
-            {tone === "danger" && (
-              <AlertTriangle size={18} aria-hidden="true" className={styles.icon} />
-            )}
+            {tone === "danger" && <AlertTriangle size={18} aria-hidden="true" className={styles.icon} />}
             <Dialog.Title className={styles.title}>{title}</Dialog.Title>
           </div>
           {description && (
@@ -90,12 +93,7 @@ export function ConfirmDialog() {
             </Dialog.Description>
           )}
           <div className={styles.actions}>
-            <button
-              type="button"
-              ref={cancelRef}
-              className={styles.cancelBtn}
-              onClick={() => close(false)}
-            >
+            <button type="button" ref={cancelRef} className={styles.cancelBtn} onClick={() => close(false)}>
               {cancelLabel}
             </button>
             <button

@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import * as Dialog from "@radix-ui/react-dialog";
-import { ShieldCheck, ShieldX, Plus, Trash2 } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
+import { Plus, ShieldCheck, ShieldX, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import styles from "./WatchdogDialog.module.css";
 
 interface WatchdogRule {
@@ -30,9 +30,7 @@ const PRESETS: { name: string; description: string; rules: WatchdogRule[] }[] = 
   {
     name: "Strict",
     description: "Only approve file reads",
-    rules: [
-      { pattern: "Read", approve: true, description: "File reads only" },
-    ],
+    rules: [{ pattern: "Read", approve: true, description: "File reads only" }],
   },
   {
     name: "Readonly",
@@ -60,7 +58,9 @@ export function WatchdogDialog({ visible, onClose }: WatchdogDialogProps) {
 
   useEffect(() => {
     if (visible) {
-      invoke<WatchdogRules>("get_watchdog_rules").then(setRules).catch(() => {});
+      invoke<WatchdogRules>("get_watchdog_rules")
+        .then(setRules)
+        .catch(() => {});
     }
   }, [visible]);
 
@@ -69,7 +69,9 @@ export function WatchdogDialog({ visible, onClose }: WatchdogDialogProps) {
     try {
       await invoke("save_watchdog_rules", { rules });
       onClose();
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     setSaving(false);
   }, [rules, onClose]);
 
@@ -92,18 +94,21 @@ export function WatchdogDialog({ visible, onClose }: WatchdogDialogProps) {
   const toggleRuleApproval = useCallback((index: number) => {
     setRules((r) => ({
       ...r,
-      auto_approve: r.auto_approve.map((rule, i) =>
-        i === index ? { ...rule, approve: !rule.approve } : rule
-      ),
+      auto_approve: r.auto_approve.map((rule, i) => (i === index ? { ...rule, approve: !rule.approve } : rule)),
     }));
   }, []);
 
-  const applyPreset = useCallback((preset: typeof PRESETS[number]) => {
+  const applyPreset = useCallback((preset: (typeof PRESETS)[number]) => {
     setRules((r) => ({ ...r, enabled: true, auto_approve: [...preset.rules] }));
   }, []);
 
   return (
-    <Dialog.Root open={visible} onOpenChange={(o) => { if (!o) onClose(); }}>
+    <Dialog.Root
+      open={visible}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+    >
       <Dialog.Portal>
         <Dialog.Overlay className={styles.overlay} />
         <Dialog.Content className={styles.dialog} aria-describedby={undefined}>
@@ -126,7 +131,13 @@ export function WatchdogDialog({ visible, onClose }: WatchdogDialogProps) {
           {/* Presets */}
           <div className={styles.presets}>
             {PRESETS.map((p) => (
-              <button type="button" key={p.name} className={styles.presetBtn} onClick={() => applyPreset(p)} title={p.description}>
+              <button
+                type="button"
+                key={p.name}
+                className={styles.presetBtn}
+                onClick={() => applyPreset(p)}
+                title={p.description}
+              >
                 {p.name}
               </button>
             ))}
@@ -144,10 +155,11 @@ export function WatchdogDialog({ visible, onClose }: WatchdogDialogProps) {
                   aria-label={rule.approve ? `Change ${rule.pattern} to deny` : `Change ${rule.pattern} to approve`}
                   title={rule.approve ? "Approve" : "Deny"}
                 >
-                  {rule.approve
-                    ? <ShieldCheck size={12} color="var(--ctp-green)" aria-hidden="true" />
-                    : <ShieldX size={12} color="var(--ctp-red)" aria-hidden="true" />
-                  }
+                  {rule.approve ? (
+                    <ShieldCheck size={12} color="var(--ctp-green)" aria-hidden="true" />
+                  ) : (
+                    <ShieldX size={12} color="var(--ctp-red)" aria-hidden="true" />
+                  )}
                 </button>
                 <span className={styles.rulePattern}>{rule.pattern}</span>
                 <button
@@ -170,7 +182,9 @@ export function WatchdogDialog({ visible, onClose }: WatchdogDialogProps) {
               onChange={(e) => setNewPattern(e.target.value)}
               placeholder="Pattern (e.g. Bash(git*))"
               aria-label="New rule pattern"
-              onKeyDown={(e) => { if (e.key === "Enter") addRule(); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") addRule();
+              }}
             />
             <button
               type="button"
@@ -185,7 +199,9 @@ export function WatchdogDialog({ visible, onClose }: WatchdogDialogProps) {
 
           <div className={styles.actions}>
             <Dialog.Close asChild>
-              <button type="button" className={styles.cancelBtn}>Cancel</button>
+              <button type="button" className={styles.cancelBtn}>
+                Cancel
+              </button>
             </Dialog.Close>
             <button type="button" className={styles.createBtn} onClick={handleSave} disabled={saving}>
               {saving ? "Saving..." : "Save"}

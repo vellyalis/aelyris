@@ -2,10 +2,7 @@ import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TerminalCanvas } from "../features/terminal/TerminalCanvas";
-import type {
-  CellSnapshot,
-  GridSnapshot,
-} from "../shared/types/terminal";
+import type { CellSnapshot, GridSnapshot } from "../shared/types/terminal";
 
 function installCanvasMock() {
   const ctx: Partial<CanvasRenderingContext2D> = {
@@ -29,9 +26,7 @@ function cell(ch: string): CellSnapshot {
 
 function snapshotFromRows(rows: string[]): GridSnapshot {
   const cols = Math.max(...rows.map((r) => r.length));
-  const cells = rows.map((r) =>
-    Array.from(r.padEnd(cols, " ")).map((c) => cell(c)),
-  );
+  const cells = rows.map((r) => Array.from(r.padEnd(cols, " ")).map((c) => cell(c)));
   return {
     cols,
     rows: rows.length,
@@ -147,12 +142,7 @@ describe("TerminalCanvas link interaction", () => {
   it("sets cursor=pointer while hovering a URL with Ctrl held", async () => {
     const snap = snapshotFromRows(["go https://a.test now"]);
     const { getByTestId } = render(
-      <TerminalCanvas
-        terminalId="t1"
-        cols={snap.cols}
-        rows={snap.rows}
-        snapshotOverride={snap}
-      />,
+      <TerminalCanvas terminalId="t1" cols={snap.cols} rows={snap.rows} snapshotOverride={snap} />,
     );
     const canvas = getByTestId("terminal-canvas") as HTMLCanvasElement;
     await act(async () => {

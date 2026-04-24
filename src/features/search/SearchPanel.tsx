@@ -1,6 +1,6 @@
-import { useState, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { motion, AnimatePresence } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
+import { useCallback, useRef, useState } from "react";
 import styles from "./SearchPanel.module.css";
 
 interface GrepResult {
@@ -22,23 +22,31 @@ export function SearchPanel({ visible, rootPath, onClose, onResultClick }: Searc
   const [searching, setSearching] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleSearch = useCallback((q: string) => {
-    setQuery(q);
-    if (timerRef.current) clearTimeout(timerRef.current);
-    if (!q.trim()) { setResults([]); return; }
-    timerRef.current = setTimeout(async () => {
-      setSearching(true);
-      try {
-        const r = await invoke<GrepResult[]>("grep_files", {
-          rootPath,
-          pattern: q,
-          maxResults: 100,
-        });
-        setResults(r);
-      } catch { setResults([]); }
-      setSearching(false);
-    }, 300);
-  }, [rootPath]);
+  const handleSearch = useCallback(
+    (q: string) => {
+      setQuery(q);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      if (!q.trim()) {
+        setResults([]);
+        return;
+      }
+      timerRef.current = setTimeout(async () => {
+        setSearching(true);
+        try {
+          const r = await invoke<GrepResult[]>("grep_files", {
+            rootPath,
+            pattern: q,
+            maxResults: 100,
+          });
+          setResults(r);
+        } catch {
+          setResults([]);
+        }
+        setSearching(false);
+      }, 300);
+    },
+    [rootPath],
+  );
 
   // Group results by file
   const grouped = new Map<string, GrepResult[]>();
@@ -50,57 +58,49 @@ export function SearchPanel({ visible, rootPath, onClose, onResultClick }: Searc
 
   return (
     <AnimatePresence>
-    {visible && (
-    <motion.div
-      className={styles.panel}
-      initial={{ height: 0, opacity: 0 }}
-      animate={{ height: "auto", opacity: 1 }}
-      exit={{ height: 0, opacity: 0 }}
-      transition={{ type: "spring", stiffness: 300, damping: 30 }}
-    >
-      <div className={styles.header}>
-        <input
-          autoFocus
-          className={styles.input}
-          placeholder="Search in files..."
-          aria-label="Search in files"
-          value={query}
-          onChange={(e) => handleSearch(e.target.value)}
-          onKeyDown={(e) => e.key === "Escape" && onClose()}
-        />
-        <button type="button" className={styles.closeBtn} onClick={onClose} aria-label="Close search">
-          <span aria-hidden="true">×</span>
-        </button>
-      </div>
-      <div className={styles.results}>
-        {searching && <div className={styles.status}>Searching...</div>}
-        {!searching && query && results.length === 0 && (
-          <div className={styles.status}>No results</div>
-        )}
-        {[...grouped.entries()].map(([file, matches]) => {
-          const shortFile = file.replace(rootPath + "/", "");
-          return (
-            <div key={file} className={styles.fileGroup}>
-              <div className={styles.fileName}>{shortFile}</div>
-              {matches.map((m, i) => (
-                <button
-                  key={i}
-                  className={styles.match}
-                  onClick={() => onResultClick(m.file, m.line)}
-                >
-                  <span className={styles.lineNum}>{m.line}</span>
-                  <span className={styles.lineContent}>{highlightMatch(m.content, query)}</span>
-                </button>
-              ))}
-            </div>
-          );
-        })}
-        {!searching && !query && (
-          <div className={styles.status}>Type to search across all files</div>
-        )}
-      </div>
-    </motion.div>
-    )}
+      {visible && (
+        <motion.div
+          className={styles.panel}
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: "auto", opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{ type: "spring", stiffness: 300, damping: 30 }}
+        >
+          <div className={styles.header}>
+            <input
+              autoFocus
+              className={styles.input}
+              placeholder="Search in files..."
+              aria-label="Search in files"
+              value={query}
+              onChange={(e) => handleSearch(e.target.value)}
+              onKeyDown={(e) => e.key === "Escape" && onClose()}
+            />
+            <button type="button" className={styles.closeBtn} onClick={onClose} aria-label="Close search">
+              <span aria-hidden="true">×</span>
+            </button>
+          </div>
+          <div className={styles.results}>
+            {searching && <div className={styles.status}>Searching...</div>}
+            {!searching && query && results.length === 0 && <div className={styles.status}>No results</div>}
+            {[...grouped.entries()].map(([file, matches]) => {
+              const shortFile = file.replace(rootPath + "/", "");
+              return (
+                <div key={file} className={styles.fileGroup}>
+                  <div className={styles.fileName}>{shortFile}</div>
+                  {matches.map((m, i) => (
+                    <button key={i} className={styles.match} onClick={() => onResultClick(m.file, m.line)}>
+                      <span className={styles.lineNum}>{m.line}</span>
+                      <span className={styles.lineContent}>{highlightMatch(m.content, query)}</span>
+                    </button>
+                  ))}
+                </div>
+              );
+            })}
+            {!searching && !query && <div className={styles.status}>Type to search across all files</div>}
+          </div>
+        </motion.div>
+      )}
     </AnimatePresence>
   );
 }

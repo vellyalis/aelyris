@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { GitBranch, Plus, RefreshCw, Trash2 } from "lucide-react";
-import { EmptyState } from "../../shared/ui/EmptyState";
-import { showConfirm } from "../../shared/ui/ConfirmDialog";
-import { PanelHeader } from "../../shared/ui/PanelHeader";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "../../shared/store/toastStore";
+import { showConfirm } from "../../shared/ui/ConfirmDialog";
+import { EmptyState } from "../../shared/ui/EmptyState";
+import { PanelHeader } from "../../shared/ui/PanelHeader";
 import styles from "./WorktreeManager.module.css";
 
 interface WorktreeInfo {
@@ -29,7 +29,9 @@ export function WorktreeManager({ projectPath, onSwitch }: WorktreeManagerProps)
     try {
       const result = await invoke<WorktreeInfo[]>("list_worktrees", { repoPath: projectPath });
       setWorktrees(result);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }, [projectPath]);
 
   useEffect(() => {
@@ -56,40 +58,46 @@ export function WorktreeManager({ projectPath, onSwitch }: WorktreeManagerProps)
     }
   }, [newBranch, projectPath, loadWorktrees]);
 
-  const handleSwitch = useCallback((path: string) => {
-    setActivePath(path);
-    onSwitch(path);
-  }, [onSwitch]);
+  const handleSwitch = useCallback(
+    (path: string) => {
+      setActivePath(path);
+      onSwitch(path);
+    },
+    [onSwitch],
+  );
 
-  const handleRemove = useCallback(async (wt: WorktreeInfo) => {
-    if (wt.is_main) return;
-    const ok = await showConfirm({
-      title: `Remove worktree?`,
-      description: `This deletes the worktree directory at:\n${wt.path}\n\nThe branch "${wt.branch}" is not deleted from the repository.`,
-      confirmLabel: "Remove",
-      cancelLabel: "Cancel",
-      tone: "danger",
-    });
-    if (!ok) return;
-    try {
-      // Rust command takes (repo_path, worktree_name, delete_branch).
-      // `worktree_name` is the branch identifier; we leave the branch intact
-      // because the confirm copy told the user the branch stays.
-      await invoke("remove_worktree", {
-        repoPath: projectPath,
-        worktreeName: wt.branch,
-        deleteBranch: false,
+  const handleRemove = useCallback(
+    async (wt: WorktreeInfo) => {
+      if (wt.is_main) return;
+      const ok = await showConfirm({
+        title: `Remove worktree?`,
+        description: `This deletes the worktree directory at:\n${wt.path}\n\nThe branch "${wt.branch}" is not deleted from the repository.`,
+        confirmLabel: "Remove",
+        cancelLabel: "Cancel",
+        tone: "danger",
       });
-      toast.success("Worktree removed", wt.branch);
-      if (activePath === wt.path) {
-        setActivePath(projectPath);
-        onSwitch(projectPath);
+      if (!ok) return;
+      try {
+        // Rust command takes (repo_path, worktree_name, delete_branch).
+        // `worktree_name` is the branch identifier; we leave the branch intact
+        // because the confirm copy told the user the branch stays.
+        await invoke("remove_worktree", {
+          repoPath: projectPath,
+          worktreeName: wt.branch,
+          deleteBranch: false,
+        });
+        toast.success("Worktree removed", wt.branch);
+        if (activePath === wt.path) {
+          setActivePath(projectPath);
+          onSwitch(projectPath);
+        }
+        await loadWorktrees();
+      } catch (err) {
+        toast.error("Remove worktree failed", String(err));
       }
-      await loadWorktrees();
-    } catch (err) {
-      toast.error("Remove worktree failed", String(err));
-    }
-  }, [projectPath, activePath, onSwitch, loadWorktrees]);
+    },
+    [projectPath, activePath, onSwitch, loadWorktrees],
+  );
 
   return (
     <div className={styles.container}>
@@ -128,19 +136,28 @@ export function WorktreeManager({ projectPath, onSwitch }: WorktreeManagerProps)
             aria-label="New worktree branch name"
             value={newBranch}
             onChange={(e) => setNewBranch(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); if (e.key === "Escape") setShowCreate(false); }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleCreate();
+              if (e.key === "Escape") setShowCreate(false);
+            }}
             autoFocus
           />
           <button className={styles.headerBtn} onClick={handleCreate} disabled={loading || !newBranch.trim()}>
             {loading ? "..." : "Create"}
           </button>
-          {createError && <div style={{ color: "var(--ctp-red)", fontSize: "var(--text-xs)", padding: "2px 4px" }}>{createError}</div>}
+          {createError && (
+            <div style={{ color: "var(--ctp-red)", fontSize: "var(--text-xs)", padding: "2px 4px" }}>{createError}</div>
+          )}
         </div>
       )}
 
       <div className={styles.list}>
         {worktrees.length === 0 && (
-          <EmptyState preset="worktrees" title="No worktrees" description="Create a worktree to work on a branch in parallel" />
+          <EmptyState
+            preset="worktrees"
+            title="No worktrees"
+            description="Create a worktree to work on a branch in parallel"
+          />
         )}
         {worktrees.map((wt) => (
           <button
@@ -164,7 +181,10 @@ export function WorktreeManager({ projectPath, onSwitch }: WorktreeManagerProps)
                 <button
                   type="button"
                   className={styles.deleteBtn}
-                  onClick={(e) => { e.stopPropagation(); handleRemove(wt); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleRemove(wt);
+                  }}
                   aria-label={`Remove worktree ${wt.branch}`}
                   title="Remove Worktree"
                 >

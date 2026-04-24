@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { createLeaf, splitPane, removePane, type PaneNode } from "../features/terminal/pane-tree";
+import { describe, expect, it } from "vitest";
+import { createLeaf, type PaneNode, removePane, splitPane } from "../features/terminal/pane-tree";
 
 describe("PaneTree (legacy compat) — splitPane", () => {
   it("splits a single leaf into two", () => {

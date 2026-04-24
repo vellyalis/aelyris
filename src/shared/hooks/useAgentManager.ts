@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { AgentSession, AgentLog, AgentStatus } from "../types/agent";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { parseFileChange } from "../lib/agentFileChanges";
 import type { OrchestraRoleId } from "../lib/orchestrator";
+import type { AgentLog, AgentSession, AgentStatus } from "../types/agent";
 
 interface AgentSessionRaw {
   id: string;
@@ -21,9 +21,7 @@ export function useAgentManager() {
   const unlistenRefs = useRef<Map<string, UnlistenFn[]>>(new Map());
   // Role / handoff metadata is frontend-only (the backend doesn't track it)
   // so we stash it keyed by session id and apply it on every merge pass.
-  const roleMetaRef = useRef<
-    Map<string, { role?: OrchestraRoleId; handoffFrom?: string }>
-  >(new Map());
+  const roleMetaRef = useRef<Map<string, { role?: OrchestraRoleId; handoffFrom?: string }>>(new Map());
 
   // Push-based session updates from Rust via Tauri events
   useEffect(() => {
@@ -55,7 +53,10 @@ export function useAgentManager() {
           });
         });
       });
-      if (cancelled) { unsub(); return; }
+      if (cancelled) {
+        unsub();
+        return;
+      }
       unlisten = unsub;
 
       // Initial fetch to hydrate existing sessions on mount
@@ -80,11 +81,16 @@ export function useAgentManager() {
             });
           });
         }
-      } catch { /* no agents running */ }
+      } catch {
+        /* no agents running */
+      }
     };
 
     setup();
-    return () => { cancelled = true; unlisten?.(); };
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
   }, []);
 
   // Subscribe to output events for a session
@@ -92,64 +98,68 @@ export function useAgentManager() {
     const unlistens: UnlistenFn[] = [];
 
     try {
+      const unlisten1 = await listen<string>(`agent-output-${id}`, (event) => {
+        const line = event.payload;
+        let logType: AgentLog["type"] = "text";
+        let content = line;
 
-    const unlisten1 = await listen<string>(`agent-output-${id}`, (event) => {
-      const line = event.payload;
-      let logType: AgentLog["type"] = "text";
-      let content = line;
-
-      try {
-        const parsed = JSON.parse(line);
-        if (parsed.type === "assistant") {
-          logType = "text";
-          content = parsed.message?.content?.[0]?.text ?? line;
-        } else if (parsed.type === "tool_use" || parsed.message?.content?.some?.((c: { type: string }) => c.type === "tool_use")) {
-          logType = "tool_use";
-          const toolUse = parsed.message?.content?.find?.((c: { type: string }) => c.type === "tool_use");
-          content = toolUse ? `${toolUse.name}(${JSON.stringify(toolUse.input).slice(0, 100)})` : line;
-        } else if (parsed.type === "tool_result") {
-          logType = "tool_result";
-          content = parsed.content?.slice?.(0, 200) ?? line;
-        } else if (parsed.type === "result") {
-          logType = "system";
-          content = `Session complete. Cost: $${parsed.cost_usd ?? 0}`;
-        }
-      } catch {
-        // Not JSON, raw text
-        content = line.slice(0, 300);
-      }
-
-      const log: AgentLog = { timestamp: Date.now(), type: logType, content };
-
-      // Track file changes with detail
-      const fileChange = parseFileChange(line);
-
-      setSessions((prev) =>
-        prev.map((s) => {
-          if (s.id !== id) return s;
-          const updated = { ...s, logs: [...s.logs, log] };
-          if (fileChange) {
-            updated.filesChanged = (s.filesChanged ?? 0) + 1;
-            updated.changedFileDetails = [
-              ...(s.changedFileDetails ?? []),
-              { path: fileChange.path, action: fileChange.action, toolName: fileChange.toolName, timestamp: fileChange.timestamp },
-            ];
+        try {
+          const parsed = JSON.parse(line);
+          if (parsed.type === "assistant") {
+            logType = "text";
+            content = parsed.message?.content?.[0]?.text ?? line;
+          } else if (
+            parsed.type === "tool_use" ||
+            parsed.message?.content?.some?.((c: { type: string }) => c.type === "tool_use")
+          ) {
+            logType = "tool_use";
+            const toolUse = parsed.message?.content?.find?.((c: { type: string }) => c.type === "tool_use");
+            content = toolUse ? `${toolUse.name}(${JSON.stringify(toolUse.input).slice(0, 100)})` : line;
+          } else if (parsed.type === "tool_result") {
+            logType = "tool_result";
+            content = parsed.content?.slice?.(0, 200) ?? line;
+          } else if (parsed.type === "result") {
+            logType = "system";
+            content = `Session complete. Cost: $${parsed.cost_usd ?? 0}`;
           }
-          return updated;
-        })
-      );
-    });
-    unlistens.push(unlisten1);
+        } catch {
+          // Not JSON, raw text
+          content = line.slice(0, 300);
+        }
 
-    const unlisten2 = await listen(`agent-exit-${id}`, () => {
-      setSessions((prev) =>
-        prev.map((s) => s.id === id ? { ...s, status: "done" as AgentStatus } : s)
-      );
-    });
-    unlistens.push(unlisten2);
+        const log: AgentLog = { timestamp: Date.now(), type: logType, content };
 
-    unlistenRefs.current.set(id, unlistens);
+        // Track file changes with detail
+        const fileChange = parseFileChange(line);
 
+        setSessions((prev) =>
+          prev.map((s) => {
+            if (s.id !== id) return s;
+            const updated = { ...s, logs: [...s.logs, log] };
+            if (fileChange) {
+              updated.filesChanged = (s.filesChanged ?? 0) + 1;
+              updated.changedFileDetails = [
+                ...(s.changedFileDetails ?? []),
+                {
+                  path: fileChange.path,
+                  action: fileChange.action,
+                  toolName: fileChange.toolName,
+                  timestamp: fileChange.timestamp,
+                },
+              ];
+            }
+            return updated;
+          }),
+        );
+      });
+      unlistens.push(unlisten1);
+
+      const unlisten2 = await listen(`agent-exit-${id}`, () => {
+        setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, status: "done" as AgentStatus } : s)));
+      });
+      unlistens.push(unlisten2);
+
+      unlistenRefs.current.set(id, unlistens);
     } catch {
       // Cleanup any partially registered listeners
       unlistens.forEach((fn) => fn());
@@ -157,12 +167,7 @@ export function useAgentManager() {
   }, []);
 
   const startAgent = useCallback(
-    async (
-      prompt: string,
-      cwd: string,
-      model?: string,
-      meta?: { role?: OrchestraRoleId; handoffFrom?: string },
-    ) => {
+    async (prompt: string, cwd: string, model?: string, meta?: { role?: OrchestraRoleId; handoffFrom?: string }) => {
       try {
         const id = await invoke<string>("start_agent", { prompt, cwd, model: model ?? null });
         if (meta && (meta.role || meta.handoffFrom)) {
@@ -179,7 +184,11 @@ export function useAgentManager() {
               ? {
                   ...s,
                   logs: [
-                    { timestamp: Date.now(), type: "system" as const, content: `Starting agent: ${prompt.slice(0, 100)}` },
+                    {
+                      timestamp: Date.now(),
+                      type: "system" as const,
+                      content: `Starting agent: ${prompt.slice(0, 100)}`,
+                    },
                   ],
                   role: meta?.role ?? s.role,
                   handoffFrom: meta?.handoffFrom ?? s.handoffFrom,
@@ -198,7 +207,13 @@ export function useAgentManager() {
           model: model ?? "sonnet",
           prompt,
           startedAt: Date.now(),
-          logs: [{ timestamp: Date.now(), type: "error", content: `Failed to start: ${String(err)}. Is 'claude' CLI installed?` }],
+          logs: [
+            {
+              timestamp: Date.now(),
+              type: "error",
+              content: `Failed to start: ${String(err)}. Is 'claude' CLI installed?`,
+            },
+          ],
           cost: 0,
           tokensUsed: 0,
           role: meta?.role,
@@ -215,18 +230,18 @@ export function useAgentManager() {
   const stopAgent = useCallback(async (id: string) => {
     try {
       await invoke("stop_agent", { id });
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     // Cleanup listeners regardless of invoke result
     const unlistens = unlistenRefs.current.get(id);
     unlistens?.forEach((fn) => fn());
     unlistenRefs.current.delete(id);
     roleMetaRef.current.delete(id);
     // Mark session as done immediately (don't wait for event)
-    setSessions((prev) =>
-      prev.map((s) => s.id === id ? { ...s, status: "done" as AgentStatus } : s)
-    );
+    setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, status: "done" as AgentStatus } : s)));
     // Reset active session if this was the active one
-    setActiveSessionId((prev) => prev === id ? null : prev);
+    setActiveSessionId((prev) => (prev === id ? null : prev));
   }, []);
 
   // Cleanup all listeners on unmount
@@ -238,7 +253,7 @@ export function useAgentManager() {
   }, []);
 
   const renameSession = useCallback((id: string, newName: string) => {
-    setSessions((prev) => prev.map((s) => s.id === id ? { ...s, name: newName } : s));
+    setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, name: newName } : s)));
   }, []);
 
   return {

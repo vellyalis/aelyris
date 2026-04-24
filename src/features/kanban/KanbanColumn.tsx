@@ -1,7 +1,7 @@
 import { memo, useCallback, useState } from "react";
-import type { KanbanTask, KanbanColumnId } from "../../shared/types/kanban";
-import { KanbanCard } from "./KanbanCard";
+import type { KanbanColumnId, KanbanTask } from "../../shared/types/kanban";
 import styles from "./KanbanBoard.module.css";
+import { KanbanCard } from "./KanbanCard";
 
 interface KanbanColumnProps {
   columnId: KanbanColumnId;
@@ -16,7 +16,15 @@ interface KanbanColumnProps {
 }
 
 export const KanbanColumn = memo(function KanbanColumn({
-  columnId, label, color, tasks, activeTaskId, onDrop, onStartAgent, onDelete, onActivate,
+  columnId,
+  label,
+  color,
+  tasks,
+  activeTaskId,
+  onDrop,
+  onStartAgent,
+  onDelete,
+  onActivate,
 }: KanbanColumnProps) {
   const [dragHover, setDragHover] = useState(false);
 
@@ -34,12 +42,15 @@ export const KanbanColumn = memo(function KanbanColumn({
     }
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setDragHover(false);
-    const taskId = e.dataTransfer.getData("taskId");
-    if (taskId) onDrop(taskId, columnId);
-  }, [onDrop, columnId]);
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragHover(false);
+      const taskId = e.dataTransfer.getData("taskId");
+      if (taskId) onDrop(taskId, columnId);
+    },
+    [onDrop, columnId],
+  );
 
   return (
     <div
@@ -64,9 +75,7 @@ export const KanbanColumn = memo(function KanbanColumn({
             onActivate={onActivate}
           />
         ))}
-        {dragHover && (
-          <div className={styles.dropPlaceholder} aria-hidden="true" />
-        )}
+        {dragHover && <div className={styles.dropPlaceholder} aria-hidden="true" />}
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
-import type { PaneNode, TerminalLeaf, SplitDirection } from "./types";
-import { splitDirectionToTree } from "./types";
 import type { ShellType } from "../../../App";
+import type { PaneNode, SplitDirection, TerminalLeaf } from "./types";
+import { splitDirectionToTree } from "./types";
 
 function uid(): string {
   return crypto.randomUUID().slice(0, 8);

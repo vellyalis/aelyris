@@ -14,7 +14,8 @@
   user-select: none;
 }
 
-.left, .right {
+.left,
+.right {
   display: flex;
   gap: var(--space-4);
   align-items: center;
@@ -141,11 +142,24 @@
   gap: var(--space-1);
   font-family: var(--font-ui);
   font-size: var(--text-sm);
-  transition: background var(--duration-fast), color var(--duration-fast), border-color var(--duration-fast);
+  transition:
+    background var(--duration-fast),
+    color var(--duration-fast),
+    border-color var(--duration-fast);
 }
-.actionBtn:hover { background: var(--white-6); color: var(--text-primary); border-color: var(--white-10); }
-.actionBtn:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
-.actionBtnActive { color: var(--status-done); border-color: color-mix(in srgb, var(--status-done) 30%, transparent); }
+.actionBtn:hover {
+  background: var(--white-6);
+  color: var(--text-primary);
+  border-color: var(--white-10);
+}
+.actionBtn:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 1px;
+}
+.actionBtnActive {
+  color: var(--status-done);
+  border-color: color-mix(in srgb, var(--status-done) 30%, transparent);
+}
 
 .repairBadge {
   min-width: 16px;

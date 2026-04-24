@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook, act } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAutoFix } from "../shared/hooks/useAutoFix";
 import type { DetectedError } from "../shared/lib/errorDetector";
 
@@ -21,7 +21,7 @@ describe("useAutoFix", () => {
       useAutoFix({
         onStartAgent: mockStartAgent,
         projectPath: "/project",
-      })
+      }),
     );
 
     await act(async () => {
@@ -40,7 +40,7 @@ describe("useAutoFix", () => {
       useAutoFix({
         onStartAgent: mockStartAgent,
         projectPath: "/project",
-      })
+      }),
     );
 
     await act(async () => {
@@ -61,7 +61,7 @@ describe("useAutoFix", () => {
         onStartAgent: mockStartAgent,
         projectPath: "/project",
         enabled: true,
-      })
+      }),
     );
 
     await act(async () => {
@@ -80,7 +80,7 @@ describe("useAutoFix", () => {
         onStartAgent: mockStartAgent,
         projectPath: "/project",
         enabled: false,
-      })
+      }),
     );
 
     act(() => {

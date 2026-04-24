@@ -9,12 +9,7 @@
  * later mouse-move crosses the anchor.
  */
 
-import {
-  CellAttr,
-  hasAttr,
-  type CellSnapshot,
-  type GridSnapshot,
-} from "../../shared/types/terminal";
+import { CellAttr, type CellSnapshot, type GridSnapshot, hasAttr } from "../../shared/types/terminal";
 
 export interface CellPoint {
   row: number;
@@ -37,9 +32,7 @@ export interface NormalizedRange {
 /** Order the two endpoints so `top` is before `bottom` in reading order. */
 export function normalizeRange(range: SelectionRange): NormalizedRange {
   const { anchor, focus } = range;
-  const anchorBefore =
-    anchor.row < focus.row ||
-    (anchor.row === focus.row && anchor.col <= focus.col);
+  const anchorBefore = anchor.row < focus.row || (anchor.row === focus.row && anchor.col <= focus.col);
   const start = anchorBefore ? anchor : focus;
   const end = anchorBefore ? focus : anchor;
   return {
@@ -51,11 +44,7 @@ export function normalizeRange(range: SelectionRange): NormalizedRange {
 }
 
 /** True if a (row, col) cell falls inside the selection's inclusive range. */
-export function isCellSelected(
-  row: number,
-  col: number,
-  range: SelectionRange,
-): boolean {
+export function isCellSelected(row: number, col: number, range: SelectionRange): boolean {
   const n = normalizeRange(range);
   if (row < n.topRow || row > n.bottomRow) return false;
   if (row === n.topRow && row === n.bottomRow) {
@@ -76,11 +65,7 @@ export interface RowSelection {
   endColExclusive: number;
 }
 
-export function rowSelection(
-  row: number,
-  range: SelectionRange,
-  cols: number,
-): RowSelection | null {
+export function rowSelection(row: number, range: SelectionRange, cols: number): RowSelection | null {
   const n = normalizeRange(range);
   if (row < n.topRow || row > n.bottomRow) return null;
   const start = row === n.topRow ? n.topCol : 0;
@@ -96,10 +81,7 @@ export function rowSelection(
  *   selection doesn't yield a sea of padding spaces.
  * - Rows are joined with `\n`. The bottom row never gets a trailing newline.
  */
-export function extractSelection(
-  snapshot: GridSnapshot,
-  range: SelectionRange,
-): string {
+export function extractSelection(snapshot: GridSnapshot, range: SelectionRange): string {
   const n = normalizeRange(range);
   const out: string[] = [];
 
@@ -120,11 +102,7 @@ export function extractSelection(
   return out.join("\n");
 }
 
-function extractRow(
-  cells: CellSnapshot[],
-  startCol: number,
-  endColExclusive: number,
-): string {
+function extractRow(cells: CellSnapshot[], startCol: number, endColExclusive: number): string {
   const end = Math.min(endColExclusive, cells.length);
   let buf = "";
   for (let col = startCol; col < end; col++) {
@@ -143,11 +121,7 @@ function extractRow(
  * `\w` (word characters) or symmetric runs of non-word, non-space punctuation.
  * Spaces select just themselves. Wide-char spacers cling to their owner.
  */
-export function wordRangeAt(
-  snapshot: GridSnapshot,
-  row: number,
-  col: number,
-): SelectionRange | null {
+export function wordRangeAt(snapshot: GridSnapshot, row: number, col: number): SelectionRange | null {
   const cells = snapshot.cells[row];
   if (!cells) return null;
   const clamped = Math.min(Math.max(col, 0), cells.length - 1);
@@ -177,10 +151,7 @@ export function wordRangeAt(
 }
 
 /** Expand to the full row. */
-export function lineRangeAt(
-  snapshot: GridSnapshot,
-  row: number,
-): SelectionRange | null {
+export function lineRangeAt(snapshot: GridSnapshot, row: number): SelectionRange | null {
   const cells = snapshot.cells[row];
   if (!cells || cells.length === 0) return null;
   return {

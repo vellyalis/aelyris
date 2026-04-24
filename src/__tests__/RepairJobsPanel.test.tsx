@@ -1,4 +1,4 @@
-import { render, cleanup, fireEvent } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RepairJobsPanel } from "../features/repair/RepairJobsPanel";

@@ -15,12 +15,12 @@ const AI_CLI_COMMAND = /^(?:claude|claude-code|codex|gemini|aider|cursor-agent|m
  * is a no-op while we are already in session.
  */
 const START_PROMPT: readonly RegExp[] = [
-  /^PS [A-Za-z]:\\[^>]*>\s*(.*)$/,                  // PowerShell
-  /^[A-Za-z]:\\[^>]*>\s*(.*)$/,                      // CMD
-  /^[^\s@]+@[^\s]+[:\s][^\s][^#$]*[#$]\s+(.*)$/,    // bash/zsh user@host
-  /^\$\s+(.*)$/,                                     // bare `$ cmd`   (Git Bash 2-line, simple zsh)
-  /^#\s+(.*)$/,                                      // root `# cmd`
-  /^[>❯λ➜→]\s+(.*)$/,                               // chevron / lambda
+  /^PS [A-Za-z]:\\[^>]*>\s*(.*)$/, // PowerShell
+  /^[A-Za-z]:\\[^>]*>\s*(.*)$/, // CMD
+  /^[^\s@]+@[^\s]+[:\s][^\s][^#$]*[#$]\s+(.*)$/, // bash/zsh user@host
+  /^\$\s+(.*)$/, // bare `$ cmd`   (Git Bash 2-line, simple zsh)
+  /^#\s+(.*)$/, // root `# cmd`
+  /^[>❯λ➜→]\s+(.*)$/, // chevron / lambda
 ];
 
 /**
@@ -33,9 +33,9 @@ const START_PROMPT: readonly RegExp[] = [
  * close, but the Ctrl+Shift+J toggle still works.
  */
 const END_PROMPT: readonly RegExp[] = [
-  /^PS [A-Za-z]:\\[^>]*>\s*/,                        // PowerShell
-  /^[A-Za-z]:\\[^>]*>\s*/,                            // CMD
-  /^[^\s@]+@[^\s]+[:\s][^\s][^#$]*[#$]\s+/,          // bash/zsh user@host
+  /^PS [A-Za-z]:\\[^>]*>\s*/, // PowerShell
+  /^[A-Za-z]:\\[^>]*>\s*/, // CMD
+  /^[^\s@]+@[^\s]+[:\s][^\s][^#$]*[#$]\s+/, // bash/zsh user@host
 ];
 
 function matchStartCommand(line: string): string | null {

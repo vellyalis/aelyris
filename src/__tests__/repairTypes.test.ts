@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  isPhaseActive,
-  repairPhaseLabel,
-  type RepairPhase,
-} from "../shared/types/repair";
+import { isPhaseActive, type RepairPhase, repairPhaseLabel } from "../shared/types/repair";
 
 describe("repairPhaseLabel", () => {
   const cases: Array<[RepairPhase, string]> = [

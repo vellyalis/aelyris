@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Play, CheckCircle, XCircle, Clock, ChevronRight, Loader, Workflow, Check, X } from "lucide-react";
+import { Check, CheckCircle, ChevronRight, Clock, Loader, Play, Workflow, X, XCircle } from "lucide-react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "../../shared/store/toastStore";
 import { showPrompt } from "../../shared/ui/PromptDialog";
 import styles from "./WorkflowPanel.module.css";
@@ -59,31 +59,37 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
   const [builderOpen, setBuilderOpen] = useState(false);
   const [expandedPhase, setExpandedPhase] = useState<string | null>(null);
 
-  const handleExportYaml = useCallback(async (yaml: string, opts?: { runAfterSave?: boolean }) => {
-    const filePath = `${projectPath}/.aether/workflows/custom-${Date.now()}.yaml`;
-    let saved = false;
-    try {
-      await invoke("write_file", { path: filePath, content: yaml });
-      toast.success("Workflow saved", filePath.split("/").pop());
-      saved = true;
-    } catch (err) {
-      toast.error("Save failed", String(err));
-    }
-    setBuilderOpen(false);
-    const refreshed = invoke<WorkflowSummary[]>("list_workflows", { projectPath })
-      .then((list) => { setWorkflows(list); return list; })
-      .catch(() => [] as WorkflowSummary[]);
-
-    if (saved && opts?.runAfterSave) {
-      const list = await refreshed;
-      const wf = list.find((w) => w.path === filePath) ?? list[list.length - 1];
-      if (wf) {
-        await handleStartRef.current?.(wf);
-      } else {
-        toast.error("Run failed", "Saved workflow did not reappear in the list");
+  const handleExportYaml = useCallback(
+    async (yaml: string, opts?: { runAfterSave?: boolean }) => {
+      const filePath = `${projectPath}/.aether/workflows/custom-${Date.now()}.yaml`;
+      let saved = false;
+      try {
+        await invoke("write_file", { path: filePath, content: yaml });
+        toast.success("Workflow saved", filePath.split("/").pop());
+        saved = true;
+      } catch (err) {
+        toast.error("Save failed", String(err));
       }
-    }
-  }, [projectPath]);
+      setBuilderOpen(false);
+      const refreshed = invoke<WorkflowSummary[]>("list_workflows", { projectPath })
+        .then((list) => {
+          setWorkflows(list);
+          return list;
+        })
+        .catch(() => [] as WorkflowSummary[]);
+
+      if (saved && opts?.runAfterSave) {
+        const list = await refreshed;
+        const wf = list.find((w) => w.path === filePath) ?? list[list.length - 1];
+        if (wf) {
+          await handleStartRef.current?.(wf);
+        } else {
+          toast.error("Run failed", "Saved workflow did not reappear in the list");
+        }
+      }
+    },
+    [projectPath],
+  );
 
   // handleStart is declared below (it depends on advancePhase which hasn't been
   // declared yet), so we hand the latest closure to handleExportYaml through a
@@ -92,15 +98,16 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
 
   // Load available workflows
   useEffect(() => {
-    invoke<WorkflowSummary[]>("list_workflows", { projectPath }).then(setWorkflows).catch(() => {});
+    invoke<WorkflowSummary[]>("list_workflows", { projectPath })
+      .then(setWorkflows)
+      .catch(() => {});
   }, [projectPath]);
 
   // Event-driven workflow status updates (with fallback polling)
   useEffect(() => {
     let active = true;
     const TERMINAL_STATUSES = new Set(["passed", "failed", "skipped"]);
-    const isFinished = (wf: WorkflowStatus) =>
-      wf.phases.every((p) => TERMINAL_STATUSES.has(p.status));
+    const isFinished = (wf: WorkflowStatus) => wf.phases.every((p) => TERMINAL_STATUSES.has(p.status));
 
     const processUpdate = (statuses: WorkflowStatus[]) => {
       if (!active) return;
@@ -118,73 +125,93 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
     import("@tauri-apps/api/event").then(({ listen }) => {
       listen<WorkflowStatus[]>("workflow-updated", (e) => {
         processUpdate(e.payload);
-      }).then((u) => { unlisten = u; });
+      }).then((u) => {
+        unlisten = u;
+      });
     });
 
     // Initial fetch + slow fallback poll (30s instead of 3s)
     const poll = () => {
       invoke<WorkflowStatus[]>("list_running_workflows")
         .then(processUpdate)
-        .catch(() => { if (active) setRunning([]); });
+        .catch(() => {
+          if (active) setRunning([]);
+        });
     };
     poll();
     const interval = setInterval(poll, 30_000);
 
-    return () => { active = false; clearInterval(interval); unlisten?.(); };
+    return () => {
+      active = false;
+      clearInterval(interval);
+      unlisten?.();
+    };
   }, []);
 
   const advancingRef = useRef(new Set<string>());
 
-  const advancePhase = useCallback(async (workflowId: string) => {
-    if (!onStartAgent) return;
-    // Prevent double execution if approve is clicked rapidly
-    if (advancingRef.current.has(workflowId)) return;
-    advancingRef.current.add(workflowId);
-    try {
-      const phase = await invoke<WorkflowPhaseInfo>("workflow_current_phase", { workflowId });
-      const sessionId = await onStartAgent(phase.prompt, phase.model);
-      if (sessionId) {
-        await invoke("workflow_set_agent", { workflowId, agentSessionId: sessionId });
+  const advancePhase = useCallback(
+    async (workflowId: string) => {
+      if (!onStartAgent) return;
+      // Prevent double execution if approve is clicked rapidly
+      if (advancingRef.current.has(workflowId)) return;
+      advancingRef.current.add(workflowId);
+      try {
+        const phase = await invoke<WorkflowPhaseInfo>("workflow_current_phase", { workflowId });
+        const sessionId = await onStartAgent(phase.prompt, phase.model);
+        if (sessionId) {
+          await invoke("workflow_set_agent", { workflowId, agentSessionId: sessionId });
+        }
+      } catch {
+        /* no more phases */
+      } finally {
+        advancingRef.current.delete(workflowId);
       }
-    } catch { /* no more phases */ }
-    finally { advancingRef.current.delete(workflowId); }
-  }, [onStartAgent]);
+    },
+    [onStartAgent],
+  );
 
-  const handleStart = useCallback(async (wf: WorkflowSummary, taskTitle?: string) => {
-    const title = taskTitle ?? wf.name;
-    try {
-      const status = await invoke<WorkflowStatus>("start_workflow", {
-        projectPath,
-        workflowPath: wf.path,
-        taskTitle: title,
-      });
-      setRunning((prev) => [...prev, status]);
-      toast.info("Workflow started", title);
-      await advancePhase(status.id);
-    } catch (e) {
-      toast.error("Workflow failed to start", String(e));
-    }
-  }, [projectPath, advancePhase]);
+  const handleStart = useCallback(
+    async (wf: WorkflowSummary, taskTitle?: string) => {
+      const title = taskTitle ?? wf.name;
+      try {
+        const status = await invoke<WorkflowStatus>("start_workflow", {
+          projectPath,
+          workflowPath: wf.path,
+          taskTitle: title,
+        });
+        setRunning((prev) => [...prev, status]);
+        toast.info("Workflow started", title);
+        await advancePhase(status.id);
+      } catch (e) {
+        toast.error("Workflow failed to start", String(e));
+      }
+    },
+    [projectPath, advancePhase],
+  );
   handleStartRef.current = handleStart;
 
-  const handleApprove = useCallback(async (workflowId: string) => {
-    const comment = await showPrompt("Approve phase", {
-      placeholder: "Optional comment (Enter to approve)...",
-      defaultValue: "",
-    });
-    if (comment === null) return; // cancelled
-    try {
-      const done = await invoke<boolean>("workflow_approve_gate", { workflowId });
-      if (done) {
-        toast.success("Workflow completed", "All phases passed");
-      } else {
-        toast.info("Phase approved", comment || "Advancing to next phase...");
-        await advancePhase(workflowId);
+  const handleApprove = useCallback(
+    async (workflowId: string) => {
+      const comment = await showPrompt("Approve phase", {
+        placeholder: "Optional comment (Enter to approve)...",
+        defaultValue: "",
+      });
+      if (comment === null) return; // cancelled
+      try {
+        const done = await invoke<boolean>("workflow_approve_gate", { workflowId });
+        if (done) {
+          toast.success("Workflow completed", "All phases passed");
+        } else {
+          toast.info("Phase approved", comment || "Advancing to next phase...");
+          await advancePhase(workflowId);
+        }
+      } catch (e) {
+        toast.error("Gate approval failed", String(e));
       }
-    } catch (e) {
-      toast.error("Gate approval failed", String(e));
-    }
-  }, [advancePhase]);
+    },
+    [advancePhase],
+  );
 
   const handleReject = useCallback(async (workflowId: string) => {
     // Confirm before rejecting — this stops the entire workflow
@@ -208,7 +235,12 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
 
   return (
     <div className={styles.panel} role="region" aria-label="Workflow panel">
-      <button className={styles.header} onClick={() => setExpanded(!expanded)} aria-expanded={expanded} aria-label="Toggle workflows">
+      <button
+        className={styles.header}
+        onClick={() => setExpanded(!expanded)}
+        aria-expanded={expanded}
+        aria-label="Toggle workflows"
+      >
         <ChevronRight size={12} className={`${styles.chevron} ${expanded ? styles.chevronOpen : ""}`} />
         <span className={styles.headerTitle}>Workflows</span>
         {running.length > 0 && <span className={styles.badge}>{running.length}</span>}
@@ -220,63 +252,76 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
           {running.map((wf) => {
             const totalCost = wf.phases.reduce((sum, p) => sum + p.cost, 0);
             return (
-            <div key={wf.id} className={styles.runningCard}>
-              <div className={styles.runningTitle}>
-                {wf.task_title}
-                {totalCost > 0 && <span className={styles.totalCost}>${totalCost.toFixed(2)}</span>}
-              </div>
-              <div className={styles.stepBar}>
-                {wf.phases.map((p, i) => {
-                  const phaseKey = `${wf.id}:${p.name}`;
-                  const isExpanded = expandedPhase === phaseKey;
-                  return (
-                  <div key={p.name} className={styles.stepWrapper}>
-                    <div
-                      className={`${styles.step} ${styles[`step_${p.status}`]}`}
-                      title={`${p.name}: ${p.status} (click to expand)`}
-                      onClick={() => setExpandedPhase(isExpanded ? null : phaseKey)}
-                      style={{ cursor: "pointer" }}
-                    >
-                      {STATUS_ICON[p.status]}
-                      <span className={styles.stepName}>{p.name}</span>
-                      {p.cost > 0 && <span className={styles.stepCost}>${p.cost.toFixed(2)}</span>}
-                      {p.status === "waiting_gate" && (
-                        <span className={styles.gateActions}>
-                          <button
-                            className={styles.approveBtn}
-                            onClick={(e) => { e.stopPropagation(); handleApprove(wf.id); }}
-                            title="Approve"
-                            aria-label="Approve gate"
-                          >
-                            <Check size={12} strokeWidth={2.25} aria-hidden="true" />
-                          </button>
-                          <button
-                            className={styles.rejectBtn}
-                            onClick={(e) => { e.stopPropagation(); handleReject(wf.id); }}
-                            title="Reject"
-                            aria-label="Reject gate"
-                          >
-                            <X size={12} strokeWidth={2.25} aria-hidden="true" />
-                          </button>
-                        </span>
-                      )}
-                      {i < wf.phases.length - 1 && <span className={styles.arrow}>→</span>}
-                    </div>
-                    {isExpanded && (
-                      <div className={styles.phaseDetail}>
-                        <div className={styles.phaseDetailRow}><span>Status:</span> <span>{p.status}</span></div>
-                        <div className={styles.phaseDetailRow}><span>Cost:</span> <span>${p.cost.toFixed(4)}</span></div>
-                        {p.agent_session_id && (
-                          <div className={styles.phaseDetailRow}><span>Agent:</span> <span className={styles.phaseDetailMono}>{p.agent_session_id.slice(0, 12)}</span></div>
+              <div key={wf.id} className={styles.runningCard}>
+                <div className={styles.runningTitle}>
+                  {wf.task_title}
+                  {totalCost > 0 && <span className={styles.totalCost}>${totalCost.toFixed(2)}</span>}
+                </div>
+                <div className={styles.stepBar}>
+                  {wf.phases.map((p, i) => {
+                    const phaseKey = `${wf.id}:${p.name}`;
+                    const isExpanded = expandedPhase === phaseKey;
+                    return (
+                      <div key={p.name} className={styles.stepWrapper}>
+                        <div
+                          className={`${styles.step} ${styles[`step_${p.status}`]}`}
+                          title={`${p.name}: ${p.status} (click to expand)`}
+                          onClick={() => setExpandedPhase(isExpanded ? null : phaseKey)}
+                          style={{ cursor: "pointer" }}
+                        >
+                          {STATUS_ICON[p.status]}
+                          <span className={styles.stepName}>{p.name}</span>
+                          {p.cost > 0 && <span className={styles.stepCost}>${p.cost.toFixed(2)}</span>}
+                          {p.status === "waiting_gate" && (
+                            <span className={styles.gateActions}>
+                              <button
+                                className={styles.approveBtn}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleApprove(wf.id);
+                                }}
+                                title="Approve"
+                                aria-label="Approve gate"
+                              >
+                                <Check size={12} strokeWidth={2.25} aria-hidden="true" />
+                              </button>
+                              <button
+                                className={styles.rejectBtn}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleReject(wf.id);
+                                }}
+                                title="Reject"
+                                aria-label="Reject gate"
+                              >
+                                <X size={12} strokeWidth={2.25} aria-hidden="true" />
+                              </button>
+                            </span>
+                          )}
+                          {i < wf.phases.length - 1 && <span className={styles.arrow}>→</span>}
+                        </div>
+                        {isExpanded && (
+                          <div className={styles.phaseDetail}>
+                            <div className={styles.phaseDetailRow}>
+                              <span>Status:</span> <span>{p.status}</span>
+                            </div>
+                            <div className={styles.phaseDetailRow}>
+                              <span>Cost:</span> <span>${p.cost.toFixed(4)}</span>
+                            </div>
+                            {p.agent_session_id && (
+                              <div className={styles.phaseDetailRow}>
+                                <span>Agent:</span>{" "}
+                                <span className={styles.phaseDetailMono}>{p.agent_session_id.slice(0, 12)}</span>
+                              </div>
+                            )}
+                          </div>
                         )}
                       </div>
-                    )}
-                  </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          );
+            );
           })}
 
           {/* Available workflows to start */}

@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
-import { Command } from "cmdk";
 import * as Dialog from "@radix-ui/react-dialog";
-import { motion, AnimatePresence } from "motion/react";
+import { Command } from "cmdk";
 import { ChevronRight } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { type ComponentType, useEffect, useMemo, useRef, useState } from "react";
 import { loadRecentCommands, recordRecentCommand } from "../../shared/lib/recentCommands";
 import styles from "./CommandPalette.module.css";
 
@@ -76,7 +76,12 @@ export function CommandPalette({ visible, onClose, commands }: CommandPalettePro
   };
 
   return (
-    <Dialog.Root open={visible} onOpenChange={(open) => { if (!open) onClose(); }}>
+    <Dialog.Root
+      open={visible}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
       <AnimatePresence>
         {visible && (
           <Dialog.Portal forceMount>
@@ -130,9 +135,15 @@ export function CommandPalette({ visible, onClose, commands }: CommandPalettePro
                   </Command.List>
                 </Command>
                 <div className={styles.footer}>
-                  <span><kbd>↑↓</kbd> navigate</span>
-                  <span><kbd>Enter</kbd> run</span>
-                  <span><kbd>Esc</kbd> close</span>
+                  <span>
+                    <kbd>↑↓</kbd> navigate
+                  </span>
+                  <span>
+                    <kbd>Enter</kbd> run
+                  </span>
+                  <span>
+                    <kbd>Esc</kbd> close
+                  </span>
                 </div>
               </motion.div>
             </Dialog.Content>
@@ -153,11 +164,7 @@ function CommandRow({ cmd, onRun }: CommandRowProps) {
   const keywordString = cmd.keywords?.join(" ") ?? "";
   const value = `${cmd.label} ${cmd.category ?? ""} ${keywordString}`.trim();
   return (
-    <Command.Item
-      value={value}
-      className={styles.item}
-      onSelect={() => onRun(cmd)}
-    >
+    <Command.Item value={value} className={styles.item} onSelect={() => onRun(cmd)}>
       <span className={styles.itemIcon}>
         {Icon ? <Icon size={14} /> : <ChevronRight size={12} className={styles.itemFallbackIcon} />}
       </span>

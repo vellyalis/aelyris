@@ -45,8 +45,13 @@
   outline: none;
 }
 
-.formInput:hover { border-color: var(--white-10); }
-.formInput:focus-visible { outline: none !important; border-color: var(--gold); }
+.formInput:hover {
+  border-color: var(--white-10);
+}
+.formInput:focus-visible {
+  outline: none !important;
+  border-color: var(--gold);
+}
 
 .formRow {
   display: flex;
@@ -64,7 +69,9 @@
   font-family: var(--font-ui);
   outline: none;
 }
-.formSelect:hover { border-color: var(--white-10); }
+.formSelect:hover {
+  border-color: var(--white-10);
+}
 
 .formSubmit {
   padding: var(--space-1) var(--space-6);
@@ -109,8 +116,13 @@
   animation: dropPulse 1.2s ease-in-out infinite;
 }
 @keyframes dropPulse {
-  0%, 100% { opacity: 0.55; }
-  50% { opacity: 1; }
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 .groupHeader {
@@ -131,7 +143,9 @@
   letter-spacing: 0.03em;
   transition: background var(--duration-fast);
 }
-.groupHeader:hover { background: var(--row-hover); }
+.groupHeader:hover {
+  background: var(--row-hover);
+}
 
 .chevron {
   flex-shrink: 0;
@@ -185,8 +199,13 @@
   cursor: grab;
   transition: background var(--duration-fast);
 }
-.item:hover { background: var(--row-hover); }
-.item:active { cursor: grabbing; opacity: 0.7; }
+.item:hover {
+  background: var(--row-hover);
+}
+.item:active {
+  cursor: grabbing;
+  opacity: 0.7;
+}
 
 .itemActive {
   background: rgba(200, 160, 80, 0.08);
@@ -221,11 +240,23 @@
   align-items: center;
   transition: opacity 0.1s;
 }
-.item:hover .itemAction { opacity: 1; }
-.itemAction:hover { color: var(--ctp-green); }
+.item:hover .itemAction {
+  opacity: 1;
+}
+.itemAction:hover {
+  color: var(--ctp-green);
+}
 
-.itemBranchIcon { color: var(--ctp-green); opacity: 0.6; flex-shrink: 0; }
-.itemAgentBadge { display: flex; align-items: center; flex-shrink: 0; }
+.itemBranchIcon {
+  color: var(--ctp-green);
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+.itemAgentBadge {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
 
 .itemDelete {
   background: none;
@@ -237,5 +268,9 @@
   opacity: 0;
   transition: opacity 0.1s;
 }
-.item:hover .itemDelete { opacity: 1; }
-.itemDelete:hover { color: var(--ctp-red); }
+.item:hover .itemDelete {
+  opacity: 1;
+}
+.itemDelete:hover {
+  color: var(--ctp-red);
+}

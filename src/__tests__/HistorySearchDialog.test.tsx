@@ -1,11 +1,7 @@
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  HistorySearchDialog,
-  showHistorySearch,
-  useHistorySearchStore,
-} from "../features/history/HistorySearchDialog";
+import { HistorySearchDialog, showHistorySearch, useHistorySearchStore } from "../features/history/HistorySearchDialog";
 import type { SearchHit } from "../shared/types/history";
 
 const invokeMock = vi.fn();
@@ -51,9 +47,7 @@ describe("HistorySearchDialog", () => {
   it("renders hits returned by semantic_search_history and calls onAccept on click", async () => {
     invokeMock.mockResolvedValue([hit("cargo test", 0.91)]);
     const onAccept = vi.fn();
-    const { findByPlaceholderText, findByText } = render(
-      <HistorySearchDialog onAccept={onAccept} />,
-    );
+    const { findByPlaceholderText, findByText } = render(<HistorySearchDialog onAccept={onAccept} />);
     act(() => {
       showHistorySearch();
     });
@@ -71,9 +65,7 @@ describe("HistorySearchDialog", () => {
   it("Enter activates the highlighted hit", async () => {
     invokeMock.mockResolvedValue([hit("pnpm build", 0.8)]);
     const onAccept = vi.fn();
-    const { findByPlaceholderText } = render(
-      <HistorySearchDialog onAccept={onAccept} />,
-    );
+    const { findByPlaceholderText } = render(<HistorySearchDialog onAccept={onAccept} />);
     act(() => {
       showHistorySearch();
     });
@@ -90,9 +82,7 @@ describe("HistorySearchDialog", () => {
 
   it("toggles the failed-only filter", async () => {
     invokeMock.mockResolvedValue([]);
-    const { findByPlaceholderText, getByText } = render(
-      <HistorySearchDialog onAccept={() => {}} />,
-    );
+    const { findByPlaceholderText, getByText } = render(<HistorySearchDialog onAccept={() => {}} />);
     act(() => {
       showHistorySearch();
     });

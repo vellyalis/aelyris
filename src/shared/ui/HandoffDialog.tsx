@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { create } from "zustand";
-import { MODEL_OPTIONS, getModelById } from "../types/model";
 import { ORCHESTRA_ROLES, type OrchestraRoleId } from "../lib/orchestrator";
+import { getModelById, MODEL_OPTIONS } from "../types/model";
 import styles from "./HandoffDialog.module.css";
 
 export interface HandoffResult {
@@ -96,7 +96,12 @@ export function HandoffDialog() {
   const model = getModelById(modelId);
 
   return (
-    <Dialog.Root open={open} onOpenChange={(o) => { if (!o) close(null); }}>
+    <Dialog.Root
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) close(null);
+      }}
+    >
       <Dialog.Portal>
         <Dialog.Overlay className={styles.overlay} />
         <Dialog.Content className={styles.panel} aria-describedby={undefined}>
@@ -106,19 +111,14 @@ export function HandoffDialog() {
           <div className={styles.modelRow}>
             <label className={styles.modelLabel}>Target model</label>
             <div className={styles.modelSelectWrap}>
-              <select
-                className={styles.modelSelect}
-                value={modelId}
-                onChange={(e) => setModelId(e.target.value)}
-              >
+              <select className={styles.modelSelect} value={modelId} onChange={(e) => setModelId(e.target.value)}>
                 {MODEL_OPTIONS.map((m) => (
-                  <option key={m.id} value={m.id}>{m.label}</option>
+                  <option key={m.id} value={m.id}>
+                    {m.label}
+                  </option>
                 ))}
               </select>
-              <span
-                className={styles.modelDot}
-                style={{ background: model?.color ?? "var(--ctp-blue)" }}
-              />
+              <span className={styles.modelDot} style={{ background: model?.color ?? "var(--ctp-blue)" }} />
             </div>
             <label className={styles.modelLabel} style={{ marginLeft: "var(--space-4)" }}>
               Role
@@ -156,7 +156,9 @@ export function HandoffDialog() {
             <span>Ctrl+Enter to send · Esc to cancel</span>
           </div>
           <div className={styles.actions}>
-            <button className={styles.cancelBtn} onClick={() => close(null)}>Cancel</button>
+            <button className={styles.cancelBtn} onClick={() => close(null)}>
+              Cancel
+            </button>
             <button className={styles.submitBtn} onClick={handleSubmit} disabled={!prompt.trim()}>
               Hand off
             </button>

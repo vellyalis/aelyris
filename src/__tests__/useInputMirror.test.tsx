@@ -1,11 +1,8 @@
 import { act, cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  useInputMirror,
-  type UseInputMirrorResult,
-} from "../features/terminal/hooks/useInputMirror";
+import { type UseInputMirrorResult, useInputMirror } from "../features/terminal/hooks/useInputMirror";
 
 interface HarnessProps {
   element: HTMLElement | null;
@@ -16,14 +13,7 @@ interface HarnessProps {
   exposeRef: (res: UseInputMirrorResult) => void;
 }
 
-function Harness({
-  element,
-  enabled,
-  suggestion,
-  onAccept,
-  onCommit,
-  exposeRef,
-}: HarnessProps): ReactNode {
+function Harness({ element, enabled, suggestion, onAccept, onCommit, exposeRef }: HarnessProps): ReactNode {
   const res = useInputMirror({ element, enabled, suggestion, onAccept, onCommit });
   exposeRef(res);
   return null;

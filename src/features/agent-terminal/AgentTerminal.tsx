@@ -1,12 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-
-import { TerminalCanvas } from "../terminal/TerminalCanvas";
-import { IMEInputBar, type IMEInputBarHandle } from "../terminal/IMEInputBar";
-import { getCliLabel, getCliColor, type AgentCliType } from "../../shared/types/interactiveAgent";
-import { STATUS_COLORS, STATUS_LABELS, type AgentStatus } from "../../shared/types/agent";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { type AgentStatus, STATUS_COLORS, STATUS_LABELS } from "../../shared/types/agent";
+import { type AgentCliType, getCliColor, getCliLabel } from "../../shared/types/interactiveAgent";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
+import { IMEInputBar, type IMEInputBarHandle } from "../terminal/IMEInputBar";
+import { TerminalCanvas } from "../terminal/TerminalCanvas";
 import styles from "./AgentTerminal.module.css";
 
 interface AgentTerminalProps {
@@ -71,9 +70,7 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
       pending = null;
       const next = compute();
       if (!next) return;
-      setDims((prev) =>
-        prev && prev.cols === next.cols && prev.rows === next.rows ? prev : next,
-      );
+      setDims((prev) => (prev && prev.cols === next.cols && prev.rows === next.rows ? prev : next));
     };
     const schedule = () => {
       if (pending !== null) window.clearTimeout(pending);
@@ -150,11 +147,7 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
   const accent = accentColor ?? getCliColor(cli);
 
   return (
-    <div
-      ref={areaRef}
-      className={styles.agentTerminal}
-      style={{ "--agent-accent": accent } as React.CSSProperties}
-    >
+    <div ref={areaRef} className={styles.agentTerminal} style={{ "--agent-accent": accent } as React.CSSProperties}>
       <div className={styles.statusBar}>
         <span className={styles.cliBadge} style={{ color: accent }}>
           {getCliLabel(cli)}
@@ -177,15 +170,9 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
             onInputRef={(el) => (canvasInputElRef.current = el)}
           />
         )}
-        {exited && (
-          <div className={styles.exitOverlay}>[Agent process exited]</div>
-        )}
+        {exited && <div className={styles.exitOverlay}>[Agent process exited]</div>}
       </div>
-      <IMEInputBar
-        ref={imeBarRef}
-        onSubmit={submitIme}
-        onRequestCanvasFocus={focusCanvas}
-      />
+      <IMEInputBar ref={imeBarRef} onSubmit={submitIme} onRequestCanvasFocus={focusCanvas} />
     </div>
   );
 }

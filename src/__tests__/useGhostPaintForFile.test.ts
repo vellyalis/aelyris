@@ -1,14 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-import {
-  computeRelativePath,
-  useGhostPaintForFile,
-} from "../features/editor/useGhostPaintForFile";
-import type {
-  FileDelta,
-  LayerSummary,
-} from "../shared/types/ghostdiff";
 import type { LineRange } from "../features/editor/ghostConflict";
 import type {
   DeltaDecoration,
@@ -18,6 +9,8 @@ import type {
   ViewZone,
   ViewZoneAccessor,
 } from "../features/editor/ghostPaint";
+import { computeRelativePath, useGhostPaintForFile } from "../features/editor/useGhostPaintForFile";
+import type { FileDelta, LayerSummary } from "../shared/types/ghostdiff";
 
 describe("computeRelativePath", () => {
   it("returns null for a null filePath", () => {
@@ -26,10 +19,7 @@ describe("computeRelativePath", () => {
 
   it("strips the project prefix and normalizes slashes", () => {
     expect(
-      computeRelativePath(
-        "C:\\Users\\owner\\Aether_Terminal\\src\\App.tsx",
-        "C:\\Users\\owner\\Aether_Terminal",
-      ),
+      computeRelativePath("C:\\Users\\owner\\Aether_Terminal\\src\\App.tsx", "C:\\Users\\owner\\Aether_Terminal"),
     ).toBe("src/App.tsx");
   });
 
@@ -42,18 +32,11 @@ describe("computeRelativePath", () => {
   });
 
   it("returns null when the file is outside the project", () => {
-    expect(
-      computeRelativePath("/other/src/a.ts", "/repo"),
-    ).toBeNull();
+    expect(computeRelativePath("/other/src/a.ts", "/repo")).toBeNull();
   });
 
   it("matches case-insensitively (Windows)", () => {
-    expect(
-      computeRelativePath(
-        "C:\\Users\\OWNER\\project\\src\\a.ts",
-        "C:\\Users\\owner\\project",
-      ),
-    ).toBe("src/a.ts");
+    expect(computeRelativePath("C:\\Users\\OWNER\\project\\src\\a.ts", "C:\\Users\\owner\\project")).toBe("src/a.ts");
   });
 
   it("returns the file as-is when no projectPath is provided", () => {
@@ -70,8 +53,7 @@ const listeners: Record<string, ListenHandler<unknown>> = {};
 const unlistenMock = vi.fn();
 
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: (cmd: string, args?: Record<string, unknown>) =>
-    invokeMock(cmd, args),
+  invoke: (cmd: string, args?: Record<string, unknown>) => invokeMock(cmd, args),
 }));
 
 vi.mock("@tauri-apps/api/event", () => ({
@@ -81,11 +63,7 @@ vi.mock("@tauri-apps/api/event", () => ({
   }),
 }));
 
-function makeLayer(
-  id: string,
-  filePaths: string[],
-  overrides: Partial<LayerSummary> = {},
-): LayerSummary {
+function makeLayer(id: string, filePaths: string[], overrides: Partial<LayerSummary> = {}): LayerSummary {
   // Default `isComplete: true` so paint tests exercise the ghost pass
   // without needing liveMode. Incomplete layers are covered explicitly by
   // the live-mode tests.
@@ -253,10 +231,7 @@ describe("useGhostPaintForFile (integration)", () => {
   it("clears dirty ranges when filePath changes so stale state cannot bleed", async () => {
     invokeMock.mockImplementation((cmd: string, args: Record<string, unknown>) => {
       if (cmd === "list_ghost_layers") {
-        return Promise.resolve([
-          makeLayer("l1", ["src/a.ts"]),
-          makeLayer("l2", ["src/b.ts"]),
-        ]);
+        return Promise.resolve([makeLayer("l1", ["src/a.ts"]), makeLayer("l2", ["src/b.ts"])]);
       }
       if (cmd === "get_ghost_layer_file") {
         return Promise.resolve(makeDelta(args.filePath as string));
@@ -293,11 +268,7 @@ describe("useGhostPaintForFile (integration)", () => {
 
     // Switch file: dirty ranges must reset, new file gets fresh paint.
     rerender({ filePath: "/repo/src/b.ts" });
-    await waitFor(() =>
-      expect(result.current.conflictCount === 0 && result.current.layerCount === 1).toBe(
-        true,
-      ),
-    );
+    await waitFor(() => expect(result.current.conflictCount === 0 && result.current.layerCount === 1).toBe(true));
   });
 
   it("reports zero layers when the open file is outside the project", async () => {
@@ -372,9 +343,7 @@ describe("useGhostPaintForFile (integration)", () => {
     // acceptAllInFile must also skip the layer — no apply IPC fired.
     const next = await act(() => result.current.acceptAllInFile());
     expect(next).toBeNull();
-    expect(
-      invokeMock.mock.calls.some(([cmd]) => cmd === "apply_ghost_file"),
-    ).toBe(false);
+    expect(invokeMock.mock.calls.some(([cmd]) => cmd === "apply_ghost_file")).toBe(false);
   });
 
   it("hasHunkAtLine / hunksAtLine resolve the anchor at the base line", async () => {
@@ -483,9 +452,7 @@ describe("useGhostPaintForFile (integration)", () => {
     const second = await result.current.acceptHunkAtLine(10);
     expect(second).toBeNull();
     // Only one apply_ghost_hunk call must have hit the backend.
-    const applyCalls = invokeMock.mock.calls.filter(
-      ([cmd]) => cmd === "apply_ghost_hunk",
-    );
+    const applyCalls = invokeMock.mock.calls.filter(([cmd]) => cmd === "apply_ghost_hunk");
     expect(applyCalls).toHaveLength(1);
 
     // Let the first one finish so the test doesn't dangle a promise.
@@ -522,18 +489,13 @@ describe("useGhostPaintForFile (integration)", () => {
     const next = await act(() => result.current.acceptHunkAtLine(999));
     expect(next).toBeNull();
     // apply_ghost_hunk must not be invoked.
-    expect(
-      invokeMock.mock.calls.some(([cmd]) => cmd === "apply_ghost_hunk"),
-    ).toBe(false);
+    expect(invokeMock.mock.calls.some(([cmd]) => cmd === "apply_ghost_hunk")).toBe(false);
   });
 
   it("acceptAllInFile invokes apply_ghost_file once per layer", async () => {
     invokeMock.mockImplementation((cmd: string, args: Record<string, unknown>) => {
       if (cmd === "list_ghost_layers") {
-        return Promise.resolve([
-          makeLayer("l1", ["src/foo.ts"]),
-          makeLayer("l2", ["src/foo.ts"]),
-        ]);
+        return Promise.resolve([makeLayer("l1", ["src/foo.ts"]), makeLayer("l2", ["src/foo.ts"])]);
       }
       if (cmd === "get_ghost_layer_file") {
         return Promise.resolve(makeDelta("src/foo.ts"));
@@ -563,19 +525,14 @@ describe("useGhostPaintForFile (integration)", () => {
     // Newest layer is applied last, so its updatedContent wins.
     expect(next).toBe("after-l2");
 
-    const applyCalls = invokeMock.mock.calls.filter(
-      ([cmd]) => cmd === "apply_ghost_file",
-    );
+    const applyCalls = invokeMock.mock.calls.filter(([cmd]) => cmd === "apply_ghost_file");
     expect(applyCalls).toHaveLength(2);
   });
 
   it("dismissFileLayers invokes dismiss_ghost_file per layer with the relative path", async () => {
     invokeMock.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
       if (cmd === "list_ghost_layers") {
-        return Promise.resolve([
-          makeLayer("l1", ["src/foo.ts", "src/bar.ts"]),
-          makeLayer("l2", ["src/foo.ts"]),
-        ]);
+        return Promise.resolve([makeLayer("l1", ["src/foo.ts", "src/bar.ts"]), makeLayer("l2", ["src/foo.ts"])]);
       }
       if (cmd === "get_ghost_layer_file") {
         return Promise.resolve(makeDelta("src/foo.ts"));
@@ -604,19 +561,14 @@ describe("useGhostPaintForFile (integration)", () => {
     await waitFor(() => expect(result.current.layerCount).toBe(2));
     const count = await act(() => result.current.dismissFileLayers());
     expect(count).toBe(2);
-    const dismissCalls = invokeMock.mock.calls.filter(
-      ([cmd]) => cmd === "dismiss_ghost_file",
-    );
+    const dismissCalls = invokeMock.mock.calls.filter(([cmd]) => cmd === "dismiss_ghost_file");
     expect(dismissCalls).toHaveLength(2);
   });
 
   it("dismissFileLayers reports only layers that actually cleared", async () => {
     invokeMock.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
       if (cmd === "list_ghost_layers") {
-        return Promise.resolve([
-          makeLayer("l1", ["src/foo.ts"]),
-          makeLayer("l2", ["src/foo.ts"]),
-        ]);
+        return Promise.resolve([makeLayer("l1", ["src/foo.ts"]), makeLayer("l2", ["src/foo.ts"])]);
       }
       if (cmd === "get_ghost_layer_file") {
         return Promise.resolve(makeDelta("src/foo.ts"));
@@ -646,9 +598,7 @@ describe("useGhostPaintForFile (integration)", () => {
   it("skips in-progress layers by default (live mode off)", async () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "list_ghost_layers") {
-        return Promise.resolve([
-          makeLayer("l1", ["src/foo.ts"], { isComplete: false }),
-        ]);
+        return Promise.resolve([makeLayer("l1", ["src/foo.ts"], { isComplete: false })]);
       }
       if (cmd === "get_ghost_layer_file") {
         return Promise.resolve(makeDelta("src/foo.ts"));
@@ -677,9 +627,7 @@ describe("useGhostPaintForFile (integration)", () => {
   it("paints in-progress layers when live mode is on", async () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "list_ghost_layers") {
-        return Promise.resolve([
-          makeLayer("l1", ["src/foo.ts"], { isComplete: false }),
-        ]);
+        return Promise.resolve([makeLayer("l1", ["src/foo.ts"], { isComplete: false })]);
       }
       if (cmd === "get_ghost_layer_file") {
         return Promise.resolve(makeDelta("src/foo.ts"));

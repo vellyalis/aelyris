@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
 /**
  * Tests for WorkflowPanel logic extracted from the component.
@@ -30,62 +30,82 @@ function filterRunning(workflows: WorkflowStatus[]): WorkflowStatus[] {
 
 describe("Workflow filtering", () => {
   it("keeps workflows with running phases", () => {
-    const wfs: WorkflowStatus[] = [{
-      id: "1", workflow_name: "bugfix", task_title: "Fix bug",
-      current_phase: 0,
-      phases: [
-        { name: "reproduce", status: "running" },
-        { name: "fix", status: "pending" },
-      ],
-    }];
+    const wfs: WorkflowStatus[] = [
+      {
+        id: "1",
+        workflow_name: "bugfix",
+        task_title: "Fix bug",
+        current_phase: 0,
+        phases: [
+          { name: "reproduce", status: "running" },
+          { name: "fix", status: "pending" },
+        ],
+      },
+    ];
     expect(filterRunning(wfs).length).toBe(1);
   });
 
   it("removes fully completed workflows", () => {
-    const wfs: WorkflowStatus[] = [{
-      id: "1", workflow_name: "bugfix", task_title: "Fix bug",
-      current_phase: 2,
-      phases: [
-        { name: "reproduce", status: "passed" },
-        { name: "fix", status: "passed" },
-      ],
-    }];
+    const wfs: WorkflowStatus[] = [
+      {
+        id: "1",
+        workflow_name: "bugfix",
+        task_title: "Fix bug",
+        current_phase: 2,
+        phases: [
+          { name: "reproduce", status: "passed" },
+          { name: "fix", status: "passed" },
+        ],
+      },
+    ];
     expect(filterRunning(wfs).length).toBe(0);
   });
 
   it("removes workflows where all phases are failed/skipped", () => {
-    const wfs: WorkflowStatus[] = [{
-      id: "1", workflow_name: "bugfix", task_title: "Fix bug",
-      current_phase: 0,
-      phases: [
-        { name: "reproduce", status: "failed" },
-        { name: "fix", status: "skipped" },
-      ],
-    }];
+    const wfs: WorkflowStatus[] = [
+      {
+        id: "1",
+        workflow_name: "bugfix",
+        task_title: "Fix bug",
+        current_phase: 0,
+        phases: [
+          { name: "reproduce", status: "failed" },
+          { name: "fix", status: "skipped" },
+        ],
+      },
+    ];
     expect(filterRunning(wfs).length).toBe(0);
   });
 
   it("keeps workflows with waiting_gate phase", () => {
-    const wfs: WorkflowStatus[] = [{
-      id: "1", workflow_name: "feature", task_title: "Feature",
-      current_phase: 1,
-      phases: [
-        { name: "implement", status: "passed" },
-        { name: "review", status: "waiting_gate" },
-      ],
-    }];
+    const wfs: WorkflowStatus[] = [
+      {
+        id: "1",
+        workflow_name: "feature",
+        task_title: "Feature",
+        current_phase: 1,
+        phases: [
+          { name: "implement", status: "passed" },
+          { name: "review", status: "waiting_gate" },
+        ],
+      },
+    ];
     expect(filterRunning(wfs).length).toBe(1);
   });
 
   it("handles mixed list of running and finished", () => {
     const wfs: WorkflowStatus[] = [
       {
-        id: "1", workflow_name: "a", task_title: "A",
+        id: "1",
+        workflow_name: "a",
+        task_title: "A",
         current_phase: 2,
         phases: [{ name: "p1", status: "passed" }],
       },
       {
-        id: "2", workflow_name: "b", task_title: "B",
+        id: "2",
+        workflow_name: "b",
+        task_title: "B",
         current_phase: 0,
         phases: [{ name: "p1", status: "running" }],
       },
@@ -96,11 +116,15 @@ describe("Workflow filtering", () => {
   });
 
   it("handles empty phases (edge case)", () => {
-    const wfs: WorkflowStatus[] = [{
-      id: "1", workflow_name: "empty", task_title: "Empty",
-      current_phase: 0,
-      phases: [],
-    }];
+    const wfs: WorkflowStatus[] = [
+      {
+        id: "1",
+        workflow_name: "empty",
+        task_title: "Empty",
+        current_phase: 0,
+        phases: [],
+      },
+    ];
     // Empty phases = every() returns true = isFinished
     expect(filterRunning(wfs).length).toBe(0);
   });

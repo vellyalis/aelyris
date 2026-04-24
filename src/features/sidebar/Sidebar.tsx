@@ -1,5 +1,5 @@
-import { FolderTree, Kanban, Bot, Wrench } from "lucide-react";
-import { useAppStore, type SidebarSection } from "../../shared/store/appStore";
+import { Bot, FolderTree, Kanban, Wrench } from "lucide-react";
+import { type SidebarSection, useAppStore } from "../../shared/store/appStore";
 import { Tooltip } from "../../shared/ui/Tooltip";
 import styles from "./Sidebar.module.css";
 

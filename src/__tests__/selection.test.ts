@@ -6,15 +6,10 @@ import {
   lineRangeAt,
   normalizeRange,
   rowSelection,
-  wordRangeAt,
   type SelectionRange,
+  wordRangeAt,
 } from "../features/terminal/selection";
-import {
-  CellAttr,
-  ColorKind,
-  type CellSnapshot,
-  type GridSnapshot,
-} from "../shared/types/terminal";
+import { CellAttr, type CellSnapshot, ColorKind, type GridSnapshot } from "../shared/types/terminal";
 
 function packNamed(n: number): number {
   return (ColorKind.NAMED << 24) | n;

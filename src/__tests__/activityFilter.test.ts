@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { collectActivity, filterActivity, LOG_TYPES, type LogType } from "../shared/lib/activityFilter";
 import type { AgentSession } from "../shared/types/agent";
 
@@ -69,7 +69,11 @@ describe("filterActivity", () => {
   });
 
   it("filters by multiple types", () => {
-    const result = filterActivity(entries, { query: "", types: new Set<LogType>(["text", "error"]), sessionIds: new Set() });
+    const result = filterActivity(entries, {
+      query: "",
+      types: new Set<LogType>(["text", "error"]),
+      sessionIds: new Set(),
+    });
     expect(result).toHaveLength(3);
   });
 

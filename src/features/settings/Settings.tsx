@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import * as Dialog from "@radix-ui/react-dialog";
+import { invoke } from "@tauri-apps/api/core";
+import { useEffect, useState } from "react";
 import { useAppStore } from "../../shared/store/appStore";
 import styles from "./Settings.module.css";
 
@@ -19,13 +19,7 @@ const THEMES = [
   { id: "dracula", label: "Dracula" },
 ];
 
-const FONTS = [
-  "IBM Plex Mono",
-  "Cascadia Code",
-  "JetBrains Mono",
-  "Fira Code",
-  "Consolas",
-];
+const FONTS = ["IBM Plex Mono", "Cascadia Code", "JetBrains Mono", "Fira Code", "Consolas"];
 
 const SHELLS = [
   { id: "powershell", label: "PowerShell" },
@@ -92,8 +86,22 @@ export function Settings({ visible, onClose }: SettingsProps) {
     setGhostDiffLiveMode(liveMode);
     invoke("save_app_config", {
       config: {
-        appearance: { theme, ui_font_family: "IBM Plex Sans", terminal_font_family: font, font_size: fontSize, line_height: lineHeight, ligatures, window_effect: "mica", opacity: 0.95 },
-        terminal: { default_shell: defaultShell, scrollback: 10000, cursor_style: cursorStyle, cursor_blink: cursorBlink },
+        appearance: {
+          theme,
+          ui_font_family: "IBM Plex Sans",
+          terminal_font_family: font,
+          font_size: fontSize,
+          line_height: lineHeight,
+          ligatures,
+          window_effect: "mica",
+          opacity: 0.95,
+        },
+        terminal: {
+          default_shell: defaultShell,
+          scrollback: 10000,
+          cursor_style: cursorStyle,
+          cursor_blink: cursorBlink,
+        },
         ghost_diff: { live_mode: liveMode },
       },
     }).catch(() => {});
@@ -101,14 +109,21 @@ export function Settings({ visible, onClose }: SettingsProps) {
   };
 
   return (
-    <Dialog.Root open={visible} onOpenChange={(o) => { if (!o) onClose(); }}>
+    <Dialog.Root
+      open={visible}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+    >
       <Dialog.Portal>
         <Dialog.Overlay className={styles.overlay} />
         <Dialog.Content className={styles.panel} aria-describedby={undefined}>
           <div className={styles.header}>
             <Dialog.Title className={styles.title}>Settings</Dialog.Title>
             <div style={{ display: "flex", gap: "var(--space-3)" }}>
-              <button type="button" className={styles.saveBtn} onClick={handleSave}>Save</button>
+              <button type="button" className={styles.saveBtn} onClick={handleSave}>
+                Save
+              </button>
               <Dialog.Close asChild>
                 <button type="button" className={styles.closeBtn} aria-label="Close settings">
                   <span aria-hidden="true">×</span>
@@ -117,113 +132,139 @@ export function Settings({ visible, onClose }: SettingsProps) {
             </div>
           </div>
 
-            <div className={styles.content}>
-              <section className={styles.section}>
-                <h3 className={styles.sectionTitle}>Appearance</h3>
-                <div className={styles.field}>
-                  <label className={styles.label}>Theme</label>
-                  <select className={styles.select} value={theme} onChange={(e) => setTheme(e.target.value)}>
-                    {THEMES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
-                  </select>
-                </div>
-                <div className={styles.field}>
-                  <label className={styles.label}>Terminal Font</label>
-                  <select className={styles.select} value={font} onChange={(e) => setFont(e.target.value)}>
-                    {FONTS.map((f) => <option key={f} value={f}>{f}</option>)}
-                  </select>
-                </div>
-                <div className={styles.row}>
-                  <div className={styles.field}>
-                    <label className={styles.label}>Font Size</label>
-                    <input type="number" className={styles.input} value={fontSize} min={10} max={24} onChange={(e) => setFontSize(Number(e.target.value))} />
-                  </div>
-                  <div className={styles.field}>
-                    <label className={styles.label}>Line Height</label>
-                    <input type="number" className={styles.input} value={lineHeight} min={1} max={2} step={0.1} onChange={(e) => setLineHeight(Number(e.target.value))} />
-                  </div>
-                </div>
-                <div className={styles.field}>
-                  <label className={styles.toggle}>
-                    <input type="checkbox" checked={ligatures} onChange={(e) => setLigatures(e.target.checked)} />
-                    <span>Font Ligatures</span>
-                  </label>
-                </div>
-              </section>
-
-              <section className={styles.section}>
-                <h3 className={styles.sectionTitle}>Terminal</h3>
-                <div className={styles.field}>
-                  <label className={styles.label}>Default Shell</label>
-                  <select className={styles.select} value={defaultShell} onChange={(e) => setDefaultShell(e.target.value)}>
-                    {SHELLS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-                  </select>
-                </div>
-                <div className={styles.field}>
-                  <label className={styles.label}>Cursor Style</label>
-                  <select className={styles.select} value={cursorStyle} onChange={(e) => setCursorStyle(e.target.value)}>
-                    <option value="bar">Bar</option>
-                    <option value="block">Block</option>
-                    <option value="underline">Underline</option>
-                  </select>
-                </div>
-                <div className={styles.field}>
-                  <label className={styles.toggle}>
-                    <input type="checkbox" checked={cursorBlink} onChange={(e) => setCursorBlink(e.target.checked)} />
-                    <span>Cursor Blink</span>
-                  </label>
-                </div>
-              </section>
-
-              <section className={styles.section}>
-                <h3 className={styles.sectionTitle}>Ghost Diff Overlay</h3>
-                <div className={styles.field}>
-                  <label className={styles.toggle}>
-                    <input
-                      type="checkbox"
-                      checked={liveMode}
-                      onChange={(e) => setLiveMode(e.target.checked)}
-                    />
-                    <span>Live mode (paint in-progress layers)</span>
-                  </label>
-                  <p className={styles.hint}>
-                    When off, ghost paint appears only after the agent run
-                    finishes. When on, every fs change from the agent's
-                    worktree streams into the editor as it happens.
-                  </p>
-                </div>
-              </section>
-
-              <section className={styles.section}>
-                <h3 className={styles.sectionTitle}>Keyboard Shortcuts</h3>
-                <div className={styles.shortcutList}>
-                  {[
-                    ["Command Palette", "Ctrl+Shift+P"],
-                    ["New Terminal", "Ctrl+Shift+T"],
-                    ["Close Terminal Tab", "Ctrl+Shift+W"],
-                    ["New File", "Ctrl+N"],
-                    ["Close Editor", "Ctrl+W"],
-                    ["Save", "Ctrl+S"],
-                    ["Find in File", "Ctrl+F"],
-                    ["Replace", "Ctrl+H"],
-                    ["Go to Line", "Ctrl+G"],
-                    ["Search in Files", "Ctrl+Shift+F"],
-                    ["Open Folder", "Ctrl+Shift+O"],
-                    ["Explorer Focus", "Ctrl+Shift+E"],
-                    ["Start Agent", "Ctrl+Shift+A"],
-                    ["Split Horizontal", "Ctrl+Shift+H"],
-                    ["Split Vertical", "Ctrl+Shift+V"],
-                    ["Session Jump", "Ctrl+0-9"],
-                    ["Prev/Next Session", "Ctrl+[ / ]"],
-                    ["Settings", "Ctrl+,"],
-                  ].map(([action, key]) => (
-                    <div key={action} className={styles.shortcutRow}>
-                      <span>{action}</span>
-                      <kbd className={styles.kbd}>{key}</kbd>
-                    </div>
+          <div className={styles.content}>
+            <section className={styles.section}>
+              <h3 className={styles.sectionTitle}>Appearance</h3>
+              <div className={styles.field}>
+                <label className={styles.label}>Theme</label>
+                <select className={styles.select} value={theme} onChange={(e) => setTheme(e.target.value)}>
+                  {THEMES.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.label}
+                    </option>
                   ))}
+                </select>
+              </div>
+              <div className={styles.field}>
+                <label className={styles.label}>Terminal Font</label>
+                <select className={styles.select} value={font} onChange={(e) => setFont(e.target.value)}>
+                  {FONTS.map((f) => (
+                    <option key={f} value={f}>
+                      {f}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className={styles.row}>
+                <div className={styles.field}>
+                  <label className={styles.label}>Font Size</label>
+                  <input
+                    type="number"
+                    className={styles.input}
+                    value={fontSize}
+                    min={10}
+                    max={24}
+                    onChange={(e) => setFontSize(Number(e.target.value))}
+                  />
                 </div>
-              </section>
-            </div>
+                <div className={styles.field}>
+                  <label className={styles.label}>Line Height</label>
+                  <input
+                    type="number"
+                    className={styles.input}
+                    value={lineHeight}
+                    min={1}
+                    max={2}
+                    step={0.1}
+                    onChange={(e) => setLineHeight(Number(e.target.value))}
+                  />
+                </div>
+              </div>
+              <div className={styles.field}>
+                <label className={styles.toggle}>
+                  <input type="checkbox" checked={ligatures} onChange={(e) => setLigatures(e.target.checked)} />
+                  <span>Font Ligatures</span>
+                </label>
+              </div>
+            </section>
+
+            <section className={styles.section}>
+              <h3 className={styles.sectionTitle}>Terminal</h3>
+              <div className={styles.field}>
+                <label className={styles.label}>Default Shell</label>
+                <select
+                  className={styles.select}
+                  value={defaultShell}
+                  onChange={(e) => setDefaultShell(e.target.value)}
+                >
+                  {SHELLS.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className={styles.field}>
+                <label className={styles.label}>Cursor Style</label>
+                <select className={styles.select} value={cursorStyle} onChange={(e) => setCursorStyle(e.target.value)}>
+                  <option value="bar">Bar</option>
+                  <option value="block">Block</option>
+                  <option value="underline">Underline</option>
+                </select>
+              </div>
+              <div className={styles.field}>
+                <label className={styles.toggle}>
+                  <input type="checkbox" checked={cursorBlink} onChange={(e) => setCursorBlink(e.target.checked)} />
+                  <span>Cursor Blink</span>
+                </label>
+              </div>
+            </section>
+
+            <section className={styles.section}>
+              <h3 className={styles.sectionTitle}>Ghost Diff Overlay</h3>
+              <div className={styles.field}>
+                <label className={styles.toggle}>
+                  <input type="checkbox" checked={liveMode} onChange={(e) => setLiveMode(e.target.checked)} />
+                  <span>Live mode (paint in-progress layers)</span>
+                </label>
+                <p className={styles.hint}>
+                  When off, ghost paint appears only after the agent run finishes. When on, every fs change from the
+                  agent's worktree streams into the editor as it happens.
+                </p>
+              </div>
+            </section>
+
+            <section className={styles.section}>
+              <h3 className={styles.sectionTitle}>Keyboard Shortcuts</h3>
+              <div className={styles.shortcutList}>
+                {[
+                  ["Command Palette", "Ctrl+Shift+P"],
+                  ["New Terminal", "Ctrl+Shift+T"],
+                  ["Close Terminal Tab", "Ctrl+Shift+W"],
+                  ["New File", "Ctrl+N"],
+                  ["Close Editor", "Ctrl+W"],
+                  ["Save", "Ctrl+S"],
+                  ["Find in File", "Ctrl+F"],
+                  ["Replace", "Ctrl+H"],
+                  ["Go to Line", "Ctrl+G"],
+                  ["Search in Files", "Ctrl+Shift+F"],
+                  ["Open Folder", "Ctrl+Shift+O"],
+                  ["Explorer Focus", "Ctrl+Shift+E"],
+                  ["Start Agent", "Ctrl+Shift+A"],
+                  ["Split Horizontal", "Ctrl+Shift+H"],
+                  ["Split Vertical", "Ctrl+Shift+V"],
+                  ["Session Jump", "Ctrl+0-9"],
+                  ["Prev/Next Session", "Ctrl+[ / ]"],
+                  ["Settings", "Ctrl+,"],
+                ].map(([action, key]) => (
+                  <div key={action} className={styles.shortcutRow}>
+                    <span>{action}</span>
+                    <kbd className={styles.kbd}>{key}</kbd>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>

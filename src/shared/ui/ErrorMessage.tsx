@@ -1,5 +1,5 @@
-import { memo } from "react";
 import { AlertCircle } from "lucide-react";
+import { memo } from "react";
 
 interface ErrorMessageProps {
   message: string;
@@ -11,8 +11,13 @@ export const ErrorMessage = memo(function ErrorMessage({ message, onRetry }: Err
     <div
       role="alert"
       style={{
-        display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--space-4)",
-        padding: "var(--space-8)", color: "var(--ctp-red)", fontSize: "var(--text-md)",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: "var(--space-4)",
+        padding: "var(--space-8)",
+        color: "var(--ctp-red)",
+        fontSize: "var(--text-md)",
       }}
     >
       <AlertCircle size={20} aria-hidden="true" />
@@ -22,9 +27,13 @@ export const ErrorMessage = memo(function ErrorMessage({ message, onRetry }: Err
           type="button"
           onClick={onRetry}
           style={{
-            background: "none", border: "1px solid var(--ctp-red)", color: "var(--ctp-red)",
-            padding: "var(--space-2) var(--space-6)", borderRadius: "var(--radius-sm)",
-            fontSize: "var(--text-sm)", cursor: "pointer",
+            background: "none",
+            border: "1px solid var(--ctp-red)",
+            color: "var(--ctp-red)",
+            padding: "var(--space-2) var(--space-6)",
+            borderRadius: "var(--radius-sm)",
+            fontSize: "var(--text-sm)",
+            cursor: "pointer",
           }}
         >
           Retry

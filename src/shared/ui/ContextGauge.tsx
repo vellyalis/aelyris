@@ -24,7 +24,9 @@ export const ContextGauge = memo(function ContextGauge({ percent, width = 60 }: 
           style={{ width: `${Math.min(100, percent)}%`, background: color }}
         />
       </div>
-      <span className={styles.label} style={{ color }}>{Math.round(percent)}%</span>
+      <span className={styles.label} style={{ color }}>
+        {Math.round(percent)}%
+      </span>
     </div>
   );
 });

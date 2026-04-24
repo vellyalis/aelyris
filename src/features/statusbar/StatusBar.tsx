@@ -1,9 +1,9 @@
+import { Cpu, FileText, GitBranch, Layers, Wrench } from "lucide-react";
 import { useState } from "react";
-import { GitBranch, FileText, Cpu, Wrench, Layers } from "lucide-react";
-import { useRepairJobs } from "../../shared/hooks/useRepairJobs";
 import { useGhostLayers } from "../../shared/hooks/useGhostLayers";
-import { RepairJobsPanel } from "../repair/RepairJobsPanel";
+import { useRepairJobs } from "../../shared/hooks/useRepairJobs";
 import { GhostDiffPanel } from "../ghost-diff/GhostDiffPanel";
+import { RepairJobsPanel } from "../repair/RepairJobsPanel";
 import styles from "./StatusBar.module.css";
 
 interface StatusBarProps {
@@ -18,11 +18,7 @@ export function StatusBar({ shell, branch, changedCount, encoding = "UTF-8", age
   const [repairOpen, setRepairOpen] = useState(false);
   const [ghostOpen, setGhostOpen] = useState(false);
   const { jobs, activeCount, config, setEnabled } = useRepairJobs();
-  const {
-    layers: ghostLayers,
-    activeCount: ghostActiveCount,
-    dismiss: dismissGhost,
-  } = useGhostLayers();
+  const { layers: ghostLayers, activeCount: ghostActiveCount, dismiss: dismissGhost } = useGhostLayers();
 
   const repairActive = config.enabled || activeCount > 0;
   const ghostActive = ghostLayers.length > 0;
@@ -79,9 +75,7 @@ export function StatusBar({ shell, branch, changedCount, encoding = "UTF-8", age
           aria-expanded={ghostOpen}
         >
           <Layers size={11} strokeWidth={1.75} aria-hidden="true" />
-          {ghostActiveCount > 0 && (
-            <span className={styles.repairBadge}>{ghostActiveCount}</span>
-          )}
+          {ghostActiveCount > 0 && <span className={styles.repairBadge}>{ghostActiveCount}</span>}
         </button>
       </div>
       {repairOpen && (
@@ -93,11 +87,7 @@ export function StatusBar({ shell, branch, changedCount, encoding = "UTF-8", age
         />
       )}
       {ghostOpen && (
-        <GhostDiffPanel
-          layers={ghostLayers}
-          onDismiss={dismissGhost}
-          onClose={() => setGhostOpen(false)}
-        />
+        <GhostDiffPanel layers={ghostLayers} onDismiss={dismissGhost} onClose={() => setGhostOpen(false)} />
       )}
     </div>
   );

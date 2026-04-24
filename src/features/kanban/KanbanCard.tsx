@@ -1,5 +1,5 @@
+import { GitBranch, Play, X } from "lucide-react";
 import { memo } from "react";
-import { Play, GitBranch, X } from "lucide-react";
 import type { KanbanTask } from "../../shared/types/kanban";
 import { PRIORITY_COLORS } from "../../shared/types/kanban";
 import styles from "./KanbanBoard.module.css";
@@ -12,7 +12,13 @@ interface KanbanCardProps {
   onActivate?: (id: string) => void;
 }
 
-export const KanbanCard = memo(function KanbanCard({ task, isActive, onStartAgent, onDelete, onActivate }: KanbanCardProps) {
+export const KanbanCard = memo(function KanbanCard({
+  task,
+  isActive,
+  onStartAgent,
+  onDelete,
+  onActivate,
+}: KanbanCardProps) {
   const priorityColor = PRIORITY_COLORS[task.priority ?? "medium"];
 
   return (
@@ -26,11 +32,7 @@ export const KanbanCard = memo(function KanbanCard({ task, isActive, onStartAgen
         // anchor instead of seeing the browser default outline. Offset by the
         // pointer so it feels like they're holding the card at the grab point.
         const rect = e.currentTarget.getBoundingClientRect();
-        e.dataTransfer.setDragImage(
-          e.currentTarget,
-          e.clientX - rect.left,
-          e.clientY - rect.top,
-        );
+        e.dataTransfer.setDragImage(e.currentTarget, e.clientX - rect.left, e.clientY - rect.top);
       }}
       onClick={() => onActivate?.(task.id)}
     >
@@ -47,7 +49,10 @@ export const KanbanCard = memo(function KanbanCard({ task, isActive, onStartAgen
           {(task.column === "todo" || task.column === "in_progress") && onStartAgent && (
             <button
               className={styles.cardBtn}
-              onClick={(e) => { e.stopPropagation(); onStartAgent(task.title); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onStartAgent(task.title);
+              }}
               title="Start Agent"
               aria-label="Start agent for task"
             >
@@ -56,7 +61,10 @@ export const KanbanCard = memo(function KanbanCard({ task, isActive, onStartAgen
           )}
           <button
             className={styles.cardBtn}
-            onClick={(e) => { e.stopPropagation(); onDelete?.(task.id); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete?.(task.id);
+            }}
             title="Delete"
             aria-label="Delete task"
           >

@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  ORCHESTRA_ROLES,
-  buildOrchestraPrompts,
-  detectFileConflicts,
-  getRole,
-} from "../shared/lib/orchestrator";
+import { buildOrchestraPrompts, detectFileConflicts, getRole, ORCHESTRA_ROLES } from "../shared/lib/orchestrator";
 
 describe("ORCHESTRA_ROLES", () => {
   it("exposes 4 distinct ids with icon + color", () => {
@@ -75,35 +70,23 @@ describe("detectFileConflicts", () => {
   });
 
   it("returns empty when no overlap", () => {
-    const conflicts = detectFileConflicts([
-      base("a", ["x"]),
-      base("b", ["y"]),
-    ]);
+    const conflicts = detectFileConflicts([base("a", ["x"]), base("b", ["y"])]);
     expect(conflicts).toEqual([]);
   });
 
   it("ignores sessions without changedFileDetails", () => {
-    const conflicts = detectFileConflicts([
-      { id: "a" },
-      { id: "b", changedFileDetails: [{ path: "shared" }] },
-    ]);
+    const conflicts = detectFileConflicts([{ id: "a" }, { id: "b", changedFileDetails: [{ path: "shared" }] }]);
     expect(conflicts).toEqual([]);
   });
 
   it("deduplicates sessions editing the same path twice", () => {
-    const conflicts = detectFileConflicts([
-      base("a", ["same", "same"]),
-      base("b", ["same"]),
-    ]);
+    const conflicts = detectFileConflicts([base("a", ["same", "same"]), base("b", ["same"])]);
     expect(conflicts).toHaveLength(1);
     expect(conflicts[0].sessionIds).toEqual(["a", "b"]);
   });
 
   it("orders conflicts alphabetically by path", () => {
-    const conflicts = detectFileConflicts([
-      base("a", ["z", "a"]),
-      base("b", ["z", "a"]),
-    ]);
+    const conflicts = detectFileConflicts([base("a", ["z", "a"]), base("b", ["z", "a"])]);
     expect(conflicts.map((c) => c.path)).toEqual(["a", "z"]);
   });
 });

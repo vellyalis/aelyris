@@ -1,16 +1,11 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  TimelineBar,
-  type ActiveSnapshotOverlay,
-} from "../features/timeline/TimelineBar";
+import { type ActiveSnapshotOverlay, TimelineBar } from "../features/timeline/TimelineBar";
 import type { SnapshotSummary } from "../shared/types/snapshot";
 import type { GridSnapshot } from "../shared/types/terminal";
 
-function snap(
-  partial: Partial<SnapshotSummary> & { id: string },
-): SnapshotSummary {
+function snap(partial: Partial<SnapshotSummary> & { id: string }): SnapshotSummary {
   return {
     sessionId: "sess-1",
     capturedAt: 1_700_000_000,
@@ -25,10 +20,12 @@ function grid(): GridSnapshot {
   return {
     cols: 2,
     rows: 1,
-    cells: [[
-      { ch: " ", fg: 0, bg: 0, attrs: 0 },
-      { ch: " ", fg: 0, bg: 0, attrs: 0 },
-    ]],
+    cells: [
+      [
+        { ch: " ", fg: 0, bg: 0, attrs: 0 },
+        { ch: " ", fg: 0, bg: 0, attrs: 0 },
+      ],
+    ],
     cursor: {
       row: 0,
       col: 0,
@@ -188,9 +185,7 @@ describe("TimelineBar", () => {
         onDismissOverlay={() => {}}
       />,
     );
-    const ticks = Array.from(
-      container.querySelectorAll<HTMLElement>("[data-snapshot-id]"),
-    );
+    const ticks = Array.from(container.querySelectorAll<HTMLElement>("[data-snapshot-id]"));
     const selected = ticks.map((t) => t.getAttribute("aria-selected"));
     expect(selected).toEqual(["false", "true", "false"]);
   });

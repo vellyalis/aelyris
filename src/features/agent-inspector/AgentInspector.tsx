@@ -1,32 +1,34 @@
-import { useState, useCallback, useMemo, useEffect, useRef } from "react";
-import { type AgentSession, type AgentStatus, STATUS_COLORS, STATUS_LABELS, getSessionColor } from "../../shared/types/agent";
-import type { InteractiveSession } from "../../shared/types/interactiveAgent";
-import { MODEL_OPTIONS, getModelById, getMaxTokens } from "../../shared/types/model";
-import { showPrompt } from "../../shared/ui/PromptDialog";
-import { showHandoff } from "../../shared/ui/HandoffDialog";
-import { buildHandoffPrompt } from "../../shared/lib/handoffPrompt";
-import { getBudgetWarning, countOverBudget, type BudgetThresholds } from "../../shared/lib/budgetStatus";
+import { Activity, AlertTriangle, ClipboardCopy, GitCompare, Layers, Plus, Search, Share2, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { collectActivity, filterActivity, LOG_TYPES, type LogType } from "../../shared/lib/activityFilter";
-import { useAppStore } from "../../shared/store/appStore";
-import { PixelAvatar } from "../../shared/ui/PixelAvatar";
-import { StatusIcon } from "../../shared/ui/StatusIcon";
-import { ClipboardCopy, Plus, Activity, Layers, GitCompare, AlertTriangle, X, Search, Share2 } from "lucide-react";
-import { EmptyState } from "../../shared/ui/EmptyState";
-import { ToolBadge } from "../../shared/ui/ToolBadge";
-import { extractToolName } from "../../shared/types/toolBadge";
 import { parseToolUse } from "../../shared/lib/agentLogParser";
+import { type BudgetThresholds, countOverBudget, getBudgetWarning } from "../../shared/lib/budgetStatus";
+import { buildHandoffPrompt } from "../../shared/lib/handoffPrompt";
+import { buildOrchestraPrompts, detectFileConflicts, type OrchestraRoleId } from "../../shared/lib/orchestrator";
+import { useAppStore } from "../../shared/store/appStore";
 import {
-  buildOrchestraPrompts,
-  detectFileConflicts,
-  type OrchestraRoleId,
-} from "../../shared/lib/orchestrator";
+  type AgentSession,
+  type AgentStatus,
+  getSessionColor,
+  STATUS_COLORS,
+  STATUS_LABELS,
+} from "../../shared/types/agent";
+import type { InteractiveSession } from "../../shared/types/interactiveAgent";
+import { getMaxTokens, getModelById, MODEL_OPTIONS } from "../../shared/types/model";
+import { extractToolName } from "../../shared/types/toolBadge";
+import { EmptyState } from "../../shared/ui/EmptyState";
+import { showHandoff } from "../../shared/ui/HandoffDialog";
 import { showOrchestra } from "../../shared/ui/OrchestraDialog";
+import { PixelAvatar } from "../../shared/ui/PixelAvatar";
+import { showPrompt } from "../../shared/ui/PromptDialog";
+import { StatusIcon } from "../../shared/ui/StatusIcon";
+import { ToolBadge } from "../../shared/ui/ToolBadge";
 import { SessionAnalytics } from "../analytics/SessionAnalytics";
-import { SessionCard } from "./SessionCard";
-import { InteractiveSessionCard } from "./InteractiveSessionCard";
-import { InlineResultPanel } from "./InlineResultPanel";
-import { ConductorView } from "./ConductorView";
 import styles from "./AgentInspector.module.css";
+import { ConductorView } from "./ConductorView";
+import { InlineResultPanel } from "./InlineResultPanel";
+import { InteractiveSessionCard } from "./InteractiveSessionCard";
+import { SessionCard } from "./SessionCard";
 
 interface AgentInspectorProps {
   sessions: AgentSession[];
@@ -34,17 +36,39 @@ interface AgentInspectorProps {
   onSelectSession: (id: string) => void;
   onStartAgent?: (prompt: string, model?: string, meta?: { role?: OrchestraRoleId; handoffFrom?: string }) => void;
   onStopAgent?: (id: string) => void;
-  onCreateWorktree?: (sessionId: string, branchName: string) => Promise<import("../../shared/types/agent").WorktreeInfo | null>;
+  onCreateWorktree?: (
+    sessionId: string,
+    branchName: string,
+  ) => Promise<import("../../shared/types/agent").WorktreeInfo | null>;
   onRemoveWorktree?: (sessionId: string) => void;
   onRenameSession?: (sessionId: string, newName: string) => void;
   interactiveSessions?: InteractiveSession[];
   onFocusInteractiveSession?: (sessionId: string) => void;
   onStopInteractiveSession?: (id: string) => void;
   onEndSessionAndRemoveWorktree?: (id: string) => void;
-  onStartInteractiveSession?: (opts: { cwd: string; model?: string; initialPrompt?: string; branchName?: string }) => void;
+  onStartInteractiveSession?: (opts: {
+    cwd: string;
+    model?: string;
+    initialPrompt?: string;
+    branchName?: string;
+  }) => void;
 }
 
-export function AgentInspector({ sessions, activeSessionId, onSelectSession, onStartAgent, onStopAgent, onCreateWorktree, onRemoveWorktree, onRenameSession, interactiveSessions = [], onFocusInteractiveSession, onStopInteractiveSession, onEndSessionAndRemoveWorktree, onStartInteractiveSession }: AgentInspectorProps) {
+export function AgentInspector({
+  sessions,
+  activeSessionId,
+  onSelectSession,
+  onStartAgent,
+  onStopAgent,
+  onCreateWorktree,
+  onRemoveWorktree,
+  onRenameSession,
+  interactiveSessions = [],
+  onFocusInteractiveSession,
+  onStopInteractiveSession,
+  onEndSessionAndRemoveWorktree,
+  onStartInteractiveSession,
+}: AgentInspectorProps) {
   const [tab, setTab] = useState<"sessions" | "activity" | "parallel" | "conductor" | "diffs">("sessions");
   const [showPromptInput, setShowPromptInput] = useState(false);
   const [promptText, setPromptText] = useState("");
@@ -57,7 +81,8 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }, []);
@@ -70,14 +95,16 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
   const toggleType = useCallback((t: LogType) => {
     setActivityTypes((prev) => {
       const next = new Set(prev);
-      if (next.has(t)) next.delete(t); else next.add(t);
+      if (next.has(t)) next.delete(t);
+      else next.add(t);
       return next;
     });
   }, []);
   const toggleActivitySession = useCallback((id: string) => {
     setActivitySessions((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }, []);
@@ -100,43 +127,39 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
   const analyticsSession = analyticsSessionId ? sessions.find((s) => s.id === analyticsSessionId) : null;
   const [worktreeBranch, setWorktreeBranch] = useState("");
 
-  const handleCreateWorktree = useCallback(async (sessionId: string) => {
-    if (!worktreeBranch.trim() || !onCreateWorktree) return;
-    await onCreateWorktree(sessionId, worktreeBranch.trim());
-    setWorktreeInputId(null);
-    setWorktreeBranch("");
-  }, [worktreeBranch, onCreateWorktree]);
-
-  const activeSessions = useMemo(
-    () => sessions.filter((s) => s.status !== "idle" && s.status !== "done"),
-    [sessions],
+  const handleCreateWorktree = useCallback(
+    async (sessionId: string) => {
+      if (!worktreeBranch.trim() || !onCreateWorktree) return;
+      await onCreateWorktree(sessionId, worktreeBranch.trim());
+      setWorktreeInputId(null);
+      setWorktreeBranch("");
+    },
+    [worktreeBranch, onCreateWorktree],
   );
 
+  const activeSessions = useMemo(() => sessions.filter((s) => s.status !== "idle" && s.status !== "done"), [sessions]);
+
   const STATUS_ORDER: Record<AgentStatus, number> = {
-    generating: 0, coding: 1, thinking: 2, waiting: 3,
-    error: 4, idle: 5, done: 6,
+    generating: 0,
+    coding: 1,
+    thinking: 2,
+    waiting: 3,
+    error: 4,
+    idle: 5,
+    done: 6,
   };
   const sortedSessions = useMemo(
     () => [...sessions].sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]),
     [sessions],
   );
 
-  const totalCost = useMemo(
-    () => sessions.reduce((sum, s) => sum + s.cost, 0),
-    [sessions],
-  );
+  const totalCost = useMemo(() => sessions.reduce((sum, s) => sum + s.cost, 0), [sessions]);
 
-  const overBudgetCount = useMemo(
-    () => countOverBudget(sessions, budgetThresholds),
-    [sessions, budgetThresholds],
-  );
+  const overBudgetCount = useMemo(() => countOverBudget(sessions, budgetThresholds), [sessions, budgetThresholds]);
 
   // File-path → session-ids map for conflict badges. Only consider active
   // sessions so a long-done agent's old edits don't light up a live one.
-  const conflictsByPath = useMemo(
-    () => detectFileConflicts(activeSessions),
-    [activeSessions],
-  );
+  const conflictsByPath = useMemo(() => detectFileConflicts(activeSessions), [activeSessions]);
   const conflictPathsBySession = useMemo(() => {
     const map = new Map<string, string[]>();
     for (const conflict of conflictsByPath) {
@@ -174,7 +197,8 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
     let changed = false;
     const next = new Set<string>();
     for (const id of selectedIds) {
-      if (existing.has(id)) next.add(id); else changed = true;
+      if (existing.has(id)) next.add(id);
+      else changed = true;
     }
     if (changed) setSelectedIds(next);
   }, [sessions, selectedIds]);
@@ -190,29 +214,35 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
     prevActiveCount.current = activeSessions.length;
   }, [activeSessions.length, tab]);
 
-  const handleRenameSession = useCallback(async (session: AgentSession) => {
-    const newName = await showPrompt("Rename Session", { defaultValue: session.name });
-    if (newName && newName !== session.name) {
-      onRenameSession?.(session.id, newName);
-    }
-  }, [onRenameSession]);
+  const handleRenameSession = useCallback(
+    async (session: AgentSession) => {
+      const newName = await showPrompt("Rename Session", { defaultValue: session.name });
+      if (newName && newName !== session.name) {
+        onRenameSession?.(session.id, newName);
+      }
+    },
+    [onRenameSession],
+  );
 
-  const handleHandoff = useCallback(async (session: AgentSession) => {
-    if (!onStartAgent) return;
-    const result = await showHandoff({
-      sourceName: session.name,
-      sourceId: session.id,
-      defaultPrompt: buildHandoffPrompt(session),
-      defaultModelId: selectedModel,
-      defaultRole: session.role ?? null,
-    });
-    if (!result) return;
-    const target = getModelById(result.modelId);
-    onStartAgent(result.prompt, target?.modelArg, {
-      role: result.role ?? undefined,
-      handoffFrom: session.id,
-    });
-  }, [onStartAgent, selectedModel]);
+  const handleHandoff = useCallback(
+    async (session: AgentSession) => {
+      if (!onStartAgent) return;
+      const result = await showHandoff({
+        sourceName: session.name,
+        sourceId: session.id,
+        defaultPrompt: buildHandoffPrompt(session),
+        defaultModelId: selectedModel,
+        defaultRole: session.role ?? null,
+      });
+      if (!result) return;
+      const target = getModelById(result.modelId);
+      onStartAgent(result.prompt, target?.modelArg, {
+        role: result.role ?? undefined,
+        handoffFrom: session.id,
+      });
+    },
+    [onStartAgent, selectedModel],
+  );
 
   const handleCopySessionInfo = useCallback((session: AgentSession) => {
     const info = `Session: ${session.name}\nModel: ${session.model}\nStatus: ${STATUS_LABELS[session.status]}\nCost: $${session.cost.toFixed(2)}\nTokens: ${session.tokensUsed}`;
@@ -237,9 +267,24 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
     <div className={styles.inspector} role="region" aria-label="Agent sessions">
       {/* Tab toggle */}
       <div className={styles.tabBar}>
-        <button className={`${styles.tab} ${tab === "sessions" ? styles.tabActive : ""}`} onClick={() => setTab("sessions")}>Sessions</button>
-        <button className={`${styles.tab} ${tab === "activity" ? styles.tabActive : ""}`} onClick={() => setTab("activity")}>Activity</button>
-        <button className={`${styles.tab} ${tab === "parallel" ? styles.tabActive : ""}`} onClick={() => setTab("parallel")} title="Parallel session view" aria-label="Parallel sessions">
+        <button
+          className={`${styles.tab} ${tab === "sessions" ? styles.tabActive : ""}`}
+          onClick={() => setTab("sessions")}
+        >
+          Sessions
+        </button>
+        <button
+          className={`${styles.tab} ${tab === "activity" ? styles.tabActive : ""}`}
+          onClick={() => setTab("activity")}
+        >
+          Activity
+        </button>
+        <button
+          className={`${styles.tab} ${tab === "parallel" ? styles.tabActive : ""}`}
+          onClick={() => setTab("parallel")}
+          title="Parallel session view"
+          aria-label="Parallel sessions"
+        >
           <Layers size={11} strokeWidth={1.75} aria-hidden="true" />
           Parallel
           {activeSessions.length > 0 && <span className={styles.tabBadge}>{activeSessions.length}</span>}
@@ -273,10 +318,26 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
               {overBudgetCount} over budget
             </button>
           )}
-          {totalCost > 0 && <span className={styles.totalCost} title="Total session cost">${totalCost.toFixed(2)}</span>}
-          <button className={styles.iconBtn} title="Copy session info" onClick={() => { if (activeSession) handleCopySessionInfo(activeSession); }}><ClipboardCopy size={12} /></button>
-          <button className={styles.iconBtn} title="Orchestra mode (3 agents)" onClick={handleOrchestra}>♫</button>
-          <button className={styles.iconBtn} title="Add session" onClick={() => setShowPromptInput(true)}><Plus size={12} /></button>
+          {totalCost > 0 && (
+            <span className={styles.totalCost} title="Total session cost">
+              ${totalCost.toFixed(2)}
+            </span>
+          )}
+          <button
+            className={styles.iconBtn}
+            title="Copy session info"
+            onClick={() => {
+              if (activeSession) handleCopySessionInfo(activeSession);
+            }}
+          >
+            <ClipboardCopy size={12} />
+          </button>
+          <button className={styles.iconBtn} title="Orchestra mode (3 agents)" onClick={handleOrchestra}>
+            ♫
+          </button>
+          <button className={styles.iconBtn} title="Add session" onClick={() => setShowPromptInput(true)}>
+            <Plus size={12} />
+          </button>
         </div>
       </div>
 
@@ -311,12 +372,21 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
           }}
         >
           <div className={styles.modelRow}>
-            <select className={styles.modelSelect} value={selectedModel} onChange={(e) => setSelectedModel(e.target.value)}>
+            <select
+              className={styles.modelSelect}
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
+            >
               {MODEL_OPTIONS.map((m) => (
-                <option key={m.id} value={m.id}>{m.label}</option>
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
               ))}
             </select>
-            <span className={styles.modelDot} style={{ background: getModelById(selectedModel)?.color ?? "var(--ctp-blue)" }} />
+            <span
+              className={styles.modelDot}
+              style={{ background: getModelById(selectedModel)?.color ?? "var(--ctp-blue)" }}
+            />
           </div>
           <input
             autoFocus
@@ -327,14 +397,21 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
               if (e.key === "Enter" && promptText.trim()) {
                 const model = getModelById(selectedModel);
                 if (e.ctrlKey && onStartInteractiveSession && rootProjectPath) {
-                  onStartInteractiveSession({ cwd: rootProjectPath, model: model?.modelArg, initialPrompt: promptText.trim() });
+                  onStartInteractiveSession({
+                    cwd: rootProjectPath,
+                    model: model?.modelArg,
+                    initialPrompt: promptText.trim(),
+                  });
                 } else {
                   onStartAgent?.(promptText.trim(), model?.modelArg);
                 }
                 setPromptText("");
                 setShowPromptInput(false);
               }
-              if (e.key === "Escape") { setShowPromptInput(false); setPromptText(""); }
+              if (e.key === "Escape") {
+                setShowPromptInput(false);
+                setPromptText("");
+              }
             }}
             className={styles.promptField}
           />
@@ -368,8 +445,14 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
                 onRename={handleRenameSession}
                 onCopyInfo={handleCopySessionInfo}
                 onViewAnalytics={setAnalyticsSessionId}
-                onViewDiffs={(id) => { onSelectSession(id); setTab("diffs"); }}
-                onCreateWorktree={(id) => { setWorktreeInputId(id); setWorktreeBranch(""); }}
+                onViewDiffs={(id) => {
+                  onSelectSession(id);
+                  setTab("diffs");
+                }}
+                onCreateWorktree={(id) => {
+                  setWorktreeInputId(id);
+                  setWorktreeBranch("");
+                }}
                 onRemoveWorktree={onRemoveWorktree}
                 onStartAgent={onStartAgent}
                 onHandoff={onStartAgent ? handleHandoff : undefined}
@@ -380,7 +463,10 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
                 worktreeBranch={worktreeBranch}
                 onWorktreeBranchChange={setWorktreeBranch}
                 onWorktreeSubmit={handleCreateWorktree}
-                onWorktreeCancel={() => { setWorktreeInputId(null); setWorktreeBranch(""); }}
+                onWorktreeCancel={() => {
+                  setWorktreeInputId(null);
+                  setWorktreeBranch("");
+                }}
                 conflictingPaths={conflictPathsBySession.get(s.id)}
               />
             ))}
@@ -397,7 +483,14 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
                   const parsed = log.type === "tool_use" ? parseToolUse(log.content) : null;
                   return (
                     <div key={i} className={`${styles.logEntry} ${styles[`log_${log.type}`]}`}>
-                      <span className={styles.logTime}>{new Date(log.timestamp).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+                      <span className={styles.logTime}>
+                        {new Date(log.timestamp).toLocaleTimeString("en-US", {
+                          hour12: false,
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          second: "2-digit",
+                        })}
+                      </span>
                       {tool && <ToolBadge tool={tool} />}
                       {parsed?.isFileChange && parsed.filePath ? (
                         <span className={styles.logContent}>
@@ -478,24 +571,38 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
           </div>
           <div className={styles.logList}>
             {filteredActivity.slice(0, 200).map((log, i) => {
-                const tool = log.type === "tool_use" ? extractToolName(log.content) : null;
-                const logColor = getSessionColor(log.sessionId);
-                return (
+              const tool = log.type === "tool_use" ? extractToolName(log.content) : null;
+              const logColor = getSessionColor(log.sessionId);
+              return (
                 <div key={i} className={`${styles.logEntry} ${styles[`log_${log.type}`]}`}>
                   <span className={styles.logTime}>
-                    {new Date(log.timestamp).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                    {new Date(log.timestamp).toLocaleTimeString("en-US", {
+                      hour12: false,
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      second: "2-digit",
+                    })}
                   </span>
                   <span className={styles.activityDot} style={{ background: logColor.accent }} />
                   <span className={styles.activityName}>{log.sessionName}</span>
                   {tool && <ToolBadge tool={tool} />}
                   <span className={styles.logContent}>{log.content}</span>
                 </div>
-                ); })}
+              );
+            })}
             {allActivity.length === 0 && (
-              <EmptyState icon={<Activity size={20} />} title="No activity yet" description="Agent logs will appear here" />
+              <EmptyState
+                icon={<Activity size={20} />}
+                title="No activity yet"
+                description="Agent logs will appear here"
+              />
             )}
             {allActivity.length > 0 && filteredActivity.length === 0 && (
-              <EmptyState icon={<Search size={20} />} title="No matching activity" description="Try a different search or clear filters" />
+              <EmptyState
+                icon={<Search size={20} />}
+                title="No matching activity"
+                description="Try a different search or clear filters"
+              />
             )}
           </div>
         </div>
@@ -508,43 +615,81 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
               {conflictsByPath.length > 0 && (
                 <span
                   className={styles.parallelConflicts}
-                  title={conflictsByPath
-                    .slice(0, 8)
-                    .map((c) => `${c.path} — ${c.sessionIds.length} agents`)
-                    .join("\n") + (conflictsByPath.length > 8 ? `\n+${conflictsByPath.length - 8} more` : "")}
+                  title={
+                    conflictsByPath
+                      .slice(0, 8)
+                      .map((c) => `${c.path} — ${c.sessionIds.length} agents`)
+                      .join("\n") + (conflictsByPath.length > 8 ? `\n+${conflictsByPath.length - 8} more` : "")
+                  }
                 >
                   <AlertTriangle size={10} style={{ verticalAlign: -1, marginRight: 2 }} />
                   {conflictsByPath.length} file conflict{conflictsByPath.length === 1 ? "" : "s"}
                 </span>
               )}
-              <button className={styles.stopAllBtn} onClick={() => activeSessions.forEach((s) => onStopAgent?.(s.id))} title="Stop all agents">Stop All</button>
+              <button
+                className={styles.stopAllBtn}
+                onClick={() => activeSessions.forEach((s) => onStopAgent?.(s.id))}
+                title="Stop all agents"
+              >
+                Stop All
+              </button>
             </div>
           )}
           {sessions.length === 0 ? (
-            <EmptyState icon={<Layers size={20} />} title="No sessions" description="Start agents to see parallel view" />
+            <EmptyState
+              icon={<Layers size={20} />}
+              title="No sessions"
+              description="Start agents to see parallel view"
+            />
           ) : (
             sessions.map((s) => {
               const sColor = getSessionColor(s.id);
-              const pct = s.status === "done" ? 100 : s.status === "idle" ? 0 : s.tokensUsed > 0 ? Math.min(99, Math.round((s.tokensUsed / getMaxTokens(s.model)) * 100)) : 2;
+              const pct =
+                s.status === "done"
+                  ? 100
+                  : s.status === "idle"
+                    ? 0
+                    : s.tokensUsed > 0
+                      ? Math.min(99, Math.round((s.tokensUsed / getMaxTokens(s.model)) * 100))
+                      : 2;
               return (
                 <div
                   key={s.id}
                   className={`${styles.parallelPane} ${s.id === activeSessionId ? styles.parallelPaneActive : ""}`}
-                  style={{ "--session-accent": sColor.accent, "--session-dim": sColor.dim, "--session-glow": sColor.glow } as React.CSSProperties}
+                  style={
+                    {
+                      "--session-accent": sColor.accent,
+                      "--session-dim": sColor.dim,
+                      "--session-glow": sColor.glow,
+                    } as React.CSSProperties
+                  }
                   onClick={() => onSelectSession(s.id)}
                 >
                   <div className={styles.parallelHeader}>
                     <PixelAvatar seed={s.id} size={20} />
                     <span className={styles.parallelName}>{s.name}</span>
                     <StatusIcon status={s.status} size={8} />
-                    <span className={styles.parallelStatus} style={{ color: STATUS_COLORS[s.status] }}>{STATUS_LABELS[s.status]}</span>
+                    <span className={styles.parallelStatus} style={{ color: STATUS_COLORS[s.status] }}>
+                      {STATUS_LABELS[s.status]}
+                    </span>
                     {pct > 0 && pct < 100 && <span className={styles.parallelPct}>{pct}%</span>}
                     {s.status !== "done" && s.status !== "idle" && (
-                      <span className={styles.stopBtn} onClick={(e) => { e.stopPropagation(); onStopAgent?.(s.id); }}>■</span>
+                      <span
+                        className={styles.stopBtn}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onStopAgent?.(s.id);
+                        }}
+                      >
+                        ■
+                      </span>
                     )}
                   </div>
                   <div className={styles.parallelProgress}>
-                    <div className={styles.parallelProgressBar} style={{ width: `${pct}%`, background: sColor.accent }} />
+                    <div
+                      className={styles.parallelProgressBar}
+                      style={{ width: `${pct}%`, background: sColor.accent }}
+                    />
                   </div>
                   <div className={styles.parallelLogs}>
                     {s.logs.slice(-5).map((log, i) => {
@@ -552,16 +697,19 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
                       return (
                         <div key={i} className={`${styles.logEntry} ${styles[`log_${log.type}`]}`}>
                           <span className={styles.logTime}>
-                            {new Date(log.timestamp).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                            {new Date(log.timestamp).toLocaleTimeString("en-US", {
+                              hour12: false,
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              second: "2-digit",
+                            })}
                           </span>
                           {tool && <ToolBadge tool={tool} />}
                           <span className={styles.logContent}>{log.content}</span>
                         </div>
                       );
                     })}
-                    {s.logs.length === 0 && (
-                      <span className={styles.parallelEmpty}>Waiting for activity...</span>
-                    )}
+                    {s.logs.length === 0 && <span className={styles.parallelEmpty}>Waiting for activity...</span>}
                   </div>
                 </div>
               );
@@ -571,15 +719,11 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
       )}
 
       {tab === "conductor" && (
-        <ConductorView
-          sessions={sessions}
-          activeSessionId={activeSessionId}
-          onSelectSession={onSelectSession}
-        />
+        <ConductorView sessions={sessions} activeSessionId={activeSessionId} onSelectSession={onSelectSession} />
       )}
 
-      {tab === "diffs" && (
-        activeSession ? (
+      {tab === "diffs" &&
+        (activeSession ? (
           <InlineResultPanel
             session={activeSession}
             projectPath={rootProjectPath ?? ""}
@@ -588,14 +732,15 @@ export function AgentInspector({ sessions, activeSessionId, onSelectSession, onS
           />
         ) : (
           <div className={styles.cards}>
-            <EmptyState icon={<GitCompare size={20} />} title="No session selected" description="Select an agent session to view its file changes" />
+            <EmptyState
+              icon={<GitCompare size={20} />}
+              title="No session selected"
+              description="Select an agent session to view its file changes"
+            />
           </div>
-        )
-      )}
+        ))}
 
-      {analyticsSession && (
-        <SessionAnalytics session={analyticsSession} onClose={() => setAnalyticsSessionId(null)} />
-      )}
+      {analyticsSession && <SessionAnalytics session={analyticsSession} onClose={() => setAnalyticsSessionId(null)} />}
     </div>
   );
 }

@@ -59,7 +59,9 @@
   font-size: var(--text-lg);
   font-family: var(--font-ui);
 }
-.input::placeholder { color: var(--text-muted); }
+.input::placeholder {
+  color: var(--text-muted);
+}
 
 .hint {
   font-size: var(--text-xs);
@@ -87,10 +89,18 @@
   font-family: var(--font-ui);
   cursor: pointer;
   text-align: left;
-  transition: background var(--duration-fast), color var(--duration-fast);
+  transition:
+    background var(--duration-fast),
+    color var(--duration-fast);
 }
-.item:hover { background: var(--row-hover); color: var(--text-primary); }
-.itemActive { background: var(--row-hover-strong); color: var(--text-primary); }
+.item:hover {
+  background: var(--row-hover);
+  color: var(--text-primary);
+}
+.itemActive {
+  background: var(--row-hover-strong);
+  color: var(--text-primary);
+}
 
 .itemName {
   font-size: var(--text-md);
@@ -109,7 +119,8 @@
   margin-left: auto;
 }
 
-.loading, .empty {
+.loading,
+.empty {
   padding: var(--space-10) var(--space-6);
   text-align: center;
   color: var(--text-muted);

@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useEffect, useRef } from "react";
 
 import { keyEventToBytes } from "../keymap";
 
@@ -56,11 +56,7 @@ export interface UseCanvasIMEArgs {
   writeBytes?: WriteBytesFn;
 }
 
-export function useCanvasIME({
-  terminalId,
-  textarea,
-  writeBytes = defaultWriteBytes,
-}: UseCanvasIMEArgs) {
+export function useCanvasIME({ terminalId, textarea, writeBytes = defaultWriteBytes }: UseCanvasIMEArgs) {
   // Hold `writeBytes` in a ref so its identity does NOT appear in the
   // effect's dependency array. If it did, any parent passing an inline
   // function literal (common in tests, easy in production) would
@@ -158,9 +154,7 @@ export function useCanvasIME({
     };
 
     const onPaste = (e: ClipboardEvent) => {
-      const text =
-        e.clipboardData?.getData("text") ??
-        e.clipboardData?.getData("text/plain");
+      const text = e.clipboardData?.getData("text") ?? e.clipboardData?.getData("text/plain");
       if (!text) return;
       e.preventDefault();
       e.stopPropagation();
@@ -201,13 +195,7 @@ export interface UseImePositionArgs {
  * (via the `set_ime_position` IPC) where to park the IME candidate window so
  * it sits directly under the caret rather than in the top-left corner.
  */
-export function useImePosition({
-  textarea,
-  cursor,
-  cellWidth,
-  cellHeight,
-  canvas,
-}: UseImePositionArgs) {
+export function useImePosition({ textarea, cursor, cellWidth, cellHeight, canvas }: UseImePositionArgs) {
   useEffect(() => {
     if (!textarea || !cursor || !canvas) return;
     const left = cursor.col * cellWidth;

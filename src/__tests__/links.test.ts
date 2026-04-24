@@ -1,12 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { linkAt, scanLinks } from "../features/terminal/links";
-import {
-  CellAttr,
-  ColorKind,
-  type CellSnapshot,
-  type GridSnapshot,
-} from "../shared/types/terminal";
+import { CellAttr, type CellSnapshot, ColorKind, type GridSnapshot } from "../shared/types/terminal";
 
 function packNamed(n: number): number {
   return (ColorKind.NAMED << 24) | n;
@@ -16,10 +11,7 @@ function cell(ch: string, attrs = 0): CellSnapshot {
   return { ch, fg: packNamed(256), bg: packNamed(257), attrs };
 }
 
-function gridFromRows(
-  rows: string[],
-  opts: { wrapLastCellOfRow?: number[] } = {},
-): GridSnapshot {
+function gridFromRows(rows: string[], opts: { wrapLastCellOfRow?: number[] } = {}): GridSnapshot {
   const cols = Math.max(...rows.map((r) => r.length));
   const cells: CellSnapshot[][] = rows.map((r, rowIdx) => {
     const padded = r.padEnd(cols, " ");
@@ -27,8 +19,7 @@ function gridFromRows(
     if (opts.wrapLastCellOfRow?.includes(rowIdx) && rowCells.length > 0) {
       rowCells[rowCells.length - 1] = {
         ...rowCells[rowCells.length - 1],
-        attrs:
-          rowCells[rowCells.length - 1].attrs | CellAttr.WRAPLINE,
+        attrs: rowCells[rowCells.length - 1].attrs | CellAttr.WRAPLINE,
       };
     }
     return rowCells;
@@ -99,10 +90,7 @@ describe("scanLinks", () => {
   it("stitches URLs across WRAPLINE rows", () => {
     // Row 0 ends with WRAPLINE (last cell carries the attr). Both rows are 16
     // wide so no padding space sits at the wrap boundary to break the URL.
-    const grid = gridFromRows(
-      ["abc https://exam", "ple.com/path    "],
-      { wrapLastCellOfRow: [0] },
-    );
+    const grid = gridFromRows(["abc https://exam", "ple.com/path    "], { wrapLastCellOfRow: [0] });
     const links = scanLinks(grid);
     expect(links).toHaveLength(1);
     expect(links[0].url).toBe("https://example.com/path");
@@ -128,10 +116,7 @@ describe("linkAt", () => {
   });
 
   it("handles multi-row links", () => {
-    const grid = gridFromRows(
-      ["abc https://exam", "ple.com/path    "],
-      { wrapLastCellOfRow: [0] },
-    );
+    const grid = gridFromRows(["abc https://exam", "ple.com/path    "], { wrapLastCellOfRow: [0] });
     const links = scanLinks(grid);
     expect(linkAt(links, 0, 15)?.url).toBe("https://example.com/path");
     expect(linkAt(links, 1, 5)?.url).toBe("https://example.com/path");

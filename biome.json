@@ -20,6 +20,13 @@
       },
       "security": {
         "noDangerouslySetInnerHtml": "error"
+      },
+      "style": {
+        "noNonNullAssertion": "warn",
+        "useTemplate": "warn"
+      },
+      "complexity": {
+        "noImportantStyles": "off"
       }
     }
   },

@@ -48,7 +48,9 @@
   border: none;
   border-radius: calc(var(--radius-sm) - 2px);
   cursor: pointer;
-  transition: color 120ms ease, background 120ms ease;
+  transition:
+    color 120ms ease,
+    background 120ms ease;
 }
 
 .segment:hover {

@@ -36,9 +36,13 @@
   outline: none;
 }
 
-.urlBar:focus-visible { outline: none !important; border-color: var(--gold); }
+.urlBar:focus-visible {
+  outline: none !important;
+  border-color: var(--gold);
+}
 
-.navBtn, .closeBtn {
+.navBtn,
+.closeBtn {
   background: none;
   border: none;
   color: var(--text-muted);
@@ -48,7 +52,8 @@
   border-radius: var(--radius-sm);
 }
 
-.navBtn:hover, .closeBtn:hover {
+.navBtn:hover,
+.closeBtn:hover {
   background: var(--white-6);
   color: var(--text-primary);
 }

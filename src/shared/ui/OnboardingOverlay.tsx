@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { motion, AnimatePresence } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
+import { useEffect, useState } from "react";
 import styles from "./OnboardingOverlay.module.css";
 
 const STORAGE_KEY = "aether:onboarding-done";
@@ -55,12 +55,18 @@ export function OnboardingOverlay() {
       if (!localStorage.getItem(STORAGE_KEY)) {
         setStep(0);
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   const markDoneAndClose = () => {
     setStep(-1);
-    try { localStorage.setItem(STORAGE_KEY, "true"); } catch { /* ignore */ }
+    try {
+      localStorage.setItem(STORAGE_KEY, "true");
+    } catch {
+      /* ignore */
+    }
   };
 
   const handleNext = () => {
@@ -76,7 +82,12 @@ export function OnboardingOverlay() {
   const isLast = step === STEPS.length - 1;
 
   return (
-    <Dialog.Root open={isOpen} onOpenChange={(o) => { if (!o) markDoneAndClose(); }}>
+    <Dialog.Root
+      open={isOpen}
+      onOpenChange={(o) => {
+        if (!o) markDoneAndClose();
+      }}
+    >
       <Dialog.Portal>
         <Dialog.Overlay className={styles.overlay} />
         <Dialog.Content className={styles.contentWrapper} aria-describedby={undefined}>
@@ -92,17 +103,20 @@ export function OnboardingOverlay() {
               >
                 <div className={styles.stepIndicator}>
                   {STEPS.map((_, i) => (
-                    <div key={i} className={`${styles.dot} ${i === step ? styles.dotActive : ""} ${i < step ? styles.dotDone : ""}`} />
+                    <div
+                      key={i}
+                      className={`${styles.dot} ${i === step ? styles.dotActive : ""} ${i < step ? styles.dotDone : ""}`}
+                    />
                   ))}
                 </div>
                 <Dialog.Title className={styles.title}>{current.title}</Dialog.Title>
                 <Dialog.Description className={styles.description}>{current.description}</Dialog.Description>
-                {current.shortcut && (
-                  <kbd className={styles.shortcut}>{current.shortcut}</kbd>
-                )}
+                {current.shortcut && <kbd className={styles.shortcut}>{current.shortcut}</kbd>}
                 <div className={styles.actions}>
                   {!isLast && (
-                    <button className={styles.skipBtn} onClick={markDoneAndClose}>Skip tour</button>
+                    <button className={styles.skipBtn} onClick={markDoneAndClose}>
+                      Skip tour
+                    </button>
                   )}
                   <button className={styles.nextBtn} onClick={handleNext} autoFocus>
                     {isLast ? "Get started" : "Next"}

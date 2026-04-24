@@ -10,7 +10,10 @@
   font-size: var(--text-base);
   font-weight: 500;
   cursor: pointer;
-  transition: background var(--duration-fast), box-shadow var(--duration-normal), color var(--duration-fast);
+  transition:
+    background var(--duration-fast),
+    box-shadow var(--duration-normal),
+    color var(--duration-fast);
   position: relative;
   overflow: hidden;
 }
@@ -40,7 +43,9 @@
     0 2px 8px rgba(168, 128, 48, 0.2);
   transform: translateY(-2px);
 }
-.primary:hover::after { opacity: 0.5; }
+.primary:hover::after {
+  opacity: 0.5;
+}
 .primary:active {
   box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
   transform: translateY(0);

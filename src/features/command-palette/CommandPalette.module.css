@@ -92,7 +92,9 @@
   font-family: var(--font-ui);
   cursor: pointer;
   text-align: left;
-  transition: background var(--duration-fast), color var(--duration-fast);
+  transition:
+    background var(--duration-fast),
+    color var(--duration-fast);
 }
 
 /* cmdk applies data-selected to the active item */
@@ -115,8 +117,12 @@
   color: var(--text-muted);
   flex-shrink: 0;
 }
-.item[data-selected="true"] .itemIcon { color: var(--gold); }
-.itemFallbackIcon { opacity: 0.4; }
+.item[data-selected="true"] .itemIcon {
+  color: var(--gold);
+}
+.itemFallbackIcon {
+  opacity: 0.4;
+}
 
 .itemLabel {
   display: flex;

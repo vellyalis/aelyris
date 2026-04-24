@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { FileDelta, LayerSummary } from "../types/ghostdiff";
 
@@ -97,10 +97,7 @@ export function useGhostLayers(): UseGhostLayersResult {
     return arr;
   }, [byId]);
 
-  const activeCount = useMemo(
-    () => layers.filter((l) => !l.isComplete).length,
-    [layers],
-  );
+  const activeCount = useMemo(() => layers.filter((l) => !l.isComplete).length, [layers]);
 
   const dismiss = useCallback(async (layerId: string) => {
     try {
@@ -110,20 +107,17 @@ export function useGhostLayers(): UseGhostLayersResult {
     }
   }, []);
 
-  const getFile = useCallback(
-    async (layerId: string, filePath: string): Promise<FileDelta | null> => {
-      try {
-        const res = await invoke<FileDelta | null>("get_ghost_layer_file", {
-          layerId,
-          filePath,
-        });
-        return res ?? null;
-      } catch {
-        return null;
-      }
-    },
-    [],
-  );
+  const getFile = useCallback(async (layerId: string, filePath: string): Promise<FileDelta | null> => {
+    try {
+      const res = await invoke<FileDelta | null>("get_ghost_layer_file", {
+        layerId,
+        filePath,
+      });
+      return res ?? null;
+    } catch {
+      return null;
+    }
+  }, []);
 
   return { layers, activeCount, dismiss, getFile };
 }

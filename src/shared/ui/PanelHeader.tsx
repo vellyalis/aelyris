@@ -1,5 +1,5 @@
-import { memo, type ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
+import { memo, type ReactNode } from "react";
 import styles from "./PanelHeader.module.css";
 
 interface PanelHeaderProps {
@@ -35,9 +35,7 @@ export const PanelHeader = memo(function PanelHeader({
   onToggle,
   className,
 }: PanelHeaderProps) {
-  const classes = [styles.header, dense ? styles.dense : "", className]
-    .filter(Boolean)
-    .join(" ");
+  const classes = [styles.header, dense ? styles.dense : "", className].filter(Boolean).join(" ");
 
   const body = (
     <>
@@ -48,7 +46,11 @@ export const PanelHeader = memo(function PanelHeader({
           aria-hidden="true"
         />
       )}
-      {leadingIcon && <span className={styles.leading} aria-hidden="true">{leadingIcon}</span>}
+      {leadingIcon && (
+        <span className={styles.leading} aria-hidden="true">
+          {leadingIcon}
+        </span>
+      )}
       <span className={styles.title}>{title}</span>
       {subtitle != null && <span className={styles.subtitle}>{subtitle}</span>}
       {count != null && <span className={styles.count}>{count}</span>}
@@ -62,12 +64,7 @@ export const PanelHeader = memo(function PanelHeader({
 
   if (collapsible) {
     return (
-      <button
-        type="button"
-        className={classes}
-        onClick={onToggle}
-        aria-expanded={!collapsed}
-      >
+      <button type="button" className={classes} onClick={onToggle} aria-expanded={!collapsed}>
         {body}
       </button>
     );

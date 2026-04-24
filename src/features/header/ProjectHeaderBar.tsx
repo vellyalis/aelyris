@@ -1,4 +1,4 @@
-import { Settings, RefreshCw } from "lucide-react";
+import { RefreshCw, Settings } from "lucide-react";
 import logoSvg from "../../assets/logo.svg";
 import styles from "./ProjectHeaderBar.module.css";
 
@@ -22,10 +22,19 @@ const STATUS_META: Record<string, { color: string; label: string }> = {
 };
 
 export function ProjectHeaderBar({
-  projectName, branch, changedCount, status, activeAgent, onOpenSettings, onRefresh,
+  projectName,
+  branch,
+  changedCount,
+  status,
+  activeAgent,
+  onOpenSettings,
+  onRefresh,
 }: ProjectHeaderBarProps) {
   const handleMinimize = async () => {
-    try { const { getCurrentWindow } = await import("@tauri-apps/api/window"); getCurrentWindow().minimize(); } catch {}
+    try {
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      getCurrentWindow().minimize();
+    } catch {}
   };
   const handleMaximize = async () => {
     try {
@@ -35,8 +44,14 @@ export function ProjectHeaderBar({
     } catch {}
   };
   const handleClose = async () => {
-    try { const { exit } = await import("@tauri-apps/plugin-process"); await exit(0); } catch {
-      try { const { getCurrentWindow } = await import("@tauri-apps/api/window"); getCurrentWindow().close(); } catch {}
+    try {
+      const { exit } = await import("@tauri-apps/plugin-process");
+      await exit(0);
+    } catch {
+      try {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        getCurrentWindow().close();
+      } catch {}
     }
   };
 
@@ -56,7 +71,10 @@ export function ProjectHeaderBar({
           </div>
           <div className={styles.bottomRow}>
             <span className={styles.status}>
-              <span className={`${styles.dot} ${status !== "idle" ? styles.dotPulse : ""}`} style={{ background: color }} />
+              <span
+                className={`${styles.dot} ${status !== "idle" ? styles.dotPulse : ""}`}
+                style={{ background: color }}
+              />
               <span className={styles.statusLabel}>{label}</span>
             </span>
             {activeAgent && (
@@ -70,19 +88,30 @@ export function ProjectHeaderBar({
       </div>
 
       <div className={styles.right}>
-        <button className={styles.headerBtn} onClick={onRefresh} aria-label="Refresh"><RefreshCw size={14} /></button>
-        <button className={styles.headerBtn} onClick={onOpenSettings} aria-label="Settings"><Settings size={14} /></button>
+        <button className={styles.headerBtn} onClick={onRefresh} aria-label="Refresh">
+          <RefreshCw size={14} />
+        </button>
+        <button className={styles.headerBtn} onClick={onOpenSettings} aria-label="Settings">
+          <Settings size={14} />
+        </button>
         <span className={styles.controlsSeparator} aria-hidden="true" />
         {/* Window controls — right side for Windows UX */}
         <div className={styles.controls}>
           <button className={`${styles.ctrlBtn} ${styles.minimizeBtn}`} onClick={handleMinimize} aria-label="Minimize">
-            <svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" fill="currentColor"/></svg>
+            <svg width="10" height="1" viewBox="0 0 10 1">
+              <rect width="10" height="1" fill="currentColor" />
+            </svg>
           </button>
           <button className={`${styles.ctrlBtn} ${styles.maximizeBtn}`} onClick={handleMaximize} aria-label="Maximize">
-            <svg width="10" height="10" viewBox="0 0 10 10"><rect width="8" height="8" x="1" y="1" fill="none" stroke="currentColor" strokeWidth="1"/></svg>
+            <svg width="10" height="10" viewBox="0 0 10 10">
+              <rect width="8" height="8" x="1" y="1" fill="none" stroke="currentColor" strokeWidth="1" />
+            </svg>
           </button>
           <button className={`${styles.ctrlBtn} ${styles.closeBtn}`} onClick={handleClose} aria-label="Close">
-            <svg width="10" height="10" viewBox="0 0 10 10"><line x1="1" y1="1" x2="9" y2="9" stroke="currentColor" strokeWidth="1.2"/><line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" strokeWidth="1.2"/></svg>
+            <svg width="10" height="10" viewBox="0 0 10 10">
+              <line x1="1" y1="1" x2="9" y2="9" stroke="currentColor" strokeWidth="1.2" />
+              <line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" strokeWidth="1.2" />
+            </svg>
           </button>
         </div>
       </div>

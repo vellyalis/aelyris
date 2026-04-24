@@ -7,20 +7,15 @@
  * skipping hunks that conflict with the user's in-flight edits.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useGhostLayers } from "../../shared/hooks/useGhostLayers";
 import type { FileDelta, LayerSummary } from "../../shared/types/ghostdiff";
 
 import { isReadOnlyLayer } from "../../shared/types/ghostdiff";
 import { detectHunkConflicts, hunkBaseRange, type LineRange } from "./ghostConflict";
-import {
-  installGhostPaint,
-  type GhostEditor,
-  type GhostPaintHandle,
-  type MonacoNs,
-} from "./ghostPaint";
+import { type GhostEditor, type GhostPaintHandle, installGhostPaint, type MonacoNs } from "./ghostPaint";
 
 interface ApplyHunkResult {
   updatedContent: string;
@@ -47,9 +42,7 @@ interface UseGhostPaintArgs {
    * line ranges can be tracked without leaking Monaco-specific typing
    * into this hook's call site.
    */
-  subscribeToModelChanges?: (
-    listener: (ranges: LineRange[]) => void,
-  ) => () => void;
+  subscribeToModelChanges?: (listener: (ranges: LineRange[]) => void) => () => void;
   /**
    * When `true`, paint layers that are still in progress (Phase 3C-1d
    * live-mode flag). Default `false` — only agent-completed layers paint.
@@ -90,10 +83,7 @@ function toPosix(p: string): string {
  * when the file sits outside `projectPath` (in which case no ghost layers
  * can apply to it).
  */
-export function computeRelativePath(
-  filePath: string | null,
-  projectPath: string | null | undefined,
-): string | null {
+export function computeRelativePath(filePath: string | null, projectPath: string | null | undefined): string | null {
   if (!filePath) return null;
   const file = toPosix(filePath);
   if (!projectPath) return file.replace(/^\/+/, "");
@@ -107,59 +97,33 @@ export function computeRelativePath(
   return null;
 }
 
-function layersForFile(
-  layers: LayerSummary[],
-  relativePath: string | null,
-  liveMode: boolean,
-): LayerSummary[] {
+function layersForFile(layers: LayerSummary[], relativePath: string | null, liveMode: boolean): LayerSummary[] {
   if (!relativePath) return [];
   // Default (live=false): only paint layers whose agent has finished. Live
   // mode (Phase 3C-1d flag) lets the user opt into in-progress diffs too.
-  return layers.filter(
-    (l) => l.filePaths.includes(relativePath) && (liveMode || l.isComplete),
-  );
+  return layers.filter((l) => l.filePaths.includes(relativePath) && (liveMode || l.isComplete));
 }
 
 /**
  * Primary wiring. The hook internally calls `useGhostLayers()` so callers
  * only pass the editor handle and the open file's coordinates.
  */
-export function useGhostPaintForFile(
-  args: UseGhostPaintArgs,
-): UseGhostPaintResult {
-  const {
-    editor,
-    monaco,
-    filePath,
-    projectPath,
-    subscribeToModelChanges,
-    liveMode = false,
-  } = args;
+export function useGhostPaintForFile(args: UseGhostPaintArgs): UseGhostPaintResult {
+  const { editor, monaco, filePath, projectPath, subscribeToModelChanges, liveMode = false } = args;
   const { layers, getFile } = useGhostLayers();
 
-  const relativePath = useMemo(
-    () => computeRelativePath(filePath, projectPath ?? null),
-    [filePath, projectPath],
-  );
+  const relativePath = useMemo(() => computeRelativePath(filePath, projectPath ?? null), [filePath, projectPath]);
 
-  const relevantLayers = useMemo(
-    () => layersForFile(layers, relativePath, liveMode),
-    [layers, relativePath, liveMode],
-  );
+  const relevantLayers = useMemo(() => layersForFile(layers, relativePath, liveMode), [layers, relativePath, liveMode]);
 
   // Stable signature that changes when a matching layer's content does —
   // triggers a FileDelta refetch.
   const fetchSignature = useMemo(
-    () =>
-      relevantLayers
-        .map((l) => `${l.id}:${l.fileCount}:${l.hunkCount}:${l.isComplete ? 1 : 0}`)
-        .join("|"),
+    () => relevantLayers.map((l) => `${l.id}:${l.fileCount}:${l.hunkCount}:${l.isComplete ? 1 : 0}`).join("|"),
     [relevantLayers],
   );
 
-  const [deltasById, setDeltasById] = useState<Map<string, FileDelta>>(
-    new Map(),
-  );
+  const [deltasById, setDeltasById] = useState<Map<string, FileDelta>>(new Map());
 
   // Dirty-range tracking. Subscribe re-binds on filePath so any stale
   // model-change event from the previous editor's unmount flush cannot
@@ -242,10 +206,7 @@ export function useGhostPaintForFile(
     for (const layer of ordered) {
       const delta = deltasById.get(layer.id);
       if (!delta || delta.hunks.length === 0) continue;
-      const conflicts = detectHunkConflicts(
-        dirtyRangesRef.current,
-        delta.hunks,
-      );
+      const conflicts = detectHunkConflicts(dirtyRangesRef.current, delta.hunks);
       const handle = installGhostPaint(editor, monaco, {
         hunks: delta.hunks,
         tint: layer.tint,
@@ -308,10 +269,7 @@ export function useGhostPaintForFile(
     [hunkAnchors],
   );
 
-  const hasHunkAtLine = useCallback(
-    (line: number): boolean => hunksAtLine(line).length > 0,
-    [hunksAtLine],
-  );
+  const hasHunkAtLine = useCallback((line: number): boolean => hunksAtLine(line).length > 0, [hunksAtLine]);
 
   // ─── accept / dismiss actions ───────────────────────────────────────────
 

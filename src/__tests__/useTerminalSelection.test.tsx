@@ -1,12 +1,8 @@
-import { act, render, cleanup } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TerminalCanvas } from "../features/terminal/TerminalCanvas";
-import {
-  ColorKind,
-  type CellSnapshot,
-  type GridSnapshot,
-} from "../shared/types/terminal";
+import { type CellSnapshot, ColorKind, type GridSnapshot } from "../shared/types/terminal";
 
 function installCanvasMock() {
   const noop = vi.fn();
@@ -21,8 +17,8 @@ function installCanvasMock() {
     () => ctx as CanvasRenderingContext2D,
   ) as unknown as HTMLCanvasElement["getContext"];
   // jsdom returns 0-size rects by default — fake a 80*14 × 24*17 canvas.
-  HTMLCanvasElement.prototype.getBoundingClientRect = function () {
-    return {
+  HTMLCanvasElement.prototype.getBoundingClientRect = () =>
+    ({
       left: 0,
       top: 0,
       right: 80 * 14,
@@ -32,8 +28,7 @@ function installCanvasMock() {
       x: 0,
       y: 0,
       toJSON: () => ({}),
-    } as DOMRect;
-  };
+    }) as DOMRect;
 }
 
 function packNamed(n: number): number {
@@ -46,9 +41,7 @@ function cell(ch: string): CellSnapshot {
 
 function gridFromRows(rows: string[]): GridSnapshot {
   const cols = Math.max(...rows.map((r) => r.length), 1);
-  const cells: CellSnapshot[][] = rows.map((r) =>
-    Array.from(r.padEnd(cols, " ")).map((c) => cell(c)),
-  );
+  const cells: CellSnapshot[][] = rows.map((r) => Array.from(r.padEnd(cols, " ")).map((c) => cell(c)));
   return {
     cols,
     rows: rows.length,
@@ -63,11 +56,7 @@ function gridFromRows(rows: string[]): GridSnapshot {
   };
 }
 
-function downUpDrag(
-  el: HTMLElement,
-  from: { x: number; y: number },
-  to: { x: number; y: number },
-) {
+function downUpDrag(el: HTMLElement, from: { x: number; y: number }, to: { x: number; y: number }) {
   el.dispatchEvent(
     new MouseEvent("mousedown", {
       bubbles: true,
@@ -83,9 +72,7 @@ function downUpDrag(
       clientY: to.y,
     }),
   );
-  window.dispatchEvent(
-    new MouseEvent("mouseup", { bubbles: true, button: 0 }),
-  );
+  window.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, button: 0 }));
 }
 
 describe("TerminalCanvas — selection + copy (Task 9)", () => {
@@ -101,19 +88,10 @@ describe("TerminalCanvas — selection + copy (Task 9)", () => {
     const copyText = vi.fn().mockResolvedValue(undefined);
 
     const { getByTestId } = render(
-      <TerminalCanvas
-        terminalId="t1"
-        cols={11}
-        rows={1}
-        fontSize={14}
-        snapshotOverride={grid}
-        copyText={copyText}
-      />,
+      <TerminalCanvas terminalId="t1" cols={11} rows={1} fontSize={14} snapshotOverride={grid} copyText={copyText} />,
     );
     const canvas = getByTestId("terminal-canvas") as HTMLCanvasElement;
-    const textarea = getByTestId(
-      "terminal-ime-textarea",
-    ) as HTMLTextAreaElement;
+    const textarea = getByTestId("terminal-ime-textarea") as HTMLTextAreaElement;
 
     // Drag from cell (0,0) to (0,4) → should select "hello".
     await act(async () => {
@@ -153,9 +131,7 @@ describe("TerminalCanvas — selection + copy (Task 9)", () => {
       />,
     );
     const canvas = getByTestId("terminal-canvas") as HTMLCanvasElement;
-    const textarea = getByTestId(
-      "terminal-ime-textarea",
-    ) as HTMLTextAreaElement;
+    const textarea = getByTestId("terminal-ime-textarea") as HTMLTextAreaElement;
 
     await act(async () => {
       downUpDrag(canvas, { x: 0, y: 0 }, { x: 4 * 8 + 1, y: 0 });
@@ -165,12 +141,8 @@ describe("TerminalCanvas — selection + copy (Task 9)", () => {
     // selection-clear listener. Fire keydown + input on the textarea so
     // both fire together.
     await act(async () => {
-      textarea.dispatchEvent(
-        new KeyboardEvent("keydown", { bubbles: true, key: "a" }),
-      );
-      textarea.dispatchEvent(
-        new InputEvent("input", { bubbles: true, data: "a" }),
-      );
+      textarea.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "a" }));
+      textarea.dispatchEvent(new InputEvent("input", { bubbles: true, data: "a" }));
     });
     // Ctrl+Shift+C must also target the textarea.
     await act(async () => {
@@ -192,14 +164,7 @@ describe("TerminalCanvas — selection + copy (Task 9)", () => {
     const grid = gridFromRows(["hello"]);
     const copyText = vi.fn();
     const { getByTestId } = render(
-      <TerminalCanvas
-        terminalId="t1"
-        cols={5}
-        rows={1}
-        fontSize={14}
-        snapshotOverride={grid}
-        copyText={copyText}
-      />,
+      <TerminalCanvas terminalId="t1" cols={5} rows={1} fontSize={14} snapshotOverride={grid} copyText={copyText} />,
     );
     const canvas = getByTestId("terminal-canvas") as HTMLCanvasElement;
     await act(async () => {

@@ -1,14 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { useCallback, useEffect, useState } from "react";
 
 import { toast } from "../store/toastStore";
-import {
-  isPhaseActive,
-  type AutoRepairConfig,
-  type RepairJobInfo,
-  type RepairNotification,
-} from "../types/repair";
+import { type AutoRepairConfig, isPhaseActive, type RepairJobInfo, type RepairNotification } from "../types/repair";
 
 interface UseRepairJobsResult {
   jobs: RepairJobInfo[];
@@ -16,11 +11,7 @@ interface UseRepairJobsResult {
   config: AutoRepairConfig;
   setEnabled: (enabled: boolean) => Promise<void>;
   setPattern: (pattern: string) => Promise<void>;
-  triggerManual: (args: {
-    errorLine: string;
-    sourcePane: string;
-    repoPath: string;
-  }) => Promise<string | null>;
+  triggerManual: (args: { errorLine: string; sourcePane: string; repoPath: string }) => Promise<string | null>;
 }
 
 const EMPTY_JOBS: RepairJobInfo[] = [];
@@ -101,10 +92,7 @@ export function useRepairJobs(): UseRepairJobsResult {
       });
       setConfig(next);
     } catch (e) {
-      toast.error(
-        "Auto-repair toggle failed",
-        e instanceof Error ? e.message : String(e),
-      );
+      toast.error("Auto-repair toggle failed", e instanceof Error ? e.message : String(e));
     }
   }, []);
 
@@ -116,32 +104,23 @@ export function useRepairJobs(): UseRepairJobsResult {
       });
       setConfig(next);
     } catch (e) {
-      toast.error(
-        "Auto-repair pattern rejected",
-        e instanceof Error ? e.message : String(e),
-      );
+      toast.error("Auto-repair pattern rejected", e instanceof Error ? e.message : String(e));
     }
   }, []);
 
-  const triggerManual = useCallback(
-    async (args: { errorLine: string; sourcePane: string; repoPath: string }) => {
-      try {
-        const id = await invoke<string | null>("trigger_repair_manual", {
-          errorLine: args.errorLine,
-          sourcePane: args.sourcePane,
-          repoPath: args.repoPath,
-        });
-        return id;
-      } catch (e) {
-        toast.error(
-          "Auto-repair trigger failed",
-          e instanceof Error ? e.message : String(e),
-        );
-        return null;
-      }
-    },
-    [],
-  );
+  const triggerManual = useCallback(async (args: { errorLine: string; sourcePane: string; repoPath: string }) => {
+    try {
+      const id = await invoke<string | null>("trigger_repair_manual", {
+        errorLine: args.errorLine,
+        sourcePane: args.sourcePane,
+        repoPath: args.repoPath,
+      });
+      return id;
+    } catch (e) {
+      toast.error("Auto-repair trigger failed", e instanceof Error ? e.message : String(e));
+      return null;
+    }
+  }, []);
 
   const activeCount = jobs.filter((j) => isPhaseActive(j.phase)).length;
 

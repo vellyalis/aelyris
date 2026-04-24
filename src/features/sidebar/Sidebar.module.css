@@ -30,7 +30,9 @@
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  transition: color var(--duration-fast), background var(--duration-fast);
+  transition:
+    color var(--duration-fast),
+    background var(--duration-fast);
 }
 
 .navBtn:hover {

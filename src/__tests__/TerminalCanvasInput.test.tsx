@@ -1,4 +1,4 @@
-import { render, cleanup, fireEvent } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TerminalCanvas } from "../features/terminal/TerminalCanvas";
@@ -16,10 +16,7 @@ function installCanvasMock() {
   ) as unknown as HTMLCanvasElement["getContext"];
 }
 
-function dispatchKey(
-  el: HTMLElement,
-  init: KeyboardEventInit & { key: string },
-) {
+function dispatchKey(el: HTMLElement, init: KeyboardEventInit & { key: string }) {
   const event = new KeyboardEvent("keydown", {
     bubbles: true,
     cancelable: true,
@@ -31,18 +28,10 @@ function dispatchKey(
 
 function renderCanvas(writeBytes?: (id: string, data: string) => void) {
   const utils = render(
-    <TerminalCanvas
-      terminalId="t1"
-      cols={4}
-      rows={2}
-      snapshotOverride={null}
-      writeBytes={writeBytes}
-    />,
+    <TerminalCanvas terminalId="t1" cols={4} rows={2} snapshotOverride={null} writeBytes={writeBytes} />,
   );
   const canvas = utils.getByTestId("terminal-canvas") as HTMLCanvasElement;
-  const textarea = utils.getByTestId(
-    "terminal-ime-textarea",
-  ) as HTMLTextAreaElement;
+  const textarea = utils.getByTestId("terminal-ime-textarea") as HTMLTextAreaElement;
   return { ...utils, canvas, textarea };
 }
 
@@ -124,8 +113,7 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
     // jsdom doesn't implement DataTransfer; hand-roll a minimal shim that
     // matches the clipboardData.getData("text") contract we rely on.
     const clipboardData = {
-      getData: (type: string) =>
-        type === "text" || type === "text/plain" ? "git status\n" : "",
+      getData: (type: string) => (type === "text" || type === "text/plain" ? "git status\n" : ""),
     } as unknown as DataTransfer;
     const pasteEvent = new Event("paste", {
       bubbles: true,
@@ -191,32 +179,16 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
     // silently reset the internal pendingComposition / skip refs.
     const initialWrite = vi.fn();
     const { container, rerender } = render(
-      <TerminalCanvas
-        terminalId="t1"
-        cols={4}
-        rows={2}
-        snapshotOverride={null}
-        writeBytes={initialWrite}
-      />,
+      <TerminalCanvas terminalId="t1" cols={4} rows={2} snapshotOverride={null} writeBytes={initialWrite} />,
     );
-    const textarea = container.querySelector(
-      "[data-testid='terminal-ime-textarea']",
-    ) as HTMLTextAreaElement;
+    const textarea = container.querySelector("[data-testid='terminal-ime-textarea']") as HTMLTextAreaElement;
 
     fireEvent.compositionStart(textarea);
     fireEvent.input(textarea, { data: "きょ", isComposing: true });
 
     // Force a new writeBytes reference mid-composition.
     const swappedWrite = vi.fn();
-    rerender(
-      <TerminalCanvas
-        terminalId="t1"
-        cols={4}
-        rows={2}
-        snapshotOverride={null}
-        writeBytes={swappedWrite}
-      />,
-    );
+    rerender(<TerminalCanvas terminalId="t1" cols={4} rows={2} snapshotOverride={null} writeBytes={swappedWrite} />);
 
     fireEvent.compositionEnd(textarea, { data: "今日" });
     // The new writeBytes wins (ref is swapped live); the old function must

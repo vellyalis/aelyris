@@ -26,11 +26,7 @@ export interface FlatEntry {
  * present in `expanded`. `entries` is a directory → children lookup; when a
  * directory is missing we simply stop walking its subtree (loading state).
  */
-export function flattenVisible(
-  root: string,
-  entries: Map<string, FlattenEntry[]>,
-  expanded: Set<string>,
-): FlatEntry[] {
+export function flattenVisible(root: string, entries: Map<string, FlattenEntry[]>, expanded: Set<string>): FlatEntry[] {
   const out: FlatEntry[] = [];
   const walk = (dir: string, depth: number) => {
     const items = entries.get(dir);

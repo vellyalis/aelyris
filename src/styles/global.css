@@ -31,10 +31,20 @@
   --gold-dim: rgba(200, 160, 80, 0.4);
   --gold-subtle: rgba(200, 160, 80, 0.2);
   --gold-surface: linear-gradient(180deg, #e8c580 0%, #d4b896 20%, #c8a050 50%, #b89040 80%, #a88030 100%);
-  --gold-glow-inner: radial-gradient(ellipse at 50% 30%, rgba(232, 197, 128, 0.3) 0%, rgba(200, 160, 80, 0.15) 40%, transparent 70%);
+  --gold-glow-inner: radial-gradient(
+    ellipse at 50% 30%,
+    rgba(232, 197, 128, 0.3) 0%,
+    rgba(200, 160, 80, 0.15) 40%,
+    transparent 70%
+  );
 
   /* Prismatic — jewel-like light refraction */
-  --gradient-prismatic: linear-gradient(135deg, rgba(200, 160, 80, 0.15) 0%, rgba(148, 226, 213, 0.08) 50%, rgba(245, 194, 231, 0.08) 100%);
+  --gradient-prismatic: linear-gradient(
+    135deg,
+    rgba(200, 160, 80, 0.15) 0%,
+    rgba(148, 226, 213, 0.08) 50%,
+    rgba(245, 194, 231, 0.08) 100%
+  );
 
   /* Purple accent (Helm panel) */
   --purple: #7c3aed;
@@ -86,8 +96,8 @@
   --row-hover-strong: var(--white-10);
 
   /* Typography */
-  --font-ui: 'IBM Plex Sans', -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: 'IBM Plex Mono', 'Cascadia Code', monospace;
+  --font-ui: "IBM Plex Sans", -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", "Cascadia Code", monospace;
 
   /* Spacing tokens (4px base) */
   --space-0: 0px;
@@ -223,7 +233,9 @@
   border-width: 0;
 }
 
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
   width: 100%;
   overflow: hidden;
@@ -318,10 +330,19 @@ html, body, #root {
 }
 
 /* Scrollbar */
-::-webkit-scrollbar { width: 5px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+::-webkit-scrollbar {
+  width: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
 
 ::selection {
   background: rgba(200, 160, 80, 0.25);
@@ -347,7 +368,8 @@ iframe:focus-visible {
 }
 
 /* Smooth transitions — silk easing for all interactive elements */
-button, [role="button"] {
+button,
+[role="button"] {
   transition:
     background var(--duration-normal) var(--ease-silk),
     color var(--duration-normal) var(--ease-silk),
@@ -358,12 +380,14 @@ button, [role="button"] {
 }
 
 /* Global click feedback — elegant scale */
-button:active:not(:disabled), [role="button"]:active:not(:disabled) {
+button:active:not(:disabled),
+[role="button"]:active:not(:disabled) {
   transform: scale(0.98);
 }
 
 /* Global disabled state */
-button:disabled, [role="button"][aria-disabled="true"] {
+button:disabled,
+[role="button"][aria-disabled="true"] {
   opacity: var(--state-disabled-opacity);
   cursor: not-allowed;
   pointer-events: none;
@@ -371,7 +395,9 @@ button:disabled, [role="button"][aria-disabled="true"] {
 
 /* Reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
@@ -380,36 +406,62 @@ button:disabled, [role="button"][aria-disabled="true"] {
 
 /* Status icon animations — graceful, jewel-like */
 @keyframes statusPulse {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.15); opacity: 0.9; }
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 0.9;
+  }
 }
 @keyframes statusBreathe {
-  0%, 100% { opacity: 0.6; }
-  50% { opacity: 1; }
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
 }
-.status-pulse { animation: statusPulse 2s var(--ease-silk) infinite; }
-.status-pulse-fast { animation: statusPulse 1.5s var(--ease-silk) infinite; }
-.status-breathe { animation: statusBreathe 3s var(--ease-breath) infinite; }
+.status-pulse {
+  animation: statusPulse 2s var(--ease-silk) infinite;
+}
+.status-pulse-fast {
+  animation: statusPulse 1.5s var(--ease-silk) infinite;
+}
+.status-breathe {
+  animation: statusBreathe 3s var(--ease-breath) infinite;
+}
 
 /* Loading skeleton shimmer */
 @keyframes shimmer {
-  0% { background-position: -200px 0; }
-  100% { background-position: 200px 0; }
+  0% {
+    background-position: -200px 0;
+  }
+  100% {
+    background-position: 200px 0;
+  }
 }
 
 .shimmer {
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.04), transparent);
   background-size: 200px 100%;
   animation: shimmer 1.5s infinite;
 }
 
 /* Responsive: collapse panels on small windows */
 @media (max-width: 900px) {
-  .right-panel { display: none; }
+  .right-panel {
+    display: none;
+  }
 }
 
 @media (max-width: 700px) {
-  .left-panel { display: none; }
+  .left-panel {
+    display: none;
+  }
 }
 
 /* ─── Ghost Diff Overlay (Phase 3C-1b) ─── */

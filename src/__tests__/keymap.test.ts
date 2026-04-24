@@ -57,15 +57,11 @@ describe("keyEventToBytes — arrow / navigation keys", () => {
   });
 
   it("encodes Ctrl+ArrowLeft as CSI 1;5D", () => {
-    expect(keyEventToBytes(ev({ key: "ArrowLeft", ctrlKey: true }))).toBe(
-      "\x1b[1;5D",
-    );
+    expect(keyEventToBytes(ev({ key: "ArrowLeft", ctrlKey: true }))).toBe("\x1b[1;5D");
   });
 
   it("encodes Alt+ArrowRight as CSI 1;3C", () => {
-    expect(keyEventToBytes(ev({ key: "ArrowRight", altKey: true }))).toBe(
-      "\x1b[1;3C",
-    );
+    expect(keyEventToBytes(ev({ key: "ArrowRight", altKey: true }))).toBe("\x1b[1;3C");
   });
 
   it("maps Home/End/PageUp/PageDown/Insert/Delete", () => {

@@ -1,14 +1,12 @@
-import { describe, it, expect } from "vitest";
-import { parseFileChange, FileChangeTracker } from "../shared/lib/agentFileChanges";
+import { describe, expect, it } from "vitest";
+import { FileChangeTracker, parseFileChange } from "../shared/lib/agentFileChanges";
 
 describe("parseFileChange", () => {
   it("detects Write tool use in Claude format", () => {
     const line = JSON.stringify({
       type: "assistant",
       message: {
-        content: [
-          { type: "tool_use", name: "Write", input: { file_path: "/src/main.ts", content: "..." } },
-        ],
+        content: [{ type: "tool_use", name: "Write", input: { file_path: "/src/main.ts", content: "..." } }],
       },
     });
     const result = parseFileChange(line);
@@ -76,13 +74,21 @@ describe("parseFileChange", () => {
 describe("FileChangeTracker", () => {
   it("tracks changes across multiple lines", () => {
     const tracker = new FileChangeTracker();
-    tracker.addLine(JSON.stringify({
-      type: "tool_use", name: "Write", input: { file_path: "/a.ts" },
-    }));
+    tracker.addLine(
+      JSON.stringify({
+        type: "tool_use",
+        name: "Write",
+        input: { file_path: "/a.ts" },
+      }),
+    );
     tracker.addLine("some text output");
-    tracker.addLine(JSON.stringify({
-      type: "tool_use", name: "Edit", input: { file_path: "/b.ts" },
-    }));
+    tracker.addLine(
+      JSON.stringify({
+        type: "tool_use",
+        name: "Edit",
+        input: { file_path: "/b.ts" },
+      }),
+    );
 
     expect(tracker.changeCount).toBe(2);
     expect(tracker.getChangedFiles()).toEqual(["/a.ts", "/b.ts"]);
@@ -90,12 +96,20 @@ describe("FileChangeTracker", () => {
 
   it("deduplicates file paths in getChangedFiles", () => {
     const tracker = new FileChangeTracker();
-    tracker.addLine(JSON.stringify({
-      type: "tool_use", name: "Edit", input: { file_path: "/a.ts" },
-    }));
-    tracker.addLine(JSON.stringify({
-      type: "tool_use", name: "Edit", input: { file_path: "/a.ts" },
-    }));
+    tracker.addLine(
+      JSON.stringify({
+        type: "tool_use",
+        name: "Edit",
+        input: { file_path: "/a.ts" },
+      }),
+    );
+    tracker.addLine(
+      JSON.stringify({
+        type: "tool_use",
+        name: "Edit",
+        input: { file_path: "/a.ts" },
+      }),
+    );
 
     expect(tracker.changeCount).toBe(2);
     expect(tracker.getChangedFiles()).toEqual(["/a.ts"]);
@@ -103,9 +117,13 @@ describe("FileChangeTracker", () => {
 
   it("returns change from addLine when detected", () => {
     const tracker = new FileChangeTracker();
-    const result = tracker.addLine(JSON.stringify({
-      type: "tool_use", name: "Write", input: { file_path: "/new.ts" },
-    }));
+    const result = tracker.addLine(
+      JSON.stringify({
+        type: "tool_use",
+        name: "Write",
+        input: { file_path: "/new.ts" },
+      }),
+    );
     expect(result).not.toBeNull();
     expect(result!.path).toBe("/new.ts");
   });
