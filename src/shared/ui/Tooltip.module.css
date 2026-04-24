@@ -3,15 +3,16 @@
   font-size: var(--text-sm);
   font-family: var(--font-ui);
   color: var(--text-primary);
-  background: var(--aether-bg-card);
+  background: var(--glass-thick);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--white-10);
   border-radius: var(--radius-sm);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-md);
   white-space: nowrap;
   z-index: var(--z-tooltip);
-  animation: tooltipIn 0.12s ease-out;
+  animation: tooltipIn var(--duration-fast) var(--ease-out);
+  will-change: transform, opacity;
   user-select: none;
 }
 

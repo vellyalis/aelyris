@@ -34,9 +34,9 @@
 }
 
 .saved {
-  padding: 0 6px;
-  color: var(--ctp-green, var(--ctp-green));
-  animation: fadeIn 0.15s ease-out;
+  padding: 0 var(--space-3);
+  color: var(--ctp-green);
+  animation: fadeIn var(--duration-fast) var(--ease-out);
 }
 
 @keyframes fadeIn {

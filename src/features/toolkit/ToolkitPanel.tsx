@@ -198,8 +198,20 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
 
       {editingId && (
         <div className={styles.editForm} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setEditingId(null); }}>
-          <input className={styles.editInput} value={editLabel} onChange={(e) => setEditLabel(e.target.value)} placeholder="Label" />
-          <input className={styles.editInput} value={editCommand} onChange={(e) => setEditCommand(e.target.value)} placeholder="Command" />
+          <input
+            className={styles.editInput}
+            value={editLabel}
+            onChange={(e) => setEditLabel(e.target.value)}
+            placeholder="Label"
+            aria-label="Tool label"
+          />
+          <input
+            className={styles.editInput}
+            value={editCommand}
+            onChange={(e) => setEditCommand(e.target.value)}
+            placeholder="Command"
+            aria-label="Tool command"
+          />
           <div className={styles.editActions}>
             <button className={styles.editDelete} onClick={handleDelete}>Delete</button>
             <button className={styles.editCancel} onClick={() => setEditingId(null)}>Cancel</button>
@@ -265,6 +277,7 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
             <textarea
               className={styles.importTextarea}
               placeholder={'{\n  "label": "My Tool",\n  "command": "echo hello"\n}\n\n— or just paste a command —'}
+              aria-label="Tool recipe JSON or raw command"
               value={importText}
               onChange={(e) => parseImportText(e.target.value)}
               rows={5}

@@ -81,7 +81,7 @@
   font-family: var(--font-ui);
   font-weight: var(--weight-semibold);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.05em;
 }
 
 .roles {

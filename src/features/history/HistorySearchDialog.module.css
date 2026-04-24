@@ -82,7 +82,10 @@
   font-family: var(--font-ui);
   padding: var(--space-1) var(--space-3);
   cursor: pointer;
-  transition: all var(--duration-fast);
+  transition:
+    background var(--duration-fast) var(--ease-silk),
+    border-color var(--duration-fast) var(--ease-silk),
+    color var(--duration-fast) var(--ease-silk);
 }
 .filterChip:hover { border-color: var(--white-15); color: var(--text-primary); }
 .filterChipActive {

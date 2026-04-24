@@ -43,7 +43,7 @@
   font-family: var(--font-mono);
   padding: var(--space-2) var(--space-4);
   outline: none;
-  transition: border-color 150ms ease;
+  transition: border-color var(--duration-fast) var(--ease-silk);
 }
 
 .searchInput:focus-visible {

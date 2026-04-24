@@ -83,6 +83,7 @@ export function QuickOpen({ projectPath, openFiles, onSelectFile, onClose, initi
             ref={inputRef}
             className={styles.input}
             placeholder={mode === "files" ? "Search files..." : "Switch buffer..."}
+            aria-label={mode === "files" ? "Search files" : "Switch buffer"}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}

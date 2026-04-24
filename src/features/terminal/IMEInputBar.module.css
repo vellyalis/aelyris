@@ -4,32 +4,35 @@
   align-items: flex-end;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
-  background: rgba(30, 30, 46, 0.88);
-  border-top: 1px solid rgba(180, 140, 80, 0.35);
+  background: var(--glass-thick);
+  border-top: 1px solid var(--gold-dim);
   backdrop-filter: blur(8px);
-  transition: border-top-color 160ms ease, background 160ms ease,
-    box-shadow 160ms ease;
+  -webkit-backdrop-filter: blur(8px);
+  transition:
+    border-top-color var(--duration-fast) var(--ease-silk),
+    background var(--duration-fast) var(--ease-silk),
+    box-shadow var(--duration-fast) var(--ease-silk);
 }
 
 .bar.focused {
-  background: rgba(30, 30, 46, 0.96);
+  background: var(--glass-solid);
   border-top-color: var(--gold);
-  box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.35),
-    0 0 0 1px rgba(180, 140, 80, 0.12) inset;
+  box-shadow:
+    0 -6px 18px var(--black-50),
+    inset 0 0 0 1px var(--gold-subtle);
 }
 
 .indicator {
   min-width: 20px;
   text-align: center;
   color: var(--gold);
-  font-size: 13px;
+  font-size: var(--text-base);
   font-family: var(--font-mono);
-  font-weight: 500;
-  letter-spacing: 0.02em;
+  font-weight: var(--weight-medium);
   opacity: 0.55;
-  line-height: 1.4;
+  line-height: var(--leading-tight);
   padding: var(--space-1) 0;
-  transition: opacity 160ms ease;
+  transition: opacity var(--duration-fast) var(--ease-silk);
   user-select: none;
 }
 

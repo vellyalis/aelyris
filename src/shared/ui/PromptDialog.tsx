@@ -65,6 +65,7 @@ export function PromptDialog() {
             ref={inputRef}
             className={styles.input}
             placeholder={placeholder}
+            aria-label={title}
             value={value}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={(e) => {

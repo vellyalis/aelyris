@@ -43,15 +43,17 @@
 
 .title {
   font-size: var(--text-5xl);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   color: var(--text-primary);
   letter-spacing: -0.02em;
+  line-height: var(--leading-tight);
 }
 
 .greeting {
   font-size: var(--text-xl);
   color: var(--gold);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
+  letter-spacing: -0.01em;
   margin-bottom: var(--space-2);
 }
 

@@ -35,29 +35,32 @@ export const EmptyState = memo(function EmptyState({ icon, preset, title, descri
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        gap: 10,
-        padding: 32,
+        gap: "var(--space-5)",
+        padding: "var(--space-16)",
         color: "var(--text-muted)",
         textAlign: "center",
       }}
     >
       {PresetIcon ? (
-        <div style={{
-          width: 40, height: 40, borderRadius: 10,
-          background: `${presetColor}12`,
-          border: `1px solid ${presetColor}25`,
-          display: "flex", alignItems: "center", justifyContent: "center",
-        }}>
+        <div
+          aria-hidden="true"
+          style={{
+            width: 40, height: 40, borderRadius: "var(--radius-lg)",
+            background: `color-mix(in srgb, ${presetColor} 12%, transparent)`,
+            border: `1px solid color-mix(in srgb, ${presetColor} 25%, transparent)`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+        >
           <PresetIcon size={20} color={presetColor} strokeWidth={1.5} />
         </div>
       ) : icon ? (
-        <span style={{ fontSize: 24, opacity: 0.5 }}>{icon}</span>
+        <span aria-hidden="true" style={{ fontSize: "var(--text-4xl)", opacity: 0.5 }}>{icon}</span>
       ) : null}
-      <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>
+      <span style={{ fontSize: "var(--text-base)", fontWeight: "var(--weight-medium)", color: "var(--text-secondary)" }}>
         {title}
       </span>
       {description && (
-        <span style={{ fontSize: 11, maxWidth: 220, lineHeight: 1.5 }}>{description}</span>
+        <span style={{ fontSize: "var(--text-sm)", maxWidth: 220, lineHeight: "var(--leading-normal)" }}>{description}</span>
       )}
     </div>
   );

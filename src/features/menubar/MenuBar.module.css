@@ -34,7 +34,8 @@
   padding: var(--space-2);
   box-shadow: var(--shadow-lg);
   z-index: var(--z-dropdown);
-  animation: menuFadeIn 0.1s ease-out;
+  animation: menuFadeIn var(--duration-fast) var(--ease-out);
+  will-change: transform, opacity;
 }
 
 @keyframes menuFadeIn {

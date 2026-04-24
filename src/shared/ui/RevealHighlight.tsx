@@ -49,7 +49,7 @@ export function RevealHighlight({
             "radial-gradient(120px circle at var(--reveal-x, -100px) var(--reveal-y, -100px), rgba(255,255,255,0.06), transparent 60%)",
           pointerEvents: "none",
           borderRadius,
-          transition: "opacity 0.2s ease",
+          transition: "opacity var(--duration-fast) var(--ease-silk)",
         }}
       />
       {children}

@@ -164,6 +164,7 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
         <input
           className={styles.searchInput}
           placeholder="Filter files..."
+          aria-label="Filter files"
           value={searchQuery}
           onChange={(e) => handleSearch(e.target.value)}
         />

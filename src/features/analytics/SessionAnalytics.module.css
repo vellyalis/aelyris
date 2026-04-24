@@ -28,16 +28,16 @@
   display: flex; flex-direction: column; align-items: center; gap: 2px;
 }
 .metricValue { font-size: var(--text-lg); font-weight: 600; font-family: var(--font-mono); color: var(--text-primary); }
-.metricLabel { font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.metricLabel { font-size: var(--text-2xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
 
 /* Sections */
 .section { margin-bottom: var(--space-6); }
-.sectionTitle { font-size: var(--text-xs); font-weight: 500; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: var(--space-3); }
+.sectionTitle { font-size: var(--text-xs); font-weight: var(--weight-medium); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: var(--space-3); }
 
 /* Cost bar */
 .costBar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--white-4); }
-.costInput { background: var(--ctp-blue); transition: width 0.3s; }
-.costOutput { background: var(--ctp-green); transition: width 0.3s; }
+.costInput { background: var(--ctp-blue); transition: width var(--duration-slow) var(--ease-silk); }
+.costOutput { background: var(--ctp-green); transition: width var(--duration-slow) var(--ease-silk); }
 .costLegend { display: flex; gap: var(--space-6); font-size: 9px; color: var(--text-muted); font-family: var(--font-mono); margin-top: var(--space-2); }
 .legendDot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 3px; vertical-align: middle; }
 
@@ -46,7 +46,7 @@
 .toolRow { display: flex; align-items: center; gap: var(--space-3); font-size: var(--text-xs); }
 .toolName { width: 80px; font-family: var(--font-mono); color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .toolBar { flex: 1; height: 4px; background: var(--white-4); border-radius: 2px; overflow: hidden; }
-.toolFill { height: 100%; background: var(--ctp-mauve); border-radius: 2px; transition: width 0.3s; }
+.toolFill { height: 100%; background: var(--ctp-mauve); border-radius: 2px; transition: width var(--duration-slow) var(--ease-silk); }
 .toolCount { font-family: var(--font-mono); color: var(--text-muted); width: 24px; text-align: right; }
 
 /* Stats list */

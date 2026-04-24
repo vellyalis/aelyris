@@ -391,8 +391,8 @@ button:disabled, [role="button"][aria-disabled="true"] {
   color: var(--aether-ghost-tint);
   opacity: 0.55;
   font-family: var(--font-mono);
-  font-size: 13px;
-  line-height: 20px;
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
   padding: 0 var(--space-6);
   white-space: pre;
   overflow: hidden;

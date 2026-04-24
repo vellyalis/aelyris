@@ -15,7 +15,9 @@
 .bar {
   height: 100%;
   border-radius: var(--space-1);
-  transition: width 0.3s ease, background 0.3s ease;
+  transition:
+    width var(--duration-slow) var(--ease-silk),
+    background var(--duration-slow) var(--ease-silk);
 }
 
 .barCritical {

@@ -159,5 +159,5 @@
 
 .closeBtn:hover {
   background: var(--ctp-red);
-  color: #fff;
+  color: var(--text-primary);
 }
