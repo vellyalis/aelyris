@@ -9,12 +9,14 @@
   backdrop-filter: blur(8px);
 }
 .dialog {
-  width: 420px;
+  width: var(--dialog-width-sm);
   max-height: 80vh;
   overflow-y: auto;
-  background: var(--aether-bg-card);
+  background: var(--dialog-surface);
+  backdrop-filter: var(--dialog-surface-blur);
+  -webkit-backdrop-filter: var(--dialog-surface-blur);
   border: 1px solid var(--white-10);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-dialog);
   padding: var(--space-10);
   box-shadow: var(--rim-top), var(--shadow-dialog);
 }

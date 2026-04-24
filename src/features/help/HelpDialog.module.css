@@ -10,13 +10,18 @@
 }
 
 .dialog {
-  width: 640px;
+  width: var(--dialog-width-lg);
   max-width: 90vw;
   max-height: 80vh;
-  background: var(--aether-bg-card);
-  backdrop-filter: blur(20px);
+  /* --dialog-surface (92% alpha) instead of --aether-bg-card (72%) so the
+   * shortcut table reads crisply over the scrim — same treatment we rolled
+   * out to Settings after the 2026-04-25 CDP review flagged the darker
+   * variants as illegible. */
+  background: var(--dialog-surface);
+  backdrop-filter: var(--dialog-surface-blur);
+  -webkit-backdrop-filter: var(--dialog-surface-blur);
   border: 1px solid var(--white-10);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-dialog);
   box-shadow: var(--rim-top), var(--shadow-dialog);
   display: flex;
   flex-direction: column;

@@ -13,9 +13,11 @@
   width: 90vw;
   height: 80vh;
   max-width: 1100px;
-  background: var(--aether-bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  background: var(--dialog-surface);
+  backdrop-filter: var(--dialog-surface-blur);
+  -webkit-backdrop-filter: var(--dialog-surface-blur);
+  border: 1px solid var(--white-10);
+  border-radius: var(--radius-dialog);
   overflow: hidden;
   display: flex;
   flex-direction: column;

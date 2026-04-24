@@ -11,13 +11,18 @@
 }
 
 .panel {
-  width: 520px;
+  width: var(--dialog-width-md);
   max-height: 80vh;
-  background: var(--bg-secondary);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  /* Switched from --bg-secondary (--glass-dense, 62% alpha) to the
+   * --dialog-surface token (92%) so the Settings content reads legibly
+   * over the scrim-blurred app. The previous combination was effectively
+   * stacking two semi-transparent dark layers and the panel body sank
+   * into the scrim visually (2026-04-25 live CDP review). */
+  background: var(--dialog-surface);
+  backdrop-filter: var(--dialog-surface-blur);
+  -webkit-backdrop-filter: var(--dialog-surface-blur);
+  border: 1px solid var(--white-10);
+  border-radius: var(--radius-dialog);
   overflow: hidden;
   box-shadow: var(--rim-top), var(--shadow-dialog);
   display: flex;
