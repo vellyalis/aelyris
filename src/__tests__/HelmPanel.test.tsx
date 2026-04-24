@@ -15,8 +15,8 @@ describe("HelmPanel", () => {
 
   it("shows input when + clicked", () => {
     const { container } = render(<HelmPanel />);
-    const addBtn = container.querySelector("button");
-    expect(addBtn?.textContent).toBe("+");
+    const addBtn = container.querySelector('button[aria-label="Add task"]');
+    expect(addBtn).not.toBeNull();
     fireEvent.click(addBtn!);
     const input = container.querySelector("input");
     expect(input).not.toBeNull();
@@ -26,7 +26,7 @@ describe("HelmPanel", () => {
   it("adds task on Enter", () => {
     const { container } = render(<HelmPanel />);
     // Click +
-    fireEvent.click(container.querySelector("button")!);
+    fireEvent.click(container.querySelector('button[aria-label="Add task"]')!);
     // Type task name
     const input = container.querySelector("input")!;
     fireEvent.change(input, { target: { value: "My task" } });

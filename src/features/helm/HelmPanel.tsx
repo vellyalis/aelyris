@@ -1,5 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
+import { Plus } from "lucide-react";
 import { EmptyState } from "../../shared/ui/EmptyState";
+import { PanelHeader } from "../../shared/ui/PanelHeader";
 import styles from "./HelmPanel.module.css";
 
 interface Task {
@@ -52,11 +54,15 @@ export function HelmPanel() {
 
   return (
     <div className={styles.helm}>
-      <div className={styles.header}>
-        <span>Tasks</span>
-        {tasks.length > 0 && <span className={styles.count}>{doneCount}/{tasks.length}</span>}
-        <button className={styles.addBtn} onClick={() => setAdding(true)}>+</button>
-      </div>
+      <PanelHeader
+        title="Tasks"
+        count={tasks.length > 0 ? `${doneCount}/${tasks.length}` : undefined}
+        actions={
+          <button className={styles.addBtn} onClick={() => setAdding(true)} title="Add task" aria-label="Add task">
+            <Plus size={12} aria-hidden="true" />
+          </button>
+        }
+      />
       <div className={styles.content}>
         {adding && (
           <input

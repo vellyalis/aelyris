@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ChevronRight, Plus, Minus, Undo2, Check, Upload, FileText } from "lucide-react";
 import { toast } from "../../shared/store/toastStore";
+import { GitStatusPip } from "../../shared/ui/GitStatusPip";
 import styles from "./SCMPanel.module.css";
 
 interface ChangedFile {
@@ -25,15 +26,6 @@ const GROUPS: { id: GroupId; label: string; color: string }[] = [
   { id: "changes", label: "Changes", color: "var(--ctp-blue)" },
   { id: "untracked", label: "Untracked", color: "var(--text-muted)" },
 ];
-
-const STATUS_ICON: Record<string, string> = {
-  modified: "M",
-  added: "A",
-  deleted: "D",
-  renamed: "R",
-  untracked: "?",
-  conflicted: "!",
-};
 
 export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps) {
   const [files, setFiles] = useState<ChangedFile[]>([]);
@@ -174,7 +166,7 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
               <div className={styles.fileList}>
                 {g.files.map((f) => (
                   <div key={f.path} className={styles.fileRow}>
-                    <span className={styles.fileStatus} data-status={f.status}>{STATUS_ICON[f.status] ?? "?"}</span>
+                    <GitStatusPip status={f.status} variant="letter" className={styles.fileStatus} />
                     <button
                       type="button"
                       className={styles.fileName}

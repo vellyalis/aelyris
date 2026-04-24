@@ -57,6 +57,21 @@ export function OnboardingOverlay() {
     } catch { /* ignore */ }
   }, []);
 
+  // Escape exits the tour just like the Skip button — mirrors every other
+  // dialog in the app and satisfies the P2.5 a11y requirement without
+  // pulling the whole Radix Dialog stack into an onboarding surface.
+  useEffect(() => {
+    if (step < 0) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setStep(-1);
+        try { localStorage.setItem(STORAGE_KEY, "true"); } catch { /* ignore */ }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [step]);
+
   const handleNext = () => {
     if (step >= STEPS.length - 1) {
       setStep(-1);

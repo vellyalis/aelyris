@@ -5,17 +5,7 @@
   overflow: hidden;
 }
 
-.header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-5);
-  border-bottom: 1px solid var(--border);
-  font-size: var(--text-xs);
-  color: var(--text-secondary);
-}
-
-.title { flex: 1; font-weight: 500; }
+/* Header chrome moved to shared/ui/PanelHeader (`dense` variant). */
 
 .closeBtn {
   background: none;
@@ -24,8 +14,12 @@
   cursor: pointer;
   padding: var(--space-1);
   border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .closeBtn:hover { color: var(--text-primary); background: var(--white-6); }
+.closeBtn:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
 
 .fileTabs {
   display: flex;

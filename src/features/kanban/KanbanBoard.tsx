@@ -3,6 +3,7 @@ import { Plus, ChevronRight, Play, GitBranch, Bot } from "lucide-react";
 import { useAppStore } from "../../shared/store/appStore";
 import { KANBAN_COLUMNS, type KanbanColumnId, type TaskPriority, PRIORITY_COLORS } from "../../shared/types/kanban";
 import { STATUS_COLORS } from "../../shared/types/agent";
+import { PanelHeader } from "../../shared/ui/PanelHeader";
 import styles from "./KanbanBoard.module.css";
 
 interface KanbanBoardProps {
@@ -82,13 +83,15 @@ export function KanbanBoard({ onStartAgent, onActivateTask, onMoveWithSideEffect
 
   return (
     <div className={styles.container}>
-      <div className={styles.header}>
-        <span className={styles.headerTitle}>Tasks</span>
-        <span className={styles.headerCount}>{kanbanTasks.length}</span>
-        <button className={styles.addBtn} onClick={() => setShowForm(!showForm)} title="New Task">
-          <Plus size={14} />
-        </button>
-      </div>
+      <PanelHeader
+        title="Tasks"
+        count={kanbanTasks.length}
+        actions={
+          <button className={styles.addBtn} onClick={() => setShowForm(!showForm)} title="New Task" aria-label="New task">
+            <Plus size={14} />
+          </button>
+        }
+      />
 
       {showForm && (
         <div ref={formRef} className={styles.form}>

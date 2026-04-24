@@ -68,13 +68,9 @@
 .fileChanged[data-status="added"] { color: var(--status-idle); }
 .fileChanged[data-status="deleted"] { color: var(--ctp-red); }
 .fileChanged[data-status="untracked"] { color: var(--ctp-green); }
-.changeDot {
-  width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; margin-left: auto;
-  background: var(--status-edit);
-}
-.changeDot[data-status="added"] { background: var(--status-idle); }
-.changeDot[data-status="deleted"] { background: var(--ctp-red); }
-.changeDot[data-status="untracked"] { background: var(--ctp-green); }
+/* Pip glyph/color owned by shared GitStatusPip; keep the row-level layout
+   hook here so the dot docks to the right edge. */
+.changeDot { margin-left: auto; }
 .spinner { font-size: var(--text-sm); color: var(--text-muted); margin-left: auto; }
 
 /* Search */

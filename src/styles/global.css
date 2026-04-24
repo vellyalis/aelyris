@@ -101,6 +101,22 @@
   --bottom-tabs-height: 28px;
   --statusbar-height: 24px;
 
+  /* Dialog / overlay system (see docs/ui/PER_FEATURE_AUDIT_2026-04-24.md P2.3)
+   * — single source for the chrome used by Prompt/Confirm/Handoff/Analytics/
+   * Orchestra/OnboardingOverlay/QuickOpen/Settings/About/Watchdog/Help. */
+  --radius-dialog: 12px;
+  --radius-panel: 8px;
+  --scrim-standard-bg: rgba(0, 0, 0, 0.5);
+  --scrim-standard-blur: blur(4px);
+  --scrim-heavy-bg: rgba(0, 0, 0, 0.6);
+  --scrim-heavy-blur: blur(8px);
+  --dialog-width-xs: 320px;
+  --dialog-width-sm: 420px;
+  --dialog-width-md: 520px;
+  --dialog-width-lg: 640px;
+  --dialog-surface: rgba(24, 24, 24, 0.92);
+  --dialog-surface-blur: blur(20px);
+
   /* Z-index scale */
   --z-base: 0;
   --z-dropdown: 100;

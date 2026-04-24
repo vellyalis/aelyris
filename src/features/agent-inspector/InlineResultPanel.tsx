@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { FileText, X, ChevronLeft, ChevronRight, Check, RotateCcw } from "lucide-react";
 import type { AgentSession, FileChangeDetail } from "../../shared/types/agent";
 import { toast } from "../../shared/store/toastStore";
+import { PanelHeader } from "../../shared/ui/PanelHeader";
 import styles from "./InlineResultPanel.module.css";
 
 const DiffViewer = lazy(() =>
@@ -110,13 +111,15 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
 
   return (
     <div className={styles.panel}>
-      <div className={styles.header}>
-        <FileText size={12} />
-        <span className={styles.title}>
-          {session.name} — {uniqueFiles.length} file{uniqueFiles.length !== 1 ? "s" : ""} changed
-        </span>
-        <button className={styles.closeBtn} onClick={onClose} aria-label="Close"><X size={12} /></button>
-      </div>
+      <PanelHeader
+        dense
+        leadingIcon={<FileText size={12} />}
+        title={session.name}
+        subtitle={`${uniqueFiles.length} file${uniqueFiles.length !== 1 ? "s" : ""} changed`}
+        actions={
+          <button className={styles.closeBtn} onClick={onClose} aria-label="Close"><X size={12} /></button>
+        }
+      />
 
       {/* File tabs */}
       <div className={styles.fileTabs}>

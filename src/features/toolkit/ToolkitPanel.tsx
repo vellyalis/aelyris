@@ -1,8 +1,9 @@
 import { useState, useCallback } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { GitPullRequest, Upload, GitBranch, Play, FolderOpen, ClipboardList, ScrollText, FlaskConical, FileUp, AlertCircle } from "lucide-react";
+import { GitPullRequest, Upload, GitBranch, Play, FolderOpen, ClipboardList, ScrollText, FlaskConical, FileUp, AlertCircle, Plus } from "lucide-react";
 import { showPrompt } from "../../shared/ui/PromptDialog";
 import { showConfirm } from "../../shared/ui/ConfirmDialog";
+import { PanelHeader } from "../../shared/ui/PanelHeader";
 import { detectDangerousCommand } from "../../shared/lib/shellSafety";
 import styles from "./ToolkitPanel.module.css";
 
@@ -191,11 +192,15 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
 
   return (
     <div className={styles.toolkit} role="region" aria-label="Toolkit">
-      <div className={styles.header}>
-        <span className={styles.title}>Toolkit</span>
-        <span className={styles.project}>{projectName}</span>
-        <button className={styles.addBtn} onClick={handleAdd} title="Add action" aria-label="Add tool">+</button>
-      </div>
+      <PanelHeader
+        title="Toolkit"
+        subtitle={projectName}
+        actions={
+          <button className={styles.addBtn} onClick={handleAdd} title="Add action" aria-label="Add tool">
+            <Plus size={12} aria-hidden="true" />
+          </button>
+        }
+      />
 
       {editingId && (
         <div className={styles.editForm} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setEditingId(null); }}>

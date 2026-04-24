@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import * as RadixContextMenu from "@radix-ui/react-context-menu";
 import { showPrompt } from "../../shared/ui/PromptDialog";
 import { EmptyState } from "../../shared/ui/EmptyState";
+import { GitStatusPip } from "../../shared/ui/GitStatusPip";
 import { FileIcon } from "./FileIcon";
 import { toast } from "../../shared/store/toastStore";
 import styles from "./FileTree.module.css";
@@ -251,7 +252,9 @@ function renderEntries(
               <span className={`${styles.fileName} ${isChanged ? styles.fileChanged : ""}`}
                 data-status={changeStatus}
               >{entry.name}</span>
-              {isChanged && <span className={styles.changeDot} data-status={changeStatus} />}
+              {isChanged && changeStatus && (
+                <GitStatusPip status={changeStatus} variant="dot" className={styles.changeDot} />
+              )}
               {isLoading && <span className={styles.spinner}>…</span>}
             </button>
           </RadixContextMenu.Trigger>

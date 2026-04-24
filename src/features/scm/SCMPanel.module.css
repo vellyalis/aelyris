@@ -59,16 +59,11 @@
 }
 .fileRow:hover { background: var(--white-4); }
 
+/* Keep a local hook so the pip aligns with the fileRow gap rhythm; color and
+   glyph come from the shared GitStatusPip primitive. */
 .fileStatus {
-  font-family: var(--font-mono); font-weight: 600; font-size: 10px;
-  width: 14px; text-align: center; flex-shrink: 0;
+  width: 14px;
 }
-.fileStatus[data-status="modified"] { color: var(--ctp-yellow); }
-.fileStatus[data-status="added"] { color: var(--ctp-green); }
-.fileStatus[data-status="deleted"] { color: var(--ctp-red); }
-.fileStatus[data-status="untracked"] { color: var(--text-muted); }
-.fileStatus[data-status="conflicted"] { color: var(--ctp-red); font-weight: var(--weight-semibold); }
-.fileStatus[data-status="renamed"] { color: var(--ctp-cyan); }
 
 .fileName {
   background: none; border: none; padding: 0; margin: 0;

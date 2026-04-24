@@ -16,43 +16,21 @@
   overflow: hidden;
 }
 
-.header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-6);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-muted);
-}
-
-.count {
-  font-weight: 400;
-  font-size: var(--text-xs);
-  font-family: var(--font-mono);
-  color: var(--text-muted);
-  background: var(--white-4);
-  padding: 1px var(--space-2);
-  border-radius: var(--radius-sm);
-}
+/* Header chrome moved to shared/ui/PanelHeader. */
 
 .addBtn {
   background: none;
   border: none;
   color: var(--text-muted);
-  font-size: var(--text-lg);
-  line-height: 1;
   cursor: pointer;
-  padding: var(--space-1) var(--space-3);
+  padding: var(--space-1);
   border-radius: var(--radius-sm);
-  margin-left: auto;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 .addBtn:hover { background: var(--white-6); color: var(--text-primary); }
+.addBtn:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
 
 .content {
   flex: 1;

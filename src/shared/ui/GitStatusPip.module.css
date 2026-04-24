@@ -1,0 +1,51 @@
+/* GitStatusPip — single primitive consumed by SCMPanel + FileTree (and
+   eventually PRInspector / GhostDiffPanel). Two variants:
+   - `letter`: M/A/D/R/?/! glyph at 10px mono — provides non-color
+     differentiation so the row is still legible without color (a11y).
+   - `dot`: 6px disc — filled with the status tone. Paired with aria-label so
+     screen readers still announce the state. */
+
+.pip {
+  flex-shrink: 0;
+}
+
+.letter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  min-height: 14px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.letter[data-status="conflicted"] {
+  font-weight: var(--weight-semibold);
+}
+
+.dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+/* Deleted gets a ring instead of a fill so deletion reads differently from
+   addition without relying on color alone — addresses the audit's
+   "color-only" a11y fail. */
+.dot[data-status="deleted"] {
+  background: transparent !important;
+  border: 1.5px solid var(--ctp-red);
+  width: 7px;
+  height: 7px;
+}
+
+/* Untracked is a smaller hollow swatch so it still reads as "not yet
+   tracked" even when hue drifts near added. */
+.dot[data-status="untracked"] {
+  width: 5px;
+  height: 5px;
+  opacity: 0.75;
+}
