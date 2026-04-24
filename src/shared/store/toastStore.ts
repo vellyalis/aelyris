@@ -31,18 +31,15 @@ export const useToastStore = create<ToastStore>((set) => ({
       set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) }));
     }, 5000);
   },
-  dismiss: (id) =>
-    set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) })),
+  dismiss: (id) => set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) })),
 }));
 
 // Convenience helpers
 export const toast = {
   success: (title: string, description?: string) =>
     useToastStore.getState().add({ type: "success", title, description }),
-  error: (title: string, description?: string) =>
-    useToastStore.getState().add({ type: "error", title, description }),
-  info: (title: string, description?: string) =>
-    useToastStore.getState().add({ type: "info", title, description }),
+  error: (title: string, description?: string) => useToastStore.getState().add({ type: "error", title, description }),
+  info: (title: string, description?: string) => useToastStore.getState().add({ type: "info", title, description }),
   warning: (title: string, description?: string) =>
     useToastStore.getState().add({ type: "warning", title, description }),
 };

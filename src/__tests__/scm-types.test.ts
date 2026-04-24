@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { KanbanColumnId } from "../shared/types/kanban";
 import { KANBAN_COLUMNS, PRIORITY_COLORS } from "../shared/types/kanban";
 

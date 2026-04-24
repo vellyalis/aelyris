@@ -16,6 +16,8 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
+use serde::{Deserialize, Serialize};
+
 const MAX_CONCURRENT_JOBS: usize = 3;
 const DEBOUNCE_SECS: u64 = 60;
 
@@ -24,7 +26,8 @@ const DEBOUNCE_SECS: u64 = 60;
 // ---------------------------------------------------------------------------
 
 /// Current phase of a repair job (exposed for UI/status display).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "message", rename_all = "camelCase")]
 pub enum RepairPhase {
     CreatingWorktree,
     RunningAgent,
@@ -34,14 +37,14 @@ pub enum RepairPhase {
 }
 
 /// Captured error context from PTY output.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorContext {
     pub matched_line: String,
     pub source_pane: String,
 }
 
 /// Notification emitted by the pipeline for the UI layer.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RepairNotification {
     pub job_id: String,
     pub message: String,
@@ -49,13 +52,18 @@ pub struct RepairNotification {
 }
 
 /// Read-only snapshot of a job (for UI display).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RepairJobInfo {
     pub id: String,
     pub phase: RepairPhase,
     pub branch: String,
     pub error_line: String,
     pub elapsed_secs: u64,
+    /// Main repo path the job was triggered against. Needed so listeners
+    /// (e.g. ghostdiff) can predict the worktree path without duplicating
+    /// the naming rule.
+    pub repo_path: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -67,6 +75,7 @@ struct RepairJob {
     phase: RepairPhase,
     branch: String,
     error_line: String,
+    repo_path: String,
     started_at: Instant,
 }
 
@@ -139,6 +148,7 @@ impl AutoRepairManager {
             phase: RepairPhase::CreatingWorktree,
             branch: branch.clone(),
             error_line: error.matched_line.clone(),
+            repo_path: repo_path.to_string_lossy().to_string(),
             started_at: now,
         });
 
@@ -208,6 +218,7 @@ impl AutoRepairManager {
                 branch: j.branch.clone(),
                 error_line: j.error_line.clone(),
                 elapsed_secs: j.started_at.elapsed().as_secs(),
+                repo_path: j.repo_path.clone(),
             })
             .collect()
     }

@@ -12,7 +12,10 @@
   -webkit-app-region: drag;
 }
 
-.logo { border-radius: var(--radius-sm); flex-shrink: 0; }
+.logo {
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
 
 /* Left group: avatar + project info (2 rows) */
 .left {
@@ -23,7 +26,9 @@
   min-width: 0;
   -webkit-app-region: drag;
 }
-.left > * { -webkit-app-region: no-drag; }
+.left > * {
+  -webkit-app-region: no-drag;
+}
 
 .projectInfo {
   display: flex;
@@ -57,10 +62,13 @@
   font-family: var(--font-mono);
 }
 
+/* Muted so the project name keeps the eye-anchor — gold on gold against
+   `.name` was competing for attention (audit 2026-04-24). */
 .changes {
   font-size: var(--text-xs);
-  color: var(--gold);
+  color: var(--text-muted);
   font-family: var(--font-mono);
+  opacity: 0.8;
 }
 
 /* Status dot + label */
@@ -108,33 +116,53 @@
   font-family: var(--font-mono);
 }
 
-/* Icon buttons */
+/* Icon buttons stretch to the full 48px bar height so they line up with the
+   window controls on the far right. Previously the 32px height left a 16px
+   dead band that made the right cluster feel un-anchored. */
 .headerBtn {
   background: none;
   border: none;
   color: var(--white-25);
   cursor: pointer;
-  padding: var(--space-2);
-  border-radius: var(--radius-sm);
+  padding: 0 var(--space-3);
+  height: 48px;
+  min-width: 36px;
+  border-radius: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   -webkit-app-region: no-drag;
+  transition:
+    background var(--duration-fast),
+    color var(--duration-fast);
 }
 .headerBtn:hover {
   background: var(--white-6);
   color: var(--white-70);
 }
+.headerBtn:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: -3px;
+}
+
+/* 1px vertical separator between the app-action cluster (Refresh/Settings)
+   and the platform window controls — keeps them from reading as one row. */
+.controlsSeparator {
+  width: 1px;
+  height: 24px;
+  background: var(--white-10);
+  margin: 0 var(--space-2);
+}
 
 /* Window controls — right side, Fluent-inspired */
 .controls {
   display: flex;
-  margin-left: var(--space-2);
+  margin-left: 0;
 }
 
 .ctrlBtn {
   width: 46px;
-  height: 32px;
+  height: 48px;
   border: none;
   border-radius: 0;
   background: transparent;
@@ -144,7 +172,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background var(--duration-fast) var(--ease-silk), color var(--duration-fast);
+  transition:
+    background var(--duration-fast) var(--ease-silk),
+    color var(--duration-fast);
 }
 
 .minimizeBtn:hover {
@@ -159,5 +189,5 @@
 
 .closeBtn:hover {
   background: var(--ctp-red);
-  color: #fff;
+  color: var(--text-primary);
 }

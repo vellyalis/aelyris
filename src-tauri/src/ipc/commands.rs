@@ -2,9 +2,14 @@ use std::collections::HashMap;
 use std::io::BufRead;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager};
+use tokio::sync::broadcast;
 
 use crate::pty::{PtyManager, ShellType};
 use crate::pty::buffer::{OutputBuffer, strip_ansi};
+use crate::snapshot::{SnapshotStore, SnapshotTrigger, TerminalSnapshot};
+use crate::term::NativeTerminalRegistry;
+use crate::watchdog::auto_repair::AutoRepairManager;
+use crate::watchdog::{pane_watcher, AutoRepairConfig, ErrorContext};
 
 /// Global registry of output buffers for capture-pane
 #[derive(Clone)]
@@ -99,8 +104,12 @@ pub fn spawn_terminal(
     let pty_manager = app.state::<PtyManager>();
     let id = pty_manager.spawn(&shell, cols, rows, cwd.as_deref())?;
 
-    // Start streaming PTY output via events + capture buffer
-    let reader = pty_manager.take_reader(&id)?;
+    // Start streaming PTY output via events + capture buffer. Subscribing
+    // returns a broadcast receiver — the single OS-level reader thread
+    // inside `PtyManager` fans every byte out to every subscriber, so the
+    // API side can read the same session concurrently without stealing
+    // bytes from this loop.
+    let mut rx = pty_manager.subscribe_output(&id)?;
     let terminal_id = id.clone();
     let app_handle = app.clone();
     let buffer_registry = app.state::<OutputBufferRegistry>().inner().clone();
@@ -111,22 +120,67 @@ pub fn spawn_terminal(
     let shell_name = format!("{:?}", shell).to_lowercase();
     pane_registry.register(&id, &shell_name, cwd.as_deref().unwrap_or("."));
 
-    std::thread::spawn(move || {
-        let mut reader = reader;
-        let mut buf = [0u8; 4096];
+    // Native engine session (Phase 2).
+    let native_registry = app.state::<Arc<NativeTerminalRegistry>>().inner().clone();
+    if let Err(e) = native_registry.create(&id, cols, rows) {
+        log::warn!("native engine create failed for {}: {}", id, e);
+    }
+
+    // Per-terminal flush ticker: the 16ms coalesce in `advance()` swallows
+    // the very last edit if no follow-up bytes arrive (e.g., user types one
+    // char and stops). The ticker bypasses the window and ships any pending
+    // diff so the canvas never lags behind alacritty's grid.
+    let flush_alive = Arc::new(std::sync::atomic::AtomicBool::new(true));
+    {
+        let alive = flush_alive.clone();
+        let flush_registry = native_registry.clone();
+        let flush_handle = app_handle.clone();
+        let flush_id = terminal_id.clone();
+        std::thread::spawn(move || {
+            use std::sync::atomic::Ordering;
+            while alive.load(Ordering::Acquire) {
+                std::thread::sleep(std::time::Duration::from_millis(33));
+                if let Some(diff) = flush_registry.flush(&flush_id) {
+                    let _ = flush_handle.emit(&format!("term:diff-{}", flush_id), diff);
+                }
+            }
+        });
+    }
+    let reader_alive = flush_alive.clone();
+    let repair_cwd = cwd.clone();
+    let repair_pane = shell_name.clone();
+    let repair_app = app_handle.clone();
+
+    tauri::async_runtime::spawn(async move {
         let mut detected_ports = std::collections::HashSet::new();
         loop {
-            match reader.read(&mut buf) {
-                Ok(0) => break,
-                Ok(n) => {
-                    let data = &buf[..n];
+            match rx.recv().await {
+                Ok(chunk) => {
+                    let data: &[u8] = &chunk;
                     let event_name = format!("pty-output-{}", terminal_id);
                     // Send as number array — avoids base64 encode/decode overhead
-                    let bytes_vec: Vec<u8> = data.to_vec();
-                    let _ = app_handle.emit(&event_name, bytes_vec);
+                    let _ = app_handle.emit(&event_name, chunk.clone());
                     // Feed raw text into capture buffer
                     let text = String::from_utf8_lossy(data);
                     buffer_registry.feed(&terminal_id, &text);
+
+                    // Auto-repair pattern detection (Phase 3A-1). Cheap when
+                    // disabled: one mutex lock, one bool check. Enabled path
+                    // scans each line against the configured pattern and
+                    // forwards the first hit to `AutoRepairManager` — the
+                    // 60s debounce there keeps repeated matches from piling
+                    // up worktrees.
+                    maybe_trigger_auto_repair(
+                        &repair_app,
+                        &repair_pane,
+                        repair_cwd.as_deref(),
+                        &text,
+                    );
+
+                    // Native engine fan-out (Phase 2).
+                    if let Some(diff) = native_registry.advance(&terminal_id, data) {
+                        let _ = app_handle.emit(&format!("term:diff-{}", terminal_id), diff);
+                    }
 
                     // Port auto-detection: scan for localhost:<port> patterns
                     for segment in text.split_whitespace() {
@@ -158,17 +212,31 @@ pub fn spawn_terminal(
                         }));
                     }
                 }
-                Err(_) => break,
+                Err(broadcast::error::RecvError::Lagged(n)) => {
+                    // UI cannot meaningfully "show" a gap the way API can, so
+                    // we just note the drop and keep going. Falling behind
+                    // usually means the user scrolled a firehose (seq, big
+                    // build log) — accepting the loss is preferable to
+                    // stalling the PTY.
+                    log::warn!("ui: terminal {} lagged, dropped {} chunks", terminal_id, n);
+                    continue;
+                }
+                Err(broadcast::error::RecvError::Closed) => break,
             }
         }
-        // Terminal exited
+        // Terminal exited — stop the native flush ticker so it can join.
+        reader_alive.store(false, std::sync::atomic::Ordering::Release);
         let _ = app_handle.emit(&format!("pty-exit-{}", terminal_id), ());
     });
 
     Ok(id)
 }
 
-/// Write input to a terminal
+/// Write input to a terminal. On Enter (`\r` in the input payload) we also
+/// capture a `TerminalSnapshot` into the session-scoped ring buffer — this is
+/// the time-travel capture point (Phase 3C-3a). The snapshot reflects the
+/// grid *as it was when the user submitted the command*, before the shell
+/// produces output for it.
 #[tauri::command]
 pub fn write_terminal(
     app: AppHandle,
@@ -176,7 +244,51 @@ pub fn write_terminal(
     data: String,
 ) -> Result<(), String> {
     let pty_manager = app.state::<PtyManager>();
-    pty_manager.write(&id, data.as_bytes())
+    pty_manager.write(&id, data.as_bytes())?;
+    capture_if_enter(&app, &id, data.as_bytes());
+    Ok(())
+}
+
+/// Trigger a `UserSubmitted` snapshot when the bytes just written to a PTY
+/// contained an Enter (`\r`). Shared by every write-side IPC so Orchestra /
+/// Helm / `send_keys` / broadcast paths all feed the timeline, not just
+/// `write_terminal`.
+fn capture_if_enter(app: &AppHandle, terminal_id: &str, data: &[u8]) {
+    if data.contains(&b'\r') {
+        capture_user_submit_snapshot(app, terminal_id);
+    }
+}
+
+/// Grab the current grid from the native engine and push it into the snapshot
+/// store, tagged as `UserSubmitted`. Silently no-ops when managed state is
+/// missing (tests / early boot) or the engine has no session for `id` — the
+/// PTY write itself has already succeeded at this point.
+fn capture_user_submit_snapshot(app: &AppHandle, terminal_id: &str) {
+    let Some(native_state) = app.try_state::<Arc<NativeTerminalRegistry>>() else {
+        return;
+    };
+    let Some(store_state) = app.try_state::<Arc<SnapshotStore>>() else {
+        return;
+    };
+    let Some(grid) = native_state.inner().snapshot(terminal_id) else {
+        return;
+    };
+    let captured_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let snap = TerminalSnapshot {
+        id: crate::snapshot::SnapshotId::new(),
+        session_id: terminal_id.to_string(),
+        captured_at,
+        trigger: SnapshotTrigger::UserSubmitted,
+        grid,
+    };
+    let id = store_state.inner().push(snap);
+    let _ = app.emit(
+        &format!("snapshot:captured-{}", terminal_id),
+        serde_json::json!({ "snapshotId": id, "sessionId": terminal_id }),
+    );
 }
 
 /// Resize a terminal
@@ -188,7 +300,14 @@ pub fn resize_terminal(
     rows: u16,
 ) -> Result<(), String> {
     let pty_manager = app.state::<PtyManager>();
-    pty_manager.resize(&id, cols, rows)
+    pty_manager.resize(&id, cols, rows)?;
+
+    // Native engine resize — emits a full frame so the frontend can reflow.
+    let native_registry = app.state::<Arc<NativeTerminalRegistry>>();
+    if let Some(diff) = native_registry.resize(&id, cols, rows)? {
+        let _ = app.emit(&format!("term:diff-{}", id), diff);
+    }
+    Ok(())
 }
 
 /// Close a terminal
@@ -199,7 +318,62 @@ pub fn close_terminal(app: AppHandle, id: String) -> Result<(), String> {
     // Clean up associated registries
     app.state::<OutputBufferRegistry>().remove(&id);
     app.state::<crate::pty::PaneRegistry>().remove(&id);
+    app.state::<Arc<NativeTerminalRegistry>>().remove(&id);
+    if let Some(store) = app.try_state::<Arc<SnapshotStore>>() {
+        store.inner().remove_session(&id);
+    }
     Ok(())
+}
+
+/// Scan a fresh chunk of PTY text for the auto-repair pattern and, on a
+/// hit, hand it to `AutoRepairManager`. Silently no-ops when the feature is
+/// disabled, the managed state is missing, or the cwd is absent (without a
+/// git root the worker can't create a worktree).
+fn maybe_trigger_auto_repair(
+    app: &AppHandle,
+    source_pane: &str,
+    cwd: Option<&str>,
+    text: &str,
+) {
+    let Some(cfg_state) = app.try_state::<Arc<Mutex<AutoRepairConfig>>>() else {
+        return;
+    };
+    let (enabled, pattern) = match cfg_state.inner().lock() {
+        Ok(guard) => (guard.enabled, guard.pattern.clone()),
+        Err(_) => return,
+    };
+    if !enabled || pattern.trim().is_empty() {
+        return;
+    }
+    let Some(repo_path) = cwd else { return };
+    let clean = strip_ansi(text);
+    let Some(matched) = clean
+        .lines()
+        .find(|line| pane_watcher::matches_trigger(&pattern, line))
+    else {
+        return;
+    };
+    let Some(mgr_state) = app.try_state::<Arc<Mutex<AutoRepairManager>>>() else {
+        return;
+    };
+    let Ok(mut mgr) = mgr_state.inner().lock() else {
+        return;
+    };
+    let ctx = ErrorContext {
+        matched_line: matched.trim().to_string(),
+        source_pane: source_pane.to_string(),
+    };
+    let _ = mgr.trigger(ctx, std::path::Path::new(repo_path));
+}
+
+/// Bootstrap the frontend with a full grid snapshot — used when React
+/// (re)mounts the TerminalCanvas and needs the starting state.
+#[tauri::command]
+pub fn term_snapshot(
+    app: AppHandle,
+    id: String,
+) -> Option<crate::term::GridSnapshot> {
+    app.state::<Arc<NativeTerminalRegistry>>().snapshot(&id)
 }
 
 /// List active terminals
@@ -219,6 +393,28 @@ pub fn detect_shells() -> Vec<ShellType> {
 #[tauri::command]
 pub fn discover_projects(scan_dirs: Vec<String>) -> Vec<crate::git::ProjectInfo> {
     crate::git::discover_projects(&scan_dirs)
+}
+
+/// Default project scan directories for the current user — Documents,
+/// Desktop, and the user's home. Returned as platform-absolute paths so the
+/// frontend can hand them straight to `discover_projects` without pulling
+/// in `~` expansion or environment-variable logic in JS.
+///
+/// Returns an empty vec if the user profile can't be resolved (extremely
+/// rare on Windows; the frontend should have its own fallback).
+#[tauri::command]
+pub fn default_project_scan_dirs() -> Vec<String> {
+    let mut dirs: Vec<String> = Vec::new();
+    // `home_dir` is deprecated in the std crate but the Tauri v2 ecosystem
+    // still relies on it. The frontend will dedupe any duplicate paths.
+    #[allow(deprecated)]
+    if let Some(home) = std::env::home_dir() {
+        let home_str = home.to_string_lossy().replace('\\', "/");
+        dirs.push(format!("{}/Documents", home_str));
+        dirs.push(format!("{}/Desktop", home_str));
+        dirs.push(home_str);
+    }
+    dirs
 }
 
 /// List branches for a project
@@ -477,7 +673,14 @@ pub fn git_diff_files(repo_path: String, file_paths: Vec<String>) -> Result<Vec<
 #[tauri::command]
 pub fn list_pull_requests(cwd: String) -> Result<Vec<PullRequestInfo>, String> {
     let output = std::process::Command::new("gh")
-        .args(["pr", "list", "--json", "number,title,state,author,headRefName,url", "--limit", "10"])
+        .args([
+            "pr",
+            "list",
+            "--json",
+            "number,title,state,author,headRefName,url,isDraft,updatedAt,reviewDecision,statusCheckRollup",
+            "--limit",
+            "10",
+        ])
         .current_dir(&cwd)
         .output()
         .map_err(|e| format!("gh CLI not found: {}", e))?;
@@ -496,6 +699,19 @@ pub struct PullRequestInfo {
     #[serde(rename = "headRefName")]
     pub head_ref_name: String,
     pub url: String,
+    #[serde(rename = "isDraft", default)]
+    pub is_draft: bool,
+    #[serde(rename = "updatedAt", default)]
+    pub updated_at: String,
+    /// `APPROVED` / `CHANGES_REQUESTED` / `REVIEW_REQUIRED` / `COMMENTED` / ``.
+    #[serde(rename = "reviewDecision", default)]
+    pub review_decision: String,
+    /// Each check entry has at minimum a `conclusion` ("SUCCESS" / "FAILURE" /
+    /// "NEUTRAL" / "CANCELLED" / "SKIPPED" / "TIMED_OUT" / "ACTION_REQUIRED")
+    /// and a `status` ("QUEUED" / "IN_PROGRESS" / "COMPLETED"). We keep it as
+    /// a JSON value and let the frontend aggregate.
+    #[serde(rename = "statusCheckRollup", default)]
+    pub status_check_rollup: serde_json::Value,
 }
 
 /// View a specific PR's diff
@@ -862,8 +1078,6 @@ fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
     Ok(buf)
 }
 
-use std::io::Read;
-
 // --- Session management commands ---
 
 use crate::db::{self, Database};
@@ -928,12 +1142,16 @@ fn validate_keys_size(data: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Send keystrokes to a specific terminal pane
+/// Send keystrokes to a specific terminal pane. Mirrors `write_terminal`'s
+/// snapshot hook so Orchestra agents that drive a pane through this IPC
+/// also appear on the time-travel timeline.
 #[tauri::command]
 pub fn send_keys(app: AppHandle, terminal_id: String, data: String) -> Result<(), String> {
     validate_keys_size(&data)?;
     let pty_manager = app.state::<PtyManager>();
-    pty_manager.write(&terminal_id, data.as_bytes())
+    pty_manager.write(&terminal_id, data.as_bytes())?;
+    capture_if_enter(&app, &terminal_id, data.as_bytes());
+    Ok(())
 }
 
 /// Capture recent output from a terminal pane
@@ -960,7 +1178,9 @@ pub fn command_blocks(
     registry.command_blocks(&terminal_id)
 }
 
-/// Send keystrokes to all active terminal panes (synchronize-panes)
+/// Send keystrokes to all active terminal panes (synchronize-panes). Each
+/// successfully written pane also gets its own snapshot captured when the
+/// payload ends a command, so the timeline stays consistent across panes.
 #[tauri::command]
 pub fn broadcast_keys(app: AppHandle, data: String) -> Result<u32, String> {
     validate_keys_size(&data)?;
@@ -970,6 +1190,7 @@ pub fn broadcast_keys(app: AppHandle, data: String) -> Result<u32, String> {
     for id in &ids {
         if pty_manager.write(id, data.as_bytes()).is_ok() {
             count += 1;
+            capture_if_enter(&app, id, data.as_bytes());
         }
     }
     Ok(count)
@@ -982,7 +1203,8 @@ pub fn rename_pane(app: AppHandle, terminal_id: String, name: String) -> Result<
     registry.rename(&terminal_id, &name)
 }
 
-/// Send keystrokes to a pane by its user-assigned name
+/// Send keystrokes to a pane by its user-assigned name. Same snapshot
+/// hook as `send_keys` so name-addressed writes appear on the timeline.
 #[tauri::command]
 pub fn send_keys_by_name(app: AppHandle, name: String, data: String) -> Result<(), String> {
     validate_keys_size(&data)?;
@@ -991,7 +1213,9 @@ pub fn send_keys_by_name(app: AppHandle, name: String, data: String) -> Result<(
         .find_by_name(&name)
         .ok_or_else(|| format!("No pane named '{}'", name))?;
     let pty_manager = app.state::<PtyManager>();
-    pty_manager.write(&terminal_id, data.as_bytes())
+    pty_manager.write(&terminal_id, data.as_bytes())?;
+    capture_if_enter(&app, &terminal_id, data.as_bytes());
+    Ok(())
 }
 
 /// List all registered panes with metadata
@@ -1215,11 +1439,40 @@ pub fn list_agent_history(app: AppHandle, limit: usize) -> Result<Vec<crate::db:
 
 // ── Command History ──
 
-/// Save a command to history
+/// Save a command to history (DB) and feed the in-memory SuggestEngine
+/// so fish-style autosuggest picks up the new command on the very next
+/// keystroke without waiting for a DB reseed.
+///
+/// Also kicks off a best-effort semantic-index insert on a detached thread
+/// (Phase 3B-2) — we deliberately avoid blocking the PTY reader on the
+/// embedding round-trip even though the default embedder is fast.
 #[tauri::command]
 pub fn save_command_history(app: AppHandle, terminal_id: String, command: String, cwd: String) -> Result<(), String> {
     let db = app.state::<crate::db::ManagedDb>();
-    db.with(|d| d.save_command(&terminal_id, &command, &cwd))
+    db.with(|d| d.save_command(&terminal_id, &command, &cwd))?;
+    if let Some(engine) = app.try_state::<Arc<Mutex<crate::suggest::SuggestEngine>>>() {
+        if let Ok(mut guard) = engine.inner().lock() {
+            guard.record(&command);
+        }
+    }
+    // Semantic index. We need the new row id — re-read the latest row for
+    // this (terminal_id, command) pair. `save_command` does not return it.
+    if let Some(store) = app.try_state::<crate::ManagedHistoryStore>() {
+        let last_id = db.with(|d| d.last_command_id_for(&terminal_id, &command))?;
+        if let Some(id) = last_id {
+            let store = store.inner().clone();
+            let cmd = command.clone();
+            std::thread::Builder::new()
+                .name("history-index".into())
+                .spawn(move || {
+                    if let Err(e) = store.index_command(id, &cmd) {
+                        log::warn!("history index failed (id {id}): {e}");
+                    }
+                })
+                .ok();
+        }
+    }
+    Ok(())
 }
 
 /// Search command history
@@ -1270,6 +1523,49 @@ pub fn lsp_list(app: AppHandle) -> Vec<crate::lsp::LspServerInfo> {
 #[tauri::command]
 pub fn list_all_files(root_path: String, max_files: usize) -> Result<Vec<crate::git::FileListEntry>, String> {
     crate::git::list_all_files(&root_path, max_files)
+}
+
+/// Set the IME composition window position via Win32 API.
+/// This directly tells Windows where to place the IME candidate popup,
+/// bypassing WebView2's broken textarea-based positioning.
+#[tauri::command]
+pub fn set_ime_position(app: AppHandle, x: f64, y: f64) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::UI::Input::Ime::*;
+        use windows::Win32::Foundation::POINT;
+
+        let window = app.get_webview_window("main")
+            .ok_or("No main window")?;
+
+        let hwnd = window.hwnd().map_err(|e| e.to_string())?;
+
+        unsafe {
+            let himc = ImmGetContext(hwnd);
+            if himc.is_invalid() {
+                return Err("Failed to get IME context".into());
+            }
+
+            let cf = COMPOSITIONFORM {
+                dwStyle: CFS_POINT,
+                ptCurrentPos: POINT { x: x as i32, y: y as i32 },
+                ..Default::default()
+            };
+            let _ = ImmSetCompositionWindow(himc, &cf);
+
+            // Also set candidate window position
+            let cand = CANDIDATEFORM {
+                dwIndex: 0,
+                dwStyle: CFS_CANDIDATEPOS,
+                ptCurrentPos: POINT { x: x as i32, y: y as i32 },
+                ..Default::default()
+            };
+            let _ = ImmSetCandidateWindow(himc, &cand);
+
+            let _ = ImmReleaseContext(hwnd, himc);
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

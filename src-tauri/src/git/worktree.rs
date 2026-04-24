@@ -152,14 +152,23 @@ fn validate_branch_name(name: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Predict where `create_worktree(repo_path, branch_name)` will place the
+/// worktree — used by ghostdiff to register a layer before the worktree
+/// exists on disk, so the fs watcher can start as soon as it does.
+///
+/// Mirrors the formula in `create_worktree`; the two must stay in sync.
+pub fn predict_worktree_path(repo_path: &str, branch_name: &str) -> std::path::PathBuf {
+    let repo = std::path::Path::new(repo_path);
+    let parent = repo.parent().unwrap_or(repo);
+    let name = repo.file_name().unwrap_or_default().to_string_lossy();
+    parent.join(format!("{}-{}", name, branch_name))
+}
+
 /// Create a new worktree for a branch
 pub fn create_worktree(repo_path: &str, branch_name: &str) -> Result<WorktreeInfo, String> {
     validate_branch_name(branch_name)?;
     let _repo = Repository::open(repo_path).map_err(|e| format!("Open repo: {}", e))?;
-    let worktree_dir = std::path::Path::new(repo_path)
-        .parent()
-        .unwrap_or(std::path::Path::new(repo_path))
-        .join(format!("{}-{}", std::path::Path::new(repo_path).file_name().unwrap_or_default().to_string_lossy(), branch_name));
+    let worktree_dir = predict_worktree_path(repo_path, branch_name);
 
     let worktree_path = worktree_dir.to_string_lossy().to_string().replace('\\', "/");
 

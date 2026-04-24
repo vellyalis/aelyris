@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { decodeBase64ToBytes } from "../shared/lib/decodeBase64";
 
 describe("decodeBase64ToBytes", () => {

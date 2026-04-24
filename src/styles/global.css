@@ -31,10 +31,20 @@
   --gold-dim: rgba(200, 160, 80, 0.4);
   --gold-subtle: rgba(200, 160, 80, 0.2);
   --gold-surface: linear-gradient(180deg, #e8c580 0%, #d4b896 20%, #c8a050 50%, #b89040 80%, #a88030 100%);
-  --gold-glow-inner: radial-gradient(ellipse at 50% 30%, rgba(232, 197, 128, 0.3) 0%, rgba(200, 160, 80, 0.15) 40%, transparent 70%);
+  --gold-glow-inner: radial-gradient(
+    ellipse at 50% 30%,
+    rgba(232, 197, 128, 0.3) 0%,
+    rgba(200, 160, 80, 0.15) 40%,
+    transparent 70%
+  );
 
   /* Prismatic — jewel-like light refraction */
-  --gradient-prismatic: linear-gradient(135deg, rgba(200, 160, 80, 0.15) 0%, rgba(148, 226, 213, 0.08) 50%, rgba(245, 194, 231, 0.08) 100%);
+  --gradient-prismatic: linear-gradient(
+    135deg,
+    rgba(200, 160, 80, 0.15) 0%,
+    rgba(148, 226, 213, 0.08) 50%,
+    rgba(245, 194, 231, 0.08) 100%
+  );
 
   /* Purple accent (Helm panel) */
   --purple: #7c3aed;
@@ -76,9 +86,18 @@
   --state-selected: var(--gold);
   --state-disabled-opacity: 0.35;
 
+  /* Single row-hover token consumed by every list/row surface
+   * (Kanban/Helm/Toolkit/SubagentList/SCM fileRow/FileTree row/
+   * CommandPalette/QuickOpen/HistorySearchDialog/RepairJobsPanel).
+   * Added after the 2026-04-24 per-feature audit flagged 3 different
+   * hover shades across sibling row lists. Unit the tone here so a
+   * future theme can swing them all together. */
+  --row-hover: var(--white-6);
+  --row-hover-strong: var(--white-10);
+
   /* Typography */
-  --font-ui: 'IBM Plex Sans', -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: 'IBM Plex Mono', 'Cascadia Code', monospace;
+  --font-ui: "IBM Plex Sans", -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", "Cascadia Code", monospace;
 
   /* Spacing tokens (4px base) */
   --space-0: 0px;
@@ -101,6 +120,22 @@
   --bottom-tabs-height: 28px;
   --statusbar-height: 24px;
 
+  /* Dialog / overlay system (see docs/ui/PER_FEATURE_AUDIT_2026-04-24.md P2.3)
+   * — single source for the chrome used by Prompt/Confirm/Handoff/Analytics/
+   * Orchestra/OnboardingOverlay/QuickOpen/Settings/About/Watchdog/Help. */
+  --radius-dialog: 12px;
+  --radius-panel: 8px;
+  --scrim-standard-bg: rgba(0, 0, 0, 0.5);
+  --scrim-standard-blur: blur(4px);
+  --scrim-heavy-bg: rgba(0, 0, 0, 0.6);
+  --scrim-heavy-blur: blur(8px);
+  --dialog-width-xs: 320px;
+  --dialog-width-sm: 420px;
+  --dialog-width-md: 520px;
+  --dialog-width-lg: 640px;
+  --dialog-surface: rgba(24, 24, 24, 0.92);
+  --dialog-surface-blur: blur(20px);
+
   /* Z-index scale */
   --z-base: 0;
   --z-dropdown: 100;
@@ -121,6 +156,10 @@
   --ctp-surface0: #313244;
   --ctp-surface1: #45475a;
   --ctp-surface2: #585b70;
+  /* Catppuccin sapphire — "in-progress / queued" indicator across StatusBar
+   * and RepairJobsPanel. Added after the 2026-04-24 color audit found both
+   * sites relying on an undefined `var(--ctp-sapphire, #74c7ec)` fallback. */
+  --ctp-sapphire: #74c7ec;
 
   /* Typography — line heights */
   --leading-tight: 1.25;
@@ -180,7 +219,23 @@
   box-sizing: border-box;
 }
 
-html, body, #root {
+/* Visually hidden utility — used for Radix Dialog titles that have to exist
+   for a11y but shouldn't take up space (CommandPalette, QuickOpen, etc.). */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+html,
+body,
+#root {
   height: 100%;
   width: 100%;
   overflow: hidden;
@@ -275,10 +330,19 @@ html, body, #root {
 }
 
 /* Scrollbar */
-::-webkit-scrollbar { width: 5px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+::-webkit-scrollbar {
+  width: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
 
 ::selection {
   background: rgba(200, 160, 80, 0.25);
@@ -304,7 +368,8 @@ iframe:focus-visible {
 }
 
 /* Smooth transitions — silk easing for all interactive elements */
-button, [role="button"] {
+button,
+[role="button"] {
   transition:
     background var(--duration-normal) var(--ease-silk),
     color var(--duration-normal) var(--ease-silk),
@@ -315,12 +380,14 @@ button, [role="button"] {
 }
 
 /* Global click feedback — elegant scale */
-button:active:not(:disabled), [role="button"]:active:not(:disabled) {
+button:active:not(:disabled),
+[role="button"]:active:not(:disabled) {
   transform: scale(0.98);
 }
 
 /* Global disabled state */
-button:disabled, [role="button"][aria-disabled="true"] {
+button:disabled,
+[role="button"][aria-disabled="true"] {
   opacity: var(--state-disabled-opacity);
   cursor: not-allowed;
   pointer-events: none;
@@ -328,7 +395,9 @@ button:disabled, [role="button"][aria-disabled="true"] {
 
 /* Reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
@@ -337,34 +406,107 @@ button:disabled, [role="button"][aria-disabled="true"] {
 
 /* Status icon animations — graceful, jewel-like */
 @keyframes statusPulse {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.15); opacity: 0.9; }
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 0.9;
+  }
 }
 @keyframes statusBreathe {
-  0%, 100% { opacity: 0.6; }
-  50% { opacity: 1; }
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
 }
-.status-pulse { animation: statusPulse 2s var(--ease-silk) infinite; }
-.status-pulse-fast { animation: statusPulse 1.5s var(--ease-silk) infinite; }
-.status-breathe { animation: statusBreathe 3s var(--ease-breath) infinite; }
+.status-pulse {
+  animation: statusPulse 2s var(--ease-silk) infinite;
+}
+.status-pulse-fast {
+  animation: statusPulse 1.5s var(--ease-silk) infinite;
+}
+.status-breathe {
+  animation: statusBreathe 3s var(--ease-breath) infinite;
+}
 
 /* Loading skeleton shimmer */
 @keyframes shimmer {
-  0% { background-position: -200px 0; }
-  100% { background-position: 200px 0; }
+  0% {
+    background-position: -200px 0;
+  }
+  100% {
+    background-position: 200px 0;
+  }
 }
 
 .shimmer {
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.04), transparent);
   background-size: 200px 100%;
   animation: shimmer 1.5s infinite;
 }
 
 /* Responsive: collapse panels on small windows */
 @media (max-width: 900px) {
-  .right-panel { display: none; }
+  .right-panel {
+    display: none;
+  }
 }
 
 @media (max-width: 700px) {
-  .left-panel { display: none; }
+  .left-panel {
+    display: none;
+  }
+}
+
+/* ─── Ghost Diff Overlay (Phase 3C-1b) ─── */
+
+/* Phantom view-zone holding added lines from a ghost layer. */
+.aether-ghost-add-zone {
+  --aether-ghost-tint: #cba6f7;
+  display: flex;
+  flex-direction: column;
+  padding: 1px 0;
+  background: color-mix(in srgb, var(--aether-ghost-tint) 8%, transparent);
+  border-left: 2px solid var(--aether-ghost-tint);
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.aether-ghost-add-line {
+  color: var(--aether-ghost-tint);
+  opacity: 0.55;
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  padding: 0 var(--space-6);
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Strikethrough overlay for a pure-delete ghost hunk. */
+.aether-ghost-delete-line {
+  background: rgba(243, 139, 168, 0.08); /* catppuccin red, faint */
+  text-decoration: line-through;
+  text-decoration-color: rgba(243, 139, 168, 0.55);
+  text-decoration-thickness: 1px;
+}
+
+.aether-ghost-delete-gutter {
+  background: rgba(243, 139, 168, 0.45);
+  width: 2px !important;
+  margin-left: 2px;
+}
+
+/* Gutter marker for mixed-kind hunks that retreat from inline paint. */
+.aether-ghost-modify-gutter {
+  background: rgba(249, 226, 175, 0.6); /* catppuccin yellow */
+  width: 2px !important;
+  margin-left: 2px;
 }

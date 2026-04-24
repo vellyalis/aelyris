@@ -5,17 +5,7 @@
   overflow: hidden;
 }
 
-.header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-5);
-  border-bottom: 1px solid var(--border);
-  font-size: var(--text-xs);
-  color: var(--text-secondary);
-}
-
-.title { flex: 1; font-weight: 500; }
+/* Header chrome moved to shared/ui/PanelHeader (`dense` variant). */
 
 .closeBtn {
   background: none;
@@ -24,8 +14,18 @@
   cursor: pointer;
   padding: var(--space-1);
   border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
-.closeBtn:hover { color: var(--text-primary); background: var(--white-6); }
+.closeBtn:hover {
+  color: var(--text-primary);
+  background: var(--white-6);
+}
+.closeBtn:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 1px;
+}
 
 .fileTabs {
   display: flex;
@@ -49,22 +49,35 @@
   gap: 3px;
   white-space: nowrap;
 }
-.fileTab:hover { color: var(--text-primary); background: var(--white-4); }
-.fileTabActive { color: var(--text-primary); background: var(--white-6); font-weight: 500; }
+.fileTab:hover {
+  color: var(--text-primary);
+  background: var(--white-4);
+}
+.fileTabActive {
+  color: var(--text-primary);
+  background: var(--white-6);
+  font-weight: 500;
+}
 
 .fileAction {
-  font-size: 9px;
-  font-weight: 700;
-  width: 14px;
-  height: 14px;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  width: 16px;
+  height: 16px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 2px;
 }
-.fileAction[data-action="create"] { color: var(--ctp-green); }
-.fileAction[data-action="edit"] { color: var(--ctp-yellow); }
-.fileAction[data-action="delete"] { color: var(--ctp-red); }
+.fileAction[data-action="create"] {
+  color: var(--ctp-green);
+}
+.fileAction[data-action="edit"] {
+  color: var(--ctp-yellow);
+}
+.fileAction[data-action="delete"] {
+  color: var(--ctp-red);
+}
 
 .nav {
   display: flex;
@@ -85,18 +98,32 @@
   padding: 2px;
   border-radius: var(--radius-sm);
 }
-.navBtn:hover { color: var(--text-primary); }
-.navBtn:disabled { opacity: 0.3; cursor: default; }
+.navBtn:hover {
+  color: var(--text-primary);
+}
+.navBtn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
 
-.navLabel { font-weight: 500; }
-.filePath { color: var(--ctp-blue); }
+.navLabel {
+  font-weight: 500;
+}
+.filePath {
+  color: var(--ctp-blue);
+}
 
-.navActions { margin-left: auto; display: flex; gap: var(--space-2); }
+.navActions {
+  margin-left: auto;
+  display: flex;
+  gap: var(--space-2);
+}
 
-.acceptBtn, .revertBtn {
+.acceptBtn,
+.revertBtn {
   background: none;
   border: 1px solid;
-  font-size: 9px;
+  font-size: var(--text-2xs);
   font-family: var(--font-mono);
   padding: 1px 6px;
   border-radius: var(--radius-sm);
@@ -105,32 +132,51 @@
   align-items: center;
   gap: 3px;
 }
-.acceptBtn { border-color: var(--ctp-green); color: var(--ctp-green); }
-.acceptBtn:hover { background: var(--ctp-green); color: var(--bg-primary); }
-.revertBtn { border-color: var(--ctp-peach); color: var(--ctp-peach); }
-.revertBtn:hover { background: var(--ctp-peach); color: var(--bg-primary); }
+.acceptBtn {
+  border-color: var(--ctp-green);
+  color: var(--ctp-green);
+}
+.acceptBtn:hover {
+  background: var(--ctp-green);
+  color: var(--bg-primary);
+}
+.revertBtn {
+  border-color: var(--ctp-peach);
+  color: var(--ctp-peach);
+}
+.revertBtn:hover {
+  background: var(--ctp-peach);
+  color: var(--bg-primary);
+}
 .aiFixBtn {
   background: none;
   border: 1px solid var(--ctp-mauve);
   color: var(--ctp-mauve);
-  font-size: 9px;
+  font-size: var(--text-2xs);
   font-family: var(--font-mono);
   padding: 1px 6px;
   border-radius: var(--radius-sm);
   cursor: pointer;
 }
-.aiFixBtn:hover { background: var(--ctp-mauve); color: var(--bg-primary); }
+.aiFixBtn:hover {
+  background: var(--ctp-mauve);
+  color: var(--bg-primary);
+}
 
 .diffArea {
   flex: 1;
   overflow: hidden;
 }
 
-.loading, .error, .empty {
+.loading,
+.error,
+.empty {
   padding: var(--space-6);
   font-size: var(--text-xs);
   font-family: var(--font-mono);
   color: var(--text-muted);
   text-align: center;
 }
-.error { color: var(--ctp-red); }
+.error {
+  color: var(--ctp-red);
+}

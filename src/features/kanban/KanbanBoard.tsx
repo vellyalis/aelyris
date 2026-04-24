@@ -1,8 +1,9 @@
-import { useState, useCallback, useRef, useEffect } from "react";
-import { Plus, ChevronRight, Play, GitBranch, Bot } from "lucide-react";
+import { Bot, ChevronRight, GitBranch, Play, Plus } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppStore } from "../../shared/store/appStore";
-import { KANBAN_COLUMNS, type KanbanColumnId, type TaskPriority, PRIORITY_COLORS } from "../../shared/types/kanban";
 import { STATUS_COLORS } from "../../shared/types/agent";
+import { KANBAN_COLUMNS, type KanbanColumnId, PRIORITY_COLORS, type TaskPriority } from "../../shared/types/kanban";
+import { PanelHeader } from "../../shared/ui/PanelHeader";
 import styles from "./KanbanBoard.module.css";
 
 interface KanbanBoardProps {
@@ -13,8 +14,22 @@ interface KanbanBoardProps {
   agentStatuses?: Record<string, { status: string; cost: number }>;
 }
 
-export function KanbanBoard({ onStartAgent, onActivateTask, onMoveWithSideEffects, projectPath, agentStatuses }: KanbanBoardProps) {
-  const { kanbanTasks, addKanbanTask, moveKanbanTask, deleteKanbanTask, updateKanbanTask, activeTaskId, setActiveTaskId } = useAppStore();
+export function KanbanBoard({
+  onStartAgent,
+  onActivateTask,
+  onMoveWithSideEffects,
+  projectPath,
+  agentStatuses,
+}: KanbanBoardProps) {
+  const {
+    kanbanTasks,
+    addKanbanTask,
+    moveKanbanTask,
+    deleteKanbanTask,
+    updateKanbanTask,
+    activeTaskId,
+    setActiveTaskId,
+  } = useAppStore();
   const [newTitle, setNewTitle] = useState("");
   const [newPriority, setNewPriority] = useState<TaskPriority>("medium");
   const [showForm, setShowForm] = useState(false);
@@ -44,51 +59,69 @@ export function KanbanBoard({ onStartAgent, onActivateTask, onMoveWithSideEffect
     setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }));
   }, []);
 
-  const handleActivate = useCallback((taskId: string) => {
-    setActiveTaskId(taskId);
-    onActivateTask?.(taskId);
-  }, [setActiveTaskId, onActivateTask]);
+  const handleActivate = useCallback(
+    (taskId: string) => {
+      setActiveTaskId(taskId);
+      onActivateTask?.(taskId);
+    },
+    [setActiveTaskId, onActivateTask],
+  );
 
   // Unified task→agent launch: create worktree → start agent → link → move to in_progress
-  const handleLaunchTask = useCallback(async (task: { id: string; title: string }) => {
-    if (!onStartAgent) return;
-    const branchSlug = `task/${task.id.replace("task-", "")}`;
+  const handleLaunchTask = useCallback(
+    async (task: { id: string; title: string }) => {
+      if (!onStartAgent) return;
+      const branchSlug = `task/${task.id.replace("task-", "")}`;
 
-    // Create worktree if projectPath available
-    if (projectPath) {
-      try {
-        const { invoke } = await import("@tauri-apps/api/core");
-        await invoke("create_worktree", { repoPath: projectPath, branchName: branchSlug });
-        updateKanbanTask(task.id, { branch: branchSlug, worktreePath: `${projectPath}-${branchSlug}` });
-      } catch { /* worktree already exists or no git, continue anyway */ }
-    }
+      // Create worktree if projectPath available
+      if (projectPath) {
+        try {
+          const { invoke } = await import("@tauri-apps/api/core");
+          await invoke("create_worktree", { repoPath: projectPath, branchName: branchSlug });
+          updateKanbanTask(task.id, { branch: branchSlug, worktreePath: `${projectPath}-${branchSlug}` });
+        } catch {
+          /* worktree already exists or no git, continue anyway */
+        }
+      }
 
-    // Start agent and link
-    const sessionId = await onStartAgent(task.title);
-    if (sessionId) {
-      updateKanbanTask(task.id, { assignedAgentId: sessionId, column: "in_progress" });
-    }
-  }, [onStartAgent, projectPath, updateKanbanTask]);
+      // Start agent and link
+      const sessionId = await onStartAgent(task.title);
+      if (sessionId) {
+        updateKanbanTask(task.id, { assignedAgentId: sessionId, column: "in_progress" });
+      }
+    },
+    [onStartAgent, projectPath, updateKanbanTask],
+  );
 
-  const handleDrop = useCallback((e: React.DragEvent, toColumn: KanbanColumnId) => {
-    e.preventDefault();
-    e.currentTarget.classList.remove(styles.dropHover);
-    const taskId = e.dataTransfer.getData("taskId");
-    if (taskId) {
-      moveKanbanTask(taskId, toColumn);
-      onMoveWithSideEffects?.(taskId, toColumn);
-    }
-  }, [moveKanbanTask, onMoveWithSideEffects]);
+  const handleDrop = useCallback(
+    (e: React.DragEvent, toColumn: KanbanColumnId) => {
+      e.preventDefault();
+      e.currentTarget.classList.remove(styles.dropHover);
+      const taskId = e.dataTransfer.getData("taskId");
+      if (taskId) {
+        moveKanbanTask(taskId, toColumn);
+        onMoveWithSideEffects?.(taskId, toColumn);
+      }
+    },
+    [moveKanbanTask, onMoveWithSideEffects],
+  );
 
   return (
     <div className={styles.container}>
-      <div className={styles.header}>
-        <span className={styles.headerTitle}>Tasks</span>
-        <span className={styles.headerCount}>{kanbanTasks.length}</span>
-        <button className={styles.addBtn} onClick={() => setShowForm(!showForm)} title="New Task">
-          <Plus size={14} />
-        </button>
-      </div>
+      <PanelHeader
+        title="Tasks"
+        count={kanbanTasks.length}
+        actions={
+          <button
+            className={styles.addBtn}
+            onClick={() => setShowForm(!showForm)}
+            title="New Task"
+            aria-label="New task"
+          >
+            <Plus size={12} aria-hidden="true" />
+          </button>
+        }
+      />
 
       {showForm && (
         <div ref={formRef} className={styles.form}>
@@ -97,7 +130,13 @@ export function KanbanBoard({ onStartAgent, onActivateTask, onMoveWithSideEffect
             placeholder="Task title..."
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); if (e.key === "Escape") { setShowForm(false); setNewTitle(""); } }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleAdd();
+              if (e.key === "Escape") {
+                setShowForm(false);
+                setNewTitle("");
+              }
+            }}
             autoFocus
           />
           <div className={styles.formRow}>
@@ -126,7 +165,10 @@ export function KanbanBoard({ onStartAgent, onActivateTask, onMoveWithSideEffect
             <div
               key={col.id}
               className={styles.group}
-              onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add(styles.dropHover); }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.currentTarget.classList.add(styles.dropHover);
+              }}
               onDragLeave={(e) => e.currentTarget.classList.remove(styles.dropHover)}
               onDrop={(e) => handleDrop(e, col.id)}
             >
@@ -136,6 +178,7 @@ export function KanbanBoard({ onStartAgent, onActivateTask, onMoveWithSideEffect
                 <span className={styles.groupLabel}>{col.label}</span>
                 <span className={styles.groupCount}>{tasks.length}</span>
               </button>
+              {!isCollapsed && tasks.length === 0 && <div className={styles.groupEmpty}>Drop a task here</div>}
               {!isCollapsed && tasks.length > 0 && (
                 <div className={styles.groupItems}>
                   {tasks.map((t) => (
@@ -146,25 +189,46 @@ export function KanbanBoard({ onStartAgent, onActivateTask, onMoveWithSideEffect
                       onDragStart={(e) => e.dataTransfer.setData("taskId", t.id)}
                       onClick={() => handleActivate(t.id)}
                     >
-                      <span className={styles.priorityDot} style={{ background: PRIORITY_COLORS[t.priority ?? "medium"] }} />
+                      <span
+                        className={styles.priorityDot}
+                        style={{ background: PRIORITY_COLORS[t.priority ?? "medium"] }}
+                      />
                       <span className={styles.itemTitle}>{t.title}</span>
-                      {t.branch && <GitBranch size={9} className={styles.itemBranchIcon} />}
+                      {t.branch && <GitBranch size={10} className={styles.itemBranchIcon} aria-hidden="true" />}
                       {t.assignedAgentId && agentStatuses?.[t.assignedAgentId] && (
-                        <span className={styles.itemAgentBadge} style={{ color: STATUS_COLORS[agentStatuses[t.assignedAgentId].status as keyof typeof STATUS_COLORS] ?? "var(--text-muted)" }} title={`Agent: ${agentStatuses[t.assignedAgentId].status}`}>
+                        <span
+                          className={styles.itemAgentBadge}
+                          style={{
+                            color:
+                              STATUS_COLORS[agentStatuses[t.assignedAgentId].status as keyof typeof STATUS_COLORS] ??
+                              "var(--text-muted)",
+                          }}
+                          title={`Agent: ${agentStatuses[t.assignedAgentId].status}`}
+                        >
                           <Bot size={9} />
                         </span>
                       )}
                       {(t.column === "todo" || t.column === "in_progress") && !t.assignedAgentId && onStartAgent && (
                         <button
                           className={styles.itemAction}
-                          onClick={(e) => { e.stopPropagation(); handleLaunchTask(t); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleLaunchTask(t);
+                          }}
                           title="Launch Agent + Worktree"
-                        ><Play size={10} /></button>
+                        >
+                          <Play size={10} />
+                        </button>
                       )}
                       <button
                         className={styles.itemDelete}
-                        onClick={(e) => { e.stopPropagation(); deleteKanbanTask(t.id); }}
-                      >×</button>
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteKanbanTask(t.id);
+                        }}
+                      >
+                        ×
+                      </button>
                     </div>
                   ))}
                 </div>

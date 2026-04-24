@@ -24,9 +24,7 @@ export function parseFileChange(line: string): FileChange | null {
     const parsed = JSON.parse(line);
 
     // Claude format: { type: "tool_use", message: { content: [{ type: "tool_use", name: "Write", input: { file_path: "..." } }] } }
-    const toolUses = parsed.message?.content?.filter?.(
-      (c: { type: string }) => c.type === "tool_use"
-    ) ?? [];
+    const toolUses = parsed.message?.content?.filter?.((c: { type: string }) => c.type === "tool_use") ?? [];
 
     for (const tool of toolUses) {
       const name = tool.name;

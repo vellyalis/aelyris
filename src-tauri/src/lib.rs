@@ -1,24 +1,35 @@
 pub mod agent;
+pub mod api;
 pub mod config;
 pub mod db;
+pub mod ghostdiff;
 pub mod git;
-pub mod gpu;
+pub mod history;
 mod ipc;
-pub mod ui;
 pub mod lsp;
-pub mod native;
 pub mod pty;
 pub mod session;
+pub mod snapshot;
+pub mod term;
 pub mod suggest;
 mod watcher;
 pub mod watchdog;
 pub mod workflow;
 
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use agent::AgentManager;
 use agent::InteractiveSessionManager;
 use db::Database;
+use ghostdiff::{LayerEvent, LayerRegistry, LayerTint, WatcherPool};
 use pty::PtyManager;
+use watchdog::auto_repair::{AutoRepairManager, RepairPhase};
+use suggest::SuggestEngine;
+use history::{HashingNgramEmbedder, HistoryStore};
+
+/// Store handle managed by Tauri. Wraps the default (char-n-gram) embedder;
+/// the trait object abstraction is intentionally hidden here — if we ever
+/// swap embedders we update this alias + call site.
+pub type ManagedHistoryStore = std::sync::Arc<HistoryStore<HashingNgramEmbedder>>;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -42,7 +53,15 @@ pub fn run() {
             let (tx, _rx) = std::sync::mpsc::channel();
             lsp::LspManager::new(tx)
         })
-        .manage(std::sync::Arc::new(gpu::GpuTerminalManager::new()))
+        .manage(std::sync::Arc::new(term::NativeTerminalRegistry::new()))
+        .manage(std::sync::Arc::new(snapshot::SnapshotStore::new()))
+        .manage(std::sync::Arc::new(std::sync::Mutex::new(AutoRepairManager::new())))
+        .manage(std::sync::Arc::new(std::sync::Mutex::new(
+            watchdog::load_watchdog_rules().auto_repair,
+        )))
+        .manage(std::sync::Arc::new(std::sync::Mutex::new(SuggestEngine::new())))
+        .manage(std::sync::Arc::new(LayerRegistry::new()))
+        .manage(std::sync::Arc::new(WatcherPool::new()))
         .setup(move |app| {
             // Initialize database as managed state
             let db_path = db::db_path();
@@ -59,7 +78,204 @@ pub fn run() {
                     }
                 }
             }
+
+            // Phase 3B-2: HistoryStore opens a second connection to the same
+            // SQLite file (WAL mode is on) so semantic indexing writes don't
+            // contend with the PTY-hot save_command_history path.
+            match rusqlite::Connection::open(&db_path).and_then(|c| {
+                db::migrations::run_migrations(&c).map(|_| c)
+            }) {
+                Ok(conn) => {
+                    let store = std::sync::Arc::new(HistoryStore::open(
+                        conn,
+                        HashingNgramEmbedder::new(),
+                    ));
+                    app.handle().manage::<ManagedHistoryStore>(store.clone());
+                    // Backfill on a worker thread so startup stays snappy.
+                    std::thread::Builder::new()
+                        .name("history-backfill".into())
+                        .spawn(move || match store.backfill() {
+                            Ok(n) if n > 0 => log::info!("semantic history: backfilled {n} rows"),
+                            Ok(_) => {}
+                            Err(e) => log::warn!("semantic history backfill failed: {e}"),
+                        })
+                        .ok();
+                }
+                Err(e) => {
+                    log::warn!(
+                        "Failed to open HistoryStore connection (semantic search disabled): {e}"
+                    );
+                }
+            }
             // Mica/Acrylic applied via tauri.conf.json windowEffects
+
+            // Seed the SuggestEngine from DB command history so fish-style
+            // autosuggest works on the first keystroke of a fresh session.
+            if let (Some(db), Some(engine)) = (
+                app.try_state::<db::ManagedDb>(),
+                app.try_state::<std::sync::Arc<std::sync::Mutex<SuggestEngine>>>(),
+            ) {
+                let recent = db.with(|d| d.recent_commands(500)).unwrap_or_default();
+                if let Ok(mut guard) = engine.inner().lock() {
+                    guard.seed(recent);
+                }
+            }
+
+            // Auto-repair polling thread: flush `AutoRepairManager` phase/notification
+            // messages every 500ms. Active jobs are re-broadcast on every tick so the
+            // UI's elapsed timers stay live without a separate clock.
+            //
+            // Phase 3C-1a: the same tick drives ghostdiff — every repair job that
+            // has a live worktree gets mirrored into `LayerRegistry` so its diff
+            // is visible to the ghost-diff panel, and layer events are drained
+            // and re-emitted to the frontend.
+            let repair_handle = app.handle().clone();
+            std::thread::Builder::new()
+                .name("auto-repair-poller".into())
+                .spawn(move || {
+                    use std::collections::{HashMap, HashSet};
+                    let mut prev_ids: HashSet<String> = HashSet::new();
+                    let mut prev_terminal: HashMap<String, bool> = HashMap::new();
+                    loop {
+                        std::thread::sleep(std::time::Duration::from_millis(500));
+                        let Some(mgr_state) = repair_handle
+                            .try_state::<std::sync::Arc<std::sync::Mutex<AutoRepairManager>>>()
+                        else {
+                            continue;
+                        };
+                        let mgr_arc = mgr_state.inner().clone();
+                        let (notifications, jobs) = match mgr_arc.lock() {
+                            Ok(mut g) => (g.poll(), g.jobs()),
+                            Err(_) => continue,
+                        };
+                        for notif in notifications {
+                            let _ = repair_handle.emit("repair:notification", notif);
+                        }
+                        let _ = repair_handle.emit("repair:jobs-updated", &jobs);
+
+                        // --- Ghost layer sync ---
+                        let (Some(layer_reg), Some(pool_state)) = (
+                            repair_handle.try_state::<std::sync::Arc<LayerRegistry>>(),
+                            repair_handle.try_state::<std::sync::Arc<WatcherPool>>(),
+                        ) else {
+                            continue;
+                        };
+                        let registry = layer_reg.inner().clone();
+                        let watcher_pool = pool_state.inner().clone();
+                        let cur_ids: HashSet<String> =
+                            jobs.iter().map(|j| j.id.clone()).collect();
+
+                        for gone in prev_ids.difference(&cur_ids) {
+                            ghostdiff::unregister_and_unwatch(
+                                &registry,
+                                &watcher_pool,
+                                gone,
+                            );
+                        }
+
+                        for job in &jobs {
+                            let is_terminal = matches!(
+                                job.phase,
+                                RepairPhase::Succeeded | RepairPhase::Failed(_)
+                            );
+
+                            // Register once the worktree exists on disk (fs
+                            // watcher needs a real path). Empty `repo_path`
+                            // would make `predict_worktree_path` resolve
+                            // against the process CWD — skip those jobs.
+                            if !registry.contains(&job.id)
+                                && !job.repo_path.is_empty()
+                                && !matches!(job.phase, RepairPhase::CreatingWorktree)
+                            {
+                                let worktree_path = crate::git::predict_worktree_path(
+                                    &job.repo_path,
+                                    &job.branch,
+                                );
+                                if worktree_path.exists() {
+                                    if let Err(e) = ghostdiff::register_worktree_and_watch(
+                                        &registry,
+                                        &watcher_pool,
+                                        job.id.clone(),
+                                        worktree_path,
+                                        job.branch.clone(),
+                                        std::path::PathBuf::from(&job.repo_path),
+                                        LayerTint::auto_repair(),
+                                    ) {
+                                        log::warn!(
+                                            "ghostdiff: auto-repair register failed for {}: {e}",
+                                            job.id
+                                        );
+                                    }
+                                }
+                            }
+
+                            let was_terminal =
+                                *prev_terminal.get(&job.id).unwrap_or(&false);
+                            if is_terminal
+                                && !was_terminal
+                                && registry.contains(&job.id)
+                            {
+                                let _ = registry.mark_complete(&job.id);
+                                watcher_pool.unwatch(&job.id);
+                            }
+                        }
+
+                        prev_ids = cur_ids;
+                        prev_terminal = jobs
+                            .iter()
+                            .map(|j| {
+                                (
+                                    j.id.clone(),
+                                    matches!(
+                                        j.phase,
+                                        RepairPhase::Succeeded | RepairPhase::Failed(_)
+                                    ),
+                                )
+                            })
+                            .collect();
+
+                        // Drain and re-emit ghost layer events (covers both
+                        // auto-repair and orchestra-owned layers).
+                        for ev in registry.poll() {
+                            match ev {
+                                LayerEvent::Updated(s) => {
+                                    let _ = repair_handle
+                                        .emit("ghost-diff:layer-updated", s);
+                                }
+                                LayerEvent::Completed(id) => {
+                                    let _ = repair_handle
+                                        .emit("ghost-diff:layer-completed", id);
+                                }
+                                LayerEvent::Removed(id) => {
+                                    let _ = repair_handle
+                                        .emit("ghost-diff:layer-removed", id);
+                                }
+                            }
+                        }
+                    }
+                })
+                .ok();
+
+            // Phase 3D-1: spin up the external HTTP/WS PTY API on
+            // 127.0.0.1:9333. Failures (e.g. port already taken by another
+            // dev instance) log a warning and leave the rest of the app
+            // running normally. The API shares the Tauri PtyManager (Clone
+            // gives a handle to the same inner Arc), so sessions created via
+            // HTTP show up in the UI's list_terminals and vice versa.
+            let pty: PtyManager = app.state::<PtyManager>().inner().clone();
+            let api_state = api::ApiState::new(pty, api::AuthConfig::from_env());
+            app.manage(api_state.clone());
+            let serve_state = api_state.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = api::serve(serve_state, api::DEFAULT_PORT).await {
+                    log::warn!(
+                        "3D-1: PTY API server failed on port {}: {}",
+                        api::DEFAULT_PORT,
+                        e
+                    );
+                }
+            });
+
             log::info!("Setup complete in {:?}", t0.elapsed());
             Ok(())
         })
@@ -70,7 +286,9 @@ pub fn run() {
             ipc::close_terminal,
             ipc::list_terminals,
             ipc::detect_shells,
+            ipc::term_snapshot,
             ipc::discover_projects,
+            ipc::default_project_scan_dirs,
             ipc::list_branches,
             ipc::list_worktrees,
             ipc::create_worktree,
@@ -151,25 +369,55 @@ pub fn run() {
             ipc::lsp_stop,
             ipc::lsp_list,
             ipc::list_all_files,
-            // GPU terminal commands
-            gpu::commands::gpu_spawn_terminal,
-            gpu::commands::gpu_write_terminal,
-            gpu::commands::gpu_resize_terminal,
-            gpu::commands::gpu_reposition_terminal,
-            gpu::commands::gpu_close_terminal,
-            gpu::commands::gpu_search_terminal,
-            gpu::commands::gpu_get_selection,
-            gpu::commands::gpu_detect_links,
-            gpu::commands::gpu_focus_terminal,
-            gpu::commands::gpu_set_opacity,
-            gpu::commands::get_terminal_renderer,
-            gpu::commands::gpu_get_grid_state,
             // Interactive agent session commands
             ipc::spawn_interactive_agent,
             ipc::stop_interactive_agent,
             ipc::end_session_and_remove_worktree,
             ipc::list_interactive_agents,
+            // Auto-repair pipeline (Phase 3A-1)
+            ipc::list_repair_jobs,
+            ipc::trigger_repair_manual,
+            ipc::get_auto_repair_config,
+            ipc::set_auto_repair_config,
+            // Fish-style command suggestion (Phase 3A-2)
+            ipc::suggest_next,
+            ipc::suggest_record,
+            // Semantic history search (Phase 3B-2)
+            ipc::semantic_search_history,
+            ipc::rebuild_history_index,
+            // Ghost diff overlay (Phase 3C-1a)
+            ipc::list_ghost_layers,
+            ipc::get_ghost_layer_file,
+            ipc::dismiss_ghost_layer,
+            ipc::dismiss_ghost_file,
+            ipc::apply_ghost_hunk,
+            ipc::apply_ghost_file,
+            ipc::start_branch_comparison,
+            // Time-travel snapshots (Phase 3C-3a)
+            ipc::list_snapshots,
+            ipc::get_snapshot,
+            ipc::mark_snapshot,
+            // Snapshot overlay (Phase 3C-3b)
+            ipc::start_snapshot_overlay,
+            // IME positioning
+            ipc::set_ime_position,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Aether Terminal");
+        .build(tauri::generate_context!())
+        .expect("error while building Aether Terminal")
+        .run(|app, event| {
+            if let tauri::RunEvent::ExitRequested { .. } = event {
+                // Phase 3D-1: tell the API server to drain WS clients before
+                // the process tears down. Fire-and-forget — the Notify wakes
+                // the axum graceful-shutdown future, which closes the listener
+                // and aborts live WS tasks.
+                if let Some(state) = app.try_state::<api::ApiState>() {
+                    state.trigger_shutdown();
+                }
+                // Explicit session cleanup (used to live in `Drop for PtyManager`,
+                // but Clone made that unsafe — see manager.rs for context).
+                if let Some(pty) = app.try_state::<PtyManager>() {
+                    pty.close_all();
+                }
+            }
+        });
 }

@@ -1,5 +1,5 @@
+import { ShieldCheck, ShieldQuestion, ShieldX } from "lucide-react";
 import { memo } from "react";
-import { ShieldCheck, ShieldX, ShieldQuestion } from "lucide-react";
 
 export type WatchdogDecisionType = "approved" | "denied" | "manual";
 

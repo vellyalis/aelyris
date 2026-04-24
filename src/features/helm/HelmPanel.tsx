@@ -1,5 +1,7 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { Plus } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { EmptyState } from "../../shared/ui/EmptyState";
+import { PanelHeader } from "../../shared/ui/PanelHeader";
 import styles from "./HelmPanel.module.css";
 
 interface Task {
@@ -9,10 +11,16 @@ interface Task {
 }
 
 function loadTasks(): Task[] {
-  try { return JSON.parse(localStorage.getItem("aether:helm:tasks") ?? "[]"); } catch { return []; }
+  try {
+    return JSON.parse(localStorage.getItem("aether:helm:tasks") ?? "[]");
+  } catch {
+    return [];
+  }
 }
 function saveTasks(tasks: Task[]) {
-  try { localStorage.setItem("aether:helm:tasks", JSON.stringify(tasks)); } catch {}
+  try {
+    localStorage.setItem("aether:helm:tasks", JSON.stringify(tasks));
+  } catch {}
 }
 
 export function HelmPanel() {
@@ -35,28 +43,44 @@ export function HelmPanel() {
   const addTask = useCallback(() => {
     if (!newLabel.trim()) return;
     const t: Task = { id: `t-${Date.now()}`, label: newLabel.trim(), done: false };
-    setTasks((prev) => { const u = [...prev, t]; saveTasks(u); return u; });
+    setTasks((prev) => {
+      const u = [...prev, t];
+      saveTasks(u);
+      return u;
+    });
     setNewLabel("");
     setAdding(false);
   }, [newLabel]);
 
   const toggleTask = useCallback((id: string) => {
-    setTasks((prev) => { const u = prev.map((t) => t.id === id ? { ...t, done: !t.done } : t); saveTasks(u); return u; });
+    setTasks((prev) => {
+      const u = prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t));
+      saveTasks(u);
+      return u;
+    });
   }, []);
 
   const deleteTask = useCallback((id: string) => {
-    setTasks((prev) => { const u = prev.filter((t) => t.id !== id); saveTasks(u); return u; });
+    setTasks((prev) => {
+      const u = prev.filter((t) => t.id !== id);
+      saveTasks(u);
+      return u;
+    });
   }, []);
 
   const doneCount = tasks.filter((t) => t.done).length;
 
   return (
     <div className={styles.helm}>
-      <div className={styles.header}>
-        <span>Tasks</span>
-        {tasks.length > 0 && <span className={styles.count}>{doneCount}/{tasks.length}</span>}
-        <button className={styles.addBtn} onClick={() => setAdding(true)}>+</button>
-      </div>
+      <PanelHeader
+        title="Tasks"
+        count={tasks.length > 0 ? `${doneCount}/${tasks.length}` : undefined}
+        actions={
+          <button className={styles.addBtn} onClick={() => setAdding(true)} title="Add task" aria-label="Add task">
+            <Plus size={12} aria-hidden="true" />
+          </button>
+        }
+      />
       <div className={styles.content}>
         {adding && (
           <input
@@ -67,7 +91,10 @@ export function HelmPanel() {
             onChange={(e) => setNewLabel(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") addTask();
-              if (e.key === "Escape") { setAdding(false); setNewLabel(""); }
+              if (e.key === "Escape") {
+                setAdding(false);
+                setNewLabel("");
+              }
             }}
             placeholder="Add task..."
           />
@@ -77,9 +104,17 @@ export function HelmPanel() {
         )}
         {tasks.map((t) => (
           <div key={t.id} className={`${styles.task} ${t.done ? styles.taskDone : ""}`}>
-            <input type="checkbox" checked={t.done} onClick={() => toggleTask(t.id)} readOnly className={styles.checkbox} />
+            <input
+              type="checkbox"
+              checked={t.done}
+              onClick={() => toggleTask(t.id)}
+              readOnly
+              className={styles.checkbox}
+            />
             <span className={styles.taskLabel}>{t.label}</span>
-            <button className={styles.deleteBtn} onClick={() => deleteTask(t.id)}>×</button>
+            <button className={styles.deleteBtn} onClick={() => deleteTask(t.id)}>
+              ×
+            </button>
           </div>
         ))}
       </div>

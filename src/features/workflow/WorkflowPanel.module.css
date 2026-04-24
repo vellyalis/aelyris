@@ -1,78 +1,225 @@
-.panel { border-top: 1px solid var(--border); }
+.panel {
+  border-top: 1px solid var(--border);
+}
 
 .header {
-  display: flex; align-items: center; gap: var(--space-3);
-  padding: var(--space-4) var(--space-6); width: 100%;
-  background: none; border: none; color: var(--text-primary);
-  font-size: var(--text-sm); font-family: var(--font-ui); cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-6);
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-family: var(--font-ui);
+  cursor: pointer;
 }
-.header:hover { background: var(--white-4); }
-.headerTitle { font-weight: 500; }
+.header:hover {
+  background: var(--white-4);
+}
+.headerTitle {
+  font-weight: 500;
+}
 .badge {
-  font-size: 9px; font-family: var(--font-mono);
-  background: var(--ctp-green); color: var(--ctp-base);
-  padding: 0 4px; border-radius: 8px; font-weight: 600;
+  font-size: var(--text-2xs);
+  font-family: var(--font-mono);
+  background: var(--ctp-green);
+  color: var(--ctp-base);
+  padding: 0 4px;
+  border-radius: 8px;
+  font-weight: 600;
 }
 
-.chevron { transition: transform 0.15s ease; }
-.chevronOpen { transform: rotate(90deg); }
+.chevron {
+  transition: transform var(--duration-fast) var(--ease-silk);
+}
+.chevronOpen {
+  transform: rotate(90deg);
+}
 
-.content { padding: 0 var(--space-6) var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
+.content {
+  padding: 0 var(--space-6) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
 
 /* Running workflow card */
 .runningCard {
-  background: var(--white-4); border-radius: var(--radius-sm);
-  padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3);
+  background: var(--white-4);
+  border-radius: var(--radius-sm);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
 }
-.runningTitle { font-size: var(--text-xs); font-weight: 500; color: var(--text-primary); display: flex; align-items: center; gap: var(--space-4); }
-.totalCost { font-size: var(--text-xs); font-family: var(--font-mono); color: var(--ctp-green); opacity: 0.7; margin-left: auto; }
+.runningTitle {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.totalCost {
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  color: var(--ctp-green);
+  opacity: 0.7;
+  margin-left: auto;
+}
 
-.stepBar { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.stepWrapper { display: flex; flex-direction: column; }
+.stepBar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.stepWrapper {
+  display: flex;
+  flex-direction: column;
+}
 .step {
-  display: flex; align-items: center; gap: 3px;
-  font-size: 10px; font-family: var(--font-mono); color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
 }
 .phaseDetail {
-  font-size: 9px; font-family: var(--font-mono); color: var(--text-muted);
-  padding: 2px 4px; margin-top: 2px;
-  background: var(--white-4); border-radius: var(--radius-sm);
+  font-size: var(--text-2xs);
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  padding: 2px 4px;
+  margin-top: 2px;
+  background: var(--white-4);
+  border-radius: var(--radius-sm);
 }
-.phaseDetailRow { display: flex; justify-content: space-between; gap: var(--space-4); }
-.phaseDetailMono { color: var(--ctp-blue); }
-.step_running { color: var(--ctp-green); }
-.step_waiting_gate { color: var(--ctp-yellow); }
-.step_passed { color: var(--ctp-green); opacity: 0.7; }
-.step_failed { color: var(--ctp-red); }
-.stepName { }
-.stepCost { color: var(--ctp-peach); }
-.arrow { color: var(--text-muted); opacity: 0.4; }
+.phaseDetailRow {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.phaseDetailMono {
+  color: var(--ctp-blue);
+}
+.step_running {
+  color: var(--ctp-green);
+}
+.step_waiting_gate {
+  color: var(--ctp-yellow);
+}
+.step_passed {
+  color: var(--ctp-green);
+  opacity: 0.7;
+}
+.step_failed {
+  color: var(--ctp-red);
+}
+.stepName {
+}
+.stepCost {
+  color: var(--ctp-peach);
+}
+.arrow {
+  color: var(--white-25);
+}
 
-.gateActions { display: inline-flex; gap: 2px; margin-left: 2px; }
-.approveBtn, .rejectBtn {
-  background: none; border: none; cursor: pointer; font-size: 11px; padding: 0 2px;
+.gateActions {
+  display: inline-flex;
+  gap: var(--space-2);
+  margin-left: var(--space-2);
 }
-.approveBtn { color: var(--ctp-green); }
-.approveBtn:hover { color: #fff; }
-.rejectBtn { color: var(--ctp-red); }
-.rejectBtn:hover { color: #fff; }
+.approveBtn,
+.rejectBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: var(--white-4);
+  border: 1px solid var(--white-10);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition:
+    background var(--duration-fast),
+    border-color var(--duration-fast),
+    color var(--duration-fast);
+}
+.approveBtn {
+  color: var(--ctp-green);
+}
+.approveBtn:hover {
+  background: color-mix(in srgb, var(--ctp-green) 14%, transparent);
+  border-color: var(--ctp-green);
+}
+.approveBtn:focus-visible {
+  outline: 2px solid var(--ctp-green);
+  outline-offset: 1px;
+}
+.rejectBtn {
+  color: var(--ctp-red);
+}
+.rejectBtn:hover {
+  background: color-mix(in srgb, var(--ctp-red) 14%, transparent);
+  border-color: var(--ctp-red);
+}
+.rejectBtn:focus-visible {
+  outline: 2px solid var(--ctp-red);
+  outline-offset: 1px;
+}
 
 /* Icons */
-.iconMuted { color: var(--text-muted); opacity: 0.5; }
-.iconRunning { color: var(--ctp-green); animation: spin 1s linear infinite; }
-.iconWaiting { color: var(--ctp-yellow); }
-.iconPassed { color: var(--ctp-green); }
-.iconFailed { color: var(--ctp-red); }
+.iconMuted {
+  color: var(--text-muted);
+}
+.iconRunning {
+  color: var(--ctp-green);
+  animation: spin 1s linear infinite;
+}
+.iconWaiting {
+  color: var(--ctp-yellow);
+}
+.iconPassed {
+  color: var(--ctp-green);
+}
+.iconFailed {
+  color: var(--ctp-red);
+}
 
-@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
 
 /* Template buttons */
 .templateBtn {
-  display: flex; align-items: center; gap: var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
   padding: var(--space-2) var(--space-4);
-  background: none; border: 1px solid var(--border); border-radius: var(--radius-sm);
-  color: var(--text-secondary); font-size: var(--text-xs); cursor: pointer;
-  transition: border-color 0.1s, background 0.1s;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition:
+    border-color 0.1s,
+    background 0.1s;
 }
-.templateBtn:hover { border-color: var(--ctp-green); background: var(--white-4); }
-.templatePhases { margin-left: auto; color: var(--text-muted); font-family: var(--font-mono); }
+.templateBtn:hover {
+  border-color: var(--ctp-green);
+  background: var(--white-4);
+}
+.templatePhases {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}

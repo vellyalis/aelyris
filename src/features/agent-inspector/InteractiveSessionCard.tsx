@@ -1,11 +1,11 @@
-import { type AgentStatus, STATUS_COLORS, STATUS_LABELS, getSessionColor } from "../../shared/types/agent";
+import * as RadixContextMenu from "@radix-ui/react-context-menu";
+import { GitBranch, TerminalSquare, Zap } from "lucide-react";
+import { type AgentStatus, getSessionColor, STATUS_COLORS, STATUS_LABELS } from "../../shared/types/agent";
 import type { InteractiveSession } from "../../shared/types/interactiveAgent";
-import { getCliLabel, getCliColor } from "../../shared/types/interactiveAgent";
+import { getCliColor, getCliLabel } from "../../shared/types/interactiveAgent";
+import { ContextGauge } from "../../shared/ui/ContextGauge";
 import { PixelAvatar } from "../../shared/ui/PixelAvatar";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
-import { ContextGauge } from "../../shared/ui/ContextGauge";
-import * as RadixContextMenu from "@radix-ui/react-context-menu";
-import { TerminalSquare, GitBranch } from "lucide-react";
 import styles from "./AgentInspector.module.css";
 
 interface InteractiveSessionCardProps {
@@ -15,10 +15,22 @@ interface InteractiveSessionCardProps {
   onEndAndRemoveWorktree?: (id: string) => void;
 }
 
-export function InteractiveSessionCard({ session: is, onFocus, onStop, onEndAndRemoveWorktree }: InteractiveSessionCardProps) {
+export function InteractiveSessionCard({
+  session: is,
+  onFocus,
+  onStop,
+  onEndAndRemoveWorktree,
+}: InteractiveSessionCardProps) {
   const sColor = getSessionColor(is.id);
   const cliColor = getCliColor(is.cli);
-  const pct = is.status === "done" ? 100 : is.status === "idle" ? 0 : is.tokens_used > 0 ? Math.min(95, Math.round((is.tokens_used / 10000) * 100)) : 2;
+  const pct =
+    is.status === "done"
+      ? 100
+      : is.status === "idle"
+        ? 0
+        : is.tokens_used > 0
+          ? Math.min(95, Math.round((is.tokens_used / 10000) * 100))
+          : 2;
 
   return (
     <RadixContextMenu.Root>
@@ -26,12 +38,14 @@ export function InteractiveSessionCard({ session: is, onFocus, onStop, onEndAndR
         <button
           className={`${styles.card} ${styles.cardInteractive}`}
           onClick={() => onFocus?.(is.id)}
-          style={{
-            "--session-accent": sColor.accent,
-            "--session-dim": sColor.dim,
-            "--session-subtle": sColor.subtle,
-            "--session-glow": sColor.glow,
-          } as React.CSSProperties}
+          style={
+            {
+              "--session-accent": sColor.accent,
+              "--session-dim": sColor.dim,
+              "--session-subtle": sColor.subtle,
+              "--session-glow": sColor.glow,
+            } as React.CSSProperties
+          }
         >
           <div className={styles.cardTop}>
             <PixelAvatar seed={is.id} size={36} />
@@ -39,11 +53,19 @@ export function InteractiveSessionCard({ session: is, onFocus, onStop, onEndAndR
               <div className={styles.cardNameRow}>
                 <TerminalSquare size={10} style={{ color: cliColor }} />
                 <span className={styles.cardName}>{getCliLabel(is.cli)}</span>
-                {is.worktree_branch && <span className={styles.cardBranch}>⚡{is.worktree_branch}</span>}
+                {is.worktree_branch && (
+                  <span className={styles.cardBranch} title={`Worktree branch: ${is.worktree_branch}`}>
+                    <Zap size={9} strokeWidth={1.75} aria-hidden="true" />
+                    {is.worktree_branch}
+                  </span>
+                )}
               </div>
               <div className={styles.cardStatusRow}>
                 <StatusIcon status={is.status as AgentStatus} size={10} />
-                <span className={styles.cardStatusLabel} style={{ color: STATUS_COLORS[is.status as AgentStatus] ?? "#cdd6f4" }}>
+                <span
+                  className={styles.cardStatusLabel}
+                  style={{ color: STATUS_COLORS[is.status as AgentStatus] ?? "#cdd6f4" }}
+                >
                   {STATUS_LABELS[is.status as AgentStatus] ?? is.status}
                 </span>
                 <span className={styles.cardAge}>{formatAge(is.started_at * 1000)}</span>
@@ -60,7 +82,15 @@ export function InteractiveSessionCard({ session: is, onFocus, onStop, onEndAndR
             <span className={styles.cardModel}>{is.model}</span>
             <span className={styles.cardCost}>&lt;${is.cost.toFixed(2)}</span>
             {is.status !== "done" && is.status !== "idle" && (
-              <span className={styles.stopBtn} onClick={(e) => { e.stopPropagation(); onStop?.(is.id); }}>■</span>
+              <span
+                className={styles.stopBtn}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onStop?.(is.id);
+                }}
+              >
+                ■
+              </span>
             )}
           </div>
           <div className={styles.progressTrack}>
@@ -77,7 +107,8 @@ export function InteractiveSessionCard({ session: is, onFocus, onStop, onEndAndR
       <RadixContextMenu.Portal>
         <RadixContextMenu.Content className={styles.ctxMenu}>
           <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => onFocus?.(is.id)}>
-            <TerminalSquare size={10} style={{ marginRight: 4 }} />Open Terminal
+            <TerminalSquare size={10} style={{ marginRight: 4 }} />
+            Open Terminal
           </RadixContextMenu.Item>
           <RadixContextMenu.Separator className={styles.ctxDivider} />
           {is.worktree_branch ? (

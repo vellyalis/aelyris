@@ -1,93 +1,260 @@
-.panel { display: flex; flex-direction: column; overflow: hidden; flex: 1; }
+.panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex: 1;
+}
+
+/* Branch / tracking summary */
+.branchBar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-6);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+.branchName {
+  color: var(--text-primary);
+  font-weight: var(--weight-medium);
+}
+.upstream {
+  color: var(--text-muted);
+  opacity: 0.8;
+}
+.syncPair {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+.ahead,
+.behind {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-sm);
+}
+.ahead {
+  color: var(--ctp-green);
+  background: color-mix(in srgb, var(--ctp-green) 10%, transparent);
+}
+.behind {
+  color: var(--ctp-peach);
+  background: color-mix(in srgb, var(--ctp-peach) 10%, transparent);
+}
 
 /* Commit area */
-.commitArea { padding: var(--space-4) var(--space-6); border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: var(--space-3); }
+.commitArea {
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
 .commitInput {
-  width: 100%; resize: none; padding: var(--space-3) var(--space-4);
-  background: var(--white-4); border: 1px solid var(--border); border-radius: var(--radius-sm);
-  color: var(--text-primary); font-size: var(--text-xs); font-family: var(--font-mono);
-  outline: none; line-height: 1.4;
+  width: 100%;
+  resize: none;
+  padding: var(--space-3) var(--space-4);
+  background: var(--white-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  outline: none;
+  line-height: 1.4;
 }
-.commitInput:focus { border-color: var(--ctp-blue); }
-.commitActions { display: flex; gap: var(--space-2); align-items: center; }
+.commitInput:focus {
+  border-color: var(--ctp-blue);
+}
+.commitActions {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
 
-.stageAllBtn, .commitBtn, .pushBtn {
-  display: flex; align-items: center; gap: 3px;
-  padding: var(--space-1) var(--space-4); border: none; border-radius: var(--radius-sm);
-  font-size: var(--text-xs); font-family: var(--font-ui); cursor: pointer;
+.stageAllBtn,
+.commitBtn,
+.pushBtn {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: var(--space-1) var(--space-4);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  font-family: var(--font-ui);
+  cursor: pointer;
 }
-.stageAllBtn { background: var(--white-6); color: var(--text-secondary); }
-.stageAllBtn:hover { background: var(--white-10); }
-.commitBtn { background: var(--ctp-green); color: var(--ctp-base); font-weight: 600; }
-.commitBtn:hover:not(:disabled) { opacity: 0.85; }
-.commitBtn:disabled { opacity: 0.4; cursor: default; }
-.pushBtn { background: var(--ctp-blue); color: var(--ctp-base); }
-.pushBtn:hover:not(:disabled) { opacity: 0.85; }
-.pushBtn:disabled { opacity: 0.4; cursor: default; }
+.stageAllBtn {
+  background: var(--white-6);
+  color: var(--text-secondary);
+}
+.stageAllBtn:hover {
+  background: var(--white-10);
+}
+.commitBtn {
+  background: var(--ctp-green);
+  color: var(--ctp-base);
+  font-weight: 600;
+}
+.commitBtn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+.commitBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.pushBtn {
+  background: var(--ctp-blue);
+  color: var(--ctp-base);
+}
+.pushBtn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+.pushBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
 
 /* Groups */
-.groups { flex: 1; overflow-y: auto; }
-.group { }
-.groupHeader {
-  display: flex; align-items: center; gap: var(--space-2);
-  padding: var(--space-2) var(--space-6); width: 100%;
-  background: none; border: none; color: var(--text-primary);
-  font-size: var(--text-xs); font-family: var(--font-ui); cursor: pointer;
+.groups {
+  flex: 1;
+  overflow-y: auto;
 }
-.groupHeader:hover { background: var(--white-4); }
-.groupDot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-.groupLabel { font-weight: 500; }
-.groupCount { color: var(--text-muted); font-family: var(--font-mono); margin-left: auto; }
+.group {
+}
+.groupHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-6);
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: var(--text-xs);
+  font-family: var(--font-ui);
+  cursor: pointer;
+}
+.groupHeader:hover {
+  background: var(--row-hover);
+}
+.groupDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.groupLabel {
+  font-weight: 500;
+}
+.groupCount {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  margin-left: auto;
+}
 .groupActions {
-  display: flex; gap: 2px; margin-left: var(--space-2);
+  display: flex;
+  gap: 2px;
+  margin-left: var(--space-2);
 }
 .groupActions button {
-  background: none; border: none; color: var(--text-muted); cursor: pointer;
-  padding: 0 2px; display: flex; align-items: center;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 2px;
+  display: flex;
+  align-items: center;
 }
-.groupActions button:hover { color: var(--text-primary); }
+.groupActions button:hover {
+  color: var(--text-primary);
+}
 
-.chevron { transition: transform 0.15s ease; flex-shrink: 0; }
-.chevronOpen { transform: rotate(90deg); }
+.chevron {
+  transition: transform var(--duration-fast) var(--ease-silk);
+  flex-shrink: 0;
+}
+.chevronOpen {
+  transform: rotate(90deg);
+}
 
 /* File list */
-.fileList { }
+.fileList {
+}
 .fileRow {
-  display: flex; align-items: center; gap: var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   padding: 1px var(--space-6) 1px calc(var(--space-6) + 16px);
   font-size: var(--text-xs);
 }
-.fileRow:hover { background: var(--white-4); }
-
-.fileStatus {
-  font-family: var(--font-mono); font-weight: 600; font-size: 10px;
-  width: 14px; text-align: center; flex-shrink: 0;
+.fileRow:hover {
+  background: var(--row-hover);
 }
-.fileStatus[data-status="modified"] { color: var(--ctp-yellow); }
-.fileStatus[data-status="added"] { color: var(--ctp-green); }
-.fileStatus[data-status="deleted"] { color: var(--ctp-red); }
-.fileStatus[data-status="untracked"] { color: var(--text-muted); }
-.fileStatus[data-status="conflicted"] { color: var(--ctp-red); font-weight: 800; }
-.fileStatus[data-status="renamed"] { color: var(--ctp-cyan); }
+
+/* Keep a local hook so the pip aligns with the fileRow gap rhythm; color and
+   glyph come from the shared GitStatusPip primitive. */
+.fileStatus {
+  width: 14px;
+}
 
 .fileName {
-  color: var(--text-primary); cursor: pointer; overflow: hidden;
-  text-overflow: ellipsis; white-space: nowrap;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  text-align: left;
+  color: var(--text-primary);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.fileName:hover { text-decoration: underline; }
-.filePath { color: var(--text-muted); font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.fileName:hover {
+  text-decoration: underline;
+}
+.filePath {
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
 
 .fileActions {
-  display: flex; gap: 2px; opacity: 0; transition: opacity 0.1s; flex-shrink: 0;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.1s;
+  flex-shrink: 0;
 }
-.fileRow:hover .fileActions { opacity: 1; }
+.fileRow:hover .fileActions {
+  opacity: 1;
+}
 .fileActions button {
-  background: none; border: none; color: var(--text-muted); cursor: pointer;
-  padding: 0 2px; display: flex; align-items: center;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 2px;
+  display: flex;
+  align-items: center;
 }
-.fileActions button:hover { color: var(--text-primary); }
+.fileActions button:hover {
+  color: var(--text-primary);
+}
 
 .empty {
-  padding: var(--space-8); text-align: center;
-  color: var(--text-muted); font-size: var(--text-xs);
+  padding: var(--space-8);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
 }

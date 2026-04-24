@@ -1,6 +1,9 @@
+/* The tree is a flex column; `.list` carries the scroll now so that
+   virtualization can attach scroll listeners to a stable container without
+   stealing scroll events from the search box / breadcrumb / root header. */
 .tree {
   flex: 1;
-  overflow-y: auto;
+  min-height: 0;
   font-size: var(--text-base);
   display: flex;
   flex-direction: column;
@@ -21,7 +24,9 @@
   text-align: left;
   letter-spacing: -0.01em;
 }
-.breadcrumb:hover { background: var(--white-6); }
+.breadcrumb:hover {
+  background: var(--row-hover);
+}
 .rootHeader {
   display: flex;
   align-items: center;
@@ -33,8 +38,30 @@
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
-.rootName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.list { padding-bottom: var(--space-4); }
+.rootName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: var(--space-4);
+}
+
+/* Virtualization spacer — height set inline to `flatEntries.length * 22` so
+   the scrollbar always reflects the full list size. Rows render absolutely
+   positioned inside it within the visible window only. */
+.virtualSpacer {
+  position: relative;
+  width: 100%;
+}
+.virtualRow {
+  position: absolute;
+  left: 0;
+  right: 0;
+}
 .row {
   display: flex;
   align-items: center;
@@ -48,11 +75,31 @@
   font-family: var(--font-ui);
   cursor: pointer;
   text-align: left;
-  transition: background var(--duration-fast), color var(--duration-fast);
+  transition:
+    background var(--duration-fast),
+    color var(--duration-fast);
   height: 22px;
 }
-.row:hover { background: var(--white-4); color: var(--text-primary); }
-.searchInput:hover { border-color: var(--white-10); }
+.row:hover {
+  background: var(--row-hover);
+  color: var(--text-primary);
+}
+/* Keyboard-nav cursor — `rowFocused` marks the current treeitem under the
+   arrow-key cursor. Paints like a hover so focus-visible + cursor stay in
+   sync, but survives mouse-leave so the cursor position is still legible
+   after the user moved the mouse away. */
+.row.rowFocused {
+  background: var(--row-hover);
+  color: var(--text-primary);
+  box-shadow: inset 2px 0 0 var(--gold);
+}
+.row:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: -2px;
+}
+.searchInput:hover {
+  border-color: var(--white-10);
+}
 .arrow {
   font-size: var(--text-2xs);
   width: 10px;
@@ -61,38 +108,98 @@
   transition: transform var(--duration-fast);
   flex-shrink: 0;
 }
-.arrowOpen { transform: rotate(90deg); }
-.arrowSpacer { width: 10px; flex-shrink: 0; }
-.fileName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; transition: color var(--duration-fast); }
-.fileChanged { color: var(--status-edit); }
-.fileChanged[data-status="added"] { color: var(--status-idle); }
-.fileChanged[data-status="deleted"] { color: var(--ctp-red); }
-.fileChanged[data-status="untracked"] { color: var(--ctp-green); }
-.changeDot {
-  width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; margin-left: auto;
-  background: var(--status-edit);
+.arrowOpen {
+  transform: rotate(90deg);
 }
-.changeDot[data-status="added"] { background: var(--status-idle); }
-.changeDot[data-status="deleted"] { background: var(--ctp-red); }
-.changeDot[data-status="untracked"] { background: var(--ctp-green); }
-.spinner { font-size: var(--text-sm); color: var(--text-muted); margin-left: auto; }
+.arrowSpacer {
+  width: 10px;
+  flex-shrink: 0;
+}
+.fileName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  transition: color var(--duration-fast);
+}
+.fileChanged {
+  color: var(--status-edit);
+}
+.fileChanged[data-status="added"] {
+  color: var(--status-idle);
+}
+.fileChanged[data-status="deleted"] {
+  color: var(--ctp-red);
+}
+.fileChanged[data-status="untracked"] {
+  color: var(--ctp-green);
+}
+/* Pip glyph/color owned by shared GitStatusPip; keep the row-level layout
+   hook here so the dot docks to the right edge. */
+.changeDot {
+  margin-left: auto;
+}
+.spinner {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin-left: auto;
+}
 
 /* Search */
-.searchBox { padding: var(--space-2) var(--space-3); }
+.searchBox {
+  padding: var(--space-2) var(--space-3);
+}
 .searchInput {
-  width: 100%; padding: var(--space-2) var(--space-4); background: var(--white-4);
-  border: 1px solid var(--border); border-radius: var(--radius-sm);
-  color: var(--text-primary); font-size: var(--text-md); font-family: var(--font-ui); outline: none;
+  width: 100%;
+  padding: var(--space-2) var(--space-4);
+  background: var(--white-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--text-md);
+  font-family: var(--font-ui);
+  outline: none;
 }
-.searchInput:focus-visible { outline: none !important; border-color: var(--gold); }
-.searchInput::placeholder { color: var(--text-muted); }
-.searchPath { font-size: var(--text-xs); color: var(--text-muted); margin-left: auto; font-family: var(--font-mono); }
-.noResults { padding: var(--space-6); text-align: center; font-size: var(--text-md); color: var(--text-muted); }
+.searchInput:focus-visible {
+  outline: none !important;
+  border-color: var(--gold);
+}
+.searchInput::placeholder {
+  color: var(--text-muted);
+}
+.searchPath {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-left: auto;
+  font-family: var(--font-mono);
+}
+.noResults {
+  padding: var(--space-6);
+  text-align: center;
+  font-size: var(--text-md);
+  color: var(--text-muted);
+}
 .changesBar {
-  padding: var(--space-2) var(--space-5); font-size: var(--text-sm); color: var(--gold);
-  border-top: 1px solid var(--border); cursor: pointer; text-align: center;
+  display: block;
+  width: 100%;
+  padding: var(--space-2) var(--space-5);
+  font-size: var(--text-sm);
+  color: var(--gold);
+  font-family: var(--font-ui);
+  border: none;
+  border-top: 1px solid var(--border);
+  background: transparent;
+  cursor: pointer;
+  text-align: center;
+  transition: background var(--duration-fast);
 }
-.changesBar:hover { background: rgba(200,160,80,0.06); }
+.changesBar:hover {
+  background: rgba(200, 160, 80, 0.06);
+}
+.changesBar:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: -2px;
+}
 
 /* Context menu (Radix) */
 .ctxMenu {
@@ -105,17 +212,40 @@
   padding: var(--space-2);
   box-shadow: var(--shadow-lg);
   z-index: var(--z-dropdown);
-  animation: ctxIn 0.1s ease-out;
+  animation: ctxIn var(--duration-fast) var(--ease-out);
+  will-change: transform, opacity;
 }
 @keyframes ctxIn {
-  from { opacity: 0; transform: scale(0.96); }
-  to { opacity: 1; transform: scale(1); }
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 .ctxItem {
-  display: flex; align-items: center; width: 100%; padding: var(--space-3) var(--space-5);
-  border: none; border-radius: var(--radius-sm); background: transparent;
-  color: var(--text-secondary); font-size: var(--text-base); font-family: var(--font-ui);
-  cursor: pointer; text-align: left; outline: none;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: var(--space-3) var(--space-5);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+  font-family: var(--font-ui);
+  cursor: pointer;
+  text-align: left;
+  outline: none;
 }
-.ctxItem[data-highlighted] { background: var(--white-6); color: var(--text-primary); }
-.ctxDivider { height: 1px; background: var(--white-6); margin: var(--space-2) var(--space-4); }
+.ctxItem[data-highlighted] {
+  background: var(--white-6);
+  color: var(--text-primary);
+}
+.ctxDivider {
+  height: 1px;
+  background: var(--white-6);
+  margin: var(--space-2) var(--space-4);
+}

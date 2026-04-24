@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { renderHook, act } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
+import { beforeEach, describe, expect, it } from "vitest";
 import { useTabManager } from "../shared/hooks/useTabManager";
 
 // Clear localStorage before each test
@@ -25,7 +25,9 @@ describe("useTabManager", () => {
     const { result } = renderHook(() => useTabManager());
     const firstId = result.current.tabs[0].id;
 
-    act(() => { result.current.addTab("cmd"); });
+    act(() => {
+      result.current.addTab("cmd");
+    });
 
     expect(result.current.tabs.length).toBe(2);
     expect(result.current.tabs[1].shell).toBe("cmd");
@@ -35,15 +37,23 @@ describe("useTabManager", () => {
 
   it("closes a tab and switches to adjacent", () => {
     const { result } = renderHook(() => useTabManager());
-    act(() => { result.current.addTab("cmd"); });
-    act(() => { result.current.addTab("gitbash"); });
+    act(() => {
+      result.current.addTab("cmd");
+    });
+    act(() => {
+      result.current.addTab("gitbash");
+    });
 
     const middleId = result.current.tabs[1].id;
     const firstId = result.current.tabs[0].id;
 
     // Switch to middle tab, then close it
-    act(() => { result.current.setActiveTabId(middleId); });
-    act(() => { result.current.closeTab(middleId); });
+    act(() => {
+      result.current.setActiveTabId(middleId);
+    });
+    act(() => {
+      result.current.closeTab(middleId);
+    });
 
     expect(result.current.tabs.length).toBe(2);
     expect(result.current.activeTabId).toBe(firstId);
@@ -53,7 +63,9 @@ describe("useTabManager", () => {
     const { result } = renderHook(() => useTabManager());
     const onlyId = result.current.tabs[0].id;
 
-    act(() => { result.current.closeTab(onlyId); });
+    act(() => {
+      result.current.closeTab(onlyId);
+    });
 
     expect(result.current.tabs.length).toBe(1);
     expect(result.current.tabs[0].id).toBe(onlyId);
@@ -61,7 +73,9 @@ describe("useTabManager", () => {
 
   it("persists tabs to localStorage", () => {
     const { result } = renderHook(() => useTabManager());
-    act(() => { result.current.addTab("cmd"); });
+    act(() => {
+      result.current.addTab("cmd");
+    });
 
     const saved = localStorage.getItem("aether:tabs");
     expect(saved).not.toBeNull();
@@ -72,8 +86,12 @@ describe("useTabManager", () => {
   it("restores tabs from localStorage", () => {
     // First: create tabs and persist
     const { result: r1, unmount } = renderHook(() => useTabManager());
-    act(() => { r1.current.addTab("cmd"); });
-    act(() => { r1.current.addTab("gitbash"); });
+    act(() => {
+      r1.current.addTab("cmd");
+    });
+    act(() => {
+      r1.current.addTab("gitbash");
+    });
     unmount();
 
     // Second: new hook should restore
@@ -84,7 +102,9 @@ describe("useTabManager", () => {
 
   it("adds tab with cwd", () => {
     const { result } = renderHook(() => useTabManager());
-    act(() => { result.current.addTabWithCwd("powershell", "/home/user/project"); });
+    act(() => {
+      result.current.addTabWithCwd("powershell", "/home/user/project");
+    });
 
     const newTab = result.current.tabs[1];
     expect(newTab.cwd).toBe("/home/user/project");
@@ -93,21 +113,31 @@ describe("useTabManager", () => {
 
   it("reorders tabs via drag & drop", () => {
     const { result } = renderHook(() => useTabManager());
-    act(() => { result.current.addTab("cmd"); });
-    act(() => { result.current.addTab("gitbash"); });
+    act(() => {
+      result.current.addTab("cmd");
+    });
+    act(() => {
+      result.current.addTab("gitbash");
+    });
 
     const [a, b, c] = result.current.tabs;
     // Move C before A
-    act(() => { result.current.reorderTab(c.id, a.id); });
+    act(() => {
+      result.current.reorderTab(c.id, a.id);
+    });
 
     expect(result.current.tabs.map((t) => t.id)).toEqual([c.id, a.id, b.id]);
   });
 
   it("reorder with same source and target is a no-op", () => {
     const { result } = renderHook(() => useTabManager());
-    act(() => { result.current.addTab("cmd"); });
+    act(() => {
+      result.current.addTab("cmd");
+    });
     const before = result.current.tabs.map((t) => t.id);
-    act(() => { result.current.reorderTab(before[0], before[0]); });
+    act(() => {
+      result.current.reorderTab(before[0], before[0]);
+    });
     expect(result.current.tabs.map((t) => t.id)).toEqual(before);
   });
 });

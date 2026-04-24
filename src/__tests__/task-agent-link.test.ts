@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
 import { renderHook } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
 import { useTaskAgentLink } from "../shared/hooks/useTaskAgentLink";
 import type { AgentSession } from "../shared/types/agent";
 import type { KanbanTask } from "../shared/types/kanban";
@@ -35,21 +35,17 @@ describe("useTaskAgentLink", () => {
   it("computes agentStatuses map from sessions", () => {
     const sessions = [
       makeSession({ id: "s1", status: "coding", cost: 0.25 }),
-      makeSession({ id: "s2", status: "done", cost: 1.50 }),
+      makeSession({ id: "s2", status: "done", cost: 1.5 }),
     ];
-    const { result } = renderHook(() =>
-      useTaskAgentLink({ sessions, kanbanTasks: [], moveKanbanTask: () => {} }),
-    );
+    const { result } = renderHook(() => useTaskAgentLink({ sessions, kanbanTasks: [], moveKanbanTask: () => {} }));
     expect(result.current.agentStatuses).toEqual({
       s1: { status: "coding", cost: 0.25 },
-      s2: { status: "done", cost: 1.50 },
+      s2: { status: "done", cost: 1.5 },
     });
   });
 
   it("returns empty map for no sessions", () => {
-    const { result } = renderHook(() =>
-      useTaskAgentLink({ sessions: [], kanbanTasks: [], moveKanbanTask: () => {} }),
-    );
+    const { result } = renderHook(() => useTaskAgentLink({ sessions: [], kanbanTasks: [], moveKanbanTask: () => {} }));
     expect(result.current.agentStatuses).toEqual({});
   });
 });

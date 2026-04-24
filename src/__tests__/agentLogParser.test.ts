@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { parseToolUse, containsDiff, extractFilePath } from "../shared/lib/agentLogParser";
+import { describe, expect, it } from "vitest";
+import { containsDiff, extractFilePath, parseToolUse } from "../shared/lib/agentLogParser";
 
 describe("parseToolUse", () => {
   it("parses Edit tool with file_path", () => {

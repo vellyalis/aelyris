@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { KanbanTask, KanbanColumnId } from "../types/kanban";
+import type { KanbanColumnId, KanbanTask } from "../types/kanban";
 
 export type SidebarSection = "files" | "tasks" | "agents" | "tools";
 
@@ -42,6 +42,12 @@ interface AppState {
   agentBudget: { spent: number; limit: number };
   addAgentCost: (cost: number) => void;
   setAgentBudgetLimit: (limit: number) => void;
+  /** Per-session cost cap in USD. Exceeding triggers a warning badge. */
+  perSessionCostCap: number;
+  setPerSessionCostCap: (cap: number) => void;
+  /** Context usage percent (0-100) above which the session is flagged. */
+  contextWarnPct: number;
+  setContextWarnPct: (pct: number) => void;
 
   // Kanban
   kanbanTasks: KanbanTask[];
@@ -65,6 +71,11 @@ interface AppState {
   markUnsaved: (path: string) => void;
   markSaved: (path: string) => void;
   hasUnsavedChanges: () => boolean;
+
+  // Ghost Diff Overlay (Phase 3C-1d)
+  /** When true, inline ghost paint shows layers that are still in progress. */
+  ghostDiffLiveMode: boolean;
+  setGhostDiffLiveMode: (v: boolean) => void;
 }
 
 function toggleOrSet(v: boolean | ((prev: boolean) => boolean), prev: boolean): boolean {
@@ -74,16 +85,26 @@ function toggleOrSet(v: boolean | ((prev: boolean) => boolean), prev: boolean): 
 export const useAppStore = create<AppState>((set, get) => ({
   // Theme
   themeId: (() => {
-    try { return localStorage.getItem("aether:theme") ?? "aether-dark"; } catch { return "aether-dark"; }
+    try {
+      return localStorage.getItem("aether:theme") ?? "aether-dark";
+    } catch {
+      return "aether-dark";
+    }
   })(),
   setThemeId: (id) => {
     set({ themeId: id });
-    try { localStorage.setItem("aether:theme", id); } catch {}
+    try {
+      localStorage.setItem("aether:theme", id);
+    } catch {}
   },
 
   // Project
   rootProjectPath: (() => {
-    try { return localStorage.getItem("aether:lastProject"); } catch { return null; }
+    try {
+      return localStorage.getItem("aether:lastProject");
+    } catch {
+      return null;
+    }
   })(),
   setRootProjectPath: (path) => {
     set({ rootProjectPath: path });
@@ -117,97 +138,207 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Agent model
   selectedModel: (() => {
-    try { return localStorage.getItem("aether:selectedModel") ?? "claude-sonnet"; } catch { return "claude-sonnet"; }
+    try {
+      return localStorage.getItem("aether:selectedModel") ?? "claude-sonnet";
+    } catch {
+      return "claude-sonnet";
+    }
   })(),
   setSelectedModel: (modelId) => {
     set({ selectedModel: modelId });
-    try { localStorage.setItem("aether:selectedModel", modelId); } catch {}
+    try {
+      localStorage.setItem("aether:selectedModel", modelId);
+    } catch {}
   },
 
   // Budget
   agentBudget: (() => {
-    try { return JSON.parse(localStorage.getItem("aether:budget") ?? '{"spent":0,"limit":10}'); } catch { return { spent: 0, limit: 10 }; }
+    try {
+      return JSON.parse(localStorage.getItem("aether:budget") ?? '{"spent":0,"limit":10}');
+    } catch {
+      return { spent: 0, limit: 10 };
+    }
   })(),
-  addAgentCost: (cost: number) => set((s) => {
-    const budget = { ...s.agentBudget, spent: s.agentBudget.spent + cost };
-    try { localStorage.setItem("aether:budget", JSON.stringify(budget)); } catch {}
-    return { agentBudget: budget };
-  }),
-  setAgentBudgetLimit: (limit: number) => set((s) => {
-    const budget = { ...s.agentBudget, limit };
-    try { localStorage.setItem("aether:budget", JSON.stringify(budget)); } catch {}
-    return { agentBudget: budget };
-  }),
+  addAgentCost: (cost: number) =>
+    set((s) => {
+      const budget = { ...s.agentBudget, spent: s.agentBudget.spent + cost };
+      try {
+        localStorage.setItem("aether:budget", JSON.stringify(budget));
+      } catch {}
+      return { agentBudget: budget };
+    }),
+  setAgentBudgetLimit: (limit: number) =>
+    set((s) => {
+      const budget = { ...s.agentBudget, limit };
+      try {
+        localStorage.setItem("aether:budget", JSON.stringify(budget));
+      } catch {}
+      return { agentBudget: budget };
+    }),
+  perSessionCostCap: (() => {
+    try {
+      const v = Number(localStorage.getItem("aether:perSessionCostCap") ?? "2");
+      return Number.isFinite(v) && v > 0 ? v : 2;
+    } catch {
+      return 2;
+    }
+  })(),
+  setPerSessionCostCap: (cap) => {
+    set({ perSessionCostCap: cap });
+    try {
+      localStorage.setItem("aether:perSessionCostCap", String(cap));
+    } catch {}
+  },
+  contextWarnPct: (() => {
+    try {
+      const v = Number(localStorage.getItem("aether:contextWarnPct") ?? "85");
+      return Number.isFinite(v) && v > 0 && v <= 100 ? v : 85;
+    } catch {
+      return 85;
+    }
+  })(),
+  setContextWarnPct: (pct) => {
+    set({ contextWarnPct: pct });
+    try {
+      localStorage.setItem("aether:contextWarnPct", String(pct));
+    } catch {}
+  },
 
   // Kanban
   kanbanTasks: (() => {
-    try { return JSON.parse(localStorage.getItem("aether:kanban") ?? "[]") as KanbanTask[]; } catch { return [] as KanbanTask[]; }
+    try {
+      return JSON.parse(localStorage.getItem("aether:kanban") ?? "[]") as KanbanTask[];
+    } catch {
+      return [] as KanbanTask[];
+    }
   })(),
   activeTaskId: null,
-  addKanbanTask: (title, priority = "medium") => set((s) => {
-    const task: KanbanTask = { id: `task-${Date.now()}`, title, column: "todo", priority, createdAt: Date.now(), updatedAt: Date.now() };
-    const tasks = [...s.kanbanTasks, task];
-    try { localStorage.setItem("aether:kanban", JSON.stringify(tasks)); } catch {}
-    return { kanbanTasks: tasks };
-  }),
-  moveKanbanTask: (taskId, toColumn) => set((s) => {
-    const tasks = s.kanbanTasks.map((t) => t.id === taskId ? { ...t, column: toColumn, updatedAt: Date.now() } : t);
-    try { localStorage.setItem("aether:kanban", JSON.stringify(tasks)); } catch {}
-    return { kanbanTasks: tasks };
-  }),
-  deleteKanbanTask: (taskId) => set((s) => {
-    const tasks = s.kanbanTasks.filter((t) => t.id !== taskId);
-    try { localStorage.setItem("aether:kanban", JSON.stringify(tasks)); } catch {}
-    return { kanbanTasks: tasks };
-  }),
-  updateKanbanTask: (taskId, updates) => set((s) => {
-    const tasks = s.kanbanTasks.map((t) => t.id === taskId ? { ...t, ...updates, updatedAt: Date.now() } : t);
-    try { localStorage.setItem("aether:kanban", JSON.stringify(tasks)); } catch {}
-    return { kanbanTasks: tasks };
-  }),
+  addKanbanTask: (title, priority = "medium") =>
+    set((s) => {
+      const task: KanbanTask = {
+        id: `task-${Date.now()}`,
+        title,
+        column: "todo",
+        priority,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      const tasks = [...s.kanbanTasks, task];
+      try {
+        localStorage.setItem("aether:kanban", JSON.stringify(tasks));
+      } catch {}
+      return { kanbanTasks: tasks };
+    }),
+  moveKanbanTask: (taskId, toColumn) =>
+    set((s) => {
+      const tasks = s.kanbanTasks.map((t) => (t.id === taskId ? { ...t, column: toColumn, updatedAt: Date.now() } : t));
+      try {
+        localStorage.setItem("aether:kanban", JSON.stringify(tasks));
+      } catch {}
+      return { kanbanTasks: tasks };
+    }),
+  deleteKanbanTask: (taskId) =>
+    set((s) => {
+      const tasks = s.kanbanTasks.filter((t) => t.id !== taskId);
+      try {
+        localStorage.setItem("aether:kanban", JSON.stringify(tasks));
+      } catch {}
+      return { kanbanTasks: tasks };
+    }),
+  updateKanbanTask: (taskId, updates) =>
+    set((s) => {
+      const tasks = s.kanbanTasks.map((t) => (t.id === taskId ? { ...t, ...updates, updatedAt: Date.now() } : t));
+      try {
+        localStorage.setItem("aether:kanban", JSON.stringify(tasks));
+      } catch {}
+      return { kanbanTasks: tasks };
+    }),
   setActiveTaskId: (taskId) => set({ activeTaskId: taskId }),
 
   // Editor
   openFiles: (() => {
-    try { return JSON.parse(localStorage.getItem("aether:openFiles") ?? "[]"); } catch { return []; }
+    try {
+      return JSON.parse(localStorage.getItem("aether:openFiles") ?? "[]");
+    } catch {
+      return [];
+    }
   })(),
   activeFile: (() => {
-    try { return localStorage.getItem("aether:activeFile") ?? null; } catch { return null; }
+    try {
+      return localStorage.getItem("aether:activeFile") ?? null;
+    } catch {
+      return null;
+    }
   })(),
-  openFile: (path) => set((s) => {
-    const files = s.openFiles.includes(path) ? s.openFiles : [...s.openFiles, path];
-    try { localStorage.setItem("aether:openFiles", JSON.stringify(files)); } catch {}
-    try { localStorage.setItem("aether:activeFile", path); } catch {}
-    return { openFiles: files, activeFile: path };
-  }),
-  closeFile: (path) => set((s) => {
-    const files = s.openFiles.filter((f) => f !== path);
-    const active = s.activeFile === path ? (files.length > 0 ? files[files.length - 1] : null) : s.activeFile;
-    try { localStorage.setItem("aether:openFiles", JSON.stringify(files)); } catch {}
-    try { if (active) localStorage.setItem("aether:activeFile", active); else localStorage.removeItem("aether:activeFile"); } catch {}
-    return { openFiles: files, activeFile: active };
-  }),
+  openFile: (path) =>
+    set((s) => {
+      const files = s.openFiles.includes(path) ? s.openFiles : [...s.openFiles, path];
+      try {
+        localStorage.setItem("aether:openFiles", JSON.stringify(files));
+      } catch {}
+      try {
+        localStorage.setItem("aether:activeFile", path);
+      } catch {}
+      return { openFiles: files, activeFile: path };
+    }),
+  closeFile: (path) =>
+    set((s) => {
+      const files = s.openFiles.filter((f) => f !== path);
+      const active = s.activeFile === path ? (files.length > 0 ? files[files.length - 1] : null) : s.activeFile;
+      try {
+        localStorage.setItem("aether:openFiles", JSON.stringify(files));
+      } catch {}
+      try {
+        if (active) localStorage.setItem("aether:activeFile", active);
+        else localStorage.removeItem("aether:activeFile");
+      } catch {}
+      return { openFiles: files, activeFile: active };
+    }),
   setActiveFile: (path) => {
     set({ activeFile: path });
-    try { if (path) localStorage.setItem("aether:activeFile", path); else localStorage.removeItem("aether:activeFile"); } catch {}
+    try {
+      if (path) localStorage.setItem("aether:activeFile", path);
+      else localStorage.removeItem("aether:activeFile");
+    } catch {}
   },
   clearFiles: () => {
     set({ openFiles: [], activeFile: null, unsavedFiles: new Set() });
-    try { localStorage.removeItem("aether:openFiles"); localStorage.removeItem("aether:activeFile"); } catch {}
+    try {
+      localStorage.removeItem("aether:openFiles");
+      localStorage.removeItem("aether:activeFile");
+    } catch {}
   },
 
   unsavedFiles: new Set(),
-  markUnsaved: (path) => set((s) => {
-    if (s.unsavedFiles.has(path)) return s;
-    const next = new Set(s.unsavedFiles);
-    next.add(path);
-    return { unsavedFiles: next };
-  }),
-  markSaved: (path) => set((s) => {
-    if (!s.unsavedFiles.has(path)) return s;
-    const next = new Set(s.unsavedFiles);
-    next.delete(path);
-    return { unsavedFiles: next };
-  }),
+  markUnsaved: (path) =>
+    set((s) => {
+      if (s.unsavedFiles.has(path)) return s;
+      const next = new Set(s.unsavedFiles);
+      next.add(path);
+      return { unsavedFiles: next };
+    }),
+  markSaved: (path) =>
+    set((s) => {
+      if (!s.unsavedFiles.has(path)) return s;
+      const next = new Set(s.unsavedFiles);
+      next.delete(path);
+      return { unsavedFiles: next };
+    }),
   hasUnsavedChanges: () => get().unsavedFiles.size > 0,
+
+  // Ghost Diff Overlay (Phase 3C-1d) — bootstrap from localStorage for
+  // first paint; Settings load_app_config then rehydrates from config.toml.
+  ghostDiffLiveMode: (() => {
+    try {
+      return localStorage.getItem("aether:ghostDiffLiveMode") === "1";
+    } catch {
+      return false;
+    }
+  })(),
+  setGhostDiffLiveMode: (v) => {
+    set({ ghostDiffLiveMode: v });
+    try {
+      localStorage.setItem("aether:ghostDiffLiveMode", v ? "1" : "0");
+    } catch {}
+  },
 }));

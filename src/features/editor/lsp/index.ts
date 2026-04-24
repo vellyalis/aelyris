@@ -1,4 +1,4 @@
-export type { LspLanguage, JsonRpcRequest, JsonRpcResponse } from "./types";
+export { registerLspProviders } from "./registerProviders";
+export type { JsonRpcRequest, JsonRpcResponse, LspLanguage } from "./types";
 export { monacoToLspLanguage } from "./types";
 export { useLsp } from "./useLsp";
-export { registerLspProviders } from "./registerProviders";

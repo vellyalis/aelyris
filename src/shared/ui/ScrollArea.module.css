@@ -12,7 +12,7 @@
   user-select: none;
   touch-action: none;
   padding: var(--space-1);
-  transition: background 0.15s ease;
+  transition: background var(--duration-fast) var(--ease-silk);
 }
 
 .scrollbar[data-orientation="vertical"] {

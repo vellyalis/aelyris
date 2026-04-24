@@ -17,9 +17,7 @@ interface ContextMenuProps {
 export function ContextMenu({ children, items }: ContextMenuProps) {
   return (
     <RadixContextMenu.Root>
-      <RadixContextMenu.Trigger asChild>
-        {children}
-      </RadixContextMenu.Trigger>
+      <RadixContextMenu.Trigger asChild>{children}</RadixContextMenu.Trigger>
       <RadixContextMenu.Portal>
         <RadixContextMenu.Content className={styles.menu}>
           {items.map((item, i) =>
@@ -34,7 +32,7 @@ export function ContextMenu({ children, items }: ContextMenuProps) {
               >
                 {item.label}
               </RadixContextMenu.Item>
-            )
+            ),
           )}
         </RadixContextMenu.Content>
       </RadixContextMenu.Portal>

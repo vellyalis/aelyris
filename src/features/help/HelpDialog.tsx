@@ -1,6 +1,6 @@
-import { useState } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
+import { useState } from "react";
 import styles from "./HelpDialog.module.css";
 
 interface HelpDialogProps {
@@ -94,7 +94,7 @@ const HELP_CONTENT: Record<HelpSection, { title: string; items: string[] }> = {
       "Import: Paste JSON or load a .json file to import tool definitions.",
       "Dangerous command detection: Warnings shown before running risky commands.",
       "Commit & Push: Prompts for a commit message before executing.",
-      "Placeholder syntax: Use {name} in commands for runtime prompts (e.g., git commit -m \"{message}\").",
+      'Placeholder syntax: Use {name} in commands for runtime prompts (e.g., git commit -m "{message}").',
     ],
   },
   shortcuts: {
@@ -124,41 +124,50 @@ export function HelpDialog({ visible, onClose }: HelpDialogProps) {
   const content = HELP_CONTENT[section];
 
   return (
-    <AnimatePresence>
-    {visible && (
-    <motion.div className={styles.overlay} onClick={onClose}
-      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.12 }}>
-      <motion.div className={styles.dialog} onClick={(e) => e.stopPropagation()}
-        initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
-        transition={{ type: "spring", stiffness: 400, damping: 30 }}>
-        <div className={styles.header}>
-          <h2 className={styles.title}>Help</h2>
-          <button className={styles.closeBtn} onClick={onClose} aria-label="Close"><X size={14} /></button>
-        </div>
-        <div className={styles.body}>
-          <nav className={styles.nav}>
-            {SECTIONS.map((s) => (
-              <button
-                key={s.id}
-                className={`${styles.navItem} ${section === s.id ? styles.navActive : ""}`}
-                onClick={() => setSection(s.id)}
-              >
-                {s.label}
+    <Dialog.Root
+      open={visible}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+    >
+      <Dialog.Portal>
+        <Dialog.Overlay className={styles.overlay} />
+        <Dialog.Content className={styles.dialog} aria-describedby={undefined}>
+          <div className={styles.header}>
+            <Dialog.Title className={styles.title}>Help</Dialog.Title>
+            <Dialog.Close asChild>
+              <button type="button" className={styles.closeBtn} aria-label="Close help">
+                <X size={14} aria-hidden="true" />
               </button>
-            ))}
-          </nav>
-          <div className={styles.content}>
-            <h3 className={styles.sectionTitle}>{content.title}</h3>
-            <ul className={styles.list}>
-              {content.items.map((item, i) => (
-                <li key={i} className={styles.item}>{item}</li>
-              ))}
-            </ul>
+            </Dialog.Close>
           </div>
-        </div>
-      </motion.div>
-    </motion.div>
-    )}
-    </AnimatePresence>
+          <div className={styles.body}>
+            <nav className={styles.nav} aria-label="Help sections">
+              {SECTIONS.map((s) => (
+                <button
+                  type="button"
+                  key={s.id}
+                  className={`${styles.navItem} ${section === s.id ? styles.navActive : ""}`}
+                  onClick={() => setSection(s.id)}
+                  aria-current={section === s.id ? "page" : undefined}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </nav>
+            <div className={styles.content}>
+              <h3 className={styles.sectionTitle}>{content.title}</h3>
+              <ul className={styles.list}>
+                {content.items.map((item, i) => (
+                  <li key={i} className={styles.item}>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }

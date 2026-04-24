@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface ChangedFile {
   path: string;
@@ -31,12 +31,18 @@ export function useGitStatus(repoPath: string) {
         setBranch(info.branch);
         setIsDirty(info.is_dirty);
         setChangedFiles(info.changed_files);
-      } catch { /* not a git repo or error */ }
+      } catch {
+        /* not a git repo or error */
+      }
     };
     const timeout = setTimeout(poll, 500);
     // With file watcher, reduce polling to 30s (watcher handles fast updates)
     const interval = setInterval(poll, 30000);
-    return () => { active = false; clearTimeout(timeout); clearInterval(interval); };
+    return () => {
+      active = false;
+      clearTimeout(timeout);
+      clearInterval(interval);
+    };
   }, [repoPath, refreshKey]);
 
   // Start file watcher and listen for fs:changed events
@@ -58,9 +64,14 @@ export function useGitStatus(repoPath: string) {
         const unsub = await listen<{ root: string; paths: string[] }>("fs:changed", (event) => {
           if (event.payload.root === repoPath) refresh();
         });
-        if (aborted) { unsub(); return; }
+        if (aborted) {
+          unsub();
+          return;
+        }
         unlisten = unsub;
-      } catch { /* watcher not available */ }
+      } catch {
+        /* watcher not available */
+      }
     };
     setup();
 

@@ -1,14 +1,11 @@
-import { useEffect, useRef } from "react";
-import { Terminal } from "@xterm/xterm";
-import { FitAddon } from "@xterm/addon-fit";
-import { WebLinksAddon } from "@xterm/addon-web-links";
-import { Unicode11Addon } from "@xterm/addon-unicode11";
-import "@xterm/xterm/css/xterm.css";
-import { useAppStore } from "../../shared/store/appStore";
-import { useXtermTheme } from "../../shared/hooks/useTheme";
-import { getCliLabel, getCliColor, type AgentCliType } from "../../shared/types/interactiveAgent";
-import { STATUS_COLORS, STATUS_LABELS, type AgentStatus } from "../../shared/types/agent";
+import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { type AgentStatus, STATUS_COLORS, STATUS_LABELS } from "../../shared/types/agent";
+import { type AgentCliType, getCliColor, getCliLabel } from "../../shared/types/interactiveAgent";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
+import { IMEInputBar, type IMEInputBarHandle } from "../terminal/IMEInputBar";
+import { TerminalCanvas } from "../terminal/TerminalCanvas";
 import styles from "./AgentTerminal.module.css";
 
 interface AgentTerminalProps {
@@ -22,133 +19,135 @@ interface AgentTerminalProps {
   accentColor?: string;
 }
 
+const FONT_SIZE = 14;
+const CELL_W = Math.round(FONT_SIZE * 0.6);
+const CELL_H = Math.round(FONT_SIZE * 1.25);
+const MIN_COLS = 20;
+const MIN_ROWS = 5;
+
+interface Dims {
+  cols: number;
+  rows: number;
+}
+
 /**
- * Terminal connected to an interactive agent PTY.
- * Unlike TerminalArea, this does NOT spawn a new PTY — it connects to an existing one.
- * The PTY was already spawned by spawn_interactive_agent on the Rust side.
+ * Terminal bound to an interactive agent PTY. Unlike NativeTerminalArea this
+ * does NOT spawn — the PTY is already alive, created by
+ * `spawn_interactive_agent` on the Rust side, which also registers the PTY
+ * with the native terminal engine so TerminalCanvas can subscribe to its
+ * grid diffs.
+ *
+ * Layout: status overlay bar (CLI / model / status / cost) on top, grid
+ * canvas in the middle, IME input bar docked at the bottom. The bar is
+ * always rendered — every agent session is an AI CLI that the bar exists to
+ * serve — and Ctrl+Shift+J moves focus into it.
  */
 export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: AgentTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const termRef = useRef<Terminal | null>(null);
-  const fitAddonRef = useRef<FitAddon | null>(null);
-  const cleanupRef = useRef<(() => void) | null>(null);
-  const themeId = useAppStore((s) => s.themeId);
-  const xtermTheme = useXtermTheme(themeId);
+  const areaRef = useRef<HTMLDivElement>(null);
+  const [dims, setDims] = useState<Dims | null>(null);
+  const [exited, setExited] = useState(false);
+  const imeBarRef = useRef<IMEInputBarHandle>(null);
+  const canvasElRef = useRef<HTMLCanvasElement | null>(null);
+  const canvasInputElRef = useRef<HTMLTextAreaElement | null>(null);
 
-  // Update theme when it changes
+  // Measure container → cols/rows, trailing-edge debounced so a continuous
+  // resize drag doesn't thrash the backend with resize_terminal calls.
   useEffect(() => {
-    if (termRef.current) {
-      termRef.current.options.theme = xtermTheme;
-    }
-  }, [xtermTheme]);
+    const el = containerRef.current;
+    if (!el) return;
+    let pending: number | null = null;
+    const compute = (): Dims | null => {
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      if (w <= 0 || h <= 0) return null;
+      return {
+        cols: Math.max(MIN_COLS, Math.floor(w / CELL_W)),
+        rows: Math.max(MIN_ROWS, Math.floor(h / CELL_H)),
+      };
+    };
+    const apply = () => {
+      pending = null;
+      const next = compute();
+      if (!next) return;
+      setDims((prev) => (prev && prev.cols === next.cols && prev.rows === next.rows ? prev : next));
+    };
+    const schedule = () => {
+      if (pending !== null) window.clearTimeout(pending);
+      pending = window.setTimeout(apply, 120);
+    };
+    apply();
+    const ro = new ResizeObserver(schedule);
+    ro.observe(el);
+    return () => {
+      if (pending !== null) window.clearTimeout(pending);
+      ro.disconnect();
+    };
+  }, []);
 
-  const themeRef = useRef(xtermTheme);
-  themeRef.current = xtermTheme;
-
-  // Mount terminal — keyed on ptyId to handle session switches
+  // Forward every dims change to the backend PTY + native engine.
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
+    if (!dims) return;
+    void invoke("resize_terminal", { id: ptyId, cols: dims.cols, rows: dims.rows }).catch(() => {});
+  }, [ptyId, dims]);
 
+  // Watch the PTY for exit so we can display a subtle overlay when the
+  // agent process is gone.
+  useEffect(() => {
+    let unlisten: UnlistenFn | null = null;
     let cancelled = false;
-
-    const term = new Terminal({
-      theme: themeRef.current,
-      fontFamily: "IBM Plex Mono, Cascadia Code, Cascadia Next JP, monospace",
-      fontSize: 14,
-      lineHeight: 1.4,
-      cursorStyle: "bar",
-      cursorBlink: true,
-      allowTransparency: true,
-      allowProposedApi: true,
-      scrollback: 10000,
-    });
-
-    const unicode11 = new Unicode11Addon();
-    term.loadAddon(unicode11);
-
-    const fitAddon = new FitAddon();
-    term.loadAddon(fitAddon);
-    term.loadAddon(new WebLinksAddon());
-
-    term.open(container);
-    term.unicode.activeVersion = "11";
-    fitAddon.fit();
-
-    termRef.current = term;
-    fitAddonRef.current = fitAddon;
-
-    // Async connection — guarded by cancelled flag to prevent listener leaks
-    const connectPty = async () => {
+    (async () => {
       try {
-        const { listen } = await import("@tauri-apps/api/event");
-        const { invoke } = await import("@tauri-apps/api/core");
-
-        if (cancelled) return;
-
-        const unlistenOutput = await listen<number[]>(`pty-output-${ptyId}`, (event) => {
-          const bytes = new Uint8Array(event.payload);
-          term.write(bytes);
-        });
-
-        const unlistenExit = await listen(`pty-exit-${ptyId}`, () => {
-          term.writeln("\r\n\x1b[90m[Agent process exited]\x1b[0m");
-        });
-
+        const fn = await listen(`pty-exit-${ptyId}`, () => setExited(true));
         if (cancelled) {
-          // Component unmounted during await — immediately clean up
-          unlistenOutput();
-          unlistenExit();
+          fn();
           return;
         }
-
-        // Forward user input to PTY
-        term.onData((data) => {
-          invoke("write_terminal", { id: ptyId, data }).catch(() => {});
-        });
-
-        term.onResize(({ cols, rows }) => {
-          invoke("resize_terminal", { id: ptyId, cols, rows }).catch(() => {});
-        });
-
-        cleanupRef.current = () => {
-          unlistenOutput();
-          unlistenExit();
-        };
-      } catch (err) {
-        if (!cancelled) {
-          term.writeln(`\x1b[31mFailed to connect to agent PTY: ${err}\x1b[0m`);
-        }
+        unlisten = fn;
+      } catch {
+        // Backend unreachable (e.g. tests) — stay live.
       }
-    };
-
-    connectPty();
-
+    })();
     return () => {
       cancelled = true;
-      cleanupRef.current?.();
-      cleanupRef.current = null;
-      term.dispose();
-      termRef.current = null;
+      unlisten?.();
     };
   }, [ptyId]);
 
-  // Fit on window resize (debounced)
+  // Ctrl+Shift+J focuses the IME bar. Scope matches NativeTerminalArea:
+  // only when the key comes from inside this component's subtree.
   useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const handleResize = () => {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => fitAddonRef.current?.fit(), 50);
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey && e.shiftKey && (e.key === "J" || e.key === "j"))) return;
+      const root = areaRef.current;
+      if (!root) return;
+      const inside = root.contains(document.activeElement);
+      if (!inside) return;
+      e.preventDefault();
+      imeBarRef.current?.focus();
     };
-    window.addEventListener("resize", handleResize);
-    return () => { window.removeEventListener("resize", handleResize); if (timer) clearTimeout(timer); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
+  const submitIme = useCallback(
+    (text: string) => {
+      void invoke("write_terminal", { id: ptyId, data: text }).catch(() => {});
+    },
+    [ptyId],
+  );
+
+  const focusCanvas = useCallback(() => {
+    // Prefer the IME textarea — the canvas has tabIndex=-1 after Phase B
+    // and focusing it only works by bouncing through its React onFocus
+    // handler, which can miss during Strict Mode unmount/remount cycles.
+    (canvasInputElRef.current ?? canvasElRef.current)?.focus();
   }, []);
 
   const accent = accentColor ?? getCliColor(cli);
 
   return (
-    <div className={styles.agentTerminal} style={{ "--agent-accent": accent } as React.CSSProperties}>
-      {/* Status overlay bar */}
+    <div ref={areaRef} className={styles.agentTerminal} style={{ "--agent-accent": accent } as React.CSSProperties}>
       <div className={styles.statusBar}>
         <span className={styles.cliBadge} style={{ color: accent }}>
           {getCliLabel(cli)}
@@ -160,8 +159,20 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
         </span>
         <span className={styles.cost}>${cost.toFixed(2)}</span>
       </div>
-      {/* Terminal container */}
-      <div className={styles.terminalContainer} ref={containerRef} />
+      <div ref={containerRef} className={styles.terminalContainer}>
+        {dims && (
+          <TerminalCanvas
+            terminalId={ptyId}
+            cols={dims.cols}
+            rows={dims.rows}
+            fontSize={FONT_SIZE}
+            onCanvasRef={(el) => (canvasElRef.current = el)}
+            onInputRef={(el) => (canvasInputElRef.current = el)}
+          />
+        )}
+        {exited && <div className={styles.exitOverlay}>[Agent process exited]</div>}
+      </div>
+      <IMEInputBar ref={imeBarRef} onSubmit={submitIme} onRequestCanvasFocus={focusCanvas} />
     </div>
   );
 }

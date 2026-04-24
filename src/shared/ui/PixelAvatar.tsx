@@ -49,9 +49,7 @@ export const PixelAvatar = memo(function PixelAvatar({ seed, size = 32 }: PixelA
       <rect x={u * 4} y={u * 4} width={u * 8} height={u * 6} rx={u} fill={bodyColor} />
 
       {/* Eyes */}
-      {eyeStyle === 0 && (
-        <rect x={u * 5.5} y={u * 5.5} width={u * 5} height={u * 1.5} rx={u * 0.5} fill={bgColor} />
-      )}
+      {eyeStyle === 0 && <rect x={u * 5.5} y={u * 5.5} width={u * 5} height={u * 1.5} rx={u * 0.5} fill={bgColor} />}
       {eyeStyle === 1 && (
         <>
           <circle cx={u * 6.5} cy={u * 6.5} r={u} fill={bgColor} />
@@ -60,21 +58,31 @@ export const PixelAvatar = memo(function PixelAvatar({ seed, size = 32 }: PixelA
       )}
       {eyeStyle === 2 && (
         <>
-          <rect x={u * 5} y={u * 6} width={u * 2.5} height={u * 1} fill={bgColor} transform={`rotate(-10 ${u * 6.25} ${u * 6.5})`} />
-          <rect x={u * 8.5} y={u * 6} width={u * 2.5} height={u * 1} fill={bgColor} transform={`rotate(10 ${u * 9.75} ${u * 6.5})`} />
+          <rect
+            x={u * 5}
+            y={u * 6}
+            width={u * 2.5}
+            height={u * 1}
+            fill={bgColor}
+            transform={`rotate(-10 ${u * 6.25} ${u * 6.5})`}
+          />
+          <rect
+            x={u * 8.5}
+            y={u * 6}
+            width={u * 2.5}
+            height={u * 1}
+            fill={bgColor}
+            transform={`rotate(10 ${u * 9.75} ${u * 6.5})`}
+          />
         </>
       )}
 
       {/* Mouth */}
-      {mouthStyle === 0 && (
-        <rect x={u * 6} y={u * 8.5} width={u * 4} height={u * 0.8} rx={u * 0.3} fill={bgColor} />
-      )}
+      {mouthStyle === 0 && <rect x={u * 6} y={u * 8.5} width={u * 4} height={u * 0.8} rx={u * 0.3} fill={bgColor} />}
       {mouthStyle === 1 && (
         <line x1={u * 6} y1={u * 8.8} x2={u * 10} y2={u * 8.8} stroke={bgColor} strokeWidth={u * 0.5} />
       )}
-      {mouthStyle === 2 && (
-        <circle cx={s / 2} cy={u * 8.8} r={u * 0.6} fill={bgColor} />
-      )}
+      {mouthStyle === 2 && <circle cx={s / 2} cy={u * 8.8} r={u * 0.6} fill={bgColor} />}
 
       {/* Body */}
       <rect x={u * 3} y={u * 11} width={u * 10} height={u * 4} rx={u} fill={bodyColor} />

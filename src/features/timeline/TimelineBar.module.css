@@ -1,0 +1,118 @@
+/* Timeline bar — migrated to design tokens in the 2026-04-24 UI pass.
+ * Previous revision embedded raw Catppuccin hex (`#cdd6f4`, `#94e2d5`,
+ * `#f5c2e7`) and rgba alpha literals; everything now flows through
+ * `src/styles/global.css` + color-mix() for tinted alpha tiers. */
+
+.root {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-2) var(--space-6);
+  height: var(--bottom-tabs-height);
+  box-sizing: border-box;
+  background: var(--glass-frame);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--white-6);
+  font: var(--text-sm) / 1 var(--font-mono);
+  color: var(--text-primary);
+  user-select: none;
+}
+
+.label {
+  color: var(--ctp-cyan);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.03em;
+  flex: 0 0 auto;
+}
+
+.ticks {
+  flex: 1 1 auto;
+  display: flex;
+  gap: var(--space-1);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  min-width: 0;
+}
+
+.ticks::-webkit-scrollbar {
+  display: none;
+}
+
+.tick {
+  flex: 0 0 auto;
+  width: 4px;
+  height: 16px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--ctp-cyan) 35%, transparent);
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-silk),
+    transform var(--duration-fast) var(--ease-silk);
+}
+
+.tick:hover {
+  background: color-mix(in srgb, var(--ctp-cyan) 75%, transparent);
+  transform: scaleY(1.12);
+}
+
+.tick.userMarked {
+  background: color-mix(in srgb, var(--ctp-magenta) 55%, transparent);
+  width: 6px;
+}
+
+.tick.active {
+  background: var(--ctp-cyan);
+  box-shadow: 0 0 4px color-mix(in srgb, var(--ctp-cyan) 80%, transparent);
+}
+
+.empty {
+  color: var(--text-muted);
+  font-style: italic;
+  padding-left: var(--space-3);
+}
+
+.activePill {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-1) var(--space-4);
+  background: color-mix(in srgb, var(--ctp-cyan) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ctp-cyan) 45%, transparent);
+  border-radius: var(--radius-lg);
+  color: var(--ctp-cyan);
+  font-size: var(--text-xs);
+}
+
+.dismissBtn {
+  background: transparent;
+  border: 0;
+  color: var(--ctp-cyan);
+  cursor: pointer;
+  padding: 0 var(--space-1);
+  font-size: var(--text-base);
+  line-height: 1;
+}
+
+.dismissBtn:hover {
+  color: var(--text-primary);
+}
+
+.markBtn {
+  flex: 0 0 auto;
+  background: color-mix(in srgb, var(--ctp-magenta) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ctp-magenta) 35%, transparent);
+  color: var(--ctp-magenta);
+  padding: var(--space-1) var(--space-4);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-xs);
+}
+
+.markBtn:hover {
+  background: color-mix(in srgb, var(--ctp-magenta) 30%, transparent);
+}

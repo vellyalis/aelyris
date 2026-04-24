@@ -119,28 +119,43 @@ fn test_zombie_prevention() {
 
 #[test]
 fn test_send_keys_to_pane() {
+    use tokio::sync::broadcast;
+
     let mgr = PtyManager::new();
     let id = mgr.spawn(&ShellType::Cmd, 80, 24, None).expect("spawn");
+
+    // Subscribe before writing so echoed bytes are not dropped.
+    let mut rx = mgr.subscribe_output(&id).expect("subscribe");
     std::thread::sleep(std::time::Duration::from_millis(300));
 
     // send-keys: write to a specific terminal by ID
     mgr.write(&id, b"echo SENDKEY_TEST_OK\r\n").expect("send_keys failed");
 
-    let mut reader = mgr.take_reader(&id).expect("reader");
-    let mut buf = [0u8; 4096];
-    let mut output = String::new();
-    let start = std::time::Instant::now();
-    while start.elapsed() < std::time::Duration::from_secs(3) {
-        match reader.read(&mut buf) {
-            Ok(0) => break,
-            Ok(n) => {
-                output.push_str(&String::from_utf8_lossy(&buf[..n]));
-                if output.contains("SENDKEY_TEST_OK") { break; }
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime");
+    let output = rt.block_on(async {
+        let mut acc = String::new();
+        let start = std::time::Instant::now();
+        let total = std::time::Duration::from_secs(3);
+        loop {
+            let elapsed = start.elapsed();
+            if elapsed >= total { break; }
+            let remaining = total - elapsed;
+            match tokio::time::timeout(remaining, rx.recv()).await {
+                Ok(Ok(chunk)) => {
+                    acc.push_str(&String::from_utf8_lossy(&chunk));
+                    if acc.contains("SENDKEY_TEST_OK") { break; }
+                }
+                Ok(Err(broadcast::error::RecvError::Lagged(_))) => continue,
+                Ok(Err(broadcast::error::RecvError::Closed)) => break,
+                Err(_) => break,
             }
-            Err(ref e) if e.kind() == std::io::ErrorKind::BrokenPipe => break,
-            Err(_) => break,
         }
-    }
+        acc
+    });
+
     assert!(output.contains("SENDKEY_TEST_OK"), "send_keys output not found: {}", &output[..output.len().min(200)]);
     mgr.close_all();
 }

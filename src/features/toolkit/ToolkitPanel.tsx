@@ -1,14 +1,28 @@
-import { useState, useCallback } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { GitPullRequest, Upload, GitBranch, Play, FolderOpen, ClipboardList, ScrollText, FlaskConical, FileUp, AlertCircle } from "lucide-react";
-import { showPrompt } from "../../shared/ui/PromptDialog";
+import {
+  AlertCircle,
+  ClipboardList,
+  FileUp,
+  FlaskConical,
+  FolderOpen,
+  GitBranch,
+  GitPullRequest,
+  Play,
+  Plus,
+  ScrollText,
+  Upload,
+} from "lucide-react";
+import { useCallback, useState } from "react";
 import { detectDangerousCommand } from "../../shared/lib/shellSafety";
+import { showConfirm } from "../../shared/ui/ConfirmDialog";
+import { PanelHeader } from "../../shared/ui/PanelHeader";
+import { showPrompt } from "../../shared/ui/PromptDialog";
 import styles from "./ToolkitPanel.module.css";
 
 const ICON_MAP: Record<string, React.ReactNode> = {
   "create-pr": <GitPullRequest size={12} />,
   "commit-push": <Upload size={12} />,
-  "worktree": <GitBranch size={12} />,
+  worktree: <GitBranch size={12} />,
   "dev-server": <Play size={12} />,
   "open-vscode": <FolderOpen size={12} />,
   "git-status": <ClipboardList size={12} />,
@@ -31,7 +45,12 @@ interface ToolkitPanelProps {
 
 const DEFAULT_ACTIONS: ToolkitAction[] = [
   { id: "create-pr", label: "Create PR", badge: "var(--ctp-mauve)", command: "gh pr create --fill" },
-  { id: "commit-push", label: "Commit & Push", badge: "var(--ctp-green)", command: 'git add -A && git commit -m "{message}" && git push' },
+  {
+    id: "commit-push",
+    label: "Commit & Push",
+    badge: "var(--ctp-green)",
+    command: 'git add -A && git commit -m "{message}" && git push',
+  },
   { id: "worktree", label: "Worktree", badge: "var(--ctp-blue)", command: "git worktree list" },
   { id: "dev-server", label: "Dev Server", badge: "var(--ctp-green)", command: "pnpm dev" },
   { id: "open-vscode", label: "Open in VSCode", badge: "var(--ctp-blue)", command: "code ." },
@@ -44,12 +63,18 @@ function loadActions(projectName: string): ToolkitAction[] {
   try {
     const saved = localStorage.getItem(`aether:toolkit:${projectName}`);
     if (saved) return JSON.parse(saved);
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return DEFAULT_ACTIONS;
 }
 
 function saveActions(projectName: string, actions: ToolkitAction[]) {
-  try { localStorage.setItem(`aether:toolkit:${projectName}`, JSON.stringify(actions)); } catch { /* ignore */ }
+  try {
+    localStorage.setItem(`aether:toolkit:${projectName}`, JSON.stringify(actions));
+  } catch {
+    /* ignore */
+  }
 }
 
 export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitPanelProps) {
@@ -70,9 +95,7 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
 
   const handleSaveEdit = useCallback(() => {
     if (!editingId) return;
-    const updated = actions.map((a) =>
-      a.id === editingId ? { ...a, label: editLabel, command: editCommand } : a
-    );
+    const updated = actions.map((a) => (a.id === editingId ? { ...a, label: editLabel, command: editCommand } : a));
     setActions(updated);
     saveActions(projectName, updated);
     setEditingId(null);
@@ -137,16 +160,23 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
         setImportParsed(items);
         return;
       }
-    } catch { /* not JSON, fall through */ }
+    } catch {
+      /* not JSON, fall through */
+    }
 
     // Fallback: treat each non-empty line as a raw command
-    const lines = trimmed.split("\n").map((l) => l.trim()).filter(Boolean);
-    const items = lines.map((line, i): ToolkitAction => ({
-      id: `import-${Date.now()}-${i}`,
-      label: line.split(" ").slice(0, 3).join(" "),
-      badge: "var(--ctp-cyan)",
-      command: line,
-    }));
+    const lines = trimmed
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+    const items = lines.map(
+      (line, i): ToolkitAction => ({
+        id: `import-${Date.now()}-${i}`,
+        label: line.split(" ").slice(0, 3).join(" "),
+        badge: "var(--ctp-cyan)",
+        command: line,
+      }),
+    );
     setImportParsed(items);
   }, []);
 
@@ -190,20 +220,47 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
 
   return (
     <div className={styles.toolkit} role="region" aria-label="Toolkit">
-      <div className={styles.header}>
-        <span className={styles.title}>Toolkit</span>
-        <span className={styles.project}>{projectName}</span>
-        <button className={styles.addBtn} onClick={handleAdd} title="Add action" aria-label="Add tool">+</button>
-      </div>
+      <PanelHeader
+        title="Toolkit"
+        subtitle={projectName}
+        actions={
+          <button className={styles.addBtn} onClick={handleAdd} title="Add action" aria-label="Add tool">
+            <Plus size={12} aria-hidden="true" />
+          </button>
+        }
+      />
 
       {editingId && (
-        <div className={styles.editForm} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setEditingId(null); }}>
-          <input className={styles.editInput} value={editLabel} onChange={(e) => setEditLabel(e.target.value)} placeholder="Label" />
-          <input className={styles.editInput} value={editCommand} onChange={(e) => setEditCommand(e.target.value)} placeholder="Command" />
+        <div
+          className={styles.editForm}
+          onBlur={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node)) setEditingId(null);
+          }}
+        >
+          <input
+            className={styles.editInput}
+            value={editLabel}
+            onChange={(e) => setEditLabel(e.target.value)}
+            placeholder="Label"
+            aria-label="Tool label"
+          />
+          <input
+            className={styles.editInput}
+            value={editCommand}
+            onChange={(e) => setEditCommand(e.target.value)}
+            placeholder="Command"
+            aria-label="Tool command"
+          />
           <div className={styles.editActions}>
-            <button className={styles.editDelete} onClick={handleDelete}>Delete</button>
-            <button className={styles.editCancel} onClick={() => setEditingId(null)}>Cancel</button>
-            <button className={styles.editSave} onClick={handleSaveEdit}>Save</button>
+            <button className={styles.editDelete} onClick={handleDelete}>
+              Delete
+            </button>
+            <button className={styles.editCancel} onClick={() => setEditingId(null)}>
+              Cancel
+            </button>
+            <button className={styles.editSave} onClick={handleSaveEdit}>
+              Save
+            </button>
           </div>
         </div>
       )}
@@ -227,15 +284,25 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
               }
               const warning = detectDangerousCommand(command);
               if (warning) {
-                const ok = await showPrompt("Run dangerous command?", {
-                  placeholder: `${warning}\n\nCommand: ${command}`,
-                  defaultValue: "yes",
+                // Previously this was a text prompt with `defaultValue: "yes"` —
+                // a single-character typo would execute an `rm -rf`-class
+                // command. Use an explicit confirm with a danger-tone button
+                // and Cancel pre-focused.
+                const ok = await showConfirm({
+                  title: "Run dangerous command?",
+                  description: `${warning}\n\nCommand:\n${command}`,
+                  confirmLabel: "Run anyway",
+                  cancelLabel: "Cancel",
+                  tone: "danger",
                 });
-                if (ok !== "yes") return;
+                if (!ok) return;
               }
               onRunCommand?.(command);
             }}
-            onContextMenu={(e) => { e.preventDefault(); handleEdit(a); }}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              handleEdit(a);
+            }}
             title={a.command}
           >
             <span className={styles.actionIcon}>{ICON_MAP[a.id] ?? null}</span>
@@ -245,26 +312,54 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
         ))}
       </div>
       <div className={styles.bottomActions}>
-        <button className={styles.bottomBtn} onClick={async () => { const cmd = await showPrompt("Generate Tool", { placeholder: "Describe what the tool should do..." }); if (cmd) { const newAction: ToolkitAction = { id: `gen-${Date.now()}`, label: cmd.split(" ").slice(0, 3).join(" "), badge: "var(--ctp-mauve)", command: cmd }; const updated = [...actions, newAction]; setActions(updated); saveActions(projectName, updated); } }}>⊕ Generate...</button>
-        <button className={styles.bottomBtn} onClick={handleAdd}>⊕ Create...</button>
-        <button className={styles.bottomBtn} onClick={() => setImportOpen(true)}>⊕ Import...</button>
+        <button
+          className={styles.bottomBtn}
+          onClick={async () => {
+            const cmd = await showPrompt("Generate Tool", { placeholder: "Describe what the tool should do..." });
+            if (cmd) {
+              const newAction: ToolkitAction = {
+                id: `gen-${Date.now()}`,
+                label: cmd.split(" ").slice(0, 3).join(" "),
+                badge: "var(--ctp-mauve)",
+                command: cmd,
+              };
+              const updated = [...actions, newAction];
+              setActions(updated);
+              saveActions(projectName, updated);
+            }
+          }}
+        >
+          ⊕ Generate...
+        </button>
+        <button className={styles.bottomBtn} onClick={handleAdd}>
+          ⊕ Create...
+        </button>
+        <button className={styles.bottomBtn} onClick={() => setImportOpen(true)}>
+          ⊕ Import...
+        </button>
       </div>
 
       {/* Import Tool Dialog */}
-      <Dialog.Root open={importOpen} onOpenChange={(open) => {
-        setImportOpen(open);
-        if (!open) { setImportText(""); setImportParsed(null); setImportError(null); }
-      }}>
+      <Dialog.Root
+        open={importOpen}
+        onOpenChange={(open) => {
+          setImportOpen(open);
+          if (!open) {
+            setImportText("");
+            setImportParsed(null);
+            setImportError(null);
+          }
+        }}
+      >
         <Dialog.Portal>
           <Dialog.Overlay className={styles.importOverlay} />
           <Dialog.Content className={styles.importPanel} aria-describedby={undefined}>
             <Dialog.Title className={styles.importTitle}>Import Tool</Dialog.Title>
-            <p className={styles.importHint}>
-              Paste JSON recipe, raw commands, or load a .json file.
-            </p>
+            <p className={styles.importHint}>Paste JSON recipe, raw commands, or load a .json file.</p>
             <textarea
               className={styles.importTextarea}
               placeholder={'{\n  "label": "My Tool",\n  "command": "echo hello"\n}\n\n— or just paste a command —'}
+              aria-label="Tool recipe JSON or raw command"
               value={importText}
               onChange={(e) => parseImportText(e.target.value)}
               rows={5}
@@ -303,7 +398,11 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
               <Dialog.Close asChild>
                 <button className={styles.importCancel}>Cancel</button>
               </Dialog.Close>
-              <button className={styles.importSubmit} onClick={handleImport} disabled={!importParsed || importParsed.length === 0}>
+              <button
+                className={styles.importSubmit}
+                onClick={handleImport}
+                disabled={!importParsed || importParsed.length === 0}
+              >
                 Import{importParsed && importParsed.length > 1 ? ` (${importParsed.length})` : ""}
               </button>
             </div>

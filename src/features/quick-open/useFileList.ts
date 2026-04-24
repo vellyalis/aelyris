@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface FileListEntry {
   relative_path: string;
@@ -37,7 +37,9 @@ export function useFileList(projectPath: string) {
   }, [projectPath]);
 
   // Load on mount
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   // Invalidate cache on fs:changed
   useEffect(() => {
@@ -48,9 +50,13 @@ export function useFileList(projectPath: string) {
           cache.current = null;
           load();
         }
-      }).then((u) => { unlisten = u; });
+      }).then((u) => {
+        unlisten = u;
+      });
     });
-    return () => { unlisten?.(); };
+    return () => {
+      unlisten?.();
+    };
   }, [projectPath, load]);
 
   return { files, loading, refresh: load };

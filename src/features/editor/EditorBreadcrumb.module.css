@@ -29,3 +29,28 @@
   color: var(--white-15);
   flex-shrink: 0;
 }
+
+.ghostBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: rgba(249, 226, 175, 0.14);
+  color: var(--ctp-yellow);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  border: 1px solid rgba(249, 226, 175, 0.3);
+  white-space: nowrap;
+}
+
+.ghostBadge[data-kind="conflict"] {
+  background: rgba(243, 139, 168, 0.14);
+  color: var(--ctp-red);
+  border-color: rgba(243, 139, 168, 0.3);
+}
+
+.ghostBadgeIcon {
+  flex-shrink: 0;
+}

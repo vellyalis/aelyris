@@ -1,11 +1,26 @@
-import { describe, it, expect } from "vitest";
 import { render } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
 import { FileIcon } from "../features/file-tree/FileIcon";
 
 const FILE_TYPES = [
-  "folder", "ts", "js", "json", "md", "rs", "toml",
-  "css", "html", "yaml", "py", "svg", "image",
-  "shell", "git", "lock", "file", "unknown",
+  "folder",
+  "ts",
+  "js",
+  "json",
+  "md",
+  "rs",
+  "toml",
+  "css",
+  "html",
+  "yaml",
+  "py",
+  "svg",
+  "image",
+  "shell",
+  "git",
+  "lock",
+  "file",
+  "unknown",
 ];
 
 describe("FileIcon", () => {

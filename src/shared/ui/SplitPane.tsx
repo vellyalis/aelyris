@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, type ReactNode } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import styles from "./SplitPane.module.css";
 
 interface SplitPaneProps {
@@ -73,11 +73,7 @@ export function SplitPane({
   const secondSize = `${(1 - ratio) * 100}%`;
 
   return (
-    <div
-      ref={containerRef}
-      className={styles.container}
-      style={{ flexDirection: isHorizontal ? "row" : "column" }}
-    >
+    <div ref={containerRef} className={styles.container} style={{ flexDirection: isHorizontal ? "row" : "column" }}>
       <div className={styles.pane} style={{ [isHorizontal ? "width" : "height"]: firstSize }}>
         {first}
       </div>

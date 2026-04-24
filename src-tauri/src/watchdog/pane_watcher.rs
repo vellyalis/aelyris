@@ -72,7 +72,7 @@ pub fn evaluate_output(rules: &[PaneWatchRule], source_pane: &str, lines: &[Stri
 
 /// Match a trigger pattern against a line.
 /// Supports: pipe-separated alternatives (Error|Exception|FATAL)
-fn matches_trigger(pattern: &str, line: &str) -> bool {
+pub(crate) fn matches_trigger(pattern: &str, line: &str) -> bool {
     let line_lower = line.to_lowercase();
 
     // Pipe-separated alternatives

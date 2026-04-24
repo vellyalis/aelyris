@@ -7,7 +7,7 @@
   background: var(--aether-bg-sidebar);
   display: flex;
   flex-direction: column;
-  z-index: 50;
+  z-index: var(--z-dropdown);
 }
 
 .header {
@@ -30,8 +30,13 @@
   outline: none;
 }
 
-.input:focus-visible { outline: none !important; border-color: var(--gold); }
-.input::placeholder { color: var(--text-muted); }
+.input:focus-visible {
+  outline: none !important;
+  border-color: var(--gold);
+}
+.input::placeholder {
+  color: var(--text-muted);
+}
 
 .closeBtn {
   background: none;

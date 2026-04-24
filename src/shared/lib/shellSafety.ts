@@ -39,10 +39,10 @@ export function detectDangerousCommand(command: string): string | null {
  */
 export function escapeShellPath(path: string): string {
   return path
-    .replace(/\\/g, "/")        // normalize to forward slashes
-    .replace(/"/g, '\\"')       // escape double quotes
-    .replace(/`/g, "\\`")       // escape backticks
-    .replace(/\$/g, "\\$");     // escape dollar signs
+    .replace(/\\/g, "/") // normalize to forward slashes
+    .replace(/"/g, '\\"') // escape double quotes
+    .replace(/`/g, "\\`") // escape backticks
+    .replace(/\$/g, "\\$"); // escape dollar signs
 }
 
 /**

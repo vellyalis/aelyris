@@ -13,7 +13,7 @@
 .handle {
   flex-shrink: 0;
   background: var(--border);
-  transition: background 0.15s ease;
+  transition: background var(--duration-fast) var(--ease-silk);
   z-index: 1;
 }
 

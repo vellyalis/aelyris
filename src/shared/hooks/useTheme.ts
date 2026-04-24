@@ -1,5 +1,5 @@
-import { useEffect, useMemo } from "react";
-import { getPalette, isLightTheme, themeToCSS, xtermTheme } from "../themes/catppuccin";
+import { useEffect } from "react";
+import { getPalette, isLightTheme, themeToCSS } from "../themes/catppuccin";
 
 const STORAGE_KEY = "aether:theme";
 
@@ -34,17 +34,6 @@ export function useThemeApplier(themeId: string) {
     try {
       localStorage.setItem(STORAGE_KEY, themeId);
     } catch {}
-  }, [themeId]);
-}
-
-/**
- * Returns the current xterm.js theme object, reactive to themeId changes.
- */
-export function useXtermTheme(themeId: string) {
-  return useMemo(() => {
-    const palette = getPalette(themeId);
-    const light = isLightTheme(themeId);
-    return xtermTheme(palette, light);
   }, [themeId]);
 }
 

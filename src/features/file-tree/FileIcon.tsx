@@ -1,18 +1,18 @@
-import { memo } from "react";
 import {
-  Folder,
-  FolderOpen,
-  FileText,
+  File,
   FileCode2,
-  FileJson2,
-  FileType,
   FileCog,
   FileImage,
+  FileJson2,
   FileTerminal,
+  FileText,
+  FileType,
+  Folder,
+  FolderOpen,
   GitBranch,
   Lock,
-  File,
 } from "lucide-react";
+import { memo } from "react";
 
 const SIZE = 14;
 

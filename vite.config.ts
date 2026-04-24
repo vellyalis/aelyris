@@ -12,14 +12,13 @@ export default defineConfig(async () => ({
     environment: "jsdom",
     globals: true,
     setupFiles: [],
-    exclude: ["node_modules", "e2e"],
+    exclude: ["node_modules", "e2e", ".claude/worktrees/**"],
   },
 
   build: {
     rollupOptions: {
       output: {
         manualChunks: {
-          "xterm": ["@xterm/xterm", "@xterm/addon-fit", "@xterm/addon-web-links", "@xterm/addon-search", "@xterm/addon-unicode11"],
           "radix": ["@radix-ui/react-context-menu", "@radix-ui/react-dialog", "@radix-ui/react-dropdown-menu", "@radix-ui/react-scroll-area", "@radix-ui/react-tabs", "@radix-ui/react-toast", "@radix-ui/react-tooltip"],
           "motion": ["motion"],
         },

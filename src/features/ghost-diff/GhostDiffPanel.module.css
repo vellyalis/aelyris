@@ -1,0 +1,211 @@
+/* Ghost Diff Panel — migrated to design tokens in the 2026-04-24 UI pass.
+ * Previous revision relied on undefined fallback vars (--glass-2, --text,
+ * --text-dim, --accent, --error, --success, --glass-border) that silently
+ * shipped their raw-hex fallbacks. Everything below now flows through
+ * `src/styles/global.css`. */
+
+.panel {
+  position: absolute;
+  bottom: calc(100% + var(--space-2));
+  right: var(--space-6);
+  width: 380px;
+  max-height: 440px;
+  display: flex;
+  flex-direction: column;
+  background: var(--glass-thick);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--aether-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  z-index: var(--z-sticky);
+  color: var(--text-primary);
+  font-size: var(--text-md);
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--aether-border);
+}
+
+.headerTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.02em;
+}
+
+.subtitle {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.list {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-2) 0;
+}
+
+.empty {
+  padding: var(--space-8) var(--space-6);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  text-align: center;
+  line-height: var(--leading-normal);
+}
+
+.row {
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--white-3);
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.rowHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.expandBtn {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+}
+
+.expandBtn:hover {
+  color: var(--text-primary);
+}
+
+.chevronOpen {
+  transform: rotate(90deg);
+  transition: transform var(--duration-fast) var(--ease-silk);
+}
+
+.tintDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.roleLabel {
+  text-transform: lowercase;
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+}
+
+.readOnlyBadge {
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--ctp-cyan) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ctp-cyan) 25%, transparent);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+}
+
+.branch {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--ctp-yellow);
+  background: color-mix(in srgb, var(--ctp-yellow) 10%, transparent);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.counts {
+  margin-left: auto;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+
+.statusIcon {
+  display: inline-flex;
+  align-items: center;
+}
+
+.iconActive {
+  animation: gd-spin 1.2s linear infinite;
+  color: var(--ctp-yellow);
+}
+
+.iconComplete {
+  color: var(--ctp-green);
+}
+
+@keyframes gd-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.dismissBtn {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+}
+
+.dismissBtn:hover {
+  background: color-mix(in srgb, var(--ctp-red) 12%, transparent);
+  color: var(--ctp-red);
+}
+
+.fileList {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  /* 28px indent = chevron(16) + gap(6) + tintDot(8); align files under the
+   * role label rather than the chevron. */
+  padding: var(--space-2) var(--space-4) var(--space-2) calc(var(--space-16) + var(--space-3));
+  background: var(--white-3);
+  border-radius: var(--radius-sm);
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.fileRow {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  padding: var(--space-1) 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emptyFiles {
+  padding: var(--space-2) calc(var(--space-16) + var(--space-3));
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-style: italic;
+}

@@ -1,6 +1,12 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.0.0/schema.json",
-  "organizeImports": { "enabled": true },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
   "linter": {
     "enabled": true,
     "rules": {
@@ -14,6 +20,13 @@
       },
       "security": {
         "noDangerouslySetInnerHtml": "error"
+      },
+      "style": {
+        "noNonNullAssertion": "warn",
+        "useTemplate": "warn"
+      },
+      "complexity": {
+        "noImportantStyles": "off"
       }
     }
   },
@@ -24,6 +37,6 @@
     "lineWidth": 120
   },
   "files": {
-    "ignore": ["node_modules", "dist", "target", "src-tauri/target"]
+    "includes": ["**", "!node_modules/**", "!dist/**", "!target/**", "!src-tauri/target/**"]
   }
 }

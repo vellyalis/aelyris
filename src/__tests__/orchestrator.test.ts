@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { ORCHESTRA_ROLES, buildOrchestraPrompts } from "../shared/lib/orchestrator";
+import { describe, expect, it } from "vitest";
+import { buildOrchestraPrompts, ORCHESTRA_ROLES } from "../shared/lib/orchestrator";
 
 describe("ORCHESTRA_ROLES", () => {
   it("has 4 predefined roles", () => {

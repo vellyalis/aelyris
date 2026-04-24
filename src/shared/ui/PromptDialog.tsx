@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { create } from "zustand";
 import styles from "./PromptDialog.module.css";
 
@@ -56,7 +56,12 @@ export function PromptDialog() {
   }, [value, close]);
 
   return (
-    <Dialog.Root open={open} onOpenChange={(o) => { if (!o) close(null); }}>
+    <Dialog.Root
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) close(null);
+      }}
+    >
       <Dialog.Portal>
         <Dialog.Overlay className={styles.overlay} />
         <Dialog.Content className={styles.panel} aria-describedby={undefined}>
@@ -65,6 +70,7 @@ export function PromptDialog() {
             ref={inputRef}
             className={styles.input}
             placeholder={placeholder}
+            aria-label={title}
             value={value}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={(e) => {
@@ -72,8 +78,12 @@ export function PromptDialog() {
             }}
           />
           <div className={styles.actions}>
-            <button className={styles.cancelBtn} onClick={() => close(null)}>Cancel</button>
-            <button className={styles.submitBtn} onClick={handleSubmit} disabled={!value.trim()}>OK</button>
+            <button className={styles.cancelBtn} onClick={() => close(null)}>
+              Cancel
+            </button>
+            <button className={styles.submitBtn} onClick={handleSubmit} disabled={!value.trim()}>
+              OK
+            </button>
           </div>
         </Dialog.Content>
       </Dialog.Portal>
@@ -82,6 +92,9 @@ export function PromptDialog() {
 }
 
 /** Drop-in replacement for window.prompt() */
-export function showPrompt(title: string, opts?: { placeholder?: string; defaultValue?: string }): Promise<string | null> {
+export function showPrompt(
+  title: string,
+  opts?: { placeholder?: string; defaultValue?: string },
+): Promise<string | null> {
   return usePromptStore.getState().show({ title, placeholder: opts?.placeholder, defaultValue: opts?.defaultValue });
 }

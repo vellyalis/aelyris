@@ -19,7 +19,8 @@
   cursor: pointer;
 }
 
-.menuBtn:hover, .menuBtnActive {
+.menuBtn:hover,
+.menuBtnActive {
   background: var(--white-6);
   color: var(--text-primary);
 }
@@ -34,12 +35,19 @@
   padding: var(--space-2);
   box-shadow: var(--shadow-lg);
   z-index: var(--z-dropdown);
-  animation: menuFadeIn 0.1s ease-out;
+  animation: menuFadeIn var(--duration-fast) var(--ease-out);
+  will-change: transform, opacity;
 }
 
 @keyframes menuFadeIn {
-  from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .item {

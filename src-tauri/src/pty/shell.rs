@@ -31,7 +31,18 @@ impl ShellType {
     /// Returns extra arguments for the shell
     pub fn args(&self) -> Vec<&str> {
         match self {
-            ShellType::PowerShell => vec!["-NoLogo"],
+            // PSReadLine's inline prediction (enabled by default in PowerShell 7.2+)
+            // leaves dim-italic ghost characters on the screen when predictions span
+            // multiple rows or the terminal resizes — xterm/ConPTY reproduces exactly
+            // what PSReadLine writes, and the feature is not commonly used, so we
+            // disable it at startup. Wrapped in try/catch to survive older hosts
+            // that lack the -PredictionSource option.
+            ShellType::PowerShell => vec![
+                "-NoLogo",
+                "-NoExit",
+                "-Command",
+                "try { Set-PSReadLineOption -PredictionSource None } catch {}",
+            ],
             _ => vec![],
         }
     }

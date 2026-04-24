@@ -4,12 +4,17 @@ export type LspLanguage = "rust" | "python" | "typescript" | "go";
 /** Map Monaco language IDs to LSP language identifiers */
 export function monacoToLspLanguage(monacoLang: string): LspLanguage | null {
   switch (monacoLang) {
-    case "rust": return "rust";
-    case "python": return "python";
+    case "rust":
+      return "rust";
+    case "python":
+      return "python";
     case "typescript":
-    case "javascript": return "typescript";
-    case "go": return "go";
-    default: return null;
+    case "javascript":
+      return "typescript";
+    case "go":
+      return "go";
+    default:
+      return null;
   }
 }
 

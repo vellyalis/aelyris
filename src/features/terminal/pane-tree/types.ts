@@ -27,9 +27,13 @@ export type SplitDirection = "right" | "down" | "left" | "up";
 /** Maps split direction to tree direction + child placement */
 export function splitDirectionToTree(dir: SplitDirection): { direction: "horizontal" | "vertical"; newFirst: boolean } {
   switch (dir) {
-    case "right": return { direction: "horizontal", newFirst: false };
-    case "left":  return { direction: "horizontal", newFirst: true };
-    case "down":  return { direction: "vertical", newFirst: false };
-    case "up":    return { direction: "vertical", newFirst: true };
+    case "right":
+      return { direction: "horizontal", newFirst: false };
+    case "left":
+      return { direction: "horizontal", newFirst: true };
+    case "down":
+      return { direction: "vertical", newFirst: false };
+    case "up":
+      return { direction: "vertical", newFirst: true };
   }
 }

@@ -1,5 +1,5 @@
-import { FolderTree, Kanban, Bot, Wrench } from "lucide-react";
-import { useAppStore, type SidebarSection } from "../../shared/store/appStore";
+import { Bot, FolderTree, Kanban, Wrench } from "lucide-react";
+import { type SidebarSection, useAppStore } from "../../shared/store/appStore";
 import { Tooltip } from "../../shared/ui/Tooltip";
 import styles from "./Sidebar.module.css";
 
@@ -20,12 +20,15 @@ export function Sidebar() {
         {NAV_ITEMS.map(({ id, icon: Icon, label }) => (
           <Tooltip key={id} content={label} side="right" delay={300}>
             <button
+              type="button"
               className={`${styles.navBtn} ${section === id ? styles.active : ""}`}
               onClick={() => setSection(id)}
               aria-label={label}
+              aria-pressed={section === id}
+              aria-current={section === id ? "page" : undefined}
             >
-              <Icon size={20} strokeWidth={1.5} />
-              {section === id && <div className={styles.indicator} />}
+              <Icon size={20} strokeWidth={1.5} aria-hidden="true" />
+              {section === id && <div className={styles.indicator} aria-hidden="true" />}
             </button>
           </Tooltip>
         ))}

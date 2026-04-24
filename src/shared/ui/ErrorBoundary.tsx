@@ -1,4 +1,4 @@
-import { Component, type ReactNode, type ErrorInfo } from "react";
+import { Component, type ErrorInfo, type ReactNode } from "react";
 
 interface Props {
   children: ReactNode;
@@ -26,26 +26,41 @@ export class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
-      return this.props.fallback ?? (
-        <div style={{
-          padding: 24, color: "#f38ba8", background: "#0d0d0d",
-          fontFamily: "IBM Plex Mono, monospace", fontSize: 12,
-          display: "flex", flexDirection: "column", gap: 8,
-        }}>
-          <div style={{ fontSize: 14, fontWeight: 600 }}>Something went wrong</div>
-          <pre style={{ color: "#a6adc8", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
-            {this.state.error?.message}
-          </pre>
-          <button
-            onClick={() => this.setState({ hasError: false, error: null })}
+      return (
+        this.props.fallback ?? (
+          <div
+            role="alert"
             style={{
-              background: "none", border: "1px solid #f38ba8", color: "#f38ba8",
-              padding: "4px 12px", borderRadius: 4, cursor: "pointer", alignSelf: "flex-start",
+              padding: "var(--space-12)",
+              color: "var(--ctp-red)",
+              background: "var(--glass-solid)",
+              fontFamily: "var(--font-mono)",
+              fontSize: "var(--text-md)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "var(--space-4)",
             }}
           >
-            Retry
-          </button>
-        </div>
+            <div style={{ fontSize: "var(--text-lg)", fontWeight: "var(--weight-semibold)" }}>Something went wrong</div>
+            <pre style={{ color: "var(--text-secondary)", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+              {this.state.error?.message}
+            </pre>
+            <button
+              onClick={() => this.setState({ hasError: false, error: null })}
+              style={{
+                background: "none",
+                border: "1px solid var(--ctp-red)",
+                color: "var(--ctp-red)",
+                padding: "var(--space-2) var(--space-6)",
+                borderRadius: "var(--radius-sm)",
+                cursor: "pointer",
+                alignSelf: "flex-start",
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        )
       );
     }
     return this.props.children;

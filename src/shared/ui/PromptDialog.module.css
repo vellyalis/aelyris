@@ -28,8 +28,14 @@
 }
 
 @keyframes promptIn {
-  from { opacity: 0; transform: translate(-50%, -50%) scale(0.96); }
-  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
 }
 
 .title {
@@ -52,9 +58,16 @@
   transition: border-color var(--duration-fast);
 }
 
-.input:hover { border-color: var(--white-15); }
-.input:focus-visible { outline: none !important; border-color: var(--gold); }
-.input::placeholder { color: var(--text-muted); }
+.input:hover {
+  border-color: var(--white-15);
+}
+.input:focus-visible {
+  outline: none !important;
+  border-color: var(--gold);
+}
+.input::placeholder {
+  color: var(--text-muted);
+}
 
 .actions {
   display: flex;
@@ -73,7 +86,9 @@
   cursor: pointer;
   transition: background var(--duration-fast);
 }
-.cancelBtn:hover { background: var(--white-6); }
+.cancelBtn:hover {
+  background: var(--white-6);
+}
 
 .submitBtn {
   background: var(--gold);
@@ -87,5 +102,10 @@
   cursor: pointer;
   transition: opacity var(--duration-fast);
 }
-.submitBtn:hover { opacity: 0.9; }
-.submitBtn:disabled { opacity: var(--state-disabled-opacity); cursor: default; }
+.submitBtn:hover {
+  opacity: 0.9;
+}
+.submitBtn:disabled {
+  opacity: var(--state-disabled-opacity);
+  cursor: default;
+}

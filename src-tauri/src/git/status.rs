@@ -1,4 +1,4 @@
-use git2::{Repository, StatusOptions};
+use git2::{BranchType, Repository, StatusOptions};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -6,6 +6,16 @@ pub struct GitStatusInfo {
     pub branch: String,
     pub is_dirty: bool,
     pub changed_files: Vec<ChangedFile>,
+    /// Upstream tracking branch short name (e.g. `origin/main`) — empty when
+    /// the local branch is not tracking a remote.
+    #[serde(default)]
+    pub upstream: String,
+    /// Commits the local branch is ahead of `upstream`.
+    #[serde(default)]
+    pub ahead: u32,
+    /// Commits the local branch is behind `upstream`.
+    #[serde(default)]
+    pub behind: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,6 +35,11 @@ pub fn git_status(repo_path: &str) -> Result<GitStatusInfo, String> {
         .ok()
         .and_then(|h| h.shorthand().map(String::from))
         .unwrap_or_else(|| "HEAD".to_string());
+
+    // Upstream tracking info — best-effort. Detached HEAD, no upstream
+    // configured, or a non-existent remote ref all collapse to "no upstream"
+    // without erroring the whole call.
+    let (upstream, ahead, behind) = resolve_upstream(&repo, &branch);
 
     let mut opts = StatusOptions::new();
     opts.include_untracked(true)
@@ -63,5 +78,36 @@ pub fn git_status(repo_path: &str) -> Result<GitStatusInfo, String> {
         branch,
         is_dirty: !changed_files.is_empty(),
         changed_files,
+        upstream,
+        ahead,
+        behind,
     })
+}
+
+fn resolve_upstream(repo: &Repository, branch_name: &str) -> (String, u32, u32) {
+    let Ok(local) = repo.find_branch(branch_name, BranchType::Local) else {
+        return (String::new(), 0, 0);
+    };
+    let Ok(upstream) = local.upstream() else {
+        return (String::new(), 0, 0);
+    };
+    let upstream_name = upstream
+        .name()
+        .ok()
+        .flatten()
+        .map(String::from)
+        .unwrap_or_default();
+
+    let local_oid = match local.get().target() {
+        Some(oid) => oid,
+        None => return (upstream_name, 0, 0),
+    };
+    let upstream_oid = match upstream.get().target() {
+        Some(oid) => oid,
+        None => return (upstream_name, 0, 0),
+    };
+    let (ahead, behind) = repo
+        .graph_ahead_behind(local_oid, upstream_oid)
+        .unwrap_or((0, 0));
+    (upstream_name, ahead as u32, behind as u32)
 }

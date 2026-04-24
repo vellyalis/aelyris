@@ -121,6 +121,7 @@ mod tests {
                     description: String::new(),
                 })
                 .collect(),
+            auto_repair: Default::default(),
         }
     }
 

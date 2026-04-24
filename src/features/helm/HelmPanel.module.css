@@ -1,8 +1,12 @@
 .helm {
+  /*
+   * Sits inside .right-panel which already runs backdrop-filter: blur(24px).
+   * Stacking another blur here produced the washed-out purple haze flagged
+   * by the 2026-04-24 glass audit. Lean on the parent's blur and carry the
+   * tint via opacity on top of --glass-dense instead.
+   */
   border-top: 1px solid var(--white-6);
-  background: rgba(110, 50, 220, 0.12);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
+  background: linear-gradient(var(--purple-dim), var(--purple-dim)), var(--glass-dense);
   min-height: 60px;
   max-height: 180px;
   display: flex;
@@ -10,43 +14,27 @@
   overflow: hidden;
 }
 
-.header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-6);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-muted);
-}
-
-.count {
-  font-weight: 400;
-  font-size: var(--text-xs);
-  font-family: var(--font-mono);
-  color: var(--text-muted);
-  background: var(--white-4);
-  padding: 1px var(--space-2);
-  border-radius: var(--radius-sm);
-}
+/* Header chrome moved to shared/ui/PanelHeader. */
 
 .addBtn {
   background: none;
   border: none;
   color: var(--text-muted);
-  font-size: var(--text-lg);
-  line-height: 1;
   cursor: pointer;
-  padding: var(--space-1) var(--space-3);
+  padding: var(--space-1);
   border-radius: var(--radius-sm);
-  margin-left: auto;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
 }
-.addBtn:hover { background: var(--white-6); color: var(--text-primary); }
+.addBtn:hover {
+  background: var(--white-6);
+  color: var(--text-primary);
+}
+.addBtn:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 1px;
+}
 
 .content {
   flex: 1;
@@ -66,9 +54,16 @@
   outline: none;
   margin-bottom: var(--space-3);
 }
-.addInput:hover { border-color: var(--white-10); }
-.addInput:focus-visible { outline: none !important; border-color: var(--gold); }
-.addInput::placeholder { color: var(--text-muted); }
+.addInput:hover {
+  border-color: var(--white-10);
+}
+.addInput:focus-visible {
+  outline: none !important;
+  border-color: var(--gold);
+}
+.addInput::placeholder {
+  color: var(--text-muted);
+}
 
 .task {
   display: flex;
@@ -79,9 +74,14 @@
   font-size: var(--text-md);
   transition: background var(--duration-fast);
 }
-.task:hover { background: rgba(124, 58, 237, 0.08); }
+.task:hover {
+  background: var(--row-hover);
+}
 
-.taskDone .taskLabel { text-decoration: line-through; opacity: 0.4; }
+.taskDone .taskLabel {
+  text-decoration: line-through;
+  opacity: 0.4;
+}
 
 .checkbox {
   accent-color: var(--purple-text);
@@ -103,12 +103,16 @@
 .deleteBtn {
   background: none;
   border: none;
-  color: rgba(167, 139, 250, 0.3);
+  color: var(--white-30);
   font-size: var(--text-sm);
   cursor: pointer;
   opacity: 0;
   padding: 0 var(--space-1);
   transition: opacity 0.1s;
 }
-.task:hover .deleteBtn { opacity: 1; }
-.deleteBtn:hover { color: var(--ctp-red); }
+.task:hover .deleteBtn {
+  opacity: 1;
+}
+.deleteBtn:hover {
+  color: var(--ctp-red);
+}

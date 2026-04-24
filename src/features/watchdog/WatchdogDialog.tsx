@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
 import { invoke } from "@tauri-apps/api/core";
-import { motion, AnimatePresence } from "motion/react";
-import { ShieldCheck, ShieldX, Plus, Trash2 } from "lucide-react";
+import { Plus, ShieldCheck, ShieldX, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import styles from "./WatchdogDialog.module.css";
 
 interface WatchdogRule {
@@ -30,9 +30,7 @@ const PRESETS: { name: string; description: string; rules: WatchdogRule[] }[] = 
   {
     name: "Strict",
     description: "Only approve file reads",
-    rules: [
-      { pattern: "Read", approve: true, description: "File reads only" },
-    ],
+    rules: [{ pattern: "Read", approve: true, description: "File reads only" }],
   },
   {
     name: "Readonly",
@@ -60,7 +58,9 @@ export function WatchdogDialog({ visible, onClose }: WatchdogDialogProps) {
 
   useEffect(() => {
     if (visible) {
-      invoke<WatchdogRules>("get_watchdog_rules").then(setRules).catch(() => {});
+      invoke<WatchdogRules>("get_watchdog_rules")
+        .then(setRules)
+        .catch(() => {});
     }
   }, [visible]);
 
@@ -69,7 +69,9 @@ export function WatchdogDialog({ visible, onClose }: WatchdogDialogProps) {
     try {
       await invoke("save_watchdog_rules", { rules });
       onClose();
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     setSaving(false);
   }, [rules, onClose]);
 
@@ -92,87 +94,121 @@ export function WatchdogDialog({ visible, onClose }: WatchdogDialogProps) {
   const toggleRuleApproval = useCallback((index: number) => {
     setRules((r) => ({
       ...r,
-      auto_approve: r.auto_approve.map((rule, i) =>
-        i === index ? { ...rule, approve: !rule.approve } : rule
-      ),
+      auto_approve: r.auto_approve.map((rule, i) => (i === index ? { ...rule, approve: !rule.approve } : rule)),
     }));
   }, []);
 
-  const applyPreset = useCallback((preset: typeof PRESETS[number]) => {
+  const applyPreset = useCallback((preset: (typeof PRESETS)[number]) => {
     setRules((r) => ({ ...r, enabled: true, auto_approve: [...preset.rules] }));
   }, []);
 
   return (
-    <AnimatePresence>
-    {visible && (
-    <motion.div className={styles.overlay} onClick={onClose}
-      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.12 }}>
-      <motion.div className={styles.dialog} onClick={(e) => e.stopPropagation()}
-        initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
-        transition={{ type: "spring", stiffness: 400, damping: 30 }}>
-        <h3 className={styles.title}>Watchdog Rules</h3>
+    <Dialog.Root
+      open={visible}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+    >
+      <Dialog.Portal>
+        <Dialog.Overlay className={styles.overlay} />
+        <Dialog.Content className={styles.dialog} aria-describedby={undefined}>
+          <Dialog.Title className={styles.title}>Watchdog Rules</Dialog.Title>
 
-        {/* Enable toggle */}
-        <div className={styles.toggleRow}>
-          <span className={styles.label}>Watchdog Enabled</span>
-          <button
-            className={`${styles.toggle} ${rules.enabled ? styles.toggleOn : ""}`}
-            onClick={() => setRules((r) => ({ ...r, enabled: !r.enabled }))}
-          >
-            {rules.enabled ? "ON" : "OFF"}
-          </button>
-        </div>
-
-        {/* Presets */}
-        <div className={styles.presets}>
-          {PRESETS.map((p) => (
-            <button key={p.name} className={styles.presetBtn} onClick={() => applyPreset(p)} title={p.description}>
-              {p.name}
+          {/* Enable toggle */}
+          <div className={styles.toggleRow}>
+            <span className={styles.label}>Watchdog Enabled</span>
+            <button
+              type="button"
+              className={`${styles.toggle} ${rules.enabled ? styles.toggleOn : ""}`}
+              onClick={() => setRules((r) => ({ ...r, enabled: !r.enabled }))}
+              aria-pressed={rules.enabled}
+              aria-label="Toggle Watchdog"
+            >
+              {rules.enabled ? "ON" : "OFF"}
             </button>
-          ))}
-        </div>
+          </div>
 
-        {/* Rules list */}
-        <div className={styles.rulesList}>
-          {rules.auto_approve.map((rule, i) => (
-            <div key={i} className={styles.ruleRow}>
-              <button className={styles.ruleToggle} onClick={() => toggleRuleApproval(i)} title={rule.approve ? "Approve" : "Deny"}>
-                {rule.approve
-                  ? <ShieldCheck size={12} color="var(--ctp-green)" />
-                  : <ShieldX size={12} color="var(--ctp-red)" />
-                }
+          {/* Presets */}
+          <div className={styles.presets}>
+            {PRESETS.map((p) => (
+              <button
+                type="button"
+                key={p.name}
+                className={styles.presetBtn}
+                onClick={() => applyPreset(p)}
+                title={p.description}
+              >
+                {p.name}
               </button>
-              <span className={styles.rulePattern}>{rule.pattern}</span>
-              <button className={styles.ruleDelete} onClick={() => removeRule(i)}>
-                <Trash2 size={10} />
+            ))}
+          </div>
+
+          {/* Rules list */}
+          <div className={styles.rulesList}>
+            {rules.auto_approve.map((rule, i) => (
+              <div key={i} className={styles.ruleRow}>
+                <button
+                  type="button"
+                  className={styles.ruleToggle}
+                  onClick={() => toggleRuleApproval(i)}
+                  aria-pressed={rule.approve}
+                  aria-label={rule.approve ? `Change ${rule.pattern} to deny` : `Change ${rule.pattern} to approve`}
+                  title={rule.approve ? "Approve" : "Deny"}
+                >
+                  {rule.approve ? (
+                    <ShieldCheck size={12} color="var(--ctp-green)" aria-hidden="true" />
+                  ) : (
+                    <ShieldX size={12} color="var(--ctp-red)" aria-hidden="true" />
+                  )}
+                </button>
+                <span className={styles.rulePattern}>{rule.pattern}</span>
+                <button
+                  type="button"
+                  className={styles.ruleDelete}
+                  onClick={() => removeRule(i)}
+                  aria-label={`Remove rule ${rule.pattern}`}
+                >
+                  <Trash2 size={10} aria-hidden="true" />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {/* Add rule */}
+          <div className={styles.addRow}>
+            <input
+              className={styles.input}
+              value={newPattern}
+              onChange={(e) => setNewPattern(e.target.value)}
+              placeholder="Pattern (e.g. Bash(git*))"
+              aria-label="New rule pattern"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") addRule();
+              }}
+            />
+            <button
+              type="button"
+              className={styles.addBtn}
+              onClick={addRule}
+              disabled={!newPattern.trim()}
+              aria-label="Add rule"
+            >
+              <Plus size={12} aria-hidden="true" />
+            </button>
+          </div>
+
+          <div className={styles.actions}>
+            <Dialog.Close asChild>
+              <button type="button" className={styles.cancelBtn}>
+                Cancel
               </button>
-            </div>
-          ))}
-        </div>
-
-        {/* Add rule */}
-        <div className={styles.addRow}>
-          <input
-            className={styles.input}
-            value={newPattern}
-            onChange={(e) => setNewPattern(e.target.value)}
-            placeholder="Pattern (e.g. Bash(git*))"
-            onKeyDown={(e) => { if (e.key === "Enter") addRule(); }}
-          />
-          <button className={styles.addBtn} onClick={addRule} disabled={!newPattern.trim()}>
-            <Plus size={14} />
-          </button>
-        </div>
-
-        <div className={styles.actions}>
-          <button className={styles.cancelBtn} onClick={onClose}>Cancel</button>
-          <button className={styles.createBtn} onClick={handleSave} disabled={saving}>
-            {saving ? "Saving..." : "Save"}
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>
-    )}
-    </AnimatePresence>
+            </Dialog.Close>
+            <button type="button" className={styles.createBtn} onClick={handleSave} disabled={saving}>
+              {saving ? "Saving..." : "Save"}
+            </button>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }

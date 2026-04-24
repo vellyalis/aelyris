@@ -244,36 +244,6 @@ export function themeToCSS(palette: ThemePalette, light: boolean): Record<string
 }
 
 /**
- * Generate xterm.js ITheme from the palette.
- */
-export function xtermTheme(palette: ThemePalette, light: boolean) {
-  return {
-    background: light ? palette.base : "rgba(13, 13, 13, 0.01)",
-    foreground: light ? palette.text : "rgba(255, 255, 255, 0.88)",
-    cursor: palette.sapphire,
-    cursorAccent: light ? palette.base : "#1a1a1a",
-    selectionBackground: light ? `${palette.blue}40` : `${palette.sapphire}40`,
-    selectionForeground: light ? palette.text : "rgba(255, 255, 255, 0.95)",
-    black: light ? palette.subtext1 : palette.surface1,
-    red: palette.red,
-    green: palette.green,
-    yellow: palette.yellow,
-    blue: palette.blue,
-    magenta: palette.magenta,
-    cyan: palette.cyan,
-    white: light ? palette.surface2 : palette.subtext1,
-    brightBlack: light ? palette.subtext0 : palette.overlay0,
-    brightRed: palette.red,
-    brightGreen: palette.green,
-    brightYellow: palette.yellow,
-    brightBlue: palette.blue,
-    brightMagenta: palette.magenta,
-    brightCyan: palette.cyan,
-    brightWhite: light ? palette.text : "#ffffff",
-  };
-}
-
-/**
  * Generate Monaco editor theme colors from the palette.
  */
 export function monacoThemeColors(palette: ThemePalette, light: boolean) {

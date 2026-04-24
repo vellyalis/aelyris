@@ -49,7 +49,9 @@
   padding: var(--space-2) var(--space-6);
   border-radius: var(--radius-sm);
 }
-.saveBtn:hover { opacity: 0.9; }
+.saveBtn:hover {
+  opacity: 0.9;
+}
 
 .closeBtn {
   background: none;
@@ -96,7 +98,8 @@
   margin-bottom: var(--space-2);
 }
 
-.select, .input {
+.select,
+.input {
   width: 100%;
   padding: var(--space-3) var(--space-5);
   background: var(--bg-surface);
@@ -108,7 +111,9 @@
   outline: none;
 }
 
-.select:focus, .input:focus-visible { outline: none !important;
+.select:focus,
+.input:focus-visible {
+  outline: none !important;
   border-color: var(--accent);
 }
 
@@ -132,6 +137,14 @@
 
 .toggle input[type="checkbox"] {
   accent-color: var(--accent);
+}
+
+.hint {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-8);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  line-height: 1.5;
 }
 
 .shortcutList {

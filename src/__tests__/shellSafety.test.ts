@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { detectDangerousCommand, escapeShellPath, validateCommand } from "../shared/lib/shellSafety";
 
 describe("detectDangerousCommand", () => {
