@@ -9,7 +9,9 @@ describe("Model Types", () => {
       expect(m.provider).toBeTruthy();
       expect(m.cliCommand).toBeTruthy();
       expect(m.modelArg).toBeTruthy();
-      expect(m.color).toMatch(/^#/);
+      // Either a CSS custom property reference (var(--ctp-*)) or a raw
+      // brand hex — both are acceptable string forms for a CSS color.
+      expect(m.color).toMatch(/^(#|var\()/);
     }
   });
 

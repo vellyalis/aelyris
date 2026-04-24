@@ -19,11 +19,11 @@ describe("Agent Types", () => {
     }
   });
 
-  it("idle is green", () => {
+  it("idle is a Tailwind green hex (intentionally distinct from --ctp-green)", () => {
     expect(STATUS_COLORS.idle).toBe("#4ade80");
   });
 
-  it("error is red", () => {
-    expect(STATUS_COLORS.error).toBe("#f38ba8");
+  it("error resolves to --ctp-red so it tracks theme switches", () => {
+    expect(STATUS_COLORS.error).toBe("var(--ctp-red)");
   });
 });

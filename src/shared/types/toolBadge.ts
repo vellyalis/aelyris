@@ -11,16 +11,16 @@ export type ToolName =
   | "Agent";
 
 export const TOOL_COLORS: Record<ToolName, string> = {
-  Edit: "#f9e2af",
-  Bash: "#a6e3a1",
-  Read: "#89b4fa",
-  Write: "#fab387",
-  Glob: "#cba6f7",
-  Grep: "#94e2d5",
-  Search: "#94e2d5",
-  TodoRead: "#f5c2e7",
-  TodoWrite: "#f5c2e7",
-  Agent: "#89dceb",
+  Edit: "var(--ctp-yellow)",
+  Bash: "var(--ctp-green)",
+  Read: "var(--ctp-blue)",
+  Write: "var(--ctp-peach)",
+  Glob: "var(--ctp-mauve)",
+  Grep: "var(--ctp-cyan)",
+  Search: "var(--ctp-cyan)",
+  TodoRead: "var(--ctp-magenta)",
+  TodoWrite: "var(--ctp-magenta)",
+  Agent: "var(--ctp-sky)",
 };
 
 const TOOL_PATTERN = /\b(Read|Edit|Write|Bash|Glob|Grep|Search|TodoRead|TodoWrite|Agent)\s*\(/;

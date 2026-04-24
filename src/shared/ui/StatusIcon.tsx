@@ -35,7 +35,10 @@ export const StatusIcon = memo(function StatusIcon({ status, size = 12 }: Status
     phase === "active" ? ACTIVE_CLASS[status] : phase === "ambient" ? "status-ambient" : undefined;
 
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill={color} className={animClass}>
+    // `fill={color}` won't work once color is a CSS variable — SVG
+    // presentation attributes don't evaluate var(). Apply via style so the
+    // custom property resolves through the CSS pipeline.
+    <svg width={size} height={size} viewBox="0 0 24 24" style={{ fill: color }} className={animClass}>
       <path d={ICON_PATHS[status]} />
     </svg>
   );

@@ -18,7 +18,7 @@ export const MODEL_OPTIONS: ModelOption[] = [
     provider: "claude",
     cliCommand: "claude",
     modelArg: "opus",
-    color: "#cba6f7",
+    color: "var(--ctp-mauve)",
     maxTokens: 200_000,
   },
   {
@@ -27,7 +27,7 @@ export const MODEL_OPTIONS: ModelOption[] = [
     provider: "claude",
     cliCommand: "claude",
     modelArg: "sonnet",
-    color: "#89b4fa",
+    color: "var(--ctp-blue)",
     maxTokens: 200_000,
   },
   {
@@ -36,7 +36,7 @@ export const MODEL_OPTIONS: ModelOption[] = [
     provider: "claude",
     cliCommand: "claude",
     modelArg: "haiku",
-    color: "#94e2d5",
+    color: "var(--ctp-cyan)",
     maxTokens: 200_000,
   },
   {
@@ -45,7 +45,7 @@ export const MODEL_OPTIONS: ModelOption[] = [
     provider: "codex",
     cliCommand: "codex",
     modelArg: "codex-mini",
-    color: "#a6e3a1",
+    color: "var(--ctp-green)",
     maxTokens: 192_000,
   },
   {
@@ -54,7 +54,7 @@ export const MODEL_OPTIONS: ModelOption[] = [
     provider: "gemini",
     cliCommand: "gemini",
     modelArg: "gemini-2.5-pro",
-    color: "#f9e2af",
+    color: "var(--ctp-yellow)",
     maxTokens: 1_000_000,
   },
 ];

@@ -27,9 +27,11 @@ export interface SpawnResult {
 
 /** CLI display metadata */
 export const CLI_LABELS: Record<string, { label: string; color: string }> = {
+  // Claude stays on the Rose Pine lavender (#c4a7e7) rather than Catppuccin
+  // mauve to match Anthropic brand recognition across surfaces.
   claude: { label: "Claude", color: "#c4a7e7" },
-  gemini: { label: "Gemini", color: "#89b4fa" },
-  codex: { label: "Codex", color: "#a6e3a1" },
+  gemini: { label: "Gemini", color: "var(--ctp-blue)" },
+  codex: { label: "Codex", color: "var(--ctp-green)" },
 };
 
 export function getCliLabel(cli: AgentCliType): string {
@@ -37,5 +39,5 @@ export function getCliLabel(cli: AgentCliType): string {
 }
 
 export function getCliColor(cli: AgentCliType): string {
-  return CLI_LABELS[cli]?.color ?? "#cdd6f4";
+  return CLI_LABELS[cli]?.color ?? "var(--text-primary)";
 }

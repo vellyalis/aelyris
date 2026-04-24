@@ -12,7 +12,7 @@ describe("MODEL_OPTIONS", () => {
       expect(m.label).toBeTruthy();
       expect(m.provider).toBeTruthy();
       expect(m.cliCommand).toBeTruthy();
-      expect(m.color).toMatch(/^#/);
+      expect(m.color).toMatch(/^(#|var\()/);
       expect(m.maxTokens).toBeGreaterThan(0);
     }
   });

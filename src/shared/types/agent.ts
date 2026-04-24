@@ -48,13 +48,15 @@ export interface AgentLog {
 }
 
 export const STATUS_COLORS: Record<AgentStatus, string> = {
+  // idle + thinking stay as Tailwind hex — chosen distinct from Catppuccin
+  // yellow/green so the "new state" transitions read as intentional.
   idle: "#4ade80",
   thinking: "#fbbf24",
-  coding: "#a6e3a1",
-  waiting: "#f38ba8",
-  error: "#f38ba8",
-  done: "#89b4fa",
-  generating: "#cba6f7",
+  coding: "var(--ctp-green)",
+  waiting: "var(--ctp-red)",
+  error: "var(--ctp-red)",
+  done: "var(--ctp-blue)",
+  generating: "var(--ctp-mauve)",
 };
 
 export const STATUS_LABELS: Record<AgentStatus, string> = {

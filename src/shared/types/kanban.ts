@@ -18,14 +18,14 @@ export interface KanbanTask {
 
 export const KANBAN_COLUMNS: { id: KanbanColumnId; label: string; color: string }[] = [
   { id: "todo", label: "Todo", color: "var(--text-muted)" },
-  { id: "in_progress", label: "In Progress", color: "#f9e2af" },
-  { id: "review", label: "Review", color: "#fab387" },
-  { id: "done", label: "Done", color: "#a6e3a1" },
+  { id: "in_progress", label: "In Progress", color: "var(--ctp-yellow)" },
+  { id: "review", label: "Review", color: "var(--ctp-peach)" },
+  { id: "done", label: "Done", color: "var(--ctp-green)" },
 ];
 
 export const PRIORITY_COLORS: Record<TaskPriority, string> = {
   low: "var(--text-muted)",
-  medium: "#89b4fa",
-  high: "#fab387",
-  critical: "#f38ba8",
+  medium: "var(--ctp-blue)",
+  high: "var(--ctp-peach)",
+  critical: "var(--ctp-red)",
 };

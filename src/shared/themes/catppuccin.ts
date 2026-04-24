@@ -227,6 +227,7 @@ export function themeToCSS(palette: ThemePalette, light: boolean): Record<string
     "--ctp-cyan": palette.cyan,
     "--ctp-peach": palette.peach,
     "--ctp-mauve": palette.mauve,
+    "--ctp-sky": palette.sky,
 
     // Status colors (derived from palette)
     "--status-idle": palette.green,

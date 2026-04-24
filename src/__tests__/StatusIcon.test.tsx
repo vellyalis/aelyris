@@ -20,10 +20,15 @@ describe("StatusIcon", () => {
     }
   });
 
-  it("uses correct color for error status", () => {
+  it("applies the error color through style.fill so CSS var() resolves", () => {
+    // Presentation attribute `fill="var(--...)"` is invalid — the SVG
+    // must apply the palette via the style path for CSS custom properties
+    // to take effect. Assert the wiring, not the resolved color (JSDOM
+    // does not resolve var() at query time).
     const { container } = render(<StatusIcon status="error" />);
     const svg = container.querySelector("svg");
-    expect(svg?.getAttribute("fill")).toBe("#f38ba8");
+    expect(svg?.getAttribute("fill")).toBeNull();
+    expect(svg?.getAttribute("style") ?? "").toContain("var(--ctp-red)");
   });
 
   it("respects size prop", () => {
