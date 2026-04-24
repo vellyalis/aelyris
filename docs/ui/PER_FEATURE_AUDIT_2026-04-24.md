@@ -103,15 +103,15 @@ _(none — all P0 items closed in 4eec6df)_
 2. ✅ `shared/ui/PanelHeader` — single primitive with title/subtitle/count/leadingIcon/actions/collapsible slots. Rolled out to Kanban/Helm/Toolkit/InlineResultPanel. AgentInspector's tab bar stays bespoke.
 3. ✅ Dialog tokens added to `global.css`: `--radius-dialog`, `--radius-panel`, `--scrim-standard-bg/-blur`, `--scrim-heavy-bg/-blur`, `--dialog-width-xs|sm|md|lg`, `--dialog-surface`, `--dialog-surface-blur`.
 4. ✅ QuickOpen snapped to CommandPalette chrome — same surface/blur/radius/positioning/border/shadow. Consumes `--dialog-width-md` + scrim tokens.
-5. ⚠️ Partial — Escape + token alignment landed for OnboardingOverlay + SessionAnalytics. Full Radix Dialog migration for Analytics/Onboarding/QuickOpen remains for a follow-up pass (HandoffDialog and OrchestraDialog were already Radix).
+5. ✅ Escape + token alignment for OnboardingOverlay + SessionAnalytics landed in `68e4e7d`; full Radix Dialog migration for Analytics / Onboarding / QuickOpen landed in `444c615` (P4.5). HandoffDialog and OrchestraDialog were already Radix.
 
-### P3 — composition polish — ✅ mostly closed in `fe58aa1`
+### P3 — composition polish — ✅ fully closed (`fe58aa1` + `a0a51c9` + `d1fd0bb` + `8a9741b`)
 1. ✅ **SCMPanel** — commit textarea rows=3 + autogrow, branch bar with upstream + ahead/behind, `renamed` group, `confirm()` → `showConfirm` danger tone, `<EmptyState>` for clean tree. Backend `git_status` extended with `upstream / ahead / behind` via `graph_ahead_behind`.
 2. ✅ **Welcome** — logo gap tightened, greeting fallback, resting `.dropZone`, `has_changes` dot, `⚡` → Lucide GitBranch.
 3. ✅ **StatusBar** — branch eye-anchor, passive/actionable split via separators, version moved to About (which now reads from package.json).
-4. ⚠️ **FileTree** — empty state + `confirm()` → `showConfirm` + `.changesBar` a11y landed. Arrow-key nav + full WAI-ARIA treeitem semantics landed in `a0a51c9`. Virtualization still deferred (10k-file perf pass).
+4. ✅ **FileTree** — empty state + `confirm()` → `showConfirm` + `.changesBar` a11y landed in `fe58aa1`. Arrow-key nav + full WAI-ARIA treeitem semantics landed in `a0a51c9`. Fixed-height windowing (threshold 200 rows, 12-row overscan) + `aria-setsize` / `aria-posinset` landed in `8a9741b`.
 5. ✅ **KanbanBoard** — drop placeholder + pulse inside the column, `setDragImage` pins ghost to the card, Lucide X on delete.
-6. ✅ **AgentInspector** — tab labels (Conductor/Diffs) + selected state contrast landed in `fe58aa1`. Card info-budget collapse landed in `d1fd0bb` — status row now caps at 5 visible chips (permission + port fold behind a MoreHorizontal overflow with native tooltip; 📎 and ⚡ emoji swapped for Lucide Paperclip/Zap).
+6. ✅ **AgentInspector** — tab labels (Conductor/Diffs) + selected state contrast landed in `fe58aa1`. Card info-budget collapse landed in `d1fd0bb` — status row caps at 5 visible chips (permission + port fold behind a MoreHorizontal overflow with native tooltip; 📎 and ⚡ emoji swapped for Lucide Paperclip/Zap).
 7. ✅ **ProjectHeaderBar** — `.headerBtn` stretched to 48px, `.controlsSeparator` between app actions and window controls, `.changes` muted.
 
 ### P4 — cross-cluster unification — ✅ closed in `444c615`
