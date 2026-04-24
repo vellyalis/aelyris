@@ -3,6 +3,7 @@ import {
   ReactFlow,
   Background,
   Controls,
+  MarkerType,
   addEdge,
   useNodesState,
   useEdgesState,
@@ -288,9 +289,20 @@ export function WorkflowBuilder({ onClose, onExport }: WorkflowBuilderProps) {
             nodeTypes={nodeTypes}
             fitView
             colorMode="dark"
+            proOptions={{ hideAttribution: true }}
+            defaultEdgeOptions={{
+              animated: true,
+              style: { stroke: "var(--gold)" },
+              markerEnd: {
+                type: MarkerType.ArrowClosed,
+                color: "var(--gold)",
+                width: 14,
+                height: 14,
+              },
+            }}
           >
             <Background gap={20} />
-            <Controls />
+            <Controls showInteractive={false} />
           </ReactFlow>
         </div>
       </div>

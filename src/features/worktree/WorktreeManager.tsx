@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { GitBranch, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { EmptyState } from "../../shared/ui/EmptyState";
+import { showConfirm } from "../../shared/ui/ConfirmDialog";
 import { toast } from "../../shared/store/toastStore";
 import styles from "./WorktreeManager.module.css";
 
@@ -58,6 +59,36 @@ export function WorktreeManager({ projectPath, onSwitch }: WorktreeManagerProps)
     setActivePath(path);
     onSwitch(path);
   }, [onSwitch]);
+
+  const handleRemove = useCallback(async (wt: WorktreeInfo) => {
+    if (wt.is_main) return;
+    const ok = await showConfirm({
+      title: `Remove worktree?`,
+      description: `This deletes the worktree directory at:\n${wt.path}\n\nThe branch "${wt.branch}" is not deleted from the repository.`,
+      confirmLabel: "Remove",
+      cancelLabel: "Cancel",
+      tone: "danger",
+    });
+    if (!ok) return;
+    try {
+      // Rust command takes (repo_path, worktree_name, delete_branch).
+      // `worktree_name` is the branch identifier; we leave the branch intact
+      // because the confirm copy told the user the branch stays.
+      await invoke("remove_worktree", {
+        repoPath: projectPath,
+        worktreeName: wt.branch,
+        deleteBranch: false,
+      });
+      toast.success("Worktree removed", wt.branch);
+      if (activePath === wt.path) {
+        setActivePath(projectPath);
+        onSwitch(projectPath);
+      }
+      await loadWorktrees();
+    } catch (err) {
+      toast.error("Remove worktree failed", String(err));
+    }
+  }, [projectPath, activePath, onSwitch, loadWorktrees]);
 
   return (
     <div className={styles.container}>
@@ -128,7 +159,7 @@ export function WorktreeManager({ projectPath, onSwitch }: WorktreeManagerProps)
                 <button
                   type="button"
                   className={styles.deleteBtn}
-                  onClick={(e) => { e.stopPropagation(); }}
+                  onClick={(e) => { e.stopPropagation(); handleRemove(wt); }}
                   aria-label={`Remove worktree ${wt.branch}`}
                   title="Remove Worktree"
                 >

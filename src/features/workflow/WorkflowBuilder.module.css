@@ -52,7 +52,7 @@
 /* Custom phase node */
 .phaseNode {
   background: var(--aether-bg-card); border: 1px solid var(--border);
-  border-radius: var(--radius-md); min-width: 160px;
+  border-radius: var(--radius); min-width: 160px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 .phaseHeader {

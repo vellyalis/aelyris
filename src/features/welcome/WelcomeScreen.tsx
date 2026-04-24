@@ -15,11 +15,11 @@ interface WelcomeScreenProps {
   onOpenProject: (path: string) => void;
 }
 
-const SCAN_DIRS = [
-  "H:/claude",
-  "C:/Users/owner/Documents",
-  "C:/Users/owner",
-];
+// Frontend fallback if the Rust `default_project_scan_dirs` command fails
+// for some reason (should never happen on Windows). These are intentionally
+// generic; the previous revision shipped developer-machine paths
+// (`H:/claude`, `C:/Users/owner/…`) that leaked into every build.
+const FALLBACK_SCAN_DIRS = ["."];
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -35,14 +35,29 @@ export function WelcomeScreen({ onOpenProject }: WelcomeScreenProps) {
   const [userName, setUserName] = useState<string | null>(null);
 
   useEffect(() => {
-    invoke<ProjectInfo[]>("discover_projects", { scanDirs: SCAN_DIRS })
-      .then((projects) => { setRecentProjects(projects); setLoading(false); })
-      .catch(() => setLoading(false));
+    let cancelled = false;
+    (async () => {
+      // Resolve platform-specific scan dirs from Rust (~/Documents,
+      // ~/Desktop, ~) so the frontend ships no developer-machine paths.
+      let scanDirs = FALLBACK_SCAN_DIRS;
+      try {
+        const dirs = await invoke<string[]>("default_project_scan_dirs");
+        if (dirs.length > 0) scanDirs = dirs;
+      } catch { /* fall through to fallback */ }
+      if (cancelled) return;
+      try {
+        const projects = await invoke<ProjectInfo[]>("discover_projects", { scanDirs });
+        if (!cancelled) setRecentProjects(projects);
+      } catch { /* ignore */ }
+      if (!cancelled) setLoading(false);
+    })();
 
     // Try to get git user name for personalization
     invoke<string>("get_git_user_name")
-      .then((name) => { if (name) setUserName(name); })
+      .then((name) => { if (!cancelled && name) setUserName(name); })
       .catch(() => { /* not available yet */ });
+
+    return () => { cancelled = true; };
   }, []);
 
   const [dragOver, setDragOver] = useState(false);

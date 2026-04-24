@@ -33,6 +33,7 @@ import { ErrorBoundary } from "./shared/ui/ErrorBoundary";
 import { TooltipProvider } from "./shared/ui/Tooltip";
 import { ToastProvider } from "./shared/ui/Toast";
 import { PromptDialog } from "./shared/ui/PromptDialog";
+import { ConfirmDialog } from "./shared/ui/ConfirmDialog";
 import { HandoffDialog } from "./shared/ui/HandoffDialog";
 import { OrchestraDialog } from "./shared/ui/OrchestraDialog";
 import { OnboardingOverlay } from "./shared/ui/OnboardingOverlay";
@@ -489,6 +490,7 @@ export function App() {
       {prInspectorVisible && <Suspense fallback={null}><PRInspector visible projectPath={projectPath} onClose={() => setPrInspectorVisible(false)} onStartReview={handleStartAgent} /></Suspense>}
       {quickOpenMode && <Suspense fallback={null}><QuickOpen projectPath={projectPath} openFiles={openFiles} onSelectFile={handleFileSelect} onClose={() => setQuickOpenMode(null)} initialMode={quickOpenMode} /></Suspense>}
       <PromptDialog />
+      <ConfirmDialog />
       <HandoffDialog />
       <OrchestraDialog />
       <HistorySearchDialog onAccept={handleHistoryAccept} defaultCwdPrefix={projectPath || undefined} />

@@ -48,22 +48,35 @@
 }
 
 .node {
-  background: rgba(24, 24, 28, 0.88);
-  backdrop-filter: blur(10px);
+  background: var(--glass-thick);
+  /* Parent right-panel already blurs at 24px; nesting another blur here
+   * was washing the nodes out. (2026-04-24 glass audit.) */
   border: 1px solid var(--white-10);
   border-radius: var(--radius);
-  padding: 10px 12px;
+  padding: var(--space-5) var(--space-6);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-2);
   cursor: pointer;
-  transition: transform var(--duration-fast), box-shadow var(--duration-fast);
+  transition:
+    transform var(--duration-fast) var(--ease-silk),
+    box-shadow var(--duration-fast) var(--ease-silk),
+    border-color var(--duration-fast) var(--ease-silk);
   font-family: var(--font-ui);
 }
 .node:hover { transform: translateY(-1px); }
 
 .nodeActive {
   border-color: var(--gold);
+  box-shadow: 0 0 0 1px var(--gold-subtle);
+}
+
+/* Selection state was invisible — highlight with a gold inner ring that
+ * composes with .nodeActive without overlap. */
+.node.selected,
+:global(.react-flow__node.selected) .node {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px var(--gold-subtle);
 }
 
 .nodeHeader {
@@ -124,4 +137,36 @@
   height: 8px;
   background: var(--gold);
   border: 1px solid var(--gold-dim);
+}
+
+/* Override ReactFlow's default white-pill Controls chrome to match the
+ * app's dark glass language. Scoped to .view so it doesn't leak into
+ * WorkflowBuilder (which is in a modal portal). */
+.view :global(.react-flow__controls) {
+  background: var(--glass-thick);
+  border: 1px solid var(--white-10);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+.view :global(.react-flow__controls-button) {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--white-6);
+  color: var(--text-secondary);
+  width: 24px;
+  height: 24px;
+  padding: 0;
+}
+.view :global(.react-flow__controls-button:hover) {
+  background: var(--white-6);
+  color: var(--text-primary);
+}
+.view :global(.react-flow__controls-button:last-child) {
+  border-bottom: none;
+}
+.view :global(.react-flow__controls-button svg) {
+  fill: currentColor;
+  width: 12px;
+  height: 12px;
 }

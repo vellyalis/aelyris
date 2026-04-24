@@ -288,6 +288,7 @@ pub fn run() {
             ipc::detect_shells,
             ipc::term_snapshot,
             ipc::discover_projects,
+            ipc::default_project_scan_dirs,
             ipc::list_branches,
             ipc::list_worktrees,
             ipc::create_worktree,

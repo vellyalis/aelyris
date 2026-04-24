@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import {
   Background,
   Controls,
+  MarkerType,
   ReactFlow,
   Handle,
   Position,
@@ -114,6 +115,15 @@ export function ConductorView({ sessions, activeSessionId, onSelectSession }: Co
       target: e.target,
       animated: true,
       style: { stroke: "var(--gold)" },
+      // Arrow on target so the handoff direction is visible; without this
+      // the DAG is structurally ambiguous. `--gold` keeps the marker in
+      // sync with the edge stroke.
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        color: "var(--gold)",
+        width: 14,
+        height: 14,
+      },
     }));
     const columnLabels = layout.columns;
     return { flowNodes, flowEdges, columnLabels };

@@ -395,6 +395,28 @@ pub fn discover_projects(scan_dirs: Vec<String>) -> Vec<crate::git::ProjectInfo>
     crate::git::discover_projects(&scan_dirs)
 }
 
+/// Default project scan directories for the current user — Documents,
+/// Desktop, and the user's home. Returned as platform-absolute paths so the
+/// frontend can hand them straight to `discover_projects` without pulling
+/// in `~` expansion or environment-variable logic in JS.
+///
+/// Returns an empty vec if the user profile can't be resolved (extremely
+/// rare on Windows; the frontend should have its own fallback).
+#[tauri::command]
+pub fn default_project_scan_dirs() -> Vec<String> {
+    let mut dirs: Vec<String> = Vec::new();
+    // `home_dir` is deprecated in the std crate but the Tauri v2 ecosystem
+    // still relies on it. The frontend will dedupe any duplicate paths.
+    #[allow(deprecated)]
+    if let Some(home) = std::env::home_dir() {
+        let home_str = home.to_string_lossy().replace('\\', "/");
+        dirs.push(format!("{}/Documents", home_str));
+        dirs.push(format!("{}/Desktop", home_str));
+        dirs.push(home_str);
+    }
+    dirs
+}
+
 /// List branches for a project
 #[tauri::command]
 pub fn list_branches(repo_path: String) -> Result<Vec<crate::git::BranchInfo>, String> {

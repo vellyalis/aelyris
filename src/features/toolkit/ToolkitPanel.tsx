@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { GitPullRequest, Upload, GitBranch, Play, FolderOpen, ClipboardList, ScrollText, FlaskConical, FileUp, AlertCircle } from "lucide-react";
 import { showPrompt } from "../../shared/ui/PromptDialog";
+import { showConfirm } from "../../shared/ui/ConfirmDialog";
 import { detectDangerousCommand } from "../../shared/lib/shellSafety";
 import styles from "./ToolkitPanel.module.css";
 
@@ -239,11 +240,18 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
               }
               const warning = detectDangerousCommand(command);
               if (warning) {
-                const ok = await showPrompt("Run dangerous command?", {
-                  placeholder: `${warning}\n\nCommand: ${command}`,
-                  defaultValue: "yes",
+                // Previously this was a text prompt with `defaultValue: "yes"` —
+                // a single-character typo would execute an `rm -rf`-class
+                // command. Use an explicit confirm with a danger-tone button
+                // and Cancel pre-focused.
+                const ok = await showConfirm({
+                  title: "Run dangerous command?",
+                  description: `${warning}\n\nCommand:\n${command}`,
+                  confirmLabel: "Run anyway",
+                  cancelLabel: "Cancel",
+                  tone: "danger",
                 });
-                if (ok !== "yes") return;
+                if (!ok) return;
               }
               onRunCommand?.(command);
             }}
