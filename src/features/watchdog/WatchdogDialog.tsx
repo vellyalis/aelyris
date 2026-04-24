@@ -179,7 +179,7 @@ export function WatchdogDialog({ visible, onClose }: WatchdogDialogProps) {
               disabled={!newPattern.trim()}
               aria-label="Add rule"
             >
-              <Plus size={14} aria-hidden="true" />
+              <Plus size={12} aria-hidden="true" />
             </button>
           </div>
 

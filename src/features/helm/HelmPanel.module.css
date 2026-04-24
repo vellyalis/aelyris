@@ -63,7 +63,7 @@
   font-size: var(--text-md);
   transition: background var(--duration-fast);
 }
-.task:hover { background: rgba(124, 58, 237, 0.08); }
+.task:hover { background: var(--row-hover); }
 
 .taskDone .taskLabel { text-decoration: line-through; opacity: 0.4; }
 

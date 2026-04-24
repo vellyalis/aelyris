@@ -39,7 +39,7 @@ export const KanbanCard = memo(function KanbanCard({ task, isActive, onStartAgen
         <div className={styles.cardTitle}>{task.title}</div>
         {task.branch && (
           <span className={styles.cardBranch}>
-            <GitBranch size={9} aria-hidden="true" />
+            <GitBranch size={10} aria-hidden="true" />
             {task.branch}
           </span>
         )}

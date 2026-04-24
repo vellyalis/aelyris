@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
 import { motion, AnimatePresence } from "motion/react";
 import styles from "./OnboardingOverlay.module.css";
 
@@ -57,77 +58,61 @@ export function OnboardingOverlay() {
     } catch { /* ignore */ }
   }, []);
 
-  // Escape exits the tour just like the Skip button — mirrors every other
-  // dialog in the app and satisfies the P2.5 a11y requirement without
-  // pulling the whole Radix Dialog stack into an onboarding surface.
-  useEffect(() => {
-    if (step < 0) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setStep(-1);
-        try { localStorage.setItem(STORAGE_KEY, "true"); } catch { /* ignore */ }
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [step]);
+  const markDoneAndClose = () => {
+    setStep(-1);
+    try { localStorage.setItem(STORAGE_KEY, "true"); } catch { /* ignore */ }
+  };
 
   const handleNext = () => {
     if (step >= STEPS.length - 1) {
-      setStep(-1);
-      try { localStorage.setItem(STORAGE_KEY, "true"); } catch { /* ignore */ }
+      markDoneAndClose();
     } else {
       setStep(step + 1);
     }
   };
 
-  const handleSkip = () => {
-    setStep(-1);
-    try { localStorage.setItem(STORAGE_KEY, "true"); } catch { /* ignore */ }
-  };
-
-  if (step < 0) return null;
-
-  const current = STEPS[step];
+  const isOpen = step >= 0;
+  const current = isOpen ? STEPS[step] : null;
   const isLast = step === STEPS.length - 1;
 
   return (
-    <AnimatePresence>
-      <motion.div
-        className={styles.overlay}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.2 }}
-      >
-        <motion.div
-          key={step}
-          className={`${styles.card} ${styles[current.position]}`}
-          initial={{ opacity: 0, y: 10, scale: 0.97 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: -10 }}
-          transition={{ type: "spring", stiffness: 350, damping: 25 }}
-        >
-          <div className={styles.stepIndicator}>
-            {STEPS.map((_, i) => (
-              <div key={i} className={`${styles.dot} ${i === step ? styles.dotActive : ""} ${i < step ? styles.dotDone : ""}`} />
-            ))}
-          </div>
-          <h3 className={styles.title}>{current.title}</h3>
-          <p className={styles.description}>{current.description}</p>
-          {current.shortcut && (
-            <kbd className={styles.shortcut}>{current.shortcut}</kbd>
-          )}
-          <div className={styles.actions}>
-            {!isLast && (
-              <button className={styles.skipBtn} onClick={handleSkip}>Skip tour</button>
+    <Dialog.Root open={isOpen} onOpenChange={(o) => { if (!o) markDoneAndClose(); }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className={styles.overlay} />
+        <Dialog.Content className={styles.contentWrapper} aria-describedby={undefined}>
+          <AnimatePresence mode="wait">
+            {current && (
+              <motion.div
+                key={step}
+                className={`${styles.card} ${styles[current.position]}`}
+                initial={{ opacity: 0, y: 10, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ type: "spring", stiffness: 350, damping: 25 }}
+              >
+                <div className={styles.stepIndicator}>
+                  {STEPS.map((_, i) => (
+                    <div key={i} className={`${styles.dot} ${i === step ? styles.dotActive : ""} ${i < step ? styles.dotDone : ""}`} />
+                  ))}
+                </div>
+                <Dialog.Title className={styles.title}>{current.title}</Dialog.Title>
+                <Dialog.Description className={styles.description}>{current.description}</Dialog.Description>
+                {current.shortcut && (
+                  <kbd className={styles.shortcut}>{current.shortcut}</kbd>
+                )}
+                <div className={styles.actions}>
+                  {!isLast && (
+                    <button className={styles.skipBtn} onClick={markDoneAndClose}>Skip tour</button>
+                  )}
+                  <button className={styles.nextBtn} onClick={handleNext} autoFocus>
+                    {isLast ? "Get started" : "Next"}
+                  </button>
+                </div>
+              </motion.div>
             )}
-            <button className={styles.nextBtn} onClick={handleNext}>
-              {isLast ? "Get started" : "Next"}
-            </button>
-          </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
+          </AnimatePresence>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }

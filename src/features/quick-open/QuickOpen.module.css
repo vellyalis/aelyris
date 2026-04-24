@@ -89,8 +89,8 @@
   text-align: left;
   transition: background var(--duration-fast), color var(--duration-fast);
 }
-.item:hover { background: var(--white-6); color: var(--text-primary); }
-.itemActive { background: var(--white-10); color: var(--text-primary); }
+.item:hover { background: var(--row-hover); color: var(--text-primary); }
+.itemActive { background: var(--row-hover-strong); color: var(--text-primary); }
 
 .itemName {
   font-size: var(--text-md);

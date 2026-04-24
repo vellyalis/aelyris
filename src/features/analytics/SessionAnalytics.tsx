@@ -1,4 +1,5 @@
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import type { AgentSession } from "../../shared/types/agent";
 import { STATUS_COLORS } from "../../shared/types/agent";
@@ -15,15 +16,6 @@ interface ToolStat {
 }
 
 export function SessionAnalytics({ session, onClose }: SessionAnalyticsProps) {
-  // Match every other modal in the dialog family: Escape dismisses without
-  // having to reach for the mouse. Single global listener — the modal itself
-  // is always the top-most surface when open (z-modal).
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   const duration = Math.round((Date.now() - session.startedAt) / 1000);
   const durationStr = duration < 60 ? `${duration}s` : duration < 3600 ? `${Math.floor(duration / 60)}m ${duration % 60}s` : `${Math.floor(duration / 3600)}h ${Math.floor((duration % 3600) / 60)}m`;
 
@@ -52,12 +44,18 @@ export function SessionAnalytics({ session, onClose }: SessionAnalyticsProps) {
   }, [session.cost]);
 
   return (
-    <div className={styles.overlay} onClick={onClose}>
-      <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-        <div className={styles.header}>
-          <span className={styles.title}>Session Analytics</span>
-          <button className={styles.closeBtn} onClick={onClose} aria-label="Close analytics"><X size={12} strokeWidth={1.75} aria-hidden="true" /></button>
-        </div>
+    <Dialog.Root open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className={styles.overlay} />
+        <Dialog.Content className={styles.modal} aria-describedby={undefined}>
+          <div className={styles.header}>
+            <Dialog.Title className={styles.title}>Session Analytics</Dialog.Title>
+            <Dialog.Close asChild>
+              <button className={styles.closeBtn} aria-label="Close analytics">
+                <X size={12} strokeWidth={1.75} aria-hidden="true" />
+              </button>
+            </Dialog.Close>
+          </div>
 
         <div className={styles.sessionName}>{session.name}</div>
         <div className={styles.statusRow}>
@@ -129,7 +127,8 @@ export function SessionAnalytics({ session, onClose }: SessionAnalyticsProps) {
             {session.detectedPort && <div className={styles.statRow}><span>Port</span><span>:{session.detectedPort}</span></div>}
           </div>
         </div>
-      </div>
-    </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }

@@ -88,7 +88,7 @@ export function KanbanBoard({ onStartAgent, onActivateTask, onMoveWithSideEffect
         count={kanbanTasks.length}
         actions={
           <button className={styles.addBtn} onClick={() => setShowForm(!showForm)} title="New Task" aria-label="New task">
-            <Plus size={14} />
+            <Plus size={12} aria-hidden="true" />
           </button>
         }
       />
@@ -154,7 +154,7 @@ export function KanbanBoard({ onStartAgent, onActivateTask, onMoveWithSideEffect
                     >
                       <span className={styles.priorityDot} style={{ background: PRIORITY_COLORS[t.priority ?? "medium"] }} />
                       <span className={styles.itemTitle}>{t.title}</span>
-                      {t.branch && <GitBranch size={9} className={styles.itemBranchIcon} />}
+                      {t.branch && <GitBranch size={10} className={styles.itemBranchIcon} aria-hidden="true" />}
                       {t.assignedAgentId && agentStatuses?.[t.assignedAgentId] && (
                         <span className={styles.itemAgentBadge} style={{ color: STATUS_COLORS[agentStatuses[t.assignedAgentId].status as keyof typeof STATUS_COLORS] ?? "var(--text-muted)" }} title={`Agent: ${agentStatuses[t.assignedAgentId].status}`}>
                           <Bot size={9} />

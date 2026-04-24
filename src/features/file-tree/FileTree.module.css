@@ -21,7 +21,7 @@
   text-align: left;
   letter-spacing: -0.01em;
 }
-.breadcrumb:hover { background: var(--white-6); }
+.breadcrumb:hover { background: var(--row-hover); }
 .rootHeader {
   display: flex;
   align-items: center;
@@ -51,7 +51,7 @@
   transition: background var(--duration-fast), color var(--duration-fast);
   height: 22px;
 }
-.row:hover { background: var(--white-4); color: var(--text-primary); }
+.row:hover { background: var(--row-hover); color: var(--text-primary); }
 .searchInput:hover { border-color: var(--white-10); }
 .arrow {
   font-size: var(--text-2xs);

@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { GitBranch, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { showConfirm } from "../../shared/ui/ConfirmDialog";
+import { PanelHeader } from "../../shared/ui/PanelHeader";
 import { toast } from "../../shared/store/toastStore";
 import styles from "./WorktreeManager.module.css";
 
@@ -92,28 +93,32 @@ export function WorktreeManager({ projectPath, onSwitch }: WorktreeManagerProps)
 
   return (
     <div className={styles.container}>
-      <div className={styles.header}>
-        <span className={styles.headerTitle}>Worktrees</span>
-        <button
-          type="button"
-          className={styles.headerBtn}
-          onClick={() => setShowCreate(!showCreate)}
-          aria-expanded={showCreate}
-          aria-label="New worktree"
-          title="New Worktree"
-        >
-          <Plus size={14} aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          className={styles.headerBtn}
-          onClick={loadWorktrees}
-          aria-label="Refresh worktrees"
-          title="Refresh"
-        >
-          <RefreshCw size={12} aria-hidden="true" />
-        </button>
-      </div>
+      <PanelHeader
+        title="Worktrees"
+        actions={
+          <>
+            <button
+              type="button"
+              className={styles.headerBtn}
+              onClick={() => setShowCreate(!showCreate)}
+              aria-expanded={showCreate}
+              aria-label="New worktree"
+              title="New Worktree"
+            >
+              <Plus size={12} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className={styles.headerBtn}
+              onClick={loadWorktrees}
+              aria-label="Refresh worktrees"
+              title="Refresh"
+            >
+              <RefreshCw size={12} aria-hidden="true" />
+            </button>
+          </>
+        }
+      />
 
       {showCreate && (
         <div className={styles.createForm}>
@@ -146,7 +151,7 @@ export function WorktreeManager({ projectPath, onSwitch }: WorktreeManagerProps)
             aria-pressed={wt.path === activePath}
             aria-label={`Switch to worktree ${wt.branch}${wt.is_main ? " (main)" : ""}`}
           >
-            <GitBranch size={14} className={styles.cardIcon} aria-hidden="true" />
+            <GitBranch size={12} className={styles.cardIcon} aria-hidden="true" />
             <div className={styles.cardInfo}>
               <div className={styles.cardBranch}>
                 {wt.branch}

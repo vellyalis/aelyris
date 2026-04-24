@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
 import { matchSorter } from "match-sorter";
 import { useFileList } from "./useFileList";
 import styles from "./QuickOpen.module.css";
@@ -37,9 +38,6 @@ export function QuickOpen({ projectPath, openFiles, onSelectFile, onClose, initi
   // Reset selection when results change
   useEffect(() => { setSelectedIdx(0); }, [results]);
 
-  // Focus input on mount
-  useEffect(() => { inputRef.current?.focus(); }, []);
-
   // Scroll selected into view
   useEffect(() => {
     const list = listRef.current;
@@ -60,7 +58,7 @@ export function QuickOpen({ projectPath, openFiles, onSelectFile, onClose, initi
         onClose();
       }
     }
-    else if (e.key === "Escape") { onClose(); }
+    // Escape is handled by Radix Dialog itself — no local listener needed.
     else if (e.key === "Tab") {
       e.preventDefault();
       setMode((m) => m === "files" ? "buffers" : "files");
@@ -75,47 +73,60 @@ export function QuickOpen({ projectPath, openFiles, onSelectFile, onClose, initi
   };
 
   return (
-    <div className={styles.overlay} onClick={onClose}>
-      <div className={styles.panel} onClick={(e) => e.stopPropagation()}>
-        <div className={styles.inputRow}>
-          <span className={styles.modeTag}>{mode === "files" ? "Files" : "Buffers"}</span>
-          <input
-            ref={inputRef}
-            className={styles.input}
-            placeholder={mode === "files" ? "Search files..." : "Switch buffer..."}
-            aria-label={mode === "files" ? "Search files" : "Switch buffer"}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={handleKeyDown}
-          />
-          <span className={styles.hint}>Tab: switch mode</span>
-        </div>
-        <div ref={listRef} className={styles.list}>
-          {loading && <div className={styles.loading}>Loading files...</div>}
-          {results.map((path, i) => (
-            <div
-              key={path}
-              className={`${styles.item} ${i === selectedIdx ? styles.itemActive : ""}`}
-              onMouseEnter={() => setSelectedIdx(i)}
-              onClick={() => {
-                const fullPath = mode === "buffers" ? path : `${projectPath}/${path}`;
-                onSelectFile(fullPath);
-                onClose();
-              }}
-            >
-              <span className={styles.itemName}>{fileName(path)}</span>
-              <span className={styles.itemDir}>{dirName(path)}</span>
-            </div>
-          ))}
-          {!loading && results.length === 0 && (
-            <div className={styles.empty}>No matches</div>
-          )}
-        </div>
-        <div className={styles.footer}>
-          <span>{results.length} / {sourceList.length} files</span>
-          <span>↑↓ navigate · Enter open · Esc close</span>
-        </div>
-      </div>
-    </div>
+    <Dialog.Root open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className={styles.overlay} />
+        <Dialog.Content
+          className={styles.panel}
+          aria-describedby={undefined}
+          onOpenAutoFocus={(e) => {
+            // Radix's default focus target is the content root; we want the
+            // search input instead so the user can type immediately.
+            e.preventDefault();
+            inputRef.current?.focus();
+          }}
+        >
+          <Dialog.Title className="sr-only">{mode === "files" ? "Quick Open: Files" : "Quick Open: Buffers"}</Dialog.Title>
+          <div className={styles.inputRow}>
+            <span className={styles.modeTag}>{mode === "files" ? "Files" : "Buffers"}</span>
+            <input
+              ref={inputRef}
+              className={styles.input}
+              placeholder={mode === "files" ? "Search files..." : "Switch buffer..."}
+              aria-label={mode === "files" ? "Search files" : "Switch buffer"}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={handleKeyDown}
+            />
+            <span className={styles.hint}>Tab: switch mode</span>
+          </div>
+          <div ref={listRef} className={styles.list}>
+            {loading && <div className={styles.loading}>Loading files...</div>}
+            {results.map((path, i) => (
+              <div
+                key={path}
+                className={`${styles.item} ${i === selectedIdx ? styles.itemActive : ""}`}
+                onMouseEnter={() => setSelectedIdx(i)}
+                onClick={() => {
+                  const fullPath = mode === "buffers" ? path : `${projectPath}/${path}`;
+                  onSelectFile(fullPath);
+                  onClose();
+                }}
+              >
+                <span className={styles.itemName}>{fileName(path)}</span>
+                <span className={styles.itemDir}>{dirName(path)}</span>
+              </div>
+            ))}
+            {!loading && results.length === 0 && (
+              <div className={styles.empty}>No matches</div>
+            )}
+          </div>
+          <div className={styles.footer}>
+            <span>{results.length} / {sourceList.length} files</span>
+            <span>↑↓ navigate · Enter open · Esc close</span>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }

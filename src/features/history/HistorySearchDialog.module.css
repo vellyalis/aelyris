@@ -118,7 +118,7 @@
 }
 
 .row:hover {
-  background: var(--white-4);
+  background: var(--row-hover);
 }
 
 .rowActive {

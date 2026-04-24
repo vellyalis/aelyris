@@ -97,12 +97,12 @@
 
 /* cmdk applies data-selected to the active item */
 .item[data-selected="true"] {
-  background: var(--white-10);
+  background: var(--row-hover-strong);
   color: var(--text-primary);
 }
 
 .item:hover {
-  background: var(--white-6);
+  background: var(--row-hover);
   color: var(--text-primary);
 }
 

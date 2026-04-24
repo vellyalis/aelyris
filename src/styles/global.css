@@ -76,6 +76,15 @@
   --state-selected: var(--gold);
   --state-disabled-opacity: 0.35;
 
+  /* Single row-hover token consumed by every list/row surface
+   * (Kanban/Helm/Toolkit/SubagentList/SCM fileRow/FileTree row/
+   * CommandPalette/QuickOpen/HistorySearchDialog/RepairJobsPanel).
+   * Added after the 2026-04-24 per-feature audit flagged 3 different
+   * hover shades across sibling row lists. Unit the tone here so a
+   * future theme can swing them all together. */
+  --row-hover: var(--white-6);
+  --row-hover-strong: var(--white-10);
+
   /* Typography */
   --font-ui: 'IBM Plex Sans', -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'IBM Plex Mono', 'Cascadia Code', monospace;
@@ -198,6 +207,20 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+}
+
+/* Visually hidden utility — used for Radix Dialog titles that have to exist
+   for a11y but shouldn't take up space (CommandPalette, QuickOpen, etc.). */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
 }
 
 html, body, #root {

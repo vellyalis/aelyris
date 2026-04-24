@@ -2,15 +2,23 @@
   position: fixed; inset: 0; z-index: var(--z-modal);
   background: var(--scrim-heavy-bg); backdrop-filter: var(--scrim-standard-blur);
   -webkit-backdrop-filter: var(--scrim-standard-blur);
-  display: flex; align-items: center; justify-content: center;
 }
 .modal {
+  position: fixed;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: calc(var(--z-modal) + 1);
   background: var(--dialog-surface); backdrop-filter: var(--dialog-surface-blur);
   -webkit-backdrop-filter: var(--dialog-surface-blur);
   border: 1px solid var(--white-10);
   border-radius: var(--radius-dialog); padding: var(--space-8);
   width: var(--dialog-width-sm); max-height: 80vh; overflow-y: auto;
   box-shadow: var(--shadow-lg);
+  animation: modalIn 0.15s var(--ease-out);
+}
+@keyframes modalIn {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.96); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
 
 .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-4); }

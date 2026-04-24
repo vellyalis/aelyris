@@ -6,13 +6,25 @@
   position: fixed;
   inset: 0;
   z-index: var(--z-modal);
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(var(--space-4));
-  -webkit-backdrop-filter: blur(var(--space-4));
+  background: var(--scrim-standard-bg);
+  backdrop-filter: var(--scrim-standard-blur);
+  -webkit-backdrop-filter: var(--scrim-standard-blur);
+}
+
+/* Radix Dialog.Content wrapper — provides the fixed positioning + flex
+   centering so the inner motion.div only has to worry about its entrance
+   animation. Kept separate so Radix's focus trap still works on the
+   Content boundary. */
+.contentWrapper {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-modal) + 1);
   display: flex;
   align-items: center;
   justify-content: center;
+  pointer-events: none;
 }
+.contentWrapper > * { pointer-events: auto; }
 
 .card {
   width: 420px;
