@@ -21,7 +21,7 @@
   width: var(--dialog-width-sm);
   max-height: 80vh;
   overflow-y: auto;
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--rim-top), var(--shadow-dialog);
   animation: modalIn 0.15s var(--ease-out);
 }
 @keyframes modalIn {

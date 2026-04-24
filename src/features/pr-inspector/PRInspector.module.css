@@ -8,7 +8,7 @@
   background: var(--glass-thick);
   border: 1px solid var(--white-10);
   border-radius: var(--radius);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--rim-top), var(--shadow-elevated);
   display: flex;
   flex-direction: column;
   overflow: hidden;

@@ -19,7 +19,7 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 16px 64px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--rim-top), var(--shadow-dialog);
 }
 
 .toolbar {
@@ -127,7 +127,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius);
   min-width: 160px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--rim-top), var(--shadow-elev-2);
 }
 .phaseHeader {
   padding: var(--space-3) var(--space-4);

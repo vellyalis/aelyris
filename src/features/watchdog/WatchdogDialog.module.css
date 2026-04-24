@@ -16,7 +16,7 @@
   border: 1px solid var(--white-10);
   border-radius: var(--radius-lg);
   padding: var(--space-10);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--rim-top), var(--shadow-dialog);
 }
 .title {
   font-size: var(--text-2xl);

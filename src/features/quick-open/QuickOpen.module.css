@@ -25,7 +25,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--rim-top), var(--shadow-elevated);
   display: flex;
   flex-direction: column;
 }

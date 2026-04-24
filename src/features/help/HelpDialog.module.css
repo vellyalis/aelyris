@@ -17,7 +17,7 @@
   backdrop-filter: blur(20px);
   border: 1px solid var(--white-10);
   border-radius: var(--radius-lg);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--rim-top), var(--shadow-dialog);
   display: flex;
   flex-direction: column;
   overflow: hidden;

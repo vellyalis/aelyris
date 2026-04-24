@@ -148,7 +148,7 @@
   background: var(--glass-thick);
   border: 1px solid var(--white-10);
   border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--rim-top), var(--shadow-elev-2);
   overflow: hidden;
 }
 .view :global(.react-flow__controls-button) {

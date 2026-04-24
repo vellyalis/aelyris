@@ -410,6 +410,7 @@ body,
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-right: 1px solid var(--white-6);
+  box-shadow: var(--rim-top);
   overflow: hidden;
   resize: horizontal;
 }
@@ -433,6 +434,7 @@ body,
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   border-left: 1px solid var(--white-6);
+  box-shadow: var(--rim-top);
   overflow: hidden;
   resize: horizontal;
   direction: rtl; /* resize handle on left side */

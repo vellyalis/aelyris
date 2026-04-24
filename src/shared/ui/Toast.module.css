@@ -22,7 +22,7 @@
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--white-10);
   border-radius: var(--radius);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--rim-top), var(--shadow-elevated);
   font-family: var(--font-ui);
   animation: toastIn var(--duration-fast) var(--ease-out);
   will-change: transform, opacity;

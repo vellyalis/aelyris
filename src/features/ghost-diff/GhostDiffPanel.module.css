@@ -17,7 +17,7 @@
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--aether-border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--rim-top), var(--shadow-elevated);
   z-index: var(--z-sticky);
   color: var(--text-primary);
   font-size: var(--text-md);

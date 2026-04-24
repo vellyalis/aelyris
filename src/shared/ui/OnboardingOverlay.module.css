@@ -30,13 +30,13 @@
 
 .card {
   width: 420px;
-  background: rgba(24, 24, 24, 0.92);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: var(--dialog-surface);
+  backdrop-filter: var(--dialog-surface-blur);
+  -webkit-backdrop-filter: var(--dialog-surface-blur);
   border: 1px solid var(--white-10);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-dialog);
   padding: var(--space-12);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--rim-top), var(--shadow-dialog);
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
