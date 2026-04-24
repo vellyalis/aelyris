@@ -56,8 +56,11 @@
   cursor: pointer;
   /* Icon-only inactive state keeps each tab to ~24-28px. The active tab
    * expands horizontally to include its label. Tight vertical padding
-   * keeps the tab bar at the same height either way. */
-  padding: var(--space-2) var(--space-3);
+   * keeps the tab bar at the same height either way. Horizontal padding
+   * was pulled in to var(--space-2) after the CDP sweep measured the
+   * active "Conductor" label (longest of the five) pushing the tab bar
+   * 9px past the 320px right-panel bound. */
+  padding: var(--space-2) var(--space-2);
   border-radius: var(--radius-sm) var(--radius-sm) 0 0;
   /* Keep the tab label's visual weight stable across :hover and .tabActive
    * so switching tabs doesn't shift layout. Active state is communicated
