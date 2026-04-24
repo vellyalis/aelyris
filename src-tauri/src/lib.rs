@@ -288,6 +288,8 @@ pub fn run() {
             ipc::detect_shells,
             ipc::term_snapshot,
             ipc::term_prompt_marks,
+            ipc::term_history_size,
+            ipc::term_history_rows,
             ipc::discover_projects,
             ipc::default_project_scan_dirs,
             ipc::list_branches,

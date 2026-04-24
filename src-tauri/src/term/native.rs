@@ -97,6 +97,33 @@ impl NativeTerminalRegistry {
             .unwrap_or_default()
     }
 
+    /// Current scrollback size for the session (rows retained above the
+    /// visible screen). Returns 0 for missing sessions so the UI can
+    /// branch on `> 0` without re-checking session existence.
+    pub fn history_size(&self, id: &str) -> usize {
+        let Ok(guard) = self.lock() else {
+            return 0;
+        };
+        guard.get(id).map(|s| s.engine.history_size()).unwrap_or(0)
+    }
+
+    /// Read a contiguous window of scrollback rows. See
+    /// [`TermEngine::history_rows`] for index semantics.
+    pub fn history_rows(
+        &self,
+        id: &str,
+        from_n: usize,
+        count: usize,
+    ) -> Vec<Vec<super::snapshot::CellSnapshot>> {
+        let Ok(guard) = self.lock() else {
+            return Vec::new();
+        };
+        guard
+            .get(id)
+            .map(|s| s.engine.history_rows(from_n, count))
+            .unwrap_or_default()
+    }
+
     /// Force-emit any pending state, ignoring the coalesce window. Used on
     /// resize / reconnect so the UI doesn't miss the final frame.
     pub fn flush(&self, id: &str) -> Option<GridDiff> {
@@ -248,5 +275,50 @@ mod tests {
     fn prompt_marks_for_missing_session_are_empty() {
         let reg = NativeTerminalRegistry::new();
         assert!(reg.prompt_marks("ghost").is_empty());
+    }
+
+    #[test]
+    fn history_size_is_zero_for_missing_session() {
+        let reg = NativeTerminalRegistry::new();
+        assert_eq!(reg.history_size("ghost"), 0);
+    }
+
+    #[test]
+    fn history_size_grows_with_output_that_exceeds_screen() {
+        let reg = NativeTerminalRegistry::new();
+        reg.create("t", 30, 3).expect("create");
+        for i in 0..10 {
+            let _ = reg.advance("t", format!("row-{i}\r\n").as_bytes());
+        }
+        assert!(
+            reg.history_size("t") >= 7,
+            "expected >= 7 history rows, got {}",
+            reg.history_size("t")
+        );
+    }
+
+    #[test]
+    fn history_rows_returns_most_recent_first() {
+        let reg = NativeTerminalRegistry::new();
+        reg.create("t", 30, 2).expect("create");
+        for i in 0..5 {
+            let _ = reg.advance("t", format!("row-{i}\r\n").as_bytes());
+        }
+        let rows = reg.history_rows("t", 0, 3);
+        assert_eq!(rows.len(), 3);
+        // Most-recent-first: first returned row ends with "row-3" (the
+        // last line to scroll off before the screen currently holds
+        // row-4 / blank).
+        let first_text: String = rows[0].iter().map(|c| c.ch).collect();
+        assert!(first_text.starts_with("row-3"), "got {first_text:?}");
+    }
+
+    #[test]
+    fn history_rows_beyond_retained_returns_empty() {
+        let reg = NativeTerminalRegistry::new();
+        reg.create("t", 20, 2).expect("create");
+        let _ = reg.advance("t", b"only one line\r\n");
+        let rows = reg.history_rows("t", 100, 10);
+        assert!(rows.is_empty());
     }
 }

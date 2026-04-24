@@ -162,6 +162,34 @@ pub struct GridSnapshot {
 }
 
 impl TermEngine {
+    /// Read `count` rows of scrollback starting from `from_n` (0 = the
+    /// row immediately above the visible screen). Returns fewer rows if
+    /// the retained history is shorter than the requested window — no
+    /// error, the caller deals with the shortfall.
+    ///
+    /// Rows are returned in "age" order: index 0 is the most recent
+    /// history row (closest to the live screen), index N-1 is the oldest.
+    pub fn history_rows(&self, from_n: usize, count: usize) -> Vec<Vec<CellSnapshot>> {
+        let hs = self.history_size();
+        if from_n >= hs {
+            return Vec::new();
+        }
+        let cols = self.cols();
+        let end = (from_n + count).min(hs);
+        let grid = self.term().grid();
+        let mut out = Vec::with_capacity(end - from_n);
+        for n in from_n..end {
+            let line_idx = -(n as i32) - 1;
+            let mut row = Vec::with_capacity(cols);
+            for col in 0..cols {
+                let cell = &grid[Point::new(Line(line_idx), Column(col))];
+                row.push(CellSnapshot::from_cell(cell));
+            }
+            out.push(row);
+        }
+        out
+    }
+
     /// Build a serde-friendly snapshot of the current grid + cursor state.
     pub fn snapshot(&self) -> GridSnapshot {
         let rows = self.rows();

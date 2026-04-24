@@ -394,6 +394,35 @@ pub fn term_prompt_marks(
     app.state::<Arc<NativeTerminalRegistry>>().prompt_marks(&id)
 }
 
+/// Number of scrollback rows currently retained above the visible screen.
+/// The frontend uses this to size a scroll thumb or decide whether
+/// scrolling up is meaningful. Returns `0` when the terminal is unknown
+/// or hasn't yet emitted enough output to fill the visible screen.
+#[tauri::command]
+pub fn term_history_size(app: AppHandle, id: String) -> usize {
+    app.state::<Arc<NativeTerminalRegistry>>().history_size(&id)
+}
+
+/// Fetch a contiguous window of scrollback rows for the given terminal.
+///
+/// - `fromN = 0` returns the row immediately above the visible screen.
+/// - `count` is the requested window size; the result may be shorter if
+///   retained history is smaller than the window.
+/// - Each row is a vec of `CellSnapshot` in the same shape as
+///   `GridSnapshot::cells[row]`, so the frontend can reuse the existing
+///   grid renderer for history rows without a separate code path.
+#[tauri::command]
+#[allow(non_snake_case)]
+pub fn term_history_rows(
+    app: AppHandle,
+    id: String,
+    fromN: usize,
+    count: usize,
+) -> Vec<Vec<crate::term::CellSnapshot>> {
+    app.state::<Arc<NativeTerminalRegistry>>()
+        .history_rows(&id, fromN, count)
+}
+
 /// List active terminals
 #[tauri::command]
 pub fn list_terminals(app: AppHandle) -> Vec<String> {

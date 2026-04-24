@@ -26,8 +26,22 @@ pub enum TermEngineError {
     RowOutOfRange { line: i32, screen_lines: usize },
 }
 
+/// Capacity of the scrollback buffer (in lines) retained above the visible
+/// screen. 10k lines is ~80 MiB at 120 cols × 80 B/cell — comfortable for
+/// multi-hour shell sessions and still well under a reasonable memory
+/// budget. Exposed publicly so the frontend can size scroll UI against
+/// the same ceiling the engine enforces.
+pub const SCROLLBACK_LINES: usize = 10_000;
+
 /// Simple `Dimensions` impl so callers don't need to depend on
 /// `alacritty_terminal::term::test::TermSize`.
+///
+/// `total_lines` must be `screen_lines + scrollback_capacity`. Setting the
+/// two equal (as this file did before scrollback landed) disables history
+/// entirely — every line pushed out of the visible screen is dropped. The
+/// fix is to widen `total_lines`; alacritty then allocates a ring buffer
+/// of capacity `total_lines - screen_lines` and retains that many lines
+/// of history.
 #[derive(Copy, Clone, Debug)]
 struct Size {
     cols: usize,
@@ -36,7 +50,7 @@ struct Size {
 
 impl Dimensions for Size {
     fn total_lines(&self) -> usize {
-        self.rows
+        self.rows + SCROLLBACK_LINES
     }
 
     fn screen_lines(&self) -> usize {
@@ -213,6 +227,39 @@ impl TermEngine {
     pub fn cursor(&self) -> (usize, usize) {
         cursor_of(&self.term)
     }
+
+    /// Number of scrollback lines currently retained above the visible
+    /// screen. Grows as the shell emits output, caps at
+    /// [`SCROLLBACK_LINES`], then starts evicting oldest-first.
+    pub fn history_size(&self) -> usize {
+        self.term.grid().history_size()
+    }
+
+    /// Read a single history line (0 = line immediately above the visible
+    /// screen, 1 = two lines above, …). Returns `None` when `n` exceeds
+    /// the retained history.
+    ///
+    /// The returned string mirrors the grid semantics of `row_text`:
+    /// trailing spaces are trimmed, wide-char spacers are included as
+    /// literal characters so column indexing still works.
+    pub fn history_row_text(&self, n: usize) -> Option<String> {
+        if n >= self.history_size() {
+            return None;
+        }
+        let grid = self.term.grid();
+        // History is addressed by negative Line values: -1 is the line
+        // immediately above the visible screen, -2 is two lines above,
+        // etc. alacritty_terminal clamps out-of-range reads internally,
+        // but we still bounds-check above so we can return None instead
+        // of a silent blank row.
+        let mut out = String::with_capacity(self.size.cols);
+        let line_idx = -(n as i32) - 1;
+        for col in 0..self.size.cols {
+            let cell = &grid[Point::new(Line(line_idx), alacritty_terminal::index::Column(col))];
+            out.push(cell.c);
+        }
+        Some(out.trim_end().to_string())
+    }
 }
 
 /// Free-function cursor reader so the OSC 133 scan in `advance()` can read
@@ -375,5 +422,62 @@ mod tests {
         assert_eq!(log.len(), 2);
         assert_eq!(log[0].kind, PromptMarkKind::PromptStart);
         assert_eq!(log[1].kind, PromptMarkKind::CommandStart);
+    }
+
+    #[test]
+    fn blank_engine_has_no_scrollback_yet() {
+        let engine = TermEngine::new(40, 5).expect("engine");
+        assert_eq!(engine.history_size(), 0);
+        assert_eq!(engine.history_row_text(0), None);
+    }
+
+    #[test]
+    fn output_exceeding_screen_height_flows_into_scrollback() {
+        let mut engine = TermEngine::new(40, 3).expect("engine");
+        // Emit six lines into a three-row screen. Each `\r\n` after the
+        // second line triggers a scroll-up, pushing the top row into
+        // history. Final state: screen holds line-4 / line-5 / blank,
+        // history holds [line-3 (top), line-2, line-1, line-0 (oldest)].
+        for i in 0..6 {
+            engine.advance_str(&format!("line-{i}\r\n"));
+        }
+        assert!(
+            engine.history_size() >= 4,
+            "expected >=4 retained history lines, got {}",
+            engine.history_size()
+        );
+        assert_eq!(engine.history_row_text(0).as_deref(), Some("line-3"));
+        assert_eq!(engine.history_row_text(1).as_deref(), Some("line-2"));
+        assert_eq!(engine.history_row_text(2).as_deref(), Some("line-1"));
+        assert_eq!(engine.history_row_text(3).as_deref(), Some("line-0"));
+    }
+
+    #[test]
+    fn scrollback_caps_at_configured_ceiling() {
+        use crate::term::engine::SCROLLBACK_LINES;
+
+        // Use a tiny screen so the eviction path fires quickly. We only
+        // check that the log caps at SCROLLBACK_LINES, not the exact
+        // identity of evicted lines — alacritty reserves a few rows for
+        // its own bookkeeping on the boundary.
+        let mut engine = TermEngine::new(20, 2).expect("engine");
+        for i in 0..(SCROLLBACK_LINES + 50) {
+            engine.advance_str(&format!("row-{i}\r\n"));
+        }
+        assert_eq!(
+            engine.history_size(),
+            SCROLLBACK_LINES,
+            "history must cap at SCROLLBACK_LINES"
+        );
+    }
+
+    #[test]
+    fn history_row_text_returns_none_beyond_retained_history() {
+        let mut engine = TermEngine::new(10, 2).expect("engine");
+        engine.advance_str("a\r\nb\r\nc\r\nd\r\n");
+        let hs = engine.history_size();
+        assert!(hs >= 2);
+        assert!(engine.history_row_text(hs).is_none());
+        assert!(engine.history_row_text(hs + 1000).is_none());
     }
 }
