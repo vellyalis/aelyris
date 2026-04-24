@@ -1,0 +1,111 @@
+# Phase 3D-1 v2 Plan
+
+Scope v2 of the HTTP/WS PTY API after v1 landed in `c0e2042` (merge of
+`spike/3d-1-terminal-api`) as part of `v0.2.0`.
+
+v1 status: 14/14 `scripts/verify-3d1.mjs` live PASS (2026-04-24), 343 `cargo
+test` PASS (serial), reviewed by security-reviewer + rust-reviewer, HIGH+MEDIUM
+closed.
+
+## Why split v2 into sub-PRs
+
+Each item below is independently valuable and independently reviewable. Landing
+them as one PR would (a) bloat review surface, (b) couple deployment risk
+(TLS / reader-share touch different layers), (c) delay the easy wins (CORS,
+rate limit) behind the heavy ones.
+
+| sub-PR | theme | depends on | rough size |
+|--------|-------|-----------|------------|
+| v2a | CORS + rate limit | — | small (1 day) |
+| v2b | upgrade-ticket WS auth + subtle crate | v2a merged (WS auth surface) | medium (1–2 days) |
+| v2c | reader share with Tauri frontend (PtyManager redesign) | v2a merged | large (3–5 days) |
+| v2d | TLS | v2a+v2b merged | medium (1–2 days) |
+
+## v2a — CORS + rate limit
+
+**Why first**: zero architectural impact, pure middleware. Required the moment
+we serve a browser UI off a different origin. Prevents trivial abuse (brute
+forcing token, hammering `/sessions`).
+
+**Deliverables**:
+- `tower_http::cors::CorsLayer` mounted on the axum router.
+  - Default: allow `http://127.0.0.1:1420` (Tauri dev origin) only, methods
+    `GET/POST/DELETE`, headers `Authorization,Content-Type`, credentials off.
+  - Override via `AETHER_API_CORS_ORIGIN` env var (comma-separated list) — wide
+    open (`*`) must require explicit opt-in.
+- Per-token rate limit. Leaky-bucket via `tower::ServiceBuilder` +
+  `tower_governor` (already a common Rust crate) or a hand-rolled limiter.
+  - Default: 60 req/min across all REST endpoints per token.
+  - WS connect also subject to rate limit (1 / sec / token) to prevent
+    socket-churn attacks.
+- Integration tests: 429 response, CORS preflight (OPTIONS) → 204 with correct
+  headers.
+
+**Out of scope for v2a**: sliding-window precision, distributed rate limit.
+
+## v2b — upgrade-ticket WS auth + subtle crate
+
+**Why**: v1 falls back to `?token=<uuid>` because browser / Node WS cannot set
+`Authorization` headers. That leaks the long-lived token into URL (server
+access logs, browser history, proxy logs).
+
+**Deliverables**:
+- `POST /sessions/:id/stream-ticket` with `Authorization: Bearer <token>`.
+  Returns `{ticket: <uuid>, expires_at: <iso>}`, valid once for 10 seconds.
+- WS upgrade accepts `?ticket=<uuid>` (no longer `?token=...`). Old `?token=`
+  still accepted for 1 release, logged as deprecation warning.
+- Replace `constant_time_eq`-style ad-hoc comparison with `subtle::ConstantTimeEq`
+  for the token comparison.
+- Tests: ticket valid once, expires after 10s, unknown ticket → 401.
+
+**Migration**: `scripts/verify-3d1.mjs` must be updated to call the ticket
+endpoint. Bump verify PASS count.
+
+## v2c — reader share with Tauri frontend
+
+**Why**: v1's `PtyManager::take_reader` moves the reader out of the manager.
+That means the running Tauri UI and the API cannot both read the same PTY.
+Practical consequence: turning on the API starves the UI (or vice versa). For
+headless / remote use this is fine; for "same box, same user driving both
+panes" it blocks the very use-case of 3D-1.
+
+**Deliverables**:
+- `PtyManager::subscribe_output(id) -> broadcast::Receiver<Bytes>` — returns a
+  new subscriber on every call. Internally the PTY read loop fan-outs to a
+  `tokio::sync::broadcast::channel` (capacity tuned for burst-safe, e.g. 1024).
+- Tauri commands migrate from `take_reader` → `subscribe_output`.
+- API's WS handler migrates to `subscribe_output`.
+- Backpressure policy: slow consumers get `RecvError::Lagged(n)` → API inserts
+  a sentinel `\x1b[2m[dropped Nb]\x1b[0m` into the WS stream so the client can
+  see a gap; UI drops silently.
+- Tests: multiple simultaneous readers receive identical bytes; slow reader
+  does not stall fast reader.
+
+**Risk**: behaviour change — anything relying on "only one reader" breaks.
+Audit call sites before merging.
+
+## v2d — TLS
+
+**Why last**: only needed when we actually expose 9333 beyond localhost. Until
+then, pure additional attack surface.
+
+**Deliverables**:
+- `AETHER_API_TLS_CERT` + `AETHER_API_TLS_KEY` env vars (or paths). Uses
+  `axum-server` + `rustls`. Fallback: plain HTTP on localhost.
+- Auto-generate self-signed cert into `%LOCALAPPDATA%\aether-terminal\tls\` on
+  first run if the env vars are unset but `AETHER_API_BIND` is non-loopback.
+  Prints SHA-256 fingerprint on stdout — user pins it client-side.
+- `scripts/verify-3d1.mjs` gains a `--tls` flag that uses the generated cert.
+- Docs: how to put a real cert in place for production exposure.
+
+## Tracking
+
+- Branch naming: `feat/3d-1-v2a-cors-ratelimit`, etc.
+- Each merges into `refactor/tauri-react-migration` under `v0.2.x` / `v0.3.0`.
+- Each updates `scripts/verify-3d1.mjs` PASS count (currently 14/14).
+
+## Decision point
+
+Order v2a → v2c → v2b → v2d is an alternative — if the dogfood pain is
+"turning on API kills my UI PTY," bump v2c ahead of v2b. Re-evaluate after
+a week of dogfood (see `project_dogfood_log.md`).
