@@ -87,7 +87,7 @@
   --state-disabled-opacity: 0.35;
 
   /* Single row-hover token consumed by every list/row surface
-   * (Kanban/Helm/Toolkit/SubagentList/SCM fileRow/FileTree row/
+   * (Kanban/Helm/Toolkit/SCM fileRow/FileTree row/
    * CommandPalette/QuickOpen/HistorySearchDialog/RepairJobsPanel).
    * Added after the 2026-04-24 per-feature audit flagged 3 different
    * hover shades across sibling row lists. Unit the tone here so a
