@@ -161,7 +161,7 @@ mod tests {
     fn cursor_only_move_does_not_emit_rows() {
         // Writing "a" then backspacing leaves the cell blank again but cursor has moved.
         // Verify we don't over-emit when only cursor changes.
-        let mut engine = TermEngine::new(10, 2).expect("engine");
+        let engine = TermEngine::new(10, 2).expect("engine");
         let snap_a = engine.snapshot();
         // Simulate a cursor-only change by tweaking the cached snapshot's cursor.
         let mut snap_b = snap_a.clone();

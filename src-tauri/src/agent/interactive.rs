@@ -96,6 +96,12 @@ pub struct InteractiveSessionManager {
     sessions: Arc<Mutex<HashMap<String, InteractiveSessionInfo>>>,
 }
 
+impl Default for InteractiveSessionManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InteractiveSessionManager {
     pub fn new() -> Self {
         Self {

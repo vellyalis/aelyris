@@ -184,7 +184,7 @@ impl AgentManager {
         if let Ok(mut sessions) = self.sessions.lock() {
             for (id, mut proc) in sessions.drain() {
                 let pid = proc.child.id();
-                if let Err(_) = kill_process_tree(pid) {
+                if kill_process_tree(pid).is_err() {
                     let _ = proc.child.kill();
                 }
                 let _ = proc.child.wait();

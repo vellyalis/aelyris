@@ -82,7 +82,7 @@ fn validate_path(path: &str) -> Result<(), String> {
     ];
     for d in &dangerous {
         if normalized.starts_with(d) {
-            return Err(format!("Access to system directory not allowed"));
+            return Err("Access to system directory not allowed".to_string());
         }
     }
     Ok(())

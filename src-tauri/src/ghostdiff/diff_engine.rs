@@ -298,9 +298,7 @@ fn parse_diff_git_header(line: &str) -> Option<(String, String)> {
     let rest = line.strip_prefix("diff --git ")?;
     // Paths are whitespace-separated and *usually* quoted only when they
     // contain spaces. For MVP, only handle the unquoted common case.
-    let mut parts = rest.splitn(2, ' ');
-    let a = parts.next()?;
-    let b = parts.next()?;
+    let (a, b) = rest.split_once(' ')?;
     Some((
         strip_path_prefix(a).unwrap_or_else(|| a.to_string()),
         strip_path_prefix(b).unwrap_or_else(|| b.to_string()),
