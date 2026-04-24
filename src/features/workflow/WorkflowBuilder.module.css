@@ -69,7 +69,7 @@
 .phaseCost { color: var(--ctp-peach); }
 .phaseGate {
   padding: 2px var(--space-4);
-  font-size: 9px; color: var(--ctp-yellow);
+  font-size: var(--text-2xs); color: var(--ctp-yellow);
   border-top: 1px solid var(--border);
 }
 

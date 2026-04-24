@@ -96,7 +96,7 @@
 .acceptBtn, .revertBtn {
   background: none;
   border: 1px solid;
-  font-size: 9px;
+  font-size: var(--text-2xs);
   font-family: var(--font-mono);
   padding: 1px 6px;
   border-radius: var(--radius-sm);
@@ -113,7 +113,7 @@
   background: none;
   border: 1px solid var(--ctp-mauve);
   color: var(--ctp-mauve);
-  font-size: 9px;
+  font-size: var(--text-2xs);
   font-family: var(--font-mono);
   padding: 1px 6px;
   border-radius: var(--radius-sm);

@@ -9,12 +9,12 @@
 .header:hover { background: var(--white-4); }
 .headerTitle { font-weight: 500; }
 .badge {
-  font-size: 9px; font-family: var(--font-mono);
+  font-size: var(--text-2xs); font-family: var(--font-mono);
   background: var(--ctp-green); color: var(--ctp-base);
   padding: 0 4px; border-radius: 8px; font-weight: 600;
 }
 
-.chevron { transition: transform 0.15s ease; }
+.chevron { transition: transform var(--duration-fast) var(--ease-silk); }
 .chevronOpen { transform: rotate(90deg); }
 
 .content { padding: 0 var(--space-6) var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
@@ -34,7 +34,7 @@
   font-size: 10px; font-family: var(--font-mono); color: var(--text-muted);
 }
 .phaseDetail {
-  font-size: 9px; font-family: var(--font-mono); color: var(--text-muted);
+  font-size: var(--text-2xs); font-family: var(--font-mono); color: var(--text-muted);
   padding: 2px 4px; margin-top: 2px;
   background: var(--white-4); border-radius: var(--radius-sm);
 }

@@ -47,7 +47,7 @@
 }
 .groupActions button:hover { color: var(--text-primary); }
 
-.chevron { transition: transform 0.15s ease; flex-shrink: 0; }
+.chevron { transition: transform var(--duration-fast) var(--ease-silk); flex-shrink: 0; }
 .chevronOpen { transform: rotate(90deg); }
 
 /* File list */
@@ -77,7 +77,7 @@
   text-overflow: ellipsis; white-space: nowrap;
 }
 .fileName:hover { text-decoration: underline; }
-.filePath { color: var(--text-muted); font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.filePath { color: var(--text-muted); font-size: var(--text-2xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 
 .fileActions {
   display: flex; gap: 2px; opacity: 0; transition: opacity 0.1s; flex-shrink: 0;
