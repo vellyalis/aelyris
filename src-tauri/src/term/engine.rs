@@ -16,6 +16,8 @@ use alacritty_terminal::term::{Config, cell::Cell};
 use alacritty_terminal::vte::ansi::Processor;
 use alacritty_terminal::Term;
 
+use super::prompt_marks::{ParseStep, PromptMark, PromptMarkLog, try_parse as try_parse_osc133};
+
 #[derive(Debug, thiserror::Error)]
 pub enum TermEngineError {
     #[error("invalid terminal dimensions: {cols}x{rows}")]
@@ -51,6 +53,11 @@ pub struct TermEngine {
     term: Term<VoidListener>,
     parser: Processor,
     size: Size,
+    prompt_marks: PromptMarkLog,
+    /// Bytes of a partial OSC 133 sequence that straddled the previous
+    /// `advance()` call boundary. Rare but real — terminals routinely split
+    /// OSC sequences across PTY read chunks.
+    osc_pending: Vec<u8>,
 }
 
 impl TermEngine {
@@ -65,17 +72,95 @@ impl TermEngine {
             term,
             parser: Processor::new(),
             size,
+            prompt_marks: PromptMarkLog::new(),
+            osc_pending: Vec::new(),
         })
     }
 
     /// Feed raw PTY bytes into the parser, advancing terminal state.
-    pub fn advance(&mut self, bytes: &[u8]) {
-        self.parser.advance(&mut self.term, bytes);
+    ///
+    /// Returns every OSC 133 mark that was *newly* completed inside `bytes`.
+    /// Callers that only need grid state can ignore the return value; the
+    /// marks are also retained internally (bounded log) and queryable via
+    /// [`TermEngine::prompt_marks`].
+    pub fn advance(&mut self, bytes: &[u8]) -> Vec<PromptMark> {
+        // Fast path: nothing pending and no ESC in the buffer — can't be
+        // OSC 133. Forward straight to alacritty.
+        if self.osc_pending.is_empty() && !bytes.contains(&0x1b) {
+            self.parser.advance(&mut self.term, bytes);
+            return Vec::new();
+        }
+
+        // Take ownership of any pending OSC tail so the borrow checker
+        // lets us mutate `self.parser` / `self.prompt_marks` while walking
+        // the combined buffer. The field is cleared and restored only at
+        // the Incomplete branch where we stash a fresh tail.
+        let mut combined = std::mem::take(&mut self.osc_pending);
+        if combined.is_empty() {
+            combined.reserve(bytes.len());
+        }
+        combined.extend_from_slice(bytes);
+
+        let mut new_marks = Vec::new();
+        let mut consumed = 0usize;
+        let mut i = 0usize;
+        while i < combined.len() {
+            if combined[i] != 0x1b {
+                i += 1;
+                continue;
+            }
+            match try_parse_osc133(&combined[i..]) {
+                ParseStep::Consumed { bytes: n, mark } => {
+                    // Flush everything up to the OSC 133 start so the
+                    // parser's cursor reflects the shell's prompt line.
+                    self.parser.advance(&mut self.term, &combined[consumed..i]);
+                    let (line, _col) = cursor_of(&self.term);
+                    let recorded = self
+                        .prompt_marks
+                        .record(mark, line.min(u16::MAX as usize) as u16);
+                    new_marks.push(recorded);
+                    // Forward the OSC bytes to alacritty too. Alacritty
+                    // ignores unknown OSCs, so this is a no-op for grid
+                    // state but keeps its VTE state machine consistent.
+                    self.parser
+                        .advance(&mut self.term, &combined[i..i + n]);
+                    i += n;
+                    consumed = i;
+                }
+                ParseStep::Incomplete => {
+                    // Flush up-to-but-not-including this ESC. Stash the
+                    // tail for the next advance.
+                    self.parser.advance(&mut self.term, &combined[consumed..i]);
+                    self.osc_pending = combined[i..].to_vec();
+                    return new_marks;
+                }
+                ParseStep::None => {
+                    // Not an OSC 133 — let the parser handle this ESC
+                    // sequence (CSI / SGR / title / …) on the next flush.
+                    i += 1;
+                }
+            }
+        }
+
+        if consumed < combined.len() {
+            self.parser.advance(&mut self.term, &combined[consumed..]);
+        }
+        new_marks
     }
 
-    /// Convenience: feed a UTF-8 string.
+    /// Convenience: feed a UTF-8 string and discard any emitted marks.
+    ///
+    /// Production callers almost always want [`TermEngine::advance`] so
+    /// newly-parsed prompt marks can be emitted to the frontend; this
+    /// helper exists for tests and parse-state assertions where marks
+    /// are incidental.
     pub fn advance_str(&mut self, s: &str) {
-        self.advance(s.as_bytes());
+        let _ = self.advance(s.as_bytes());
+    }
+
+    /// Read-only view of every retained OSC 133 mark. Oldest first.
+    pub fn prompt_marks(&self) -> Vec<PromptMark> {
+        self.prompt_marks.as_slice()
     }
 
     pub fn cols(&self) -> usize {
@@ -126,14 +211,22 @@ impl TermEngine {
 
     /// Cursor position as (row, col), 0-indexed from the visible screen top-left.
     pub fn cursor(&self) -> (usize, usize) {
-        let point = self.term.grid().cursor.point;
-        (point.line.0.max(0) as usize, point.column.0)
+        cursor_of(&self.term)
     }
+}
+
+/// Free-function cursor reader so the OSC 133 scan in `advance()` can read
+/// the cursor without holding `&self` while also mutably borrowing
+/// `self.parser` + `self.term` via `parser.advance(&mut term, ...)`.
+fn cursor_of(term: &Term<VoidListener>) -> (usize, usize) {
+    let point = term.grid().cursor.point;
+    (point.line.0.max(0) as usize, point.column.0)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::term::prompt_marks::PromptMarkKind;
 
     #[test]
     fn rejects_zero_dimensions() {
@@ -189,5 +282,98 @@ mod tests {
         let row = engine.row_text(0).unwrap();
         assert!(row.starts_with('こ'), "got: {:?}", row);
         assert!(row.contains('ん'), "got: {:?}", row);
+    }
+
+    #[test]
+    fn osc133_prompt_start_records_line_zero_on_empty_screen() {
+        let mut engine = TermEngine::new(80, 24).expect("engine");
+        let marks = engine.advance(b"\x1b]133;A\x07");
+        assert_eq!(marks.len(), 1);
+        assert_eq!(marks[0].kind, PromptMarkKind::PromptStart);
+        assert_eq!(marks[0].screen_line, 0);
+    }
+
+    #[test]
+    fn osc133_marks_attribute_to_current_cursor_line() {
+        let mut engine = TermEngine::new(80, 24).expect("engine");
+        // Two lines of output, then shell emits the prompt mark on line 2.
+        engine.advance_str("line0\r\nline1\r\n");
+        let marks = engine.advance(b"\x1b]133;A\x07$ ");
+        assert_eq!(marks.len(), 1);
+        assert_eq!(marks[0].screen_line, 2, "prompt mark must land on the cursor's line");
+    }
+
+    #[test]
+    fn osc133_command_end_payload_is_captured() {
+        let mut engine = TermEngine::new(80, 24).expect("engine");
+        let marks = engine.advance(b"\x1b]133;D;137\x1b\\");
+        assert_eq!(marks.len(), 1);
+        assert_eq!(marks[0].kind, PromptMarkKind::CommandEnd);
+        assert_eq!(marks[0].exit_code, Some(137));
+    }
+
+    #[test]
+    fn osc133_sequence_split_across_two_advance_calls_still_parses() {
+        let mut engine = TermEngine::new(80, 24).expect("engine");
+        // First chunk ends in the middle of the OSC sequence — no complete
+        // mark yet, and no partial mark leaked into the grid.
+        let first = engine.advance(b"hello\r\n\x1b]133;");
+        assert!(first.is_empty());
+        // Second chunk completes the sequence; the mark attributes to the
+        // line the cursor was sitting on after "hello\\r\\n".
+        let second = engine.advance(b"A\x07$ ");
+        assert_eq!(second.len(), 1);
+        assert_eq!(second[0].kind, PromptMarkKind::PromptStart);
+        assert_eq!(second[0].screen_line, 1);
+        // And the grid is intact — no stray `\x1b]133;` garbage.
+        // row_text trims trailing whitespace, so `"$ "` becomes `"$"`.
+        assert_eq!(engine.row_text(0).unwrap(), "hello");
+        assert_eq!(engine.row_text(1).unwrap(), "$");
+    }
+
+    #[test]
+    fn non_osc133_escape_sequences_are_still_honoured() {
+        let mut engine = TermEngine::new(20, 5).expect("engine");
+        // Write "abc", move cursor to column 0, clear to EOL — CSI K — all
+        // of these must still work now that advance() also scans for OSC 133.
+        let marks = engine.advance(b"abc\r\x1b[K");
+        assert!(marks.is_empty());
+        assert_eq!(engine.row_text(0).unwrap(), "");
+    }
+
+    #[test]
+    fn multiple_marks_in_one_advance_are_all_emitted_in_order() {
+        let mut engine = TermEngine::new(80, 24).expect("engine");
+        // A full prompt cycle in a single PTY read: prompt, user command,
+        // output, exit code. This is realistic — shells often flush the
+        // whole cycle together when the command is fast.
+        let marks = engine.advance(
+            b"\x1b]133;A\x07$ echo hi\r\n\x1b]133;B\x07\x1b]133;C\x07hi\r\n\x1b]133;D;0\x07",
+        );
+        let kinds: Vec<_> = marks.iter().map(|m| m.kind).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                PromptMarkKind::PromptStart,
+                PromptMarkKind::CommandStart,
+                PromptMarkKind::OutputStart,
+                PromptMarkKind::CommandEnd,
+            ],
+        );
+        assert_eq!(marks[3].exit_code, Some(0));
+        // And the sequence counters are monotonic starting at 0.
+        assert_eq!(marks[0].sequence, 0);
+        assert_eq!(marks[3].sequence, 3);
+    }
+
+    #[test]
+    fn prompt_marks_accessor_returns_full_history() {
+        let mut engine = TermEngine::new(80, 24).expect("engine");
+        engine.advance_str("\x1b]133;A\x07");
+        engine.advance_str("\x1b]133;B\x07");
+        let log = engine.prompt_marks();
+        assert_eq!(log.len(), 2);
+        assert_eq!(log[0].kind, PromptMarkKind::PromptStart);
+        assert_eq!(log[1].kind, PromptMarkKind::CommandStart);
     }
 }

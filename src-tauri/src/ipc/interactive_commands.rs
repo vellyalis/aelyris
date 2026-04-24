@@ -336,9 +336,15 @@ async fn run_output_monitor(
                 let event = format!("pty-output-{}", session_id);
                 let _ = app.emit(&event, chunk.clone());
 
-                // Fan out to native engine for grid-based rendering.
-                if let Some(diff) = native_registry.advance(session_id, data) {
+                // Fan out to native engine for grid-based rendering, plus
+                // OSC 133 prompt marks. Diffs are 60fps-coalesced; prompt
+                // marks are emitted immediately.
+                let advance_result = native_registry.advance(session_id, data);
+                if let Some(diff) = advance_result.diff {
                     let _ = app.emit(&format!("term:diff-{}", session_id), diff);
+                }
+                for mark in advance_result.new_marks {
+                    let _ = app.emit(&format!("term:prompt-mark-{}", session_id), mark);
                 }
 
                 // Parse for status/cost (strip ANSI first)

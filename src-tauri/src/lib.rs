@@ -287,6 +287,7 @@ pub fn run() {
             ipc::list_terminals,
             ipc::detect_shells,
             ipc::term_snapshot,
+            ipc::term_prompt_marks,
             ipc::discover_projects,
             ipc::default_project_scan_dirs,
             ipc::list_branches,

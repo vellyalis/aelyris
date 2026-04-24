@@ -177,9 +177,16 @@ pub fn spawn_terminal(
                         &text,
                     );
 
-                    // Native engine fan-out (Phase 2).
-                    if let Some(diff) = native_registry.advance(&terminal_id, data) {
+                    // Native engine fan-out (Phase 2) + OSC 133 prompt marks.
+                    // Diffs are 60fps-coalesced; prompt marks are emitted
+                    // immediately so jump-to-prompt feels synchronous.
+                    let advance_result = native_registry.advance(&terminal_id, data);
+                    if let Some(diff) = advance_result.diff {
                         let _ = app_handle.emit(&format!("term:diff-{}", terminal_id), diff);
+                    }
+                    for mark in advance_result.new_marks {
+                        let _ = app_handle
+                            .emit(&format!("term:prompt-mark-{}", terminal_id), mark);
                     }
 
                     // Port auto-detection: scan for localhost:<port> patterns
@@ -374,6 +381,17 @@ pub fn term_snapshot(
     id: String,
 ) -> Option<crate::term::GridSnapshot> {
     app.state::<Arc<NativeTerminalRegistry>>().snapshot(&id)
+}
+
+/// Full OSC 133 prompt mark history for the given terminal. The frontend
+/// calls this on (re)mount to seed its jump-to-prompt index; live updates
+/// arrive thereafter via the `term:prompt-mark-<id>` event.
+#[tauri::command]
+pub fn term_prompt_marks(
+    app: AppHandle,
+    id: String,
+) -> Vec<crate::term::PromptMark> {
+    app.state::<Arc<NativeTerminalRegistry>>().prompt_marks(&id)
 }
 
 /// List active terminals
