@@ -88,28 +88,38 @@ Landed as `feat/3d-1-v2b-upgrade-ticket`, merged into
 - **`?token=` removal.** One release after v2b lands, remove the legacy
   query-string path entirely. Tracked here so it doesn't get forgotten.
 
-## v2c — reader share with Tauri frontend
+## v2c — reader share with Tauri frontend ✅ LANDED
 
-**Why**: v1's `PtyManager::take_reader` moves the reader out of the manager.
-That means the running Tauri UI and the API cannot both read the same PTY.
-Practical consequence: turning on the API starves the UI (or vice versa). For
-headless / remote use this is fine; for "same box, same user driving both
-panes" it blocks the very use-case of 3D-1.
+Landed as `feat/3d-1-v2c-reader-broadcast`, merged into
+`refactor/tauri-react-migration`. Summary of what shipped:
 
-**Deliverables**:
-- `PtyManager::subscribe_output(id) -> broadcast::Receiver<Bytes>` — returns a
-  new subscriber on every call. Internally the PTY read loop fan-outs to a
-  `tokio::sync::broadcast::channel` (capacity tuned for burst-safe, e.g. 1024).
-- Tauri commands migrate from `take_reader` → `subscribe_output`.
-- API's WS handler migrates to `subscribe_output`.
-- Backpressure policy: slow consumers get `RecvError::Lagged(n)` → API inserts
-  a sentinel `\x1b[2m[dropped Nb]\x1b[0m` into the WS stream so the client can
-  see a gap; UI drops silently.
-- Tests: multiple simultaneous readers receive identical bytes; slow reader
-  does not stall fast reader.
+- `PtyManager::subscribe_output(id) -> tokio::sync::broadcast::Receiver<Vec<u8>>`
+  replaces `take_reader`. A single OS-level reader thread per `PtyInstance`
+  drains master into a capacity-1024 broadcast channel; every caller
+  subscribes.
+- Five call sites migrated: `ipc/commands.rs`, `ipc/interactive_commands.rs`,
+  `api/mod.rs`, `tests/pty_harness.rs`, `tests/test_pty_advanced.rs`.
+- Backpressure: API WS slow consumers get `RecvError::Lagged(n)` → dim-rendered
+  sentinel `\x1b[2m[dropped N chunks]\x1b[0m` (factored into
+  `lag_sentinel_bytes`); UI logs + drops silently.
+- Reader shutdown: `PtyInstance.reader_alive: Arc<AtomicBool>` cleared in
+  `Drop` so the reader thread exits at its next read boundary rather than
+  waiting for the child to close master.
+- WS write backpressure: `WS_WRITE_TIMEOUT = 30s` wraps every
+  `sender.send(...)` — a TCP-stalled client cannot perpetually pin the ring.
+- 6 new integration tests in `test_pty_broadcast.rs` (unknown id, close +
+  subscribe, existing receiver sees Closed, two-subscriber fan-out, slow
+  reader isolation, late subscriber future bytes).
+- Reviewers (security + rust) HIGH 4 closed; no CRITICAL raised.
 
-**Risk**: behaviour change — anything relying on "only one reader" breaks.
-Audit call sites before merging.
+### v2c follow-up deferred to future PRs
+
+- **Idle child on reader shutdown.** `reader_alive = false` cannot interrupt
+  a blocking `read()` that hasn't yet returned. In practice Windows ConPTY
+  tears down the session when master drops, so the read returns EOF — but a
+  child that never writes anything keeps the thread alive until process
+  exit. Mitigations: async read + cancel token, or child kill-on-close.
+  Not needed until dogfood surfaces it.
 
 ## v2d — TLS
 
