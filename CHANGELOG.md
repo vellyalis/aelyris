@@ -135,7 +135,9 @@ hardening) and PTY refinements are also included.
 
 ### Verification
 
-- `vitest run` — 604 / 604 PASS
+- `vitest run` — 627 / 627 PASS (+23 new tests for the primitives added
+  this release: `flattenVisible`, `GitStatusPip`, `PanelHeader`,
+  `getMonoFontStack`).
 - `tsc --noEmit` — clean
 - `cargo check` — clean
 - `cargo test --lib` — 298 / 298 PASS
