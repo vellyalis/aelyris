@@ -111,7 +111,7 @@ _(none — all P0 items closed in 4eec6df)_
 3. ✅ **StatusBar** — branch eye-anchor, passive/actionable split via separators, version moved to About (which now reads from package.json).
 4. ⚠️ **FileTree** — empty state + `confirm()` → `showConfirm` + `.changesBar` a11y landed. Arrow-key nav + full WAI-ARIA treeitem semantics landed in `a0a51c9`. Virtualization still deferred (10k-file perf pass).
 5. ✅ **KanbanBoard** — drop placeholder + pulse inside the column, `setDragImage` pins ghost to the card, Lucide X on delete.
-6. ⚠️ **AgentInspector** — tab labels (Conductor/Diffs) + selected state contrast (2px gold border-bottom + focus ring) landed. Card info-budget collapse is deferred (larger refactor of session-card layout).
+6. ✅ **AgentInspector** — tab labels (Conductor/Diffs) + selected state contrast landed in `fe58aa1`. Card info-budget collapse landed in `d1fd0bb` — status row now caps at 5 visible chips (permission + port fold behind a MoreHorizontal overflow with native tooltip; 📎 and ⚡ emoji swapped for Lucide Paperclip/Zap).
 7. ✅ **ProjectHeaderBar** — `.headerBtn` stretched to 48px, `.controlsSeparator` between app actions and window controls, `.changes` muted.
 
 ### P4 — cross-cluster unification — ✅ closed in `444c615`
