@@ -15,7 +15,7 @@
 
 .shell {
   color: var(--text-secondary);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   flex-shrink: 0;
   white-space: nowrap;
 }

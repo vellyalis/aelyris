@@ -41,7 +41,7 @@
 .modeTag {
   font-size: var(--text-2xs);
   font-family: var(--font-mono);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   padding: 1px var(--space-3);
   border-radius: var(--radius-sm);
   background: var(--ctp-blue);
@@ -104,7 +104,7 @@
 
 .itemName {
   font-size: var(--text-md);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

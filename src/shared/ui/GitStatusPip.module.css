@@ -16,8 +16,8 @@
   width: 14px;
   min-height: 14px;
   font-family: var(--font-mono);
-  font-weight: 600;
-  font-size: 10px;
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-xs);
   line-height: 1;
 }
 

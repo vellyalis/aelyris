@@ -18,7 +18,7 @@
   border-bottom: 1px solid var(--border);
   color: var(--text-primary);
   font-size: var(--text-base);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   font-family: var(--font-ui);
   cursor: pointer;
   text-align: left;
@@ -33,7 +33,7 @@
   gap: var(--space-3);
   padding: var(--space-3) var(--space-5);
   font-size: var(--text-md);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.03em;

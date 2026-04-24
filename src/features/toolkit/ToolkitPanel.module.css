@@ -209,7 +209,7 @@
 }
 .importTitle {
   font-size: var(--text-xl);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   color: var(--text-primary);
   font-family: var(--font-ui);
 }
@@ -255,7 +255,7 @@
   border-radius: var(--radius);
   color: var(--aether-bg);
   font-size: var(--text-base);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   padding: var(--space-2) var(--space-6);
   cursor: pointer;
 }
@@ -308,7 +308,7 @@
 .importPreviewLabel {
   font-size: var(--text-xs);
   color: var(--ctp-green);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   font-family: var(--font-mono);
 }
 .importPreviewItem {
@@ -320,7 +320,7 @@
 .importPreviewName {
   font-size: var(--text-sm);
   color: var(--text-primary);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   min-width: 80px;
   flex-shrink: 0;
 }

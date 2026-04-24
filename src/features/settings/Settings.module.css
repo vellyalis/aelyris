@@ -34,7 +34,7 @@
 
 .title {
   font-size: var(--text-2xl);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   color: var(--text-primary);
   font-family: var(--font-ui);
 }
@@ -44,7 +44,7 @@
   border: none;
   color: var(--aether-bg);
   font-size: var(--text-md);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   cursor: pointer;
   padding: var(--space-2) var(--space-6);
   border-radius: var(--radius-sm);
@@ -80,7 +80,7 @@
 
 .sectionTitle {
   font-size: var(--text-md);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-muted);
@@ -144,7 +144,7 @@
   padding-left: var(--space-8);
   font-size: var(--text-sm);
   color: var(--text-muted);
-  line-height: 1.5;
+  line-height: var(--leading-normal);
 }
 
 .shortcutList {

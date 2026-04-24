@@ -171,14 +171,19 @@
   --weight-medium: 500;
   --weight-semibold: 600;
 
-  /* Transitions — silk-like elegance */
+  /* Transitions — Apple spring is the primary curve; other easings are
+     preserved for specific effects (breath-in status pulses, ease-out
+     decelerations on enter animations). */
   --duration-fast: 120ms;
   --duration-normal: 280ms;
   --duration-slow: 400ms;
   --duration-luxe: 500ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-inout: cubic-bezier(0.4, 0, 0.2, 1);
-  --ease-silk: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  /* --ease-silk is kept for existing consumers but now resolves to the
+     Apple spring curve so the whole app picks up the new "feel" without
+     a manual site-by-site migration. */
+  --ease-silk: var(--ease-apple);
   --ease-breath: cubic-bezier(0.37, 0, 0.63, 1);
 
   /* Font sizes — complete scale (+1px for Apple HIG compliance) */

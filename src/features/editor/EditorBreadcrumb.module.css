@@ -18,7 +18,7 @@
 
 .active {
   color: var(--text-primary);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   display: flex;
   align-items: center;
   white-space: nowrap;

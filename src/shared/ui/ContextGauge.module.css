@@ -37,7 +37,7 @@
 .label {
   font-size: var(--text-xs);
   font-family: var(--font-mono);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   min-width: 24px;
   text-align: right;
 }

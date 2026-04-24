@@ -24,7 +24,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
-  animation: promptIn 0.15s var(--ease-out);
+  animation: promptIn var(--duration-hover) var(--ease-apple);
 }
 
 @keyframes promptIn {

@@ -47,8 +47,8 @@
   outline: none;
   color: var(--text-primary);
   font-family: var(--font-mono);
-  font-size: 14px;
-  line-height: 1.4;
+  font-size: var(--text-lg);
+  line-height: var(--leading-snug);
   padding: var(--space-1) 0;
   resize: none;
   overflow-y: auto;

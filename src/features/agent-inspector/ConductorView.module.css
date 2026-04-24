@@ -90,7 +90,7 @@
 
 .nodeName {
   font-size: var(--text-md);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -120,7 +120,7 @@
 }
 
 .nodeStatus {
-  font-weight: 500;
+  font-weight: var(--weight-medium);
 }
 
 .nodeCost {

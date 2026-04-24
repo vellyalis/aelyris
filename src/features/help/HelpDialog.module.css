@@ -33,7 +33,7 @@
 
 .title {
   font-size: var(--text-lg);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   color: var(--text-primary);
   margin: 0;
   font-family: var(--font-ui);
@@ -87,7 +87,7 @@
 .navActive {
   color: var(--text-primary);
   background: var(--white-6);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
 }
 
 .content {
@@ -98,7 +98,7 @@
 
 .sectionTitle {
   font-size: var(--text-base);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   color: var(--gold);
   margin: 0 0 var(--space-4);
   font-family: var(--font-ui);
@@ -116,7 +116,7 @@
 .item {
   font-size: var(--text-sm);
   color: var(--text-secondary);
-  line-height: 1.5;
+  line-height: var(--leading-normal);
   font-family: var(--font-ui);
   padding-left: var(--space-4);
   position: relative;

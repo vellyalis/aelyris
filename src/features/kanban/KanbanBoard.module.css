@@ -80,7 +80,7 @@
   border: none;
   border-radius: var(--radius-sm);
   font-size: var(--text-sm);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   cursor: pointer;
 }
 
@@ -135,7 +135,7 @@
   background: transparent;
   color: var(--text-muted);
   font-size: var(--text-sm);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   font-family: var(--font-ui);
   cursor: pointer;
   text-align: left;
@@ -238,7 +238,7 @@
   opacity: 0;
   display: flex;
   align-items: center;
-  transition: opacity 0.1s;
+  transition: opacity var(--duration-fast) var(--ease-apple);
 }
 .item:hover .itemAction {
   opacity: 1;
@@ -266,7 +266,7 @@
   cursor: pointer;
   padding: 0 var(--space-1);
   opacity: 0;
-  transition: opacity 0.1s;
+  transition: opacity var(--duration-fast) var(--ease-apple);
 }
 .item:hover .itemDelete {
   opacity: 1;

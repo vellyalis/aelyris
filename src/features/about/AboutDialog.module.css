@@ -32,7 +32,7 @@
 }
 .title {
   font-size: var(--text-3xl);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   color: var(--text-primary);
   margin-bottom: var(--space-2);
 }

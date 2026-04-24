@@ -22,7 +22,7 @@
   max-height: 80vh;
   overflow-y: auto;
   box-shadow: var(--rim-top), var(--shadow-dialog);
-  animation: modalIn 0.15s var(--ease-out);
+  animation: modalIn var(--duration-hover) var(--ease-apple);
 }
 @keyframes modalIn {
   from {
@@ -43,7 +43,7 @@
 }
 .title {
   font-size: var(--text-sm);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   color: var(--text-primary);
 }
 .closeBtn {
@@ -68,7 +68,7 @@
 
 .sessionName {
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   color: var(--text-primary);
   margin-bottom: var(--space-2);
 }
@@ -109,7 +109,7 @@
 }
 .metricValue {
   font-size: var(--text-lg);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   font-family: var(--font-mono);
   color: var(--text-primary);
 }
@@ -225,5 +225,5 @@
 }
 .errorCount {
   color: var(--ctp-red) !important;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }

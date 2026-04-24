@@ -73,7 +73,7 @@
 .fileName {
   padding: var(--space-2) var(--space-4);
   font-size: var(--text-md);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   color: var(--text-secondary);
   font-family: var(--font-mono);
 }
