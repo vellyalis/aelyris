@@ -111,6 +111,7 @@
   font-size: var(--text-lg);
   font-weight: var(--weight-semibold);
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   color: var(--text-primary);
 }
 .metricLabel {
@@ -201,6 +202,7 @@
 }
 .toolCount {
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   color: var(--text-muted);
   width: 24px;
   text-align: right;
@@ -221,6 +223,7 @@
 }
 .statRow span:last-child {
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   color: var(--text-primary);
 }
 .errorCount {

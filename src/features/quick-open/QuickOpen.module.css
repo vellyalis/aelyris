@@ -19,7 +19,9 @@
   z-index: calc(var(--z-modal) + 1);
   width: var(--dialog-width-md);
   max-height: 480px;
-  background: var(--glass-thick);
+  /* Lens-edge caustic matches CommandPalette — the two typeahead dialogs
+     are designed as twins. */
+  background: var(--lens-edge), var(--glass-thick);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--border);

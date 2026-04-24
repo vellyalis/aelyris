@@ -20,7 +20,9 @@
   z-index: calc(var(--z-modal) + 1);
   width: 560px;
   max-height: 480px;
-  background: var(--glass-thick);
+  /* Stacked lens-edge gradient above the thick glass — gives the corners
+     a subtle chromatic caustic, mimicking Apple Liquid Glass edge refraction. */
+  background: var(--lens-edge), var(--glass-thick);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--border);

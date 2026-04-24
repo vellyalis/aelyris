@@ -427,6 +427,10 @@ body,
   background: var(--aether-bg);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
+  /* Recessed — the terminal sits inside the chrome, so an inner shadow
+     reads as a "sunken" well between the left/right glass rails.
+     Apple Liquid Glass uses this exact trick around scroll containers. */
+  box-shadow: var(--inset-recessed);
 }
 
 .right-panel {

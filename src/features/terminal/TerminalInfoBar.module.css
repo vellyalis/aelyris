@@ -45,6 +45,7 @@
   font-size: var(--text-xs);
   color: var(--white-40);
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -53,6 +54,7 @@
   font-size: var(--text-xs);
   color: var(--ctp-peach);
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
   flex-shrink: 0;
 }

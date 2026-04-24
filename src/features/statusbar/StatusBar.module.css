@@ -174,4 +174,7 @@
   align-items: center;
   justify-content: center;
   line-height: 1;
+  /* Tabular figures so pending / running / done counts line up column-wise
+   * as they change (Wave 3.1 typography polish). */
+  font-variant-numeric: tabular-nums;
 }
