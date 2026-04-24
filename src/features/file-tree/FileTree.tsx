@@ -6,6 +6,7 @@ import { showConfirm } from "../../shared/ui/ConfirmDialog";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { GitStatusPip } from "../../shared/ui/GitStatusPip";
 import { FileIcon } from "./FileIcon";
+import { flattenVisible, type FlatEntry } from "./flattenVisible";
 import { toast } from "../../shared/store/toastStore";
 import styles from "./FileTree.module.css";
 
@@ -37,45 +38,6 @@ interface TreeActions {
   onDelete: (path: string) => void;
   onOpenDiff?: (path: string) => void;
   changedSet: Set<string>;
-}
-
-interface FlatEntry {
-  name: string;
-  path: string;
-  is_dir: boolean;
-  file_type: string;
-  depth: number;
-  isOpen: boolean;
-  parent: string | null;
-}
-
-function flattenVisible(
-  root: string,
-  entries: Map<string, FileEntry[]>,
-  expanded: Set<string>,
-): FlatEntry[] {
-  const out: FlatEntry[] = [];
-  const walk = (dir: string, depth: number) => {
-    const items = entries.get(dir);
-    if (!items) return;
-    for (const item of items) {
-      const isOpen = expanded.has(item.path);
-      out.push({
-        name: item.name,
-        path: item.path,
-        is_dir: item.is_dir,
-        file_type: item.file_type,
-        depth,
-        isOpen,
-        parent: dir,
-      });
-      if (item.is_dir && isOpen) {
-        walk(item.path, depth + 1);
-      }
-    }
-  };
-  walk(root, 0);
-  return out;
 }
 
 // Fixed row height in the tree (mirrors .row { height: 22px } in
