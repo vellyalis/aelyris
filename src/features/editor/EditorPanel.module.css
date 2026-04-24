@@ -79,12 +79,15 @@
 .status { color: var(--text-muted); }
 .error { color: var(--ctp-red); }
 
-/* Markdown preview iframe */
+/* Markdown preview iframe — paint the iframe element with the app bg so there
+   is no white flash between the iframe mount and the srcdoc's body style
+   taking over (the inner body is transparent, but the iframe itself repaints
+   as white by default before first layout). */
 .mdPreview {
   flex: 1;
   width: 100%;
   border: none;
-  background: transparent;
+  background: var(--aether-bg);
 }
 
 /* ─── Diff Comments ─── */
@@ -123,6 +126,9 @@
   border-top: 1px solid var(--border);
 }
 .commentBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   font-size: var(--text-2xs); font-family: var(--font-mono);
   padding: var(--space-1) var(--space-3); border-radius: var(--radius-sm);
   background: var(--white-4); color: var(--text-muted);

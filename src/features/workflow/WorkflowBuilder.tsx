@@ -15,7 +15,7 @@ import {
   Position,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Download, Plus, Upload, X } from "lucide-react";
+import { Plus, Upload, X, Save, PlayCircle, ShieldCheck } from "lucide-react";
 import styles from "./WorkflowBuilder.module.css";
 
 // ── Custom node types ──
@@ -38,7 +38,10 @@ function PhaseNode({ data }: { data: PhaseData }) {
         <span className={styles.phaseCost}>${data.maxCost}</span>
       </div>
       {data.gateType && (
-        <div className={styles.phaseGate}>🚦 {data.gateType}</div>
+        <div className={styles.phaseGate}>
+          <ShieldCheck size={10} strokeWidth={1.75} aria-hidden="true" />
+          {data.gateType}
+        </div>
       )}
       <Handle type="source" position={Position.Right} className={styles.handle} />
     </div>
@@ -108,7 +111,7 @@ const PRESETS: { name: string; nodes: Node[]; edges: Edge[] }[] = [
 
 interface WorkflowBuilderProps {
   onClose: () => void;
-  onExport: (yaml: string) => void;
+  onExport: (yaml: string, opts?: { runAfterSave?: boolean }) => void;
 }
 
 export function WorkflowBuilder({ onClose, onExport }: WorkflowBuilderProps) {
@@ -140,7 +143,7 @@ export function WorkflowBuilder({ onClose, onExport }: WorkflowBuilderProps) {
     setWorkflowName(PRESETS[idx].name.split(" (")[0]);
   }, [setNodes, setEdges]);
 
-  const exportYaml = useCallback(() => {
+  const buildYaml = useCallback((): string => {
     const phaseNodes = nodes.filter((n) => n.type === "phase");
     const phases = phaseNodes.map((n) => {
       const d = n.data as unknown as PhaseData;
@@ -178,8 +181,16 @@ export function WorkflowBuilder({ onClose, onExport }: WorkflowBuilderProps) {
       }
     }
 
-    onExport(yamlLines.join("\n"));
-  }, [nodes, edges, workflowName, onExport]);
+    return yamlLines.join("\n");
+  }, [nodes, edges, workflowName]);
+
+  const exportYaml = useCallback(() => {
+    onExport(buildYaml());
+  }, [buildYaml, onExport]);
+
+  const saveAndRun = useCallback(() => {
+    onExport(buildYaml(), { runAfterSave: true });
+  }, [buildYaml, onExport]);
 
   const importYaml = useCallback(() => {
     const input = document.createElement("input");
@@ -276,7 +287,8 @@ export function WorkflowBuilder({ onClose, onExport }: WorkflowBuilderProps) {
           </div>
           <button className={styles.addBtn} onClick={addPhase}><Plus size={12} /> Phase</button>
           <button className={styles.exportBtn} onClick={importYaml}><Upload size={12} /> Import</button>
-          <button className={styles.exportBtn} onClick={exportYaml}><Download size={12} /> Export</button>
+          <button className={styles.exportBtn} onClick={exportYaml}><Save size={12} /> Save</button>
+          <button className={styles.runBtn} onClick={saveAndRun} title="Save then start a run"><PlayCircle size={12} /> Save &amp; Run</button>
           <button className={styles.closeBtn} onClick={onClose}><X size={14} /></button>
         </div>
         <div className={styles.canvas}>

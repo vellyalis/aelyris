@@ -31,15 +31,20 @@
 }
 .presetBtn:hover { background: var(--white-10); }
 
-.addBtn, .exportBtn {
-  display: flex; align-items: center; gap: 3px;
-  padding: var(--space-1) var(--space-4); border: none; border-radius: var(--radius-sm);
+.addBtn, .exportBtn, .runBtn {
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  padding: var(--space-2) var(--space-4); border: none; border-radius: var(--radius-sm);
   font-size: var(--text-xs); cursor: pointer;
+  font-family: var(--font-ui);
+  transition: background var(--duration-fast), opacity var(--duration-fast);
 }
 .addBtn { background: var(--white-6); color: var(--text-secondary); }
 .addBtn:hover { background: var(--white-10); }
-.exportBtn { background: var(--ctp-green); color: var(--ctp-base); font-weight: 600; }
-.exportBtn:hover { opacity: 0.85; }
+.exportBtn { background: var(--white-6); color: var(--text-secondary); }
+.exportBtn:hover { background: var(--white-10); color: var(--text-primary); }
+.runBtn { background: var(--gold); color: var(--aether-bg); font-weight: 600; }
+.runBtn:hover { opacity: 0.9; }
+.runBtn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 
 .closeBtn {
   background: none; border: none; color: var(--text-muted); cursor: pointer;
@@ -68,6 +73,7 @@
 .phaseModel { color: var(--ctp-blue); }
 .phaseCost { color: var(--ctp-peach); }
 .phaseGate {
+  display: flex; align-items: center; gap: var(--space-1);
   padding: 2px var(--space-4);
   font-size: var(--text-2xs); color: var(--ctp-yellow);
   border-top: 1px solid var(--border);

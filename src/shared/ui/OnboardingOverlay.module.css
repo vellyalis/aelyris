@@ -1,8 +1,12 @@
+/* Onboarding overlay — chrome matches PromptDialog (rgba 0.92 panel,
+   blur 20 / radius-lg / ease-out entrance). Only the step dots are specific
+   to this flow; everything else shares the dialog family. */
+
 .overlay {
   position: fixed;
   inset: 0;
   z-index: var(--z-modal);
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(var(--space-4));
   -webkit-backdrop-filter: blur(var(--space-4));
   display: flex;
@@ -11,25 +15,27 @@
 }
 
 .card {
-  width: 380px;
-  background: rgba(24, 24, 24, 0.95);
+  width: 420px;
+  background: rgba(24, 24, 24, 0.92);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--white-10);
   border-radius: var(--radius-lg);
   padding: var(--space-12);
-  box-shadow: var(--shadow-lg), var(--shadow-glow-gold);
+  box-shadow: var(--shadow-lg);
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
   text-align: center;
 }
 
-/* Position hints — for future pointer-based highlighting */
-.center { /* default center */ }
-.left { align-self: flex-start; margin-left: 280px; }
-.right { align-self: flex-end; margin-right: 300px; }
-.bottom { align-self: flex-end; margin-bottom: var(--space-16); }
+/* Position variants kept for future pointer-based highlighting, but snapped
+   back to the overlay's flex centering so the panel no longer floats against
+   a hardcoded margin (the magic 280/300px values pre-audit). */
+.center { }
+.left { }
+.right { }
+.bottom { }
 
 .stepIndicator {
   display: flex;
@@ -55,7 +61,7 @@
 }
 
 .title {
-  font-size: var(--text-2xl);
+  font-size: var(--text-xl);
   font-weight: var(--weight-semibold);
   color: var(--text-primary);
   font-family: var(--font-ui);
@@ -63,7 +69,7 @@
 }
 
 .description {
-  font-size: var(--text-lg);
+  font-size: var(--text-base);
   color: var(--text-secondary);
   font-family: var(--font-ui);
   line-height: var(--leading-relaxed);
@@ -84,22 +90,23 @@
 .actions {
   display: flex;
   gap: var(--space-4);
-  justify-content: center;
+  justify-content: flex-end;
   margin-top: var(--space-4);
 }
 
 .skipBtn {
   background: none;
-  border: none;
-  color: var(--text-muted);
+  border: 1px solid var(--white-10);
+  border-radius: var(--radius);
+  color: var(--text-secondary);
   font-size: var(--text-base);
   font-family: var(--font-ui);
   cursor: pointer;
-  padding: var(--space-3) var(--space-6);
-  border-radius: var(--radius);
-  transition: color var(--duration-fast);
+  padding: var(--space-2) var(--space-6);
+  transition: background var(--duration-fast), color var(--duration-fast);
 }
-.skipBtn:hover { color: var(--text-secondary); }
+.skipBtn:hover { background: var(--white-6); color: var(--text-primary); }
+.skipBtn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 
 .nextBtn {
   background: var(--gold);
@@ -108,12 +115,10 @@
   font-size: var(--text-base);
   font-weight: var(--weight-semibold);
   font-family: var(--font-ui);
-  padding: var(--space-3) var(--space-10);
+  padding: var(--space-2) var(--space-8);
   border-radius: var(--radius);
   cursor: pointer;
-  transition: box-shadow var(--duration-normal), transform var(--duration-fast);
+  transition: opacity var(--duration-fast);
 }
-.nextBtn:hover {
-  box-shadow: 0 var(--space-2) var(--space-6) rgba(200, 160, 80, 0.3), var(--shadow-glow-gold);
-  transform: translateY(-1px);
-}
+.nextBtn:hover { opacity: 0.9; }
+.nextBtn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }

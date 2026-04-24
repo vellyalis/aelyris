@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Play, CheckCircle, XCircle, Clock, ChevronRight, Loader, Workflow } from "lucide-react";
+import { Play, CheckCircle, XCircle, Clock, ChevronRight, Loader, Workflow, Check, X } from "lucide-react";
 import { toast } from "../../shared/store/toastStore";
 import { showPrompt } from "../../shared/ui/PromptDialog";
 import styles from "./WorkflowPanel.module.css";
@@ -59,17 +59,36 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
   const [builderOpen, setBuilderOpen] = useState(false);
   const [expandedPhase, setExpandedPhase] = useState<string | null>(null);
 
-  const handleExportYaml = useCallback(async (yaml: string) => {
+  const handleExportYaml = useCallback(async (yaml: string, opts?: { runAfterSave?: boolean }) => {
+    const filePath = `${projectPath}/.aether/workflows/custom-${Date.now()}.yaml`;
+    let saved = false;
     try {
-      const filePath = `${projectPath}/.aether/workflows/custom-${Date.now()}.yaml`;
       await invoke("write_file", { path: filePath, content: yaml });
-      toast.success("Workflow exported", filePath.split("/").pop());
+      toast.success("Workflow saved", filePath.split("/").pop());
+      saved = true;
     } catch (err) {
-      toast.error("Export failed", String(err));
+      toast.error("Save failed", String(err));
     }
     setBuilderOpen(false);
-    invoke<WorkflowSummary[]>("list_workflows", { projectPath }).then(setWorkflows).catch(() => {});
+    const refreshed = invoke<WorkflowSummary[]>("list_workflows", { projectPath })
+      .then((list) => { setWorkflows(list); return list; })
+      .catch(() => [] as WorkflowSummary[]);
+
+    if (saved && opts?.runAfterSave) {
+      const list = await refreshed;
+      const wf = list.find((w) => w.path === filePath) ?? list[list.length - 1];
+      if (wf) {
+        await handleStartRef.current?.(wf);
+      } else {
+        toast.error("Run failed", "Saved workflow did not reappear in the list");
+      }
+    }
   }, [projectPath]);
+
+  // handleStart is declared below (it depends on advancePhase which hasn't been
+  // declared yet), so we hand the latest closure to handleExportYaml through a
+  // ref to break the cycle without plumbing extra deps.
+  const handleStartRef = useRef<((wf: WorkflowSummary) => Promise<void>) | null>(null);
 
   // Load available workflows
   useEffect(() => {
@@ -146,6 +165,7 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
       toast.error("Workflow failed to start", String(e));
     }
   }, [projectPath, advancePhase]);
+  handleStartRef.current = handleStart;
 
   const handleApprove = useCallback(async (workflowId: string) => {
     const comment = await showPrompt("Approve phase", {
@@ -222,8 +242,22 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
                       {p.cost > 0 && <span className={styles.stepCost}>${p.cost.toFixed(2)}</span>}
                       {p.status === "waiting_gate" && (
                         <span className={styles.gateActions}>
-                          <button className={styles.approveBtn} onClick={(e) => { e.stopPropagation(); handleApprove(wf.id); }} title="Approve">✓</button>
-                          <button className={styles.rejectBtn} onClick={(e) => { e.stopPropagation(); handleReject(wf.id); }} title="Reject">✗</button>
+                          <button
+                            className={styles.approveBtn}
+                            onClick={(e) => { e.stopPropagation(); handleApprove(wf.id); }}
+                            title="Approve"
+                            aria-label="Approve gate"
+                          >
+                            <Check size={12} strokeWidth={2.25} aria-hidden="true" />
+                          </button>
+                          <button
+                            className={styles.rejectBtn}
+                            onClick={(e) => { e.stopPropagation(); handleReject(wf.id); }}
+                            title="Reject"
+                            aria-label="Reject gate"
+                          >
+                            <X size={12} strokeWidth={2.25} aria-hidden="true" />
+                          </button>
                         </span>
                       )}
                       {i < wf.phases.length - 1 && <span className={styles.arrow}>→</span>}

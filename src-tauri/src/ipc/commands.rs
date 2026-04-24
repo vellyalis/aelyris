@@ -673,7 +673,14 @@ pub fn git_diff_files(repo_path: String, file_paths: Vec<String>) -> Result<Vec<
 #[tauri::command]
 pub fn list_pull_requests(cwd: String) -> Result<Vec<PullRequestInfo>, String> {
     let output = std::process::Command::new("gh")
-        .args(["pr", "list", "--json", "number,title,state,author,headRefName,url", "--limit", "10"])
+        .args([
+            "pr",
+            "list",
+            "--json",
+            "number,title,state,author,headRefName,url,isDraft,updatedAt,reviewDecision,statusCheckRollup",
+            "--limit",
+            "10",
+        ])
         .current_dir(&cwd)
         .output()
         .map_err(|e| format!("gh CLI not found: {}", e))?;
@@ -692,6 +699,19 @@ pub struct PullRequestInfo {
     #[serde(rename = "headRefName")]
     pub head_ref_name: String,
     pub url: String,
+    #[serde(rename = "isDraft", default)]
+    pub is_draft: bool,
+    #[serde(rename = "updatedAt", default)]
+    pub updated_at: String,
+    /// `APPROVED` / `CHANGES_REQUESTED` / `REVIEW_REQUIRED` / `COMMENTED` / ``.
+    #[serde(rename = "reviewDecision", default)]
+    pub review_decision: String,
+    /// Each check entry has at minimum a `conclusion` ("SUCCESS" / "FAILURE" /
+    /// "NEUTRAL" / "CANCELLED" / "SKIPPED" / "TIMED_OUT" / "ACTION_REQUIRED")
+    /// and a `status` ("QUEUED" / "IN_PROGRESS" / "COMPLETED"). We keep it as
+    /// a JSON value and let the frontend aggregate.
+    #[serde(rename = "statusCheckRollup", default)]
+    pub status_check_rollup: serde_json::Value,
 }
 
 /// View a specific PR's diff

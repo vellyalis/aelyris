@@ -48,14 +48,20 @@
 .stepCost { color: var(--ctp-peach); }
 .arrow { color: var(--white-25); }
 
-.gateActions { display: inline-flex; gap: var(--space-1); margin-left: var(--space-1); }
+.gateActions { display: inline-flex; gap: var(--space-2); margin-left: var(--space-2); }
 .approveBtn, .rejectBtn {
-  background: none; border: none; cursor: pointer; font-size: var(--text-sm); padding: 0 var(--space-1);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px;
+  background: var(--white-4); border: 1px solid var(--white-10); cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background var(--duration-fast), border-color var(--duration-fast), color var(--duration-fast);
 }
 .approveBtn { color: var(--ctp-green); }
-.approveBtn:hover { color: var(--text-primary); }
+.approveBtn:hover { background: color-mix(in srgb, var(--ctp-green) 14%, transparent); border-color: var(--ctp-green); }
+.approveBtn:focus-visible { outline: 2px solid var(--ctp-green); outline-offset: 1px; }
 .rejectBtn { color: var(--ctp-red); }
-.rejectBtn:hover { color: var(--text-primary); }
+.rejectBtn:hover { background: color-mix(in srgb, var(--ctp-red) 14%, transparent); border-color: var(--ctp-red); }
+.rejectBtn:focus-visible { outline: 2px solid var(--ctp-red); outline-offset: 1px; }
 
 /* Icons */
 .iconMuted { color: var(--text-muted); }

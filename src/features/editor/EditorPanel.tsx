@@ -1,8 +1,9 @@
-import { useEffect, useState, useRef, useCallback, useMemo } from "react";
-import Editor, { DiffEditor, type OnMount } from "@monaco-editor/react";
+import { useEffect, useState, useRef, useCallback, useMemo, lazy, Suspense } from "react";
+import Editor, { type OnMount } from "@monaco-editor/react";
 import { invoke } from "@tauri-apps/api/core";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
+import { Wrench, Check, MessageSquare } from "lucide-react";
 import { EditorBreadcrumb } from "./EditorBreadcrumb";
 import { EditorStatusBar } from "./EditorStatusBar";
 import { DiffCommentInput } from "./DiffCommentInput";
@@ -12,10 +13,16 @@ import { getPalette, isLightTheme, monacoThemeColors } from "../../shared/themes
 import { useLsp, registerLspProviders } from "./lsp";
 import { toast } from "../../shared/store/toastStore";
 import { markBootOnce } from "../../shared/lib/bootMetrics";
+import { getMonoFontStack } from "../../shared/lib/fontStack";
+import { EmptyState } from "../../shared/ui/EmptyState";
 import { useGhostPaintForFile } from "./useGhostPaintForFile";
 import type { GhostEditor, MonacoNs } from "./ghostPaint";
 import type { LineRange } from "./ghostConflict";
 import styles from "./EditorPanel.module.css";
+
+const DiffViewer = lazy(() =>
+  import("../diff-viewer/DiffViewer").then((m) => ({ default: m.DiffViewer }))
+);
 
 interface DiffComment {
   lineNumber: number;
@@ -238,10 +245,8 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
     return () => window.removeEventListener("keydown", handler);
   }, [filePath]);
 
-  if (!filePath) return null;
-
-  const fileName = filePath.split("/").pop() ?? filePath;
-  const language = detectLanguage(filePath);
+  const fileName = filePath ? (filePath.split("/").pop() ?? filePath) : "";
+  const language = filePath ? detectLanguage(filePath) : "plaintext";
   const isMarkdown = language === "markdown";
 
   const renderedHtml = useMemo(() => {
@@ -249,6 +254,22 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
     const raw = marked.parse(content, { async: false }) as string;
     return DOMPurify.sanitize(raw);
   }, [isMarkdown, previewMode, content]);
+
+  const monoFontStack = useMemo(() => getMonoFontStack(), []);
+
+  if (!filePath) {
+    return (
+      <div className={styles.panel}>
+        <div className={styles.body}>
+          <EmptyState
+            preset="files"
+            title="No file open"
+            description="Select a file from the tree or press Ctrl+P to open one."
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.panel}>
@@ -435,7 +456,7 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
             onChange={() => { setModified(true); if (filePath) markUnsaved(filePath); }}
             options={{
               fontSize: 13,
-              fontFamily: "IBM Plex Mono, Cascadia Code, monospace",
+              fontFamily: monoFontStack,
               lineHeight: 20,
               minimap: { enabled: minimapEnabled },
               scrollBeyondLastLine: false,
@@ -459,43 +480,18 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
           />
         )}
         {content !== null && !loading && diffMode && (
-          <DiffEditor
-            original={originalContent ?? ""}
-            modified={content}
-            language={language}
-            theme="vs-dark"
-            options={{
-              readOnly: true,
-              renderSideBySide: true,
-              fontSize: 13,
-              fontFamily: "IBM Plex Mono, Cascadia Code, monospace",
-              lineHeight: 20,
-              minimap: { enabled: minimapEnabled },
-              scrollBeyondLastLine: false,
-              automaticLayout: true,
-              overviewRulerLanes: 0,
-            }}
-            beforeMount={(monaco) => {
-              monaco.editor.defineTheme("aether-theme", {
-                base: light ? "vs" : "vs-dark",
-                inherit: true,
-                rules: [],
-                colors: editorColors,
-              });
-              monaco.editor.setTheme("aether-theme");
-            }}
-            onMount={(editor) => {
-              // Click in glyph margin to add comment
-              const modifiedEditor = editor.getModifiedEditor();
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              modifiedEditor.onMouseDown((e: any) => {
-                if (e.target.type === 2 && e.target.position) { // GLYPH_MARGIN
-                  setCommentLine(e.target.position.lineNumber);
-                  setCommentText("");
-                }
-              });
-            }}
-          />
+          <Suspense fallback={<div className={styles.status}>Loading diff...</div>}>
+            <DiffViewer
+              original={originalContent ?? ""}
+              modified={content}
+              language={language}
+              fileName={fileName}
+              onGlyphMarginClick={(line) => {
+                setCommentLine(line);
+                setCommentText("");
+              }}
+            />
+          </Suspense>
         )}
         {/* Inline diff comment input */}
         {diffMode && commentLine !== null && (
@@ -517,11 +513,15 @@ export function EditorPanel({ filePath, onClose, projectPath, initialLine, initi
         {/* Comment badges */}
         {diffMode && diffComments.length > 0 && (
           <div className={styles.commentBadges}>
-            {diffComments.map((c, i) => (
-              <span key={i} className={styles.commentBadge} data-status={c.status} title={c.comment}>
-                L{c.lineNumber}: {c.status === "fixing" ? "🔧" : c.status === "resolved" ? "✓" : "💬"} {c.comment.slice(0, 30)}
-              </span>
-            ))}
+            {diffComments.map((c, i) => {
+              const Icon = c.status === "fixing" ? Wrench : c.status === "resolved" ? Check : MessageSquare;
+              return (
+                <span key={i} className={styles.commentBadge} data-status={c.status} title={c.comment}>
+                  <Icon size={10} strokeWidth={1.75} aria-hidden="true" />
+                  L{c.lineNumber}: {c.comment.slice(0, 30)}
+                </span>
+              );
+            })}
           </div>
         )}
       </div>

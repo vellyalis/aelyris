@@ -1,11 +1,13 @@
-.tree {
+.list {
   display: flex;
   flex-direction: column;
   padding: var(--space-4);
   gap: var(--space-1);
+  margin: 0;
+  list-style: none;
 }
 
-.node {
+.row {
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -15,33 +17,18 @@
   transition: background var(--duration-fast);
 }
 
-.node:hover {
+.row:hover {
   background: var(--white-6);
 }
 
-.nodeActive {
+.row:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 1px;
+}
+
+.rowActive {
   background: var(--white-4);
   border-left: 2px solid var(--gold);
-}
-
-.connector {
-  display: flex;
-  align-items: center;
-  width: 16px;
-  position: relative;
-}
-
-.line {
-  position: absolute;
-  left: 5px;
-  top: -10px;
-  width: 1px;
-  height: 10px;
-  background: var(--aether-border-strong);
-}
-
-.arrow {
-  color: var(--text-muted);
 }
 
 .name {
@@ -61,11 +48,4 @@
   background: var(--white-4);
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
-}
-
-.empty {
-  padding: var(--space-10);
-  text-align: center;
-  color: var(--text-muted);
-  font-size: var(--text-sm);
 }
