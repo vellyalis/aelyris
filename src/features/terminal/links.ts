@@ -24,9 +24,17 @@ const TRAILING_PUNCT = /[.,;:!?)\]}>'"]+$/u;
 export function scanLinks(snapshot: GridSnapshot | null): LinkSpan[] {
   if (!snapshot) return [];
 
-  const lines = buildLogicalLines(snapshot);
   const out: LinkSpan[] = [];
 
+  // OSC 8 explicit hyperlinks win over regex detection because they
+  // carry the shell's intended URI — that might differ from what the
+  // visible text looks like (e.g. `ls --hyperlink` renders filenames
+  // but the link points at file://). Emit them first so the click
+  // handler picks them up before the regex fallback would.
+  const osc8Spans = scanOsc8Hyperlinks(snapshot);
+  out.push(...osc8Spans);
+
+  const lines = buildLogicalLines(snapshot);
   for (const line of lines) {
     URL_REGEX.lastIndex = 0;
     let match: RegExpExecArray | null;
@@ -40,6 +48,10 @@ export function scanLinks(snapshot: GridSnapshot | null): LinkSpan[] {
       const startCell = line.positions[rawStart];
       const endCell = line.positions[rawEndExclusive - 1];
       if (!startCell || !endCell) continue;
+      // Skip this regex match if it lands on a cell that is already
+      // covered by an OSC 8 span — otherwise the same coordinates
+      // would carry two stacked LinkSpans with ambiguous click targets.
+      if (spanOverlapsOsc8(osc8Spans, startCell, endCell)) continue;
       out.push({
         url,
         startRow: startCell.row,
@@ -51,6 +63,57 @@ export function scanLinks(snapshot: GridSnapshot | null): LinkSpan[] {
   }
 
   return out;
+}
+
+function scanOsc8Hyperlinks(snapshot: GridSnapshot): LinkSpan[] {
+  const out: LinkSpan[] = [];
+  let open: LinkSpan | null = null;
+
+  for (let row = 0; row < snapshot.rows; row++) {
+    const cells = snapshot.cells[row];
+    if (!cells) continue;
+    for (let col = 0; col < cells.length; col++) {
+      const uri = cells[col].hyperlink;
+      if (!uri) {
+        if (open) {
+          out.push(open);
+          open = null;
+        }
+        continue;
+      }
+      if (open && open.url === uri) {
+        open.endRow = row;
+        open.endCol = col;
+      } else {
+        if (open) out.push(open);
+        open = { url: uri, startRow: row, startCol: col, endRow: row, endCol: col };
+      }
+    }
+    // Only close the run at row boundary when the row is NOT a wraparound
+    // continuation — otherwise a hyperlink that wraps to the next row
+    // stays merged as a single span.
+    const tail = cells[cells.length - 1];
+    if (!tail || !hasAttr(tail, CellAttr.WRAPLINE)) {
+      if (open) {
+        out.push(open);
+        open = null;
+      }
+    }
+  }
+  if (open) out.push(open);
+  return out;
+}
+
+function spanOverlapsOsc8(
+  osc8: readonly LinkSpan[],
+  start: { row: number; col: number },
+  end: { row: number; col: number },
+): boolean {
+  for (const s of osc8) {
+    const rowOverlap = !(end.row < s.startRow || start.row > s.endRow);
+    if (rowOverlap) return true;
+  }
+  return false;
 }
 
 export function linkAt(links: readonly LinkSpan[], row: number, col: number): LinkSpan | null {

@@ -114,6 +114,12 @@ pub struct CellSnapshot {
     pub fg: u32,
     pub bg: u32,
     pub attrs: u16,
+    /// OSC 8 explicit hyperlink attached to this cell. The vast majority
+    /// of cells have none, so `skip_serializing_if` keeps the wire payload
+    /// unchanged for typical shell output — a snapshot full of plain text
+    /// serialises byte-for-byte the same as before this field was added.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hyperlink: Option<String>,
 }
 
 impl CellSnapshot {
@@ -123,6 +129,7 @@ impl CellSnapshot {
             fg: encode_color(cell.fg),
             bg: encode_color(cell.bg),
             attrs: encode_flags(cell.flags),
+            hyperlink: cell.hyperlink().map(|h| h.uri().to_string()),
         }
     }
 
@@ -132,6 +139,7 @@ impl CellSnapshot {
             fg: encode_color(Color::Named(NamedColor::Foreground)),
             bg: encode_color(Color::Named(NamedColor::Background)),
             attrs: 0,
+            hyperlink: None,
         }
     }
 }
@@ -268,5 +276,43 @@ mod tests {
         let json = serde_json::to_string(&snap).expect("serialize");
         let parsed: GridSnapshot = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(parsed, snap);
+    }
+
+    #[test]
+    fn osc8_hyperlink_attaches_uri_to_cells_between_markers() {
+        // OSC 8 format: `ESC ] 8 ; params ; uri ST text ESC ] 8 ; ; ST`.
+        // Params are usually empty — the `id=` key exists but most shells
+        // omit it. The closing marker has empty params AND empty URI.
+        let mut engine = TermEngine::new(20, 2).expect("engine");
+        engine.advance_str("\x1b]8;;https://example.com\x1b\\LINK\x1b]8;;\x1b\\ rest");
+        let snap = engine.snapshot();
+
+        // The four LINK characters must carry the URI; the space after and
+        // "rest" must not.
+        for col in 0..4 {
+            let cell = &snap.cells[0][col];
+            assert_eq!(
+                cell.hyperlink.as_deref(),
+                Some("https://example.com"),
+                "cell {col} ({:?}) should carry hyperlink",
+                cell.ch
+            );
+        }
+        for col in 4..snap.cols as usize {
+            let cell = &snap.cells[0][col];
+            assert!(cell.hyperlink.is_none(), "cell {col} ({:?}) must not carry hyperlink", cell.ch);
+        }
+    }
+
+    #[test]
+    fn snapshot_json_omits_absent_hyperlink_field() {
+        // Wire-format hygiene: adding the field must not inflate every
+        // plain-text cell. Cells without a hyperlink serialise without
+        // the key entirely thanks to skip_serializing_if.
+        let mut engine = TermEngine::new(2, 1).expect("engine");
+        engine.advance_str("ab");
+        let snap = engine.snapshot();
+        let json = serde_json::to_string(&snap).expect("serialize");
+        assert!(!json.contains("hyperlink"), "expected absent field, got: {json}");
     }
 }

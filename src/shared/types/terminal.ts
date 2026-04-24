@@ -62,6 +62,14 @@ export interface CellSnapshot {
   fg: number;
   bg: number;
   attrs: number;
+  /**
+   * OSC 8 explicit hyperlink URI for this cell. Absent on cells without
+   * an attached hyperlink (most of them). Shells emit these when they
+   * want *a specific URL* to be clickable regardless of the rendered
+   * text — e.g. `ls --hyperlink`, `git log --color=always` with
+   * hyperlinked hashes, or build tools that link error locations.
+   */
+  hyperlink?: string;
 }
 
 export interface CursorSnapshot {
