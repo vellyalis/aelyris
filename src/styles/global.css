@@ -563,6 +563,25 @@ button:disabled,
   animation: statusBreathe 3s var(--ease-breath) infinite;
 }
 
+/* Ambient phase — slower, subtler breathing once the initial pulse window
+ * has passed. See src/shared/hooks/useAttenuatedPulse.ts for the two-phase
+ * rationale (attention → ambient liveness). The scale delta is deliberately
+ * tiny (1.02) so the animation reads as peripheral presence, not movement. */
+@keyframes statusAmbient {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.02);
+    opacity: 0.85;
+  }
+}
+.status-ambient {
+  animation: statusAmbient 10s var(--ease-breath) infinite;
+}
+
 /* Loading skeleton shimmer */
 @keyframes shimmer {
   0% {

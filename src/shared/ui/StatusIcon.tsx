@@ -1,4 +1,5 @@
 import { memo } from "react";
+import { useAttenuatedPulse } from "../hooks/useAttenuatedPulse";
 import type { AgentStatus } from "../types/agent";
 import { STATUS_COLORS } from "../types/agent";
 
@@ -14,7 +15,7 @@ const ICON_PATHS: Record<AgentStatus, string> = {
   generating: "M7 2v11h3v9l7-12h-4l4-8z",
 };
 
-const ANIM_CLASS: Partial<Record<AgentStatus, string>> = {
+const ACTIVE_CLASS: Partial<Record<AgentStatus, string>> = {
   thinking: "status-pulse",
   coding: "status-breathe",
   generating: "status-pulse-fast",
@@ -27,8 +28,14 @@ interface StatusIconProps {
 
 export const StatusIcon = memo(function StatusIcon({ status, size = 12 }: StatusIconProps) {
   const color = STATUS_COLORS[status];
+  const isAnimated = status in ACTIVE_CLASS;
+  const phase = useAttenuatedPulse(isAnimated);
+
+  const animClass =
+    phase === "active" ? ACTIVE_CLASS[status] : phase === "ambient" ? "status-ambient" : undefined;
+
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill={color} className={ANIM_CLASS[status]}>
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color} className={animClass}>
       <path d={ICON_PATHS[status]} />
     </svg>
   );

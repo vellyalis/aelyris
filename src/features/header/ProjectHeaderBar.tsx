@@ -1,5 +1,6 @@
 import { RefreshCw, Settings } from "lucide-react";
 import logoSvg from "../../assets/logo.svg";
+import { useAttenuatedPulse } from "../../shared/hooks/useAttenuatedPulse";
 import styles from "./ProjectHeaderBar.module.css";
 
 interface ProjectHeaderBarProps {
@@ -56,6 +57,9 @@ export function ProjectHeaderBar({
   };
 
   const { color, label } = STATUS_META[status] ?? STATUS_META.idle;
+  const pulsePhase = useAttenuatedPulse(status !== "idle");
+  const dotPulseClass =
+    pulsePhase === "active" ? styles.dotPulse : pulsePhase === "ambient" ? styles.dotAmbient : "";
 
   return (
     <div className={styles.header} data-tauri-drag-region>
@@ -72,7 +76,7 @@ export function ProjectHeaderBar({
           <div className={styles.bottomRow}>
             <span className={styles.status}>
               <span
-                className={`${styles.dot} ${status !== "idle" ? styles.dotPulse : ""}`}
+                className={`${styles.dot} ${dotPulseClass}`}
                 style={{ background: color }}
               />
               <span className={styles.statusLabel}>{label}</span>

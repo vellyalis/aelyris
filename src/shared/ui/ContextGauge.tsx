@@ -1,4 +1,5 @@
 import { memo } from "react";
+import { useAttenuatedPulse } from "../hooks/useAttenuatedPulse";
 import styles from "./ContextGauge.module.css";
 
 interface ContextGaugeProps {
@@ -16,11 +17,18 @@ function gaugeColor(pct: number): string {
 export const ContextGauge = memo(function ContextGauge({ percent, width = 60 }: ContextGaugeProps) {
   const color = gaugeColor(percent);
   const isCritical = percent >= 95;
+  const pulsePhase = useAttenuatedPulse(isCritical);
+  const barPulseClass =
+    pulsePhase === "active"
+      ? styles.barCritical
+      : pulsePhase === "ambient"
+        ? styles.barCriticalAmbient
+        : "";
   return (
     <div className={styles.gauge} style={{ width }}>
       <div className={styles.track}>
         <div
-          className={`${styles.bar} ${isCritical ? styles.barCritical : ""}`}
+          className={`${styles.bar} ${barPulseClass}`}
           style={{ width: `${Math.min(100, percent)}%`, background: color }}
         />
       </div>

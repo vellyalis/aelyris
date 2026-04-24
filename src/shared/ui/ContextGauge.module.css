@@ -24,6 +24,10 @@
   animation: pulse-critical 1s ease-in-out infinite;
 }
 
+.barCriticalAmbient {
+  animation: pulse-critical-ambient 5s ease-in-out infinite;
+}
+
 @keyframes pulse-critical {
   0%,
   100% {
@@ -31,6 +35,20 @@
   }
   50% {
     opacity: 0.5;
+  }
+}
+
+/* Ambient phase for critical context — 5× slower than the attention pulse,
+ * shallower depth. After the initial 30 s of fast pulsing the user has
+ * seen the warning; continuing to flash at 1 Hz is noise. Ambient mode
+ * keeps the signal visible without hammering the compositor. */
+@keyframes pulse-critical-ambient {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.75;
   }
 }
 

@@ -89,6 +89,10 @@
   animation: statusPulse 2s var(--ease-silk) infinite;
 }
 
+.dotAmbient {
+  animation: statusAmbient 10s var(--ease-breath) infinite;
+}
+
 .statusLabel {
   font-size: var(--text-xs);
   color: var(--text-muted);
