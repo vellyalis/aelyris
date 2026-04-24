@@ -427,10 +427,10 @@ body,
   background: var(--aether-bg);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  /* Recessed — the terminal sits inside the chrome, so an inner shadow
-     reads as a "sunken" well between the left/right glass rails.
-     Apple Liquid Glass uses this exact trick around scroll containers. */
-  box-shadow: var(--inset-recessed);
+  /* NOTE: inset-recessed was tried here (2026-04-24 Wave 3.2) to imply a
+   * sunken terminal well, but on a transparent surface over Mica it just
+   * painted a dark overlay and grayed out the whole terminal. Reverted —
+   * the terminal should pass Mica through untouched. */
 }
 
 .right-panel {
