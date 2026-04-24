@@ -22,16 +22,21 @@
 //! cloned, not consumed) but input/resize will race — a broadcast layer is
 //! deferred to v2.
 
+use std::collections::HashMap;
 use std::io::Read;
-use std::net::SocketAddr;
-use std::sync::Arc;
+use std::net::{IpAddr, SocketAddr};
+use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use axum::{
     extract::{
         ws::{Message, WebSocket},
-        Path, Request, State, WebSocketUpgrade,
+        ConnectInfo, Path, Request, State, WebSocketUpgrade,
     },
-    http::{header, StatusCode},
+    http::{
+        header::{self, AUTHORIZATION, CONTENT_TYPE},
+        HeaderValue, Method, StatusCode,
+    },
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{delete, get, post},
@@ -41,6 +46,7 @@ use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::sync::Notify;
+use tower_http::cors::{AllowOrigin, CorsLayer};
 
 use crate::pty::{PtyError, PtyManager, ShellType, TerminalInfo};
 
@@ -52,6 +58,22 @@ pub const DEFAULT_PORT: u16 = 9333;
 /// session count (which includes UI-spawned sessions) since the underlying
 /// resource pool is shared.
 pub const MAX_PTY_SESSIONS: usize = 32;
+
+/// Default allowed CORS origin — the Tauri dev server. In release builds the
+/// webview loads from `tauri://localhost` which does not send `Origin` so is
+/// unaffected by CORS; the list only matters for browser clients. Override
+/// via `AETHER_API_CORS_ORIGIN` (comma-separated, e.g. `https://foo,https://bar`).
+pub const DEFAULT_CORS_ORIGIN: &str = "http://127.0.0.1:1420";
+
+/// REST rate-limit bucket: 60 token burst, refill at 1 token/sec → 60 req/min
+/// steady-state, bursts up to 60 requests instantly.
+pub const REST_BURST: f64 = 60.0;
+pub const REST_REFILL_PER_SEC: f64 = 1.0;
+
+/// WebSocket connect bucket: 3 token burst, refill at 1 token/sec → 1 WS
+/// upgrade/sec steady-state, small burst for UI reconnect storms.
+pub const WS_BURST: f64 = 3.0;
+pub const WS_REFILL_PER_SEC: f64 = 1.0;
 
 // ─── State ──────────────────────────────────────────────────────────────────
 
@@ -68,6 +90,14 @@ pub struct ApiState {
     /// 400. Defaulted from `MAX_PTY_SESSIONS`; overridable so integration
     /// tests can force the limit cheaply.
     pub max_sessions: usize,
+    /// Per-IP rate limiter shared across handlers. Clone is cheap (just
+    /// bumps an `Arc`), and the internal state is `Mutex`-guarded.
+    pub rate_limiter: Arc<RateLimiter>,
+    /// Allowed CORS origins. Applied as a `tower_http::cors::CorsLayer` in
+    /// `router()`. Defaulted from `AETHER_API_CORS_ORIGIN`; browser clients
+    /// from other origins get no `Access-Control-Allow-Origin` header and
+    /// will fail the preflight.
+    pub cors_origins: Vec<HeaderValue>,
 }
 
 impl ApiState {
@@ -77,6 +107,8 @@ impl ApiState {
             auth,
             shutdown: Arc::new(Notify::new()),
             max_sessions: MAX_PTY_SESSIONS,
+            rate_limiter: Arc::new(RateLimiter::new()),
+            cors_origins: default_cors_origins(),
         }
     }
 
@@ -87,10 +119,263 @@ impl ApiState {
         self
     }
 
+    /// Swap the rate limiter. Used by integration tests that want either
+    /// `RateLimiter::unlimited()` (most tests) or a tight-burst config
+    /// (rate-limit tests).
+    pub fn with_rate_limiter(mut self, rl: Arc<RateLimiter>) -> Self {
+        self.rate_limiter = rl;
+        self
+    }
+
+    /// Override the CORS origin list. Used by tests to assert preflight
+    /// behaviour without mutating the process env.
+    pub fn with_cors_origins(mut self, origins: Vec<HeaderValue>) -> Self {
+        self.cors_origins = origins;
+        self
+    }
+
     /// Signal the running server to stop gracefully. Safe to call even if no
     /// server is running — the Notify is just dropped.
     pub fn trigger_shutdown(&self) {
         self.shutdown.notify_waiters();
+    }
+}
+
+/// Read the comma-separated `AETHER_API_CORS_ORIGIN` env var. Individual
+/// typos are logged at `warn` and skipped. If the entire list fails to
+/// parse, we fall back to the dev-server default rather than leave the
+/// server with a zero-origin allow-list (which silently breaks every
+/// browser client). Returns the dev-server default when unset / empty.
+fn default_cors_origins() -> Vec<HeaderValue> {
+    match std::env::var("AETHER_API_CORS_ORIGIN") {
+        Ok(s) if !s.trim().is_empty() => {
+            let parsed: Vec<HeaderValue> = s
+                .split(',')
+                .filter_map(|raw| {
+                    let trimmed = raw.trim();
+                    match HeaderValue::from_str(trimmed) {
+                        Ok(v) => Some(v),
+                        Err(_) => {
+                            log::warn!(
+                                "api: AETHER_API_CORS_ORIGIN entry {:?} is not a valid \
+                                 HeaderValue — dropping",
+                                trimmed
+                            );
+                            None
+                        }
+                    }
+                })
+                .collect();
+            if parsed.is_empty() {
+                log::warn!(
+                    "api: AETHER_API_CORS_ORIGIN parsed to zero valid origins — \
+                     falling back to {}",
+                    DEFAULT_CORS_ORIGIN
+                );
+                vec![HeaderValue::from_static(DEFAULT_CORS_ORIGIN)]
+            } else {
+                parsed
+            }
+        }
+        _ => vec![HeaderValue::from_static(DEFAULT_CORS_ORIGIN)],
+    }
+}
+
+// ─── Rate limiter ───────────────────────────────────────────────────────────
+
+/// Hard cap on the number of distinct peer-IP entries tracked by the rate
+/// limiter. An attacker walking a wide IP range (or a NAT that rotates
+/// source addresses) cannot force unbounded memory growth: once we hit the
+/// cap, insertion of a new IP evicts the oldest entry (FIFO). Chosen to
+/// absorb realistic NAT / VPN churn without meaningful memory cost —
+/// 4096 × ~56 B ≈ 230 KiB.
+pub const MAX_RATE_LIMIT_IPS: usize = 4096;
+
+/// Per-IP token-bucket rate limiter with two independent buckets — one for
+/// REST requests, one for WebSocket upgrades. Buckets are keyed on the peer
+/// IP from the TCP connection (see `ConnectInfo<SocketAddr>`). The peer IP
+/// comes from the TCP layer — we deliberately do NOT read `X-Forwarded-For`
+/// or `X-Real-IP`. If this server is ever put behind a reverse proxy, the
+/// rate-limit key collapses to the proxy's IP and must be replaced by a
+/// `rightmost-trusted-proxy` strategy with an explicit trusted CIDR list.
+///
+/// Scope choice: we key on IP rather than on token because the current API
+/// is a single-token deployment — keying on token would be a global rate
+/// limit. A future multi-tenant revision can swap the key type without
+/// changing the handler side.
+///
+/// Eviction: bounded at `MAX_RATE_LIMIT_IPS` with FIFO eviction. Restart
+/// wipes the state.
+pub struct RateLimiter {
+    inner: Mutex<RateLimiterInner>,
+    rest_burst: f64,
+    rest_refill_per_sec: f64,
+    ws_burst: f64,
+    ws_refill_per_sec: f64,
+    max_ips: usize,
+    /// When true, `check_*` short-circuits to `true` and never touches the
+    /// bucket map. Used by tests that care about functional correctness,
+    /// not throttling. Prefer this over "infinite burst" configs — it
+    /// removes all floating-point magnitude fragility.
+    bypass: bool,
+}
+
+struct RateLimiterInner {
+    buckets: HashMap<IpAddr, Bucket>,
+    /// FIFO insertion order for eviction. Invariant: exactly the same
+    /// set of keys as `buckets`.
+    order: std::collections::VecDeque<IpAddr>,
+}
+
+struct Bucket {
+    rest_tokens: f64,
+    ws_tokens: f64,
+    last_refill: Instant,
+}
+
+impl RateLimiter {
+    /// Production defaults: 60 REST req/min (burst 60), 1 WS upgrade/sec
+    /// (burst 3), cap `MAX_RATE_LIMIT_IPS` tracked IPs.
+    pub fn new() -> Self {
+        Self {
+            inner: Mutex::new(RateLimiterInner {
+                buckets: HashMap::new(),
+                order: std::collections::VecDeque::new(),
+            }),
+            rest_burst: REST_BURST,
+            rest_refill_per_sec: REST_REFILL_PER_SEC,
+            ws_burst: WS_BURST,
+            ws_refill_per_sec: WS_REFILL_PER_SEC,
+            max_ips: MAX_RATE_LIMIT_IPS,
+            bypass: false,
+        }
+    }
+
+    /// Test helper: never rate-limits. `check_*` returns `true` without
+    /// touching the bucket map, so tests are immune to floating-point
+    /// magnitude concerns.
+    pub fn unlimited() -> Self {
+        Self {
+            inner: Mutex::new(RateLimiterInner {
+                buckets: HashMap::new(),
+                order: std::collections::VecDeque::new(),
+            }),
+            rest_burst: 0.0,
+            rest_refill_per_sec: 0.0,
+            ws_burst: 0.0,
+            ws_refill_per_sec: 0.0,
+            max_ips: MAX_RATE_LIMIT_IPS,
+            bypass: true,
+        }
+    }
+
+    /// Test helper: tight config for rate-limit assertions. Accepts `f64`
+    /// directly to avoid lossy casts — callers pass literals like `2.0`.
+    pub fn with_limits(
+        rest_burst: f64,
+        rest_refill_per_sec: f64,
+        ws_burst: f64,
+        ws_refill_per_sec: f64,
+    ) -> Self {
+        Self {
+            inner: Mutex::new(RateLimiterInner {
+                buckets: HashMap::new(),
+                order: std::collections::VecDeque::new(),
+            }),
+            rest_burst,
+            rest_refill_per_sec,
+            ws_burst,
+            ws_refill_per_sec,
+            max_ips: MAX_RATE_LIMIT_IPS,
+            bypass: false,
+        }
+    }
+
+    pub fn check_rest(&self, ip: IpAddr) -> bool {
+        if self.bypass {
+            return true;
+        }
+        // Snapshot `Instant::now()` outside the critical section — HPET /
+        // TSC queries can take 50–300 ns on Windows, no reason to hold a
+        // contended Mutex across that.
+        let now = Instant::now();
+        let mut inner = self.inner.lock().unwrap();
+        let inserted = self.touch(&mut inner, ip, now);
+        let b = inner.buckets.get_mut(&ip).expect("touch populated bucket");
+        if !inserted {
+            self.refill(b, now);
+        }
+        if b.rest_tokens >= 1.0 {
+            b.rest_tokens -= 1.0;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn check_ws(&self, ip: IpAddr) -> bool {
+        if self.bypass {
+            return true;
+        }
+        let now = Instant::now();
+        let mut inner = self.inner.lock().unwrap();
+        let inserted = self.touch(&mut inner, ip, now);
+        let b = inner.buckets.get_mut(&ip).expect("touch populated bucket");
+        if !inserted {
+            self.refill(b, now);
+        }
+        if b.ws_tokens >= 1.0 {
+            b.ws_tokens -= 1.0;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Ensure a bucket exists for `ip`, evicting the oldest entry if we
+    /// would exceed `max_ips`. Returns `true` when a fresh bucket was
+    /// inserted (so caller skips `refill`, since the bucket is already at
+    /// full burst).
+    fn touch(&self, inner: &mut RateLimiterInner, ip: IpAddr, now: Instant) -> bool {
+        if inner.buckets.contains_key(&ip) {
+            return false;
+        }
+        if inner.order.len() >= self.max_ips {
+            if let Some(oldest) = inner.order.pop_front() {
+                inner.buckets.remove(&oldest);
+            }
+        }
+        inner.buckets.insert(
+            ip,
+            Bucket {
+                rest_tokens: self.rest_burst,
+                ws_tokens: self.ws_burst,
+                last_refill: now,
+            },
+        );
+        inner.order.push_back(ip);
+        true
+    }
+
+    fn refill(&self, b: &mut Bucket, now: Instant) {
+        let dt = now.duration_since(b.last_refill).as_secs_f64();
+        b.rest_tokens = (b.rest_tokens + dt * self.rest_refill_per_sec).min(self.rest_burst);
+        b.ws_tokens = (b.ws_tokens + dt * self.ws_refill_per_sec).min(self.ws_burst);
+        b.last_refill = now;
+    }
+
+    /// Number of distinct IPs currently held in the bucket map. Exposed for
+    /// testing the FIFO eviction behaviour from both unit and integration
+    /// tests; not part of the stable API.
+    #[doc(hidden)]
+    pub fn tracked_ip_count(&self) -> usize {
+        self.inner.lock().unwrap().order.len()
+    }
+}
+
+impl Default for RateLimiter {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -182,33 +467,66 @@ async fn auth_middleware(
         .headers()
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok());
-    if state.auth.verify(header) {
-        return Ok(next.run(req).await);
+    let is_ws = req.uri().path().ends_with("/stream");
+
+    let authorized = if state.auth.verify(header) {
+        true
+    } else if is_ws {
+        // Query-string fallback: browsers and Node's built-in WebSocket can't
+        // set custom headers on the upgrade request, so we also accept
+        // `?token=<t>` on WS endpoints. Everywhere else the header path is
+        // the only supported form.
+        //
+        // SECURITY NOTE: URLs tend to leak into logs (access logs,
+        // reverse-proxy logs, `RUST_LOG` trace output). We do not log request
+        // URIs anywhere in this module, but future additions must scrub
+        // `?token=` before emitting any log line that includes a full URI.
+        req.uri()
+            .query()
+            .map(|q| {
+                q.split('&').any(|pair| {
+                    pair.strip_prefix("token=")
+                        .map(|raw| state.auth.verify_token(&percent_decode(raw)))
+                        .unwrap_or(false)
+                })
+            })
+            .unwrap_or(false)
+    } else {
+        false
+    };
+
+    if !authorized {
+        return Err(ApiError::Unauthorized);
     }
 
-    // Query-string fallback: browsers and Node's built-in WebSocket can't
-    // set custom headers on the upgrade request, so we also accept
-    // `?token=<t>` on WS endpoints. Everywhere else the header path is the
-    // only supported form.
+    // Rate limit AFTER auth so unauthenticated traffic doesn't populate the
+    // bucket map (and so a 401 never gets masked as 429). Key by peer IP;
+    // `ConnectInfo` is populated by `into_make_service_with_connect_info::<SocketAddr>`
+    // in `serve_on_listener`. Fallback to loopback if the extension is
+    // missing (happens in tests that poke the router directly without going
+    // through a real TCP connection — those should use `RateLimiter::unlimited()`).
     //
-    // SECURITY NOTE: URLs tend to leak into logs (access logs, reverse-proxy
-    // logs, `RUST_LOG` trace output). We do not log request URIs anywhere
-    // in this module, but future additions must scrub `?token=` before
-    // emitting any log line that includes a full URI.
-    if req.uri().path().ends_with("/stream") {
-        if let Some(q) = req.uri().query() {
-            for pair in q.split('&') {
-                if let Some(raw) = pair.strip_prefix("token=") {
-                    let decoded = percent_decode(raw);
-                    if state.auth.verify_token(&decoded) {
-                        return Ok(next.run(req).await);
-                    }
-                }
-            }
-        }
+    // WARNING — reverse-proxy deployments: this intentionally uses the TCP
+    // peer IP only. Do NOT switch to `X-Forwarded-For` / `X-Real-IP` without
+    // also introducing a trusted-proxy CIDR list: a naive XFF read lets any
+    // authenticated client forge their own rate-limit key and bypass the
+    // limiter. See `docs/phase3/3d-1-v2-plan.md` v2d for the right fix if
+    // this server is ever exposed behind a reverse proxy.
+    let ip = req
+        .extensions()
+        .get::<ConnectInfo<SocketAddr>>()
+        .map(|ci| ci.0.ip())
+        .unwrap_or(IpAddr::from([127, 0, 0, 1]));
+    let allowed = if is_ws {
+        state.rate_limiter.check_ws(ip)
+    } else {
+        state.rate_limiter.check_rest(ip)
+    };
+    if !allowed {
+        return Err(ApiError::RateLimited);
     }
 
-    Err(ApiError::Unauthorized)
+    Ok(next.run(req).await)
 }
 
 /// Minimal `%xx` percent-decoder for the query-string token path. We don't
@@ -255,6 +573,9 @@ pub enum ApiError {
     #[error("unauthorized")]
     Unauthorized,
 
+    #[error("rate limit exceeded")]
+    RateLimited,
+
     #[error("internal error: {0}")]
     Internal(String),
 }
@@ -271,6 +592,7 @@ impl IntoResponse for ApiError {
             ApiError::NotFound(_) => (StatusCode::NOT_FOUND, "not_found"),
             ApiError::BadRequest(_) => (StatusCode::BAD_REQUEST, "bad_request"),
             ApiError::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized"),
+            ApiError::RateLimited => (StatusCode::TOO_MANY_REQUESTS, "rate_limited"),
             ApiError::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "internal"),
         };
         (
@@ -298,7 +620,13 @@ fn map_pty_err(id: &str, e: PtyError) -> ApiError {
 
 /// Build the router. Exposed so integration tests can drive it with a custom
 /// listener / state without going through the TCP bind path.
+///
+/// Layer order (outermost first): `CorsLayer` → auth+rate-limit middleware →
+/// handlers. This means OPTIONS preflight requests are answered by the CORS
+/// layer before the auth check, so browsers can discover allowed methods
+/// without a token.
 pub fn router(state: ApiState) -> Router {
+    let cors = build_cors_layer(&state.cors_origins);
     Router::new()
         .route("/sessions", post(create_session).get(list_sessions))
         .route("/sessions/:id", delete(close_session))
@@ -309,6 +637,18 @@ pub fn router(state: ApiState) -> Router {
             auth_middleware,
         ))
         .with_state(state)
+        .layer(cors)
+}
+
+/// CORS policy: allow the configured origins only, restrict methods to the
+/// REST surface we actually expose, and allow the two headers clients send
+/// (`Authorization` for the bearer token, `Content-Type` for JSON bodies).
+/// Credentials are not enabled — the API is token-based, not cookie-based.
+fn build_cors_layer(origins: &[HeaderValue]) -> CorsLayer {
+    CorsLayer::new()
+        .allow_origin(AllowOrigin::list(origins.iter().cloned()))
+        .allow_methods([Method::GET, Method::POST, Method::DELETE])
+        .allow_headers([AUTHORIZATION, CONTENT_TYPE])
 }
 
 /// Bind `127.0.0.1:port` and serve until the state's shutdown Notify fires.
@@ -320,12 +660,13 @@ pub async fn serve(state: ApiState, port: u16) -> std::io::Result<()> {
 }
 
 /// Serve on a pre-bound listener. Used by tests that want an OS-assigned port.
+/// Populates `ConnectInfo<SocketAddr>` so the rate limiter can key on peer IP.
 pub async fn serve_on_listener(
     state: ApiState,
     listener: tokio::net::TcpListener,
 ) -> std::io::Result<()> {
     let shutdown = state.shutdown.clone();
-    let app = router(state);
+    let app = router(state).into_make_service_with_connect_info::<SocketAddr>();
     axum::serve(listener, app)
         .with_graceful_shutdown(async move {
             shutdown.notified().await;
@@ -644,6 +985,9 @@ mod tests {
 
         let r = ApiError::Unauthorized.into_response();
         assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+
+        let r = ApiError::RateLimited.into_response();
+        assert_eq!(r.status(), StatusCode::TOO_MANY_REQUESTS);
 
         let r = ApiError::Internal("x".into()).into_response();
         assert_eq!(r.status(), StatusCode::INTERNAL_SERVER_ERROR);
