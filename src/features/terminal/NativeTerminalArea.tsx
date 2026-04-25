@@ -13,7 +13,16 @@ import { useAICliDetection } from "./hooks/useAICliDetection";
 import { useInputMirror } from "./hooks/useInputMirror";
 import { IMEInputBar, type IMEInputBarHandle } from "./IMEInputBar";
 import { openTerminalUrlWith } from "./openTerminalUrl";
-import { findMatches, nextMatch, previousMatch, type SearchMatch } from "./search";
+import {
+  type AnyMatch,
+  combineMatches,
+  findMatches,
+  nextMatch,
+  previousMatch,
+  scrollOffsetForMatch,
+  type SearchMatch,
+} from "./search";
+import { useHistorySearch } from "../../shared/hooks/useHistorySearch";
 import styles from "./TerminalArea.module.css";
 import { TerminalCanvas, type TerminalNav } from "./TerminalCanvas";
 
@@ -470,7 +479,20 @@ export function NativeTerminalArea({
   const [activeMatchIdx, setActiveMatchIdx] = useState<number | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  const searchMatches: SearchMatch[] = useMemo(() => findMatches(snapshot, searchQuery), [snapshot, searchQuery]);
+  const liveMatches: SearchMatch[] = useMemo(
+    () => findMatches(snapshot, searchQuery),
+    [snapshot, searchQuery],
+  );
+  // Backend pass returns history matches once the user pauses typing
+  // (default 120 ms debounce inside the hook). When the active terminal
+  // changes mid-search the hook resets, so an empty array is the right
+  // safe default.
+  const historyMatches = useHistorySearch(terminalId, searchQuery);
+
+  const searchMatches: AnyMatch[] = useMemo(
+    () => combineMatches(liveMatches, historyMatches),
+    [liveMatches, historyMatches],
+  );
 
   useEffect(() => {
     if (searchMatches.length === 0) {
@@ -485,6 +507,30 @@ export function NativeTerminalArea({
   }, [searchMatches]);
 
   const activeSearchMatch = activeMatchIdx !== null ? (searchMatches[activeMatchIdx] ?? null) : null;
+
+  // Scroll the canvas into view whenever the active match's anchor moves
+  // from a live row into history or vice versa. Watching the anchor key
+  // rather than the index avoids repeated scrolls when the user just
+  // re-types the same query and indices renumber.
+  const activeAnchor = activeSearchMatch
+    ? activeSearchMatch.kind === "history"
+      ? `h:${activeSearchMatch.historyIndex}`
+      : `l:${activeSearchMatch.row}`
+    : null;
+  useEffect(() => {
+    if (!activeSearchMatch) return;
+    const nav = navRef.current;
+    if (!nav) return;
+    if (activeSearchMatch.kind === "history") {
+      nav.scrollToOffset(scrollOffsetForMatch(activeSearchMatch, dims?.rows ?? 24));
+    } else {
+      nav.scrollToLive();
+    }
+    // We intentionally key off the anchor string, not the match object,
+    // so identical re-renders (e.g. snapshot polling) don't churn the
+    // scroll offset.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeAnchor]);
 
   const gotoNext = useCallback(() => {
     if (searchMatches.length === 0) return;

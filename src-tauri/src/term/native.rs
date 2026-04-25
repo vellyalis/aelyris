@@ -146,6 +146,25 @@ impl NativeTerminalRegistry {
             .unwrap_or_default()
     }
 
+    /// Search the retained scrollback for `needle`. Returns an empty
+    /// vec when the terminal id is unknown or the lock is poisoned —
+    /// the caller treats both as "no matches" rather than surfacing an
+    /// error. See [`TermEngine::search_history`] for match semantics.
+    pub fn search_history(
+        &self,
+        id: &str,
+        needle: &str,
+        case_sensitive: bool,
+    ) -> Vec<super::snapshot::HistorySearchMatch> {
+        let Ok(guard) = self.lock() else {
+            return Vec::new();
+        };
+        guard
+            .get(id)
+            .map(|s| s.engine.search_history(needle, case_sensitive))
+            .unwrap_or_default()
+    }
+
     /// Force-emit any pending state, ignoring the coalesce window. Used on
     /// resize / reconnect so the UI doesn't miss the final frame.
     pub fn flush(&self, id: &str) -> Option<GridDiff> {

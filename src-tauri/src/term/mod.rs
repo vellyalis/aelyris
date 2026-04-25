@@ -14,4 +14,6 @@ pub use diff::{DiffTracker, GridDiff, RowDiff, diff_snapshots};
 pub use engine::{TermEngine, TermEngineError};
 pub use native::NativeTerminalRegistry;
 pub use prompt_marks::{PromptMark, PromptMarkKind};
-pub use snapshot::{CellSnapshot, CursorShapeSnapshot, CursorSnapshot, GridSnapshot, attr};
+pub use snapshot::{
+    CellSnapshot, CursorShapeSnapshot, CursorSnapshot, GridSnapshot, HistorySearchMatch, attr,
+};

@@ -529,6 +529,27 @@ pub fn term_history_rows(
         .history_rows(&id, fromN, count)
 }
 
+/// Search retained scrollback for `query`. The frontend pairs the
+/// returned matches with the existing live-grid match list to drive
+/// Ctrl+F across the entire 10 000-line history without round-tripping
+/// every row over IPC.
+///
+/// - `caseSensitive=false` (the default) lowercases per-cell to match
+///   the live-grid `findMatches(snapshot, query)` behaviour.
+/// - Returns an empty vec when the terminal id is unknown or the
+///   needle is empty — the caller treats both as "no matches".
+#[tauri::command]
+#[allow(non_snake_case)]
+pub fn term_search_history(
+    app: AppHandle,
+    id: String,
+    query: String,
+    caseSensitive: bool,
+) -> Vec<crate::term::HistorySearchMatch> {
+    app.state::<Arc<NativeTerminalRegistry>>()
+        .search_history(&id, &query, caseSensitive)
+}
+
 /// List active terminals
 #[tauri::command]
 pub fn list_terminals(app: AppHandle) -> Vec<String> {

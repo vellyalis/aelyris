@@ -19,7 +19,8 @@ import { useCanvasIME, useImePosition, type WriteBytesFn } from "./hooks/useCanv
 import { type CopyTextFn, useTerminalSelection } from "./hooks/useTerminalSelection";
 import { pixelToCell } from "./keymap";
 import { type LinkSpan, linkAt, scanLinks } from "./links";
-import type { SearchMatch } from "./search";
+import type { AnyMatch } from "./search";
+import { viewportRowOf } from "./search";
 import { rowSelection, type SelectionRange } from "./selection";
 
 export type OpenUrlFn = (url: string) => Promise<void> | void;
@@ -55,10 +56,12 @@ export interface TerminalCanvasProps {
   writeBytes?: WriteBytesFn;
   /** Injectable clipboard writer — defaults to `navigator.clipboard.writeText`. */
   copyText?: CopyTextFn;
-  /** Search matches to highlight with a dim yellow band. */
-  searchMatches?: readonly SearchMatch[];
+  /** Search matches to highlight with a dim yellow band. Accepts
+   *  both live-grid hits and history hits — `viewportRowOf` decides
+   *  which row each one paints on inside the composite viewport. */
+  searchMatches?: readonly AnyMatch[];
   /** Active match gets a brighter band on top of the dim highlight. */
-  activeSearchMatch?: SearchMatch | null;
+  activeSearchMatch?: AnyMatch | null;
   /** Invoked on Ctrl+Click over a detected URL. */
   onOpenUrl?: OpenUrlFn;
   /** Fish-style suggestion to paint after the cursor (Phase 3A-2). */
@@ -86,6 +89,10 @@ export interface TerminalNav {
   jumpToNextPrompt(): void;
   scrollToLive(): void;
   hasHistory(): boolean;
+  /** Set the scrollback offset directly. Used by Ctrl+F navigation
+   *  so the parent can land on a history match without owning the
+   *  scrollback hook. */
+  scrollToOffset(offset: number): void;
 }
 
 interface CellMetrics {
@@ -166,6 +173,7 @@ export function TerminalCanvas({
       },
       scrollToLive: () => scrollback.scrollToLive(),
       hasHistory: () => scrollback.historySize > 0,
+      scrollToOffset: (offset: number) => scrollback.scrollToOffset(offset),
     };
     onRegisterNav(nav);
     return () => onRegisterNav(null);
@@ -352,7 +360,7 @@ export function TerminalCanvas({
     const dimsChanged = !prev || prev.cols !== snapshot.cols || prev.rows !== snapshot.rows;
     const prevSel = prevSelectionRef.current;
     const selectionChanged = prevSel !== selection;
-    const matchesKey = buildMatchesKey(searchMatches, activeSearchMatch);
+    const matchesKey = buildMatchesKey(searchMatches, activeSearchMatch, scrollback.scrollOffset);
     const matchesChanged = matchesKey !== prevMatchesKeyRef.current;
     const prevHover = prevHoveredLinkRef.current;
     const hoverChanged = prevHover !== hoveredLink;
@@ -378,7 +386,12 @@ export function TerminalCanvas({
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 
-    const affectedBySearch = buildRowMask(searchMatches, activeSearchMatch, snapshot.rows);
+    const affectedBySearch = buildRowMask(
+      searchMatches,
+      activeSearchMatch,
+      snapshot.rows,
+      scrollback.scrollOffset,
+    );
     const affectedByHover = rowsCoveredByLink(hoveredLink, prevHover);
 
     // When the viewport is in scrollback, use the composed grid (history
@@ -413,8 +426,19 @@ export function TerminalCanvas({
         continue;
       }
       paintRow(ctx, rowCells, row, cellMetrics, fontSize, fontFamily);
+      // Search bands paint over both live and history rows — viewportRowOf
+      // does the routing so a history match becomes visible the moment the
+      // user scrolls its row into view.
+      paintSearchBands(
+        ctx,
+        row,
+        searchMatches,
+        activeSearchMatch,
+        cellMetrics,
+        snapshot.rows,
+        scrollback.scrollOffset,
+      );
       if (!scrolledUp) {
-        paintSearchBands(ctx, row, searchMatches, activeSearchMatch, cellMetrics);
         if (inNew) {
           paintSelectionBand(ctx, row, inNew, cellMetrics);
         }
@@ -665,26 +689,45 @@ function drawDecorations(
   if (strike) ctx.fillRect(x, y + Math.round(cellH / 2), cellW, 1);
 }
 
-function buildMatchesKey(matches: readonly SearchMatch[] | undefined, active: SearchMatch | null | undefined): string {
-  if (!matches || matches.length === 0) return active ? "@active" : "";
-  let s = "";
-  for (const m of matches) s += `${m.row},${m.startCol},${m.endCol};`;
-  if (active) s += `@${active.row},${active.startCol},${active.endCol}`;
+function matchAnchor(m: AnyMatch): string {
+  return m.kind === "history"
+    ? `h:${m.historyIndex},${m.startCol},${m.endCol}`
+    : `l:${m.row},${m.startCol},${m.endCol}`;
+}
+
+function buildMatchesKey(
+  matches: readonly AnyMatch[] | undefined,
+  active: AnyMatch | null | undefined,
+  scrollOffset: number,
+): string {
+  // The scroll offset is part of the cache key because viewport rows
+  // shift as the user scrolls — a match that was painted on row 5 at
+  // offset 0 paints on row 6 once the offset advances by 1.
+  let s = `s:${scrollOffset};`;
+  if (matches) {
+    for (const m of matches) s += `${matchAnchor(m)};`;
+  }
+  if (active) s += `@${matchAnchor(active)}`;
   return s;
 }
 
 function buildRowMask(
-  matches: readonly SearchMatch[] | undefined,
-  active: SearchMatch | null | undefined,
+  matches: readonly AnyMatch[] | undefined,
+  active: AnyMatch | null | undefined,
   totalRows: number,
+  scrollOffset: number,
 ): Set<number> {
   const rows = new Set<number>();
   if (matches) {
     for (const m of matches) {
-      if (m.row >= 0 && m.row < totalRows) rows.add(m.row);
+      const vr = viewportRowOf(m, totalRows, scrollOffset);
+      if (vr !== null) rows.add(vr);
     }
   }
-  if (active && active.row >= 0 && active.row < totalRows) rows.add(active.row);
+  if (active) {
+    const vr = viewportRowOf(active, totalRows, scrollOffset);
+    if (vr !== null) rows.add(vr);
+  }
   return rows;
 }
 
@@ -700,17 +743,21 @@ function rowsCoveredByLink(...links: Array<LinkSpan | null | undefined>): Set<nu
 function paintSearchBands(
   ctx: CanvasRenderingContext2D,
   row: number,
-  matches: readonly SearchMatch[] | undefined,
-  active: SearchMatch | null | undefined,
+  matches: readonly AnyMatch[] | undefined,
+  active: AnyMatch | null | undefined,
   metrics: CellMetrics,
+  totalRows: number,
+  scrollOffset: number,
 ) {
   if (!matches || matches.length === 0) return;
+  const activeKey = active ? matchAnchor(active) : null;
   for (const m of matches) {
-    if (m.row !== row) continue;
-    const isActive = !!active && active.row === m.row && active.startCol === m.startCol && active.endCol === m.endCol;
+    const vr = viewportRowOf(m, totalRows, scrollOffset);
+    if (vr !== row) continue;
+    const isActive = activeKey !== null && matchAnchor(m) === activeKey;
     const { width, height } = metrics;
     const x = m.startCol * width;
-    const y = m.row * height;
+    const y = vr * height;
     const w = (m.endCol - m.startCol + 1) * width;
     if (w <= 0) continue;
     ctx.save();

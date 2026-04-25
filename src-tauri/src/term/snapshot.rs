@@ -161,6 +161,24 @@ pub struct GridSnapshot {
     pub cursor: CursorSnapshot,
 }
 
+/// One occurrence of a needle inside a single scrollback row.
+///
+/// Anchors are *cell* columns: `start_col` is the leftmost cell of the
+/// match, `end_col` is the rightmost cell (inclusive). Matches do not
+/// span rows, so wrapped output cannot produce a single match across
+/// the wrap boundary — same row-scoped semantics as the live-grid
+/// search in `src/features/terminal/search.ts`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistorySearchMatch {
+    /// History index of the row containing the match. `0` is the row
+    /// immediately above the live screen, growing into older history.
+    pub history_index: usize,
+    pub start_col: u16,
+    /// Inclusive end column.
+    pub end_col: u16,
+}
+
 impl TermEngine {
     /// Read `count` rows of scrollback starting from `from_n` (0 = the
     /// row immediately above the visible screen). Returns fewer rows if
@@ -187,6 +205,110 @@ impl TermEngine {
             }
             out.push(row);
         }
+        out
+    }
+
+    /// Find every occurrence of `needle` in retained scrollback. Each
+    /// match is row-scoped (no cross-row matching). When `case_sensitive`
+    /// is `false` the comparison is done after a per-cell lowercasing,
+    /// mirroring the frontend's `findMatches(snapshot, query)` behaviour
+    /// so live-grid and history matches share the same anchor semantics.
+    ///
+    /// `WIDE_CHAR_SPACER` cells are skipped when building the searchable
+    /// row text (the spacer is metadata trailing a wide char, not a
+    /// distinct visual glyph). Empty needles return an empty vec.
+    ///
+    /// History indexing matches `history_rows`: `0` is the row directly
+    /// above the live screen, growing into older history.
+    pub fn search_history(
+        &self,
+        needle: &str,
+        case_sensitive: bool,
+    ) -> Vec<HistorySearchMatch> {
+        if needle.is_empty() {
+            return Vec::new();
+        }
+        let hs = self.history_size();
+        if hs == 0 {
+            return Vec::new();
+        }
+
+        let needle_lc;
+        let needle_ref: &str = if case_sensitive {
+            needle
+        } else {
+            needle_lc = needle.to_lowercase();
+            &needle_lc
+        };
+        let needle_chars: Vec<char> = needle_ref.chars().collect();
+        if needle_chars.is_empty() {
+            return Vec::new();
+        }
+
+        let cols = self.cols();
+        let grid = self.term().grid();
+        let mut out = Vec::new();
+
+        for n in 0..hs {
+            let line_idx = -(n as i32) - 1;
+            // Build (text, position-per-cell) for the row. Wide-char
+            // spacers are skipped. For case-insensitive search each
+            // cell's char is lowercased, which can yield more than one
+            // unicode char for special-cased letters (e.g. Turkish
+            // dotted I). We still push exactly one position entry per
+            // cell, matching the frontend buildRowText shape — when a
+            // match endpoint lands inside an expanded lowercase the
+            // `.get()` lookup below drops it silently.
+            let mut row_chars: Vec<char> = Vec::with_capacity(cols);
+            let mut positions: Vec<u16> = Vec::with_capacity(cols);
+            for col in 0..cols {
+                let cell = &grid[Point::new(Line(line_idx), Column(col))];
+                if cell.flags.contains(Flags::WIDE_CHAR_SPACER) {
+                    continue;
+                }
+                let ch = if cell.c == '\0' { ' ' } else { cell.c };
+                if case_sensitive {
+                    row_chars.push(ch);
+                } else {
+                    for c in ch.to_lowercase() {
+                        row_chars.push(c);
+                    }
+                }
+                positions.push(col as u16);
+            }
+
+            if row_chars.len() < needle_chars.len() {
+                continue;
+            }
+
+            let mut i = 0usize;
+            while i + needle_chars.len() <= row_chars.len() {
+                let mut matched = true;
+                for (k, &nc) in needle_chars.iter().enumerate() {
+                    if row_chars[i + k] != nc {
+                        matched = false;
+                        break;
+                    }
+                }
+                if matched {
+                    if let (Some(&start_col), Some(&end_col)) =
+                        (positions.get(i), positions.get(i + needle_chars.len() - 1))
+                    {
+                        out.push(HistorySearchMatch {
+                            history_index: n,
+                            start_col,
+                            end_col,
+                        });
+                    }
+                    // Advance past the match to avoid emitting overlapping
+                    // hits — same stride as `search.ts::findMatches`.
+                    i += needle_chars.len().max(1);
+                } else {
+                    i += 1;
+                }
+            }
+        }
+
         out
     }
 
@@ -330,6 +452,122 @@ mod tests {
             let cell = &snap.cells[0][col];
             assert!(cell.hyperlink.is_none(), "cell {col} ({:?}) must not carry hyperlink", cell.ch);
         }
+    }
+
+    /// Helper: stuff `lines.len()` lines into the engine's history by
+    /// printing each followed by a newline, with a screen tall enough
+    /// that everything but the last line scrolls into history.
+    fn push_into_history(engine: &mut TermEngine, lines: &[&str]) {
+        for line in lines {
+            engine.advance_str(line);
+            engine.advance_str("\r\n");
+        }
+    }
+
+    #[test]
+    fn search_history_empty_needle_returns_empty() {
+        let mut engine = TermEngine::new(20, 2).expect("engine");
+        push_into_history(&mut engine, &["hello world", "second line", "third row"]);
+        assert!(engine.search_history("", false).is_empty());
+    }
+
+    #[test]
+    fn search_history_no_history_returns_empty() {
+        let engine = TermEngine::new(20, 5).expect("engine");
+        // Nothing scrolled off — history_size() is 0.
+        assert_eq!(engine.history_size(), 0);
+        assert!(engine.search_history("anything", false).is_empty());
+    }
+
+    #[test]
+    fn search_history_finds_match_in_scrolled_off_row() {
+        // 2-row screen so older lines spill into history.
+        let mut engine = TermEngine::new(40, 2).expect("engine");
+        push_into_history(&mut engine, &[
+            "alpha needle beta",
+            "gamma delta epsilon",
+            "zeta eta theta",
+        ]);
+        let matches = engine.search_history("needle", false);
+        assert_eq!(matches.len(), 1, "got {:?}", matches);
+        let m = matches[0];
+        // "alpha " is 6 chars before "needle" → start col 6, end col 6+6-1=11.
+        assert_eq!(m.start_col, 6);
+        assert_eq!(m.end_col, 11);
+        // Most-recent rows live at low history indices; "alpha …" is the
+        // oldest of the three, so its history index should be the
+        // largest.
+        assert!(m.history_index >= 1);
+    }
+
+    #[test]
+    fn search_history_case_insensitive_by_default() {
+        let mut engine = TermEngine::new(40, 2).expect("engine");
+        push_into_history(&mut engine, &["MixedCase Token", "another", "filler"]);
+        let cs = engine.search_history("mixedcase", false);
+        assert_eq!(cs.len(), 1);
+        let m = cs[0];
+        assert_eq!(m.start_col, 0);
+        assert_eq!(m.end_col, 8);
+    }
+
+    #[test]
+    fn search_history_case_sensitive_skips_mismatched_case() {
+        let mut engine = TermEngine::new(40, 2).expect("engine");
+        push_into_history(&mut engine, &["MixedCase Token", "filler-a", "filler-b"]);
+        assert!(engine.search_history("mixedcase", true).is_empty());
+        assert_eq!(engine.search_history("MixedCase", true).len(), 1);
+    }
+
+    #[test]
+    fn search_history_returns_multiple_per_row() {
+        let mut engine = TermEngine::new(40, 2).expect("engine");
+        push_into_history(&mut engine, &[
+            "abcabcabc xyz",
+            "filler one",
+            "filler two",
+        ]);
+        let matches = engine.search_history("abc", false);
+        assert_eq!(matches.len(), 3);
+        // Same row, ascending start cols 0,3,6.
+        assert_eq!(matches[0].start_col, 0);
+        assert_eq!(matches[1].start_col, 3);
+        assert_eq!(matches[2].start_col, 6);
+        // All same row.
+        let h = matches[0].history_index;
+        assert!(matches.iter().all(|m| m.history_index == h));
+    }
+
+    #[test]
+    fn search_history_no_cross_row_match() {
+        let mut engine = TermEngine::new(8, 2).expect("engine");
+        // "hello" wraps if we just print it, but two separate lines
+        // ensures no cross-row matching either way. Print "abcXY" then
+        // "Zdef" — searching "XYZ" must NOT match across the row break.
+        push_into_history(&mut engine, &["abcXY", "Zdef", "filler"]);
+        assert!(engine.search_history("XYZ", true).is_empty());
+        // Sanity: each fragment is findable on its own row.
+        assert_eq!(engine.search_history("XY", true).len(), 1);
+        assert_eq!(engine.search_history("Z", true).len(), 1);
+    }
+
+    #[test]
+    fn search_history_indices_run_newest_first() {
+        let mut engine = TermEngine::new(20, 2).expect("engine");
+        // Each row has a unique sentinel; only the oldest two (rows 0
+        // and 1) end up in history because the screen is 2 rows tall.
+        push_into_history(&mut engine, &["mark0", "mark1", "mark2"]);
+        let m0 = engine.search_history("mark0", true);
+        let m1 = engine.search_history("mark1", true);
+        assert_eq!(m0.len(), 1);
+        assert_eq!(m1.len(), 1);
+        // mark1 is more recent than mark0 → smaller history index.
+        assert!(
+            m1[0].history_index < m0[0].history_index,
+            "expected mark1 < mark0, got {:?} vs {:?}",
+            m1,
+            m0
+        );
     }
 
     #[test]
