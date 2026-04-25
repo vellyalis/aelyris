@@ -29,6 +29,37 @@ Continuing the post-0.2.3 Tier 3 polish run started with
   DCS-without-`q` falling back to alacritty), header key tolerance,
   and store insertion / FIFO eviction / id monotonicity.
 
+- **Inline image decode** (Tier 2 #5, Sprint 2 of 3) — the engine now
+  decodes the payloads the Sprint-1 scanner caught into a uniform
+  `DecodedImage { protocol, payload, width_px, height_px, cell_cols,
+  cell_rows }` carrier ready for the eventual snapshot / paint pass.
+  Sixel decode is a from-scratch in-tree implementation (no new crate)
+  that handles the subset every observed encoder uses: 6-bit vertical
+  pixel columns, `!N` repeat, `$` carriage return, `-` line feed,
+  `#Pc` palette select, `#Pc;Pu;Px;Py;Pz` palette define (RGB% and HLS,
+  the latter normalised to sRGB), and `"Pan;Pad;Ph;Pv` raster
+  attributes. The default 16-slot palette matches VT340 / libsixel so
+  bodies that omit explicit palette setup still decode. Kitty decode
+  routes through a new `KittyChunkAssembler` that buffers `m=1`
+  continuations under a shared `i=N` and promotes the chain on `m=0`,
+  preserving the originating header's format / dimensions across the
+  middle chunks (which typically only carry `i=` + `m=`). Decoded
+  payloads land as `Rgba8` (Sixel + Kitty `f=24/32`) or `Png`
+  passthrough (Kitty `f=100`, decoded by the frontend on paint). The
+  `ImageStore` cap (50 MiB) now charges both raw and decoded buffers,
+  and a new `attach_decoded` API lets a future re-decode swap the
+  payload without disturbing entry order. Decode failures are non-
+  fatal: the raw bytes still register so the diagnostic surface can
+  inspect them, and the entry's `decoded` stays `None` (Sprint 3 will
+  silently skip those at paint time). +33 Rust tests across the new
+  decoder modules and engine integration (Sixel pixel assertions for
+  RGB%/HLS palette, `!N` repeat, raster padding, line-feed bands;
+  Kitty PNG passthrough, RGBA round-trip, RGB→RGBA inflation, RGBA
+  size-mismatch rejection, transmission medium / format gating, three-
+  chunk assembly, malformed-payload graceful fail). Pulls `base64
+  0.22` into direct dependencies (already transitive through
+  tauri/notify) so the decode path is auditable on its own.
+
 ### UX
 
 - **Theme palette editor** (Tier 3 #10) — Settings → Appearance now

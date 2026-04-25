@@ -17,8 +17,10 @@ use alacritty_terminal::vte::ansi::Processor;
 use alacritty_terminal::Term;
 
 use super::images::{
-    ImageId, ImageStore, ParseStep as ImageParseStep, try_parse as try_parse_image,
+    ImageId, ImageStore, KittyChunkAssembler, ParseStep as ImageParseStep, decode_kitty,
+    decode_sixel, parse_kitty_header, try_parse as try_parse_image,
 };
+use super::images::sequences::{ImagePayload, ImageProtocol};
 use super::prompt_marks::{ParseStep, PromptMark, PromptMarkLog, try_parse as try_parse_osc133};
 
 #[derive(Debug, thiserror::Error)]
@@ -75,10 +77,16 @@ pub struct TermEngine {
     /// `advance()` call boundary. Rare but real — terminals routinely split
     /// OSC sequences across PTY read chunks.
     osc_pending: Vec<u8>,
-    /// Inline-image registry. Sprint 1 just collects raw escape payloads
-    /// here so they don't leak into the alacritty grid as garbage; Sprint
-    /// 2/3 wire decoding and snapshot exposure.
+    /// Inline-image registry. Sprint 1 collected raw escape payloads to
+    /// keep them out of the alacritty grid; Sprint 2 attaches a decoded
+    /// RGBA8 / PNG payload alongside the raw bytes when the decoder
+    /// succeeds. Sprint 3 will surface this through the snapshot + IPC.
     images: ImageStore,
+    /// Re-assembler for chunked Kitty escapes (`m=1` continuations
+    /// keyed by `i=N`). Standalone escapes round-trip immediately; a
+    /// chained transmission only lands as a single image once the final
+    /// chunk arrives.
+    kitty_chunks: KittyChunkAssembler,
 }
 
 impl TermEngine {
@@ -96,6 +104,7 @@ impl TermEngine {
             prompt_marks: PromptMarkLog::new(),
             osc_pending: Vec::new(),
             images: ImageStore::new(),
+            kitty_chunks: KittyChunkAssembler::new(),
         })
     }
 
@@ -139,11 +148,12 @@ impl TermEngine {
             match try_parse_image(&combined[i..]) {
                 ImageParseStep::Consumed { bytes: n, payload } => {
                     self.parser.advance(&mut self.term, &combined[consumed..i]);
-                    // Sprint 1: store the raw payload only. Decoding +
-                    // snapshot wiring land in Sprint 2/3.
-                    let _id: ImageId = self
-                        .images
-                        .insert(payload.protocol, payload.body);
+                    // Sprint 2: try to decode. A chunked Kitty stream
+                    // accumulates silently until the final chunk; both
+                    // protocols swallow decode failures (raw bytes still
+                    // get retained for diagnostics) so a malformed image
+                    // never crashes the engine.
+                    let _id: Option<ImageId> = self.handle_image_payload(payload);
                     // Image bytes are *consumed*, not forwarded to
                     // alacritty — that's the whole point of pre-empting
                     // here. The grid stays free of escape garbage.
@@ -206,6 +216,41 @@ impl TermEngine {
     /// only) use it to assert the scanner caught the escape bytes.
     pub fn images(&self) -> &ImageStore {
         &self.images
+    }
+
+    /// Drive a freshly-scanned image payload into the registry. Kitty
+    /// payloads route through the chunk re-assembler first; Sixel
+    /// payloads decode in place. Returns the registered `ImageId` only
+    /// when an entry was created — chunked Kitty escapes that need more
+    /// data return `None` and stay buffered in `kitty_chunks`.
+    ///
+    /// Decode failures are intentionally non-fatal: the raw bytes are
+    /// still inserted so the diagnostic path can inspect them, but the
+    /// `decoded` field stays `None`. Sprint 3's paint pass treats that
+    /// as "skip this image" rather than blocking on a re-decode.
+    fn handle_image_payload(&mut self, payload: ImagePayload) -> Option<ImageId> {
+        match payload.protocol {
+            ImageProtocol::Kitty => {
+                let header = parse_kitty_header(&payload.header);
+                let (resolved_header, body) = self.kitty_chunks.ingest(header, payload.body)?;
+                let raw_bytes = body.clone();
+                let decoded = decode_kitty(&resolved_header, &body).ok();
+                Some(self.images.insert_full(
+                    ImageProtocol::Kitty,
+                    raw_bytes,
+                    decoded,
+                ))
+            }
+            ImageProtocol::Sixel => {
+                let raw_bytes = payload.body.clone();
+                let decoded = decode_sixel(&payload.body, &payload.header).ok();
+                Some(self.images.insert_full(
+                    ImageProtocol::Sixel,
+                    raw_bytes,
+                    decoded,
+                ))
+            }
+        }
     }
 
     /// Convenience: feed a UTF-8 string and discard any emitted marks.
@@ -537,9 +582,19 @@ mod tests {
         engine.advance_str("after");
         let row = engine.row_text(0).expect("row 0");
         assert_eq!(row, "beforeafter");
-        // And the registry caught the payload.
+        // And the registry caught the payload. Sprint 2 charges both
+        // the raw escape body and the decoded buffer to the cap; the
+        // body is "aGVsbG8=" (8 bytes), and base64-decoded that's the
+        // PNG-passthrough bytes "hello" (5 bytes) — the body is not a
+        // real PNG, so png_dimensions() returns None and the decoder
+        // falls back to the header's (missing) dims.
         assert_eq!(engine.images().len(), 1);
-        assert_eq!(engine.images().bytes_used(), b"aGVsbG8=".len());
+        assert_eq!(
+            engine.images().bytes_used(),
+            b"aGVsbG8=".len() + b"hello".len()
+        );
+        let entry = engine.images().get(crate::term::images::ImageId(0)).unwrap();
+        assert!(entry.decoded.is_some(), "PNG passthrough should attach a decoded payload");
     }
 
     #[test]
@@ -549,6 +604,43 @@ mod tests {
         let row = engine.row_text(0).expect("row 0");
         assert_eq!(row, "text--more");
         assert_eq!(engine.images().len(), 1);
+        // Sprint 2: the Sixel decoder runs, leaving an attached RGBA
+        // payload sized to the resolved bitmap. `!1~~~~` is 4 columns
+        // of full-mask sixels → 4×6 = 24 RGBA pixels.
+        let entry = engine.images().get(crate::term::images::ImageId(0)).unwrap();
+        let decoded = entry.decoded.as_ref().expect("Sixel should decode");
+        assert_eq!(decoded.width_px, 4);
+        assert_eq!(decoded.height_px, 6);
+    }
+
+    #[test]
+    fn kitty_chunked_image_assembles_across_three_escapes() {
+        // Three Kitty escapes carrying a chunked PNG-passthrough body
+        // under `i=7`. The first two declare `m=1`; the last `m=0`. The
+        // registry must hold zero entries until the final chunk.
+        let mut engine = TermEngine::new(80, 24).expect("engine");
+        engine.advance(b"\x1b_Gi=7,a=T,f=100,m=1;AAAA\x1b\\");
+        assert_eq!(engine.images().len(), 0, "first chunk should buffer");
+        engine.advance(b"\x1b_Gi=7,m=1;BBBB\x1b\\");
+        assert_eq!(engine.images().len(), 0, "middle chunk should buffer");
+        engine.advance(b"\x1b_Gi=7,m=0;CCCC\x1b\\");
+        assert_eq!(engine.images().len(), 1);
+        // The retained raw bytes are the concatenation of all three
+        // chunk bodies — that's what's available for diagnostics.
+        let entry = engine.images().get(crate::term::images::ImageId(0)).unwrap();
+        assert_eq!(entry.bytes, b"AAAABBBBCCCC");
+    }
+
+    #[test]
+    fn malformed_image_payload_still_registers_raw_with_no_decoded() {
+        // base64 with disallowed characters. Decoder fails, but the raw
+        // bytes are kept so the diagnostic surface still sees them.
+        let mut engine = TermEngine::new(80, 24).expect("engine");
+        engine.advance(b"\x1b_Ga=T,f=100;!!!\x1b\\");
+        assert_eq!(engine.images().len(), 1);
+        let entry = engine.images().get(crate::term::images::ImageId(0)).unwrap();
+        assert!(entry.decoded.is_none(), "decode failure leaves decoded=None");
+        assert_eq!(entry.bytes, b"!!!");
     }
 
     #[test]

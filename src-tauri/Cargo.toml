@@ -82,6 +82,12 @@ tower-http = { version = "0.5", features = ["cors"] }
 # comparisons. Replaces the hand-rolled implementation in api/mod.rs.
 subtle = "2"
 
+# Tier 🟡 #5 Sprint 2: Kitty graphics protocol payloads ship as
+# base64-encoded bytes (`t=d`). Already in the dependency tree
+# transitively via tauri/notify; pinning explicitly so the decode path
+# is auditable on its own.
+base64 = "0.22"
+
 # Window effects: Mica/Acrylic via tauri.conf.json windowEffects (no external crate needed)
 
 [target.'cfg(windows)'.dependencies.windows]
