@@ -1,0 +1,61 @@
+/*
+ * Sits at the top of the app shell, above ProjectHeaderBar. Uses the gold
+ * accent so it reads as an actionable invitation rather than a system
+ * warning — there is no urgency, just an offer.
+ */
+.banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  background: var(--aether-bg-elevated);
+  border-bottom: 1px solid var(--gold);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-family: var(--font-ui);
+}
+
+.text {
+  flex: 1;
+}
+
+.text strong {
+  color: var(--gold);
+  font-family: var(--font-mono);
+  font-weight: var(--weight-semibold);
+}
+
+.btn {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+}
+
+.btn:hover:not(:disabled),
+.btn:focus-visible {
+  outline: none;
+  border-color: var(--gold);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.btnPrimary {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: var(--aether-bg);
+  font-weight: var(--weight-semibold);
+}
+
+.btnPrimary:hover:not(:disabled),
+.btnPrimary:focus-visible {
+  border-color: var(--gold);
+  opacity: 0.9;
+}

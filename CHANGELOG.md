@@ -3,6 +3,46 @@
 All notable changes to Aether Terminal are tracked here. Dates are listed in
 `YYYY-MM-DD`. Commit hashes reference `refactor/tauri-react-migration`.
 
+## [Unreleased] — post-0.2.2 Tier 1 closure
+
+Three commits closing every remaining Tier 1 (senior-blocker) item from
+`docs/ROADMAP_POST_0_2_2.md`. After this set the senior-bar audit list
+contains only Tier 2 polish.
+
+### Reliability
+
+- **PTY crash recovery** (`74bbb60`) — `ConPTY` child exit is now
+  observable: `PtyManager` retains the boxed `Child`, the IPC layer
+  spawns a waiter that calls `wait()` and emits `pty-exit-<id>` with a
+  typed `ExitInfo { code, crashed }` payload (NTSTATUS heuristic on
+  Windows). `respawn_terminal` IPC + frontend banner restart the shell
+  in place; `NativeTerminalRegistry::create` is now idempotent so prompt
+  marks + scrollback survive across the crash boundary.
+
+### UX
+
+- **Shell integration installer** (`4ebdc5c`) — Settings panel surfaces
+  per-shell install state (PowerShell / Bash / Zsh). Embedded scripts
+  are written to `~/.aether/shell-integration/` and a single `source`
+  line is appended to the user's profile, gated by an install marker
+  for idempotency. Risk hedge from the roadmap honoured: install fires
+  only on explicit click, with a "Copy line" alternative for users on
+  non-standard profile paths.
+
+### Distribution
+
+- **Auto-updater wiring** — `tauri-plugin-updater` is registered with a
+  placeholder pubkey + `https://updates.aether.invalid/...` endpoint.
+  `bundle.createUpdaterArtifacts = true` so a signed `.sig` lands next
+  to each NSIS / MSI installer when Tauri sees a private signing key in
+  the environment. New surfaces: `<UpdateBanner>` at the top of the app
+  (auto-check, silent on errors), Settings → Updates → "Check for
+  updates" (surfaces errors verbatim), `scripts/setup-updater-keys.mjs`
+  (one-time keypair generation under gitignored `.aether-updater/`),
+  `scripts/generate-update-manifest.mjs` (writes `latest.json` next to
+  the bundles). Local-only by default — see `docs/auto_updater_setup.md`
+  for the full release flow.
+
 ## [0.2.2] — 2026-04-25
 
 Focus: **senior-engineer-grade terminal foundation**. Twelve commits closing

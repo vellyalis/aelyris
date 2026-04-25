@@ -2,6 +2,7 @@ import { MotionConfig } from "motion/react";
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import appStyles from "./App.module.css";
 import { AgentTerminal } from "./features/agent-terminal";
+import { UpdateBanner } from "./features/app/UpdateBanner";
 import { useAppMenus } from "./features/app/useAppMenus";
 import { FileTree } from "./features/file-tree/FileTree";
 import { ProjectHeaderBar } from "./features/header/ProjectHeaderBar";
@@ -577,6 +578,7 @@ export function App() {
     <TooltipProvider>
       <ToastProvider>
         <div className="app-container">
+          <UpdateBanner />
           <ProjectHeaderBar
             projectName={projectName}
             branch={branch}

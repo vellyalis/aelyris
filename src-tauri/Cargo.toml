@@ -45,6 +45,10 @@ env_logger = "0.11"
 uuid = { version = "1", features = ["v4"] }
 tauri-plugin-process = "2.3.1"
 tauri-plugin-dialog = "2.7.0"
+# Auto-updater (post-0.2.2 Tier 🔴 #3). Endpoint + pubkey live in
+# tauri.conf.json; key management is documented in
+# docs/auto_updater_setup.md and bootstrapped via scripts/setup-updater-keys.
+tauri-plugin-updater = "2"
 
 # Error handling
 thiserror = "2"

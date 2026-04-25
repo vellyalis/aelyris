@@ -60,7 +60,7 @@ describe("ShellIntegrationSection", () => {
 
   it("install click triggers IPC and surfaces appended feedback", async () => {
     const loadStatus = vi
-      .fn<[], Promise<ShellIntegrationStatus[]>>()
+      .fn<() => Promise<ShellIntegrationStatus[]>>()
       .mockResolvedValueOnce(SAMPLE)
       .mockResolvedValue(
         SAMPLE.map((s) => (s.shell === "powershell" ? { ...s, installed: true } : s)),

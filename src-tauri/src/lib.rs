@@ -43,6 +43,13 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
+        // Auto-updater (Tier 🔴 #3). Endpoint + pubkey come from
+        // tauri.conf.json's `plugins.updater` block. With the placeholder
+        // pubkey shipped in repo this plugin loads but cannot verify a
+        // signed manifest — that is intentional. See
+        // docs/auto_updater_setup.md for the one-time key generation step
+        // that swaps the placeholder for a real pubkey.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(PtyManager::new())
         .manage(AgentManager::new())
         .manage(InteractiveSessionManager::new())

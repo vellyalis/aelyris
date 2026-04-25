@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useAppStore } from "../../shared/store/appStore";
 import styles from "./Settings.module.css";
 import { ShellIntegrationSection } from "./ShellIntegrationSection";
+import { UpdateCheckSection } from "./UpdateCheckSection";
 
 interface SettingsProps {
   visible: boolean;
@@ -219,6 +220,11 @@ export function Settings({ visible, onClose }: SettingsProps) {
                   <span>Cursor Blink</span>
                 </label>
               </div>
+            </section>
+
+            <section className={styles.section}>
+              <h3 className={styles.sectionTitle}>Updates</h3>
+              <UpdateCheckSection />
             </section>
 
             <section className={styles.section}>
