@@ -6,6 +6,7 @@ pub mod ghostdiff;
 pub mod git;
 pub mod history;
 mod ipc;
+pub mod logging;
 pub mod lsp;
 pub mod pty;
 pub mod session;
@@ -34,11 +35,15 @@ pub type ManagedHistoryStore = std::sync::Arc<HistoryStore<HashingNgramEmbedder>
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    env_logger::init();
+    // Tier 🟡 #7: structured tracing pipeline. The same `LogRing`
+    // returned here is registered as managed state so the
+    // `logs_recent` / `logs_since` IPCs read from it directly.
+    let log_ring = logging::init();
     let t0 = std::time::Instant::now();
     log::info!("Aether Terminal starting...");
 
     tauri::Builder::default()
+        .manage(log_ring)
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
@@ -417,6 +422,9 @@ pub fn run() {
             ipc::shell_integration_status,
             ipc::shell_integration_one_liner,
             ipc::shell_integration_install,
+            // Structured log viewer (post-0.2.2 Tier 🟡 #7)
+            ipc::logs_recent,
+            ipc::logs_since,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Aether Terminal")

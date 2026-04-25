@@ -21,6 +21,7 @@ const WorkflowPanel = lazy(() =>
   import("./features/workflow/WorkflowPanel").then((m) => ({ default: m.WorkflowPanel })),
 );
 const SCMPanel = lazy(() => import("./features/scm/SCMPanel").then((m) => ({ default: m.SCMPanel })));
+const LogsPanel = lazy(() => import("./features/logs/LogsPanel").then((m) => ({ default: m.LogsPanel })));
 const QuickOpen = lazy(() => import("./features/quick-open/QuickOpen").then((m) => ({ default: m.QuickOpen })));
 
 const EditorPanel = lazy(() => import("./features/editor/EditorPanel").then((m) => ({ default: m.EditorPanel })));
@@ -719,6 +720,11 @@ export function App() {
               <ErrorBoundary>
                 <Suspense fallback={null}>
                   <ToolkitPanel projectName={projectName} onRunCommand={handleRunCommand} />
+                </Suspense>
+              </ErrorBoundary>
+              <ErrorBoundary>
+                <Suspense fallback={null}>
+                  <LogsPanel />
                 </Suspense>
               </ErrorBoundary>
             </aside>

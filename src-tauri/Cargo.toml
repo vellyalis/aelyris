@@ -38,8 +38,15 @@ git2 = "0.19"
 toml = "0.8"
 
 # Logging
+# `log` is kept for the 75 existing `log::*` call sites; the
+# `tracing-log` adapter (registered in `logging::init`) routes them
+# through the tracing pipeline so they end up in the JSON stderr
+# stream and the in-memory ring buffer alongside native `tracing`
+# events. env_logger was dropped in Tier 🟡 #7.
 log = "0.4"
-env_logger = "0.11"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "registry"] }
+tracing-log = "0.2"
 
 # UUID for terminal instance IDs
 uuid = { version = "1", features = ["v4"] }
