@@ -1,5 +1,11 @@
-import { useEffect } from "react";
-import { getPalette, isLightTheme, themeToCSS } from "../themes/catppuccin";
+import { useEffect, useMemo } from "react";
+import {
+  type AccentOverrides,
+  applyAccentOverrides,
+  getPalette,
+  isLightTheme,
+  themeToCSS,
+} from "../themes/catppuccin";
 
 const STORAGE_KEY = "aether:theme";
 
@@ -13,11 +19,18 @@ function loadThemeId(): string {
 
 /**
  * Apply the given theme's CSS custom properties to :root.
- * Call from App.tsx to keep the theme in sync.
+ * Call from App.tsx to keep the theme in sync. Optional `overrides` layer
+ * accent values from the in-app palette editor on top of the base palette.
  */
-export function useThemeApplier(themeId: string) {
+export function useThemeApplier(themeId: string, overrides?: AccentOverrides) {
+  // Stabilise the override identity across renders so unchanged maps don't
+  // re-trigger the effect (the editor calls setState on each keystroke).
+  const overrideKey = overrides ? JSON.stringify(overrides) : "";
+  const stableOverrides = useMemo(() => overrides, [overrideKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
-    const palette = getPalette(themeId);
+    const base = getPalette(themeId);
+    const palette = applyAccentOverrides(base, stableOverrides);
     const light = isLightTheme(themeId);
     const vars = themeToCSS(palette, light);
 
@@ -34,7 +47,7 @@ export function useThemeApplier(themeId: string) {
     try {
       localStorage.setItem(STORAGE_KEY, themeId);
     } catch {}
-  }, [themeId]);
+  }, [themeId, stableOverrides]);
 }
 
 export { loadThemeId };

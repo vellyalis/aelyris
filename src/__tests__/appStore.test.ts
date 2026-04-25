@@ -3,6 +3,13 @@ import { useAppStore } from "../shared/store/appStore";
 
 // Reset store between tests
 beforeEach(() => {
+  // Drop persisted theme overrides between tests so each block starts clean
+  // — the appStore bootstraps `themeOverrides` from localStorage on load.
+  try {
+    localStorage.removeItem("aether:themeOverrides");
+  } catch {
+    /* ignore */
+  }
   useAppStore.setState({
     rootProjectPath: null,
     paletteVisible: false,
@@ -16,6 +23,7 @@ beforeEach(() => {
     kanbanTasks: [],
     openFiles: [],
     activeFile: null,
+    themeOverrides: {},
   });
 });
 
@@ -179,5 +187,57 @@ describe("appStore — editor files", () => {
     clearFiles();
     expect(useAppStore.getState().openFiles).toEqual([]);
     expect(useAppStore.getState().activeFile).toBeNull();
+  });
+});
+
+describe("appStore — theme overrides", () => {
+  it("sets a single accent override", () => {
+    const { setAccentOverride } = useAppStore.getState();
+    setAccentOverride("aether-dark", "sapphire", "#aabbcc");
+    expect(useAppStore.getState().themeOverrides["aether-dark"]).toEqual({
+      sapphire: "#aabbcc",
+    });
+  });
+
+  it("clears an override when value is undefined and removes the theme entry when empty", () => {
+    const { setAccentOverride } = useAppStore.getState();
+    setAccentOverride("aether-dark", "sapphire", "#112233");
+    setAccentOverride("aether-dark", "sapphire", undefined);
+    expect(useAppStore.getState().themeOverrides).toEqual({});
+  });
+
+  it("keeps the theme entry when other overrides remain", () => {
+    const { setAccentOverride } = useAppStore.getState();
+    setAccentOverride("aether-dark", "sapphire", "#112233");
+    setAccentOverride("aether-dark", "mauve", "#445566");
+    setAccentOverride("aether-dark", "sapphire", undefined);
+    expect(useAppStore.getState().themeOverrides["aether-dark"]).toEqual({
+      mauve: "#445566",
+    });
+  });
+
+  it("isolates overrides per themeId", () => {
+    const { setAccentOverride } = useAppStore.getState();
+    setAccentOverride("aether-dark", "sapphire", "#aaaaaa");
+    setAccentOverride("catppuccin-latte", "sapphire", "#bbbbbb");
+    const state = useAppStore.getState().themeOverrides;
+    expect(state["aether-dark"]?.sapphire).toBe("#aaaaaa");
+    expect(state["catppuccin-latte"]?.sapphire).toBe("#bbbbbb");
+  });
+
+  it("resets all overrides for a theme", () => {
+    const { setAccentOverride, resetThemeOverrides } = useAppStore.getState();
+    setAccentOverride("aether-dark", "sapphire", "#112233");
+    setAccentOverride("aether-dark", "mauve", "#445566");
+    resetThemeOverrides("aether-dark");
+    expect(useAppStore.getState().themeOverrides).toEqual({});
+  });
+
+  it("persists overrides to localStorage", () => {
+    const { setAccentOverride } = useAppStore.getState();
+    setAccentOverride("aether-dark", "sapphire", "#112233");
+    const raw = localStorage.getItem("aether:themeOverrides");
+    expect(raw).toBeTruthy();
+    expect(JSON.parse(raw ?? "{}")).toEqual({ "aether-dark": { sapphire: "#112233" } });
   });
 });

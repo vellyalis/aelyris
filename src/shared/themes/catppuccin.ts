@@ -195,6 +195,90 @@ export function isLightTheme(themeId: string): boolean {
   return themeId === "catppuccin-latte";
 }
 
+/** Subset of the palette that the user is allowed to override via the editor. */
+export type AccentKey =
+  | "red"
+  | "green"
+  | "yellow"
+  | "blue"
+  | "magenta"
+  | "cyan"
+  | "peach"
+  | "mauve"
+  | "pink"
+  | "teal"
+  | "sky"
+  | "lavender"
+  | "flamingo"
+  | "rosewater"
+  | "sapphire"
+  | "maroon";
+
+/** Stable display order for the palette editor — accents that drive the
+ * largest visible surfaces come first. */
+export const ACCENT_KEYS: readonly AccentKey[] = [
+  "sapphire",
+  "mauve",
+  "blue",
+  "green",
+  "yellow",
+  "red",
+  "peach",
+  "cyan",
+  "magenta",
+  "pink",
+  "teal",
+  "sky",
+  "lavender",
+  "flamingo",
+  "rosewater",
+  "maroon",
+] as const;
+
+const ACCENT_KEY_SET = new Set<string>(ACCENT_KEYS);
+
+/** Human-friendly label for the editor UI. */
+export function accentLabel(key: AccentKey): string {
+  return key.charAt(0).toUpperCase() + key.slice(1);
+}
+
+const HEX_RE = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+
+/** Validate a CSS-style hex color (`#abc` or `#aabbcc`). */
+export function isValidHex(value: string): boolean {
+  return HEX_RE.test(value);
+}
+
+/** Expand `#abc` → `#aabbcc`. Pass-through for already 6-digit input. */
+export function normalizeHex(value: string): string {
+  if (!isValidHex(value)) return value;
+  if (value.length === 7) return value.toLowerCase();
+  const r = value[1];
+  const g = value[2];
+  const b = value[3];
+  return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+}
+
+export type AccentOverrides = Partial<Record<AccentKey, string>>;
+
+/**
+ * Apply accent overrides on top of a base palette. Unknown keys and invalid
+ * hex values are dropped — the base palette is the safe default. The base
+ * input is treated as immutable; a fresh palette is returned.
+ */
+export function applyAccentOverrides(base: ThemePalette, overrides: AccentOverrides | undefined): ThemePalette {
+  if (!overrides) return base;
+  const next: ThemePalette = { ...base };
+  let touched = false;
+  for (const [key, value] of Object.entries(overrides)) {
+    if (!ACCENT_KEY_SET.has(key)) continue;
+    if (typeof value !== "string" || !isValidHex(value)) continue;
+    next[key as AccentKey] = normalizeHex(value);
+    touched = true;
+  }
+  return touched ? next : base;
+}
+
 /**
  * Generate CSS custom property overrides for a given palette.
  * Returns a Record<string, string> suitable for setting on document.documentElement.style.

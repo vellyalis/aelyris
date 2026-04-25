@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useAppStore } from "../../shared/store/appStore";
 import styles from "./Settings.module.css";
 import { ShellIntegrationSection } from "./ShellIntegrationSection";
+import { ThemePaletteEditor } from "./ThemePaletteEditor";
 import { UpdateCheckSection } from "./UpdateCheckSection";
 
 interface SettingsProps {
@@ -139,13 +140,27 @@ export function Settings({ visible, onClose }: SettingsProps) {
               <h3 className={styles.sectionTitle}>Appearance</h3>
               <div className={styles.field}>
                 <label className={styles.label}>Theme</label>
-                <select className={styles.select} value={theme} onChange={(e) => setTheme(e.target.value)}>
+                <select
+                  className={styles.select}
+                  value={theme}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setTheme(next);
+                    // Apply immediately so the palette editor below targets
+                    // the live theme (the running window is the preview).
+                    setThemeId(next);
+                  }}
+                >
                   {THEMES.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.label}
                     </option>
                   ))}
                 </select>
+              </div>
+              <div className={styles.field}>
+                <label className={styles.label}>Palette</label>
+                <ThemePaletteEditor themeId={theme} />
               </div>
               <div className={styles.field}>
                 <label className={styles.label}>Terminal Font</label>

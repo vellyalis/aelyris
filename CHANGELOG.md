@@ -3,7 +3,31 @@
 All notable changes to Aether Terminal are tracked here. Dates are listed in
 `YYYY-MM-DD`. Commit hashes reference `refactor/tauri-react-migration`.
 
-## [0.2.3] — 2026-04-27
+## [Unreleased]
+
+Continuing the post-0.2.3 Tier 3 polish run started with
+`247e813` (search-in-scrollback, Tier 3 #9).
+
+### UX
+
+- **Theme palette editor** (Tier 3 #10) — Settings → Appearance now
+  exposes a per-accent palette editor for the active theme. Each of the
+  16 catppuccin accents is editable via a native color picker plus a
+  hex text input; values commit on Enter / blur with hex validation
+  (3-digit shorthand normalised to 6-digit, invalid inputs flagged with
+  `aria-invalid` and silently dropped at the store layer). Overrides
+  layer on top of the base palette via a new `applyAccentOverrides` in
+  `src/shared/themes/catppuccin.ts`, are persisted under
+  `aether:themeOverrides` per-themeId in localStorage, and feed back
+  through `useThemeApplier` so the running window updates on the next
+  React commit — there is no preview canvas, the live UI is the
+  preview. A theme switch in the same dialog applies immediately so the
+  editor below targets whichever theme is on screen. Per-accent and
+  global Reset buttons drop overrides; empty-override theme entries are
+  garbage-collected from the store. 16 unit tests cover hex validation,
+  palette merge invariants, store mutations, and component interaction.
+
+
 
 Closes every Tier 1 (senior-blocker) item from
 `docs/ROADMAP_POST_0_2_2.md` plus four of the five Tier 2 polish items

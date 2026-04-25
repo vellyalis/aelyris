@@ -1,12 +1,45 @@
 import { create } from "zustand";
+import type { AccentKey, AccentOverrides } from "../themes/catppuccin";
 import type { KanbanColumnId, KanbanTask } from "../types/kanban";
 
 export type SidebarSection = "files" | "tasks" | "agents" | "tools";
+
+const THEME_OVERRIDES_KEY = "aether:themeOverrides";
+
+function loadThemeOverrides(): Record<string, AccentOverrides> {
+  try {
+    const raw = localStorage.getItem(THEME_OVERRIDES_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, AccentOverrides>;
+    }
+    return {};
+  } catch {
+    return {};
+  }
+}
+
+function persistThemeOverrides(state: Record<string, AccentOverrides>): void {
+  try {
+    localStorage.setItem(THEME_OVERRIDES_KEY, JSON.stringify(state));
+  } catch {
+    /* ignore storage errors (private mode, quota) */
+  }
+}
 
 interface AppState {
   // Theme
   themeId: string;
   setThemeId: (id: string) => void;
+  /** Per-themeId accent overrides. Each entry is a partial palette that
+   * layers on top of the base catppuccin palette. */
+  themeOverrides: Record<string, AccentOverrides>;
+  /** Set or clear a single accent for the given theme. Pass `undefined` to
+   * clear the override and fall back to the base palette value. */
+  setAccentOverride: (themeId: string, key: AccentKey, value: string | undefined) => void;
+  /** Drop all overrides for the given theme. */
+  resetThemeOverrides: (themeId: string) => void;
 
   // Project
   rootProjectPath: string | null;
@@ -97,6 +130,34 @@ export const useAppStore = create<AppState>((set, get) => ({
       localStorage.setItem("aether:theme", id);
     } catch {}
   },
+
+  themeOverrides: loadThemeOverrides(),
+  setAccentOverride: (themeId, key, value) =>
+    set((s) => {
+      const current = s.themeOverrides[themeId] ?? {};
+      const nextForTheme: AccentOverrides = { ...current };
+      if (value === undefined) {
+        delete nextForTheme[key];
+      } else {
+        nextForTheme[key] = value;
+      }
+      const nextAll = { ...s.themeOverrides };
+      if (Object.keys(nextForTheme).length === 0) {
+        delete nextAll[themeId];
+      } else {
+        nextAll[themeId] = nextForTheme;
+      }
+      persistThemeOverrides(nextAll);
+      return { themeOverrides: nextAll };
+    }),
+  resetThemeOverrides: (themeId) =>
+    set((s) => {
+      if (!(themeId in s.themeOverrides)) return s;
+      const nextAll = { ...s.themeOverrides };
+      delete nextAll[themeId];
+      persistThemeOverrides(nextAll);
+      return { themeOverrides: nextAll };
+    }),
 
   // Project
   rootProjectPath: (() => {

@@ -98,7 +98,8 @@ export function App() {
     kanbanTasks,
     moveKanbanTask,
   } = useAppStore();
-  useThemeApplier(themeId);
+  const themeOverridesForActive = useAppStore((s) => s.themeOverrides[themeId]);
+  useThemeApplier(themeId, themeOverridesForActive);
 
   // Boot perf marker — fires after the first React commit + one frame, so the
   // number reflects when pixels actually land on screen rather than when JS ran.
