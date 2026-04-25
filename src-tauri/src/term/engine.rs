@@ -16,6 +16,9 @@ use alacritty_terminal::term::{Config, cell::Cell};
 use alacritty_terminal::vte::ansi::Processor;
 use alacritty_terminal::Term;
 
+use super::images::{
+    ImageId, ImageStore, ParseStep as ImageParseStep, try_parse as try_parse_image,
+};
 use super::prompt_marks::{ParseStep, PromptMark, PromptMarkLog, try_parse as try_parse_osc133};
 
 #[derive(Debug, thiserror::Error)]
@@ -72,6 +75,10 @@ pub struct TermEngine {
     /// `advance()` call boundary. Rare but real — terminals routinely split
     /// OSC sequences across PTY read chunks.
     osc_pending: Vec<u8>,
+    /// Inline-image registry. Sprint 1 just collects raw escape payloads
+    /// here so they don't leak into the alacritty grid as garbage; Sprint
+    /// 2/3 wire decoding and snapshot exposure.
+    images: ImageStore,
 }
 
 impl TermEngine {
@@ -88,6 +95,7 @@ impl TermEngine {
             size,
             prompt_marks: PromptMarkLog::new(),
             osc_pending: Vec::new(),
+            images: ImageStore::new(),
         })
     }
 
@@ -99,16 +107,16 @@ impl TermEngine {
     /// [`TermEngine::prompt_marks`].
     pub fn advance(&mut self, bytes: &[u8]) -> Vec<PromptMark> {
         // Fast path: nothing pending and no ESC in the buffer — can't be
-        // OSC 133. Forward straight to alacritty.
+        // OSC 133 or an image escape. Forward straight to alacritty.
         if self.osc_pending.is_empty() && !bytes.contains(&0x1b) {
             self.parser.advance(&mut self.term, bytes);
             return Vec::new();
         }
 
-        // Take ownership of any pending OSC tail so the borrow checker
-        // lets us mutate `self.parser` / `self.prompt_marks` while walking
-        // the combined buffer. The field is cleared and restored only at
-        // the Incomplete branch where we stash a fresh tail.
+        // Take ownership of any pending escape tail so the borrow checker
+        // lets us mutate `self.parser` / `self.prompt_marks` /
+        // `self.images` while walking the combined buffer. The field is
+        // cleared here and re-stashed on the `Incomplete` branch.
         let mut combined = std::mem::take(&mut self.osc_pending);
         if combined.is_empty() {
             combined.reserve(bytes.len());
@@ -123,6 +131,34 @@ impl TermEngine {
                 i += 1;
                 continue;
             }
+
+            // Image escapes (Kitty `_G`, Sixel `Pq…`) take precedence over
+            // OSC 133 because the prefix bytes don't overlap — `_G` and
+            // `Pq` are unique introducers — and images must NEVER be
+            // forwarded to alacritty (the bytes would print as garbage).
+            match try_parse_image(&combined[i..]) {
+                ImageParseStep::Consumed { bytes: n, payload } => {
+                    self.parser.advance(&mut self.term, &combined[consumed..i]);
+                    // Sprint 1: store the raw payload only. Decoding +
+                    // snapshot wiring land in Sprint 2/3.
+                    let _id: ImageId = self
+                        .images
+                        .insert(payload.protocol, payload.body);
+                    // Image bytes are *consumed*, not forwarded to
+                    // alacritty — that's the whole point of pre-empting
+                    // here. The grid stays free of escape garbage.
+                    i += n;
+                    consumed = i;
+                    continue;
+                }
+                ImageParseStep::Incomplete => {
+                    self.parser.advance(&mut self.term, &combined[consumed..i]);
+                    self.osc_pending = combined[i..].to_vec();
+                    return new_marks;
+                }
+                ImageParseStep::None => {} // fall through to OSC 133
+            }
+
             match try_parse_osc133(&combined[i..]) {
                 ParseStep::Consumed { bytes: n, mark } => {
                     // Flush everything up to the OSC 133 start so the
@@ -163,6 +199,13 @@ impl TermEngine {
             self.parser.advance(&mut self.term, &combined[consumed..]);
         }
         new_marks
+    }
+
+    /// Read-only access to the inline-image registry. Sprint 2/3 surfaces
+    /// this through the snapshot + IPC layers; Sprint 1 callers (tests
+    /// only) use it to assert the scanner caught the escape bytes.
+    pub fn images(&self) -> &ImageStore {
+        &self.images
     }
 
     /// Convenience: feed a UTF-8 string and discard any emitted marks.
@@ -482,6 +525,72 @@ mod tests {
         assert!(hs >= 2);
         assert!(engine.history_row_text(hs).is_none());
         assert!(engine.history_row_text(hs + 1000).is_none());
+    }
+
+    #[test]
+    fn kitty_image_escape_is_consumed_and_does_not_reach_grid() {
+        let mut engine = TermEngine::new(80, 24).expect("engine");
+        // Write text, then a Kitty escape, then more text. The escape
+        // bytes must NOT print to the grid.
+        engine.advance_str("before");
+        engine.advance(b"\x1b_Ga=T,f=100;aGVsbG8=\x1b\\");
+        engine.advance_str("after");
+        let row = engine.row_text(0).expect("row 0");
+        assert_eq!(row, "beforeafter");
+        // And the registry caught the payload.
+        assert_eq!(engine.images().len(), 1);
+        assert_eq!(engine.images().bytes_used(), b"aGVsbG8=".len());
+    }
+
+    #[test]
+    fn sixel_escape_is_consumed_and_does_not_reach_grid() {
+        let mut engine = TermEngine::new(80, 24).expect("engine");
+        engine.advance(b"text-\x1bP0;1;0q!1~~~~\x1b\\-more");
+        let row = engine.row_text(0).expect("row 0");
+        assert_eq!(row, "text--more");
+        assert_eq!(engine.images().len(), 1);
+    }
+
+    #[test]
+    fn image_escape_split_across_advances_completes_on_second_call() {
+        let mut engine = TermEngine::new(80, 24).expect("engine");
+        // First chunk ends mid-payload — scanner must report Incomplete
+        // and stash the tail.
+        engine.advance(b"hello\x1b_Ga=T,f=100;aGV");
+        assert_eq!(engine.images().len(), 0);
+        // Visible text up to the ESC made it onto the grid; the rest
+        // is buffered in osc_pending.
+        assert_eq!(engine.row_text(0).unwrap(), "hello");
+        engine.advance(b"sbG8=\x1b\\after");
+        assert_eq!(engine.images().len(), 1);
+        let payload = &engine.images().get(crate::term::images::ImageId(0)).unwrap().bytes;
+        assert_eq!(payload, b"aGVsbG8=");
+        assert_eq!(engine.row_text(0).unwrap(), "helloafter");
+    }
+
+    #[test]
+    fn osc133_and_image_escape_can_coexist_in_one_advance() {
+        let mut engine = TermEngine::new(80, 24).expect("engine");
+        let marks = engine.advance(
+            b"\x1b]133;A\x07$ \x1b_Ga=T,f=100;aGVsbG8=\x1b\\done",
+        );
+        assert_eq!(marks.len(), 1, "OSC 133 mark should still emit");
+        assert_eq!(engine.images().len(), 1, "image should still register");
+        // Grid sees the OSC 133 prompt + literal text only.
+        assert_eq!(engine.row_text(0).unwrap(), "$ done");
+    }
+
+    #[test]
+    fn dcs_without_q_passes_through_to_alacritty() {
+        // ESC P without a `q` is a generic DCS (DECRQSS etc.). It must
+        // *not* be consumed as Sixel; alacritty handles it (as a no-op
+        // today) and the visible text after the DCS lands as expected.
+        let mut engine = TermEngine::new(80, 24).expect("engine");
+        engine.advance(b"\x1bP$qm\x1b\\after");
+        assert_eq!(engine.images().len(), 0);
+        // Alacritty consumes the DCS silently; "after" is the only
+        // printable text.
+        assert_eq!(engine.row_text(0).unwrap(), "after");
     }
 
     #[test]

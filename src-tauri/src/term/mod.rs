@@ -6,6 +6,7 @@
 
 pub mod diff;
 pub mod engine;
+pub mod images;
 pub mod native;
 pub mod prompt_marks;
 pub mod snapshot;

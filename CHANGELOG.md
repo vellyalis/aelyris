@@ -8,6 +8,27 @@ All notable changes to Aether Terminal are tracked here. Dates are listed in
 Continuing the post-0.2.3 Tier 3 polish run started with
 `247e813` (search-in-scrollback, Tier 3 #9).
 
+### Reliability
+
+- **Inline image escape consumption** (Tier 2 #5, Sprint 1 of 3) —
+  Kitty graphics protocol (`\x1b_G…\x1b\\`) and Sixel
+  (`\x1bP…q…\x1b\\`) escape sequences are now recognised and
+  pre-empted by the engine's `advance()` scanner so they no longer
+  leak into the alacritty grid as ASCII garbage. This is the
+  correctness fix that has to land before pixel decoding can be wired
+  in (`docs/sixel-kitty-spike.md`). The new `term::images` module
+  contains a boundary scanner mirroring the OSC 133 `ParseStep`
+  shape, a Kitty header parser (`a=`, `f=`, `t=`, `m=`, `i=`, `s=`,
+  `v=`, `c=`, `r=`), a Sixel header stub (decoder lands in Sprint
+  2), and an `ImageStore` keyed by monotonic `ImageId` with a 50
+  MiB cap and FIFO eviction. Sprint 1 stores raw escape payloads
+  only; snapshot wiring, IPC, and frontend paint are explicitly
+  deferred to Sprints 2–3 to keep the change narrow and reviewable.
+  +34 Rust unit tests cover scanner boundaries (Kitty + Sixel,
+  with/without payload, cross-boundary `Incomplete` resumption,
+  DCS-without-`q` falling back to alacritty), header key tolerance,
+  and store insertion / FIFO eviction / id monotonicity.
+
 ### UX
 
 - **Theme palette editor** (Tier 3 #10) — Settings → Appearance now
