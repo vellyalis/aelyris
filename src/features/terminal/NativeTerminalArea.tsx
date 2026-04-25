@@ -1,15 +1,18 @@
 import { invoke } from "@tauri-apps/api/core";
+import { openUrl as tauriOpenUrl } from "@tauri-apps/plugin-opener";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { ShellType } from "../../App";
 import { useSnapshots } from "../../shared/hooks/useSnapshots";
 import { useTerminalSnapshot } from "../../shared/hooks/useTerminalSnapshot";
+import { useAppStore } from "../../shared/store/appStore";
 import type { SnapshotSummary } from "../../shared/types/snapshot";
 import { type ActiveSnapshotOverlay, TimelineBar } from "../timeline/TimelineBar";
 import { useAICliDetection } from "./hooks/useAICliDetection";
 import { useInputMirror } from "./hooks/useInputMirror";
 import { IMEInputBar, type IMEInputBarHandle } from "./IMEInputBar";
+import { openTerminalUrlWith } from "./openTerminalUrl";
 import { findMatches, nextMatch, previousMatch, type SearchMatch } from "./search";
 import styles from "./TerminalArea.module.css";
 import { TerminalCanvas, type TerminalNav } from "./TerminalCanvas";
@@ -36,6 +39,12 @@ interface NativeTerminalAreaProps {
     rows: number;
     cwd?: string;
   }) => Promise<void>;
+  /** Override for tests — opens an in-cwd file:// URL in the editor.
+   *  Defaults to `useAppStore.getState().openFile`. */
+  openInEditor?: (absolutePath: string) => void;
+  /** Override for tests — opens any other URL via the OS handler.
+   *  Defaults to `tauri-plugin-opener.openUrl`. */
+  openExternal?: (url: string) => Promise<void> | void;
 }
 
 /**
@@ -148,6 +157,8 @@ export function NativeTerminalArea({
   subscribeOutput = defaultSubscribeOutput,
   subscribeExit = defaultSubscribeExit,
   respawnPty = defaultRespawn,
+  openInEditor,
+  openExternal,
 }: NativeTerminalAreaProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [canvasEl, setCanvasEl] = useState<HTMLCanvasElement | null>(null);
@@ -288,6 +299,29 @@ export function NativeTerminalArea({
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
   }, [snapshotOverlay, dismissSnapshotOverlay]);
+
+  // ── Hyperlink click routing (Tier 🟡 #4) ──
+  // file:// URLs that resolve inside this pane's cwd open in the built-in
+  // editor; everything else falls through to the OS opener. Adapters are
+  // captured into refs so the resolved `onOpenUrl` keeps a stable
+  // identity across re-renders — TerminalCanvas's mousedown listener
+  // would otherwise re-bind on every paint.
+  const openInEditorRef = useRef<((path: string) => void) | undefined>(openInEditor);
+  openInEditorRef.current = openInEditor;
+  const openExternalRef = useRef<((url: string) => Promise<void> | void) | undefined>(openExternal);
+  openExternalRef.current = openExternal;
+  const onOpenUrl = useCallback(
+    async (url: string) => {
+      const editor = openInEditorRef.current ?? ((p: string) => useAppStore.getState().openFile(p));
+      const external = openExternalRef.current ?? ((u: string) => tauriOpenUrl(u));
+      await openTerminalUrlWith(
+        url,
+        { cwd: cwdRef.current ?? null },
+        { openInEditor: editor, openExternal: external },
+      );
+    },
+    [],
+  );
 
   // ── AI CLI detection ──
   // Still used to disable ghost-text autosuggest while an AI CLI owns the
@@ -752,6 +786,7 @@ export function NativeTerminalArea({
             onCanvasRef={setCanvasEl}
             onInputRef={setCanvasInputEl}
             onRegisterNav={setNav}
+            onOpenUrl={onOpenUrl}
           />
         )}
       </div>
