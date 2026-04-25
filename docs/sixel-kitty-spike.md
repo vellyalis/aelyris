@@ -1,10 +1,12 @@
 # Sixel + Kitty inline images — spike (Tier 🟡 #5)
 
-Status: **Sprint 1 (foundation) + Sprint 2 (decode) landed**. Sprint 3 is next.
+Status: **All three sprints landed (foundation + decode + paint).**
 Started: 2026-04-28. Sprint 2 landed 2026-04-29 — Sixel decoder is an
 in-tree minimal implementation (no `sixel-image` crate adopted; the
 audit / bundle-size cost outweighed the spec subset we needed to
-implement).
+implement). Sprint 3 landed 2026-04-30 — `GridSnapshot.images`,
+`term_image_data` IPC, and `TerminalCanvas` paint pass close the
+post-0.2.3 Tier 🟡 backlog entirely.
 
 The post-0.2.3 roadmap (`docs/ROADMAP_POST_0_2_2.md`, item 5) calls
 for inline image rendering of two protocols:

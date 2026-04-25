@@ -550,6 +550,28 @@ pub fn term_search_history(
         .search_history(&id, &query, caseSensitive)
 }
 
+/// Fetch the decoded payload for an inline image surfaced via
+/// `GridSnapshot::images`. Returns `None` when the terminal id, image
+/// id, or decoded buffer is missing — the frontend treats all three as
+/// the same "skip this image" signal and leaves the cell rectangle
+/// unrendered, mirroring the graceful degradation already used for
+/// scrollback eviction.
+///
+/// The payload rides as a base64 string (see `image_data` in
+/// `term::native` for the rationale around Tauri's `Vec<u8>`
+/// serialisation cost). Frontends decode once and cache the
+/// `ImageBitmap` keyed by `id`.
+#[tauri::command]
+#[allow(non_snake_case)]
+pub fn term_image_data(
+    app: AppHandle,
+    id: String,
+    imageId: u64,
+) -> Option<crate::term::native::ImageDataResponse> {
+    app.state::<Arc<NativeTerminalRegistry>>()
+        .image_data(&id, imageId)
+}
+
 /// List active terminals
 #[tauri::command]
 pub fn list_terminals(app: AppHandle) -> Vec<String> {

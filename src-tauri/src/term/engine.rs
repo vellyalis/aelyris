@@ -17,8 +17,8 @@ use alacritty_terminal::vte::ansi::Processor;
 use alacritty_terminal::Term;
 
 use super::images::{
-    ImageId, ImageStore, KittyChunkAssembler, ParseStep as ImageParseStep, decode_kitty,
-    decode_sixel, parse_kitty_header, try_parse as try_parse_image,
+    ImageId, ImagePlacement, ImageStore, KittyChunkAssembler, ParseStep as ImageParseStep,
+    decode_kitty, decode_sixel, parse_kitty_header, try_parse as try_parse_image,
 };
 use super::images::sequences::{ImagePayload, ImageProtocol};
 use super::prompt_marks::{ParseStep, PromptMark, PromptMarkLog, try_parse as try_parse_osc133};
@@ -148,12 +148,20 @@ impl TermEngine {
             match try_parse_image(&combined[i..]) {
                 ImageParseStep::Consumed { bytes: n, payload } => {
                     self.parser.advance(&mut self.term, &combined[consumed..i]);
+                    // Capture cursor *after* flushing the bytes that
+                    // preceded the escape — alacritty has now advanced
+                    // its own cursor to the position the image will
+                    // anchor to. Sprint 3 stores this in the entry so
+                    // the snapshot can translate to the live cell row
+                    // even after the grid scrolls.
+                    let placement = current_placement(&self.term);
                     // Sprint 2: try to decode. A chunked Kitty stream
                     // accumulates silently until the final chunk; both
                     // protocols swallow decode failures (raw bytes still
                     // get retained for diagnostics) so a malformed image
                     // never crashes the engine.
-                    let _id: Option<ImageId> = self.handle_image_payload(payload);
+                    let _id: Option<ImageId> =
+                        self.handle_image_payload(payload, placement);
                     // Image bytes are *consumed*, not forwarded to
                     // alacritty — that's the whole point of pre-empting
                     // here. The grid stays free of escape garbage.
@@ -228,7 +236,11 @@ impl TermEngine {
     /// still inserted so the diagnostic path can inspect them, but the
     /// `decoded` field stays `None`. Sprint 3's paint pass treats that
     /// as "skip this image" rather than blocking on a re-decode.
-    fn handle_image_payload(&mut self, payload: ImagePayload) -> Option<ImageId> {
+    fn handle_image_payload(
+        &mut self,
+        payload: ImagePayload,
+        placement: ImagePlacement,
+    ) -> Option<ImageId> {
         match payload.protocol {
             ImageProtocol::Kitty => {
                 let header = parse_kitty_header(&payload.header);
@@ -239,6 +251,7 @@ impl TermEngine {
                     ImageProtocol::Kitty,
                     raw_bytes,
                     decoded,
+                    placement,
                 ))
             }
             ImageProtocol::Sixel => {
@@ -248,6 +261,7 @@ impl TermEngine {
                     ImageProtocol::Sixel,
                     raw_bytes,
                     decoded,
+                    placement,
                 ))
             }
         }
@@ -359,6 +373,19 @@ impl TermEngine {
 fn cursor_of(term: &Term<VoidListener>) -> (usize, usize) {
     let point = term.grid().cursor.point;
     (point.line.0.max(0) as usize, point.column.0)
+}
+
+/// Snapshot the current cursor + history size as an `ImagePlacement`.
+/// Sprint 3's image scanner calls this right after flushing the bytes
+/// preceding an image escape so the recorded placement matches where
+/// the image will visually anchor on the grid.
+fn current_placement(term: &Term<VoidListener>) -> ImagePlacement {
+    let (row, col) = cursor_of(term);
+    ImagePlacement {
+        history_at_insert: term.grid().history_size().min(u32::MAX as usize) as u32,
+        screen_row_at_insert: row.min(u16::MAX as usize) as u16,
+        col_at_insert: col.min(u16::MAX as usize) as u16,
+    }
 }
 
 #[cfg(test)]

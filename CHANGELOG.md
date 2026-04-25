@@ -29,6 +29,35 @@ Continuing the post-0.2.3 Tier 3 polish run started with
   DCS-without-`q` falling back to alacritty), header key tolerance,
   and store insertion / FIFO eviction / id monotonicity.
 
+- **Inline image rendering** (Tier 2 #5, Sprint 3 of 3) — Sprint 3
+  closes #5 by surfacing the decoded payloads through the snapshot,
+  IPC, and frontend paint paths. `GridSnapshot` gains an
+  `images: Vec<ImageRef>` field (with
+  `#[serde(skip_serializing_if = "Vec::is_empty")]` so the wire shape
+  is byte-identical for text-only frames). `ImageRef` carries
+  `(id, cellRow, cellCol, widthPx, heightPx, cellW?, cellH?)` —
+  `cellRow` is already translated forward through any scroll that
+  happened since the engine consumed the escape, by subtracting
+  `current_history_size - history_at_insert`. Images whose anchor
+  scrolls into history (or whose decode failed) are silently dropped
+  at the snapshot boundary so the frontend only ever paints what it
+  can render. New `term_image_data(id, imageId)` IPC returns
+  `{format: "png" | "rgba8", dataBase64, widthPx, heightPx}` — bytes
+  ride as base64 to keep the JSON IPC honest about binary payloads,
+  decoded once and cached as `ImageBitmap` in the new
+  `useTerminalImages` hook so subsequent paint passes are O(images)
+  bitmap blits, not IPC roundtrips. `TerminalCanvas` paints overlays
+  after cells / cursor at `(cellCol × cellWidth, cellRow × cellHeight)`
+  scaled to the source-declared cell rectangle (Kitty `c=` / `r=`)
+  or computed from pixel dims. Bitmap cache GC: ids dropped from the
+  snapshot have their `ImageBitmap.close()` called so long sessions
+  with many transient images don't leak GPU memory. +13 tests (5 Rust
+  snapshot integration covering field omission when empty, anchor
+  capture from cursor, scroll-translation eviction, Kitty cell
+  override pass-through, decode-failure skip; 8 Vitest covering hook
+  cache + IPC fetch + bitmap eviction + format dispatch + null/throw
+  graceful skip). Closes Tier 🟡 #5 entirely.
+
 - **Inline image decode** (Tier 2 #5, Sprint 2 of 3) — the engine now
   decodes the payloads the Sprint-1 scanner caught into a uniform
   `DecodedImage { protocol, payload, width_px, height_px, cell_cols,

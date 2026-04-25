@@ -33,6 +33,24 @@ pub const IMAGE_BYTE_CAP: usize = 50 * 1024 * 1024;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ImageId(pub u64);
 
+/// Where the source placed the image at consumption time. Sprint 3
+/// translates this into a current screen row by subtracting the lines
+/// added since (`current_history_size - history_at_insert`) so the
+/// snapshot can report the live position even after the grid scrolls.
+///
+/// Coordinates are *cell-relative* to the alacritty grid:
+///   - `screen_row_at_insert` is 0..rows at the moment of insert.
+///   - `history_at_insert` snapshots `Term::grid().history_size()` so
+///     the post-scroll translation is invertible.
+///   - `col_at_insert` is the column the cursor was on; image rendering
+///     takes that as the left anchor.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ImagePlacement {
+    pub history_at_insert: u32,
+    pub screen_row_at_insert: u16,
+    pub col_at_insert: u16,
+}
+
 #[derive(Debug, Clone)]
 pub struct ImageEntry {
     pub id: ImageId,
@@ -43,6 +61,9 @@ pub struct ImageEntry {
     /// either failed or was not yet run — Sprint 3's paint pass will
     /// silently skip such entries rather than block on a re-decode.
     pub decoded: Option<DecodedImage>,
+    /// Cursor position the engine recorded at insert time. Sprint 3's
+    /// snapshot uses this to compute the current cell row.
+    pub placement: ImagePlacement,
 }
 
 impl ImageEntry {
@@ -99,17 +120,23 @@ impl ImageStore {
     /// the cap is *still* inserted (after evicting everything else) — the
     /// alternative is silently dropping a real user image, which would be
     /// a worse failure mode than a transient cap overshoot.
+    ///
+    /// Convenience wrapper around `insert_full` for callers that don't
+    /// have a decoded payload or a meaningful placement (mostly tests
+    /// for the store's own eviction / id semantics).
     pub fn insert(&mut self, protocol: ImageProtocol, bytes: Vec<u8>) -> ImageId {
-        self.insert_full(protocol, bytes, None)
+        self.insert_full(protocol, bytes, None, ImagePlacement::default())
     }
 
-    /// Insert with an optional decoded payload. The decoded buffer's
-    /// length counts against the same per-session cap as the raw bytes.
+    /// Insert with an optional decoded payload and the cursor placement
+    /// recorded at consumption time. The decoded buffer's length counts
+    /// against the same per-session cap as the raw bytes.
     pub fn insert_full(
         &mut self,
         protocol: ImageProtocol,
         bytes: Vec<u8>,
         decoded: Option<DecodedImage>,
+        placement: ImagePlacement,
     ) -> ImageId {
         let id = ImageId(self.next_id);
         self.next_id = self.next_id.checked_add(1).expect("ImageId u64 overflow");
@@ -131,6 +158,7 @@ impl ImageStore {
             protocol,
             bytes,
             decoded,
+            placement,
         });
         id
     }
@@ -177,6 +205,13 @@ impl ImageStore {
 
     pub fn get(&self, id: ImageId) -> Option<&ImageEntry> {
         self.entries.iter().find(|e| e.id == id)
+    }
+
+    /// Iterate over every retained entry in insertion order (oldest first).
+    /// Sprint 3's snapshot pass walks this to translate placement into
+    /// the current cell row.
+    pub fn iter(&self) -> impl Iterator<Item = &ImageEntry> {
+        self.entries.iter()
     }
 
     /// Drop everything. Returns the number of entries removed.
@@ -294,7 +329,12 @@ mod tests {
     fn insert_full_charges_decoded_buffer_to_cap() {
         let mut s = ImageStore::with_cap(1024);
         let dec = rgba8(2, 2); // 16 bytes
-        let id = s.insert_full(ImageProtocol::Sixel, b"raw".to_vec(), Some(dec));
+        let id = s.insert_full(
+            ImageProtocol::Sixel,
+            b"raw".to_vec(),
+            Some(dec),
+            ImagePlacement::default(),
+        );
         let e = s.get(id).unwrap();
         assert!(e.decoded.is_some());
         assert_eq!(s.bytes_used(), 3 + 16);
@@ -315,7 +355,12 @@ mod tests {
     #[test]
     fn attach_decoded_replaces_prior_decoded_buffer() {
         let mut s = ImageStore::with_cap(1024);
-        let id = s.insert_full(ImageProtocol::Sixel, b"raw".to_vec(), Some(rgba8(2, 2)));
+        let id = s.insert_full(
+            ImageProtocol::Sixel,
+            b"raw".to_vec(),
+            Some(rgba8(2, 2)),
+            ImagePlacement::default(),
+        );
         assert_eq!(s.bytes_used(), 3 + 16);
         s.attach_decoded(id, rgba8(4, 4));
         assert_eq!(s.bytes_used(), 3 + 64);
@@ -333,11 +378,52 @@ mod tests {
         // decoded 36 = 41. Third: raw 5 + decoded 25 = 30 — total without
         // eviction would be 112, so the first entry evicts.
         let mut s = ImageStore::with_cap(100);
-        let a = s.insert_full(ImageProtocol::Sixel, vec![0; 5], Some(rgba8(3, 3)));
-        let b = s.insert_full(ImageProtocol::Sixel, vec![0; 5], Some(rgba8(3, 3)));
-        let c = s.insert_full(ImageProtocol::Sixel, vec![0; 5], Some(rgba8(2, 3)));
+        let a = s.insert_full(
+            ImageProtocol::Sixel,
+            vec![0; 5],
+            Some(rgba8(3, 3)),
+            ImagePlacement::default(),
+        );
+        let b = s.insert_full(
+            ImageProtocol::Sixel,
+            vec![0; 5],
+            Some(rgba8(3, 3)),
+            ImagePlacement::default(),
+        );
+        let c = s.insert_full(
+            ImageProtocol::Sixel,
+            vec![0; 5],
+            Some(rgba8(2, 3)),
+            ImagePlacement::default(),
+        );
         assert!(s.get(a).is_none(), "oldest should evict");
         assert!(s.get(b).is_some());
         assert!(s.get(c).is_some());
+    }
+
+    #[test]
+    fn placement_round_trips_through_entry() {
+        let mut s = ImageStore::with_cap(1024);
+        let placement = ImagePlacement {
+            history_at_insert: 42,
+            screen_row_at_insert: 3,
+            col_at_insert: 17,
+        };
+        let id = s.insert_full(
+            ImageProtocol::Kitty,
+            b"raw".to_vec(),
+            None,
+            placement,
+        );
+        assert_eq!(s.get(id).unwrap().placement, placement);
+    }
+
+    #[test]
+    fn iter_yields_entries_in_insertion_order() {
+        let mut s = ImageStore::with_cap(1024);
+        let a = s.insert(ImageProtocol::Kitty, b"a".to_vec());
+        let b = s.insert(ImageProtocol::Sixel, b"b".to_vec());
+        let ids: Vec<_> = s.iter().map(|e| e.id).collect();
+        assert_eq!(ids, vec![a, b]);
     }
 }

@@ -10,8 +10,10 @@ use std::time::{Duration, Instant};
 
 use super::diff::{DiffTracker, GridDiff};
 use super::engine::TermEngine;
+use super::images::{DecodedPayload, ImageId};
 use super::prompt_marks::PromptMark;
 use super::snapshot::GridSnapshot;
+use serde::{Deserialize, Serialize};
 
 /// Outcome of a single `advance` call — a (possibly-empty) diff plus every
 /// OSC 133 prompt mark that was *newly* completed inside the byte buffer.
@@ -200,6 +202,37 @@ impl NativeTerminalRegistry {
         Some(session.engine.snapshot())
     }
 
+    /// Look up an inline image by id and return its decoded payload as
+    /// `(format, base64-bytes, width_px, height_px)`. Returns `None`
+    /// when the terminal id, image id, or decoded buffer is missing —
+    /// the frontend treats all three as the same "skip the image"
+    /// signal and the cell rectangle stays unrendered.
+    pub fn image_data(&self, id: &str, image_id: u64) -> Option<ImageDataResponse> {
+        let guard = self.lock().ok()?;
+        let session = guard.get(id)?;
+        let entry = session.engine.images().get(ImageId(image_id))?;
+        let decoded = entry.decoded.as_ref()?;
+        let (format, bytes_ref) = match &decoded.payload {
+            DecodedPayload::Png { bytes } => (ImageDataFormat::Png, bytes),
+            DecodedPayload::Rgba8 { bytes } => (ImageDataFormat::Rgba8, bytes),
+        };
+        // Tauri's default IPC serialises `Vec<u8>` as a JSON array of
+        // integers — terrible for ~MiB-scale buffers. Encoding to
+        // base64 makes the trip ~4/3 the raw size but stays in JSON
+        // string territory, which the frontend's `atob`/`Uint8Array`
+        // handle without a buffer adapter. The decode path on the
+        // frontend runs once per image (cached as `ImageBitmap`) so
+        // the 33% overhead is paid once, not per frame.
+        use base64::Engine;
+        use base64::engine::general_purpose::STANDARD as B64;
+        Some(ImageDataResponse {
+            format,
+            data_base64: B64.encode(bytes_ref),
+            width_px: decoded.width_px,
+            height_px: decoded.height_px,
+        })
+    }
+
     pub fn remove(&self, id: &str) {
         if let Ok(mut guard) = self.lock() {
             if guard.remove(id).is_some() {
@@ -217,6 +250,28 @@ impl Default for NativeTerminalRegistry {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Image-payload format tag for the `term_image_data` IPC. The frontend
+/// switches on this to choose between an `<img src="data:image/png">`
+/// path (PNG) and a `putImageData(new ImageData(rgba, w, h))` path
+/// (Rgba8).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ImageDataFormat {
+    Png,
+    Rgba8,
+}
+
+/// Tauri-serialisable image payload. The bytes ride as base64 to keep
+/// the JSON IPC honest about binary; see `image_data()` for rationale.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageDataResponse {
+    pub format: ImageDataFormat,
+    pub data_base64: String,
+    pub width_px: u32,
+    pub height_px: u32,
 }
 
 #[cfg(test)]

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { findNextPromptMark, findPrevPromptMark, useScrollback } from "../../shared/hooks/useScrollback";
 import { useTerminalSnapshot } from "../../shared/hooks/useTerminalSnapshot";
 import { usePromptMarks } from "../../shared/hooks/usePromptMarks";
+import { useTerminalImages } from "../../shared/hooks/useTerminalImages";
 import {
   CURSOR_COLOR,
   DEFAULT_BG,
@@ -14,7 +15,13 @@ import {
   SEARCH_MATCH_BG,
   SELECTION_BG,
 } from "../../shared/lib/ansiPalette";
-import { CellAttr, type CellSnapshot, type GridSnapshot, hasAttr } from "../../shared/types/terminal";
+import {
+  CellAttr,
+  type CellSnapshot,
+  type GridSnapshot,
+  hasAttr,
+  type ImageRef,
+} from "../../shared/types/terminal";
 import { useCanvasIME, useImePosition, type WriteBytesFn } from "./hooks/useCanvasIME";
 import { type CopyTextFn, useTerminalSelection } from "./hooks/useTerminalSelection";
 import { pixelToCell } from "./keymap";
@@ -136,6 +143,13 @@ export function TerminalCanvas({
   useCanvasIME({ terminalId, textarea: textareaEl, writeBytes });
   const liveSnapshot = useTerminalSnapshot(snapshotOverride === undefined ? terminalId : null);
   const snapshot = snapshotOverride !== undefined ? snapshotOverride : liveSnapshot;
+  // Inline image overlays — fetched + cached as ImageBitmap by id. The
+  // hook silently no-ops when `terminalId` is null (test fixtures inject
+  // snapshots directly without a real backend).
+  const imageBitmaps = useTerminalImages(
+    snapshotOverride !== undefined ? null : terminalId,
+    snapshot?.images,
+  );
   // Scrollback: feed it the *live-source* terminal id so the test path
   // (snapshotOverride) never reaches out to IPC.
   const scrollbackTerminalId = snapshotOverride !== undefined ? null : terminalId;
@@ -459,6 +473,16 @@ export function TerminalCanvas({
       paintCursor(ctx, snapshot, cellMetrics);
     }
 
+    // Inline image overlays last so they sit on top of cell glyphs
+    // and the cursor — Kitty's protocol contract is that the image
+    // owns the cell rectangle it occupies. Suppressed during scrollback
+    // for the same reason as other live overlays: the snapshot's image
+    // anchors are live-grid coordinates and would mis-render on the
+    // composite scrollback view.
+    if (!scrolledUp && snapshot.images && snapshot.images.length > 0) {
+      paintImages(ctx, snapshot.images, imageBitmaps, cellMetrics);
+    }
+
     prevSnapshotRef.current = snapshot;
     prevSelectionRef.current = selection;
     prevMatchesKeyRef.current = matchesKey;
@@ -477,6 +501,7 @@ export function TerminalCanvas({
     activeSearchMatch,
     hoveredLink,
     ghostSuggestion,
+    imageBitmaps,
   ]);
 
   useEffect(() => {
@@ -844,6 +869,40 @@ function paintGhostSuggestion(
     x += width;
   }
   ctx.restore();
+}
+
+/**
+ * Paint inline image overlays. Each entry is anchored at its
+ * `(cellRow, cellCol)` and stretched to `(cellW × cellH)` cells when
+ * the source declared an explicit cell rectangle (Kitty `c=` / `r=`),
+ * otherwise the rectangle is computed from `widthPx / heightPx` divided
+ * by the live cell metrics.
+ *
+ * Entries whose `id` has not yet resolved in `bitmaps` are silently
+ * skipped — the bitmap cache fills lazily as IPC fetches complete and
+ * the next paint pass picks them up.
+ *
+ * v1 keeps the rendering deliberately minimal: integer cell rectangles,
+ * `drawImage` scaled to the rectangle, no sub-pixel placement, no alpha
+ * compositing tweaks, no clipping at the live screen edge (the snapshot
+ * already filtered by anchor-row, but a wide image at row N could
+ * extend past row N+rows; that's a future polish item).
+ */
+function paintImages(
+  ctx: CanvasRenderingContext2D,
+  images: readonly ImageRef[],
+  bitmaps: ReadonlyMap<number, ImageBitmap>,
+  { width, height }: CellMetrics,
+) {
+  for (const ref of images) {
+    const bmp = bitmaps.get(ref.id);
+    if (!bmp) continue;
+    const cellW = ref.cellW ?? Math.max(1, Math.ceil(ref.widthPx / width));
+    const cellH = ref.cellH ?? Math.max(1, Math.ceil(ref.heightPx / height));
+    const x = ref.cellCol * width;
+    const y = ref.cellRow * height;
+    ctx.drawImage(bmp, x, y, cellW * width, cellH * height);
+  }
 }
 
 function paintCursor(ctx: CanvasRenderingContext2D, snapshot: GridSnapshot, { width, height }: CellMetrics) {

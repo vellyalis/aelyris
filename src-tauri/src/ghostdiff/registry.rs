@@ -760,6 +760,7 @@ mod tests {
                 blinking: false,
                 visible: true,
             },
+            images: Vec::new(),
         }
     }
 

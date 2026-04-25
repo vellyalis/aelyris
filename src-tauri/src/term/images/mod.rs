@@ -21,4 +21,4 @@ pub use kitty::{
 };
 pub use sequences::{ImagePayload, ImageProtocol, ParseStep, try_parse};
 pub use sixel::{SixelDecodeError, SixelHeader, decode_sixel, parse_sixel_header};
-pub use store::{IMAGE_BYTE_CAP, ImageEntry, ImageId, ImageStore};
+pub use store::{IMAGE_BYTE_CAP, ImageEntry, ImageId, ImagePlacement, ImageStore};

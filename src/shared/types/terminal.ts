@@ -80,11 +80,38 @@ export interface CursorSnapshot {
   visible: boolean;
 }
 
+/**
+ * Inline image overlay returned alongside the cell grid. Sprint 3 emits
+ * one entry per visible image; entries whose anchor scrolls into history
+ * (or whose decode failed) are silently dropped at the snapshot layer
+ * so the frontend only ever paints what it can resolve.
+ *
+ * `cellW` / `cellH` carry the source-declared cell rectangle (Kitty
+ * `c=` / `r=`); when absent the renderer computes the rect from
+ * `widthPx` / `heightPx` divided by the live cell metrics.
+ */
+export interface ImageRef {
+  id: number;
+  cellRow: number;
+  cellCol: number;
+  widthPx: number;
+  heightPx: number;
+  cellW?: number;
+  cellH?: number;
+}
+
 export interface GridSnapshot {
   cols: number;
   rows: number;
   cells: CellSnapshot[][];
   cursor: CursorSnapshot;
+  /**
+   * Inline image overlays whose anchor lands inside the visible grid.
+   * Backend omits the field entirely when empty (`Vec::is_empty`
+   * `skip_serializing_if`); the frontend defaults to `[]` so consumers
+   * can iterate without a presence check.
+   */
+  images?: ImageRef[];
 }
 
 export function hasAttr(cell: CellSnapshot, flag: CellAttrFlag): boolean {

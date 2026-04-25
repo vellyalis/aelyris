@@ -153,12 +153,51 @@ pub struct CursorSnapshot {
     pub visible: bool,
 }
 
+/// A live image overlay returned alongside the cell grid. Sprint 3 uses
+/// this to anchor decoded inline images at the cell row / column the
+/// engine recorded when consuming the escape, with `history_at_insert`
+/// already translated into the *current* screen-relative row.
+///
+/// `cellW` / `cellH` are the source-declared cell rectangle (Kitty
+/// `c=` / `r=`); when `None` the frontend computes an extent from the
+/// pixel dims and live cell metrics. Snapshot omits the `images` field
+/// entirely when no images are visible (`#[serde(skip_serializing_if =
+/// "Vec::is_empty")]`) so existing frontend builds stay byte-compatible
+/// with the previous wire shape.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageRef {
+    /// `ImageStore` id; the frontend passes this back to
+    /// `term_image_data` to fetch the decoded bytes.
+    pub id: u64,
+    /// Live screen row (0..rows) where the image is anchored. Already
+    /// adjusted for scroll: snapshot only includes images whose anchor
+    /// is inside the visible grid.
+    pub cell_row: u16,
+    pub cell_col: u16,
+    /// Pixel dimensions of the decoded image. The frontend uses these
+    /// to compute the cell rectangle when `cellW` / `cellH` are absent.
+    pub width_px: u32,
+    pub height_px: u32,
+    /// Source-declared cell width (Kitty `c=`). Optional override.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cell_w: Option<u16>,
+    /// Source-declared cell height (Kitty `r=`). Optional override.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cell_h: Option<u16>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GridSnapshot {
     pub cols: u16,
     pub rows: u16,
     pub cells: Vec<Vec<CellSnapshot>>,
     pub cursor: CursorSnapshot,
+    /// Inline image overlays whose anchor lands inside the visible grid.
+    /// Empty for the typical text-only frame, in which case the field
+    /// serialises away to keep the wire shape unchanged.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<ImageRef>,
 }
 
 /// One occurrence of a needle inside a single scrollback row.
@@ -339,7 +378,54 @@ impl TermEngine {
             visible,
         };
 
-        GridSnapshot { cols: cols as u16, rows: rows as u16, cells, cursor }
+        let images = self.collect_visible_images();
+        GridSnapshot {
+            cols: cols as u16,
+            rows: rows as u16,
+            cells,
+            cursor,
+            images,
+        }
+    }
+
+    /// Build the list of image overlays whose anchor row currently lands
+    /// inside the visible grid. Each entry's recorded `history_at_insert`
+    /// is subtracted from the live `history_size()` to translate the
+    /// originally-recorded screen row forward through any scroll that
+    /// has happened since.
+    ///
+    /// Entries whose decoded payload is missing (decode failed, or still
+    /// chunked) and entries that have scrolled off the visible window
+    /// are silently dropped — Sprint 3's paint pass works on what's
+    /// renderable, not on what's retained.
+    fn collect_visible_images(&self) -> Vec<ImageRef> {
+        let rows = self.rows() as i64;
+        let current_history = self.history_size() as i64;
+        let mut out = Vec::new();
+        for entry in self.images().iter() {
+            let Some(decoded) = entry.decoded.as_ref() else {
+                continue;
+            };
+            let lines_added = current_history - entry.placement.history_at_insert as i64;
+            let screen_row = entry.placement.screen_row_at_insert as i64 - lines_added;
+            if screen_row < 0 || screen_row >= rows {
+                continue;
+            }
+            out.push(ImageRef {
+                id: entry.id.0,
+                cell_row: screen_row as u16,
+                cell_col: entry.placement.col_at_insert,
+                width_px: decoded.width_px,
+                height_px: decoded.height_px,
+                cell_w: decoded
+                    .cell_cols
+                    .map(|c| c.min(u16::MAX as u32) as u16),
+                cell_h: decoded
+                    .cell_rows
+                    .map(|r| r.min(u16::MAX as u32) as u16),
+            });
+        }
+        out
     }
 }
 
@@ -580,5 +666,87 @@ mod tests {
         let snap = engine.snapshot();
         let json = serde_json::to_string(&snap).expect("serialize");
         assert!(!json.contains("hyperlink"), "expected absent field, got: {json}");
+    }
+
+    // ---------- Sprint 3: image overlays ----------
+
+    #[test]
+    fn snapshot_omits_images_field_when_no_images_consumed() {
+        let mut engine = TermEngine::new(2, 1).expect("engine");
+        engine.advance_str("ok");
+        let snap = engine.snapshot();
+        assert!(snap.images.is_empty());
+        let json = serde_json::to_string(&snap).expect("serialize");
+        assert!(
+            !json.contains("\"images\""),
+            "empty images list must not surface in the wire payload, got: {json}"
+        );
+    }
+
+    #[test]
+    fn snapshot_includes_image_anchored_at_cursor_after_consume() {
+        // Walk the cursor to (row=2, col=4) before injecting the image
+        // escape so the recorded placement is non-trivial. The test
+        // body is a minimal Sixel that decodes to a 1x6 RGBA image.
+        let mut engine = TermEngine::new(40, 8).expect("engine");
+        engine.advance_str("\r\n\r\n    ");
+        engine.advance(b"\x1bPq~\x1b\\");
+        let snap = engine.snapshot();
+        assert_eq!(snap.images.len(), 1);
+        let img = &snap.images[0];
+        assert_eq!(img.cell_row, 2);
+        assert_eq!(img.cell_col, 4);
+        assert_eq!(img.width_px, 1);
+        assert_eq!(img.height_px, 6);
+        assert!(img.cell_w.is_none());
+        assert!(img.cell_h.is_none());
+    }
+
+    #[test]
+    fn snapshot_image_screen_row_translates_after_scroll() {
+        // Place an image on row 0, then push enough output to scroll
+        // it into history. The visible-image set must drop it.
+        let mut engine = TermEngine::new(20, 3).expect("engine");
+        engine.advance(b"\x1bPq~\x1b\\");
+        let snap = engine.snapshot();
+        assert_eq!(snap.images.len(), 1, "image visible on row 0");
+        // Push enough \r\n to scroll the image off-screen. Three rows
+        // of screen, plus a couple extras to be safe.
+        for _ in 0..6 {
+            engine.advance_str("\r\nx");
+        }
+        let snap = engine.snapshot();
+        assert!(
+            snap.images.is_empty(),
+            "image should have scrolled into history and dropped from snapshot"
+        );
+    }
+
+    #[test]
+    fn snapshot_image_carries_cell_overrides_from_kitty_header() {
+        let mut engine = TermEngine::new(40, 4).expect("engine");
+        // Synthesise a Kitty escape with an explicit c=10, r=4 cell
+        // rectangle. The body is a stand-in PNG — png_dimensions()
+        // returns None, so the decoder falls back to the header's s/v
+        // (which we leave unset). The cell overrides survive the
+        // snapshot path regardless.
+        engine.advance(
+            b"\x1b_Ga=T,f=100,c=10,r=4,s=80,v=24;aGVsbG8=\x1b\\",
+        );
+        let snap = engine.snapshot();
+        assert_eq!(snap.images.len(), 1);
+        let img = &snap.images[0];
+        assert_eq!(img.cell_w, Some(10));
+        assert_eq!(img.cell_h, Some(4));
+    }
+
+    #[test]
+    fn snapshot_skips_images_with_failed_decode() {
+        let mut engine = TermEngine::new(40, 2).expect("engine");
+        // Invalid base64 — decode fails, raw stays in store, but the
+        // snapshot must not surface an image with no decoded buffer.
+        engine.advance(b"\x1b_Ga=T,f=100;!!!\x1b\\");
+        let snap = engine.snapshot();
+        assert!(snap.images.is_empty());
     }
 }

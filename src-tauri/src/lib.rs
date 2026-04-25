@@ -305,6 +305,7 @@ pub fn run() {
             ipc::term_history_size,
             ipc::term_history_rows,
             ipc::term_search_history,
+            ipc::term_image_data,
             ipc::discover_projects,
             ipc::default_project_scan_dirs,
             ipc::list_branches,
