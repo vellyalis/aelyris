@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { memo } from "react";
 import { lastCommandEnd, usePromptMarks } from "../../shared/hooks/usePromptMarks";
+import { usePtyLag } from "../../shared/hooks/usePtyLag";
 import styles from "./TerminalInfoBar.module.css";
 
 interface TerminalInfoBarProps {
@@ -52,6 +53,7 @@ export const TerminalInfoBar = memo(function TerminalInfoBar({
   // Hook is always called (React rules); it no-ops when terminalId is null.
   const marks = usePromptMarks(terminalId ?? null);
   const lastEnd = lastCommandEnd(marks);
+  const lag = usePtyLag(terminalId ?? null);
 
   return (
     <div className={styles.bar}>
@@ -59,6 +61,7 @@ export const TerminalInfoBar = memo(function TerminalInfoBar({
       {lastEnd && (
         <ExitStatusDot exitCode={lastEnd.exitCode} />
       )}
+      {lag.active && <BackpressureBadge dropped={lag.dropped} />}
       {dir && <span className={styles.cwd}>~/{dir}</span>}
       {branch && (
         <span className={styles.branch}>
@@ -148,6 +151,36 @@ interface ExitStatusDotProps {
  * - `exit !=0` → red    (failure, with the code in the tooltip)
  * - `null`     → muted  (shell signalled an end but did not report a code)
  */
+interface BackpressureBadgeProps {
+  dropped: number;
+}
+
+/**
+ * Renders while the broadcast channel feeding this pane is dropping
+ * chunks under load (cargo build --verbose, test floods, etc.). The
+ * badge auto-decays 5s after the last drop event so it never lingers
+ * past the actual incident.
+ *
+ * The number is a ceiling, not a precision count — broadcast `Lagged`
+ * reports the gap since the subscriber's last successful recv, and
+ * very large floods can collapse multiple gaps into a single number.
+ * The point is "you're losing rendered output", not telemetry.
+ */
+function BackpressureBadge({ dropped }: BackpressureBadgeProps) {
+  const formatted = dropped.toLocaleString();
+  const label = `Terminal output throttled — dropped ${formatted} chunk${dropped === 1 ? "" : "s"}.`;
+  return (
+    <span
+      className={styles.lagBadge}
+      role="status"
+      aria-label={label}
+      title={label}
+    >
+      throttled · {formatted}
+    </span>
+  );
+}
+
 function ExitStatusDot({ exitCode }: ExitStatusDotProps) {
   const color =
     exitCode === null

@@ -30,6 +30,23 @@
   box-shadow: 0 0 0 1px var(--white-6);
 }
 
+/*
+ * Backpressure badge. Caution colour rather than danger — the terminal
+ * is keeping up, just not painting every byte; a red treatment would
+ * read as a hard error.
+ */
+.lagBadge {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--ctp-peach, #fab387);
+  background: rgba(250, 179, 135, 0.12);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .cwd {
   font-family: var(--font-mono);
   color: var(--text-muted);

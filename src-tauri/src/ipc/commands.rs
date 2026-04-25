@@ -290,6 +290,14 @@ fn wire_terminal_streaming(
                 }
                 Err(broadcast::error::RecvError::Lagged(n)) => {
                     log::warn!("ui: terminal {} lagged, dropped {} chunks", terminal_id, n);
+                    // Surface backpressure to the UI so TerminalInfoBar can
+                    // render a "throttled" badge during a flood. Payload is
+                    // the dropped-chunk count; the badge decays after 5s
+                    // of no further events on the React side.
+                    let _ = app_handle.emit(
+                        &format!("term:lag-{}", terminal_id),
+                        serde_json::json!({ "dropped": n }),
+                    );
                     continue;
                 }
                 Err(broadcast::error::RecvError::Closed) => break,
