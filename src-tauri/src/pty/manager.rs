@@ -1,4 +1,4 @@
-use portable_pty::{native_pty_system, CommandBuilder, PtyPair, PtySize};
+use portable_pty::{native_pty_system, Child, CommandBuilder, PtyPair, PtySize};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -33,6 +33,49 @@ struct PtyInstance {
     /// Windows cmd.exe that never got `exit`) after the `PtyInstance` has
     /// already left the session map.
     reader_alive: Arc<AtomicBool>,
+    /// The child process handle. Wrapped in `Arc<Mutex<Option<>>>` so the
+    /// IPC layer can `take_child` exactly once and move the boxed child
+    /// onto a dedicated waiter thread that calls `wait()` to surface the
+    /// exit code. Stored here (rather than on the IPC side) so `Drop` for
+    /// `PtyInstance` is the single owner of teardown — if the waiter
+    /// already took it, this is `None` and drop is a no-op for the child.
+    child: Arc<Mutex<Option<Box<dyn Child + Send + Sync>>>>,
+}
+
+/// Best-effort exit information for a PTY child process.
+///
+/// `crashed` is a heuristic, not a guarantee:
+///   - On Windows, the high two bits of `NTSTATUS` indicate severity; codes
+///     `>= 0xC000_0000` correspond to NT_ERROR (segfault / access violation /
+///     stack overflow / etc.).
+///   - On other platforms we only have the raw exit code, so anything
+///     non-zero is *probably* abnormal but we cannot distinguish a clean
+///     `exit(1)` from a signal without portable-pty surfacing the signal
+///     directly.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ExitInfo {
+    pub code: Option<u32>,
+    pub crashed: bool,
+}
+
+impl ExitInfo {
+    /// Classify a portable-pty `ExitStatus`. Returns `crashed = true` when
+    /// the exit code looks abnormal (NT_ERROR on Windows, non-zero
+    /// elsewhere) — used by the UI to decide between a quiet "shell
+    /// exited" message and an attention-grabbing crash banner.
+    pub fn from_status(status: &portable_pty::ExitStatus) -> Self {
+        let code = status.exit_code();
+        let crashed = if cfg!(target_os = "windows") {
+            // NT_ERROR severity bits: 0b11 in the top two bits.
+            code >= 0xC000_0000
+        } else {
+            !status.success()
+        };
+        Self {
+            code: Some(code),
+            crashed,
+        }
+    }
 }
 
 impl Drop for PtyInstance {
@@ -97,6 +140,31 @@ impl PtyManager {
         extra_env: Option<std::collections::HashMap<String, String>>,
     ) -> Result<String, String> {
         let id = Uuid::new_v4().to_string();
+        self.spawn_command_with_id(&id, program, args, cols, rows, cwd, extra_env)?;
+        Ok(id)
+    }
+
+    /// Same as [`spawn_command`] but uses a caller-provided terminal id. Used
+    /// by [`respawn`] so the post-crash PTY keeps the original id and the
+    /// `NativeTerminalRegistry` engine session (with its prompt-mark
+    /// history) is reused untouched. Returns an error if `id` is already
+    /// occupied to keep the spawn path race-free.
+    #[allow(clippy::too_many_arguments)]
+    pub fn spawn_command_with_id(
+        &self,
+        id: &str,
+        program: &str,
+        args: &[String],
+        cols: u16,
+        rows: u16,
+        cwd: Option<&str>,
+        extra_env: Option<std::collections::HashMap<String, String>>,
+    ) -> Result<(), String> {
+        // Reject collisions before doing any work so callers can't accidentally
+        // overwrite a live session and leak its reader thread.
+        if self.contains(id) {
+            return Err(format!("terminal id {} already exists", id));
+        }
         let pty_system = native_pty_system();
         let size = PtySize {
             rows,
@@ -118,7 +186,7 @@ impl PtyManager {
         cmd.cwd(&resolved_cwd);
 
         // Inject Aether metadata
-        cmd.env("AETHER_TERMINAL_ID", &id);
+        cmd.env("AETHER_TERMINAL_ID", id);
         cmd.env("AETHER_PROJECT", &resolved_cwd);
 
         // Extra environment variables (e.g. AETHER_SHELL for shells, model info for agents)
@@ -128,7 +196,8 @@ impl PtyManager {
             }
         }
 
-        pair.slave
+        let child = pair
+            .slave
             .spawn_command(cmd)
             .map_err(|e| format!("Failed to spawn command '{}': {}", program, e))?;
 
@@ -153,7 +222,7 @@ impl PtyManager {
         drop(_initial_rx);
 
         let reader_alive = Arc::new(AtomicBool::new(true));
-        spawn_reader_thread(id.clone(), reader, output_tx.clone(), reader_alive.clone());
+        spawn_reader_thread(id.to_string(), reader, output_tx.clone(), reader_alive.clone());
 
         let instance = PtyInstance {
             pair,
@@ -163,12 +232,13 @@ impl PtyManager {
             spawned_at: Instant::now(),
             output_tx,
             reader_alive,
+            child: Arc::new(Mutex::new(Some(child))),
         };
 
         self.lock_instances()?
-            .insert(id.clone(), instance);
+            .insert(id.to_string(), instance);
 
-        Ok(id)
+        Ok(())
     }
 
     /// Write input data to a PTY
@@ -200,6 +270,22 @@ impl PtyManager {
             .lock()
             .map(|i| i.contains_key(id))
             .unwrap_or(false)
+    }
+
+    /// Take ownership of the child-process handle for `id`. Returns the
+    /// boxed `Child` exactly once — subsequent calls return `None`.
+    ///
+    /// The IPC layer uses this immediately after spawn to move the child
+    /// onto a dedicated waiter thread that calls `wait()` and surfaces the
+    /// exit code via `pty-exit-<id>`. Keeping the take strictly one-shot
+    /// (rather than letting both the IPC waiter and `Drop` hold it) avoids
+    /// the "drop after wait" double-free that portable-pty's `Child` does
+    /// not guard against on Windows.
+    pub fn take_child(&self, id: &str) -> Option<Box<dyn Child + Send + Sync>> {
+        let instances = self.instances.lock().ok()?;
+        let instance = instances.get(id)?;
+        let mut slot = instance.child.lock().ok()?;
+        slot.take()
     }
 
     /// Subscribe to a PTY's output stream.

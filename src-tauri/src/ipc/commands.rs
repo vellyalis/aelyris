@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::broadcast;
 
-use crate::pty::{PtyManager, ShellType};
+use crate::pty::{ExitInfo, PtyManager, ShellType};
 use crate::pty::buffer::{OutputBuffer, strip_ansi};
 use crate::snapshot::{SnapshotStore, SnapshotTrigger, TerminalSnapshot};
 use crate::term::NativeTerminalRegistry;
@@ -97,34 +97,111 @@ pub fn spawn_terminal(
     rows: u16,
     cwd: Option<String>,
 ) -> Result<String, String> {
-    // Validate cwd before spawning
     if let Some(ref dir) = cwd {
         validate_path(dir)?;
     }
     let pty_manager = app.state::<PtyManager>();
     let id = pty_manager.spawn(&shell, cols, rows, cwd.as_deref())?;
-
-    // Start streaming PTY output via events + capture buffer. Subscribing
-    // returns a broadcast receiver — the single OS-level reader thread
-    // inside `PtyManager` fans every byte out to every subscriber, so the
-    // API side can read the same session concurrently without stealing
-    // bytes from this loop.
-    let mut rx = pty_manager.subscribe_output(&id)?;
-    let terminal_id = id.clone();
-    let app_handle = app.clone();
-    let buffer_registry = app.state::<OutputBufferRegistry>().inner().clone();
-    buffer_registry.create(&id);
-
-    // Register in pane registry for name-based operations
-    let pane_registry = app.state::<crate::pty::PaneRegistry>();
     let shell_name = format!("{:?}", shell).to_lowercase();
-    pane_registry.register(&id, &shell_name, cwd.as_deref().unwrap_or("."));
 
-    // Native engine session (Phase 2).
-    let native_registry = app.state::<Arc<NativeTerminalRegistry>>().inner().clone();
-    if let Err(e) = native_registry.create(&id, cols, rows) {
-        log::warn!("native engine create failed for {}: {}", id, e);
+    // Register in pane registry for name-based operations. Done here (not
+    // inside the helper) because pane registration is one-shot and must not
+    // happen on respawn — we keep the same pane-name binding across the
+    // crash/restart boundary.
+    app.state::<crate::pty::PaneRegistry>()
+        .register(&id, &shell_name, cwd.as_deref().unwrap_or("."));
+
+    wire_terminal_streaming(&app, &id, cols, rows, cwd.as_deref(), &shell_name)?;
+    Ok(id)
+}
+
+/// Restart the shell for an existing terminal id after the previous child
+/// process exited (clean or crash). Called by the frontend's "Press Enter
+/// to restart" banner.
+///
+/// Preserves the [`NativeTerminalRegistry`] engine session for `id` so
+/// prompt-mark history and scrollback are not discarded. The new shell's
+/// initial prompt streams into the same engine and the canvas continues
+/// rendering without a remount.
+///
+/// Errors with a clear message if the previous child is still alive — that
+/// case is a UI bug (banner shown while the PTY is healthy) and silently
+/// double-spawning would orphan the live session.
+#[tauri::command]
+pub fn respawn_terminal(
+    app: AppHandle,
+    id: String,
+    shell: ShellType,
+    cols: u16,
+    rows: u16,
+    cwd: Option<String>,
+) -> Result<(), String> {
+    if let Some(ref dir) = cwd {
+        validate_path(dir)?;
     }
+    let pty_manager = app.state::<PtyManager>();
+    if pty_manager.contains(&id) {
+        return Err(format!(
+            "respawn rejected: terminal {} is still alive",
+            id
+        ));
+    }
+
+    let program = shell.program().to_string();
+    let args: Vec<String> = shell.args().into_iter().map(|s| s.to_string()).collect();
+    let mut env = std::collections::HashMap::new();
+    env.insert("AETHER_SHELL".to_string(), program.clone());
+
+    pty_manager.spawn_command_with_id(
+        &id,
+        &program,
+        &args,
+        cols,
+        rows,
+        cwd.as_deref(),
+        Some(env),
+    )?;
+    log::info!("respawned terminal {} ({:?})", id, shell);
+
+    let shell_name = format!("{:?}", shell).to_lowercase();
+    wire_terminal_streaming(&app, &id, cols, rows, cwd.as_deref(), &shell_name)?;
+    Ok(())
+}
+
+/// Stand up everything that consumes a freshly-spawned PTY: output buffer,
+/// native engine session, flush ticker, output streaming task, and the
+/// child-waiter that emits `pty-exit-<id>` with an [`ExitInfo`] payload.
+///
+/// Called by both `spawn_terminal` and `respawn_terminal` so the two paths
+/// stay structurally identical — the only thing respawn skips is one-shot
+/// pane-registry registration.
+fn wire_terminal_streaming(
+    app: &AppHandle,
+    terminal_id: &str,
+    cols: u16,
+    rows: u16,
+    cwd: Option<&str>,
+    shell_name: &str,
+) -> Result<(), String> {
+    let pty_manager = app.state::<PtyManager>();
+    let mut rx = pty_manager.subscribe_output(terminal_id)?;
+
+    let buffer_registry = app.state::<OutputBufferRegistry>().inner().clone();
+    buffer_registry.create(terminal_id);
+
+    // Native engine session is created idempotently — first spawn opens it,
+    // respawn no-ops to preserve scrollback + prompt marks.
+    let native_registry = app.state::<Arc<NativeTerminalRegistry>>().inner().clone();
+    if let Err(e) = native_registry.create(terminal_id, cols, rows) {
+        log::warn!("native engine create failed for {}: {}", terminal_id, e);
+    }
+
+    // Take the child handle so the waiter thread (below) can call wait()
+    // and surface the exit code. If the manager has already handed the
+    // child out (impossible right after spawn but cheap to defend), we log
+    // and skip the waiter — the streaming task still terminates on EOF via
+    // the broadcast Closed signal.
+    let child = pty_manager.take_child(terminal_id);
 
     // Per-terminal flush ticker: the 16ms coalesce in `advance()` swallows
     // the very last edit if no follow-up bytes arrive (e.g., user types one
@@ -134,8 +211,8 @@ pub fn spawn_terminal(
     {
         let alive = flush_alive.clone();
         let flush_registry = native_registry.clone();
-        let flush_handle = app_handle.clone();
-        let flush_id = terminal_id.clone();
+        let flush_handle = app.clone();
+        let flush_id = terminal_id.to_string();
         std::thread::spawn(move || {
             use std::sync::atomic::Ordering;
             while alive.load(Ordering::Acquire) {
@@ -147,11 +224,15 @@ pub fn spawn_terminal(
         });
     }
     let reader_alive = flush_alive.clone();
-    let repair_cwd = cwd.clone();
-    let repair_pane = shell_name.clone();
-    let repair_app = app_handle.clone();
+
+    let app_handle = app.clone();
+    let terminal_id_owned = terminal_id.to_string();
+    let repair_cwd = cwd.map(str::to_string);
+    let repair_pane = shell_name.to_string();
+    let repair_app = app.clone();
 
     tauri::async_runtime::spawn(async move {
+        let terminal_id = terminal_id_owned;
         let mut detected_ports = std::collections::HashSet::new();
         loop {
             match rx.recv().await {
@@ -160,16 +241,9 @@ pub fn spawn_terminal(
                     let event_name = format!("pty-output-{}", terminal_id);
                     // Send as number array — avoids base64 encode/decode overhead
                     let _ = app_handle.emit(&event_name, chunk.clone());
-                    // Feed raw text into capture buffer
                     let text = String::from_utf8_lossy(data);
                     buffer_registry.feed(&terminal_id, &text);
 
-                    // Auto-repair pattern detection (Phase 3A-1). Cheap when
-                    // disabled: one mutex lock, one bool check. Enabled path
-                    // scans each line against the configured pattern and
-                    // forwards the first hit to `AutoRepairManager` — the
-                    // 60s debounce there keeps repeated matches from piling
-                    // up worktrees.
                     maybe_trigger_auto_repair(
                         &repair_app,
                         &repair_pane,
@@ -177,9 +251,6 @@ pub fn spawn_terminal(
                         &text,
                     );
 
-                    // Native engine fan-out (Phase 2) + OSC 133 prompt marks.
-                    // Diffs are 60fps-coalesced; prompt marks are emitted
-                    // immediately so jump-to-prompt feels synchronous.
                     let advance_result = native_registry.advance(&terminal_id, data);
                     if let Some(diff) = advance_result.diff {
                         let _ = app_handle.emit(&format!("term:diff-{}", terminal_id), diff);
@@ -189,7 +260,6 @@ pub fn spawn_terminal(
                             .emit(&format!("term:prompt-mark-{}", terminal_id), mark);
                     }
 
-                    // Port auto-detection: scan for localhost:<port> patterns
                     for segment in text.split_whitespace() {
                         let segment = segment.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != ':' && c != '.');
                         if let Some(port_str) = segment
@@ -212,7 +282,6 @@ pub fn spawn_terminal(
                         }
                     }
 
-                    // Bell detection: \x07 in raw output → notify frontend
                     if data.contains(&0x07) {
                         let _ = app_handle.emit("terminal:bell", serde_json::json!({
                             "terminal_id": terminal_id,
@@ -220,23 +289,52 @@ pub fn spawn_terminal(
                     }
                 }
                 Err(broadcast::error::RecvError::Lagged(n)) => {
-                    // UI cannot meaningfully "show" a gap the way API can, so
-                    // we just note the drop and keep going. Falling behind
-                    // usually means the user scrolled a firehose (seq, big
-                    // build log) — accepting the loss is preferable to
-                    // stalling the PTY.
                     log::warn!("ui: terminal {} lagged, dropped {} chunks", terminal_id, n);
                     continue;
                 }
                 Err(broadcast::error::RecvError::Closed) => break,
             }
         }
-        // Terminal exited — stop the native flush ticker so it can join.
+        // Streaming loop ended — the broadcast channel was closed because
+        // the PtyInstance was dropped. Stop the native flush ticker so the
+        // background thread joins.
         reader_alive.store(false, std::sync::atomic::Ordering::Release);
-        let _ = app_handle.emit(&format!("pty-exit-{}", terminal_id), ());
     });
 
-    Ok(id)
+    // Child-waiter thread: blocks on child.wait(), then emits the typed
+    // pty-exit event and removes the dead instance from PtyManager so the
+    // streaming task above sees a closed broadcast and exits. Removal also
+    // drops the per-PTY OS reader thread via PtyInstance::Drop.
+    if let Some(mut child) = child {
+        let waiter_app = app.clone();
+        let waiter_id = terminal_id.to_string();
+        std::thread::spawn(move || {
+            let exit_info = match child.wait() {
+                Ok(status) => {
+                    log::info!(
+                        "terminal {} child exited code={} success={}",
+                        waiter_id,
+                        status.exit_code(),
+                        status.success(),
+                    );
+                    ExitInfo::from_status(&status)
+                }
+                Err(e) => {
+                    log::warn!("terminal {} wait() failed: {}", waiter_id, e);
+                    ExitInfo {
+                        code: None,
+                        crashed: true,
+                    }
+                }
+            };
+            if let Some(pty_state) = waiter_app.try_state::<PtyManager>() {
+                let _ = pty_state.close(&waiter_id);
+            }
+            let _ = waiter_app.emit(&format!("pty-exit-{}", waiter_id), exit_info);
+        });
+    }
+
+    Ok(())
 }
 
 /// Write input to a terminal. On Enter (`\r` in the input payload) we also

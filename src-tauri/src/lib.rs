@@ -281,6 +281,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             ipc::spawn_terminal,
+            ipc::respawn_terminal,
             ipc::write_terminal,
             ipc::resize_terminal,
             ipc::close_terminal,

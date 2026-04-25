@@ -81,3 +81,52 @@
   justify-content: flex-end;
   padding: 0 var(--space-2);
 }
+
+/*
+ * Crash / clean-exit banner. Sits inside the terminal container (above the
+ * canvas) so the existing scrollback stays visible behind it; the banner
+ * holds focus until the user presses Enter to restart or Esc to dismiss.
+ *
+ * crashed variant uses the danger accent so a SEGV / NTSTATUS error is
+ * visually distinct from a clean `exit 0` — the user shouldn't have to
+ * read the message to know whether they should worry.
+ */
+.exitBanner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--aether-bg-elevated);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+}
+
+.exitBannerCrashed {
+  border-bottom-color: var(--danger, #f38ba8);
+  color: var(--danger, #f38ba8);
+}
+
+.exitBannerHint {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.exitBannerBtn {
+  margin-left: auto;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  padding: var(--space-1) var(--space-3);
+}
+
+.exitBannerBtn:hover,
+.exitBannerBtn:focus-visible {
+  outline: none;
+  border-color: var(--gold);
+}

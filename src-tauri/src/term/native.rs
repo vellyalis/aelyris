@@ -42,8 +42,18 @@ impl NativeTerminalRegistry {
         Self { sessions: Mutex::new(HashMap::new()) }
     }
 
-    /// Create a session for `id`.
+    /// Create a session for `id`. Idempotent: if a session already exists
+    /// for `id`, this is a no-op. That property is load-bearing for the
+    /// respawn path — when the IPC layer rebuilds the streaming task after
+    /// a PTY crash, it calls `create` again to be safe, and we must not
+    /// wipe the engine state (prompt-mark history, scrollback) that the
+    /// old shell produced.
     pub fn create(&self, id: &str, cols: u16, rows: u16) -> Result<(), String> {
+        let mut guard = self.lock()?;
+        if guard.contains_key(id) {
+            log::debug!("native session create id={id} already exists, preserving");
+            return Ok(());
+        }
         log::debug!("native session create id={id} cols={cols} rows={rows}");
         let engine = TermEngine::new(cols as usize, rows as usize).map_err(|e| {
             log::error!("native session create rejected id={id}: {e}");
@@ -57,7 +67,6 @@ impl NativeTerminalRegistry {
                 .checked_sub(COALESCE_INTERVAL)
                 .unwrap_or_else(Instant::now),
         };
-        let mut guard = self.lock()?;
         guard.insert(id.to_string(), session);
         Ok(())
     }
@@ -326,6 +335,24 @@ mod tests {
         // row-4 / blank).
         let first_text: String = rows[0].iter().map(|c| c.ch).collect();
         assert!(first_text.starts_with("row-3"), "got {first_text:?}");
+    }
+
+    #[test]
+    fn create_is_idempotent_and_preserves_engine() {
+        // Critical for respawn: a PTY crash + restart must not wipe
+        // scrollback or prompt-mark history.
+        let reg = NativeTerminalRegistry::new();
+        reg.create("t", 30, 2).expect("first create");
+        for i in 0..5 {
+            let _ = reg.advance("t", format!("row-{i}\r\n").as_bytes());
+        }
+        let history_before = reg.history_size("t");
+        assert!(history_before >= 3, "precondition: scrollback populated");
+
+        // Second create with different dimensions — should be a no-op,
+        // not a replace, so existing state is retained.
+        reg.create("t", 80, 24).expect("second create no-ops");
+        assert_eq!(reg.history_size("t"), history_before);
     }
 
     #[test]

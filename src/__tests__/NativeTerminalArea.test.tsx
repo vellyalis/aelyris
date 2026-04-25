@@ -151,4 +151,94 @@ describe("NativeTerminalArea", () => {
     expect(onReady).not.toHaveBeenCalled();
     expect(container.querySelector("[data-testid='terminal-canvas']")).toBeNull();
   });
+
+  it("shows a crash banner when pty-exit fires and respawns on Restart click", async () => {
+    const spawnPty = vi.fn().mockResolvedValue("term-crash");
+    const respawnPty = vi.fn().mockResolvedValue(undefined);
+    let emitExit: ((info: { code: number | null; crashed: boolean }) => void) | null = null;
+    const subscribeExit = vi.fn(async (_id: string, onExit: (info: { code: number | null; crashed: boolean }) => void) => {
+      emitExit = onExit;
+      return () => {
+        emitExit = null;
+      };
+    });
+
+    const { container } = render(
+      <NativeTerminalArea
+        shell="powershell"
+        cwd="C:/tmp"
+        spawnPty={spawnPty}
+        subscribeOutput={async () => () => {}}
+        subscribeExit={subscribeExit}
+        respawnPty={respawnPty}
+      />,
+    );
+
+    await waitFor(() => expect(spawnPty).toHaveBeenCalled());
+    await waitFor(() => expect(subscribeExit).toHaveBeenCalledWith("term-crash", expect.any(Function)));
+
+    // Banner is hidden while the shell is alive.
+    expect(container.querySelector("[role='alert']")).toBeNull();
+
+    // Backend reports a crash via NTSTATUS access violation (0xC0000005).
+    await act(async () => {
+      emitExit?.({ code: 0xc000_0005, crashed: true });
+    });
+
+    const banner = await waitFor(() => {
+      const el = container.querySelector("[role='alert']");
+      if (!el) throw new Error("banner not yet rendered");
+      return el as HTMLElement;
+    });
+    expect(banner.textContent).toContain("crashed");
+
+    const restartBtn = banner.querySelector("button") as HTMLButtonElement;
+    expect(restartBtn).not.toBeNull();
+    expect(restartBtn.disabled).toBe(false);
+
+    await act(async () => {
+      fireEvent.click(restartBtn);
+    });
+
+    await waitFor(() => expect(respawnPty).toHaveBeenCalledTimes(1));
+    const respawnArgs = respawnPty.mock.calls[0][0];
+    expect(respawnArgs.id).toBe("term-crash");
+    expect(respawnArgs.shell).toBe("powershell");
+    expect(respawnArgs.cwd).toBe("C:/tmp");
+    expect(respawnArgs.cols).toBeGreaterThanOrEqual(20);
+
+    // Banner clears after a successful respawn.
+    await waitFor(() => expect(container.querySelector("[role='alert']")).toBeNull());
+  });
+
+  it("uses a softer message when the shell exited cleanly (code 0)", async () => {
+    const spawnPty = vi.fn().mockResolvedValue("term-clean");
+    let emitExit: ((info: { code: number | null; crashed: boolean }) => void) | null = null;
+    const subscribeExit = vi.fn(async (_id: string, onExit: (info: { code: number | null; crashed: boolean }) => void) => {
+      emitExit = onExit;
+      return () => {};
+    });
+
+    const { container } = render(
+      <NativeTerminalArea
+        spawnPty={spawnPty}
+        subscribeOutput={async () => () => {}}
+        subscribeExit={subscribeExit}
+      />,
+    );
+
+    await waitFor(() => expect(subscribeExit).toHaveBeenCalled());
+
+    await act(async () => {
+      emitExit?.({ code: 0, crashed: false });
+    });
+
+    const banner = await waitFor(() => {
+      const el = container.querySelector("[role='alert']");
+      if (!el) throw new Error("banner not rendered");
+      return el as HTMLElement;
+    });
+    expect(banner.textContent).toContain("exited (code 0)");
+    expect(banner.textContent).not.toContain("crashed");
+  });
 });

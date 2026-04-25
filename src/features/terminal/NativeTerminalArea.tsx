@@ -26,6 +26,29 @@ interface NativeTerminalAreaProps {
   writePty?: (id: string, data: string) => Promise<void> | void;
   /** Override for tests — defaults to Tauri `listen("pty-output-<id>")`. */
   subscribeOutput?: (terminalId: string, onBytes: (bytes: Uint8Array) => void) => Promise<UnlistenFn>;
+  /** Override for tests — defaults to Tauri `listen("pty-exit-<id>")`. */
+  subscribeExit?: (terminalId: string, onExit: (info: PtyExitInfo) => void) => Promise<UnlistenFn>;
+  /** Override for tests — defaults to `invoke("respawn_terminal", ...)`. */
+  respawnPty?: (args: {
+    id: string;
+    shell: string;
+    cols: number;
+    rows: number;
+    cwd?: string;
+  }) => Promise<void>;
+}
+
+/**
+ * Exit information surfaced from the backend `pty-exit-<id>` event.
+ *
+ * `crashed` is a heuristic computed in the Rust waiter: NTSTATUS error
+ * range on Windows, non-zero exit code elsewhere. The banner branches on
+ * it for visual severity but treats both cases the same way functionally
+ * (Enter restarts, Esc dismisses).
+ */
+export interface PtyExitInfo {
+  code: number | null;
+  crashed: boolean;
 }
 
 const FONT_SIZE = 14;
@@ -62,6 +85,42 @@ async function defaultSubscribeOutput(terminalId: string, onBytes: (bytes: Uint8
   });
 }
 
+async function defaultSubscribeExit(
+  terminalId: string,
+  onExit: (info: PtyExitInfo) => void,
+): Promise<UnlistenFn> {
+  return listen<PtyExitInfo>(`pty-exit-${terminalId}`, (event) => {
+    onExit(event.payload);
+  });
+}
+
+function defaultRespawn(args: {
+  id: string;
+  shell: string;
+  cols: number;
+  rows: number;
+  cwd?: string;
+}): Promise<void> {
+  return invoke<void>("respawn_terminal", {
+    id: args.id,
+    shell: args.shell,
+    cols: args.cols,
+    rows: args.rows,
+    cwd: args.cwd ?? null,
+  });
+}
+
+function exitBannerMessage(info: PtyExitInfo): string {
+  if (info.crashed) {
+    return info.code === null
+      ? "Shell crashed (no exit code)."
+      : `Shell crashed (code ${info.code}).`;
+  }
+  return info.code === null
+    ? "Shell exited."
+    : `Shell exited (code ${info.code}).`;
+}
+
 /**
  * Phase 2 / Task 10+11 — feature-flagged host for the native Rust terminal
  * engine.
@@ -87,6 +146,8 @@ export function NativeTerminalArea({
   resizePty = defaultResize,
   writePty = defaultWrite,
   subscribeOutput = defaultSubscribeOutput,
+  subscribeExit = defaultSubscribeExit,
+  respawnPty = defaultRespawn,
 }: NativeTerminalAreaProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [canvasEl, setCanvasEl] = useState<HTMLCanvasElement | null>(null);
@@ -283,6 +344,80 @@ export function NativeTerminalArea({
       unlisten?.();
     };
   }, [terminalId, subscribeOutput, aiCli]);
+
+  // ── Crash / clean-exit banner ──
+  // Set when the backend's `pty-exit-<id>` event fires; cleared when the
+  // user dismisses or successfully respawns. dimsRef so the respawn IPC
+  // can read the current cell grid without re-registering the listener
+  // on every resize tick.
+  const [exitInfo, setExitInfo] = useState<PtyExitInfo | null>(null);
+  const [respawning, setRespawning] = useState(false);
+  const dimsRef = useRef<Dims | null>(null);
+  dimsRef.current = dims;
+  const exitBannerBtnRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!terminalId) return;
+    let unlisten: UnlistenFn | null = null;
+    let cancelled = false;
+    (async () => {
+      try {
+        unlisten = await subscribeExit(terminalId, (info) => {
+          setExitInfo(info);
+        });
+        if (cancelled) {
+          unlisten?.();
+          unlisten = null;
+        }
+      } catch {
+        /* listener unavailable in tests */
+      }
+    })();
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [terminalId, subscribeExit]);
+
+  // Reset banner state when a brand-new terminal id mounts (project switch).
+  useEffect(() => {
+    setExitInfo(null);
+    setRespawning(false);
+  }, [terminalId]);
+
+  // Move keyboard focus into the banner's restart button when it appears
+  // so Enter/Space activates it immediately. Without this the user has to
+  // click the canvas first, defeating the "press Enter" affordance.
+  useEffect(() => {
+    if (exitInfo) exitBannerBtnRef.current?.focus();
+  }, [exitInfo]);
+
+  const dismissExitBanner = useCallback(() => {
+    setExitInfo(null);
+  }, []);
+
+  const restartShell = useCallback(async () => {
+    if (!terminalId || respawning) return;
+    const dimsSnap = dimsRef.current;
+    if (!dimsSnap) return;
+    setRespawning(true);
+    try {
+      await respawnPty({
+        id: terminalId,
+        shell: shellRef.current,
+        cols: dimsSnap.cols,
+        rows: dimsSnap.rows,
+        cwd: cwdRef.current,
+      });
+      setExitInfo(null);
+    } catch {
+      // Backend rejected (e.g. id is still alive after a stale event).
+      // Leave the banner up so the user can retry; release the lock so
+      // the button is clickable again.
+    } finally {
+      setRespawning(false);
+    }
+  }, [terminalId, respawning, respawnPty]);
 
   const focusImeBar = useCallback(() => {
     imeBarRef.current?.focus();
@@ -577,6 +712,31 @@ export function NativeTerminalArea({
         onDismissOverlay={dismissSnapshotOverlay}
         onMarkSnapshot={handleMarkSnapshot}
       />
+      {exitInfo && (
+        <div
+          className={`${styles.exitBanner} ${exitInfo.crashed ? styles.exitBannerCrashed : ""}`}
+          role="alert"
+          aria-live="polite"
+        >
+          <span>{exitBannerMessage(exitInfo)}</span>
+          <span className={styles.exitBannerHint}>Press Enter to restart, Esc to dismiss.</span>
+          <button
+            ref={exitBannerBtnRef}
+            type="button"
+            className={styles.exitBannerBtn}
+            onClick={() => void restartShell()}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.preventDefault();
+                dismissExitBanner();
+              }
+            }}
+            disabled={respawning}
+          >
+            {respawning ? "Restarting…" : "Restart"}
+          </button>
+        </div>
+      )}
       <div ref={containerRef} className={styles.terminalContainer}>
         {terminalId && dims && (
           <TerminalCanvas
