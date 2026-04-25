@@ -3,16 +3,18 @@
 All notable changes to Aether Terminal are tracked here. Dates are listed in
 `YYYY-MM-DD`. Commit hashes reference `refactor/tauri-react-migration`.
 
-## [Unreleased] — post-0.2.2 Tier 1 closure
+## [0.2.3] — 2026-04-27
 
-Three commits closing every remaining Tier 1 (senior-blocker) item from
-`docs/ROADMAP_POST_0_2_2.md`. After this set the senior-bar audit list
-contains only Tier 2 polish.
+Closes every Tier 1 (senior-blocker) item from
+`docs/ROADMAP_POST_0_2_2.md` plus four of the five Tier 2 polish items
+(only Sixel/Kitty inline images, item #5, remains for a future minor).
+Seven commits across reliability, UX, distribution, observability, and
+a new PTY-in-the-loop E2E suite.
 
 ### Reliability
 
-- **PTY crash recovery** (`74bbb60`) — `ConPTY` child exit is now
-  observable: `PtyManager` retains the boxed `Child`, the IPC layer
+- **PTY crash recovery** (`74bbb60`, Tier 1 #1) — `ConPTY` child exit is
+  now observable: `PtyManager` retains the boxed `Child`, the IPC layer
   spawns a waiter that calls `wait()` and emits `pty-exit-<id>` with a
   typed `ExitInfo { code, crashed }` payload (NTSTATUS heuristic on
   Windows). `respawn_terminal` IPC + frontend banner restart the shell
@@ -21,18 +23,26 @@ contains only Tier 2 polish.
 
 ### UX
 
-- **Shell integration installer** (`4ebdc5c`) — Settings panel surfaces
-  per-shell install state (PowerShell / Bash / Zsh). Embedded scripts
-  are written to `~/.aether/shell-integration/` and a single `source`
-  line is appended to the user's profile, gated by an install marker
-  for idempotency. Risk hedge from the roadmap honoured: install fires
-  only on explicit click, with a "Copy line" alternative for users on
-  non-standard profile paths.
+- **Shell integration installer** (`4ebdc5c`, Tier 1 #2) — Settings
+  panel surfaces per-shell install state (PowerShell / Bash / Zsh).
+  Embedded scripts are written to `~/.aether/shell-integration/` and a
+  single `source` line is appended to the user's profile, gated by an
+  install marker for idempotency. Risk hedge from the roadmap honoured:
+  install fires only on explicit click, with a "Copy line" alternative
+  for users on non-standard profile paths.
+- **In-cwd `file://` links open in editor** (`e2bb098`, Tier 2 #4) —
+  `TerminalCanvas.handleLinkClick` now branches on URL scheme: `https?` /
+  `ftp` / `mailto` route to `tauri-plugin-opener` (existing path),
+  `file://` URIs whose path resolves under the active project `cwd` open
+  in the built-in Monaco editor with optional `#L<line>` / `:line`
+  anchors. Scheme-locked: out-of-cwd `file://` paths still go to the OS
+  handler, eliminating the Notepad-flash regression on Windows.
 
 ### Distribution
 
-- **Auto-updater wiring** — `tauri-plugin-updater` is registered with a
-  placeholder pubkey + `https://updates.aether.invalid/...` endpoint.
+- **Auto-updater wiring** (`047de0f`, Tier 1 #3) —
+  `tauri-plugin-updater` is registered with a placeholder pubkey +
+  `https://updates.aether.invalid/...` endpoint.
   `bundle.createUpdaterArtifacts = true` so a signed `.sig` lands next
   to each NSIS / MSI installer when Tauri sees a private signing key in
   the environment. New surfaces: `<UpdateBanner>` at the top of the app
@@ -42,6 +52,40 @@ contains only Tier 2 polish.
   `scripts/generate-update-manifest.mjs` (writes `latest.json` next to
   the bundles). Local-only by default — see `docs/auto_updater_setup.md`
   for the full release flow.
+
+### Observability
+
+- **Structured tracing + in-app log viewer** (`3eed245`, Tier 2 #7) —
+  swapped `env_logger` for `tracing` + `tracing-subscriber` (env-filter,
+  JSON stderr formatter, ring-buffer Layer, `tracing-log` adapter so the
+  ~75 existing `log::*!` callsites flow through unchanged). New
+  `LogRing` (cap = 1024, monotonic seq) is exposed via `logs_recent` /
+  `logs_since` IPC. Right-panel `<LogsPanel>` (lazy + ErrorBoundary)
+  hydrates and polls (1024-entry client cap), filters by level, and
+  carries a presentation-only Clear that masks via `hideSeq` rather than
+  mutating the Rust ring. 8 new Rust unit tests + 11 Vitest specs
+  (5 hook + 6 panel).
+- **PTY backpressure badge** (`4de28c2`, Tier 2 #8) — `PtyManager`
+  exposes per-subscriber `lag_events` counters; `pty:lag-<id>` events
+  emit when a `Lagged` is observed. `TerminalInfoBar` now shows a
+  "throttled" badge that lights when at least one lag event arrives in
+  the last 5 s, decays when quiet, and tooltips the running count.
+  Telegraphs the previously-silent `[dropped N chunks]` sentinel.
+
+### Testing
+
+- **PTY-in-the-loop E2E spec** (`20140ce`, Tier 2 #6) —
+  `e2e/pty-flows.spec.ts` adds three Playwright specs that attach to a
+  running `pnpm tauri:dev` over CDP port 9222 and drive the real backend
+  via `__TAURI_INTERNALS__.invoke`: (1) echo round-trip
+  (`spawn_terminal` → `write_terminal` → `term_snapshot` sees
+  sentinel), (2) scrollback growth (80 lines into 30 rows →
+  `term_history_size > 0` + `term_history_rows` returns content), and
+  (3) backend-emitted log capture during the spec (`logs_recent`
+  watermark + `logs_since` finds `aether_terminal_lib::*` entries —
+  doubles as a smoke test for #7). When port 9222 is unreachable the
+  three specs `test.skip` cleanly so CI without a live Tauri build does
+  not bleed red.
 
 ## [0.2.2] — 2026-04-25
 
