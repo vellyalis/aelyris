@@ -9,6 +9,7 @@ mod ipc;
 pub mod lsp;
 pub mod pty;
 pub mod session;
+pub mod shell_integration;
 pub mod snapshot;
 pub mod term;
 pub mod suggest;
@@ -405,6 +406,10 @@ pub fn run() {
             ipc::start_snapshot_overlay,
             // IME positioning
             ipc::set_ime_position,
+            // Shell integration installer (post-0.2.2 Tier 🔴 #2)
+            ipc::shell_integration_status,
+            ipc::shell_integration_one_liner,
+            ipc::shell_integration_install,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Aether Terminal")

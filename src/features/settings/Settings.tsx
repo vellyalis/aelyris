@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import { useAppStore } from "../../shared/store/appStore";
 import styles from "./Settings.module.css";
+import { ShellIntegrationSection } from "./ShellIntegrationSection";
 
 interface SettingsProps {
   visible: boolean;
@@ -218,6 +219,15 @@ export function Settings({ visible, onClose }: SettingsProps) {
                   <span>Cursor Blink</span>
                 </label>
               </div>
+            </section>
+
+            <section className={styles.section}>
+              <h3 className={styles.sectionTitle}>Shell Integration</h3>
+              <p className={styles.hint}>
+                Aether parses OSC 133 prompt marks for "jump to previous prompt" and exit-code
+                coloring. Install the helper script for your shell to enable these features.
+              </p>
+              <ShellIntegrationSection />
             </section>
 
             <section className={styles.section}>

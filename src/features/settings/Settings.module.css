@@ -182,3 +182,119 @@
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
 }
+
+/* Shell integration installer */
+.shellList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.shellRow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.shellRowHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.shellName {
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+
+.shellBadge {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+}
+
+.shellBadgeInstalled {
+  background: rgba(166, 227, 161, 0.15);
+  color: var(--ctp-green, #a6e3a1);
+}
+
+.shellBadgePending {
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+}
+
+.shellPath {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.shellLine {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  background: var(--aether-bg);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  word-break: break-all;
+  border: 1px solid var(--border);
+}
+
+.shellActions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.shellBtn {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-family: var(--font-ui);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.shellBtn:hover:not(:disabled),
+.shellBtn:focus-visible {
+  outline: none;
+  border-color: var(--gold);
+}
+
+.shellBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.shellBtnPrimary {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: var(--aether-bg);
+  font-weight: var(--weight-semibold);
+}
+
+.shellBtnPrimary:hover:not(:disabled),
+.shellBtnPrimary:focus-visible {
+  border-color: var(--gold);
+  opacity: 0.9;
+}
+
+.shellFeedback {
+  font-size: var(--text-sm);
+  color: var(--ctp-green, #a6e3a1);
+}
+
+.shellError {
+  font-size: var(--text-sm);
+  color: var(--ctp-red, #f38ba8);
+}
