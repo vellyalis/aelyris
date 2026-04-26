@@ -136,17 +136,25 @@ clean skip rather than a red bar. Two specs:
 The PNG used in spec #2 is a 1x1 transparent fixture inlined as
 base64 so there's no external file dependency.
 
-**Caveat — Windows ConPTY APC drop.** The Kitty graphics protocol
-ships inside `\x1b_G…\x1b\\` (APC). On some Win11 builds without
-`PSEUDOCONSOLE_PASSTHROUGH_MODE` (0x8) ConPTY silently strips
-unknown APC sequences before they reach the engine; the round-trip
-spec then fails with a `waitForImages` timeout. We deliberately
-surface that as a real test failure rather than a silent skip — the
-whole point of the polish pass is to put a tripwire under the live
-pipeline so dogfood regressions show up in the report. If a
-reproducer is needed manually, run `chafa -f kitty image.png`
-inside the same window: a clean visual render means the engine sees
-the escape, an `^[_G…` echo means ConPTY ate it.
+**Confirmed Windows ConPTY APC drop (2026-04-30 dogfood).** The Kitty
+graphics protocol ships inside `\x1b_G…\x1b\\` (APC). The dogfood run
+proved that `portable-pty 0.8.1`'s `CreatePseudoConsole` call omits
+`PSEUDOCONSOLE_PASSTHROUGH_MODE` (0x8) entirely — the constant is
+even tagged `#[allow(dead_code)]` in `psuedocon.rs:30`. Win11 ConPTY
+in default mode strips unknown APC sequences before they reach our
+engine, so the round-trip spec **cannot** pass on this dogfood
+machine until passthrough is wired.
+
+`scripts/diag-image-escape.mjs` confirmed the diagnosis end to end:
+SGR (CSI) escapes round-trip cleanly, but the Kitty APC escape leaves
+no garbage in the grid AND `term_image_data` returns `null` for
+every probed id 1..50. The engine never observed the bytes — ConPTY
+ate them.
+
+The Playwright round-trip spec (test 2 in `image-flows.spec.ts`) is
+therefore `test.fixme` rather than a `test` that always reds the
+report. Re-enable it once `docs/ROADMAP_POST_0_2_4.md` item #1
+(ConPTY passthrough wiring) lands.
 
 **Out of scope for this polish:** we do not assert the rendered
 canvas pixel content. The frontend paint pass is covered by
