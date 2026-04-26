@@ -24,6 +24,30 @@ export function SplitPane({
   const onRatioChangeRef = useRef(onRatioChange);
   onRatioChangeRef.current = onRatioChange;
 
+  /* Clamp a candidate ratio to the per-pane minimum, handling the
+   * "container is too small to satisfy two minSize halves" case
+   * gracefully. Codex review (2026-05-03 round 2) caught the bug:
+   * when `total < 2 * minSize`, the naive
+   * `max(minSize/total, min(1 - minSize/total, x))` has `min > max`
+   * and the inner Math.min collapses to a single value, which then
+   * gets bumped to `min` — so a 150-px-wide SplitPane with default
+   * minSize=100 always reported ratio 0.667 regardless of the
+   * user's intent. Now we detect the unsatisfiable case and fall
+   * back to a centred 0.5 split so neither pane is starved more
+   * than necessary. The same helper is used by both the pointer
+   * drag and the keyboard nudge so the two input methods produce
+   * identical layouts. */
+  const clampRatio = useCallback(
+    (raw: number, total: number): number => {
+      if (total <= 0) return Math.max(0.05, Math.min(0.95, raw));
+      const minR = minSize / total;
+      const maxR = 1 - minR;
+      if (minR >= maxR) return 0.5;
+      return Math.max(minR, Math.min(maxR, raw));
+    },
+    [minSize],
+  );
+
   // Sync ratio when defaultRatio changes (e.g. tab switch restoring saved ratio)
   const prevDefault = useRef(defaultRatio);
   useEffect(() => {
@@ -60,7 +84,7 @@ export function SplitPane({
         const rect = container.getBoundingClientRect();
         const total = isHorizontal ? rect.width : rect.height;
         const pos = isHorizontal ? ev.clientX - rect.left : ev.clientY - rect.top;
-        const newRatio = Math.max(minSize / total, Math.min(1 - minSize / total, pos / total));
+        const newRatio = clampRatio(pos / total, total);
         setRatio(newRatio);
         onRatioChangeRef.current?.(newRatio);
       };
@@ -85,7 +109,7 @@ export function SplitPane({
       handleEl.addEventListener("pointerup", onUp);
       handleEl.addEventListener("pointercancel", onUp);
     },
-    [direction, minSize],
+    [direction, clampRatio],
   );
 
   /* Keyboard a11y — Arrow keys nudge the ratio by 2 % (Shift = 8 %).
@@ -112,20 +136,14 @@ export function SplitPane({
       e.preventDefault();
       const container = containerRef.current;
       const total = container ? (isHorizontal ? container.clientWidth : container.clientHeight) : 0;
-      // Fall back to a 5 / 95 floor when the container has no measurable
-      // size yet (initial mount); once it does, mirror the pointer path's
-      // `minSize / total` clamp so both input methods produce the same
-      // minimum pane size.
-      const min = total > 0 ? minSize / total : 0.05;
-      const max = total > 0 ? 1 - minSize / total : 0.95;
       setRatio((prev) => {
         const delta = e.key === inc ? grow : -grow;
-        const next = Math.max(min, Math.min(max, prev + delta));
+        const next = clampRatio(prev + delta, total);
         onRatioChangeRef.current?.(next);
         return next;
       });
     },
-    [direction, minSize],
+    [direction, clampRatio],
   );
 
   const isHorizontal = direction === "horizontal";

@@ -10,6 +10,20 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### UX
 
+- **`SplitPane` clamp now handles `total < 2 * minSize`.** Codex
+  re-review (round 2) flagged that the keyboard-resize fix still
+  blew up on a SplitPane narrower than `2 * minSize` (e.g. a
+  150-px nested terminal split with default `minSize = 100`):
+  `min = 100/150 = 0.667` while `max = 1 - 100/150 = 0.333`, so
+  `min > max` and the naive `Math.max(min, Math.min(max, x))`
+  collapsed every input to a single value (`min = 0.667`),
+  ignoring direction. The pointer drag had the same hidden bug
+  going back to the original implementation. Extracted a single
+  `clampRatio(raw, total)` helper used by both input paths that
+  detects the unsatisfiable case and returns `0.5` (centred
+  split, both panes get `total / 2` even if neither hits
+  `minSize`); otherwise applies the standard min/max clamp.
+
 - **Two regressions caught by Codex review and fixed.** External
   review of the recent terminal sweep flagged two real
   accessibility bugs introduced earlier in the session:
