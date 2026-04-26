@@ -8,6 +8,59 @@ All notable changes to Aether Terminal are tracked here. Dates are listed in
 Continuing the post-0.2.3 Tier 3 polish run started with
 `247e813` (search-in-scrollback, Tier 3 #9).
 
+### UX
+
+- **"Settings won't open" + window chrome polish.** Three connected
+  fixes after dogfood feedback that "the gear button does nothing"
+  and "the window looks like it's floating on a square transparent
+  frame — far from Apple-class":
+  - **`<LazyDialog>` wrapper** (new
+    `src/shared/ui/LazyDialog.tsx`) replaces the
+    `<Suspense fallback={null}>` pattern around every code-split
+    dialog (Settings, Watchdog, About, Help, CommandPalette,
+    QuickOpen, PRInspector, WebInspector). Two changes the user
+    sees: a chunk that takes >100 ms to land now shows a visible
+    "Loading…" scrim instead of a button-press that looks broken,
+    and a chunk that fails to fetch surfaces an actionable
+    `<ErrorBoundary>` retry panel instead of swallowing the error
+    into `null`. Silent failure was the single worst class of
+    "settings won't open" bug — there was no signal whether the
+    click had registered, the app was hanging, or the feature was
+    missing.
+  - **Settings reachable from the welcome screen.** Previously the
+    only entry point was the gear icon in `<ProjectHeaderBar>`,
+    which only renders after a project is open. First-run users
+    had no way to pick a theme or default shell before opening a
+    folder. New left-bottom 36 px circular Settings button on the
+    welcome screen + a `LazyDialog`-wrapped `<Settings>` mount on
+    the welcome path so the dialog renders identically before and
+    after a project is selected.
+  - **Apple-class window depth.** `tauri.conf.json` +
+    `tauri.dev.conf.json` now declare
+    `effects: ["mica", "acrylic", "blur"]` so Win11 22H2+ picks
+    Mica (matches the rest of the modern Windows surface stack),
+    older builds fall through to Acrylic, and last-ditch hardware
+    falls through to a soft blur. The Tauri `setup` hook then
+    calls `DwmSetWindowAttribute(DWMWA_WINDOW_CORNER_PREFERENCE,
+    DWMWCP_ROUND)` so the OS-level window edge is actually
+    rounded (the previous combination of `decorations: false` +
+    `transparent: true` left the outer window square — that was
+    the "floating on a square transparent frame" tell). The inner
+    `.app-container` radius drops from 12 px to 8 px so it aligns
+    with the OS edge, and gains a two-layer rim — `inset 0 1px 0
+    rgba(255, 255, 255, 0.08)` highlight + 24/8 px stacked drop
+    shadows — so the window has weight without shouting.
+  - Visual confirmation in `pnpm dev` (Vite preview): from the
+    welcome screen, click the new gear → Settings dialog opens
+    with all sections (Appearance, Terminal, Updates, Shell
+    Integration, Ghost Diff, Keyboard Shortcuts) rendered cleanly.
+    Same path works from the post-project header bar gear. No
+    runtime errors. `pnpm test`: 803 unchanged. `cargo test
+    --lib`: 473 unchanged. `tsc --noEmit`: 0 errors. Real Mica /
+    DWM corner radius requires `pnpm tauri:dev` on Win11 dogfood —
+    that pass remains user-side because Tauri can't be exercised
+    from Vite preview.
+
 ### Reliability
 
 - **Sprint 3 wave 3 wiring fix — StatusBar badge gets the real PTY id**

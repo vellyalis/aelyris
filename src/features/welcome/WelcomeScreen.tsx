@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { FolderOpen, GitBranch, Upload } from "lucide-react";
+import { FolderOpen, GitBranch, Settings as SettingsIcon, Upload } from "lucide-react";
 import { motion } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
 import logoSvg from "../../assets/logo.svg";
@@ -14,6 +14,14 @@ interface ProjectInfo {
 
 interface WelcomeScreenProps {
   onOpenProject: (path: string) => void;
+  /**
+   * Open the global Settings dialog. Surfaced on the welcome screen
+   * so theme / shell / font choices can be made before opening a
+   * project — previously Settings was only reachable from the
+   * project header bar, which left first-run users with no way to
+   * pick a theme without first opening a folder.
+   */
+  onOpenSettings?: () => void;
 }
 
 // Frontend fallback if the Rust `default_project_scan_dirs` command fails
@@ -30,7 +38,7 @@ function getGreeting(): string {
   return "Good evening";
 }
 
-export function WelcomeScreen({ onOpenProject }: WelcomeScreenProps) {
+export function WelcomeScreen({ onOpenProject, onOpenSettings }: WelcomeScreenProps) {
   const [recentProjects, setRecentProjects] = useState<ProjectInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState<string | null>(null);
@@ -198,6 +206,17 @@ export function WelcomeScreen({ onOpenProject }: WelcomeScreenProps) {
           )}
         </div>
       </motion.div>
+      {onOpenSettings && (
+        <button
+          type="button"
+          className={styles.settingsCorner}
+          onClick={onOpenSettings}
+          aria-label="Open settings"
+          title="Settings"
+        >
+          <SettingsIcon size={16} strokeWidth={1.75} aria-hidden="true" />
+        </button>
+      )}
     </div>
   );
 }

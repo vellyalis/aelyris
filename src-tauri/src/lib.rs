@@ -121,6 +121,53 @@ pub fn run() {
                 }
             }
             // Mica/Acrylic applied via tauri.conf.json windowEffects
+            // (effects: ["mica", "acrylic", "blur"] — Win11 22H2+ picks Mica,
+            //  earlier builds fall through to Acrylic and finally a soft blur).
+            //
+            // Apple-class window chrome on Windows also requires explicit
+            // rounded corners — without DWMWA_WINDOW_CORNER_PREFERENCE the
+            // outer window keeps Win11 default corners under decorations:false
+            // + transparent:true. The CSS border-radius on `.app-container`
+            // only rounds the inner content; the OS-level window edge has to
+            // be rounded by DWM. `DWMWCP_ROUND` is a no-op on Win10 (the API
+            // returns E_INVALIDARG, which we tolerate silently).
+            #[cfg(windows)]
+            {
+                use windows::Win32::Foundation::HWND;
+                use windows::Win32::Graphics::Dwm::{
+                    DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DwmSetWindowAttribute,
+                };
+                if let Some(window) = app.get_webview_window("main") {
+                    match window.hwnd() {
+                        Ok(hwnd_raw) => {
+                            let hwnd = HWND(hwnd_raw.0 as *mut _);
+                            let pref: i32 = DWMWCP_ROUND.0;
+                            let result = unsafe {
+                                DwmSetWindowAttribute(
+                                    hwnd,
+                                    DWMWA_WINDOW_CORNER_PREFERENCE,
+                                    &pref as *const i32 as *const _,
+                                    std::mem::size_of::<i32>() as u32,
+                                )
+                            };
+                            match result {
+                                Ok(()) => {
+                                    log::info!("DWM window corners: rounded preference applied");
+                                }
+                                Err(e) => {
+                                    // Win10 returns E_INVALIDARG for this
+                                    // attribute — that's expected, not an
+                                    // error worth surfacing to the user.
+                                    log::debug!(
+                                        "DWM rounded-corner request not honoured (likely Win10): {e}"
+                                    );
+                                }
+                            }
+                        }
+                        Err(e) => log::warn!("hwnd unavailable for DWM corner setup: {e}"),
+                    }
+                }
+            }
 
             // Seed the SuggestEngine from DB command history so fish-style
             // autosuggest works on the first keystroke of a fresh session.

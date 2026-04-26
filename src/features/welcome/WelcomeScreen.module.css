@@ -5,6 +5,43 @@
   justify-content: center;
   background: var(--aether-bg);
   transition: background 0.2s ease;
+  position: relative;
+}
+
+/* Bottom-left settings affordance — first-run users need to be able
+ * to pick a theme / default shell before opening a project. The
+ * button is intentionally muted (40% white, 1px hairline border) so
+ * it doesn't compete with the gold "Open Folder" CTA, but lifts on
+ * hover so it remains discoverable. */
+.settingsCorner {
+  position: absolute;
+  left: var(--space-10);
+  bottom: var(--space-10);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--white-10);
+  background: var(--white-4);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast),
+    color var(--duration-fast),
+    border-color var(--duration-fast),
+    transform var(--duration-fast);
+}
+.settingsCorner:hover {
+  background: var(--white-6);
+  color: var(--text-primary);
+  border-color: var(--white-15);
+  transform: rotate(30deg);
+}
+.settingsCorner:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
 }
 .dragOver {
   background: var(--white-4);

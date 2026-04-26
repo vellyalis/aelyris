@@ -395,8 +395,26 @@ body,
   flex-direction: column;
   height: 100vh;
   background: transparent;
-  border-radius: var(--radius-lg);
+  /* Win11's DWMWA_WINDOW_CORNER_PREFERENCE rounds the OS window edge
+   * at ~8px. Match that radius on the inner container so the inner
+   * chrome (header / sidebar / status bar) aligns with the outer
+   * window edge instead of leaving a "small rounded box floating
+   * inside a square transparent frame" tell. On Win10 the OS edge
+   * stays square but 8px is the same value the rest of the app's
+   * surfaces use, so the inner radius reads as deliberate either
+   * way. */
+  border-radius: var(--radius);
   overflow: hidden;
+  /* Two-layer rim: a faint inner highlight (1px white at 8% alpha)
+   * + an outer drop shadow. Together they read as Apple-class depth
+   * — the window has weight without shouting. The inner rim uses
+   * `box-shadow inset` rather than `border` so it doesn't displace
+   * the layout. */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+    0 24px 48px rgba(0, 0, 0, 0.45),
+    0 8px 16px rgba(0, 0, 0, 0.35);
 }
 
 .app-main {

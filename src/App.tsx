@@ -58,6 +58,7 @@ import { useAppStore } from "./shared/store/appStore";
 import type { SearchHit } from "./shared/types/history";
 import { ConfirmDialog, showConfirm } from "./shared/ui/ConfirmDialog";
 import { ErrorBoundary } from "./shared/ui/ErrorBoundary";
+import { LazyDialog } from "./shared/ui/LazyDialog";
 import { HandoffDialog } from "./shared/ui/HandoffDialog";
 import { OnboardingOverlay } from "./shared/ui/OnboardingOverlay";
 import { OrchestraDialog } from "./shared/ui/OrchestraDialog";
@@ -547,8 +548,20 @@ export function App() {
         <ToastProvider>
           <div className="app-container">
             <Suspense fallback={null}>
-              <WelcomeScreen onOpenProject={handleOpenProject} />
+              <WelcomeScreen
+                onOpenProject={handleOpenProject}
+                onOpenSettings={() => setSettingsVisible(true)}
+              />
             </Suspense>
+            {/* Settings is reachable before a project is open (theme /
+             * default shell pick on first run). Same LazyDialog wrapper
+             * as the post-project path so a chunk-load failure shows a
+             * retry panel instead of a silent click. */}
+            {settingsVisible && (
+              <LazyDialog>
+                <Settings visible onClose={() => setSettingsVisible(false)} />
+              </LazyDialog>
+            )}
           </div>
         </ToastProvider>
       </TooltipProvider>
@@ -798,47 +811,47 @@ export function App() {
           />
 
           {paletteVisible && (
-            <Suspense fallback={null}>
+            <LazyDialog>
               <CommandPalette visible onClose={() => setPaletteVisible(false)} commands={commands} />
-            </Suspense>
+            </LazyDialog>
           )}
           {settingsVisible && (
-            <Suspense fallback={null}>
+            <LazyDialog>
               <Settings visible onClose={() => setSettingsVisible(false)} />
-            </Suspense>
+            </LazyDialog>
           )}
           {watchdogVisible && (
-            <Suspense fallback={null}>
+            <LazyDialog>
               <WatchdogDialog visible onClose={() => setWatchdogVisible(false)} />
-            </Suspense>
+            </LazyDialog>
           )}
           {aboutVisible && (
-            <Suspense fallback={null}>
+            <LazyDialog>
               <AboutDialog visible onClose={() => setAboutVisible(false)} />
-            </Suspense>
+            </LazyDialog>
           )}
           {helpVisible && (
-            <Suspense fallback={null}>
+            <LazyDialog>
               <HelpDialog visible onClose={() => setHelpVisible(false)} />
-            </Suspense>
+            </LazyDialog>
           )}
           {webInspectorVisible && (
-            <Suspense fallback={null}>
+            <LazyDialog>
               <WebInspector visible onClose={() => setWebInspectorVisible(false)} />
-            </Suspense>
+            </LazyDialog>
           )}
           {prInspectorVisible && (
-            <Suspense fallback={null}>
+            <LazyDialog>
               <PRInspector
                 visible
                 projectPath={projectPath}
                 onClose={() => setPrInspectorVisible(false)}
                 onStartReview={handleStartAgent}
               />
-            </Suspense>
+            </LazyDialog>
           )}
           {quickOpenMode && (
-            <Suspense fallback={null}>
+            <LazyDialog>
               <QuickOpen
                 projectPath={projectPath}
                 openFiles={openFiles}
@@ -846,7 +859,7 @@ export function App() {
                 onClose={() => setQuickOpenMode(null)}
                 initialMode={quickOpenMode}
               />
-            </Suspense>
+            </LazyDialog>
           )}
           <PromptDialog />
           <ConfirmDialog />
