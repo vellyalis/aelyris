@@ -10,6 +10,20 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### UX
 
+- **Jump-to-live pill on scrollback.** When the user scrolled up
+  via mouse wheel, there was no visible way back to the live
+  tail — only the (undiscoverable) Ctrl+Shift+End keybinding.
+  Added a gold-tinted glass pill anchored bottom-right of the
+  canvas: appears only while `scrollOffset > 0`, click =
+  `scrollback.scrollToLive()`. Same action as the existing
+  shortcut, just with a discoverable surface.
+
+- **Timeline empty-state message corrected.** The "No snapshots
+  yet — press Enter to capture" copy was a leftover from an
+  earlier design — Enter just sends `\r` to the PTY, snapshots
+  capture on prompt marks or via the Mark button. Replaced with
+  "click Mark to bookmark, or run a command".
+
 - **Cursor blink — slower, asymmetric duty cycle, respects
   reduced-motion.** The previous 500/500 ms hard toggle felt
   jarring (50/50 strobe). Switched to an Apple-style 600 ms ON

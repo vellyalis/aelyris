@@ -1,4 +1,5 @@
 import { openUrl as tauriOpenUrl } from "@tauri-apps/plugin-opener";
+import { ChevronDown } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { findNextPromptMark, findPrevPromptMark, useScrollback } from "../../shared/hooks/useScrollback";
@@ -677,6 +678,43 @@ export function TerminalCanvas({
           caretColor: "transparent",
         }}
       />
+      {/* "Jump to live" pill — only renders while the user is in
+       * scrollback (scrollOffset > 0). Without this the only way back
+       * to the live tail was the Ctrl+Shift+End keybinding the
+       * NativeTerminalArea registers, which is invisible to anyone
+       * who hasn't read the docs. The pill duplicates the same
+       * action with a discoverable affordance, anchored bottom-right
+       * inside the canvas's relative wrapper. */}
+      {scrolledUp && (
+        <button
+          type="button"
+          onClick={() => scrollback.scrollToLive()}
+          aria-label="Jump to live tail"
+          title="Jump to live tail (Ctrl+Shift+End)"
+          style={{
+            position: "absolute",
+            right: 12,
+            bottom: 12,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            padding: "4px 10px",
+            background: "rgba(200, 160, 80, 0.18)",
+            border: "1px solid rgba(200, 160, 80, 0.4)",
+            borderRadius: 999,
+            color: "#c8a050",
+            fontSize: 11,
+            fontFamily: "inherit",
+            cursor: "pointer",
+            backdropFilter: "blur(8px)",
+            WebkitBackdropFilter: "blur(8px)",
+            zIndex: 2,
+          }}
+        >
+          <ChevronDown size={12} aria-hidden="true" />
+          Live
+        </button>
+      )}
     </div>
   );
 }

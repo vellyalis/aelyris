@@ -71,7 +71,12 @@ export function TimelineBar({
     <div className={styles.root} data-testid="timeline-bar" aria-label="Timeline">
       <span className={styles.label}>TIMELINE</span>
       {snapshots.length === 0 ? (
-        <span className={styles.empty}>No snapshots yet — press Enter to capture</span>
+        // Empty hint used to read "press Enter to capture" — Enter does
+        // nothing of the sort (it goes to the PTY as `\r`); snapshots
+        // are captured automatically on prompt marks and explicitly via
+        // the Mark button on the right of this bar. Tell the user
+        // *that* instead of inviting a key combo that fires a newline.
+        <span className={styles.empty}>No snapshots yet — click Mark to bookmark, or run a command</span>
       ) : (
         <div className={styles.ticks} role="listbox" aria-label="Snapshots">
           {snapshots.map((snap) => {
