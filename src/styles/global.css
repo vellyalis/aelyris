@@ -542,10 +542,18 @@ body[data-window-focused="false"] {
   background: var(--aether-bg);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  /* NOTE: inset-recessed was tried here (2026-04-24 Wave 3.2) to imply a
+  /* Hairline borders on both edges so the terminal well always
+   * has the same 1-px visual gap between itself and the
+   * neighbours, regardless of whether the right panel happens to
+   * be visible. Without `border-right` the well would butt
+   * straight up against the window edge whenever the right panel
+   * was hidden — that was the "right-side margin missing" tell.
+   *
+   * NOTE: inset-recessed was tried here (2026-04-24 Wave 3.2) to imply a
    * sunken terminal well, but on a transparent surface over Mica it just
    * painted a dark overlay and grayed out the whole terminal. Reverted —
    * the terminal should pass Mica through untouched. */
+  border-right: 1px solid var(--white-6);
 }
 
 .right-panel {
@@ -557,7 +565,9 @@ body[data-window-focused="false"] {
   background: var(--glass-dense);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  border-left: 1px solid var(--white-6);
+  /* Hairline lives on `.center-panel.border-right` so the gap is
+   * present whether or not this panel is mounted. Adding another
+   * border here would stack two 1-px lines side-by-side. */
   box-shadow: var(--rim-top);
   overflow: hidden;
   resize: horizontal;
@@ -713,17 +723,17 @@ button:disabled,
   animation: shimmer 1.5s infinite;
 }
 
-/* Responsive: hide the right panel on very small windows. The
- * left panel deliberately stays user-controlled via Ctrl+B / the
- * sidebar toggle button — forcing a media-query collapse on top
- * of the explicit toggle is the kind of Win32-era responsive
- * behaviour that modern apps (VS Code, Linear, Warp) avoid:
- * the user has already told us what they want, so respect it. */
-@media (max-width: 900px) {
-  .right-panel {
-    display: none;
-  }
-}
+/* Responsive panel collapsing intentionally removed (2026-05-02).
+ *
+ * Both panels are user-controlled via toggles and drag handles;
+ * forcing a media-query hide on top of that is the Win32 / early-
+ * Bootstrap pattern modern apps (VS Code, Linear, Warp, Files)
+ * deliberately avoid. The downstream symptom dogfood reported was
+ * "the right side has no margin" — the right panel was being
+ * silently hidden on a slightly narrow window, so the centre well
+ * butted straight up against the window edge while the other
+ * three sides still had their visual gap. The window's `minWidth`
+ * (960 px in tauri.conf.json) is the only floor we enforce. */
 
 /* ─── Ghost Diff Overlay (Phase 3C-1b) ─── */
 

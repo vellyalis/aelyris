@@ -10,6 +10,32 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### UX
 
+- **Edge-gap consistency — terminal well now has the same hairline
+  on all four sides.** Dogfood: "the right side has no margin
+  while the other three do — that's the kind of inconsistency
+  Apple doesn't ship." The cause was two-fold:
+  - `@media (max-width: 900px) { .right-panel { display: none } }`
+    silently hid the right panel whenever the window dropped
+    below 900 px (Tauri `minWidth` is 960 px so this rarely
+    fired, but a one-off resize would expose it). Removed —
+    same Win32-era responsive pattern we already excised from
+    the left panel. Both panels are now strictly user-
+    controlled (toggle / drag), no media-query overrides.
+  - With the right panel hidden, `.center-panel` butted straight
+    up against the window edge with no border to provide a
+    visual gap (the other three sides borrowed their gap from
+    `ProjectHeaderBar.border-bottom`, `.left-panel.border-
+    right`, and `StatusBar.border-top`). `.center-panel` now
+    owns its own `border-right: 1px solid var(--white-6)` so the
+    gap is present whether or not the right panel is mounted.
+    `.right-panel.border-left` removed so we don't stack two 1-
+    px hairlines side-by-side.
+  - Vite preview verify: `getComputedStyle(centre).borderRight`
+    = `1px solid rgba(255, 255, 255, 0.06)`,
+    `getComputedStyle(right).borderLeft` = `0px none`. Right
+    panel renders (Toolkit visible) on every viewport now.
+  - `pnpm test`: 803 unchanged. `tsc --noEmit`: 0 errors.
+
 - **Split icons direction-true + IME bar refresh.** Dogfood:
   "the split icon is the wrong way around — I expect a vertical
   divider to mean 'split vertically' but it adds a pane to the
