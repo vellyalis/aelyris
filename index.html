@@ -26,6 +26,21 @@
       #root {
         background: transparent !important;
       }
+      /* Splash fades out as soon as React commits its first
+       * frame. main.tsx adds `data-react-mounted` to <html> in a
+       * requestAnimationFrame after createRoot — at that point
+       * the app's real chrome is already painted, so the splash
+       * just needs to disappear, not be replaced visually. The
+       * 220 ms ease keeps the swap subliminal instead of
+       * flickering. */
+      #splash {
+        transition: opacity 220ms cubic-bezier(0.4, 0, 0.2, 1);
+        will-change: opacity;
+      }
+      html[data-react-mounted="true"] #splash {
+        opacity: 0;
+        pointer-events: none;
+      }
     </style>
   </head>
 

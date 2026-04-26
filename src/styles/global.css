@@ -474,9 +474,12 @@ body[data-window-focused="false"] {
 
 .left-panel {
   position: relative;
-  width: 180px;
-  min-width: 120px;
-  max-width: 360px;
+  /* Width is driven by inline `style` (Zustand `sidebarWidth`).
+   * The default applies before the user touches the drag handle;
+   * the JS clamp keeps the live value within [200, 480]. */
+  width: 240px;
+  min-width: 200px;
+  max-width: 480px;
   display: flex;
   flex-direction: column;
   background: var(--glass-standard);
@@ -485,12 +488,12 @@ body[data-window-focused="false"] {
   border-right: 1px solid var(--white-6);
   box-shadow: var(--rim-top);
   overflow: hidden;
-  resize: horizontal;
-  /* Width transition for the chrome toggle (Ctrl+B). Limited to
-   * `width` so children that absolute-position (panels with fixed
-   * action buttons, the SCMPanel git tree) don't animate their
-   * own layout — only the rail edge slides. */
-  transition: width 180ms var(--ease-silk, cubic-bezier(0.4, 0, 0.2, 1));
+  /* Width transition for the chrome toggle (Ctrl+B). Skipped while
+   * the user is actively dragging — `transition: none` would
+   * fight the pointer move; instead we keep a short transition
+   * that's imperceptible during drag (it lags by ~120 ms only
+   * during the toggle, where the slide is the goal). */
+  transition: width 120ms var(--ease-silk, cubic-bezier(0.4, 0, 0.2, 1));
 }
 
 /* Collapsed sidebar — fully hidden via width 0. Apple-style chrome
@@ -502,7 +505,34 @@ body[data-window-focused="false"] {
   width: 0 !important;
   min-width: 0 !important;
   border-right-color: transparent;
-  resize: none;
+}
+
+/* Visible drag handle on the sidebar's right edge. Sits flush with
+ * the border so the resting state is invisible (4-px hit area
+ * over the 1-px border), then the on-hover / on-drag state lights
+ * up the gold accent. Same pattern as VS Code / Linear / the
+ * Files app. */
+.left-panel-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -2px;
+  bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  z-index: 1;
+  background: transparent;
+  transition: background var(--duration-fast);
+  user-select: none;
+  touch-action: none;
+}
+.left-panel-resize-handle:hover,
+.left-panel-resize-handle:focus-visible,
+.left-panel-resize-handle:active {
+  background: var(--gold-dim);
+  outline: none;
+}
+.left-panel-collapsed .left-panel-resize-handle {
+  display: none;
 }
 
 .center-panel {
@@ -683,15 +713,14 @@ button:disabled,
   animation: shimmer 1.5s infinite;
 }
 
-/* Responsive: collapse panels on small windows */
+/* Responsive: hide the right panel on very small windows. The
+ * left panel deliberately stays user-controlled via Ctrl+B / the
+ * sidebar toggle button — forcing a media-query collapse on top
+ * of the explicit toggle is the kind of Win32-era responsive
+ * behaviour that modern apps (VS Code, Linear, Warp) avoid:
+ * the user has already told us what they want, so respect it. */
 @media (max-width: 900px) {
   .right-panel {
-    display: none;
-  }
-}
-
-@media (max-width: 700px) {
-  .left-panel {
     display: none;
   }
 }

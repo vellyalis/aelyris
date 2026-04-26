@@ -10,6 +10,59 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### UX
 
+- **Sidebar overhaul — collapsible sections (Warp/VS Code parity),
+  drag-resize handle, smooth splash, default 240 px.** Dogfood:
+  "the sidebar's small, panels can't fold, the splash flickers
+  on open, and `<details>`-style fold/unfold would be smarter."
+  Five connected fixes:
+  - **`<CollapsibleSection>` primitive** (`shared/ui/`) on top of
+    `@radix-ui/react-collapsible` (new dep). Header strip with a
+    chevron that rotates on open, Radix's
+    `--radix-collapsible-content-height` keyframe for smooth
+    height interpolation, and per-section open state persisted to
+    `localStorage["aether:section:<key>"]`. The chrome matches
+    the sidebar typography (uppercase 12 px headers, gold focus
+    ring).
+  - **Sidebar wrapped in three sections**: Files (FileTree,
+    default open), Tasks (KanbanBoard, default closed), Source
+    Control (SCMPanel, default closed). The sections sit one
+    above the next inside `<nav.left-panel>`; flex sizing makes
+    the active section take the remaining height so its scroll
+    region is the only thing that scrolls — same behaviour as
+    VS Code's primary sidebar where Explorer expands to fill.
+  - **Drag-resize handle**: 4-px hit area on the sidebar's right
+    edge with `cursor: col-resize` and a gold-dim hover/active
+    tint. `pointerdown` captures the pointer, `pointermove`
+    streams `setSidebarWidth(startW + dx)`, `pointerup` releases.
+    Arrow keys nudge by 16 px / 64 px (Shift). Replaces the old
+    `resize: horizontal` with the browser-default triangular
+    nubbin that read as a Win32 control.
+  - **`sidebarWidth` Zustand state**, persisted to
+    `localStorage["aether:sidebarWidth"]`, clamped to
+    `[200, 480]`. Default bumped 180 → 240 px so the section
+    headers and TODO labels in Kanban don't truncate.
+  - **`@media (max-width: 700px) { .left-panel { display: none
+    } }` removed.** It was silently overriding the explicit
+    Ctrl+B / sidebar-button toggle on small windows — exactly
+    the legacy Win32 responsive pattern modern apps (VS Code,
+    Linear, Warp) avoid.
+  - **Splash → React transition smoothed.** `index.html` now
+    declares a 220 ms opacity fade on `#splash` keyed off
+    `html[data-react-mounted="true"]`. `main.tsx` flips the flag
+    in a `requestAnimationFrame` after `createRoot` and removes
+    the splash node on `transitionend`. The flicker between
+    "Aether Terminal Starting…" and the real chrome is gone.
+  - Vite preview verify: `nav[aria-label='Project sidebar']`
+    contains 3 `aria-expanded` triggers (Files / Tasks / Source
+    Control). Toggling Tasks flipped `aria-expanded` false →
+    true and persisted `aether:section:tasks=1`. Sidebar inline
+    style is `width: 240px`. `splash` removed from DOM after
+    React mounts, `html[data-react-mounted="true"]` set.
+    Screenshot confirms 240-px sidebar with 3 sections + chevron
+    rotation matches the Warp / VS Code pattern.
+  - `pnpm test`: 803 unchanged. `cargo test --lib`: 473
+    unchanged. `tsc --noEmit`: 0 errors.
+
 - **Form primitives modernisation — radix Switch + Select replace
   native `<select>` / `<input type=checkbox>` in Settings.**
   Dogfood: "are you using shadcn / Tailwind? what other old UI is

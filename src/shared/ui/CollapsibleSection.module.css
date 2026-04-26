@@ -1,0 +1,112 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--white-6);
+  flex-shrink: 0;
+}
+
+/* When the section is open, allow it to grow inside the sidebar
+ * column so the inner scroll region is the only thing that
+ * scrolls — matches VS Code's primary-sidebar behaviour where
+ * "Explorer" expands to fill, "Outline" collapses, etc. */
+.root[data-state="open"] {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  height: 32px;
+  padding: 0 var(--space-3);
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.header:hover {
+  color: var(--text-secondary);
+  background: var(--white-2);
+}
+
+.header:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: -2px;
+}
+
+.chevron {
+  color: var(--text-muted);
+  transition: transform var(--duration-fast) var(--ease-out, cubic-bezier(0.4, 0, 0.2, 1));
+  flex-shrink: 0;
+}
+
+/* Radix toggles `data-state` on the Collapsible.Root, but the
+ * trigger inherits it via cascade-from-parent only when nested.
+ * We key off the explicit aria-expanded the trigger emits — that
+ * one is reliably on the trigger button itself. */
+.header[aria-expanded="false"] .chevron {
+  transform: rotate(-90deg);
+}
+
+.title {
+  flex: 1;
+  text-align: left;
+}
+
+.actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  cursor: default;
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  flex: 1 1 auto;
+}
+
+/* Smooth height animation when toggling. Radix exposes the
+ * collapsible's measured height as `--radix-collapsible-content-
+ * height` so the keyframes can interpolate from 0 to that exact
+ * value — no layout jank, no maximum-height guesses. */
+.content[data-state="open"] {
+  animation: collapsibleOpen 180ms var(--ease-out, cubic-bezier(0.4, 0, 0.2, 1));
+}
+.content[data-state="closed"] {
+  animation: collapsibleClose 180ms var(--ease-out, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+@keyframes collapsibleOpen {
+  from {
+    height: 0;
+    opacity: 0;
+  }
+  to {
+    height: var(--radix-collapsible-content-height);
+    opacity: 1;
+  }
+}
+@keyframes collapsibleClose {
+  from {
+    height: var(--radix-collapsible-content-height);
+    opacity: 1;
+  }
+  to {
+    height: 0;
+    opacity: 0;
+  }
+}

@@ -53,6 +53,11 @@ interface AppState {
    *  Persisted to localStorage so the choice survives reload. */
   sidebarCollapsed: boolean;
   setSidebarCollapsed: (v: boolean | ((prev: boolean) => boolean)) => void;
+  /** User-resized sidebar width in pixels. Drag handle on the
+   *  panel's right edge writes here; CSS reads it as
+   *  `--sidebar-width`. Clamped to [200, 480] in the setter. */
+  sidebarWidth: number;
+  setSidebarWidth: (v: number) => void;
 
   // UI visibility
   paletteVisible: boolean;
@@ -199,6 +204,28 @@ export const useAppStore = create<AppState>((set, get) => ({
         /* ignore */
       }
       return { sidebarCollapsed: next };
+    }),
+  sidebarWidth: (() => {
+    try {
+      const raw = localStorage.getItem("aether:sidebarWidth");
+      const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+      if (Number.isFinite(parsed) && parsed >= 200 && parsed <= 480) {
+        return parsed;
+      }
+    } catch {
+      /* ignore */
+    }
+    return 240;
+  })(),
+  setSidebarWidth: (v: number) =>
+    set(() => {
+      const clamped = Math.max(200, Math.min(480, Math.round(v)));
+      try {
+        localStorage.setItem("aether:sidebarWidth", String(clamped));
+      } catch {
+        /* ignore */
+      }
+      return { sidebarWidth: clamped };
     }),
 
   // UI

@@ -48,3 +48,21 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     </ErrorBoundary>
   </React.StrictMode>,
 );
+
+// Mark the document so index.html's `[data-react-mounted="true"]
+// #splash` rule fades the splash overlay out. We wait one frame
+// so React's first commit lands first — flipping the flag before
+// commit would yield a black gap between splash fade-out and the
+// real UI showing. Removing the splash node entirely (via
+// `transitionend`) keeps the DOM clean afterwards.
+requestAnimationFrame(() => {
+  document.documentElement.setAttribute("data-react-mounted", "true");
+  const splash = document.getElementById("splash");
+  if (splash) {
+    splash.addEventListener(
+      "transitionend",
+      () => splash.parentElement?.removeChild(splash),
+      { once: true },
+    );
+  }
+});

@@ -56,6 +56,7 @@ import { markFirstPaint } from "./shared/lib/bootMetrics";
 import { useAppStore } from "./shared/store/appStore";
 import type { SearchHit } from "./shared/types/history";
 import { ConfirmDialog, showConfirm } from "./shared/ui/ConfirmDialog";
+import { CollapsibleSection } from "./shared/ui/CollapsibleSection";
 import { ErrorBoundary } from "./shared/ui/ErrorBoundary";
 import { LazyDialog } from "./shared/ui/LazyDialog";
 import { HandoffDialog } from "./shared/ui/HandoffDialog";
@@ -75,6 +76,8 @@ export function App() {
     setRootProjectPath,
     sidebarCollapsed,
     setSidebarCollapsed,
+    sidebarWidth,
+    setSidebarWidth,
     paletteVisible,
     setPaletteVisible,
     settingsVisible,
@@ -655,25 +658,45 @@ export function App() {
               className={`left-panel${sidebarCollapsed ? " left-panel-collapsed" : ""}`}
               aria-label="Project sidebar"
               data-collapsed={sidebarCollapsed}
+              style={sidebarCollapsed ? undefined : { width: `${sidebarWidth}px` }}
             >
-              <ErrorBoundary>
-                <FileTree
-                  key={fileTreeKey}
-                  rootPath={projectPath}
-                  onFileSelect={handleFileSelect}
-                  onOpenDiff={handleOpenDiff}
-                  changedFiles={changedFiles}
-                />
-              </ErrorBoundary>
-              <ErrorBoundary>
-                <Suspense fallback={null}>
-                  <KanbanBoard
-                    onStartAgent={handleStartAgent}
-                    projectPath={projectPath}
-                    agentStatuses={agentStatuses}
+              <CollapsibleSection storageKey="files" title="Files" defaultOpen>
+                <ErrorBoundary>
+                  <FileTree
+                    key={fileTreeKey}
+                    rootPath={projectPath}
+                    onFileSelect={handleFileSelect}
+                    onOpenDiff={handleOpenDiff}
+                    changedFiles={changedFiles}
                   />
-                </Suspense>
-              </ErrorBoundary>
+                </ErrorBoundary>
+              </CollapsibleSection>
+              <CollapsibleSection storageKey="tasks" title="Tasks" defaultOpen={false}>
+                <ErrorBoundary>
+                  <Suspense fallback={null}>
+                    <KanbanBoard
+                      onStartAgent={handleStartAgent}
+                      projectPath={projectPath}
+                      agentStatuses={agentStatuses}
+                    />
+                  </Suspense>
+                </ErrorBoundary>
+              </CollapsibleSection>
+              <CollapsibleSection
+                storageKey="source-control"
+                title="Source Control"
+                defaultOpen={false}
+              >
+                <ErrorBoundary>
+                  <Suspense fallback={null}>
+                    <SCMPanel
+                      projectPath={projectPath}
+                      onOpenFile={handleFileSelect}
+                      onOpenDiff={handleOpenDiff}
+                    />
+                  </Suspense>
+                </ErrorBoundary>
+              </CollapsibleSection>
               {searchVisible && (
                 <Suspense fallback={null}>
                   <ErrorBoundary>
@@ -689,11 +712,49 @@ export function App() {
                   </ErrorBoundary>
                 </Suspense>
               )}
-              <ErrorBoundary>
-                <Suspense fallback={null}>
-                  <SCMPanel projectPath={projectPath} onOpenFile={handleFileSelect} onOpenDiff={handleOpenDiff} />
-                </Suspense>
-              </ErrorBoundary>
+              <div
+                className="left-panel-resize-handle"
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize sidebar"
+                aria-valuemin={200}
+                aria-valuemax={480}
+                aria-valuenow={sidebarWidth}
+                tabIndex={0}
+                onPointerDown={(e) => {
+                  // Drag-to-resize. We capture the pointer on the handle so
+                  // the move events keep coming even if the cursor leaves
+                  // the handle's bounds (large drags).
+                  const startX = e.clientX;
+                  const startWidth = sidebarWidth;
+                  const handleEl = e.currentTarget;
+                  handleEl.setPointerCapture(e.pointerId);
+                  document.body.style.cursor = "col-resize";
+                  const onMove = (ev: PointerEvent) => {
+                    setSidebarWidth(startWidth + (ev.clientX - startX));
+                  };
+                  const onUp = () => {
+                    document.body.style.cursor = "";
+                    handleEl.releasePointerCapture(e.pointerId);
+                    handleEl.removeEventListener("pointermove", onMove);
+                    handleEl.removeEventListener("pointerup", onUp);
+                  };
+                  handleEl.addEventListener("pointermove", onMove);
+                  handleEl.addEventListener("pointerup", onUp);
+                }}
+                onKeyDown={(e) => {
+                  // Keyboard accessibility — Arrow keys nudge the
+                  // sidebar by 16 px, Shift+Arrow by 64 px.
+                  const step = e.shiftKey ? 64 : 16;
+                  if (e.key === "ArrowLeft") {
+                    e.preventDefault();
+                    setSidebarWidth(sidebarWidth - step);
+                  } else if (e.key === "ArrowRight") {
+                    e.preventDefault();
+                    setSidebarWidth(sidebarWidth + step);
+                  }
+                }}
+              />
             </nav>
 
             <section className="center-panel" aria-label="Terminal and editor">
