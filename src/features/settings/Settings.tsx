@@ -114,7 +114,13 @@ export function Settings({ visible, onClose }: SettingsProps) {
         setLiveMode(persisted);
         setGhostDiffLiveMode(persisted);
       })
-      .catch(() => {});
+      .catch((err) => {
+        if (cancelled) return;
+        // Surface load failure so the user knows their edits will not
+        // round-trip — without this, Save silently bails out via the
+        // null-guard in handleSave and looks like a no-op.
+        toast.error("Failed to load settings", String(err));
+      });
     return () => {
       cancelled = true;
     };
@@ -122,8 +128,14 @@ export function Settings({ visible, onClose }: SettingsProps) {
 
   const handleSave = () => {
     if (!loadedConfig) {
-      // Open and immediately close before the load resolves — preserve disk
-      // contents by skipping save entirely rather than writing UI defaults.
+      // Open and immediately close before the load resolves (or load
+      // failed). Preserve disk contents by skipping save entirely rather
+      // than writing UI defaults — but warn the user instead of silently
+      // discarding their edits, otherwise Save behaves like a no-op.
+      toast.warning(
+        "Settings not saved",
+        "Config has not finished loading yet — please reopen the dialog and try again.",
+      );
       onClose();
       return;
     }

@@ -89,4 +89,16 @@ describe("Settings.tsx Save merge", () => {
     // The bare `.catch(() => {})` swallow that hid failures must be gone.
     expect(src).not.toMatch(/save_app_config[\s\S]{0,200}\.catch\(\(\)\s*=>\s*\{\s*\}\)/);
   });
+
+  it("load failure surfaces a toast instead of leaving Save as a silent no-op (codex r0 M1)", () => {
+    const src = getSrc();
+
+    // The bug: load_app_config().catch(() => {}) plus a !loadedConfig guard
+    // in handleSave that just calls onClose(). Net effect — load fails
+    // silently, user fills in choices, clicks Save, dialog closes with no
+    // disk write and no feedback. Both surfaces must alert the user.
+    expect(src).toMatch(/load_app_config[\s\S]*?\.catch\(\s*\(\s*err\s*\)[\s\S]*?toast\.error\(/);
+    expect(src).toMatch(/!loadedConfig[\s\S]*?toast\.(warning|error|info)\(/);
+    expect(src).not.toMatch(/load_app_config[\s\S]{0,200}\.catch\(\(\)\s*=>\s*\{\s*\}\)/);
+  });
 });

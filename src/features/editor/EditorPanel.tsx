@@ -107,6 +107,12 @@ export function EditorPanel({
   const [previewMode, setPreviewMode] = useState(false);
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const vimRef = useRef<{ dispose: () => void } | null>(null);
+  // Tracks the live filePath so the async Ctrl+S handler can detect when
+  // the user switched files between hitting save and the write resolving —
+  // without this guard, the post-save setContent would overwrite the new
+  // file's state with the previous file's value.
+  const filePathRef = useRef(filePath);
+  filePathRef.current = filePath;
 
   // Ghost paint wiring — editor + monaco need to become state so the hook
   // re-runs once onMount hands them over. Reset to null whenever filePath
@@ -254,23 +260,41 @@ export function EditorPanel({
     const handler = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.key === "s" && filePath && editorRef.current) {
         e.preventDefault();
+        // Snapshot filePath at click time. The .then below gates panel-state
+        // mutations on `filePathRef.current === savedFilePath` so a save
+        // that resolves after the user switches files writes only the
+        // success toast, not the previous file's value into the new file's
+        // state.
+        const savedFilePath = filePath;
         const value = editorRef.current.getValue();
-        invoke("write_file", { path: filePath, content: value })
+        invoke("write_file", { path: savedFilePath, content: value })
           .then(() => {
-            // Sync content state to the just-saved value. Without this, the
-            // window-focus reload effect below sees `diskContent !== content`
-            // (content is the stale initial-load value) and overwrites the
-            // editor with `setValue(diskContent)`, which fires onChange and
-            // re-marks the file dirty — even though nothing changed.
-            setContent(value);
-            setModified(false);
-            markSaved(filePath);
-            setSaved(true);
-            setTimeout(() => setSaved(false), 2000);
-            toast.success("Saved", filePath.split(/[/\\]/).pop() ?? filePath);
+            const stillCurrent = filePathRef.current === savedFilePath;
+            if (stillCurrent) {
+              // Sync content state to the just-saved value. Without this,
+              // the window-focus reload effect below sees diskContent !==
+              // content (content is the stale initial-load value) and
+              // overwrites the editor with setValue(diskContent), which
+              // fires onChange and re-marks the file dirty — even though
+              // nothing changed.
+              setContent(value);
+              setModified(false);
+              setSaved(true);
+              setTimeout(() => setSaved(false), 2000);
+            }
+            // markSaved + toast are filePath-scoped and safe to call
+            // unconditionally — they affect the saved file's bookkeeping,
+            // not the currently-open one.
+            markSaved(savedFilePath);
+            toast.success("Saved", savedFilePath.split(/[/\\]/).pop() ?? savedFilePath);
           })
           .catch((err) => {
-            setError(String(err));
+            // Only mutate panel error state when the failed save belongs to
+            // the file currently on screen — otherwise the error banner
+            // would attach to whatever file the user moved to.
+            if (filePathRef.current === savedFilePath) {
+              setError(String(err));
+            }
             toast.error("Save failed", String(err));
           });
       }

@@ -28,17 +28,31 @@ describe("EditorPanel Ctrl+S sync", () => {
     expect(entries.length).toBe(1);
     const src = entries[0][1];
 
-    // Locate the .then() arm that follows invoke("write_file", ...). The
-    // arm body must update content via setContent(value) so the next focus
-    // reload sees a matching disk/state pair.
-    const writeFileBlock = src.match(
-      /invoke\(\s*"write_file"[\s\S]*?\.then\(\s*\(\s*\)\s*=>\s*\{([\s\S]*?)\}\s*\)\s*\.catch/,
-    );
-    expect(writeFileBlock).not.toBeNull();
-    const body = writeFileBlock![1];
+    // Anchor on the success arm of the write_file invoke. The body must
+    // call setContent(value) gated by the savedFilePath guard so it only
+    // mutates panel state when the saved file is still on screen.
+    expect(src).toMatch(/invoke\(\s*"write_file"[\s\S]*?setContent\(\s*value\s*\)/);
+    expect(src).toMatch(/invoke\(\s*"write_file"[\s\S]*?setModified\(\s*false\s*\)/);
+    expect(src).toMatch(/invoke\(\s*"write_file"[\s\S]*?markSaved\(/);
+  });
 
-    expect(body).toMatch(/setContent\(\s*value\s*\)/);
-    expect(body).toMatch(/setModified\(\s*false\s*\)/);
-    expect(body).toMatch(/markSaved\(/);
+  it("Ctrl+S handler snapshots filePath and gates state writes on filePathRef (codex L3)", () => {
+    const src = Object.entries(sources)[0][1];
+
+    // The savedFilePath snapshot decouples the in-flight save from the
+    // user's later file switches, and filePathRef.current === savedFilePath
+    // gates panel-state mutations against the live filePath.
+    expect(src).toMatch(/const\s+savedFilePath\s*=\s*filePath/);
+    expect(src).toMatch(/filePathRef\.current\s*===\s*savedFilePath/);
+
+    // The previous unconditional setContent must be inside the gate.
+    const successArm = src.match(/\.then\(\s*\(\s*\)\s*=>\s*\{([\s\S]*?)\}\s*\)\s*\.catch/);
+    expect(successArm).not.toBeNull();
+    const body = successArm![1];
+    expect(body).toMatch(/if\s*\(\s*stillCurrent\s*\)/);
+    // setContent must be inside the if-block, not above it.
+    const ifBlockMatch = body.match(/if\s*\(\s*stillCurrent\s*\)\s*\{([\s\S]*?)\n\s{12}\}/);
+    expect(ifBlockMatch).not.toBeNull();
+    expect(ifBlockMatch![1]).toMatch(/setContent\(/);
   });
 });

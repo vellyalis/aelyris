@@ -36,4 +36,17 @@ describe("WorkflowBuilder YAML escape", () => {
     // The unsafe direct interpolation must be gone.
     expect(src).not.toMatch(/prompt:\s*"\$\{agent\.prompt\}"/);
   });
+
+  it("import path inverts the escape so prompt round-trips cleanly (codex r0 M2)", () => {
+    const entries = Object.entries(sources);
+    const src = entries[0][1];
+
+    // Without an inverse, an exported `prompt: "foo \"bar\""` re-imports
+    // as the literal string `foo \"bar\"` — the next export then
+    // double-escapes to `foo \\\"bar\\\"`. Round-trip is broken.
+    expect(src).toMatch(/unescapeYamlString\(/);
+
+    // The unescape must run on the prompt assignment in the importer.
+    expect(src).toMatch(/currentPhase\.prompt\s*=\s*unescapeYamlString\(/);
+  });
 });

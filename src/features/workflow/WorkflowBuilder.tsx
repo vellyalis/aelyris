@@ -344,6 +344,20 @@ export function WorkflowBuilder({ onClose, onExport }: WorkflowBuilderProps) {
           let currentPhase: Record<string, unknown> | null = null;
           let prevId: string | null = null;
 
+          // Inverse of `escapeYamlString` in buildYaml. Single-pass mapping
+          // so backslash-quote / backslash-newline / backslash-backslash all
+          // round-trip cleanly — without this, an exported prompt containing
+          // a `"` re-imports as the literal sequence `\"` and the next
+          // export double-escapes it.
+          const unescapeYamlString = (raw: string): string =>
+            raw.replace(/\\(.)/g, (_, ch) => {
+              if (ch === "n") return "\n";
+              if (ch === "r") return "\r";
+              if (ch === '"') return '"';
+              if (ch === "\\") return "\\";
+              return ch;
+            });
+
           for (const line of lines) {
             const trimmed = line.trim();
             if (trimmed.startsWith("name:")) {
@@ -372,7 +386,7 @@ export function WorkflowBuilder({ onClose, onExport }: WorkflowBuilderProps) {
             } else if (currentPhase) {
               if (trimmed.startsWith("model:")) currentPhase.model = trimmed.slice(6).trim();
               else if (trimmed.startsWith("prompt:"))
-                currentPhase.prompt = trimmed.slice(7).trim().replace(/^"|"$/g, "");
+                currentPhase.prompt = unescapeYamlString(trimmed.slice(7).trim().replace(/^"|"$/g, ""));
               else if (trimmed.startsWith("max_cost:")) currentPhase.max_cost = parseFloat(trimmed.slice(9).trim());
               else if (trimmed.startsWith("type:")) currentPhase.gate_type = trimmed.slice(5).trim();
             }
