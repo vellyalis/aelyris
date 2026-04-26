@@ -458,6 +458,26 @@ export function NativeTerminalArea({
     setExitInfo(null);
   }, []);
 
+  // Honour the banner's "Esc to dismiss" hint at the area scope rather
+  // than only on the button's onKeyDown. If the user clicks the canvas
+  // (which steals focus) and *then* presses Esc, the previous wiring
+  // failed because the button no longer had focus. Now the banner
+  // listens at the area-root level while it's mounted.
+  useEffect(() => {
+    if (!exitInfo) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const areaRoot = containerRef.current?.closest<HTMLElement>(`.${styles.terminalArea}`);
+      const insideArea = areaRoot?.contains(document.activeElement) ?? false;
+      if (!insideArea) return;
+      e.preventDefault();
+      e.stopPropagation();
+      dismissExitBanner();
+    };
+    window.addEventListener("keydown", handler, true);
+    return () => window.removeEventListener("keydown", handler, true);
+  }, [exitInfo, dismissExitBanner]);
+
   const restartShell = useCallback(async () => {
     if (!terminalId || respawning) return;
     const dimsSnap = dimsRef.current;

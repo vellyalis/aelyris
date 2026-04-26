@@ -38,9 +38,21 @@ export function usePaneTree({ initialShell, initialCwd }: UsePaneTreeOptions) {
 
     setTree((prev) => {
       if (countLeaves(prev) <= 1) return prev;
-      return removePane(prev, targetId) ?? prev;
+      const nextTree = removePane(prev, targetId);
+      if (!nextTree) return prev;
+      // If the closed pane was active (or selected by JS focus), refocus
+      // a sibling instead of dropping to `null`. Without this the user
+      // would stare at an unfocused tree until their next click; with
+      // 3+ panes the gold-rule indicator went dark on the wrong frame
+      // and the agent inspector / inline-image badge lost its target
+      // until something else triggered a focus event.
+      setActivePaneId((cur) => {
+        if (cur !== targetId) return cur;
+        const remaining = collectLeafIds(nextTree);
+        return remaining[0] ?? null;
+      });
+      return nextTree;
     });
-    setActivePaneId((prev) => (prev === targetId ? null : prev));
     setMaximizedPaneId((prev) => (prev === targetId ? null : prev));
   }, []);
 

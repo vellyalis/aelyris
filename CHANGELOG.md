@@ -10,6 +10,34 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### UX
 
+- **WorkspaceTabs — distinguishable active state + reduced-motion
+  opt-out.**
+  - Hover and active had identical `--white-6` background. The
+    only difference was text colour, which read as the same tab
+    level on glance and made it impossible to tell which tab was
+    actually selected. Active now uses a stronger `--white-10`
+    fill plus a 1-px gold underline (Chrome / VS Code tab
+    convention). Hover stays at the lighter `--white-4`.
+  - `.activityDot` ran `statusBreathe` infinitely without
+    respecting `prefers-reduced-motion: reduce`. Added the
+    media-query opt-out so vestibular-sensitive users get a
+    flat dot.
+
+- **`usePaneTree.close` now refocuses a sibling instead of
+  blanking the active state.** Closing the active pane with 3+
+  panes left `activePaneId = null` until the user clicked
+  somewhere else — meanwhile the gold-rule indicator went dark
+  and the StatusBar inline-image badge lost its target. Now
+  picks the first remaining leaf as the new active pane.
+
+- **Exit banner Esc honours the on-screen hint regardless of
+  focus.** Hint reads "Press Enter to restart, Esc to dismiss"
+  but the previous wiring only listened on the button's
+  onKeyDown. If the user clicked the canvas to scroll back
+  through the crash output, focus left the button and Esc no
+  longer dismissed the banner. Added an area-scoped Escape
+  listener active only while `exitInfo` is non-null.
+
 - **TerminalInfoBar polish — vertical-centred icons, token-only
   colours.**
   - `.toggleBtn` was a baseline-aligned inline button with text-
