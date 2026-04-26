@@ -235,7 +235,16 @@ export function PaneTreeRenderer({
       {stableLeaves.map((leaf) => {
         const rect = slotRects.get(leaf.id);
         const isVisible = maximizedPaneId ? leaf.id === maximizedPaneId : currentIds.has(leaf.id);
-        const isActive = leaf.id === activePaneId;
+        /* `usePaneTree` initialises `activePaneId` to `null` and only
+         * sets it on the first explicit click. With a single freshly-
+         * opened pane that means `null === leaf.id` is always false,
+         * so the gold-rule active-pane signal added in `0e28820` never
+         * shows even though that one pane *is* the only place
+         * keystrokes land. Treat the lone leaf as implicitly active —
+         * the same fallback `PaneTreeContainer.activeTerminalId`
+         * already uses for the inline-image budget badge. */
+        const isActive =
+          leaf.id === activePaneId || (activePaneId === null && currentLeaves.length === 1 && currentIds.has(leaf.id));
         const isMaximized = leaf.id === maximizedPaneId;
         const hasRealSize = !!rect && rect.width > 0 && rect.height > 0;
         // Latch the "has been real size" bit — once a NativeTerminalArea has

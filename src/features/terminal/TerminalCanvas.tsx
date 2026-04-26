@@ -544,8 +544,30 @@ export function TerminalCanvas({
       setCursorOn(true);
       return;
     }
-    const id = window.setInterval(() => setCursorOn((v) => !v), 500);
-    return () => window.clearInterval(id);
+    /* `prefers-reduced-motion: reduce` users opt out of blink — a
+     * solid cursor is more comfortable for vestibular / attention
+     * sensitivity, and matches what every accessible-mode terminal
+     * (macOS Terminal, iTerm2, Windows Terminal) does. */
+    const reduce = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduce) {
+      setCursorOn(true);
+      return;
+    }
+    /* Apple-style asymmetric duty cycle — the cursor is visible far
+     * longer than it is hidden so the user's eye treats it as
+     * "always there, just briefly winking", rather than the jarring
+     * 50/50 strobe the previous 500/500 ms cycle produced. The
+     * pattern toggles ON for 600 ms, OFF for 250 ms, repeat. */
+    const ON_MS = 600;
+    const OFF_MS = 250;
+    let visible = true;
+    setCursorOn(true);
+    let timer = window.setTimeout(function tick() {
+      visible = !visible;
+      setCursorOn(visible);
+      timer = window.setTimeout(tick, visible ? ON_MS : OFF_MS);
+    }, ON_MS);
+    return () => window.clearTimeout(timer);
   }, [snapshot?.cursor.blinking]);
 
   // Auto-focus the invisible textarea the first time the terminal is mounted

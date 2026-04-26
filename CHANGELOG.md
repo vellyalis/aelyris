@@ -10,6 +10,25 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### UX
 
+- **Cursor blink — slower, asymmetric duty cycle, respects
+  reduced-motion.** The previous 500/500 ms hard toggle felt
+  jarring (50/50 strobe). Switched to an Apple-style 600 ms ON
+  / 250 ms OFF asymmetric cycle so the cursor reads as "always
+  there, just briefly winking" instead of a strobe.
+  Additionally, `prefers-reduced-motion: reduce` users get a
+  solid cursor — matches macOS Terminal / iTerm2 / Windows
+  Terminal accessibility behaviour.
+
+- **Single-pane active indicator now shows on first paint.**
+  `usePaneTree` initialises `activePaneId = null` and only sets
+  it on the first explicit click. With one pane that meant
+  `null === leaf.id` was always false, so the gold-rule active
+  indicator added in the previous sweep never appeared even
+  though that pane *was* the only place keystrokes landed.
+  Treat the lone leaf as implicitly active — same fallback
+  `PaneTreeContainer.activeTerminalId` already used for the
+  inline-image budget badge.
+
 - **SplitPane drag handle — gold accent, PointerEvent, a11y.**
   Three problems found in `src/shared/ui/SplitPane`:
   - **Hover lit up `--accent` (turquoise blue)** while every
