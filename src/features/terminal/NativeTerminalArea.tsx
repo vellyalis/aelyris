@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl as tauriOpenUrl } from "@tauri-apps/plugin-opener";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { ChevronUp, ChevronDown, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { ShellType } from "../../App";
@@ -70,10 +71,28 @@ export interface PtyExitInfo {
 }
 
 const FONT_SIZE = 14;
-const CELL_W = Math.round(FONT_SIZE * 0.6);
 const CELL_H = Math.round(FONT_SIZE * 1.25);
 const MIN_COLS = 20;
 const MIN_ROWS = 5;
+
+/* Cell width was previously hardcoded to `Math.round(FONT_SIZE * 0.6)`
+ * (= 8 px at fontSize 14). The actual IBM Plex Mono advance at 14 px
+ * is **8.4 px**, so `Math.floor(paneWidth / 8)` over-counted cols by
+ * ~5 % — at a 672-px-wide pane it reported 84 cols when only 80
+ * actually fit. The PTY would receive the inflated cols and emit
+ * wraps that bled past the pane edge. Same sub-pixel drift family
+ * as the rendering fix in `7e4aea8`; we measure once at module load
+ * via the shared `<canvas>` so this hook and `TerminalCanvas` agree
+ * on the same advance. Falls back to the old heuristic on jsdom /
+ * SSR where `getContext` returns null. */
+const CELL_W = (() => {
+  if (typeof document === "undefined") return FONT_SIZE * 0.6;
+  const ctx = document.createElement("canvas").getContext("2d");
+  if (!ctx) return FONT_SIZE * 0.6;
+  ctx.font = `${FONT_SIZE}px 'IBM Plex Mono', 'Cascadia Code', 'BIZ UDGothic', 'Yu Gothic UI', 'Meiryo', 'Noto Sans Mono CJK JP', monospace`;
+  const measured = ctx.measureText("M").width;
+  return measured > 0 ? measured : FONT_SIZE * 0.6;
+})();
 
 interface Dims {
   cols: number;
@@ -770,17 +789,38 @@ export function NativeTerminalArea({
             }}
             placeholder="Search..."
           />
-          <span className={styles.searchCount}>
+          <span
+            className={styles.searchCount}
+            data-empty={searchQuery.length > 0 && searchMatches.length === 0 ? "true" : undefined}
+          >
             {searchMatches.length > 0 ? `${(activeMatchIdx ?? 0) + 1}/${searchMatches.length}` : "0/0"}
           </span>
-          <button type="button" className={styles.searchBtn} onClick={gotoPrev} aria-label="前のマッチ">
-            ↑
+          <button
+            type="button"
+            className={styles.searchBtn}
+            onClick={gotoPrev}
+            aria-label="Previous match"
+            title="Previous match (Shift+Enter)"
+          >
+            <ChevronUp size={14} aria-hidden="true" />
           </button>
-          <button type="button" className={styles.searchBtn} onClick={gotoNext} aria-label="次のマッチ">
-            ↓
+          <button
+            type="button"
+            className={styles.searchBtn}
+            onClick={gotoNext}
+            aria-label="Next match"
+            title="Next match (Enter)"
+          >
+            <ChevronDown size={14} aria-hidden="true" />
           </button>
-          <button type="button" className={styles.searchBtn} onClick={closeSearch} aria-label="閉じる">
-            ×
+          <button
+            type="button"
+            className={styles.searchBtn}
+            onClick={closeSearch}
+            aria-label="Close search"
+            title="Close search (Esc)"
+          >
+            <X size={14} aria-hidden="true" />
           </button>
         </div>
       )}

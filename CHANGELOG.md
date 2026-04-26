@@ -10,6 +10,48 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### UX
 
+- **Terminal pane sweep round 3 — search bar, exit banner, PTY
+  cell-width, and dead CSS.** Continued line-by-line review:
+  - **`CELL_W = Math.round(FONT_SIZE * 0.6) = 8` was used to
+    compute `cols` for the PTY (`Math.floor(paneWidth / 8)`),
+    but the actual IBM Plex Mono advance is **8.4 px**. The PTY
+    received an inflated `cols` count (≈ 5 % over) and emitted
+    wraps that bled past the pane edge. Same sub-pixel drift
+    family as the rendering fix in `7e4aea8` — switched to a
+    one-shot `ctx.measureText("M")` at module load so the
+    layout / spawn / resize calls all agree on the same advance
+    that `TerminalCanvas` is painting at.
+  - **Search bar arrows / close were literal Unicode chars
+    (`↑`, `↓`, `×`)** sized at `var(--text-xl)` (≈ 18-20 px).
+    The rest of the app uses Lucide icons at 12-14 px.
+    Replaced with `<ChevronUp>` / `<ChevronDown>` / `<X>` at
+    `size={14}`, gave the buttons a fixed 24×24 hit target.
+  - **Search bar ARIA labels were Japanese (`前のマッチ` etc)
+    while the rest of the app uses English aria attributes**
+    — converged on English so screen-reader output is
+    consistent. Visible UI still localises where it should.
+  - **No "no match" feedback on search.** A typo and "still
+    typing" looked identical. Match counter now flips to
+    `--ctp-red` via `data-empty="true"` when the query is
+    non-empty but `0` matches found, the VS Code / Sublime
+    convention.
+  - **`.exitBannerCrashed` only flipped text + bottom-border
+    colour** — a SEGV looked almost identical to a clean
+    `exit 0`. The whole strip now tints red via
+    `color-mix(in srgb, --ctp-red 14%, --aether-bg-elevated)`.
+    Replaced the non-existent `--danger` token (with hex
+    fallback) with the actual `--ctp-red`.
+  - **`.exitBannerBtn:disabled` had no visual treatment** —
+    the button looked clickable while frozen during respawn.
+    Added `opacity: 0.55` + `cursor: progress`.
+  - **Dead `.historyBar` CSS class** (declared in
+    `TerminalArea.module.css`, never used in any TSX)
+    removed.
+  - **Search input `outline: none` on `:focus-visible`** was
+    dead code (lost the specificity battle to the global gold-
+    ring rule with `!important`); rewrote to lean on the global
+    ring AND tint the border for a stronger affordance.
+
 - **Terminal canvas decoration alignment + named-constant audit.**
   Continuation of the pane sweep — three smaller bugs the first
   pass missed:

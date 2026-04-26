@@ -24,13 +24,13 @@
   gap: var(--space-2);
   padding: var(--space-2) var(--space-4);
   background: var(--aether-bg-elevated);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--white-6);
 }
 
 .searchInput {
   flex: 1;
   background: var(--bg-surface);
-  border: 1px solid var(--border);
+  border: 1px solid var(--white-10);
   border-radius: var(--radius);
   color: var(--text-primary);
   font-size: var(--text-base);
@@ -40,8 +40,12 @@
   transition: border-color var(--duration-fast) var(--ease-silk);
 }
 
+/* `outline: none` here used to fight with the global `input:focus-visible
+ * { outline: 2px solid var(--gold) !important }` rule. Same specificity,
+ * so the global won — but the local rule was dead code. Now lean on the
+ * global ring AND tint the border so the search row has a stronger
+ * "this is where typing lands" affordance. */
 .searchInput:focus-visible {
-  outline: none;
   border-color: var(--gold);
 }
 
@@ -54,37 +58,56 @@
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
   font-family: var(--font-mono);
+  /* Reserve a fixed slot so the layout doesn't jump as the count
+   * grows. tabular-nums keeps the digit width stable across values. */
+  min-width: 4em;
+  text-align: right;
+}
+
+/* No-match feedback — VS Code / Sublime / IDE convention. Without this,
+ * a typo in the search box looked identical to "no results yet" and the
+ * user kept typing into nothing. */
+.searchCount[data-empty="true"] {
+  color: var(--ctp-red, #f38ba8);
 }
 
 .searchBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: none;
   border: none;
   color: var(--text-muted);
-  font-size: var(--text-xl);
   cursor: pointer;
-  padding: var(--space-1) var(--space-3);
+  padding: var(--space-1);
   border-radius: var(--radius-sm);
+  /* Square hit target sized for the 14-px Lucide icons. Previous
+   * `font-size: var(--text-xl)` was a holdover from when the buttons
+   * contained literal `↑/↓/×` Unicode and dwarfed everything around
+   * them — Lucide icons are size-controlled via the `size` prop. */
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  transition:
+    background var(--duration-fast),
+    color var(--duration-fast);
 }
 
 .searchBtn:hover {
-  background: var(--bg-surface);
+  background: var(--white-6);
   color: var(--text-primary);
 }
 
-.historyBar {
-  display: flex;
-  justify-content: flex-end;
-  padding: 0 var(--space-2);
-}
 
 /*
  * Crash / clean-exit banner. Sits inside the terminal container (above the
  * canvas) so the existing scrollback stays visible behind it; the banner
  * holds focus until the user presses Enter to restart or Esc to dismiss.
  *
- * crashed variant uses the danger accent so a SEGV / NTSTATUS error is
- * visually distinct from a clean `exit 0` — the user shouldn't have to
- * read the message to know whether they should worry.
+ * The crashed variant tints the *whole strip* red — not just text + border
+ * — so a SEGV / NTSTATUS error reads as urgent at the briefest glance. The
+ * previous styling only flipped the bottom border colour, which made a
+ * crash look almost identical to a clean exit on glance.
  */
 .exitBanner {
   display: flex;
@@ -92,15 +115,16 @@
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
   background: var(--aether-bg-elevated);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--white-6);
   color: var(--text-primary);
   font-size: var(--text-sm);
   font-family: var(--font-mono);
 }
 
 .exitBannerCrashed {
-  border-bottom-color: var(--danger, #f38ba8);
-  color: var(--danger, #f38ba8);
+  background: color-mix(in srgb, var(--ctp-red) 14%, var(--aether-bg-elevated));
+  border-bottom-color: var(--ctp-red);
+  color: var(--ctp-red);
 }
 
 .exitBannerHint {
@@ -111,17 +135,27 @@
 .exitBannerBtn {
   margin-left: auto;
   background: var(--bg-surface);
-  border: 1px solid var(--border);
+  border: 1px solid var(--white-10);
   border-radius: var(--radius-sm);
   color: var(--text-primary);
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   cursor: pointer;
   padding: var(--space-1) var(--space-3);
+  transition:
+    background var(--duration-fast),
+    border-color var(--duration-fast);
 }
 
-.exitBannerBtn:hover,
-.exitBannerBtn:focus-visible {
-  outline: none;
+.exitBannerBtn:hover {
+  background: var(--white-6);
   border-color: var(--gold);
+}
+
+/* Disabled (during respawn) — match the rest of the app's "in-flight"
+ * affordance: dim text + cursor signal. Without this the button looks
+ * fully clickable while it's actually frozen. */
+.exitBannerBtn:disabled {
+  opacity: 0.55;
+  cursor: progress;
 }
