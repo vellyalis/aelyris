@@ -8,12 +8,17 @@
 //! exposure + frontend paint land in Sprint 3 — see
 //! `docs/sixel-kitty-spike.md` for the full plan.
 
+pub mod chunked_osc;
 pub mod decoded;
 pub mod kitty;
 pub mod sequences;
 pub mod sixel;
 pub mod store;
 
+pub use chunked_osc::{
+    AssemblerError, AssemblerOutcome, ChunkAssembler, ChunkedOscFormat, ChunkedOscPayload,
+    ParseStep as ChunkedOscParseStep, try_parse as try_parse_chunked_osc,
+};
 pub use decoded::{DecodedImage, DecodedPayload};
 pub use kitty::{
     KittyChunkAssembler, KittyDecodeError, KittyHeader, decode_kitty, parse_kitty_header,

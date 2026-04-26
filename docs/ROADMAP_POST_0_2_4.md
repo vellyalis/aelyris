@@ -12,10 +12,12 @@ the same way `docs/ROADMAP_POST_0_2_2.md` was.
 
 ## 🔴 1 — Windows APC delivery to engine (replaces "passthrough wiring")
 
-**Status**: investigation deepened on 2026-04-30. The original framing
-("just pass `PSEUDOCONSOLE_PASSTHROUGH_MODE` to `CreatePseudoConsole`")
-turned out to be a dead end — see "Investigation log" below. Solution
-is now an open design problem rather than a 10-line patch.
+**Status**: Sprint 1 landed (engine assembler) on 2026-05-01. Sprint 2
+(emitter wrapper scripts) and Sprint 3 (E2E unfixme) remain. The
+original framing ("just pass `PSEUDOCONSOLE_PASSTHROUGH_MODE` to
+`CreatePseudoConsole`") turned out to be a dead end — see
+"Investigation log" below. Spike 2 confirmed a chunked OSC side-
+channel as a viable vehicle, and Sprint 1 implements its engine half.
 
 **Why this is Tier 🔴**: the entire Tier 🟡 #5 inline-image pipeline
 (scanner + decoder + snapshot + IPC + frontend paint) is *correct*,
@@ -103,6 +105,36 @@ become possible end to end on Windows.
 
 `scripts/diag-osc-size.mjs` stays in the repo as the cap reproducer.
 The engine `eprintln` instrumentation has been reverted.
+
+### Sprint 1 — Engine assembler (2026-05-01, landed)
+
+Protocol spec: `docs/chunked-osc-image-protocol.md`.
+
+`term::images::chunked_osc` ships a parser + `ChunkAssembler` for
+three OSC 1338 verbs (`B` BEGIN, `D` DATA, `E` END) keyed on a
+caller-allocated `image-id`. The parser mirrors the existing
+`prompt_marks::try_parse` shape (`Consumed | Incomplete | None`) so
+the engine's `advance()` loop slots OSC 1338 next to the Kitty /
+Sixel scanner without restructuring. The assembler accepts out-of-
+order chunks, validates contiguity on `END`, base64-decodes once over
+the concatenation, and yields a `DecodedImage` of the declared format
+(`png` passes through; `rgba` checks `w*h*4 == len`). Failed
+validations retain the partial base64 concatenation with
+`decoded=None` for the diagnostic surface, matching the single-shot
+Kitty error path.
+
+Per-image caps:
+- 50 MiB raw bytes (matches `IMAGE_BYTE_CAP`).
+- 16384 chunks per image.
+- 8192 max declared dimension.
+
+Engine bytes are *consumed*, never forwarded to alacritty — an in-
+flight transfer never leaks `\e]1338;…` text into the grid.
+
+Sprint 2 will land the emitter side
+(`scripts/aether-imgcat.{ps1,sh}`); Sprint 3 will re-enable the
+`e2e/image-flows.spec.ts` test 2 fixme and run the full Win11
+round-trip via the diag script + a real PNG fixture.
 
 ### Solution space (no longer ranked — needs investigation)
 

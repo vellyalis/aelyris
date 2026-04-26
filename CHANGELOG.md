@@ -10,6 +10,42 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### Reliability
 
+- **Chunked OSC inline image protocol — engine assembler** (post-0.2.4
+  Tier 🔴 #1, Sprint 1 of 3) — Win11 25H2 ConPTY silently strips Kitty
+  APC sequences and truncates any OSC above ~512 bytes (verified
+  2026-04-30 with `scripts/diag-image-escape.mjs` and
+  `scripts/diag-osc-size.mjs`), which leaves the Tier 🟡 #5 inline-
+  image pipeline correct end-to-end but dark on Windows. Sprint 1
+  introduces the engine half of an Aether-specific chunked OSC
+  protocol whose individual frames stay under ConPTY's cap:
+  `\e]1338;B;<id>;<format>;<w>;<h>\a`,
+  `\e]1338;D;<id>;<chunk-idx>;<base64>\a`,
+  `\e]1338;E;<id>\a`. New `term::images::chunked_osc` module ships a
+  pure-byte parser (`try_parse` returns `Consumed | Incomplete | None`
+  matching the existing OSC 133 / image-escape scanners) and a
+  `ChunkAssembler` keyed by `image-id` that accepts out-of-order
+  chunks, validates contiguity on `END`, decodes base64 once over the
+  concatenation, and yields a `DecodedImage` of the declared format
+  (`png` passes through; `rgba` checks `w*h*4 == len`). Per-image
+  caps mirror the existing infrastructure (50 MiB raw, 16384 chunks,
+  8192 max dimension); validation failures retain partial bytes for
+  the diagnostic surface with `decoded=None`, mirroring the single-
+  shot Kitty error path. Engine integration is gated through
+  `advance()` after the Kitty/Sixel scanner — bytes are never
+  forwarded to alacritty, so an in-flight transfer never leaks to the
+  grid. +30 Rust tests cover parser dispatch (BEGIN/DATA/END/Malformed
+  with BEL + ST terminators, partial-prefix wait, base64 fields with
+  embedded `;`-free alphabet), assembler happy paths (single-shot,
+  multi-chunk in/out of order, concurrent ids), and the failure modes
+  (data-without-begin, end-without-begin, duplicate chunk, chunk gap,
+  invalid base64, RGBA size mismatch, BEGIN replacement). Six engine
+  integration tests exercise the full advance() pipeline including
+  terminator-split-across-advance and OSC 133 + chunked-OSC
+  coexistence. Sprint 2 lands wrapper emitters
+  (`scripts/aether-imgcat.{ps1,sh}`) and Sprint 3 unblocks the
+  `e2e/image-flows.spec.ts` test 2 fixme. Spec:
+  `docs/chunked-osc-image-protocol.md`.
+
 - **Inline image escape consumption** (Tier 2 #5, Sprint 1 of 3) —
   Kitty graphics protocol (`\x1b_G…\x1b\\`) and Sixel
   (`\x1bP…q…\x1b\\`) escape sequences are now recognised and

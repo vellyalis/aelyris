@@ -17,8 +17,10 @@ use alacritty_terminal::vte::ansi::Processor;
 use alacritty_terminal::Term;
 
 use super::images::{
-    ImageId, ImagePlacement, ImageStore, KittyChunkAssembler, ParseStep as ImageParseStep,
-    decode_kitty, decode_sixel, parse_kitty_header, try_parse as try_parse_image,
+    AssemblerOutcome, ChunkAssembler, ChunkedOscParseStep, ChunkedOscPayload, ImageId,
+    ImagePlacement, ImageStore, KittyChunkAssembler, ParseStep as ImageParseStep, decode_kitty,
+    decode_sixel, parse_kitty_header, try_parse as try_parse_image,
+    try_parse_chunked_osc,
 };
 use super::images::sequences::{ImagePayload, ImageProtocol};
 use super::prompt_marks::{ParseStep, PromptMark, PromptMarkLog, try_parse as try_parse_osc133};
@@ -87,6 +89,10 @@ pub struct TermEngine {
     /// chained transmission only lands as a single image once the final
     /// chunk arrives.
     kitty_chunks: KittyChunkAssembler,
+    /// Re-assembler for chunked OSC 1338 image transfers. Required on
+    /// Win11 25H2 where ConPTY strips Kitty APC and truncates OSCs over
+    /// ~512 bytes — see `docs/chunked-osc-image-protocol.md`.
+    chunked_osc: ChunkAssembler,
 }
 
 impl TermEngine {
@@ -105,6 +111,7 @@ impl TermEngine {
             osc_pending: Vec::new(),
             images: ImageStore::new(),
             kitty_chunks: KittyChunkAssembler::new(),
+            chunked_osc: ChunkAssembler::new(),
         })
     }
 
@@ -174,7 +181,29 @@ impl TermEngine {
                     self.osc_pending = combined[i..].to_vec();
                     return new_marks;
                 }
-                ImageParseStep::None => {} // fall through to OSC 133
+                ImageParseStep::None => {} // fall through to OSC 1338
+            }
+
+            // Chunked OSC 1338 image protocol — Aether-specific vehicle
+            // for Windows where ConPTY strips Kitty APC. Bytes are
+            // *consumed* (never forwarded to alacritty) so an in-flight
+            // BEGIN/DATA/END sequence never leaks into the grid. See
+            // `docs/chunked-osc-image-protocol.md`.
+            match try_parse_chunked_osc(&combined[i..]) {
+                ChunkedOscParseStep::Consumed { bytes: n, payload } => {
+                    self.parser.advance(&mut self.term, &combined[consumed..i]);
+                    let placement = current_placement(&self.term);
+                    self.handle_chunked_osc_frame(payload, placement);
+                    i += n;
+                    consumed = i;
+                    continue;
+                }
+                ChunkedOscParseStep::Incomplete => {
+                    self.parser.advance(&mut self.term, &combined[consumed..i]);
+                    self.osc_pending = combined[i..].to_vec();
+                    return new_marks;
+                }
+                ChunkedOscParseStep::None => {} // fall through to OSC 133
             }
 
             match try_parse_osc133(&combined[i..]) {
@@ -224,6 +253,44 @@ impl TermEngine {
     /// only) use it to assert the scanner caught the escape bytes.
     pub fn images(&self) -> &ImageStore {
         &self.images
+    }
+
+    /// Drive an OSC 1338 frame into the chunked-image assembler. Frames
+    /// that complete an image are promoted to `ImageStore`; failed
+    /// transfers retain their partial bytes (with `decoded=None`) so the
+    /// diagnostic surface still sees what arrived, mirroring the
+    /// existing single-shot Kitty error path.
+    fn handle_chunked_osc_frame(
+        &mut self,
+        payload: ChunkedOscPayload,
+        placement: ImagePlacement,
+    ) {
+        // Malformed frames are consumed off the wire but never reach the
+        // assembler — feeding one in would be a programmer error.
+        if matches!(payload, ChunkedOscPayload::Malformed) {
+            return;
+        }
+        match self.chunked_osc.ingest(payload) {
+            AssemblerOutcome::Pending => {}
+            AssemblerOutcome::Completed { raw_bytes, decoded, .. } => {
+                self.images.insert_full(
+                    ImageProtocol::Kitty,
+                    raw_bytes,
+                    Some(decoded),
+                    placement,
+                );
+            }
+            AssemblerOutcome::Failed { partial_bytes, .. } => {
+                if !partial_bytes.is_empty() {
+                    self.images.insert_full(
+                        ImageProtocol::Kitty,
+                        partial_bytes,
+                        None,
+                        placement,
+                    );
+                }
+            }
+        }
     }
 
     /// Drive a freshly-scanned image payload into the registry. Kitty
@@ -710,6 +777,117 @@ mod tests {
         // Alacritty consumes the DCS silently; "after" is the only
         // printable text.
         assert_eq!(engine.row_text(0).unwrap(), "after");
+    }
+
+    #[test]
+    fn chunked_osc_single_chunk_completes_inline() {
+        // BEGIN + one DATA + END in a single advance() — the smallest
+        // possible end-to-end exercise of the OSC 1338 path.
+        use base64::Engine;
+        use base64::engine::general_purpose::STANDARD as B64;
+
+        let mut engine = TermEngine::new(80, 24).expect("engine");
+        let raw = b"\x89PNGfake";
+        let b64 = B64.encode(raw);
+        let frame = format!(
+            "before\x1b]1338;B;1;png;4;2\x07\x1b]1338;D;1;0;{b64}\x07\x1b]1338;E;1\x07after"
+        );
+        engine.advance(frame.as_bytes());
+        // OSC 1338 bytes are NEVER forwarded to alacritty.
+        assert_eq!(engine.row_text(0).unwrap(), "beforeafter");
+        assert_eq!(engine.images().len(), 1);
+        let entry = engine.images().get(crate::term::images::ImageId(0)).unwrap();
+        assert_eq!(entry.bytes, raw);
+        let decoded = entry.decoded.as_ref().expect("PNG should attach decoded");
+        assert_eq!(decoded.width_px, 4);
+        assert_eq!(decoded.height_px, 2);
+    }
+
+    #[test]
+    fn chunked_osc_multi_chunk_completes_across_advances() {
+        // Three chunks delivered in three separate advance() calls —
+        // mirrors how an emitter would actually dribble the bytes through
+        // ConPTY one short OSC at a time.
+        use base64::Engine;
+        use base64::engine::general_purpose::STANDARD as B64;
+
+        let mut engine = TermEngine::new(80, 24).expect("engine");
+        let raw = b"AAAABBBBCCCCDDDDEEEEFFFFGGGG"; // 28 bytes -> 40 b64 chars
+        let b64 = B64.encode(raw);
+        // Split base64 at 4-char (3-raw-byte) boundaries so each slice
+        // is independently valid base64.
+        let parts = [&b64[..16], &b64[16..32], &b64[32..]];
+
+        engine.advance(b"\x1b]1338;B;7;png;1;1\x07");
+        assert_eq!(engine.images().len(), 0, "BEGIN alone should not register");
+        for (idx, part) in parts.iter().enumerate() {
+            let frame = format!("\x1b]1338;D;7;{idx};{part}\x07");
+            engine.advance(frame.as_bytes());
+            assert_eq!(engine.images().len(), 0, "DATA alone should not register");
+        }
+        engine.advance(b"\x1b]1338;E;7\x07");
+        assert_eq!(engine.images().len(), 1, "END should promote to ImageStore");
+        let entry = engine.images().get(crate::term::images::ImageId(0)).unwrap();
+        assert_eq!(entry.bytes, raw);
+    }
+
+    #[test]
+    fn chunked_osc_malformed_frame_is_dropped_without_grid_garbage() {
+        // Unknown verb `X` — parser flags Malformed; the engine drops
+        // it. Crucially, the bytes never reach alacritty (no `;X;` text
+        // on the grid) and no entry is registered.
+        let mut engine = TermEngine::new(80, 24).expect("engine");
+        engine.advance(b"prefix\x1b]1338;X;weird\x07suffix");
+        assert_eq!(engine.row_text(0).unwrap(), "prefixsuffix");
+        assert_eq!(engine.images().len(), 0);
+    }
+
+    #[test]
+    fn chunked_osc_orphan_data_keeps_grid_clean_and_skips_image() {
+        // DATA without prior BEGIN. Assembler returns Failed with empty
+        // partial_bytes, so no image registers — but the bytes are still
+        // consumed off the wire.
+        let mut engine = TermEngine::new(80, 24).expect("engine");
+        engine.advance(b"a\x1b]1338;D;42;0;AAAA\x07b");
+        assert_eq!(engine.row_text(0).unwrap(), "ab");
+        assert_eq!(engine.images().len(), 0);
+    }
+
+    #[test]
+    fn chunked_osc_terminator_split_across_advances_completes() {
+        // Engine receives `\x1b]1338;E;1` and then `\x07` in two calls.
+        // The first should stash, the second should complete.
+        use base64::Engine;
+        use base64::engine::general_purpose::STANDARD as B64;
+
+        let mut engine = TermEngine::new(80, 24).expect("engine");
+        let b64 = B64.encode(b"hi");
+        let begin_data = format!("\x1b]1338;B;1;png;1;1\x07\x1b]1338;D;1;0;{b64}\x07");
+        engine.advance(begin_data.as_bytes());
+        // END opener but no terminator yet.
+        engine.advance(b"\x1b]1338;E;1");
+        assert_eq!(engine.images().len(), 0, "incomplete END should stash");
+        // Terminator arrives — image completes.
+        engine.advance(b"\x07");
+        assert_eq!(engine.images().len(), 1);
+    }
+
+    #[test]
+    fn chunked_osc_and_osc133_can_coexist_in_one_advance() {
+        // OSC 133 mark, then a complete chunked-OSC image, then text.
+        // Both surfaces must land cleanly.
+        use base64::Engine;
+        use base64::engine::general_purpose::STANDARD as B64;
+
+        let mut engine = TermEngine::new(80, 24).expect("engine");
+        let b64 = B64.encode(b"x");
+        let buf = format!(
+            "\x1b]133;A\x07$ \x1b]1338;B;1;png;1;1\x07\x1b]1338;D;1;0;{b64}\x07\x1b]1338;E;1\x07done"
+        );
+        let marks = engine.advance(buf.as_bytes());
+        assert_eq!(marks.len(), 1, "OSC 133 mark should still emit");
+        assert_eq!(engine.images().len(), 1, "image should still register");
+        assert_eq!(engine.row_text(0).unwrap(), "$ done");
     }
 
     #[test]
