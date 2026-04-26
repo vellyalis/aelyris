@@ -89,6 +89,22 @@ Continuing the post-0.2.3 Tier 3 polish run started with
   0.22` into direct dependencies (already transitive through
   tauri/notify) so the decode path is auditable on its own.
 
+### Testing
+
+- **Inline image E2E coverage** (Tier 2 #5, Sprint 3 polish) — new
+  `e2e/image-flows.spec.ts` puts a tripwire under the live PTY → ConPTY
+  → engine → snapshot → `term_image_data` round-trip. Two specs: a
+  smoke test that asserts `term_image_data(unknown imageId) → null`
+  (no PTY behaviour required), and a real-pipeline test that pipes a
+  Kitty PNG escape through `[Console]::Out.Write` and asserts the
+  payload comes back as a `\x89PNG`-prefixed blob. Mirrors the CDP
+  attach + skip-when-unreachable pattern from `pty-flows.spec.ts`, so
+  CI / local runs without `pnpm tauri:dev` cleanly skip rather than
+  red-flag. Failure of the round-trip test surfaces ConPTY APC-drop
+  regressions in the report instead of only on screen — see
+  `docs/sixel-kitty-spike.md` § "Sprint 3 — E2E coverage" for the
+  caveat.
+
 ### UX
 
 - **Theme palette editor** (Tier 3 #10) — Settings → Appearance now

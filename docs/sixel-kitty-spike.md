@@ -119,6 +119,42 @@ encoded).
   fixture Kitty escape into the PTY and asserts an `<img>` element
   shows up at the expected cell offset.
 
+### Sprint 3 — E2E coverage (post-Sprint-3 polish)
+
+`e2e/image-flows.spec.ts` puts a Playwright tripwire under the
+end-to-end pipeline. It mirrors `pty-flows.spec.ts` exactly (CDP
+attach to `localhost:9222`, skip the entire suite when unreachable,
+per-test terminal lifecycle) so a missing `pnpm tauri:dev` is a
+clean skip rather than a red bar. Two specs:
+
+1. `term_image_data(unknown imageId)` resolves to `null` — smoke test
+   for the IPC wiring that never depends on PTY behaviour.
+2. A Kitty PNG escape echoed through `[Console]::Out.Write` lands in
+   `GridSnapshot.images` and the IPC round-trip returns a payload
+   whose first four bytes are `\x89PNG`.
+
+The PNG used in spec #2 is a 1x1 transparent fixture inlined as
+base64 so there's no external file dependency.
+
+**Caveat — Windows ConPTY APC drop.** The Kitty graphics protocol
+ships inside `\x1b_G…\x1b\\` (APC). On some Win11 builds without
+`PSEUDOCONSOLE_PASSTHROUGH_MODE` (0x8) ConPTY silently strips
+unknown APC sequences before they reach the engine; the round-trip
+spec then fails with a `waitForImages` timeout. We deliberately
+surface that as a real test failure rather than a silent skip — the
+whole point of the polish pass is to put a tripwire under the live
+pipeline so dogfood regressions show up in the report. If a
+reproducer is needed manually, run `chafa -f kitty image.png`
+inside the same window: a clean visual render means the engine sees
+the escape, an `^[_G…` echo means ConPTY ate it.
+
+**Out of scope for this polish:** we do not assert the rendered
+canvas pixel content. The frontend paint pass is covered by
+`useTerminalImages.test.tsx` (8 Vitest specs) which run in jsdom
+with bitmap factory injection — that's where pixel-level invariants
+live. The Playwright spec only validates the IPC + snapshot
+contract.
+
 ## File layout decisions
 
 The image module sits next to `prompt_marks.rs` because both are
