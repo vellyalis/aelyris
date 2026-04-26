@@ -290,6 +290,14 @@ export function WorkflowBuilder({ onClose, onExport }: WorkflowBuilderProps) {
       return phase;
     });
 
+    // Quote/escape rules for YAML double-quoted scalars: backslash and the
+    // ASCII double-quote must be escaped, and embedded newlines become "\\n".
+    // Without this, a prompt like {"OK" と言ったら…} produces invalid YAML
+    // (`prompt: ""OK" と言ったら…"`) and the workflow fails to start with a
+    // generic parse error the user can't trace back to their input.
+    const escapeYamlString = (raw: string): string =>
+      raw.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\r/g, "\\r");
+
     const yamlLines = [`name: ${workflowName}`, `description: Visual Workflow Builder で作成`, "", "phases:"];
     for (const p of phases) {
       yamlLines.push(`  - name: ${p.name}`);
@@ -297,7 +305,7 @@ export function WorkflowBuilder({ onClose, onExport }: WorkflowBuilderProps) {
       const agent = p.agent as Record<string, unknown>;
       yamlLines.push(`    agent:`);
       yamlLines.push(`      model: ${agent.model}`);
-      yamlLines.push(`      prompt: "${agent.prompt}"`);
+      yamlLines.push(`      prompt: "${escapeYamlString(String(agent.prompt))}"`);
       yamlLines.push(`      max_cost: ${agent.max_cost}`);
       if (p.quality_gate) {
         const gate = p.quality_gate as Record<string, unknown>;

@@ -257,6 +257,12 @@ export function EditorPanel({
         const value = editorRef.current.getValue();
         invoke("write_file", { path: filePath, content: value })
           .then(() => {
+            // Sync content state to the just-saved value. Without this, the
+            // window-focus reload effect below sees `diskContent !== content`
+            // (content is the stale initial-load value) and overwrites the
+            // editor with `setValue(diskContent)`, which fires onChange and
+            // re-marks the file dirty — even though nothing changed.
+            setContent(value);
             setModified(false);
             markSaved(filePath);
             setSaved(true);

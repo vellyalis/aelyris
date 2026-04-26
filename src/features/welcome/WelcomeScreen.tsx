@@ -85,19 +85,15 @@ export function WelcomeScreen({ onOpenProject, onOpenSettings }: WelcomeScreenPr
     (e: React.DragEvent) => {
       e.preventDefault();
       setDragOver(false);
-      const items = e.dataTransfer.items;
-      if (items.length > 0) {
-        const entry = items[0].webkitGetAsEntry?.();
-        if (entry?.isDirectory) {
-          onOpenProject(entry.fullPath || entry.name);
-        }
-      }
-      // Also try files
-      const files = e.dataTransfer.files;
-      if (files.length > 0) {
-        const path = (files[0] as unknown as { path?: string }).path;
-        if (path) onOpenProject(path.replace(/\\/g, "/"));
-      }
+      // Only the Tauri-injected `path` on the dropped File object yields the
+      // real OS path. The previous webkitGetAsEntry branch fired *first* with
+      // a sandboxed virtual path (e.g. "/MyFolder") that onOpenProject can't
+      // resolve, then this branch fired again with the real path — the
+      // double-fire briefly opened a bogus project before settling.
+      const file = e.dataTransfer.files[0];
+      if (!file) return;
+      const path = (file as unknown as { path?: string }).path;
+      if (path) onOpenProject(path.replace(/\\/g, "/"));
     },
     [onOpenProject],
   );

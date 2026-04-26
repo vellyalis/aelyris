@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import { Select } from "../../shared/ui/Select";
 import { useAppStore } from "../../shared/store/appStore";
+import { toast } from "../../shared/store/toastStore";
 import { Switch } from "../../shared/ui/Switch";
 import styles from "./Settings.module.css";
 import { ShellIntegrationSection } from "./ShellIntegrationSection";
@@ -33,18 +34,36 @@ const SHELLS = [
   { id: "wsl", label: "WSL" },
 ];
 
+// Mirror of Rust `AppConfig` in src-tauri/src/config/settings.rs. Holding the
+// full shape lets `handleSave` round-trip every field — even the ones the UI
+// can't edit (window state, ui_font_family, opacity, scrollback…) — instead
+// of resetting them to default whenever the user clicks Save.
 interface LoadedConfig {
   appearance: {
     theme: string;
+    ui_font_family: string;
     terminal_font_family: string;
     font_size: number;
     line_height: number;
     ligatures: boolean;
+    window_effect: string;
+    opacity: number;
   };
   terminal: {
     default_shell: string;
+    scrollback: number;
     cursor_style: string;
     cursor_blink: boolean;
+  };
+  window?: {
+    width: number;
+    height: number;
+    x?: number | null;
+    y?: number | null;
+    maximized: boolean;
+    sidebar_visible: boolean;
+    last_directory?: string | null;
+    tab_count: number;
   };
   ghost_diff?: {
     live_mode?: boolean;
@@ -52,7 +71,8 @@ interface LoadedConfig {
 }
 
 export function Settings({ visible, onClose }: SettingsProps) {
-  const { themeId: storeTheme, setThemeId } = useAppStore();
+  const storeTheme = useAppStore((s) => s.themeId);
+  const setThemeId = useAppStore((s) => s.setThemeId);
   const ghostDiffLiveMode = useAppStore((s) => s.ghostDiffLiveMode);
   const setGhostDiffLiveMode = useAppStore((s) => s.setGhostDiffLiveMode);
   const [theme, setTheme] = useState(storeTheme);
@@ -64,10 +84,21 @@ export function Settings({ visible, onClose }: SettingsProps) {
   const [cursorStyle, setCursorStyle] = useState("bar");
   const [cursorBlink, setCursorBlink] = useState(true);
   const [liveMode, setLiveMode] = useState(ghostDiffLiveMode);
+  // Keep the full config snapshot so Save can round-trip fields the UI can't
+  // edit (window state, ui_font_family, opacity, scrollback). Without this,
+  // every Save click resets those fields to the Rust defaults.
+  const [loadedConfig, setLoadedConfig] = useState<LoadedConfig | null>(null);
 
   useEffect(() => {
+    // Re-load every time the dialog opens so a user who edited config.toml
+    // directly between sessions doesn't have their changes overwritten by
+    // the previous mount's stale state when they click Save.
+    if (!visible) return;
+    let cancelled = false;
     invoke<LoadedConfig>("load_app_config")
       .then((cfg) => {
+        if (cancelled) return;
+        setLoadedConfig(cfg);
         setTheme(cfg.appearance.theme);
         setFont(cfg.appearance.terminal_font_family.split(",")[0].trim());
         setFontSize(cfg.appearance.font_size);
@@ -84,33 +115,48 @@ export function Settings({ visible, onClose }: SettingsProps) {
         setGhostDiffLiveMode(persisted);
       })
       .catch(() => {});
-  }, [setGhostDiffLiveMode]);
+    return () => {
+      cancelled = true;
+    };
+  }, [visible, setGhostDiffLiveMode]);
 
   const handleSave = () => {
+    if (!loadedConfig) {
+      // Open and immediately close before the load resolves — preserve disk
+      // contents by skipping save entirely rather than writing UI defaults.
+      onClose();
+      return;
+    }
     setThemeId(theme);
     setGhostDiffLiveMode(liveMode);
-    invoke("save_app_config", {
-      config: {
-        appearance: {
-          theme,
-          ui_font_family: "IBM Plex Sans",
-          terminal_font_family: font,
-          font_size: fontSize,
-          line_height: lineHeight,
-          ligatures,
-          window_effect: "mica",
-          opacity: 0.95,
-        },
-        terminal: {
-          default_shell: defaultShell,
-          scrollback: 10000,
-          cursor_style: cursorStyle,
-          cursor_blink: cursorBlink,
-        },
-        ghost_diff: { live_mode: liveMode },
+    const merged: LoadedConfig = {
+      ...loadedConfig,
+      appearance: {
+        ...loadedConfig.appearance,
+        theme,
+        terminal_font_family: font,
+        font_size: fontSize,
+        line_height: lineHeight,
+        ligatures,
       },
-    }).catch(() => {});
-    onClose();
+      terminal: {
+        ...loadedConfig.terminal,
+        default_shell: defaultShell,
+        cursor_style: cursorStyle,
+        cursor_blink: cursorBlink,
+      },
+      ghost_diff: {
+        ...(loadedConfig.ghost_diff ?? {}),
+        live_mode: liveMode,
+      },
+    };
+    invoke("save_app_config", { config: merged })
+      .then(() => onClose())
+      .catch((err) => {
+        // Surface failure instead of swallowing — user otherwise sees the
+        // dialog close with no indication that disk write failed.
+        toast.error("Failed to save settings", String(err));
+      });
   };
 
   return (

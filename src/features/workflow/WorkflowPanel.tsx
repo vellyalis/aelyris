@@ -70,6 +70,9 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
       } catch (err) {
         toast.error("Save failed", String(err));
       }
+      // Only close the builder once disk write succeeded — otherwise the
+      // user loses the YAML they just typed and has to reconstruct it.
+      if (!saved) return;
       setBuilderOpen(false);
       const refreshed = invoke<WorkflowSummary[]>("list_workflows", { projectPath })
         .then((list) => {
@@ -78,7 +81,7 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
         })
         .catch(() => [] as WorkflowSummary[]);
 
-      if (saved && opts?.runAfterSave) {
+      if (opts?.runAfterSave) {
         const list = await refreshed;
         const wf = list.find((w) => w.path === filePath) ?? list[list.length - 1];
         if (wf) {
@@ -120,12 +123,20 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
       }
     };
 
-    // Listen for real-time updates from Rust
+    // Listen for real-time updates from Rust. Both the dynamic import and
+    // the listen() call are async, so cleanup may race ahead of the unlisten
+    // assignment — guard with the `active` flag and tear down whatever has
+    // resolved by the time we unmount, otherwise the listener leaks.
     let unlisten: (() => void) | null = null;
     import("@tauri-apps/api/event").then(({ listen }) => {
+      if (!active) return;
       listen<WorkflowStatus[]>("workflow-updated", (e) => {
         processUpdate(e.payload);
       }).then((u) => {
+        if (!active) {
+          u();
+          return;
+        }
         unlisten = u;
       });
     });
