@@ -57,21 +57,47 @@ export function ProjectHeaderBar({
     } catch {}
   };
   const handleClose = async () => {
-    // Close via the window API first so `App.tsx`'s `onCloseRequested`
-    // gets a chance to prompt for unsaved files before we tear the
-    // process down. `process.exit(0)` skips the close lifecycle and
-    // is reserved for the failure fallback (e.g. permission missing
-    // or the window plugin throws on a stale handle).
+    /* Close path with a hard-stop fallback. Three failure modes had to
+     * be covered by hand because each one masked the others:
+     *
+     *  1. `core:window:allow-close` capability missing → `close()`
+     *     throws `AccessControlNotAllowed`; the bare `catch {}`
+     *     swallows it and the user thinks the button is dead.
+     *  2. `App.tsx`'s `onCloseRequested` hangs (an `await` for window
+     *     position never resolves while the runtime is busy) → close
+     *     never proceeds, no error, no log.
+     *  3. The user has unsaved files and `showConfirm` is rejected
+     *     in some edge case → recursive `win.close()` would loop.
+     *
+     * Strategy: kick `close()` first so the proper lifecycle gets a
+     * chance (saves bounds, prompts for unsaved files). If it hasn't
+     * completed in 800 ms, fall through to `process.exit(0)` which
+     * tears the process down regardless. Both branches log loudly so
+     * the next regression doesn't disappear. */
+    const HARD_STOP_MS = 800;
+    let closed = false;
     try {
       const { getCurrentWindow } = await import("@tauri-apps/api/window");
-      await getCurrentWindow().close();
-      return;
-    } catch (err) {
-      // Surface the failure so it doesn't disappear into a silent
-      // catch — the most common cause is `core:window:allow-close`
-      // missing from `src-tauri/capabilities/default.json`.
+      const win = getCurrentWindow();
+      const closePromise = win
+        .close()
+        .then(() => {
+          closed = true;
+        })
+        .catch((err) => {
+          // eslint-disable-next-line no-console
+          console.error("[ProjectHeaderBar] window.close() rejected", err);
+        });
+      const timeout = new Promise<void>((resolve) => setTimeout(resolve, HARD_STOP_MS));
+      await Promise.race([closePromise, timeout]);
+      if (closed) return;
       // eslint-disable-next-line no-console
-      console.error("[ProjectHeaderBar] window.close() failed, falling back to process.exit", err);
+      console.warn(
+        `[ProjectHeaderBar] window.close() did not resolve within ${HARD_STOP_MS}ms — escalating to process.exit`,
+      );
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[ProjectHeaderBar] window.close() threw before resolving", err);
     }
     try {
       const { exit } = await import("@tauri-apps/plugin-process");

@@ -211,7 +211,27 @@ export const IMEInputBar = forwardRef<IMEInputBarHandle, IMEInputBarProps>(funct
         rows={1}
         value={value}
         onChange={handleChange}
-        onCompositionStart={() => setComposing(true)}
+        onCompositionStart={() => {
+          setComposing(true);
+          /* WebView2 has a documented bug where IME candidate windows
+           * for `<textarea>` inputs anchor at stale coordinates — for
+           * us that meant the popup appeared in the bottom-right of
+           * the window (over the right-panel) when typing in this
+           * bar (dogfood screenshot, 2026-05-03). The Tauri side
+           * provides `set_ime_position` which calls
+           * `ImmSetCompositionWindow` directly; we point it at the
+           * caret position of *this* textarea so the candidate list
+           * sits where the user is actually typing. */
+          const ta = textareaRef.current;
+          if (!ta) return;
+          const rect = ta.getBoundingClientRect();
+          const lineH = parseFloat(getComputedStyle(ta).lineHeight || "0") || 20;
+          // Anchor below the textarea — same convention the canvas
+          // hook uses (`+cellHeight` past the caret).
+          import("@tauri-apps/api/core")
+            .then(({ invoke }) => invoke("set_ime_position", { x: rect.left, y: rect.top + lineH }))
+            .catch(() => {});
+        }}
         onCompositionEnd={() => setComposing(false)}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}

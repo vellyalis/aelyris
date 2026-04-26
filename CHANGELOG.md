@@ -10,6 +10,43 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### UX
 
+- **IME candidate window now anchors next to the textarea you're
+  actually typing in.** Dogfood: typing into `IMEInputBar` (the
+  pane's bottom input strip) made the OS IME prediction popup
+  appear in the bottom-right of the window over the right-panel
+  — way off from the user's caret. Two compounding causes:
+  - **Canvas hook over-fired the window-wide IMM IPC.**
+    `useImePosition` is meant for the canvas-embedded hidden
+    textarea but called `set_ime_position` on every PTY-cursor
+    move regardless of focus. `set_ime_position` writes the
+    **window-wide** IMM context via `ImmSetCompositionWindow` /
+    `ImmSetCandidateWindow`, so once it fires the coordinates
+    persist for *every* focused text input — when the user
+    clicked into IMEInputBar, the OS still anchored the
+    candidate list at the PTY caret. Guarded the IPC behind a
+    `document.activeElement === textarea` check; we now only
+    steer IMM while our hidden textarea actually owns focus.
+  - **IMEInputBar didn't claim its own IME anchor.** WebView2
+    has the documented textarea-IME positioning bug the canvas
+    hook was originally written to bypass — IMEInputBar suffers
+    from the same bug whenever the canvas previously left a
+    stale IMM coordinate behind. Added a `compositionStart`
+    handler on IMEInputBar's textarea that calls
+    `set_ime_position` with its own caret-line position, so
+    every composition session starts anchored to the right
+    place.
+
+- **Window close hardened — 800 ms hard-stop fallback.** Even
+  with the `core:window:allow-close` capability the close path
+  could stall indefinitely if `App.tsx`'s `onCloseRequested`
+  callback awaited an IPC (window position fetch) that the busy
+  Tauri runtime never resolved. `handleClose` now races
+  `window.close()` against an 800 ms timeout; if the close
+  hasn't completed in that window we fall through to
+  `process.exit(0)`. Both branches log to console (no more
+  silent swallow). User now has a guaranteed escape regardless
+  of which leg of the lifecycle is hung.
+
 - **Terminal text rendering — sub-pixel drift fixed, CJK glyphs
   no longer collide.** Dogfood screenshot (2026-05-03) showed a
   PowerShell pane with `gemini -m gemini-1.5-flash-8b "あなた…"`

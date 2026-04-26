@@ -194,6 +194,20 @@ export interface UseImePositionArgs {
  * Keep the invisible textarea aligned with the PTY cursor, and tell Windows
  * (via the `set_ime_position` IPC) where to park the IME candidate window so
  * it sits directly under the caret rather than in the top-left corner.
+ *
+ * Important: `set_ime_position` writes the **window-wide** IMM context via
+ * `ImmSetCompositionWindow` / `ImmSetCandidateWindow`, so once it fires the
+ * coordinates persist for *every* focused text input until something
+ * overrides them. If we keep calling it on PTY-cursor changes while the user
+ * is actually typing into a different input (e.g. `IMEInputBar` at the bottom
+ * of the pane), the OS pops the candidate list at the PTY caret instead of
+ * next to the IMEInputBar's textarea — exactly the dogfood bug screenshot
+ * (2026-05-03) where the candidate window appeared in the bottom-right of
+ * the window over the right-panel.
+ *
+ * Guard: only push coordinates while *our* hidden textarea is the active
+ * element. When focus moves elsewhere we stop emitting and the OS reverts
+ * to the focused element's natural position on the next composition.
  */
 export function useImePosition({ textarea, cursor, cellWidth, cellHeight, canvas }: UseImePositionArgs) {
   useEffect(() => {
@@ -202,6 +216,13 @@ export function useImePosition({ textarea, cursor, cellWidth, cellHeight, canvas
     const top = cursor.row * cellHeight;
     textarea.style.left = `${left}px`;
     textarea.style.top = `${top}px`;
+
+    // Only steer IMM when our hidden textarea actually owns the OS focus.
+    // Otherwise the user is typing in IMEInputBar / Settings / palette
+    // / Quick Open / etc. and we would mis-anchor their candidate window.
+    if (typeof document === "undefined" || document.activeElement !== textarea) {
+      return;
+    }
 
     const rect = canvas.getBoundingClientRect();
     const screenX = rect.left + left;
