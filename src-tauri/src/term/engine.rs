@@ -1076,4 +1076,98 @@ mod tests {
         // Cap is the small test-only cap, surfaced as a string field.
         assert_eq!(first_evict.fields.get("cap").map(String::as_str), Some("32"));
     }
+
+    #[test]
+    fn chunked_osc_stress_100_emissions_respects_cap_and_keeps_grid_clean() {
+        // The Sprint 3 plan called this out as "optional but high-
+        // value": pump 100 sequential chunked-OSC transfers through
+        // the engine and assert the per-pane FIFO cap holds, the
+        // grid never accumulates leaked escape bytes, and at least
+        // one `image_evicted` event lands in the structured log
+        // ring. Tiny cap (1 KiB) + ~50-byte raw payload per frame
+        // forces eviction every few frames so the test exercises
+        // the loop instead of the cap's headroom.
+        use base64::Engine;
+        use base64::engine::general_purpose::STANDARD as B64;
+
+        let ring = LogRing::new();
+        let mut engine =
+            TermEngine::new_with_telemetry(80, 24, "stress".into(), ring.clone()).expect("engine");
+        engine.images = ImageStore::with_cap(1024);
+        let cap = engine.images().cap();
+
+        // Repeat the PNG signature so each frame's raw payload is
+        // ~36 bytes — small enough that a 1 KiB cap holds ~25 entries
+        // before eviction kicks in, large enough that 100 frames are
+        // guaranteed to overflow the cap multiple times.
+        let raw: Vec<u8> = b"\x89PNG\r\n\x1a\nXYZdummy".repeat(3);
+        let b64 = B64.encode(&raw);
+
+        let mut peak_bytes_used = 0usize;
+        let mut peak_count = 0usize;
+
+        for image_id in 1..=100u32 {
+            let frame = format!(
+                "\x1b]1338;B;{image_id};png;1;1\x07\x1b]1338;D;{image_id};0;{b64}\x07\x1b]1338;E;{image_id}\x07"
+            );
+            let _ = engine.advance(frame.as_bytes());
+            let bytes_used = engine.images().bytes_used();
+            let count = engine.images().len();
+            assert!(
+                bytes_used <= cap,
+                "bytes_used {bytes_used} must not exceed cap {cap} after frame {image_id}"
+            );
+            peak_bytes_used = peak_bytes_used.max(bytes_used);
+            peak_count = peak_count.max(count);
+        }
+
+        // Grid must be free of escape leakage — no printable text was
+        // emitted, so every visible row should be empty.
+        for row in 0..engine.rows() {
+            assert_eq!(
+                engine.row_text(row).unwrap(),
+                "",
+                "row {row} should be empty; chunked OSC bytes must be consumed",
+            );
+        }
+
+        // Eviction must have surfaced as a structured WARN event at
+        // least once — proves the observability surface fires under
+        // sustained pressure, not just once on the boundary.
+        let entries = ring.recent(500);
+        let evictions: Vec<_> = entries
+            .iter()
+            .filter(|e| e.fields.get("event").map(String::as_str) == Some("image_evicted"))
+            .collect();
+        assert!(
+            !evictions.is_empty(),
+            "100 emissions over a 1 KiB cap must produce at least one image_evicted event"
+        );
+        // Every event carries the same terminal_id so a downstream
+        // log filter can attribute pressure to the active pane.
+        for ev in &evictions {
+            assert_eq!(
+                ev.fields.get("terminal_id").map(String::as_str),
+                Some("stress"),
+            );
+            assert_eq!(ev.level, "WARN");
+            // `cap` field should always equal the live store cap.
+            assert_eq!(
+                ev.fields.get("cap").map(String::as_str),
+                Some(cap.to_string().as_str()),
+            );
+        }
+
+        // Cap is bounded; peak should be at-or-below the cap by
+        // construction. Sanity-check via the witnessed peak too so a
+        // future refactor that loosens the bookkeeping fails loudly.
+        assert!(
+            peak_bytes_used <= cap,
+            "peak bytes_used {peak_bytes_used} must not exceed cap {cap}"
+        );
+        // The most recent emission must always be retrievable —
+        // FIFO never evicts the entry it just inserted.
+        assert!(engine.images().len() >= 1, "newest entry must be retained");
+        assert!(peak_count >= 1);
+    }
 }

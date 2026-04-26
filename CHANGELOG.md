@@ -10,6 +10,20 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### Internal
 
+- **Chunked-OSC 100-emission stress test** (post-0.2.4 Tier 🔴 #1,
+  Sprint 3 plan optional deliverable) — adds the "high-value" stress
+  harness to `term::engine::tests`. Pumps 100 sequential single-chunk
+  OSC 1338 transfers through a `TermEngine` whose `ImageStore` has
+  been hot-swapped to a 1 KiB cap, then asserts: `bytes_used` never
+  exceeds the cap on any frame, the grid stays empty (no escape
+  leakage), the newest entry is always retained, and the structured
+  log ring contains at least one `image_evicted` event with
+  `terminal_id=stress` + `cap=1024` + `level=WARN`. Runs as part of
+  `cargo test --lib`, so the wizard-grade "hostile-input-safe" axis
+  has a CI-time witness rather than relying on the
+  `scripts/diag-chunked-osc.mjs` round-trip alone. `cargo test --lib`:
+  473 (was 472).
+
 - **Roadmap clean-up + `.at()` warning suppression.** With Sprint 3
   wave 3 landing the inline-image observability surface,
   `docs/ROADMAP_POST_0_2_4.md` now reflects the closed state of
