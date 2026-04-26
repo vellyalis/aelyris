@@ -10,6 +10,26 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### Reliability
 
+- **Chunked OSC inline image protocol — image-metrics IPC**
+  (post-0.2.4 Tier 🔴 #1, Sprint 3 wave 2) — adds the observability
+  surface the wizard-grade definition's "Observable" axis calls for.
+  New `term_image_metrics(id) -> { bytesUsed, cap, count } | null`
+  Tauri command exposes the per-terminal `ImageStore` budget so the
+  status-bar widget (Sprint 3 wave 3) can show "12.3 / 50 MiB —
+  3 imgs" and warn before FIFO eviction trims an image the user
+  expects to stay live. Returns `null` for an unknown terminal id,
+  matching `term_image_data`'s "missing → null" contract so the
+  frontend's null-skip path stays consistent. New
+  `ImageMetricsResponse` (`bytesUsed: u64 / cap: u64 / count: u64`,
+  camelCase serde) lives in `term::native` next to
+  `ImageDataResponse`. New `ImageMetrics` TypeScript interface
+  exported from `shared/types/terminal.ts`. +2 Rust unit tests on
+  `NativeTerminalRegistry::image_metrics` (empty registry returns
+  `(0, cap, 0)`; one-image session reports `count=1`/
+  `bytes_used > 0`/`cap` unchanged) bring `cargo test --lib` to 464.
+  Status-bar widget + structured-log eviction event land in wave 3
+  (UI-side; needs a preview-server verify pass before commit).
+
 - **Chunked OSC inline image protocol — E2E + offline integration**
   (post-0.2.4 Tier 🔴 #1, Sprint 3 first wave) — locks in correctness
   without depending on a live Win11 dogfood session.

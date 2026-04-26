@@ -233,6 +233,19 @@ impl NativeTerminalRegistry {
         })
     }
 
+    /// Per-terminal inline-image cap usage. Sprint-3 wave-2 status-bar
+    /// widget reads this to surface FIFO-eviction proximity.
+    pub fn image_metrics(&self, id: &str) -> Option<ImageMetricsResponse> {
+        let guard = self.lock().ok()?;
+        let session = guard.get(id)?;
+        let store = session.engine.images();
+        Some(ImageMetricsResponse {
+            bytes_used: store.bytes_used() as u64,
+            cap: store.cap() as u64,
+            count: store.len() as u64,
+        })
+    }
+
     pub fn remove(&self, id: &str) {
         if let Ok(mut guard) = self.lock() {
             if guard.remove(id).is_some() {
@@ -272,6 +285,20 @@ pub struct ImageDataResponse {
     pub data_base64: String,
     pub width_px: u32,
     pub height_px: u32,
+}
+
+/// Per-terminal inline-image budget snapshot. Powers the status-bar
+/// widget so a power user can see how close the session is to the
+/// per-pane FIFO eviction threshold (50 MiB by default).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageMetricsResponse {
+    /// Bytes currently retained across raw payloads + decoded buffers.
+    pub bytes_used: u64,
+    /// Hard cap before FIFO eviction kicks in.
+    pub cap: u64,
+    /// Number of retained image entries (any decode state).
+    pub count: u64,
 }
 
 #[cfg(test)]
@@ -341,6 +368,41 @@ mod tests {
         assert_eq!(snap.cols, 5);
         assert_eq!(snap.cells[0][0].ch, 'a');
         assert_eq!(snap.cells[0][2].ch, 'c');
+    }
+
+    #[test]
+    fn image_metrics_reflects_engine_image_store() {
+        use base64::Engine;
+        use base64::engine::general_purpose::STANDARD as B64;
+
+        let reg = NativeTerminalRegistry::new();
+        reg.create("t", 80, 24).expect("create");
+
+        let m0 = reg.image_metrics("t").expect("session exists");
+        assert_eq!(m0.count, 0);
+        assert_eq!(m0.bytes_used, 0);
+        assert!(m0.cap > 0, "cap should be configured to non-zero");
+
+        // Drive a single-chunk OSC 1338 PNG-passthrough so the engine
+        // image store ends up with one entry. Bytes are picked to stay
+        // tiny — the metric only needs `count > 0` and `bytes_used > 0`.
+        let raw = b"\x89PNG\r\n\x1a\nXYZ";
+        let b64 = B64.encode(raw);
+        let frame = format!(
+            "\x1b]1338;B;1;png;1;1\x07\x1b]1338;D;1;0;{b64}\x07\x1b]1338;E;1\x07"
+        );
+        let _ = reg.advance("t", frame.as_bytes());
+
+        let m1 = reg.image_metrics("t").expect("session exists");
+        assert_eq!(m1.count, 1, "one image should be registered");
+        assert!(m1.bytes_used > 0, "bytes_used must reflect the new entry");
+        assert_eq!(m1.cap, m0.cap, "cap is constant across the session");
+    }
+
+    #[test]
+    fn image_metrics_returns_none_for_unknown_terminal() {
+        let reg = NativeTerminalRegistry::new();
+        assert!(reg.image_metrics("nonexistent").is_none());
     }
 
     #[test]

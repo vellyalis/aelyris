@@ -572,6 +572,19 @@ pub fn term_image_data(
         .image_data(&id, imageId)
 }
 
+/// Inline-image budget snapshot for a terminal: bytesUsed / cap / count.
+/// The status bar polls this so power users can see how close their
+/// session is to the per-pane FIFO eviction threshold. Returns `None`
+/// when the terminal id is unknown.
+#[tauri::command]
+pub fn term_image_metrics(
+    app: AppHandle,
+    id: String,
+) -> Option<crate::term::native::ImageMetricsResponse> {
+    app.state::<Arc<NativeTerminalRegistry>>()
+        .image_metrics(&id)
+}
+
 /// List active terminals
 #[tauri::command]
 pub fn list_terminals(app: AppHandle) -> Vec<String> {

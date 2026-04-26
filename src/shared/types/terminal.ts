@@ -131,3 +131,16 @@ export interface GridDiff {
   cursor: CursorSnapshot;
   cursor_changed: boolean;
 }
+
+/**
+ * Per-terminal inline-image budget snapshot. Returned by
+ * `term_image_metrics(id)` and consumed by the status-bar widget so a
+ * power user can see how close a session is to the FIFO eviction
+ * threshold (50 MiB by default). The IPC returns `null` for an
+ * unknown terminal id; the widget treats that as "hide the badge".
+ */
+export interface ImageMetrics {
+  bytesUsed: number;
+  cap: number;
+  count: number;
+}
