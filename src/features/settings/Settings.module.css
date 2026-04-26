@@ -2,16 +2,28 @@
   position: fixed;
   inset: 0;
   z-index: var(--z-overlay);
-  display: flex;
-  justify-content: center;
-  align-items: center;
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
 
 .panel {
+  /* Radix `Dialog.Portal` renders Overlay and Content as siblings —
+   * not parent/child — so flexing the overlay does NOT centre the
+   * panel. Without explicit `position: fixed` + a centring transform
+   * the panel collapses to `static` layout at top-left with whatever
+   * intrinsic height the flex column provides (sometimes 2 px in
+   * preview), which is exactly the "settings opens but nothing
+   * appears" symptom dogfood reported. CommandPalette / QuickOpen /
+   * HistorySearchDialog all centre themselves the same way; Settings
+   * was the outlier. */
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: calc(var(--z-modal) + 1);
   width: var(--dialog-width-md);
+  max-width: calc(100vw - var(--space-12));
   max-height: 80vh;
   /* Switched from --bg-secondary (--glass-dense, 62% alpha) to the
    * --dialog-surface token (92%) so the Settings content reads legibly

@@ -2,14 +2,21 @@
   position: fixed;
   inset: 0;
   z-index: var(--z-overlay);
-  display: flex;
-  justify-content: center;
-  align-items: center;
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(8px);
 }
 .dialog {
+  /* Centre the Radix `Dialog.Content` explicitly — Portal places
+   * Overlay and Content as siblings, so the overlay's flex centring
+   * does not apply to the dialog body. Same pattern as Settings,
+   * AboutDialog, HelpDialog. */
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: calc(var(--z-modal) + 1);
   width: var(--dialog-width-sm);
+  max-width: calc(100vw - var(--space-12));
   max-height: 80vh;
   overflow-y: auto;
   background: var(--dialog-surface);

@@ -2,14 +2,19 @@
   position: fixed;
   inset: 0;
   z-index: var(--z-modal);
-  display: flex;
-  align-items: center;
-  justify-content: center;
   background: rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(4px);
 }
 
 .dialog {
+  /* Centre the Radix `Dialog.Content` explicitly — Portal places
+   * Overlay and Content as siblings, so the overlay's flex centring
+   * does not apply to the dialog body. */
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: calc(var(--z-modal) + 1);
   width: var(--dialog-width-lg);
   max-width: 90vw;
   max-height: 80vh;

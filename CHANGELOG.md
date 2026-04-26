@@ -10,6 +10,33 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### UX
 
+- **"Settings opens but nothing shows" — root cause + four-dialog
+  fix.** The earlier "settings won't open" patch (LazyDialog +
+  welcome-screen entry point) addressed reachability, but dogfood
+  reported the dialog was opening with no content visible. CDP
+  inspection revealed the actual layout bug: `Settings.module.css
+  .panel` had no explicit `position`, so when Radix `Dialog.Portal`
+  rendered Overlay and Content as **siblings** (not parent →
+  child), the panel collapsed to `position: static` at `0,0` with
+  whatever intrinsic size the flex column gave it — sometimes 2 px
+  tall, completely invisible. The same bug was lurking in
+  `WatchdogDialog`, `AboutDialog`, and `HelpDialog`; CommandPalette,
+  QuickOpen, and HistorySearchDialog had already centred themselves
+  correctly so were unaffected.
+  Fix: each affected `.panel` / `.dialog` now declares
+  `position: fixed; top: 50%; left: 50%; transform: translate(-50%,
+  -50%); z-index: calc(var(--z-modal) + 1)` plus a
+  `max-width: calc(100vw - var(--space-12))` guard so narrow
+  windows still keep a 12 px margin. The overlays drop their
+  redundant `display: flex` centring (overlay is now purely the
+  scrim, content centres itself).
+  Visual verify in `pnpm dev` (Vite preview): clicking the welcome-
+  screen gear renders Settings centred at `468 × 638 px` over the
+  scrim with all sections (Appearance / Palette swatches /
+  Terminal / Updates / Shell Integration / Ghost Diff / Keyboard
+  Shortcuts) cleanly visible. `pnpm test` 803 unchanged. `tsc
+  --noEmit` 0 errors.
+
 - **"Settings won't open" + window chrome polish.** Three connected
   fixes after dogfood feedback that "the gear button does nothing"
   and "the window looks like it's floating on a square transparent
