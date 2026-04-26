@@ -106,6 +106,12 @@ become possible end to end on Windows.
 `scripts/diag-osc-size.mjs` stays in the repo as the cap reproducer.
 The engine `eprintln` instrumentation has been reverted.
 
+### Sprint 2/3 plan
+
+Detailed plan, deliverables, acceptance criteria, sequencing, and
+risks: `docs/chunked-osc-sprint2-3-plan.md`. Five-axis "wizard-grade"
+definition lives there too.
+
 ### Sprint 1 — Engine assembler (2026-05-01, landed)
 
 Protocol spec: `docs/chunked-osc-image-protocol.md`.
