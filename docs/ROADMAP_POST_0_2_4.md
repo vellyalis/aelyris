@@ -52,6 +52,58 @@ how good the engine work was. Tier 🟡 #5 user-value is 0 on Windows.
    `scripts/diag-image-escape.mjs` and `scripts/diag-image-bash.mjs`
    pair stays as the canonical reproducer.
 
+### Spike 2 — OSC side-channel viability (2026-04-30)
+
+Probed how large an OSC payload ConPTY will forward to the host.
+`scripts/diag-osc-size.mjs` emits `\e]1338;<size>;<AAAA…>\a` from
+Git Bash via `printf` and counts arrivals in the engine `eprintln`.
+
+Result on Win11 25H2 build 26200:
+
+| Payload size (raw) | Total OSC bytes | Arrived at engine |
+|--------------------|-----------------|-------------------|
+| 64                 | 75              | ✅                |
+| 256                | 268             | ✅                |
+| 384                | 396             | ✅                |
+| 480                | 492             | ✅                |
+| 496                | 508             | ✅                |
+| 504                | 516             | ❌                |
+| 510                | 522             | ❌                |
+| 512                | 524             | ❌                |
+| 1024 +             | 1036 +          | ❌                |
+
+**ConPTY's OSC forwarding cap is ~512 bytes total per OSC** (so ~503
+bytes after `\e]<id>;…\a` overhead with a short ID). OSCs above the
+cap are silently dropped — same failure mode as APC, just at a higher
+threshold.
+
+**Implication for the side-channel option (#3 in the solution space
+above)**: viable but requires a *chunked* protocol. A 1 KB PNG fits in
+~3 chunks, a 10 KB PNG in ~27 chunks. Per-chunk overhead inflates the
+wire payload to ~1.07x its raw size before base64 (and base64 then adds
+its own 1.33x). For a typical 4 KB inline thumbnail that means ~10
+chunks, ~5 KB of wire bytes, sub-millisecond at any reasonable PTY
+throughput. Workable, but it's now a real protocol design rather than
+a one-line escape change.
+
+Sketch of the protocol direction (no commitment yet, design TBD):
+
+```
+\e]1338;BEGIN;<image-id>;<format>;<width>;<height>\a
+\e]1338;DATA;<image-id>;<chunk-idx>;<base64-block>\a   ← repeat
+\e]1338;END;<image-id>\a
+```
+
+Engine assembler keys on `image-id`, accumulates `DATA` chunks in
+`chunk-idx` order, promotes to `ImageStore` on `END`. A wrapper
+script (`scripts/aether-imgcat.{ps1,sh}`) takes a path, reads the
+file, splits it, and emits the chunks. Standard `chafa -f kitty …`
+still won't work — users must use our wrapper — but inline images
+become possible end to end on Windows.
+
+`scripts/diag-osc-size.mjs` stays in the repo as the cap reproducer.
+The engine `eprintln` instrumentation has been reverted.
+
 ### Solution space (no longer ranked — needs investigation)
 
 - **Bypass ConPTY entirely on Windows**: spawn the child with
