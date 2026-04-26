@@ -45,8 +45,23 @@ describe("InlineResultPanel load-diff effect deps", () => {
       expect(depList).toContain("activeFile");
       expect(depList).toContain("projectPath");
       expect(depList).not.toContain("diffs");
+      // Reload-after-revert relies on a dedicated trigger dep — codex
+      // [P2] regression: dropping `diffs` broke the cache-delete reload
+      // path because the effect no longer re-fired for the same file.
+      expect(depList).toContain("reloadTick");
     }
 
     expect(found).toBe(true);
+  });
+
+  it("revert handler blocks while diff is still loading (codex P1 regression)", () => {
+    const entries = Object.entries(sources);
+    const src = entries[0][1];
+
+    // The revert click handler must reference the cached entry's
+    // `loading` flag — without that guard, a Revert click during the
+    // initial fetch overwrites the file with the placeholder
+    // `original: ""` and silently truncates user data.
+    expect(src).toMatch(/cached\.loading/);
   });
 });

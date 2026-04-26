@@ -50,6 +50,10 @@ function detectLanguage(path: string): string {
 export function InlineResultPanel({ session, projectPath, onClose, onStartAgent }: InlineResultPanelProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [diffs, setDiffs] = useState<Map<string, FileDiffData>>(new Map());
+  // Manual reload trigger. Bumped after a successful Revert so the load
+  // effect re-fires for the same activeFile (the effect can't list `diffs`
+  // in its deps without re-introducing the IPC double-fetch loop).
+  const [reloadTick, setReloadTick] = useState(0);
 
   // Deduplicate changed files (keep latest action per path)
   const uniqueFiles = useMemo(() => {
@@ -112,7 +116,7 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
     return () => {
       cancelled = true;
     };
-  }, [activeFile, projectPath]);
+  }, [activeFile, projectPath, reloadTick]);
 
   if (uniqueFiles.length === 0) {
     return (
@@ -198,20 +202,29 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
                 toast.error("Cannot revert new file", "The file did not exist before this session.");
                 return;
               }
-              const original = diffs.get(activeFile.path)?.original;
-              if (original === undefined) {
-                toast.error("Revert failed", "Original content not available yet.");
+              const cached = diffs.get(activeFile.path);
+              // Block while still loading — the placeholder entry has
+              // `original: ""` and writing that would silently truncate
+              // the file (codex-detected data-loss).
+              if (!cached || cached.loading) {
+                toast.error("Revert unavailable", "Diff is still loading.");
+                return;
+              }
+              if (cached.error) {
+                toast.error("Revert unavailable", "Original content could not be loaded.");
                 return;
               }
               try {
-                await invoke("write_file", { path: activeFile.path, content: original });
+                await invoke("write_file", { path: activeFile.path, content: cached.original });
                 toast.success("Reverted", activeFile.path.split(/[/\\]/).pop() ?? "");
-                // Reload diff
+                // Drop the cache entry and bump the reload tick so the load
+                // effect re-fires for the same activeFile.
                 setDiffs((prev) => {
                   const next = new Map(prev);
                   next.delete(activeFile.path);
                   return next;
                 });
+                setReloadTick((t) => t + 1);
               } catch (err) {
                 toast.error("Revert failed", String(err));
               }
