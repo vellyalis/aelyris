@@ -113,6 +113,21 @@ export function App() {
   const [fileTreeKey, setFileTreeKey] = useState(0);
   const [quickOpenMode, setQuickOpenMode] = useState<"files" | "buffers" | null>(null);
 
+  // Map<tabId, focused-pane PTY id>. Each `<PaneTreeContainer>` reports
+  // its tab's focused-pane PTY id through `onActiveTerminalChange`; the
+  // status-bar inline-image budget badge reads `tabActivePtyIds[active
+  // TabId]` so it polls the correct backend session. PTY id ≠ Tab UUID
+  // — `spawn_terminal` returns a freshly-allocated id that lives in the
+  // pane-tree's private `terminalIds` map, so this lift is the only way
+  // to thread it through to global UI without leaking pane-tree state.
+  const [tabActivePtyIds, setTabActivePtyIds] = useState<Record<string, string | null>>({});
+  const setTabActivePtyId = useCallback((tabId: string, ptyId: string | null) => {
+    setTabActivePtyIds((prev) => {
+      if (prev[tabId] === ptyId) return prev;
+      return { ...prev, [tabId]: ptyId };
+    });
+  }, []);
+
   const {
     tabs,
     activeTab,
@@ -125,6 +140,26 @@ export function App() {
     markTabActivity,
     reorderTab,
   } = useTabManager("powershell");
+  const activePtyId = tabActivePtyIds[activeTabId] ?? null;
+
+  // Prune `tabActivePtyIds` entries whose tab has been closed. Without
+  // this the map grows unboundedly across the lifetime of the session
+  // — minor in practice but trivial to guard against.
+  useEffect(() => {
+    const liveIds = new Set(tabs.map((t) => t.id));
+    setTabActivePtyIds((prev) => {
+      let mutated = false;
+      const next: Record<string, string | null> = {};
+      for (const [id, ptyId] of Object.entries(prev)) {
+        if (liveIds.has(id)) {
+          next[id] = ptyId;
+        } else {
+          mutated = true;
+        }
+      }
+      return mutated ? next : prev;
+    });
+  }, [tabs]);
   const { sessions, activeSessionId, setActiveSessionId, startAgent, stopAgent, renameSession } = useAgentManager();
   const {
     sessions: interactiveSessions,
@@ -496,7 +531,13 @@ export function App() {
 
   const terminalTabs = tabs.map((tab) => (
     <div key={tab.id} className={appStyles.terminalTabPane} data-active={tab.id === activeTabId && !activeInteractive}>
-      <PaneTreeContainer shell={tab.shell} cwd={tab.cwd} />
+      <PaneTreeContainer
+        shell={tab.shell}
+        cwd={tab.cwd}
+        onActiveTerminalChange={(terminalId) => {
+          setTabActivePtyId(tab.id, terminalId);
+        }}
+      />
     </div>
   ));
 
@@ -753,7 +794,7 @@ export function App() {
             branch={branch}
             changedCount={changedFiles.length}
             agentStatus={activeAgent ? `${activeAgent.model} · $${activeAgent.cost.toFixed(2)}` : undefined}
-            terminalId={activeTabId}
+            terminalId={activePtyId}
           />
 
           {paletteVisible && (

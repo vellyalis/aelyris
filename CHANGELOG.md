@@ -8,6 +8,35 @@ All notable changes to Aether Terminal are tracked here. Dates are listed in
 Continuing the post-0.2.3 Tier 3 polish run started with
 `247e813` (search-in-scrollback, Tier 3 #9).
 
+### Reliability
+
+- **Sprint 3 wave 3 wiring fix — StatusBar badge gets the real PTY id**
+  (post-0.2.4 Tier 🔴 #1, follow-up to `6a4a480`). The wave-3
+  commit wired `<StatusBar terminalId={activeTabId} />` directly off
+  the tab UUID, but `term_image_metrics(id)` needs the
+  `spawn_terminal`-allocated PTY id — the two are completely
+  separate identifier spaces (Tab UUID lives in
+  `useTabManager`, PTY id is private state inside
+  `usePaneTree.terminalIds`). The result was a badge that would
+  always have been hidden in production: `term_image_metrics` would
+  have returned `null` for the unknown tab id, the hook would have
+  resolved to a `null` state, and the widget would have rendered
+  nothing. Vitest had no way to catch this because the hook + widget
+  tests inject their own invoke mock; jsdom never crosses the
+  Tauri IPC boundary.
+  Fix: `<PaneTreeContainer>` gains an `onActiveTerminalChange`
+  callback that bubbles the focused-pane PTY id (resolved from
+  `activePaneId` + `terminalIds`, with a single-pane fallback so the
+  unfocused initial pane still surfaces telemetry) up to App. App
+  aggregates the per-tab PTY id in a `Record<tabId, ptyId>` map and
+  passes the active tab's value into `<StatusBar terminalId={…} />`.
+  Stale entries are pruned when their tab closes. `cargo test --lib`
+  unchanged at 473; `pnpm test` 803 (was 799) with 4 new
+  `PaneTreeContainerActiveTerminal` regression specs covering: null
+  on mount, single-pane fallback, ambiguous-with-two-unfocused →
+  null, focus switch promotes the right PTY id. `tsc --noEmit`: 0
+  errors.
+
 ### Internal
 
 - **Chunked-OSC 100-emission stress test** (post-0.2.4 Tier 🔴 #1,
