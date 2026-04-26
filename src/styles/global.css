@@ -669,7 +669,26 @@ body[data-window-focused="false"] {
   color: var(--text-primary);
 }
 
-/* Focus ring — only on interactive inputs, not layout containers */
+/* Focus ring — only on interactive inputs, not layout containers.
+ *
+ * Convention used across the app (audit 2026-05-03):
+ *   - **Outside default `1px`** — kisses the element edge; matches
+ *     this global rule and is the most common (15 sites). Use for
+ *     standalone inputs / buttons / cards in panels with breathing
+ *     room around them.
+ *   - **Outside emphasised `2px`** — slightly more space; reserved
+ *     for hero buttons / dialog action rows where the ring needs
+ *     to read at a glance against busier surfaces.
+ *   - **Inside `-2px`** — for items inside a clipping container
+ *     (list rows, segmented controls, header buttons flush with
+ *     a glass edge). The 2-px ring sits 2 px inset so the parent
+ *     `overflow: hidden` does not eat half of it.
+ *
+ * Stragglers like `-1px` and `-3px` were dial-in attempts; they're
+ * normalised to `-2px` so the ring keeps a single visual rhythm.
+ * Genuine exceptions stay (e.g. `WelcomeScreen.openBtn` uses `3px`
+ * for hero-CTA prominence, `.dragOver` uses `-8px` for a drop-zone
+ * visual that is not a focus ring at all). */
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible,

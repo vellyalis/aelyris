@@ -10,6 +10,35 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### UX
 
+- **Focus-ring offset audit — three valid tiers, two documented
+  exceptions, no more dial-in stragglers.** Dogfood: "tab-cycling
+  through the chrome, half the rings sit 1 px outside, a third
+  inset by 2, a few hop to -3 — looks like nobody owned the
+  convention." Audit pass:
+  - **Outside default `1px`** (15 sites, the global `input /
+    textarea / button / [role=button]:focus-visible` rule and
+    matches across panels) — kisses the element edge, used for
+    standalone inputs / buttons / cards.
+  - **Outside emphasised `2px`** (8 sites) — hero buttons /
+    dialog action rows where the ring needs to read at a glance
+    against busy surfaces.
+  - **Inside `-2px`** (13 sites, was 9 + 4 normalised) — for
+    items in clipping containers (list rows, segmented controls,
+    header buttons flush with a glass edge).
+  - **Stragglers normalised to `-2px`**: `.trigger` (Select),
+    `.hamburger` (MenuBar), `.headerBtn` and `.ctrlBtn`
+    (ProjectHeaderBar) — were `-1px` / `-3px`, now match the rest.
+  - **Documented exceptions** stay: `WelcomeScreen.openBtn` keeps
+    `3px` for hero-CTA prominence; `WelcomeScreen.dragOver` keeps
+    `-8px` because it's a drop-zone affordance, not a focus ring.
+  - Convention codified in a top-of-block comment in
+    `global.css` so the next contributor doesn't redrift.
+  - Vite preview verify: `document.styleSheets` walk found
+    `.hamburger:focus-visible`, `.headerBtn:focus-visible`,
+    `.ctrlBtn:focus-visible` all rendering `outline-offset:
+    -2px` post-edit (was `-1px` / `-3px`).
+  - `pnpm test`: **808** unchanged. `tsc --noEmit`: 0 errors.
+
 - **Scrollbar unification — thin overlay across every panel.**
   Dogfood: "Firefox / new Chromium ship with a 15-px chrome bar
   on every panel — that's the loudest 'browser default' tell on

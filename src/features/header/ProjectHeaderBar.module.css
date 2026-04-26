@@ -157,7 +157,7 @@
 }
 .headerBtn:focus-visible {
   outline: 2px solid var(--gold);
-  outline-offset: -3px;
+  outline-offset: -2px;
 }
 
 /* 1px vertical separator between the app-action cluster (Refresh/Settings)
@@ -196,7 +196,7 @@
  * the title-bar edge (window controls sit flush with the top). */
 .ctrlBtn:focus-visible {
   outline: 2px solid var(--gold) !important;
-  outline-offset: -3px;
+  outline-offset: -2px;
 }
 
 .minimizeBtn:hover {
