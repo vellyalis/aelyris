@@ -10,6 +10,30 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### UX
 
+- **Codex round 5 — close lifecycle two-bug pair.** Review of the
+  pre-terminal-sweep polish range (`2cb99e7`..`c1a0a44`) caught
+  two bugs in the window-close hardening that earlier rounds had
+  missed:
+  - **`core:window:allow-destroy` was missing.** When
+    `App.tsx`'s `onCloseRequested` doesn't `event.preventDefault`,
+    Tauri internally calls `Window.destroy()` to actually tear
+    the window down. We had granted `core:window:allow-close`
+    (the close-request) but `core:default` does not include
+    `allow-destroy`, so the destruction step was being denied —
+    the close request was acknowledged but the window would stay
+    open in the no-unsaved-files happy path. Granted explicitly.
+  - **Hard-stop disarmed too early.** The `Promise.race(close,
+    timeout)` set `closed = true` when `win.close()` resolved,
+    but `close()` resolves on the close-*request* ACK, not when
+    the window is actually destroyed. So in the very stalled-
+    listener scenario the timeout was meant to cover, the IPC
+    resolved fast, the timeout was skipped, and the user was
+    still stuck. Restructured: kick `close()` (fire-and-forget),
+    `await` the unconditional 800 ms timer, then `process.
+    exit(0)`. exit() is a no-op if the renderer is already
+    gone, so the happy path is unchanged; the stall path now
+    actually escalates.
+
 - **Codex round 4 — Windows resource double-compile + IME re-anchor
   on focus return.** Codex review of the dogfood S-tier fix range
   (`7e4aea8`..`8f03c74`) flagged two real regressions the

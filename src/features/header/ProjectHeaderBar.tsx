@@ -57,48 +57,48 @@ export function ProjectHeaderBar({
     } catch {}
   };
   const handleClose = async () => {
-    /* Close path with a hard-stop fallback. Three failure modes had to
-     * be covered by hand because each one masked the others:
+    /* Close path with a hard-stop fallback. Codex review (round 5)
+     * caught the original race: `win.close()` resolves when the
+     * close *request* is acknowledged, NOT when the window is
+     * actually destroyed — destruction happens later inside
+     * `App.tsx`'s `onCloseRequested` callback. So the previous
+     * `Promise.race(closePromise, timeout)` could mark `closed =
+     * true` and skip the fallback in the very stalled-listener
+     * scenario the timeout was meant to cover.
      *
-     *  1. `core:window:allow-close` capability missing → `close()`
-     *     throws `AccessControlNotAllowed`; the bare `catch {}`
-     *     swallows it and the user thinks the button is dead.
-     *  2. `App.tsx`'s `onCloseRequested` hangs (an `await` for window
-     *     position never resolves while the runtime is busy) → close
-     *     never proceeds, no error, no log.
-     *  3. The user has unsaved files and `showConfirm` is rejected
-     *     in some edge case → recursive `win.close()` would loop.
+     * New strategy: kick the proper close lifecycle (so the unsaved
+     * files prompt + bounds save fire), wait the hard-stop window
+     * unconditionally, then call `process.exit(0)`. If the close
+     * actually succeeded, the renderer is already gone and `exit(0)`
+     * is a no-op. If it stalled, exit(0) finishes the job.
      *
-     * Strategy: kick `close()` first so the proper lifecycle gets a
-     * chance (saves bounds, prompts for unsaved files). If it hasn't
-     * completed in 800 ms, fall through to `process.exit(0)` which
-     * tears the process down regardless. Both branches log loudly so
-     * the next regression doesn't disappear. */
+     * Required capabilities: `core:window:allow-close` for the
+     * close-request, `core:window:allow-destroy` for the actual
+     * tear-down inside `onCloseRequested`. Both granted in
+     * `src-tauri/capabilities/default.json`. */
     const HARD_STOP_MS = 800;
-    let closed = false;
+
+    // Kick the close lifecycle. We don't await this — the
+    // unconditional timeout below ensures we always reach the
+    // process.exit fallback after HARD_STOP_MS regardless of how
+    // long Tauri takes to actually destroy the window.
     try {
       const { getCurrentWindow } = await import("@tauri-apps/api/window");
-      const win = getCurrentWindow();
-      const closePromise = win
+      void getCurrentWindow()
         .close()
-        .then(() => {
-          closed = true;
-        })
         .catch((err) => {
           // eslint-disable-next-line no-console
           console.error("[ProjectHeaderBar] window.close() rejected", err);
         });
-      const timeout = new Promise<void>((resolve) => setTimeout(resolve, HARD_STOP_MS));
-      await Promise.race([closePromise, timeout]);
-      if (closed) return;
-      // eslint-disable-next-line no-console
-      console.warn(
-        `[ProjectHeaderBar] window.close() did not resolve within ${HARD_STOP_MS}ms — escalating to process.exit`,
-      );
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.error("[ProjectHeaderBar] window.close() threw before resolving", err);
+      console.error("[ProjectHeaderBar] failed to import @tauri-apps/api/window", err);
     }
+
+    // Wait for the lifecycle to complete (or stall). exit(0) is
+    // safe to call whether or not the window was already destroyed.
+    await new Promise<void>((resolve) => setTimeout(resolve, HARD_STOP_MS));
+
     try {
       const { exit } = await import("@tauri-apps/plugin-process");
       await exit(0);
