@@ -1,6 +1,7 @@
 import { PanelLeft, PanelLeftClose, RefreshCw, Settings } from "lucide-react";
 import logoSvg from "../../assets/logo.svg";
 import { useAttenuatedPulse } from "../../shared/hooks/useAttenuatedPulse";
+import { useAppStore } from "../../shared/store/appStore";
 import { MenuBar, type Menu } from "../menubar/MenuBar";
 import styles from "./ProjectHeaderBar.module.css";
 
@@ -57,31 +58,32 @@ export function ProjectHeaderBar({
     } catch {}
   };
   const handleClose = async () => {
-    /* Close path with a hard-stop fallback. Codex review (round 5)
-     * caught the original race: `win.close()` resolves when the
-     * close *request* is acknowledged, NOT when the window is
-     * actually destroyed — destruction happens later inside
-     * `App.tsx`'s `onCloseRequested` callback. So the previous
-     * `Promise.race(closePromise, timeout)` could mark `closed =
-     * true` and skip the fallback in the very stalled-listener
-     * scenario the timeout was meant to cover.
+    /* Close path. Two failure modes have to be covered while NOT
+     * trampling the unsaved-changes confirmation:
      *
-     * New strategy: kick the proper close lifecycle (so the unsaved
-     * files prompt + bounds save fire), wait the hard-stop window
-     * unconditionally, then call `process.exit(0)`. If the close
-     * actually succeeded, the renderer is already gone and `exit(0)`
-     * is a no-op. If it stalled, exit(0) finishes the job.
+     *  1. Capability denied (`core:window:allow-close` /
+     *     `allow-destroy`) → `close()` rejects, the renderer is
+     *     never torn down. Caught logs + a hard-stop fallback to
+     *     `process.exit(0)` covers this.
      *
-     * Required capabilities: `core:window:allow-close` for the
-     * close-request, `core:window:allow-destroy` for the actual
-     * tear-down inside `onCloseRequested`. Both granted in
-     * `src-tauri/capabilities/default.json`. */
+     *  2. Stalled `onCloseRequested` (an `await win.outerPosition()`
+     *     never resolves while the runtime is busy). Same hard-stop
+     *     fallback covers it.
+     *
+     * Critical NOT-bug (Codex r6): when the user has unsaved files
+     * the close lifecycle calls `event.preventDefault()` and waits
+     * for `showConfirm`. A blanket "exit after 800 ms" would
+     * silently kill the process while the confirm dialog is still
+     * up, losing the user's edits. So the fallback only arms when
+     * `unsavedFiles.size === 0` — the happy path that should
+     * complete in well under 800 ms. With unsaved files we just
+     * fire `close()` and let the confirm dialog drive the
+     * lifecycle to completion (either user confirms → close
+     * proceeds, or cancels → window stays).
+     */
     const HARD_STOP_MS = 800;
+    const hasUnsaved = useAppStore.getState().unsavedFiles.size > 0;
 
-    // Kick the close lifecycle. We don't await this — the
-    // unconditional timeout below ensures we always reach the
-    // process.exit fallback after HARD_STOP_MS regardless of how
-    // long Tauri takes to actually destroy the window.
     try {
       const { getCurrentWindow } = await import("@tauri-apps/api/window");
       void getCurrentWindow()
@@ -95,9 +97,20 @@ export function ProjectHeaderBar({
       console.error("[ProjectHeaderBar] failed to import @tauri-apps/api/window", err);
     }
 
-    // Wait for the lifecycle to complete (or stall). exit(0) is
-    // safe to call whether or not the window was already destroyed.
+    if (hasUnsaved) {
+      // Let the confirm dialog drive the rest of the lifecycle.
+      // No hard-stop here — exit(0) during a live confirm would
+      // discard unsaved edits.
+      return;
+    }
+
     await new Promise<void>((resolve) => setTimeout(resolve, HARD_STOP_MS));
+
+    // Re-check unsaved state *after* the timeout: if an autosave
+    // landed, or `markUnsaved` fired between the two reads, the
+    // confirm path may now be active. Guard once more before we
+    // pull the trigger on `exit(0)`.
+    if (useAppStore.getState().unsavedFiles.size > 0) return;
 
     try {
       const { exit } = await import("@tauri-apps/plugin-process");

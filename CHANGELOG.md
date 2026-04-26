@@ -10,6 +10,20 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### UX
 
+- **Codex round 6 — close-button must not bypass unsaved-changes
+  confirmation (P1 data-loss).** The previous round-5 fix put the
+  hard-stop fallback `unconditionally` after the timeout — so
+  with unsaved files, the user clicks ×, `App.tsx`'s
+  `onCloseRequested` calls `event.preventDefault()` and shows the
+  confirm dialog, and 800 ms later `process.exit(0)` fires while
+  the dialog is still up — losing the user's edits with no
+  warning. The fallback now reads `useAppStore.getState().
+  unsavedFiles.size` first; with unsaved edits we just call
+  `close()` and let the confirm dialog drive the lifecycle (no
+  timer, no exit). Without unsaved edits the timer arms as
+  before, plus a second `unsavedFiles.size > 0` guard at the
+  fallback firing point catches a `markUnsaved` race.
+
 - **Codex round 5 — close lifecycle two-bug pair.** Review of the
   pre-terminal-sweep polish range (`2cb99e7`..`c1a0a44`) caught
   two bugs in the window-close hardening that earlier rounds had
