@@ -10,6 +10,34 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### UX
 
+- **Codex round 4 — Windows resource double-compile + IME re-anchor
+  on focus return.** Codex review of the dogfood S-tier fix range
+  (`7e4aea8`..`8f03c74`) flagged two real regressions the
+  in-session work introduced:
+  - **`build.rs` was compiling Windows resources twice.**
+    `tauri_build::build()` already invokes `tauri-winres`
+    internally on Windows and writes the same
+    `OUT_DIR/resource.lib`. The custom `tauri_winres::
+    WindowsResource` step we added in `8f03c74` ran first, then
+    Tauri's path overwrote the file — the linker received
+    duplicate resource inputs and our metadata could be lost
+    depending on link order. Removed the custom step; metadata
+    now flows exclusively through `tauri.conf.json bundle`
+    (`productName` / `publisher` / `copyright` / `category`),
+    which Tauri's built-in path already reads. Dropped the
+    `tauri-winres` build-dependency to keep the surface
+    minimal.
+  - **`useImePosition` left stale IMM coordinates after a
+    focus return from IMEInputBar.** The previous "fire on
+    cursor move only" path didn't re-emit `set_ime_position`
+    when the user focused the canvas textarea without moving
+    the PTY cursor — the IMM context kept the IMEInputBar's
+    coordinates and the next canvas IME composition popped its
+    candidate window at the bottom-right again. Centralised
+    the push into a `pushImePosition` callback and registered
+    `focus` / `compositionstart` listeners on the textarea so
+    every transition into canvas-typing re-anchors IMM.
+
 - **`SplitPane` clamp now handles `total < 2 * minSize`.** Codex
   re-review (round 2) flagged that the keyboard-resize fix still
   blew up on a SplitPane narrower than `2 * minSize` (e.g. a

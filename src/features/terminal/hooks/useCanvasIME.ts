@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import { keyEventToBytes } from "../keymap";
 
@@ -210,24 +210,46 @@ export interface UseImePositionArgs {
  * to the focused element's natural position on the next composition.
  */
 export function useImePosition({ textarea, cursor, cellWidth, cellHeight, canvas }: UseImePositionArgs) {
+  /* Push the canvas-cursor IMM position through the IPC. Codex review
+   * (round 4) caught that the previous "fire on cursor move only" loop
+   * left stale IMM coordinates when the user pinged-pinged between the
+   * IMEInputBar and the canvas without the PTY cursor moving — the
+   * candidate window would still pop near the IMEInputBar on the next
+   * canvas composition because we never re-emitted. Centralising the
+   * push lets us reuse it from the focus / compositionstart hooks
+   * below. */
+  const pushImePosition = useCallback(() => {
+    if (!textarea || !cursor || !canvas) return;
+    if (typeof document === "undefined" || document.activeElement !== textarea) return;
+    const rect = canvas.getBoundingClientRect();
+    const screenX = rect.left + cursor.col * cellWidth;
+    const screenY = rect.top + cursor.row * cellHeight + cellHeight;
+    invoke("set_ime_position", { x: screenX, y: screenY }).catch(() => {});
+  }, [textarea, cursor, canvas, cellWidth, cellHeight]);
+
+  // Mirror the cursor position to the textarea's CSS box (so the
+  // browser-native IME path has a sensible default anchor) and steer
+  // IMM when we own focus.
   useEffect(() => {
     if (!textarea || !cursor || !canvas) return;
-    const left = cursor.col * cellWidth;
-    const top = cursor.row * cellHeight;
-    textarea.style.left = `${left}px`;
-    textarea.style.top = `${top}px`;
+    textarea.style.left = `${cursor.col * cellWidth}px`;
+    textarea.style.top = `${cursor.row * cellHeight}px`;
+    pushImePosition();
+  }, [textarea, cursor?.row, cursor?.col, cellWidth, cellHeight, canvas, pushImePosition]);
 
-    // Only steer IMM when our hidden textarea actually owns the OS focus.
-    // Otherwise the user is typing in IMEInputBar / Settings / palette
-    // / Quick Open / etc. and we would mis-anchor their candidate window.
-    if (typeof document === "undefined" || document.activeElement !== textarea) {
-      return;
-    }
-
-    const rect = canvas.getBoundingClientRect();
-    const screenX = rect.left + left;
-    // +cellHeight so the candidate window sits just below the caret.
-    const screenY = rect.top + top + cellHeight;
-    invoke("set_ime_position", { x: screenX, y: screenY }).catch(() => {});
-  }, [textarea, cursor?.row, cursor?.col, cellWidth, cellHeight, canvas]);
+  // Re-push on focus / compositionstart so a focus return from
+  // IMEInputBar or any other text input that called `set_ime_position`
+  // re-anchors the IMM context to the canvas caret. Without this, the
+  // first canvas composition after a focus return would still open the
+  // candidate window at the previous input's coordinates.
+  useEffect(() => {
+    if (!textarea) return;
+    const reanchor = () => pushImePosition();
+    textarea.addEventListener("focus", reanchor);
+    textarea.addEventListener("compositionstart", reanchor);
+    return () => {
+      textarea.removeEventListener("focus", reanchor);
+      textarea.removeEventListener("compositionstart", reanchor);
+    };
+  }, [textarea, pushImePosition]);
 }
