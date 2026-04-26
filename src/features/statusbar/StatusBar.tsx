@@ -1,9 +1,11 @@
 import { Cpu, FileText, GitBranch, Layers, Wrench } from "lucide-react";
 import { useState } from "react";
 import { useGhostLayers } from "../../shared/hooks/useGhostLayers";
+import { useImageMetrics } from "../../shared/hooks/useImageMetrics";
 import { useRepairJobs } from "../../shared/hooks/useRepairJobs";
 import { GhostDiffPanel } from "../ghost-diff/GhostDiffPanel";
 import { RepairJobsPanel } from "../repair/RepairJobsPanel";
+import { InlineImageBudget } from "./InlineImageBudget";
 import styles from "./StatusBar.module.css";
 
 interface StatusBarProps {
@@ -12,13 +14,28 @@ interface StatusBarProps {
   changedCount: number;
   encoding?: string;
   agentStatus?: string;
+  /**
+   * PTY id of the currently active terminal pane. Powers the inline-
+   * image budget badge (Sprint 3 wave 3) — `null` keeps the badge
+   * hidden, which is the right behaviour while a pane is still
+   * spawning or no pane has focus yet.
+   */
+  terminalId?: string | null;
 }
 
-export function StatusBar({ shell, branch, changedCount, encoding = "UTF-8", agentStatus }: StatusBarProps) {
+export function StatusBar({
+  shell,
+  branch,
+  changedCount,
+  encoding = "UTF-8",
+  agentStatus,
+  terminalId = null,
+}: StatusBarProps) {
   const [repairOpen, setRepairOpen] = useState(false);
   const [ghostOpen, setGhostOpen] = useState(false);
   const { jobs, activeCount, config, setEnabled } = useRepairJobs();
   const { layers: ghostLayers, activeCount: ghostActiveCount, dismiss: dismissGhost } = useGhostLayers();
+  const imageMetrics = useImageMetrics(terminalId);
 
   const repairActive = config.enabled || activeCount > 0;
   const ghostActive = ghostLayers.length > 0;
@@ -42,6 +59,7 @@ export function StatusBar({ shell, branch, changedCount, encoding = "UTF-8", age
         <span className={`${styles.item} ${styles.passive}`}>{shell}</span>
       </div>
       <div className={styles.right}>
+        <InlineImageBudget metrics={imageMetrics} />
         {agentStatus && (
           <span className={`${styles.item} ${styles.passive}`}>
             <Cpu size={10} strokeWidth={1.75} aria-hidden="true" />

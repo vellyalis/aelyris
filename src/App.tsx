@@ -753,6 +753,7 @@ export function App() {
             branch={branch}
             changedCount={changedFiles.length}
             agentStatus={activeAgent ? `${activeAgent.model} · $${activeAgent.cost.toFixed(2)}` : undefined}
+            terminalId={activeTabId}
           />
 
           {paletteVisible && (

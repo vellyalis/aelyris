@@ -163,6 +163,43 @@ impl LogRing {
             g.push(entry);
         }
     }
+
+    /// Record a structured `image_evicted` event for the in-app log
+    /// viewer + status-bar widget. Sprint 3 wave 3 calls this from the
+    /// term-engine's image-store insert path so a power user can see
+    /// when the per-pane FIFO cap (default 50 MiB) silently dropped
+    /// older inline images.
+    ///
+    /// `terminal_id` is omitted from the field map when empty so engine
+    /// instances constructed without a session id (unit tests) don't
+    /// surface a confusing `terminal_id=""` row.
+    pub fn log_image_evicted(
+        &self,
+        terminal_id: &str,
+        evicted_count: usize,
+        evicted_bytes: usize,
+        remaining_bytes_used: usize,
+        cap: usize,
+    ) {
+        let mut fields = HashMap::new();
+        fields.insert("event".into(), "image_evicted".into());
+        if !terminal_id.is_empty() {
+            fields.insert("terminal_id".into(), terminal_id.to_string());
+        }
+        fields.insert("evicted_count".into(), evicted_count.to_string());
+        fields.insert("evicted_bytes".into(), evicted_bytes.to_string());
+        fields.insert(
+            "remaining_bytes_used".into(),
+            remaining_bytes_used.to_string(),
+        );
+        fields.insert("cap".into(), cap.to_string());
+        let plural = if evicted_count == 1 { "y" } else { "ies" };
+        let message = format!(
+            "inline-image cap eviction (FIFO): dropped {evicted_count} entr{plural} / \
+             {evicted_bytes} bytes; {remaining_bytes_used} of {cap} bytes retained"
+        );
+        self.push_entry("WARN", "aether_terminal_lib::term::images", message, fields);
+    }
 }
 
 static GLOBAL_RING: OnceLock<LogRing> = OnceLock::new();
@@ -402,5 +439,51 @@ mod tests {
         assert_eq!(only.level, "WARN");
         assert_eq!(only.target, "module::sub");
         assert_eq!(only.fields.get("k").map(String::as_str), Some("v"));
+    }
+
+    #[test]
+    fn log_image_evicted_pushes_structured_warn_entry() {
+        let ring = fresh_ring();
+        ring.log_image_evicted("term-1", 2, 4096, 49 * 1024 * 1024, 50 * 1024 * 1024);
+        let only = ring.recent(1).into_iter().next().unwrap();
+        assert_eq!(only.level, "WARN");
+        assert_eq!(only.target, "aether_terminal_lib::term::images");
+        assert_eq!(
+            only.fields.get("event").map(String::as_str),
+            Some("image_evicted"),
+        );
+        assert_eq!(
+            only.fields.get("terminal_id").map(String::as_str),
+            Some("term-1"),
+        );
+        assert_eq!(only.fields.get("evicted_count").map(String::as_str), Some("2"));
+        assert_eq!(only.fields.get("evicted_bytes").map(String::as_str), Some("4096"));
+        assert_eq!(
+            only.fields.get("remaining_bytes_used").map(String::as_str),
+            Some(&*format!("{}", 49 * 1024 * 1024)),
+        );
+        assert_eq!(
+            only.fields.get("cap").map(String::as_str),
+            Some(&*format!("{}", 50 * 1024 * 1024)),
+        );
+        assert!(only.message.contains("2 entries"));
+    }
+
+    #[test]
+    fn log_image_evicted_uses_singular_for_one_entry() {
+        let ring = fresh_ring();
+        ring.log_image_evicted("term-x", 1, 100, 200, 1024);
+        let only = ring.recent(1).into_iter().next().unwrap();
+        assert!(only.message.contains("1 entry"));
+        assert!(!only.message.contains("entries"));
+    }
+
+    #[test]
+    fn log_image_evicted_omits_empty_terminal_id() {
+        let ring = fresh_ring();
+        ring.log_image_evicted("", 1, 100, 100, 1024);
+        let only = ring.recent(1).into_iter().next().unwrap();
+        assert!(!only.fields.contains_key("terminal_id"));
+        assert_eq!(only.fields.get("event").map(String::as_str), Some("image_evicted"));
     }
 }

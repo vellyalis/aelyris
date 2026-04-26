@@ -16,10 +16,12 @@ use alacritty_terminal::term::{Config, cell::Cell};
 use alacritty_terminal::vte::ansi::Processor;
 use alacritty_terminal::Term;
 
+use crate::logging::LogRing;
+
 use super::images::{
-    AssemblerOutcome, ChunkAssembler, ChunkedOscParseStep, ChunkedOscPayload, ImageId,
-    ImagePlacement, ImageStore, KittyChunkAssembler, ParseStep as ImageParseStep, decode_kitty,
-    decode_sixel, parse_kitty_header, try_parse as try_parse_image,
+    AssemblerOutcome, ChunkAssembler, ChunkedOscParseStep, ChunkedOscPayload, EvictionStats,
+    ImageId, ImagePlacement, ImageStore, KittyChunkAssembler, ParseStep as ImageParseStep,
+    decode_kitty, decode_sixel, parse_kitty_header, try_parse as try_parse_image,
     try_parse_chunked_osc,
 };
 use super::images::sequences::{ImagePayload, ImageProtocol};
@@ -93,11 +95,38 @@ pub struct TermEngine {
     /// Win11 25H2 where ConPTY strips Kitty APC and truncates OSCs over
     /// ~512 bytes — see `docs/chunked-osc-image-protocol.md`.
     chunked_osc: ChunkAssembler,
+    /// PTY id this engine was constructed for. Surfaced in the
+    /// `image_evicted` structured log event so the Tier 🟡 #7 viewer
+    /// can attribute eviction pressure to a specific pane. Empty for
+    /// engines built via `TermEngine::new` (test paths) — the helper
+    /// omits the field rather than logging `terminal_id=""`.
+    terminal_id: String,
+    /// Shared structured-log ring. Cloned cheaply (Arc inside) when the
+    /// native registry hands its process-wide handle to each engine on
+    /// `create()`. Tests construct an isolated `LogRing::new()` so
+    /// concurrent suite runs don't race on a global buffer.
+    log_ring: LogRing,
 }
 
 impl TermEngine {
-    /// Create a new engine with the given grid dimensions.
+    /// Create a new engine with the given grid dimensions. Used by the
+    /// alacritty-only unit tests; surfaces no `terminal_id` and an
+    /// independent `LogRing` so eviction events go to a private buffer
+    /// the test can ignore.
     pub fn new(cols: usize, rows: usize) -> Result<Self, TermEngineError> {
+        Self::new_with_telemetry(cols, rows, String::new(), LogRing::new())
+    }
+
+    /// Create a new engine bound to a specific PTY id and structured-log
+    /// ring. Production callers (`NativeTerminalRegistry::create`) wire
+    /// `crate::logging::ring_buffer()` here so eviction events flow into
+    /// the same ring that powers the in-app log viewer + status badge.
+    pub fn new_with_telemetry(
+        cols: usize,
+        rows: usize,
+        terminal_id: String,
+        log_ring: LogRing,
+    ) -> Result<Self, TermEngineError> {
         if cols == 0 || rows == 0 {
             return Err(TermEngineError::InvalidDimensions { cols, rows });
         }
@@ -112,7 +141,26 @@ impl TermEngine {
             images: ImageStore::new(),
             kitty_chunks: KittyChunkAssembler::new(),
             chunked_osc: ChunkAssembler::new(),
+            terminal_id,
+            log_ring,
         })
+    }
+
+    /// Forward an eviction summary from `ImageStore::insert_full` into
+    /// the structured-log ring as an `image_evicted` event. No-op when
+    /// the insert did not displace anything — keeps the ring noise-free
+    /// for the common case where the cap has plenty of headroom.
+    fn record_eviction(&self, eviction: EvictionStats) {
+        if eviction.is_empty() {
+            return;
+        }
+        self.log_ring.log_image_evicted(
+            &self.terminal_id,
+            eviction.count,
+            eviction.bytes,
+            self.images.bytes_used(),
+            self.images.cap(),
+        );
     }
 
     /// Feed raw PTY bytes into the parser, advancing terminal state.
@@ -273,21 +321,23 @@ impl TermEngine {
         match self.chunked_osc.ingest(payload) {
             AssemblerOutcome::Pending => {}
             AssemblerOutcome::Completed { raw_bytes, decoded, .. } => {
-                self.images.insert_full(
+                let (_id, eviction) = self.images.insert_full(
                     ImageProtocol::Kitty,
                     raw_bytes,
                     Some(decoded),
                     placement,
                 );
+                self.record_eviction(eviction);
             }
             AssemblerOutcome::Failed { partial_bytes, .. } => {
                 if !partial_bytes.is_empty() {
-                    self.images.insert_full(
+                    let (_id, eviction) = self.images.insert_full(
                         ImageProtocol::Kitty,
                         partial_bytes,
                         None,
                         placement,
                     );
+                    self.record_eviction(eviction);
                 }
             }
         }
@@ -314,22 +364,26 @@ impl TermEngine {
                 let (resolved_header, body) = self.kitty_chunks.ingest(header, payload.body)?;
                 let raw_bytes = body.clone();
                 let decoded = decode_kitty(&resolved_header, &body).ok();
-                Some(self.images.insert_full(
+                let (id, eviction) = self.images.insert_full(
                     ImageProtocol::Kitty,
                     raw_bytes,
                     decoded,
                     placement,
-                ))
+                );
+                self.record_eviction(eviction);
+                Some(id)
             }
             ImageProtocol::Sixel => {
                 let raw_bytes = payload.body.clone();
                 let decoded = decode_sixel(&payload.body, &payload.header).ok();
-                Some(self.images.insert_full(
+                let (id, eviction) = self.images.insert_full(
                     ImageProtocol::Sixel,
                     raw_bytes,
                     decoded,
                     placement,
-                ))
+                );
+                self.record_eviction(eviction);
+                Some(id)
             }
         }
     }
@@ -922,5 +976,104 @@ mod tests {
             second[0].history_size,
             first[0].history_size,
         );
+    }
+
+    // ---------- Sprint 3 wave 3 — image eviction structured log -------
+
+    #[test]
+    fn record_eviction_pushes_image_evicted_log_with_metadata() {
+        // Direct unit-level check: the helper is what carries the
+        // wire format, so verifying it through `record_eviction` keeps
+        // the test fast and decoupled from the parser. The integration
+        // test below exercises the full advance() → store path.
+        let ring = LogRing::new();
+        let engine =
+            TermEngine::new_with_telemetry(80, 24, "term-9".into(), ring.clone()).expect("engine");
+
+        engine.record_eviction(EvictionStats {
+            count: 3,
+            bytes: 4096,
+        });
+
+        let only = ring.recent(1).into_iter().next().expect("event recorded");
+        assert_eq!(only.level, "WARN");
+        assert_eq!(
+            only.fields.get("event").map(String::as_str),
+            Some("image_evicted"),
+        );
+        assert_eq!(
+            only.fields.get("terminal_id").map(String::as_str),
+            Some("term-9"),
+        );
+        assert_eq!(only.fields.get("evicted_count").map(String::as_str), Some("3"));
+        assert_eq!(only.fields.get("evicted_bytes").map(String::as_str), Some("4096"));
+        // bytes_used / cap reflect the live store, which the helper
+        // resolves at emit time — for an empty engine that's 0/cap.
+        assert_eq!(
+            only.fields.get("remaining_bytes_used").map(String::as_str),
+            Some("0"),
+        );
+    }
+
+    #[test]
+    fn record_eviction_is_silent_when_no_eviction_occurred() {
+        let ring = LogRing::new();
+        let engine =
+            TermEngine::new_with_telemetry(80, 24, "term-x".into(), ring.clone()).expect("engine");
+        engine.record_eviction(EvictionStats::default());
+        assert_eq!(
+            ring.recent(10).len(),
+            0,
+            "default-empty stats must not push a log event",
+        );
+    }
+
+    #[test]
+    fn chunked_osc_pipeline_emits_image_evicted_when_cap_overflows() {
+        // End-to-end: drive three single-chunk OSC 1338 frames through
+        // the engine with a deliberately tiny image cap so the third
+        // insert evicts the first. Asserts the eviction surfaces as a
+        // structured `image_evicted` event in the engine's log ring.
+        use base64::Engine;
+        use base64::engine::general_purpose::STANDARD as B64;
+
+        let ring = LogRing::new();
+        let mut engine =
+            TermEngine::new_with_telemetry(80, 24, "term-cap".into(), ring.clone()).expect("engine");
+        // Replace the default 50-MiB store with a tiny cap so the test
+        // forces eviction without piping multi-megabyte payloads. The
+        // helper is gated to test-only construction paths.
+        engine.images = ImageStore::with_cap(32);
+
+        // 1×1 PNG signature + IHDR-ish bytes — decode fails (image::load
+        // can't render this stub), so the engine takes the Failed branch
+        // and stores `partial_bytes` only. That is enough to trigger
+        // eviction since each entry's footprint is just the raw bytes.
+        let raw: &[u8] = b"\x89PNG\r\n\x1a\nXYZ"; // 11 bytes
+        let b64 = B64.encode(raw);
+        for image_id in 1..=3u32 {
+            let frame = format!(
+                "\x1b]1338;B;{image_id};png;1;1\x07\x1b]1338;D;{image_id};0;{b64}\x07\x1b]1338;E;{image_id}\x07"
+            );
+            let _ = engine.advance(frame.as_bytes());
+        }
+
+        let entries = ring.recent(50);
+        let evicted: Vec<_> = entries
+            .iter()
+            .filter(|e| e.fields.get("event").map(String::as_str) == Some("image_evicted"))
+            .collect();
+        assert!(
+            !evicted.is_empty(),
+            "third frame should evict at least one prior entry; got entries={entries:?}"
+        );
+        let first_evict = &evicted[0];
+        assert_eq!(first_evict.level, "WARN");
+        assert_eq!(
+            first_evict.fields.get("terminal_id").map(String::as_str),
+            Some("term-cap"),
+        );
+        // Cap is the small test-only cap, surfaced as a string field.
+        assert_eq!(first_evict.fields.get("cap").map(String::as_str), Some("32"));
     }
 }

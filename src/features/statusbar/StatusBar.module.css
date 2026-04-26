@@ -178,3 +178,29 @@
    * as they change (Wave 3.1 typography polish). */
   font-variant-numeric: tabular-nums;
 }
+
+/* Sprint 3 wave 3 — inline-image cap budget badge.
+ *
+ * Lives in the right cluster alongside agent status / encoding so it
+ * sits next to the other read-only telemetry. The default tier matches
+ * `.passive` so a healthy budget reads as muted; warn / danger tiers
+ * promote to catppuccin yellow / red as the FIFO cap fills up. */
+.imageBudget {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.imageBudgetText {
+  /* Keep the byte / count text aligned across re-renders so the badge
+   * doesn't visually jitter as numbers tick up. */
+  font-variant-numeric: tabular-nums;
+}
+
+.imageBudgetWarn {
+  color: var(--ctp-yellow, #f9e2af);
+}
+
+.imageBudgetDanger {
+  color: var(--ctp-red, #f38ba8);
+  font-weight: var(--weight-medium);
+}

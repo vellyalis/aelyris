@@ -57,7 +57,13 @@ impl NativeTerminalRegistry {
             return Ok(());
         }
         log::debug!("native session create id={id} cols={cols} rows={rows}");
-        let engine = TermEngine::new(cols as usize, rows as usize).map_err(|e| {
+        let engine = TermEngine::new_with_telemetry(
+            cols as usize,
+            rows as usize,
+            id.to_string(),
+            crate::logging::ring_buffer(),
+        )
+        .map_err(|e| {
             log::error!("native session create rejected id={id}: {e}");
             e.to_string()
         })?;

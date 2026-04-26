@@ -26,6 +26,25 @@ use super::sequences::ImageProtocol;
 /// constructor.
 pub const IMAGE_BYTE_CAP: usize = 50 * 1024 * 1024;
 
+/// Side-effect summary for a single `insert_full` call. The engine surfaces
+/// non-empty stats through a structured `image_evicted` log event so the
+/// status-bar widget (Sprint 3 wave 3) and the in-app log viewer (Tier 🟡
+/// #7) both see when the per-pane cap forced a FIFO drop.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct EvictionStats {
+    /// Number of entries evicted to make room for the new payload.
+    pub count: usize,
+    /// Total footprint (raw + decoded) of the evicted entries.
+    pub bytes: usize,
+}
+
+impl EvictionStats {
+    /// `true` when the insert did not displace any prior entries.
+    pub fn is_empty(self) -> bool {
+        self.count == 0
+    }
+}
+
 /// Strongly-typed monotonic image identifier. Wraps `u64` so a session
 /// could plausibly run for the heat-death of the universe before the
 /// counter saturated, which is the right safety margin for an id that
@@ -123,21 +142,29 @@ impl ImageStore {
     ///
     /// Convenience wrapper around `insert_full` for callers that don't
     /// have a decoded payload or a meaningful placement (mostly tests
-    /// for the store's own eviction / id semantics).
+    /// for the store's own eviction / id semantics). Eviction stats are
+    /// discarded — callers that need them must use `insert_full` directly.
     pub fn insert(&mut self, protocol: ImageProtocol, bytes: Vec<u8>) -> ImageId {
-        self.insert_full(protocol, bytes, None, ImagePlacement::default())
+        let (id, _) = self.insert_full(protocol, bytes, None, ImagePlacement::default());
+        id
     }
 
     /// Insert with an optional decoded payload and the cursor placement
     /// recorded at consumption time. The decoded buffer's length counts
     /// against the same per-session cap as the raw bytes.
+    ///
+    /// Returns the new `ImageId` and an `EvictionStats` summary describing
+    /// any FIFO eviction triggered by this call (default-empty when the
+    /// new payload fit without displacing anything). The engine surfaces a
+    /// non-empty `EvictionStats` as a structured `image_evicted` log event
+    /// so observability (status bar + log viewer) can see cap pressure.
     pub fn insert_full(
         &mut self,
         protocol: ImageProtocol,
         bytes: Vec<u8>,
         decoded: Option<DecodedImage>,
         placement: ImagePlacement,
-    ) -> ImageId {
+    ) -> (ImageId, EvictionStats) {
         let id = ImageId(self.next_id);
         self.next_id = self.next_id.checked_add(1).expect("ImageId u64 overflow");
 
@@ -146,9 +173,13 @@ impl ImageStore {
         // already larger than the cap, we'll still flush everything older
         // before storing — but stop trying to make room once the deque
         // is empty so we don't spin.
+        let mut eviction = EvictionStats::default();
         while !self.entries.is_empty() && self.bytes_used + needed > self.cap {
             if let Some(evicted) = self.entries.pop_front() {
-                self.bytes_used -= evicted.footprint();
+                let footprint = evicted.footprint();
+                self.bytes_used -= footprint;
+                eviction.count += 1;
+                eviction.bytes += footprint;
             }
         }
 
@@ -160,7 +191,7 @@ impl ImageStore {
             decoded,
             placement,
         });
-        id
+        (id, eviction)
     }
 
     /// Attach a decoded payload to an existing entry. Returns `true` if
@@ -329,7 +360,7 @@ mod tests {
     fn insert_full_charges_decoded_buffer_to_cap() {
         let mut s = ImageStore::with_cap(1024);
         let dec = rgba8(2, 2); // 16 bytes
-        let id = s.insert_full(
+        let (id, eviction) = s.insert_full(
             ImageProtocol::Sixel,
             b"raw".to_vec(),
             Some(dec),
@@ -338,6 +369,7 @@ mod tests {
         let e = s.get(id).unwrap();
         assert!(e.decoded.is_some());
         assert_eq!(s.bytes_used(), 3 + 16);
+        assert!(eviction.is_empty(), "first insert never evicts");
     }
 
     #[test]
@@ -355,7 +387,7 @@ mod tests {
     #[test]
     fn attach_decoded_replaces_prior_decoded_buffer() {
         let mut s = ImageStore::with_cap(1024);
-        let id = s.insert_full(
+        let (id, _) = s.insert_full(
             ImageProtocol::Sixel,
             b"raw".to_vec(),
             Some(rgba8(2, 2)),
@@ -378,19 +410,19 @@ mod tests {
         // decoded 36 = 41. Third: raw 5 + decoded 25 = 30 — total without
         // eviction would be 112, so the first entry evicts.
         let mut s = ImageStore::with_cap(100);
-        let a = s.insert_full(
+        let (a, ev_a) = s.insert_full(
             ImageProtocol::Sixel,
             vec![0; 5],
             Some(rgba8(3, 3)),
             ImagePlacement::default(),
         );
-        let b = s.insert_full(
+        let (b, ev_b) = s.insert_full(
             ImageProtocol::Sixel,
             vec![0; 5],
             Some(rgba8(3, 3)),
             ImagePlacement::default(),
         );
-        let c = s.insert_full(
+        let (c, ev_c) = s.insert_full(
             ImageProtocol::Sixel,
             vec![0; 5],
             Some(rgba8(2, 3)),
@@ -399,6 +431,10 @@ mod tests {
         assert!(s.get(a).is_none(), "oldest should evict");
         assert!(s.get(b).is_some());
         assert!(s.get(c).is_some());
+        assert!(ev_a.is_empty());
+        assert!(ev_b.is_empty());
+        assert_eq!(ev_c.count, 1);
+        assert_eq!(ev_c.bytes, 5 + 36, "evicted entry's full footprint reported");
     }
 
     #[test]
@@ -409,13 +445,55 @@ mod tests {
             screen_row_at_insert: 3,
             col_at_insert: 17,
         };
-        let id = s.insert_full(
+        let (id, _) = s.insert_full(
             ImageProtocol::Kitty,
             b"raw".to_vec(),
             None,
             placement,
         );
         assert_eq!(s.get(id).unwrap().placement, placement);
+    }
+
+    #[test]
+    fn insert_full_reports_multi_eviction_stats() {
+        // Cap 10. Three 4-byte entries: first two fit, third forces both
+        // older entries to evict so the new payload fits.
+        let mut s = ImageStore::with_cap(10);
+        let _ = s.insert_full(
+            ImageProtocol::Kitty,
+            vec![0; 4],
+            None,
+            ImagePlacement::default(),
+        );
+        let _ = s.insert_full(
+            ImageProtocol::Kitty,
+            vec![0; 4],
+            None,
+            ImagePlacement::default(),
+        );
+        let (_, eviction) = s.insert_full(
+            ImageProtocol::Kitty,
+            vec![0; 8],
+            None,
+            ImagePlacement::default(),
+        );
+        assert_eq!(eviction.count, 2, "both older entries evicted");
+        assert_eq!(eviction.bytes, 8, "footprint sum across evictions");
+        assert_eq!(s.bytes_used(), 8);
+    }
+
+    #[test]
+    fn insert_full_returns_empty_stats_when_no_eviction() {
+        let mut s = ImageStore::with_cap(1024);
+        let (_, eviction) = s.insert_full(
+            ImageProtocol::Kitty,
+            vec![0; 16],
+            None,
+            ImagePlacement::default(),
+        );
+        assert!(eviction.is_empty());
+        assert_eq!(eviction.count, 0);
+        assert_eq!(eviction.bytes, 0);
     }
 
     #[test]

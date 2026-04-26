@@ -10,6 +10,59 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### Reliability
 
+- **Chunked OSC inline image protocol — observability UI + structured
+  eviction log** (post-0.2.4 Tier 🔴 #1, Sprint 3 wave 3) — closes
+  the wizard-grade definition's "Observable" axis. Two surfaces
+  landed together:
+  - **Status-bar inline-image budget badge.** New
+    `useImageMetrics(terminalId)` hook polls `term_image_metrics`
+    once a second (paused while the document is hidden so a
+    backgrounded tab isn't waking the engine for nothing) and a new
+    `<InlineImageBudget />` widget renders `12.3 / 50 MiB · 3` next
+    to the agent-status / encoding cluster on the status bar. The
+    badge stays hidden when the active pane has no inline images,
+    promotes to a catppuccin-yellow tint above 80 % of the FIFO cap,
+    and to a catppuccin-red tint above 95 % with a tooltip telling
+    the user that the next inline image will start evicting older
+    ones. `App.tsx` now passes the active tab id straight into
+    `<StatusBar terminalId={…} />` so the badge tracks pane focus.
+  - **Structured `image_evicted` log event.** `ImageStore::insert_full`
+    now returns `(ImageId, EvictionStats { count, bytes })` so the
+    engine can see when the per-pane FIFO cap displaced older
+    payloads. `TermEngine` carries a `terminal_id` + `LogRing` pair
+    (production wires `crate::logging::ring_buffer()` from
+    `NativeTerminalRegistry::create`; tests build an isolated
+    `LogRing::new()` so concurrent suite runs don't race), and
+    `record_eviction` forwards a non-empty `EvictionStats` into a new
+    `LogRing::log_image_evicted` helper that emits a `WARN`-level
+    structured entry tagged `event=image_evicted` with
+    `terminal_id`, `evicted_count`, `evicted_bytes`,
+    `remaining_bytes_used`, and `cap` fields. The Tier 🟡 #7 in-app
+    log viewer surfaces it for free because the helper pushes
+    through the same `RingLayer` pipeline.
+  - **Test posture:** +10 backend unit tests (`store.rs` +2 for
+    `EvictionStats` round-trip on single + multi eviction paths,
+    `engine.rs` +3 for `record_eviction` happy path + empty-stats
+    skip + chunked-OSC pipeline emits the event when the cap
+    overflows, `logging::mod` +3 for structured field shape +
+    singular-vs-plural message + empty-`terminal_id` omission).
+    +17 frontend Vitest tests (7 for `useImageMetrics` covering
+    null-id skip, on-mount fetch, polled re-fetch with surface of
+    new values, IPC null / IPC throw fallbacks, terminalId switch,
+    flip-back-to-null cleanup; 10 for `<InlineImageBudget />`
+    covering null / zero-count hidden states, healthy default tier,
+    >80 % warn tier, >95 % danger tier with tooltip, singular noun,
+    cap-of-zero divide-by-zero guard, plus 4 `formatMiB` cases).
+    `cargo test --lib`: 472 (was 462). `pnpm test`: 799 (was 781).
+    `tsc --noEmit`: no new errors (the 7 carry-over `.at()` warnings
+    in `usePtyLag.test.tsx` are unchanged).
+  - **Out of scope (deferred):** Streaming partial paint
+    (placeholder `ImageRef` + progress fraction during BEGIN→END)
+    stays unimplemented per the Sprint 3 plan — the trigger is
+    "dogfood says paint is visibly slow", which has not happened
+    yet. Re-evaluate when the dogfood log either reports it or 0.2.4
+    ships without it.
+
 - **Chunked OSC inline image protocol — image-metrics IPC**
   (post-0.2.4 Tier 🔴 #1, Sprint 3 wave 2) — adds the observability
   surface the wizard-grade definition's "Observable" axis calls for.
