@@ -453,6 +453,15 @@ export function App() {
 
         win.show().catch(() => {});
 
+        /* `forceClose` short-circuits the unsaved-files confirm on the
+         * NEXT close request. Codex review (round 7) caught the
+         * loop: after the user confirms, this callback called
+         * `win.close()` which re-fires `onCloseRequested`; the
+         * unsaved set is unchanged so the confirm shows again. By
+         * flipping `forceClose` before the second `close()`, the
+         * second pass falls through and Tauri proceeds to destroy
+         * the window. */
+        let forceClose = false;
         win
           .onCloseRequested(async (event) => {
             // Save window position/size before close
@@ -474,6 +483,8 @@ export function App() {
               /* ignore */
             }
 
+            if (forceClose) return;
+
             const { unsavedFiles } = useAppStore.getState();
             if (unsavedFiles.size > 0) {
               // Preserve the native close-request semantics (synchronous
@@ -488,6 +499,7 @@ export function App() {
                 tone: "danger",
               });
               if (ok) {
+                forceClose = true;
                 await win.close();
               }
             }

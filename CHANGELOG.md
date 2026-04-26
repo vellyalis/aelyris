@@ -10,6 +10,18 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### UX
 
+- **Codex round 7 — unsaved-confirm infinite loop.** With unsaved
+  files, `onCloseRequested` called `event.preventDefault()`,
+  showed the confirm, then called `win.close()` again on accept —
+  but `win.close()` re-fires `onCloseRequested`, the
+  `unsavedFiles` set is still non-empty, so the confirm shows
+  *again*, and so on. The user could stare at "Close anyway?"
+  loops indefinitely. Added a `forceClose` boolean owned by the
+  outer effect; the confirm sets it before the second `close()`
+  call, and the next `onCloseRequested` short-circuits and lets
+  Tauri proceed to `Window.destroy()`. The flag is per-mount so
+  a successful close still tears down before the next mount.
+
 - **Codex round 6 — close-button must not bypass unsaved-changes
   confirmation (P1 data-loss).** The previous round-5 fix put the
   hard-stop fallback `unconditionally` after the timeout — so
