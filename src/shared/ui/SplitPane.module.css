@@ -10,15 +10,23 @@
   display: flex;
 }
 
+/* Split-pane drag handles. Were using `--accent` (turquoise blue, the
+ * legacy IDE accent) on hover while every other drag handle in the app
+ * (left-panel, right-panel, future: terminal-pane vertical splits) lights
+ * up gold. Aligned to `--gold-dim` so hovering any drag handle feels
+ * identical regardless of which surface the user is resizing. */
 .handle {
   flex-shrink: 0;
-  background: var(--border);
+  background: var(--white-6);
   transition: background var(--duration-fast) var(--ease-silk);
   z-index: 1;
 }
 
-.handle:hover {
-  background: var(--accent);
+.handle:hover,
+.handle:active,
+.handle:focus-visible {
+  background: var(--gold-dim);
+  outline: none;
 }
 
 .handleH {
@@ -26,7 +34,8 @@
   cursor: col-resize;
 }
 
-.handleH:hover {
+.handleH:hover,
+.handleH:active {
   width: 3px;
   margin: 0 -1px;
 }
@@ -36,7 +45,8 @@
   cursor: row-resize;
 }
 
-.handleV:hover {
+.handleV:hover,
+.handleV:active {
   height: 3px;
   margin: -1px 0;
 }

@@ -10,6 +10,25 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### UX
 
+- **SplitPane drag handle — gold accent, PointerEvent, a11y.**
+  Three problems found in `src/shared/ui/SplitPane`:
+  - **Hover lit up `--accent` (turquoise blue)** while every
+    other resize handle in the app (left-panel, right-panel,
+    workflow, settings) lights up gold. Aligned to `--gold-dim`
+    so every drag handle in the app feels identical.
+  - **Mouse-only.** The handler chain was
+    `mousedown / mousemove / mouseup`, so touch and pen input
+    couldn't resize the split. Migrated to `pointerdown` +
+    `setPointerCapture`, matching the left-panel and right-
+    panel handles.
+  - **Keyboard users locked out.** No `tabIndex`, no role, no
+    keyboard nudge. Added `role="separator"`,
+    `aria-orientation`, `aria-valuemin/max/now`, `tabIndex={0}`,
+    and Arrow-key nudge (2 % step / 8 % with Shift). Now
+    matches the WAI-ARIA pattern the sidebar handles already
+    follow. `:focus-visible` lights the same gold-dim
+    background.
+
 - **Terminal pane sweep round 3 — search bar, exit banner, PTY
   cell-width, and dead CSS.** Continued line-by-line review:
   - **`CELL_W = Math.round(FONT_SIZE * 0.6) = 8` was used to
