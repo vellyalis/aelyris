@@ -82,10 +82,12 @@ if ($width -le 0 -or $width -gt 8192 -or $height -le 0 -or $height -gt 8192) {
     exit 3
 }
 
-# 369 raw bytes -> 492 base64 chars. With "\e]1338;D;<id>;<idx>;…\a"
-# framing of ~20 bytes that lands the DATA OSC at ~512 bytes — right at
-# ConPTY's measured cap (see docs/ROADMAP_POST_0_2_4.md Spike 2).
-$ChunkRawBytes = 369
+# 360 raw bytes -> 480 base64 chars. Worst-case framing is
+# `\e]1338;D;<10-digit id>;<5-digit idx>;<b64>\a` = 27 bytes + 480 = 507 B,
+# leaving a 5-byte margin under ConPTY's measured ~512-byte cap (see
+# docs/ROADMAP_POST_0_2_4.md Spike 2). 480 is divisible by 4 so each
+# chunk is itself a valid stand-alone base64 block.
+$ChunkRawBytes = 360
 
 # BEGIN frame.
 $beginFrame = "${ESC}]1338;B;${ImageId};png;${width};${height}${BEL}"

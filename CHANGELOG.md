@@ -10,6 +10,54 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### Reliability
 
+- **Chunked OSC inline image protocol — E2E + offline integration**
+  (post-0.2.4 Tier 🔴 #1, Sprint 3 first wave) — locks in correctness
+  without depending on a live Win11 dogfood session.
+  - `e2e/image-flows.spec.ts` test 2 is no longer `test.fixme` — the
+    Kitty APC escape it used to feed (which ConPTY silently dropped)
+    has been replaced with a `powershell -ExecutionPolicy Bypass -File
+    scripts/aether-imgcat.ps1 …` shell-out against the
+    `e2e/fixtures/inline-image-1x1.png` fixture. The assertion shape
+    is identical (`ImageRef.id`, PNG signature on the round-trip),
+    only the vehicle changed.
+  - New `e2e/chunked-osc-flows.spec.ts` exercises three scenarios the
+    single-shot test couldn't: a 32×32 multi-chunk PNG round-trip
+    (~8 DATA frames at the ConPTY cap), two sequential transfers
+    surfacing as two `ImageRef` entries in the same snapshot, and a
+    malformed-then-valid sequence proving the parser drops a bad
+    frame off the wire without poisoning the assembler or leaking
+    text into the grid.
+  - New `src-tauri/tests/test_chunked_osc_emitter.rs` makes the same
+    end-to-end story executable without Tauri / CDP. It spawns the
+    emitter scripts as child processes (`bash` resolves through Git
+    Bash directly because `Command::new("bash")` would otherwise hit
+    System32's WSL bash, which can't see `/c/...`), pipes their
+    stdout into a fresh `TermEngine`, and asserts the `ImageStore`
+    holds a fully-decoded PNG of the expected dimensions. Five tests:
+    bash + ps1 × 1×1 + 32×32, plus a pure-Rust malformed-mixed
+    scenario.
+  - Emitter chunk size lowered from 369 → 360 raw bytes (492 → 480
+    base64 chars) after the Rust integration test caught a worst-case
+    DATA frame at 514 bytes — exceeded ConPTY's 512-byte cap when
+    `<image-id>` was 10 digits. 480 leaves a 5-byte safety margin and
+    is still divisible by 4 so each chunk decodes as a stand-alone
+    base64 block.
+  - `docs/inline-image-user-guide.md` is the power-user-facing
+    intro (limits, what the emitters do, common pitfalls); it points
+    at `docs/inline-image-dogfood.md` for the 30-second smoke and
+    `docs/chunked-osc-image-protocol.md` for the byte spec.
+  - `docs/chunked-osc-troubleshooting.md` catalogues every failure
+    mode we've seen so far (no image, garbage on grid, image
+    disappearing, `term_image_data` null, signature mismatch, oversize
+    DATA frame, ExecutionPolicy block, BSD `od --endian=big` absence,
+    diag CDP miss) with diagnostic + fix steps for each.
+
+  cargo test --lib: 462 unchanged. cargo test --test
+  test_chunked_osc_emitter: 5 pass. pnpm test: 781 unchanged. The
+  Sprint-3 second wave (`term_image_metrics` IPC + status-bar widget
+  + optional streaming partial paint + stress harness) lands
+  separately.
+
 - **Chunked OSC inline image protocol — emitter wrappers** (post-0.2.4
   Tier 🔴 #1, Sprint 2 of 3) — ships the emitter half of the protocol
   the Sprint-1 engine assembler accepts. `scripts/aether-imgcat.ps1`

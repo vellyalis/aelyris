@@ -13,14 +13,17 @@ the same way `docs/ROADMAP_POST_0_2_2.md` was.
 ## 🔴 1 — Windows APC delivery to engine (replaces "passthrough wiring")
 
 **Status**: Sprint 1 (engine assembler) + Sprint 2 (emitter wrappers
-+ fixtures + diag harness) landed on 2026-05-01. Sprint 3 (E2E
-unfixme + stress + telemetry + user docs) remains. The original
-framing ("just pass `PSEUDOCONSOLE_PASSTHROUGH_MODE` to
++ fixtures + diag harness) + Sprint 3 first wave (E2E unfixme + new
+chunked-osc-flows spec + offline Rust integration test + user-guide
++ troubleshooting docs) all landed on 2026-05-01. Sprint 3 second
+wave remains: `term_image_metrics` IPC + status-bar widget + optional
+streaming partial paint + stress harness. The original framing
+("just pass `PSEUDOCONSOLE_PASSTHROUGH_MODE` to
 `CreatePseudoConsole`") turned out to be a dead end — see
 "Investigation log" below. Spike 2 confirmed a chunked OSC side-
 channel as a viable vehicle, Sprint 1 implements its engine half,
-Sprint 2 ships the emitter half, and Sprint 3 will lock in
-correctness with E2E + stress coverage.
+Sprint 2 ships the emitter half, Sprint 3 first wave locks in
+correctness end-to-end without requiring a Tauri session.
 
 **Why this is Tier 🔴**: the entire Tier 🟡 #5 inline-image pipeline
 (scanner + decoder + snapshot + IPC + frontend paint) is *correct*,

@@ -60,10 +60,12 @@ if [ "$width" -le 0 ] || [ "$width" -gt 8192 ] || [ "$height" -le 0 ] || [ "$hei
     exit 3
 fi
 
-# 492 base64 chars = 369 raw bytes. DATA framing of ~20 bytes lands the
-# OSC at ~512, right at ConPTY's measured cap (Spike 2 in
-# docs/ROADMAP_POST_0_2_4.md).
-chunk_b64_len=492
+# 480 base64 chars = 360 raw bytes. Worst-case framing is
+# `\e]1338;D;<10-digit id>;<5-digit idx>;<b64>\a` = 27 bytes + 480 = 507 B,
+# leaving a 5-byte margin under ConPTY's measured ~512-byte cap (see
+# docs/ROADMAP_POST_0_2_4.md Spike 2). 480 is divisible by 4 so each
+# chunk is itself a valid stand-alone base64 block.
+chunk_b64_len=480
 
 b64=$(base64 -w0 "$path")
 total_b64=${#b64}
