@@ -610,8 +610,19 @@ export function TerminalCanvas({
       // the keyboard-input element gets focus in one hop. `mousedown`
       // covers click-to-type since the canvas itself is no longer natively
       // focusable (see canvas `tabIndex={-1}` below).
+      //
+      // Important: `onFocus` only forwards when the wrapper itself is
+      // the focus target. React `onFocus` is a bubbling event so a
+      // focusable child (the scrollback "Live" pill, future overlays)
+      // would otherwise have its focus instantly stolen. Codex review
+      // (2026-05-03) caught the bug — Tab cycle landed on the pill
+      // and the wrapper's bubbling `onFocus` kicked focus straight
+      // back to the hidden textarea, locking keyboard users out of
+      // the affordance entirely.
       tabIndex={0}
-      onFocus={focusTextarea}
+      onFocus={(e) => {
+        if (e.target === e.currentTarget) focusTextarea();
+      }}
       onMouseDown={focusTextarea}
     >
       <canvas

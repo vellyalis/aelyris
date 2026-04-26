@@ -92,7 +92,16 @@ export function SplitPane({
    * The left/right pane sidebars already had this; SplitPane was the
    * lone drag surface that locked keyboard users out of resize.
    * `role="separator"` + `aria-orientation` + `aria-valuenow` follow
-   * the WAI-ARIA pattern. */
+   * the WAI-ARIA pattern.
+   *
+   * Codex review (2026-05-03) caught a regression in the first pass:
+   * a hard-coded 5 % / 95 % clamp ignored the `minSize` prop. With
+   * the default `minSize = 100` and a 1200-px-wide pane, keyboard
+   * shrink could still drop a pane to 60 px while pointer dragging
+   * correctly clamped to 100 px — two input methods producing
+   * different layouts. Now the keyboard path reads the live
+   * container size and applies the same `minSize / total` clamp the
+   * pointer path uses. */
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
       const isHorizontal = direction === "horizontal";
@@ -101,14 +110,22 @@ export function SplitPane({
       const inc = isHorizontal ? "ArrowRight" : "ArrowDown";
       if (e.key !== dec && e.key !== inc) return;
       e.preventDefault();
+      const container = containerRef.current;
+      const total = container ? (isHorizontal ? container.clientWidth : container.clientHeight) : 0;
+      // Fall back to a 5 / 95 floor when the container has no measurable
+      // size yet (initial mount); once it does, mirror the pointer path's
+      // `minSize / total` clamp so both input methods produce the same
+      // minimum pane size.
+      const min = total > 0 ? minSize / total : 0.05;
+      const max = total > 0 ? 1 - minSize / total : 0.95;
       setRatio((prev) => {
         const delta = e.key === inc ? grow : -grow;
-        const next = Math.max(0.05, Math.min(0.95, prev + delta));
+        const next = Math.max(min, Math.min(max, prev + delta));
         onRatioChangeRef.current?.(next);
         return next;
       });
     },
-    [direction],
+    [direction, minSize],
   );
 
   const isHorizontal = direction === "horizontal";

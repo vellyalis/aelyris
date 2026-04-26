@@ -10,6 +10,22 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### UX
 
+- **Two regressions caught by Codex review and fixed.** External
+  review of the recent terminal sweep flagged two real
+  accessibility bugs introduced earlier in the session:
+  - **`SplitPane` keyboard nudge ignored `minSize`.** Pointer
+    drag clamped to `minSize / total` (default 100 px) but the
+    new Arrow-key path used a hard-coded 5 % / 95 % floor —
+    keyboard could shrink panes well below the 100 px the mouse
+    couldn't. Now reads the live container size and applies the
+    same `minSize / total` clamp.
+  - **Scrollback "Live" pill was unreachable by keyboard.** The
+    canvas wrapper's `onFocus={focusTextarea}` is a bubbling
+    React event, so when Tab landed on the pill the wrapper's
+    handler instantly redirected focus to the hidden textarea.
+    Guarded with `e.target === e.currentTarget` so only direct
+    focus on the wrapper forwards; child focus stays put.
+
 - **WorkspaceTabs — distinguishable active state + reduced-motion
   opt-out.**
   - Hover and active had identical `--white-6` background. The
