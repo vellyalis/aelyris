@@ -10,62 +10,78 @@ the same way `docs/ROADMAP_POST_0_2_2.md` was.
 | 🟡 | Polish that real users will trip over within the first week |
 | 🟢 | Nice-to-have / future-proofing |
 
-## 🔴 1 — ConPTY `PSEUDOCONSOLE_PASSTHROUGH_MODE` wiring
+## 🔴 1 — Windows APC delivery to engine (replaces "passthrough wiring")
 
-**Why this is Tier 🔴**: as confirmed by the 2026-04-30 dogfood
-(`project_dogfood_log.md`), the entire Tier 🟡 #5 inline-image pipeline
-(scanner + decoder + snapshot + IPC + frontend paint) is *correct*, but
-`portable-pty 0.8.1`'s `CreatePseudoConsole` call omits
-`PSEUDOCONSOLE_PASSTHROUGH_MODE` (0x8) — the constant is even tagged
-`#[allow(dead_code)]` in the crate. Win11 ConPTY in default mode
-silently strips unknown APC sequences before they reach our engine.
-Until passthrough is wired, **no inline image will ever render on the
-dogfood machine**, regardless of how good the engine work was.
+**Status**: investigation deepened on 2026-04-30. The original framing
+("just pass `PSEUDOCONSOLE_PASSTHROUGH_MODE` to `CreatePseudoConsole`")
+turned out to be a dead end — see "Investigation log" below. Solution
+is now an open design problem rather than a 10-line patch.
 
-This blocks the user-visible value of #5 entirely. It is the only
-item from the post-0.2.3 closure that fails dogfood. Hence Tier 🔴.
+**Why this is Tier 🔴**: the entire Tier 🟡 #5 inline-image pipeline
+(scanner + decoder + snapshot + IPC + frontend paint) is *correct*,
+but ConPTY on Win11 25H2 silently strips APC sequences (`\x1b_…\x1b\\`)
+**even with PASSTHROUGH_MODE enabled**. Until APC bytes reach the
+engine somehow, **no inline image renders on Windows**, regardless of
+how good the engine work was. Tier 🟡 #5 user-value is 0 on Windows.
 
-### Constraints
+### Investigation log (2026-04-30)
 
-- `portable-pty 0.8.x` does not expose passthrough on its public API.
-  We have to either patch the crate, fork it, or replace its Windows
-  path with our own ConPTY init.
-- `PSEUDOCONSOLE_PASSTHROUGH_MODE` requires Win11 22H2+. Older Windows
-  must keep the existing default-mode behaviour (graceful degradation:
-  inline images are not delivered, but everything else works).
-- The flag changes ConPTY semantics — it stops normalising the output
-  stream. We have to verify that our existing engine still handles
-  every CSI / OSC / etc. sequence without ConPTY's normalisation help.
+1. Vendored `portable-pty 0.8.1` to `src-tauri/vendor/portable-pty/`,
+   patched `psuedocon.rs` to OR in `PSEUDOCONSOLE_PASSTHROUGH_MODE`
+   (gated by registry build ≥ 22621). Wired via `[patch.crates-io]`.
+2. Confirmed via `eprintln` that:
+   - `passthrough_supported = true` (build 26200 / 25H2).
+   - `CreatePseudoConsole` was called with the flag set.
+   - The new binary was loaded (5 spawn events all logged the flag).
+3. Re-ran `scripts/diag-image-escape.mjs` with both PowerShell
+   (`[Console]::Out.Write`) and Git Bash (`printf '\e_G…'`) emitters.
+   Both showed `images: [absent]` and zero entries in
+   `term_image_data(id, 1..200)`.
+4. Added a temporary `eprintln` in `term::engine::TermEngine::advance`
+   that logs every buffer containing `ESC _` (APC), `ESC P` (DCS), or
+   `ESC [` (CSI). Result over the same diag run:
+   - `CSI` buffers: many (every prompt redraw, every SGR, etc.).
+   - `APC` / `DCS` buffers: **zero**.
+5. Conclusion: **`PSEUDOCONSOLE_PASSTHROUGH_MODE` does not deliver APC
+   to the host on Win11 25H2 build 26200.** The flag's actual
+   behaviour is narrower than its docs imply, or affects only an input
+   path we don't exercise. Whatever it does, it is not a raw byte
+   tunnel, and OUR shipped engine cannot see APC bytes via ConPTY.
+6. Reverted vendored crate + `[patch.crates-io]` (zero observable
+   benefit, carrying upstream divergence for nothing). The
+   `scripts/diag-image-escape.mjs` and `scripts/diag-image-bash.mjs`
+   pair stays as the canonical reproducer.
 
-### Approach options (sorted by invasiveness)
+### Solution space (no longer ranked — needs investigation)
 
-1. **`[patch.crates-io]` to a local fork**: minimal diff (~10 lines in
-   `psuedocon.rs` to add the flag conditionally). Fastest. Risk: we
-   carry a fork until upstream merges.
-2. **Replace the Windows path with hand-rolled ConPTY**: more code,
-   but lets us drop the `portable-pty` Windows dep and keep only its
-   Unix code via target_os gating. Worth considering if we end up
-   wanting more ConPTY control later (e.g. attach-detach for hot
-   reload).
-3. **Switch PTY backend**: `pty-process`, custom, etc. Highest churn,
-   probably overkill.
+- **Bypass ConPTY entirely on Windows**: spawn the child with
+  CreateProcessW + raw anonymous pipes for stdio. We lose ConPTY's
+  Win32 console translation (any cmd.exe-style `cls` / `mode con`
+  callers break) but all VT bytes flow byte-perfect. wezterm has
+  flirted with this; their `winpty` fallback is one path. Big surgery.
+- **Use a different PTY transport on Windows**: `winpty` (older,
+  cygwin-style) historically delivered raw bytes for child output.
+  Maintenance status uncertain.
+- **Side-channel image protocol**: ship our own escape variant that
+  rides over a separate IPC (e.g. write to a shared dir + a custom
+  OSC 1337-style ID-only escape that ConPTY doesn't strip), then
+  resolve to bytes inside the engine. Ugly but pure-software.
+- **Wait for Microsoft**: open a Microsoft Console GitHub issue with
+  the diagnostic from this session. Long latency, no commitment.
+- **Detect at the application layer**: have a side-process tail the
+  shell's actual byte output via `tee`-like wrapper. Brittle.
 
-Default to option 1 unless the patch turns out to be more than a few
-dozen lines.
+### Acceptance criteria (unchanged target, different vehicle)
 
-### Acceptance criteria
-
-- The OS-version detection runs at PTY-create time and only enables
-  passthrough on Win11 22H2+.
-- `e2e/image-flows.spec.ts` test 2 (currently `test.fixme`) is
-  re-enabled, runs, and passes against the dogfood machine.
 - `scripts/diag-image-escape.mjs` reports `images: [...]` non-empty
-  and a non-null `term_image_data` hit.
-- No regression in `e2e/pty-flows.spec.ts` or any of the existing
-  Playwright suite — the change is invisible to text-only flows.
-- A cargo test that exercises the OS-detection branch (probably gated
-  on `#[cfg(target_os = "windows")]`) covers the Win10/Win11/old-Win11
-  matrix.
+  and a non-null `term_image_data` hit on the dogfood Win11 machine.
+- `e2e/image-flows.spec.ts` test 2 (currently `test.fixme`) is
+  re-enabled, runs, and passes.
+- No regression in `e2e/pty-flows.spec.ts` or the existing Playwright
+  suite — the change is invisible to text-only flows.
+- Whatever transport we adopt is gated to keep current behaviour on
+  any platform / OS version that doesn't need it (Linux/macOS PTY
+  already delivers APC; only Windows needs a workaround).
 
 ## 🟡 2 — `chafa`-less visual confirmation
 
