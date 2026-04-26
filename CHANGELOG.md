@@ -10,6 +10,51 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### Reliability
 
+- **Chunked OSC inline image protocol — emitter wrappers** (post-0.2.4
+  Tier 🔴 #1, Sprint 2 of 3) — ships the emitter half of the protocol
+  the Sprint-1 engine assembler accepts. `scripts/aether-imgcat.ps1`
+  (PowerShell 5+/7+, uses `[char]27` for ESC so it runs on stock Win11
+  PowerShell where `` `e `` is not yet a recognised escape) and
+  `scripts/aether-imgcat.sh` (Git Bash, GNU `od --endian=big` for
+  IHDR + GNU `base64 -w0` for the body) both:
+  - Verify the input is a PNG by signature (89 50 4E 47 0D 0A 1A 0A).
+  - Read width / height from the IHDR chunk (big-endian u32 at offsets
+    16 and 20) and reject anything outside 1..8192 to match the
+    engine's per-image dimension cap.
+  - Emit `BEGIN` / `DATA` / `END` OSC 1338 frames keyed on a caller-
+    allocated random image-id, with each `DATA` carrying 369 raw bytes
+    (492 base64 chars) so the full OSC stays under ConPTY's measured
+    ~512-byte cap. A runtime check on every `DATA` frame's emitted
+    length ensures a regression in chunk math fails locally instead
+    of being silently dropped by ConPTY.
+  - Use `[Console]::Out.Write` (PowerShell) and `printf '%s'` (bash)
+    so the host UI never line-buffers the binary base64 payload.
+  - Exit codes encode the failure mode: 0 success / 1 file not found
+    / 2 not a PNG / 3 IHDR malformed / 4 internal cap violation.
+  Bundled with `scripts/build-image-fixtures.mjs` (zero-dep PNG
+  encoder using only `node:zlib`'s `deflateSync` plus a hand-rolled
+  CRC32 table) which writes two reproducible fixtures to
+  `e2e/fixtures/`: `inline-image-1x1.png` (68 bytes — single-chunk
+  path) and `inline-image-32x32.png` (2686 bytes — multi-chunk path,
+  ~8 chunks). The 32×32 fixture encodes pixel coordinates into RGB
+  so a Sprint-3 pixel-sample E2E spec has a known ground truth.
+  `scripts/diag-chunked-osc.mjs` is the end-to-end smoke gate: CDP
+  attaches to a running `pnpm tauri:dev`, walks four cases
+  (PowerShell + Git Bash) × (1×1 + 32×32), and asserts each one
+  surfaces a non-empty `term_snapshot.images` plus a `term_image_data`
+  blob whose first 8 bytes are `\x89PNG\r\n\x1a\n`. The script exits
+  non-zero on any FAIL so it is suitable as a pre-release smoke gate.
+  `docs/inline-image-dogfood.md` documents the 30-second manual
+  recipe + a failure-mode crib so a power user can self-diagnose
+  without reading the engine source. Offline emitter sanity check
+  (bash + ps1 with the same fixture id produce byte-identical 137-B
+  output for 1×1 and 10-frame 3.6-KB output for 32×32) confirms the
+  wire format is identical across emitters before the Win11 dogfood
+  pass. Tests unchanged (cargo --lib 462 / pnpm 781) — this Sprint
+  ships only emitter scripts, fixtures, and the diag harness; the
+  engine path is already covered by the 30 + 6 unit / integration
+  tests landed in Sprint 1.
+
 - **Chunked OSC inline image protocol — engine assembler** (post-0.2.4
   Tier 🔴 #1, Sprint 1 of 3) — Win11 25H2 ConPTY silently strips Kitty
   APC sequences and truncates any OSC above ~512 bytes (verified

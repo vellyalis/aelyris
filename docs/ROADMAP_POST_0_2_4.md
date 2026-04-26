@@ -12,12 +12,15 @@ the same way `docs/ROADMAP_POST_0_2_2.md` was.
 
 ## 🔴 1 — Windows APC delivery to engine (replaces "passthrough wiring")
 
-**Status**: Sprint 1 landed (engine assembler) on 2026-05-01. Sprint 2
-(emitter wrapper scripts) and Sprint 3 (E2E unfixme) remain. The
-original framing ("just pass `PSEUDOCONSOLE_PASSTHROUGH_MODE` to
+**Status**: Sprint 1 (engine assembler) + Sprint 2 (emitter wrappers
++ fixtures + diag harness) landed on 2026-05-01. Sprint 3 (E2E
+unfixme + stress + telemetry + user docs) remains. The original
+framing ("just pass `PSEUDOCONSOLE_PASSTHROUGH_MODE` to
 `CreatePseudoConsole`") turned out to be a dead end — see
 "Investigation log" below. Spike 2 confirmed a chunked OSC side-
-channel as a viable vehicle, and Sprint 1 implements its engine half.
+channel as a viable vehicle, Sprint 1 implements its engine half,
+Sprint 2 ships the emitter half, and Sprint 3 will lock in
+correctness with E2E + stress coverage.
 
 **Why this is Tier 🔴**: the entire Tier 🟡 #5 inline-image pipeline
 (scanner + decoder + snapshot + IPC + frontend paint) is *correct*,
