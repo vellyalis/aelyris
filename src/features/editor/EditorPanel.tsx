@@ -118,8 +118,17 @@ export function EditorPanel({
   // call setSaved(false) on an unmounted component — visible as the
   // React "state on unmounted component" warning.
   const savedPillTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Tracks whether the panel is still mounted. The async write_file
+  // .then arm gates state mutations on this — without it, the
+  // filePathRef-only check still allows post-unmount setState (e.g.
+  // user closes the file mid-save: filePathRef.current happens to
+  // equal savedFilePath until React tears down, and the timeout would
+  // re-arm afterward).
+  const mountedRef = useRef(true);
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       if (savedPillTimerRef.current !== null) {
         clearTimeout(savedPillTimerRef.current);
         savedPillTimerRef.current = null;
@@ -282,7 +291,11 @@ export function EditorPanel({
         const value = editorRef.current.getValue();
         invoke("write_file", { path: savedFilePath, content: value })
           .then(() => {
-            const stillCurrent = filePathRef.current === savedFilePath;
+            // Gate panel-state mutations on BOTH "still mounted" and
+            // "still on the same file" — the filePath check alone does
+            // not block post-unmount setState, since filePathRef stays
+            // pointing at the last seen value when the panel tears down.
+            const stillCurrent = mountedRef.current && filePathRef.current === savedFilePath;
             if (stillCurrent) {
               // Sync content state to the just-saved value. Without this,
               // the window-focus reload effect below sees diskContent !==
@@ -308,10 +321,11 @@ export function EditorPanel({
             toast.success("Saved", savedFilePath.split(/[/\\]/).pop() ?? savedFilePath);
           })
           .catch((err) => {
-            // Only mutate panel error state when the failed save belongs to
-            // the file currently on screen — otherwise the error banner
-            // would attach to whatever file the user moved to.
-            if (filePathRef.current === savedFilePath) {
+            // Only mutate panel error state when the panel is still
+            // mounted AND the failed save belongs to the file currently
+            // on screen — otherwise the error banner would attach to
+            // whatever file the user moved to (or to nothing, post-unmount).
+            if (mountedRef.current && filePathRef.current === savedFilePath) {
               setError(String(err));
             }
             toast.error("Save failed", String(err));

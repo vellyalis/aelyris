@@ -45,26 +45,50 @@ describe("EditorPanel Ctrl+S sync", () => {
     expect(src).toMatch(/const\s+savedFilePath\s*=\s*filePath/);
     expect(src).toMatch(/filePathRef\.current\s*===\s*savedFilePath/);
 
-    // setContent must appear AFTER the stillCurrent gate, never before
-    // markSaved (which is the unconditional, filePath-scoped call). We
-    // match positions in the success arm rather than depending on the
-    // exact indentation of the if-block — a future formatting pass
-    // shouldn't silently invalidate the regression guard.
+    // Extract the body of `if (stillCurrent) { ... }` via brace matching
+    // instead of indentation-coupled regex. A positional check on the bare
+    // identifier alone would still pass if `setContent(value)` were moved
+    // outside the if-block (the `const stillCurrent = …` declaration
+    // appears earlier and would satisfy a naive ordering check).
     const successArm = src.match(/\.then\(\s*\(\s*\)\s*=>\s*\{([\s\S]*?)\}\s*\)\s*\.catch/);
     expect(successArm).not.toBeNull();
     const body = successArm![1];
-    expect(body).toMatch(/if\s*\(\s*stillCurrent\s*\)/);
 
-    const stillCurrentIdx = body.indexOf("stillCurrent");
-    const setContentIdx = body.indexOf("setContent(value)");
-    const markSavedIdx = body.indexOf("markSaved(");
-    expect(stillCurrentIdx).toBeGreaterThan(-1);
-    expect(setContentIdx).toBeGreaterThan(-1);
-    expect(markSavedIdx).toBeGreaterThan(-1);
-    // Ordering: gate → setContent → markSaved (gate must precede the
-    // mutation it guards; markSaved is filePath-scoped and runs after).
-    expect(setContentIdx).toBeGreaterThan(stillCurrentIdx);
-    expect(markSavedIdx).toBeGreaterThan(setContentIdx);
+    const ifMatch = body.match(/if\s*\(\s*stillCurrent\s*\)\s*\{/);
+    expect(ifMatch).not.toBeNull();
+    const ifOpenIdx = body.indexOf(ifMatch![0]);
+    const braceStart = ifOpenIdx + ifMatch![0].length - 1;
+    let depth = 1;
+    let i = braceStart + 1;
+    while (i < body.length && depth > 0) {
+      if (body[i] === "{") depth += 1;
+      else if (body[i] === "}") depth -= 1;
+      i += 1;
+    }
+    expect(depth).toBe(0);
+    const ifBlockBody = body.slice(braceStart + 1, i - 1);
+
+    expect(ifBlockBody).toMatch(/setContent\(\s*value\s*\)/);
+    expect(ifBlockBody).toMatch(/setModified\(\s*false\s*\)/);
+    expect(ifBlockBody).toMatch(/setSaved\(\s*true\s*\)/);
+  });
+
+  it("save handlers gate state mutations on mountedRef as well as filePathRef (codex r2 M)", () => {
+    const src = Object.entries(sources)[0][1];
+
+    // mountedRef must exist and be flipped to false in the unmount cleanup.
+    expect(src).toMatch(/mountedRef\s*=\s*useRef\(\s*true\s*\)/);
+    expect(src).toMatch(/mountedRef\.current\s*=\s*false/);
+
+    // Both .then and .catch must consult mountedRef. Otherwise an
+    // unmount mid-save lets state setters fire on a torn-down panel.
+    const successArm = src.match(/\.then\(\s*\(\s*\)\s*=>\s*\{([\s\S]*?)\}\s*\)\s*\.catch/);
+    expect(successArm).not.toBeNull();
+    expect(successArm![1]).toMatch(/mountedRef\.current/);
+
+    const catchArm = src.match(/\.catch\(\s*\(\s*err\s*\)\s*=>\s*\{([\s\S]*?)\}\s*\)\s*;/);
+    expect(catchArm).not.toBeNull();
+    expect(catchArm![1]).toMatch(/mountedRef\.current/);
   });
 
   it("save pill setTimeout is held in a ref and cleared on unmount (codex r1 M2)", () => {
