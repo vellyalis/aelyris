@@ -68,7 +68,7 @@
  * a typo in the search box looked identical to "no results yet" and the
  * user kept typing into nothing. */
 .searchCount[data-empty="true"] {
-  color: var(--ctp-red, #f38ba8);
+  color: var(--ctp-red);
 }
 
 .searchBtn {

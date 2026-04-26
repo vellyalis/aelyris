@@ -10,6 +10,22 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### UX
 
+- **TerminalInfoBar polish — vertical-centred icons, token-only
+  colours.**
+  - `.toggleBtn` was a baseline-aligned inline button with text-
+    base font sizing; the 12-px Lucide icons inside ended up a
+    pixel offset from the bar's vertical centre depending on
+    the font's ascender. Switched to `inline-flex` +
+    `justify-content: center` with explicit `18×18` square hit
+    target, so every icon sits dead-centre in the 22-px bar.
+  - `.lagBadge` background was `rgba(250, 179, 135, 0.12)` —
+    a hardcoded peach RGBA. Routed through `color-mix(in srgb,
+    --ctp-peach 12%, transparent)` so a future palette swap
+    propagates cleanly.
+  - `var(--ctp-peach, #fab387)` and `var(--ctp-red, #f38ba8)`
+    fallback hex literals dropped — both tokens exist in
+    global.css so the fallbacks were dead duplicates.
+
 - **Jump-to-live pill on scrollback.** When the user scrolled up
   via mouse wheel, there was no visible way back to the live
   tail — only the (undiscoverable) Ctrl+Shift+End keybinding.
