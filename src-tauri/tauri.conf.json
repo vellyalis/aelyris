@@ -22,7 +22,7 @@
         "visible": true,
         "windowEffects": {
           "effects": ["acrylic"],
-          "state": "followsWindowActiveState"
+          "state": "active"
         }
       }
     ],

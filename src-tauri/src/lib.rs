@@ -120,16 +120,6 @@ pub fn run() {
                     );
                 }
             }
-            // Window chrome: Mica (Win11 22H2+) preferred, Acrylic fallback
-            // for older Windows / when Mica fails, plus DWM rounded corners.
-            //
-            // tauri.conf.json declares `effects: ["mica"]` — Tauri v2's
-            // implementation picks the first effect and attempts to apply
-            // it via DWM. If we're on Win10 or Mica is otherwise refused,
-            // the conf-side application fails silently and we fall back to
-            // an explicit Acrylic call here. Logging both outcomes so
-            // dogfood can read `aether_terminal_lib` lines on stderr and
-            // see which material the live window actually picked.
             // Window chrome on Windows: apply Acrylic (the *transient*
             // backdrop) so the desktop wallpaper actually shows through
             // — Mica is a wallpaper-tinted material that does NOT make
@@ -228,6 +218,29 @@ pub fn run() {
                         Err(e) => log::warn!("hwnd unavailable for DWM chrome setup: {e}"),
                     }
                 }
+            }
+
+            // Wire window focus state to the DOM so CSS can soften the
+            // glass alpha on the inactive state. Win11 suppresses the
+            // Acrylic backdrop on blurred windows by OS design (Files /
+            // Notepad / Settings all do this), so without this bridge
+            // the React panels read as suddenly opaque the moment the
+            // user Alt-Tabs. The frontend listens for the
+            // `aether:window-focused` event and toggles
+            // `<body data-window-focused>`; CSS in global.css keys off
+            // that attribute to lower each glass token's alpha when
+            // blurred.
+            if let Some(window) = app.get_webview_window("main") {
+                let win_for_handler = window.clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::Focused(focused) = event {
+                        if let Err(e) =
+                            win_for_handler.emit("aether:window-focused", *focused)
+                        {
+                            log::debug!("focus-state emit failed: {e}");
+                        }
+                    }
+                });
             }
 
             // Seed the SuggestEngine from DB command history so fish-style

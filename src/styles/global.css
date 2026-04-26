@@ -374,6 +374,33 @@ body,
   position: relative;
 }
 
+/* Window-focus override.
+ *
+ * Win11 suppresses the Acrylic backdrop on inactive windows by OS
+ * design (Files / Notepad / Settings all do this). Without help
+ * the React panels then read as suddenly opaque on focus loss.
+ *
+ * We can't use `:not(:focus-within)` for this because Tauri's
+ * window focus is a Win32-level state that is independent of the
+ * WebView2 DOM focus — `:focus-within` follows DOM focus only,
+ * which means a freshly opened window with no clicked input
+ * already evaluates as "not focus-within" and would over-trigger
+ * the override.
+ *
+ * Instead we flag the body with `data-window-focused="false"` from
+ * Rust on `WindowEvent::Focused(false)` (see `lib.rs` window-
+ * event listener). The override below applies only when the
+ * dataset attribute explicitly says the window is blurred. */
+body[data-window-focused="false"] {
+  --glass-frame: rgba(16, 16, 16, 0.40);
+  --glass-standard: rgba(20, 20, 20, 0.48);
+  --glass-dense: rgba(22, 22, 22, 0.55);
+  --glass-thick: rgba(28, 28, 28, 0.65);
+  /* Ground anchor stays slightly more solid on inactive — it's
+   * the rail you orient against, so it should still hold. */
+  --glass-ground: rgba(10, 10, 10, 0.65);
+}
+
 /* Boucheron light leak — warm gold top-left, cool cyan bottom-right */
 #root::before {
   content: "";

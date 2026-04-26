@@ -10,6 +10,36 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### UX
 
+- **Inactive-window glass softening — panels stay readable as
+  glass when the window blurs.** Dogfood: "but it's only
+  transparent when the window is active, is that intended?" —
+  partly. Win11's Acrylic backdrop (`DWMSBT_TRANSIENTWINDOW`) is
+  suppressed by the OS when the window blurs (matches Files /
+  Notepad / Settings — there's no public API to override that
+  spec). What we *could* fix is what the React panels look like in
+  that state: with the active alphas (0.28 / 0.35 / 0.42) plus no
+  Acrylic backdrop, the panels read as a solid dark slab the
+  moment the user Alt-Tabs.
+  Fix: Rust `setup` now subscribes to `WindowEvent::Focused(bool)`
+  and emits `aether:window-focused` over Tauri IPC; `main.tsx`
+  listens and toggles `<body data-window-focused="true|false">`.
+  CSS keys off the attribute and bumps each glass token by ~10–
+  15 % alpha (frame 0.28 → 0.40, standard 0.35 → 0.48, dense
+  0.42 → 0.55, thick 0.55 → 0.65, ground 0.55 → 0.65) when
+  blurred so the panels still read as muted glass instead of
+  solid plastic. Active state remains untouched at the lighter
+  alphas tuned in the previous transparency commit.
+  `tauri.conf.json` + `tauri.dev.conf.json` also bump
+  `windowEffects.state` from `followsWindowActiveState` to
+  `active` — Tauri's hint that the window should be treated as
+  always-active for effect purposes (the OS spec still wins on
+  the Acrylic side, but it costs nothing to ask).
+  Vite preview verify: toggling `body.dataset.windowFocused`
+  flipped `getComputedStyle(body)['--glass-frame']` between 0.28
+  and 0.40 cleanly, and back. Real Acrylic active/inactive
+  behaviour still needs `pnpm tauri:dev` on Win11 — it's an OS-
+  side spec.
+
 - **Real translucency — Acrylic, not Mica, is what makes the
   desktop show through.** Dogfood reported "still not transparent
   at all." Two diagnostic mistakes on my side that this commit
