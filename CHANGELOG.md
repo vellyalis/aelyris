@@ -10,6 +10,52 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### UX
 
+- **Right panel drag-resize — symmetry with the sidebar.** Dogfood
+  follow-up to the sidebar overhaul: "if the left rail has a real
+  drag handle, the right rail can't ship with a browser-default
+  triangular nubbin — that's the kind of inconsistency Apple
+  doesn't ship." The right panel now uses the same JS pointer
+  handle pattern as `.left-panel`:
+  - **`rightPanelWidth` Zustand state**, persisted to
+    `localStorage["aether:rightPanelWidth"]`, clamped to `[260,
+    480]` (max bumped from the legacy `400` so the widest agent /
+    workflow / toolkit / logs stack has the same headroom as the
+    sidebar). Default 320.
+  - **`.right-panel-resize-handle`** — 4 px-wide invisible hit
+    area on the panel's *left* edge (mirror of the sidebar's
+    right-edge handle), `cursor: col-resize`, gold-dim background
+    on `:hover` / `:focus-visible` / `:active`. `pointerdown`
+    captures, `pointermove` streams `setRightPanelWidth(startW -
+    dx)` (sign inverted vs sidebar — handle on the *left* edge
+    means dragging *left* widens), `pointerup` releases. Arrow
+    keys nudge by 16 px / 64 px (Shift), inverted to match (Left =
+    grow, Right = shrink).
+  - **Old browser nubbin removed** — `.right-panel.resize:
+    horizontal` plus the `direction: rtl` /  `> * { direction: ltr
+    }` workaround it required are gone. Cleaner CSS, real
+    keyboard accessibility (`role="separator"` +
+    `aria-valuemin/max/now`), no more Win32-era control vibe.
+  - **`flex-shrink: 0` added** so flex layout honours the inline
+    width. The earlier `resize: horizontal` had the same blocker
+    invisibly — dragging updated `style.width` but the centre
+    column's min-content pulled it back to 320 px, so the user
+    never actually got to grow the panel. The new handle plus
+    `flex-shrink: 0` gives true ownership; min/max already
+    enforced in JS. Inline style drives `flex-basis` *and* `width`
+    — Chromium's `flex-basis: auto` did not re-resolve from a
+    pure inline `width` change in this layout, so basis is set
+    explicitly.
+  - Vite preview verify: `getComputedStyle(right).flexShrink="0"`,
+    `flexBasis="320px"`, `width="320px"`, layout 240+800+320 =
+    1440 (was 240+880+320 before the shrink-fix); handle at
+    `x=panel.x-2`, full panel height, `cursor=col-resize`. Drag
+    test: `pointerdown→pointermove(-60)→pointerup` advanced
+    `localStorage["aether:rightPanelWidth"]` from 320 → 380 and
+    rendered 380 px in the next frame.
+  - `pnpm test`: **808** (was 803, +5 new clamp / round / persist
+    tests covering both `sidebarWidth` and `rightPanelWidth`).
+    `tsc --noEmit`: 0 errors.
+
 - **Edge-gap consistency — terminal well now has the same hairline
   on all four sides.** Dogfood: "the right side has no margin
   while the other three do — that's the kind of inconsistency

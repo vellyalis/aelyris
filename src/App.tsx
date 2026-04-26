@@ -78,6 +78,8 @@ export function App() {
     setSidebarCollapsed,
     sidebarWidth,
     setSidebarWidth,
+    rightPanelWidth,
+    setRightPanelWidth,
     paletteVisible,
     setPaletteVisible,
     settingsVisible,
@@ -816,7 +818,64 @@ export function App() {
               )}
             </section>
 
-            <aside className="right-panel" aria-label="Agent inspector">
+            <aside
+              className="right-panel"
+              aria-label="Agent inspector"
+              /* `flex-basis` (not `width`) is what flex layout reads as
+               * the preferred size. Setting only `width` left the
+               * computed width at the CSS default (320 px) on Chromium
+               * even with `flex-shrink: 0`, because `flex-basis: auto`
+               * resolved against the *original* declared width rather
+               * than re-resolving on inline-style change. Driving
+               * basis directly is the canonical fix and matches how
+               * VS Code / Linear size their resizable side panels. */
+              style={{ flexBasis: `${rightPanelWidth}px`, width: `${rightPanelWidth}px` }}
+            >
+              <div
+                className="right-panel-resize-handle"
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize agent inspector panel"
+                aria-valuemin={260}
+                aria-valuemax={480}
+                aria-valuenow={rightPanelWidth}
+                tabIndex={0}
+                onPointerDown={(e) => {
+                  // Mirror of the left-panel handle. Handle lives on the
+                  // panel's LEFT edge, so dragging *left* (negative dx)
+                  // makes the panel WIDER — invert the sign vs. the
+                  // sidebar handler.
+                  const startX = e.clientX;
+                  const startWidth = rightPanelWidth;
+                  const handleEl = e.currentTarget;
+                  handleEl.setPointerCapture(e.pointerId);
+                  document.body.style.cursor = "col-resize";
+                  const onMove = (ev: PointerEvent) => {
+                    setRightPanelWidth(startWidth - (ev.clientX - startX));
+                  };
+                  const onUp = () => {
+                    document.body.style.cursor = "";
+                    handleEl.releasePointerCapture(e.pointerId);
+                    handleEl.removeEventListener("pointermove", onMove);
+                    handleEl.removeEventListener("pointerup", onUp);
+                  };
+                  handleEl.addEventListener("pointermove", onMove);
+                  handleEl.addEventListener("pointerup", onUp);
+                }}
+                onKeyDown={(e) => {
+                  // Inverted vs. left-panel: handle on LEFT edge, so
+                  // ArrowLeft *grows* the panel toward the centre and
+                  // ArrowRight shrinks it. Shift accelerates 16→64 px.
+                  const step = e.shiftKey ? 64 : 16;
+                  if (e.key === "ArrowLeft") {
+                    e.preventDefault();
+                    setRightPanelWidth(rightPanelWidth + step);
+                  } else if (e.key === "ArrowRight") {
+                    e.preventDefault();
+                    setRightPanelWidth(rightPanelWidth - step);
+                  }
+                }}
+              />
               <ErrorBoundary>
                 <Suspense fallback={null}>
                   <AgentInspector

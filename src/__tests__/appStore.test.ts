@@ -190,6 +190,58 @@ describe("appStore — editor files", () => {
   });
 });
 
+describe("appStore — panel widths", () => {
+  beforeEach(() => {
+    try {
+      localStorage.removeItem("aether:sidebarWidth");
+      localStorage.removeItem("aether:rightPanelWidth");
+    } catch {
+      /* ignore */
+    }
+    useAppStore.setState({ sidebarWidth: 240, rightPanelWidth: 320 });
+  });
+
+  it("clamps sidebarWidth to [200, 480]", () => {
+    const { setSidebarWidth } = useAppStore.getState();
+    setSidebarWidth(50);
+    expect(useAppStore.getState().sidebarWidth).toBe(200);
+    setSidebarWidth(9999);
+    expect(useAppStore.getState().sidebarWidth).toBe(480);
+    setSidebarWidth(300);
+    expect(useAppStore.getState().sidebarWidth).toBe(300);
+  });
+
+  it("persists sidebarWidth to localStorage", () => {
+    const { setSidebarWidth } = useAppStore.getState();
+    setSidebarWidth(280);
+    expect(localStorage.getItem("aether:sidebarWidth")).toBe("280");
+  });
+
+  it("clamps rightPanelWidth to [260, 480]", () => {
+    const { setRightPanelWidth } = useAppStore.getState();
+    setRightPanelWidth(100);
+    expect(useAppStore.getState().rightPanelWidth).toBe(260);
+    setRightPanelWidth(9999);
+    expect(useAppStore.getState().rightPanelWidth).toBe(480);
+    setRightPanelWidth(360);
+    expect(useAppStore.getState().rightPanelWidth).toBe(360);
+  });
+
+  it("persists rightPanelWidth to localStorage", () => {
+    const { setRightPanelWidth } = useAppStore.getState();
+    setRightPanelWidth(400);
+    expect(localStorage.getItem("aether:rightPanelWidth")).toBe("400");
+  });
+
+  it("rounds fractional widths to integers", () => {
+    const { setSidebarWidth, setRightPanelWidth } = useAppStore.getState();
+    setSidebarWidth(245.7);
+    expect(useAppStore.getState().sidebarWidth).toBe(246);
+    setRightPanelWidth(320.3);
+    expect(useAppStore.getState().rightPanelWidth).toBe(320);
+  });
+});
+
 describe("appStore — theme overrides", () => {
   it("sets a single accent override", () => {
     const { setAccentOverride } = useAppStore.getState();

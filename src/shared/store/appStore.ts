@@ -58,6 +58,11 @@ interface AppState {
    *  `--sidebar-width`. Clamped to [200, 480] in the setter. */
   sidebarWidth: number;
   setSidebarWidth: (v: number) => void;
+  /** User-resized right panel (Agent Inspector / Workflow / Toolkit /
+   *  Logs) width in pixels. Drag handle on the panel's left edge
+   *  writes here. Clamped to [260, 480] in the setter. */
+  rightPanelWidth: number;
+  setRightPanelWidth: (v: number) => void;
 
   // UI visibility
   paletteVisible: boolean;
@@ -226,6 +231,28 @@ export const useAppStore = create<AppState>((set, get) => ({
         /* ignore */
       }
       return { sidebarWidth: clamped };
+    }),
+  rightPanelWidth: (() => {
+    try {
+      const raw = localStorage.getItem("aether:rightPanelWidth");
+      const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+      if (Number.isFinite(parsed) && parsed >= 260 && parsed <= 480) {
+        return parsed;
+      }
+    } catch {
+      /* ignore */
+    }
+    return 320;
+  })(),
+  setRightPanelWidth: (v: number) =>
+    set(() => {
+      const clamped = Math.max(260, Math.min(480, Math.round(v)));
+      try {
+        localStorage.setItem("aether:rightPanelWidth", String(clamped));
+      } catch {
+        /* ignore */
+      }
+      return { rightPanelWidth: clamped };
     }),
 
   // UI
