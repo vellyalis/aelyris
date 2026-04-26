@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { Check, ChevronLeft, ChevronRight, FileText, RotateCcw, X } from "lucide-react";
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "../../shared/store/toastStore";
 import type { AgentSession, FileChangeDetail } from "../../shared/types/agent";
 import { PanelHeader } from "../../shared/ui/PanelHeader";
@@ -63,13 +63,20 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
 
   const activeFile = uniqueFiles[activeIndex];
 
+  // Mirror `diffs` into a ref so the load-diff effect can read freshness
+  // without listing `diffs` as a dep — that would re-fire on every
+  // setDiffs(loading=true) and double-invoke the IPC pair.
+  const diffsRef = useRef(diffs);
+  diffsRef.current = diffs;
+
   // Load diff for active file
   useEffect(() => {
     if (!activeFile || !projectPath) return;
     const path = activeFile.path;
 
-    // Already loaded
-    if (diffs.has(path) && !diffs.get(path)!.loading) return;
+    // Already loaded — skip without retriggering on dep changes.
+    const existing = diffsRef.current.get(path);
+    if (existing && !existing.loading) return;
 
     setDiffs((prev) => {
       const next = new Map(prev);
@@ -105,7 +112,7 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
     return () => {
       cancelled = true;
     };
-  }, [activeFile, projectPath, diffs]);
+  }, [activeFile, projectPath]);
 
   if (uniqueFiles.length === 0) {
     return (
@@ -185,18 +192,26 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
             className={styles.revertBtn}
             onClick={async () => {
               if (!activeFile || !projectPath) return;
+              if (activeFile.action === "create") {
+                // Reverting a newly-created file would mean deleting it on disk;
+                // we don't expose a destructive action without explicit confirm.
+                toast.error("Cannot revert new file", "The file did not exist before this session.");
+                return;
+              }
+              const original = diffs.get(activeFile.path)?.original;
+              if (original === undefined) {
+                toast.error("Revert failed", "Original content not available yet.");
+                return;
+              }
               try {
-                const original = diffs.get(activeFile.path)?.original;
-                if (original !== undefined && original !== "") {
-                  await invoke("write_file", { path: activeFile.path, content: original });
-                  toast.success("Reverted", activeFile.path.split(/[/\\]/).pop() ?? "");
-                  // Reload diff
-                  setDiffs((prev) => {
-                    const next = new Map(prev);
-                    next.delete(activeFile.path);
-                    return next;
-                  });
-                }
+                await invoke("write_file", { path: activeFile.path, content: original });
+                toast.success("Reverted", activeFile.path.split(/[/\\]/).pop() ?? "");
+                // Reload diff
+                setDiffs((prev) => {
+                  const next = new Map(prev);
+                  next.delete(activeFile.path);
+                  return next;
+                });
               } catch (err) {
                 toast.error("Revert failed", String(err));
               }

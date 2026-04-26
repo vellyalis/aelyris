@@ -137,7 +137,7 @@ export function SessionCard({
                     {s.branch}
                   </span>
                 )}
-                <span className={styles.cardIcons}>
+                <span className={styles.cardIcons} aria-hidden="true">
                   <Pencil size={10} />
                 </span>
               </div>

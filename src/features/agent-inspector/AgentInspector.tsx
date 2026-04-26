@@ -635,7 +635,7 @@ export function AgentInspector({
             )}
           </div>
         </div>
-      ) : (
+      ) : tab === "parallel" ? (
         <div className={styles.parallelView}>
           {activeSessions.length >= 2 && (
             <div className={styles.parallelSummary}>
@@ -751,7 +751,7 @@ export function AgentInspector({
             })
           )}
         </div>
-      )}
+      ) : null}
 
       {tab === "conductor" && (
         <ConductorView sessions={sessions} activeSessionId={activeSessionId} onSelectSession={onSelectSession} />
