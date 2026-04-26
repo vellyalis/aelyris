@@ -1,10 +1,10 @@
 import {
   ArrowLeftRight,
+  Columns2,
   GitBranch,
   Maximize2,
   Minimize2,
-  SplitSquareHorizontal,
-  SplitSquareVertical,
+  Rows2,
   X,
 } from "lucide-react";
 import { memo } from "react";
@@ -81,10 +81,15 @@ export const TerminalInfoBar = memo(function TerminalInfoBar({
           type="button"
           className={styles.toggleBtn}
           onClick={onSplitRight}
-          aria-label="Split pane right"
-          title="Split Right (Alt+Shift+Right)"
+          aria-label="Add pane to the right"
+          title="Add pane to the right  ·  Alt+Shift+→"
         >
-          <SplitSquareVertical size={12} aria-hidden="true" />
+          {/* `Columns2` shows the resulting two-column layout, so the
+           * icon's silhouette directly previews where the new pane
+           * lands. The previous `SplitSquareVertical` (a single
+           * vertical divider) was being read as "split vertically"
+           * — exactly the inverse of what the action does. */}
+          <Columns2 size={12} aria-hidden="true" />
         </button>
       )}
       {onSplitDown && (
@@ -92,10 +97,10 @@ export const TerminalInfoBar = memo(function TerminalInfoBar({
           type="button"
           className={styles.toggleBtn}
           onClick={onSplitDown}
-          aria-label="Split pane down"
-          title="Split Down (Alt+Shift+Down)"
+          aria-label="Add pane below"
+          title="Add pane below  ·  Alt+Shift+↓"
         >
-          <SplitSquareHorizontal size={12} aria-hidden="true" />
+          <Rows2 size={12} aria-hidden="true" />
         </button>
       )}
       {onToggleSync && (

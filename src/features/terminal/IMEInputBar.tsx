@@ -184,10 +184,25 @@ export const IMEInputBar = forwardRef<IMEInputBarHandle, IMEInputBarProps>(funct
   }, []);
 
   const indicator = composing ? "あ" : "A";
+  // Resting placeholder stays short so narrow panes (split-right ×2)
+  // don't truncate or wrap. The full key-binding crib drops in only
+  // when the user focuses the bar and there's nothing typed yet —
+  // otherwise it reads as visual noise on every pane all the time.
+  const placeholder =
+    focused && value.length === 0
+      ? "Enter で送信  ·  Shift+Enter で改行  ·  Esc でターミナル  ·  ↑↓ で履歴"
+      : "メッセージを入力";
 
   return (
-    <div className={`${styles.bar} ${focused ? styles.focused : ""}`} role="group" aria-label="ターミナル入力バー">
-      <span className={styles.indicator} aria-label={composing ? "IME composing" : "ASCII"}>
+    <div
+      className={`${styles.bar} ${focused ? styles.focused : ""}`}
+      role="group"
+      aria-label="ターミナル入力バー"
+    >
+      <span
+        className={`${styles.indicator} ${composing ? styles.indicatorComposing : ""}`}
+        aria-label={composing ? "IME composing" : "ASCII"}
+      >
         {indicator}
       </span>
       <textarea
@@ -201,15 +216,15 @@ export const IMEInputBar = forwardRef<IMEInputBarHandle, IMEInputBarProps>(funct
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         onKeyDown={handleKeyDown}
-        placeholder="Enter で送信 / Shift+Enter で改行 / Esc でターミナル / ↑↓ で履歴"
+        placeholder={placeholder}
         autoComplete="off"
         autoCorrect="off"
         spellCheck={false}
         aria-label="ターミナル入力"
       />
-      <span className={styles.hint} aria-hidden>
-        Ctrl+Shift+J
-      </span>
+      <kbd className={styles.hint} aria-hidden>
+        ⌃⇧J
+      </kbd>
     </div>
   );
 });

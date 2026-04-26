@@ -1,77 +1,137 @@
+/* Bar height is anchored on a fixed line-height so the bar measures
+ * the same on every pane regardless of pane width — the previous
+ * design let the placeholder text wrap on narrow panes, which made
+ * the bar grow taller than its sibling on the wider pane.
+ *
+ * The textarea still auto-grows up to TEXTAREA_MAX_ROWS (5) when
+ * the user types multiple lines, but the resting state is a single
+ * 28-px row everywhere. */
 .bar {
   position: relative;
   display: flex;
-  align-items: flex-end;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  background: var(--glass-thick);
-  border-top: 1px solid var(--gold-dim);
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-3);
+  min-height: 32px;
+  background: var(--glass-frame);
+  border-top: 1px solid var(--white-6);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   transition:
-    border-top-color var(--duration-fast) var(--ease-silk),
-    background var(--duration-fast) var(--ease-silk),
-    box-shadow var(--duration-fast) var(--ease-silk);
+    border-top-color var(--duration-fast) var(--ease-silk, cubic-bezier(0.4, 0, 0.2, 1)),
+    background var(--duration-fast) var(--ease-silk, cubic-bezier(0.4, 0, 0.2, 1)),
+    box-shadow var(--duration-fast) var(--ease-silk, cubic-bezier(0.4, 0, 0.2, 1));
 }
 
 .bar.focused {
-  background: var(--glass-solid);
-  border-top-color: var(--gold);
+  background: var(--glass-thick);
+  border-top-color: var(--gold-dim);
   box-shadow:
-    0 -6px 18px var(--black-50),
-    inset 0 0 0 1px var(--gold-subtle);
+    0 -4px 12px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 var(--gold-subtle);
 }
 
+/* IME indicator pill. Lives at a fixed 18-px width so the textarea
+ * starts at the same x-coordinate on every pane — none of the
+ * "the second pane's input is offset 4 px" jitter the previous
+ * variable-width text rendition produced. */
 .indicator {
-  min-width: 20px;
-  text-align: center;
-  color: var(--gold);
-  font-size: var(--text-base);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  font-size: 11px;
   font-family: var(--font-mono);
   font-weight: var(--weight-medium);
-  opacity: 0.55;
-  line-height: var(--leading-tight);
-  padding: var(--space-1) 0;
-  transition: opacity var(--duration-fast) var(--ease-silk);
+  color: var(--text-muted);
+  border: 1px solid var(--white-10);
+  border-radius: var(--radius-sm);
+  background: var(--white-2);
   user-select: none;
+  transition:
+    color var(--duration-fast),
+    border-color var(--duration-fast),
+    background var(--duration-fast);
 }
 
 .bar.focused .indicator {
-  opacity: 1;
+  color: var(--text-secondary);
+  border-color: var(--white-15);
+  background: var(--white-4);
+}
+
+/* While IME composition is active we light the pill in gold so the
+ * user always knows whether the next Enter commits to the IME or
+ * to the bar — same affordance as macOS / Win11 IME indicators. */
+.indicator.indicatorComposing {
+  color: var(--gold);
+  border-color: var(--gold-dim);
+  background: var(--gold-subtle);
 }
 
 .input {
   flex: 1;
+  min-width: 0;
   background: transparent;
   border: none;
   outline: none;
   color: var(--text-primary);
   font-family: var(--font-mono);
-  font-size: var(--text-lg);
-  line-height: var(--leading-snug);
-  padding: var(--space-1) 0;
+  font-size: var(--text-base);
+  line-height: 1.4;
+  padding: var(--space-2) 0;
   resize: none;
   overflow-y: auto;
-  min-height: calc(14px * 1.4);
-  max-height: calc(14px * 1.4 * 5);
+  /* Single-line resting height; auto-grow handler pushes the height
+   * up to ~5 rows when the user types multiple lines. */
+  min-height: calc(1em * 1.4);
+  max-height: calc(1em * 1.4 * 5);
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
 }
 
 .input::placeholder {
   color: var(--text-muted);
+  /* Truncate any over-long placeholder so a narrow pane never wraps
+   * the resting bar to two lines. */
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .bar:not(.focused) .input::placeholder {
   color: var(--white-25);
 }
 
+/* Keyboard-shortcut chip on the right side. Hidden when the bar is
+ * resting so it doesn't compete with the placeholder; fades in on
+ * focus. The `<kbd>` semantics give screen readers the right hint
+ * even when the visual is suppressed. */
 .hint {
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--white-10);
+  border-radius: var(--radius-sm);
+  background: var(--white-2);
+  color: var(--text-muted);
   font-family: var(--font-mono);
-  white-space: nowrap;
-  line-height: var(--leading-tight);
-  padding: var(--space-1) 0;
+  font-size: 10px;
+  letter-spacing: 0.04em;
   user-select: none;
+  opacity: 0;
+  transform: translateY(2px);
+  pointer-events: none;
+  transition:
+    opacity var(--duration-fast) var(--ease-silk, cubic-bezier(0.4, 0, 0.2, 1)),
+    transform var(--duration-fast) var(--ease-silk, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+.bar.focused .hint {
+  opacity: 1;
+  transform: translateY(0);
 }

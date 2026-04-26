@@ -10,6 +10,46 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### UX
 
+- **Split icons direction-true + IME bar refresh.** Dogfood:
+  "the split icon is the wrong way around — I expect a vertical
+  divider to mean 'split vertically' but it adds a pane to the
+  right. Also the IME bar's height differs across panes and the
+  whole strip looks dated."
+  - **Split icons swapped** for `Columns2` (Add pane to the
+    right) and `Rows2` (Add pane below). The previous
+    `SplitSquareVertical` (a single vertical divider) was being
+    read as "split vertically" — exactly the inverse of what the
+    action does. The 2-column / 2-row icons preview the
+    resulting layout silhouette directly. Tooltips moved to
+    "Add pane to the right · Alt+Shift+→" / "Add pane below ·
+    Alt+Shift+↓" so the action verb leads instead of the
+    direction word.
+  - **`IMEInputBar` modernised:**
+    - **Resting placeholder** trimmed from the long "Enter で
+      送信 / Shift+Enter で改行 / Esc でターミナル / ↑↓ で
+      履歴" to "メッセージを入力" — long hint shows only when
+      the bar gains focus and the input is still empty. Stops
+      narrow panes (split-right ×2) from wrapping the strip to
+      two lines.
+    - **`Ctrl+Shift+J` chip** rendered as a `<kbd>` pill
+      (`⌃⇧J`) that's invisible when resting and fades in
+      (opacity + 2-px lift) on focus.
+    - **Fixed 32-px bar height** across all panes —
+      `align-items: center` + `min-height` instead of the old
+      `align-items: flex-end` + auto-grown padding that made
+      the bar's outer height differ between wide and narrow
+      panes.
+    - **IME indicator** is now a 18 × 18 mono-pill with the
+      letter inside (matches macOS / Win11 system IME), gold
+      tint while composing — replaces the standalone faded
+      character that read as a typography artefact.
+  - Vite preview verify: `aria-label='Add pane to the right'` /
+    `aria-label='Add pane below'` confirmed; tooltips include
+    the keyboard shortcut. Real IME bar styling needs `pnpm
+    tauri:dev` to render (preview can't spawn a PTY) but the
+    JSX + CSS land cleanly with no tsc errors.
+  - `pnpm test`: 803 unchanged. `tsc --noEmit`: 0 errors.
+
 - **Sidebar overhaul — collapsible sections (Warp/VS Code parity),
   drag-resize handle, smooth splash, default 240 px.** Dogfood:
   "the sidebar's small, panels can't fold, the splash flickers
