@@ -1,0 +1,92 @@
+/* Apple-style pill toggle. The track + thumb proportions mirror
+ * iOS / macOS Sequoia controls (32 × 18 track, 14-px thumb that
+ * slides 14 px on toggle). Aether gold marks the on state so the
+ * accent stays consistent with the Save button and the gold rim
+ * on the project header. */
+
+.root {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  flex-shrink: 0;
+  background: var(--white-10);
+  border: 1px solid var(--white-15);
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast),
+    border-color var(--duration-fast);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.root:hover:not(:disabled) {
+  background: var(--white-15);
+}
+
+.root:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+.root[data-state="checked"] {
+  background: var(--gold);
+  border-color: var(--gold);
+}
+
+.root[data-state="checked"]:hover:not(:disabled) {
+  /* Slightly brighten on hover when active — keeps the affordance
+   * legible against the gold-on-gold field. */
+  filter: brightness(1.06);
+}
+
+.root:disabled {
+  opacity: var(--state-disabled-opacity);
+  cursor: not-allowed;
+}
+
+.thumb {
+  display: block;
+  width: 14px;
+  height: 14px;
+  background: var(--text-primary);
+  border-radius: 50%;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  transition: transform var(--duration-fast) var(--ease-out, cubic-bezier(0.4, 0, 0.2, 1));
+  transform: translate(1px, 1px);
+  will-change: transform;
+}
+
+.root[data-state="checked"] .thumb {
+  /* 32 (track) - 14 (thumb) - 1 (right-padding) - 1 (left-padding,
+   * cancelled by initial transform) = 17 px slide */
+  transform: translate(15px, 1px);
+  background: var(--aether-bg-surface);
+}
+
+/* Inline row layout — `<Switch label="..." hint="..." />` produces
+ * a self-contained row matching the existing form rhythm. */
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  cursor: pointer;
+  user-select: none;
+}
+
+.copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.label {
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+  line-height: 1.2;
+}
+
+.hint {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  line-height: var(--leading-normal);
+}

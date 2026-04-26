@@ -1,7 +1,9 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
+import { Select } from "../../shared/ui/Select";
 import { useAppStore } from "../../shared/store/appStore";
+import { Switch } from "../../shared/ui/Switch";
 import styles from "./Settings.module.css";
 import { ShellIntegrationSection } from "./ShellIntegrationSection";
 import { ThemePaletteEditor } from "./ThemePaletteEditor";
@@ -139,43 +141,45 @@ export function Settings({ visible, onClose }: SettingsProps) {
             <section className={styles.section}>
               <h3 className={styles.sectionTitle}>Appearance</h3>
               <div className={styles.field}>
-                <label className={styles.label}>Theme</label>
-                <select
-                  className={styles.select}
+                <label className={styles.label} htmlFor="settings-theme">
+                  Theme
+                </label>
+                <Select
+                  id="settings-theme"
                   value={theme}
-                  onChange={(e) => {
-                    const next = e.target.value;
+                  onValueChange={(next) => {
                     setTheme(next);
                     // Apply immediately so the palette editor below targets
                     // the live theme (the running window is the preview).
                     setThemeId(next);
                   }}
-                >
-                  {THEMES.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
+                  options={THEMES.map((t) => ({ value: t.id, label: t.label }))}
+                  ariaLabel="Theme"
+                />
               </div>
               <div className={styles.field}>
                 <label className={styles.label}>Palette</label>
                 <ThemePaletteEditor themeId={theme} />
               </div>
               <div className={styles.field}>
-                <label className={styles.label}>Terminal Font</label>
-                <select className={styles.select} value={font} onChange={(e) => setFont(e.target.value)}>
-                  {FONTS.map((f) => (
-                    <option key={f} value={f}>
-                      {f}
-                    </option>
-                  ))}
-                </select>
+                <label className={styles.label} htmlFor="settings-font">
+                  Terminal Font
+                </label>
+                <Select
+                  id="settings-font"
+                  value={font}
+                  onValueChange={setFont}
+                  options={FONTS.map((f) => ({ value: f, label: f }))}
+                  ariaLabel="Terminal font"
+                />
               </div>
               <div className={styles.row}>
                 <div className={styles.field}>
-                  <label className={styles.label}>Font Size</label>
+                  <label className={styles.label} htmlFor="settings-font-size">
+                    Font Size
+                  </label>
                   <input
+                    id="settings-font-size"
                     type="number"
                     className={styles.input}
                     value={fontSize}
@@ -185,8 +189,11 @@ export function Settings({ visible, onClose }: SettingsProps) {
                   />
                 </div>
                 <div className={styles.field}>
-                  <label className={styles.label}>Line Height</label>
+                  <label className={styles.label} htmlFor="settings-line-height">
+                    Line Height
+                  </label>
                   <input
+                    id="settings-line-height"
                     type="number"
                     className={styles.input}
                     value={lineHeight}
@@ -198,42 +205,52 @@ export function Settings({ visible, onClose }: SettingsProps) {
                 </div>
               </div>
               <div className={styles.field}>
-                <label className={styles.toggle}>
-                  <input type="checkbox" checked={ligatures} onChange={(e) => setLigatures(e.target.checked)} />
-                  <span>Font Ligatures</span>
-                </label>
+                <Switch
+                  id="settings-ligatures"
+                  label="Font Ligatures"
+                  checked={ligatures}
+                  onCheckedChange={setLigatures}
+                />
               </div>
             </section>
 
             <section className={styles.section}>
               <h3 className={styles.sectionTitle}>Terminal</h3>
               <div className={styles.field}>
-                <label className={styles.label}>Default Shell</label>
-                <select
-                  className={styles.select}
-                  value={defaultShell}
-                  onChange={(e) => setDefaultShell(e.target.value)}
-                >
-                  {SHELLS.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className={styles.field}>
-                <label className={styles.label}>Cursor Style</label>
-                <select className={styles.select} value={cursorStyle} onChange={(e) => setCursorStyle(e.target.value)}>
-                  <option value="bar">Bar</option>
-                  <option value="block">Block</option>
-                  <option value="underline">Underline</option>
-                </select>
-              </div>
-              <div className={styles.field}>
-                <label className={styles.toggle}>
-                  <input type="checkbox" checked={cursorBlink} onChange={(e) => setCursorBlink(e.target.checked)} />
-                  <span>Cursor Blink</span>
+                <label className={styles.label} htmlFor="settings-default-shell">
+                  Default Shell
                 </label>
+                <Select
+                  id="settings-default-shell"
+                  value={defaultShell}
+                  onValueChange={setDefaultShell}
+                  options={SHELLS.map((s) => ({ value: s.id, label: s.label }))}
+                  ariaLabel="Default shell"
+                />
+              </div>
+              <div className={styles.field}>
+                <label className={styles.label} htmlFor="settings-cursor-style">
+                  Cursor Style
+                </label>
+                <Select
+                  id="settings-cursor-style"
+                  value={cursorStyle}
+                  onValueChange={setCursorStyle}
+                  options={[
+                    { value: "bar", label: "Bar" },
+                    { value: "block", label: "Block" },
+                    { value: "underline", label: "Underline" },
+                  ]}
+                  ariaLabel="Cursor style"
+                />
+              </div>
+              <div className={styles.field}>
+                <Switch
+                  id="settings-cursor-blink"
+                  label="Cursor Blink"
+                  checked={cursorBlink}
+                  onCheckedChange={setCursorBlink}
+                />
               </div>
             </section>
 
@@ -254,14 +271,13 @@ export function Settings({ visible, onClose }: SettingsProps) {
             <section className={styles.section}>
               <h3 className={styles.sectionTitle}>Ghost Diff Overlay</h3>
               <div className={styles.field}>
-                <label className={styles.toggle}>
-                  <input type="checkbox" checked={liveMode} onChange={(e) => setLiveMode(e.target.checked)} />
-                  <span>Live mode (paint in-progress layers)</span>
-                </label>
-                <p className={styles.hint}>
-                  When off, ghost paint appears only after the agent run finishes. When on, every fs change from the
-                  agent's worktree streams into the editor as it happens.
-                </p>
+                <Switch
+                  id="settings-ghost-live"
+                  label="Live mode (paint in-progress layers)"
+                  hint="When off, ghost paint appears only after the agent run finishes. When on, every fs change from the agent's worktree streams into the editor as it happens."
+                  checked={liveMode}
+                  onCheckedChange={setLiveMode}
+                />
               </div>
             </section>
 

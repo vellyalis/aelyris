@@ -10,6 +10,48 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### UX
 
+- **Form primitives modernisation — radix Switch + Select replace
+  native `<select>` / `<input type=checkbox>` in Settings.**
+  Dogfood: "are you using shadcn / Tailwind? what other old UI is
+  left?" Honest answer: Tailwind + shadcn aren't on this project
+  by design (Liquid Glass tokens are CSS-Modules-driven), so
+  shadcn-style modernisation has to come via Radix primitives.
+  Settings was the loudest tell — four native `<select>` boxes
+  (Theme / Terminal Font / Default Shell / Cursor Style) and
+  three `<input type="checkbox">` rows (Font Ligatures / Cursor
+  Blink / Ghost Diff Live mode) all rendered with OS-default
+  chrome (square blue tint on Windows, no animation, no glass).
+  - New `shared/ui/Switch.tsx` — Radix `Switch.Root` with an iOS-
+    style 32 × 18 pill, gold accent for the on state, optional
+    `label` + `hint` props for inline rows.
+  - New `shared/ui/Select.tsx` — Radix `Select.Root` with a
+    glass-pill trigger (chevron rotates 180° when open) and a
+    portal-attached menu themed against the dialog surface,
+    with checkmark indicator on the active option.
+  - `Settings.tsx` migrated: 4 `<select>` → `<Select>`, 3 `<input
+    type="checkbox">` → `<Switch>`. The 2 `<input type="number">`
+    fields stay as native steppers for now (font size / line
+    height — radix has no public stepper, deferred).
+  - +2 new dependencies: `@radix-ui/react-select 2.2.6`,
+    `@radix-ui/react-switch 1.2.6`.
+  - Vite preview verify: 4 `role="combobox"` triggers + 3
+    `role="switch"` toggles render in Settings; toggling the
+    first switch flipped `data-state` checked → unchecked
+    cleanly; opening the Theme select listed all 7 themes
+    (Aether Dark / Catppuccin Mocha / Frappé / Macchiato / Latte /
+    Tokyo Night / Dracula). Screenshot shows the OS-default
+    blue square `<select>` chrome is gone — replaced with a
+    glass pill that matches the Save button rhythm.
+  - **Other native form elements still pending** (declared so
+    they don't get forgotten): `HelmPanel.tsx`,
+    `KanbanBoard.tsx`, `AgentInspector.tsx`,
+    `RepairJobsPanel.tsx`, `WatchdogDialog.tsx` all still use
+    raw `<input type="checkbox">`. Same Switch primitive
+    drops in cleanly when those panels get audited.
+  - `pnpm test`: 803 unchanged (the suite is flaky on a cold
+    CDP run; second pass hit 803/803). `tsc --noEmit`: 0
+    errors.
+
 - **Chrome cluster rework — hamburger menu + collapsible sidebar
   (Ctrl+B), Claude-Code-Desktop / VS Code parity.** Dogfood:
   "the UI still has Win32-era stuff. The horizontal File / Edit /
