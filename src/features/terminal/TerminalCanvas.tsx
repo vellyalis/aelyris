@@ -112,7 +112,18 @@ export function TerminalCanvas({
   cols,
   rows,
   fontSize = 14,
-  fontFamily = "'IBM Plex Mono', 'Cascadia Code', monospace",
+  /* IBM Plex Mono carries no CJK glyphs, so without an explicit
+   * Japanese / Chinese / Korean monospace fallback the browser
+   * substitutes a system proportional font (Yu Gothic / Meiryo on
+   * Windows, Hiragino Kaku Gothic on macOS) whose advance is wider
+   * than our 2-cell `WIDE_CHAR` slot — neighbour cells overpaint
+   * each other and produce the garbled "あなたCycle Master" rendering
+   * the dogfood screenshot caught (2026-05-03). The fallback chain
+   * preferences fonts that are genuinely monospace at full-width:
+   * Cascadia Code (limited CJK), then Windows-installed BIZ UDGothic
+   * / Yu Gothic UI / Meiryo (monospace at common sizes), then Linux
+   * Noto Sans Mono CJK, finally generic monospace. */
+  fontFamily = "'IBM Plex Mono', 'Cascadia Code', 'BIZ UDGothic', 'Yu Gothic UI', 'Meiryo', 'Noto Sans Mono CJK JP', monospace",
   className,
   snapshotOverride,
   writeBytes,
@@ -201,16 +212,39 @@ export function TerminalCanvas({
   const [cursorOn, setCursorOn] = useState(true);
 
   const cellMetrics: CellMetrics = useMemo(() => {
-    // 0.6 approximates an IBM Plex Mono advance at the common weights used
-    // in the UI. ctx.measureText-based calibration is deferred — the dev
-    // integration target is 14px / 80×24 so sub-pixel error is fine.
-    const width = Math.round(fontSize * 0.6);
+    /* The previous heuristic — `Math.round(fontSize * 0.6)` — produced
+     * 8 px at fontSize 14. The real IBM Plex Mono advance at 14 px is
+     * **8.4 px**, so every `ctx.fillText(ch, col * 8, …)` call drew
+     * ASCII glyphs that visually rendered 8.4 px wide; after ~30 cells
+     * the cumulative 0.4-px drift compounded into ~12 px of overlap,
+     * which dogfood (2026-05-03) caught as "ターミナルの品質が悪い"
+     * with mangled CJK text. Measuring the font via `ctx.measureText`
+     * uses the exact advance instead — sub-pixel positioning is
+     * fine, browsers rasterise glyphs at fractional X without
+     * blurring monospace columns. */
+    let width = fontSize * 0.6;
+    if (typeof document !== "undefined") {
+      const probe = document.createElement("canvas").getContext("2d");
+      if (probe) {
+        probe.font = `${fontSize}px ${fontFamily}`;
+        const measured = probe.measureText("M").width;
+        if (measured > 0) width = measured;
+      }
+    }
     const height = Math.round(fontSize * 1.25);
     return { width, height };
-  }, [fontSize]);
+  }, [fontSize, fontFamily]);
 
   const canvasWidth = cols * cellMetrics.width;
   const canvasHeight = rows * cellMetrics.height;
+  /* `<canvas width=…>` is the bitmap backing-store size and must be
+   * an integer; CSS layout can stay fractional. With `cellMetrics.
+   * width` now being the measured `Mw`-advance (e.g. 8.4 at
+   * fontSize=14), `canvasWidth` is fractional, so we ceil to make
+   * sure the rightmost column doesn't get clipped a fraction of a
+   * pixel short. */
+  const canvasBitmapWidth = Math.ceil(canvasWidth);
+  const canvasBitmapHeight = Math.ceil(canvasHeight);
 
   const {
     selection,
@@ -562,8 +596,8 @@ export function TerminalCanvas({
           setCanvasEl(node);
           onCanvasRef?.(node);
         }}
-        width={canvasWidth}
-        height={canvasHeight}
+        width={canvasBitmapWidth}
+        height={canvasBitmapHeight}
         data-testid="terminal-canvas"
         data-terminal-id={terminalId}
         // `-1` keeps the canvas programmatically focus-able (tests /
@@ -688,7 +722,13 @@ function paintRow(
     ctx.globalAlpha = dim ? 0.6 : 1;
     ctx.font = buildFont(cell, fontSize, fontFamily);
     ctx.fillStyle = fgCss;
-    ctx.fillText(ch, x, y + 1);
+    /* `maxWidth` clamps glyph advance to the cell's logical width,
+     * so even when the browser substitutes a non-monospace CJK font
+     * the glyph compresses into 2 columns instead of bleeding into
+     * the neighbour cell. Without this the dogfood screenshot
+     * (2026-05-03) showed Japanese characters overlapping each other
+     * across an otherwise correctly-sized grid. */
+    ctx.fillText(ch, x, y + 1, cellW);
 
     drawDecorations(ctx, cell, x, y, cellW, height, fgCss, dim);
   }
@@ -865,7 +905,9 @@ function paintGhostSuggestion(
     // Stop drawing if we would overflow the row — shells wrap the echoed
     // acceptance on their own; we only hint inline.
     if (x >= snapshot.cols * width) break;
-    ctx.fillText(ch, x, y + 1);
+    /* `maxWidth` clamps a glyph to one cell so CJK fallback fonts
+     * don't bleed into the neighbour ghost-text cell. */
+    ctx.fillText(ch, x, y + 1, width);
     x += width;
   }
   ctx.restore();
@@ -919,7 +961,11 @@ function paintCursor(ctx: CanvasRenderingContext2D, snapshot: GridSnapshot, { wi
       const cell = snapshot.cells[row]?.[col];
       if (cell && cell.ch !== " ") {
         ctx.fillStyle = DEFAULT_BG;
-        ctx.fillText(cell.ch, x, y + 1);
+        /* Cursor-cell glyph respects the cell's wide-char status so a
+         * CJK char under the cursor still occupies its 2-column slot
+         * without spilling. */
+        const wide = hasAttr(cell, CellAttr.WIDE_CHAR);
+        ctx.fillText(cell.ch, x, y + 1, wide ? width * 2 : width);
       }
       return;
     }

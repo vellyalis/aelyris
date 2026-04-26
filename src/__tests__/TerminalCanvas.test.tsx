@@ -125,7 +125,9 @@ describe("TerminalCanvas", () => {
   it("draws a block cursor as a filled rect", () => {
     const snap = snapshot([[cell("x"), cell("y")]], { row: 0, col: 1, shape: "block" });
     render(<TerminalCanvas terminalId="t1" cols={2} rows={1} fontSize={10} snapshotOverride={snap} />);
-    const cellW = Math.round(10 * 0.6);
+    // `cellMetrics.width` now comes from `ctx.measureText("M").width`.
+    // The jsdom mock returns 8 regardless of fontSize, so cellW is 8.
+    const cellW = 8;
     const cellH = Math.round(10 * 1.25);
     const cursorRect = calls.find(
       (c) =>
@@ -193,7 +195,8 @@ describe("TerminalCanvas", () => {
   it("draws an underline for UNDERLINE cells", () => {
     const snap = snapshot([[cell("U", { attrs: CellAttr.UNDERLINE })]], { shape: "hidden" });
     render(<TerminalCanvas terminalId="t1" cols={1} rows={1} fontSize={10} snapshotOverride={snap} />);
-    const cellW = Math.round(10 * 0.6);
+    // jsdom measureText mock → width 8 regardless of fontSize.
+    const cellW = 8;
     const cellH = Math.round(10 * 1.25);
     // 1px tall bar near the baseline.
     const under = calls.find(

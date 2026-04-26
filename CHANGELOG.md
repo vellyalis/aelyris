@@ -10,6 +10,59 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### UX
 
+- **Terminal text rendering — sub-pixel drift fixed, CJK glyphs
+  no longer collide.** Dogfood screenshot (2026-05-03) showed a
+  PowerShell pane with `gemini -m gemini-1.5-flash-8b "あなた…"`
+  rendering as a garbled mess where Japanese characters
+  overlapped each other and the trailing prompt was unreadable.
+  Two compounding bugs:
+  - **Cell-width was 8 px when IBM Plex Mono's actual advance is
+    8.4 px at fontSize 14.** `Math.round(fontSize * 0.6) = 8`
+    was chosen as a "good enough" heuristic; in practice every
+    `ctx.fillText(ch, col * 8, …)` call painted ASCII glyphs
+    at their natural 8.4-px advance. Cumulative drift hit
+    **11.99 px after 30 cells** (≈ 1.5 cell widths) — measured
+    in Vite preview against the live font. By the time the
+    prompt reached column 30, every subsequent glyph started
+    painting *inside the previous glyph's right edge*. CJK
+    fallback fonts at full-width amplified the visual collision.
+    Fix: derive `cellMetrics.width` from `ctx.measureText("M")`
+    on the actual `<canvas>` and pass the unrounded float
+    through every `col * width` expression. Sub-pixel positioning
+    rasterises crisply; the `<canvas>` bitmap-attribute width
+    ceils to keep the rightmost column unclipped.
+  - **No CJK font in the fallback chain.** `'IBM Plex Mono',
+    'Cascadia Code', monospace` carries no Japanese / Chinese /
+    Korean glyphs, so the browser substituted a system
+    proportional font (Yu Gothic / Meiryo on Windows) whose
+    advance is wider than our 2-cell `WIDE_CHAR` slot. Fixed by
+    appending `'BIZ UDGothic', 'Yu Gothic UI', 'Meiryo', 'Noto
+    Sans Mono CJK JP'` to the chain (genuine monospace at common
+    sizes) and clamping every glyph with `ctx.fillText(ch, x, y,
+    cellW)` so even a non-monospace fallback is squeezed into
+    its allocated 1- or 2-column slot. Same `maxWidth` clamp now
+    applied to the cursor's inverted-glyph repaint and the
+    ghost-text path.
+  - Vite preview verify: `ctx.measureText('abcdefghijklmnopqrstuvwxyz0123')` reports drift `11.99 → 0 px` after the
+    fix.
+
+- **Window close button now actually closes.** Dogfood: "× クリックで
+  閉じれない." `core:window:allow-close` was missing from
+  `src-tauri/capabilities/default.json`, so the JS-side
+  `getCurrentWindow().close()` fallback inside `handleClose`
+  threw an `AccessControlNotAllowed` error that the bare `catch
+  {}` swallowed. The primary path used `process.exit(0)` which
+  bypasses `App.tsx`'s `onCloseRequested` handler — meaning even
+  when it *did* work, the unsaved-files prompt was skipped.
+  Fixed by:
+  - Adding `core:window:allow-close` to the capability list.
+  - Reordering `handleClose` to try `window.close()` first
+    (which fires `onCloseRequested` so unsaved files get the
+    confirm dialog) and only falling back to `process.exit(0)`
+    if the window plugin throws — and now both branches log the
+    failure to console instead of swallowing it silently, so
+    the next regression surfaces immediately.
+
 - **Focus-ring offset audit — three valid tiers, two documented
   exceptions, no more dial-in stragglers.** Dogfood: "tab-cycling
   through the chrome, half the rings sit 1 px outside, a third

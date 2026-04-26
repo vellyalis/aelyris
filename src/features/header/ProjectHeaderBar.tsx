@@ -57,14 +57,28 @@ export function ProjectHeaderBar({
     } catch {}
   };
   const handleClose = async () => {
+    // Close via the window API first so `App.tsx`'s `onCloseRequested`
+    // gets a chance to prompt for unsaved files before we tear the
+    // process down. `process.exit(0)` skips the close lifecycle and
+    // is reserved for the failure fallback (e.g. permission missing
+    // or the window plugin throws on a stale handle).
+    try {
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      await getCurrentWindow().close();
+      return;
+    } catch (err) {
+      // Surface the failure so it doesn't disappear into a silent
+      // catch — the most common cause is `core:window:allow-close`
+      // missing from `src-tauri/capabilities/default.json`.
+      // eslint-disable-next-line no-console
+      console.error("[ProjectHeaderBar] window.close() failed, falling back to process.exit", err);
+    }
     try {
       const { exit } = await import("@tauri-apps/plugin-process");
       await exit(0);
-    } catch {
-      try {
-        const { getCurrentWindow } = await import("@tauri-apps/api/window");
-        getCurrentWindow().close();
-      } catch {}
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[ProjectHeaderBar] process.exit(0) also failed", err);
     }
   };
 
