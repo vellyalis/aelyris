@@ -3,24 +3,19 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  /* position:relative here is safe — no padding on this element, so it does not
-     shift the xterm IME composition helper's coordinate system. Required for
-     the IME input bar's position:absolute to anchor to the terminal area. */
   position: relative;
 }
 
+/* Padding gives the canvas breathing room inside the pane so glyphs
+ * don't butt against the pane edge. The previous comment referenced
+ * xterm.js's CompositionHelper coordinate system — xterm was removed
+ * in Phase 2 (`d4df53a`). The padding stays for visual spacing only,
+ * and the native canvas/IME path uses `set_ime_position` IPC, not
+ * DOM-relative positioning. */
 .terminalContainer {
   flex: 1;
   overflow: hidden;
-  /* Padding inside terminal container — xterm.js CompositionHelper calculates
-     IME position relative to .xterm element, so padding must be on the
-     container wrapping xterm, not on a parent with position:relative */
   padding: var(--space-4);
-}
-
-.terminalContainer :global(.xterm),
-.terminalContainer :global(.xterm-viewport) {
-  background-color: transparent;
 }
 
 .searchBar {

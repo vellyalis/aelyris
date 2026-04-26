@@ -10,6 +10,53 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### UX
 
+- **Terminal pane quality sweep — silent UX bugs and dead chrome
+  found by review pass.** Self-audit triggered by dogfood "still
+  many low-quality areas around the terminal":
+  - **Active pane indicator was wired but unused.**
+    `TerminalInfoBar` accepted `isActive` from `PaneTreeRenderer`
+    and immediately discarded it (`isActive: _isActive`,
+    underscore-prefixed = explicitly unused). With splits, both
+    panes looked identical regardless of keyboard focus — the
+    most basic split-pane affordance was missing. Wired the prop
+    to `data-active`; the bar now shows a 1-px gold rule along
+    its top edge, a translucent glass background, and a
+    gold-tinted shell label when focused. Same convention VS
+    Code / Linear / Warp use.
+  - **`hollowBlock` cursor was painted as a filled block.**
+    Alacritty emits `HollowBlock` when OS focus leaves the
+    window — every modern terminal (iTerm2, Terminal.app,
+    Windows Terminal) renders this as a 1-px outline so the
+    user can tell "I clicked elsewhere". We rendered it
+    identically to `block`, silently losing the signal. Now a
+    proper `strokeRect` outline (with 0.5-px coordinate inset
+    so a 1-px stroke sits crisply on the pixel grid).
+  - **`.toggleBtnActive` referenced but never defined.** The
+    sync-input toggle (`<ArrowLeftRight>` icon) used
+    `${syncMode ? styles.toggleBtnActive : ""}` — but the class
+    didn't exist in `TerminalInfoBar.module.css`. So the toggle
+    silently rendered identical to the inactive state. Defined
+    the class with a gold-subtle background tint and gold
+    foreground.
+  - **Dead `:global(.xterm)` rules removed.** `TerminalArea.
+    module.css` carried two rules (`.xterm` /
+    `.xterm-viewport` background-transparent) that targeted DOM
+    elements xterm.js used to inject — but xterm was excised in
+    Phase 2 (`d4df53a`), so the selectors haven't matched
+    anything in months. Dropped, plus updated the
+    `.terminalContainer` comment to stop citing xterm's
+    CompositionHelper as the rationale for padding (the native
+    canvas/IME path doesn't use it).
+  - **`padding: 0 8px` hardcoded** in TerminalInfoBar replaced
+    with `var(--space-2)` so the bar follows the same spacing
+    rhythm as every other surface.
+  - **`border-bottom`** harmonised between TerminalInfoBar and
+    TimelineBar — both were using different tokens (`--border`
+    vs `--white-6`) for the same hairline, now both use
+    `--white-6` so they read as one continuous chrome stack.
+  - **`exitDot` "glow" comment** rewritten to reflect the
+    actual implementation (a 1-px ring, not a blur).
+
 - **Click in the terminal no longer leaves a 1-cell dark
   rectangle behind.** Dogfood: a single click in the terminal
   pane left a visible artefact at the click position that the

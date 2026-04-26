@@ -955,8 +955,7 @@ function paintCursor(ctx: CanvasRenderingContext2D, snapshot: GridSnapshot, { wi
   ctx.globalAlpha = 1;
   ctx.fillStyle = CURSOR_COLOR;
   switch (shape) {
-    case "block":
-    case "hollowBlock": {
+    case "block": {
       ctx.fillRect(x, y, width, height);
       const cell = snapshot.cells[row]?.[col];
       if (cell && cell.ch !== " ") {
@@ -967,6 +966,21 @@ function paintCursor(ctx: CanvasRenderingContext2D, snapshot: GridSnapshot, { wi
         const wide = hasAttr(cell, CellAttr.WIDE_CHAR);
         ctx.fillText(cell.ch, x, y + 1, wide ? width * 2 : width);
       }
+      return;
+    }
+    case "hollowBlock": {
+      /* Alacritty emits HollowBlock when the OS focus leaves our
+       * terminal — `block` and `hollowBlock` previously rendered
+       * identically, which silently dropped the focus signal. A 1-px
+       * outline matches the convention every modern terminal
+       * (iTerm2, Terminal.app, Windows Terminal, Wezterm) uses for
+       * "I'm not the keyboard target right now". The 0.5-px inset is
+       * needed because canvas strokeRect centres the line on the
+       * coordinate, so a 1-px stroke at integer coords would split
+       * across two pixels and look fuzzy. */
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = CURSOR_COLOR;
+      ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
       return;
     }
     case "underline":

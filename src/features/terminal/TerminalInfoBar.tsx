@@ -40,7 +40,7 @@ export const TerminalInfoBar = memo(function TerminalInfoBar({
   branch,
   terminalId,
   activeAgent,
-  isActive: _isActive,
+  isActive,
   isMaximized,
   onToggleMaximize,
   syncMode,
@@ -56,7 +56,12 @@ export const TerminalInfoBar = memo(function TerminalInfoBar({
   const lag = usePtyLag(terminalId ?? null);
 
   return (
-    <div className={styles.bar}>
+    /* `data-active` drives the focused-pane signal in CSS (top-edge gold
+     * rule + brighter shell label). Previously the prop was received and
+     * silently discarded — both panes looked identical regardless of
+     * which one had keyboard focus, breaking the most basic split-pane
+     * affordance. */
+    <div className={styles.bar} data-active={isActive ? "true" : undefined}>
       <span className={styles.shell}>{shell}</span>
       {lastEnd && (
         <ExitStatusDot exitCode={lastEnd.exitCode} />
