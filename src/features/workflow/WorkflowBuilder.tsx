@@ -226,6 +226,31 @@ const PRESETS: { name: string; nodes: Node[]; edges: Edge[] }[] = [
   },
 ];
 
+// ── YAML codec helpers ──
+
+// Quote/escape rules for YAML double-quoted scalars: backslash and the
+// ASCII double-quote must be escaped, and embedded newlines become "\\n".
+// Without this, a prompt like {"OK" と言ったら…} produces invalid YAML
+// (`prompt: ""OK" と言ったら…"`) and the workflow fails to start with a
+// generic parse error the user can't trace back to their input.
+function escapeYamlString(raw: string): string {
+  return raw.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\r/g, "\\r");
+}
+
+// Single-pass inverse of `escapeYamlString` so backslash-quote /
+// backslash-newline / backslash-backslash all round-trip cleanly — without
+// this, an exported prompt containing a `"` re-imports as the literal
+// sequence `\"` and the next export double-escapes it.
+function unescapeYamlString(raw: string): string {
+  return raw.replace(/\\(.)/g, (_, ch) => {
+    if (ch === "n") return "\n";
+    if (ch === "r") return "\r";
+    if (ch === '"') return '"';
+    if (ch === "\\") return "\\";
+    return ch;
+  });
+}
+
 // ── Builder component ──
 
 interface WorkflowBuilderProps {
@@ -290,14 +315,6 @@ export function WorkflowBuilder({ onClose, onExport }: WorkflowBuilderProps) {
       return phase;
     });
 
-    // Quote/escape rules for YAML double-quoted scalars: backslash and the
-    // ASCII double-quote must be escaped, and embedded newlines become "\\n".
-    // Without this, a prompt like {"OK" と言ったら…} produces invalid YAML
-    // (`prompt: ""OK" と言ったら…"`) and the workflow fails to start with a
-    // generic parse error the user can't trace back to their input.
-    const escapeYamlString = (raw: string): string =>
-      raw.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\r/g, "\\r");
-
     const yamlLines = [`name: ${workflowName}`, `description: Visual Workflow Builder で作成`, "", "phases:"];
     for (const p of phases) {
       yamlLines.push(`  - name: ${p.name}`);
@@ -343,20 +360,6 @@ export function WorkflowBuilder({ onClose, onExport }: WorkflowBuilderProps) {
           const importedEdges: Edge[] = [];
           let currentPhase: Record<string, unknown> | null = null;
           let prevId: string | null = null;
-
-          // Inverse of `escapeYamlString` in buildYaml. Single-pass mapping
-          // so backslash-quote / backslash-newline / backslash-backslash all
-          // round-trip cleanly — without this, an exported prompt containing
-          // a `"` re-imports as the literal sequence `\"` and the next
-          // export double-escapes it.
-          const unescapeYamlString = (raw: string): string =>
-            raw.replace(/\\(.)/g, (_, ch) => {
-              if (ch === "n") return "\n";
-              if (ch === "r") return "\r";
-              if (ch === '"') return '"';
-              if (ch === "\\") return "\\";
-              return ch;
-            });
 
           for (const line of lines) {
             const trimmed = line.trim();

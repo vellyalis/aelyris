@@ -113,6 +113,19 @@ export function EditorPanel({
   // file's state with the previous file's value.
   const filePathRef = useRef(filePath);
   filePathRef.current = filePath;
+  // Pinned timeout id for the saved-pill clear. Without this ref the
+  // 2 s setTimeout from a save that fires right before unmount would
+  // call setSaved(false) on an unmounted component — visible as the
+  // React "state on unmounted component" warning.
+  const savedPillTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (savedPillTimerRef.current !== null) {
+        clearTimeout(savedPillTimerRef.current);
+        savedPillTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // Ghost paint wiring — editor + monaco need to become state so the hook
   // re-runs once onMount hands them over. Reset to null whenever filePath
@@ -280,7 +293,13 @@ export function EditorPanel({
               setContent(value);
               setModified(false);
               setSaved(true);
-              setTimeout(() => setSaved(false), 2000);
+              if (savedPillTimerRef.current !== null) {
+                clearTimeout(savedPillTimerRef.current);
+              }
+              savedPillTimerRef.current = setTimeout(() => {
+                setSaved(false);
+                savedPillTimerRef.current = null;
+              }, 2000);
             }
             // markSaved + toast are filePath-scoped and safe to call
             // unconditionally — they affect the saved file's bookkeeping,

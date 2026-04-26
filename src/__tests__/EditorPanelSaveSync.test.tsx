@@ -45,14 +45,37 @@ describe("EditorPanel Ctrl+S sync", () => {
     expect(src).toMatch(/const\s+savedFilePath\s*=\s*filePath/);
     expect(src).toMatch(/filePathRef\.current\s*===\s*savedFilePath/);
 
-    // The previous unconditional setContent must be inside the gate.
+    // setContent must appear AFTER the stillCurrent gate, never before
+    // markSaved (which is the unconditional, filePath-scoped call). We
+    // match positions in the success arm rather than depending on the
+    // exact indentation of the if-block — a future formatting pass
+    // shouldn't silently invalidate the regression guard.
     const successArm = src.match(/\.then\(\s*\(\s*\)\s*=>\s*\{([\s\S]*?)\}\s*\)\s*\.catch/);
     expect(successArm).not.toBeNull();
     const body = successArm![1];
     expect(body).toMatch(/if\s*\(\s*stillCurrent\s*\)/);
-    // setContent must be inside the if-block, not above it.
-    const ifBlockMatch = body.match(/if\s*\(\s*stillCurrent\s*\)\s*\{([\s\S]*?)\n\s{12}\}/);
-    expect(ifBlockMatch).not.toBeNull();
-    expect(ifBlockMatch![1]).toMatch(/setContent\(/);
+
+    const stillCurrentIdx = body.indexOf("stillCurrent");
+    const setContentIdx = body.indexOf("setContent(value)");
+    const markSavedIdx = body.indexOf("markSaved(");
+    expect(stillCurrentIdx).toBeGreaterThan(-1);
+    expect(setContentIdx).toBeGreaterThan(-1);
+    expect(markSavedIdx).toBeGreaterThan(-1);
+    // Ordering: gate → setContent → markSaved (gate must precede the
+    // mutation it guards; markSaved is filePath-scoped and runs after).
+    expect(setContentIdx).toBeGreaterThan(stillCurrentIdx);
+    expect(markSavedIdx).toBeGreaterThan(setContentIdx);
+  });
+
+  it("save pill setTimeout is held in a ref and cleared on unmount (codex r1 M2)", () => {
+    const src = Object.entries(sources)[0][1];
+
+    // Without a ref the 2 s setSaved(false) timer outlives the panel
+    // when the user closes the file mid-save — produces React's
+    // "state update on unmounted component" warning. The timeout id
+    // must be retained in a ref and cleaned up in the unmount effect.
+    expect(src).toMatch(/savedPillTimerRef/);
+    // Cleanup effect must clear the timer when the component unmounts.
+    expect(src).toMatch(/clearTimeout\(\s*savedPillTimerRef\.current\s*\)/);
   });
 });
