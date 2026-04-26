@@ -613,19 +613,55 @@ body[data-window-focused="false"] {
   outline: none;
 }
 
-/* Scrollbar */
+/* Scrollbar — unified across every overflow surface so panels stop
+ * carrying browser-default chrome. Two parallel surfaces:
+ *
+ *  1. Firefox / Chromium 121+ / Safari: `scrollbar-width: thin` +
+ *     `scrollbar-color` need a `*` selector — both are
+ *     non-inherited properties, so a `:root` rule only covers
+ *     `<html>` itself; descendants would still render the OS-
+ *     default 15-px chrome. Previously only `IMEInputBar` set
+ *     these explicitly; the rest of the app silently fell back
+ *     to OS chrome on Firefox / modern Chromium.
+ *
+ *  2. Chromium webkit-pseudo path: `::-webkit-scrollbar` rules
+ *     run alongside (older Chromium / Tauri webview minor
+ *     versions). Width AND height are now set (the old rule
+ *     omitted height, so horizontal scrollbars on `.tabs`,
+ *     `.editorTabsBar`, `.editorArea` etc. fell back to ~12 px
+ *     native chrome). The `border: 3px solid transparent` +
+ *     `background-clip: padding-box` trick paints the thumb
+ *     4 px inside a 10-px gutter — same "small grippy in a
+ *     generous lane" pattern macOS / GitHub use, comfortably
+ *     hittable without dominating narrow panels. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
 ::-webkit-scrollbar {
-  width: 5px;
+  width: 10px;
+  height: 10px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.15);
-  border-radius: 3px;
+  border-radius: 5px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  transition: background-color var(--duration-fast) var(--ease-silk, ease);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.28);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:active {
+  background: rgba(255, 255, 255, 0.4);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 ::selection {

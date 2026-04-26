@@ -10,6 +10,41 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### UX
 
+- **Scrollbar unification — thin overlay across every panel.**
+  Dogfood: "Firefox / new Chromium ship with a 15-px chrome bar
+  on every panel — that's the loudest 'browser default' tell on
+  the app, the radix Switch / Select work doesn't help if every
+  list still has a Win32-grey gutter next to it."
+  - **`*` selector for `scrollbar-width: thin` +
+    `scrollbar-color`.** Both properties are non-inherited, so
+    the previous `:root` rule only styled `<html>` itself; every
+    `<div>`, `<aside>`, `<nav>` descendant fell back to OS chrome.
+    Chromium 121+ supports `scrollbar-width` natively, so the same
+    declaration now lights up Firefox **and** modern Chromium /
+    Tauri webview without a webkit pseudo-element fallback —
+    measured: a `.right-panel` `getComputedStyle` reports
+    `scrollbar-width: thin` post-fix, was `auto` before.
+  - **`::-webkit-scrollbar` height set** — the old rule only
+    declared `width`, so `.tabs`, `.editorTabsBar`, `.editorArea`
+    and any other `overflow-x: auto` element rendered the
+    OS-default ~12-px horizontal bar. Width and height now both
+    10 px.
+  - **macOS thumb-in-gutter trick** — `border: 3px solid
+    transparent` + `background-clip: padding-box` paints the
+    thumb 4 px inside a 10-px gutter, same pattern macOS /
+    GitHub use. Comfortably hittable, never dominates narrow
+    panels. Hover and `:active` states deepen the thumb (0.15 →
+    0.28 → 0.4 alpha).
+  - **`::-webkit-scrollbar-corner: transparent`** — the diagonal
+    corner where horizontal and vertical bars meet was painting
+    the OS default (light grey) on `.editorArea`. Now matches
+    the rest of the surface.
+  - Vite preview verify: a fresh `<div overflow-y:scroll>`
+    appended to `<body>` now reserves **10 px** for the
+    scrollbar (was 15 px). `:root` rule replaced with `*` after
+    a controlled test confirmed inheritance was the root cause.
+  - `pnpm test`: **808** unchanged. `tsc --noEmit`: 0 errors.
+
 - **Native `<input type="checkbox">` purge — semantic-correct
   primitives per use case.** Final wave of the "old chrome" pass
   started with the radix Switch / Select rollout (`3c22539`).
