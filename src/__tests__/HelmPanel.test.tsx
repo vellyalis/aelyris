@@ -41,12 +41,16 @@ describe("HelmPanel", () => {
     // Pre-populate localStorage
     localStorage.setItem("aether:helm:tasks", JSON.stringify([{ id: "t-1", label: "Test task", done: false }]));
     const { container } = render(<HelmPanel />);
-    const checkbox = container.querySelector("input[type='checkbox']") as HTMLInputElement;
+    // Native `<input type=checkbox>` was replaced by a `role=checkbox`
+    // button (Lucide Circle / CircleCheck — Apple Reminders pattern).
+    // The query has to follow.
+    const checkbox = container.querySelector('button[role="checkbox"]') as HTMLButtonElement;
     expect(checkbox).not.toBeNull();
-    expect(checkbox.checked).toBe(false);
+    expect(checkbox.getAttribute("aria-checked")).toBe("false");
     fireEvent.click(checkbox);
-    // Re-render check — count should show 1/1
     expect(container.textContent).toContain("1/1");
+    const after = container.querySelector('button[role="checkbox"]') as HTMLButtonElement;
+    expect(after.getAttribute("aria-checked")).toBe("true");
   });
 
   it("deletes task on delete-button click", () => {

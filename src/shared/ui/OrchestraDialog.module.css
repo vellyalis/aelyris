@@ -127,9 +127,26 @@
   background: color-mix(in srgb, var(--role-color, var(--gold)) 12%, transparent);
 }
 
+/* Native checkbox is visually hidden — the surrounding `.role`
+ * card carries the selected state via `.roleChecked` (border tint
+ * + 12 %-mix background). Keeping the input in the DOM preserves
+ * keyboard activation (Space toggles) and SR semantics. Visually
+ * stripping it removes the OS-tinted square that read as Win32-
+ * era chrome on top of the styled card. */
 .roleCheckbox {
-  accent-color: var(--role-color, var(--gold));
-  cursor: pointer;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.role:focus-within {
+  outline: 2px solid var(--role-color, var(--gold));
+  outline-offset: 2px;
 }
 
 .roleIcon {

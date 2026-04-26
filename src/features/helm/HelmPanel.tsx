@@ -1,4 +1,4 @@
-import { Plus, X } from "lucide-react";
+import { Circle, CircleCheck, Plus, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { PanelHeader } from "../../shared/ui/PanelHeader";
@@ -104,13 +104,16 @@ export function HelmPanel() {
         )}
         {tasks.map((t) => (
           <div key={t.id} className={`${styles.task} ${t.done ? styles.taskDone : ""}`}>
-            <input
-              type="checkbox"
-              checked={t.done}
-              onClick={() => toggleTask(t.id)}
-              readOnly
+            <button
+              type="button"
+              role="checkbox"
+              aria-checked={t.done}
+              aria-label={t.done ? `Mark task incomplete: ${t.label}` : `Mark task complete: ${t.label}`}
               className={styles.checkbox}
-            />
+              onClick={() => toggleTask(t.id)}
+            >
+              {t.done ? <CircleCheck size={14} aria-hidden="true" /> : <Circle size={14} aria-hidden="true" />}
+            </button>
             <span className={styles.taskLabel}>{t.label}</span>
             <button
               className={styles.deleteBtn}

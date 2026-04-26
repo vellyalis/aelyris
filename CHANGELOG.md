@@ -10,6 +10,44 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### UX
 
+- **Native `<input type="checkbox">` purge — semantic-correct
+  primitives per use case.** Final wave of the "old chrome" pass
+  started with the radix Switch / Select rollout (`3c22539`).
+  Three remaining native checkboxes were each replaced with the
+  primitive that fits the *intent*, not a one-size-fits-all
+  Switch:
+  - **`RepairJobsPanel` "Watching / Disabled"** → `<Switch>`. A
+    settings toggle (binary preference state for a feature) is
+    exactly what Switch is for. Wires `onCheckedChange` straight
+    through to the existing `onToggleEnabled` callback. ARIA
+    label "Enable auto-repair watcher" so SR users hear the
+    action verb, not just "switch".
+  - **`HelmPanel` task-done check** → `Lucide Circle / CircleCheck`
+    icon button (`role="checkbox"` + `aria-checked`). Apple
+    Reminders / Things pattern. A 32×18 Switch per row would
+    dwarf the task text and read as a settings cluster; the 14-px
+    icon matches task-list density. Empty Circle = "open task",
+    filled CircleCheck (gold accent) = "done". Hover lights up
+    the rim, focus-visible draws a 2-px gold outline.
+  - **`OrchestraDialog` role multi-select** → native checkbox now
+    sr-only (`position: absolute; width: 1px; clip: rect(0,0,0,
+    0)`). The surrounding `.role` card already carried selection
+    via `.roleChecked` (border tint + 12 %-mix bg in the role's
+    accent colour) — the input on top was redundant chrome. The
+    label still wraps the input, so Space toggles via keyboard;
+    `:focus-within` on the card draws the role-coloured outline.
+    No semantic loss, much less visual noise.
+  - Vite preview verify: native `<input type="checkbox">` count
+    inside the open repair dialog → 0; switch role exists with
+    `aria-checked="false"`, 32×18 px pill. OrchestraDialog: 4
+    native inputs each clipped to 1×1 px with rect(0,0,0,0);
+    clicking the role card flips `input.checked` *and* the card's
+    `.roleChecked` class.
+  - `pnpm test`: **808** unchanged (RepairJobsPanel + HelmPanel
+    tests updated to query by `role="switch"` /
+    `role="checkbox"` instead of `input[type=checkbox]`). `tsc
+    --noEmit`: 0 errors.
+
 - **Right panel drag-resize — symmetry with the sidebar.** Dogfood
   follow-up to the sidebar overhaul: "if the left rail has a real
   drag handle, the right rail can't ship with a browser-default

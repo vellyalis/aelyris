@@ -53,7 +53,7 @@ describe("RepairJobsPanel", () => {
     expect(getByText("error: cannot find module")).toBeTruthy();
   });
 
-  it("fires onToggleEnabled when the checkbox flips", () => {
+  it("fires onToggleEnabled when the toggle flips", () => {
     const onToggle = vi.fn();
     const { container } = render(
       <RepairJobsPanel
@@ -63,8 +63,12 @@ describe("RepairJobsPanel", () => {
         onClose={() => {}}
       />,
     );
-    const cb = container.querySelector("input[type=checkbox]") as HTMLInputElement;
-    fireEvent.click(cb);
+    // Native `<input type=checkbox>` was replaced by a Radix `<Switch>`
+    // which renders as `<button role="switch">`. Locate via role to
+    // stay decoupled from the underlying primitive.
+    const sw = container.querySelector('button[role="switch"]') as HTMLButtonElement;
+    expect(sw).not.toBeNull();
+    fireEvent.click(sw);
     expect(onToggle).toHaveBeenCalledWith(true);
   });
 

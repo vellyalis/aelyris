@@ -7,6 +7,7 @@ import {
   type RepairPhase,
   repairPhaseLabel,
 } from "../../shared/types/repair";
+import { Switch } from "../../shared/ui/Switch";
 import styles from "./RepairJobsPanel.module.css";
 
 interface RepairJobsPanelProps {
@@ -63,10 +64,14 @@ export function RepairJobsPanel({ jobs, config, onToggleEnabled, onClose }: Repa
           <Wrench size={12} />
           <span>Auto-repair</span>
         </div>
-        <label className={styles.toggle}>
-          <input type="checkbox" checked={config.enabled} onChange={(e) => onToggleEnabled(e.target.checked)} />
+        <div className={styles.toggle}>
+          <Switch
+            checked={config.enabled}
+            onCheckedChange={onToggleEnabled}
+            ariaLabel="Enable auto-repair watcher"
+          />
           <span>{config.enabled ? "Watching" : "Disabled"}</span>
-        </label>
+        </div>
       </div>
       {config.enabled && config.pattern && (
         <div className={styles.pattern} title={config.pattern}>
