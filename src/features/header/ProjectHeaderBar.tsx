@@ -1,6 +1,7 @@
-import { RefreshCw, Settings } from "lucide-react";
+import { PanelLeft, PanelLeftClose, RefreshCw, Settings } from "lucide-react";
 import logoSvg from "../../assets/logo.svg";
 import { useAttenuatedPulse } from "../../shared/hooks/useAttenuatedPulse";
+import { MenuBar, type Menu } from "../menubar/MenuBar";
 import styles from "./ProjectHeaderBar.module.css";
 
 interface ProjectHeaderBarProps {
@@ -11,6 +12,14 @@ interface ProjectHeaderBarProps {
   activeAgent?: { model: string; cost: number } | null;
   onOpenSettings?: () => void;
   onRefresh?: () => void;
+  /** Application menus (File / Edit / View / Terminal / Help) — fanned
+   *  out from the hamburger button on the left of the header. */
+  menus: Menu[];
+  /** Sidebar collapse state + toggle — Apple/VS Code chrome puts a
+   *  panel toggle right next to the hamburger so a single click
+   *  reclaims the workspace width. Ctrl+B fires the same toggle. */
+  sidebarCollapsed: boolean;
+  onToggleSidebar: () => void;
 }
 
 const STATUS_META: Record<string, { color: string; label: string }> = {
@@ -30,6 +39,9 @@ export function ProjectHeaderBar({
   activeAgent,
   onOpenSettings,
   onRefresh,
+  menus,
+  sidebarCollapsed,
+  onToggleSidebar,
 }: ProjectHeaderBarProps) {
   const handleMinimize = async () => {
     try {
@@ -64,6 +76,23 @@ export function ProjectHeaderBar({
   return (
     <div className={styles.header} data-tauri-drag-region>
       <div className={styles.left}>
+        <div className={styles.chromeCluster} aria-label="App chrome">
+          <MenuBar menus={menus} />
+          <button
+            type="button"
+            className={styles.headerBtn}
+            onClick={onToggleSidebar}
+            aria-label={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+            aria-pressed={!sidebarCollapsed}
+            title={`${sidebarCollapsed ? "Show" : "Hide"} sidebar (Ctrl+B)`}
+          >
+            {sidebarCollapsed ? (
+              <PanelLeft size={14} aria-hidden="true" />
+            ) : (
+              <PanelLeftClose size={14} aria-hidden="true" />
+            )}
+          </button>
+        </div>
         <img src={logoSvg} alt="Aether" width={28} height={28} className={styles.logo} />
         <div className={styles.projectInfo}>
           <div className={styles.topRow}>

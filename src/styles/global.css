@@ -486,6 +486,23 @@ body[data-window-focused="false"] {
   box-shadow: var(--rim-top);
   overflow: hidden;
   resize: horizontal;
+  /* Width transition for the chrome toggle (Ctrl+B). Limited to
+   * `width` so children that absolute-position (panels with fixed
+   * action buttons, the SCMPanel git tree) don't animate their
+   * own layout — only the rail edge slides. */
+  transition: width 180ms var(--ease-silk, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+/* Collapsed sidebar — fully hidden via width 0. Apple-style chrome
+ * (Finder, Mail, Notes) collapses the rail completely rather than
+ * leaving a stub icon column; the user re-summons it from the
+ * header's panel-toggle button or Ctrl+B. min-width has to be
+ * cleared too, otherwise it would clamp the collapse to 120 px. */
+.left-panel-collapsed {
+  width: 0 !important;
+  min-width: 0 !important;
+  border-right-color: transparent;
+  resize: none;
 }
 
 .center-panel {

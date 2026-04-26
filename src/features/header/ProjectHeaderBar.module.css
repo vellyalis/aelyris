@@ -17,7 +17,11 @@
   flex-shrink: 0;
 }
 
-/* Left group: avatar + project info (2 rows) */
+/* Left group: chrome cluster (hamburger + sidebar toggle) +
+ * avatar + project info (2 rows). Chrome cluster sits flush
+ * against the window edge — VS Code / Claude Code Desktop /
+ * modern Mac apps all hard-anchor their menu/toggle controls
+ * here so the user's eye starts in the same place every time. */
 .left {
   display: flex;
   align-items: center;
@@ -28,6 +32,13 @@
 }
 .left > * {
   -webkit-app-region: no-drag;
+}
+
+.chromeCluster {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-right: var(--space-2);
 }
 
 .projectInfo {

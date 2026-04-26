@@ -24,6 +24,9 @@ interface UseKeyboardShortcutsOptions {
   handleStartAgent: (prompt: string) => void;
   setQuickOpenMode?: (mode: "files" | "buffers" | null) => void;
   setHelpVisible?: (v: boolean | ((prev: boolean) => boolean)) => void;
+  /** Toggle the left sidebar (Ctrl+B). Optional so legacy
+   *  consumers without the new chrome cluster keep working. */
+  setSidebarCollapsed?: (v: boolean | ((prev: boolean) => boolean)) => void;
 }
 
 export function useKeyboardShortcuts({
@@ -46,6 +49,7 @@ export function useKeyboardShortcuts({
   handleStartAgent,
   setQuickOpenMode,
   setHelpVisible,
+  setSidebarCollapsed,
 }: UseKeyboardShortcutsOptions) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -116,6 +120,10 @@ export function useKeyboardShortcuts({
       } else if (e.ctrlKey && e.key === ",") {
         e.preventDefault();
         setSettingsVisible((v: boolean) => !v);
+      } else if (e.ctrlKey && !e.shiftKey && (e.key === "b" || e.key === "B")) {
+        // Ctrl+B — toggle left sidebar (matches VS Code / Claude Code Desktop).
+        e.preventDefault();
+        setSidebarCollapsed?.((v: boolean) => !v);
       } else if (e.ctrlKey && e.key === "[") {
         e.preventDefault();
         if (sessions.length > 0) {
@@ -165,5 +173,6 @@ export function useKeyboardShortcuts({
     handleStartAgent,
     setQuickOpenMode,
     setHelpVisible,
+    setSidebarCollapsed,
   ]);
 }

@@ -6,7 +6,6 @@ import { UpdateBanner } from "./features/app/UpdateBanner";
 import { useAppMenus } from "./features/app/useAppMenus";
 import { FileTree } from "./features/file-tree/FileTree";
 import { ProjectHeaderBar } from "./features/header/ProjectHeaderBar";
-import { MenuBar } from "./features/menubar/MenuBar";
 import { StatusBar } from "./features/statusbar/StatusBar";
 import { PaneTreeContainer } from "./features/terminal/pane-tree";
 import { WorkspaceTabs } from "./features/workspace-tabs/WorkspaceTabs";
@@ -74,6 +73,8 @@ export function App() {
     themeId,
     rootProjectPath,
     setRootProjectPath,
+    sidebarCollapsed,
+    setSidebarCollapsed,
     paletteVisible,
     setPaletteVisible,
     settingsVisible,
@@ -381,6 +382,7 @@ export function App() {
     handleStartAgent,
     setQuickOpenMode,
     setHelpVisible,
+    setSidebarCollapsed,
   });
 
   // ── Terminal notifications (bell → tab badge + Windows toast) ──
@@ -643,11 +645,17 @@ export function App() {
             activeAgent={activeAgent ? { model: activeAgent.model, cost: activeAgent.cost } : null}
             onOpenSettings={() => setSettingsVisible(true)}
             onRefresh={handleRefresh}
+            menus={menus}
+            sidebarCollapsed={sidebarCollapsed}
+            onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
           />
-          <MenuBar menus={menus} />
 
           <main className="app-main">
-            <nav className="left-panel" aria-label="Project sidebar">
+            <nav
+              className={`left-panel${sidebarCollapsed ? " left-panel-collapsed" : ""}`}
+              aria-label="Project sidebar"
+              data-collapsed={sidebarCollapsed}
+            >
               <ErrorBoundary>
                 <FileTree
                   key={fileTreeKey}

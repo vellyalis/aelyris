@@ -10,6 +10,47 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### UX
 
+- **Chrome cluster rework — hamburger menu + collapsible sidebar
+  (Ctrl+B), Claude-Code-Desktop / VS Code parity.** Dogfood:
+  "the UI still has Win32-era stuff. The horizontal File / Edit /
+  View / Terminal / Help bar is old, and the left sidebar's size
+  feels off." Fixes:
+  - **MenuBar fan-out from a single hamburger.** The standalone
+    horizontal `<MenuBar />` band (under the header) is gone.
+    `MenuBar.tsx` is now a single Radix `DropdownMenu.Root` with
+    a `<Menu>` icon trigger; clicking the hamburger opens a
+    portal-attached pane that lists File / Edit / View /
+    Terminal / Help vertically, each fanning out into its
+    submenu via Radix `DropdownMenu.Sub`. Preserves the existing
+    `Menu` / `MenuItem` data contract — `useAppMenus.ts` is
+    unchanged.
+  - **Chrome cluster moved into ProjectHeaderBar.** `<MenuBar
+    />` now renders inside `<ProjectHeaderBar>`'s left edge,
+    immediately followed by a `PanelLeft` / `PanelLeftClose`
+    button that toggles the sidebar. Together they form the
+    same anchored chrome cluster every modern app shell uses
+    (Files, VS Code, Claude Code Desktop, Linear, etc.) — the
+    user's eye starts in the same place every time. App.tsx
+    stops rendering `<MenuBar />` separately.
+  - **Sidebar collapsible (width 180 px ↔ 0 px).** `useAppStore`
+    gains `sidebarCollapsed` + `setSidebarCollapsed`, persisted
+    to `localStorage["aether:sidebarCollapsed"]`. CSS in
+    `global.css` adds `.left-panel-collapsed` (`width: 0
+    !important; min-width: 0; border-right-color: transparent;
+    resize: none`) and a `width 180 ms` transition so the rail
+    slides in/out cleanly. `useKeyboardShortcuts.ts` wires
+    Ctrl+B (matches VS Code / Claude Code Desktop) — toggling
+    via the chrome button or the shortcut both flip the same
+    Zustand state and persist the choice.
+  - Vite preview verify: hamburger click yields a portal with
+    `role="menu"` containing 5 `role="menuitem"` rows (File /
+    Edit / View / Terminal / Help). Submenus open on hover /
+    arrow nav. Ctrl+B flips
+    `<nav.left-panel-collapsed>` and writes "1" /
+    `localStorage.removeItem` accordingly. `pnpm test`: 803
+    unchanged. `cargo test --lib`: 473 unchanged. `tsc`: 0
+    errors.
+
 - **Inactive-window glass softening — panels stay readable as
   glass when the window blurs.** Dogfood: "but it's only
   transparent when the window is active, is that intended?" —

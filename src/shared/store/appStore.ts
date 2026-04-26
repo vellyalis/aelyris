@@ -48,6 +48,11 @@ interface AppState {
   // Sidebar
   sidebarSection: SidebarSection;
   setSidebarSection: (section: SidebarSection) => void;
+  /** Whether the left sidebar (FileTree / Kanban / SCM) is hidden.
+   *  Toggles via Ctrl+B and the chrome cluster's panel button.
+   *  Persisted to localStorage so the choice survives reload. */
+  sidebarCollapsed: boolean;
+  setSidebarCollapsed: (v: boolean | ((prev: boolean) => boolean)) => void;
 
   // UI visibility
   paletteVisible: boolean;
@@ -178,6 +183,23 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Sidebar
   sidebarSection: "files" as SidebarSection,
   setSidebarSection: (section: SidebarSection) => set({ sidebarSection: section }),
+  sidebarCollapsed: (() => {
+    try {
+      return localStorage.getItem("aether:sidebarCollapsed") === "1";
+    } catch {
+      return false;
+    }
+  })(),
+  setSidebarCollapsed: (v) =>
+    set((s) => {
+      const next = toggleOrSet(v, s.sidebarCollapsed);
+      try {
+        localStorage.setItem("aether:sidebarCollapsed", next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return { sidebarCollapsed: next };
+    }),
 
   // UI
   paletteVisible: false,
