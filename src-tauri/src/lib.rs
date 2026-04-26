@@ -130,73 +130,93 @@ pub fn run() {
             // an explicit Acrylic call here. Logging both outcomes so
             // dogfood can read `aether_terminal_lib` lines on stderr and
             // see which material the live window actually picked.
+            // Window chrome on Windows: apply Acrylic (the *transient*
+            // backdrop) so the desktop wallpaper actually shows through
+            // — Mica is a wallpaper-tinted material that does NOT make
+            // the window translucent, it only samples wallpaper colour
+            // for a subtle tint. Aether wants the Apple-class "glass on
+            // top of the desktop" look, which on Windows is Acrylic via
+            // DWMSBT_TRANSIENTWINDOW.
+            //
+            // Order:
+            //   1. Acrylic (DWMSBT_TRANSIENTWINDOW) — the real "see
+            //      through to the desktop, blurred" effect.
+            //   2. If Acrylic is refused (rare, but the OS can disable
+            //      transparency effects globally) we fall back to Mica
+            //      (DWMSBT_MAINWINDOW) so at least the wallpaper-tint
+            //      lands. Mica is better than nothing.
+            //   3. Both are no-ops on Win10 (E_INVALIDARG, tolerated).
+            //
+            // Tauri v2's `set_effects` / `windowEffects` indirection has
+            // been observed to silently fail on Win11 25H2 — calling
+            // DwmSetWindowAttribute directly is what every Win11 app
+            // that actually shows translucency does.
             #[cfg(windows)]
             {
-                use tauri::utils::config::WindowEffectsConfig;
-                use tauri::window::{Effect, EffectState};
                 use windows::Win32::Foundation::HWND;
                 use windows::Win32::Graphics::Dwm::{
+                    DWMSBT_MAINWINDOW, DWMSBT_TRANSIENTWINDOW, DWMWA_SYSTEMBACKDROP_TYPE,
                     DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DwmSetWindowAttribute,
                 };
                 if let Some(window) = app.get_webview_window("main") {
-                    // 1. Try Mica explicitly. If conf-side application
-                    //    already succeeded this is a no-op replay; if it
-                    //    failed we get a fresh attempt with the live
-                    //    window handle.
-                    let mica = WindowEffectsConfig {
-                        effects: vec![Effect::Mica],
-                        state: Some(EffectState::FollowsWindowActiveState),
-                        radius: None,
-                        color: None,
-                    };
-                    match window.set_effects(mica) {
-                        Ok(()) => log::info!(
-                            "window chrome: Mica applied (Win11 22H2+ material)"
-                        ),
-                        Err(mica_err) => {
-                            log::warn!(
-                                "window chrome: Mica refused ({mica_err}); falling back to Acrylic"
-                            );
-                            // 2. Acrylic fallback — supported back to Win10
-                            //    1809. If even Acrylic fails the window
-                            //    stays plain transparent + the React
-                            //    backdrop-filters carry the glass illusion.
-                            let acrylic = WindowEffectsConfig {
-                                effects: vec![Effect::Acrylic],
-                                state: Some(EffectState::FollowsWindowActiveState),
-                                radius: None,
-                                color: None,
-                            };
-                            match window.set_effects(acrylic) {
-                                Ok(()) => log::info!(
-                                    "window chrome: Acrylic applied (Win10 1809+ fallback)"
-                                ),
-                                Err(acrylic_err) => log::warn!(
-                                    "window chrome: Acrylic also refused ({acrylic_err}); window will render with CSS-only glass"
-                                ),
-                            }
-                        }
-                    }
-
-                    // 3. DWM rounded corners. Without
-                    //    DWMWA_WINDOW_CORNER_PREFERENCE the outer window
-                    //    edge stays square under `decorations: false +
-                    //    transparent: true`, which reads as "floating on
-                    //    a square frame." `DWMWCP_ROUND` is a no-op on
-                    //    Win10 (E_INVALIDARG), tolerated silently.
                     match window.hwnd() {
                         Ok(hwnd_raw) => {
                             let hwnd = HWND(hwnd_raw.0 as *mut _);
-                            let pref: i32 = DWMWCP_ROUND.0;
-                            let result = unsafe {
+
+                            // 1. Acrylic via DWMWA_SYSTEMBACKDROP_TYPE.
+                            //    DWMSBT_TRANSIENTWINDOW = real translucency.
+                            let acrylic_value: i32 = DWMSBT_TRANSIENTWINDOW.0;
+                            let acrylic_result = unsafe {
                                 DwmSetWindowAttribute(
                                     hwnd,
-                                    DWMWA_WINDOW_CORNER_PREFERENCE,
-                                    &pref as *const i32 as *const _,
+                                    DWMWA_SYSTEMBACKDROP_TYPE,
+                                    &acrylic_value as *const i32 as *const _,
                                     std::mem::size_of::<i32>() as u32,
                                 )
                             };
-                            match result {
+                            match acrylic_result {
+                                Ok(()) => log::info!(
+                                    "window chrome: Acrylic applied via DWMSBT_TRANSIENTWINDOW (real desktop translucency)"
+                                ),
+                                Err(acrylic_err) => {
+                                    log::warn!(
+                                        "window chrome: Acrylic refused ({acrylic_err}); falling back to Mica wallpaper tint"
+                                    );
+                                    let mica_value: i32 = DWMSBT_MAINWINDOW.0;
+                                    let mica_result = unsafe {
+                                        DwmSetWindowAttribute(
+                                            hwnd,
+                                            DWMWA_SYSTEMBACKDROP_TYPE,
+                                            &mica_value as *const i32 as *const _,
+                                            std::mem::size_of::<i32>() as u32,
+                                        )
+                                    };
+                                    if let Err(mica_err) = mica_result {
+                                        log::warn!(
+                                            "window chrome: Mica also refused ({mica_err}); window will render with CSS-only glass"
+                                        );
+                                    } else {
+                                        log::info!(
+                                            "window chrome: Mica applied as fallback (wallpaper tint, not real translucency)"
+                                        );
+                                    }
+                                }
+                            }
+
+                            // 2. Rounded outer-window corners.
+                            //    DWMWCP_ROUND is a no-op on Win10 (the
+                            //    API returns E_INVALIDARG, tolerated
+                            //    silently).
+                            let corner_pref: i32 = DWMWCP_ROUND.0;
+                            let corner_result = unsafe {
+                                DwmSetWindowAttribute(
+                                    hwnd,
+                                    DWMWA_WINDOW_CORNER_PREFERENCE,
+                                    &corner_pref as *const i32 as *const _,
+                                    std::mem::size_of::<i32>() as u32,
+                                )
+                            };
+                            match corner_result {
                                 Ok(()) => log::info!(
                                     "DWM window corners: rounded preference applied"
                                 ),
@@ -205,7 +225,7 @@ pub fn run() {
                                 ),
                             }
                         }
-                        Err(e) => log::warn!("hwnd unavailable for DWM corner setup: {e}"),
+                        Err(e) => log::warn!("hwnd unavailable for DWM chrome setup: {e}"),
                     }
                 }
             }

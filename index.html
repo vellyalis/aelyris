@@ -5,6 +5,28 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Aether Terminal</title>
+    <!--
+      Inline transparency rule. WebView2 paints `body` opaque white by
+      default, which means Tauri's transparent: true window + Mica
+      effect get hidden under a white opaque layer for the few hundred
+      ms before main.tsx and global.css land. Setting `background:
+      transparent` here in head is what actually lets the OS Mica
+      show through from the very first frame — without this rule the
+      app was visually opaque even though Mica was being applied at
+      the OS level.
+    -->
+    <style>
+      html,
+      body {
+        background: transparent !important;
+        margin: 0;
+        padding: 0;
+        height: 100%;
+      }
+      #root {
+        background: transparent !important;
+      }
+    </style>
   </head>
 
   <body>

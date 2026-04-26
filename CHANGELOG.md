@@ -10,6 +10,30 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### UX
 
+- **Real translucency — Acrylic, not Mica, is what makes the
+  desktop show through.** Dogfood reported "still not transparent
+  at all." Two diagnostic mistakes on my side that this commit
+  fixes:
+  - **WebView2 paints `body` opaque white before global.css lands.**
+    `index.html` previously had no `<style>` block in `<head>`, so
+    for a few hundred ms after window creation the body was solid
+    white, completely covering whatever OS-level material the DWM
+    drew. Inline `<style>` rule now declares `html, body, #root {
+    background: transparent !important; }` directly in the head so
+    transparency is honoured from the very first frame.
+  - **Mica is a wallpaper-tint, not a transparent material.**
+    Win11's `DWMSBT_MAINWINDOW` (Mica) samples wallpaper colour and
+    paints a subtle tint — it does NOT make the window translucent.
+    For "the desktop blurs through the window" you want
+    `DWMSBT_TRANSIENTWINDOW` (Acrylic). The Tauri `setup` hook now
+    calls `DwmSetWindowAttribute(DWMWA_SYSTEMBACKDROP_TYPE,
+    DWMSBT_TRANSIENTWINDOW)` first, falls back to
+    `DWMSBT_MAINWINDOW` only when Acrylic is refused, and logs the
+    chosen material to the structured ring (`window chrome:
+    Acrylic applied …` / `Acrylic refused; falling back to Mica
+    wallpaper tint`). `tauri.conf.json` and `tauri.dev.conf.json`
+    declare `effects: ["acrylic"]` to match.
+
 - **Transparent window restored — wallpaper actually shows through Mica.**
   Three connected fixes after dogfood reported "the desktop isn't
   showing through":
