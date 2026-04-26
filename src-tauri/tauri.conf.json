@@ -21,7 +21,7 @@
         "transparent": true,
         "visible": true,
         "windowEffects": {
-          "effects": ["mica", "acrylic", "blur"],
+          "effects": ["mica"],
           "state": "followsWindowActiveState"
         }
       }

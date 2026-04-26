@@ -1,21 +1,31 @@
 /* Fonts loaded locally via @fontsource — no network fetch at startup */
 
 :root {
-  /* Layered glass system — high contrast between zones */
+  /* Layered glass system — high contrast between zones.
+   *
+   * Alphas tuned 2026-05-02 to let the Win11 Mica material show
+   * through cleanly. Previous values (0.45 / 0.55 / 0.62 …) plus
+   * 12-20 px backdrop-filter blur were stacking enough opaque
+   * paint that the OS wallpaper was barely perceptible. The new
+   * values keep enough darkness for legible text while letting
+   * the Mica's subtle wallpaper-derived tint read through —
+   * Apple-class "translucent panels stacked on a real desktop"
+   * rather than "dark slab pretending to be glass". */
   /* Level 0: Terminal center — maximum transparency */
   --glass-clear: rgba(12, 12, 12, 0.02);
   /* Level 1: Ground — sidebar rail, darkest anchor */
-  --glass-ground: rgba(10, 10, 10, 0.85);
+  --glass-ground: rgba(10, 10, 10, 0.55);
   /* Level 2: Frame — header, statusbar */
-  --glass-frame: rgba(16, 16, 16, 0.45);
+  --glass-frame: rgba(16, 16, 16, 0.28);
   /* Level 3: Standard — left panel */
-  --glass-standard: rgba(20, 20, 20, 0.55);
+  --glass-standard: rgba(20, 20, 20, 0.35);
   /* Level 3.5: Dense — right panel (higher info density) */
-  --glass-dense: rgba(22, 22, 22, 0.62);
+  --glass-dense: rgba(22, 22, 22, 0.42);
   /* Level 4: Thick — cards, elevated surfaces */
-  --glass-thick: rgba(28, 28, 28, 0.72);
-  /* Level 5: Solid — modals, dialogs */
-  --glass-solid: rgba(26, 26, 26, 0.82);
+  --glass-thick: rgba(28, 28, 28, 0.55);
+  /* Level 5: Solid — modals, dialogs (still opaque-ish so dialog
+     chrome reads against any wallpaper, not just dark ones). */
+  --glass-solid: rgba(26, 26, 26, 0.78);
 
   /* Legacy aliases (used by existing components) */
   --aether-bg: var(--glass-clear);
@@ -394,6 +404,13 @@ body,
   display: flex;
   flex-direction: column;
   height: 100vh;
+  /* `transparent` is critical: the window itself is set
+   * `transparent: true` in tauri.conf.json with
+   * `windowEffects: ["mica", "acrylic", "blur"]`. Anything other
+   * than transparent here (including a faint translucent fill)
+   * would cover the OS-level Mica material and turn the window
+   * into a flat dark surface — exactly the "did you turn off
+   * transparency?" tell that dogfood flagged. */
   background: transparent;
   /* Win11's DWMWA_WINDOW_CORNER_PREFERENCE rounds the OS window edge
    * at ~8px. Match that radius on the inner container so the inner
@@ -405,16 +422,21 @@ body,
    * way. */
   border-radius: var(--radius);
   overflow: hidden;
-  /* Two-layer rim: a faint inner highlight (1px white at 8% alpha)
-   * + an outer drop shadow. Together they read as Apple-class depth
-   * — the window has weight without shouting. The inner rim uses
-   * `box-shadow inset` rather than `border` so it doesn't displace
-   * the layout. */
+  /* Inner rim only — a 1 px highlight along the top edge + a
+   * hairline tint around the perimeter. These read as the light
+   * pickup along a real glass edge.
+   *
+   * NO outer drop shadow here on purpose. `box-shadow: 0 24px 48px
+   * …` paints the shadow *inside* the window's bounding box on a
+   * `transparent: true` Tauri window, which darkens the outer 24–
+   * 48 px ring and visually flattens the Mica / Acrylic underneath.
+   * Win11's DWM already draws an authentic OS drop shadow around
+   * `decorations: false` windows once `DWMWA_WINDOW_CORNER_PREFERENCE`
+   * is set — we let that do the depth work and keep the CSS purely
+   * about the glass edge highlight. */
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
-    0 24px 48px rgba(0, 0, 0, 0.45),
-    0 8px 16px rgba(0, 0, 0, 0.35);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
 .app-main {

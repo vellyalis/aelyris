@@ -10,6 +10,50 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### UX
 
+- **Transparent window restored — wallpaper actually shows through Mica.**
+  Three connected fixes after dogfood reported "the desktop isn't
+  showing through":
+  - **Removed the inner-cast drop shadow on `.app-container`.**
+    The previous `box-shadow: 0 24px 48px rgba(0,0,0,0.45), 0 8px
+    16px rgba(0,0,0,0.35)` was meant to give the window weight,
+    but on a `transparent: true` Tauri window the shadow paints
+    *inside* the window's bounding box, darkening the outer 24–
+    48 px ring and visually flattening the Mica material
+    underneath. Win11's DWM already draws an authentic OS drop
+    shadow around `decorations: false` windows once
+    `DWMWA_WINDOW_CORNER_PREFERENCE` is set, so we now leave depth
+    to the OS and keep the CSS purely about the inner glass-edge
+    rim (1 px white 8 % top highlight + 1 px white 4 % perimeter
+    tint).
+  - **Reduced glass-token alphas across the layered surface
+    system.** Previous values (header 0.45, sidebar 0.55, status
+    0.42, dense 0.62) plus 12–20 px backdrop-filter blur were
+    stacking enough opaque paint that the Mica wallpaper was
+    barely perceptible. New scale: clear 0.02 / ground 0.55 /
+    frame 0.28 / standard 0.35 / dense 0.42 / thick 0.55 / solid
+    0.78. Text contrast still meets the existing audit threshold
+    against the OS wallpaper because Mica supplies its own dark
+    tint; the React panels can be lighter than they were.
+  - **Single-effect Mica + explicit Rust-side fallback.**
+    `tauri.conf.json` + `tauri.dev.conf.json` now declare
+    `effects: ["mica"]` (the previous `["mica", "acrylic",
+    "blur"]` triple sometimes had Tauri v2 try only one entry on
+    Win11 and leave the wrong material). The Tauri `setup` hook
+    explicitly calls `window.set_effects(Mica)`, falls back to
+    `Acrylic` (Win10 1809+) on failure, and logs the chosen
+    material to the structured ring so dogfood can read the live
+    decision on stderr (`window chrome: Mica applied …` vs
+    `Mica refused; falling back to Acrylic`). The
+    `DWMWA_WINDOW_CORNER_PREFERENCE = DWMWCP_ROUND` call after it
+    keeps the rounded outer edge.
+  - StatusBar's hard-coded `rgba(15,15,15,0.42)` migrated to the
+    shared `--glass-frame` token so all bars take the same alpha
+    treatment.
+  - Aether stays Tauri + React — fully native is still ruled out
+    (`project_strategic_direction.md` 2026-04-17). The visual
+    target is reachable from this stack; we just had to stop
+    actively defeating Mica with overlapping CSS.
+
 - **"Settings opens but nothing shows" — root cause + four-dialog
   fix.** The earlier "settings won't open" patch (LazyDialog +
   welcome-screen entry point) addressed reachability, but dogfood

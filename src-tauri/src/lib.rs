@@ -120,24 +120,70 @@ pub fn run() {
                     );
                 }
             }
-            // Mica/Acrylic applied via tauri.conf.json windowEffects
-            // (effects: ["mica", "acrylic", "blur"] — Win11 22H2+ picks Mica,
-            //  earlier builds fall through to Acrylic and finally a soft blur).
+            // Window chrome: Mica (Win11 22H2+) preferred, Acrylic fallback
+            // for older Windows / when Mica fails, plus DWM rounded corners.
             //
-            // Apple-class window chrome on Windows also requires explicit
-            // rounded corners — without DWMWA_WINDOW_CORNER_PREFERENCE the
-            // outer window keeps Win11 default corners under decorations:false
-            // + transparent:true. The CSS border-radius on `.app-container`
-            // only rounds the inner content; the OS-level window edge has to
-            // be rounded by DWM. `DWMWCP_ROUND` is a no-op on Win10 (the API
-            // returns E_INVALIDARG, which we tolerate silently).
+            // tauri.conf.json declares `effects: ["mica"]` — Tauri v2's
+            // implementation picks the first effect and attempts to apply
+            // it via DWM. If we're on Win10 or Mica is otherwise refused,
+            // the conf-side application fails silently and we fall back to
+            // an explicit Acrylic call here. Logging both outcomes so
+            // dogfood can read `aether_terminal_lib` lines on stderr and
+            // see which material the live window actually picked.
             #[cfg(windows)]
             {
+                use tauri::utils::config::WindowEffectsConfig;
+                use tauri::window::{Effect, EffectState};
                 use windows::Win32::Foundation::HWND;
                 use windows::Win32::Graphics::Dwm::{
                     DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DwmSetWindowAttribute,
                 };
                 if let Some(window) = app.get_webview_window("main") {
+                    // 1. Try Mica explicitly. If conf-side application
+                    //    already succeeded this is a no-op replay; if it
+                    //    failed we get a fresh attempt with the live
+                    //    window handle.
+                    let mica = WindowEffectsConfig {
+                        effects: vec![Effect::Mica],
+                        state: Some(EffectState::FollowsWindowActiveState),
+                        radius: None,
+                        color: None,
+                    };
+                    match window.set_effects(mica) {
+                        Ok(()) => log::info!(
+                            "window chrome: Mica applied (Win11 22H2+ material)"
+                        ),
+                        Err(mica_err) => {
+                            log::warn!(
+                                "window chrome: Mica refused ({mica_err}); falling back to Acrylic"
+                            );
+                            // 2. Acrylic fallback — supported back to Win10
+                            //    1809. If even Acrylic fails the window
+                            //    stays plain transparent + the React
+                            //    backdrop-filters carry the glass illusion.
+                            let acrylic = WindowEffectsConfig {
+                                effects: vec![Effect::Acrylic],
+                                state: Some(EffectState::FollowsWindowActiveState),
+                                radius: None,
+                                color: None,
+                            };
+                            match window.set_effects(acrylic) {
+                                Ok(()) => log::info!(
+                                    "window chrome: Acrylic applied (Win10 1809+ fallback)"
+                                ),
+                                Err(acrylic_err) => log::warn!(
+                                    "window chrome: Acrylic also refused ({acrylic_err}); window will render with CSS-only glass"
+                                ),
+                            }
+                        }
+                    }
+
+                    // 3. DWM rounded corners. Without
+                    //    DWMWA_WINDOW_CORNER_PREFERENCE the outer window
+                    //    edge stays square under `decorations: false +
+                    //    transparent: true`, which reads as "floating on
+                    //    a square frame." `DWMWCP_ROUND` is a no-op on
+                    //    Win10 (E_INVALIDARG), tolerated silently.
                     match window.hwnd() {
                         Ok(hwnd_raw) => {
                             let hwnd = HWND(hwnd_raw.0 as *mut _);
@@ -151,17 +197,12 @@ pub fn run() {
                                 )
                             };
                             match result {
-                                Ok(()) => {
-                                    log::info!("DWM window corners: rounded preference applied");
-                                }
-                                Err(e) => {
-                                    // Win10 returns E_INVALIDARG for this
-                                    // attribute — that's expected, not an
-                                    // error worth surfacing to the user.
-                                    log::debug!(
-                                        "DWM rounded-corner request not honoured (likely Win10): {e}"
-                                    );
-                                }
+                                Ok(()) => log::info!(
+                                    "DWM window corners: rounded preference applied"
+                                ),
+                                Err(e) => log::debug!(
+                                    "DWM rounded-corner request not honoured (likely Win10): {e}"
+                                ),
                             }
                         }
                         Err(e) => log::warn!("hwnd unavailable for DWM corner setup: {e}"),
