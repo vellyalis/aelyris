@@ -91,6 +91,28 @@ describe("EditorPanel Ctrl+S sync", () => {
     expect(catchArm![1]).toMatch(/mountedRef\.current/);
   });
 
+  it("mountedRef teardown runs synchronously via useLayoutEffect (codex r3 M)", () => {
+    const src = Object.entries(sources)[0][1];
+
+    // Passive useEffect cleanups can run AFTER a settled write_file
+    // promise enters its .then, which means mountedRef.current would
+    // still read `true` at the unmount instant and let post-unmount
+    // setState slip through. The unmount path that flips mountedRef
+    // must use useLayoutEffect (commit-synchronous cleanup).
+    const layoutEffectMatch = src.match(
+      /useLayoutEffect\(\s*\(\)\s*=>\s*\{([\s\S]*?)\},\s*\[\s*\]\s*\)/g,
+    );
+    expect(layoutEffectMatch).not.toBeNull();
+    const mountedTeardown = (layoutEffectMatch ?? []).find((block) =>
+      block.includes("mountedRef.current = false"),
+    );
+    expect(mountedTeardown).toBeDefined();
+    // The same effect must clear savedPillTimerRef so a save scheduled
+    // right before unmount doesn't fire its 2 s setSaved(false) on a
+    // torn-down component.
+    expect(mountedTeardown).toMatch(/clearTimeout\(\s*savedPillTimerRef\.current\s*\)/);
+  });
+
   it("save pill setTimeout is held in a ref and cleared on unmount (codex r1 M2)", () => {
     const src = Object.entries(sources)[0][1];
 

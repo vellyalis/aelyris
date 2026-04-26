@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import DOMPurify from "dompurify";
 import { Check, MessageSquare, Wrench } from "lucide-react";
 import { marked } from "marked";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { markBootOnce } from "../../shared/lib/bootMetrics";
 import { getMonoFontStack } from "../../shared/lib/fontStack";
 import { useAppStore } from "../../shared/store/appStore";
@@ -124,8 +124,14 @@ export function EditorPanel({
   // user closes the file mid-save: filePathRef.current happens to
   // equal savedFilePath until React tears down, and the timeout would
   // re-arm afterward).
+  //
+  // Use useLayoutEffect, not useEffect, so the cleanup runs
+  // synchronously during the unmount commit phase — passive useEffect
+  // cleanups can run after a settled write_file promise has already
+  // entered its .then arm, which means a stale `mountedRef.current ===
+  // true` check could let post-unmount setState slip through.
   const mountedRef = useRef(true);
-  useEffect(() => {
+  useLayoutEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
