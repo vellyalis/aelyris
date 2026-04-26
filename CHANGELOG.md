@@ -10,6 +10,39 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### UX
 
+- **Click in the terminal no longer leaves a 1-cell dark
+  rectangle behind.** Dogfood: a single click in the terminal
+  pane left a visible artefact at the click position that the
+  user marked "ダサい". `useTerminalSelection.onMouseDown` was
+  calling `setSelection({ anchor: point, focus: point })`
+  unconditionally — a zero-width range that the renderer painted
+  as a single-cell selection band. Fixed by deferring selection
+  creation until `onMouseMove` actually leaves the anchor cell:
+  - `pendingAnchorRef` stages the click anchor without
+    materialising a selection.
+  - `onMouseMove` upgrades to a real selection only when the
+    focus cell differs from the anchor (first detectable drag
+    step).
+  - `onMouseUp` without movement clears any prior selection,
+    matching native text-editor behaviour: a stray click
+    cancels rather than re-pins the previous range.
+  - Shift-click still extends immediately (deliberate range
+    gesture).
+
+- **Windows resource metadata embedded into the dev .exe so Task
+  Manager actually shows "Aether Terminal".** Dogfood: trying to
+  end a hung process from Task Manager turned up nothing matching
+  "aether" because `cargo run` builds skip resource embedding —
+  `tauri-build` only emits the metadata for release bundles. The
+  user couldn't identify the process to kill. Fixed by adding a
+  `tauri-winres` step in `build.rs` that runs unconditionally on
+  Windows, embedding `ProductName`, `FileDescription`,
+  `OriginalFilename`, `CompanyName`, `LegalCopyright`,
+  `InternalName` and the bundle icon into the .exe. Also
+  enriched `tauri.conf.json bundle` with `publisher`,
+  `copyright`, `shortDescription`, `longDescription`, `category`
+  so release builds are at least as identifiable.
+
 - **IME candidate window now anchors next to the textarea you're
   actually typing in.** Dogfood: typing into `IMEInputBar` (the
   pane's bottom input strip) made the OS IME prediction popup

@@ -53,6 +53,13 @@ export function useTerminalSelection({
   const selectionRef = useRef<SelectionRange | null>(selection);
   selectionRef.current = selection;
   const draggingRef = useRef(false);
+  /* Anchor of an in-progress drag — set on mousedown, consumed on the
+   * first mousemove that produces a non-zero focus delta. Holding the
+   * anchor here instead of synthesising a zero-width selection on
+   * mousedown lets a plain click clear the selection without leaving
+   * a single-cell highlight band ("dark rectangle") behind, which is
+   * exactly what the dogfood screenshot caught on 2026-05-03. */
+  const pendingAnchorRef = useRef<{ row: number; col: number } | null>(null);
 
   const clear = useCallback(() => setSelection(null), []);
 
@@ -72,6 +79,8 @@ export function useTerminalSelection({
     const onMouseDown = (ev: MouseEvent) => {
       if (ev.button !== 0) return;
       const currentSelection = selectionRef.current;
+      // Shift-click extends the existing selection — that's a deliberate
+      // "I want this range" gesture, so the selection lands immediately.
       if (ev.shiftKey && currentSelection) {
         const point = cellAt(ev.clientX, ev.clientY);
         if (!point) return;
@@ -81,18 +90,20 @@ export function useTerminalSelection({
           mode: "char",
         });
         draggingRef.current = true;
+        pendingAnchorRef.current = null;
         ev.preventDefault();
         element.focus();
         return;
       }
       const point = cellAt(ev.clientX, ev.clientY);
       if (!point) return;
+      // Plain click: stage the anchor and arm the drag flag, but don't
+      // create a selection yet. `onMouseMove` upgrades to a real
+      // selection the moment the focus cell differs from the anchor;
+      // `onMouseUp` without movement clears any prior selection (native
+      // text-editor behaviour).
       draggingRef.current = true;
-      setSelection({
-        anchor: point,
-        focus: point,
-        mode: "char",
-      });
+      pendingAnchorRef.current = point;
       ev.preventDefault();
       element.focus();
     };
@@ -101,11 +112,28 @@ export function useTerminalSelection({
       if (!draggingRef.current) return;
       const point = cellAt(ev.clientX, ev.clientY);
       if (!point) return;
+      const pending = pendingAnchorRef.current;
+      if (pending) {
+        // First detectable drag step: skip if focus hasn't left the
+        // anchor cell, otherwise upgrade to a real selection range.
+        if (pending.row === point.row && pending.col === point.col) return;
+        setSelection({ anchor: pending, focus: point, mode: "char" });
+        pendingAnchorRef.current = null;
+        return;
+      }
       setSelection((prev) => (prev ? { ...prev, focus: point } : prev));
     };
 
     const onMouseUp = () => {
+      const wasPending = pendingAnchorRef.current !== null;
       draggingRef.current = false;
+      pendingAnchorRef.current = null;
+      // Click without drag: clear any pre-existing selection so a stray
+      // tap doesn't leave a stale highlight on the previous gesture's
+      // range either.
+      if (wasPending && selectionRef.current) {
+        setSelection(null);
+      }
     };
 
     const onDoubleClick = (ev: MouseEvent) => {

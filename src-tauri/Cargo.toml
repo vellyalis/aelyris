@@ -11,6 +11,15 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+# Embed Windows file metadata (FileDescription / ProductName / etc.) into
+# the dev binary too. tauri-build only emits these for release bundles, so
+# without this `cargo run` produces an .exe that Task Manager can't display
+# as "Aether Terminal" — dogfood (2026-05-03) ran into exactly that when
+# trying to identify the hung process. `tauri-winres` is already in the
+# transitive dep graph via tauri-build, so the cost is just an explicit
+# step in `build.rs`.
+[target.'cfg(windows)'.build-dependencies]
+tauri-winres = "0.3"
 
 [dependencies]
 # Tauri core

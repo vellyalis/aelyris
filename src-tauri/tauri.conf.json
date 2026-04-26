@@ -33,6 +33,11 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "publisher": "Aether",
+    "copyright": "Copyright (c) 2026 Aether",
+    "shortDescription": "Aether Terminal",
+    "longDescription": "Windows-native AI workspace terminal — project-first, Tauri + React, native Rust terminal engine.",
+    "category": "DeveloperTool",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
