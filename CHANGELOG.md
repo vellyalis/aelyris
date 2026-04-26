@@ -10,6 +10,26 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### UX
 
+- **Terminal canvas decoration alignment + named-constant audit.**
+  Continuation of the pane sweep — three smaller bugs the first
+  pass missed:
+  - **Underline baseline drift across SGR-underline / link-hover
+    underline / cursor's underline shape.** `drawDecorations`
+    painted the SGR underline at `y + cellH - 2`,
+    `paintLinkUnderline` at `y + cellH - 1` (1 px lower),
+    `paintCursor`'s underline shape at `y + cellH - 2` but 2 px
+    tall instead of 1. Hovering a link on an SGR-underlined word
+    rendered a visible double-bar; a cursor parked on an
+    underlined word painted a stacked pair instead of a single
+    line. Extracted `UNDERLINE_INSET_FROM_BOTTOM = 2` constant
+    and routed all three paths through it. Cursor's underline
+    shape stays 2 px tall (vs 1 px decoration) so it remains
+    distinguishable as the cursor.
+  - **`paintGhostSuggestion` was hardcoding `#cdd6f4`** even
+    though `ansiPalette.ts` already exports the same value as
+    `DEFAULT_FG`. Routed through the named constant so a future
+    palette swap doesn't need a hex grep.
+
 - **Terminal pane quality sweep — silent UX bugs and dead chrome
   found by review pass.** Self-audit triggered by dogfood "still
   many low-quality areas around the terminal":

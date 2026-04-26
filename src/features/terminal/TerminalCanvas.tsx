@@ -8,6 +8,7 @@ import { useTerminalImages } from "../../shared/hooks/useTerminalImages";
 import {
   CURSOR_COLOR,
   DEFAULT_BG,
+  DEFAULT_FG,
   isDefaultBg,
   LINK_HOVER_FG,
   resolveColor,
@@ -735,6 +736,14 @@ function paintRow(
   ctx.globalAlpha = 1;
 }
 
+/* Single source of truth for the "underline" baseline (character
+ * underline, link-hover underline, cursor's underline-shape). All
+ * three previously rendered at slightly different y offsets — the
+ * link rule was 1 px lower than the character rule, and the cursor
+ * shape was 2 px tall instead of 1 — so a hovered link sitting on
+ * an SGR-underlined word produced a visible double-bar. */
+const UNDERLINE_INSET_FROM_BOTTOM = 2;
+
 function drawDecorations(
   ctx: CanvasRenderingContext2D,
   cell: CellSnapshot,
@@ -750,7 +759,7 @@ function drawDecorations(
   if (!underline && !strike) return;
   ctx.globalAlpha = dim ? 0.6 : 1;
   ctx.fillStyle = fgCss;
-  if (underline) ctx.fillRect(x, y + cellH - 2, cellW, 1);
+  if (underline) ctx.fillRect(x, y + cellH - UNDERLINE_INSET_FROM_BOTTOM, cellW, 1);
   if (strike) ctx.fillRect(x, y + Math.round(cellH / 2), cellW, 1);
 }
 
@@ -852,7 +861,10 @@ function paintLinkUnderline(
   ctx.save();
   ctx.globalAlpha = 1;
   ctx.fillStyle = LINK_HOVER_FG;
-  ctx.fillRect(x, y + height - 1, w, 1);
+  /* Match `drawDecorations`'s SGR-underline baseline so a hovered
+   * link on an already-underlined word doesn't render a visible
+   * second bar 1 px lower than the first. */
+  ctx.fillRect(x, y + height - UNDERLINE_INSET_FROM_BOTTOM, w, 1);
   ctx.restore();
 }
 
@@ -897,7 +909,10 @@ function paintGhostSuggestion(
   const y = row * height;
   ctx.save();
   ctx.globalAlpha = 0.45;
-  ctx.fillStyle = "#cdd6f4";
+  /* Use the palette's named foreground constant so a future theme
+   * swap (or an unbundled-build hex audit) doesn't have to chase
+   * a stray hex literal here. Same value, named source. */
+  ctx.fillStyle = DEFAULT_FG;
   ctx.font = `${fontSize}px ${fontFamily}`;
   ctx.textBaseline = "top";
   let x = col * width;
@@ -984,7 +999,12 @@ function paintCursor(ctx: CanvasRenderingContext2D, snapshot: GridSnapshot, { wi
       return;
     }
     case "underline":
-      ctx.fillRect(x, y + height - 2, width, 2);
+      /* Cursor's underline shape uses the same y baseline as the
+       * SGR-underline + link-hover underline so a cursor parked
+       * on an underlined word reads as one continuous bar instead
+       * of a stacked pair. Height stays 2 px (vs the 1-px decoration
+       * underline) so the cursor remains distinguishable. */
+      ctx.fillRect(x, y + height - UNDERLINE_INSET_FROM_BOTTOM, width, UNDERLINE_INSET_FROM_BOTTOM);
       return;
     case "beam":
       ctx.fillRect(x, y, 2, height);
