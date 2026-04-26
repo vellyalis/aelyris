@@ -464,6 +464,18 @@ export function App() {
         let forceClose = false;
         win
           .onCloseRequested(async (event) => {
+            /* Force-close short-circuit MUST run before any await — Codex
+             * review (round 8) flagged that putting the guard after the
+             * bounds-saving IPCs lets the second close (post-confirm) hang
+             * if `outerPosition()` / `outerSize()` / `isMaximized()` stall.
+             * In that scenario the user has confirmed the unsaved-files
+             * prompt but the window never destroys. Synchronous early
+             * return on the second pass guarantees Tauri proceeds to
+             * destroy; bounds for the *first* close still get saved as
+             * normal, and on confirmed unsaved-close we accept losing
+             * the bounds save (acceptable trade vs. a stuck window). */
+            if (forceClose) return;
+
             // Save window position/size before close
             try {
               const pos = await win.outerPosition();
@@ -482,8 +494,6 @@ export function App() {
             } catch {
               /* ignore */
             }
-
-            if (forceClose) return;
 
             const { unsavedFiles } = useAppStore.getState();
             if (unsavedFiles.size > 0) {

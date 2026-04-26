@@ -10,6 +10,15 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 ### UX
 
+- **Codex round 8 — `forceClose` guard moved before async bounds
+  saves.** With the guard sitting after `await win.outerPosition()
+  / outerSize() / isMaximized()`, a stalled bounds IPC during the
+  second (post-confirm) close kept the user stuck even though
+  they had clicked Close. Synchronous early-return on
+  `forceClose` now guarantees Tauri proceeds to `destroy()`. The
+  trade-off: a confirmed unsaved-close skips the bounds save —
+  acceptable next to a window that won't go away.
+
 - **Codex round 7 — unsaved-confirm infinite loop.** With unsaved
   files, `onCloseRequested` called `event.preventDefault()`,
   showed the confirm, then called `win.close()` again on accept —
