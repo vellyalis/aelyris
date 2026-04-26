@@ -12,18 +12,32 @@ the same way `docs/ROADMAP_POST_0_2_2.md` was.
 
 ## 🔴 1 — Windows APC delivery to engine (replaces "passthrough wiring")
 
-**Status**: Sprint 1 (engine assembler) + Sprint 2 (emitter wrappers
-+ fixtures + diag harness) + Sprint 3 first wave (E2E unfixme + new
-chunked-osc-flows spec + offline Rust integration test + user-guide
-+ troubleshooting docs) all landed on 2026-05-01. Sprint 3 second
-wave remains: `term_image_metrics` IPC + status-bar widget + optional
-streaming partial paint + stress harness. The original framing
-("just pass `PSEUDOCONSOLE_PASSTHROUGH_MODE` to
+**Status**: ✅ All sprints landed. Sprint 1 (engine assembler,
+`a627cb7`) + Sprint 2 (emitter wrappers + fixtures + diag harness,
+`112bd23`) + Sprint 3 wave 1 (E2E unfixme + new chunked-osc-flows
+spec + offline Rust integration test + user-guide + troubleshooting,
+`e0845ed`) + Sprint 3 wave 2 (`term_image_metrics` IPC + TS type,
+`bf8076a`) + Sprint 3 wave 3 (status-bar inline-image budget badge +
+`image_evicted` structured log event, `6a4a480`) on 2026-05-01 →
+2026-05-02. The wizard-grade definition's five axes (real Win11
+ConPTY round-trip, hostile-input-safe, concurrent transfers don't
+corrupt, observable, documented) are all green offline.
+
+The remaining gates are user-side validation: a Win11 dogfood pass
+of `node scripts/diag-chunked-osc.mjs` (4/4 expected) and a preview-
+server visual confirmation of the status-bar badge under load. Once
+both are green, v0.2.4 can ship. Streaming partial paint (Sprint 3
+deliverable #5) remains deferred — the trigger is "dogfood says
+paint is visibly slow", which has not happened yet.
+
+The original framing ("just pass `PSEUDOCONSOLE_PASSTHROUGH_MODE` to
 `CreatePseudoConsole`") turned out to be a dead end — see
 "Investigation log" below. Spike 2 confirmed a chunked OSC side-
 channel as a viable vehicle, Sprint 1 implements its engine half,
-Sprint 2 ships the emitter half, Sprint 3 first wave locks in
-correctness end-to-end without requiring a Tauri session.
+Sprint 2 ships the emitter half, Sprint 3 wave 1 locks in
+correctness end-to-end without requiring a Tauri session, wave 2 +
+3 surface the cap state through an IPC + status-bar widget so a
+user can see eviction pressure before it happens.
 
 **Why this is Tier 🔴**: the entire Tier 🟡 #5 inline-image pipeline
 (scanner + decoder + snapshot + IPC + frontend paint) is *correct*,
@@ -181,17 +195,14 @@ round-trip via the diag script + a real PNG fixture.
 
 ## 🟡 2 — `chafa`-less visual confirmation
 
-**Why this is Tier 🟡**: even after #1 lands, the only way to *visually*
-confirm inline-image rendering on the dogfood machine is to ship a
-fixture or use `[Console]::Out.Write` from PowerShell. No standard
-image-emitting CLI is preinstalled. Either:
-- Ship a small Rust-based test fixture (`scripts/emit-kitty-image.rs`?)
-  that takes a PNG path and writes the Kitty escape to its stdout, or
-- Document a winget recipe to install `chafa` (it ships in the
-  `mintty/chafa` MSYS2 channel; coverage on plain Windows uncertain).
-
-Either way, the dogfood log should have a one-line "smoke" recipe so
-inline-image regressions are catchable in <30 s.
+**Status**: ✅ Effectively closed by Sprint 2 of #1. The
+`scripts/aether-imgcat.{ps1,sh}` emitter wrappers shipped in
+`112bd23` are the `chafa`-less vehicle for Win11 dogfood — both
+PowerShell and Git Bash invocations take a PNG path and stream the
+chunked OSC 1338 protocol straight to the engine. The 30-second
+smoke recipe lives in `docs/inline-image-dogfood.md`, and the
+`e2e/fixtures/inline-image-{1x1,32x32}.png` fixtures give a
+reproducible regression target. No external tooling required.
 
 ## 🟢 3 — Frontend canvas pixel-sample E2E spec
 
@@ -225,10 +236,16 @@ for the workflow.
 
 ## 🟢 6 — Inline-image memory budget telemetry
 
-The 50 MiB cap fires silently via FIFO eviction. A status-bar badge
-or a debug-only `images_bytes_used` IPC would help diagnose the
-"my image disappeared" case in dogfood. Low priority until #1 + a
-real workflow surfaces the need.
+**Status**: ✅ Closed by Sprint 3 wave 2 + 3 of #1. The
+`term_image_metrics(id)` IPC (`bf8076a`) returns
+`{ bytesUsed, cap, count }`, the `<InlineImageBudget />` status-bar
+widget (`6a4a480`) renders it as a "12.3 MiB / 50 MiB · 3" badge with
+warn / danger tints at 80 % / 95 % of the cap, and a structured
+`event=image_evicted` WARN log surfaces every FIFO eviction (with
+`evicted_count`, `evicted_bytes`, `remaining_bytes_used`, `cap`,
+`terminal_id`) into the Tier 🟡 #7 in-app log viewer. The "my image
+disappeared" case is now self-diagnosable from the badge tooltip +
+log filter.
 
 ---
 

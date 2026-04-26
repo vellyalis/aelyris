@@ -8,6 +8,22 @@ All notable changes to Aether Terminal are tracked here. Dates are listed in
 Continuing the post-0.2.3 Tier 3 polish run started with
 `247e813` (search-in-scrollback, Tier 3 #9).
 
+### Internal
+
+- **Roadmap clean-up + `.at()` warning suppression.** With Sprint 3
+  wave 3 landing the inline-image observability surface,
+  `docs/ROADMAP_POST_0_2_4.md` now reflects the closed state of
+  Tier 🔴 #1 (all 5 sprints landed), Tier 🟡 #2 (chafa-less visual
+  confirmation — solved by the Sprint 2 emitter wrappers being the
+  vehicle), and Tier 🟢 #6 (memory budget telemetry — solved by the
+  wave 2 IPC + wave 3 widget + structured log event). The remaining
+  gates are user-side: dogfood verify of `diag-chunked-osc.mjs` and
+  the preview-server visual check of the badge.
+  Separately, added `ES2022.Array` to `tsconfig.json`'s `lib` so the
+  7 carry-over `Array.prototype.at` warnings in
+  `usePtyLag.test.tsx` resolve cleanly without per-call rewrites.
+  `tsc --noEmit`: zero errors (was 7).
+
 ### Reliability
 
 - **Chunked OSC inline image protocol — observability UI + structured
