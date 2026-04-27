@@ -554,14 +554,20 @@ export function EditorPanel({
               if (lsp.isAvailable) {
                 lspDispose.current?.();
                 lspDispose.current = registerLspProviders(monaco, language, lsp);
-                // Notify LSP about file open. The URI MUST match what
-                // Monaco mounted the model under — go through the same
-                // `toMonacoModelUri` helper so a POSIX path (which would
-                // become `file:////home/...` under naive concatenation
-                // and mismatch the `file:///home/...` model URI) and a
-                // Windows drive path both resolve identically.
-                if (filePath && content !== null) {
-                  lsp.notifyOpen(toMonacoModelUri(filePath), currentLanguage, content);
+                // Read the URI back from Monaco itself so both this
+                // dispatch and the completion provider's
+                // `model.uri.toString()` see the identical canonical
+                // string. Our `toMonacoModelUri` helper produces a
+                // valid `file://` input for Monaco's parser, but
+                // Monaco may re-encode on round-trip (drive-letter
+                // casing, reserved characters our helper doesn't
+                // touch like `&` / `+`, non-ASCII) and the helper's
+                // raw output would diverge from `model.uri.toString()`.
+                if (content !== null) {
+                  const modelUri = editor.getModel()?.uri.toString();
+                  if (modelUri) {
+                    lsp.notifyOpen(modelUri, currentLanguage, content);
+                  }
                 }
               }
             }}

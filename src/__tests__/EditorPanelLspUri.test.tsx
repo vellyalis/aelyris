@@ -24,22 +24,27 @@ const sources = import.meta.glob("../features/editor/EditorPanel.tsx", {
 }) as Record<string, string>;
 
 describe("EditorPanel LSP URI alignment", () => {
-  it("Editor path and notifyOpen both go through the toMonacoModelUri helper", () => {
+  it("Editor.path uses toMonacoModelUri; notifyOpen reads the canonical URI back from Monaco", () => {
     const entries = Object.entries(sources);
     expect(entries.length).toBe(1);
     const src = entries[0][1];
 
-    // Both sites must share the same helper — the prior revision
-    // (codex r1 BLOCK) inlined the URI construction in two places
-    // and they disagreed on POSIX paths (notifyOpen produced four
-    // leading slashes vs. Monaco's three). Routing through one
-    // helper makes the two URIs identical by construction.
+    // The helper still produces a valid `file://` URI as INPUT for
+    // Monaco's `Uri.parse`, but the OUTPUT (notifyOpen + provider) must
+    // come from Monaco itself — `model.uri.toString()` — because Monaco
+    // may re-encode on round-trip (drive-letter casing, additional
+    // reserved chars our helper does not escape, non-ASCII).
     expect(src).toMatch(/import\s*\{\s*toMonacoModelUri\s*\}\s*from\s*"\.\/lsp\/lspUri"/);
     expect(src).toMatch(/const\s+monacoModelPath\s*=\s*useMemo\([\s\S]*?toMonacoModelUri\(filePath\)/);
-    expect(src).toMatch(/lsp\.notifyOpen\(\s*toMonacoModelUri\(filePath\)/);
-
-    // The memo result must be wired through to `<Editor path={…} />`.
     expect(src).toMatch(/<Editor[\s\S]*?path=\{\s*monacoModelPath\s*\}/);
+
+    // notifyOpen must dispatch with the URI Monaco itself produced,
+    // NOT the helper's raw output (which can diverge after parse →
+    // toString round-trip). Provider also calls model.uri.toString()
+    // (covered in registerLspProvidersUri.test), so the URIs match by
+    // construction.
+    expect(src).toMatch(/editor\.getModel\(\s*\)\s*\?\.\s*uri\.toString\(\s*\)/);
+    expect(src).toMatch(/lsp\.notifyOpen\(\s*modelUri\s*,/);
 
     // The unsafe inline `file:///${filePath...}` constructions that
     // produced the four-slash bug must be gone from the LSP wiring.
@@ -49,5 +54,8 @@ describe("EditorPanel LSP URI alignment", () => {
       .replace(/\/\*[\s\S]*?\*\//g, "")
       .replace(/\/\/.*$/gm, "");
     expect(stripped).not.toMatch(/`file:\/\/\/\$\{filePath\.replace\(\/\\\\\/g/);
+    // Helper output must NOT be passed directly to notifyOpen — that
+    // was the codex r3 BLOCK regression.
+    expect(stripped).not.toMatch(/lsp\.notifyOpen\(\s*toMonacoModelUri\(/);
   });
 });
