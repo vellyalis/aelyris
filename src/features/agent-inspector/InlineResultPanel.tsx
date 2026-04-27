@@ -91,26 +91,33 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
     let cancelled = false;
 
     (async () => {
-      try {
-        const [original, modified] = await Promise.all([
-          invoke<string>("git_file_original", { repoPath: projectPath, filePath: path }).catch(() => ""),
-          invoke<string>("read_file", { path }).catch(() => ""),
-        ]);
+      // Use allSettled so we can record per-invoke failures explicitly.
+      // The previous `.catch(() => "")` swallowed both rejections to ""
+      // and stamped `error: null` on the cache, which let Revert sneak
+      // past `cached.error` and silently truncate the file with the
+      // empty placeholder original. (codex-detected data-loss.)
+      const [originalResult, modifiedResult] = await Promise.allSettled([
+        invoke<string>("git_file_original", { repoPath: projectPath, filePath: path }),
+        invoke<string>("read_file", { path }),
+      ]);
+      if (cancelled) return;
 
-        if (cancelled) return;
-        setDiffs((prev) => {
-          const next = new Map(prev);
-          next.set(path, { path, original, modified, loading: false, error: null });
-          return next;
-        });
-      } catch (err) {
-        if (cancelled) return;
-        setDiffs((prev) => {
-          const next = new Map(prev);
-          next.set(path, { path, original: "", modified: "", loading: false, error: String(err) });
-          return next;
-        });
+      const original = originalResult.status === "fulfilled" ? originalResult.value : "";
+      const modified = modifiedResult.status === "fulfilled" ? modifiedResult.value : "";
+      const errors: string[] = [];
+      if (originalResult.status === "rejected") {
+        errors.push(`failed to load git original: ${String(originalResult.reason)}`);
       }
+      if (modifiedResult.status === "rejected") {
+        errors.push(`failed to read working copy: ${String(modifiedResult.reason)}`);
+      }
+      const error = errors.length > 0 ? errors.join("; ") : null;
+
+      setDiffs((prev) => {
+        const next = new Map(prev);
+        next.set(path, { path, original, modified, loading: false, error });
+        return next;
+      });
     })();
 
     return () => {

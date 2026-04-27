@@ -64,4 +64,30 @@ describe("InlineResultPanel load-diff effect deps", () => {
     // `original: ""` and silently truncates user data.
     expect(src).toMatch(/cached\.loading/);
   });
+
+  it("loader records git_file_original / read_file rejections instead of swallowing to '' (codex r4)", () => {
+    const entries = Object.entries(sources);
+    const src = entries[0][1];
+
+    // Codex-flagged: the prior loader did
+    //   invoke(...).catch(() => "")
+    // for both invokes and stamped `error: null`. A Revert click after
+    // a git_file_original rejection then bypassed `cached.error` and
+    // wrote the empty-string placeholder over the working copy. The
+    // fix swaps to Promise.allSettled and feeds rejections into
+    // `error` so the revert guard can see them.
+    expect(src).toMatch(/Promise\.allSettled\(/);
+
+    // The unsafe per-invoke `.catch(() => "")` rescue that swallowed
+    // rejections must be gone from the loader path.
+    const stripped = src
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\/\/.*$/gm, "");
+    expect(stripped).not.toMatch(/git_file_original[\s\S]{0,80}\.catch\(\(\)\s*=>\s*""\)/);
+    expect(stripped).not.toMatch(/read_file[\s\S]{0,80}\.catch\(\(\)\s*=>\s*""\)/);
+
+    // The loader's error stamp must include the git rejection branch.
+    expect(src).toMatch(/originalResult\.status\s*===\s*"rejected"/);
+    expect(src).toMatch(/modifiedResult\.status\s*===\s*"rejected"/);
+  });
 });
