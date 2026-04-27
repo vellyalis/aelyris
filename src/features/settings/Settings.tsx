@@ -94,6 +94,15 @@ export function Settings({ visible, onClose }: SettingsProps) {
     // directly between sessions doesn't have their changes overwritten by
     // the previous mount's stale state when they click Save.
     if (!visible) return;
+    // Reset the snapshot BEFORE the invoke fires so a rapid open/close/open
+    // cycle (or a Save click before the load resolves) cannot round-trip
+    // the previous mount's `loadedConfig`. Without this, the user could
+    // edit config.toml externally, reopen Settings, hit Save before the
+    // fresh fetch completes, and overwrite their disk edits with the
+    // stale in-memory snapshot. The null-guard in handleSave then surfaces
+    // a "Settings not saved" warning instead of silently corrupting disk.
+    // (Same defect class fixed in WatchdogDialog round 4 / codex r2.)
+    setLoadedConfig(null);
     let cancelled = false;
     invoke<LoadedConfig>("load_app_config")
       .then((cfg) => {
