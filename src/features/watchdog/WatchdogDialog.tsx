@@ -1,7 +1,8 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { Plus, ShieldCheck, ShieldX, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "../../shared/store/toastStore";
 import styles from "./WatchdogDialog.module.css";
 
 interface WatchdogRule {
@@ -53,27 +54,78 @@ interface WatchdogDialogProps {
 
 export function WatchdogDialog({ visible, onClose }: WatchdogDialogProps) {
   const [rules, setRules] = useState<WatchdogRules>({ enabled: false, auto_approve: [] });
+  // Hold the disk snapshot so handleSave can spread it through and any future
+  // field added by Rust round-trips even if the UI doesn't edit it yet —
+  // mirrors the Settings.tsx data-loss fix.
+  const [loadedRules, setLoadedRules] = useState<WatchdogRules | null>(null);
   const [newPattern, setNewPattern] = useState("");
   const [saving, setSaving] = useState(false);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
-    if (visible) {
-      invoke<WatchdogRules>("get_watchdog_rules")
-        .then(setRules)
-        .catch(() => {});
-    }
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!visible) return;
+    // Reset the load snapshot on every open before starting the new
+    // fetch. Without this, a second open that races (or whose load
+    // rejects) leaves `loadedRules` populated with the previous
+    // session's snapshot — handleSave's null guard then passes and
+    // those *stale* rules overwrite whatever is now on disk (codex r2
+    // P2). Clear synchronously so the guard fires until the new fetch
+    // confirms it succeeded.
+    setLoadedRules(null);
+    let cancelled = false;
+    invoke<WatchdogRules>("get_watchdog_rules")
+      .then((loaded) => {
+        if (cancelled) return;
+        setLoadedRules(loaded);
+        setRules(loaded);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        // Surface load failure so handleSave's null-guard doesn't silently
+        // discard the user's edits — without this, the dialog looks like a
+        // no-op and on retry the empty default rules would clobber disk.
+        toast.error("Failed to load Watchdog rules", String(err));
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [visible]);
 
   const handleSave = useCallback(async () => {
+    if (!loadedRules) {
+      // Open and immediately close before load resolves (or load failed).
+      // Preserve disk contents by skipping save entirely — but warn the
+      // user instead of silently sending an empty default ruleset that
+      // would wipe their existing rules.
+      toast.warning(
+        "Watchdog rules not saved",
+        "Rules have not finished loading yet — please reopen the dialog and try again.",
+      );
+      onClose();
+      return;
+    }
     setSaving(true);
     try {
-      await invoke("save_watchdog_rules", { rules });
+      // Spread loadedRules so any future field added by Rust round-trips
+      // even if the UI doesn't edit it yet.
+      const merged: WatchdogRules = { ...loadedRules, ...rules };
+      await invoke("save_watchdog_rules", { rules: merged });
+      if (!mountedRef.current) return;
+      setSaving(false);
       onClose();
-    } catch {
-      /* ignore */
+    } catch (err) {
+      if (!mountedRef.current) return;
+      setSaving(false);
+      toast.error("Failed to save Watchdog rules", String(err));
     }
-    setSaving(false);
-  }, [rules, onClose]);
+  }, [rules, loadedRules, onClose]);
 
   const addRule = useCallback(() => {
     if (!newPattern.trim()) return;

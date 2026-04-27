@@ -59,14 +59,53 @@ const DEFAULT_ACTIONS: ToolkitAction[] = [
   { id: "npm-test", label: "Run Tests", badge: "var(--ctp-red)", command: "npm test" },
 ];
 
+// Validate that a parsed object has the minimum shape we need. Without this,
+// a corrupted localStorage entry — or an older app version that stored a
+// different schema — would surface as a TypeError later when handlers read
+// `a.command.match(...)` on a non-string. Drop unknown entries silently and
+// fall back to DEFAULT_ACTIONS if nothing usable remains.
+function isValidAction(value: unknown): value is ToolkitAction {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.id === "string" &&
+    typeof v.label === "string" &&
+    typeof v.badge === "string" &&
+    typeof v.command === "string"
+  );
+}
+
 function loadActions(projectName: string): ToolkitAction[] {
   try {
     const saved = localStorage.getItem(`aether:toolkit:${projectName}`);
-    if (saved) return JSON.parse(saved);
+    if (!saved) return DEFAULT_ACTIONS;
+    const parsed = JSON.parse(saved);
+    if (!Array.isArray(parsed)) return DEFAULT_ACTIONS;
+    // Empty array = user intentionally deleted every action. Preserve
+    // that — restoring DEFAULT_ACTIONS here would resurrect the
+    // buttons the user explicitly removed (Codex r0).
+    if (parsed.length === 0) return [];
+    const valid = parsed.filter(isValidAction);
+    // Some entries valid → take what we recovered. All entries invalid
+    // → the saved blob is corrupt (older schema, partial write); fall
+    // back to defaults rather than show a permanently empty toolkit.
+    return valid.length > 0 ? valid : DEFAULT_ACTIONS;
   } catch {
-    /* ignore */
+    return DEFAULT_ACTIONS;
   }
-  return DEFAULT_ACTIONS;
+}
+
+// Collision-resistant id generator. The previous `import-${Date.now()}-${i}`
+// scheme produced duplicate ids when two imports landed inside the same
+// millisecond — React's reconciliation then keyed multiple list items to
+// the same node, causing one of them to render the other's content. Use
+// crypto.randomUUID() with a Math.random() fallback for environments
+// (older webviews, jsdom in some configs) that lack it.
+function makeActionId(prefix: string): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `${prefix}-${crypto.randomUUID()}`;
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function saveActions(projectName: string, actions: ToolkitAction[]) {
@@ -107,7 +146,7 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
     const command = await showPrompt("Command", { placeholder: "Command to run..." });
     if (!command) return;
     const newAction: ToolkitAction = {
-      id: `custom-${Date.now()}`,
+      id: makeActionId("custom"),
       label,
       badge: "var(--ctp-cyan)",
       command,
@@ -138,8 +177,8 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
       const parsed = JSON.parse(trimmed);
       const items: ToolkitAction[] = [];
 
-      const toAction = (obj: Record<string, unknown>, i: number): ToolkitAction => ({
-        id: `import-${Date.now()}-${i}`,
+      const toAction = (obj: Record<string, unknown>): ToolkitAction => ({
+        id: makeActionId("import"),
         label: String(obj.label ?? obj.name ?? "Imported Tool"),
         icon: typeof obj.icon === "string" ? obj.icon : undefined,
         badge: typeof obj.badge === "string" ? obj.badge : "var(--ctp-cyan)",
@@ -147,13 +186,13 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
       });
 
       if (Array.isArray(parsed)) {
-        parsed.forEach((item, i) => {
+        parsed.forEach((item) => {
           if (item && typeof item === "object" && (item.command || item.cmd)) {
-            items.push(toAction(item, i));
+            items.push(toAction(item));
           }
         });
       } else if (typeof parsed === "object" && parsed !== null && (parsed.command || parsed.cmd)) {
-        items.push(toAction(parsed, 0));
+        items.push(toAction(parsed));
       }
 
       if (items.length > 0) {
@@ -170,8 +209,8 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
       .map((l) => l.trim())
       .filter(Boolean);
     const items = lines.map(
-      (line, i): ToolkitAction => ({
-        id: `import-${Date.now()}-${i}`,
+      (line): ToolkitAction => ({
+        id: makeActionId("import"),
         label: line.split(" ").slice(0, 3).join(" "),
         badge: "var(--ctp-cyan)",
         command: line,
@@ -324,7 +363,7 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
             const cmd = await showPrompt("Generate Tool", { placeholder: "Describe what the tool should do..." });
             if (cmd) {
               const newAction: ToolkitAction = {
-                id: `gen-${Date.now()}`,
+                id: makeActionId("gen"),
                 label: cmd.split(" ").slice(0, 3).join(" "),
                 badge: "var(--ctp-mauve)",
                 command: cmd,

@@ -22,19 +22,35 @@ function createTab(shell: ShellType, cwd?: string): Tab {
   return { id, label, shell, cwd };
 }
 
+// Validate that a parsed tab has the minimum shape we need. Without this,
+// a corrupted localStorage entry — or an older app version that stored a
+// different schema — would surface as a TypeError later when callers do
+// `tabs.some(t => t.id === ...)` on entries that lack a string id. Drop
+// invalid entries silently and treat empty results as "no saved tabs".
+const VALID_SHELLS: ShellType[] = ["powershell", "cmd", "gitbash", "wsl"];
+
+function isValidTab(value: unknown): value is Tab {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.id === "string" &&
+    typeof v.label === "string" &&
+    typeof v.shell === "string" &&
+    VALID_SHELLS.includes(v.shell as ShellType)
+  );
+}
+
 function loadSavedTabs(): Tab[] | null {
   try {
     const saved = localStorage.getItem("aether:tabs");
-    if (saved) {
-      const parsed = JSON.parse(saved) as Tab[];
-      if (parsed.length > 0) {
-        return parsed;
-      }
-    }
+    if (!saved) return null;
+    const parsed = JSON.parse(saved);
+    if (!Array.isArray(parsed)) return null;
+    const valid = parsed.filter(isValidTab);
+    return valid.length > 0 ? valid : null;
   } catch {
-    /* ignore */
+    return null;
   }
-  return null;
 }
 
 function saveTabs(tabs: Tab[], activeId: string) {

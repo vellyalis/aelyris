@@ -84,14 +84,31 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
   // Refresh on fs:changed events
   useEffect(() => {
     let unlisten: (() => void) | null = null;
-    import("@tauri-apps/api/event").then(({ listen }) => {
-      listen<{ root: string }>("fs:changed", (e) => {
-        if (e.payload.root === projectPath) refresh();
-      }).then((u) => {
+    let cancelled = false;
+    // Without the cancelled flag, an unmount that races the dynamic
+    // import + listen() resolution leaks the listener: the cleanup runs
+    // before `unlisten` is assigned, and the .then callback then stores
+    // a handle on an unmounted component that nothing ever calls. Same
+    // shape as the WorkflowPanel listener leak landed in round 2.
+    import("@tauri-apps/api/event")
+      .then(({ listen }) =>
+        listen<{ root: string }>("fs:changed", (e) => {
+          if (cancelled) return;
+          if (e.payload.root === projectPath) refresh();
+        }),
+      )
+      .then((u) => {
+        if (cancelled) {
+          u();
+          return;
+        }
         unlisten = u;
+      })
+      .catch(() => {
+        // Backend unreachable (e.g. tests). No listener was registered.
       });
-    });
     return () => {
+      cancelled = true;
       unlisten?.();
     };
   }, [projectPath, refresh]);
@@ -109,9 +126,18 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
     files: files.filter((f) => classify(f) === g.id),
   })).filter((g) => g.files.length > 0);
 
+  // Each stage/unstage/discard/stage-all wrapper used to `await invoke()`
+  // bare. A reject would fall out as an uncaught promise rejection in the
+  // event handler — the click would silently no-op, no toast, and the
+  // working copy state would still be stale because `refresh()` never
+  // ran. Surface failures + still refresh so the UI re-syncs with disk.
   const handleStage = useCallback(
     async (paths: string[]) => {
-      await invoke("git_stage", { repoPath: projectPath, paths });
+      try {
+        await invoke("git_stage", { repoPath: projectPath, paths });
+      } catch (e) {
+        toast.error("Stage failed", String(e));
+      }
       refresh();
     },
     [projectPath, refresh],
@@ -119,7 +145,11 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
 
   const handleUnstage = useCallback(
     async (paths: string[]) => {
-      await invoke("git_unstage", { repoPath: projectPath, paths });
+      try {
+        await invoke("git_unstage", { repoPath: projectPath, paths });
+      } catch (e) {
+        toast.error("Unstage failed", String(e));
+      }
       refresh();
     },
     [projectPath, refresh],
@@ -134,14 +164,22 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
         tone: "danger",
       });
       if (!ok) return;
-      await invoke("git_discard", { repoPath: projectPath, paths });
+      try {
+        await invoke("git_discard", { repoPath: projectPath, paths });
+      } catch (e) {
+        toast.error("Discard failed", String(e));
+      }
       refresh();
     },
     [projectPath, refresh],
   );
 
   const handleStageAll = useCallback(async () => {
-    await invoke("git_stage_all", { repoPath: projectPath });
+    try {
+      await invoke("git_stage_all", { repoPath: projectPath });
+    } catch (e) {
+      toast.error("Stage all failed", String(e));
+    }
     refresh();
   }, [projectPath, refresh]);
 
@@ -266,47 +304,65 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
 
       {/* File groups */}
       <div className={styles.groups}>
-        {grouped.map((g) => (
-          <div key={g.id} className={styles.group}>
-            <button className={styles.groupHeader} onClick={() => setCollapsed((c) => ({ ...c, [g.id]: !c[g.id] }))}>
-              <ChevronRight size={10} className={`${styles.chevron} ${!collapsed[g.id] ? styles.chevronOpen : ""}`} />
-              <span className={styles.groupDot} style={{ background: g.color }} />
-              <span className={styles.groupLabel}>{g.label}</span>
-              <span className={styles.groupCount}>{g.files.length}</span>
-              {/* Group-level actions */}
-              {g.id === "changes" && (
-                <span className={styles.groupActions} onClick={(e) => e.stopPropagation()}>
-                  <button
-                    type="button"
-                    onClick={() => handleStage(g.files.map((f) => f.path))}
-                    aria-label="Stage all changes"
-                    title="Stage all"
-                  >
-                    <Plus size={10} aria-hidden="true" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDiscard(g.files.map((f) => f.path))}
-                    aria-label="Discard all changes"
-                    title="Discard all"
-                  >
-                    <Undo2 size={10} aria-hidden="true" />
-                  </button>
-                </span>
-              )}
-              {g.id === "staged" && (
-                <span className={styles.groupActions} onClick={(e) => e.stopPropagation()}>
-                  <button
-                    type="button"
-                    onClick={() => handleUnstage(g.files.map((f) => f.path))}
-                    aria-label="Unstage all files"
-                    title="Unstage all"
-                  >
-                    <Minus size={10} aria-hidden="true" />
-                  </button>
-                </span>
-              )}
-            </button>
+        {grouped.map((g) => {
+          const toggleGroup = () => setCollapsed((c) => ({ ...c, [g.id]: !c[g.id] }));
+          // ARIA spec forbids interactive controls inside a button (or
+          // role="button"). The previous round's `role="button"` wrapper
+          // around action <button>s relied on fragile propagation
+          // suppression and could be flattened by some assistive
+          // technologies. Codex r1 P2 — split the disclosure into a
+          // real <button>, and put the action <button>s as siblings
+          // inside the row container so neither nests the other.
+          return (
+            <div key={g.id} className={styles.group}>
+              <div className={styles.groupRow}>
+                <button
+                  type="button"
+                  className={styles.groupHeader}
+                  aria-expanded={!collapsed[g.id]}
+                  onClick={toggleGroup}
+                >
+                  <ChevronRight
+                    size={10}
+                    className={`${styles.chevron} ${!collapsed[g.id] ? styles.chevronOpen : ""}`}
+                  />
+                  <span className={styles.groupDot} style={{ background: g.color }} />
+                  <span className={styles.groupLabel}>{g.label}</span>
+                  <span className={styles.groupCount}>{g.files.length}</span>
+                </button>
+                {g.id === "changes" && (
+                  <span className={styles.groupActions}>
+                    <button
+                      type="button"
+                      onClick={() => handleStage(g.files.map((f) => f.path))}
+                      aria-label="Stage all changes"
+                      title="Stage all"
+                    >
+                      <Plus size={10} aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDiscard(g.files.map((f) => f.path))}
+                      aria-label="Discard all changes"
+                      title="Discard all"
+                    >
+                      <Undo2 size={10} aria-hidden="true" />
+                    </button>
+                  </span>
+                )}
+                {g.id === "staged" && (
+                  <span className={styles.groupActions}>
+                    <button
+                      type="button"
+                      onClick={() => handleUnstage(g.files.map((f) => f.path))}
+                      aria-label="Unstage all files"
+                      title="Unstage all"
+                    >
+                      <Minus size={10} aria-hidden="true" />
+                    </button>
+                  </span>
+                )}
+              </div>
             {!collapsed[g.id] && (
               <div className={styles.fileList}>
                 {g.files.map((f) => (
@@ -367,8 +423,9 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
                 ))}
               </div>
             )}
-          </div>
-        ))}
+            </div>
+          );
+        })}
         {files.length === 0 && (
           <EmptyState
             preset="files"

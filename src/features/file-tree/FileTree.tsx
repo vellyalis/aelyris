@@ -56,6 +56,10 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<FileEntry[] | null>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Monotonic token so a slow query that resolved after a faster one
+  // can't clobber the latest results. Same shape as SearchPanel.
+  const searchRequestIdRef = useRef(0);
+  const mountedRef = useRef(true);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set([rootPath]));
   const [contents, setContents] = useState<Map<string, FileEntry[]>>(new Map());
   const [loading, setLoading] = useState<Set<string>>(new Set());
@@ -66,15 +70,33 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
   const [viewportHeight, setViewportHeight] = useState(0);
 
   useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (searchTimer.current) {
+        clearTimeout(searchTimer.current);
+        searchTimer.current = null;
+      }
+      // Bump so any in-flight search invoke ignores its own resolve.
+      searchRequestIdRef.current += 1;
+    };
+  }, []);
+
+  useEffect(() => {
     setCurrentRoot(rootPath);
   }, [rootPath]);
 
   const reloadDir = useCallback(async (dir: string) => {
     try {
       const entries = await invoke<FileEntry[]>("list_directory", { path: dir });
+      if (!mountedRef.current) return;
       setContents((prev) => new Map(prev).set(dir, entries));
-    } catch {
-      /* ignore */
+    } catch (e) {
+      if (!mountedRef.current) return;
+      // Surface the failure so a successful create/rename/delete that
+      // can't refresh the listing doesn't look like the operation
+      // itself failed (the UI would otherwise show stale contents).
+      toast.error("Failed to refresh folder", String(e));
     }
   }, []);
 
@@ -204,16 +226,28 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
     (query: string) => {
       setSearchQuery(query);
       if (searchTimer.current) clearTimeout(searchTimer.current);
+      // Bump synchronously on every input change — including the
+      // empty-query early-return path. Without this a search that
+      // resolves after the user cleared the filter still passes the
+      // equality check and flips the tree back into search-results
+      // mode under an empty query (codex r1 P2).
+      searchRequestIdRef.current += 1;
       if (!query.trim()) {
         setSearchResults(null);
         return;
       }
       searchTimer.current = setTimeout(async () => {
+        const requestId = ++searchRequestIdRef.current;
         try {
           const results = await invoke<FileEntry[]>("search_files", { rootPath, query, maxResults: 30 });
+          if (!mountedRef.current || requestId !== searchRequestIdRef.current) return;
           setSearchResults(results);
-        } catch {
+        } catch (err) {
+          if (!mountedRef.current || requestId !== searchRequestIdRef.current) return;
+          // Surface backend failures (path errors, permission denials)
+          // instead of presenting them as "no matches" — see SearchPanel.
           setSearchResults([]);
+          toast.error("File search failed", String(err));
         }
       }, 200);
     },

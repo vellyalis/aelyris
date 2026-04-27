@@ -32,7 +32,16 @@ export function useAgentManager() {
       const unsub = await listen<AgentSessionRaw[]>("agent-sessions-updated", (event) => {
         const raw = event.payload;
         setSessions((prev) => {
-          // Merge: keep existing logs, update status/cost/tokens
+          // Merge: keep existing frontend-only fields, update
+          // status/cost/tokens from the backend payload.
+          //
+          // CRITICAL: the previous version dropped `filesChanged` and
+          // `changedFileDetails`. Those are accumulated by the
+          // per-session output listener (subscribeToSession) on the
+          // frontend — the backend doesn't track them — so every
+          // backend status/cost update silently wiped the running
+          // tally. Carry them through explicitly the same way `logs`
+          // and `name` are carried.
           const map = new Map(prev.map((s) => [s.id, s]));
           return raw.map((r) => {
             const existing = map.get(r.id);
@@ -49,6 +58,8 @@ export function useAgentManager() {
               tokensUsed: r.tokens_used,
               role: existing?.role ?? meta?.role,
               handoffFrom: existing?.handoffFrom ?? meta?.handoffFrom,
+              filesChanged: existing?.filesChanged,
+              changedFileDetails: existing?.changedFileDetails,
             };
           });
         });
@@ -59,7 +70,11 @@ export function useAgentManager() {
       }
       unlisten = unsub;
 
-      // Initial fetch to hydrate existing sessions on mount
+      // Initial fetch to hydrate existing sessions on mount. If the
+      // listener fires before this resolves and adds entries with
+      // accumulated file-change tracking, this fetch must not clobber
+      // them — carry through the same frontend-only fields as the
+      // listener merge does.
       try {
         const raw = await invoke<AgentSessionRaw[]>("list_agents");
         if (!cancelled && raw.length > 0) {
@@ -67,6 +82,7 @@ export function useAgentManager() {
             const map = new Map(prev.map((s) => [s.id, s]));
             return raw.map((r) => {
               const existing = map.get(r.id);
+              const meta = roleMetaRef.current.get(r.id);
               return {
                 id: r.id,
                 name: existing?.name ?? r.cwd.split("/").filter(Boolean).pop() ?? "Agent",
@@ -77,6 +93,10 @@ export function useAgentManager() {
                 logs: existing?.logs ?? [],
                 cost: r.cost,
                 tokensUsed: r.tokens_used,
+                role: existing?.role ?? meta?.role,
+                handoffFrom: existing?.handoffFrom ?? meta?.handoffFrom,
+                filesChanged: existing?.filesChanged,
+                changedFileDetails: existing?.changedFileDetails,
               };
             });
           });

@@ -85,7 +85,15 @@ export function AgentInspector({
   const [tab, setTab] = useState<"sessions" | "activity" | "parallel" | "conductor" | "diffs">("sessions");
   const [showPromptInput, setShowPromptInput] = useState(false);
   const [promptText, setPromptText] = useState("");
-  const { selectedModel, setSelectedModel, rootProjectPath, perSessionCostCap, contextWarnPct } = useAppStore();
+  // Per-field selectors so unrelated store slices (terminal output, ghost
+  // layers, theme tokens, etc.) don't trigger a full re-render of this
+  // very large inspector tree. Bare `useAppStore()` subscribes to every
+  // mutation — same perf bug class fixed in KanbanBoard (round 3).
+  const selectedModel = useAppStore((s) => s.selectedModel);
+  const setSelectedModel = useAppStore((s) => s.setSelectedModel);
+  const rootProjectPath = useAppStore((s) => s.rootProjectPath);
+  const perSessionCostCap = useAppStore((s) => s.perSessionCostCap);
+  const contextWarnPct = useAppStore((s) => s.contextWarnPct);
   const budgetThresholds = useMemo<BudgetThresholds>(
     () => ({ perSessionCostCap, contextWarnPct }),
     [perSessionCostCap, contextWarnPct],
