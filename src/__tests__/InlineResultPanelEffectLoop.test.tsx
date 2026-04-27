@@ -89,5 +89,11 @@ describe("InlineResultPanel load-diff effect deps", () => {
     // The loader's error stamp must include the git rejection branch.
     expect(src).toMatch(/originalResult\.status\s*===\s*"rejected"/);
     expect(src).toMatch(/modifiedResult\.status\s*===\s*"rejected"/);
+
+    // Per-action expected rejections (create → no git original;
+    // delete → no working copy) must NOT be stamped as errors —
+    // otherwise the Revert guard blocks legitimate restores.
+    expect(src).toMatch(/action\s*!==\s*"create"/);
+    expect(src).toMatch(/action\s*!==\s*"delete"/);
   });
 });

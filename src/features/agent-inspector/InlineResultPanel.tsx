@@ -90,6 +90,11 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
 
     let cancelled = false;
 
+    // Capture action so the loader can distinguish expected rejections
+    // (create has no git original; delete has no working copy) from
+    // genuine load failures.
+    const action = activeFile.action;
+
     (async () => {
       // Use allSettled so we can record per-invoke failures explicitly.
       // The previous `.catch(() => "")` swallowed both rejections to ""
@@ -104,11 +109,20 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
 
       const original = originalResult.status === "fulfilled" ? originalResult.value : "";
       const modified = modifiedResult.status === "fulfilled" ? modifiedResult.value : "";
+      // Per-action expected rejections must NOT mark `error` — otherwise
+      // the Revert guard blocks legitimate restore flows. Specifically:
+      //   - `create`: file did not exist before this session, so
+      //     `git_file_original` is expected to reject.
+      //   - `delete`: file is gone from the working copy, so
+      //     `read_file` is expected to reject — and Revert here is the
+      //     one path that restores the deleted file from git original.
+      //     If we marked this an error the user could never undo a
+      //     delete from the inline panel.
       const errors: string[] = [];
-      if (originalResult.status === "rejected") {
+      if (originalResult.status === "rejected" && action !== "create") {
         errors.push(`failed to load git original: ${String(originalResult.reason)}`);
       }
-      if (modifiedResult.status === "rejected") {
+      if (modifiedResult.status === "rejected" && action !== "delete") {
         errors.push(`failed to read working copy: ${String(modifiedResult.reason)}`);
       }
       const error = errors.length > 0 ? errors.join("; ") : null;
