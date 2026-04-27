@@ -17,6 +17,7 @@ import { EditorStatusBar } from "./EditorStatusBar";
 import type { LineRange } from "./ghostConflict";
 import type { GhostEditor, MonacoNs } from "./ghostPaint";
 import { registerLspProviders, useLsp } from "./lsp";
+import { toMonacoModelUri } from "./lsp/lspUri";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { useGhostPaintForFile } from "./useGhostPaintForFile";
 
@@ -358,22 +359,12 @@ export function EditorPanel({
   // Monaco generates a synthetic `inmemory://model/N` URI for the model,
   // while LSP `textDocument/didOpen` is dispatched with `file:///<path>` —
   // the URIs never match, so rust-analyzer / pyright return zero
-  // completions and hovers.
-  //
-  // Note: `@monaco-editor/react` parses the `path` prop via
-  // `monaco.Uri.parse(...)`, NOT `Uri.file(...)`. Passing the bare
-  // filesystem path `C:/repo/foo.ts` would be parsed as scheme="c",
-  // path="/repo/foo.ts" and the drive letter would be lost. Always
-  // hand it a fully-formed `file:///…` URI so parse() round-trips
-  // cleanly across both Windows (drive letter) and POSIX (leading
-  // slash) absolute paths.
-  const monacoModelPath = useMemo(() => {
-    if (!filePath) return undefined;
-    const slashed = filePath.replace(/\\/g, "/");
-    // POSIX absolute path like /home/foo.ts → file:///home/foo.ts.
-    // Windows drive path like C:/repo/foo.ts → file:///C:/repo/foo.ts.
-    return slashed.startsWith("/") ? `file://${slashed}` : `file:///${slashed}`;
-  }, [filePath]);
+  // completions and hovers. The same helper feeds notifyOpen below so
+  // both sides converge on a single canonical URI.
+  const monacoModelPath = useMemo(
+    () => (filePath ? toMonacoModelUri(filePath) : undefined),
+    [filePath],
+  );
 
   if (!filePath) {
     return (
@@ -563,10 +554,14 @@ export function EditorPanel({
               if (lsp.isAvailable) {
                 lspDispose.current?.();
                 lspDispose.current = registerLspProviders(monaco, language, lsp);
-                // Notify LSP about file open
+                // Notify LSP about file open. The URI MUST match what
+                // Monaco mounted the model under — go through the same
+                // `toMonacoModelUri` helper so a POSIX path (which would
+                // become `file:////home/...` under naive concatenation
+                // and mismatch the `file:///home/...` model URI) and a
+                // Windows drive path both resolve identically.
                 if (filePath && content !== null) {
-                  const uri = `file:///${filePath.replace(/\\/g, "/")}`;
-                  lsp.notifyOpen(uri, currentLanguage, content);
+                  lsp.notifyOpen(toMonacoModelUri(filePath), currentLanguage, content);
                 }
               }
             }}
