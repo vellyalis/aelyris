@@ -201,11 +201,32 @@ impl NativeTerminalRegistry {
     }
 
     /// Build a fresh full snapshot without touching the diff tracker. Used
-    /// when the frontend (re)mounts and needs to bootstrap from scratch.
+    /// by callers that want a side-effect-free read (the snapshot store,
+    /// the user-submit capture path) — anyone subscribing to the diff
+    /// stream as a (re)mount should use [`Self::snapshot_and_reset_tracker`]
+    /// instead.
     pub fn snapshot(&self, id: &str) -> Option<GridSnapshot> {
         let guard = self.lock().ok()?;
         let session = guard.get(id)?;
         Some(session.engine.snapshot())
+    }
+
+    /// Same as [`Self::snapshot`] but also resets the diff tracker so the
+    /// very next emitted diff is forced to be a full frame. This closes
+    /// the listener-arming race in the frontend's `useTerminalSnapshot`:
+    /// any partial diff that arrives between the listener being attached
+    /// and this IPC returning is dropped on the React side (it has no
+    /// `prev` to apply against), and the subsequent advance is guaranteed
+    /// to emit a full frame which fully re-seeds whatever the listener
+    /// missed. The returned snapshot is still useful as the immediate
+    /// initial seed — without it, an idle terminal that never emits
+    /// after the (re)mount would render as blank.
+    pub fn snapshot_and_reset_tracker(&self, id: &str) -> Option<GridSnapshot> {
+        let mut guard = self.lock().ok()?;
+        let session = guard.get_mut(id)?;
+        let snap = session.engine.snapshot();
+        session.tracker.reset();
+        Some(snap)
     }
 
     /// Look up an inline image by id and return its decoded payload as
@@ -374,6 +395,47 @@ mod tests {
         assert_eq!(snap.cols, 5);
         assert_eq!(snap.cells[0][0].ch, 'a');
         assert_eq!(snap.cells[0][2].ch, 'c');
+    }
+
+    #[test]
+    fn snapshot_and_reset_tracker_forces_next_diff_to_full() {
+        let reg = NativeTerminalRegistry::new();
+        reg.create("t", 5, 2).expect("create");
+        // Prime the tracker so subsequent diffs would normally be partial.
+        let _ = reg.advance("t", b"abc");
+
+        // Returns the current snapshot AND resets the tracker.
+        let snap = reg.snapshot_and_reset_tracker("t").expect("session exists");
+        assert_eq!(snap.cells[0][0].ch, 'a');
+        assert_eq!(snap.cells[0][2].ch, 'c');
+
+        // Without the reset, flush would noop (engine == cached snapshot).
+        // With the reset, the tracker has no cached state and emits a
+        // full frame even though nothing changed between the snapshot
+        // call and the flush.
+        let diff = reg.flush("t").expect("full frame after tracker reset");
+        assert!(diff.full);
+        assert_eq!(diff.rows.len(), 2);
+        assert_eq!(diff.rows[0].cells[0].ch, 'a');
+    }
+
+    #[test]
+    fn snapshot_and_reset_tracker_returns_none_for_unknown_session() {
+        let reg = NativeTerminalRegistry::new();
+        assert!(reg.snapshot_and_reset_tracker("nonexistent").is_none());
+    }
+
+    #[test]
+    fn snapshot_does_not_reset_tracker() {
+        // Regression guard for the side-effect-free contract that
+        // capture_user_submit_snapshot and SnapshotStore depend on.
+        let reg = NativeTerminalRegistry::new();
+        reg.create("t", 5, 2).expect("create");
+        let _ = reg.advance("t", b"abc");
+        let _ = reg.snapshot("t").expect("some");
+        // Flush should still noop — snapshot() must not have invalidated
+        // the cached prev.
+        assert!(reg.flush("t").is_none());
     }
 
     #[test]

@@ -481,12 +481,21 @@ fn maybe_trigger_auto_repair(
 
 /// Bootstrap the frontend with a full grid snapshot — used when React
 /// (re)mounts the TerminalCanvas and needs the starting state.
+///
+/// In addition to returning the snapshot, this resets the per-session
+/// `DiffTracker` so the very next emitted diff is forced to be a full
+/// frame. That closes a listener-arming race in `useTerminalSnapshot`:
+/// any partial diff that fires between the React listener being attached
+/// and this IPC returning is dropped on the frontend (no prev to apply
+/// against), and the subsequent advance is guaranteed to emit a full
+/// frame which fully re-seeds whatever the listener missed.
 #[tauri::command]
 pub fn term_snapshot(
     app: AppHandle,
     id: String,
 ) -> Option<crate::term::GridSnapshot> {
-    app.state::<Arc<NativeTerminalRegistry>>().snapshot(&id)
+    app.state::<Arc<NativeTerminalRegistry>>()
+        .snapshot_and_reset_tracker(&id)
 }
 
 /// Full OSC 133 prompt mark history for the given terminal. The frontend

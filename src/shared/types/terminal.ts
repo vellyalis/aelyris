@@ -130,6 +130,20 @@ export interface GridDiff {
   rows: RowDiff[];
   cursor: CursorSnapshot;
   cursor_changed: boolean;
+  /**
+   * Inline image overlay state for this frame.
+   * - Defined (`ImageRef[]`): replace the entire image set. Always
+   *   present on `full=true` diffs (so a (re)mount seeds correctly)
+   *   and on partial diffs whenever the image set changed since the
+   *   last emit (anchor scrolled out, new image landed, etc).
+   * - Absent (`undefined`): the image set is unchanged from the prev
+   *   frame. The frontend carries `prev.images` through.
+   *
+   * The wire serializes `Option::None` as field-omitted, so on TS the
+   * field is `undefined`. `[]` (empty array) is distinct: it means
+   * "the engine has no images right now" (e.g. all anchors evicted).
+   */
+  images?: ImageRef[];
 }
 
 /**
