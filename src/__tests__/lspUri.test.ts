@@ -29,6 +29,35 @@ describe("toMonacoModelUri", () => {
       "file:///var/log/app/2026/04/27.log",
     );
   });
+
+  // codex r2 BLOCK: reserved URI characters (#, ?, %, space) inside a
+  // filesystem path must be percent-escaped, otherwise Monaco's
+  // Uri.parse truncates at `#` (fragment) or `?` (query) and the
+  // model URI no longer matches what notifyOpen sent.
+  it("escapes a literal `#` so Monaco doesn't truncate at the fragment delimiter", () => {
+    expect(toMonacoModelUri("C:/repo/c#sharp/foo.ts")).toBe("file:///C:/repo/c%23sharp/foo.ts");
+  });
+
+  it("escapes a literal `?` so Monaco doesn't truncate at the query delimiter", () => {
+    expect(toMonacoModelUri("/home/me/q?param.ts")).toBe("file:///home/me/q%3Fparam.ts");
+  });
+
+  it("escapes a literal `%` (must encode first to avoid double-escaping later)", () => {
+    expect(toMonacoModelUri("C:/repo/path%file.ts")).toBe("file:///C:/repo/path%25file.ts");
+  });
+
+  it("escapes a literal space character", () => {
+    expect(toMonacoModelUri("C:/Program Files/foo.ts")).toBe(
+      "file:///C:/Program%20Files/foo.ts",
+    );
+  });
+
+  it("a path with `%` then `#` does not double-escape the % into the # encoding", () => {
+    // Sequencing guard: if `%` were escaped second (after `#`), the
+    // `%23` produced by `#` would itself become `%2523`. Order matters.
+    expect(toMonacoModelUri("/foo/a%b#c.ts")).toBe("file:///foo/a%25b%23c.ts");
+  });
+
   // UNC paths (`\\\\server\\share\\file`) are intentionally out of scope —
   // Aether Terminal's file tree only ever surfaces drive-letter or POSIX
   // absolute paths, and a canonical UNC URI (`file://server/share/file`)

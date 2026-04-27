@@ -17,7 +17,12 @@ export function registerLspProviders(monaco: typeof Monaco, languageId: string, 
     monaco.languages.registerCompletionItemProvider(languageId, {
       triggerCharacters: [".", ":", "<", '"', "'", "/", "@", "#"],
       provideCompletionItems: async (model, position) => {
-        const uri = `file:///${model.uri.path.replace(/^\//, "")}`;
+        // Use the model URI verbatim — it round-trips through the same
+        // `toMonacoModelUri` helper that constructs notifyOpen's URI, so
+        // anything we reconstruct here from `model.uri.path` (decoded
+        // form, missing percent-escapes) would re-introduce the very
+        // mismatch this whole chain has been chasing.
+        const uri = model.uri.toString();
         const resp = await bridge.sendRequest("textDocument/completion", {
           textDocument: { uri },
           position: { line: position.lineNumber - 1, character: position.column - 1 },
@@ -44,7 +49,12 @@ export function registerLspProviders(monaco: typeof Monaco, languageId: string, 
   disposables.push(
     monaco.languages.registerHoverProvider(languageId, {
       provideHover: async (model, position) => {
-        const uri = `file:///${model.uri.path.replace(/^\//, "")}`;
+        // Use the model URI verbatim — it round-trips through the same
+        // `toMonacoModelUri` helper that constructs notifyOpen's URI, so
+        // anything we reconstruct here from `model.uri.path` (decoded
+        // form, missing percent-escapes) would re-introduce the very
+        // mismatch this whole chain has been chasing.
+        const uri = model.uri.toString();
         const resp = await bridge.sendRequest("textDocument/hover", {
           textDocument: { uri },
           position: { line: position.lineNumber - 1, character: position.column - 1 },

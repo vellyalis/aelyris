@@ -8,11 +8,27 @@
  * the drive letter — and mismatching whatever URI we pass to
  * `textDocument/didOpen`. The same helper feeds both sites so the
  * URIs are guaranteed to agree on Windows and POSIX alike.
+ *
+ * Reserved characters (`#`, `?`, `%`, space) inside the path must also
+ * be percent-escaped — without this, Monaco truncates the URI at `#`
+ * (fragment delimiter) or `?` (query delimiter), which breaks the
+ * agreement between the model URI and what notifyOpen sent.
  */
 export function toMonacoModelUri(filePath: string): string {
   const slashed = filePath.replace(/\\/g, "/");
-  // POSIX absolute path (starts with "/") needs `file://${slashed}` to
+  const escaped = escapeReservedForFileUri(slashed);
+  // POSIX absolute path (starts with "/") needs `file://${escaped}` to
   // avoid `file:////home/...` (four leading slashes); Windows drive
-  // paths need `file:///${slashed}` so the drive letter survives parse.
-  return slashed.startsWith("/") ? `file://${slashed}` : `file:///${slashed}`;
+  // paths need `file:///${escaped}` so the drive letter survives parse.
+  return escaped.startsWith("/") ? `file://${escaped}` : `file:///${escaped}`;
+}
+
+// `%` must be escaped first so the subsequent `%XX` sequences aren't
+// themselves treated as user-supplied literals on a second pass.
+function escapeReservedForFileUri(s: string): string {
+  return s
+    .replace(/%/g, "%25")
+    .replace(/#/g, "%23")
+    .replace(/\?/g, "%3F")
+    .replace(/ /g, "%20");
 }
