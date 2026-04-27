@@ -23,6 +23,25 @@ interface FileDiffData {
   error: string | null;
 }
 
+// Compound cache key: `path` alone leaks state across action transitions
+// (a path that appeared as `create` first leaves a stub `original: ""`
+// entry in the cache, and if the same path later appears as `edit` or
+// `delete` the stub is reused — its empty original is what Revert would
+// then write back, re-opening the data-loss path codex-r1 closed.)
+function diffCacheKey(file: { path: string; action: string }): string {
+  return `${file.action}:${file.path}`;
+}
+
+// Match the Tauri / std::io family of "file not found" errors so the
+// `delete` action's expected `read_file` rejection (working copy is
+// gone) can be skipped without also swallowing genuine I/O failures
+// like permission-denied. Errors arrive as plain strings via Tauri's
+// `Result<_, String>` convention.
+function isFileNotFoundReason(reason: unknown): boolean {
+  const msg = String(reason).toLowerCase();
+  return /(no such file|not found|cannot find|os error 2|enoent)/.test(msg);
+}
+
 function detectLanguage(path: string): string {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
   const map: Record<string, string> = {
@@ -77,23 +96,20 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
   useEffect(() => {
     if (!activeFile || !projectPath) return;
     const path = activeFile.path;
+    const action = activeFile.action;
+    const key = diffCacheKey(activeFile);
 
     // Already loaded — skip without retriggering on dep changes.
-    const existing = diffsRef.current.get(path);
+    const existing = diffsRef.current.get(key);
     if (existing && !existing.loading) return;
 
     setDiffs((prev) => {
       const next = new Map(prev);
-      next.set(path, { path, original: "", modified: "", loading: true, error: null });
+      next.set(key, { path, original: "", modified: "", loading: true, error: null });
       return next;
     });
 
     let cancelled = false;
-
-    // Capture action so the loader can distinguish expected rejections
-    // (create has no git original; delete has no working copy) from
-    // genuine load failures.
-    const action = activeFile.action;
 
     (async () => {
       // Use allSettled so we can record per-invoke failures explicitly.
@@ -110,26 +126,29 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
       const original = originalResult.status === "fulfilled" ? originalResult.value : "";
       const modified = modifiedResult.status === "fulfilled" ? modifiedResult.value : "";
       // Per-action expected rejections must NOT mark `error` — otherwise
-      // the Revert guard blocks legitimate restore flows. Specifically:
-      //   - `create`: file did not exist before this session, so
-      //     `git_file_original` is expected to reject.
-      //   - `delete`: file is gone from the working copy, so
-      //     `read_file` is expected to reject — and Revert here is the
-      //     one path that restores the deleted file from git original.
-      //     If we marked this an error the user could never undo a
-      //     delete from the inline panel.
+      // the Revert guard blocks legitimate restore flows. The expected
+      // rejection is also gated on the reason looking like a "file not
+      // found" so that genuine I/O errors (permission denied, disk
+      // failure, malformed path) still bubble up to the user as a
+      // load error and still trip the Revert guard.
       const errors: string[] = [];
-      if (originalResult.status === "rejected" && action !== "create") {
+      if (
+        originalResult.status === "rejected" &&
+        !(action === "create" && isFileNotFoundReason(originalResult.reason))
+      ) {
         errors.push(`failed to load git original: ${String(originalResult.reason)}`);
       }
-      if (modifiedResult.status === "rejected" && action !== "delete") {
+      if (
+        modifiedResult.status === "rejected" &&
+        !(action === "delete" && isFileNotFoundReason(modifiedResult.reason))
+      ) {
         errors.push(`failed to read working copy: ${String(modifiedResult.reason)}`);
       }
       const error = errors.length > 0 ? errors.join("; ") : null;
 
       setDiffs((prev) => {
         const next = new Map(prev);
-        next.set(path, { path, original, modified, loading: false, error });
+        next.set(key, { path, original, modified, loading: false, error });
         return next;
       });
     })();
@@ -153,7 +172,7 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
     );
   }
 
-  const currentDiff = activeFile ? diffs.get(activeFile.path) : null;
+  const currentDiff = activeFile ? diffs.get(diffCacheKey(activeFile)) : null;
   const fileName = activeFile?.path.split(/[/\\]/).pop() ?? "";
 
   return (
@@ -223,7 +242,7 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
                 toast.error("Cannot revert new file", "The file did not exist before this session.");
                 return;
               }
-              const cached = diffs.get(activeFile.path);
+              const cached = diffs.get(diffCacheKey(activeFile));
               // Block while still loading — the placeholder entry has
               // `original: ""` and writing that would silently truncate
               // the file (codex-detected data-loss).
@@ -242,7 +261,7 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
                 // effect re-fires for the same activeFile.
                 setDiffs((prev) => {
                   const next = new Map(prev);
-                  next.delete(activeFile.path);
+                  next.delete(diffCacheKey(activeFile));
                   return next;
                 });
                 setReloadTick((t) => t + 1);

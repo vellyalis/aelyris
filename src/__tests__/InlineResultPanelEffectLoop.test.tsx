@@ -93,7 +93,36 @@ describe("InlineResultPanel load-diff effect deps", () => {
     // Per-action expected rejections (create → no git original;
     // delete → no working copy) must NOT be stamped as errors —
     // otherwise the Revert guard blocks legitimate restores.
-    expect(src).toMatch(/action\s*!==\s*"create"/);
-    expect(src).toMatch(/action\s*!==\s*"delete"/);
+    expect(src).toMatch(/action\s*===\s*"create"/);
+    expect(src).toMatch(/action\s*===\s*"delete"/);
+
+    // Codex r1 of this loader BLOCKed because the suppression covered
+    // *every* rejection on those actions. Genuine I/O errors must
+    // still propagate — gate suppression on a "file not found"
+    // reason pattern.
+    expect(src).toMatch(/isFileNotFoundReason/);
+  });
+
+  it("diff cache key includes action so a `create` stub can't be reused for `edit`/`delete` (codex r1 HIGH)", () => {
+    const entries = Object.entries(sources);
+    const src = entries[0][1];
+
+    // The cache previously keyed entries by `path` alone. If the same
+    // path showed up later with a different action, the loader's
+    // `existing && !existing.loading` early-return would reuse the
+    // stale `create` stub (`original: ""`), which the Revert handler
+    // could then write back over the working copy.
+    expect(src).toMatch(/function\s+diffCacheKey\s*\(/);
+    expect(src).toMatch(/`\$\{file\.action\}:\$\{file\.path\}`/);
+
+    // Every cache call site must go through the helper — direct
+    // `diffs.get(activeFile.path)` / `next.set(path, ...)` / etc. would
+    // re-introduce the cross-action stale-stub leak.
+    const stripped = src
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\/\/.*$/gm, "");
+    expect(stripped).not.toMatch(/diffs\.get\(\s*activeFile\.path\s*\)/);
+    expect(stripped).not.toMatch(/next\.delete\(\s*activeFile\.path\s*\)/);
+    expect(stripped).not.toMatch(/diffsRef\.current\.get\(\s*path\s*\)/);
   });
 });
