@@ -21,15 +21,17 @@ export function KanbanBoard({
   projectPath,
   agentStatuses,
 }: KanbanBoardProps) {
-  const {
-    kanbanTasks,
-    addKanbanTask,
-    moveKanbanTask,
-    deleteKanbanTask,
-    updateKanbanTask,
-    activeTaskId,
-    setActiveTaskId,
-  } = useAppStore();
+  // Subscribe to each store slice individually so a write to an unrelated
+  // field (terminals, agents, ghost layers…) does not re-render the entire
+  // kanban tree. The previous `useAppStore()` call grabbed the whole store
+  // and forced a re-render on every state mutation app-wide.
+  const kanbanTasks = useAppStore((s) => s.kanbanTasks);
+  const addKanbanTask = useAppStore((s) => s.addKanbanTask);
+  const moveKanbanTask = useAppStore((s) => s.moveKanbanTask);
+  const deleteKanbanTask = useAppStore((s) => s.deleteKanbanTask);
+  const updateKanbanTask = useAppStore((s) => s.updateKanbanTask);
+  const activeTaskId = useAppStore((s) => s.activeTaskId);
+  const setActiveTaskId = useAppStore((s) => s.setActiveTaskId);
   const [newTitle, setNewTitle] = useState("");
   const [newPriority, setNewPriority] = useState<TaskPriority>("medium");
   const [showForm, setShowForm] = useState(false);
@@ -225,9 +227,22 @@ export function KanbanBoard({
                             e.stopPropagation();
                             handleLaunchTask(t);
                           }}
+                          // Stop Enter / Space at the button so the outer
+                          // role="button" wrapper's onKeyDown does not also
+                          // fire — without this, hitting Enter on Launch
+                          // calls preventDefault on the outer keydown,
+                          // which suppresses the native button activation
+                          // and ends up calling handleActivate instead of
+                          // handleLaunchTask.
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.stopPropagation();
+                            }
+                          }}
                           title="Launch Agent + Worktree"
+                          aria-label={`Launch agent for task: ${t.title}`}
                         >
-                          <Play size={10} />
+                          <Play size={10} aria-hidden="true" />
                         </button>
                       )}
                       <button
@@ -236,8 +251,15 @@ export function KanbanBoard({
                           e.stopPropagation();
                           deleteKanbanTask(t.id);
                         }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.stopPropagation();
+                          }
+                        }}
+                        title="Delete task"
+                        aria-label={`Delete task: ${t.title}`}
                       >
-                        ×
+                        <span aria-hidden="true">×</span>
                       </button>
                     </div>
                   ))}

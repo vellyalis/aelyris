@@ -354,6 +354,18 @@ export function EditorPanel({
 
   const monoFontStack = useMemo(() => getMonoFontStack(), []);
 
+  // Forward-slash normalised path used as Monaco's model URI fragment.
+  // Without this Monaco generates a synthetic `inmemory://model/N` URI for
+  // the editor's model — but LSP `textDocument/didOpen` is dispatched with
+  // a `file:///<path>` URI, so the rust-analyzer / pyright server tracks
+  // documents under one URI while completion / hover queries arrive under
+  // a different URI and return zero results. Passing path={...} aligns
+  // both sides on the same `file:///<path>` URI Monaco constructs from it.
+  const monacoModelPath = useMemo(
+    () => (filePath ? filePath.replace(/\\/g, "/") : undefined),
+    [filePath],
+  );
+
   if (!filePath) {
     return (
       <div className={styles.panel}>
@@ -405,6 +417,7 @@ export function EditorPanel({
         {content !== null && !loading && !diffMode && !previewMode && (
           <Editor
             key={filePath}
+            path={monacoModelPath}
             defaultValue={content}
             language={language}
             theme="vs-dark"
