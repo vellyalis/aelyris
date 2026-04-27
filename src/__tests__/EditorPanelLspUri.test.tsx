@@ -24,15 +24,26 @@ const sources = import.meta.glob("../features/editor/EditorPanel.tsx", {
 }) as Record<string, string>;
 
 describe("EditorPanel LSP URI alignment", () => {
-  it("Editor receives a forward-slash normalised `path` prop", () => {
+  it("Editor receives a fully-formed `file://` URI as its `path` prop", () => {
     const entries = Object.entries(sources);
     expect(entries.length).toBe(1);
     const src = entries[0][1];
 
-    // The memo helper that normalises the path must be wired through to
-    // the Editor element via `path={…}`.
+    // The memo helper must produce a `file:///…` URI string so
+    // `monaco.Uri.parse()` round-trips drive letters cleanly. Passing
+    // a bare filesystem path (e.g. `C:/repo/foo.ts`) would be parsed
+    // as scheme="c" + path="/repo/foo.ts" — the drive letter goes
+    // missing and the URI no longer matches what notifyOpen sent.
     expect(src).toMatch(/const\s+monacoModelPath\s*=\s*useMemo\(/);
     expect(src).toMatch(/filePath\.replace\(\s*\/\\\\\/g\s*,\s*"\/"\s*\)/);
+
+    // POSIX (leading "/") and Windows (drive letter) branches are
+    // both required — without the conditional the POSIX path would
+    // produce `file:////home/...` (four slashes, malformed).
+    expect(src).toMatch(/`file:\/\/\$\{slashed\}`/);
+    expect(src).toMatch(/`file:\/\/\/\$\{slashed\}`/);
+
+    // The memo result must be wired through to `<Editor path={…} />`.
     expect(src).toMatch(/<Editor[\s\S]*?path=\{\s*monacoModelPath\s*\}/);
   });
 });

@@ -354,17 +354,26 @@ export function EditorPanel({
 
   const monoFontStack = useMemo(() => getMonoFontStack(), []);
 
-  // Forward-slash normalised path used as Monaco's model URI fragment.
-  // Without this Monaco generates a synthetic `inmemory://model/N` URI for
-  // the editor's model — but LSP `textDocument/didOpen` is dispatched with
-  // a `file:///<path>` URI, so the rust-analyzer / pyright server tracks
-  // documents under one URI while completion / hover queries arrive under
-  // a different URI and return zero results. Passing path={...} aligns
-  // both sides on the same `file:///<path>` URI Monaco constructs from it.
-  const monacoModelPath = useMemo(
-    () => (filePath ? filePath.replace(/\\/g, "/") : undefined),
-    [filePath],
-  );
+  // Pre-formed `file://` URI used as Monaco's model URI. Without this
+  // Monaco generates a synthetic `inmemory://model/N` URI for the model,
+  // while LSP `textDocument/didOpen` is dispatched with `file:///<path>` —
+  // the URIs never match, so rust-analyzer / pyright return zero
+  // completions and hovers.
+  //
+  // Note: `@monaco-editor/react` parses the `path` prop via
+  // `monaco.Uri.parse(...)`, NOT `Uri.file(...)`. Passing the bare
+  // filesystem path `C:/repo/foo.ts` would be parsed as scheme="c",
+  // path="/repo/foo.ts" and the drive letter would be lost. Always
+  // hand it a fully-formed `file:///…` URI so parse() round-trips
+  // cleanly across both Windows (drive letter) and POSIX (leading
+  // slash) absolute paths.
+  const monacoModelPath = useMemo(() => {
+    if (!filePath) return undefined;
+    const slashed = filePath.replace(/\\/g, "/");
+    // POSIX absolute path like /home/foo.ts → file:///home/foo.ts.
+    // Windows drive path like C:/repo/foo.ts → file:///C:/repo/foo.ts.
+    return slashed.startsWith("/") ? `file://${slashed}` : `file:///${slashed}`;
+  }, [filePath]);
 
   if (!filePath) {
     return (
