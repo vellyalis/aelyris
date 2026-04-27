@@ -563,7 +563,14 @@ export function EditorPanel({
                 // casing, reserved characters our helper doesn't
                 // touch like `&` / `+`, non-ASCII) and the helper's
                 // raw output would diverge from `model.uri.toString()`.
-                if (content !== null) {
+                //
+                // The `filePath` check is defensive — the panel's
+                // early-return at the top of render guarantees onMount
+                // never fires without a filePath today, but if a
+                // future patch ever decouples the Editor mount from
+                // that guard, the stale model URI would otherwise
+                // leak through to the LSP server.
+                if (filePath && content !== null) {
                   const modelUri = editor.getModel()?.uri.toString();
                   if (modelUri) {
                     lsp.notifyOpen(modelUri, currentLanguage, content);

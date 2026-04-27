@@ -57,5 +57,14 @@ describe("EditorPanel LSP URI alignment", () => {
     // Helper output must NOT be passed directly to notifyOpen — that
     // was the codex r3 BLOCK regression.
     expect(stripped).not.toMatch(/lsp\.notifyOpen\(\s*toMonacoModelUri\(/);
+
+    // The `filePath` defensive guard must wrap the notifyOpen path —
+    // codex r4 caught its accidental removal during the URI source
+    // refactor. The panel's early-return makes this check redundant
+    // today, but we keep it so a future Editor-mount lifecycle change
+    // can't quietly start dispatching with a stale model URI.
+    const lspBlockMatch = src.match(/if\s*\(\s*lsp\.isAvailable\s*\)\s*\{([\s\S]*?)\n\s+\}\s*\n\s+\}\}/);
+    expect(lspBlockMatch).not.toBeNull();
+    expect(lspBlockMatch![1]).toMatch(/if\s*\(\s*filePath\s*&&\s*content\s*!==\s*null\s*\)/);
   });
 });
