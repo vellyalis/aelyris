@@ -3,6 +3,7 @@ import { GitBranch, TerminalSquare, Zap } from "lucide-react";
 import { type AgentStatus, getSessionColor, STATUS_COLORS, STATUS_LABELS } from "../../shared/types/agent";
 import type { InteractiveSession } from "../../shared/types/interactiveAgent";
 import { getCliColor, getCliLabel } from "../../shared/types/interactiveAgent";
+import { getMaxTokens } from "../../shared/types/model";
 import { ContextGauge } from "../../shared/ui/ContextGauge";
 import { PixelAvatar } from "../../shared/ui/PixelAvatar";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
@@ -24,19 +25,21 @@ export function InteractiveSessionCard({
 }: InteractiveSessionCardProps) {
   const sColor = getSessionColor(is.id);
   const cliColor = getCliColor(is.cli);
+  const maxTokens = getMaxTokens(is.model);
   const pct =
     is.status === "done"
       ? 100
       : is.status === "idle"
         ? 0
         : is.tokens_used > 0
-          ? Math.min(95, Math.round((is.tokens_used / 10000) * 100))
+          ? Math.min(95, Math.round((is.tokens_used / maxTokens) * 100))
           : 2;
 
   return (
     <RadixContextMenu.Root>
       <RadixContextMenu.Trigger asChild>
         <button
+          type="button"
           className={`${styles.card} ${styles.cardInteractive}`}
           onClick={() => onFocus?.(is.id)}
           style={

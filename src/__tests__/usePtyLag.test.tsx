@@ -10,10 +10,7 @@ const TEST_DECAY_MS = 120;
 
 interface ProbeProps {
   terminalId: string | null;
-  subscribe: (
-    terminalId: string,
-    onEvent: (p: LagEventPayload) => void,
-  ) => Promise<() => void>;
+  subscribe: (terminalId: string, onEvent: (p: LagEventPayload) => void) => Promise<() => void>;
   onState: (state: ReturnType<typeof usePtyLag>) => void;
 }
 
@@ -38,9 +35,7 @@ describe("usePtyLag", () => {
   it("returns the inactive state by default", async () => {
     const subscribe = vi.fn(async () => () => {});
     const states: ReturnType<typeof usePtyLag>[] = [];
-    render(
-      <Probe terminalId={"t-1"} subscribe={subscribe} onState={(s) => states.push(s)} />,
-    );
+    render(<Probe terminalId={"t-1"} subscribe={subscribe} onState={(s) => states.push(s)} />);
     await waitFor(() => expect(subscribe).toHaveBeenCalledWith("t-1", expect.any(Function)));
     expect(states.at(-1)).toEqual({ dropped: 0, active: false });
   });
@@ -52,9 +47,7 @@ describe("usePtyLag", () => {
       return () => {};
     });
     const states: ReturnType<typeof usePtyLag>[] = [];
-    render(
-      <Probe terminalId={"t-1"} subscribe={subscribe} onState={(s) => states.push(s)} />,
-    );
+    render(<Probe terminalId={"t-1"} subscribe={subscribe} onState={(s) => states.push(s)} />);
     await waitFor(() => expect(emit).not.toBeNull());
 
     await act(async () => {
@@ -73,9 +66,7 @@ describe("usePtyLag", () => {
       return () => {};
     });
     const states: ReturnType<typeof usePtyLag>[] = [];
-    render(
-      <Probe terminalId={"t-1"} subscribe={subscribe} onState={(s) => states.push(s)} />,
-    );
+    render(<Probe terminalId={"t-1"} subscribe={subscribe} onState={(s) => states.push(s)} />);
     await waitFor(() => expect(emit).not.toBeNull());
 
     await act(async () => {
@@ -91,34 +82,44 @@ describe("usePtyLag", () => {
   });
 
   it("decay timer resets on each subsequent event", async () => {
+    vi.useFakeTimers();
     let emit: ((p: LagEventPayload) => void) | null = null;
     const subscribe = vi.fn(async (_id: string, cb: (p: LagEventPayload) => void) => {
       emit = cb;
       return () => {};
     });
     const states: ReturnType<typeof usePtyLag>[] = [];
-    render(
-      <Probe terminalId={"t-1"} subscribe={subscribe} onState={(s) => states.push(s)} />,
-    );
-    await waitFor(() => expect(emit).not.toBeNull());
+    render(<Probe terminalId={"t-1"} subscribe={subscribe} onState={(s) => states.push(s)} />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(emit).not.toBeNull();
 
-    await act(async () => {
-      emit?.({ dropped: 5 });
-    });
-    // Wait roughly 60% of the decay window, then fire again — the
-    // timer should reset rather than expiring.
-    await act(async () => {
-      await sleep(Math.floor(TEST_DECAY_MS * 0.6));
-    });
-    await act(async () => {
-      emit?.({ dropped: 5 });
-    });
-    // 30ms after the second event is well under TEST_DECAY_MS, even
-    // with generous setTimeout jitter.
-    await act(async () => {
-      await sleep(30);
-    });
-    expect(states.at(-1)).toEqual({ dropped: 10, active: true });
+    try {
+      await act(async () => {
+        emit?.({ dropped: 5 });
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(Math.floor(TEST_DECAY_MS * 0.6));
+      });
+      await act(async () => {
+        emit?.({ dropped: 5 });
+      });
+
+      expect(states.at(-1)).toEqual({ dropped: 10, active: true });
+
+      await act(async () => {
+        vi.advanceTimersByTime(TEST_DECAY_MS - 1);
+      });
+      expect(states.at(-1)).toEqual({ dropped: 10, active: true });
+
+      await act(async () => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(states.at(-1)).toEqual({ dropped: 0, active: false });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("ignores negative dropped values defensively", async () => {
@@ -128,9 +129,7 @@ describe("usePtyLag", () => {
       return () => {};
     });
     const states: ReturnType<typeof usePtyLag>[] = [];
-    render(
-      <Probe terminalId={"t-1"} subscribe={subscribe} onState={(s) => states.push(s)} />,
-    );
+    render(<Probe terminalId={"t-1"} subscribe={subscribe} onState={(s) => states.push(s)} />);
     await waitFor(() => expect(emit).not.toBeNull());
 
     await act(async () => {

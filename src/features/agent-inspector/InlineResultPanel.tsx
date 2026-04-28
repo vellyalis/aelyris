@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { Check, ChevronLeft, ChevronRight, FileText, RotateCcw, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, FileText, RotateCcw, X } from "lucide-react";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "../../shared/store/toastStore";
 import type { AgentSession, FileChangeDetail } from "../../shared/types/agent";
@@ -93,6 +93,7 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
   diffsRef.current = diffs;
 
   // Load diff for active file
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadTick deliberately reloads the same active file after revert.
   useEffect(() => {
     if (!activeFile || !projectPath) return;
     const path = activeFile.path;
@@ -163,7 +164,7 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
       <div className={styles.panel}>
         <div className={styles.header}>
           <span className={styles.title}>No file changes</span>
-          <button className={styles.closeBtn} onClick={onClose} aria-label="Close">
+          <button type="button" className={styles.closeBtn} onClick={onClose} aria-label="Close">
             <X size={12} />
           </button>
         </div>
@@ -183,7 +184,7 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
         title={session.name}
         subtitle={`${uniqueFiles.length} file${uniqueFiles.length !== 1 ? "s" : ""} changed`}
         actions={
-          <button className={styles.closeBtn} onClick={onClose} aria-label="Close">
+          <button type="button" className={styles.closeBtn} onClick={onClose} aria-label="Close">
             <X size={12} />
           </button>
         }
@@ -195,6 +196,7 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
           const name = f.path.split(/[/\\]/).pop() ?? f.path;
           return (
             <button
+              type="button"
               key={f.path}
               className={`${styles.fileTab} ${i === activeIndex ? styles.fileTabActive : ""}`}
               onClick={() => setActiveIndex(i)}
@@ -212,6 +214,7 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
       {/* Navigation */}
       <div className={styles.nav}>
         <button
+          type="button"
           className={styles.navBtn}
           onClick={() => setActiveIndex((i) => Math.max(0, i - 1))}
           disabled={activeIndex === 0}
@@ -223,6 +226,7 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
           {activeIndex + 1} / {uniqueFiles.length}
         </span>
         <button
+          type="button"
           className={styles.navBtn}
           onClick={() => setActiveIndex((i) => Math.min(uniqueFiles.length - 1, i + 1))}
           disabled={activeIndex === uniqueFiles.length - 1}
@@ -233,6 +237,7 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
         <span className={styles.filePath}>{activeFile?.path}</span>
         <div className={styles.navActions}>
           <button
+            type="button"
             className={styles.revertBtn}
             onClick={async () => {
               if (!activeFile || !projectPath) return;
@@ -275,21 +280,24 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
             <RotateCcw size={10} /> Revert
           </button>
           <button
+            type="button"
             className={styles.acceptBtn}
             onClick={() => {
-              toast.success("Accepted", activeFile?.path.split(/[/\\]/).pop() ?? "");
-              // Move to next file or close if last
               if (activeIndex < uniqueFiles.length - 1) {
                 setActiveIndex((i) => i + 1);
+              } else {
+                onClose();
               }
             }}
-            title="Accept this change"
-            aria-label="Accept change"
+            title={activeIndex < uniqueFiles.length - 1 ? "Next file" : "Done reviewing"}
+            aria-label={activeIndex < uniqueFiles.length - 1 ? "Next file" : "Done reviewing"}
           >
-            <Check size={10} /> Accept
+            <ChevronRight size={10} aria-hidden="true" />
+            {activeIndex < uniqueFiles.length - 1 ? "Next" : "Done"}
           </button>
           {onStartAgent && (
             <button
+              type="button"
               className={styles.aiFixBtn}
               onClick={() => {
                 const fileName = activeFile?.path.split(/[/\\]/).pop() ?? "";

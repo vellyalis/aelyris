@@ -80,9 +80,7 @@ describe("InlineResultPanel load-diff effect deps", () => {
 
     // The unsafe per-invoke `.catch(() => "")` rescue that swallowed
     // rejections must be gone from the loader path.
-    const stripped = src
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/\/\/.*$/gm, "");
+    const stripped = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
     expect(stripped).not.toMatch(/git_file_original[\s\S]{0,80}\.catch\(\(\)\s*=>\s*""\)/);
     expect(stripped).not.toMatch(/read_file[\s\S]{0,80}\.catch\(\(\)\s*=>\s*""\)/);
 
@@ -118,11 +116,20 @@ describe("InlineResultPanel load-diff effect deps", () => {
     // Every cache call site must go through the helper — direct
     // `diffs.get(activeFile.path)` / `next.set(path, ...)` / etc. would
     // re-introduce the cross-action stale-stub leak.
-    const stripped = src
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/\/\/.*$/gm, "");
+    const stripped = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
     expect(stripped).not.toMatch(/diffs\.get\(\s*activeFile\.path\s*\)/);
     expect(stripped).not.toMatch(/next\.delete\(\s*activeFile\.path\s*\)/);
     expect(stripped).not.toMatch(/diffsRef\.current\.get\(\s*path\s*\)/);
+  });
+
+  it("does not present the review navigation button as a fake Accept action", () => {
+    const entries = Object.entries(sources);
+    const src = entries[0][1];
+    const stripped = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+
+    expect(stripped).not.toMatch(/toast\.success\(\s*"Accepted"/);
+    expect(stripped).not.toMatch(/aria-label="Accept change"/);
+    expect(stripped).toMatch(/aria-label=\{activeIndex < uniqueFiles\.length - 1 \? "Next file" : "Done reviewing"\}/);
+    expect(stripped).toMatch(/onClose\(\)/);
   });
 });

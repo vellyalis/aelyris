@@ -80,13 +80,27 @@
   display: flex;
   flex-direction: column;
 }
+.stepRow {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
 .step {
   display: flex;
   align-items: center;
   gap: 3px;
+  padding: 0;
+  background: none;
+  border: none;
   font-size: var(--text-xs);
   font-family: var(--font-mono);
   color: var(--text-muted);
+  cursor: pointer;
+}
+.step:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
 .phaseDetail {
   font-size: var(--text-2xs);
@@ -117,8 +131,6 @@
 }
 .step_failed {
   color: var(--ctp-red);
-}
-.stepName {
 }
 .stepCost {
   color: var(--ctp-peach);

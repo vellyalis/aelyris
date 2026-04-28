@@ -65,7 +65,14 @@ export function getModelById(id: string): ModelOption | undefined {
   return MODEL_OPTIONS.find((m) => m.id === id);
 }
 
+export function getModelBySpecifier(specifier: string): ModelOption | undefined {
+  const normalized = specifier.toLowerCase();
+  return MODEL_OPTIONS.find(
+    (m) => m.id === specifier || m.modelArg === specifier || m.label.toLowerCase() === normalized,
+  );
+}
+
 /** Get max tokens for a model, with fallback for unknown models */
 export function getMaxTokens(modelId: string): number {
-  return getModelById(modelId)?.maxTokens ?? 200_000;
+  return getModelBySpecifier(modelId)?.maxTokens ?? 200_000;
 }

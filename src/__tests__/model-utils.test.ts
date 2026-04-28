@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_MODEL_ID, getMaxTokens, getModelById, MODEL_OPTIONS } from "../shared/types/model";
+import {
+  DEFAULT_MODEL_ID,
+  getMaxTokens,
+  getModelById,
+  getModelBySpecifier,
+  MODEL_OPTIONS,
+} from "../shared/types/model";
 
 describe("MODEL_OPTIONS", () => {
   it("has at least 3 models", () => {
@@ -27,7 +33,7 @@ describe("getModelById", () => {
   it("finds existing model", () => {
     const model = getModelById("claude-sonnet");
     expect(model).toBeDefined();
-    expect(model!.label).toBe("Claude Sonnet");
+    expect(model?.label).toBe("Claude Sonnet");
   });
 
   it("returns undefined for unknown model", () => {
@@ -43,6 +49,14 @@ describe("getMaxTokens", () => {
 
   it("returns fallback for unknown model", () => {
     expect(getMaxTokens("unknown-model")).toBe(200_000);
+  });
+
+  it("accepts backend model arguments, not only UI option ids", () => {
+    expect(getModelBySpecifier("gemini-2.5-pro")?.id).toBe("gemini");
+    expect(getModelBySpecifier("codex-mini")?.id).toBe("codex");
+    expect(getModelBySpecifier("sonnet")?.id).toBe("claude-sonnet");
+    expect(getMaxTokens("gemini-2.5-pro")).toBe(1_000_000);
+    expect(getMaxTokens("codex-mini")).toBe(192_000);
   });
 });
 

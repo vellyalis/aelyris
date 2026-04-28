@@ -51,6 +51,26 @@
     box-shadow var(--duration-normal);
 }
 
+.cardMain {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cardMain:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
 .card:hover {
   border-color: var(--aether-border-strong);
   box-shadow: var(--shadow-sm);

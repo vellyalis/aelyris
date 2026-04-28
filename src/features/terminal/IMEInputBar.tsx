@@ -24,6 +24,8 @@ interface IMEInputBarProps {
   autoFocus?: boolean;
   /** Persistent across the pane lifetime. Upper bound on retained history. */
   maxHistory?: number;
+  /** Disable input when the backing PTY is not writable. */
+  disabled?: boolean;
 }
 
 const DEFAULT_MAX_HISTORY = 50;
@@ -53,7 +55,7 @@ const TEXTAREA_MAX_ROWS = 5;
  *   whether their next Enter will commit to the IME or to the bar.
  */
 export const IMEInputBar = forwardRef<IMEInputBarHandle, IMEInputBarProps>(function IMEInputBar(
-  { onSubmit, onRequestCanvasFocus, autoFocus = false, maxHistory = DEFAULT_MAX_HISTORY },
+  { onSubmit, onRequestCanvasFocus, autoFocus = false, maxHistory = DEFAULT_MAX_HISTORY, disabled = false },
   ref,
 ) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -71,19 +73,29 @@ export const IMEInputBar = forwardRef<IMEInputBarHandle, IMEInputBarProps>(funct
   useImperativeHandle(
     ref,
     () => ({
-      focus: () => textareaRef.current?.focus(),
+      focus: () => {
+        if (!disabled) textareaRef.current?.focus();
+      },
       hasFocus: () => document.activeElement === textareaRef.current,
     }),
-    [],
+    [disabled],
   );
 
   useEffect(() => {
-    if (autoFocus) textareaRef.current?.focus();
-  }, [autoFocus]);
+    if (autoFocus && !disabled) textareaRef.current?.focus();
+  }, [autoFocus, disabled]);
+
+  useEffect(() => {
+    if (!disabled) return;
+    setComposing(false);
+    setFocused(false);
+    textareaRef.current?.blur();
+  }, [disabled]);
 
   // Auto-grow up to TEXTAREA_MAX_ROWS, then scroll. Measure after each
   // value change; scrollHeight reflects the content height regardless of
   // the `rows` attribute.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: textarea height must be remeasured after every value change.
   useEffect(() => {
     const ta = textareaRef.current;
     if (!ta) return;
@@ -94,6 +106,7 @@ export const IMEInputBar = forwardRef<IMEInputBarHandle, IMEInputBarProps>(funct
   }, [value]);
 
   const submit = useCallback(() => {
+    if (disabled) return;
     const text = value;
     // Intentionally allow a bare Enter submit (`text === ""`) — users
     // hitting Enter on a blank bar usually mean "send a newline to the
@@ -110,7 +123,7 @@ export const IMEInputBar = forwardRef<IMEInputBarHandle, IMEInputBarProps>(funct
     historyIndexRef.current = null;
     draftRef.current = "";
     setValue("");
-  }, [value, onSubmit, maxHistory]);
+  }, [disabled, value, onSubmit, maxHistory]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -174,33 +187,39 @@ export const IMEInputBar = forwardRef<IMEInputBarHandle, IMEInputBarProps>(funct
     [composing, submit, value, onRequestCanvasFocus],
   );
 
-  const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setValue(e.target.value);
-    // Any free-form edit breaks the "navigating history" state. Also
-    // clear the stashed draft so the invariant "draftRef is only
-    // meaningful while historyIndexRef !== null" always holds.
-    historyIndexRef.current = null;
-    draftRef.current = "";
-  }, []);
+  const handleChange = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      if (disabled) return;
+      setValue(e.target.value);
+      // Any free-form edit breaks the "navigating history" state. Also
+      // clear the stashed draft so the invariant "draftRef is only
+      // meaningful while historyIndexRef !== null" always holds.
+      historyIndexRef.current = null;
+      draftRef.current = "";
+    },
+    [disabled],
+  );
 
   const indicator = composing ? "あ" : "A";
   // Resting placeholder stays short so narrow panes (split-right ×2)
   // don't truncate or wrap. The full key-binding crib drops in only
   // when the user focuses the bar and there's nothing typed yet —
   // otherwise it reads as visual noise on every pane all the time.
-  const placeholder =
-    focused && value.length === 0
+  const placeholder = disabled
+    ? "Process exited"
+    : focused && value.length === 0
       ? "Enter で送信  ·  Shift+Enter で改行  ·  Esc でターミナル  ·  ↑↓ で履歴"
       : "メッセージを入力";
 
   return (
-    <div
-      className={`${styles.bar} ${focused ? styles.focused : ""}`}
-      role="group"
+    <fieldset
+      className={`${styles.bar} ${focused ? styles.focused : ""} ${disabled ? styles.disabled : ""}`}
       aria-label="ターミナル入力バー"
+      aria-disabled={disabled}
     >
       <span
         className={`${styles.indicator} ${composing ? styles.indicatorComposing : ""}`}
+        role="img"
         aria-label={composing ? "IME composing" : "ASCII"}
       >
         {indicator}
@@ -212,6 +231,7 @@ export const IMEInputBar = forwardRef<IMEInputBarHandle, IMEInputBarProps>(funct
         value={value}
         onChange={handleChange}
         onCompositionStart={() => {
+          if (disabled) return;
           setComposing(true);
           /* WebView2 has a documented bug where IME candidate windows
            * for `<textarea>` inputs anchor at stale coordinates — for
@@ -233,10 +253,13 @@ export const IMEInputBar = forwardRef<IMEInputBarHandle, IMEInputBarProps>(funct
             .catch(() => {});
         }}
         onCompositionEnd={() => setComposing(false)}
-        onFocus={() => setFocused(true)}
+        onFocus={() => {
+          if (!disabled) setFocused(true);
+        }}
         onBlur={() => setFocused(false)}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
+        disabled={disabled}
         autoComplete="off"
         autoCorrect="off"
         spellCheck={false}
@@ -245,6 +268,6 @@ export const IMEInputBar = forwardRef<IMEInputBarHandle, IMEInputBarProps>(funct
       <kbd className={styles.hint} aria-hidden>
         ⌃⇧J
       </kbd>
-    </div>
+    </fieldset>
   );
 });

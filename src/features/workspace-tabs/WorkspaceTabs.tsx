@@ -78,8 +78,10 @@ export function WorkspaceTabs({
       <Tabs.Root value={effectiveActiveId} onValueChange={handleValueChange}>
         <Tabs.List className={styles.tabs} aria-label="Terminal tabs">
           {tabs.map((tab) => (
-            <Tabs.Trigger key={tab.id} value={tab.id} className={styles.tab} asChild>
-              <button
+            <div key={tab.id} className={styles.tabWrap}>
+              <Tabs.Trigger
+                value={tab.id}
+                className={styles.tab}
                 draggable
                 onDragStart={(e) => handleDragStart(e, tab.id)}
                 onDragOver={(e) => handleDragOver(e, tab.id)}
@@ -96,33 +98,22 @@ export function WorkspaceTabs({
                     {tab.worktreeBranch}
                   </span>
                 )}
-                {tabs.length > 1 && (
-                  <span
-                    className={styles.tabClose}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`Close ${tab.label}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onCloseTab(tab.id);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        onCloseTab(tab.id);
-                      }
-                    }}
-                  >
-                    <X size={10} aria-hidden="true" />
-                  </span>
-                )}
-              </button>
-            </Tabs.Trigger>
+              </Tabs.Trigger>
+              {tabs.length > 1 && (
+                <button
+                  type="button"
+                  className={styles.tabClose}
+                  aria-label={`Close ${tab.label}`}
+                  onClick={() => onCloseTab(tab.id)}
+                >
+                  <X size={10} aria-hidden="true" />
+                </button>
+              )}
+            </div>
           ))}
           {interactiveSessions.map((session) => (
-            <Tabs.Trigger key={`agent-${session.id}`} value={`agent-${session.id}`} className={styles.tab} asChild>
-              <button>
+            <div key={`agent-${session.id}`} className={styles.tabWrap}>
+              <Tabs.Trigger value={`agent-${session.id}`} className={styles.tab}>
                 <span className={styles.agentDot} style={{ background: getCliColor(session.cli) }} />
                 <span className={styles.tabLabel}>{getCliLabel(session.cli)}</span>
                 {session.worktree_branch && (
@@ -131,31 +122,25 @@ export function WorkspaceTabs({
                     {session.worktree_branch}
                   </span>
                 )}
-                <span
-                  className={styles.tabClose}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`Close ${getCliLabel(session.cli)} session`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onCloseInteractive?.(session.id);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      onCloseInteractive?.(session.id);
-                    }
-                  }}
-                >
-                  <X size={10} aria-hidden="true" />
-                </span>
+              </Tabs.Trigger>
+              <button
+                type="button"
+                className={styles.tabClose}
+                aria-label={`Close ${getCliLabel(session.cli)} session`}
+                onClick={() => onCloseInteractive?.(session.id)}
+              >
+                <X size={10} aria-hidden="true" />
               </button>
-            </Tabs.Trigger>
+            </div>
           ))}
         </Tabs.List>
       </Tabs.Root>
-      <button className={styles.addBtn} onClick={() => onNewTab("powershell")} aria-label="New terminal tab">
+      <button
+        type="button"
+        className={styles.addBtn}
+        onClick={() => onNewTab("powershell")}
+        aria-label="New terminal tab"
+      >
         <Plus size={12} aria-hidden="true" />
       </button>
     </div>

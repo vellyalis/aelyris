@@ -1,6 +1,6 @@
 import { DiffEditor } from "@monaco-editor/react";
 import { Columns2, FileX2, Rows2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { getMonoFontStack } from "../../shared/lib/fontStack";
 import { useAppStore } from "../../shared/store/appStore";
 import { getPalette, isLightTheme, monacoThemeColors } from "../../shared/themes/catppuccin";
@@ -56,13 +56,15 @@ export function DiffViewer({
   const light = isLightTheme(themeId);
   const colors = monacoThemeColors(palette, light);
   const [layout, setLayout] = useState<Layout>("split");
+  const onGlyphMarginClickRef = useRef(onGlyphMarginClick);
+  onGlyphMarginClickRef.current = onGlyphMarginClick;
 
   const kind = useMemo(() => classifyDiff(original, modified), [original, modified]);
 
   const header = (
     <div className={styles.header}>
       {fileName && <span className={styles.fileName}>{fileName}</span>}
-      <div className={styles.toolbar} role="group" aria-label="Diff layout">
+      <fieldset className={styles.toolbar} aria-label="Diff layout">
         <button
           type="button"
           className={styles.segment}
@@ -85,7 +87,7 @@ export function DiffViewer({
           <Rows2 size={12} strokeWidth={1.75} aria-hidden="true" />
           Unified
         </button>
-      </div>
+      </fieldset>
     </div>
   );
 
@@ -147,15 +149,13 @@ export function DiffViewer({
           }}
           onMount={(editor, monaco) => {
             monaco.editor.setTheme("aether-theme");
-            if (onGlyphMarginClick) {
-              const modifiedEditor = editor.getModifiedEditor();
-              // Monaco MouseTargetType.GUTTER_GLYPH_MARGIN === 2.
-              modifiedEditor.onMouseDown((e) => {
-                if (e.target.type === 2 && e.target.position) {
-                  onGlyphMarginClick(e.target.position.lineNumber);
-                }
-              });
-            }
+            const modifiedEditor = editor.getModifiedEditor();
+            // Monaco MouseTargetType.GUTTER_GLYPH_MARGIN === 2.
+            modifiedEditor.onMouseDown((e) => {
+              if (e.target.type === 2 && e.target.position) {
+                onGlyphMarginClickRef.current?.(e.target.position.lineNumber);
+              }
+            });
           }}
         />
       </div>

@@ -245,8 +245,9 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
   if (workflows.length === 0 && running.length === 0) return null;
 
   return (
-    <div className={styles.panel} role="region" aria-label="Workflow panel">
+    <section className={styles.panel} aria-label="Workflow panel">
       <button
+        type="button"
         className={styles.header}
         onClick={() => setExpanded(!expanded)}
         aria-expanded={expanded}
@@ -274,44 +275,34 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
                     const isExpanded = expandedPhase === phaseKey;
                     return (
                       <div key={p.name} className={styles.stepWrapper}>
-                        <div
-                          role="button"
-                          tabIndex={0}
-                          aria-expanded={isExpanded}
-                          aria-label={`${p.name}: ${p.status}. Click to ${isExpanded ? "collapse" : "expand"}`}
-                          className={`${styles.step} ${styles[`step_${p.status}`]}`}
-                          title={`${p.name}: ${p.status} (click to expand)`}
-                          onClick={() => setExpandedPhase(isExpanded ? null : phaseKey)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              setExpandedPhase(isExpanded ? null : phaseKey);
-                            }
-                          }}
-                          style={{ cursor: "pointer" }}
-                        >
-                          {STATUS_ICON[p.status]}
-                          <span className={styles.stepName}>{p.name}</span>
-                          {p.cost > 0 && <span className={styles.stepCost}>${p.cost.toFixed(2)}</span>}
+                        <div className={styles.stepRow}>
+                          <button
+                            type="button"
+                            aria-expanded={isExpanded}
+                            aria-label={`${p.name}: ${p.status}. Click to ${isExpanded ? "collapse" : "expand"}`}
+                            className={`${styles.step} ${styles[`step_${p.status}`]}`}
+                            title={`${p.name}: ${p.status} (click to expand)`}
+                            onClick={() => setExpandedPhase(isExpanded ? null : phaseKey)}
+                          >
+                            {STATUS_ICON[p.status]}
+                            <span className={styles.stepName}>{p.name}</span>
+                            {p.cost > 0 && <span className={styles.stepCost}>${p.cost.toFixed(2)}</span>}
+                          </button>
                           {p.status === "waiting_gate" && (
                             <span className={styles.gateActions}>
                               <button
+                                type="button"
                                 className={styles.approveBtn}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleApprove(wf.id);
-                                }}
+                                onClick={() => handleApprove(wf.id)}
                                 title="Approve"
                                 aria-label="Approve gate"
                               >
                                 <Check size={12} strokeWidth={2.25} aria-hidden="true" />
                               </button>
                               <button
+                                type="button"
                                 className={styles.rejectBtn}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleReject(wf.id);
-                                }}
+                                onClick={() => handleReject(wf.id)}
                                 title="Reject"
                                 aria-label="Reject gate"
                               >
@@ -347,13 +338,13 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
 
           {/* Available workflows to start */}
           {workflows.map((wf) => (
-            <button key={wf.path} className={styles.templateBtn} onClick={() => handleStart(wf)}>
+            <button type="button" key={wf.path} className={styles.templateBtn} onClick={() => handleStart(wf)}>
               <Play size={10} />
               <span>{wf.name}</span>
               <span className={styles.templatePhases}>{wf.phase_count} phases</span>
             </button>
           ))}
-          <button className={styles.templateBtn} onClick={() => setBuilderOpen(true)}>
+          <button type="button" className={styles.templateBtn} onClick={() => setBuilderOpen(true)}>
             <Workflow size={10} />
             <span>Visual Builder</span>
           </button>
@@ -365,6 +356,6 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
           <WorkflowBuilder onClose={() => setBuilderOpen(false)} onExport={handleExportYaml} />
         </Suspense>
       )}
-    </div>
+    </section>
   );
 }

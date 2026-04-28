@@ -94,6 +94,7 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
   // Watch the PTY for exit so we can display a subtle overlay when the
   // agent process is gone.
   useEffect(() => {
+    setExited(false);
     let unlisten: UnlistenFn | null = null;
     let cancelled = false;
     (async () => {
@@ -119,6 +120,7 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!(e.ctrlKey && e.shiftKey && (e.key === "J" || e.key === "j"))) return;
+      if (exited) return;
       const root = areaRef.current;
       if (!root) return;
       const inside = root.contains(document.activeElement);
@@ -128,13 +130,14 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, []);
+  }, [exited]);
 
   const submitIme = useCallback(
     (text: string) => {
+      if (exited) return;
       void invoke("write_terminal", { id: ptyId, data: text }).catch(() => {});
     },
-    [ptyId],
+    [exited, ptyId],
   );
 
   const focusCanvas = useCallback(() => {
@@ -172,7 +175,7 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
         )}
         {exited && <div className={styles.exitOverlay}>[Agent process exited]</div>}
       </div>
-      <IMEInputBar ref={imeBarRef} onSubmit={submitIme} onRequestCanvasFocus={focusCanvas} />
+      <IMEInputBar ref={imeBarRef} onSubmit={submitIme} onRequestCanvasFocus={focusCanvas} disabled={exited} />
     </div>
   );
 }

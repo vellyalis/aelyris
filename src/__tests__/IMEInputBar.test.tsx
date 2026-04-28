@@ -14,6 +14,7 @@ function renderBar(
   const rest = {
     autoFocus: props.autoFocus,
     maxHistory: props.maxHistory,
+    disabled: props.disabled,
   };
   const utils = render(
     <IMEInputBar ref={props.ref} onSubmit={onSubmit} onRequestCanvasFocus={onRequestCanvasFocus} {...rest} />,
@@ -171,5 +172,19 @@ describe("IMEInputBar", () => {
     fireEvent.change(textarea, { target: { value: "ls -lah" } });
     fireEvent.keyDown(textarea, { key: "Enter" });
     expect(onSubmit).toHaveBeenLastCalledWith("ls -lah\r");
+  });
+
+  it("disabled state prevents imperative focus and Enter submit", () => {
+    const ref = createRef<IMEInputBarHandle>();
+    const { textarea, onSubmit } = renderBar({ ref, disabled: true });
+    expect(textarea.disabled).toBe(true);
+
+    act(() => {
+      ref.current?.focus();
+    });
+    expect(document.activeElement).not.toBe(textarea);
+
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 });

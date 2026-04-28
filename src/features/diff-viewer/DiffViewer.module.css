@@ -29,6 +29,8 @@
   display: inline-flex;
   gap: 2px;
   padding: 2px;
+  margin: 0;
+  min-inline-size: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--white-4);

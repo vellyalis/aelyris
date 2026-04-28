@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { GitBranch, Plus, RefreshCw, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "../../shared/store/toastStore";
 import { showConfirm } from "../../shared/ui/ConfirmDialog";
 import { EmptyState } from "../../shared/ui/EmptyState";
@@ -24,6 +24,7 @@ export function WorktreeManager({ projectPath, onSwitch }: WorktreeManagerProps)
   const [showCreate, setShowCreate] = useState(false);
   const [newBranch, setNewBranch] = useState("");
   const [loading, setLoading] = useState(false);
+  const createInputRef = useRef<HTMLInputElement>(null);
 
   const loadWorktrees = useCallback(async () => {
     try {
@@ -37,6 +38,10 @@ export function WorktreeManager({ projectPath, onSwitch }: WorktreeManagerProps)
   useEffect(() => {
     loadWorktrees();
   }, [loadWorktrees]);
+
+  useEffect(() => {
+    if (showCreate) createInputRef.current?.focus();
+  }, [showCreate]);
 
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -131,6 +136,7 @@ export function WorktreeManager({ projectPath, onSwitch }: WorktreeManagerProps)
       {showCreate && (
         <div className={styles.createForm}>
           <input
+            ref={createInputRef}
             className={styles.createInput}
             placeholder="Branch name..."
             aria-label="New worktree branch name"
@@ -140,9 +146,13 @@ export function WorktreeManager({ projectPath, onSwitch }: WorktreeManagerProps)
               if (e.key === "Enter") handleCreate();
               if (e.key === "Escape") setShowCreate(false);
             }}
-            autoFocus
           />
-          <button className={styles.headerBtn} onClick={handleCreate} disabled={loading || !newBranch.trim()}>
+          <button
+            type="button"
+            className={styles.headerBtn}
+            onClick={handleCreate}
+            disabled={loading || !newBranch.trim()}
+          >
             {loading ? "..." : "Create"}
           </button>
           {createError && (
@@ -160,31 +170,29 @@ export function WorktreeManager({ projectPath, onSwitch }: WorktreeManagerProps)
           />
         )}
         {worktrees.map((wt) => (
-          <button
-            key={wt.path}
-            type="button"
-            className={`${styles.card} ${wt.path === activePath ? styles.cardActive : ""}`}
-            onClick={() => handleSwitch(wt.path)}
-            aria-pressed={wt.path === activePath}
-            aria-label={`Switch to worktree ${wt.branch}${wt.is_main ? " (main)" : ""}`}
-          >
-            <GitBranch size={12} className={styles.cardIcon} aria-hidden="true" />
-            <div className={styles.cardInfo}>
-              <div className={styles.cardBranch}>
-                {wt.branch}
-                {wt.is_main && " (main)"}
+          <div key={wt.path} className={`${styles.card} ${wt.path === activePath ? styles.cardActive : ""}`}>
+            <button
+              type="button"
+              className={styles.cardMain}
+              onClick={() => handleSwitch(wt.path)}
+              aria-pressed={wt.path === activePath}
+              aria-label={`Switch to worktree ${wt.branch}${wt.is_main ? " (main)" : ""}`}
+            >
+              <GitBranch size={12} className={styles.cardIcon} aria-hidden="true" />
+              <div className={styles.cardInfo}>
+                <div className={styles.cardBranch}>
+                  {wt.branch}
+                  {wt.is_main && " (main)"}
+                </div>
+                <div className={styles.cardPath}>{wt.path}</div>
               </div>
-              <div className={styles.cardPath}>{wt.path}</div>
-            </div>
+            </button>
             {!wt.is_main && (
               <div className={styles.cardActions}>
                 <button
                   type="button"
                   className={styles.deleteBtn}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleRemove(wt);
-                  }}
+                  onClick={() => handleRemove(wt)}
                   aria-label={`Remove worktree ${wt.branch}`}
                   title="Remove Worktree"
                 >
@@ -192,7 +200,7 @@ export function WorktreeManager({ projectPath, onSwitch }: WorktreeManagerProps)
                 </button>
               </div>
             )}
-          </button>
+          </div>
         ))}
       </div>
     </div>

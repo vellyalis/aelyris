@@ -40,7 +40,7 @@ describe("WorkflowPanel listener race", () => {
       /import\(\s*"@tauri-apps\/api\/event"\s*\)\.then\(\s*\(\{ listen \}\)\s*=>\s*\{([\s\S]*?)\}\s*\)\s*;/,
     );
     expect(importBlock).not.toBeNull();
-    const body = importBlock![1];
+    const body = importBlock?.[1] ?? "";
 
     // Two separate `if (!active)` guards — one before listen subscribes,
     // one inside the resolution that assigns unlisten.
@@ -60,7 +60,7 @@ describe("WorkflowPanel handleExportYaml", () => {
       /const handleExportYaml\s*=\s*useCallback\(\s*async\s*\(\s*yaml[^)]*\)\s*=>\s*\{([\s\S]*?)\n\s*\},\s*\[/,
     );
     expect(handlerMatch).not.toBeNull();
-    const body = handlerMatch![1];
+    const body = handlerMatch?.[1] ?? "";
 
     // After the try/catch around invoke("write_file"), the handler must
     // bail out before setBuilderOpen(false) when save failed.
@@ -72,5 +72,18 @@ describe("WorkflowPanel handleExportYaml", () => {
     expect(earlyReturnIdx).toBeGreaterThan(-1);
     expect(builderCloseIdx).toBeGreaterThan(-1);
     expect(earlyReturnIdx).toBeLessThan(builderCloseIdx);
+  });
+});
+
+describe("WorkflowPanel gate action structure", () => {
+  it("renders approve/reject as siblings of the phase expansion button", () => {
+    const src = getSrc();
+    const stripped = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+
+    expect(stripped).toMatch(/className=\{styles\.stepRow\}/);
+    expect(stripped).toMatch(/<button[\s\S]*className=\{`\$\{styles\.step\}/);
+    expect(stripped).toMatch(/className=\{styles\.gateActions\}/);
+    expect(stripped).not.toMatch(/role="button"/);
+    expect(stripped).not.toMatch(/e\.stopPropagation\(\)/);
   });
 });
