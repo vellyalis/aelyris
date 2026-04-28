@@ -193,6 +193,12 @@ export function useGhostPaintForFile(args: UseGhostPaintArgs): UseGhostPaintResu
 
     if (!editor || !monaco) {
       setPaintSummary({ conflictCount: 0, deferredCount: 0, layerCount: 0 });
+      // Anchors must drop in lockstep with the painted decorations: once
+      // the editor goes away (model swap, EditorPanel unmounts the host),
+      // any retained anchor would let `acceptHunkAtLine` and the parent's
+      // cursor-line lookups fire `apply_ghost_hunk` IPC against a layer
+      // the user no longer sees painted, applying changes invisibly.
+      setHunkAnchors([]);
       return;
     }
 

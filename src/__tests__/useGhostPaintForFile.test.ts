@@ -389,6 +389,47 @@ describe("useGhostPaintForFile (integration)", () => {
     expect(hits[0].hunkIndex).toBe(0);
   });
 
+  it("drops hunk anchors when the editor handle becomes null", async () => {
+    // Anchors must vanish in lockstep with the painted decorations: once
+    // EditorPanel unmounts the host (file closed, panel hidden), any
+    // retained anchor would let an external `acceptHunkAtLine` caller
+    // (palette command, kanban "Apply" action) fire `apply_ghost_hunk`
+    // IPC against a layer the user can no longer see, applying changes
+    // invisibly.
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "list_ghost_layers") {
+        return Promise.resolve(snap([makeLayer("l1", ["src/foo.ts"])]));
+      }
+      if (cmd === "get_ghost_layer_file") {
+        return Promise.resolve(makeDelta("src/foo.ts"));
+      }
+      return Promise.reject(new Error(`unexpected ${cmd}`));
+    });
+
+    const fake = makeFakeEditor();
+    const { result, rerender } = renderHook(
+      ({ editor, monaco }: { editor: GhostEditor | null; monaco: MonacoNs | null }) =>
+        useGhostPaintForFile({
+          editor,
+          monaco,
+          filePath: "/repo/src/foo.ts",
+          projectPath: "/repo",
+        }),
+      { initialProps: { editor: fake.editor as GhostEditor | null, monaco: fake.monaco as MonacoNs | null } },
+    );
+
+    await waitFor(() => expect(result.current.layerCount).toBe(1));
+    expect(result.current.hasHunkAtLine(10)).toBe(true);
+
+    // Simulate EditorPanel unmounting the Monaco host. The hook's paint
+    // effect re-runs with editor=null; it must clear both paint summary
+    // AND hunk anchors so cursor-line lookups return empty.
+    rerender({ editor: null, monaco: null });
+    await waitFor(() => expect(result.current.layerCount).toBe(0));
+    expect(result.current.hasHunkAtLine(10)).toBe(false);
+    expect(result.current.hunksAtLine(10)).toHaveLength(0);
+  });
+
   it("acceptHunkAtLine invokes apply_ghost_hunk and returns updated content", async () => {
     invokeMock.mockImplementation((cmd: string, args: Record<string, unknown>) => {
       if (cmd === "list_ghost_layers") {
