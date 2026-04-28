@@ -10,7 +10,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-6);
+  padding: var(--space-3) var(--space-6); /* Phase 1 H1: commitArea と統一 */
   border-bottom: 1px solid var(--border);
   font-size: var(--text-xs);
   font-family: var(--font-mono);
@@ -34,7 +34,7 @@
 .behind {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--space-1); /* 2px */
   padding: 1px var(--space-2);
   border-radius: var(--radius-sm);
 }
@@ -69,7 +69,7 @@
   line-height: var(--leading-snug);
 }
 .commitInput:focus {
-  border-color: var(--ctp-blue);
+  border-color: var(--gold); /* Phase 1: chrome single accent */
 }
 .commitActions {
   display: flex;
@@ -82,7 +82,7 @@
 .pushBtn {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: var(--space-2); /* 4px, round up from 3px */
   padding: var(--space-1) var(--space-4);
   border: none;
   border-radius: var(--radius-sm);
@@ -167,7 +167,7 @@
 }
 .groupActions {
   display: flex;
-  gap: 2px;
+  gap: var(--space-1); /* 2px */
   margin-left: var(--space-2);
 }
 .groupActions button {
@@ -238,7 +238,7 @@
 
 .fileActions {
   display: flex;
-  gap: 2px;
+  gap: var(--space-1); /* 2px */
   opacity: 0;
   transition: opacity var(--duration-fast) var(--ease-apple);
   flex-shrink: 0;

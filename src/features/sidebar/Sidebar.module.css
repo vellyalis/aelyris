@@ -53,6 +53,6 @@
   width: 3px;
   height: 20px;
   background: var(--gold);
-  border-radius: 2px;
+  border-radius: 2px; /* sub-token: active indicator */
   box-shadow: var(--shadow-glow-gold);
 }

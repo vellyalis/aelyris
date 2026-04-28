@@ -27,8 +27,8 @@
 
 .toolbar {
   display: inline-flex;
-  gap: 2px;
-  padding: 2px;
+  gap: var(--space-1); /* 2px */
+  padding: var(--space-1); /* 2px */
   margin: 0;
   min-inline-size: 0;
   border: 1px solid var(--border);

@@ -9,7 +9,7 @@
 
 .tabs {
   display: flex;
-  gap: 1px;
+  gap: 1px; /* whisper gap: 意図的なタブ区切り (sub-token) */
   overflow-x: auto;
   flex: 1;
 }
@@ -78,7 +78,7 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--ctp-green);
+  background: var(--gold); /* Phase 1 Step 4: chrome single accent (was --ctp-green) */
   flex-shrink: 0;
   /* Reuses global.css .status-breathe keyframes (kept here as animation
    * rather than a class to avoid touching the JSX). */
@@ -96,7 +96,7 @@
 .branchBadge {
   font-size: var(--text-2xs);
   font-family: var(--font-mono);
-  color: var(--ctp-green);
+  color: var(--gold-dim); /* Phase 1 Step 4: chrome single accent (was --ctp-green) */
   opacity: 0.8;
   white-space: nowrap;
 }
@@ -158,7 +158,7 @@
 
 /* Drag & drop feedback */
 .tab[data-drag-over] {
-  border-left: 2px solid var(--ctp-blue);
+  border-left: 2px solid var(--gold); /* Phase 1 Step 4: chrome single accent (was --ctp-blue) */
   padding-left: calc(var(--space-4) - 2px);
 }
 .tab:active {

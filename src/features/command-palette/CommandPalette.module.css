@@ -114,8 +114,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: var(--icon-lg); /* 20px */
+  height: var(--icon-lg); /* 20px */
   color: var(--text-muted);
   flex-shrink: 0;
 }
@@ -129,7 +129,7 @@
 .itemLabel {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 1px; /* whisper gap: title/description 密接配置 (sub-token) */
   flex: 1;
   min-width: 0;
 }
