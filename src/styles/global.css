@@ -596,17 +596,16 @@ body[data-window-focused="false"] {
   max-width: 480px;
   display: flex;
   flex-direction: column;
+  gap: var(--space-1);
+  padding-top: var(--space-2);
   background: var(--glass-standard);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-right: 1px solid var(--white-6);
   box-shadow: var(--rim-top);
-  overflow: hidden;
-  /* Width transition for the chrome toggle (Ctrl+B). Skipped while
-   * the user is actively dragging — `transition: none` would
-   * fight the pointer move; instead we keep a short transition
-   * that's imperceptible during drag (it lags by ~120 ms only
-   * during the toggle, where the slide is the goal). */
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* Width transition for the chrome toggle (Ctrl+B). */
   transition: width 120ms var(--ease-silk, cubic-bezier(0.4, 0, 0.2, 1));
 }
 
@@ -678,28 +677,53 @@ body[data-window-focused="false"] {
   width: 320px;
   min-width: 260px;
   max-width: 480px;
-  /* flex-shrink: 0 keeps the panel at its inline-set width even when
-   * the centre column's min-content (terminal grid) would otherwise
-   * eat into it. The old `resize: horizontal` had the same blocker —
-   * dragging the browser nubbin updated `style.width` but flex layout
-   * pulled it back to ~320 px. The new drag handle plus this rule
-   * gives the user true ownership of the panel size, with min/max
-   * already enforced in JS. */
   flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
+  /* Bento Dashboard: grid layout for independent widget cards.
+   * Agent Sessions spans full width at top (1fr), remaining
+   * widgets fill space below. container-type enables future
+   * @container queries for responsive breakpoints. */
+  container-type: inline-size;
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr auto auto auto;
+  gap: var(--space-3);
+  padding: var(--space-3);
   background: var(--glass-dense);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  /* Hairline lives on `.center-panel.border-right` so the gap is
-   * present whether or not this panel is mounted. Adding another
-   * border here would stack two 1-px lines side-by-side. */
   box-shadow: var(--rim-top);
-  overflow: hidden;
-  /* Width transition mirrors `.left-panel` so future panel-toggle
-   * animations stay symmetrical. Imperceptible during pointer drag
-   * (~120 ms only on programmatic toggles). */
+  overflow-y: auto;
+  overflow-x: hidden;
   transition: width 120ms var(--ease-silk, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+/* Bento widget card — independent glass surface within right-panel.
+ * Uses --glass-thick (0.55) over parent --glass-dense (0.42)
+ * = combined 0.7390 (within 0.74 ceiling).
+ * No backdrop-filter on child — parent already blurs. */
+.bento-widget {
+  background: var(--glass-thick);
+  border-radius: var(--radius);
+  box-shadow: var(--rim-top), var(--rim-hairline);
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* When right panel is wide enough, bottom widgets go side-by-side */
+.right-panel-bottom-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+/* At narrow widths, stack vertically */
+@container (max-width: 340px) {
+  .right-panel-bottom-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Visible drag handle on the right panel's LEFT edge — mirror of

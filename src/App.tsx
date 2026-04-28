@@ -917,38 +917,48 @@ export function App() {
               />
               <ErrorBoundary>
                 <Suspense fallback={null}>
-                  <AgentInspector
-                    sessions={sessions}
-                    activeSessionId={activeSessionId}
-                    onSelectSession={handleSelectSession}
-                    onStartAgent={handleStartAgent}
-                    onStopAgent={stopAgent}
-                    onCreateWorktree={createWorktree}
-                    onRemoveWorktree={removeWorktree}
-                    onRenameSession={renameSession}
-                    interactiveSessions={interactiveSessions}
-                    onFocusInteractiveSession={handleFocusInteractiveSession}
-                    onStopInteractiveSession={stopInteractiveSession}
-                    onEndSessionAndRemoveWorktree={endSessionAndRemoveWorktree}
-                    onStartInteractiveSession={handleStartInteractiveSession}
-                  />
+                  <div className="bento-widget" style={{ minHeight: 200 }}>
+                    <AgentInspector
+                      sessions={sessions}
+                      activeSessionId={activeSessionId}
+                      onSelectSession={handleSelectSession}
+                      onStartAgent={handleStartAgent}
+                      onStopAgent={stopAgent}
+                      onCreateWorktree={createWorktree}
+                      onRemoveWorktree={removeWorktree}
+                      onRenameSession={renameSession}
+                      interactiveSessions={interactiveSessions}
+                      onFocusInteractiveSession={handleFocusInteractiveSession}
+                      onStopInteractiveSession={stopInteractiveSession}
+                      onEndSessionAndRemoveWorktree={endSessionAndRemoveWorktree}
+                      onStartInteractiveSession={handleStartInteractiveSession}
+                    />
+                  </div>
                 </Suspense>
               </ErrorBoundary>
               <ErrorBoundary>
                 <Suspense fallback={null}>
-                  <WorkflowPanel projectPath={projectPath} onStartAgent={handleStartAgent} />
+                  <div className="bento-widget">
+                    <WorkflowPanel projectPath={projectPath} onStartAgent={handleStartAgent} />
+                  </div>
                 </Suspense>
               </ErrorBoundary>
-              <ErrorBoundary>
-                <Suspense fallback={null}>
-                  <ToolkitPanel projectName={projectName} onRunCommand={handleRunCommand} />
-                </Suspense>
-              </ErrorBoundary>
-              <ErrorBoundary>
-                <Suspense fallback={null}>
-                  <LogsPanel />
-                </Suspense>
-              </ErrorBoundary>
+              <div className="right-panel-bottom-grid">
+                <ErrorBoundary>
+                  <Suspense fallback={null}>
+                    <div className="bento-widget">
+                      <ToolkitPanel projectName={projectName} onRunCommand={handleRunCommand} />
+                    </div>
+                  </Suspense>
+                </ErrorBoundary>
+                <ErrorBoundary>
+                  <Suspense fallback={null}>
+                    <div className="bento-widget">
+                      <LogsPanel />
+                    </div>
+                  </Suspense>
+                </ErrorBoundary>
+              </div>
             </aside>
           </main>
 

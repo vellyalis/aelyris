@@ -1,8 +1,15 @@
 .root {
   display: flex;
   flex-direction: column;
-  border-bottom: 1px solid var(--white-6);
   flex-shrink: 0;
+  /* Bento Dashboard: 各セクションを独立したガラスカードとして描画。
+   * 親 left-panel (--glass-standard 0.35) + child (--glass-thick 0.55)
+   * = combined 0.7075 (alpha ceiling 0.74 以内)。 */
+  background: var(--glass-thick);
+  border-radius: var(--radius);
+  box-shadow: var(--rim-top), var(--rim-hairline);
+  margin: var(--space-1) var(--space-3);
+  overflow: hidden;
 }
 
 /* When the section is open, allow it to grow inside the sidebar
