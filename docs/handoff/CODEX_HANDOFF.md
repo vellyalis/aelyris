@@ -36,9 +36,12 @@
 
 ### 1.2 git state
 
-- **master latest code commit**: `1b8e931` "fix(round-13): harden silent UI corruption paths"
-- **branches**: current `master`。 追加 local branches: `claude/competent-heisenberg-a45d30`, `claude/dazzling-saha-e4a1b4`, `claude/vigorous-mclaren-05c011`, `refactor/tauri-react-migration`
-- **worktree**: docs commit 後、 tracked files は clean 予定。 user/別作業由来 untracked: `AGENTS.md`, `docs/ui/PHASE_1_BENTO_SPEC.md`, `docs/ui/PHASE_1_PANEL_AUDIT_2026-04-28.md`, `e2e/visual-regression.spec.ts`
+- **master latest commit**: `878413b` "docs(handoff): record round-13 silent UI fixes"
+- **branches**:
+  - `master` (current target for round-by-round silent-bug commits)
+  - `phase-1-bento-wip` (NEW 2026-04-28 session-end snapshot — Bento + nested layered cards foundation; HEAD = `6aa65bb`. **Resume Phase 1 work here**)
+  - other local branches: `claude/competent-heisenberg-a45d30`, `claude/dazzling-saha-e4a1b4`, `claude/vigorous-mclaren-05c011`, `refactor/tauri-react-migration` (parallel-agent worktrees)
+- **worktree (master)**: tracked WIP from a parallel agent's round-14 in-flight work (rust IPC + LSP bridge tests + agent-terminal/editor-panel changes). NOT this session's work — leave it alone unless that thread resumes. Untracked test scaffolds (`AgentInspectorWorktreeFailure.test.tsx`, `interactiveCommandsWorktreeFailure.test.ts`, `lspResponseBridge.test.ts`, `useInteractiveAgent.test.ts`, `useLsp.test.ts`) are also from that thread, plus `AGENTS.md` (round-4 leftover).
 - **tags**: `v0.2.3`, `v0.2.2`, `v0.2.1`, `v0.2.0` (次 bump 候補は v0.2.4、 ship gate は §3.1 参照)
 
 直近 commits (round 6→13):
@@ -227,7 +230,42 @@ useEffect(() => {
 | 4 | 🟢 | OSC 1337 (iTerm2 imgcat) inline image protocol — payload が OSC 133 scanner と overlap、 Kitty/Sixel と同等 |
 | 5 | 🟢 | Scrollback inline image rendering — `ImageRef` に history index 必要、 snapshot shape も別。 dogfood で痛みが出るまで保留 |
 
-### 3.5 次の大物テーマ (未確定)
+### 3.5 🔴 Phase 1 redesign (Bento + nested layered cards) — branch `phase-1-bento-wip`
+
+**user 主導の UI modernization テーマ**。 「カードベース UI / Bento grid / nested panels / layered cards」 を取り入れて 「古臭い」 を解消したい、 という要求から起こった。 2026-04-28 session 末で時間切れ、 wip branch に snapshot して中断。
+
+**branch state** (`6aa65bb` HEAD):
+- `docs/ui/PHASE_1_BENTO_SPEC.md` (REV 4): nested layered cards を Phase 1 主役として §3.4 に CSS 実装スニペット 5 例 (alpha 行列で combined ≤ 0.74 を厳守)、 shadow-as-border (`--rim-hairline`) を Phase 2 候補から Phase 1 採用に昇格、 1 PR commit 戦略 (Step 1-5 を 1 PR にまとめる)
+- `docs/ui/PHASE_1_PANEL_AUDIT_2026-04-28.md`: 24 panel raw-px audit + hotspot origin counts (H1-H7) + Step 3 panel 選定根拠 (AgentInspector 51 / CommandPalette 48 / SCM 40 / Welcome 36)
+- `e2e/visual-regression.spec.ts`: Playwright per-step screenshot diff baseline harness
+- `src/styles/global.css` +114 行: 5 token 追加 (`--bento-cell` 80px / `--aspect-wide` 3:2 / `--cq-narrow` 240 / `--cq-wide` 360 / `--rim-hairline` shadow-as-border) + `.bento-container` / `.bento-cell-*` / `.bento-card` / nested `.bento-card .bento-card` utility class
+- `src/features/agent-inspector/AgentInspector.module.css`: `.card` base に `--rim-top` (specular highlight)、 `:hover` + `.cardActive` に `--rim-top-strong` 追加 (Apple Liquid Glass affordance、 既存 halo/active と composition)
+- `src/features/welcome/WelcomeScreen.module.css`: `.projectCard` を `--white-2` flat → `--glass-thick` nested layered glass card へ刷新、 `--rim-top + --rim-hairline` で modern hook、 hover で `--shadow-elevated` + `--rim-top-strong` (Apple 3-stack)
+- mechanical 3 件: SessionAnalytics costBar `4px → --radius-sm`、 PRInspector statePill `999px → --radius-pill`、 ConductorView columnCount `999px → --radius-pill`
+
+**review state**:
+- codex r0 BLOCK 11 issues → REV 2 で全対応 → r1 BLOCK 9 issues → REV 3 で全対応 → REV 4 (= user 方向修正反映) は **未 codex review**
+- vitest / tsc / cargo は新規実装の段階で全て green を維持してきたが、 wip branch 全体の最終 verify は未実行 (= 次セッションで `pnpm test && pnpm exec tsc --noEmit && cargo check` を一周)
+- preview server 経由で global.css の token 注入は確認済 (Vite HMR で :root に反映)、 ただし AgentInspector / projectCard の visual 確認は Tauri 実機 build 必須 (Vite-only mode では mount しない or 履歴空で render しない)
+
+**resume 手順** (= 次 session の Claude / codex 向け):
+1. `git checkout phase-1-bento-wip`
+2. `docs/ui/PHASE_1_BENTO_SPEC.md` REV 4 を通読 — 特に §3.4 (5 例 CSS) / §6 (1 PR 戦略) / §0 (5 計測可能 rule) / §5 (NO list)
+3. `docs/ui/PHASE_1_PANEL_AUDIT_2026-04-28.md` の hotspot origin scores を再確認、 Step 3 panel (AgentInspector / CommandPalette / SCM / Welcome) の adoption 順を決める
+4. spec REV 4 を codex r2 / r3 で adversarial review → ALLOW (r0 11 件、 r1 9 件は対応済、 REV 4 で新規追加した「nested layered 5 例 + shadow-as-border 昇格 + 1 PR」 が refine 必要かも)
+5. ALLOW 取得後、 残実装:
+   - 残 mechanical tokenization (panel audit doc の H1-H6 を 24 panel に対して sed 一括置換、 visual diff < 2%)
+   - Step 3 visual/semantic for SCM / CommandPalette (Welcome / AgentInspector は base 完了済)
+   - Step 4 chrome single accent (= chrome から `var(--ctp-*)` 除去、 gold 1 色化)
+   - Step 5 optional Bento per panel (AgentInspector multi-shadow 解消 + Kanban Bento board)
+6. 全実装後に Playwright baseline 取得、 codex r4 review、 user 視覚確認、 master へ merge (= 1 PR 戦略の閉じ)
+
+**注意点**:
+- master の働き tree には parallel-agent の round-14 in-flight WIP がある。 phase-1-bento-wip branch には影響しないが、 master に merge 戻す時は parallel agent の WIP が片付いてからにする (= conflict 回避)
+- **「全部作ってからでいい」**「**全部できたら見せて**」 が user の明示指示。 1 PR で完成させる、 段階 commit は user 判断待ち
+- nested layered cards は **CSS spec line 6-13 の Mica 透過警告** に違反しないように、 alpha matrix の ✅ 21 通り組合せ内のみ採用
+
+### 3.6 次の大物テーマ (= Phase 1 完了後の選択肢)
 
 `docs/ROADMAP_POST_0_2_4.md` 末尾より: **「2026-05-14 まで `project_dogfood_log.md` で痛みを蓄積、 そこから次の Tier 🔴 を起こす」** 方針。 作業着手は user 判断待ち。 codex 自走では着手しないこと。
 
