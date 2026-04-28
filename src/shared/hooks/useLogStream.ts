@@ -127,14 +127,24 @@ export function useLogStream(options: UseLogStreamOptions = {}): LogStreamState 
       }
     };
 
-    hydrate();
-    const handle = setInterval(() => {
-      if (!enabledRef.current) return;
-      void tick();
-    }, pollMs);
+    let handle: ReturnType<typeof setInterval> | null = null;
+    // Sequence hydrate before the polling interval so a tick that races
+    // with hydrate cannot bump `cursorRef` to the live tail and then have
+    // its result stomped by hydrate's `setState({ entries: recent, ... })`.
+    // Without this, the first poll's delta would be silently lost: tick
+    // appends, cursor advances, hydrate overwrites entries, those tick
+    // entries are gone and cursor is now ahead so they will not be
+    // re-fetched.
+    void hydrate().then(() => {
+      if (cancelled) return;
+      handle = setInterval(() => {
+        if (!enabledRef.current) return;
+        void tick();
+      }, pollMs);
+    });
     return () => {
       cancelled = true;
-      clearInterval(handle);
+      if (handle !== null) clearInterval(handle);
     };
   }, [enabled, initialLimit, pollMs, invoke]);
 

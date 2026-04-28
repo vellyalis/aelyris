@@ -123,6 +123,67 @@ describe("usePromptMarks", () => {
     await waitFor(() => expect(invokeMock).toHaveBeenCalled());
     expect(result.current).toEqual([]);
   });
+
+  it("captures marks emitted during the seed window (listener-before-seed)", async () => {
+    // Race contract: the listener MUST be armed before invoke() runs so a
+    // mark emitted by the backend between the IPC dispatch and the seed
+    // reply is captured in state. Without the new ordering, the mark
+    // would arrive when no listener was registered and be lost.
+    let capture: ((ev: { payload: PromptMark }) => void) | null = null;
+    listenMock.mockImplementationOnce(async (_event: string, handler: unknown) => {
+      capture = handler as (ev: { payload: PromptMark }) => void;
+      return () => {};
+    });
+    // Resolve the seed *after* the listener is in place AND after a mark
+    // has fired through it, simulating a slow IPC reply.
+    let resolveSeed: (v: PromptMark[]) => void = () => {};
+    const seedPromise = new Promise<PromptMark[]>((r) => {
+      resolveSeed = r;
+    });
+    invokeMock.mockImplementationOnce(() => seedPromise);
+
+    const { result } = renderHook(() => usePromptMarks("t-1"));
+    // Wait for the listener to be armed.
+    await waitFor(() => expect(capture).not.toBeNull());
+    // Mark arrives during the seed window.
+    act(() => capture!({ payload: mark(7, "commandEnd", 0) }));
+    expect(result.current).toEqual([mark(7, "commandEnd", 0)]);
+    // Seed resolves with two earlier marks; mergeMark must order them
+    // BEFORE the already-buffered mark(7), not after.
+    act(() => resolveSeed([mark(0, "promptStart"), mark(1, "commandStart")]));
+    await waitFor(() => expect(result.current).toHaveLength(3));
+    expect(result.current.map((m) => m.sequence)).toEqual([0, 1, 7]);
+  });
+
+  it("inserts an out-of-order arrival at the position dictated by sequence", async () => {
+    invokeMock.mockResolvedValueOnce([mark(0, "promptStart"), mark(2, "commandEnd", 0)]);
+    let capture: ((ev: { payload: PromptMark }) => void) | null = null;
+    listenMock.mockImplementationOnce(async (_event: string, handler: unknown) => {
+      capture = handler as (ev: { payload: PromptMark }) => void;
+      return () => {};
+    });
+    const { result } = renderHook(() => usePromptMarks("t-1"));
+    await waitFor(() => expect(result.current).toHaveLength(2));
+    // The backend emits a mark with sequence=1 *after* sequence=2 has
+    // already been seeded — happens when the listener queue and the seed
+    // query interleave in unexpected order. The correct list must keep
+    // sequence ascending so binary search by historySize is valid.
+    act(() => capture!({ payload: mark(1, "commandStart") }));
+    expect(result.current.map((m) => m.sequence)).toEqual([0, 1, 2]);
+  });
+
+  it("inserts a sequence-zero arrival at the head when older than tail", async () => {
+    invokeMock.mockResolvedValueOnce([mark(5, "commandEnd", 0)]);
+    let capture: ((ev: { payload: PromptMark }) => void) | null = null;
+    listenMock.mockImplementationOnce(async (_event: string, handler: unknown) => {
+      capture = handler as (ev: { payload: PromptMark }) => void;
+      return () => {};
+    });
+    const { result } = renderHook(() => usePromptMarks("t-1"));
+    await waitFor(() => expect(result.current).toHaveLength(1));
+    act(() => capture!({ payload: mark(0, "promptStart") }));
+    expect(result.current.map((m) => m.sequence)).toEqual([0, 5]);
+  });
 });
 
 describe("lastCommandEnd", () => {

@@ -44,21 +44,33 @@ export function useTerminalNotifications({ activeTabId, tabs, onTabActivity }: U
   );
 
   useEffect(() => {
+    let cancelled = false;
     let unlisten: (() => void) | null = null;
 
     const setup = async () => {
       try {
         const { listen } = await import("@tauri-apps/api/event");
-        unlisten = await listen<{ terminal_id: string }>("terminal:bell", (event) => {
+        const handle = await listen<{ terminal_id: string }>("terminal:bell", (event) => {
+          if (cancelled) return;
           handleBell(event.payload.terminal_id);
         });
+        // If the effect was torn down while `listen` was still resolving,
+        // detach immediately — the cleanup below ran before `unlisten` was
+        // assigned, so without this post-await check the listener leaks
+        // for the rest of the session.
+        if (cancelled) {
+          handle();
+          return;
+        }
+        unlisten = handle;
       } catch {
         /* not in Tauri */
       }
     };
-    setup();
+    void setup();
 
     return () => {
+      cancelled = true;
       unlisten?.();
     };
   }, [handleBell]);

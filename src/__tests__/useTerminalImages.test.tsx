@@ -202,4 +202,55 @@ describe("useTerminalImages", () => {
     await waitFor(() => expect(result.current.size).toBe(1));
     expect(result.current.get(11)).toBe(rgbaBitmap);
   });
+
+  it("does not re-fetch when only image positions change (id-set stable)", async () => {
+    // Race contract: the producer (`applyDiff` in `useTerminalSnapshot`)
+    // returns a fresh `images` array on every full=true diff and on every
+    // partial whose image set changed. A consumer that re-runs its effect
+    // every render would issue a new fetch on every full=true frame, then
+    // cancel it on the next, and the image would never appear. The hook
+    // must stabilise on id-set so position-only churn doesn't invalidate
+    // the in-flight fetch.
+    const png = makeBitmap("ok");
+    const factory = makeFactory({ a: png });
+    const invoke = ipcReturning({
+      9: { format: "png", dataBase64: btoa("a"), widthPx: 1, heightPx: 1 },
+    });
+    const { result, rerender } = renderHook(
+      ({ refs }: { refs: ImageRef[] }) =>
+        useTerminalImages("t-1", refs, { invoke, createImageBitmap: factory }),
+      { initialProps: { refs: [ref(9, { cellRow: 0, cellCol: 0 })] } },
+    );
+    await waitFor(() => expect(result.current.size).toBe(1));
+    expect(invoke).toHaveBeenCalledTimes(1);
+    // Re-render N times with the same id but a *new array reference* and
+    // shifted positions, simulating diff-driven snapshot churn. The
+    // bitmap stays cached and the IPC is not called again.
+    for (let i = 1; i < 6; i++) {
+      rerender({ refs: [ref(9, { cellRow: i, cellCol: i * 2 })] });
+    }
+    await waitFor(() => expect(result.current.get(9)).toBeDefined());
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-fetches after the id-set actually changes (new image arrives)", async () => {
+    const a = makeBitmap("a");
+    const b = makeBitmap("b");
+    const factory = makeFactory({ a, b });
+    const invoke = ipcReturning({
+      1: { format: "png", dataBase64: btoa("a"), widthPx: 1, heightPx: 1 },
+      2: { format: "png", dataBase64: btoa("b"), widthPx: 1, heightPx: 1 },
+    });
+    const { result, rerender } = renderHook(
+      ({ refs }: { refs: ImageRef[] }) =>
+        useTerminalImages("t-1", refs, { invoke, createImageBitmap: factory }),
+      { initialProps: { refs: [ref(1)] } },
+    );
+    await waitFor(() => expect(result.current.size).toBe(1));
+    expect(invoke).toHaveBeenCalledTimes(1);
+    rerender({ refs: [ref(1), ref(2)] });
+    await waitFor(() => expect(result.current.size).toBe(2));
+    expect(invoke).toHaveBeenCalledTimes(2);
+    expect(result.current.get(2)).toBe(b);
+  });
 });

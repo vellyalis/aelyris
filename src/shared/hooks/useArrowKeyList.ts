@@ -5,9 +5,6 @@ interface UseArrowKeyListOptions<T> {
   items: readonly T[];
   /** Called when the user selects an item via Enter or Space. */
   onSelect?: (item: T, index: number) => void;
-  /** Extracts a stable key per item (usually `item.id`). Used for focus
-   *  management by index, not the key. */
-  getKey?: (item: T, index: number) => string;
   /** Whether typing Home/End should jump to first/last. Defaults to true. */
   enableHomeEnd?: boolean;
   /** Vertical (ArrowUp/Down) or horizontal (ArrowLeft/Right) traversal.
@@ -59,7 +56,16 @@ export function useArrowKeyList<T>({
       if (items.length === 0) return;
       const next = orientation === "vertical" ? "ArrowDown" : "ArrowRight";
       const prev = orientation === "vertical" ? "ArrowUp" : "ArrowLeft";
-      const i = activeIndexRef.current;
+      // Clamp the stored index against the *current* item count: items
+      // can shrink between renders (e.g. a search filter narrows the
+      // list, an item is dismissed) and a stale activeIndexRef pointing
+      // past the new tail would (a) make Enter/Space silently no-op
+      // because `items[i]` is undefined and (b) make the next ArrowDown
+      // jump back to the tail rather than advance from the visible
+      // selection. Re-anchoring on every key event keeps the ref in
+      // sync without forcing a re-render.
+      const i = Math.min(items.length - 1, Math.max(0, activeIndexRef.current));
+      activeIndexRef.current = i;
       if (e.key === next) {
         e.preventDefault();
         setActive(Math.min(items.length - 1, i + 1), e.currentTarget);

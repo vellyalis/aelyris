@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { ImageRef } from "../types/terminal";
 
@@ -60,8 +60,28 @@ export function useTerminalImages(
   // forcing re-renders of its own — that's React's escape hatch ref.
   const inflight = useRef<Set<number>>(new Set());
 
+  // Stabilise the image set by id-only key. The producer (applyDiff in
+  // useTerminalSnapshot) returns a fresh `images` array on every full=true
+  // diff and on every partial whose image set changed, so consumers that
+  // only care about the *id set* (this hook does — position/size lives in
+  // the snapshot, not in our cache key) would otherwise re-run their
+  // effect on every full=true frame. That triggers a fetch-cancel-fetch
+  // storm: the cleanup sets `cancelled=true`, the .then early-returns and
+  // deletes its inflight marker, but the new effect cycle has already
+  // iterated images and skipped the fetch (inflight was still set when it
+  // ran). The image then never appears until a frame with no inflight
+  // collision happens to land. Stabilising by id-set keeps the deps array
+  // identity-stable across position-only changes, so the effect only
+  // re-runs when the set actually changes.
+  const idsKey = useMemo(
+    () => (images ? images.map((i) => i.id).sort((a, b) => a - b).join(",") : ""),
+    [images],
+  );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const stableImages = useMemo(() => images, [idsKey]);
+
   useEffect(() => {
-    if (!terminalId || !images || images.length === 0) {
+    if (!terminalId || !stableImages || stableImages.length === 0) {
       // Nothing visible — drop everything. ImageBitmap.close() releases
       // the underlying GPU/CPU buffer; without it long-running sessions
       // with many transient images grow unboundedly.
@@ -74,7 +94,7 @@ export function useTerminalImages(
       return;
     }
 
-    const visibleIds = new Set(images.map((img) => img.id));
+    const visibleIds = new Set(stableImages.map((img) => img.id));
 
     // GC: drop bitmaps for ids no longer in the snapshot.
     setBitmaps((prev) => {
@@ -104,7 +124,7 @@ export function useTerminalImages(
     }
 
     let cancelled = false;
-    for (const ref of images) {
+    for (const ref of stableImages) {
       if (bitmaps.has(ref.id) || inflight.current.has(ref.id)) continue;
       inflight.current.add(ref.id);
 
@@ -149,9 +169,12 @@ export function useTerminalImages(
     // We deliberately read `bitmaps` inside the effect but don't list
     // it as a dep — adding it would re-run the fetch loop on every
     // bitmap arrival, defeating the cache. The `setBitmaps` updater
-    // form gives us the live value without depending on it.
+    // form gives us the live value without depending on it. We also
+    // depend on `stableImages` (id-set-stable) instead of raw `images`
+    // to avoid re-running on position-only changes — see the comment
+    // on the `useMemo` block above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [terminalId, images, invoke, factoryOverride]);
+  }, [terminalId, stableImages, invoke, factoryOverride]);
 
   return bitmaps;
 }

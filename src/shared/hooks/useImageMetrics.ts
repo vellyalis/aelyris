@@ -66,8 +66,17 @@ export function useImageMetrics(
 
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    // Single-flight guard: a visibility-change handler that races with
+    // an in-flight `fetchOnce` would otherwise kick off a second
+    // overlapping fetch (the timer-clear path only stops the *next*
+    // scheduled tick, not a fetch already running). Skipping while
+    // `inFlight` is true keeps the IPC channel quiet — the in-flight
+    // fetch will finish, see visibility=visible, and re-arm the timer.
+    let inFlight = false;
 
     const fetchOnce = async () => {
+      if (inFlight) return;
+      inFlight = true;
       try {
         const result = await invokeRef.current<ImageMetrics | null>("term_image_metrics", {
           id: terminalId,
@@ -76,6 +85,8 @@ export function useImageMetrics(
         setMetrics(result ?? null);
       } catch {
         if (!cancelled) setMetrics(null);
+      } finally {
+        inFlight = false;
       }
     };
 
@@ -99,7 +110,11 @@ export function useImageMetrics(
           clearTimeout(timer);
           timer = null;
         }
-        void tick();
+        // Don't kick off a second fetch if one is already running. The
+        // in-flight `tick` will see visibility=visible on its own and
+        // re-arm the timer; a parallel call would just race for the
+        // same setMetrics slot.
+        if (!inFlight) void tick();
       }
     };
 
