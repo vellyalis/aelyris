@@ -25,7 +25,10 @@ pub use layer::{
     DiffHunk, FileDelta, HunkLine, Layer, LayerContent, LayerId, LayerSource, LayerSummary,
     LayerTint,
 };
-pub use registry::{LayerEvent, LayerRegistry, LayerSourceSnapshot};
+pub use registry::{
+    LayerEvent, LayerIdPayload, LayerRegistry, LayerSnapshot, LayerSourceSnapshot,
+    LayerUpdatedPayload,
+};
 pub use watcher::WatcherPool;
 
 /// Convenience wiring: register a worktree-backed layer, spawn its fs

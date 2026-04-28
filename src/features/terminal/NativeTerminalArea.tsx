@@ -8,6 +8,7 @@ import type { ShellType } from "../../App";
 import { useSnapshots } from "../../shared/hooks/useSnapshots";
 import { useTerminalSnapshot } from "../../shared/hooks/useTerminalSnapshot";
 import { useAppStore } from "../../shared/store/appStore";
+import type { LayerIdPayload } from "../../shared/types/ghostdiff";
 import type { SnapshotSummary } from "../../shared/types/snapshot";
 import { type ActiveSnapshotOverlay, TimelineBar } from "../timeline/TimelineBar";
 import { useAICliDetection } from "./hooks/useAICliDetection";
@@ -294,9 +295,9 @@ export function NativeTerminalArea({
     let cancelled = false;
     (async () => {
       try {
-        unlisten = await listen<string>("ghost-diff:layer-removed", (ev) => {
+        unlisten = await listen<LayerIdPayload>("ghost-diff:layer-removed", (ev) => {
           const cur = snapshotOverlayRef.current;
-          if (cur && ev.payload === cur.layerId) {
+          if (cur && ev.payload.layerId === cur.layerId) {
             setSnapshotOverlay(null);
           }
         });

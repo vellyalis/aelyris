@@ -48,6 +48,30 @@ export interface LayerSummary {
   filePaths: string[];
 }
 
+/**
+ * Bootstrap response for `list_ghost_layers`. Pairs the current layer set
+ * with the registry's monotonic event sequence — the frontend filters
+ * incoming `ghost-diff:layer-*` events by comparing their `seq` against
+ * this snapshot's `seq` to drop already-applied events and apply only
+ * events that fired after the snapshot.
+ */
+export interface LayerListSnapshot {
+  layers: LayerSummary[];
+  seq: number;
+}
+
+/** Wire payload for `ghost-diff:layer-updated`. */
+export interface LayerUpdatedPayload {
+  seq: number;
+  summary: LayerSummary;
+}
+
+/** Wire payload for `ghost-diff:layer-completed` and `ghost-diff:layer-removed`. */
+export interface LayerIdPayload {
+  seq: number;
+  layerId: string;
+}
+
 export type HunkLine =
   | { kind: "context"; text: string }
   | { kind: "add"; text: string }

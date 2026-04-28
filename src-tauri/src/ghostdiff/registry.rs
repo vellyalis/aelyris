@@ -12,6 +12,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::Mutex;
 
@@ -31,17 +32,70 @@ pub struct LayerSourceSnapshot {
 }
 
 /// Event stream consumed by the main app loop and re-emitted to the frontend.
+///
+/// Each variant carries a monotonic `seq` assigned at the moment of emission
+/// (under the same lock as the layer mutation). The frontend uses it to
+/// distinguish events that are newer than its last-applied state from
+/// events that already landed in the bootstrap snapshot — closing the
+/// listener-arming race on (re)mount.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum LayerEvent {
-    Updated(LayerSummary),
-    Completed(LayerId),
-    Removed(LayerId),
+    Updated { seq: u64, summary: LayerSummary },
+    Completed { seq: u64, layer_id: LayerId },
+    Removed { seq: u64, layer_id: LayerId },
+}
+
+impl LayerEvent {
+    /// Monotonic sequence number assigned to this emit. Same channel used
+    /// by [`LayerRegistry::snapshot`] so the frontend can drop or apply
+    /// individual events relative to its bootstrap state.
+    pub fn seq(&self) -> u64 {
+        match self {
+            LayerEvent::Updated { seq, .. }
+            | LayerEvent::Completed { seq, .. }
+            | LayerEvent::Removed { seq, .. } => *seq,
+        }
+    }
+}
+
+/// Wire payload for `ghost-diff:layer-updated`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LayerUpdatedPayload {
+    pub seq: u64,
+    pub summary: LayerSummary,
+}
+
+/// Wire payload for `ghost-diff:layer-completed` and
+/// `ghost-diff:layer-removed`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LayerIdPayload {
+    pub seq: u64,
+    pub layer_id: LayerId,
+}
+
+/// Bootstrap response for the `list_ghost_layers` IPC. Pairs the current
+/// layer set with the registry's monotonic sequence number; the frontend
+/// compares incoming event seq against this to filter events that are
+/// already reflected in the snapshot.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LayerSnapshot {
+    pub layers: Vec<LayerSummary>,
+    pub seq: u64,
 }
 
 /// Registry of active ghost layers.
 pub struct LayerRegistry {
     layers: Mutex<HashMap<LayerId, Layer>>,
+    /// Monotonic event counter. Incremented under the layer lock during
+    /// each mutation that produces an event, so `snapshot()`'s view of
+    /// `(layers, seq)` is internally consistent: any event whose seq is
+    /// greater than the snapshot's seq must reflect a mutation that
+    /// happened after the snapshot was taken.
+    seq: AtomicU64,
     tx: mpsc::Sender<LayerEvent>,
     rx: Mutex<mpsc::Receiver<LayerEvent>>,
 }
@@ -51,9 +105,17 @@ impl LayerRegistry {
         let (tx, rx) = mpsc::channel();
         Self {
             layers: Mutex::new(HashMap::new()),
+            seq: AtomicU64::new(0),
             tx,
             rx: Mutex::new(rx),
         }
+    }
+
+    /// Allocate the next monotonic sequence number. Always called while
+    /// holding the layer lock so seq order matches mutation order, and
+    /// `snapshot()`'s `(layers, seq)` view stays internally consistent.
+    fn next_seq(&self) -> u64 {
+        self.seq.fetch_add(1, Ordering::SeqCst) + 1
     }
 
     /// Register a fresh worktree-backed layer. Duplicate IDs are rejected.
@@ -90,8 +152,16 @@ impl LayerRegistry {
         }
         let summary = layer.summary();
         guard.insert(id, layer);
+        let seq = self.next_seq();
+        // Send WHILE holding the layers lock so seq allocation order is
+        // also send order. Without this, two threads could each allocate
+        // their seq, both release the lock, then race the `tx.send` call
+        // — landing the higher seq in the channel first and corrupting
+        // the frontend's reorder/filter logic. mpsc::Sender::send on an
+        // unbounded channel is just a node-alloc + atomic queue push, so
+        // holding the lock for that is fast.
+        let _ = self.tx.send(LayerEvent::Updated { seq, summary });
         drop(guard);
-        let _ = self.tx.send(LayerEvent::Updated(summary));
         Ok(())
     }
 
@@ -121,8 +191,9 @@ impl LayerRegistry {
         );
         let summary = layer.summary();
         guard.insert(id, layer);
+        let seq = self.next_seq();
+        let _ = self.tx.send(LayerEvent::Updated { seq, summary });
         drop(guard);
-        let _ = self.tx.send(LayerEvent::Updated(summary));
         Ok(())
     }
 
@@ -155,20 +226,22 @@ impl LayerRegistry {
         );
         let summary = layer.summary();
         guard.insert(id, layer);
+        let seq = self.next_seq();
+        let _ = self.tx.send(LayerEvent::Updated { seq, summary });
         drop(guard);
-        let _ = self.tx.send(LayerEvent::Updated(summary));
         Ok(())
     }
 
     /// Remove a layer. No-op if unknown.
     pub fn unregister(&self, id: &str) -> Result<(), String> {
-        let removed = {
-            let mut guard = self.lock_layers()?;
-            guard.remove(id).is_some()
-        };
-        if removed {
-            let _ = self.tx.send(LayerEvent::Removed(id.to_string()));
+        let mut guard = self.lock_layers()?;
+        if guard.remove(id).is_some() {
+            let seq = self.next_seq();
+            let _ = self
+                .tx
+                .send(LayerEvent::Removed { seq, layer_id: id.to_string() });
         }
+        drop(guard);
         Ok(())
     }
 
@@ -176,49 +249,61 @@ impl LayerRegistry {
     /// `Updated` event. Silently no-ops for snapshot layers (their content
     /// is terminal state, not file hunks) or for unknown ids.
     pub fn refresh(&self, id: &str, files: Vec<FileDelta>) -> Result<(), String> {
-        let summary = {
-            let mut guard = self.lock_layers()?;
-            let Some(layer) = guard.get_mut(id) else {
-                return Ok(());
-            };
-            match &mut layer.content {
-                LayerContent::Diff { files: stored, .. } => {
-                    *stored = files;
-                }
-                // Snapshot layers have no file deltas — refreshing them with
-                // `Vec<FileDelta>` is a category error from the caller.
-                // Dropping the payload silently keeps the invariant and
-                // avoids a panic path in the watcher pool.
-                LayerContent::TerminalState { .. } => {
-                    log::debug!(
-                        "refresh(files) on snapshot layer {id} ignored — \
-                         snapshot content is immutable after registration"
-                    );
-                    return Ok(());
-                }
-            }
-            layer.summary()
+        let mut guard = self.lock_layers()?;
+        let Some(layer) = guard.get_mut(id) else {
+            return Ok(());
         };
-        let _ = self.tx.send(LayerEvent::Updated(summary));
+        match &mut layer.content {
+            LayerContent::Diff { files: stored, .. } => {
+                *stored = files;
+            }
+            // Snapshot layers have no file deltas — refreshing them with
+            // `Vec<FileDelta>` is a category error from the caller.
+            // Dropping the payload silently keeps the invariant and
+            // avoids a panic path in the watcher pool.
+            LayerContent::TerminalState { .. } => {
+                log::debug!(
+                    "refresh(files) on snapshot layer {id} ignored — \
+                     snapshot content is immutable after registration"
+                );
+                return Ok(());
+            }
+        }
+        let summary = layer.summary();
+        let seq = self.next_seq();
+        let _ = self.tx.send(LayerEvent::Updated { seq, summary });
+        drop(guard);
         Ok(())
     }
 
     /// Flag a layer as complete (agent run ended). Emits `Completed` and a
     /// refreshed `Updated` so the UI picks up both state changes in one tick.
     pub fn mark_complete(&self, id: &str) -> Result<(), String> {
-        let summary = {
-            let mut guard = self.lock_layers()?;
-            let Some(layer) = guard.get_mut(id) else {
-                return Ok(());
-            };
-            if layer.is_complete {
-                return Ok(());
-            }
-            layer.is_complete = true;
-            layer.summary()
+        let mut guard = self.lock_layers()?;
+        let Some(layer) = guard.get_mut(id) else {
+            return Ok(());
         };
-        let _ = self.tx.send(LayerEvent::Completed(id.to_string()));
-        let _ = self.tx.send(LayerEvent::Updated(summary));
+        if layer.is_complete {
+            return Ok(());
+        }
+        layer.is_complete = true;
+        let summary = layer.summary();
+        // Allocate both seqs and emit both events while still holding
+        // the lock. This gives the channel a single contiguous run of
+        // (completed_seq, updated_seq) with no interleaved emits from
+        // other threads — required so the frontend's reorder buffer
+        // can match seq order to wire delivery order.
+        let completed_seq = self.next_seq();
+        let updated_seq = self.next_seq();
+        let _ = self.tx.send(LayerEvent::Completed {
+            seq: completed_seq,
+            layer_id: id.to_string(),
+        });
+        let _ = self.tx.send(LayerEvent::Updated {
+            seq: updated_seq,
+            summary,
+        });
+        drop(guard);
         Ok(())
     }
 
@@ -231,6 +316,31 @@ impl LayerRegistry {
         let mut summaries: Vec<LayerSummary> = guard.values().map(|l| l.summary()).collect();
         summaries.sort_by_key(|s| s.created_at);
         summaries
+    }
+
+    /// Bootstrap response for the frontend's listener-arming contract.
+    /// Returns the current layer set paired with the registry's monotonic
+    /// `seq`, captured atomically while holding the layer lock so any
+    /// event whose seq is greater than the snapshot's seq is guaranteed
+    /// to reflect a mutation that happened after the snapshot.
+    pub fn snapshot(&self) -> LayerSnapshot {
+        let guard = match self.layers.lock() {
+            Ok(g) => g,
+            Err(_) => {
+                return LayerSnapshot {
+                    layers: Vec::new(),
+                    seq: self.seq.load(Ordering::SeqCst),
+                };
+            }
+        };
+        let mut layers: Vec<LayerSummary> = guard.values().map(|l| l.summary()).collect();
+        layers.sort_by_key(|s| s.created_at);
+        // Read seq INSIDE the lock so any concurrent mutation that
+        // beats us to the lock has already incremented seq before we
+        // observe it (and any mutation that loses the race is still
+        // queued — its seq will exceed the one we return here).
+        let seq = self.seq.load(Ordering::SeqCst);
+        LayerSnapshot { layers, seq }
     }
 
     /// Source snapshot for one layer — used by the watcher callback on each
@@ -330,61 +440,61 @@ impl LayerRegistry {
         file_path: &str,
         hunk_index: usize,
     ) -> Result<Option<super::layer::DiffHunk>, String> {
-        let (taken, summary) = {
-            let mut guard = self.lock_layers()?;
-            let Some(layer) = guard.get_mut(id) else {
-                return Ok(None);
-            };
-            let taken = match &mut layer.content {
-                LayerContent::Diff { files, .. } => {
-                    let Some(file) = files.iter_mut().find(|f| f.path == file_path) else {
-                        return Ok(None);
-                    };
-                    if hunk_index >= file.hunks.len() {
-                        return Ok(None);
-                    }
-                    let taken = file.hunks.remove(hunk_index);
-                    // Drop files that ran out of hunks so the panel's file
-                    // count reflects reality.
-                    if file.hunks.is_empty() {
-                        let orphan = file.path.clone();
-                        files.retain(|f| f.path != orphan);
-                    }
-                    taken
-                }
-                // Snapshot layers carry no hunks — any remove request is a
-                // category error from the caller. IPC already rejects via
-                // `is_read_only`, but we handle it here too for safety.
-                LayerContent::TerminalState { .. } => return Ok(None),
-            };
-            (taken, layer.summary())
+        let mut guard = self.lock_layers()?;
+        let Some(layer) = guard.get_mut(id) else {
+            return Ok(None);
         };
-        let _ = self.tx.send(LayerEvent::Updated(summary));
+        let taken = match &mut layer.content {
+            LayerContent::Diff { files, .. } => {
+                let Some(file) = files.iter_mut().find(|f| f.path == file_path) else {
+                    return Ok(None);
+                };
+                if hunk_index >= file.hunks.len() {
+                    return Ok(None);
+                }
+                let taken = file.hunks.remove(hunk_index);
+                // Drop files that ran out of hunks so the panel's file
+                // count reflects reality.
+                if file.hunks.is_empty() {
+                    let orphan = file.path.clone();
+                    files.retain(|f| f.path != orphan);
+                }
+                taken
+            }
+            // Snapshot layers carry no hunks — any remove request is a
+            // category error from the caller. IPC already rejects via
+            // `is_read_only`, but we handle it here too for safety.
+            LayerContent::TerminalState { .. } => return Ok(None),
+        };
+        let summary = layer.summary();
+        let seq = self.next_seq();
+        let _ = self.tx.send(LayerEvent::Updated { seq, summary });
+        drop(guard);
         Ok(Some(taken))
     }
 
     /// Drop every hunk for a file — used by Shift+Tab / file-level accept
     /// after the caller has written the full `head_content` to main.
     pub fn clear_file_hunks(&self, id: &str, file_path: &str) -> Result<bool, String> {
-        let (removed, summary) = {
-            let mut guard = self.lock_layers()?;
-            let Some(layer) = guard.get_mut(id) else {
-                return Ok(false);
-            };
-            let removed = match &mut layer.content {
-                LayerContent::Diff { files, .. } => {
-                    let before = files.len();
-                    files.retain(|f| f.path != file_path);
-                    before != files.len()
-                }
-                // Snapshot layers have no per-file content.
-                LayerContent::TerminalState { .. } => false,
-            };
-            (removed, layer.summary())
+        let mut guard = self.lock_layers()?;
+        let Some(layer) = guard.get_mut(id) else {
+            return Ok(false);
+        };
+        let removed = match &mut layer.content {
+            LayerContent::Diff { files, .. } => {
+                let before = files.len();
+                files.retain(|f| f.path != file_path);
+                before != files.len()
+            }
+            // Snapshot layers have no per-file content.
+            LayerContent::TerminalState { .. } => false,
         };
         if removed {
-            let _ = self.tx.send(LayerEvent::Updated(summary));
+            let summary = layer.summary();
+            let seq = self.next_seq();
+            let _ = self.tx.send(LayerEvent::Updated { seq, summary });
         }
+        drop(guard);
         Ok(removed)
     }
 
@@ -458,7 +568,10 @@ mod tests {
         let events = r.poll();
         assert_eq!(events.len(), 1);
         match &events[0] {
-            LayerEvent::Updated(s) => assert_eq!(s.id, "j1"),
+            LayerEvent::Updated { seq, summary } => {
+                assert_eq!(summary.id, "j1");
+                assert_eq!(*seq, 1, "first emit must allocate seq=1");
+            }
             _ => panic!("expected Updated"),
         }
     }
@@ -491,9 +604,9 @@ mod tests {
         let events = r.poll();
         assert_eq!(events.len(), 1);
         match &events[0] {
-            LayerEvent::Updated(s) => {
-                assert_eq!(s.file_count, 2);
-                assert_eq!(s.hunk_count, 2);
+            LayerEvent::Updated { summary, .. } => {
+                assert_eq!(summary.file_count, 2);
+                assert_eq!(summary.hunk_count, 2);
             }
             _ => panic!("expected Updated"),
         }
@@ -514,9 +627,15 @@ mod tests {
         r.mark_complete("j1").unwrap();
         let events = r.poll();
         assert_eq!(events.len(), 2);
-        assert!(matches!(events[0], LayerEvent::Completed(_)));
+        assert!(matches!(events[0], LayerEvent::Completed { .. }));
+        // Both seqs must come from the same fetch_add stream so the
+        // wire ordering matches the state-mutation ordering. The
+        // updated event always follows the completed event.
+        let completed_seq = events[0].seq();
+        let updated_seq = events[1].seq();
+        assert!(completed_seq < updated_seq);
         match &events[1] {
-            LayerEvent::Updated(s) => assert!(s.is_complete),
+            LayerEvent::Updated { summary, .. } => assert!(summary.is_complete),
             _ => panic!("expected Updated"),
         }
     }
@@ -540,7 +659,9 @@ mod tests {
         r.unregister("j1").unwrap();
         let events = r.poll();
         assert_eq!(events.len(), 1);
-        assert!(matches!(&events[0], LayerEvent::Removed(id) if id == "j1"));
+        assert!(
+            matches!(&events[0], LayerEvent::Removed { layer_id, .. } if layer_id == "j1"),
+        );
     }
 
     #[test]
@@ -616,9 +737,9 @@ mod tests {
         let events = r.poll();
         assert_eq!(events.len(), 1);
         match &events[0] {
-            LayerEvent::Updated(s) => {
-                assert_eq!(s.hunk_count, 1);
-                assert_eq!(s.file_count, 1);
+            LayerEvent::Updated { summary, .. } => {
+                assert_eq!(summary.hunk_count, 1);
+                assert_eq!(summary.file_count, 1);
             }
             _ => panic!("expected Updated"),
         }
@@ -675,7 +796,7 @@ mod tests {
         assert_eq!(list[0].file_paths, vec!["b.ts"]);
         let events = r.poll();
         assert_eq!(events.len(), 1);
-        assert!(matches!(events[0], LayerEvent::Updated(_)));
+        assert!(matches!(events[0], LayerEvent::Updated { .. }));
     }
 
     #[test]
@@ -874,5 +995,171 @@ mod tests {
             )
             .unwrap_err();
         assert!(err.contains("already registered"));
+    }
+
+    // ─── Phase 3D-? sequence number for listener-arming race ──────────────
+
+    #[test]
+    fn snapshot_starts_at_zero_for_empty_registry() {
+        let r = LayerRegistry::new();
+        let snap = r.snapshot();
+        assert!(snap.layers.is_empty());
+        assert_eq!(snap.seq, 0, "fresh registry must report seq=0");
+    }
+
+    #[test]
+    fn each_event_allocates_a_monotonic_seq() {
+        let r = LayerRegistry::new();
+        reg_layer(&r, "j1", 0);
+        reg_layer(&r, "j2", 1);
+        let events = r.poll();
+        assert_eq!(events.len(), 2);
+        let seqs: Vec<_> = events.iter().map(|e| e.seq()).collect();
+        assert_eq!(seqs, vec![1, 2], "seq must increment per event");
+    }
+
+    #[test]
+    fn snapshot_seq_matches_last_emitted_event_seq() {
+        let r = LayerRegistry::new();
+        reg_layer(&r, "j1", 0);
+        let _ = r.poll();
+        r.refresh("j1", vec![make_delta("a.ts")]).unwrap();
+        let events = r.poll();
+        let last_seq = events.last().unwrap().seq();
+        let snap = r.snapshot();
+        // The snapshot's seq must equal the seq of the most recent emit
+        // — that is the contract the frontend relies on to drop already-
+        // applied events.
+        assert_eq!(snap.seq, last_seq);
+        assert_eq!(snap.layers.len(), 1);
+    }
+
+    #[test]
+    fn mark_complete_emits_two_events_with_increasing_seqs() {
+        let r = LayerRegistry::new();
+        reg_layer(&r, "j1", 0);
+        let _ = r.poll();
+        r.mark_complete("j1").unwrap();
+        let events = r.poll();
+        assert_eq!(events.len(), 2);
+        assert!(matches!(events[0], LayerEvent::Completed { .. }));
+        assert!(matches!(events[1], LayerEvent::Updated { .. }));
+        assert_eq!(events[0].seq() + 1, events[1].seq());
+    }
+
+    #[test]
+    fn unregister_silent_for_missing_layer_does_not_burn_seq() {
+        let r = LayerRegistry::new();
+        reg_layer(&r, "j1", 0);
+        let _ = r.poll();
+        let seq_before = r.snapshot().seq;
+        r.unregister("nope").unwrap();
+        // No event emitted, no seq allocated for the silent no-op.
+        assert!(r.poll().is_empty());
+        assert_eq!(r.snapshot().seq, seq_before);
+    }
+
+    #[test]
+    fn clear_file_hunks_noop_does_not_burn_seq() {
+        let r = LayerRegistry::new();
+        reg_layer(&r, "j1", 0);
+        r.refresh("j1", vec![make_delta("a.ts")]).unwrap();
+        let _ = r.poll();
+        let seq_before = r.snapshot().seq;
+        // Missing file → no mutation → no event → no seq allocation.
+        let removed = r.clear_file_hunks("j1", "missing.ts").unwrap();
+        assert!(!removed);
+        assert!(r.poll().is_empty());
+        assert_eq!(r.snapshot().seq, seq_before);
+    }
+
+    #[test]
+    fn snapshot_payload_round_trips_through_serde() {
+        let r = LayerRegistry::new();
+        reg_layer(&r, "j1", 0);
+        let snap = r.snapshot();
+        let json = serde_json::to_string(&snap).expect("serialize");
+        let parsed: LayerSnapshot = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(parsed.seq, snap.seq);
+        assert_eq!(parsed.layers.len(), snap.layers.len());
+    }
+
+    #[test]
+    fn updated_payload_round_trips_through_serde() {
+        let r = LayerRegistry::new();
+        reg_layer(&r, "j1", 0);
+        let events = r.poll();
+        match &events[0] {
+            LayerEvent::Updated { seq, summary } => {
+                let payload = LayerUpdatedPayload {
+                    seq: *seq,
+                    summary: summary.clone(),
+                };
+                let json = serde_json::to_string(&payload).expect("serialize");
+                let parsed: LayerUpdatedPayload =
+                    serde_json::from_str(&json).expect("deserialize");
+                assert_eq!(parsed.seq, *seq);
+                assert_eq!(parsed.summary.id, summary.id);
+                // camelCase contract for the frontend wire shape.
+                assert!(json.contains("\"seq\""));
+                assert!(json.contains("\"summary\""));
+            }
+            _ => panic!("expected Updated"),
+        }
+    }
+
+    #[test]
+    fn send_happens_under_lock_so_channel_order_matches_seq_order() {
+        // Under codex r0's race: thread T1 allocates seq=N+1 (under
+        // lock) → unlocks → preempts before tx.send. T2 allocates
+        // seq=N+2 → sends first → channel has [N+2, N+1]. To prevent
+        // that, the registry MUST hold the lock through tx.send.
+        //
+        // We can't directly assert "lock held during send" without
+        // racing threads, but we can run mutations sequentially and
+        // confirm the channel hands them back in monotonic seq
+        // order — if a future refactor moves tx.send back outside
+        // the lock, threaded contention would break this property.
+        let r = LayerRegistry::new();
+        // Drive a mix of mutation kinds so each emit path is covered.
+        reg_layer(&r, "j1", 0);
+        reg_layer(&r, "j2", 1);
+        r.refresh("j1", vec![make_delta("a.ts")]).unwrap();
+        r.mark_complete("j2").unwrap();
+        r.unregister("j1").unwrap();
+        let events = r.poll();
+        let seqs: Vec<u64> = events.iter().map(|e| e.seq()).collect();
+        let mut sorted = seqs.clone();
+        sorted.sort();
+        assert_eq!(seqs, sorted, "channel order must match seq order");
+        // Sanity: monotonic & no gaps in this single-threaded scenario.
+        for w in seqs.windows(2) {
+            assert_eq!(w[0] + 1, w[1], "single-threaded seqs must be contiguous");
+        }
+    }
+
+    #[test]
+    fn id_payload_round_trips_through_serde() {
+        let r = LayerRegistry::new();
+        reg_layer(&r, "j1", 0);
+        let _ = r.poll();
+        r.unregister("j1").unwrap();
+        let events = r.poll();
+        match &events[0] {
+            LayerEvent::Removed { seq, layer_id } => {
+                let payload = LayerIdPayload {
+                    seq: *seq,
+                    layer_id: layer_id.clone(),
+                };
+                let json = serde_json::to_string(&payload).expect("serialize");
+                // camelCase: layer_id → layerId on the wire.
+                assert!(json.contains("\"layerId\""));
+                let parsed: LayerIdPayload =
+                    serde_json::from_str(&json).expect("deserialize");
+                assert_eq!(parsed.seq, *seq);
+                assert_eq!(parsed.layer_id, *layer_id);
+            }
+            _ => panic!("expected Removed"),
+        }
     }
 }

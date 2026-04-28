@@ -12,15 +12,26 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
-use crate::ghostdiff::{self, FileDelta, LayerRegistry, LayerSummary, LayerTint, WatcherPool};
+use crate::ghostdiff::{
+    self, FileDelta, LayerRegistry, LayerSnapshot, LayerSummary, LayerTint, WatcherPool,
+};
 
-/// All currently-active ghost layers (sorted oldest-first).
+/// Bootstrap response for the frontend's listener-arming contract: every
+/// active layer plus the registry's monotonic event sequence. The
+/// frontend filters incoming `ghost-diff:layer-*` events by comparing
+/// their `seq` against this snapshot's `seq`, so events that already
+/// reflect in the snapshot are dropped (avoiding duplicate apply) and
+/// events that fired between the listener registering and this IPC
+/// returning are still applied (no missed mutations).
 #[tauri::command]
-pub fn list_ghost_layers(app: AppHandle) -> Vec<LayerSummary> {
+pub fn list_ghost_layers(app: AppHandle) -> LayerSnapshot {
     let Some(state) = app.try_state::<Arc<LayerRegistry>>() else {
-        return Vec::new();
+        return LayerSnapshot {
+            layers: Vec::new(),
+            seq: 0,
+        };
     };
-    state.list()
+    state.snapshot()
 }
 
 /// Fetch the full `FileDelta` for a single file inside a layer. Returns

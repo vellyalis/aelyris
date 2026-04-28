@@ -10,7 +10,7 @@ import type {
   ViewZoneAccessor,
 } from "../features/editor/ghostPaint";
 import { computeRelativePath, useGhostPaintForFile } from "../features/editor/useGhostPaintForFile";
-import type { FileDelta, LayerSummary } from "../shared/types/ghostdiff";
+import type { FileDelta, LayerListSnapshot, LayerSummary } from "../shared/types/ghostdiff";
 
 describe("computeRelativePath", () => {
   it("returns null for a null filePath", () => {
@@ -62,6 +62,17 @@ vi.mock("@tauri-apps/api/event", () => ({
     return Promise.resolve(unlistenMock);
   }),
 }));
+
+/**
+ * Wrap an array of layers in the wire-format `LayerListSnapshot` that
+ * `list_ghost_layers` now returns. Tests don't care about seq because
+ * they don't replay diff streams; seq=0 is fine since any later event
+ * with seq>0 will advance state, and any pre-seed event already
+ * lands in the hook's reorder buffer.
+ */
+function snap(layers: LayerSummary[]): LayerListSnapshot {
+  return { layers, seq: 0 };
+}
 
 function makeLayer(id: string, filePaths: string[], overrides: Partial<LayerSummary> = {}): LayerSummary {
   // Default `isComplete: true` so paint tests exercise the ghost pass
@@ -165,7 +176,7 @@ describe("useGhostPaintForFile (integration)", () => {
   it("paints ghost hunks when a layer matches the open file", async () => {
     invokeMock.mockImplementation((cmd: string, args: Record<string, unknown>) => {
       if (cmd === "list_ghost_layers") {
-        return Promise.resolve([makeLayer("l1", ["src/foo.ts"])]);
+        return Promise.resolve(snap([makeLayer("l1", ["src/foo.ts"])]));
       }
       if (cmd === "get_ghost_layer_file") {
         expect(args.filePath).toBe("src/foo.ts");
@@ -192,7 +203,7 @@ describe("useGhostPaintForFile (integration)", () => {
   it("reports conflictCount when user dirty ranges overlap a hunk", async () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "list_ghost_layers") {
-        return Promise.resolve([makeLayer("l1", ["src/foo.ts"])]);
+        return Promise.resolve(snap([makeLayer("l1", ["src/foo.ts"])]));
       }
       if (cmd === "get_ghost_layer_file") {
         return Promise.resolve(makeDelta("src/foo.ts"));
@@ -231,7 +242,7 @@ describe("useGhostPaintForFile (integration)", () => {
   it("clears dirty ranges when filePath changes so stale state cannot bleed", async () => {
     invokeMock.mockImplementation((cmd: string, args: Record<string, unknown>) => {
       if (cmd === "list_ghost_layers") {
-        return Promise.resolve([makeLayer("l1", ["src/a.ts"]), makeLayer("l2", ["src/b.ts"])]);
+        return Promise.resolve(snap([makeLayer("l1", ["src/a.ts"]), makeLayer("l2", ["src/b.ts"])]));
       }
       if (cmd === "get_ghost_layer_file") {
         return Promise.resolve(makeDelta(args.filePath as string));
@@ -274,7 +285,7 @@ describe("useGhostPaintForFile (integration)", () => {
   it("reports zero layers when the open file is outside the project", async () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "list_ghost_layers") {
-        return Promise.resolve([makeLayer("l1", ["src/a.ts"])]);
+        return Promise.resolve(snap([makeLayer("l1", ["src/a.ts"])]));
       }
       return Promise.reject(new Error(`unexpected ${cmd}`));
     });
@@ -316,7 +327,7 @@ describe("useGhostPaintForFile (integration)", () => {
     };
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "list_ghost_layers") {
-        return Promise.resolve([roLayer]);
+        return Promise.resolve(snap([roLayer]));
       }
       if (cmd === "get_ghost_layer_file") {
         return Promise.resolve(makeDelta("src/foo.ts"));
@@ -349,7 +360,7 @@ describe("useGhostPaintForFile (integration)", () => {
   it("hasHunkAtLine / hunksAtLine resolve the anchor at the base line", async () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "list_ghost_layers") {
-        return Promise.resolve([makeLayer("l1", ["src/foo.ts"])]);
+        return Promise.resolve(snap([makeLayer("l1", ["src/foo.ts"])]));
       }
       if (cmd === "get_ghost_layer_file") {
         return Promise.resolve(makeDelta("src/foo.ts"));
@@ -381,7 +392,7 @@ describe("useGhostPaintForFile (integration)", () => {
   it("acceptHunkAtLine invokes apply_ghost_hunk and returns updated content", async () => {
     invokeMock.mockImplementation((cmd: string, args: Record<string, unknown>) => {
       if (cmd === "list_ghost_layers") {
-        return Promise.resolve([makeLayer("l1", ["src/foo.ts"])]);
+        return Promise.resolve(snap([makeLayer("l1", ["src/foo.ts"])]));
       }
       if (cmd === "get_ghost_layer_file") {
         return Promise.resolve(makeDelta("src/foo.ts"));
@@ -421,7 +432,7 @@ describe("useGhostPaintForFile (integration)", () => {
     });
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "list_ghost_layers") {
-        return Promise.resolve([makeLayer("l1", ["src/foo.ts"])]);
+        return Promise.resolve(snap([makeLayer("l1", ["src/foo.ts"])]));
       }
       if (cmd === "get_ghost_layer_file") {
         return Promise.resolve(makeDelta("src/foo.ts"));
@@ -467,7 +478,7 @@ describe("useGhostPaintForFile (integration)", () => {
   it("acceptHunkAtLine returns null when no hunk anchors the line", async () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "list_ghost_layers") {
-        return Promise.resolve([makeLayer("l1", ["src/foo.ts"])]);
+        return Promise.resolve(snap([makeLayer("l1", ["src/foo.ts"])]));
       }
       if (cmd === "get_ghost_layer_file") {
         return Promise.resolve(makeDelta("src/foo.ts"));
@@ -495,7 +506,7 @@ describe("useGhostPaintForFile (integration)", () => {
   it("acceptAllInFile invokes apply_ghost_file once per layer", async () => {
     invokeMock.mockImplementation((cmd: string, args: Record<string, unknown>) => {
       if (cmd === "list_ghost_layers") {
-        return Promise.resolve([makeLayer("l1", ["src/foo.ts"]), makeLayer("l2", ["src/foo.ts"])]);
+        return Promise.resolve(snap([makeLayer("l1", ["src/foo.ts"]), makeLayer("l2", ["src/foo.ts"])]));
       }
       if (cmd === "get_ghost_layer_file") {
         return Promise.resolve(makeDelta("src/foo.ts"));
@@ -532,7 +543,7 @@ describe("useGhostPaintForFile (integration)", () => {
   it("dismissFileLayers invokes dismiss_ghost_file per layer with the relative path", async () => {
     invokeMock.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
       if (cmd === "list_ghost_layers") {
-        return Promise.resolve([makeLayer("l1", ["src/foo.ts", "src/bar.ts"]), makeLayer("l2", ["src/foo.ts"])]);
+        return Promise.resolve(snap([makeLayer("l1", ["src/foo.ts", "src/bar.ts"]), makeLayer("l2", ["src/foo.ts"])]));
       }
       if (cmd === "get_ghost_layer_file") {
         return Promise.resolve(makeDelta("src/foo.ts"));
@@ -568,7 +579,7 @@ describe("useGhostPaintForFile (integration)", () => {
   it("dismissFileLayers reports only layers that actually cleared", async () => {
     invokeMock.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
       if (cmd === "list_ghost_layers") {
-        return Promise.resolve([makeLayer("l1", ["src/foo.ts"]), makeLayer("l2", ["src/foo.ts"])]);
+        return Promise.resolve(snap([makeLayer("l1", ["src/foo.ts"]), makeLayer("l2", ["src/foo.ts"])]));
       }
       if (cmd === "get_ghost_layer_file") {
         return Promise.resolve(makeDelta("src/foo.ts"));
@@ -598,7 +609,7 @@ describe("useGhostPaintForFile (integration)", () => {
   it("skips in-progress layers by default (live mode off)", async () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "list_ghost_layers") {
-        return Promise.resolve([makeLayer("l1", ["src/foo.ts"], { isComplete: false })]);
+        return Promise.resolve(snap([makeLayer("l1", ["src/foo.ts"], { isComplete: false })]));
       }
       if (cmd === "get_ghost_layer_file") {
         return Promise.resolve(makeDelta("src/foo.ts"));
@@ -627,7 +638,7 @@ describe("useGhostPaintForFile (integration)", () => {
   it("paints in-progress layers when live mode is on", async () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "list_ghost_layers") {
-        return Promise.resolve([makeLayer("l1", ["src/foo.ts"], { isComplete: false })]);
+        return Promise.resolve(snap([makeLayer("l1", ["src/foo.ts"], { isComplete: false })]));
       }
       if (cmd === "get_ghost_layer_file") {
         return Promise.resolve(makeDelta("src/foo.ts"));
@@ -653,7 +664,7 @@ describe("useGhostPaintForFile (integration)", () => {
   it("swallows editor-disposed exceptions during paint teardown", async () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "list_ghost_layers") {
-        return Promise.resolve([makeLayer("l1", ["src/a.ts"])]);
+        return Promise.resolve(snap([makeLayer("l1", ["src/a.ts"])]));
       }
       if (cmd === "get_ghost_layer_file") {
         return Promise.resolve(makeDelta("src/a.ts"));

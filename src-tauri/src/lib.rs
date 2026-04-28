@@ -372,17 +372,32 @@ pub fn run() {
                         // auto-repair and orchestra-owned layers).
                         for ev in registry.poll() {
                             match ev {
-                                LayerEvent::Updated(s) => {
-                                    let _ = repair_handle
-                                        .emit("ghost-diff:layer-updated", s);
+                                LayerEvent::Updated { seq, summary } => {
+                                    let _ = repair_handle.emit(
+                                        "ghost-diff:layer-updated",
+                                        crate::ghostdiff::LayerUpdatedPayload {
+                                            seq,
+                                            summary,
+                                        },
+                                    );
                                 }
-                                LayerEvent::Completed(id) => {
-                                    let _ = repair_handle
-                                        .emit("ghost-diff:layer-completed", id);
+                                LayerEvent::Completed { seq, layer_id } => {
+                                    let _ = repair_handle.emit(
+                                        "ghost-diff:layer-completed",
+                                        crate::ghostdiff::LayerIdPayload {
+                                            seq,
+                                            layer_id,
+                                        },
+                                    );
                                 }
-                                LayerEvent::Removed(id) => {
-                                    let _ = repair_handle
-                                        .emit("ghost-diff:layer-removed", id);
+                                LayerEvent::Removed { seq, layer_id } => {
+                                    let _ = repair_handle.emit(
+                                        "ghost-diff:layer-removed",
+                                        crate::ghostdiff::LayerIdPayload {
+                                            seq,
+                                            layer_id,
+                                        },
+                                    );
                                 }
                             }
                         }
