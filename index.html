@@ -26,6 +26,13 @@
       #root {
         background: transparent !important;
       }
+      html[data-aether-host="browser"],
+      html[data-aether-host="browser"] body {
+        background:
+          radial-gradient(ellipse at 22% 0%, rgba(73, 46, 130, 0.34), transparent 42%),
+          radial-gradient(ellipse at 70% 100%, rgba(18, 62, 85, 0.24), transparent 46%),
+          linear-gradient(180deg, #0f0b1d 0%, #090d15 62%, #07111a 100%) !important;
+      }
       /* Splash fades out as soon as React commits its first
        * frame. main.tsx adds `data-react-mounted` to <html> in a
        * requestAnimationFrame after createRoot — at that point

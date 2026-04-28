@@ -19,6 +19,16 @@ document.addEventListener("contextmenu", (e) => {
   e.preventDefault();
 });
 
+const tauriWindow = window as Window &
+  typeof globalThis & {
+    __TAURI__?: unknown;
+    __TAURI_INTERNALS__?: unknown;
+  };
+const setAetherHost = (host: "tauri" | "browser") => {
+  document.documentElement.setAttribute("data-aether-host", host);
+};
+setAetherHost(tauriWindow.__TAURI__ || tauriWindow.__TAURI_INTERNALS__ ? "tauri" : "browser");
+
 // Default body to focused so the very first frame uses the
 // "active" glass alphas. Rust `setup` then emits real focus
 // changes via `aether:window-focused` — see `body[data-window-
@@ -29,6 +39,7 @@ document.body.setAttribute("data-window-focused", "true");
 void (async () => {
   try {
     const { listen } = await import("@tauri-apps/api/event");
+    setAetherHost("tauri");
     await listen<boolean>("aether:window-focused", (event) => {
       document.body.setAttribute(
         "data-window-focused",
@@ -36,6 +47,7 @@ void (async () => {
       );
     });
   } catch {
+    setAetherHost("browser");
     // Outside Tauri (vitest / vite preview) we just stay in the
     // "focused" state — nothing emits the event.
   }

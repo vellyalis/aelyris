@@ -106,4 +106,47 @@ describe("design token usage", () => {
     expect(source).toContain("var(--terminal-shell-depth)");
     expect(source).not.toContain("var(--terminal-shell-shadow)");
   });
+
+  it("keeps the workspace stage transparent so native Acrylic remains visible", () => {
+    const entry = Object.entries(cssSources).find(([file]) => file.includes("styles/global.css"));
+    expect(entry).toBeDefined();
+    const source = entry?.[1] ?? "";
+    const appMainRule = source.match(/\.app-main\s*{[\s\S]*?}/)?.[0] ?? "";
+    const rootGlowRule = source.match(/#root::before\s*{[\s\S]*?}/)?.[0] ?? "";
+
+    expect(appMainRule).toContain("background: transparent");
+    expect(rootGlowRule).toContain("opacity: var(--mood-root-glow-opacity)");
+  });
+
+  it("keeps localhost preview backplane scoped away from the Tauri host", () => {
+    const entry = Object.entries(cssSources).find(([file]) => file.includes("styles/global.css"));
+    expect(entry).toBeDefined();
+    const source = entry?.[1] ?? "";
+
+    expect(source).toContain('html[data-aether-host="browser"]');
+    expect(source).toContain('html[data-aether-host="browser"] body');
+    expect(source).not.toContain('html[data-aether-host="tauri"]');
+  });
+
+  it("keeps inactive-window glass below opaque-card territory", () => {
+    const entry = Object.entries(cssSources).find(([file]) => file.includes("styles/global.css"));
+    expect(entry).toBeDefined();
+    const source = entry?.[1] ?? "";
+    const inactiveRule = source.match(/body\[data-window-focused="false"\]\s*{[\s\S]*?}/)?.[0] ?? "";
+
+    expect(inactiveRule).toContain("--glass-thick: rgba(36, 36, 44, 0.27)");
+    expect(inactiveRule).not.toContain("0.4");
+    expect(inactiveRule).not.toContain("0.46");
+    expect(inactiveRule).not.toContain("0.48");
+  });
+
+  it("keeps nested bento veils below dashboard-card opacity", () => {
+    const entry = Object.entries(cssSources).find(([file]) => file.includes("styles/global.css"));
+    expect(entry).toBeDefined();
+    const source = entry?.[1] ?? "";
+    const veilRule = source.match(/\.bento-widget::before\s*{[\s\S]*?}/)?.[0] ?? "";
+
+    expect(veilRule).toContain("opacity: 0.24");
+    expect(veilRule).not.toContain("opacity: 0.78");
+  });
 });

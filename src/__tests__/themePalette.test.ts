@@ -168,6 +168,24 @@ describe("themes/moods — preset metadata", () => {
     }
   });
 
+  it("keeps mood glass presets transparent enough for native Acrylic", () => {
+    const ceilings = {
+      "--glass-clear": 0.02,
+      "--glass-ground": 0.26,
+      "--glass-frame": 0.14,
+      "--glass-standard": 0.16,
+      "--glass-dense": 0.2,
+      "--glass-thick": 0.24,
+    } as const;
+
+    for (const preset of MOOD_PRESETS) {
+      const vars = moodPresetToCSS(preset.id);
+      for (const [key, ceiling] of Object.entries(ceilings)) {
+        expect(rgbaAlpha(vars[key]), `${preset.id} ${key}`).toBeLessThanOrEqual(ceiling);
+      }
+    }
+  });
+
   it("keeps primary action foreground contrast above AA for every mood", () => {
     for (const preset of MOOD_PRESETS) {
       const vars = moodPresetToCSS(preset.id);
@@ -176,6 +194,12 @@ describe("themes/moods — preset metadata", () => {
     }
   });
 });
+
+function rgbaAlpha(value: string): number {
+  const match = /rgba\([^)]*,\s*(\d*\.?\d+)\)/.exec(value);
+  if (!match) throw new Error(`Expected rgba token, received ${value}`);
+  return Number(match[1]);
+}
 
 function contrastRatio(a: string, b: string): number {
   const lighter = Math.max(relativeLuminance(a), relativeLuminance(b));

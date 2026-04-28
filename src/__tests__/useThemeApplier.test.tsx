@@ -25,7 +25,7 @@ describe("useThemeApplier", () => {
     });
 
     const style = document.documentElement.style;
-    expect(style.getPropertyValue("--terminal-canvas-bg").trim()).toBe("#101b2c");
+    expect(style.getPropertyValue("--terminal-canvas-bg").trim()).toBe("#07080d");
     expect(style.getPropertyValue("--gold").trim()).toBe("#f0cf7a");
     expect(localStorage.getItem("aether:theme")).toBe("catppuccin-latte");
     expect(localStorage.getItem("aether:moodPreset")).toBe("aether-sky");
@@ -37,14 +37,14 @@ describe("useThemeApplier", () => {
     await waitFor(() => {
       expect(document.documentElement.dataset.mood).toBe("aether-dream");
     });
-    expect(document.documentElement.style.getPropertyValue("--terminal-canvas-bg").trim()).toBe("#171325");
+    expect(document.documentElement.style.getPropertyValue("--terminal-canvas-bg").trim()).toBe("#07080d");
 
     rerender(<ThemeProbe themeId="aether-dark" moodPresetId="aether-pro" />);
 
     await waitFor(() => {
       expect(document.documentElement.dataset.mood).toBe("aether-pro");
     });
-    expect(document.documentElement.style.getPropertyValue("--terminal-canvas-bg").trim()).toBe("#10161b");
-    expect(document.documentElement.style.getPropertyValue("--terminal-watermark-opacity").trim()).toBe("0.085");
+    expect(document.documentElement.style.getPropertyValue("--terminal-canvas-bg").trim()).toBe("#07080d");
+    expect(document.documentElement.style.getPropertyValue("--terminal-watermark-opacity").trim()).toBe("0.045");
   });
 });

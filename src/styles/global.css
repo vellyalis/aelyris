@@ -3,7 +3,7 @@
 :root {
   /* Layered glass system — high contrast between zones.
    *
-   * Alphas tuned 2026-05-02 to let the Win11 Mica material show
+   * Alphas tuned 2026-05-02 to let the Win11 Acrylic/Mica material show
    * through cleanly. Previous values (0.45 / 0.55 / 0.62 …) plus
    * 12-20 px backdrop-filter blur were stacking enough opaque
    * paint that the OS wallpaper was barely perceptible. The new
@@ -19,17 +19,17 @@
   --aether-champagne: #d8b766;
 
   /* Level 0: Terminal center — warm passthrough */
-  --glass-clear: rgba(10, 9, 13, 0.06);
+  --glass-clear: rgba(10, 9, 13, 0.018);
   /* Level 1: Ground — sidebar rail, darkest anchor */
-  --glass-ground: rgba(13, 12, 15, 0.58);
+  --glass-ground: rgba(13, 12, 15, 0.24);
   /* Level 2: Frame — header, statusbar */
-  --glass-frame: rgba(24, 22, 27, 0.34);
+  --glass-frame: rgba(24, 22, 27, 0.12);
   /* Level 3: Standard — left panel */
-  --glass-standard: rgba(26, 27, 32, 0.4);
+  --glass-standard: rgba(26, 27, 32, 0.14);
   /* Level 3.5: Dense — right panel (higher info density) */
-  --glass-dense: rgba(27, 26, 33, 0.48);
+  --glass-dense: rgba(27, 26, 33, 0.18);
   /* Level 4: Thick — cards, elevated surfaces */
-  --glass-thick: rgba(36, 36, 44, 0.54);
+  --glass-thick: rgba(36, 36, 44, 0.22);
   /* Level 5: Solid — modals, dialogs (still opaque-ish so dialog
      chrome reads against any wallpaper, not just dark ones). */
   --glass-solid: rgba(26, 26, 26, 0.78);
@@ -43,30 +43,30 @@
   --aether-border: rgba(231, 211, 168, 0.065);
   --aether-border-strong: rgba(231, 211, 168, 0.12);
 
-  --terminal-canvas-bg: #141520;
+  --terminal-canvas-bg: #07080d;
   --terminal-well-bg:
-    radial-gradient(ellipse at 50% 0%, rgba(216, 183, 102, 0.09), transparent 45%),
-    linear-gradient(180deg, rgba(21, 19, 23, 0.88), rgba(9, 10, 17, 0.94));
-  --terminal-chrome-bg: rgba(27, 22, 19, 0.58);
-  --terminal-chrome-bg-focus: rgba(42, 33, 24, 0.72);
+    radial-gradient(ellipse at 50% 0%, rgba(216, 183, 102, 0.045), transparent 46%),
+    linear-gradient(180deg, rgba(12, 13, 20, 0.62), rgba(4, 5, 9, 0.84));
+  --terminal-chrome-bg: rgba(16, 17, 24, 0.34);
+  --terminal-chrome-bg-focus: rgba(24, 24, 31, 0.48);
   --terminal-rim-warm: rgba(216, 183, 102, 0.16);
   --terminal-border: rgba(216, 183, 102, 0.085);
   --terminal-shadow-inset:
     inset 0 1px 0 rgba(255, 244, 214, 0.055),
     inset 0 0 0 1px var(--terminal-border),
-    inset 0 28px 70px rgba(0, 0, 0, 0.36),
-    inset 0 -20px 56px rgba(5, 7, 13, 0.34);
+    inset 0 34px 92px rgba(0, 0, 0, 0.54),
+    inset 0 -26px 72px rgba(3, 4, 8, 0.48);
   --terminal-shell-shadow: 0 24px 70px rgba(0, 0, 0, 0.24);
   --terminal-viewport-shadow:
     inset 0 0 0 1px rgba(137, 220, 235, 0.045),
-    inset 0 22px 62px rgba(0, 0, 0, 0.28),
-    inset 0 -18px 46px rgba(0, 0, 0, 0.22);
+    inset 0 28px 78px rgba(0, 0, 0, 0.42),
+    inset 0 -20px 54px rgba(0, 0, 0, 0.34);
   --terminal-viewport-occlusion:
     linear-gradient(180deg, rgba(0, 0, 0, 0.24), transparent 48px),
     linear-gradient(0deg, rgba(0, 0, 0, 0.2), transparent 42px),
     linear-gradient(90deg, rgba(216, 183, 102, 0.035), transparent 26%, transparent 74%, rgba(137, 220, 235, 0.026));
-  --terminal-watermark-opacity: 0.12;
-  --terminal-watermark-filter: drop-shadow(0 18px 54px rgba(216, 183, 102, 0.12));
+  --terminal-watermark-opacity: 0.055;
+  --terminal-watermark-filter: drop-shadow(0 18px 54px rgba(216, 183, 102, 0.08));
 
   --chrome-frame-bg:
     linear-gradient(180deg, rgba(255, 244, 214, 0.035), transparent 72%),
@@ -77,71 +77,71 @@
     inset 0 1px 0 rgba(255, 244, 214, 0.07),
     inset 0 -1px 0 rgba(255, 255, 255, 0.028);
   --material-stage-bg:
-    radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 46%),
-    linear-gradient(180deg, rgba(255, 244, 214, 0.026), rgba(0, 0, 0, 0.04)),
+    radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--accent) 3%, transparent), transparent 48%),
+    linear-gradient(180deg, rgba(255, 244, 214, 0.012), rgba(0, 0, 0, 0.018)),
     var(--glass-clear);
   --material-stage-shadow:
-    inset 0 1px 0 rgba(255, 244, 214, 0.065),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.03),
-    inset 0 24px 70px rgba(255, 255, 255, 0.012),
-    inset 0 -32px 92px rgba(0, 0, 0, 0.18);
-  --material-panel-filter: blur(22px) saturate(1.1);
+    inset 0 1px 0 rgba(255, 244, 214, 0.04),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.018),
+    inset 0 -28px 80px rgba(0, 0, 0, 0.11);
+  --material-panel-filter: blur(12px) saturate(1.04);
   --material-panel-shadow:
     var(--rim-top),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.045),
-    0 18px 46px rgba(0, 0, 0, 0.16);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.034),
+    0 8px 24px rgba(0, 0, 0, 0.12);
   --material-card-shadow:
     var(--rim-top),
-    0 0 0 1px rgba(255, 255, 255, 0.055),
-    0 1px 2px rgba(0, 0, 0, 0.12),
-    0 8px 22px rgba(0, 0, 0, 0.1);
-  --terminal-shell-filter: blur(18px) saturate(1.08);
+    0 0 0 1px rgba(255, 255, 255, 0.04),
+    0 1px 2px rgba(0, 0, 0, 0.1),
+    0 6px 16px rgba(0, 0, 0, 0.08);
+  --terminal-shell-filter: none;
   --terminal-shell-depth:
     var(--terminal-shadow-inset),
-    inset 0 0 0 1px color-mix(in srgb, var(--terminal-border) 84%, transparent),
-    inset 0 1px 0 rgba(255, 244, 214, 0.07),
-    inset 0 -1px 0 rgba(137, 220, 235, 0.026);
+    inset 0 0 0 1px color-mix(in srgb, var(--terminal-border) 70%, transparent),
+    inset 0 1px 0 rgba(255, 244, 214, 0.05),
+    inset 0 -1px 0 rgba(137, 220, 235, 0.018);
 
   --mood-root-glow:
-    linear-gradient(125deg, rgba(216, 183, 102, 0.08), transparent 32%),
-    linear-gradient(300deg, rgba(137, 220, 235, 0.055), transparent 38%),
-    linear-gradient(180deg, rgba(9, 11, 19, 0.1), rgba(9, 11, 19, 0.24));
+    linear-gradient(125deg, rgba(216, 183, 102, 0.045), transparent 32%),
+    linear-gradient(300deg, rgba(137, 220, 235, 0.032), transparent 38%),
+    linear-gradient(180deg, rgba(9, 11, 19, 0.035), rgba(9, 11, 19, 0.1));
+  --mood-root-glow-opacity: 0.28;
   --mood-root-texture:
-    linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.018) 50%, transparent),
-    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.012) 0 1px, transparent 1px 4px);
-  --mood-root-texture-opacity: 0.32;
+    linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.012) 50%, transparent),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.008) 0 1px, transparent 1px 4px);
+  --mood-root-texture-opacity: 0.08;
   --mood-window-rim:
     inset 0 1px 0 rgba(255, 244, 214, 0.1),
     inset 0 0 0 1px rgba(216, 183, 102, 0.055),
     inset 0 -1px 0 rgba(137, 220, 235, 0.035);
   --mood-left-panel-bg:
-    linear-gradient(180deg, rgba(255, 244, 214, 0.035), transparent 26%),
-    linear-gradient(135deg, rgba(42, 33, 28, 0.14), rgba(20, 23, 34, 0.18)),
+    linear-gradient(180deg, rgba(255, 244, 214, 0.024), transparent 26%),
+    linear-gradient(135deg, rgba(42, 33, 28, 0.07), rgba(20, 23, 34, 0.09)),
     var(--glass-standard);
   --mood-center-panel-bg:
-    radial-gradient(ellipse at 50% 0%, rgba(216, 183, 102, 0.06), transparent 42%),
-    linear-gradient(180deg, rgba(18, 15, 13, 0.12), rgba(9, 11, 18, 0.08)),
+    radial-gradient(ellipse at 50% 0%, rgba(216, 183, 102, 0.024), transparent 42%),
+    linear-gradient(180deg, rgba(18, 15, 13, 0.04), rgba(9, 11, 18, 0.026)),
     var(--aether-bg);
   --mood-right-panel-bg:
-    linear-gradient(180deg, rgba(255, 244, 214, 0.045), transparent 24%),
-    linear-gradient(145deg, rgba(34, 25, 22, 0.12), rgba(22, 26, 38, 0.18)),
+    linear-gradient(180deg, rgba(255, 244, 214, 0.032), transparent 24%),
+    linear-gradient(145deg, rgba(34, 25, 22, 0.07), rgba(22, 26, 38, 0.1)),
     var(--glass-dense);
   --mood-widget-bg: var(--glass-thick);
   --mood-widget-veil:
-    linear-gradient(180deg, rgba(255, 244, 214, 0.055), transparent 22%),
-    linear-gradient(135deg, rgba(216, 183, 102, 0.055), transparent 42%),
-    linear-gradient(315deg, rgba(137, 220, 235, 0.035), transparent 48%);
+    linear-gradient(180deg, rgba(255, 244, 214, 0.035), transparent 22%),
+    linear-gradient(135deg, rgba(216, 183, 102, 0.032), transparent 42%),
+    linear-gradient(315deg, rgba(137, 220, 235, 0.024), transparent 48%);
   --mood-sessions-widget-bg:
-    linear-gradient(160deg, rgba(41, 39, 48, 0.66), rgba(21, 22, 30, 0.54)),
+    linear-gradient(160deg, rgba(41, 39, 48, 0.18), rgba(21, 22, 30, 0.16)),
     var(--glass-thick);
   --mood-workflow-widget-bg:
-    linear-gradient(180deg, rgba(30, 35, 42, 0.5), rgba(21, 20, 25, 0.48)),
+    linear-gradient(180deg, rgba(30, 35, 42, 0.16), rgba(21, 20, 25, 0.14)),
     var(--glass-thick);
   --mood-toolkit-widget-bg:
-    linear-gradient(150deg, rgba(42, 34, 25, 0.42), rgba(18, 23, 35, 0.54)),
+    linear-gradient(150deg, rgba(42, 34, 25, 0.14), rgba(18, 23, 35, 0.17)),
     var(--glass-thick);
   --mood-logs-widget-bg:
-    linear-gradient(180deg, rgba(10, 12, 19, 0.58), rgba(7, 8, 13, 0.68)),
+    linear-gradient(180deg, rgba(10, 12, 19, 0.42), rgba(7, 8, 13, 0.5)),
     var(--glass-dense);
   --mood-selection-bg: rgba(200, 160, 80, 0.25);
 
@@ -598,6 +598,18 @@ body,
   position: relative;
 }
 
+/* Browser-only preview backplane. Tauri gets real Acrylic from DWM, but
+ * localhost screenshots do not have an OS backdrop behind transparent
+ * pixels; without this guard they render as a white page and falsely look
+ * "not designed". Keep the app stage itself transparent either way. */
+html[data-aether-host="browser"],
+html[data-aether-host="browser"] body {
+  background:
+    radial-gradient(ellipse at 22% 0%, rgba(73, 46, 130, 0.34), transparent 42%),
+    radial-gradient(ellipse at 70% 100%, rgba(18, 62, 85, 0.24), transparent 46%),
+    linear-gradient(180deg, #0f0b1d 0%, #090d15 62%, #07111a 100%);
+}
+
 /* Window-focus override.
  *
  * Win11 suppresses the Acrylic backdrop on inactive windows by OS
@@ -616,13 +628,13 @@ body,
  * event listener). The override below applies only when the
  * dataset attribute explicitly says the window is blurred. */
 body[data-window-focused="false"] {
-  --glass-frame: rgba(24, 22, 27, 0.46);
-  --glass-standard: rgba(26, 27, 32, 0.52);
-  --glass-dense: rgba(27, 26, 33, 0.6);
-  --glass-thick: rgba(36, 36, 44, 0.66);
-  /* Ground anchor stays slightly more solid on inactive — it's
-   * the rail you orient against, so it should still hold. */
-  --glass-ground: rgba(13, 12, 15, 0.68);
+  --glass-frame: rgba(24, 22, 27, 0.16);
+  --glass-standard: rgba(26, 27, 32, 0.18);
+  --glass-dense: rgba(27, 26, 33, 0.22);
+  --glass-thick: rgba(36, 36, 44, 0.27);
+  /* Ground anchor stays readable on inactive, but must not turn
+   * the window into an opaque slab when Acrylic is muted by DWM. */
+  --glass-ground: rgba(13, 12, 15, 0.28);
 }
 
 /* Broad light leak, not a decorative orb: warm console glow + cool moon edge. */
@@ -631,6 +643,7 @@ body[data-window-focused="false"] {
   position: fixed;
   inset: 0;
   background: var(--mood-root-glow);
+  opacity: var(--mood-root-glow-opacity);
   pointer-events: none;
   z-index: 0;
 }
@@ -691,7 +704,7 @@ body[data-window-focused="false"] {
   gap: var(--space-5);
   padding: var(--space-5);
   overflow: hidden;
-  background: var(--material-stage-bg);
+  background: transparent;
   box-shadow: var(--material-stage-shadow);
 }
 
@@ -705,7 +718,7 @@ body[data-window-focused="false"] {
   background:
     linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.018) 50%, transparent),
     repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.01) 0 1px, transparent 1px 4px);
-  opacity: 0.46;
+  opacity: 0.12;
 }
 
 .app-main > * {
@@ -788,16 +801,17 @@ body[data-window-focused="false"] {
   border-radius: calc(var(--radius-lg) + 6px);
   padding: var(--space-3);
   background: var(--mood-center-panel-bg);
-  backdrop-filter: var(--material-panel-filter);
-  -webkit-backdrop-filter: var(--material-panel-filter);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   /* Central deck: one low-alpha acrylic parent surface, with the terminal
    * shell recessed inside it. The child terminal owns the detailed texture;
    * this layer only supplies the shared workspace material and edge depth. */
   border-left: 0;
   border-right: 0;
   box-shadow:
-    var(--material-panel-shadow),
-    inset 0 28px 72px rgba(0, 0, 0, 0.1);
+    var(--rim-top),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.024),
+    inset 0 24px 70px rgba(0, 0, 0, 0.06);
 }
 
 .right-panel {
@@ -830,11 +844,9 @@ body[data-window-focused="false"] {
   transition: width 120ms var(--ease-silk, cubic-bezier(0.4, 0, 0.2, 1));
 }
 
-/* Bento widget card — independent glass surface within right-panel.
- * Uses --glass-thick (0.55) over parent --glass-dense (0.42)
- * = combined 0.7390 (within 0.74 ceiling).
- * Apple 3-stack shadow: ambient (wide spread) + key (directional) + contact.
- * No backdrop-filter on child — parent already blurs. */
+/* Bento widget card — independent low-alpha surface within right-panel.
+ * The child stays deliberately thin; the parent panel owns the blur and
+ * the card only adds a hairline rim plus shallow contact depth. */
 .bento-widget {
   position: relative;
   isolation: isolate;
@@ -858,7 +870,7 @@ body[data-window-focused="false"] {
   z-index: 0;
   pointer-events: none;
   background: var(--mood-widget-veil);
-  opacity: 0.78;
+  opacity: 0.24;
 }
 
 .bento-widget > * {
@@ -870,8 +882,8 @@ body[data-window-focused="false"] {
   background: var(--mood-sessions-widget-bg);
   box-shadow:
     var(--rim-top-strong),
-    0 0 0 1px rgba(216, 183, 102, 0.085),
-    0 10px 34px rgba(0, 0, 0, 0.18);
+    0 0 0 1px rgba(216, 183, 102, 0.052),
+    0 8px 24px rgba(0, 0, 0, 0.14);
 }
 
 .bento-widget[data-widget="workflow"] {
@@ -882,17 +894,17 @@ body[data-window-focused="false"] {
   background: var(--mood-toolkit-widget-bg);
   box-shadow:
     var(--rim-top-strong),
-    0 0 0 1px rgba(216, 183, 102, 0.095),
-    0 12px 38px rgba(0, 0, 0, 0.22),
-    0 0 28px rgba(216, 183, 102, 0.045);
+    0 0 0 1px rgba(216, 183, 102, 0.06),
+    0 8px 24px rgba(0, 0, 0, 0.16),
+    0 0 18px rgba(216, 183, 102, 0.025);
 }
 
 .bento-widget[data-widget="logs"] {
   background: var(--mood-logs-widget-bg);
   box-shadow:
     var(--rim-top),
-    inset 0 0 0 1px rgba(137, 220, 235, 0.055),
-    inset 0 18px 46px rgba(0, 0, 0, 0.22);
+    inset 0 0 0 1px rgba(137, 220, 235, 0.04),
+    inset 0 16px 42px rgba(0, 0, 0, 0.18);
 }
 
 /* Hover lift — Apple-style interactive card elevation.
@@ -901,11 +913,11 @@ body[data-window-focused="false"] {
 .bento-widget:hover {
   box-shadow:
     var(--rim-top-strong, var(--rim-top)),
-    0 0 0 1px rgba(255, 255, 255, 0.08),
-    0 2px 8px rgba(0, 0, 0, 0.18),
-    0 8px 24px rgba(0, 0, 0, 0.12),
-    0 0 20px rgba(200, 160, 80, 0.04);
-  transform: translateY(-1px);
+    0 0 0 1px rgba(255, 255, 255, 0.055),
+    0 2px 6px rgba(0, 0, 0, 0.14),
+    0 8px 18px rgba(0, 0, 0, 0.1),
+    0 0 14px rgba(200, 160, 80, 0.025);
+  transform: translateY(-0.5px);
 }
 
 /* Focus ring for keyboard navigation (Apple HIG compliance) */
