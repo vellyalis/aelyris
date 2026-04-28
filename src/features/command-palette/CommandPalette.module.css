@@ -129,7 +129,7 @@
 .itemLabel {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 1px; /* whisper gap: title/description 密接配置 (sub-token) */
   flex: 1;
   min-width: 0;
 }

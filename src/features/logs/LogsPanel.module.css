@@ -126,7 +126,7 @@
   letter-spacing: 0.04em;
   white-space: nowrap;
   padding: 0 4px;
-  border-radius: 2px;
+  border-radius: 2px; /* sub-token: level badge */
   align-self: center;
 }
 

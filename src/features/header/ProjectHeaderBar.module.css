@@ -44,7 +44,7 @@
 .projectInfo {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 1px; /* whisper gap: 2行ラベル密接配置 (sub-token) */
   min-width: 0;
 }
 

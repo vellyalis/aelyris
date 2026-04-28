@@ -9,7 +9,7 @@
 
 .tabs {
   display: flex;
-  gap: 1px;
+  gap: 1px; /* whisper gap: 意図的なタブ区切り (sub-token) */
   overflow-x: auto;
   flex: 1;
 }

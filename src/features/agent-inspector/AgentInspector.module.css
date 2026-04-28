@@ -129,7 +129,7 @@
 .orchestraBtn {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: var(--space-2); /* 4px, round up from 3px */
   padding: 1px var(--space-2);
   border: 1px solid var(--gold-subtle);
   border-radius: var(--radius-pill);
@@ -499,7 +499,7 @@
 .cardBranch {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--space-1); /* 2px */
   font-size: var(--text-xs);
   color: var(--ctp-green);
   font-family: var(--font-mono);
@@ -520,7 +520,7 @@
 .cardFiles {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--space-1); /* 2px */
   font-size: var(--text-xs);
   color: var(--text-muted);
 }

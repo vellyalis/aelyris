@@ -81,7 +81,7 @@
   padding: var(--space-2);
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 1px; /* whisper gap: picker 項目区切り (sub-token) */
   box-shadow: 0 -4px 16px var(--black-50);
 }
 

@@ -105,7 +105,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: var(--space-1); /* 2px */
 }
 .metricValue {
   font-size: var(--text-lg);
@@ -163,7 +163,7 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  margin-right: 3px;
+  margin-right: var(--space-1); /* 2px, round up from 3px */
   vertical-align: middle;
 }
 
@@ -171,7 +171,7 @@
 .toolList {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: var(--space-2); /* 4px, round up from 3px */
 }
 .toolRow {
   display: flex;
@@ -191,13 +191,13 @@
   flex: 1;
   height: 4px;
   background: var(--white-4);
-  border-radius: 2px;
+  border-radius: 2px; /* sub-token: 4px 未満のバー要素 */
   overflow: hidden;
 }
 .toolFill {
   height: 100%;
   background: var(--ctp-mauve);
-  border-radius: 2px;
+  border-radius: 2px; /* sub-token: fill バー内側 */
   transition: width var(--duration-slow) var(--ease-silk);
 }
 .toolCount {
@@ -212,7 +212,7 @@
 .statsList {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-1); /* 2px */
 }
 .statRow {
   display: flex;

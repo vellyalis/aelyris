@@ -74,7 +74,7 @@
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-1); /* 2px */
   overflow-y: auto;
   flex-shrink: 0;
 }
