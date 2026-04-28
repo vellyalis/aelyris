@@ -283,6 +283,10 @@ export function useGhostPaintForFile(args: UseGhostPaintArgs): UseGhostPaintResu
   layersRef.current = relevantLayers;
   const relativePathRef = useRef(relativePath);
   relativePathRef.current = relativePath;
+  // Apply actions must require a mounted editor, not only cached layer/path
+  // refs, otherwise external commands can write an invisible ghost diff.
+  const editorReadyRef = useRef(false);
+  editorReadyRef.current = !!editor && !!monaco;
 
   // In-flight lock — blocks Tab / Shift+Tab bursts from racing past the
   // backend's `remove_hunk` mutation and accidentally applying the next
@@ -291,6 +295,7 @@ export function useGhostPaintForFile(args: UseGhostPaintArgs): UseGhostPaintResu
 
   const acceptHunkAtLine = useCallback(
     async (line: number): Promise<string | null> => {
+      if (!editorReadyRef.current) return null;
       if (applyInFlightRef.current) return null;
       const hits = hunksAtLine(line);
       if (hits.length === 0) return null;
@@ -313,6 +318,7 @@ export function useGhostPaintForFile(args: UseGhostPaintArgs): UseGhostPaintResu
   );
 
   const acceptAllInFile = useCallback(async (): Promise<string | null> => {
+    if (!editorReadyRef.current) return null;
     if (applyInFlightRef.current) return null;
     const rel = relativePathRef.current;
     if (!rel) return null;

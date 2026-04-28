@@ -581,6 +581,44 @@ describe("useGhostPaintForFile (integration)", () => {
     expect(applyCalls).toHaveLength(2);
   });
 
+  it("acceptAllInFile no-ops when the editor handle becomes null", async () => {
+    invokeMock.mockImplementation((cmd: string, args: Record<string, unknown>) => {
+      if (cmd === "list_ghost_layers") {
+        return Promise.resolve(snap([makeLayer("l1", ["src/foo.ts"])]));
+      }
+      if (cmd === "get_ghost_layer_file") {
+        return Promise.resolve(makeDelta("src/foo.ts"));
+      }
+      if (cmd === "apply_ghost_file") {
+        return Promise.resolve({
+          updatedContent: `after-${args.layerId}`,
+          filePath: "/repo/src/foo.ts",
+          remainingHunks: 0,
+        });
+      }
+      return Promise.reject(new Error(`unexpected ${cmd}`));
+    });
+
+    const fake = makeFakeEditor();
+    const { result, rerender } = renderHook(
+      ({ editor, monaco }: { editor: GhostEditor | null; monaco: MonacoNs | null }) =>
+        useGhostPaintForFile({
+          editor,
+          monaco,
+          filePath: "/repo/src/foo.ts",
+          projectPath: "/repo",
+        }),
+      { initialProps: { editor: fake.editor as GhostEditor | null, monaco: fake.monaco as MonacoNs | null } },
+    );
+
+    await waitFor(() => expect(result.current.layerCount).toBe(1));
+    rerender({ editor: null, monaco: null });
+
+    const next = await act(() => result.current.acceptAllInFile());
+    expect(next).toBeNull();
+    expect(invokeMock.mock.calls.some(([cmd]) => cmd === "apply_ghost_file")).toBe(false);
+  });
+
   it("dismissFileLayers invokes dismiss_ghost_file per layer with the relative path", async () => {
     invokeMock.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
       if (cmd === "list_ghost_layers") {
