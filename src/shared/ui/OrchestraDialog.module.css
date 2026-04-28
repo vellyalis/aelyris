@@ -214,7 +214,7 @@
   background: var(--gold);
   border: none;
   border-radius: var(--radius);
-  color: var(--aether-bg);
+  color: var(--text-on-accent);
   font-size: var(--text-base);
   font-weight: var(--weight-semibold);
   font-family: var(--font-ui);

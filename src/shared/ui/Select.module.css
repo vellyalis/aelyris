@@ -126,6 +126,7 @@
 
 .optionHint {
   margin-left: var(--space-3);
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: var(--text-sm);
+  line-height: var(--leading-normal);
 }

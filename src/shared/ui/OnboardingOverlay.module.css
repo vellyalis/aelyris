@@ -139,7 +139,7 @@
 .nextBtn {
   background: var(--gold);
   border: none;
-  color: var(--aether-bg);
+  color: var(--text-on-accent);
   font-size: var(--text-base);
   font-weight: var(--weight-semibold);
   font-family: var(--font-ui);

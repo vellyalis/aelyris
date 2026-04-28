@@ -50,7 +50,7 @@
 .btnPrimary {
   background: var(--gold);
   border-color: var(--gold);
-  color: var(--aether-bg);
+  color: var(--text-on-accent);
   font-weight: var(--weight-semibold);
 }
 

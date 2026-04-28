@@ -76,6 +76,9 @@ const FONT_SIZE = 14;
 const CELL_H = Math.round(FONT_SIZE * 1.25);
 const MIN_COLS = 20;
 const MIN_ROWS = 5;
+// Must match `.terminalViewport` padding so PTY cols/rows describe the
+// drawable canvas well, not the decorative glass gutter around it.
+const CANVAS_GUTTER = 10;
 
 /* Cell width was previously hardcoded to `Math.round(FONT_SIZE * 0.6)`
  * (= 8 px at fontSize 14). The actual IBM Plex Mono advance at 14 px
@@ -612,8 +615,8 @@ export function NativeTerminalArea({
     if (!el) return;
     let pending: number | null = null;
     const computeDims = (): Dims | null => {
-      const w = el.clientWidth;
-      const h = el.clientHeight;
+      const w = el.clientWidth - CANVAS_GUTTER * 2;
+      const h = el.clientHeight - CANVAS_GUTTER * 2;
       if (w <= 0 || h <= 0) return null;
       return {
         cols: Math.max(MIN_COLS, Math.floor(w / CELL_W)),

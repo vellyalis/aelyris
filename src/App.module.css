@@ -89,13 +89,9 @@
   display: flex;
   min-width: 0;
   min-height: 0;
-  padding: var(--space-4);
+  padding: 0;
   border-radius: calc(var(--radius-lg) + 6px);
-  background:
-    radial-gradient(ellipse at 50% 0%, rgba(216, 183, 102, 0.075), transparent 48%),
-    linear-gradient(180deg, rgba(10, 11, 18, 0.46), rgba(6, 7, 12, 0.38));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 244, 214, 0.05),
-    inset 0 0 0 1px rgba(216, 183, 102, 0.055),
-    inset 0 30px 80px rgba(0, 0, 0, 0.22);
+  background: transparent;
+  box-shadow: none;
+  overflow: hidden;
 }

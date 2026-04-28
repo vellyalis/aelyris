@@ -5,14 +5,13 @@
   overflow: hidden;
   position: relative;
   isolation: isolate;
-  margin: var(--space-4);
+  gap: var(--space-3);
+  min-height: 0;
+  margin: 0;
   border-radius: var(--radius-lg);
-  background: var(--terminal-well-bg);
-  border: 1px solid var(--terminal-border);
-  box-shadow:
-    var(--terminal-shadow-inset),
-    0 1px 0 rgba(255, 244, 214, 0.035),
-    var(--terminal-shell-shadow);
+  background: transparent;
+  border: 0;
+  box-shadow: none;
 }
 
 .terminalArea::before,
@@ -26,17 +25,11 @@
 }
 
 .terminalArea::before {
-  background:
-    radial-gradient(ellipse at 50% 102%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 54%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 18%, transparent 82%, rgba(0, 0, 0, 0.18));
-  opacity: 0.78;
+  display: none;
 }
 
 .terminalArea::after {
-  inset: 1px;
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--terminal-rim-warm) 65%, transparent),
-    inset 0 0 42px rgba(0, 0, 0, 0.18);
+  display: none;
 }
 
 .terminalArea > * {
@@ -44,23 +37,24 @@
   z-index: 1;
 }
 
-/* Padding gives the canvas breathing room inside the pane so glyphs
- * don't butt against the pane edge. The previous comment referenced
- * xterm.js's CompositionHelper coordinate system — xterm was removed
- * in Phase 2 (`d4df53a`). The padding stays for visual spacing only,
- * and the native canvas/IME path uses `set_ime_position` IPC, not
- * DOM-relative positioning. */
+/* The decorative gutter is applied inside `.terminalViewport`; this container
+ * stays flush so ResizeObserver has one stable outer measurement target. */
 .terminalContainer {
   flex: 1;
   overflow: hidden;
   display: flex;
-  padding: var(--space-6);
+  padding: 0;
   position: relative;
   min-height: 0;
 }
 
 .terminalViewport {
   position: relative;
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: 10px;
   width: 100%;
   height: 100%;
   overflow: hidden;
@@ -68,7 +62,10 @@
   background:
     radial-gradient(ellipse at 50% 50%, color-mix(in srgb, var(--accent) 5%, transparent), transparent 58%),
     var(--terminal-canvas-bg);
-  box-shadow: var(--terminal-viewport-shadow);
+  box-shadow:
+    inset 0 0 0 1px rgba(137, 220, 235, 0.05),
+    var(--terminal-viewport-shadow),
+    0 16px 34px rgba(0, 0, 0, 0.16);
 }
 
 .terminalViewport::before {
@@ -84,12 +81,12 @@
   content: "";
   position: absolute;
   top: 0;
-  left: 18px;
-  right: 18px;
+  left: 18%;
+  right: 18%;
   height: 1px;
   z-index: 3;
   pointer-events: none;
-  background: linear-gradient(90deg, transparent, rgba(255, 244, 214, 0.2), transparent);
+  background: linear-gradient(90deg, transparent, rgba(255, 244, 214, 0.12), transparent);
 }
 
 .terminalWatermark {
@@ -112,8 +109,11 @@
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-4);
-  background: var(--terminal-chrome-bg);
-  border-bottom: 1px solid var(--white-6);
+  background: rgba(255, 255, 255, 0.035);
+  border-radius: var(--radius);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 244, 214, 0.06),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.045);
 }
 
 .searchInput {
@@ -203,8 +203,11 @@
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
-  background: var(--terminal-chrome-bg);
-  border-bottom: 1px solid var(--white-6);
+  background: rgba(255, 255, 255, 0.035);
+  border-radius: var(--radius);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 244, 214, 0.06),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.045);
   color: var(--text-primary);
   font-size: var(--text-sm);
   font-family: var(--font-mono);
@@ -212,7 +215,9 @@
 
 .exitBannerCrashed {
   background: color-mix(in srgb, var(--ctp-red) 14%, var(--aether-bg-elevated));
-  border-bottom-color: var(--ctp-red);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--ctp-red) 26%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--ctp-red) 40%, transparent);
   color: var(--ctp-red);
 }
 

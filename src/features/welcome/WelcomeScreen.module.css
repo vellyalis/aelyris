@@ -108,10 +108,11 @@
   border: none;
   border-radius: var(--radius);
   background: var(--gold);
-  color: var(--aether-bg);
+  color: var(--text-on-accent);
   font-size: var(--text-xl);
   font-weight: var(--weight-semibold);
   font-family: var(--font-ui);
+  line-height: 1;
   cursor: pointer;
   transition:
     opacity 0.15s,

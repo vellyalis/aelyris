@@ -206,7 +206,7 @@
   border: none;
   border-radius: var(--radius-sm);
   background: var(--gold);
-  color: var(--aether-bg);
+  color: var(--text-on-accent);
   font-size: var(--text-base);
   font-weight: var(--weight-semibold);
   cursor: pointer;

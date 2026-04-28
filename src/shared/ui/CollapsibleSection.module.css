@@ -12,7 +12,7 @@
     0 0 0 1px rgba(255, 255, 255, 0.06),
     0 1px 3px rgba(0, 0, 0, 0.12),
     0 4px 12px rgba(0, 0, 0, 0.08);
-  margin: var(--space-1) var(--space-3);
+  margin: 0;
   overflow: hidden;
   transition:
     box-shadow var(--duration-normal) var(--ease-apple, cubic-bezier(0.25, 0.1, 0.25, 1)),
@@ -53,13 +53,15 @@
   width: 100%;
   height: 32px;
   padding: 0 var(--space-3);
-  background: transparent;
+  background:
+    linear-gradient(180deg, rgba(255, 244, 214, 0.035), transparent 78%),
+    rgba(255, 255, 255, 0.012);
   border: none;
   color: var(--text-muted);
   font-family: var(--font-ui);
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
   text-transform: uppercase;
   cursor: pointer;
   outline: none;
@@ -109,6 +111,7 @@
   min-height: 0;
   overflow: hidden;
   flex: 1 1 auto;
+  background: rgba(255, 255, 255, 0.012);
 }
 
 /* Smooth height animation when toggling. Radix exposes the

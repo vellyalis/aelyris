@@ -14,23 +14,27 @@
   padding: 0 var(--space-3);
   margin: 0;
   min-height: 32px;
-  background: var(--terminal-chrome-bg);
+  background:
+    linear-gradient(180deg, rgba(255, 244, 214, 0.04), transparent 70%),
+    rgba(255, 255, 255, 0.03);
   border: 0;
-  border-top: 1px solid var(--terminal-border);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  border-radius: var(--radius);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 244, 214, 0.055),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.045);
   transition:
-    border-top-color var(--duration-fast) var(--ease-silk, cubic-bezier(0.4, 0, 0.2, 1)),
     background var(--duration-fast) var(--ease-silk, cubic-bezier(0.4, 0, 0.2, 1)),
     box-shadow var(--duration-fast) var(--ease-silk, cubic-bezier(0.4, 0, 0.2, 1));
 }
 
 .bar.focused {
-  background: var(--terminal-chrome-bg-focus);
-  border-top-color: var(--gold-dim);
+  background:
+    linear-gradient(180deg, rgba(255, 244, 214, 0.07), transparent 70%),
+    rgba(255, 255, 255, 0.04);
   box-shadow:
-    0 -4px 12px rgba(0, 0, 0, 0.25),
-    inset 0 1px 0 var(--gold-subtle);
+    inset 0 1px 0 rgba(255, 244, 214, 0.08),
+    inset 0 0 0 1px color-mix(in srgb, var(--gold) 22%, rgba(255, 255, 255, 0.04)),
+    0 10px 24px rgba(0, 0, 0, 0.14);
 }
 
 .bar.disabled {

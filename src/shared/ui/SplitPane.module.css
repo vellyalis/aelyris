@@ -17,7 +17,7 @@
  * identical regardless of which surface the user is resizing. */
 .handle {
   flex-shrink: 0;
-  background: var(--white-6);
+  background: transparent;
   transition: background var(--duration-fast) var(--ease-silk);
   z-index: 1;
 }

@@ -11,7 +11,7 @@
   top: 34px;
   width: 168px;
   height: 168px;
-  border: 1px solid rgba(216, 183, 102, 0.08);
+  border: 1px solid rgba(216, 183, 102, 0.045);
   border-left-color: transparent;
   border-bottom-color: rgba(137, 220, 235, 0.045);
   border-radius: 50%;
@@ -59,9 +59,17 @@
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4) var(--space-5);
+  grid-template-columns: repeat(auto-fit, minmax(min(128px, 100%), 1fr));
+  gap: var(--space-2);
+  margin: var(--space-3) var(--space-4) var(--space-4);
+  padding: var(--space-3);
+  border-radius: var(--radius);
+  background:
+    linear-gradient(180deg, rgba(255, 244, 214, 0.028), transparent 72%),
+    rgba(0, 0, 0, 0.12);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 244, 214, 0.04),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.035);
 }
 
 .action {
@@ -69,13 +77,16 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  min-height: 58px;
+  min-height: 56px;
   padding: var(--space-4);
-  border: 1px solid rgba(255, 244, 214, 0.07);
+  border: 0;
   border-radius: var(--radius);
   background:
-    linear-gradient(180deg, rgba(255, 244, 214, 0.052), transparent 42%),
-    rgba(255, 255, 255, 0.032);
+    linear-gradient(180deg, rgba(255, 244, 214, 0.032), transparent 48%),
+    rgba(255, 255, 255, 0.028);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 244, 214, 0.04),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.035);
   color: var(--text-secondary);
   font-size: var(--text-sm);
   font-family: var(--font-ui);
@@ -93,29 +104,29 @@
 .action::before {
   content: "";
   position: absolute;
-  inset: 0 auto 0 0;
-  width: 2px;
+  inset: 0 0 auto 0;
+  height: 2px;
+  width: auto;
   background: var(--tone, var(--gold));
-  opacity: 0.62;
+  opacity: 0.42;
 }
 
 .action[data-priority="primary"] {
-  grid-column: span 4;
-  min-height: 86px;
-  align-items: flex-end;
-  padding: var(--space-5);
+  grid-column: 1 / -1;
+  min-height: 64px;
+  align-items: center;
+  padding: var(--space-4);
   background:
     linear-gradient(135deg, rgba(216, 183, 102, 0.16), transparent 46%),
     linear-gradient(315deg, rgba(137, 220, 235, 0.08), transparent 52%),
     rgba(255, 255, 255, 0.045);
-  border-color: rgba(216, 183, 102, 0.18);
   box-shadow:
-    inset 0 1px 0 rgba(255, 244, 214, 0.1),
-    0 10px 24px rgba(0, 0, 0, 0.16);
+    inset 0 1px 0 rgba(255, 244, 214, 0.08),
+    inset 0 0 0 1px rgba(216, 183, 102, 0.11);
 }
 
 .action[data-priority="orbit"] {
-  grid-column: span 2;
+  grid-column: span 1;
 }
 
 .action[data-tone="git"] {
@@ -136,22 +147,24 @@
 
 .action:hover {
   background:
-    linear-gradient(180deg, rgba(255, 244, 214, 0.075), transparent 42%),
-    rgba(255, 255, 255, 0.06);
-  border-color: color-mix(in srgb, var(--tone, var(--gold)) 45%, rgba(255, 255, 255, 0.12));
+    linear-gradient(180deg, rgba(255, 244, 214, 0.055), transparent 48%),
+    rgba(255, 255, 255, 0.05);
   color: var(--text-primary);
   box-shadow:
-    0 2px 8px rgba(0, 0, 0, 0.2),
-    0 0 16px color-mix(in srgb, var(--tone, var(--gold)) 24%, transparent);
-  transform: translateY(-1px);
+    inset 0 1px 0 rgba(255, 244, 214, 0.06),
+    inset 0 0 0 1px color-mix(in srgb, var(--tone, var(--gold)) 28%, rgba(255, 255, 255, 0.04));
+  transform: translateY(-0.5px);
 }
 
 .actionIcon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.035);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.035);
   flex-shrink: 0;
   color: var(--tone, var(--text-muted));
   filter: drop-shadow(0 0 10px color-mix(in srgb, var(--tone, var(--gold)) 18%, transparent));
@@ -240,7 +253,7 @@
 }
 .editSave:hover {
   background: var(--gold);
-  color: var(--aether-bg);
+  color: var(--text-on-accent);
   border-color: var(--gold);
 }
 .editCancel:hover {
@@ -368,7 +381,7 @@
   background: var(--gold);
   border: none;
   border-radius: var(--radius);
-  color: var(--aether-bg);
+  color: var(--text-on-accent);
   font-size: var(--text-base);
   font-weight: var(--weight-semibold);
   padding: var(--space-2) var(--space-6);

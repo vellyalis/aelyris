@@ -258,6 +258,8 @@ export function PaneTreeRenderer({
           <div
             key={leaf.id}
             className={styles.terminalMount}
+            data-active={isActive ? "true" : undefined}
+            data-maximized={isMaximized ? "true" : undefined}
             style={
               rect && isVisible
                 ? {

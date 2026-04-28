@@ -97,7 +97,7 @@
 }
 .runBtn {
   background: var(--gold);
-  color: var(--aether-bg);
+  color: var(--text-on-accent);
   font-weight: var(--weight-semibold);
 }
 .runBtn:hover {

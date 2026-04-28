@@ -157,6 +157,7 @@ describe("themes/moods — preset metadata", () => {
       "--mood-center-panel-bg",
       "--mood-widget-bg",
       "--mood-selection-bg",
+      "--text-on-accent",
     ];
 
     for (const preset of MOOD_PRESETS) {
@@ -166,4 +167,37 @@ describe("themes/moods — preset metadata", () => {
       }
     }
   });
+
+  it("keeps primary action foreground contrast above AA for every mood", () => {
+    for (const preset of MOOD_PRESETS) {
+      const vars = moodPresetToCSS(preset.id);
+      const ratio = contrastRatio(vars["--gold"], vars["--text-on-accent"]);
+      expect(ratio, preset.id).toBeGreaterThanOrEqual(4.5);
+    }
+  });
 });
+
+function contrastRatio(a: string, b: string): number {
+  const lighter = Math.max(relativeLuminance(a), relativeLuminance(b));
+  const darker = Math.min(relativeLuminance(a), relativeLuminance(b));
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+function relativeLuminance(hex: string): number {
+  const [r, g, b] = hexToRgb(hex).map((channel) => {
+    const value = channel / 255;
+    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function hexToRgb(hex: string): [number, number, number] {
+  const match = /^#([0-9a-f]{6})$/i.exec(hex);
+  if (!match) throw new Error(`Expected 6-digit hex, received ${hex}`);
+  const value = match[1];
+  return [
+    Number.parseInt(value.slice(0, 2), 16),
+    Number.parseInt(value.slice(2, 4), 16),
+    Number.parseInt(value.slice(4, 6), 16),
+  ];
+}

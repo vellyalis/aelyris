@@ -3,8 +3,11 @@
   align-items: center;
   height: 28px;
   padding: 0 var(--space-4);
-  background: var(--glass-frame);
-  border-top: 1px solid var(--border);
+  background:
+    linear-gradient(180deg, rgba(255, 244, 214, 0.025), transparent 70%),
+    var(--glass-frame);
+  border-top: 0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
 }
 
 .tabs {
@@ -65,8 +68,9 @@
   left: var(--space-3);
   right: var(--space-3);
   bottom: 0;
-  height: 1px;
-  background: var(--gold);
+  height: 2px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--gold) 76%, transparent);
   pointer-events: none;
 }
 

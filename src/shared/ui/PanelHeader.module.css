@@ -1,7 +1,5 @@
 /* PanelHeader — single primitive for right-panel surfaces (Kanban, Helm,
-   Toolkit, InlineResultPanel, …). Matches the dominant pattern from the
-   per-feature audit: uppercase title, muted tone, border-bottom, right-side
-   actions cluster. `dense` trims the padding for cards (InlineResultPanel). */
+   Toolkit, InlineResultPanel, …). */
 
 .header {
   display: flex;
@@ -9,8 +7,11 @@
   gap: var(--space-3);
   width: 100%;
   padding: var(--space-4) var(--space-6);
-  border-bottom: 1px solid var(--border);
-  background: none;
+  border-bottom: 0;
+  background:
+    linear-gradient(180deg, rgba(255, 244, 214, 0.045), transparent 78%),
+    rgba(255, 255, 255, 0.012);
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.035);
   color: inherit;
   text-align: left;
   font: inherit;
@@ -20,7 +21,6 @@
    react to hover the same way the feature panels used to. */
 button.header {
   border: none;
-  border-bottom: 1px solid var(--border);
   cursor: pointer;
   transition: background var(--duration-fast);
 }
@@ -53,7 +53,7 @@ button.header:focus-visible {
 .title {
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
-  letter-spacing: 0.05em;
+  letter-spacing: 0;
   text-transform: uppercase;
   color: var(--text-muted);
 }

@@ -60,7 +60,7 @@
   /* 32 (track) - 14 (thumb) - 1 (right-padding) - 1 (left-padding,
    * cancelled by initial transform) = 17 px slide */
   transform: translate(15px, 1px);
-  background: var(--aether-bg-surface);
+  background: var(--text-on-accent);
 }
 
 /* Inline row layout — `<Switch label="..." hint="..." />` produces
@@ -81,12 +81,12 @@
 
 .label {
   font-size: var(--text-base);
-  color: var(--text-secondary);
+  color: var(--text-primary);
   line-height: 1.2;
 }
 
 .hint {
   font-size: var(--text-sm);
-  color: var(--text-muted);
+  color: var(--text-secondary);
   line-height: var(--leading-normal);
 }
