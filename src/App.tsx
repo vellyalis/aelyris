@@ -917,7 +917,7 @@ export function App() {
               />
               <ErrorBoundary>
                 <Suspense fallback={null}>
-                  <div className="bento-widget" style={{ minHeight: 200 }}>
+                  <div className="bento-widget" data-widget="sessions" style={{ minHeight: 200 }}>
                     <AgentInspector
                       sessions={sessions}
                       activeSessionId={activeSessionId}
@@ -938,7 +938,7 @@ export function App() {
               </ErrorBoundary>
               <ErrorBoundary>
                 <Suspense fallback={null}>
-                  <div className="bento-widget">
+                  <div className="bento-widget" data-widget="workflow">
                     <WorkflowPanel projectPath={projectPath} onStartAgent={handleStartAgent} />
                   </div>
                 </Suspense>
@@ -946,14 +946,14 @@ export function App() {
               <div className="right-panel-bottom-grid">
                 <ErrorBoundary>
                   <Suspense fallback={null}>
-                    <div className="bento-widget">
+                    <div className="bento-widget" data-widget="toolkit">
                       <ToolkitPanel projectName={projectName} onRunCommand={handleRunCommand} />
                     </div>
                   </Suspense>
                 </ErrorBoundary>
                 <ErrorBoundary>
                   <Suspense fallback={null}>
-                    <div className="bento-widget">
+                    <div className="bento-widget" data-widget="logs">
                       <LogsPanel />
                     </div>
                   </Suspense>

@@ -14,9 +14,9 @@
   padding: 0 var(--space-3);
   margin: 0;
   min-height: 32px;
-  background: var(--glass-frame);
+  background: var(--terminal-chrome-bg);
   border: 0;
-  border-top: 1px solid var(--white-6);
+  border-top: 1px solid var(--terminal-border);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   transition:
@@ -26,7 +26,7 @@
 }
 
 .bar.focused {
-  background: var(--glass-thick);
+  background: var(--terminal-chrome-bg-focus);
   border-top-color: var(--gold-dim);
   box-shadow:
     0 -4px 12px rgba(0, 0, 0, 0.25),
@@ -35,7 +35,7 @@
 
 .bar.disabled {
   opacity: 0.62;
-  background: var(--glass-frame);
+  background: var(--terminal-chrome-bg);
 }
 
 /* IME indicator pill. Lives at a fixed 18-px width so the textarea

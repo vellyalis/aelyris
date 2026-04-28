@@ -10,6 +10,7 @@ import {
   Play,
   Plus,
   ScrollText,
+  Sparkles,
   Upload,
 } from "lucide-react";
 import { useCallback, useState } from "react";
@@ -58,6 +59,14 @@ const DEFAULT_ACTIONS: ToolkitAction[] = [
   { id: "git-log", label: "Git Log", badge: "var(--text-secondary)", command: "git log --oneline -15" },
   { id: "npm-test", label: "Run Tests", badge: "var(--ctp-red)", command: "npm test" },
 ];
+
+function actionTone(action: ToolkitAction): "git" | "runtime" | "test" | "workspace" | "custom" {
+  if (["create-pr", "commit-push", "git-status", "git-log", "worktree"].includes(action.id)) return "git";
+  if (action.id === "dev-server") return "runtime";
+  if (action.id === "npm-test") return "test";
+  if (action.id === "open-vscode") return "workspace";
+  return "custom";
+}
 
 // Validate that a parsed object has the minimum shape we need. Without this,
 // a corrupted localStorage entry — or an older app version that stored a
@@ -125,6 +134,7 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
   const [importText, setImportText] = useState("");
   const [importParsed, setImportParsed] = useState<ToolkitAction[] | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  const primaryActionId = actions.find((action) => action.id === "dev-server")?.id ?? actions[0]?.id;
 
   const handleEdit = useCallback((action: ToolkitAction) => {
     setEditingId(action.id);
@@ -267,7 +277,9 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
     <div className={styles.toolkit} role="region" aria-label="Toolkit">
       <PanelHeader
         title="Toolkit"
-        subtitle={projectName}
+        leadingIcon={<Sparkles size={12} />}
+        subtitle="Command deck"
+        count={actions.length}
         actions={
           <button className={styles.addBtn} onClick={handleAdd} title="Add action" aria-label="Add tool">
             <Plus size={12} aria-hidden="true" />
@@ -311,53 +323,63 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
       )}
 
       <div className={styles.grid}>
-        {actions.map((a) => (
-          <button
-            key={a.id}
-            className={styles.action}
-            onClick={async () => {
-              let command = a.command;
-              // Prompt for placeholders like {message}
-              const placeholders = command.match(/\{(\w+)\}/g);
-              if (placeholders) {
-                for (const ph of [...new Set(placeholders)]) {
-                  const name = ph.slice(1, -1);
-                  const value = await showPrompt(`Enter ${name}`, { placeholder: `${name}...` });
-                  if (!value) return;
-                  command = command.split(ph).join(value.replace(/"/g, '\\"'));
+        {actions.map((a) => {
+          const priority = a.id === primaryActionId ? "primary" : "orbit";
+          return (
+            <button
+              type="button"
+              key={a.id}
+              className={styles.action}
+              data-priority={priority}
+              data-tone={actionTone(a)}
+              onClick={async () => {
+                let command = a.command;
+                // Prompt for placeholders like {message}
+                const placeholders = command.match(/\{(\w+)\}/g);
+                if (placeholders) {
+                  for (const ph of [...new Set(placeholders)]) {
+                    const name = ph.slice(1, -1);
+                    const value = await showPrompt(`Enter ${name}`, { placeholder: `${name}...` });
+                    if (!value) return;
+                    command = command.split(ph).join(value.replace(/"/g, '\\"'));
+                  }
                 }
-              }
-              const warning = detectDangerousCommand(command);
-              if (warning) {
-                // Previously this was a text prompt with `defaultValue: "yes"` —
-                // a single-character typo would execute an `rm -rf`-class
-                // command. Use an explicit confirm with a danger-tone button
-                // and Cancel pre-focused.
-                const ok = await showConfirm({
-                  title: "Run dangerous command?",
-                  description: `${warning}\n\nCommand:\n${command}`,
-                  confirmLabel: "Run anyway",
-                  cancelLabel: "Cancel",
-                  tone: "danger",
-                });
-                if (!ok) return;
-              }
-              onRunCommand?.(command);
-            }}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              handleEdit(a);
-            }}
-            title={a.command}
-          >
-            <span className={styles.actionIcon}>{ICON_MAP[a.id] ?? null}</span>
-            <span className={styles.actionLabel}>{a.label}</span>
-            <span className={styles.badge} style={{ background: a.badge }} />
-          </button>
-        ))}
+                const warning = detectDangerousCommand(command);
+                if (warning) {
+                  // Previously this was a text prompt with `defaultValue: "yes"` —
+                  // a single-character typo would execute an `rm -rf`-class
+                  // command. Use an explicit confirm with a danger-tone button
+                  // and Cancel pre-focused.
+                  const ok = await showConfirm({
+                    title: "Run dangerous command?",
+                    description: `${warning}\n\nCommand:\n${command}`,
+                    confirmLabel: "Run anyway",
+                    cancelLabel: "Cancel",
+                    tone: "danger",
+                  });
+                  if (!ok) return;
+                }
+                onRunCommand?.(command);
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                handleEdit(a);
+              }}
+              title={a.command}
+            >
+              <span className={styles.actionIcon}>{ICON_MAP[a.id] ?? null}</span>
+              <span className={styles.actionBody}>
+                <span className={styles.actionLabel}>{a.label}</span>
+                <span className={styles.actionCommand}>{a.command}</span>
+              </span>
+              <span className={styles.badge} style={{ background: a.badge }} />
+            </button>
+          );
+        })}
       </div>
       <div className={styles.bottomActions}>
         <button
+          type="button"
           className={styles.bottomBtn}
           onClick={async () => {
             const cmd = await showPrompt("Generate Tool", { placeholder: "Describe what the tool should do..." });
@@ -374,13 +396,16 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
             }
           }}
         >
-          ⊕ Generate...
+          <Sparkles size={11} aria-hidden="true" />
+          <span>Generate</span>
         </button>
-        <button className={styles.bottomBtn} onClick={handleAdd}>
-          ⊕ Create...
+        <button type="button" className={styles.bottomBtn} onClick={handleAdd}>
+          <Plus size={11} aria-hidden="true" />
+          <span>Create</span>
         </button>
-        <button className={styles.bottomBtn} onClick={() => setImportOpen(true)}>
-          ⊕ Import...
+        <button type="button" className={styles.bottomBtn} onClick={() => setImportOpen(true)}>
+          <FileUp size={11} aria-hidden="true" />
+          <span>Import</span>
         </button>
       </div>
 

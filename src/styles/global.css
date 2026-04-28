@@ -11,18 +11,25 @@
    * the Mica's subtle wallpaper-derived tint read through —
    * Apple-class "translucent panels stacked on a real desktop"
    * rather than "dark slab pretending to be glass". */
-  /* Level 0: Terminal center — maximum transparency */
-  --glass-clear: rgba(12, 12, 12, 0.02);
+  --aether-ink: #090b13;
+  --aether-obsidian: #111017;
+  --aether-graphite: #1b1920;
+  --aether-smoke-mauve: #28232a;
+  --aether-moon: #c7d2ee;
+  --aether-champagne: #d8b766;
+
+  /* Level 0: Terminal center — warm passthrough */
+  --glass-clear: rgba(10, 9, 13, 0.06);
   /* Level 1: Ground — sidebar rail, darkest anchor */
-  --glass-ground: rgba(10, 10, 10, 0.55);
+  --glass-ground: rgba(13, 12, 15, 0.58);
   /* Level 2: Frame — header, statusbar */
-  --glass-frame: rgba(16, 16, 16, 0.28);
+  --glass-frame: rgba(24, 22, 27, 0.34);
   /* Level 3: Standard — left panel */
-  --glass-standard: rgba(20, 20, 20, 0.35);
+  --glass-standard: rgba(26, 27, 32, 0.4);
   /* Level 3.5: Dense — right panel (higher info density) */
-  --glass-dense: rgba(22, 22, 22, 0.42);
+  --glass-dense: rgba(27, 26, 33, 0.48);
   /* Level 4: Thick — cards, elevated surfaces */
-  --glass-thick: rgba(28, 28, 28, 0.55);
+  --glass-thick: rgba(36, 36, 44, 0.54);
   /* Level 5: Solid — modals, dialogs (still opaque-ish so dialog
      chrome reads against any wallpaper, not just dark ones). */
   --glass-solid: rgba(26, 26, 26, 0.78);
@@ -33,14 +40,28 @@
   --aether-bg-elevated: var(--glass-dense);
   --aether-bg-card: var(--glass-thick);
   --aether-bg-surface: var(--glass-dense);
-  --aether-border: rgba(255, 255, 255, 0.06);
-  --aether-border-strong: rgba(255, 255, 255, 0.1);
+  --aether-border: rgba(231, 211, 168, 0.065);
+  --aether-border-strong: rgba(231, 211, 168, 0.12);
+
+  --terminal-canvas-bg: #141520;
+  --terminal-well-bg:
+    radial-gradient(ellipse at 50% 0%, rgba(216, 183, 102, 0.09), transparent 45%),
+    linear-gradient(180deg, rgba(21, 19, 23, 0.88), rgba(9, 10, 17, 0.94));
+  --terminal-chrome-bg: rgba(27, 22, 19, 0.58);
+  --terminal-chrome-bg-focus: rgba(42, 33, 24, 0.72);
+  --terminal-rim-warm: rgba(216, 183, 102, 0.16);
+  --terminal-border: rgba(216, 183, 102, 0.085);
+  --terminal-shadow-inset:
+    inset 0 1px 0 rgba(255, 244, 214, 0.055),
+    inset 0 0 0 1px var(--terminal-border),
+    inset 0 28px 70px rgba(0, 0, 0, 0.36),
+    inset 0 -20px 56px rgba(5, 7, 13, 0.34);
 
   /* Gold accent — 18K gold warmth */
-  --gold: #c8a050;
-  --gold-dim: rgba(200, 160, 80, 0.4);
-  --gold-subtle: rgba(200, 160, 80, 0.2);
-  --gold-surface: linear-gradient(180deg, #e8c580 0%, #d4b896 20%, #c8a050 50%, #b89040 80%, #a88030 100%);
+  --gold: var(--aether-champagne);
+  --gold-dim: rgba(216, 183, 102, 0.42);
+  --gold-subtle: rgba(216, 183, 102, 0.18);
+  --gold-surface: linear-gradient(180deg, #f4df9a 0%, #dfc27c 24%, #d8b766 52%, #b78c3f 82%, #8f682f 100%);
   --gold-glow-inner: radial-gradient(
     ellipse at 50% 30%,
     rgba(232, 197, 128, 0.3) 0%,
@@ -80,9 +101,9 @@
   --ctp-sky: #89dceb;
 
   /* Text hierarchy */
-  --text-primary: rgba(255, 255, 255, 0.88);
-  --text-secondary: rgba(255, 255, 255, 0.5);
-  --text-muted: rgba(255, 255, 255, 0.3);
+  --text-primary: rgba(250, 246, 235, 0.9);
+  --text-secondary: rgba(231, 226, 214, 0.58);
+  --text-muted: rgba(220, 214, 204, 0.34);
 
   /* Semantic tokens */
   --bg-primary: var(--aether-bg);
@@ -219,8 +240,8 @@
 
   /* Specular rim — the 1px inner top highlight that makes glass feel lit.
      Apply via `box-shadow: var(--rim-top), <rest>`. */
-  --rim-top: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  --rim-top-strong: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  --rim-top: inset 0 1px 0 rgba(255, 244, 214, 0.085);
+  --rim-top-strong: inset 0 1px 0 rgba(255, 244, 214, 0.14);
 
   /* Inset shadow — "recessed" panel affordance (Linear Level 2b). */
   --inset-recessed: inset 0 0 12px rgba(0, 0, 0, 0.2);
@@ -228,10 +249,10 @@
   /* Chromatic lensing — subtle warm/cool caustic at glass edges. */
   --lens-edge: linear-gradient(
     135deg,
-    rgba(200, 160, 80, 0.04) 0%,
+    rgba(216, 183, 102, 0.055) 0%,
     transparent 30%,
     transparent 70%,
-    rgba(148, 226, 213, 0.03) 100%
+    rgba(137, 220, 235, 0.035) 100%
   );
 
   /* Three-stack shadow system (Apple ambient + key + contact).
@@ -350,7 +371,7 @@
      existing `--rim-top` (top-edge specular) so a child surface lit
      by both gets a real "lifted off the parent" feel. Compose with
      `inset` keyword at call sites for inner hairline variant. */
-  --rim-hairline: 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --rim-hairline: 0 0 0 1px rgba(231, 211, 168, 0.065);
 
   /* Common rgba patterns as variables (reduces duplication) */
   --white-2: rgba(255, 255, 255, 0.02);
@@ -506,35 +527,35 @@ body,
  * event listener). The override below applies only when the
  * dataset attribute explicitly says the window is blurred. */
 body[data-window-focused="false"] {
-  --glass-frame: rgba(16, 16, 16, 0.40);
-  --glass-standard: rgba(20, 20, 20, 0.48);
-  --glass-dense: rgba(22, 22, 22, 0.55);
-  --glass-thick: rgba(28, 28, 28, 0.65);
+  --glass-frame: rgba(24, 22, 27, 0.46);
+  --glass-standard: rgba(26, 27, 32, 0.52);
+  --glass-dense: rgba(27, 26, 33, 0.6);
+  --glass-thick: rgba(36, 36, 44, 0.66);
   /* Ground anchor stays slightly more solid on inactive — it's
    * the rail you orient against, so it should still hold. */
-  --glass-ground: rgba(10, 10, 10, 0.65);
+  --glass-ground: rgba(13, 12, 15, 0.68);
 }
 
-/* Boucheron light leak — warm gold top-left, cool cyan bottom-right */
+/* Broad light leak, not a decorative orb: warm console glow + cool moon edge. */
 #root::before {
   content: "";
   position: fixed;
-  top: -20%;
-  left: -20%;
-  width: 50%;
-  height: 50%;
-  background: radial-gradient(circle, rgba(200, 160, 80, 0.08) 0%, transparent 70%);
+  inset: 0;
+  background:
+    linear-gradient(125deg, rgba(216, 183, 102, 0.08), transparent 32%),
+    linear-gradient(300deg, rgba(137, 220, 235, 0.055), transparent 38%),
+    linear-gradient(180deg, rgba(9, 11, 19, 0.1), rgba(9, 11, 19, 0.24));
   pointer-events: none;
   z-index: 0;
 }
 #root::after {
   content: "";
   position: fixed;
-  bottom: -15%;
-  right: -15%;
-  width: 40%;
-  height: 40%;
-  background: radial-gradient(circle, rgba(148, 226, 213, 0.05) 0%, transparent 70%);
+  inset: 0;
+  background:
+    linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.018) 50%, transparent),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.012) 0 1px, transparent 1px 4px);
+  opacity: 0.32;
   pointer-events: none;
   z-index: 0;
 }
@@ -576,8 +597,9 @@ body[data-window-focused="false"] {
    * is set — we let that do the depth work and keep the CSS purely
    * about the glass edge highlight. */
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+    inset 0 1px 0 rgba(255, 244, 214, 0.1),
+    inset 0 0 0 1px rgba(216, 183, 102, 0.055),
+    inset 0 -1px 0 rgba(137, 220, 235, 0.035);
 }
 
 .app-main {
@@ -598,7 +620,10 @@ body[data-window-focused="false"] {
   flex-direction: column;
   gap: var(--space-1);
   padding-top: var(--space-2);
-  background: var(--glass-standard);
+  background:
+    linear-gradient(180deg, rgba(255, 244, 214, 0.035), transparent 26%),
+    linear-gradient(135deg, rgba(42, 33, 28, 0.14), rgba(20, 23, 34, 0.18)),
+    var(--glass-standard);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-right: 1px solid var(--white-6);
@@ -649,10 +674,14 @@ body[data-window-focused="false"] {
 }
 
 .center-panel {
+  position: relative;
   flex: 1;
   display: flex;
   overflow: hidden;
-  background: var(--aether-bg);
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(216, 183, 102, 0.06), transparent 42%),
+    linear-gradient(180deg, rgba(18, 15, 13, 0.12), rgba(9, 11, 18, 0.08)),
+    var(--aether-bg);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   /* Hairline borders on both edges so the terminal well always
@@ -666,7 +695,11 @@ body[data-window-focused="false"] {
    * sunken terminal well, but on a transparent surface over Mica it just
    * painted a dark overlay and grayed out the whole terminal. Reverted —
    * the terminal should pass Mica through untouched. */
-  border-right: 1px solid var(--white-6);
+  border-left: 1px solid rgba(216, 183, 102, 0.04);
+  border-right: 1px solid rgba(255, 255, 255, 0.055);
+  box-shadow:
+    inset 18px 0 42px rgba(0, 0, 0, 0.16),
+    inset -16px 0 38px rgba(0, 0, 0, 0.14);
 }
 
 .right-panel {
@@ -688,7 +721,10 @@ body[data-window-focused="false"] {
   grid-template-rows: 1fr auto auto auto;
   gap: var(--space-4);
   padding: var(--space-4);
-  background: var(--glass-dense);
+  background:
+    linear-gradient(180deg, rgba(255, 244, 214, 0.045), transparent 24%),
+    linear-gradient(145deg, rgba(34, 25, 22, 0.12), rgba(22, 26, 38, 0.18)),
+    var(--glass-dense);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   box-shadow: var(--rim-top);
@@ -703,6 +739,8 @@ body[data-window-focused="false"] {
  * Apple 3-stack shadow: ambient (wide spread) + key (directional) + contact.
  * No backdrop-filter on child — parent already blurs. */
 .bento-widget {
+  position: relative;
+  isolation: isolate;
   background: var(--glass-thick);
   border-radius: var(--radius-lg);
   box-shadow:
@@ -718,6 +756,61 @@ body[data-window-focused="false"] {
   transition:
     box-shadow var(--duration-normal) var(--ease-apple, cubic-bezier(0.25, 0.1, 0.25, 1)),
     transform var(--duration-fast) var(--ease-apple, cubic-bezier(0.25, 0.1, 0.25, 1));
+}
+
+.bento-widget::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(255, 244, 214, 0.055), transparent 22%),
+    linear-gradient(135deg, rgba(216, 183, 102, 0.055), transparent 42%),
+    linear-gradient(315deg, rgba(137, 220, 235, 0.035), transparent 48%);
+  opacity: 0.78;
+}
+
+.bento-widget > * {
+  position: relative;
+  z-index: 1;
+}
+
+.bento-widget[data-widget="sessions"] {
+  background:
+    linear-gradient(160deg, rgba(41, 39, 48, 0.66), rgba(21, 22, 30, 0.54)),
+    var(--glass-thick);
+  box-shadow:
+    var(--rim-top-strong),
+    0 0 0 1px rgba(216, 183, 102, 0.085),
+    0 10px 34px rgba(0, 0, 0, 0.18);
+}
+
+.bento-widget[data-widget="workflow"] {
+  background:
+    linear-gradient(180deg, rgba(30, 35, 42, 0.5), rgba(21, 20, 25, 0.48)),
+    var(--glass-thick);
+}
+
+.bento-widget[data-widget="toolkit"] {
+  background:
+    linear-gradient(150deg, rgba(42, 34, 25, 0.42), rgba(18, 23, 35, 0.54)),
+    var(--glass-thick);
+  box-shadow:
+    var(--rim-top-strong),
+    0 0 0 1px rgba(216, 183, 102, 0.095),
+    0 12px 38px rgba(0, 0, 0, 0.22),
+    0 0 28px rgba(216, 183, 102, 0.045);
+}
+
+.bento-widget[data-widget="logs"] {
+  background:
+    linear-gradient(180deg, rgba(10, 12, 19, 0.58), rgba(7, 8, 13, 0.68)),
+    var(--glass-dense);
+  box-shadow:
+    var(--rim-top),
+    inset 0 0 0 1px rgba(137, 220, 235, 0.055),
+    inset 0 18px 46px rgba(0, 0, 0, 0.22);
 }
 
 /* Hover lift — Apple-style interactive card elevation.
@@ -756,7 +849,7 @@ body[data-window-focused="false"] {
 /* When right panel is wide enough, bottom widgets go side-by-side */
 .right-panel-bottom-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1.18fr) minmax(0, 0.82fr);
   gap: var(--space-4);
 }
 

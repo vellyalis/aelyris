@@ -890,7 +890,7 @@ export function NativeTerminalArea({
       )}
       <div ref={containerRef} className={styles.terminalContainer}>
         {terminalId && dims && (
-          <>
+          <div className={styles.terminalViewport}>
             <TerminalCanvas
               key={canvasKey ?? undefined}
               terminalId={terminalId}
@@ -907,7 +907,7 @@ export function NativeTerminalArea({
               onOpenUrl={onOpenUrl}
             />
             <img src={logoWatermarkPng} alt="" aria-hidden="true" className={styles.terminalWatermark} />
-          </>
+          </div>
         )}
       </div>
       <IMEInputBar ref={imeBarRef} onSubmit={sendIMEBytes} onRequestCanvasFocus={focusCanvas} />
