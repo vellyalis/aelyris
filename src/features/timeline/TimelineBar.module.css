@@ -11,12 +11,12 @@
   min-height: 28px;
   box-sizing: border-box;
   background:
-    linear-gradient(180deg, rgba(137, 220, 235, 0.045), transparent 70%),
-    rgba(255, 255, 255, 0.026);
+    linear-gradient(180deg, rgba(137, 220, 235, 0.036), transparent 70%),
+    var(--terminal-chrome-bg);
   border-radius: var(--radius);
   box-shadow:
     inset 0 1px 0 rgba(255, 244, 214, 0.045),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+    inset 0 0 0 1px color-mix(in srgb, var(--terminal-border) 60%, transparent);
   font: var(--text-sm) / 1 var(--font-mono);
   color: var(--text-primary);
   user-select: none;

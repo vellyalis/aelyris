@@ -16,12 +16,12 @@
   min-height: 32px;
   background:
     linear-gradient(180deg, rgba(255, 244, 214, 0.04), transparent 70%),
-    rgba(255, 255, 255, 0.03);
+    var(--terminal-chrome-bg);
   border: 0;
   border-radius: var(--radius);
   box-shadow:
     inset 0 1px 0 rgba(255, 244, 214, 0.055),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.045);
+    inset 0 0 0 1px color-mix(in srgb, var(--terminal-border) 64%, transparent);
   transition:
     background var(--duration-fast) var(--ease-silk, cubic-bezier(0.4, 0, 0.2, 1)),
     box-shadow var(--duration-fast) var(--ease-silk, cubic-bezier(0.4, 0, 0.2, 1));
@@ -29,17 +29,16 @@
 
 .bar.focused {
   background:
-    linear-gradient(180deg, rgba(255, 244, 214, 0.07), transparent 70%),
-    rgba(255, 255, 255, 0.04);
+    linear-gradient(180deg, rgba(255, 244, 214, 0.065), transparent 70%),
+    var(--terminal-chrome-bg-focus);
   box-shadow:
     inset 0 1px 0 rgba(255, 244, 214, 0.08),
-    inset 0 0 0 1px color-mix(in srgb, var(--gold) 22%, rgba(255, 255, 255, 0.04)),
-    0 10px 24px rgba(0, 0, 0, 0.14);
+    inset 0 0 0 1px color-mix(in srgb, var(--gold) 20%, var(--terminal-border));
 }
 
 .bar.disabled {
   opacity: 0.62;
-  background: var(--terminal-chrome-bg);
+  background: color-mix(in srgb, var(--terminal-chrome-bg) 70%, transparent);
 }
 
 /* IME indicator pill. Lives at a fixed 18-px width so the textarea

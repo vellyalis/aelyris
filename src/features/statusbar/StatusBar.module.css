@@ -8,11 +8,11 @@
   /* Use the shared frame token (glass alpha 0.28 after the
    * 2026-05-02 transparency tune-up) so the status bar lets the
    * Mica wallpaper through at the same level as the header. */
-  background: var(--glass-frame);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: var(--chrome-frame-bg);
+  backdrop-filter: var(--chrome-frame-filter);
+  -webkit-backdrop-filter: var(--chrome-frame-filter);
   border-top: 0;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  box-shadow: var(--chrome-frame-shadow);
   font-size: var(--text-sm);
   color: var(--text-muted);
   user-select: none;
