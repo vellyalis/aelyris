@@ -233,6 +233,63 @@ describe("useTerminalImages", () => {
     expect(invoke).toHaveBeenCalledTimes(1);
   });
 
+  it("does not strand an in-flight fetch when the id-set changes (overlapping ids)", async () => {
+    // Race contract: when the snapshot's id-set CHANGES (e.g. a new
+    // image is added) while a fetch for an existing id is still in
+    // flight, the cleanup cancels the old `.then`. The new effect
+    // cycle then iterates the new id-set; the old `.then` must not
+    // delete the inflight marker for ids that are still wanted, or the
+    // new cycle will have skipped them (because inflight.has=true at
+    // iteration time) and the cleared marker arrives too late to
+    // re-trigger a fetch — leaving the image permanently un-fetched.
+    let resolveFirst: (v: RawImageData | null) => void = () => {};
+    const firstFetch = new Promise<RawImageData | null>((r) => {
+      resolveFirst = r;
+    });
+    let firstCalled = 0;
+    const a1 = makeBitmap("a1");
+    const b = makeBitmap("b");
+    const factory = makeFactory({ "a-payload": a1, "b-payload": b });
+    let aCallCount = 0;
+    const invoke = vi.fn(async (cmd: string, args?: Record<string, unknown>) => {
+      if (cmd !== "term_image_data") throw new Error(`unexpected ${cmd}`);
+      const id = Number((args ?? {}).imageId);
+      if (id === 1) {
+        aCallCount++;
+        if (aCallCount === 1) {
+          firstCalled++;
+          // Hold the first fetch indefinitely so the rerender races
+          // against it.
+          return firstFetch;
+        }
+        return { format: "png", dataBase64: btoa("a-payload"), widthPx: 1, heightPx: 1 };
+      }
+      if (id === 2) {
+        return { format: "png", dataBase64: btoa("b-payload"), widthPx: 1, heightPx: 1 };
+      }
+      return null;
+    }) as unknown as Invoke;
+
+    const { result, rerender } = renderHook(
+      ({ refs }: { refs: ImageRef[] }) =>
+        useTerminalImages("t-1", refs, { invoke, createImageBitmap: factory }),
+      { initialProps: { refs: [ref(1)] } },
+    );
+    // Wait until the first fetch has been issued (still pending).
+    await waitFor(() => expect(firstCalled).toBe(1));
+    // Re-render with an EXPANDED id-set — id=1 is still wanted, id=2 is new.
+    // This invalidates the old effect cycle while id=1's fetch is in flight.
+    rerender({ refs: [ref(1), ref(2)] });
+    // Resolve the original fetch — the cancelled `.then` must NOT delete
+    // the inflight marker for id=1 (the new cycle either claimed it
+    // afresh, or has already skipped it and is waiting). Either way the
+    // image must eventually appear.
+    resolveFirst({ format: "png", dataBase64: btoa("a-payload"), widthPx: 1, heightPx: 1 });
+    await waitFor(() => expect(result.current.size).toBe(2), { timeout: 2_000 });
+    expect(result.current.get(1)).toBe(a1);
+    expect(result.current.get(2)).toBe(b);
+  });
+
   it("re-fetches after the id-set actually changes (new image arrives)", async () => {
     const a = makeBitmap("a");
     const b = makeBitmap("b");

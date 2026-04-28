@@ -133,7 +133,14 @@ export function useTerminalImages(
         imageId: ref.id,
       })
         .then(async (raw) => {
-          if (cancelled || !raw) {
+          // Cleanup wiped `inflight` for *this* cycle (see the cleanup
+          // comment below). When cancelled, we therefore must NOT touch
+          // `inflight` here: doing so would race against the next cycle
+          // and could remove a marker that the next cycle has already
+          // claimed for its own freshly-issued fetch (most importantly
+          // when the same id appears in both the old and new id-sets).
+          if (cancelled) return;
+          if (!raw) {
             inflight.current.delete(ref.id);
             return;
           }
@@ -141,7 +148,6 @@ export function useTerminalImages(
           const bitmap = await materialiseBitmap(raw, bytes, factory);
           if (cancelled) {
             bitmap.close?.();
-            inflight.current.delete(ref.id);
             return;
           }
           setBitmaps((prev) => {
@@ -159,12 +165,25 @@ export function useTerminalImages(
           inflight.current.delete(ref.id);
         })
         .catch(() => {
-          inflight.current.delete(ref.id);
+          // Same rule as the .then path: only this cycle owns the
+          // inflight slot until cleanup clears it. Once cancelled, leave
+          // inflight alone so the next cycle's marker is preserved.
+          if (!cancelled) inflight.current.delete(ref.id);
         });
     }
 
     return () => {
       cancelled = true;
+      // Drop all inflight markers belonging to this cycle. Without this,
+      // an id that appears in both the old and new id-sets would be
+      // skipped by the new cycle's iteration (`inflight.has(id)` was
+      // still true from the old fetch) and the cancelled old `.then`
+      // would `delete` it only after the new cycle had finished
+      // iterating — leaving the image permanently un-fetched. The
+      // cancelled `.then` is taught above to refrain from touching
+      // `inflight`, so clearing here is safe even when stale callbacks
+      // resolve later.
+      inflight.current.clear();
     };
     // We deliberately read `bitmaps` inside the effect but don't list
     // it as a dep — adding it would re-run the fetch loop on every
