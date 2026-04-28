@@ -186,7 +186,10 @@
    * :hover/.cardActive, this is the nested layered card feel without
    * stacking another translucent layer (which would breach the 0.74
    * combined-alpha ceiling against the right-panel's --glass-dense). */
-  box-shadow: var(--rim-top);
+  box-shadow: var(--rim-top), var(--rim-hairline);
+  /* Phase 1 nested layered card: rim-top (specular top highlight) +
+   * rim-hairline (Vercel-style 1px shadow-as-border) compose to make
+   * the card read as a lifted glass surface over the right-panel. */
   color: var(--text-secondary);
   font-family: var(--font-ui);
   cursor: pointer;
@@ -281,15 +284,15 @@
   gap: var(--space-4);
 }
 .statusDot {
-  width: 7px;
-  height: 7px;
+  width: 6px; /* Phase 1: status dot 統一 (was 7px) */
+  height: 6px;
   border-radius: 50%;
   flex-shrink: 0;
 }
 .statusDotSmall {
   display: inline-block;
-  width: 5px;
-  height: 5px;
+  width: 6px; /* Phase 1: status dot 統一 (was 5px) */
+  height: 6px;
   border-radius: 50%;
 }
 .cardName {
@@ -461,8 +464,8 @@
 }
 
 .activityDot {
-  width: 5px;
-  height: 5px;
+  width: 6px; /* Phase 1: activity dot 統一 (was 5px) */
+  height: 6px;
   border-radius: 50%;
   flex-shrink: 0;
 }

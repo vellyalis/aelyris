@@ -121,9 +121,8 @@
 }
 
 .openBtn:hover {
-  box-shadow:
-    0 4px 16px rgba(200, 160, 80, 0.3),
-    0 0 20px rgba(200, 160, 80, 0.2);
+  box-shadow: var(--shadow-elevated),
+    0 0 20px rgba(200, 160, 80, 0.2); /* gold glow retained */
   transform: translateY(-1px);
 }
 .openBtn:focus-visible {
