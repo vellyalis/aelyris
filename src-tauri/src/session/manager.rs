@@ -74,13 +74,14 @@ impl SessionManager {
     ) -> Result<(Pane, String), String> {
         let shell_name = format!("{:?}", shell).to_lowercase();
 
-        // Persist to DB
-        let pane = self.with_db(|db| {
-            db.create_pane(window_id, &shell_name, cwd, cols, rows)
-        })?;
-
-        // Spawn PTY
         let terminal_id = pty_manager.spawn(shell, cols, rows, Some(cwd))?;
+        let pane = match self.with_db(|db| db.create_pane(window_id, &shell_name, cwd, cols, rows)) {
+            Ok(pane) => pane,
+            Err(err) => {
+                let _ = pty_manager.close(&terminal_id);
+                return Err(err);
+            }
+        };
 
         Ok((pane, terminal_id))
     }
@@ -114,7 +115,7 @@ impl SessionManager {
         terminal_id: &str,
         pty_manager: &PtyManager,
     ) -> Result<(), String> {
-        let _ = pty_manager.close(terminal_id);
+        pty_manager.close(terminal_id).map_err(|e| e.to_string())?;
         self.with_db(|db| db.delete_pane(pane_id))
     }
 

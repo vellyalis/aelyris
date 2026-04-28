@@ -1,6 +1,7 @@
 import * as RadixContextMenu from "@radix-ui/react-context-menu";
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAppStore } from "../../shared/store/appStore";
 import { toast } from "../../shared/store/toastStore";
 import { showConfirm } from "../../shared/ui/ConfirmDialog";
 import { EmptyState } from "../../shared/ui/EmptyState";
@@ -51,7 +52,13 @@ const OVERSCAN = 12;
 // saves; we just render the list in full.
 const VIRTUALIZE_THRESHOLD = 200;
 
+function isPathOrDescendant(path: string, root: string): boolean {
+  return path === root || path.startsWith(`${root}/`);
+}
+
 export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = [] }: FileTreeProps) {
+  const replaceOpenPath = useAppStore((s) => s.replaceOpenPath);
+  const removeOpenPath = useAppStore((s) => s.removeOpenPath);
   const [currentRoot, setCurrentRoot] = useState(rootPath);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<FileEntry[] | null>(null);
@@ -128,20 +135,34 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
     [reloadDir],
   );
 
+  const confirmOpenMutation = useCallback(async (path: string, action: "rename" | "delete") => {
+    const affected = Array.from(useAppStore.getState().unsavedFiles).filter((file) => isPathOrDescendant(file, path));
+    if (affected.length === 0) return true;
+    return showConfirm({
+      title: "Unsaved changes",
+      description: `${affected.length} open file(s) have unsaved changes. ${action === "rename" ? "Rename" : "Delete"} anyway?`,
+      confirmLabel: action === "rename" ? "Rename" : "Delete",
+      tone: "danger",
+    });
+  }, []);
+
   const handleRename = useCallback(
     async (path: string) => {
       const oldName = path.split("/").pop() ?? "";
       const newName = await showPrompt("Rename", { placeholder: "new name...", defaultValue: oldName });
       if (!newName || newName === oldName) return;
       const parentDir = path.split("/").slice(0, -1).join("/");
+      const newPath = `${parentDir}/${newName}`;
+      if (!(await confirmOpenMutation(path, "rename"))) return;
       try {
-        await invoke("rename_path", { oldPath: path, newPath: `${parentDir}/${newName}` });
+        await invoke("rename_path", { oldPath: path, newPath });
+        replaceOpenPath(path, newPath);
         reloadDir(parentDir);
       } catch (e) {
         toast.error("Rename failed", String(e));
       }
     },
-    [reloadDir],
+    [confirmOpenMutation, reloadDir, replaceOpenPath],
   );
 
   const handleDelete = useCallback(
@@ -154,15 +175,17 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
         tone: "danger",
       });
       if (!ok) return;
+      if (!(await confirmOpenMutation(path, "delete"))) return;
       const parentDir = path.split("/").slice(0, -1).join("/");
       try {
         await invoke("delete_path", { path });
+        removeOpenPath(path);
         reloadDir(parentDir);
       } catch (e) {
         toast.error("Delete failed", String(e));
       }
     },
-    [reloadDir],
+    [confirmOpenMutation, reloadDir, removeOpenPath],
   );
 
   const toggleDir = useCallback(

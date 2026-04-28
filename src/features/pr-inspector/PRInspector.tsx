@@ -14,7 +14,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { LoadingSkeleton } from "../../shared/ui/LoadingSkeleton";
 import { PanelHeader } from "../../shared/ui/PanelHeader";
@@ -142,16 +142,34 @@ export function PRInspector({ visible, projectPath, onClose, onViewDiff, onStart
   const [error, setError] = useState<string | null>(null);
   const [expandedPr, setExpandedPr] = useState<number | null>(null);
   const [diff, setDiff] = useState<string | null>(null);
+  const prRequestSeq = useRef(0);
+  const diffRequestSeq = useRef(0);
 
   const loadPRs = useCallback(async () => {
+    const requestId = ++prRequestSeq.current;
     setLoading(true);
     setError(null);
     try {
       const result = await invoke<PullRequest[]>("list_pull_requests", { cwd: projectPath });
+      if (requestId !== prRequestSeq.current) return;
       setPrs(result);
     } catch (err) {
+      if (requestId !== prRequestSeq.current) return;
       setError(String(err));
+    } finally {
+      if (requestId === prRequestSeq.current) {
+        setLoading(false);
+      }
     }
+  }, [projectPath]);
+
+  useEffect(() => {
+    prRequestSeq.current += 1;
+    diffRequestSeq.current += 1;
+    setPrs([]);
+    setExpandedPr(null);
+    setDiff(null);
+    setError(null);
     setLoading(false);
   }, [projectPath]);
 
@@ -161,16 +179,21 @@ export function PRInspector({ visible, projectPath, onClose, onViewDiff, onStart
 
   const viewDiff = async (prNumber: number) => {
     if (expandedPr === prNumber) {
+      diffRequestSeq.current += 1;
       setExpandedPr(null);
       setDiff(null);
       return;
     }
+    const requestId = ++diffRequestSeq.current;
     setExpandedPr(prNumber);
+    setDiff(null);
     try {
       const d = await invoke<string>("get_pr_diff", { cwd: projectPath, prNumber });
+      if (requestId !== diffRequestSeq.current) return;
       setDiff(d);
       onViewDiff?.(d, prNumber);
     } catch {
+      if (requestId !== diffRequestSeq.current) return;
       setDiff("Failed to load diff");
     }
   };
@@ -190,10 +213,10 @@ export function PRInspector({ visible, projectPath, onClose, onViewDiff, onStart
             count={prs.length}
             actions={
               <>
-                <button className={styles.iconBtn} onClick={loadPRs} title="Refresh" aria-label="Refresh">
+                <button type="button" className={styles.iconBtn} onClick={loadPRs} title="Refresh" aria-label="Refresh">
                   <RefreshCw size={12} strokeWidth={1.75} aria-hidden="true" />
                 </button>
-                <button className={styles.iconBtn} onClick={onClose} title="Close" aria-label="Close">
+                <button type="button" className={styles.iconBtn} onClick={onClose} title="Close" aria-label="Close">
                   <X size={12} strokeWidth={1.75} aria-hidden="true" />
                 </button>
               </>
@@ -246,7 +269,7 @@ function PrRow({ pr, expanded, diff, onExpand, onStartReview }: PrRowProps) {
 
   return (
     <div className={styles.prContainer}>
-      <button className={styles.prCard} onClick={onExpand}>
+      <button type="button" className={styles.prCard} onClick={onExpand}>
         <div className={styles.prHeader}>
           <span
             className={styles.statePill}
@@ -282,6 +305,7 @@ function PrRow({ pr, expanded, diff, onExpand, onStartReview }: PrRowProps) {
           </pre>
           {onStartReview && (
             <button
+              type="button"
               className={styles.reviewBtn}
               onClick={() => onStartReview(`Review PR #${pr.number}: ${pr.title}\n\nDiff:\n${diff.slice(0, 8000)}`)}
             >

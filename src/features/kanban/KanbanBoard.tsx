@@ -1,10 +1,17 @@
+import { invoke } from "@tauri-apps/api/core";
 import { Bot, ChevronRight, GitBranch, Play, Plus } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppStore } from "../../shared/store/appStore";
+import { toast } from "../../shared/store/toastStore";
 import { STATUS_COLORS } from "../../shared/types/agent";
 import { KANBAN_COLUMNS, type KanbanColumnId, PRIORITY_COLORS, type TaskPriority } from "../../shared/types/kanban";
 import { PanelHeader } from "../../shared/ui/PanelHeader";
 import styles from "./KanbanBoard.module.css";
+
+interface CreatedWorktree {
+  branch: string;
+  path: string;
+}
 
 interface KanbanBoardProps {
   onStartAgent?: (prompt: string) => Promise<string | undefined>;
@@ -74,23 +81,38 @@ export function KanbanBoard({
     async (task: { id: string; title: string }) => {
       if (!onStartAgent) return;
       const branchSlug = `task/${task.id.replace("task-", "")}`;
+      let worktree: CreatedWorktree | null = null;
 
       // Create worktree if projectPath available
       if (projectPath) {
         try {
-          const { invoke } = await import("@tauri-apps/api/core");
-          await invoke("create_worktree", { repoPath: projectPath, branchName: branchSlug });
-          updateKanbanTask(task.id, { branch: branchSlug, worktreePath: `${projectPath}-${branchSlug}` });
-        } catch {
-          /* worktree already exists or no git, continue anyway */
+          worktree = await invoke<CreatedWorktree>("create_worktree", {
+            repoPath: projectPath,
+            branchName: branchSlug,
+          });
+        } catch (error) {
+          toast.error("Worktree creation failed", error instanceof Error ? error.message : String(error));
+          return;
         }
       }
 
       // Start agent and link
-      const sessionId = await onStartAgent(task.title);
-      if (sessionId) {
-        updateKanbanTask(task.id, { assignedAgentId: sessionId, column: "in_progress" });
+      let sessionId: string | undefined;
+      try {
+        sessionId = await onStartAgent(task.title);
+      } catch (error) {
+        toast.error("Agent launch failed", error instanceof Error ? error.message : String(error));
+        return;
       }
+      if (!sessionId) {
+        toast.error("Agent launch failed", "No session was created.");
+        return;
+      }
+      updateKanbanTask(task.id, {
+        ...(worktree ? { branch: worktree.branch, worktreePath: worktree.path } : {}),
+        assignedAgentId: sessionId,
+        column: "in_progress",
+      });
     },
     [onStartAgent, projectPath, updateKanbanTask],
   );

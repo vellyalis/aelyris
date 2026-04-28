@@ -1,11 +1,25 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useCallback, useEffect, useRef } from "react";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JsonRpcResponse } from "./types";
-import { createRequest, monacoToLspLanguage } from "./types";
+import { createRequest, type LspLanguage, monacoToLspLanguage } from "./types";
 
 interface UseLspOptions {
   projectPath: string;
   monacoLanguage: string;
+}
+
+function rustDebugLanguage(language: LspLanguage): string {
+  switch (language) {
+    case "rust":
+      return "Rust";
+    case "python":
+      return "Python";
+    case "typescript":
+      return "TypeScript";
+    case "go":
+      return "Go";
+  }
 }
 
 /**
@@ -15,13 +29,17 @@ interface UseLspOptions {
 export function useLsp({ projectPath, monacoLanguage }: UseLspOptions) {
   const language = monacoToLspLanguage(monacoLanguage);
   const initialized = useRef(false);
+  const [isInitialized, setIsInitialized] = useState(false);
   const pendingCallbacks = useRef<Map<number, (resp: JsonRpcResponse) => void>>(new Map());
 
   // Start server + listen for responses
   useEffect(() => {
     if (!language || !projectPath) return;
-    let unlisten: (() => void) | null = null;
+    let unlisten: UnlistenFn | null = null;
     let aborted = false;
+    initialized.current = false;
+    setIsInitialized(false);
+    pendingCallbacks.current.clear();
 
     const setup = async () => {
       try {
@@ -31,27 +49,15 @@ export function useLsp({ projectPath, monacoLanguage }: UseLspOptions) {
           return;
         }
 
-        // Send initialize request
-        const initReq = createRequest("initialize", {
-          processId: null,
-          rootUri: `file:///${projectPath.replace(/\\/g, "/")}`,
-          capabilities: {
-            textDocument: {
-              completion: { completionItem: { snippetSupport: false } },
-              hover: { contentFormat: ["plaintext"] },
-            },
-          },
-        });
-        await invoke("lsp_request", { language, rootPath: projectPath, jsonRpc: JSON.stringify(initReq) });
-
-        // Listen for responses
-        const { listen } = await import("@tauri-apps/api/event");
+        const serverKey = `${rustDebugLanguage(language)}:${projectPath}`;
         const unsub = await listen<{ server: string; message: string }>("lsp:response", (event) => {
+          if (event.payload.server !== serverKey) return;
           try {
             const resp = JSON.parse(event.payload.message) as JsonRpcResponse;
             if (resp.id && pendingCallbacks.current.has(resp.id)) {
-              pendingCallbacks.current.get(resp.id)!(resp);
+              const cb = pendingCallbacks.current.get(resp.id);
               pendingCallbacks.current.delete(resp.id);
+              cb?.(resp);
             }
             // Handle initialize response
             if (
@@ -61,6 +67,7 @@ export function useLsp({ projectPath, monacoLanguage }: UseLspOptions) {
               "capabilities" in (resp.result as Record<string, unknown>)
             ) {
               initialized.current = true;
+              setIsInitialized(true);
               // Send initialized notification
               const notif = JSON.stringify({ jsonrpc: "2.0", method: "initialized", params: {} });
               invoke("lsp_request", { language, rootPath: projectPath, jsonRpc: notif }).catch(() => {});
@@ -74,6 +81,19 @@ export function useLsp({ projectPath, monacoLanguage }: UseLspOptions) {
           return;
         }
         unlisten = unsub;
+
+        // Send initialize request
+        const initReq = createRequest("initialize", {
+          processId: null,
+          rootUri: `file:///${projectPath.replace(/\\/g, "/")}`,
+          capabilities: {
+            textDocument: {
+              completion: { completionItem: { snippetSupport: false } },
+              hover: { contentFormat: ["plaintext"] },
+            },
+          },
+        });
+        await invoke("lsp_request", { language, rootPath: projectPath, jsonRpc: JSON.stringify(initReq) });
       } catch {
         // Server not installed — silently degrade
       }
@@ -85,6 +105,7 @@ export function useLsp({ projectPath, monacoLanguage }: UseLspOptions) {
       unlisten?.();
       invoke("lsp_stop", { language, rootPath: projectPath }).catch(() => {});
       initialized.current = false;
+      setIsInitialized(false);
       pendingCallbacks.current.clear();
     };
   }, [language, projectPath]);
@@ -147,7 +168,7 @@ export function useLsp({ projectPath, monacoLanguage }: UseLspOptions) {
 
   return {
     isAvailable: language !== null,
-    isInitialized: initialized.current,
+    isInitialized,
     sendRequest,
     notifyOpen,
     notifyChange,

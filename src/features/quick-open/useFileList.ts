@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 interface FileListEntry {
@@ -15,9 +16,15 @@ export function useFileList(projectPath: string) {
   const [files, setFiles] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const cache = useRef<{ path: string; files: string[] } | null>(null);
+  const requestSeq = useRef(0);
 
   const load = useCallback(async () => {
-    if (!projectPath) return;
+    const requestId = ++requestSeq.current;
+    if (!projectPath) {
+      setFiles([]);
+      setLoading(false);
+      return;
+    }
     if (cache.current?.path === projectPath) {
       setFiles(cache.current.files);
       setLoading(false);
@@ -26,13 +33,17 @@ export function useFileList(projectPath: string) {
     setLoading(true);
     try {
       const entries = await invoke<FileListEntry[]>("list_all_files", { rootPath: projectPath, maxFiles: 10000 });
+      if (requestId !== requestSeq.current) return;
       const paths = entries.map((e) => e.relative_path);
       cache.current = { path: projectPath, files: paths };
       setFiles(paths);
     } catch {
+      if (requestId !== requestSeq.current) return;
       setFiles([]);
     } finally {
-      setLoading(false);
+      if (requestId === requestSeq.current) {
+        setLoading(false);
+      }
     }
   }, [projectPath]);
 
@@ -43,18 +54,30 @@ export function useFileList(projectPath: string) {
 
   // Invalidate cache on fs:changed
   useEffect(() => {
-    let unlisten: (() => void) | null = null;
-    import("@tauri-apps/api/event").then(({ listen }) => {
-      listen<{ root: string }>("fs:changed", (e) => {
-        if (e.payload.root === projectPath) {
-          cache.current = null;
-          load();
+    let active = true;
+    let unlisten: UnlistenFn | null = null;
+
+    (async () => {
+      try {
+        const unsubscribe = await listen<{ root: string }>("fs:changed", (e) => {
+          if (e.payload.root === projectPath) {
+            cache.current = null;
+            void load();
+          }
+        });
+        if (!active) {
+          unsubscribe();
+          return;
         }
-      }).then((u) => {
-        unlisten = u;
-      });
-    });
+        unlisten = unsubscribe;
+      } catch {
+        /* listen unavailable */
+      }
+    })();
+
     return () => {
+      active = false;
+      requestSeq.current += 1;
       unlisten?.();
     };
   }, [projectPath, load]);

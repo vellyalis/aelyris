@@ -119,9 +119,12 @@ impl WorkflowExecutor {
         let mut instances = self.instances.lock().map_err(|_| "Lock poisoned".to_string())?;
         let inst = instances.get_mut(workflow_id).ok_or("Workflow not found")?;
         let idx = inst.status.current_phase;
-        if let Some(pr) = inst.status.phases.get_mut(idx) {
-            pr.status = PhaseStatus::Passed;
-        }
+        let pr = inst
+            .status
+            .phases
+            .get_mut(idx)
+            .ok_or("Workflow already complete")?;
+        pr.status = PhaseStatus::Passed;
         // Advance
         inst.status.current_phase += 1;
         let done = inst.status.current_phase >= inst.workflow.phases.len();
@@ -160,5 +163,47 @@ impl WorkflowExecutor {
         if let Ok(mut instances) = self.instances.lock() {
             instances.remove(workflow_id);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn one_phase_workflow() -> Workflow {
+        Workflow {
+            name: "single".to_string(),
+            description: "single phase".to_string(),
+            phases: vec![Phase {
+                name: "review".to_string(),
+                depends_on: Vec::new(),
+                agent: AgentConfig {
+                    model: "sonnet".to_string(),
+                    prompt: "check {task_title}".to_string(),
+                    allowed_tools: Vec::new(),
+                    max_cost: 1.0,
+                    timeout_secs: 60,
+                },
+                quality_gate: None,
+            }],
+        }
+    }
+
+    #[test]
+    fn approve_gate_rejects_repeated_approval_after_completion() {
+        let executor = WorkflowExecutor::new();
+        let id = executor
+            .start(one_phase_workflow(), "task", "C:/repo")
+            .expect("workflow starts");
+
+        assert_eq!(executor.approve_gate(&id), Ok(true));
+        let after_first = executor.status(&id).expect("status after first approval");
+        assert_eq!(after_first.current_phase, 1);
+        assert_eq!(after_first.phases[0].status, PhaseStatus::Passed);
+
+        assert!(executor.approve_gate(&id).is_err());
+        let after_second = executor.status(&id).expect("status after rejected approval");
+        assert_eq!(after_second.current_phase, 1);
+        assert_eq!(after_second.phases[0].status, PhaseStatus::Passed);
     }
 }

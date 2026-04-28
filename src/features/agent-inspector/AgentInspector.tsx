@@ -151,7 +151,8 @@ export function AgentInspector({
   const handleCreateWorktree = useCallback(
     async (sessionId: string) => {
       if (!worktreeBranch.trim() || !onCreateWorktree) return;
-      await onCreateWorktree(sessionId, worktreeBranch.trim());
+      const worktree = await onCreateWorktree(sessionId, worktreeBranch.trim());
+      if (!worktree) return;
       setWorktreeInputId(null);
       setWorktreeBranch("");
     },

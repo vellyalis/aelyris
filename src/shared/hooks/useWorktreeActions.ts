@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { toast } from "../store/toastStore";
 import type { AgentSession, WorktreeInfo } from "../types/agent";
 
 interface UseWorktreeActionsOptions {
@@ -34,7 +35,8 @@ export function useWorktreeActions({
         addTabWithCwd("powershell", wt.path, branchName);
         onRefresh();
         return { ...wt, status: wt.status as "Clean" | "Modified" | "Conflicted" };
-      } catch {
+      } catch (error) {
+        toast.error("Worktree creation failed", error instanceof Error ? error.message : String(error));
         return null;
       }
     },
@@ -54,8 +56,8 @@ export function useWorktreeActions({
         });
         stopAgent(sessionId);
         onRefresh();
-      } catch {
-        /* ignore */
+      } catch (error) {
+        toast.error("Remove worktree failed", error instanceof Error ? error.message : String(error));
       }
     },
     [sessions, projectPath, stopAgent, onRefresh],

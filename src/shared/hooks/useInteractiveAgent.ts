@@ -1,3 +1,5 @@
+import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "../store/toastStore";
 import type { InteractiveSession, SpawnResult } from "../types/interactiveAgent";
@@ -14,19 +16,35 @@ export function useInteractiveAgent() {
 
   // Listen for session state updates from Rust backend
   useEffect(() => {
-    let unlisten: (() => void) | null = null;
+    let unlisten: UnlistenFn | null = null;
     let cancelled = false;
+    let receivedEventBeforeSeed = false;
+
+    const applySessions = (next: InteractiveSession[]) => {
+      setSessions(next);
+      setActiveSessionId((current) => (current && next.some((s) => s.id === current) ? current : null));
+    };
 
     (async () => {
       try {
-        const { listen } = await import("@tauri-apps/api/event");
         const unsub = await listen<InteractiveSession[]>("interactive-sessions-updated", (event) => {
-          setSessions(event.payload);
+          receivedEventBeforeSeed = true;
+          applySessions(event.payload);
         });
         if (cancelled) {
-          unsub(); // Component unmounted during await — clean up immediately
-        } else {
-          unlisten = unsub;
+          unsub();
+          return;
+        }
+        unlisten = unsub;
+      } catch {
+        /* not in Tauri */
+      }
+
+      try {
+        const initial = await invoke<InteractiveSession[]>("list_interactive_agents");
+        if (cancelled) return;
+        if (!receivedEventBeforeSeed) {
+          applySessions(initial);
         }
       } catch {
         /* not in Tauri */
@@ -50,7 +68,6 @@ export function useInteractiveAgent() {
       rows?: number;
     }): Promise<SpawnResult | null> => {
       try {
-        const { invoke } = await import("@tauri-apps/api/core");
         const result = await invoke<SpawnResult>("spawn_interactive_agent", {
           cwd: opts.cwd,
           model: opts.model ?? null,
@@ -72,7 +89,6 @@ export function useInteractiveAgent() {
   /** Stop an interactive agent session (keeps worktree) */
   const stopSession = useCallback(async (id: string) => {
     try {
-      const { invoke } = await import("@tauri-apps/api/core");
       await invoke("stop_interactive_agent", { id });
       if (activeSessionIdRef.current === id) {
         setActiveSessionId(null);
@@ -85,7 +101,6 @@ export function useInteractiveAgent() {
   /** End session AND remove its worktree */
   const endSessionAndRemoveWorktree = useCallback(async (id: string) => {
     try {
-      const { invoke } = await import("@tauri-apps/api/core");
       await invoke("end_session_and_remove_worktree", { id });
       if (activeSessionIdRef.current === id) {
         setActiveSessionId(null);

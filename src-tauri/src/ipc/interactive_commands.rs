@@ -261,6 +261,7 @@ pub fn end_session_and_remove_worktree(app: AppHandle, id: String) -> Result<(),
 
     // Get session info before removing
     let info = session_mgr.get(&id)?;
+    session_mgr.update_status(&id, "done")?;
 
     // Close PTY (use pty_id from session info)
     let pty_manager = app.state::<PtyManager>();
@@ -285,7 +286,10 @@ pub fn end_session_and_remove_worktree(app: AppHandle, id: String) -> Result<(),
     if let Some(session) = &info {
         if let (Some(repo_path), Some(branch)) = (&session.repo_path, &session.worktree_branch) {
             if let Err(e) = crate::git::remove_worktree(repo_path, branch, true) {
-                log::warn!("Failed to remove worktree for session {}: {}", id, e);
+                emit_interactive_sessions(&app, &session_mgr);
+                let message = format!("failed to remove worktree for session {}: {}", id, e);
+                log::warn!("{}", message);
+                return Err(message);
             }
         }
     }

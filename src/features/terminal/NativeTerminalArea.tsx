@@ -396,6 +396,15 @@ export function NativeTerminalArea({
         if (cancelled) {
           unlisten?.();
           unlisten = null;
+          return;
+        }
+        const replay = await invoke<string>("capture_pane", {
+          terminalId,
+          lines: 80,
+          stripAnsiCodes: false,
+        }).catch(() => "");
+        if (!cancelled && replay) {
+          aiCli.feed(replay);
         }
       } catch {
         /* listener unavailable (e.g. native engine off) */

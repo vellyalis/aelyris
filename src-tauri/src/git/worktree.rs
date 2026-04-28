@@ -129,10 +129,23 @@ pub fn remove_worktree(repo_path: &str, worktree_name: &str, delete_branch: bool
         .output();
 
     if delete_branch {
-        let _ = std::process::Command::new("git")
+        let branch_output = std::process::Command::new("git")
             .args(["branch", "-D", worktree_name])
             .current_dir(repo_path)
-            .output();
+            .output()
+            .map_err(|e| format!("Git branch delete failed: {}", e))?;
+        if !branch_output.status.success() {
+            let still_exists = std::process::Command::new("git")
+                .args(["show-ref", "--verify", "--quiet", &format!("refs/heads/{}", worktree_name)])
+                .current_dir(repo_path)
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(true);
+            if still_exists {
+                let stderr = String::from_utf8_lossy(&branch_output.stderr);
+                return Err(format!("Branch deletion failed: {}", stderr));
+            }
+        }
     }
 
     Ok(())

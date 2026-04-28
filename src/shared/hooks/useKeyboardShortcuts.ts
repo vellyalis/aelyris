@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import type { ShellType } from "../../App";
 import { showHistorySearch } from "../../features/history/HistorySearchDialog";
+import { toast } from "../store/toastStore";
 import { showPrompt } from "../ui/PromptDialog";
 import { isEditableTarget } from "./useEditableTargetGuard";
 
@@ -71,9 +72,14 @@ export function useKeyboardShortcuts({
         e.preventDefault();
         showPrompt("New File", { placeholder: "file name..." }).then(async (name) => {
           if (name && projectPath) {
-            const { invoke } = await import("@tauri-apps/api/core");
-            await invoke("create_file", { path: `${projectPath}/${name}` }).catch(() => {});
-            handleFileSelect(`${projectPath}/${name}`);
+            const path = `${projectPath}/${name}`;
+            try {
+              const { invoke } = await import("@tauri-apps/api/core");
+              await invoke("create_file", { path });
+              handleFileSelect(path);
+            } catch (error) {
+              toast.error("Create file failed", error instanceof Error ? error.message : String(error));
+            }
           }
         });
       } else if (e.ctrlKey && !e.shiftKey && e.key === "p") {

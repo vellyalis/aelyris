@@ -34,53 +34,68 @@ export function useRepairJobs(): UseRepairJobsResult {
   useEffect(() => {
     let cancelled = false;
     const unlistens: UnlistenFn[] = [];
+    let jobsSeedHydrated = false;
+    let receivedJobsEventBeforeSeed = false;
 
     (async () => {
+      try {
+        const unlisten = await listen<RepairJobInfo[]>("repair:jobs-updated", (event) => {
+          if (!jobsSeedHydrated) {
+            receivedJobsEventBeforeSeed = true;
+          }
+          setJobs(event.payload);
+        });
+        if (cancelled) {
+          unlisten();
+          return;
+        }
+        unlistens.push(unlisten);
+      } catch {
+        /* listen unavailable */
+      }
+
+      try {
+        const unlisten = await listen<RepairNotification>("repair:notification", (event) => {
+          const { message, is_success } = event.payload;
+          if (is_success) {
+            toast.success("Auto-repair", message);
+          } else {
+            toast.error("Auto-repair", message);
+          }
+        });
+        if (cancelled) {
+          unlisten();
+          return;
+        }
+        unlistens.push(unlisten);
+      } catch {
+        /* listen unavailable */
+      }
+
       try {
         const [initialJobs, initialCfg] = await Promise.all([
           invoke<RepairJobInfo[]>("list_repair_jobs"),
           invoke<AutoRepairConfig>("get_auto_repair_config"),
         ]);
         if (cancelled) return;
-        setJobs(initialJobs);
+        if (!receivedJobsEventBeforeSeed) {
+          setJobs(initialJobs);
+        }
+        jobsSeedHydrated = true;
         setConfig(initialCfg);
       } catch {
+        jobsSeedHydrated = true;
         /* backend unavailable (e.g. tests) — defaults stand */
       }
 
-      try {
-        unlistens.push(
-          await listen<RepairJobInfo[]>("repair:jobs-updated", (event) => {
-            setJobs(event.payload);
-          }),
-        );
-      } catch {
-        /* listen unavailable */
-      }
-
-      try {
-        unlistens.push(
-          await listen<RepairNotification>("repair:notification", (event) => {
-            const { message, is_success } = event.payload;
-            if (is_success) {
-              toast.success("Auto-repair", message);
-            } else {
-              toast.error("Auto-repair", message);
-            }
-          }),
-        );
-      } catch {
-        /* listen unavailable */
-      }
-
       if (cancelled) {
-        unlistens.forEach((fn) => fn());
+        for (const fn of unlistens) fn();
       }
     })();
 
     return () => {
       cancelled = true;
-      unlistens.forEach((fn) => fn());
+      for (const fn of unlistens) fn();
     };
   }, []);
 

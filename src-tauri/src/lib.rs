@@ -41,6 +41,7 @@ pub fn run() {
     let log_ring = logging::init();
     let t0 = std::time::Instant::now();
     log::info!("Aether Terminal starting...");
+    let (lsp_tx, lsp_rx) = std::sync::mpsc::channel::<lsp::LspMessage>();
 
     tauri::Builder::default()
         .manage(log_ring)
@@ -62,10 +63,7 @@ pub fn run() {
         .manage(pty::PaneRegistry::new())
         .manage(ipc::FsWatcherRegistry::new())
         .manage(workflow::WorkflowExecutor::new())
-        .manage({
-            let (tx, _rx) = std::sync::mpsc::channel();
-            lsp::LspManager::new(tx)
-        })
+        .manage(lsp::LspManager::new(lsp_tx))
         .manage(std::sync::Arc::new(term::NativeTerminalRegistry::new()))
         .manage(std::sync::Arc::new(snapshot::SnapshotStore::new()))
         .manage(std::sync::Arc::new(std::sync::Mutex::new(AutoRepairManager::new())))
@@ -76,6 +74,22 @@ pub fn run() {
         .manage(std::sync::Arc::new(LayerRegistry::new()))
         .manage(std::sync::Arc::new(WatcherPool::new()))
         .setup(move |app| {
+            let lsp_app = app.handle().clone();
+            std::thread::Builder::new()
+                .name("lsp-response-bridge".into())
+                .spawn(move || {
+                    while let Ok(msg) = lsp_rx.recv() {
+                        let _ = lsp_app.emit(
+                            "lsp:response",
+                            serde_json::json!({
+                                "server": msg.server_key,
+                                "message": msg.json,
+                            }),
+                        );
+                    }
+                })
+                .ok();
+
             // Initialize database as managed state
             let db_path = db::db_path();
             match Database::open(&db_path) {

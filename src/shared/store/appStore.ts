@@ -113,6 +113,8 @@ interface AppState {
   closeFile: (path: string) => void;
   setActiveFile: (path: string | null) => void;
   clearFiles: () => void;
+  replaceOpenPath: (oldPath: string, newPath: string) => void;
+  removeOpenPath: (path: string) => void;
 
   // Unsaved file tracking (replaces DOM-based modDot detection)
   unsavedFiles: Set<string>;
@@ -128,6 +130,26 @@ interface AppState {
 
 function toggleOrSet(v: boolean | ((prev: boolean) => boolean), prev: boolean): boolean {
   return typeof v === "function" ? v(prev) : v;
+}
+
+function isPathOrDescendant(path: string, root: string): boolean {
+  return path === root || path.startsWith(`${root}/`);
+}
+
+function replacePathPrefix(path: string, oldPath: string, newPath: string): string {
+  if (path === oldPath) return newPath;
+  if (path.startsWith(`${oldPath}/`)) return `${newPath}${path.slice(oldPath.length)}`;
+  return path;
+}
+
+function persistEditorFiles(openFiles: string[], activeFile: string | null): void {
+  try {
+    localStorage.setItem("aether:openFiles", JSON.stringify(openFiles));
+  } catch {}
+  try {
+    if (activeFile) localStorage.setItem("aether:activeFile", activeFile);
+    else localStorage.removeItem("aether:activeFile");
+  } catch {}
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -445,6 +467,34 @@ export const useAppStore = create<AppState>((set, get) => ({
       localStorage.removeItem("aether:activeFile");
     } catch {}
   },
+  replaceOpenPath: (oldPath, newPath) =>
+    set((s) => {
+      const seen = new Set<string>();
+      const files: string[] = [];
+      for (const file of s.openFiles) {
+        const next = replacePathPrefix(file, oldPath, newPath);
+        if (!seen.has(next)) {
+          seen.add(next);
+          files.push(next);
+        }
+      }
+      const active = s.activeFile ? replacePathPrefix(s.activeFile, oldPath, newPath) : null;
+      const unsavedFiles = new Set<string>();
+      for (const file of s.unsavedFiles) {
+        unsavedFiles.add(replacePathPrefix(file, oldPath, newPath));
+      }
+      persistEditorFiles(files, active);
+      return { openFiles: files, activeFile: active, unsavedFiles };
+    }),
+  removeOpenPath: (path) =>
+    set((s) => {
+      const files = s.openFiles.filter((file) => !isPathOrDescendant(file, path));
+      const active =
+        s.activeFile && isPathOrDescendant(s.activeFile, path) ? (files[files.length - 1] ?? null) : s.activeFile;
+      const unsavedFiles = new Set(Array.from(s.unsavedFiles).filter((file) => !isPathOrDescendant(file, path)));
+      persistEditorFiles(files, active);
+      return { openFiles: files, activeFile: active, unsavedFiles };
+    }),
 
   unsavedFiles: new Set(),
   markUnsaved: (path) =>

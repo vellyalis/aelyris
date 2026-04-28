@@ -55,11 +55,11 @@ import { useWorktreeActions } from "./shared/hooks/useWorktreeActions";
 import { markFirstPaint } from "./shared/lib/bootMetrics";
 import { useAppStore } from "./shared/store/appStore";
 import type { SearchHit } from "./shared/types/history";
-import { ConfirmDialog, showConfirm } from "./shared/ui/ConfirmDialog";
 import { CollapsibleSection } from "./shared/ui/CollapsibleSection";
+import { ConfirmDialog, showConfirm } from "./shared/ui/ConfirmDialog";
 import { ErrorBoundary } from "./shared/ui/ErrorBoundary";
-import { LazyDialog } from "./shared/ui/LazyDialog";
 import { HandoffDialog } from "./shared/ui/HandoffDialog";
+import { LazyDialog } from "./shared/ui/LazyDialog";
 import { OnboardingOverlay } from "./shared/ui/OnboardingOverlay";
 import { OrchestraDialog } from "./shared/ui/OrchestraDialog";
 import { PromptDialog } from "./shared/ui/PromptDialog";
@@ -203,6 +203,17 @@ export function App() {
     setFileTreeKey((k) => k + 1);
   }, [refreshGitStatus]);
 
+  const confirmDiscardUnsavedFiles = useCallback(async (action: string) => {
+    const count = useAppStore.getState().unsavedFiles.size;
+    if (count === 0) return true;
+    return showConfirm({
+      title: "Unsaved changes",
+      description: `${count} file(s) have unsaved changes. ${action}?`,
+      confirmLabel: "Discard",
+      tone: "danger",
+    });
+  }, []);
+
   // ── Extracted hooks ──
 
   const { createWorktree, removeWorktree } = useWorktreeActions({
@@ -222,26 +233,28 @@ export function App() {
   // ── Handlers ──
 
   const handleOpenProject = useCallback(
-    (path: string) => {
+    async (path: string) => {
+      if (!(await confirmDiscardUnsavedFiles("Open another project and discard them"))) return;
       const normalized = path.replace(/\\/g, "/");
       setRootProjectPath(normalized);
       addTabWithCwd("powershell", normalized);
       clearFiles();
     },
-    [addTabWithCwd, setRootProjectPath, clearFiles],
+    [addTabWithCwd, clearFiles, confirmDiscardUnsavedFiles, setRootProjectPath],
   );
 
-  const handleCloseFolder = useCallback(() => {
+  const handleCloseFolder = useCallback(async () => {
+    if (!(await confirmDiscardUnsavedFiles("Close this project and discard them"))) return;
     setRootProjectPath(null);
     clearFiles();
-  }, [setRootProjectPath, clearFiles]);
+  }, [clearFiles, confirmDiscardUnsavedFiles, setRootProjectPath]);
 
   const handleOpenFolder = useCallback(async () => {
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
       const selected = await open({ directory: true, multiple: false, title: "Open Project Folder" });
       if (selected) {
-        handleOpenProject(typeof selected === "string" ? selected : selected[0]);
+        await handleOpenProject(typeof selected === "string" ? selected : selected[0]);
       }
     } catch {
       /* cancelled or not in Tauri */
@@ -249,11 +262,13 @@ export function App() {
   }, [handleOpenProject]);
 
   const handleTabSwitch = useCallback(
-    (tabId: string) => {
+    async (tabId: string) => {
+      if (tabId === activeTabId) return;
+      if (!(await confirmDiscardUnsavedFiles("Switch tabs and discard them"))) return;
       setActiveTabId(tabId);
       clearFiles();
     },
-    [setActiveTabId, clearFiles],
+    [activeTabId, clearFiles, confirmDiscardUnsavedFiles, setActiveTabId],
   );
 
   const handleStartAgent = useCallback(
@@ -309,7 +324,7 @@ export function App() {
       const { invoke } = await import("@tauri-apps/api/core");
       const terminals = await invoke<string[]>("list_terminals");
       if (terminals.length > 0) {
-        await invoke("write_terminal", { id: terminals[0], data: command + "\r" });
+        await invoke("write_terminal", { id: terminals[0], data: `${command}\r` });
       }
     } catch (err) {
       /* command error */
@@ -339,7 +354,7 @@ export function App() {
       const agent = sessions.find((s) => s.id === sessionId);
       if (agent) {
         const matchTab = tabs.find((t) => t.cwd && agent.prompt.includes(t.cwd.split("/").pop() ?? ""));
-        if (matchTab) handleTabSwitch(matchTab.id);
+        if (matchTab) void handleTabSwitch(matchTab.id);
       }
     },
     [sessions, tabs, setActiveSessionId, handleTabSwitch],
@@ -641,7 +656,9 @@ export function App() {
         <Suspense fallback={<div className={appStyles.editorLoading}>Loading editor...</div>}>
           <EditorPanel
             filePath={activeFile}
-            onClose={() => handleCloseFile(activeFile!)}
+            onClose={() => {
+              if (activeFile) void handleCloseFile(activeFile);
+            }}
             projectPath={projectPath}
             initialLine={editorLine}
             initialDiffMode={openInDiff}
@@ -941,7 +958,7 @@ export function App() {
             activityTabs={activityTabs}
             onSelectTab={(id) => {
               if (interactiveSessionId) selectInteractiveSession("");
-              handleTabSwitch(id);
+              void handleTabSwitch(id);
             }}
             onCloseTab={closeTab}
             onNewTab={addTab}
