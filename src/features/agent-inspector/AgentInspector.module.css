@@ -157,14 +157,18 @@
   outline-offset: 1px;
 }
 
-/* ─── Session Cards ─── */
+/* Phase 1 Bento: auto-fill grid — adjusts columns to right-panel width.
+ * 260px min → 1 col, 480px max → 2 col. container-type enables
+ * @container queries on child cards if needed later. */
 .cards {
+  container-type: inline-size;
   padding: var(--space-5) var(--space-6);
   overflow-y: auto;
   flex: 1;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--bento-cell), 1fr));
   gap: var(--space-4);
+  align-content: start;
 }
 .card {
   position: relative;
@@ -393,6 +397,7 @@
   margin-left: auto;
 }
 .navHint {
+  grid-column: 1 / -1; /* Phase 1 Bento: span full grid width */
   text-align: center;
   font-size: var(--text-xs);
   color: var(--text-muted);

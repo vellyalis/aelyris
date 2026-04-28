@@ -166,10 +166,14 @@
   margin-bottom: var(--space-4);
 }
 
+/* Phase 1 Bento: auto-fill grid for project cards.
+ * parent max-width 480px → 2 columns at 200px each with 4px gap.
+ * container-type: inline-size enables future @container queries. */
 .recentList {
+  container-type: inline-size;
   width: 100%;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: var(--space-2);
   max-height: 300px;
   overflow-y: auto;
@@ -278,6 +282,7 @@
 }
 
 .hint {
+  grid-column: 1 / -1; /* Phase 1 Bento: span full grid width */
   padding: var(--space-8);
   text-align: center;
   font-size: var(--text-base);

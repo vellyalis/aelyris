@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Aether Terminal mark</title>
+  <desc id="desc">A transparent Aether monogram with a quiet orbital arc and star.</desc>
+  <defs>
+    <linearGradient id="aether-ink" x1="150" y1="132" x2="346" y2="366" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#46506f" stop-opacity="0.76"/>
+      <stop offset="0.48" stop-color="#30384f" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#1c2236" stop-opacity="0.76"/>
+    </linearGradient>
+    <linearGradient id="aether-arc" x1="146" y1="142" x2="372" y2="226" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#44506f" stop-opacity="0.18"/>
+      <stop offset="0.5" stop-color="#3b4564" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#2c344f" stop-opacity="0.06"/>
+    </linearGradient>
+    <filter id="aether-soft" x="-35%" y="-35%" width="170%" height="170%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="2.4" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.22  0 0 0 0 0.27  0 0 0 0 0.42  0 0 0 0.4 0" result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <g filter="url(#aether-soft)">
+    <path
+      d="M142 224c6-54 41-95 88-108 50-13 105 8 132 52"
+      fill="none"
+      stroke="url(#aether-arc)"
+      stroke-width="12"
+      stroke-linecap="round"
+    />
+    <path
+      d="M169 352 259 160 331 352"
+      fill="none"
+      stroke="url(#aether-ink)"
+      stroke-width="18"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+    <path
+      d="M204 300 287 249"
+      fill="none"
+      stroke="url(#aether-ink)"
+      stroke-width="15"
+      stroke-linecap="round"
+      opacity="0.9"
+    />
+    <path
+      d="M262 162c23 51 36 112 33 184"
+      fill="none"
+      stroke="#12182a"
+      stroke-width="5"
+      stroke-linecap="round"
+      opacity="0.34"
+    />
+    <path
+      d="M365 150c0 15 7 22 22 22-15 0-22 7-22 22 0-15-7-22-22-22 15 0 22-7 22-22Z"
+      fill="#424b68"
+      opacity="0.82"
+    />
+  </g>
+</svg>
