@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { isTauriRuntime } from "../lib/tauriRuntime";
 import { toast } from "../store/toastStore";
 import type { InteractiveSession, SpawnResult } from "../types/interactiveAgent";
 
@@ -16,6 +17,8 @@ export function useInteractiveAgent() {
 
   // Listen for session state updates from Rust backend
   useEffect(() => {
+    if (!isTauriRuntime()) return;
+
     let unlisten: UnlistenFn | null = null;
     let cancelled = false;
     let receivedEventBeforeSeed = false;

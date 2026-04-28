@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useState } from "react";
+import { isTauriRuntime } from "../lib/tauriRuntime";
 
 interface ChangedFile {
   path: string;
@@ -23,6 +24,8 @@ export function useGitStatus(repoPath: string) {
 
   // Poll git status
   useEffect(() => {
+    if (!isTauriRuntime()) return;
+
     let active = true;
     const poll = async () => {
       try {
@@ -47,7 +50,7 @@ export function useGitStatus(repoPath: string) {
 
   // Start file watcher and listen for fs:changed events
   useEffect(() => {
-    if (!repoPath) return;
+    if (!repoPath || !isTauriRuntime()) return;
     let aborted = false;
     let watcherStarted = false;
     let unlisten: UnlistenFn | null = null;

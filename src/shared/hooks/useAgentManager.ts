@@ -3,6 +3,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { parseFileChange } from "../lib/agentFileChanges";
 import type { OrchestraRoleId } from "../lib/orchestrator";
+import { isTauriRuntime } from "../lib/tauriRuntime";
 import type { AgentLog, AgentSession, AgentStatus } from "../types/agent";
 
 interface AgentSessionRaw {
@@ -25,6 +26,8 @@ export function useAgentManager() {
 
   // Push-based session updates from Rust via Tauri events
   useEffect(() => {
+    if (!isTauriRuntime()) return;
+
     let unlisten: UnlistenFn | null = null;
     let cancelled = false;
 

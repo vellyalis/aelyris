@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { Check, CheckCircle, ChevronRight, Clock, Loader, Play, Workflow, X, XCircle } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { isTauriRuntime } from "../../shared/lib/tauriRuntime";
 import { toast } from "../../shared/store/toastStore";
 import { showPrompt } from "../../shared/ui/PromptDialog";
 import styles from "./WorkflowPanel.module.css";
@@ -128,18 +129,26 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
     // assignment — guard with the `active` flag and tear down whatever has
     // resolved by the time we unmount, otherwise the listener leaks.
     let unlisten: (() => void) | null = null;
-    import("@tauri-apps/api/event").then(({ listen }) => {
-      if (!active) return;
-      listen<WorkflowStatus[]>("workflow-updated", (e) => {
-        processUpdate(e.payload);
-      }).then((u) => {
-        if (!active) {
-          u();
-          return;
-        }
-        unlisten = u;
-      });
-    });
+    if (isTauriRuntime()) {
+      import("@tauri-apps/api/event")
+        .then(({ listen }) => {
+          if (!active) return Promise.resolve(null);
+          return listen<WorkflowStatus[]>("workflow-updated", (e) => {
+            processUpdate(e.payload);
+          });
+        })
+        .then((u) => {
+          if (!u) return;
+          if (!active) {
+            u();
+            return;
+          }
+          unlisten = u;
+        })
+        .catch(() => {
+          /* browser preview or backend unavailable */
+        });
+    }
 
     // Initial fetch + slow fallback poll (30s instead of 3s)
     const poll = () => {

@@ -12,16 +12,14 @@
   align-items: center;
   gap: var(--space-3);
   padding: 0 var(--space-3);
-  margin: 0;
-  min-height: 30px;
-  background:
-    linear-gradient(180deg, rgba(255, 244, 214, 0.018), transparent 70%),
-    var(--terminal-chrome-bg);
+  margin: -1px 0 0;
+  min-height: 28px;
+  background: rgba(0, 0, 0, 0.18);
   border: 0;
-  border-radius: var(--radius);
+  border-radius: 0 0 calc(var(--radius-lg) - 4px) calc(var(--radius-lg) - 4px);
   box-shadow:
-    inset 0 1px 0 rgba(255, 244, 214, 0.038),
-    inset 0 0 0 1px color-mix(in srgb, var(--terminal-border) 46%, transparent);
+    inset 0 1px 0 rgba(255, 255, 255, 0.024),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.018);
   transition:
     background var(--duration-fast) var(--ease-silk, cubic-bezier(0.4, 0, 0.2, 1)),
     box-shadow var(--duration-fast) var(--ease-silk, cubic-bezier(0.4, 0, 0.2, 1));
@@ -29,11 +27,11 @@
 
 .bar.focused {
   background:
-    linear-gradient(180deg, rgba(255, 244, 214, 0.032), transparent 70%),
-    var(--terminal-chrome-bg-focus);
+    linear-gradient(180deg, rgba(255, 244, 214, 0.018), transparent 70%),
+    rgba(8, 9, 14, 0.72);
   box-shadow:
-    inset 0 1px 0 rgba(255, 244, 214, 0.052),
-    inset 0 0 0 1px color-mix(in srgb, var(--gold) 14%, var(--terminal-border));
+    inset 0 1px 0 rgba(255, 244, 214, 0.036),
+    inset 0 0 0 1px color-mix(in srgb, var(--gold) 10%, transparent);
 }
 
 .bar.disabled {
@@ -56,9 +54,9 @@
   font-family: var(--font-mono);
   font-weight: var(--weight-medium);
   color: var(--text-muted);
-  border: 1px solid var(--white-10);
+  border: 1px solid var(--white-6);
   border-radius: var(--radius-sm);
-  background: var(--white-2);
+  background: transparent;
   user-select: none;
   transition:
     color var(--duration-fast),
@@ -68,8 +66,8 @@
 
 .bar.focused .indicator {
   color: var(--text-secondary);
-  border-color: var(--white-15);
-  background: var(--white-4);
+  border-color: var(--white-10);
+  background: var(--white-2);
 }
 
 /* While IME composition is active we light the pill in gold so the

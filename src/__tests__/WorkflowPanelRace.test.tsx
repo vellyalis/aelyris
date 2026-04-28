@@ -36,9 +36,8 @@ describe("WorkflowPanel listener race", () => {
     // Find the dynamic import block. The fix re-checks `active` in two
     // places: just inside the import .then() (before subscribing) and
     // just inside the listen .then() (before assigning the unlisten ref).
-    const importBlock = src.match(
-      /import\(\s*"@tauri-apps\/api\/event"\s*\)\.then\(\s*\(\{ listen \}\)\s*=>\s*\{([\s\S]*?)\}\s*\)\s*;/,
-    );
+    expect(src).toContain("isTauriRuntime()");
+    const importBlock = src.match(/import\(\s*"@tauri-apps\/api\/event"\s*\)([\s\S]*?)\.catch\(/);
     expect(importBlock).not.toBeNull();
     const body = importBlock?.[1] ?? "";
 

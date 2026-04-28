@@ -149,4 +149,38 @@ describe("design token usage", () => {
     expect(veilRule).toContain("opacity: 0.24");
     expect(veilRule).not.toContain("opacity: 0.78");
   });
+
+  it("keeps sidebar sections flat inside the parent glass panel", () => {
+    const entry = Object.entries(cssSources).find(([file]) =>
+      file.includes("shared/ui/CollapsibleSection.module.css"),
+    );
+    expect(entry).toBeDefined();
+    const source = entry?.[1] ?? "";
+    const rootRule = source.match(/\.root\s*{[\s\S]*?}/)?.[0] ?? "";
+    const hoverRule = source.match(/\.root:hover\s*{[\s\S]*?}/)?.[0] ?? "";
+
+    expect(rootRule).toContain("background: transparent");
+    expect(rootRule).toContain("box-shadow: none");
+    expect(hoverRule).toContain("transform: none");
+  });
+
+  it("keeps browser previews from calling Tauri event listeners", () => {
+    const sources = import.meta.glob("../**/*.{ts,tsx}", {
+      query: "?raw",
+      import: "default",
+      eager: true,
+    }) as Record<string, string>;
+
+    const guardedFiles = [
+      "../main.tsx",
+      "../shared/hooks/useAgentManager.ts",
+      "../shared/hooks/useInteractiveAgent.ts",
+      "../shared/hooks/useGitStatus.ts",
+      "../features/terminal/NativeTerminalArea.tsx",
+    ];
+
+    for (const file of guardedFiles) {
+      expect(sources[file], file).toContain("isTauriRuntime");
+    }
+  });
 });

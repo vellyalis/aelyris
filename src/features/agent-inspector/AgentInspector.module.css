@@ -10,7 +10,7 @@
   align-items: center;
   gap: var(--space-4);
   padding: var(--space-4) var(--space-6);
-  border-bottom: 1px solid var(--border);
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.026);
 }
 .budgetLabel {
   font-size: var(--text-xs);
@@ -41,7 +41,7 @@
    * Measured via CDP on 2026-04-24; full-label tabs had needed 515px. */
   padding: var(--space-4) var(--space-3);
   gap: var(--space-1);
-  border-bottom: 1px solid var(--border);
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.026);
 }
 .tab {
   display: inline-flex;
@@ -176,7 +176,7 @@
   flex-direction: column;
   gap: var(--space-3);
   padding: var(--space-5) var(--space-5) var(--space-5) var(--space-6);
-  border: 1px solid var(--white-10);
+  border: 0;
   border-radius: var(--radius);
   background: var(--glass-thick);
   /* Parent .right-panel already runs backdrop-filter: blur(24px); stacking
@@ -190,7 +190,9 @@
    * :hover/.cardActive, this is the nested layered card feel without
    * stacking another translucent layer (which would breach the 0.74
    * combined-alpha ceiling against the right-panel's --glass-dense). */
-  box-shadow: var(--rim-top), var(--rim-hairline);
+  box-shadow:
+    var(--rim-top),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.032);
   /* Phase 1 nested layered card: rim-top (specular top highlight) +
    * rim-hairline (Vercel-style 1px shadow-as-border) compose to make
    * the card read as a lifted glass surface over the right-panel. */
@@ -230,7 +232,7 @@
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 25% 20%, var(--session-subtle, rgba(200, 160, 80, 0.06)) 0%, transparent 70%);
+  background: linear-gradient(90deg, var(--session-subtle, rgba(200, 160, 80, 0.045)), transparent 58%);
   pointer-events: none;
   opacity: 0;
   transition: opacity var(--duration-slow) var(--ease-silk);
@@ -241,15 +243,14 @@
   z-index: 2;
 }
 .card:hover {
-  border-color: var(--session-subtle, var(--gold-subtle));
   /* Phase 1 H7: multi-shadow simplified to 3-layer stack.
    * rim-top-strong (specular) + shadow-elevated (drop) + session glow.
    * Was 4 raw shadow layers with duplicated rgba values. */
   box-shadow:
-    var(--rim-top-strong),
-    var(--shadow-elevated),
-    0 0 20px var(--session-subtle, rgba(200, 160, 80, 0.2));
-  transform: translateY(-2px);
+    var(--rim-top),
+    inset 0 0 0 1px var(--session-subtle, rgba(200, 160, 80, 0.08)),
+    0 4px 12px rgba(0, 0, 0, 0.1);
+  transform: none;
 }
 .card:hover::before {
   background: var(--session-accent, var(--gold));
@@ -261,14 +262,13 @@
 
 /* Active card */
 .cardActive {
-  border-color: var(--session-accent, var(--gold));
-  background: linear-gradient(135deg, var(--session-subtle, rgba(200, 160, 80, 0.12)) 0%, rgba(24, 24, 24, 0.85) 100%);
+  background: linear-gradient(90deg, var(--session-subtle, rgba(200, 160, 80, 0.1)), transparent 62%), var(--glass-thick);
   /* Phase 1 H7: active shadow simplified — same 3-layer as hover
    * plus stronger session glow for selected emphasis. */
   box-shadow:
-    var(--rim-top-strong),
-    var(--shadow-elevated),
-    0 0 16px var(--session-glow, rgba(200, 160, 80, 0.35));
+    var(--rim-top),
+    inset 0 0 0 1px var(--session-accent, var(--gold)),
+    0 4px 14px rgba(0, 0, 0, 0.12);
 }
 .cardActive::before {
   background: var(--session-accent, var(--gold));

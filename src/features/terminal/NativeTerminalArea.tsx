@@ -26,6 +26,7 @@ import {
   type SearchMatch,
 } from "./search";
 import { useHistorySearch } from "../../shared/hooks/useHistorySearch";
+import { isTauriRuntime } from "../../shared/lib/tauriRuntime";
 import styles from "./TerminalArea.module.css";
 import { TerminalCanvas, type TerminalNav } from "./TerminalCanvas";
 
@@ -193,6 +194,7 @@ export function NativeTerminalArea({
   openInEditor,
   openExternal,
 }: NativeTerminalAreaProps) {
+  const previewMode = !isTauriRuntime();
   const containerRef = useRef<HTMLDivElement>(null);
   const [canvasEl, setCanvasEl] = useState<HTMLCanvasElement | null>(null);
   // Phase B: the hidden IME textarea on the canvas is the real keyboard-
@@ -237,6 +239,7 @@ export function NativeTerminalArea({
   // cleanup fires before the next effect, so the order is
   //   previous cleanup (dismiss backend) → setSnapshotOverlay(null).
   useEffect(() => {
+    if (previewMode) return;
     setSnapshotOverlay(null);
     return () => {
       const stale = snapshotOverlayRef.current;
@@ -244,7 +247,7 @@ export function NativeTerminalArea({
         dismissBackendLayer(stale.layerId);
       }
     };
-  }, [terminalId, dismissBackendLayer]);
+  }, [terminalId, dismissBackendLayer, previewMode]);
 
   const {
     snapshots: timelineSnapshots,
@@ -295,6 +298,7 @@ export function NativeTerminalArea({
   // layer and the `setSnapshotOverlay` commit is still reflected (the ref
   // update commits in the same tick as setState).
   useEffect(() => {
+    if (previewMode) return;
     let unlisten: UnlistenFn | null = null;
     let cancelled = false;
     (async () => {
@@ -314,7 +318,7 @@ export function NativeTerminalArea({
       cancelled = true;
       unlisten?.();
     };
-  }, []);
+  }, [previewMode]);
 
   // Esc returns to live. Keeps other Escape handlers (search / IME) intact
   // by only firing when an overlay is active and the target is inside the
@@ -371,6 +375,7 @@ export function NativeTerminalArea({
   }, []);
 
   useEffect(() => {
+    if (previewMode) return;
     if (!terminalId) return;
     const decoder = new TextDecoder("utf-8");
     let unlisten: UnlistenFn | null = null;
@@ -419,7 +424,7 @@ export function NativeTerminalArea({
       if (flushTimer !== null) window.clearTimeout(flushTimer);
       unlisten?.();
     };
-  }, [terminalId, subscribeOutput, aiCli]);
+  }, [terminalId, subscribeOutput, aiCli, previewMode]);
 
   // ── Crash / clean-exit banner ──
   // Set when the backend's `pty-exit-<id>` event fires; cleared when the
@@ -433,6 +438,7 @@ export function NativeTerminalArea({
   const exitBannerBtnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
+    if (previewMode) return;
     if (!terminalId) return;
     let unlisten: UnlistenFn | null = null;
     let cancelled = false;
@@ -453,7 +459,7 @@ export function NativeTerminalArea({
       cancelled = true;
       unlisten?.();
     };
-  }, [terminalId, subscribeExit]);
+  }, [terminalId, subscribeExit, previewMode]);
 
   // Reset banner state when a brand-new terminal id mounts (project switch).
   useEffect(() => {
@@ -648,6 +654,7 @@ export function NativeTerminalArea({
   }, []);
 
   useEffect(() => {
+    if (previewMode) return;
     if (!dims || spawnStartedRef.current) return;
     spawnStartedRef.current = true;
     let cancelled = false;
@@ -669,12 +676,13 @@ export function NativeTerminalArea({
     return () => {
       cancelled = true;
     };
-  }, [dims]);
+  }, [dims, previewMode]);
 
   useEffect(() => {
+    if (previewMode) return;
     if (!terminalId || !dims) return;
     void resizePty(terminalId, dims.cols, dims.rows);
-  }, [terminalId, dims, resizePty]);
+  }, [terminalId, dims, resizePty, previewMode]);
 
   // ── Global keybindings ──
   useEffect(() => {
@@ -892,7 +900,18 @@ export function NativeTerminalArea({
         </div>
       )}
       <div ref={containerRef} className={styles.terminalContainer}>
-        {terminalId && dims && (
+        {previewMode ? (
+          <div className={styles.terminalViewport} data-preview="true">
+            <div className={styles.previewPrompt}>
+              <span className={styles.previewUser}>aether</span>
+              <span className={styles.previewPath}>~/work/aether-terminal</span>
+              <span className={styles.previewGit}>on main</span>
+              <span className={styles.previewCommand}>git diff --stat</span>
+              <span className={styles.previewCursor} />
+            </div>
+            <img src={logoWatermarkPng} alt="" aria-hidden="true" className={styles.terminalWatermark} />
+          </div>
+        ) : terminalId && dims ? (
           <div className={styles.terminalViewport}>
             <TerminalCanvas
               key={canvasKey ?? undefined}
@@ -911,7 +930,7 @@ export function NativeTerminalArea({
             />
             <img src={logoWatermarkPng} alt="" aria-hidden="true" className={styles.terminalWatermark} />
           </div>
-        )}
+        ) : null}
       </div>
       <IMEInputBar ref={imeBarRef} onSubmit={sendIMEBytes} onRequestCanvasFocus={focusCanvas} />
     </div>

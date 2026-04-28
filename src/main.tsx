@@ -11,6 +11,7 @@ import "@fontsource/ibm-plex-sans/600.css";
 import "@fontsource/ibm-plex-mono/400.css";
 import "@fontsource/ibm-plex-mono/500.css";
 import { App } from "./App";
+import { getAetherHost, isTauriRuntime } from "./shared/lib/tauriRuntime";
 import { ErrorBoundary } from "./shared/ui/ErrorBoundary";
 import "./styles/global.css";
 
@@ -19,15 +20,10 @@ document.addEventListener("contextmenu", (e) => {
   e.preventDefault();
 });
 
-const tauriWindow = window as Window &
-  typeof globalThis & {
-    __TAURI__?: unknown;
-    __TAURI_INTERNALS__?: unknown;
-  };
 const setAetherHost = (host: "tauri" | "browser") => {
   document.documentElement.setAttribute("data-aether-host", host);
 };
-setAetherHost(tauriWindow.__TAURI__ || tauriWindow.__TAURI_INTERNALS__ ? "tauri" : "browser");
+setAetherHost(getAetherHost());
 
 // Default body to focused so the very first frame uses the
 // "active" glass alphas. Rust `setup` then emits real focus
@@ -37,6 +33,10 @@ setAetherHost(tauriWindow.__TAURI__ || tauriWindow.__TAURI_INTERNALS__ ? "tauri"
 // the user Alt-Tabs away.
 document.body.setAttribute("data-window-focused", "true");
 void (async () => {
+  if (!isTauriRuntime()) {
+    setAetherHost("browser");
+    return;
+  }
   try {
     const { listen } = await import("@tauri-apps/api/event");
     setAetherHost("tauri");
