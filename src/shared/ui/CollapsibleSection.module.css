@@ -6,10 +6,35 @@
    * 親 left-panel (--glass-standard 0.35) + child (--glass-thick 0.55)
    * = combined 0.7075 (alpha ceiling 0.74 以内)。 */
   background: var(--glass-thick);
-  border-radius: var(--radius);
-  box-shadow: var(--rim-top), var(--rim-hairline);
+  border-radius: var(--radius-lg);
+  box-shadow:
+    var(--rim-top),
+    0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 1px 3px rgba(0, 0, 0, 0.12),
+    0 4px 12px rgba(0, 0, 0, 0.08);
   margin: var(--space-1) var(--space-3);
   overflow: hidden;
+  transition:
+    box-shadow var(--duration-normal) var(--ease-apple, cubic-bezier(0.25, 0.1, 0.25, 1)),
+    transform var(--duration-fast) var(--ease-apple, cubic-bezier(0.25, 0.1, 0.25, 1));
+}
+
+.root:hover {
+  box-shadow:
+    var(--rim-top-strong, var(--rim-top)),
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 2px 8px rgba(0, 0, 0, 0.18),
+    0 8px 24px rgba(0, 0, 0, 0.12);
+  transform: translateY(-0.5px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .root {
+    transition: none;
+  }
+  .root:hover {
+    transform: none;
+  }
 }
 
 /* When the section is open, allow it to grow inside the sidebar
