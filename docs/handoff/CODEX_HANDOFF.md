@@ -32,21 +32,23 @@
 | Window | Mica (Win11) / Acrylic (Win10 fallback) |
 | Theme | Catppuccin Mocha + 18K Gold |
 | Database | SQLite (rusqlite) |
-| Tests | cargo test (171 cases) + vitest (894 cases) |
+| Tests | cargo test (171 cases) + vitest (913 cases) |
 
 ### 1.2 git state
 
-- **master latest commit**: `878413b` "docs(handoff): record round-13 silent UI fixes"
+- **master latest code commit**: `4917ce9` "fix(round-14): eliminate silent state corruption paths"
+- **handoff docs**: this section was updated immediately after `4917ce9`; the following docs-only commit records the round-14 state.
 - **branches**:
   - `master` (current target for round-by-round silent-bug commits)
   - `phase-1-bento-wip` (NEW 2026-04-28 session-end snapshot — Bento + nested layered cards foundation; HEAD = `6aa65bb`. **Resume Phase 1 work here**)
   - other local branches: `claude/competent-heisenberg-a45d30`, `claude/dazzling-saha-e4a1b4`, `claude/vigorous-mclaren-05c011`, `refactor/tauri-react-migration` (parallel-agent worktrees)
-- **worktree (master)**: tracked WIP from a parallel agent's round-14 in-flight work (rust IPC + LSP bridge tests + agent-terminal/editor-panel changes). NOT this session's work — leave it alone unless that thread resumes. Untracked test scaffolds (`AgentInspectorWorktreeFailure.test.tsx`, `interactiveCommandsWorktreeFailure.test.ts`, `lspResponseBridge.test.ts`, `useInteractiveAgent.test.ts`, `useLsp.test.ts`) are also from that thread, plus `AGENTS.md` (round-4 leftover).
+- **worktree (master)**: clean after the round-14 code commit except user-provided untracked `AGENTS.md`; do not stage it unless the user explicitly asks.
 - **tags**: `v0.2.3`, `v0.2.2`, `v0.2.1`, `v0.2.0` (次 bump 候補は v0.2.4、 ship gate は §3.1 参照)
 
-直近 commits (round 6→13):
+直近 commits (round 6→14):
 
 ```
+4917ce9 fix(round-14): eliminate silent state corruption paths
 1b8e931 fix(round-13): harden silent UI corruption paths
 67ac9e0 docs(handoff): record round-12 conductor fix
 2804547 fix(round-12): keep unknown conductor roles visible
@@ -214,6 +216,11 @@ useEffect(() => {
 ### 3.2 🟡 silent-bug pass 残候補 (round 10+)
 
 現時点で明示残候補なし。 round 10+ の #4/#5/#7/#8/#11/#21/#22 は完了済み。
+
+Round 14 (`4917ce9`) で追加確認した silent corruption 系:
+- LSP response bridge drop / listener arming race / stale async overwrite / failed worktree・session・workflow 操作後の false persistence を修正。
+- regression tests: frontend races + backend guards を含む 13 新規 vitest、 workflow approve_gate Rust unit test。
+- Verification: `pnpm exec tsc --noEmit`, `pnpm test` (119 files / 913 tests), `cargo check --manifest-path src-tauri\Cargo.toml`, `git diff --check` green。
 
 ### 3.3 🟡 round 7-8 で持ち越した残存リスク
 
