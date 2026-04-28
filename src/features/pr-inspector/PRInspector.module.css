@@ -123,7 +123,7 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   border: 1px solid;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: transparent;
   flex-shrink: 0;
 }

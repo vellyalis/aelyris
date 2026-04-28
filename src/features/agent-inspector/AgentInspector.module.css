@@ -177,7 +177,16 @@
   background: var(--glass-thick);
   /* Parent .right-panel already runs backdrop-filter: blur(24px); stacking
    * another 20px here multiplied the blur radius and washed the card out.
-   * (2026-04-24 glass audit.) */
+   * (2026-04-24 glass audit.)
+   *
+   * Phase 1 REV 4 (2026-04-28): added the top-edge specular rim
+   * (--rim-top) so the card reads as a lifted glass surface, not a
+   * flat tile with a border. The 1px highlight is the Apple Liquid
+   * Glass core affordance — combined with the existing halo on
+   * :hover/.cardActive, this is the nested layered card feel without
+   * stacking another translucent layer (which would breach the 0.74
+   * combined-alpha ceiling against the right-panel's --glass-dense). */
+  box-shadow: var(--rim-top);
   color: var(--text-secondary);
   font-family: var(--font-ui);
   cursor: pointer;
@@ -226,7 +235,12 @@
 }
 .card:hover {
   border-color: var(--session-subtle, var(--gold-subtle));
+  /* Phase 1 REV 4: stronger specular rim + existing halo composed.
+   * The rim-top-strong sits on top so the lifted-glass affordance
+   * persists through hover — without it, the card "deflates" into
+   * the halo as soon as you mouse over it. */
   box-shadow:
+    var(--rim-top-strong),
     inset 0 0 20px var(--session-subtle, rgba(200, 160, 80, 0.06)),
     0 4px 16px rgba(0, 0, 0, 0.3),
     0 0 20px var(--session-subtle, rgba(200, 160, 80, 0.2));
@@ -244,7 +258,11 @@
 .cardActive {
   border-color: var(--session-accent, var(--gold));
   background: linear-gradient(135deg, var(--session-subtle, rgba(200, 160, 80, 0.12)) 0%, rgba(24, 24, 24, 0.85) 100%);
+  /* Phase 1 REV 4: rim-top-strong layered on top of the existing
+   * 3-stack halo — selected state should still read as glass, not
+   * as a printed gold tile. */
   box-shadow:
+    var(--rim-top-strong),
     inset 0 0 24px var(--session-subtle, rgba(200, 160, 80, 0.1)),
     0 4px 20px rgba(0, 0, 0, 0.3),
     0 0 16px var(--session-glow, rgba(200, 160, 80, 0.35));

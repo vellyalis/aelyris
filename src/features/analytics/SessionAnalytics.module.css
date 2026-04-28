@@ -138,7 +138,7 @@
 .costBar {
   display: flex;
   height: 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
   background: var(--white-4);
 }

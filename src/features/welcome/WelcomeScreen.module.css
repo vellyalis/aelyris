@@ -182,25 +182,45 @@
   gap: var(--space-5);
   width: 100%;
   padding: var(--space-4) var(--space-6);
-  border: 1px solid var(--aether-border);
   border-radius: var(--radius);
-  background: var(--white-2);
+  /* Phase 1 REV 4: nested layered card affordance.
+   * - background: --glass-thick (alpha 0.55) reads as a lifted layer
+   *   over the welcome screen's transparent Mica passthrough,
+   *   matching the §3.4 example 1 (single-card-on-rail) pattern.
+   * - box-shadow combines the top-edge specular rim (Apple Liquid
+   *   Glass) with a Vercel-style hairline shadow-as-border. The pair
+   *   is the modern "lifted glass card" affordance — the same hook
+   *   Linear, Vercel, Notion ship in 2026. The previous solid
+   *   `border: 1px solid white-6` is replaced because two outlines
+   *   (border + rim-hairline) would double up. */
+  background: var(--glass-thick);
+  box-shadow: var(--rim-top), var(--rim-hairline);
   color: var(--text-secondary);
   font-family: var(--font-ui);
   cursor: pointer;
   text-align: left;
   transition:
-    border-color 0.15s,
-    background 0.1s;
+    background var(--duration-hover) var(--ease-apple),
+    box-shadow var(--duration-hover) var(--ease-apple),
+    transform var(--duration-hover) var(--ease-apple);
 }
 
 .projectCard:hover {
-  border-color: var(--gold-dim);
-  background: var(--white-4);
-  box-shadow:
-    0 4px 16px rgba(0, 0, 0, 0.3),
-    0 0 12px var(--white-10);
-  transform: translateY(-2px);
+  background: var(--glass-thick);
+  /* Apple 3-stack shadow + stronger specular rim. The translucent
+   * glass surface now visibly lifts off the page (motion + stacked
+   * shadow + brighter rim) without the previous halo's heavy gold
+   * tint that read as 2018-era neumorphism. */
+  box-shadow: var(--rim-top-strong), var(--rim-hairline), var(--shadow-elevated);
+  transform: translateY(-1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .projectCard,
+  .projectCard:hover {
+    transition: none;
+    transform: none;
+  }
 }
 
 .projectAvatar {
