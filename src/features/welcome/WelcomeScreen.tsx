@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { FolderOpen, GitBranch, Settings as SettingsIcon, Upload } from "lucide-react";
 import { motion } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
-import logoSvg from "../../assets/logo.svg";
+import logoPng from "../../assets/logo.png";
 import styles from "./WelcomeScreen.module.css";
 
 interface ProjectInfo {
@@ -132,7 +132,7 @@ export function WelcomeScreen({ onOpenProject, onOpenSettings }: WelcomeScreenPr
           animate={{ scale: 1, opacity: 1 }}
           transition={{ type: "spring", stiffness: 300, damping: 20, delay: 0.05 }}
         >
-          <img src={logoSvg} alt="Aether" width={48} height={48} className={styles.logoIcon} />
+          <img src={logoPng} alt="Aether" width={48} height={48} className={styles.logoIcon} />
           <h1 className={styles.title}>Aether Terminal</h1>
         </motion.div>
         <motion.p

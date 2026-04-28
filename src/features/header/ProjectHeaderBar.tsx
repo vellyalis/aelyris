@@ -1,5 +1,5 @@
 import { PanelLeft, PanelLeftClose, RefreshCw, Settings } from "lucide-react";
-import logoSvg from "../../assets/logo.svg";
+import logoPng from "../../assets/logo.png";
 import { useAttenuatedPulse } from "../../shared/hooks/useAttenuatedPulse";
 import { useAppStore } from "../../shared/store/appStore";
 import { MenuBar, type Menu } from "../menubar/MenuBar";
@@ -146,7 +146,7 @@ export function ProjectHeaderBar({
             )}
           </button>
         </div>
-        <img src={logoSvg} alt="Aether" width={28} height={28} className={styles.logo} />
+        <img src={logoPng} alt="Aether" width={28} height={28} className={styles.logo} />
         <div className={styles.projectInfo}>
           <div className={styles.topRow}>
             <span className={styles.name}>{projectName}</span>

@@ -1,6 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import pkg from "../../../package.json";
-import logoSvg from "../../assets/logo.svg";
+import logoPng from "../../assets/logo.png";
 import styles from "./AboutDialog.module.css";
 
 const APP_VERSION = pkg.version;
@@ -21,7 +21,7 @@ export function AboutDialog({ visible, onClose }: AboutDialogProps) {
       <Dialog.Portal>
         <Dialog.Overlay className={styles.overlay} />
         <Dialog.Content className={styles.dialog} aria-describedby={undefined}>
-          <img src={logoSvg} alt="" width={64} height={64} className={styles.logo} />
+          <img src={logoPng} alt="" width={64} height={64} className={styles.logo} />
           <Dialog.Title className={styles.title}>Aether Terminal</Dialog.Title>
           <p className={styles.version}>Version {APP_VERSION}</p>
           <p className={styles.desc}>AI Workspace for Windows</p>

@@ -5,6 +5,7 @@ import { ChevronUp, ChevronDown, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { ShellType } from "../../App";
+import logoWatermarkPng from "../../assets/logo-watermark.png";
 import { useSnapshots } from "../../shared/hooks/useSnapshots";
 import { useTerminalSnapshot } from "../../shared/hooks/useTerminalSnapshot";
 import { useAppStore } from "../../shared/store/appStore";
@@ -889,21 +890,24 @@ export function NativeTerminalArea({
       )}
       <div ref={containerRef} className={styles.terminalContainer}>
         {terminalId && dims && (
-          <TerminalCanvas
-            key={canvasKey ?? undefined}
-            terminalId={terminalId}
-            cols={dims.cols}
-            rows={dims.rows}
-            fontSize={FONT_SIZE}
-            searchMatches={searchMatches}
-            activeSearchMatch={activeSearchMatch}
-            ghostSuggestion={snapshotOverlay ? null : mirrorEnabled ? suggestion : null}
-            snapshotOverride={snapshotOverlay?.grid}
-            onCanvasRef={setCanvasEl}
-            onInputRef={setCanvasInputEl}
-            onRegisterNav={setNav}
-            onOpenUrl={onOpenUrl}
-          />
+          <>
+            <TerminalCanvas
+              key={canvasKey ?? undefined}
+              terminalId={terminalId}
+              cols={dims.cols}
+              rows={dims.rows}
+              fontSize={FONT_SIZE}
+              searchMatches={searchMatches}
+              activeSearchMatch={activeSearchMatch}
+              ghostSuggestion={snapshotOverlay ? null : mirrorEnabled ? suggestion : null}
+              snapshotOverride={snapshotOverlay?.grid}
+              onCanvasRef={setCanvasEl}
+              onInputRef={setCanvasInputEl}
+              onRegisterNav={setNav}
+              onOpenUrl={onOpenUrl}
+            />
+            <img src={logoWatermarkPng} alt="" aria-hidden="true" className={styles.terminalWatermark} />
+          </>
         )}
       </div>
       <IMEInputBar ref={imeBarRef} onSubmit={sendIMEBytes} onRequestCanvasFocus={focusCanvas} />
