@@ -54,6 +54,14 @@ describe("layoutConductor", () => {
     expect(ad?.column).toBe("unassigned");
   });
 
+  it("puts unknown runtime roles into the ad-hoc column instead of dropping them", () => {
+    const layout = layoutConductor([session("planner", "planner" as OrchestraRoleId, 1)]);
+    expect(layout.nodes).toHaveLength(1);
+    expect(layout.nodes[0].id).toBe("planner");
+    expect(layout.nodes[0].column).toBe("unassigned");
+    expect(layout.columns.map((c) => c.id)).toEqual(["unassigned"]);
+  });
+
   it("skips empty columns — only used columns get laid out", () => {
     const layout = layoutConductor([session("a", "reviewer", 1)]);
     expect(layout.columns).toHaveLength(1);
@@ -72,5 +80,30 @@ describe("layoutConductor", () => {
   it("ignores handoffFrom when the parent is not in the set", () => {
     const layout = layoutConductor([session("orphan", "reviewer", 1, "ghost")]);
     expect(layout.edges).toHaveLength(0);
+  });
+
+  it("preserves edges when the parent has an unknown runtime role", () => {
+    const layout = layoutConductor([
+      session("parent", "planner" as OrchestraRoleId, 1),
+      session("child", "reviewer", 2, "parent"),
+    ]);
+    expect(layout.nodes.map((n) => n.id).sort()).toEqual(["child", "parent"]);
+    expect(layout.nodes.find((n) => n.id === "parent")?.column).toBe("unassigned");
+    expect(layout.edges).toContainEqual({
+      id: "parent->child",
+      source: "parent",
+      target: "child",
+    });
+  });
+
+  it("emits one node for every input session even when roles are mixed", () => {
+    const sessions = [
+      session("a", "implementer", 1),
+      session("b", "planner" as OrchestraRoleId, 2),
+      session("c", undefined, 3),
+      session("d", "documenter", 4),
+    ];
+    const layout = layoutConductor(sessions);
+    expect(layout.nodes.map((n) => n.id).sort()).toEqual(sessions.map((s) => s.id).sort());
   });
 });

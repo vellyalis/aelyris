@@ -42,24 +42,26 @@ export interface ConductorLayout {
 }
 
 const COLUMN_ORDER: Array<OrchestraRoleId | "unassigned"> = [
-  "implementer",
-  "tester",
-  "reviewer",
-  "documenter",
+  ...ORCHESTRA_ROLES.map((r) => r.id),
   "unassigned",
 ];
+const KNOWN_COLUMNS = new Set<string>(COLUMN_ORDER);
 
 function columnLabel(id: OrchestraRoleId | "unassigned"): string {
   if (id === "unassigned") return "Ad-hoc";
   return ORCHESTRA_ROLES.find((r) => r.id === id)?.label ?? id;
 }
 
+function resolveColumn(role: AgentSession["role"]): OrchestraRoleId | "unassigned" {
+  if (!role) return "unassigned";
+  return KNOWN_COLUMNS.has(role) ? role : "unassigned";
+}
+
 export function layoutConductor(sessions: AgentSession[]): ConductorLayout {
   const byColumn = new Map<OrchestraRoleId | "unassigned", AgentSession[]>();
   for (const col of COLUMN_ORDER) byColumn.set(col, []);
   for (const s of sessions) {
-    const col: OrchestraRoleId | "unassigned" = s.role ?? "unassigned";
-    byColumn.get(col)?.push(s);
+    byColumn.get(resolveColumn(s.role))?.push(s);
   }
   // Sort within each column by startedAt (oldest at top).
   for (const col of COLUMN_ORDER) {
