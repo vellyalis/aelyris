@@ -108,6 +108,113 @@
   margin-bottom: var(--space-6);
 }
 
+.moodGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.moodCard {
+  --mood-a: var(--accent);
+  --mood-b: var(--gold);
+  --mood-c: var(--bg-surface);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  min-height: 50px;
+  padding: var(--space-3);
+  text-align: left;
+  color: var(--text-primary);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--mood-a) 15%, transparent), transparent 58%),
+    color-mix(in srgb, var(--mood-c) 82%, transparent);
+  border: 1px solid color-mix(in srgb, var(--mood-a) 24%, var(--border));
+  border-radius: var(--radius);
+  box-shadow: var(--rim-top);
+  cursor: pointer;
+}
+
+.moodCard:hover,
+.moodCard[data-active="true"] {
+  border-color: color-mix(in srgb, var(--mood-a) 54%, var(--gold));
+  box-shadow:
+    var(--rim-top-strong),
+    0 0 0 1px color-mix(in srgb, var(--mood-a) 20%, transparent),
+    0 8px 24px rgba(0, 0, 0, 0.16);
+}
+
+.moodCard[data-mood="aether-sky"] {
+  --mood-a: #78cfff;
+  --mood-b: #f0cf7a;
+  --mood-c: #1c3553;
+}
+
+.moodCard[data-mood="aether-dream"] {
+  --mood-a: #c8b6ff;
+  --mood-b: #ffd996;
+  --mood-c: #2f2548;
+}
+
+.moodCard[data-mood="aether-cute"] {
+  --mood-a: #72f0dc;
+  --mood-b: #ffd1dc;
+  --mood-c: #1d4540;
+}
+
+.moodCard[data-mood="aether-obsidian"] {
+  --mood-a: #d8b766;
+  --mood-b: #89dceb;
+  --mood-c: #202029;
+}
+
+.moodCard[data-mood="aether-pro"] {
+  --mood-a: #9bc7df;
+  --mood-b: #c7b37a;
+  --mood-c: #28323b;
+}
+
+.moodSwatch {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  background:
+    radial-gradient(circle at 72% 28%, var(--mood-b), transparent 28%),
+    linear-gradient(135deg, var(--mood-a), var(--mood-c));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.moodCopy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.moodName {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.moodTone {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .label {
   display: block;
   font-size: var(--text-base);

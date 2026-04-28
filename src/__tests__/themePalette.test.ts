@@ -9,6 +9,12 @@ import {
   isValidHex,
   normalizeHex,
 } from "../shared/themes/catppuccin";
+import {
+  DEFAULT_MOOD_PRESET,
+  MOOD_PRESETS,
+  moodPresetToCSS,
+  normalizeMoodPreset,
+} from "../shared/themes/moods";
 
 describe("themes/catppuccin — hex helpers", () => {
   it("validates 6-digit hex", () => {
@@ -117,5 +123,47 @@ describe("themes/catppuccin — applyAccentOverrides", () => {
     const snapshot = { ...base };
     applyAccentOverrides(base, { sapphire: "#000000" });
     expect(base).toEqual(snapshot);
+  });
+});
+
+describe("themes/moods — preset metadata", () => {
+  it("normalizes unknown mood ids to the default", () => {
+    expect(normalizeMoodPreset("aether-dream")).toBe("aether-dream");
+    expect(normalizeMoodPreset("not-real")).toBe(DEFAULT_MOOD_PRESET);
+    expect(normalizeMoodPreset(null)).toBe(DEFAULT_MOOD_PRESET);
+  });
+
+  it("defines every expected mood preset", () => {
+    expect(MOOD_PRESETS.map((preset) => preset.id)).toEqual([
+      "aether-sky",
+      "aether-dream",
+      "aether-cute",
+      "aether-obsidian",
+      "aether-pro",
+    ]);
+  });
+
+  it("returns a complete variable set for every mood", () => {
+    const required = [
+      "--glass-clear",
+      "--aether-bg",
+      "--accent",
+      "--gold",
+      "--terminal-canvas-bg",
+      "--terminal-well-bg",
+      "--terminal-shell-shadow",
+      "--terminal-viewport-shadow",
+      "--mood-root-glow",
+      "--mood-center-panel-bg",
+      "--mood-widget-bg",
+      "--mood-selection-bg",
+    ];
+
+    for (const preset of MOOD_PRESETS) {
+      const vars = moodPresetToCSS(preset.id);
+      for (const key of required) {
+        expect(vars[key], `${preset.id} missing ${key}`).toBeTruthy();
+      }
+    }
   });
 });

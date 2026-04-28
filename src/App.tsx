@@ -72,6 +72,7 @@ export type ShellType = "powershell" | "cmd" | "gitbash" | "wsl";
 export function App() {
   const {
     themeId,
+    moodPresetId,
     rootProjectPath,
     setRootProjectPath,
     sidebarCollapsed,
@@ -106,7 +107,7 @@ export function App() {
     moveKanbanTask,
   } = useAppStore();
   const themeOverridesForActive = useAppStore((s) => s.themeOverrides[themeId]);
-  useThemeApplier(themeId, themeOverridesForActive);
+  useThemeApplier(themeId, themeOverridesForActive, moodPresetId);
 
   // Boot perf marker — fires after the first React commit + one frame, so the
   // number reflects when pixels actually land on screen rather than when JS ran.

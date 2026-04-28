@@ -1,10 +1,12 @@
 import { create } from "zustand";
 import type { AccentKey, AccentOverrides } from "../themes/catppuccin";
+import { DEFAULT_MOOD_PRESET, normalizeMoodPreset, type MoodPresetId } from "../themes/moods";
 import type { KanbanColumnId, KanbanTask } from "../types/kanban";
 
 export type SidebarSection = "files" | "tasks" | "agents" | "tools";
 
 const THEME_OVERRIDES_KEY = "aether:themeOverrides";
+const MOOD_PRESET_KEY = "aether:moodPreset";
 
 function loadThemeOverrides(): Record<string, AccentOverrides> {
   try {
@@ -32,6 +34,8 @@ interface AppState {
   // Theme
   themeId: string;
   setThemeId: (id: string) => void;
+  moodPresetId: MoodPresetId;
+  setMoodPresetId: (id: string) => void;
   /** Per-themeId accent overrides. Each entry is a partial palette that
    * layers on top of the base catppuccin palette. */
   themeOverrides: Record<string, AccentOverrides>;
@@ -165,6 +169,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ themeId: id });
     try {
       localStorage.setItem("aether:theme", id);
+    } catch {}
+  },
+  moodPresetId: (() => {
+    try {
+      return normalizeMoodPreset(localStorage.getItem(MOOD_PRESET_KEY));
+    } catch {
+      return DEFAULT_MOOD_PRESET;
+    }
+  })(),
+  setMoodPresetId: (id) => {
+    const next = normalizeMoodPreset(id);
+    set({ moodPresetId: next });
+    try {
+      localStorage.setItem(MOOD_PRESET_KEY, next);
     } catch {}
   },
 

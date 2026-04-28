@@ -56,6 +56,60 @@
     inset 0 0 0 1px var(--terminal-border),
     inset 0 28px 70px rgba(0, 0, 0, 0.36),
     inset 0 -20px 56px rgba(5, 7, 13, 0.34);
+  --terminal-shell-shadow: 0 24px 70px rgba(0, 0, 0, 0.24);
+  --terminal-viewport-shadow:
+    inset 0 0 0 1px rgba(137, 220, 235, 0.045),
+    inset 0 22px 62px rgba(0, 0, 0, 0.28),
+    inset 0 -18px 46px rgba(0, 0, 0, 0.22);
+  --terminal-viewport-occlusion:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.24), transparent 48px),
+    linear-gradient(0deg, rgba(0, 0, 0, 0.2), transparent 42px),
+    linear-gradient(90deg, rgba(216, 183, 102, 0.035), transparent 26%, transparent 74%, rgba(137, 220, 235, 0.026));
+  --terminal-watermark-opacity: 0.12;
+  --terminal-watermark-filter: drop-shadow(0 18px 54px rgba(216, 183, 102, 0.12));
+
+  --mood-root-glow:
+    linear-gradient(125deg, rgba(216, 183, 102, 0.08), transparent 32%),
+    linear-gradient(300deg, rgba(137, 220, 235, 0.055), transparent 38%),
+    linear-gradient(180deg, rgba(9, 11, 19, 0.1), rgba(9, 11, 19, 0.24));
+  --mood-root-texture:
+    linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.018) 50%, transparent),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.012) 0 1px, transparent 1px 4px);
+  --mood-root-texture-opacity: 0.32;
+  --mood-window-rim:
+    inset 0 1px 0 rgba(255, 244, 214, 0.1),
+    inset 0 0 0 1px rgba(216, 183, 102, 0.055),
+    inset 0 -1px 0 rgba(137, 220, 235, 0.035);
+  --mood-left-panel-bg:
+    linear-gradient(180deg, rgba(255, 244, 214, 0.035), transparent 26%),
+    linear-gradient(135deg, rgba(42, 33, 28, 0.14), rgba(20, 23, 34, 0.18)),
+    var(--glass-standard);
+  --mood-center-panel-bg:
+    radial-gradient(ellipse at 50% 0%, rgba(216, 183, 102, 0.06), transparent 42%),
+    linear-gradient(180deg, rgba(18, 15, 13, 0.12), rgba(9, 11, 18, 0.08)),
+    var(--aether-bg);
+  --mood-right-panel-bg:
+    linear-gradient(180deg, rgba(255, 244, 214, 0.045), transparent 24%),
+    linear-gradient(145deg, rgba(34, 25, 22, 0.12), rgba(22, 26, 38, 0.18)),
+    var(--glass-dense);
+  --mood-widget-bg: var(--glass-thick);
+  --mood-widget-veil:
+    linear-gradient(180deg, rgba(255, 244, 214, 0.055), transparent 22%),
+    linear-gradient(135deg, rgba(216, 183, 102, 0.055), transparent 42%),
+    linear-gradient(315deg, rgba(137, 220, 235, 0.035), transparent 48%);
+  --mood-sessions-widget-bg:
+    linear-gradient(160deg, rgba(41, 39, 48, 0.66), rgba(21, 22, 30, 0.54)),
+    var(--glass-thick);
+  --mood-workflow-widget-bg:
+    linear-gradient(180deg, rgba(30, 35, 42, 0.5), rgba(21, 20, 25, 0.48)),
+    var(--glass-thick);
+  --mood-toolkit-widget-bg:
+    linear-gradient(150deg, rgba(42, 34, 25, 0.42), rgba(18, 23, 35, 0.54)),
+    var(--glass-thick);
+  --mood-logs-widget-bg:
+    linear-gradient(180deg, rgba(10, 12, 19, 0.58), rgba(7, 8, 13, 0.68)),
+    var(--glass-dense);
+  --mood-selection-bg: rgba(200, 160, 80, 0.25);
 
   /* Gold accent — 18K gold warmth */
   --gold: var(--aether-champagne);
@@ -541,10 +595,7 @@ body[data-window-focused="false"] {
   content: "";
   position: fixed;
   inset: 0;
-  background:
-    linear-gradient(125deg, rgba(216, 183, 102, 0.08), transparent 32%),
-    linear-gradient(300deg, rgba(137, 220, 235, 0.055), transparent 38%),
-    linear-gradient(180deg, rgba(9, 11, 19, 0.1), rgba(9, 11, 19, 0.24));
+  background: var(--mood-root-glow);
   pointer-events: none;
   z-index: 0;
 }
@@ -552,10 +603,8 @@ body[data-window-focused="false"] {
   content: "";
   position: fixed;
   inset: 0;
-  background:
-    linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.018) 50%, transparent),
-    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.012) 0 1px, transparent 1px 4px);
-  opacity: 0.32;
+  background: var(--mood-root-texture);
+  opacity: var(--mood-root-texture-opacity);
   pointer-events: none;
   z-index: 0;
 }
@@ -596,10 +645,7 @@ body[data-window-focused="false"] {
    * `decorations: false` windows once `DWMWA_WINDOW_CORNER_PREFERENCE`
    * is set — we let that do the depth work and keep the CSS purely
    * about the glass edge highlight. */
-  box-shadow:
-    inset 0 1px 0 rgba(255, 244, 214, 0.1),
-    inset 0 0 0 1px rgba(216, 183, 102, 0.055),
-    inset 0 -1px 0 rgba(137, 220, 235, 0.035);
+  box-shadow: var(--mood-window-rim);
 }
 
 .app-main {
@@ -620,10 +666,7 @@ body[data-window-focused="false"] {
   flex-direction: column;
   gap: var(--space-1);
   padding-top: var(--space-2);
-  background:
-    linear-gradient(180deg, rgba(255, 244, 214, 0.035), transparent 26%),
-    linear-gradient(135deg, rgba(42, 33, 28, 0.14), rgba(20, 23, 34, 0.18)),
-    var(--glass-standard);
+  background: var(--mood-left-panel-bg);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-right: 1px solid var(--white-6);
@@ -678,10 +721,7 @@ body[data-window-focused="false"] {
   flex: 1;
   display: flex;
   overflow: hidden;
-  background:
-    radial-gradient(ellipse at 50% 0%, rgba(216, 183, 102, 0.06), transparent 42%),
-    linear-gradient(180deg, rgba(18, 15, 13, 0.12), rgba(9, 11, 18, 0.08)),
-    var(--aether-bg);
+  background: var(--mood-center-panel-bg);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   /* Hairline borders on both edges so the terminal well always
@@ -721,10 +761,7 @@ body[data-window-focused="false"] {
   grid-template-rows: 1fr auto auto auto;
   gap: var(--space-4);
   padding: var(--space-4);
-  background:
-    linear-gradient(180deg, rgba(255, 244, 214, 0.045), transparent 24%),
-    linear-gradient(145deg, rgba(34, 25, 22, 0.12), rgba(22, 26, 38, 0.18)),
-    var(--glass-dense);
+  background: var(--mood-right-panel-bg);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   box-shadow: var(--rim-top);
@@ -741,7 +778,7 @@ body[data-window-focused="false"] {
 .bento-widget {
   position: relative;
   isolation: isolate;
-  background: var(--glass-thick);
+  background: var(--mood-widget-bg);
   border-radius: var(--radius-lg);
   box-shadow:
     var(--rim-top),
@@ -764,10 +801,7 @@ body[data-window-focused="false"] {
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background:
-    linear-gradient(180deg, rgba(255, 244, 214, 0.055), transparent 22%),
-    linear-gradient(135deg, rgba(216, 183, 102, 0.055), transparent 42%),
-    linear-gradient(315deg, rgba(137, 220, 235, 0.035), transparent 48%);
+  background: var(--mood-widget-veil);
   opacity: 0.78;
 }
 
@@ -777,9 +811,7 @@ body[data-window-focused="false"] {
 }
 
 .bento-widget[data-widget="sessions"] {
-  background:
-    linear-gradient(160deg, rgba(41, 39, 48, 0.66), rgba(21, 22, 30, 0.54)),
-    var(--glass-thick);
+  background: var(--mood-sessions-widget-bg);
   box-shadow:
     var(--rim-top-strong),
     0 0 0 1px rgba(216, 183, 102, 0.085),
@@ -787,15 +819,11 @@ body[data-window-focused="false"] {
 }
 
 .bento-widget[data-widget="workflow"] {
-  background:
-    linear-gradient(180deg, rgba(30, 35, 42, 0.5), rgba(21, 20, 25, 0.48)),
-    var(--glass-thick);
+  background: var(--mood-workflow-widget-bg);
 }
 
 .bento-widget[data-widget="toolkit"] {
-  background:
-    linear-gradient(150deg, rgba(42, 34, 25, 0.42), rgba(18, 23, 35, 0.54)),
-    var(--glass-thick);
+  background: var(--mood-toolkit-widget-bg);
   box-shadow:
     var(--rim-top-strong),
     0 0 0 1px rgba(216, 183, 102, 0.095),
@@ -804,9 +832,7 @@ body[data-window-focused="false"] {
 }
 
 .bento-widget[data-widget="logs"] {
-  background:
-    linear-gradient(180deg, rgba(10, 12, 19, 0.58), rgba(7, 8, 13, 0.68)),
-    var(--glass-dense);
+  background: var(--mood-logs-widget-bg);
   box-shadow:
     var(--rim-top),
     inset 0 0 0 1px rgba(137, 220, 235, 0.055),
@@ -937,7 +963,7 @@ body[data-window-focused="false"] {
 }
 
 ::selection {
-  background: rgba(200, 160, 80, 0.25);
+  background: var(--mood-selection-bg);
   color: var(--text-primary);
 }
 

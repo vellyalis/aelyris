@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useAppStore } from "../shared/store/appStore";
+import { DEFAULT_MOOD_PRESET } from "../shared/themes/moods";
 
 // Reset store between tests
 beforeEach(() => {
@@ -7,6 +8,7 @@ beforeEach(() => {
   // — the appStore bootstraps `themeOverrides` from localStorage on load.
   try {
     localStorage.removeItem("aether:themeOverrides");
+    localStorage.removeItem("aether:moodPreset");
   } catch {
     /* ignore */
   }
@@ -23,6 +25,7 @@ beforeEach(() => {
     kanbanTasks: [],
     openFiles: [],
     activeFile: null,
+    moodPresetId: DEFAULT_MOOD_PRESET,
     themeOverrides: {},
   });
 });
@@ -291,5 +294,21 @@ describe("appStore — theme overrides", () => {
     const raw = localStorage.getItem("aether:themeOverrides");
     expect(raw).toBeTruthy();
     expect(JSON.parse(raw ?? "{}")).toEqual({ "aether-dark": { sapphire: "#112233" } });
+  });
+});
+
+describe("appStore — mood presets", () => {
+  it("sets and persists a mood preset", () => {
+    const { setMoodPresetId } = useAppStore.getState();
+    setMoodPresetId("aether-dream");
+    expect(useAppStore.getState().moodPresetId).toBe("aether-dream");
+    expect(localStorage.getItem("aether:moodPreset")).toBe("aether-dream");
+  });
+
+  it("falls back to the default mood for unknown ids", () => {
+    const { setMoodPresetId } = useAppStore.getState();
+    setMoodPresetId("unknown");
+    expect(useAppStore.getState().moodPresetId).toBe(DEFAULT_MOOD_PRESET);
+    expect(localStorage.getItem("aether:moodPreset")).toBe(DEFAULT_MOOD_PRESET);
   });
 });

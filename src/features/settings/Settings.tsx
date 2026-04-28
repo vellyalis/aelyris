@@ -5,6 +5,7 @@ import { Select } from "../../shared/ui/Select";
 import { useAppStore } from "../../shared/store/appStore";
 import { toast } from "../../shared/store/toastStore";
 import { Switch } from "../../shared/ui/Switch";
+import { MOOD_PRESETS, normalizeMoodPreset } from "../../shared/themes/moods";
 import styles from "./Settings.module.css";
 import { ShellIntegrationSection } from "./ShellIntegrationSection";
 import { ThemePaletteEditor } from "./ThemePaletteEditor";
@@ -73,9 +74,12 @@ interface LoadedConfig {
 export function Settings({ visible, onClose }: SettingsProps) {
   const storeTheme = useAppStore((s) => s.themeId);
   const setThemeId = useAppStore((s) => s.setThemeId);
+  const storeMood = useAppStore((s) => s.moodPresetId);
+  const setMoodPresetId = useAppStore((s) => s.setMoodPresetId);
   const ghostDiffLiveMode = useAppStore((s) => s.ghostDiffLiveMode);
   const setGhostDiffLiveMode = useAppStore((s) => s.setGhostDiffLiveMode);
   const [theme, setTheme] = useState(storeTheme);
+  const [mood, setMood] = useState(storeMood);
   const [font, setFont] = useState("IBM Plex Mono");
   const [fontSize, setFontSize] = useState(14);
   const [lineHeight, setLineHeight] = useState(1.4);
@@ -135,6 +139,10 @@ export function Settings({ visible, onClose }: SettingsProps) {
     };
   }, [visible, setGhostDiffLiveMode]);
 
+  useEffect(() => {
+    if (visible) setMood(storeMood);
+  }, [visible, storeMood]);
+
   const handleSave = () => {
     if (!loadedConfig) {
       // Open and immediately close before the load resolves (or load
@@ -149,6 +157,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
       return;
     }
     setThemeId(theme);
+    setMoodPresetId(mood);
     setGhostDiffLiveMode(liveMode);
     const merged: LoadedConfig = {
       ...loadedConfig,
@@ -223,6 +232,49 @@ export function Settings({ visible, onClose }: SettingsProps) {
                   options={THEMES.map((t) => ({ value: t.id, label: t.label }))}
                   ariaLabel="Theme"
                 />
+              </div>
+              <div className={styles.field}>
+                <label className={styles.label} htmlFor="settings-mood">
+                  Mood
+                </label>
+                <Select
+                  id="settings-mood"
+                  value={mood}
+                  onValueChange={(next) => {
+                    const preset = normalizeMoodPreset(next);
+                    setMood(preset);
+                    setMoodPresetId(preset);
+                  }}
+                  options={MOOD_PRESETS.map((preset) => ({
+                    value: preset.id,
+                    label: preset.label,
+                    hint: preset.tone,
+                  }))}
+                  ariaLabel="Mood"
+                />
+                <div className={styles.moodGrid} role="radiogroup" aria-label="Mood presets">
+                  {MOOD_PRESETS.map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      className={styles.moodCard}
+                      data-active={mood === preset.id ? "true" : undefined}
+                      data-mood={preset.id}
+                      role="radio"
+                      aria-checked={mood === preset.id}
+                      onClick={() => {
+                        setMood(preset.id);
+                        setMoodPresetId(preset.id);
+                      }}
+                    >
+                      <span className={styles.moodSwatch} aria-hidden="true" />
+                      <span className={styles.moodCopy}>
+                        <span className={styles.moodName}>{preset.label}</span>
+                        <span className={styles.moodTone}>{preset.tone}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
               </div>
               <div className={styles.field}>
                 <label className={styles.label}>Palette</label>

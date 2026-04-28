@@ -4,6 +4,7 @@
   flex-direction: column;
   overflow: hidden;
   position: relative;
+  isolation: isolate;
   margin: var(--space-4);
   border-radius: var(--radius-lg);
   background: var(--terminal-well-bg);
@@ -11,7 +12,36 @@
   box-shadow:
     var(--terminal-shadow-inset),
     0 1px 0 rgba(255, 244, 214, 0.035),
-    0 24px 70px rgba(0, 0, 0, 0.24);
+    var(--terminal-shell-shadow);
+}
+
+.terminalArea::before,
+.terminalArea::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+.terminalArea::before {
+  background:
+    radial-gradient(ellipse at 50% 102%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 54%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 18%, transparent 82%, rgba(0, 0, 0, 0.18));
+  opacity: 0.78;
+}
+
+.terminalArea::after {
+  inset: 1px;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--terminal-rim-warm) 65%, transparent),
+    inset 0 0 42px rgba(0, 0, 0, 0.18);
+}
+
+.terminalArea > * {
+  position: relative;
+  z-index: 1;
 }
 
 /* Padding gives the canvas breathing room inside the pane so glyphs
@@ -24,7 +54,7 @@
   flex: 1;
   overflow: hidden;
   display: flex;
-  padding: var(--space-5);
+  padding: var(--space-6);
   position: relative;
   min-height: 0;
 }
@@ -35,11 +65,10 @@
   height: 100%;
   overflow: hidden;
   border-radius: calc(var(--radius-lg) - 2px);
-  background: var(--terminal-canvas-bg);
-  box-shadow:
-    inset 0 0 0 1px rgba(137, 220, 235, 0.045),
-    inset 0 22px 62px rgba(0, 0, 0, 0.28),
-    inset 0 -18px 46px rgba(0, 0, 0, 0.22);
+  background:
+    radial-gradient(ellipse at 50% 50%, color-mix(in srgb, var(--accent) 5%, transparent), transparent 58%),
+    var(--terminal-canvas-bg);
+  box-shadow: var(--terminal-viewport-shadow);
 }
 
 .terminalViewport::before {
@@ -48,10 +77,7 @@
   inset: 0;
   z-index: 2;
   pointer-events: none;
-  background:
-    linear-gradient(180deg, rgba(0, 0, 0, 0.24), transparent 48px),
-    linear-gradient(0deg, rgba(0, 0, 0, 0.2), transparent 42px),
-    linear-gradient(90deg, rgba(216, 183, 102, 0.035), transparent 26%, transparent 74%, rgba(137, 220, 235, 0.026));
+  background: var(--terminal-viewport-occlusion);
 }
 
 .terminalViewport::after {
@@ -74,11 +100,11 @@
   width: clamp(170px, 28vmin, 300px);
   height: auto;
   transform: translate(-50%, -50%);
-  opacity: 0.12;
+  opacity: var(--terminal-watermark-opacity);
   pointer-events: none;
   user-select: none;
   mix-blend-mode: screen;
-  filter: drop-shadow(0 18px 54px rgba(216, 183, 102, 0.12));
+  filter: var(--terminal-watermark-filter);
 }
 
 .searchBar {
