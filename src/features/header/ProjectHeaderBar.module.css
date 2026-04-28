@@ -69,7 +69,7 @@
 
 .branch {
   font-size: var(--text-xs);
-  color: var(--ctp-green);
+  color: var(--gold-dim); /* Phase 1 Step 4: chrome single accent (was --ctp-green) */
   font-family: var(--font-mono);
 }
 
@@ -119,7 +119,7 @@
 
 .model {
   font-size: var(--text-sm);
-  color: var(--ctp-blue);
+  color: var(--gold-dim); /* Phase 1 Step 4: chrome single accent (was --ctp-blue) */
   font-family: var(--font-mono);
   font-weight: var(--weight-medium);
   opacity: 0.8;
@@ -127,7 +127,7 @@
 
 .cost {
   font-size: var(--text-xs);
-  color: var(--ctp-peach);
+  color: var(--gold-dim); /* Phase 1 Step 4: chrome single accent (was --ctp-peach) */
   font-family: var(--font-mono);
 }
 
