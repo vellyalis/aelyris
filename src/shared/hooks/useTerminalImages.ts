@@ -36,9 +36,10 @@ export interface UseTerminalImagesOptions {
 
 /**
  * Resolve every `ImageRef` in `images` to a paint-ready `ImageBitmap`,
- * keyed by `id`. The cache is keyed exclusively on the backend's
- * monotonic image id so a snapshot frame that re-references the same
- * image (the common case as the cursor moves around) does not re-fetch.
+ * keyed by `id` within the active terminal. Backend `ImageStore` ids
+ * restart at 0 for each terminal session, so a terminal switch is a
+ * cache boundary; otherwise a newly selected pane can paint another
+ * pane's same-numbered bitmap.
  *
  * Entries vanish from the returned map when the snapshot stops
  * reporting them (image scrolled into history, or the engine evicted
@@ -59,6 +60,7 @@ export function useTerminalImages(
   // first request is still in flight. Lives across renders without
   // forcing re-renders of its own — that's React's escape hatch ref.
   const inflight = useRef<Set<number>>(new Set());
+  const lastTerminalIdRef = useRef<string | null>(null);
 
   // Stabilise the image set by id-only key. The producer (applyDiff in
   // useTerminalSnapshot) returns a fresh `images` array on every full=true
@@ -81,6 +83,9 @@ export function useTerminalImages(
   const stableImages = useMemo(() => images, [idsKey]);
 
   useEffect(() => {
+    const terminalChanged = lastTerminalIdRef.current !== terminalId;
+    lastTerminalIdRef.current = terminalId;
+
     if (!terminalId || !stableImages || stableImages.length === 0) {
       // Nothing visible — drop everything. ImageBitmap.close() releases
       // the underlying GPU/CPU buffer; without it long-running sessions
@@ -92,6 +97,15 @@ export function useTerminalImages(
       });
       inflight.current.clear();
       return;
+    }
+
+    if (terminalChanged) {
+      setBitmaps((prev) => {
+        if (prev.size === 0) return prev;
+        prev.forEach((bmp) => bmp.close?.());
+        return new Map();
+      });
+      inflight.current.clear();
     }
 
     const visibleIds = new Set(stableImages.map((img) => img.id));
@@ -125,7 +139,7 @@ export function useTerminalImages(
 
     let cancelled = false;
     for (const ref of stableImages) {
-      if (bitmaps.has(ref.id) || inflight.current.has(ref.id)) continue;
+      if ((!terminalChanged && bitmaps.has(ref.id)) || inflight.current.has(ref.id)) continue;
       inflight.current.add(ref.id);
 
       void invoke<RawImageData | null>("term_image_data", {

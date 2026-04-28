@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
@@ -147,6 +147,43 @@ describe("useTerminalImages", () => {
     expect(invoke).toHaveBeenCalledTimes(1);
   });
 
+  it("treats terminal changes as image-cache boundaries", async () => {
+    const termA = makeBitmap("term-a");
+    const termB = makeBitmap("term-b");
+    const factory = makeFactory({ "payload-a": termA, "payload-b": termB });
+    const invoke = vi.fn(async (cmd: string, args?: Record<string, unknown>) => {
+      if (cmd !== "term_image_data") throw new Error(`unexpected ${cmd}`);
+      const terminal = String((args ?? {}).id);
+      const imageId = Number((args ?? {}).imageId);
+      if (imageId !== 0) return null;
+      if (terminal === "term-a") {
+        return { format: "png", dataBase64: btoa("payload-a"), widthPx: 1, heightPx: 1 };
+      }
+      if (terminal === "term-b") {
+        return { format: "png", dataBase64: btoa("payload-b"), widthPx: 1, heightPx: 1 };
+      }
+      return null;
+    }) as unknown as Invoke;
+
+    const { result, rerender } = renderHook(
+      ({ terminalId, refs }: { terminalId: string; refs: ImageRef[] }) =>
+        useTerminalImages(terminalId, refs, { invoke, createImageBitmap: factory }),
+      { initialProps: { terminalId: "term-a", refs: [ref(0)] } },
+    );
+    await waitFor(() => expect(result.current.get(0)).toBe(termA));
+
+    rerender({ terminalId: "term-b", refs: [ref(0, { cellRow: 3, cellCol: 4 })] });
+
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith(
+        "term_image_data",
+        expect.objectContaining({ id: "term-b", imageId: 0 }),
+      ),
+    );
+    await waitFor(() => expect(result.current.get(0)).toBe(termB));
+    expect(termA.close).toHaveBeenCalled();
+  });
+
   it("evicts bitmaps for ids no longer in the snapshot and calls close()", async () => {
     const bmp1 = makeBitmap("a");
     const factory = makeFactory({ a: bmp1 });
@@ -230,6 +267,40 @@ describe("useTerminalImages", () => {
       rerender({ refs: [ref(9, { cellRow: i, cellCol: i * 2 })] });
     }
     await waitFor(() => expect(result.current.get(9)).toBeDefined());
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps one pending fetch alive across position-only churn", async () => {
+    let resolveFetch: (v: RawImageData | null) => void = () => {};
+    const pendingFetch = new Promise<RawImageData | null>((resolve) => {
+      resolveFetch = resolve;
+    });
+    const png = makeBitmap("pending");
+    const factory = makeFactory({ pending: png });
+    const invoke = vi.fn(async (cmd: string, args?: Record<string, unknown>) => {
+      if (cmd !== "term_image_data") throw new Error(`unexpected ${cmd}`);
+      if (Number((args ?? {}).imageId) !== 9) return null;
+      return pendingFetch;
+    }) as unknown as Invoke;
+
+    const { result, rerender } = renderHook(
+      ({ refs }: { refs: ImageRef[] }) =>
+        useTerminalImages("t-1", refs, { invoke, createImageBitmap: factory }),
+      { initialProps: { refs: [ref(9, { cellRow: 0, cellCol: 0 })] } },
+    );
+
+    await waitFor(() => expect(invoke).toHaveBeenCalledTimes(1));
+    for (let i = 1; i < 8; i++) {
+      rerender({ refs: [ref(9, { cellRow: i, cellCol: i * 3 })] });
+    }
+    expect(invoke).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveFetch({ format: "png", dataBase64: btoa("pending"), widthPx: 1, heightPx: 1 });
+      await pendingFetch;
+    });
+
+    await waitFor(() => expect(result.current.get(9)).toBe(png));
     expect(invoke).toHaveBeenCalledTimes(1);
   });
 
