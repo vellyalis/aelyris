@@ -3,15 +3,15 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  min-height: 28px;
-  padding: 2px var(--space-2) 2px var(--space-3);
+  min-height: 26px;
+  padding: 2px var(--space-2);
   background:
-    linear-gradient(180deg, rgba(142, 226, 241, 0.018), transparent 56%),
-    rgba(3, 10, 18, 0.1);
-  border-radius: var(--radius-sm);
+    linear-gradient(180deg, rgba(178, 236, 246, 0.014), transparent 62%),
+    rgba(3, 10, 18, 0.045);
+  border-radius: calc(var(--radius-lg) - 6px);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.026),
-    inset 0 -1px 0 rgba(3, 10, 18, 0.2);
+    inset 0 1px 0 rgba(206, 246, 252, 0.022),
+    inset 0 0 0 1px rgba(124, 214, 235, 0.012);
   font-size: var(--text-sm);
   color: var(--text-muted);
   flex-shrink: 0;
@@ -26,37 +26,27 @@
  * hard horizontal rule across the terminal shell. */
 .bar[data-active="true"] {
   background:
-    linear-gradient(180deg, rgba(142, 226, 241, 0.024), transparent 56%),
-    rgba(3, 10, 18, 0.13);
+    linear-gradient(180deg, rgba(178, 236, 246, 0.018), transparent 62%),
+    rgba(3, 10, 18, 0.06);
   color: var(--text-secondary);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.036),
-    inset 0 -1px 0 rgba(3, 10, 18, 0.22);
+    inset 0 1px 0 rgba(206, 246, 252, 0.032),
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent);
 }
 .bar[data-active="true"]::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 50%;
-  width: 3px;
-  height: 12px;
-  transform: translateY(-50%);
-  border-radius: var(--radius-pill);
-  background: color-mix(in srgb, var(--accent) 82%, var(--gold));
-  box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 34%, transparent);
-  pointer-events: none;
+  content: none;
 }
 
 .shell {
   display: inline-flex;
   align-items: center;
-  min-height: 22px;
+  min-height: 20px;
   padding: 0 var(--space-3);
   border-radius: var(--radius-sm);
-  background: rgba(142, 226, 241, 0.03);
+  background: rgba(142, 226, 241, 0.018);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.038),
-    inset 0 0 0 1px rgba(142, 226, 241, 0.052);
+    inset 0 1px 0 rgba(255, 255, 255, 0.032),
+    inset 0 0 0 1px rgba(142, 226, 241, 0.036);
   color: var(--text-secondary);
   font-weight: var(--weight-medium);
   flex-shrink: 0;
@@ -67,11 +57,12 @@
 .bar[data-active="true"] .shell {
   color: color-mix(in srgb, var(--accent) 80%, var(--gold));
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(142, 226, 241, 0.018)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.046), rgba(142, 226, 241, 0.014)),
     color-mix(in srgb, var(--accent) 5%, transparent);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.075),
-    inset 0 0 0 1px color-mix(in srgb, var(--accent) 22%, rgba(142, 226, 241, 0.052));
+    inset 0 1px 0 rgba(255, 255, 255, 0.066),
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 18%, rgba(142, 226, 241, 0.04)),
+    0 0 18px color-mix(in srgb, var(--accent) 5%, transparent);
 }
 
 .exitDot {
@@ -162,8 +153,8 @@
   font-size: var(--text-base);
   cursor: pointer;
   padding: 0;
-  width: 26px;
-  height: 24px;
+  width: 24px;
+  height: 22px;
   border-radius: var(--radius-sm);
   flex-shrink: 0;
   transition:
@@ -172,7 +163,7 @@
 }
 
 .toggleBtn:hover {
-  background: rgba(142, 226, 241, 0.055);
+  background: rgba(142, 226, 241, 0.038);
   color: var(--text-primary);
 }
 .toggleBtn:focus-visible {

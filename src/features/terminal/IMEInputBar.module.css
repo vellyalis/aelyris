@@ -12,18 +12,17 @@
   align-items: center;
   gap: var(--space-3);
   padding: 0 var(--space-3);
-  margin: -1px 0 0;
-  min-height: 28px;
+  margin: 0;
+  min-height: 30px;
   background:
-    radial-gradient(ellipse at 50% -24%, rgba(116, 216, 238, 0.018), transparent 48%),
-    linear-gradient(180deg, rgba(3, 10, 18, 0.2), rgba(1, 6, 14, 0.34)),
-    var(--terminal-canvas-bg);
+    radial-gradient(ellipse at 50% -24%, rgba(116, 216, 238, 0.014), transparent 48%),
+    linear-gradient(180deg, rgba(3, 10, 18, 0.08), rgba(1, 6, 14, 0.18));
   border: 0;
-  border-radius: 0 0 calc(var(--radius-lg) - 4px) calc(var(--radius-lg) - 4px);
+  border-radius: calc(var(--radius-lg) - 6px);
   box-shadow:
-    inset 0 1px 0 rgba(124, 214, 235, 0.012),
-    inset 0 0 0 1px rgba(114, 202, 230, 0.01),
-    inset 0 12px 28px rgba(0, 5, 12, 0.12);
+    inset 0 1px 0 rgba(200, 242, 248, 0.018),
+    inset 0 0 0 1px rgba(114, 202, 230, 0.014),
+    inset 0 10px 24px rgba(0, 5, 12, 0.08);
   transition:
     background var(--duration-fast) var(--ease-silk, cubic-bezier(0.4, 0, 0.2, 1)),
     box-shadow var(--duration-fast) var(--ease-silk, cubic-bezier(0.4, 0, 0.2, 1));
@@ -31,12 +30,13 @@
 
 .bar.focused {
   background:
-    linear-gradient(180deg, rgba(139, 224, 240, 0.012), transparent 70%),
-    rgba(4, 9, 15, 0.54);
+    linear-gradient(180deg, rgba(139, 224, 240, 0.014), transparent 70%),
+    rgba(4, 9, 15, 0.28);
   box-shadow:
-    inset 0 1px 0 rgba(166, 231, 242, 0.024),
-    inset 0 0 0 1px color-mix(in srgb, var(--accent) 7%, transparent),
-    inset 0 12px 28px rgba(0, 0, 0, 0.1);
+    inset 0 1px 0 rgba(166, 231, 242, 0.028),
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 9%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--accent) 4%, transparent),
+    inset 0 10px 24px rgba(0, 0, 0, 0.075);
 }
 
 .bar.disabled {
@@ -115,7 +115,7 @@
 }
 
 .bar:not(.focused) .input::placeholder {
-  color: rgba(174, 216, 226, 0.27);
+  color: rgba(174, 216, 226, 0.34);
 }
 
 .input:disabled {

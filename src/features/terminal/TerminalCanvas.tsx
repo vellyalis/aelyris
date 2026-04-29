@@ -10,6 +10,7 @@ import {
   CURSOR_COLOR,
   DEFAULT_BG,
   DEFAULT_FG,
+  CURSOR_TEXT_BG,
   isDefaultBg,
   LINK_HOVER_FG,
   resolveColor,
@@ -401,6 +402,7 @@ export function TerminalCanvas({
     if (!ctx) return;
 
     if (!snapshot) {
+      ctx.clearRect?.(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = DEFAULT_BG;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       prevSnapshotRef.current = null;
@@ -433,6 +435,7 @@ export function TerminalCanvas({
     ctx.textBaseline = "top";
 
     if (dimsChanged) {
+      ctx.clearRect?.(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = DEFAULT_BG;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
@@ -646,7 +649,7 @@ export function TerminalCanvas({
           display: "block",
           width: `${canvasWidth}px`,
           height: `${canvasHeight}px`,
-          background: DEFAULT_BG,
+          background: "transparent",
           imageRendering: "pixelated",
           outline: "none",
         }}
@@ -734,6 +737,7 @@ function paintRow(
 
   // Clear the row in default bg. Per-cell custom bg is painted below.
   ctx.globalAlpha = 1;
+  ctx.clearRect?.(0, y, cells.length * width, height);
   ctx.fillStyle = DEFAULT_BG;
   ctx.fillRect(0, y, cells.length * width, height);
 
@@ -1028,7 +1032,7 @@ function paintCursor(ctx: CanvasRenderingContext2D, snapshot: GridSnapshot, { wi
       ctx.fillRect(x, y, width, height);
       const cell = snapshot.cells[row]?.[col];
       if (cell && cell.ch !== " ") {
-        ctx.fillStyle = DEFAULT_BG;
+        ctx.fillStyle = CURSOR_TEXT_BG;
         /* Cursor-cell glyph respects the cell's wide-char status so a
          * CJK char under the cursor still occupies its 2-column slot
          * without spilling. */

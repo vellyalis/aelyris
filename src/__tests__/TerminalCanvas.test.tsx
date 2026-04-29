@@ -23,6 +23,9 @@ function installCanvasMock(): CallLog {
     fillRect: vi.fn((...args) => {
       calls.push({ op: "fillRect", args });
     }),
+    clearRect: vi.fn((...args) => {
+      calls.push({ op: "clearRect", args });
+    }),
     fillText: vi.fn((...args) => {
       calls.push({ op: "fillText", args });
     }),
@@ -102,6 +105,36 @@ describe("TerminalCanvas", () => {
     expect(terminalCanvasSource).not.toContain("rgba(200, 160, 80");
     expect(terminalCanvasSource).not.toContain('borderRadius: 999');
     expect(terminalCanvasSource).not.toContain('color: "#c8a050"');
+  });
+
+  it("clears rows before repainting the translucent terminal background", () => {
+    const first = snapshot([[cell("a"), cell(" ")]], { shape: "hidden" });
+    const { rerender } = render(
+      <TerminalCanvas terminalId="t1" cols={2} rows={1} fontSize={10} snapshotOverride={first} />,
+    );
+    const baseline = calls.length;
+
+    const second = snapshot([[cell("b"), cell(" ")]], { shape: "hidden" });
+    rerender(<TerminalCanvas terminalId="t1" cols={2} rows={1} fontSize={10} snapshotOverride={second} />);
+    const repaintCalls = calls.slice(baseline);
+
+    const rowClearIndex = repaintCalls.findIndex(
+      (c) =>
+        c.op === "clearRect" &&
+        (c.args[0] as number) === 0 &&
+        (c.args[1] as number) === 0 &&
+        (c.args[2] as number) === 16 &&
+        (c.args[3] as number) === Math.round(10 * 1.25),
+    );
+    const backgroundFillIndex = repaintCalls.findIndex(
+      (c, index) =>
+        index > rowClearIndex &&
+        c.op === "fillStyle" &&
+        (c.args[0] as string) === "rgba(3, 10, 22, 0.46)",
+    );
+
+    expect(rowClearIndex).toBeGreaterThanOrEqual(0);
+    expect(backgroundFillIndex).toBeGreaterThan(rowClearIndex);
   });
 
   it("paints cell characters via fillText when a snapshot is provided", () => {

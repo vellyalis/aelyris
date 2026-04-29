@@ -1,6 +1,7 @@
 import { render, waitFor } from "@testing-library/react";
 import { describe, expect, it, beforeEach } from "vitest";
 import { useThemeApplier } from "../shared/hooks/useTheme";
+import { DEFAULT_BG } from "../shared/lib/ansiPalette";
 import type { MoodPresetId } from "../shared/themes/moods";
 
 function ThemeProbe({ themeId, moodPresetId }: { themeId: string; moodPresetId: MoodPresetId }) {
@@ -25,7 +26,7 @@ describe("useThemeApplier", () => {
     });
 
     const style = document.documentElement.style;
-    expect(style.getPropertyValue("--terminal-canvas-bg").trim()).toBe("#06101c");
+    expect(style.getPropertyValue("--terminal-canvas-bg").trim()).toBe(DEFAULT_BG);
     expect(style.getPropertyValue("--gold").trim()).toBe("#f0cf7a");
     expect(localStorage.getItem("aether:theme")).toBe("catppuccin-latte");
     expect(localStorage.getItem("aether:moodPreset")).toBe("aether-sky");
@@ -37,14 +38,14 @@ describe("useThemeApplier", () => {
     await waitFor(() => {
       expect(document.documentElement.dataset.mood).toBe("aether-dream");
     });
-    expect(document.documentElement.style.getPropertyValue("--terminal-canvas-bg").trim()).toBe("#06101c");
+    expect(document.documentElement.style.getPropertyValue("--terminal-canvas-bg").trim()).toBe(DEFAULT_BG);
 
     rerender(<ThemeProbe themeId="aether-dark" moodPresetId="aether-pro" />);
 
     await waitFor(() => {
       expect(document.documentElement.dataset.mood).toBe("aether-pro");
     });
-    expect(document.documentElement.style.getPropertyValue("--terminal-canvas-bg").trim()).toBe("#06101c");
+    expect(document.documentElement.style.getPropertyValue("--terminal-canvas-bg").trim()).toBe(DEFAULT_BG);
     expect(document.documentElement.style.getPropertyValue("--terminal-watermark-opacity").trim()).toBe("0.045");
   });
 });
