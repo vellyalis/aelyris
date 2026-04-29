@@ -26,4 +26,11 @@ describe("InteractiveSessionCard", () => {
     expect(container.textContent).toContain("1%");
     expect(container.textContent).not.toContain("95%");
   });
+
+  it("does not pin model and cost metadata onto the interactive card face", () => {
+    const { container } = render(<InteractiveSessionCard session={baseSession()} />);
+
+    expect(container.textContent).not.toContain("gemini-2.5-pro");
+    expect(container.textContent).not.toContain("$0.03");
+  });
 });

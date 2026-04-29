@@ -222,6 +222,22 @@ describe("design token usage", () => {
     expect(listRule).not.toContain("0.42");
   });
 
+  it("keeps log severity readable without badge-like colored slabs", () => {
+    const logs = Object.entries(cssSources).find(([file]) =>
+      file.includes("features/logs/LogsPanel.module.css"),
+    )?.[1] ?? "";
+    const rowRule = logs.match(/\.row\s*{[\s\S]*?}/)?.[0] ?? "";
+    const levelRule = logs.match(/\.level\s*{[\s\S]*?}/)?.[0] ?? "";
+    const severityRules = logs
+      .match(/\.level(?:TRACE|DEBUG|INFO|WARN|ERROR)\s*{[\s\S]*?}/g)
+      ?.join("\n") ?? "";
+
+    expect(rowRule).toContain("grid-template-columns: 54px 42px minmax(0, 1fr)");
+    expect(rowRule).toContain("border-left: 1px solid transparent");
+    expect(levelRule).not.toContain("border-radius");
+    expect(severityRules).not.toContain("background:");
+  });
+
   it("keeps sidebar sections flat inside the parent glass panel", () => {
     const entry = Object.entries(cssSources).find(([file]) =>
       file.includes("shared/ui/CollapsibleSection.module.css"),

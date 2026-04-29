@@ -114,14 +114,25 @@
 
 .row {
   display: grid;
-  grid-template-columns: auto auto 1fr;
+  grid-template-columns: 54px 42px minmax(0, 1fr);
   gap: var(--space-2);
+  position: relative;
   padding: 1px 0;
   align-items: baseline;
+  border-left: 1px solid transparent;
+  padding-left: var(--space-2);
 }
 
 .row + .row {
-  border-top: 1px dashed transparent;
+  margin-top: 1px;
+}
+
+.row[data-level="WARN"] {
+  border-left-color: color-mix(in srgb, var(--ctp-peach) 48%, transparent);
+}
+
+.row[data-level="ERROR"] {
+  border-left-color: color-mix(in srgb, var(--ctp-red) 54%, transparent);
 }
 
 .timestamp {
@@ -136,30 +147,24 @@
   font-size: 10px;
   letter-spacing: 0;
   white-space: nowrap;
-  padding: 0 4px;
-  border-radius: 2px; /* sub-token: level badge */
+  padding: 0;
   align-self: center;
 }
 
 .levelTRACE {
   color: var(--text-muted);
-  background: var(--white-3);
 }
 .levelDEBUG {
   color: var(--ctp-blue, #89b4fa);
-  background: rgba(137, 180, 250, 0.1);
 }
 .levelINFO {
   color: var(--ctp-teal, #94e2d5);
-  background: rgba(148, 226, 213, 0.1);
 }
 .levelWARN {
   color: var(--ctp-peach, #fab387);
-  background: rgba(250, 179, 135, 0.12);
 }
 .levelERROR {
   color: var(--ctp-red, #f38ba8);
-  background: rgba(243, 139, 168, 0.16);
 }
 
 .message {

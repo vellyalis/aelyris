@@ -141,7 +141,7 @@ export function LogsPanel({ invoke, pollMs, defaultCollapsed = true }: LogsPanel
 
 function LogRow({ entry }: { entry: LogEntry }) {
   return (
-    <div className={styles.row} data-testid={`log-row-${entry.seq}`}>
+    <div className={styles.row} data-level={entry.level} data-testid={`log-row-${entry.seq}`}>
       <span className={styles.timestamp}>{formatTimestamp(entry.timestamp_ms)}</span>
       <span className={`${styles.level} ${levelClass(entry.level)}`}>{entry.level}</span>
       <span className={styles.message}>

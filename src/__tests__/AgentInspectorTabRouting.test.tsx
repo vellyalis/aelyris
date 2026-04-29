@@ -57,9 +57,12 @@ describe("AgentInspector tab routing", () => {
 
   it("does not pin low-value model and cost metadata to every session card", () => {
     const source = Object.entries(cardSources).find(([file]) => file.endsWith("/SessionCard.tsx"))?.[1] ?? "";
+    const combined = Object.values(cardSources).join("\n");
 
     expect(source).not.toContain("styles.cardModel");
     expect(source).not.toContain("styles.cardCost");
+    expect(combined).not.toContain("styles.cardModel");
+    expect(combined).not.toContain("styles.cardCost");
     expect(source).toContain("isLive &&");
   });
 

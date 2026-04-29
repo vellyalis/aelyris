@@ -55,6 +55,7 @@ describe("LogsPanel", () => {
 
     await waitFor(() => expect(screen.getByText("hello")).toBeTruthy());
     expect(screen.getByText("watch out")).toBeTruthy();
+    expect(screen.getByTestId("log-row-2").getAttribute("data-level")).toBe("WARN");
     expect(screen.getByText("2/2")).toBeTruthy();
   });
 

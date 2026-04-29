@@ -91,17 +91,15 @@ export function InteractiveSessionCard({
               <span className={styles.cardPreviewText}>{is.initial_prompt}</span>
             </div>
           )}
-          <div className={styles.cardMeta}>
-            <span className={styles.cardModel}>{is.model}</span>
-            <span className={styles.cardCost}>&lt;${is.cost.toFixed(2)}</span>
-            {is.status !== "done" && is.status !== "idle" && (
+          {is.status !== "done" && is.status !== "idle" && (
+            <div className={styles.cardMeta}>
               <StopButton
                 className={styles.stopBtn}
                 label={`Stop interactive session ${is.id}`}
                 onStop={() => onStop?.(is.id)}
               />
-            )}
-          </div>
+            </div>
+          )}
           <div className={styles.progressTrack}>
             <div className={styles.progressBar} style={{ width: `${pct}%`, background: sColor.accent }} />
           </div>
