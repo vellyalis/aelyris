@@ -20,7 +20,8 @@ describe("WorkspaceTabs close controls", () => {
     expect(entries.length).toBe(1);
     const src = entries[0][1];
 
-    expect(src).toMatch(/className=\{styles\.tabWrap\}/);
+    expect(src).toContain("className={styles.tabWrap}");
+    expect(src).toContain("data-active={effectiveActiveId === tab.id || undefined}");
     expect(src).toMatch(/<button[\s\S]*className=\{styles\.tabClose\}/);
     expect(src).not.toMatch(/role="button"/);
     expect(src).not.toMatch(/<span\s+className=\{styles\.tabClose\}/);

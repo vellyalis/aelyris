@@ -86,3 +86,23 @@ describe("WorkflowPanel gate action structure", () => {
     expect(stripped).not.toMatch(/e\.stopPropagation\(\)/);
   });
 });
+
+describe("WorkflowPanel empty state", () => {
+  it("keeps the header rendered instead of leaving an empty bento wrapper", () => {
+    const src = getSrc();
+
+    expect(src).not.toContain("workflows.length === 0 && running.length === 0) return null");
+    expect(src).toContain("aria-label=\"Workflow panel\"");
+    expect(src).toContain("Visual Builder");
+  });
+
+  it("uses the shared panel header and opens automatically for live workflow state", () => {
+    const src = getSrc();
+
+    expect(src).toContain('import { PanelHeader } from "../../shared/ui/PanelHeader"');
+    expect(src).toContain("<PanelHeader");
+    expect(src).toContain("collapsible");
+    expect(src).toContain("collapsed={!expanded}");
+    expect(src).toContain("if (running.length > 0) setExpanded(true)");
+  });
+});

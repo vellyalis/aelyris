@@ -1,40 +1,79 @@
 .bar {
   display: flex;
   align-items: center;
-  height: 28px;
-  padding: 0 var(--space-4);
-  background: var(--chrome-frame-bg);
+  height: 30px;
+  padding: 2px var(--space-4) 3px;
+  background:
+    linear-gradient(180deg, rgba(142, 226, 241, 0.026), rgba(3, 10, 18, 0.018)),
+    var(--chrome-frame-bg);
   backdrop-filter: var(--chrome-frame-filter);
   -webkit-backdrop-filter: var(--chrome-frame-filter);
   border-top: 0;
-  box-shadow: var(--chrome-frame-shadow);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.028),
+    inset 0 -1px 0 rgba(3, 10, 18, 0.2);
 }
 
 .tabs {
   display: flex;
-  gap: 1px; /* whisper gap: 意図的なタブ区切り (sub-token) */
+  gap: var(--space-2);
   overflow-x: auto;
   flex: 1;
+  min-width: 0;
 }
 .tabs::-webkit-scrollbar {
   display: none;
 }
 
 .tabWrap {
+  position: relative;
   display: inline-flex;
   align-items: center;
+  min-width: 0;
+  max-width: 220px;
+  min-height: 24px;
   border-radius: var(--radius-sm);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px transparent;
+  transition:
+    background var(--duration-fast) var(--ease-silk),
+    box-shadow var(--duration-fast) var(--ease-silk);
 }
 
 .tabWrap:hover {
-  background: var(--white-4);
+  background: rgba(142, 226, 241, 0.032);
+  box-shadow: inset 0 0 0 1px rgba(142, 226, 241, 0.035);
+}
+
+.tabWrap[data-active] {
+  background:
+    linear-gradient(180deg, rgba(180, 237, 248, 0.04), rgba(3, 10, 18, 0.06)),
+    rgba(4, 13, 22, 0.14);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.052),
+    inset 0 0 0 1px rgba(142, 226, 241, 0.055);
+}
+
+.tabWrap[data-active]::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: -2px;
+  height: 1px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--gold) 58%, #9ee8f2 42%), transparent);
+  opacity: 0.74;
+  pointer-events: none;
 }
 
 .tab {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-1) var(--space-4);
+  min-width: 0;
+  flex: 1;
+  padding: 0 var(--space-3) 0 var(--space-4);
   border: none;
   background: transparent;
   color: var(--text-muted);
@@ -42,41 +81,28 @@
   font-family: var(--font-ui);
   cursor: pointer;
   white-space: nowrap;
+  min-height: 24px;
   border-radius: var(--radius-sm);
   transition:
-    background var(--duration-fast) var(--ease-silk),
     color var(--duration-fast);
 }
 .tab:hover {
   color: var(--text-secondary);
   background: transparent;
 }
-/* Active state was previously identical to hover (both `--white-6`)
- * — the only difference was text colour, which read as the same tab
- * level on glance and made it impossible to tell which tab was
- * actually selected. Active now gets a stronger glass-frame fill
- * AND a 1-px gold underline, the same pattern Chrome / VS Code
- * tabs use to anchor the eye. */
+.tab:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--gold) 74%, transparent);
+  outline-offset: -2px;
+}
 .tab[data-state="active"] {
   color: var(--text-primary);
-  background: var(--white-10);
-  position: relative;
-}
-.tab[data-state="active"]::after {
-  content: "";
-  position: absolute;
-  left: var(--space-3);
-  right: var(--space-3);
-  bottom: 0;
-  height: 2px;
-  border-radius: var(--radius-pill);
-  background: color-mix(in srgb, var(--gold) 76%, transparent);
-  pointer-events: none;
+  background: transparent;
 }
 
 .tabLabel {
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
 }
 .activityDot {
   width: 6px;
@@ -98,11 +124,21 @@
   }
 }
 .branchBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: 72px;
+  height: 16px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: rgba(3, 9, 16, 0.18);
   font-size: var(--text-2xs);
   font-family: var(--font-mono);
-  color: var(--gold-dim); /* Phase 1 Step 4: chrome single accent (was --ctp-green) */
-  opacity: 0.8;
+  color: color-mix(in srgb, var(--gold) 62%, var(--text-muted));
+  box-shadow: inset 0 0 0 1px rgba(200, 160, 80, 0.08);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .tabClose {
@@ -112,23 +148,23 @@
   cursor: pointer;
   font-size: var(--text-xs);
   opacity: 0;
+  flex: 0 0 auto;
   transition: opacity var(--duration-fast) var(--ease-silk);
-  /* 16x16 visible icon + CSS hit-region below via the containing tab's
-   * padding; the tab itself is 28px tall so the padding around tabClose
-   * already meets the Apple 28px hit-target floor. */
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
+  margin-right: 2px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-sm);
 }
-.tabWrap:hover .tabClose {
+.tabWrap:hover .tabClose,
+.tabWrap:focus-within .tabClose {
   opacity: 0.5;
 }
 .tabClose:hover {
   opacity: 1 !important;
-  background: var(--white-10);
+  background: rgba(142, 226, 241, 0.08);
   color: var(--text-primary);
 }
 .tabClose:focus-visible {
@@ -145,25 +181,35 @@
 }
 
 .addBtn {
-  background: none;
+  background: transparent;
   border: none;
   color: var(--text-muted);
   font-size: var(--text-sm);
   cursor: pointer;
-  padding: 0 var(--space-3);
+  width: 26px;
+  height: 24px;
+  padding: 0;
   border-radius: var(--radius-sm);
   flex-shrink: 0;
   margin-left: var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .addBtn:hover {
-  background: var(--white-6);
+  background: rgba(142, 226, 241, 0.055);
   color: var(--text-primary);
+}
+.addBtn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--gold) 74%, transparent);
+  outline-offset: -2px;
 }
 
 /* Drag & drop feedback */
-.tab[data-drag-over] {
-  border-left: 2px solid var(--gold); /* Phase 1 Step 4: chrome single accent (was --ctp-blue) */
-  padding-left: calc(var(--space-4) - 2px);
+.tabWrap[data-drag-over] {
+  box-shadow:
+    inset 2px 0 0 var(--gold),
+    inset 0 0 0 1px rgba(142, 226, 241, 0.08);
 }
 .tab:active {
   cursor: grabbing;

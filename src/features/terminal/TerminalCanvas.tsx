@@ -31,6 +31,7 @@ import { type LinkSpan, linkAt, scanLinks } from "./links";
 import type { AnyMatch } from "./search";
 import { viewportRowOf } from "./search";
 import { rowSelection, type SelectionRange } from "./selection";
+import styles from "./TerminalArea.module.css";
 
 export type OpenUrlFn = (url: string) => Promise<void> | void;
 
@@ -702,25 +703,7 @@ export function TerminalCanvas({
           onClick={() => scrollback.scrollToLive()}
           aria-label="Jump to live tail"
           title="Jump to live tail (Ctrl+Shift+End)"
-          style={{
-            position: "absolute",
-            right: 12,
-            bottom: 12,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 4,
-            padding: "4px 10px",
-            background: "rgba(200, 160, 80, 0.18)",
-            border: "1px solid rgba(200, 160, 80, 0.4)",
-            borderRadius: 999,
-            color: "#c8a050",
-            fontSize: 11,
-            fontFamily: "inherit",
-            cursor: "pointer",
-            backdropFilter: "blur(8px)",
-            WebkitBackdropFilter: "blur(8px)",
-            zIndex: 2,
-          }}
+          className={styles.livePill}
         >
           <ChevronDown size={12} aria-hidden="true" />
           Live

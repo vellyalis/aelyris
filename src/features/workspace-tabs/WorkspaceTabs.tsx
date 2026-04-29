@@ -78,7 +78,12 @@ export function WorkspaceTabs({
       <Tabs.Root value={effectiveActiveId} onValueChange={handleValueChange}>
         <Tabs.List className={styles.tabs} aria-label="Terminal tabs">
           {tabs.map((tab) => (
-            <div key={tab.id} className={styles.tabWrap}>
+            <div
+              key={tab.id}
+              className={styles.tabWrap}
+              data-active={effectiveActiveId === tab.id || undefined}
+              data-drag-over={dragOverId === tab.id || undefined}
+            >
               <Tabs.Trigger
                 value={tab.id}
                 className={styles.tab}
@@ -87,7 +92,6 @@ export function WorkspaceTabs({
                 onDragOver={(e) => handleDragOver(e, tab.id)}
                 onDrop={(e) => handleDrop(e, tab.id)}
                 onDragEnd={handleDragEnd}
-                data-drag-over={dragOverId === tab.id || undefined}
               >
                 <PixelAvatar seed={tab.label} size={12} />
                 {activityTabs?.has(tab.id) && <span className={styles.activityDot} />}
@@ -112,7 +116,11 @@ export function WorkspaceTabs({
             </div>
           ))}
           {interactiveSessions.map((session) => (
-            <div key={`agent-${session.id}`} className={styles.tabWrap}>
+            <div
+              key={`agent-${session.id}`}
+              className={styles.tabWrap}
+              data-active={effectiveActiveId === `agent-${session.id}` || undefined}
+            >
               <Tabs.Trigger value={`agent-${session.id}`} className={styles.tab}>
                 <span className={styles.agentDot} style={{ background: getCliColor(session.cli) }} />
                 <span className={styles.tabLabel}>{getCliLabel(session.cli)}</span>

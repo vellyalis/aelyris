@@ -5,6 +5,14 @@ import { TerminalCanvas } from "../features/terminal/TerminalCanvas";
 import type { CellSnapshot, CursorSnapshot, GridSnapshot } from "../shared/types/terminal";
 import { CellAttr } from "../shared/types/terminal";
 
+const terminalCanvasSource = Object.values(
+  import.meta.glob("../features/terminal/TerminalCanvas.tsx", {
+    query: "?raw",
+    import: "default",
+    eager: true,
+  }) as Record<string, string>,
+)[0]!;
+
 // jsdom's HTMLCanvasElement.getContext returns null by default — stub a
 // minimal 2D context so the component can exercise its paint logic.
 type CallLog = Array<{ op: string; args: unknown[] }>;
@@ -87,6 +95,13 @@ describe("TerminalCanvas", () => {
     expect(canvas.width).toBe(10 * Math.round(14 * 0.6));
     expect(canvas.height).toBe(3 * Math.round(14 * 1.25));
     expect(canvas.getAttribute("data-terminal-id")).toBe("t1");
+  });
+
+  it("keeps the jump-to-live affordance tokenized instead of inline-styled", () => {
+    expect(terminalCanvasSource).toContain("className={styles.livePill}");
+    expect(terminalCanvasSource).not.toContain("rgba(200, 160, 80");
+    expect(terminalCanvasSource).not.toContain('borderRadius: 999');
+    expect(terminalCanvasSource).not.toContain('color: "#c8a050"');
   });
 
   it("paints cell characters via fillText when a snapshot is provided", () => {

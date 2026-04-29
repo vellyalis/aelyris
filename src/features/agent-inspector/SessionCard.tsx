@@ -84,8 +84,8 @@ export function SessionCard({
   const conflictCount = conflictingPaths?.length ?? 0;
 
   // Secondary info folded behind a single MoreHorizontal badge so the status
-  // row no longer carries 8+ pill-shaped chips. Branch / model ID / cost live
-  // in .cardMeta already; these are the "nice-to-know, not eye-anchor" bits.
+  // row no longer carries 8+ pill-shaped chips. Keep only actionable state
+  // visible; model/cost remain available from Copy Info and analytics.
   const secondaryInfo: string[] = [];
   if (s.permissionMode) secondaryInfo.push(`Permission: ${s.permissionMode === "full" ? "auto" : s.permissionMode}`);
   if (s.detectedPort) secondaryInfo.push(`Port: localhost:${s.detectedPort}`);
@@ -94,7 +94,11 @@ export function SessionCard({
   return (
     <RadixContextMenu.Root>
       <RadixContextMenu.Trigger asChild>
-        <button
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label={`Select session ${s.name}`}
+          aria-pressed={isActive}
           className={`${styles.card} ${s.watchdog ? styles.cardWatchdog : ""} ${isActive ? styles.cardActive : ""} ${isSelected ? styles.cardSelected : ""}`}
           data-live={isLive || undefined}
           onClick={(e) => {
@@ -104,6 +108,13 @@ export function SessionCard({
               return;
             }
             onSelect(s.id);
+          }}
+          onKeyDown={(e) => {
+            if (e.currentTarget !== e.target) return;
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onSelect(s.id);
+            }
           }}
           style={
             {
@@ -157,13 +168,15 @@ export function SessionCard({
                   </span>
                 )}
                 {secondaryInfo.length > 0 && (
-                  <span
+                  <button
+                    type="button"
                     className={styles.moreInfo}
                     title={secondaryTitle}
                     aria-label={`More details: ${secondaryTitle.replace(/\n/g, ", ")}`}
+                    onClick={(e) => e.stopPropagation()}
                   >
                     <MoreHorizontal size={10} strokeWidth={1.75} aria-hidden="true" />
-                  </span>
+                  </button>
                 )}
                 {warning && (
                   <span
@@ -198,17 +211,15 @@ export function SessionCard({
               <span className={styles.cardPreviewText}>{lastLog.content}</span>
             </div>
           )}
-          <div className={styles.cardMeta}>
-            <span className={styles.cardModel}>{s.model}</span>
-            <span className={styles.cardCost}>&lt;${s.cost.toFixed(2)}</span>
-            {s.status !== "done" && s.status !== "idle" && (
+          {isLive && (
+            <div className={styles.cardMeta}>
               <StopButton
                 className={styles.stopBtn}
                 label={`Stop session ${s.name}`}
                 onStop={() => onStop?.(s.id)}
               />
-            )}
-          </div>
+            </div>
+          )}
           <div className={styles.progressTrack}>
             <div className={styles.progressBar} style={{ width: `${pct}%`, background: sColor.accent }} />
           </div>
@@ -240,7 +251,7 @@ export function SessionCard({
             </div>
           ) : null}
           {s.watchdog && <div className={styles.watchdogInfo}>🐕 {s.watchdog}</div>}
-        </button>
+        </div>
       </RadixContextMenu.Trigger>
       <RadixContextMenu.Portal>
         <RadixContextMenu.Content className={styles.ctxMenu}>

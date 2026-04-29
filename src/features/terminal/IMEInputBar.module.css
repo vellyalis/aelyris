@@ -14,12 +14,16 @@
   padding: 0 var(--space-3);
   margin: -1px 0 0;
   min-height: 28px;
-  background: rgba(0, 0, 0, 0.18);
+  background:
+    radial-gradient(ellipse at 50% -24%, rgba(116, 216, 238, 0.018), transparent 48%),
+    linear-gradient(180deg, rgba(3, 10, 18, 0.2), rgba(1, 6, 14, 0.34)),
+    var(--terminal-canvas-bg);
   border: 0;
   border-radius: 0 0 calc(var(--radius-lg) - 4px) calc(var(--radius-lg) - 4px);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.024),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.018);
+    inset 0 1px 0 rgba(124, 214, 235, 0.012),
+    inset 0 0 0 1px rgba(114, 202, 230, 0.01),
+    inset 0 12px 28px rgba(0, 5, 12, 0.12);
   transition:
     background var(--duration-fast) var(--ease-silk, cubic-bezier(0.4, 0, 0.2, 1)),
     box-shadow var(--duration-fast) var(--ease-silk, cubic-bezier(0.4, 0, 0.2, 1));
@@ -27,11 +31,12 @@
 
 .bar.focused {
   background:
-    linear-gradient(180deg, rgba(255, 244, 214, 0.018), transparent 70%),
-    rgba(8, 9, 14, 0.72);
+    linear-gradient(180deg, rgba(139, 224, 240, 0.012), transparent 70%),
+    rgba(4, 9, 15, 0.54);
   box-shadow:
-    inset 0 1px 0 rgba(255, 244, 214, 0.036),
-    inset 0 0 0 1px color-mix(in srgb, var(--gold) 10%, transparent);
+    inset 0 1px 0 rgba(166, 231, 242, 0.024),
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 7%, transparent),
+    inset 0 12px 28px rgba(0, 0, 0, 0.1);
 }
 
 .bar.disabled {
@@ -54,7 +59,7 @@
   font-family: var(--font-mono);
   font-weight: var(--weight-medium);
   color: var(--text-muted);
-  border: 1px solid var(--white-6);
+  border: 1px solid rgba(124, 214, 235, 0.035);
   border-radius: var(--radius-sm);
   background: transparent;
   user-select: none;
@@ -66,8 +71,8 @@
 
 .bar.focused .indicator {
   color: var(--text-secondary);
-  border-color: var(--white-10);
-  background: var(--white-2);
+  border-color: rgba(142, 226, 241, 0.07);
+  background: rgba(4, 11, 18, 0.2);
 }
 
 /* While IME composition is active we light the pill in gold so the
@@ -97,7 +102,7 @@
   min-height: calc(1em * 1.4);
   max-height: calc(1em * 1.4 * 5);
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+  scrollbar-color: rgba(124, 214, 235, 0.14) transparent;
 }
 
 .input::placeholder {
@@ -110,7 +115,7 @@
 }
 
 .bar:not(.focused) .input::placeholder {
-  color: var(--white-25);
+  color: rgba(174, 216, 226, 0.27);
 }
 
 .input:disabled {
@@ -128,9 +133,9 @@
   align-items: center;
   height: 18px;
   padding: 0 var(--space-2);
-  border: 1px solid var(--white-10);
+  border: 1px solid rgba(124, 214, 235, 0.045);
   border-radius: var(--radius-sm);
-  background: var(--white-2);
+  background: rgba(4, 11, 18, 0.16);
   color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: 10px;

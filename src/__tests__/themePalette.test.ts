@@ -15,6 +15,7 @@ import {
   moodPresetToCSS,
   normalizeMoodPreset,
 } from "../shared/themes/moods";
+import { DEFAULT_BG } from "../shared/lib/ansiPalette";
 
 describe("themes/catppuccin — hex helpers", () => {
   it("validates 6-digit hex", () => {
@@ -183,6 +184,32 @@ describe("themes/moods — preset metadata", () => {
       for (const [key, ceiling] of Object.entries(ceilings)) {
         expect(rgbaAlpha(vars[key]), `${preset.id} ${key}`).toBeLessThanOrEqual(ceiling);
       }
+    }
+  });
+
+  it("keeps Aether Sky clear-water dark instead of whitewashed", () => {
+    const vars = moodPresetToCSS("aether-sky");
+
+    expect(Number(vars["--mood-root-texture-opacity"])).toBeLessThanOrEqual(0.05);
+    expect(vars["--mood-widget-veil"]).not.toContain("235, 248, 255");
+    expect(vars["--mood-right-panel-bg"]).not.toContain("235, 248, 255");
+    expect(vars["--terminal-shadow-inset"]).not.toContain("235, 248, 255");
+  });
+
+  it("keeps mood canvas tokens aligned with the native terminal renderer", () => {
+    for (const preset of MOOD_PRESETS) {
+      const vars = moodPresetToCSS(preset.id);
+      expect(vars["--terminal-canvas-bg"], preset.id).toBe(DEFAULT_BG);
+    }
+  });
+
+  it("keeps collapsed log widgets on the same light material as sibling bento cards", () => {
+    for (const preset of MOOD_PRESETS) {
+      const vars = moodPresetToCSS(preset.id);
+      const token = vars["--mood-logs-widget-bg"];
+      expect(token, preset.id).not.toContain("0.34");
+      expect(token, preset.id).not.toContain("0.42");
+      expect(token, preset.id).not.toContain("0.5");
     }
   });
 

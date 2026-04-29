@@ -108,6 +108,7 @@ describe("LogsPanel", () => {
     fireEvent.click(screen.getByLabelText("Clear visible logs"));
     expect(screen.queryByText("old-1")).toBeNull();
     expect(screen.queryByText("old-2")).toBeNull();
+    expect(screen.getByRole("log").getAttribute("data-empty")).toBe("true");
     expect(screen.getByText(/No log entries match this filter/)).toBeTruthy();
 
     allowFresh = true;
@@ -115,6 +116,7 @@ describe("LogsPanel", () => {
       () => expect(screen.getByText("fresh")).toBeTruthy(),
       { timeout: 4_000, interval: 50 },
     );
+    expect(screen.getByRole("log").getAttribute("data-empty")).toBe("false");
     expect(screen.queryByText("old-1")).toBeNull();
   });
 

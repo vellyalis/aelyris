@@ -16,8 +16,8 @@ function packIndexed(i: number): number {
 }
 
 describe("resolveColor", () => {
-  it("keeps the default terminal canvas on the recessed black stage", () => {
-    expect(DEFAULT_BG).toBe("#07080d");
+  it("keeps the default terminal canvas on the recessed deep-water stage", () => {
+    expect(DEFAULT_BG).toBe("#06101c");
   });
 
   it("maps NamedColor 0..15 to Catppuccin ANSI slots", () => {

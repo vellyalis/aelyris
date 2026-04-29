@@ -55,3 +55,28 @@ describe("Toolkit placeholder interpolation", () => {
     expect(result).toBe("command");
   });
 });
+
+const toolkitSources = import.meta.glob("../features/toolkit/ToolkitPanel.tsx", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
+
+function getToolkitSrc(): string {
+  const entries = Object.entries(toolkitSources);
+  expect(entries.length).toBe(1);
+  return entries[0][1];
+}
+
+describe("Toolkit adaptive density", () => {
+  it("collapses generic command actions by default while keeping the header affordance", () => {
+    const src = getToolkitSrc();
+
+    expect(src).toContain("const [collapsed, setCollapsed] = useState(true)");
+    expect(src).toContain("<PanelHeader");
+    expect(src).toContain("collapsible");
+    expect(src).toContain("collapsed={collapsed}");
+    expect(src).toContain("!collapsed &&");
+    expect(src).not.toContain('subtitle="Command deck"');
+  });
+});

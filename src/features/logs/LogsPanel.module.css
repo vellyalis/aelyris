@@ -82,20 +82,32 @@
 }
 
 .list {
-  background: var(--bg-secondary, var(--white-3));
-  border: 1px solid var(--border);
+  background:
+    linear-gradient(180deg, rgba(142, 226, 241, 0.014), transparent 36%),
+    rgba(3, 9, 16, 0.18);
+  border: 1px solid rgba(124, 214, 235, 0.04);
   border-radius: var(--radius-sm);
   overflow-y: auto;
-  height: 220px;
+  max-height: 220px;
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   line-height: 1.45;
   padding: var(--space-2);
 }
 
+.list[data-empty="false"] {
+  min-height: 96px;
+}
+
+.list[data-empty="true"] {
+  background: transparent;
+  border-color: transparent;
+  padding: 0;
+}
+
 .empty {
   color: var(--text-muted);
-  padding: var(--space-3);
+  padding: var(--space-2) var(--space-1);
   text-align: center;
   font-family: var(--font-ui);
 }
@@ -122,7 +134,7 @@
   font-weight: 600;
   text-transform: uppercase;
   font-size: 10px;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
   white-space: nowrap;
   padding: 0 4px;
   border-radius: 2px; /* sub-token: level badge */

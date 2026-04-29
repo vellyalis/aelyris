@@ -18,18 +18,18 @@
   --aether-moon: #c7d2ee;
   --aether-champagne: #d8b766;
 
-  /* Level 0: Terminal center — warm passthrough */
-  --glass-clear: rgba(10, 9, 13, 0.018);
-  /* Level 1: Ground — sidebar rail, darkest anchor */
-  --glass-ground: rgba(13, 12, 15, 0.24);
-  /* Level 2: Frame — header, statusbar */
-  --glass-frame: rgba(24, 22, 27, 0.12);
-  /* Level 3: Standard — left panel */
-  --glass-standard: rgba(26, 27, 32, 0.14);
-  /* Level 3.5: Dense — right panel (higher info density) */
-  --glass-dense: rgba(27, 26, 33, 0.18);
-  /* Level 4: Thick — cards, elevated surfaces */
-  --glass-thick: rgba(36, 36, 44, 0.22);
+  /* Level 0: Terminal center, clear dark water passthrough */
+  --glass-clear: rgba(5, 9, 15, 0.026);
+  /* Level 1: Ground, sidebar rail, darkest anchor */
+  --glass-ground: rgba(2, 6, 11, 0.17);
+  /* Level 2: Frame, header, statusbar */
+  --glass-frame: rgba(8, 13, 20, 0.11);
+  /* Level 3: Standard, left panel */
+  --glass-standard: rgba(4, 10, 17, 0.086);
+  /* Level 3.5: Dense, right panel, higher information density */
+  --glass-dense: rgba(5, 12, 20, 0.112);
+  /* Level 4: Thick, cards and elevated surfaces */
+  --glass-thick: rgba(7, 16, 24, 0.145);
   /* Level 5: Solid — modals, dialogs (still opaque-ish so dialog
      chrome reads against any wallpaper, not just dark ones). */
   --glass-solid: rgba(26, 26, 26, 0.78);
@@ -40,108 +40,112 @@
   --aether-bg-elevated: var(--glass-dense);
   --aether-bg-card: var(--glass-thick);
   --aether-bg-surface: var(--glass-dense);
-  --aether-border: rgba(231, 211, 168, 0.065);
-  --aether-border-strong: rgba(231, 211, 168, 0.12);
+  --aether-border: rgba(143, 213, 232, 0.058);
+  --aether-border-strong: rgba(156, 225, 240, 0.11);
 
-  --terminal-canvas-bg: #07080d;
+  --terminal-canvas-bg: #06101c;
   --terminal-well-bg:
-    radial-gradient(ellipse at 50% 0%, rgba(216, 183, 102, 0.045), transparent 46%),
-    linear-gradient(180deg, rgba(12, 13, 20, 0.62), rgba(4, 5, 9, 0.84));
-  --terminal-chrome-bg: rgba(16, 17, 24, 0.34);
-  --terminal-chrome-bg-focus: rgba(24, 24, 31, 0.48);
-  --terminal-rim-warm: rgba(216, 183, 102, 0.16);
-  --terminal-border: rgba(216, 183, 102, 0.085);
+    radial-gradient(ellipse at 48% -18%, rgba(96, 203, 232, 0.045), transparent 44%),
+    linear-gradient(180deg, rgba(5, 13, 22, 0.28), rgba(1, 3, 7, 0.86)),
+    linear-gradient(90deg, rgba(91, 190, 224, 0.014), transparent 26%, transparent 74%, rgba(170, 230, 240, 0.012));
+  --terminal-chrome-bg: rgba(4, 9, 15, 0.2);
+  --terminal-chrome-bg-focus: rgba(5, 11, 18, 0.34);
+  --terminal-rim-warm: rgba(142, 226, 241, 0.082);
+  --terminal-border: rgba(124, 205, 230, 0.044);
   --terminal-shadow-inset:
-    inset 0 1px 0 rgba(255, 244, 214, 0.055),
+    inset 0 1px 0 rgba(174, 231, 242, 0.026),
     inset 0 0 0 1px var(--terminal-border),
-    inset 0 34px 92px rgba(0, 0, 0, 0.54),
-    inset 0 -26px 72px rgba(3, 4, 8, 0.48);
-  --terminal-shell-shadow: 0 24px 70px rgba(0, 0, 0, 0.24);
+    inset 0 30px 84px rgba(0, 0, 0, 0.5),
+    inset 0 -28px 78px rgba(3, 4, 8, 0.44);
+  --terminal-shell-shadow: 0 24px 70px rgba(0, 0, 0, 0.18);
   --terminal-viewport-shadow:
-    inset 0 0 0 1px rgba(137, 220, 235, 0.045),
-    inset 0 28px 78px rgba(0, 0, 0, 0.42),
-    inset 0 -20px 54px rgba(0, 0, 0, 0.34);
+    inset 0 0 0 1px rgba(137, 220, 235, 0.038),
+    inset 0 1px 0 rgba(190, 238, 246, 0.024),
+    inset 0 30px 74px rgba(0, 8, 18, 0.34),
+    inset 0 -24px 58px rgba(0, 5, 12, 0.28);
   --terminal-viewport-occlusion:
     linear-gradient(180deg, rgba(0, 0, 0, 0.24), transparent 48px),
     linear-gradient(0deg, rgba(0, 0, 0, 0.2), transparent 42px),
-    linear-gradient(90deg, rgba(216, 183, 102, 0.035), transparent 26%, transparent 74%, rgba(137, 220, 235, 0.026));
-  --terminal-watermark-opacity: 0.055;
-  --terminal-watermark-filter: drop-shadow(0 18px 54px rgba(216, 183, 102, 0.08));
+    linear-gradient(90deg, rgba(92, 188, 219, 0.014), transparent 28%, transparent 72%, rgba(167, 226, 239, 0.016));
+  --terminal-watermark-opacity: 0.064;
+  --terminal-watermark-filter: drop-shadow(0 18px 54px rgba(101, 205, 234, 0.07));
 
   --chrome-frame-bg:
-    linear-gradient(180deg, rgba(255, 244, 214, 0.035), transparent 72%),
-    linear-gradient(90deg, rgba(137, 220, 235, 0.025), transparent 34%, transparent 66%, rgba(216, 183, 102, 0.022)),
+    linear-gradient(180deg, rgba(166, 226, 239, 0.022), transparent 72%),
+    linear-gradient(90deg, rgba(107, 204, 230, 0.026), transparent 34%, transparent 66%, rgba(178, 228, 238, 0.012)),
     var(--glass-frame);
-  --chrome-frame-filter: blur(20px) saturate(1.12);
+  --chrome-frame-filter: blur(14px) saturate(1.08) contrast(1.01);
   --chrome-frame-shadow:
-    inset 0 1px 0 rgba(255, 244, 214, 0.07),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.028);
+    inset 0 1px 0 rgba(171, 231, 244, 0.052),
+    inset 0 -1px 0 rgba(113, 201, 227, 0.02);
   --material-stage-bg:
-    radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--accent) 3%, transparent), transparent 48%),
-    linear-gradient(180deg, rgba(255, 244, 214, 0.012), rgba(0, 0, 0, 0.018)),
+    radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--accent) 2.4%, transparent), transparent 48%),
+    linear-gradient(180deg, rgba(127, 215, 235, 0.009), rgba(0, 0, 0, 0.024)),
     var(--glass-clear);
   --material-stage-shadow:
-    inset 0 1px 0 rgba(255, 244, 214, 0.04),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.018),
+    inset 0 1px 0 rgba(160, 228, 242, 0.03),
+    inset 0 0 0 1px rgba(131, 215, 236, 0.014),
     inset 0 -28px 80px rgba(0, 0, 0, 0.11);
-  --material-panel-filter: blur(12px) saturate(1.04);
+  --material-panel-filter: blur(10px) saturate(1.08) contrast(1.01);
   --material-panel-shadow:
     var(--rim-top),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.034),
+    inset 0 0 0 1px rgba(122, 211, 235, 0.026),
     0 8px 24px rgba(0, 0, 0, 0.12);
   --material-card-shadow:
     var(--rim-top),
-    0 0 0 1px rgba(255, 255, 255, 0.04),
+    0 0 0 1px rgba(122, 211, 235, 0.032),
     0 1px 2px rgba(0, 0, 0, 0.1),
     0 6px 16px rgba(0, 0, 0, 0.08);
   --terminal-shell-filter: none;
   --terminal-shell-depth:
     var(--terminal-shadow-inset),
     inset 0 0 0 1px color-mix(in srgb, var(--terminal-border) 70%, transparent),
-    inset 0 1px 0 rgba(255, 244, 214, 0.05),
-    inset 0 -1px 0 rgba(137, 220, 235, 0.018);
+    inset 0 1px 0 rgba(174, 231, 242, 0.04),
+    inset 0 -1px 0 rgba(98, 188, 216, 0.022);
 
   --mood-root-glow:
-    linear-gradient(125deg, rgba(216, 183, 102, 0.045), transparent 32%),
-    linear-gradient(300deg, rgba(137, 220, 235, 0.032), transparent 38%),
-    linear-gradient(180deg, rgba(9, 11, 19, 0.035), rgba(9, 11, 19, 0.1));
-  --mood-root-glow-opacity: 0.28;
+    linear-gradient(125deg, rgba(95, 116, 205, 0.028), transparent 32%),
+    linear-gradient(300deg, rgba(74, 185, 218, 0.038), transparent 38%),
+    linear-gradient(180deg, rgba(5, 10, 18, 0.04), rgba(3, 9, 16, 0.12));
+  --mood-root-glow-opacity: 0.16;
+  --native-backdrop-veil: transparent;
   --mood-root-texture:
-    linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.012) 50%, transparent),
-    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.008) 0 1px, transparent 1px 4px);
-  --mood-root-texture-opacity: 0.08;
+    linear-gradient(90deg, transparent, rgba(132, 214, 235, 0.008) 50%, transparent),
+    repeating-linear-gradient(0deg, rgba(124, 202, 224, 0.005) 0 1px, transparent 1px 4px);
+  --mood-root-texture-opacity: 0.036;
   --mood-window-rim:
-    inset 0 1px 0 rgba(255, 244, 214, 0.1),
-    inset 0 0 0 1px rgba(216, 183, 102, 0.055),
-    inset 0 -1px 0 rgba(137, 220, 235, 0.035);
+    inset 0 1px 0 rgba(180, 235, 246, 0.065),
+    inset 0 0 0 1px rgba(109, 205, 232, 0.048),
+    inset 0 -1px 0 rgba(84, 171, 207, 0.038);
   --mood-left-panel-bg:
-    linear-gradient(180deg, rgba(255, 244, 214, 0.024), transparent 26%),
-    linear-gradient(135deg, rgba(42, 33, 28, 0.07), rgba(20, 23, 34, 0.09)),
+    linear-gradient(180deg, rgba(142, 222, 240, 0.012), transparent 26%),
+    linear-gradient(135deg, rgba(5, 12, 21, 0.034), rgba(1, 7, 13, 0.056)),
     var(--glass-standard);
   --mood-center-panel-bg:
-    radial-gradient(ellipse at 50% 0%, rgba(216, 183, 102, 0.024), transparent 42%),
-    linear-gradient(180deg, rgba(18, 15, 13, 0.04), rgba(9, 11, 18, 0.026)),
+    linear-gradient(180deg, rgba(4, 10, 17, 0.026), rgba(1, 5, 10, 0.018)),
     var(--aether-bg);
   --mood-right-panel-bg:
-    linear-gradient(180deg, rgba(255, 244, 214, 0.032), transparent 24%),
-    linear-gradient(145deg, rgba(34, 25, 22, 0.07), rgba(22, 26, 38, 0.1)),
-    var(--glass-dense);
-  --mood-widget-bg: var(--glass-thick);
+    linear-gradient(180deg, rgba(151, 226, 242, 0.008), transparent 24%),
+    linear-gradient(145deg, rgba(4, 11, 19, 0.014), rgba(1, 7, 14, 0.026)),
+    rgba(4, 10, 17, 0.052);
+  --mood-widget-bg:
+    linear-gradient(180deg, rgba(151, 226, 242, 0.008), transparent 30%),
+    rgba(5, 12, 20, 0.096);
   --mood-widget-veil:
-    linear-gradient(180deg, rgba(255, 244, 214, 0.035), transparent 22%),
-    linear-gradient(135deg, rgba(216, 183, 102, 0.032), transparent 42%),
-    linear-gradient(315deg, rgba(137, 220, 235, 0.024), transparent 48%);
+    linear-gradient(180deg, rgba(168, 236, 246, 0.008), transparent 22%),
+    linear-gradient(135deg, rgba(95, 178, 217, 0.01), transparent 42%),
+    linear-gradient(315deg, rgba(137, 220, 235, 0.008), transparent 48%);
   --mood-sessions-widget-bg:
-    linear-gradient(160deg, rgba(41, 39, 48, 0.18), rgba(21, 22, 30, 0.16)),
-    var(--glass-thick);
+    linear-gradient(160deg, rgba(6, 15, 25, 0.082), rgba(2, 8, 15, 0.09)),
+    rgba(5, 12, 20, 0.092);
   --mood-workflow-widget-bg:
-    linear-gradient(180deg, rgba(30, 35, 42, 0.16), rgba(21, 20, 25, 0.14)),
-    var(--glass-thick);
+    linear-gradient(180deg, rgba(5, 16, 28, 0.064), rgba(2, 8, 15, 0.08)),
+    rgba(5, 12, 20, 0.088);
   --mood-toolkit-widget-bg:
-    linear-gradient(150deg, rgba(42, 34, 25, 0.14), rgba(18, 23, 35, 0.17)),
-    var(--glass-thick);
+    linear-gradient(150deg, rgba(5, 16, 28, 0.058), rgba(2, 8, 16, 0.084)),
+    rgba(5, 12, 20, 0.086);
   --mood-logs-widget-bg:
-    linear-gradient(180deg, rgba(10, 12, 19, 0.42), rgba(7, 8, 13, 0.5)),
+    linear-gradient(180deg, rgba(6, 15, 25, 0.09), rgba(3, 9, 18, 0.12)),
     var(--glass-dense);
   --mood-selection-bg: rgba(200, 160, 80, 0.25);
 
@@ -187,6 +191,7 @@
   --ctp-peach: #fab387;
   --ctp-mauve: #cba6f7;
   --ctp-sky: #89dceb;
+  --ctp-base: var(--aether-ink);
 
   /* Text hierarchy */
   --text-primary: rgba(250, 246, 235, 0.9);
@@ -329,8 +334,8 @@
 
   /* Specular rim — the 1px inner top highlight that makes glass feel lit.
      Apply via `box-shadow: var(--rim-top), <rest>`. */
-  --rim-top: inset 0 1px 0 rgba(255, 244, 214, 0.085);
-  --rim-top-strong: inset 0 1px 0 rgba(255, 244, 214, 0.14);
+  --rim-top: inset 0 1px 0 rgba(178, 236, 246, 0.046);
+  --rim-top-strong: inset 0 1px 0 rgba(194, 244, 250, 0.086);
 
   /* Inset shadow — "recessed" panel affordance (Linear Level 2b). */
   --inset-recessed: inset 0 0 12px rgba(0, 0, 0, 0.2);
@@ -376,14 +381,14 @@
   --duration-state: 200ms;
   --duration-panel: 300ms;
 
-  /* Letter-spacing scale — Apple/Linear/Geist all apply negative tracking.
-     Expressed in `em` so it scales with font-size automatically. */
-  --tracking-display: -0.025em;
-  --tracking-heading: -0.015em;
+  /* Letter-spacing scale. Keep app chrome neutral; tight tracking made the
+     dense IDE surfaces feel less native and less readable. */
+  --tracking-display: 0;
+  --tracking-heading: 0;
   --tracking-body: 0;
-  --tracking-caption: -0.006em;
+  --tracking-caption: 0;
   --tracking-micro: 0;
-  --tracking-label: 0.05em; /* positive, for uppercase UI labels */
+  --tracking-label: 0;
 
   /* Line-height additions to fill the tight/normal gap. */
   --leading-display: 1.1;
@@ -409,8 +414,8 @@
   /* Missing radius keyword — full pill used by badges/chips. */
   --radius-pill: 9999px;
 
-  /* Focus ring tokens — neutral white alt for gold-on-gold surfaces. */
-  --focus-ring: rgba(255, 255, 255, 0.8);
+  /* Focus ring tokens — cool lens highlight for dark glass surfaces. */
+  --focus-ring: rgba(159, 232, 246, 0.78);
   --focus-ring-on-gold: rgba(24, 24, 24, 0.85);
 
   /* Link tokens — introduces a semantic channel separate from gold accent. */
@@ -460,7 +465,7 @@
      existing `--rim-top` (top-edge specular) so a child surface lit
      by both gets a real "lifted off the parent" feel. Compose with
      `inset` keyword at call sites for inner hairline variant. */
-  --rim-hairline: 0 0 0 1px rgba(231, 211, 168, 0.065);
+  --rim-hairline: 0 0 0 1px rgba(128, 218, 238, 0.048);
 
   /* Common rgba patterns as variables (reduces duplication) */
   --white-2: rgba(255, 255, 255, 0.02);
@@ -605,9 +610,24 @@ body,
 html[data-aether-host="browser"],
 html[data-aether-host="browser"] body {
   background:
-    radial-gradient(ellipse at 22% 0%, rgba(73, 46, 130, 0.34), transparent 42%),
-    radial-gradient(ellipse at 70% 100%, rgba(18, 62, 85, 0.24), transparent 46%),
-    linear-gradient(180deg, #0f0b1d 0%, #090d15 62%, #07111a 100%);
+    linear-gradient(115deg, rgba(42, 24, 86, 0.2), transparent 32%),
+    linear-gradient(245deg, rgba(10, 49, 70, 0.16), transparent 42%),
+    linear-gradient(180deg, #0a0814 0%, #070b12 58%, #061018 100%);
+}
+
+/* Native Tauri runs on real Acrylic/Mica, so bright wallpapers can leak
+ * through ultra-low-alpha glass as cloudy white. This transparent water
+ * veil darkens only the root backplane: panels and the app stage stay
+ * translucent, but the backdrop now reads as clear depth instead of milk. */
+html[data-aether-host="tauri"] #root {
+  --native-backdrop-veil:
+    radial-gradient(ellipse at 38% -8%, rgba(75, 181, 220, 0.05), transparent 46%),
+    radial-gradient(ellipse at 86% 12%, rgba(154, 224, 238, 0.024), transparent 36%),
+    linear-gradient(180deg, rgba(1, 4, 10, 0.3), rgba(1, 6, 12, 0.38));
+  background:
+    radial-gradient(ellipse at 42% 0%, rgba(87, 190, 224, 0.052), transparent 42%),
+    radial-gradient(ellipse at 82% 16%, rgba(180, 232, 242, 0.028), transparent 34%),
+    linear-gradient(180deg, rgba(1, 4, 10, 0.24), rgba(1, 6, 12, 0.31));
 }
 
 /* Window-focus override.
@@ -628,13 +648,13 @@ html[data-aether-host="browser"] body {
  * event listener). The override below applies only when the
  * dataset attribute explicitly says the window is blurred. */
 body[data-window-focused="false"] {
-  --glass-frame: rgba(24, 22, 27, 0.16);
-  --glass-standard: rgba(26, 27, 32, 0.18);
-  --glass-dense: rgba(27, 26, 33, 0.22);
-  --glass-thick: rgba(36, 36, 44, 0.27);
+  --glass-frame: rgba(8, 13, 20, 0.14);
+  --glass-standard: rgba(4, 10, 17, 0.125);
+  --glass-dense: rgba(5, 12, 20, 0.155);
+  --glass-thick: rgba(7, 16, 24, 0.195);
   /* Ground anchor stays readable on inactive, but must not turn
    * the window into an opaque slab when Acrylic is muted by DWM. */
-  --glass-ground: rgba(13, 12, 15, 0.28);
+  --glass-ground: rgba(3, 7, 12, 0.24);
 }
 
 /* Broad light leak, not a decorative orb: warm console glow + cool moon edge. */
@@ -642,7 +662,7 @@ body[data-window-focused="false"] {
   content: "";
   position: fixed;
   inset: 0;
-  background: var(--mood-root-glow);
+  background: var(--native-backdrop-veil), var(--mood-root-glow);
   opacity: var(--mood-root-glow-opacity);
   pointer-events: none;
   z-index: 0;
@@ -716,9 +736,9 @@ body[data-window-focused="false"] {
   pointer-events: none;
   z-index: 0;
   background:
-    linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.018) 50%, transparent),
-    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.01) 0 1px, transparent 1px 4px);
-  opacity: 0.12;
+    linear-gradient(90deg, transparent, rgba(117, 207, 232, 0.006) 50%, transparent),
+    repeating-linear-gradient(0deg, rgba(116, 200, 226, 0.004) 0 1px, transparent 1px 5px);
+  opacity: 0.04;
 }
 
 .app-main > * {
@@ -810,12 +830,13 @@ body[data-window-focused="false"] {
   border-right: 0;
   box-shadow:
     var(--rim-top),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.018),
+    inset 0 0 0 1px rgba(116, 205, 230, 0.014),
     inset 0 24px 70px rgba(0, 0, 0, 0.08);
 }
 
 .right-panel {
   position: relative;
+  isolation: isolate;
   /* Width is driven by inline `style` (Zustand `rightPanelWidth`).
    * The default applies before the user touches the drag handle;
    * the JS clamp keeps the live value within [260, 480]. */
@@ -824,15 +845,12 @@ body[data-window-focused="false"] {
   max-width: 480px;
   box-sizing: border-box;
   flex-shrink: 0;
-  /* Bento Dashboard: grid layout for independent widget cards.
-   * Agent Sessions spans full width at top (1fr), remaining
-   * widgets fill space below. container-type enables future
-   * @container queries for responsive breakpoints. */
   container-type: inline-size;
   display: grid;
   grid-template-columns: 1fr;
-  grid-template-rows: 1fr auto auto auto;
-  gap: var(--space-4);
+  grid-template-rows: minmax(200px, max-content) auto auto;
+  align-content: start;
+  gap: 0;
   padding: var(--space-4);
   border-radius: var(--radius-lg);
   background: var(--mood-right-panel-bg);
@@ -844,36 +862,56 @@ body[data-window-focused="false"] {
   transition: width 120ms var(--ease-silk, cubic-bezier(0.4, 0, 0.2, 1));
 }
 
-/* Bento widget card — independent low-alpha surface within right-panel.
- * The child stays deliberately thin; the parent panel owns the blur and
- * the card only adds a hairline rim plus shallow contact depth. */
+.right-panel::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: calc(var(--radius-lg) - 1px);
+  background:
+    linear-gradient(180deg, rgba(128, 220, 238, 0.018), transparent 18%),
+    linear-gradient(90deg, rgba(91, 190, 224, 0.012), transparent 18%, transparent 82%, rgba(174, 235, 246, 0.01));
+  box-shadow:
+    inset 0 1px 0 rgba(194, 244, 250, 0.03),
+    inset 0 -24px 58px rgba(0, 0, 0, 0.16);
+  opacity: 0.38;
+}
+
+.right-panel > * {
+  position: relative;
+  z-index: 1;
+}
+
+.right-panel > .right-panel-resize-handle {
+  z-index: 2;
+}
+
 .bento-widget {
   position: relative;
   isolation: isolate;
-  background: var(--mood-widget-bg);
-  border-radius: var(--radius-lg);
-  box-shadow:
-    var(--rim-top),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.028),
-    0 4px 14px rgba(0, 0, 0, 0.08);
+  background: transparent;
+  border-radius: calc(var(--radius-lg) - 4px);
+  box-shadow: none;
   padding: 0;
-  overflow: hidden;
+  overflow: visible;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  transition:
-    box-shadow var(--duration-normal) var(--ease-apple, cubic-bezier(0.25, 0.1, 0.25, 1)),
-    transform var(--duration-fast) var(--ease-apple, cubic-bezier(0.25, 0.1, 0.25, 1));
+  transition: background var(--duration-normal) var(--ease-apple, cubic-bezier(0.25, 0.1, 0.25, 1));
 }
 
 .bento-widget::before {
   content: "";
   position: absolute;
-  inset: 0;
+  inset: 0 -2px;
   z-index: 0;
   pointer-events: none;
-  background: var(--mood-widget-veil);
-  opacity: 0.24;
+  border-radius: inherit;
+  background:
+    linear-gradient(180deg, rgba(142, 226, 241, 0.026), transparent 22%),
+    var(--mood-widget-veil);
+  opacity: 0.028;
 }
 
 .bento-widget > * {
@@ -881,52 +919,47 @@ body[data-window-focused="false"] {
   z-index: 1;
 }
 
-.bento-widget[data-widget="sessions"] {
-  background: var(--mood-sessions-widget-bg);
-  box-shadow:
-    var(--rim-top),
-    inset 0 0 0 1px rgba(216, 183, 102, 0.038),
-    0 4px 14px rgba(0, 0, 0, 0.09);
+.bento-widget + .bento-widget {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  box-shadow: inset 0 1px 0 rgba(142, 226, 241, 0.032);
 }
 
-.bento-widget[data-widget="workflow"] {
+.bento-widget[data-widget="sessions"]::before {
+  background:
+    linear-gradient(180deg, rgba(142, 226, 241, 0.034), transparent 24%),
+    var(--mood-sessions-widget-bg);
+  opacity: 0.045;
+}
+
+.bento-widget[data-widget="workflow"]::before {
   background: var(--mood-workflow-widget-bg);
 }
 
-.bento-widget[data-widget="toolkit"] {
-  background: var(--mood-toolkit-widget-bg);
-  box-shadow:
-    var(--rim-top),
-    inset 0 0 0 1px rgba(216, 183, 102, 0.04),
-    0 4px 14px rgba(0, 0, 0, 0.08);
+.bento-widget[data-widget="toolkit"]::before {
+  background:
+    linear-gradient(180deg, rgba(142, 226, 241, 0.024), transparent 30%),
+    var(--mood-toolkit-widget-bg);
 }
 
 .bento-widget[data-widget="logs"] {
-  background: var(--mood-logs-widget-bg);
-  box-shadow:
-    var(--rim-top),
-    inset 0 0 0 1px rgba(137, 220, 235, 0.04),
-    inset 0 16px 42px rgba(0, 0, 0, 0.18);
+  align-self: start;
 }
 
-/* Hover lift — Apple-style interactive card elevation.
- * Subtle translateY(-1px) + stronger shadow creates "picking up" feel.
- * Gold glow at 4% opacity to hint at the accent color system. */
+.bento-widget[data-widget="logs"]::before {
+  background: var(--mood-logs-widget-bg);
+  opacity: 0.038;
+}
+
 .bento-widget:hover {
-  box-shadow:
-    var(--rim-top),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
-    0 5px 16px rgba(0, 0, 0, 0.09);
+  background: rgba(142, 226, 241, 0.012);
   transform: none;
 }
 
 /* Focus ring for keyboard navigation (Apple HIG compliance) */
 .bento-widget:focus-within {
   box-shadow:
-    var(--rim-top),
-    0 0 0 1px rgba(255, 255, 255, 0.06),
-    0 1px 3px rgba(0, 0, 0, 0.12),
-    0 4px 12px rgba(0, 0, 0, 0.08),
+    inset 0 0 0 1px rgba(137, 220, 235, 0.052),
     0 0 0 2px var(--gold-dim);
 }
 
@@ -940,15 +973,14 @@ body[data-window-focused="false"] {
   }
 }
 
-/* When right panel is wide enough, bottom widgets go side-by-side */
 .right-panel-bottom-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.18fr) minmax(0, 0.82fr);
   gap: var(--space-4);
+  align-items: start;
 }
 
-/* At narrow widths, stack vertically */
-@container (max-width: 340px) {
+@container (max-width: 460px) {
   .right-panel-bottom-grid {
     grid-template-columns: 1fr;
   }
@@ -973,7 +1005,7 @@ body[data-window-focused="false"] {
 .right-panel-resize-handle:hover,
 .right-panel-resize-handle:focus-visible,
 .right-panel-resize-handle:active {
-  background: linear-gradient(90deg, var(--gold-dim), transparent);
+  background: linear-gradient(90deg, rgba(142, 226, 241, 0.16), transparent);
   outline: none;
 }
 
@@ -1000,7 +1032,7 @@ body[data-window-focused="false"] {
  *     hittable without dominating narrow panels. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+  scrollbar-color: rgba(124, 214, 235, 0.14) transparent;
 }
 ::-webkit-scrollbar {
   width: 10px;
@@ -1010,18 +1042,18 @@ body[data-window-focused="false"] {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(124, 214, 235, 0.14);
   border-radius: 5px;
   border: 3px solid transparent;
   background-clip: padding-box;
   transition: background-color var(--duration-fast) var(--ease-silk, ease);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.28);
+  background: rgba(142, 226, 241, 0.22);
   background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:active {
-  background: rgba(255, 255, 255, 0.4);
+  background: rgba(159, 232, 246, 0.32);
   background-clip: padding-box;
 }
 ::-webkit-scrollbar-corner {
@@ -1058,11 +1090,11 @@ textarea:focus-visible,
 select:focus-visible,
 button:focus-visible,
 [role="button"]:focus-visible {
-  outline: 2px solid var(--gold) !important;
+  outline: 2px solid var(--focus-ring) !important;
   outline-offset: 1px;
 }
 /* Suppress focus ring on layout/container elements */
-div:focus-visible,
+div:focus-visible:not([role="button"]),
 section:focus-visible,
 .xterm-screen:focus-visible,
 iframe:focus-visible {
@@ -1173,7 +1205,7 @@ button:disabled,
 }
 
 .shimmer {
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.04), transparent);
+  background: linear-gradient(90deg, transparent, rgba(142, 226, 241, 0.035), transparent);
   background-size: 200px 100%;
   animation: shimmer 1.5s infinite;
 }

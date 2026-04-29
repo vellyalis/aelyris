@@ -150,7 +150,7 @@ export function ProjectHeaderBar({
         <div className={styles.projectInfo}>
           <div className={styles.topRow}>
             <span className={styles.name}>{projectName}</span>
-            <span className={styles.branch}>⚡ {branch}</span>
+            <span className={styles.branch}>{branch}</span>
             {changedCount !== undefined && changedCount > 0 && (
               <span className={styles.changes}>{changedCount} changed</span>
             )}

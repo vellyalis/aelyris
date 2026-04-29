@@ -22,7 +22,7 @@
   font-family: var(--font-ui);
   cursor: pointer;
   text-align: left;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 .breadcrumb:hover {
   background: var(--row-hover);

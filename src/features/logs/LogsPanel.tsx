@@ -73,7 +73,7 @@ export function LogsPanel({ invoke, pollMs, defaultCollapsed = true }: LogsPanel
   }, [stream.entries]);
 
   return (
-    <section className={styles.logs} aria-label="Application logs">
+    <section className={styles.logs} data-collapsed={collapsed ? "true" : "false"} aria-label="Application logs">
       <PanelHeader
         title="Logs"
         leadingIcon={<ScrollText size={12} />}
@@ -118,7 +118,13 @@ export function LogsPanel({ invoke, pollMs, defaultCollapsed = true }: LogsPanel
               {stream.error}
             </div>
           )}
-          <div className={styles.list} role="log" aria-live="off" aria-busy={!stream.ready}>
+          <div
+            className={styles.list}
+            role="log"
+            aria-live="off"
+            aria-busy={!stream.ready}
+            data-empty={filtered.length === 0 ? "true" : "false"}
+          >
             {filtered.length === 0 ? (
               <div className={styles.empty}>
                 {stream.ready ? "No log entries match this filter." : "Loading logs..."}

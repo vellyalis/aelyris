@@ -1,8 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
-import { Check, CheckCircle, ChevronRight, Clock, Loader, Play, Workflow, X, XCircle } from "lucide-react";
+import { Check, CheckCircle, Clock, Loader, Play, Workflow, X, XCircle } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { isTauriRuntime } from "../../shared/lib/tauriRuntime";
 import { toast } from "../../shared/store/toastStore";
+import { PanelHeader } from "../../shared/ui/PanelHeader";
 import { showPrompt } from "../../shared/ui/PromptDialog";
 import styles from "./WorkflowPanel.module.css";
 
@@ -251,21 +252,20 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
     }
   }, []);
 
-  if (workflows.length === 0 && running.length === 0) return null;
+  useEffect(() => {
+    if (running.length > 0) setExpanded(true);
+  }, [running.length]);
 
   return (
     <section className={styles.panel} aria-label="Workflow panel">
-      <button
-        type="button"
-        className={styles.header}
-        onClick={() => setExpanded(!expanded)}
-        aria-expanded={expanded}
-        aria-label="Toggle workflows"
-      >
-        <ChevronRight size={12} className={`${styles.chevron} ${expanded ? styles.chevronOpen : ""}`} />
-        <span className={styles.headerTitle}>Workflows</span>
-        {running.length > 0 && <span className={styles.badge}>{running.length}</span>}
-      </button>
+      <PanelHeader
+        title="Workflows"
+        leadingIcon={<Workflow size={12} />}
+        count={running.length > 0 ? running.length : undefined}
+        collapsible
+        collapsed={!expanded}
+        onToggle={() => setExpanded(!expanded)}
+      />
 
       {expanded && (
         <div className={styles.content}>

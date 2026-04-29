@@ -52,10 +52,10 @@
 }
 .addBtn:hover {
   color: var(--text-primary);
-  background: var(--white-6);
+  background: rgba(6, 15, 24, 0.26);
 }
 .addBtn:focus-visible {
-  outline: 2px solid var(--gold);
+  outline: 2px solid color-mix(in srgb, var(--accent) 62%, transparent);
   outline-offset: 1px;
 }
 
@@ -80,11 +80,11 @@
   border: 0;
   border-radius: var(--radius);
   background:
-    linear-gradient(180deg, rgba(255, 244, 214, 0.014), transparent 48%),
-    rgba(255, 255, 255, 0.014);
+    linear-gradient(180deg, rgba(132, 221, 239, 0.01), transparent 48%),
+    rgba(4, 10, 17, 0.16);
   box-shadow:
     var(--rim-top),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.032);
+    inset 0 0 0 1px rgba(124, 214, 235, 0.026);
   color: var(--text-secondary);
   font-size: var(--text-sm);
   font-family: var(--font-ui);
@@ -106,7 +106,7 @@
   height: 1px;
   width: auto;
   background: var(--tone, var(--gold));
-  opacity: 0.24;
+  opacity: 0.18;
 }
 
 .action[data-priority="primary"] {
@@ -115,12 +115,12 @@
   align-items: center;
   padding: var(--space-3) var(--space-4);
   background:
-    linear-gradient(135deg, rgba(216, 183, 102, 0.07), transparent 46%),
-    linear-gradient(315deg, rgba(137, 220, 235, 0.035), transparent 52%),
-    rgba(255, 255, 255, 0.022);
+    linear-gradient(135deg, rgba(132, 221, 239, 0.026), transparent 46%),
+    linear-gradient(315deg, rgba(137, 220, 235, 0.022), transparent 52%),
+    rgba(3, 9, 16, 0.22);
   box-shadow:
     var(--rim-top),
-    inset 0 0 0 1px rgba(216, 183, 102, 0.07);
+    inset 0 0 0 1px rgba(132, 221, 239, 0.045);
 }
 
 .action[data-priority="orbit"] {
@@ -145,12 +145,12 @@
 
 .action:hover {
   background:
-    linear-gradient(180deg, rgba(255, 244, 214, 0.026), transparent 48%),
-    rgba(255, 255, 255, 0.026);
+    linear-gradient(180deg, rgba(132, 221, 239, 0.018), transparent 48%),
+    rgba(6, 15, 24, 0.25);
   color: var(--text-primary);
   box-shadow:
     var(--rim-top-strong),
-    inset 0 0 0 1px color-mix(in srgb, var(--tone, var(--gold)) 18%, rgba(255, 255, 255, 0.035)),
+    inset 0 0 0 1px color-mix(in srgb, var(--tone, var(--gold)) 18%, rgba(124, 214, 235, 0.026)),
     0 6px 14px rgba(0, 0, 0, 0.08);
   transform: none;
 }
@@ -162,8 +162,8 @@
   width: 22px;
   height: 22px;
   border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.018);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.026);
+  background: rgba(3, 9, 16, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(124, 214, 235, 0.022);
   flex-shrink: 0;
   color: var(--tone, var(--text-muted));
   filter: drop-shadow(0 0 8px color-mix(in srgb, var(--tone, var(--gold)) 12%, transparent));
@@ -213,7 +213,7 @@
 .editForm {
   padding: var(--space-4);
   border-bottom: 0;
-  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.045);
+  box-shadow: inset 0 -1px 0 rgba(124, 214, 235, 0.026);
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -221,8 +221,8 @@
 .editInput {
   width: 100%;
   padding: var(--space-2) var(--space-4);
-  background: var(--white-4);
-  border: 1px solid var(--border);
+  background: rgba(3, 9, 16, 0.22);
+  border: 1px solid rgba(124, 214, 235, 0.045);
   border-radius: var(--radius-sm);
   color: var(--text-primary);
   font-size: var(--text-md);
@@ -230,7 +230,7 @@
   outline: none;
 }
 .editInput:hover {
-  border-color: var(--white-10);
+  border-color: rgba(142, 226, 241, 0.08);
 }
 .editInput:focus-visible {
   outline: none !important;
@@ -244,7 +244,7 @@
 .editSave,
 .editCancel {
   background: none;
-  border: 1px solid var(--white-10);
+  border: 1px solid rgba(124, 214, 235, 0.045);
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
   font-size: var(--text-sm);
@@ -257,7 +257,7 @@
   border-color: var(--gold);
 }
 .editCancel:hover {
-  background: var(--white-6);
+  background: rgba(6, 15, 24, 0.26);
 }
 .editDelete {
   background: none;
@@ -271,7 +271,7 @@
   opacity: 0.4;
 }
 .editDelete:hover {
-  background: var(--white-6);
+  background: color-mix(in srgb, var(--ctp-red) 10%, transparent);
   opacity: 1;
 }
 
@@ -281,7 +281,7 @@
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
   border-top: 0;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  box-shadow: inset 0 1px 0 rgba(124, 214, 235, 0.026);
 }
 .bottomBtn {
   flex: 1;
@@ -289,8 +289,8 @@
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  background: rgba(255, 255, 255, 0.025);
-  border: 1px solid rgba(255, 244, 214, 0.055);
+  background: rgba(4, 11, 18, 0.18);
+  border: 1px solid rgba(124, 214, 235, 0.042);
   color: var(--text-muted);
   font-size: var(--text-xs);
   font-family: var(--font-ui);
@@ -304,8 +304,8 @@
     color var(--duration-fast);
 }
 .bottomBtn:hover {
-  background: rgba(255, 255, 255, 0.055);
-  border-color: var(--gold-dim);
+  background: rgba(6, 15, 24, 0.28);
+  border-color: rgba(142, 226, 241, 0.08);
   color: var(--text-secondary);
 }
 
@@ -325,10 +325,12 @@
   transform: translate(-50%, -50%);
   z-index: var(--z-modal);
   width: 400px;
-  background: var(--aether-bg-elevated);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid var(--white-10);
+  background:
+    linear-gradient(180deg, rgba(132, 221, 239, 0.014), transparent 30%),
+    rgba(5, 13, 21, 0.38);
+  backdrop-filter: var(--material-panel-filter);
+  -webkit-backdrop-filter: var(--material-panel-filter);
+  border: 1px solid rgba(124, 214, 235, 0.07);
   border-radius: var(--radius);
   padding: var(--space-8);
   box-shadow: var(--rim-top), var(--shadow-elevated);
@@ -345,8 +347,8 @@
 .importTextarea {
   width: 100%;
   padding: var(--space-4) var(--space-5);
-  background: var(--white-4);
-  border: 1px solid var(--border);
+  background: rgba(3, 9, 16, 0.24);
+  border: 1px solid rgba(124, 214, 235, 0.045);
   border-radius: var(--radius);
   color: var(--text-primary);
   font-size: var(--text-base);
@@ -368,7 +370,7 @@
 }
 .importCancel {
   background: none;
-  border: 1px solid var(--white-10);
+  border: 1px solid rgba(124, 214, 235, 0.045);
   border-radius: var(--radius);
   color: var(--text-secondary);
   font-size: var(--text-base);
@@ -376,7 +378,7 @@
   cursor: pointer;
 }
 .importCancel:hover {
-  background: var(--white-6);
+  background: rgba(6, 15, 24, 0.26);
 }
 .importSubmit {
   background: var(--gold);
@@ -410,7 +412,7 @@
   align-items: center;
   gap: var(--space-2);
   background: none;
-  border: 1px solid var(--white-10);
+  border: 1px solid rgba(124, 214, 235, 0.045);
   border-radius: var(--radius);
   color: var(--text-secondary);
   font-size: var(--text-sm);
@@ -418,7 +420,7 @@
   cursor: pointer;
 }
 .importFileBtn:hover {
-  background: var(--white-6);
+  background: rgba(6, 15, 24, 0.26);
   color: var(--text-primary);
 }
 
@@ -428,9 +430,9 @@
   flex-direction: column;
   gap: var(--space-2);
   padding: var(--space-4);
-  background: var(--white-3);
+  background: rgba(3, 9, 16, 0.2);
   border-radius: var(--radius-sm);
-  border: 1px solid var(--white-6);
+  border: 1px solid rgba(124, 214, 235, 0.04);
   max-height: 120px;
   overflow-y: auto;
 }

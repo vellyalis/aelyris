@@ -20,13 +20,17 @@
 .editorTabsBar {
   display: flex;
   height: var(--bottom-tabs-height);
-  background: var(--chrome-frame-bg);
-  backdrop-filter: var(--chrome-frame-filter);
-  -webkit-backdrop-filter: var(--chrome-frame-filter);
+  background:
+    linear-gradient(180deg, rgba(142, 226, 241, 0.018), rgba(3, 10, 18, 0.018)),
+    rgba(3, 10, 18, 0.08);
+  backdrop-filter: blur(10px) saturate(1.04);
+  -webkit-backdrop-filter: blur(10px) saturate(1.04);
   border-bottom: 0;
-  box-shadow: var(--chrome-frame-shadow);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.022),
+    inset 0 -1px 0 rgba(3, 10, 18, 0.18);
   align-items: center;
-  gap: 1px;
+  gap: var(--space-2);
   padding: 0 var(--space-2);
   overflow-x: auto;
 }
@@ -36,6 +40,7 @@
 
 /* Individual editor file tab */
 .editorTab {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -53,13 +58,28 @@
     color var(--duration-fast);
 }
 .editorTab:hover {
-  background: var(--white-6);
+  background: rgba(142, 226, 241, 0.04);
   color: var(--text-secondary);
 }
 .editorTab[data-active="true"] {
-  background: var(--white-10);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(142, 226, 241, 0.018)),
+    rgba(4, 13, 22, 0.18);
   color: var(--text-primary);
-  box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--gold) 76%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 0 0 1px rgba(142, 226, 241, 0.065);
+}
+.editorTab[data-active="true"]::after {
+  content: "";
+  position: absolute;
+  left: var(--space-3);
+  right: var(--space-3);
+  bottom: 0;
+  height: 2px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--gold) 82%, #9ee8f2 18%), transparent);
+  pointer-events: none;
 }
 
 /* Close button on editor tab */

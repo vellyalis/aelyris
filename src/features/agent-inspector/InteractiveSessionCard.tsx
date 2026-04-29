@@ -38,10 +38,19 @@ export function InteractiveSessionCard({
   return (
     <RadixContextMenu.Root>
       <RadixContextMenu.Trigger asChild>
-        <button
-          type="button"
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label={`Focus interactive session ${getCliLabel(is.cli)}`}
           className={`${styles.card} ${styles.cardInteractive}`}
           onClick={() => onFocus?.(is.id)}
+          onKeyDown={(e) => {
+            if (e.currentTarget !== e.target) return;
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onFocus?.(is.id);
+            }
+          }}
           style={
             {
               "--session-accent": sColor.accent,
@@ -102,7 +111,7 @@ export function InteractiveSessionCard({
               <span className={styles.worktreeBranch}>{is.worktree_branch}</span>
             </div>
           )}
-        </button>
+        </div>
       </RadixContextMenu.Trigger>
       <RadixContextMenu.Portal>
         <RadixContextMenu.Content className={styles.ctxMenu}>

@@ -13,7 +13,6 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { collectActivity, filterActivity, LOG_TYPES, type LogType } from "../../shared/lib/activityFilter";
-import { parseToolUse } from "../../shared/lib/agentLogParser";
 import { type BudgetThresholds, countOverBudget, getBudgetWarning } from "../../shared/lib/budgetStatus";
 import { buildHandoffPrompt } from "../../shared/lib/handoffPrompt";
 import { buildOrchestraPrompts, detectFileConflicts, type OrchestraRoleId } from "../../shared/lib/orchestrator";
@@ -67,6 +66,8 @@ interface AgentInspectorProps {
   }) => void;
 }
 
+type InspectorTab = "sessions" | "activity" | "parallel" | "conductor" | "diffs";
+
 export function AgentInspector({
   sessions,
   activeSessionId,
@@ -82,7 +83,7 @@ export function AgentInspector({
   onEndSessionAndRemoveWorktree,
   onStartInteractiveSession,
 }: AgentInspectorProps) {
-  const [tab, setTab] = useState<"sessions" | "activity" | "parallel" | "conductor" | "diffs">("sessions");
+  const [tab, setTab] = useState<InspectorTab>("sessions");
   const [showPromptInput, setShowPromptInput] = useState(false);
   const [promptText, setPromptText] = useState("");
   // Per-field selectors so unrelated store slices (terminal output, ghost
@@ -142,6 +143,8 @@ export function AgentInspector({
   );
   const activityFilterActive = activityQuery.trim().length > 0 || activityTypes.size > 0 || activitySessions.size > 0;
   const activeSession = sessions.find((s) => s.id === activeSessionId);
+  const activeSessionLatestLog = activeSession?.logs.slice(-1)[0] ?? null;
+  const showActivityTab = allActivity.length > 0;
 
   const [worktreeInputId, setWorktreeInputId] = useState<string | null>(null);
   const [analyticsSessionId, setAnalyticsSessionId] = useState<string | null>(null);
@@ -160,6 +163,15 @@ export function AgentInspector({
   );
 
   const activeSessions = useMemo(() => sessions.filter((s) => s.status !== "idle" && s.status !== "done"), [sessions]);
+  const showParallelTab = activeSessions.length >= 2;
+  const showConductorTab = useMemo(
+    () => sessions.some((s) => s.role != null || s.handoffFrom != null),
+    [sessions],
+  );
+  const showDiffsTab = useMemo(
+    () => activeSession != null && ((activeSession.changedFileDetails?.length ?? 0) > 0 || (activeSession.filesChanged ?? 0) > 0),
+    [activeSession],
+  );
 
   const STATUS_ORDER: Record<AgentStatus, number> = {
     generating: 0,
@@ -227,14 +239,25 @@ export function AgentInspector({
 
   const prevActiveCount = useRef(activeSessions.length);
   useEffect(() => {
-    if (activeSessions.length >= 2 && prevActiveCount.current < 2 && tab === "sessions") {
+    if (showParallelTab && prevActiveCount.current < 2 && tab === "sessions") {
       setTab("parallel");
     }
-    if (activeSessions.length < 2 && prevActiveCount.current >= 2 && tab === "parallel") {
+    if (!showParallelTab && prevActiveCount.current >= 2 && tab === "parallel") {
       setTab("sessions");
     }
     prevActiveCount.current = activeSessions.length;
-  }, [activeSessions.length, tab]);
+  }, [activeSessions.length, showParallelTab, tab]);
+
+  useEffect(() => {
+    if (
+      (tab === "activity" && !showActivityTab) ||
+      (tab === "parallel" && !showParallelTab) ||
+      (tab === "conductor" && !showConductorTab) ||
+      (tab === "diffs" && !showDiffsTab)
+    ) {
+      setTab("sessions");
+    }
+  }, [showActivityTab, showConductorTab, showDiffsTab, showParallelTab, tab]);
 
   const handleRenameSession = useCallback(
     async (session: AgentSession) => {
@@ -302,43 +325,51 @@ export function AgentInspector({
           <ListChecks size={12} strokeWidth={1.75} aria-hidden="true" />
           {tab === "sessions" && <span className={styles.tabLabel}>Sessions</span>}
         </button>
-        <button
-          className={`${styles.tab} ${tab === "activity" ? styles.tabActive : ""}`}
-          onClick={() => setTab("activity")}
-          title="Activity"
-          aria-label="Activity"
-        >
-          <Activity size={12} strokeWidth={1.75} aria-hidden="true" />
-          {tab === "activity" && <span className={styles.tabLabel}>Activity</span>}
-        </button>
-        <button
-          className={`${styles.tab} ${tab === "parallel" ? styles.tabActive : ""}`}
-          onClick={() => setTab("parallel")}
-          title="Parallel session view"
-          aria-label="Parallel sessions"
-        >
-          <Layers size={12} strokeWidth={1.75} aria-hidden="true" />
-          {tab === "parallel" && <span className={styles.tabLabel}>Parallel</span>}
-          {activeSessions.length > 0 && <span className={styles.tabBadge}>{activeSessions.length}</span>}
-        </button>
-        <button
-          className={`${styles.tab} ${tab === "conductor" ? styles.tabActive : ""}`}
-          onClick={() => setTab("conductor")}
-          title="Conductor DAG — see roles + handoffs at a glance"
-          aria-label="Conductor DAG"
-        >
-          <Share2 size={12} strokeWidth={1.75} aria-hidden="true" />
-          {tab === "conductor" && <span className={styles.tabLabel}>Conductor</span>}
-        </button>
-        <button
-          className={`${styles.tab} ${tab === "diffs" ? styles.tabActive : ""}`}
-          onClick={() => setTab("diffs")}
-          title="View file changes"
-          aria-label="File diffs"
-        >
-          <GitCompare size={12} strokeWidth={1.75} aria-hidden="true" />
-          {tab === "diffs" && <span className={styles.tabLabel}>Diffs</span>}
-        </button>
+        {showActivityTab && (
+          <button
+            className={`${styles.tab} ${tab === "activity" ? styles.tabActive : ""}`}
+            onClick={() => setTab("activity")}
+            title="Activity"
+            aria-label="Activity"
+          >
+            <Activity size={12} strokeWidth={1.75} aria-hidden="true" />
+            {tab === "activity" && <span className={styles.tabLabel}>Activity</span>}
+          </button>
+        )}
+        {showParallelTab && (
+          <button
+            className={`${styles.tab} ${tab === "parallel" ? styles.tabActive : ""}`}
+            onClick={() => setTab("parallel")}
+            title="Parallel session view"
+            aria-label="Parallel sessions"
+          >
+            <Layers size={12} strokeWidth={1.75} aria-hidden="true" />
+            {tab === "parallel" && <span className={styles.tabLabel}>Parallel</span>}
+            <span className={styles.tabBadge}>{activeSessions.length}</span>
+          </button>
+        )}
+        {showConductorTab && (
+          <button
+            className={`${styles.tab} ${tab === "conductor" ? styles.tabActive : ""}`}
+            onClick={() => setTab("conductor")}
+            title="Conductor DAG - see roles and handoffs"
+            aria-label="Conductor DAG"
+          >
+            <Share2 size={12} strokeWidth={1.75} aria-hidden="true" />
+            {tab === "conductor" && <span className={styles.tabLabel}>Conductor</span>}
+          </button>
+        )}
+        {showDiffsTab && (
+          <button
+            className={`${styles.tab} ${tab === "diffs" ? styles.tabActive : ""}`}
+            onClick={() => setTab("diffs")}
+            title="View file changes"
+            aria-label="File diffs"
+          >
+            <GitCompare size={12} strokeWidth={1.75} aria-hidden="true" />
+            {tab === "diffs" && <span className={styles.tabLabel}>Diffs</span>}
+          </button>
+        )}
         <div className={styles.tabActions}>
           {overBudgetCount > 0 && onStopAgent && (
             <button
@@ -358,11 +389,12 @@ export function AgentInspector({
           <button
             className={styles.iconBtn}
             title="Copy session info"
+            aria-label="Copy session info"
             onClick={() => {
               if (activeSession) handleCopySessionInfo(activeSession);
             }}
           >
-            <ClipboardCopy size={12} />
+            <ClipboardCopy size={12} aria-hidden="true" />
           </button>
           <button
             className={styles.orchestraBtn}
@@ -373,8 +405,13 @@ export function AgentInspector({
             <Users size={12} strokeWidth={1.75} aria-hidden="true" />
             <span>Orchestra</span>
           </button>
-          <button className={styles.iconBtn} title="Add session" onClick={() => setShowPromptInput(true)}>
-            <Plus size={12} />
+          <button
+            className={styles.iconBtn}
+            title="Add session"
+            aria-label="Add session"
+            onClick={() => setShowPromptInput(true)}
+          >
+            <Plus size={12} aria-hidden="true" />
           </button>
         </div>
       </div>
@@ -508,45 +545,33 @@ export function AgentInspector({
                 conflictingPaths={conflictPathsBySession.get(s.id)}
               />
             ))}
-            <div className={styles.navHint}>Ctrl+0-9 Jump · Ctrl+[ Prev · Ctrl+] Next · Ctrl+Click to multi-select</div>
+            <div className={styles.navHint} aria-hidden="true">
+              Ctrl+0-9 Jump · Ctrl+[ Prev · Ctrl+] Next · Ctrl+Click to multi-select
+            </div>
           </div>
 
-          {/* Log viewer for selected session */}
-          {activeSession && (
-            <div className={styles.logSection}>
-              <div className={styles.logHeader}>{activeSession.tokensUsed.toLocaleString()} tokens</div>
-              <div className={styles.logList}>
-                {activeSession.logs.map((log, i) => {
-                  const tool = log.type === "tool_use" ? extractToolName(log.content) : null;
-                  const parsed = log.type === "tool_use" ? parseToolUse(log.content) : null;
-                  return (
-                    <div key={i} className={`${styles.logEntry} ${styles[`log_${log.type}`]}`}>
-                      <span className={styles.logTime}>
-                        {new Date(log.timestamp).toLocaleTimeString("en-US", {
-                          hour12: false,
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          second: "2-digit",
-                        })}
-                      </span>
-                      {tool && <ToolBadge tool={tool} />}
-                      {parsed?.isFileChange && parsed.filePath ? (
-                        <span className={styles.logContent}>
-                          <span style={{ color: "var(--ctp-green)", fontWeight: 500 }}>{parsed.tool}</span>
-                          {" → "}
-                          <span style={{ color: "var(--ctp-blue)" }}>{parsed.filePath.split("/").pop()}</span>
-                          <span style={{ color: "var(--text-muted)", fontSize: "var(--text-xs)", marginLeft: 4 }}>
-                            {parsed.filePath.split("/").slice(-3, -1).join("/")}
-                          </span>
-                        </span>
-                      ) : (
-                        <span className={styles.logContent}>{log.content}</span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+          {activeSession && activeSessionLatestLog && (
+            <button type="button" className={styles.sessionActivitySummary} onClick={() => setTab("activity")}>
+              <span className={styles.sessionActivityMeta}>
+                {activeSession.tokensUsed.toLocaleString()} tokens · latest
+              </span>
+              <span className={`${styles.logEntry} ${styles[`log_${activeSessionLatestLog.type}`]}`}>
+                <span className={styles.logTime}>
+                  {new Date(activeSessionLatestLog.timestamp).toLocaleTimeString("en-US", {
+                    hour12: false,
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                  })}
+                </span>
+                {activeSessionLatestLog.type === "tool_use" &&
+                  (() => {
+                    const tool = extractToolName(activeSessionLatestLog.content);
+                    return tool ? <ToolBadge tool={tool} /> : null;
+                  })()}
+                <span className={styles.logContent}>{activeSessionLatestLog.content}</span>
+              </span>
+            </button>
           )}
         </>
       ) : tab === "activity" ? (

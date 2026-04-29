@@ -82,7 +82,7 @@
   font-size: var(--text-5xl);
   font-weight: var(--weight-semibold);
   color: var(--text-primary);
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
   line-height: var(--leading-tight);
 }
 
@@ -90,7 +90,7 @@
   font-size: var(--text-xl);
   color: var(--gold);
   font-weight: var(--weight-medium);
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
   margin-bottom: var(--space-2);
 }
 

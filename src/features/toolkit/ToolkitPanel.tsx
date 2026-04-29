@@ -127,6 +127,7 @@ function saveActions(projectName: string, actions: ToolkitAction[]) {
 
 export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitPanelProps) {
   const [actions, setActions] = useState<ToolkitAction[]>(() => loadActions(projectName));
+  const [collapsed, setCollapsed] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editLabel, setEditLabel] = useState("");
   const [editCommand, setEditCommand] = useState("");
@@ -278,8 +279,10 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
       <PanelHeader
         title="Toolkit"
         leadingIcon={<Sparkles size={12} />}
-        subtitle="Command deck"
         count={actions.length}
+        collapsible
+        collapsed={collapsed}
+        onToggle={() => setCollapsed((value) => !value)}
         actions={
           <button className={styles.addBtn} onClick={handleAdd} title="Add action" aria-label="Add tool">
             <Plus size={12} aria-hidden="true" />
@@ -287,7 +290,7 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
         }
       />
 
-      {editingId && (
+      {!collapsed && editingId && (
         <div
           className={styles.editForm}
           onBlur={(e) => {
@@ -322,92 +325,96 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
         </div>
       )}
 
-      <div className={styles.grid}>
-        {actions.map((a) => {
-          const priority = a.id === primaryActionId ? "primary" : "orbit";
-          return (
+      {!collapsed && (
+        <>
+          <div className={styles.grid}>
+            {actions.map((a) => {
+              const priority = a.id === primaryActionId ? "primary" : "orbit";
+              return (
+                <button
+                  type="button"
+                  key={a.id}
+                  className={styles.action}
+                  data-priority={priority}
+                  data-tone={actionTone(a)}
+                  onClick={async () => {
+                    let command = a.command;
+                    // Prompt for placeholders like {message}
+                    const placeholders = command.match(/\{(\w+)\}/g);
+                    if (placeholders) {
+                      for (const ph of [...new Set(placeholders)]) {
+                        const name = ph.slice(1, -1);
+                        const value = await showPrompt(`Enter ${name}`, { placeholder: `${name}...` });
+                        if (!value) return;
+                        command = command.split(ph).join(value.replace(/"/g, '\\"'));
+                      }
+                    }
+                    const warning = detectDangerousCommand(command);
+                    if (warning) {
+                      // Previously this was a text prompt with `defaultValue: "yes"` —
+                      // a single-character typo would execute an `rm -rf`-class
+                      // command. Use an explicit confirm with a danger-tone button
+                      // and Cancel pre-focused.
+                      const ok = await showConfirm({
+                        title: "Run dangerous command?",
+                        description: `${warning}\n\nCommand:\n${command}`,
+                        confirmLabel: "Run anyway",
+                        cancelLabel: "Cancel",
+                        tone: "danger",
+                      });
+                      if (!ok) return;
+                    }
+                    onRunCommand?.(command);
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    handleEdit(a);
+                  }}
+                  title={a.command}
+                >
+                  <span className={styles.actionIcon}>{ICON_MAP[a.id] ?? null}</span>
+                  <span className={styles.actionBody}>
+                    <span className={styles.actionLabel}>{a.label}</span>
+                    <span className={styles.actionCommand}>{a.command}</span>
+                  </span>
+                  <span className={styles.badge} style={{ background: a.badge }} />
+                </button>
+              );
+            })}
+          </div>
+          <div className={styles.bottomActions}>
             <button
               type="button"
-              key={a.id}
-              className={styles.action}
-              data-priority={priority}
-              data-tone={actionTone(a)}
+              className={styles.bottomBtn}
               onClick={async () => {
-                let command = a.command;
-                // Prompt for placeholders like {message}
-                const placeholders = command.match(/\{(\w+)\}/g);
-                if (placeholders) {
-                  for (const ph of [...new Set(placeholders)]) {
-                    const name = ph.slice(1, -1);
-                    const value = await showPrompt(`Enter ${name}`, { placeholder: `${name}...` });
-                    if (!value) return;
-                    command = command.split(ph).join(value.replace(/"/g, '\\"'));
-                  }
+                const cmd = await showPrompt("Generate Tool", { placeholder: "Describe what the tool should do..." });
+                if (cmd) {
+                  const newAction: ToolkitAction = {
+                    id: makeActionId("gen"),
+                    label: cmd.split(" ").slice(0, 3).join(" "),
+                    badge: "var(--ctp-mauve)",
+                    command: cmd,
+                  };
+                  const updated = [...actions, newAction];
+                  setActions(updated);
+                  saveActions(projectName, updated);
                 }
-                const warning = detectDangerousCommand(command);
-                if (warning) {
-                  // Previously this was a text prompt with `defaultValue: "yes"` —
-                  // a single-character typo would execute an `rm -rf`-class
-                  // command. Use an explicit confirm with a danger-tone button
-                  // and Cancel pre-focused.
-                  const ok = await showConfirm({
-                    title: "Run dangerous command?",
-                    description: `${warning}\n\nCommand:\n${command}`,
-                    confirmLabel: "Run anyway",
-                    cancelLabel: "Cancel",
-                    tone: "danger",
-                  });
-                  if (!ok) return;
-                }
-                onRunCommand?.(command);
               }}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                handleEdit(a);
-              }}
-              title={a.command}
             >
-              <span className={styles.actionIcon}>{ICON_MAP[a.id] ?? null}</span>
-              <span className={styles.actionBody}>
-                <span className={styles.actionLabel}>{a.label}</span>
-                <span className={styles.actionCommand}>{a.command}</span>
-              </span>
-              <span className={styles.badge} style={{ background: a.badge }} />
+              <Sparkles size={11} aria-hidden="true" />
+              <span>Generate</span>
             </button>
-          );
-        })}
-      </div>
-      <div className={styles.bottomActions}>
-        <button
-          type="button"
-          className={styles.bottomBtn}
-          onClick={async () => {
-            const cmd = await showPrompt("Generate Tool", { placeholder: "Describe what the tool should do..." });
-            if (cmd) {
-              const newAction: ToolkitAction = {
-                id: makeActionId("gen"),
-                label: cmd.split(" ").slice(0, 3).join(" "),
-                badge: "var(--ctp-mauve)",
-                command: cmd,
-              };
-              const updated = [...actions, newAction];
-              setActions(updated);
-              saveActions(projectName, updated);
-            }
-          }}
-        >
-          <Sparkles size={11} aria-hidden="true" />
-          <span>Generate</span>
-        </button>
-        <button type="button" className={styles.bottomBtn} onClick={handleAdd}>
-          <Plus size={11} aria-hidden="true" />
-          <span>Create</span>
-        </button>
-        <button type="button" className={styles.bottomBtn} onClick={() => setImportOpen(true)}>
-          <FileUp size={11} aria-hidden="true" />
-          <span>Import</span>
-        </button>
-      </div>
+            <button type="button" className={styles.bottomBtn} onClick={handleAdd}>
+              <Plus size={11} aria-hidden="true" />
+              <span>Create</span>
+            </button>
+            <button type="button" className={styles.bottomBtn} onClick={() => setImportOpen(true)}>
+              <FileUp size={11} aria-hidden="true" />
+              <span>Import</span>
+            </button>
+          </div>
+        </>
+      )}
 
       {/* Import Tool Dialog */}
       <Dialog.Root

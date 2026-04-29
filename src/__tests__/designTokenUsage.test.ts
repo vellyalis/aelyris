@@ -68,20 +68,24 @@ describe("design token usage", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("routes top and bottom chrome through one acrylic frame material", () => {
-    const chromeFileSuffixes = [
-      "features/header/ProjectHeaderBar.module.css",
-      "features/workspace-tabs/WorkspaceTabs.module.css",
-      "features/statusbar/StatusBar.module.css",
-    ];
+  it("keeps the OS title chrome stronger than workspace navigation rails", () => {
+    const header = Object.entries(cssSources).find(([file]) =>
+      file.includes("features/header/ProjectHeaderBar.module.css"),
+    )?.[1] ?? "";
+    const workspaceTabs = Object.entries(cssSources).find(([file]) =>
+      file.includes("features/workspace-tabs/WorkspaceTabs.module.css"),
+    )?.[1] ?? "";
+    const statusbar = Object.entries(cssSources).find(([file]) =>
+      file.includes("features/statusbar/StatusBar.module.css"),
+    )?.[1] ?? "";
+    const editorTabs = Object.entries(cssSources).find(([file]) => file.includes("App.module.css"))?.[1] ?? "";
 
-    for (const suffix of chromeFileSuffixes) {
-      const entry = Object.entries(cssSources).find(([file]) => file.includes(suffix));
-      expect(entry, suffix).toBeDefined();
-      const source = entry?.[1] ?? "";
-      expect(source, suffix).toContain("var(--chrome-frame-bg)");
-      expect(source, suffix).toContain("var(--chrome-frame-filter)");
-    }
+    expect(header).toContain("var(--chrome-frame-bg)");
+    expect(header).toContain("var(--chrome-frame-filter)");
+    expect(workspaceTabs).not.toContain("var(--chrome-frame-shadow)");
+    expect(statusbar).not.toContain("var(--chrome-frame-bg)");
+    expect(statusbar).not.toContain("var(--chrome-frame-filter)");
+    expect(editorTabs).not.toContain("var(--chrome-frame-shadow)");
   });
 
   it("keeps the terminal canvas recessed instead of drawing an outer card shadow", () => {
@@ -118,14 +122,17 @@ describe("design token usage", () => {
     expect(rootGlowRule).toContain("opacity: var(--mood-root-glow-opacity)");
   });
 
-  it("keeps localhost preview backplane scoped away from the Tauri host", () => {
+  it("keeps localhost preview and native Tauri backplanes separated", () => {
     const entry = Object.entries(cssSources).find(([file]) => file.includes("styles/global.css"));
     expect(entry).toBeDefined();
     const source = entry?.[1] ?? "";
 
     expect(source).toContain('html[data-aether-host="browser"]');
     expect(source).toContain('html[data-aether-host="browser"] body');
-    expect(source).not.toContain('html[data-aether-host="tauri"]');
+    expect(source).toContain('html[data-aether-host="tauri"] #root');
+    expect(source).toContain("--native-backdrop-veil");
+    expect(source).toContain("background: var(--native-backdrop-veil), var(--mood-root-glow)");
+    expect(source).not.toContain('html[data-aether-host="tauri"] body');
   });
 
   it("keeps inactive-window glass below opaque-card territory", () => {
@@ -134,7 +141,7 @@ describe("design token usage", () => {
     const source = entry?.[1] ?? "";
     const inactiveRule = source.match(/body\[data-window-focused="false"\]\s*{[\s\S]*?}/)?.[0] ?? "";
 
-    expect(inactiveRule).toContain("--glass-thick: rgba(36, 36, 44, 0.27)");
+    expect(inactiveRule).toContain("--glass-thick: rgba(7, 16, 24, 0.195)");
     expect(inactiveRule).not.toContain("0.4");
     expect(inactiveRule).not.toContain("0.46");
     expect(inactiveRule).not.toContain("0.48");
@@ -146,8 +153,73 @@ describe("design token usage", () => {
     const source = entry?.[1] ?? "";
     const veilRule = source.match(/\.bento-widget::before\s*{[\s\S]*?}/)?.[0] ?? "";
 
-    expect(veilRule).toContain("opacity: 0.24");
+    expect(veilRule).toContain("opacity: 0.028");
     expect(veilRule).not.toContain("opacity: 0.78");
+  });
+
+  it("keeps right-panel widgets as sections inside one inspector material", () => {
+    const entry = Object.entries(cssSources).find(([file]) => file.includes("styles/global.css"));
+    expect(entry).toBeDefined();
+    const source = entry?.[1] ?? "";
+    const widgetRule = source.match(/\.bento-widget\s*{[\s\S]*?}/)?.[0] ?? "";
+    const siblingRule = source.match(/\.bento-widget \+ \.bento-widget\s*{[\s\S]*?}/)?.[0] ?? "";
+
+    expect(widgetRule).toContain("background: transparent");
+    expect(widgetRule).toContain("box-shadow: none");
+    expect(siblingRule).toContain("box-shadow: inset 0 1px 0");
+  });
+
+  it("keeps collapsed right-panel widgets from stretching into empty slabs", () => {
+    const entry = Object.entries(cssSources).find(([file]) => file.includes("styles/global.css"));
+    expect(entry).toBeDefined();
+    const source = entry?.[1] ?? "";
+    const bottomGridRule = source.match(/\.right-panel-bottom-grid\s*{[\s\S]*?}/)?.[0] ?? "";
+    const logsRule = source.match(/\.bento-widget\[data-widget="logs"\]\s*{[\s\S]*?}/)?.[0] ?? "";
+
+    expect(bottomGridRule).toContain("align-items: start");
+    expect(logsRule).toContain("align-self: start");
+  });
+
+  it("keeps panel filtering clear instead of milky", () => {
+    const entry = Object.entries(cssSources).find(([file]) => file.includes("styles/global.css"));
+    expect(entry).toBeDefined();
+    const source = entry?.[1] ?? "";
+
+    expect(source).toContain("--material-panel-filter: blur(10px) saturate(1.08) contrast(1.01)");
+    expect(source).not.toContain("saturate(1.18) contrast(1.04)");
+  });
+
+  it("routes floating inspector panels through the clear panel filter", () => {
+    const toolkit = Object.entries(cssSources).find(([file]) =>
+      file.includes("features/toolkit/ToolkitPanel.module.css"),
+    )?.[1] ?? "";
+    const inspector = Object.entries(cssSources).find(([file]) =>
+      file.includes("features/agent-inspector/AgentInspector.module.css"),
+    )?.[1] ?? "";
+
+    expect(toolkit).toContain("backdrop-filter: var(--material-panel-filter)");
+    expect(inspector).toContain("backdrop-filter: var(--material-panel-filter)");
+    expect(`${toolkit}\n${inspector}`).not.toContain("saturate(1.18) contrast(1.04)");
+  });
+
+  it("does not suppress focus rings on div role buttons", () => {
+    const entry = Object.entries(cssSources).find(([file]) => file.includes("styles/global.css"));
+    expect(entry).toBeDefined();
+    const source = entry?.[1] ?? "";
+
+    expect(source).toContain('div:focus-visible:not([role="button"])');
+    expect(source).not.toContain("div:focus-visible,\nsection:focus-visible");
+  });
+
+  it("keeps expanded logs from becoming a dark slab inside the right rail", () => {
+    const logs = Object.entries(cssSources).find(([file]) =>
+      file.includes("features/logs/LogsPanel.module.css"),
+    )?.[1] ?? "";
+    const listRule = logs.match(/\.list\s*{[\s\S]*?}/)?.[0] ?? "";
+
+    expect(listRule).toContain("rgba(3, 9, 16, 0.18)");
+    expect(listRule).not.toContain("0.34");
+    expect(listRule).not.toContain("0.42");
   });
 
   it("keeps sidebar sections flat inside the parent glass panel", () => {
@@ -182,5 +254,60 @@ describe("design token usage", () => {
     for (const file of guardedFiles) {
       expect(sources[file], file).toContain("isTauriRuntime");
     }
+  });
+
+  it("keeps header branch metadata quiet instead of decorative telemetry", () => {
+    const sources = import.meta.glob("../features/header/ProjectHeaderBar.tsx", {
+      query: "?raw",
+      import: "default",
+      eager: true,
+    }) as Record<string, string>;
+    const src = Object.values(sources)[0] ?? "";
+
+    expect(src).not.toContain("⚡");
+    expect(src).toContain("<span className={styles.branch}>{branch}</span>");
+  });
+
+  it("defines dark foreground aliases used on accent fills", () => {
+    const entry = Object.entries(cssSources).find(([file]) => file.includes("styles/global.css"));
+    expect(entry).toBeDefined();
+    const source = entry?.[1] ?? "";
+
+    expect(source).toContain("--ctp-base: var(--aether-ink)");
+  });
+
+  it("does not use negative tracking in UI chrome", () => {
+    const offenders = Object.entries(cssSources)
+      .map(([file, source]) => ({
+        file,
+        matches: source.match(/letter-spacing\s*:\s*-[^;]+|--tracking-[\w-]+\s*:\s*-[^;]+/g) ?? [],
+      }))
+      .filter((entry) => entry.matches.length > 0)
+      .map((entry) => `${entry.file} (${entry.matches.length})`);
+
+    expect(offenders).toEqual([]);
+  });
+
+  it("keeps workspace tab chrome quiet and branch metadata compact", () => {
+    const source = Object.entries(cssSources).find(([file]) =>
+      file.includes("features/workspace-tabs/WorkspaceTabs.module.css"),
+    )?.[1] ?? "";
+    const branchRule = source.match(/\.branchBadge\s*{[\s\S]*?}/)?.[0] ?? "";
+
+    expect(branchRule).toContain("display: inline-flex");
+    expect(branchRule).toContain("border-radius: var(--radius-pill)");
+    expect(source).not.toContain(".tabWrap[data-active] .tabClose");
+  });
+
+  it("keeps inspector prompt focus visible on glass surfaces", () => {
+    const inspector = Object.entries(cssSources).find(([file]) =>
+      file.includes("features/agent-inspector/AgentInspector.module.css"),
+    )?.[1] ?? "";
+    const modelFocus = inspector.match(/\.modelSelect:focus-visible\s*{[\s\S]*?}/)?.[0] ?? "";
+    const promptFocus = inspector.match(/\.promptField:focus-visible\s*{[\s\S]*?}/)?.[0] ?? "";
+
+    expect(modelFocus).toContain("outline: 2px solid var(--focus-ring)");
+    expect(promptFocus).toContain("outline: 2px solid var(--focus-ring)");
+    expect(`${modelFocus}\n${promptFocus}`).not.toContain("outline: none !important");
   });
 });

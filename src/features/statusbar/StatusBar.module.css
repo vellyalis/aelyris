@@ -5,14 +5,15 @@
   justify-content: space-between;
   height: var(--statusbar-height);
   padding: 0 var(--space-6);
-  /* Use the shared frame token (low-alpha glass after the
-   * transparency tune-up) so the status bar lets the
-   * Mica wallpaper through at the same level as the header. */
-  background: var(--chrome-frame-bg);
-  backdrop-filter: var(--chrome-frame-filter);
-  -webkit-backdrop-filter: var(--chrome-frame-filter);
+  background:
+    linear-gradient(180deg, rgba(142, 226, 241, 0.018), rgba(3, 10, 18, 0.026)),
+    rgba(3, 10, 18, 0.1);
+  backdrop-filter: blur(12px) saturate(1.05) contrast(1.01);
+  -webkit-backdrop-filter: blur(12px) saturate(1.05) contrast(1.01);
   border-top: 0;
-  box-shadow: var(--chrome-frame-shadow);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.024),
+    inset 0 -1px 0 rgba(3, 10, 18, 0.22);
   font-size: var(--text-sm);
   color: var(--text-muted);
   user-select: none;
@@ -29,12 +30,13 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  min-height: 22px;
 }
 
 /* Branch is the eye-anchor for the left cluster — promotes its color a step
    above the other passive spans so the user locks on to it first. */
 .branchAnchor {
-  color: var(--text-secondary);
+  color: color-mix(in srgb, var(--text-secondary) 72%, var(--gold) 28%);
   font-weight: var(--weight-medium);
 }
 
@@ -51,8 +53,8 @@
 .separator {
   width: 1px;
   height: 12px;
-  background: linear-gradient(180deg, transparent, var(--white-10), transparent);
-  opacity: 0.45;
+  background: linear-gradient(180deg, transparent, rgba(142, 226, 241, 0.11), transparent);
+  opacity: 0.32;
   display: inline-block;
   flex-shrink: 0;
 }
@@ -136,11 +138,13 @@
    `actionBtnActive` surfaces the job/layer counts with the status-done tint
    while keeping the resting state muted. */
 .actionBtn {
-  background: none;
+  background: rgba(142, 226, 241, 0.018);
   border: 1px solid transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  padding: var(--space-1) var(--space-3);
+  min-width: 24px;
+  min-height: 22px;
+  padding: 0 var(--space-3);
   border-radius: var(--radius-sm);
   display: inline-flex;
   align-items: center;
@@ -153,9 +157,9 @@
     border-color var(--duration-fast);
 }
 .actionBtn:hover {
-  background: var(--white-6);
+  background: rgba(142, 226, 241, 0.06);
   color: var(--text-primary);
-  border-color: var(--white-10);
+  border-color: rgba(142, 226, 241, 0.08);
 }
 .actionBtn:focus-visible {
   outline: 2px solid var(--gold);

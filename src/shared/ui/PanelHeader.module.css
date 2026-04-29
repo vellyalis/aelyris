@@ -23,10 +23,10 @@ button.header {
   transition: background var(--duration-fast);
 }
 button.header:hover {
-  background: var(--white-4);
+  background: rgba(6, 15, 24, 0.16);
 }
 button.header:focus-visible {
-  outline: 2px solid var(--gold);
+  outline: 2px solid var(--focus-ring);
   outline-offset: -2px;
 }
 
@@ -69,7 +69,7 @@ button.header:focus-visible {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--text-muted);
-  background: var(--white-4);
+  background: rgba(3, 9, 16, 0.22);
   padding: 1px var(--space-2);
   border-radius: var(--radius-sm);
 }
