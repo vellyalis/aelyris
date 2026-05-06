@@ -41,6 +41,8 @@ Longrun control-plane implementation is complete enough to resume Aether work.
 - Hardened longrun selftest cleanup against transient Windows temp-file locks.
 - Hardened longrun selftest recovery checks to wait for run identity convergence after watchdog restart.
 - Filtered stale Attention Inbox notifications when later recovery/complete truth proves the condition is no longer active.
+- Hardened terminal completion truth so a done roadmap cannot mask a stale `current-progress` or `current-health` artifact from a different run identity.
+- Added a regression selftest proving a stale completed run cannot terminate or archive a newer generation, even when the roadmap file is already all done.
 
 ## Validation Passed
 
@@ -51,6 +53,24 @@ Longrun control-plane implementation is complete enough to resume Aether work.
 - `pnpm verify:release`
 - `node C:\Users\owner\.codex\codex-longrun-selftest.mjs`
 - Browser dashboard verification for `Wizard S++`, `Decision Inbox`, `Attention Inbox`, `Promotion Gate`, `36/36`, and `complete`.
+
+## 2026-05-06 Strict Identity Follow-Up
+
+Additional hardening was applied after the initial cleanup:
+
+- `codex-longrun-watchdog.mjs`: terminal archive now requires either identity-matched completion or roadmap completion without a stale terminal artifact.
+- `codex-progress-server.mjs`: dashboard `/state` no longer reports terminal completion when the visible terminal artifact belongs to another run identity.
+- `codex-longrun-monitor.mjs`: monitor completion events no longer let all-done roadmap counts override stale terminal identity.
+- `codex-longrun-selftest.mjs`: added the all-done-roadmap stale-completion regression and made lease-check diagnostics clearer under Windows load.
+
+Follow-up validation passed:
+
+- `node --check C:\Users\owner\.codex\codex-longrun-watchdog.mjs`
+- `node --check C:\Users\owner\.codex\codex-progress-server.mjs`
+- `node --check C:\Users\owner\.codex\codex-longrun-monitor.mjs`
+- `node --check C:\Users\owner\.codex\codex-longrun-selftest.mjs`
+- `node C:\Users\owner\.codex\codex-longrun-selftest.mjs`
+- `pnpm verify:release`
 
 ## What Still Prevents Wizard S+++
 
