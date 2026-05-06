@@ -37,7 +37,7 @@ function grid(): GridSnapshot {
 }
 
 describe("TimelineBar", () => {
-  it("renders empty state when there are no snapshots", () => {
+  it("keeps the empty state quiet when there are no snapshots", () => {
     render(
       <TimelineBar
         terminalId="t1"
@@ -48,7 +48,7 @@ describe("TimelineBar", () => {
       />,
     );
     expect(screen.getByTestId("timeline-bar")).toBeTruthy();
-    expect(screen.getByText(/No snapshots yet/i)).toBeTruthy();
+    expect(screen.queryByText(/No snapshots yet/i)).toBeNull();
   });
 
   it("renders one tick per snapshot with trigger-based class", () => {
@@ -87,8 +87,8 @@ describe("TimelineBar", () => {
       />,
     );
     const tick = container.querySelector("[data-snapshot-id='x']");
-    expect(tick).toBeTruthy();
-    fireEvent.click(tick!);
+    if (!tick) throw new Error("Snapshot tick missing");
+    fireEvent.click(tick);
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelect.mock.calls[0][0].id).toBe("x");
     expect(onDismiss).not.toHaveBeenCalled();
@@ -113,7 +113,8 @@ describe("TimelineBar", () => {
       />,
     );
     const tick = container.querySelector("[data-snapshot-id='x']");
-    fireEvent.click(tick!);
+    if (!tick) throw new Error("Snapshot tick missing");
+    fireEvent.click(tick);
     expect(onDismiss).toHaveBeenCalledTimes(1);
     expect(onSelect).not.toHaveBeenCalled();
   });

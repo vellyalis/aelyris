@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { detectDangerousCommand, escapeShellPath, validateCommand } from "../shared/lib/shellSafety";
+import {
+  classifyCommand,
+  detectDangerousCommand,
+  escapeShellPath,
+  formatCommandRiskSummary,
+  redactSensitiveCommand,
+  validateCommand,
+} from "../shared/lib/shellSafety";
 
 describe("detectDangerousCommand", () => {
   it("detects rm -rf", () => {
@@ -89,5 +96,57 @@ describe("validateCommand", () => {
 
   it("accepts safe commands", () => {
     expect(validateCommand("echo hello")).toBeNull();
+  });
+});
+
+describe("classifyCommand", () => {
+  it("classifies read-only and build/test commands without approval", () => {
+    expect(classifyCommand("git status --short")).toMatchObject({
+      classes: ["read-only"],
+      severity: "allow",
+      requiresApproval: false,
+      allowExecution: true,
+    });
+    const build = classifyCommand("pnpm.cmd exec vitest run src/__tests__/shellSafety.test.ts");
+    expect(build.classes).toContain("build/test");
+    expect(build.requiresApproval).toBe(false);
+  });
+
+  it("requires approval for git mutation and package install commands", () => {
+    const git = classifyCommand("git add -A && git commit -m test");
+    expect(git.classes).toContain("git mutation");
+    expect(git.severity).toBe("review");
+    expect(git.requiresApproval).toBe(true);
+
+    const install = classifyCommand("pnpm add left-pad");
+    expect(install.classes).toContain("package install");
+    expect(install.requiresApproval).toBe(true);
+  });
+
+  it("denies destructive commands and unsafe paths", () => {
+    const destructive = classifyCommand("git reset --hard HEAD");
+    expect(destructive.classes).toContain("destructive");
+    expect(destructive.allowExecution).toBe(false);
+
+    const scoped = classifyCommand("Remove-Item -Recurse -Force C:\\Windows\\Temp", {
+      workspaceRoot: "C:/Users/owner/Aether_Terminal",
+    });
+    expect(scoped.severity).toBe("deny");
+    expect(scoped.pathScope.unsafePaths).toEqual(["C:\\Windows\\Temp"]);
+  });
+
+  it("redacts secret-bearing command previews", () => {
+    const command = "curl -H \"Authorization: Bearer abcdefghijklmnop\" https://api.test --token=secret-value";
+    const report = classifyCommand(command);
+    expect(report.classes).toContain("secret-bearing");
+    expect(report.preview).not.toContain("abcdefghijklmnop");
+    expect(report.preview).not.toContain("secret-value");
+    expect(redactSensitiveCommand("OPENAI_API_KEY=sk-abcdefghijklmnop")).toBe("OPENAI_API_KEY=[REDACTED]");
+  });
+
+  it("formats a compact preview for approval dialogs", () => {
+    const summary = formatCommandRiskSummary(classifyCommand("rm -rf /tmp/build"));
+    expect(summary).toContain("Risk: deny");
+    expect(summary).toContain("Classes:");
   });
 });

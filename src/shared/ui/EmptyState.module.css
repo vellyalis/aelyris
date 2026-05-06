@@ -1,0 +1,61 @@
+.root {
+  container-type: inline-size;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-8) var(--space-4);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.presetIcon {
+  width: 34px;
+  height: 34px;
+  border: 1px solid color-mix(in srgb, var(--empty-accent, var(--text-muted)) 20%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--empty-accent, var(--text-muted)) 9%, transparent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.customIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  opacity: 0.58;
+}
+
+.title {
+  max-width: 220px;
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+  font-size: var(--type-empty-title);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+}
+
+.description {
+  max-width: 230px;
+  overflow-wrap: anywhere;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+
+@container (max-width: 320px) {
+  .root {
+    gap: var(--space-2);
+    padding: var(--space-5) var(--space-3);
+  }
+
+  .presetIcon {
+    width: 30px;
+    height: 30px;
+  }
+}

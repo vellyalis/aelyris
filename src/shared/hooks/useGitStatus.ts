@@ -6,6 +6,11 @@ import { isTauriRuntime } from "../lib/tauriRuntime";
 interface ChangedFile {
   path: string;
   status: string;
+  staged?: boolean;
+  conflicted?: boolean;
+  additions?: number;
+  deletions?: number;
+  binary?: boolean;
 }
 
 interface GitStatusInfo {
@@ -21,10 +26,18 @@ export function useGitStatus(repoPath: string) {
   const [refreshKey, setRefreshKey] = useState(0);
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
+  const reset = useCallback(() => {
+    setBranch("main");
+    setIsDirty(false);
+    setChangedFiles([]);
+  }, []);
 
   // Poll git status
   useEffect(() => {
-    if (!isTauriRuntime()) return;
+    if (!repoPath || !isTauriRuntime()) {
+      reset();
+      return;
+    }
 
     let active = true;
     const poll = async () => {
@@ -35,7 +48,7 @@ export function useGitStatus(repoPath: string) {
         setIsDirty(info.is_dirty);
         setChangedFiles(info.changed_files);
       } catch {
-        /* not a git repo or error */
+        if (active) reset();
       }
     };
     const timeout = setTimeout(poll, 500);
@@ -46,7 +59,7 @@ export function useGitStatus(repoPath: string) {
       clearTimeout(timeout);
       clearInterval(interval);
     };
-  }, [repoPath, refreshKey]);
+  }, [repoPath, refreshKey, reset]);
 
   // Start file watcher and listen for fs:changed events
   useEffect(() => {
@@ -58,7 +71,9 @@ export function useGitStatus(repoPath: string) {
     const setup = async () => {
       try {
         const unsub = await listen<{ root: string; paths: string[] }>("fs:changed", (event) => {
-          if (event.payload.root === repoPath) refresh();
+          const eventRoot = event.payload.root.replace(/\\/g, "/").toLowerCase();
+          const currentRoot = repoPath.replace(/\\/g, "/").toLowerCase();
+          if (eventRoot === currentRoot) refresh();
         });
         if (aborted) {
           unsub();

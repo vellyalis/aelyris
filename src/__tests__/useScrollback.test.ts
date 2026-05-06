@@ -1,12 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-import {
-  findNextPromptMark,
-  findPrevPromptMark,
-  useScrollback,
-} from "../shared/hooks/useScrollback";
 import type { PromptMark } from "../shared/hooks/usePromptMarks";
+import { findNextPromptMark, findPrevPromptMark, useScrollback } from "../shared/hooks/useScrollback";
 import { type CellSnapshot, ColorKind, type GridSnapshot } from "../shared/types/terminal";
 
 const invokeMock = vi.fn();
@@ -33,6 +28,7 @@ describe("useScrollback", () => {
     invokeMock.mockReset();
   });
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -78,10 +74,92 @@ describe("useScrollback", () => {
       const cells = result.current.compositeCells!;
       // Top row is the OLDER history row (n=1), then the NEWER (n=0),
       // then the first live row; the third live row falls off the bottom.
-      expect(cells[0].map((c) => c.ch).join("").trim()).toBe("his-1");
-      expect(cells[1].map((c) => c.ch).join("").trim()).toBe("his-0");
-      expect(cells[2].map((c) => c.ch).join("").trim().startsWith("live-a")).toBe(true);
+      expect(
+        cells[0]
+          .map((c) => c.ch)
+          .join("")
+          .trim(),
+      ).toBe("his-1");
+      expect(
+        cells[1]
+          .map((c) => c.ch)
+          .join("")
+          .trim(),
+      ).toBe("his-0");
+      expect(
+        cells[2]
+          .map((c) => c.ch)
+          .join("")
+          .trim()
+          .startsWith("live-a"),
+      ).toBe(true);
     });
+  });
+
+  it("fetches only the visible history window at deep scroll offsets", async () => {
+    const historyRows = [
+      [cell("n"), cell("7")],
+      [cell("n"), cell("8")],
+      [cell("n"), cell("9")],
+    ];
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "term_history_size") return Promise.resolve(10);
+      if (cmd === "term_history_rows") return Promise.resolve(historyRows);
+      return Promise.reject(new Error(`unexpected cmd ${cmd}`));
+    });
+    const snap = makeSnapshot(["aa", "bb", "cc"]);
+    const { result } = renderHook(() => useScrollback("t-1", snap));
+    await waitFor(() => expect(result.current.historySize).toBe(10));
+
+    act(() => result.current.scrollToOffset(10));
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("term_history_rows", {
+        id: "t-1",
+        fromN: 7,
+        count: 3,
+      }),
+    );
+
+    await waitFor(() => {
+      const cells = result.current.compositeCells!;
+      expect(
+        cells[0]
+          .map((c) => c.ch)
+          .join("")
+          .trim(),
+      ).toBe("n9");
+      expect(
+        cells[1]
+          .map((c) => c.ch)
+          .join("")
+          .trim(),
+      ).toBe("n8");
+      expect(
+        cells[2]
+          .map((c) => c.ch)
+          .join("")
+          .trim(),
+      ).toBe("n7");
+    });
+  });
+
+  it("throttles history-size refreshes during snapshot churn", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "term_history_size") return Promise.resolve(3);
+      return Promise.resolve([]);
+    });
+    const { rerender, result, unmount } = renderHook(({ snap }) => useScrollback("t-1", snap), {
+      initialProps: { snap: makeSnapshot(["a", "b"]) },
+    });
+    await waitFor(() => expect(result.current.historySize).toBe(3));
+    const initialRefreshes = invokeMock.mock.calls.filter((call) => call[0] === "term_history_size").length;
+
+    rerender({ snap: makeSnapshot(["c", "d"]) });
+    rerender({ snap: makeSnapshot(["e", "f"]) });
+    rerender({ snap: makeSnapshot(["g", "h"]) });
+
+    expect(invokeMock.mock.calls.filter((call) => call[0] === "term_history_size")).toHaveLength(initialRefreshes);
+    unmount();
   });
 
   it("clamps scrollOffset to [0, historySize]", async () => {

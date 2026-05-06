@@ -13,8 +13,8 @@ function hashSeed(seed: string): number {
   return Math.abs(hash);
 }
 
-const BG_COLORS = ["#7c3aed", "#2563eb", "#dc2626", "#059669", "#d97706", "#db2777", "#0891b2", "#4f46e5"];
-const BODY_COLORS = ["#e2e8f0", "#94a3b8", "#64748b", "#fbbf24", "#34d399", "#f87171", "#a78bfa", "#38bdf8"];
+const BG_COLORS = ["#182132", "#17283a", "#1f2435", "#162b2b", "#2a251c", "#281f31", "#142b35", "#20263a"];
+const BODY_COLORS = ["#b7c4d1", "#92a6b8", "#7b8fa2", "#c9b37a", "#8fbd9d", "#c39098", "#a895c6", "#80b6c8"];
 
 interface PixelAvatarProps {
   seed: string;
@@ -33,15 +33,24 @@ export const PixelAvatar = memo(function PixelAvatar({ seed, size = 32 }: PixelA
   const u = s / 16; // unit
 
   return (
-    <svg width={s} height={s} viewBox={`0 0 ${s} ${s}`} style={{ borderRadius: s * 0.2 }}>
+    <svg
+      width={s}
+      height={s}
+      viewBox={`0 0 ${s} ${s}`}
+      style={{
+        borderRadius: s * 0.22,
+        boxShadow: "inset 0 0 0 1px rgba(158, 226, 241, 0.08), 0 6px 16px rgba(0, 0, 0, 0.18)",
+      }}
+    >
       {/* Background */}
       <rect width={s} height={s} rx={s * 0.15} fill={bgColor} />
+      <rect width={s} height={s} rx={s * 0.15} fill="rgba(255,255,255,0.04)" />
 
       {/* Antenna */}
       {hasAntenna && (
         <>
           <line x1={s / 2} y1={u * 2} x2={s / 2} y2={u * 4} stroke={bodyColor} strokeWidth={u} />
-          <circle cx={s / 2} cy={u * 2} r={u} fill="#fff" />
+          <circle cx={s / 2} cy={u * 2} r={u} fill="rgba(230,244,248,0.78)" />
         </>
       )}
 

@@ -25,6 +25,9 @@ interface ChangedFile {
   status: string;
   staged: boolean;
   conflicted: boolean;
+  additions?: number;
+  deletions?: number;
+  binary?: boolean;
 }
 
 interface SCMPanelProps {
@@ -227,7 +230,7 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
     // Autogrow: reset to the min row height first so the scrollHeight read
     // reflects the actual content, not the previous value (Chrome caches).
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 108)}px`;
   };
 
   return (
@@ -279,10 +282,11 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
           }}
         />
         <div className={styles.commitActions}>
-          <button className={styles.stageAllBtn} onClick={handleStageAll} title="Stage All">
+          <button type="button" className={styles.stageAllBtn} onClick={handleStageAll} title="Stage All">
             <Plus size={10} /> Stage All
           </button>
           <button
+            type="button"
             className={styles.commitBtn}
             onClick={handleCommit}
             disabled={!commitMsg.trim() || stagedCount === 0 || loading}
@@ -291,6 +295,7 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
             <Check size={10} /> Commit {stagedCount > 0 && `(${stagedCount})`}
           </button>
           <button
+            type="button"
             className={styles.pushBtn}
             onClick={handleCommitAndPush}
             disabled={!commitMsg.trim() || stagedCount === 0 || loading}
@@ -363,66 +368,66 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
                   </span>
                 )}
               </div>
-            {!collapsed[g.id] && (
-              <div className={styles.fileList}>
-                {g.files.map((f) => (
-                  <div key={f.path} className={styles.fileRow}>
-                    <GitStatusPip status={f.status} variant="letter" className={styles.fileStatus} />
-                    <button
-                      type="button"
-                      className={styles.fileName}
-                      onClick={() => onOpenDiff?.(f.path)}
-                      aria-label={`Open diff for ${f.path}`}
-                      title={f.path}
-                    >
-                      {fileName(f.path)}
-                    </button>
-                    <span className={styles.filePath}>{f.path.replace(fileName(f.path), "")}</span>
-                    <span className={styles.fileActions}>
-                      {g.id === "changes" || g.id === "untracked" ? (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => handleStage([f.path])}
-                            aria-label={`Stage ${f.path}`}
-                            title="Stage"
-                          >
-                            <Plus size={10} aria-hidden="true" />
-                          </button>
-                          {g.id === "changes" && (
-                            <button
-                              type="button"
-                              onClick={() => handleDiscard([f.path])}
-                              aria-label={`Discard ${f.path}`}
-                              title="Discard"
-                            >
-                              <Undo2 size={10} aria-hidden="true" />
-                            </button>
-                          )}
-                        </>
-                      ) : g.id === "staged" ? (
-                        <button
-                          type="button"
-                          onClick={() => handleUnstage([f.path])}
-                          aria-label={`Unstage ${f.path}`}
-                          title="Unstage"
-                        >
-                          <Minus size={10} aria-hidden="true" />
-                        </button>
-                      ) : null}
+              {!collapsed[g.id] && (
+                <div className={styles.fileList}>
+                  {g.files.map((f) => (
+                    <div key={f.path} className={styles.fileRow}>
+                      <GitStatusPip status={f.status} variant="letter" className={styles.fileStatus} />
                       <button
                         type="button"
-                        onClick={() => onOpenFile?.(projectPath + "/" + f.path)}
-                        aria-label={`Open ${f.path}`}
-                        title="Open"
+                        className={styles.fileName}
+                        onClick={() => onOpenDiff?.(f.path)}
+                        aria-label={`Open diff for ${f.path}`}
+                        title={f.path}
                       >
-                        <FileText size={10} aria-hidden="true" />
+                        {fileName(f.path)}
                       </button>
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
+                      <span className={styles.filePath}>{f.path.replace(fileName(f.path), "")}</span>
+                      <span className={styles.fileActions}>
+                        {g.id === "changes" || g.id === "untracked" ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleStage([f.path])}
+                              aria-label={`Stage ${f.path}`}
+                              title="Stage"
+                            >
+                              <Plus size={10} aria-hidden="true" />
+                            </button>
+                            {g.id === "changes" && (
+                              <button
+                                type="button"
+                                onClick={() => handleDiscard([f.path])}
+                                aria-label={`Discard ${f.path}`}
+                                title="Discard"
+                              >
+                                <Undo2 size={10} aria-hidden="true" />
+                              </button>
+                            )}
+                          </>
+                        ) : g.id === "staged" ? (
+                          <button
+                            type="button"
+                            onClick={() => handleUnstage([f.path])}
+                            aria-label={`Unstage ${f.path}`}
+                            title="Unstage"
+                          >
+                            <Minus size={10} aria-hidden="true" />
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => onOpenFile?.(`${projectPath}/${f.path}`)}
+                          aria-label={`Open ${f.path}`}
+                          title="Open"
+                        >
+                          <FileText size={10} aria-hidden="true" />
+                        </button>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           );
         })}

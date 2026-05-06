@@ -154,53 +154,61 @@ export function WelcomeScreen({ onOpenProject, onOpenSettings }: WelcomeScreenPr
           <span>{dragOver ? "Release to open" : "or drop a folder here"}</span>
         </div>
 
-        <div className={styles.recentHeader}>Recent Projects</div>
-        <div className={styles.recentList}>
-          {loading &&
-            Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className={styles.skeletonCard}>
-                <div className={styles.skeletonAvatar} />
-                <div className={styles.skeletonText}>
-                  <div className={styles.skeletonLine} style={{ width: `${60 + i * 10}%` }} />
-                  <div className={styles.skeletonLine} style={{ width: `${40 + i * 8}%` }} />
+        <section
+          className={styles.recentSection}
+          data-empty={!loading && recentProjects.length === 0}
+          aria-labelledby="welcome-recent-projects"
+        >
+          <div id="welcome-recent-projects" className={styles.recentHeader}>
+            Recent Projects
+          </div>
+          <div className={styles.recentList}>
+            {loading &&
+              Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className={styles.skeletonCard}>
+                  <div className={styles.skeletonAvatar} />
+                  <div className={styles.skeletonText}>
+                    <div className={styles.skeletonLine} style={{ width: `${60 + i * 10}%` }} />
+                    <div className={styles.skeletonLine} style={{ width: `${40 + i * 8}%` }} />
+                  </div>
                 </div>
-              </div>
+              ))}
+            {recentProjects.map((p, i) => (
+              <motion.button
+                key={p.path}
+                className={styles.projectCard}
+                onClick={() => onOpenProject(p.path)}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.1 + i * 0.04, type: "spring", stiffness: 300, damping: 25 }}
+              >
+                <div className={styles.projectAvatar}>{p.name.slice(0, 2).toUpperCase()}</div>
+                <div className={styles.projectInfo}>
+                  <div className={styles.projectName}>
+                    {p.name}
+                    {p.has_changes && (
+                      <span
+                        className={styles.changesDot}
+                        title="Working tree has uncommitted changes"
+                        aria-label="Has uncommitted changes"
+                      />
+                    )}
+                  </div>
+                  <div className={styles.projectPath}>
+                    {p.path}
+                    <span className={styles.branch}>
+                      <GitBranch size={10} strokeWidth={1.75} aria-hidden="true" />
+                      {p.branch}
+                    </span>
+                  </div>
+                </div>
+              </motion.button>
             ))}
-          {recentProjects.map((p, i) => (
-            <motion.button
-              key={p.path}
-              className={styles.projectCard}
-              onClick={() => onOpenProject(p.path)}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.1 + i * 0.04, type: "spring", stiffness: 300, damping: 25 }}
-            >
-              <div className={styles.projectAvatar}>{p.name.slice(0, 2).toUpperCase()}</div>
-              <div className={styles.projectInfo}>
-                <div className={styles.projectName}>
-                  {p.name}
-                  {p.has_changes && (
-                    <span
-                      className={styles.changesDot}
-                      title="Working tree has uncommitted changes"
-                      aria-label="Has uncommitted changes"
-                    />
-                  )}
-                </div>
-                <div className={styles.projectPath}>
-                  {p.path}
-                  <span className={styles.branch}>
-                    <GitBranch size={10} strokeWidth={1.75} aria-hidden="true" />
-                    {p.branch}
-                  </span>
-                </div>
-              </div>
-            </motion.button>
-          ))}
-          {!loading && recentProjects.length === 0 && (
-            <div className={styles.hint}>No projects found. Open a folder to get started.</div>
-          )}
-        </div>
+            {!loading && recentProjects.length === 0 && (
+              <div className={styles.hint}>No projects found. Open a folder to get started.</div>
+            )}
+          </div>
+        </section>
       </motion.div>
       {onOpenSettings && (
         <button

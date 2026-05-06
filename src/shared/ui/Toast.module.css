@@ -17,12 +17,12 @@
   align-items: flex-start;
   gap: var(--space-4);
   padding: var(--space-5) var(--space-6);
-  background: var(--glass-thick);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid var(--white-10);
+  background: var(--popup-glass-bg);
+  backdrop-filter: var(--material-panel-filter);
+  -webkit-backdrop-filter: var(--material-panel-filter);
+  border: 1px solid var(--popup-glass-border);
   border-radius: var(--radius);
-  box-shadow: var(--rim-top), var(--shadow-elevated);
+  box-shadow: var(--popup-glass-shadow);
   font-family: var(--font-ui);
   animation: toastIn var(--duration-fast) var(--ease-out);
   will-change: transform, opacity;

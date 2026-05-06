@@ -1,4 +1,10 @@
 import { describe, expect, it } from "vitest";
+// Vitest runs this source-contract test in Node. The app tsconfig does not
+// include @types/node, so keep the Node-only imports scoped and ignored here.
+// @ts-expect-error Node types are intentionally absent from the app tsconfig.
+import { readFileSync } from "node:fs";
+// @ts-expect-error Node types are intentionally absent from the app tsconfig.
+import { join } from "node:path";
 
 /**
  * Regression guard for WelcomeScreen handleDrop double-fire bug.
@@ -21,6 +27,10 @@ const sources = import.meta.glob("../features/welcome/WelcomeScreen.tsx", {
   eager: true,
 }) as Record<string, string>;
 
+declare const process: { cwd(): string };
+
+const welcomeCss = readFileSync(join(process.cwd(), "src/features/welcome/WelcomeScreen.module.css"), "utf8");
+
 describe("WelcomeScreen handleDrop", () => {
   it("does not call webkitGetAsEntry — only the real Tauri path is used", () => {
     const entries = Object.entries(sources);
@@ -29,9 +39,7 @@ describe("WelcomeScreen handleDrop", () => {
 
     // Strip `// …` and `/* … */` comments so the explanatory comment for
     // *why* this branch was removed doesn't trip the assertion.
-    const stripped = src
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/\/\/.*$/gm, "");
+    const stripped = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 
     // Active call sites — the bug was the items[0].webkitGetAsEntry?.() +
     // entry.fullPath path that fired before the real-path branch.
@@ -43,5 +51,18 @@ describe("WelcomeScreen handleDrop", () => {
     // The real path branch must remain intact.
     expect(stripped).toMatch(/dataTransfer\.files/);
     expect(stripped).toMatch(/\.path/);
+  });
+
+  it("centers the empty recent-projects state instead of leaving the heading stranded", () => {
+    const src = Object.values(sources)[0] ?? "";
+    expect(src).toContain("className={styles.recentSection}");
+    expect(src).toContain("data-empty={!loading && recentProjects.length === 0}");
+    expect(src).toContain('aria-labelledby="welcome-recent-projects"');
+    expect(welcomeCss).toContain('.recentSection[data-empty="true"]');
+    expect(welcomeCss).toContain("align-items: center");
+    expect(welcomeCss).toContain('.recentSection[data-empty="true"] .recentHeader');
+    expect(welcomeCss).toContain("text-align: center");
+    expect(welcomeCss).toContain('.recentSection[data-empty="true"] .recentList');
+    expect(welcomeCss).toContain("grid-template-columns: minmax(0, 1fr)");
   });
 });

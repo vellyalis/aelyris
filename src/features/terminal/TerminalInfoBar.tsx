@@ -1,15 +1,9 @@
-import {
-  ArrowLeftRight,
-  Columns2,
-  GitBranch,
-  Maximize2,
-  Minimize2,
-  Rows2,
-  X,
-} from "lucide-react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { ArrowLeftRight, Columns2, Maximize2, Minimize2, Pencil, Rows2, Tag, X } from "lucide-react";
 import { memo } from "react";
 import { lastCommandEnd, usePromptMarks } from "../../shared/hooks/usePromptMarks";
 import { usePtyLag } from "../../shared/hooks/usePtyLag";
+import { PANE_ROLES, type PaneRole } from "./pane-tree/types";
 import styles from "./TerminalInfoBar.module.css";
 
 interface TerminalInfoBarProps {
@@ -23,9 +17,14 @@ interface TerminalInfoBarProps {
    * stays hidden until the first mark arrives.
    */
   terminalId?: string | null;
+  paneTitle?: string;
+  paneRole?: PaneRole;
   activeAgent?: { model: string; cost: number } | null;
   isActive?: boolean;
   isMaximized?: boolean;
+  onRenamePane?: (title: string | null) => void;
+  onCyclePaneRole?: () => void;
+  onSetPaneRole?: (role: PaneRole) => void;
   onToggleMaximize?: () => void;
   syncMode?: boolean;
   onToggleSync?: () => void;
@@ -37,11 +36,15 @@ interface TerminalInfoBarProps {
 export const TerminalInfoBar = memo(function TerminalInfoBar({
   shell,
   cwd,
-  branch,
   terminalId,
+  paneTitle,
+  paneRole,
   activeAgent,
   isActive,
   isMaximized,
+  onRenamePane,
+  onCyclePaneRole,
+  onSetPaneRole,
   onToggleMaximize,
   syncMode,
   onToggleSync,
@@ -54,6 +57,16 @@ export const TerminalInfoBar = memo(function TerminalInfoBar({
   const marks = usePromptMarks(terminalId ?? null);
   const lastEnd = lastCommandEnd(marks);
   const lag = usePtyLag(terminalId ?? null);
+  const roleLabel = ROLE_LABELS[paneRole ?? "work"];
+  const identityLabel = paneTitle ? `${roleLabel} · ${paneTitle}` : roleLabel;
+
+  const handleRename = () => {
+    if (!onRenamePane) return;
+    const next = window.prompt("Pane name", paneTitle ?? "");
+    if (next === null) return;
+    const title = next.replace(/\s+/g, " ").trim();
+    onRenamePane(title || null);
+  };
 
   return (
     /* `data-active` drives the focused-pane signal in CSS (top-edge gold
@@ -63,17 +76,64 @@ export const TerminalInfoBar = memo(function TerminalInfoBar({
      * affordance. */
     <div className={styles.bar} data-active={isActive ? "true" : undefined}>
       <span className={styles.shell}>{shell}</span>
-      {lastEnd && (
-        <ExitStatusDot exitCode={lastEnd.exitCode} />
+      {(onSetPaneRole || onCyclePaneRole || onRenamePane || paneTitle || paneRole) &&
+        (onSetPaneRole ? (
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <button
+                type="button"
+                className={styles.identityBtn}
+                aria-label={`Pane identity: ${identityLabel}`}
+                title="Set pane role"
+              >
+                <Tag size={10} aria-hidden="true" />
+                <span>{identityLabel}</span>
+              </button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content className={styles.roleMenu} sideOffset={4} align="start" collisionPadding={8}>
+                {PANE_ROLES.map((role) => (
+                  <DropdownMenu.Item
+                    key={role}
+                    className={styles.roleMenuItem}
+                    data-selected={role === (paneRole ?? "work") ? "true" : undefined}
+                    onSelect={() => onSetPaneRole(role)}
+                  >
+                    <span>{ROLE_LABELS[role]}</span>
+                    <span className={styles.roleToken}>@{role}</span>
+                  </DropdownMenu.Item>
+                ))}
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
+        ) : (
+          <button
+            type="button"
+            className={styles.identityBtn}
+            onClick={() => {
+              onCyclePaneRole?.();
+            }}
+            aria-label={`Pane identity: ${identityLabel}`}
+            title="Cycle pane role"
+          >
+            <Tag size={10} aria-hidden="true" />
+            <span>{identityLabel}</span>
+          </button>
+        ))}
+      {onRenamePane && (
+        <button
+          type="button"
+          className={styles.renameBtn}
+          onClick={handleRename}
+          aria-label={`Rename pane: ${paneTitle ?? roleLabel}`}
+          title="Rename pane"
+        >
+          <Pencil size={10} aria-hidden="true" />
+        </button>
       )}
+      {lastEnd && <ExitStatusDot exitCode={lastEnd.exitCode} />}
       {lag.active && <BackpressureBadge dropped={lag.dropped} />}
       {dir && <span className={styles.cwd}>~/{dir}</span>}
-      {branch && (
-        <span className={styles.branch}>
-          <GitBranch size={10} aria-hidden="true" />
-          {branch}
-        </span>
-      )}
       <div className={styles.spacer} />
       {activeAgent && (
         <>
@@ -147,6 +207,16 @@ export const TerminalInfoBar = memo(function TerminalInfoBar({
   );
 });
 
+const ROLE_LABELS: Record<PaneRole, string> = {
+  work: "Work",
+  plan: "Plan",
+  build: "Build",
+  test: "Test",
+  review: "Review",
+  agent: "Agent",
+  logs: "Logs",
+};
+
 interface ExitStatusDotProps {
   exitCode: number | null;
 }
@@ -180,24 +250,14 @@ function BackpressureBadge({ dropped }: BackpressureBadgeProps) {
   const formatted = dropped.toLocaleString();
   const label = `Terminal output throttled — dropped ${formatted} chunk${dropped === 1 ? "" : "s"}.`;
   return (
-    <span
-      className={styles.lagBadge}
-      role="status"
-      aria-label={label}
-      title={label}
-    >
+    <span className={styles.lagBadge} role="status" aria-label={label} title={label}>
       throttled · {formatted}
     </span>
   );
 }
 
 function ExitStatusDot({ exitCode }: ExitStatusDotProps) {
-  const color =
-    exitCode === null
-      ? "var(--text-muted)"
-      : exitCode === 0
-        ? "var(--ctp-green)"
-        : "var(--ctp-red)";
+  const color = exitCode === null ? "var(--text-muted)" : exitCode === 0 ? "var(--ctp-green)" : "var(--ctp-red)";
   const label =
     exitCode === null
       ? "Last command finished (exit code unreported)"
@@ -205,12 +265,6 @@ function ExitStatusDot({ exitCode }: ExitStatusDotProps) {
         ? "Last command succeeded (exit 0)"
         : `Last command failed (exit ${exitCode})`;
   return (
-    <span
-      className={styles.exitDot}
-      style={{ background: color }}
-      role="status"
-      aria-label={label}
-      title={label}
-    />
+    <span className={styles.exitDot} style={{ background: color }} role="status" aria-label={label} title={label} />
   );
 }

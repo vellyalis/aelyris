@@ -1,7 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { Command } from "cmdk";
 import { ChevronRight } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { type ComponentType, useEffect, useMemo, useRef, useState } from "react";
 import { loadRecentCommands, recordRecentCommand } from "../../shared/lib/recentCommands";
 import styles from "./CommandPalette.module.css";
@@ -52,6 +52,7 @@ export function CommandPalette({ visible, onClose, commands }: CommandPalettePro
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [recentIds, setRecentIds] = useState<string[]>(() => loadRecentCommands());
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     if (visible) {
@@ -88,30 +89,34 @@ export function CommandPalette({ visible, onClose, commands }: CommandPalettePro
             <Dialog.Overlay asChild>
               <motion.div
                 className={styles.overlay}
-                initial={{ opacity: 0 }}
+                initial={reduceMotion ? false : { opacity: 0 }}
                 animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.12 }}
+                exit={reduceMotion ? { opacity: 1 } : { opacity: 0 }}
+                transition={{ duration: reduceMotion ? 0 : 0.12 }}
               />
             </Dialog.Overlay>
-            <Dialog.Content asChild aria-describedby={undefined}>
+            <Dialog.Content asChild>
               <motion.div
                 className={styles.palette}
-                initial={{ opacity: 0, y: -20, scale: 0.97 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -10, scale: 0.97 }}
-                transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                initial={reduceMotion ? false : { opacity: 0, x: "-50%", y: -20, scale: 0.97 }}
+                animate={{ opacity: 1, x: "-50%", y: 0, scale: 1 }}
+                exit={reduceMotion ? { opacity: 1, x: "-50%", y: 0, scale: 1 } : { opacity: 0, x: "-50%", y: -10, scale: 0.97 }}
+                transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 400, damping: 30 }}
               >
                 <Dialog.Title className="sr-only">Command Palette</Dialog.Title>
+                <Dialog.Description className="sr-only">
+                  Search commands by name, category, shortcut, or keyword. Use arrow keys and Enter to run a command.
+                </Dialog.Description>
                 <Command label="Command palette" loop shouldFilter>
                   <Command.Input
                     ref={inputRef}
                     className={styles.input}
+                    aria-label="Search commands"
                     placeholder="Type a command..."
                     value={query}
                     onValueChange={setQuery}
                   />
-                  <Command.List className={styles.list}>
+                  <Command.List className={styles.list} aria-label="Available commands">
                     <Command.Empty className={styles.empty}>
                       <div className={styles.emptyTitle}>No matching commands</div>
                       <div className={styles.emptyHint}>Try a different keyword — or press Esc to close</div>
@@ -164,8 +169,14 @@ function CommandRow({ cmd, onRun }: CommandRowProps) {
   const keywordString = cmd.keywords?.join(" ") ?? "";
   const value = `${cmd.label} ${cmd.category ?? ""} ${keywordString}`.trim();
   return (
-    <Command.Item value={value} className={styles.item} onSelect={() => onRun(cmd)}>
-      <span className={styles.itemIcon}>
+    <Command.Item
+      value={value}
+      className={styles.item}
+      aria-label={formatCommandLabel(cmd)}
+      aria-keyshortcuts={cmd.shortcut ? formatAriaShortcut(cmd.shortcut) : undefined}
+      onSelect={() => onRun(cmd)}
+    >
+      <span className={styles.itemIcon} aria-hidden="true">
         {Icon ? <Icon size={14} /> : <ChevronRight size={12} className={styles.itemFallbackIcon} />}
       </span>
       <span className={styles.itemLabel}>
@@ -175,4 +186,20 @@ function CommandRow({ cmd, onRun }: CommandRowProps) {
       {cmd.shortcut && <span className={styles.shortcut}>{cmd.shortcut}</span>}
     </Command.Item>
   );
+}
+
+function formatCommandLabel(cmd: CommandItem): string {
+  return cmd.shortcut ? `${cmd.label}, ${cmd.shortcut}` : cmd.label;
+}
+
+function formatAriaShortcut(shortcut: string): string {
+  return shortcut
+    .split("+")
+    .map((part) => {
+      const key = part.trim();
+      if (key.toLowerCase() === "ctrl") return "Control";
+      if (key.toLowerCase() === "cmd") return "Meta";
+      return key.length === 1 ? key.toUpperCase() : key;
+    })
+    .join("+");
 }

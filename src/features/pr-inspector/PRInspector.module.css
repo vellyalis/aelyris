@@ -59,6 +59,7 @@
 .list {
   flex: 1;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: var(--space-2);
 }
 .status {
@@ -186,6 +187,7 @@
   font-family: var(--font-mono);
   color: var(--text-muted);
   overflow: auto;
+  scrollbar-gutter: stable;
   max-height: 200px;
   white-space: pre-wrap;
   word-break: break-all;

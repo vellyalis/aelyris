@@ -1,5 +1,6 @@
 .inspector {
   display: flex;
+  min-height: 0;
   flex-direction: column;
   overflow: hidden;
   flex: 1;
@@ -35,18 +36,22 @@
 
 .tabBar {
   display: flex;
+  min-width: 0;
   align-items: center;
-  /* Tight horizontal padding + minimal gap so five icon tabs + the
-   * Orchestra pill + Copy/Add actions fit inside the 320px right panel.
-   * Measured via CDP on 2026-04-24; full-label tabs had needed 515px. */
-  padding: var(--space-4) var(--space-3);
+  padding: var(--space-3) var(--space-3);
   gap: var(--space-1);
   box-shadow: inset 0 -1px 0 rgba(124, 214, 235, 0.022);
 }
 .tab {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
+  justify-content: center;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  gap: 0;
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
@@ -54,19 +59,8 @@
   font-family: var(--font-ui);
   color: var(--text-muted);
   cursor: pointer;
-  /* Icon-only inactive state keeps each tab to ~24-28px. The active tab
-   * expands horizontally to include its label. Tight vertical padding
-   * keeps the tab bar at the same height either way. Horizontal padding
-   * was pulled in to var(--space-2) after the CDP sweep measured the
-   * active "Conductor" label (longest of the five) pushing the tab bar
-   * 9px past the 320px right-panel bound. */
-  padding: var(--space-2) var(--space-2);
+  padding: 0;
   border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-  /* Keep the tab label's visual weight stable across :hover and .tabActive
-   * so switching tabs doesn't shift layout. Active state is communicated
-   * by color + border-bottom only (plus the gold accent). IBM Plex Sans
-   * 400 → 600 shifts glyph advance width by ~4% which reads as text
-   * "jumping" between tabs — the 2026-04-24 live review flagged this. */
   font-weight: var(--weight-medium);
   transition:
     color var(--duration-fast),
@@ -75,18 +69,15 @@
 }
 
 .tabLabel {
-  /* Only the active tab renders this span, so it naturally expands the
-   * tab's inline size to fit. No transition on width to avoid a gotcha
-   * with variable-width text animations. */
-  white-space: nowrap;
+  display: none;
 }
 .tab:hover {
   color: var(--text-secondary);
   background: rgba(6, 15, 24, 0.2);
 }
 .tab:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--accent) 62%, transparent);
-  outline-offset: -2px;
+  outline: 2px solid color-mix(in srgb, var(--accent) 62%, transparent) !important;
+  outline-offset: -2px !important;
 }
 .tabActive {
   color: var(--text-primary);
@@ -96,6 +87,7 @@
 .tabActions {
   margin-left: auto;
   display: flex;
+  min-width: 0;
   gap: var(--space-2);
   align-items: center;
 }
@@ -154,7 +146,7 @@
 }
 .orchestraBtn:focus-visible {
   outline: 2px solid var(--gold);
-  outline-offset: 1px;
+  outline-offset: -2px;
 }
 
 /* Phase 1 Bento: auto-fill grid — adjusts columns to right-panel width.
@@ -162,12 +154,14 @@
  * @container queries on child cards if needed later. */
 .cards {
   container-type: inline-size;
-  padding: var(--space-5) var(--space-6);
-  overflow-y: auto;
-  flex: 1;
+  padding: var(--space-3) var(--space-5) var(--space-5);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  flex: 0 0 auto;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(var(--bento-cell), 1fr));
-  gap: var(--space-4);
+  grid-template-columns: 1fr;
+  gap: var(--space-2);
   align-content: start;
 }
 .card {
@@ -175,11 +169,11 @@
   display: flex;
   flex-direction: column;
   width: 100%;
-  gap: var(--space-3);
-  padding: var(--space-5) var(--space-5) var(--space-5) var(--space-6);
-  border: 0;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid rgba(124, 214, 235, 0.026);
   border-radius: var(--radius);
-  background: var(--glass-thick);
+  background: linear-gradient(180deg, rgba(118, 215, 234, 0.002), transparent 38%), rgba(1, 6, 13, 0.054);
   /* Parent .right-panel already runs backdrop-filter: blur(24px); stacking
    * another 20px here multiplied the blur radius and washed the card out.
    * (2026-04-24 glass audit.)
@@ -193,7 +187,7 @@
    * combined-alpha ceiling against the right-panel's --glass-dense). */
   box-shadow:
     var(--rim-top),
-    inset 0 0 0 1px rgba(124, 214, 235, 0.024);
+    inset 0 0 0 1px rgba(98, 190, 222, 0.008);
   /* Phase 1 nested layered card: rim-top (specular top highlight) +
    * rim-hairline (Vercel-style 1px shadow-as-border) compose to make
    * the card read as a lifted glass surface over the right-panel. */
@@ -210,8 +204,8 @@
 }
 /* Interactive session card — thicker left stripe with terminal icon glow */
 .cardInteractive::before {
-  width: 4px;
-  background: var(--session-accent, var(--ctp-mauve));
+  width: 2px;
+  background: color-mix(in srgb, var(--session-accent, var(--ctp-mauve)) 54%, transparent);
 }
 
 /* Session-colored left stripe */
@@ -221,8 +215,8 @@
   left: 0;
   top: 0;
   bottom: 0;
-  width: 3px;
-  background: var(--session-dim, var(--gold-dim));
+  width: 2px;
+  background: color-mix(in srgb, var(--session-dim, var(--gold-dim)) 62%, transparent);
   border-radius: var(--radius) 0 0 var(--radius);
   transition:
     background var(--duration-normal),
@@ -233,7 +227,7 @@
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, var(--session-subtle, rgba(200, 160, 80, 0.045)), transparent 58%);
+  background: linear-gradient(90deg, var(--session-subtle, rgba(200, 160, 80, 0.014)), transparent 62%);
   pointer-events: none;
   opacity: 0;
   transition: opacity var(--duration-slow) var(--ease-silk);
@@ -249,44 +243,45 @@
    * Was 4 raw shadow layers with duplicated rgba values. */
   box-shadow:
     var(--rim-top),
-    inset 0 0 0 1px var(--session-subtle, rgba(200, 160, 80, 0.08)),
-    0 4px 12px rgba(0, 0, 0, 0.1);
+    inset 0 0 0 1px color-mix(in srgb, var(--session-accent, var(--gold)) 10%, rgba(98, 190, 222, 0.012)),
+    0 2px 8px rgba(0, 0, 0, 0.1);
   transform: none;
 }
 .card:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--gold) 72%, transparent);
-  outline-offset: 2px;
+  outline-offset: -2px;
 }
 .card:hover::before {
-  background: var(--session-accent, var(--gold));
-  box-shadow: 0 0 6px var(--session-glow, rgba(200, 160, 80, 0.4));
+  background: color-mix(in srgb, var(--session-accent, var(--gold)) 70%, transparent);
+  box-shadow: none;
 }
 .card:hover::after {
-  opacity: 1;
+  opacity: 0.48;
 }
 
 /* Active card */
 .cardActive {
-  background: linear-gradient(90deg, var(--session-subtle, rgba(200, 160, 80, 0.1)), transparent 62%), var(--glass-thick);
+  background:
+    linear-gradient(90deg, var(--session-subtle, rgba(200, 160, 80, 0.018)), transparent 64%), rgba(1, 7, 15, 0.12);
   /* Phase 1 H7: active shadow simplified — same 3-layer as hover
    * plus stronger session glow for selected emphasis. */
   box-shadow:
     var(--rim-top),
-    inset 0 0 0 1px var(--session-accent, var(--gold)),
-    0 4px 14px rgba(0, 0, 0, 0.12);
+    inset 0 0 0 1px color-mix(in srgb, var(--session-accent, var(--gold)) 22%, rgba(98, 190, 222, 0.016)),
+    0 2px 8px rgba(0, 0, 0, 0.12);
 }
 .cardActive::before {
-  background: var(--session-accent, var(--gold));
-  box-shadow: 0 0 10px var(--session-glow, rgba(200, 160, 80, 0.6));
+  background: color-mix(in srgb, var(--session-accent, var(--gold)) 76%, transparent);
+  box-shadow: none;
 }
 .cardActive::after {
-  opacity: 1;
+  opacity: 0.58;
 }
 
 .cardTop {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+  gap: var(--space-3);
 }
 .statusDot {
   width: 6px; /* Phase 1: status dot 統一 (was 7px) */
@@ -314,6 +309,7 @@
   color: var(--gold);
   font-family: var(--font-mono);
   font-weight: var(--weight-medium);
+  opacity: 0.58;
 }
 .permBadge {
   display: inline-flex;
@@ -351,7 +347,7 @@
 /* Progress bar — session-colored */
 .progressTrack {
   height: 2px;
-  background: rgba(3, 9, 16, 0.28);
+  background: rgba(0, 4, 10, 0.32);
   border-radius: 1px;
   margin-top: var(--space-1);
   overflow: hidden;
@@ -360,6 +356,7 @@
   height: 100%;
   border-radius: 1px;
   background: var(--session-accent, var(--gold));
+  opacity: 0.72;
   transition: width var(--duration-normal) var(--ease-silk);
   position: relative;
 }
@@ -367,12 +364,13 @@
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, transparent 0%, rgba(158, 232, 242, 0.22) 50%, transparent 100%);
+  background: linear-gradient(90deg, transparent 0%, rgba(158, 232, 242, 0.12) 50%, transparent 100%);
   transform: translateX(-100%);
   opacity: 0;
   transition: opacity var(--duration-fast);
 }
-.card[data-live="true"] .progressBar::after {
+.cardActive[data-live="true"] .progressBar::after,
+.card:focus-within[data-live="true"] .progressBar::after {
   opacity: 1;
   animation: progressShimmer 1.6s var(--ease-inout) infinite;
 }
@@ -441,37 +439,27 @@
   padding: var(--space-3) var(--space-4);
   border: 0;
   border-radius: var(--radius-sm);
-  background: rgba(3, 9, 16, 0.12);
+  background: rgba(2, 8, 16, 0.22);
   box-shadow:
     var(--rim-top),
-    inset 0 0 0 1px rgba(124, 214, 235, 0.024);
+    inset 0 0 0 1px rgba(98, 190, 222, 0.02);
   color: var(--text-secondary);
   font: inherit;
   text-align: left;
   cursor: pointer;
 }
 .sessionActivitySummary:hover {
-  background: rgba(6, 15, 24, 0.2);
+  background: rgba(3, 12, 22, 0.3);
   color: var(--text-primary);
 }
 .sessionActivitySummary:focus-visible {
   outline: 2px solid var(--focus-ring);
-  outline-offset: 1px;
+  outline-offset: -2px;
 }
 .sessionActivityMeta {
   color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
-}
-.sessionActivitySummary .logEntry {
-  min-width: 0;
-  padding: 0;
-}
-.sessionActivitySummary .logContent {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  word-break: normal;
 }
 .logHeader {
   padding: var(--space-4) var(--space-6);
@@ -480,8 +468,8 @@
   font-family: var(--font-mono);
 }
 .logList {
-  flex: 1;
-  overflow-y: auto;
+  flex: 0 0 auto;
+  overflow: hidden;
   padding: 0 var(--space-5) var(--space-4);
   font-size: var(--text-sm);
   font-family: var(--font-mono);
@@ -497,8 +485,10 @@
   flex-shrink: 0;
 }
 .logContent {
+  min-width: 0;
   color: var(--text-secondary);
-  word-break: break-all;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 .log_tool_use .logContent {
   color: var(--ctp-blue);
@@ -512,6 +502,16 @@
 .log_system .logContent {
   color: var(--text-muted);
   font-style: italic;
+}
+.sessionActivitySummary .logEntry {
+  min-width: 0;
+  padding: 0;
+}
+.sessionActivitySummary .logContent {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  word-break: normal;
 }
 
 .activityDot {
@@ -546,6 +546,7 @@
   align-items: center;
   gap: var(--space-3);
   margin-top: var(--space-2);
+  min-width: 0;
 }
 .cardStatusLabel {
   font-size: var(--text-sm);
@@ -577,6 +578,15 @@
   gap: var(--space-1); /* 2px */
   font-size: var(--text-xs);
   color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.card:not(:hover):not(:focus-within) .cardPct {
+  opacity: 0.5;
+}
+
+.card:not(:hover):not(:focus-within) .cardFiles {
+  opacity: 0.46;
 }
 
 /* Overflow icon for secondary session metadata (permission mode + detected
@@ -592,6 +602,7 @@
   border: 0;
   background: transparent;
   color: var(--text-muted);
+  opacity: 0.7;
   cursor: help;
   border-radius: var(--radius-sm);
   transition:
@@ -604,18 +615,32 @@
 }
 .moreInfo:focus-visible {
   outline: 2px solid var(--gold);
-  outline-offset: 1px;
+  outline-offset: -2px;
+}
+.card:not(:hover):not(:focus-within) .moreInfo {
+  opacity: 0.24;
+  max-width: 0;
+  overflow: hidden;
+  margin-left: calc(-1 * var(--space-3));
+  pointer-events: none;
 }
 
 /* Watchdog variant */
 .cardWatchdog {
-  border-color: rgba(124, 58, 237, 0.15);
+  border-color: rgba(124, 58, 237, 0.18);
+  box-shadow:
+    var(--rim-top),
+    inset 0 0 0 1px rgba(124, 58, 237, 0.04);
 }
 .cardWatchdog::before {
   background: var(--purple-dim);
 }
 .cardWatchdog:hover {
   border-color: var(--purple);
+  box-shadow:
+    var(--rim-top),
+    inset 0 0 0 1px rgba(124, 58, 237, 0.14),
+    0 2px 8px rgba(0, 0, 0, 0.1);
 }
 .cardWatchdog:hover::before {
   background: var(--purple);
@@ -718,7 +743,7 @@
 }
 .modelSelect:focus-visible {
   outline: 2px solid var(--focus-ring);
-  outline-offset: 1px;
+  outline-offset: -2px;
   border-color: var(--gold);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--gold) 18%, transparent);
 }
@@ -741,7 +766,7 @@
 }
 .promptField:focus-visible {
   outline: 2px solid var(--focus-ring);
-  outline-offset: 1px;
+  outline-offset: -2px;
   border-color: var(--gold);
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--gold) 18%, transparent),
@@ -752,27 +777,12 @@
 }
 
 /* ─── Card entry animation ─── */
-.card {
-  animation: cardEnter var(--duration-normal) var(--ease-out) backwards;
-}
-@keyframes cardEnter {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .card,
   .budgetWarn,
   .overBudgetChip,
   .bulkBar,
   .progressBar::after {
-    animation: none !important;
     transition: none !important;
   }
   .progressBar {
@@ -907,7 +917,11 @@
 }
 
 .cardSelected {
-  box-shadow: 0 0 0 2px var(--gold) inset;
+  box-shadow:
+    var(--rim-top),
+    inset 0 0 0 1px color-mix(in srgb, var(--session-accent, var(--gold)) 20%, rgba(98, 190, 222, 0.016)),
+    inset 0 0 0 2px color-mix(in srgb, var(--gold) 72%, transparent),
+    0 2px 8px rgba(0, 0, 0, 0.12);
 }
 
 /* ─── Orchestra role badge ─── */
@@ -919,12 +933,15 @@
   border-radius: var(--radius-sm);
   font-size: var(--text-2xs);
   font-family: var(--font-ui);
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-medium);
   line-height: var(--leading-tight);
   text-transform: none;
   letter-spacing: 0;
   white-space: nowrap;
   flex-shrink: 0;
+  background: color-mix(in srgb, var(--role-color, var(--gold)) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--role-color, var(--gold)) 24%, transparent);
+  color: color-mix(in srgb, var(--role-color, var(--gold)) 74%, var(--text-secondary));
 }
 
 /* ─── File conflict badge ─── */
@@ -1040,9 +1057,7 @@
 /* ─── Session Context Menu ─── */
 .ctxMenu {
   min-width: 180px;
-  background:
-    linear-gradient(180deg, rgba(132, 221, 239, 0.014), transparent 30%),
-    rgba(5, 13, 21, 0.38);
+  background: linear-gradient(180deg, rgba(132, 221, 239, 0.014), transparent 30%), rgba(5, 13, 21, 0.38);
   backdrop-filter: var(--material-panel-filter);
   -webkit-backdrop-filter: var(--material-panel-filter);
   border: 1px solid rgba(124, 214, 235, 0.07);
@@ -1094,19 +1109,21 @@
 
 /* ─── Tab badge ─── */
 .tabBadge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 var(--space-2);
-  border-radius: var(--radius);
+  min-width: 13px;
+  height: 13px;
+  padding: 0 3px;
+  border-radius: var(--radius-pill);
   background: var(--gold-dim);
   color: var(--gold);
-  font-size: var(--text-2xs);
+  font-size: 9px;
   font-weight: var(--weight-semibold);
   font-family: var(--font-mono);
-  margin-left: var(--space-2);
   line-height: 1;
 }
 
@@ -1167,8 +1184,9 @@
 }
 
 .parallelView {
-  flex: 1;
-  overflow-y: auto;
+  flex: 0 0 auto;
+  min-width: 0;
+  overflow: hidden;
   padding: var(--space-4) var(--space-5);
   display: flex;
   flex-direction: column;
@@ -1238,8 +1256,8 @@
 
 .parallelLogs {
   padding: var(--space-2) var(--space-4) var(--space-3);
-  max-height: 80px;
-  overflow-y: auto;
+  max-height: none;
+  overflow: hidden;
   font-size: var(--text-xs);
   font-family: var(--font-mono);
 }

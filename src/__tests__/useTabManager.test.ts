@@ -5,6 +5,7 @@ import { useTabManager } from "../shared/hooks/useTabManager";
 // Clear localStorage before each test
 beforeEach(() => {
   localStorage.clear();
+  window.history.replaceState(null, "", "/");
 });
 
 describe("useTabManager", () => {
@@ -139,5 +140,28 @@ describe("useTabManager", () => {
       result.current.reorderTab(before[0], before[0]);
     });
     expect(result.current.tabs.map((t) => t.id)).toEqual(before);
+  });
+
+  it("uses a deterministic single tab for dev visual QA", () => {
+    localStorage.setItem(
+      "aether:tabs",
+      JSON.stringify([
+        { id: "saved-1", label: "Old", shell: "powershell" },
+        { id: "saved-2", label: "Old 2", shell: "cmd" },
+      ]),
+    );
+    window.history.replaceState(null, "", "/?aetherVisualQa=1&projectPath=C:/work/Aether_Terminal");
+
+    const { result } = renderHook(() => useTabManager("powershell"));
+
+    expect(result.current.tabs).toEqual([
+      {
+        id: "tab-visual-qa",
+        label: "Aether_Terminal",
+        shell: "powershell",
+        cwd: "C:/work/Aether_Terminal",
+      },
+    ]);
+    expect(result.current.activeTabId).toBe("tab-visual-qa");
   });
 });

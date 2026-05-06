@@ -22,6 +22,23 @@ function createTab(shell: ShellType, cwd?: string): Tab {
   return { id, label, shell, cwd };
 }
 
+function readVisualQaProjectPath(): string | null {
+  if (!import.meta.env.DEV || typeof window === "undefined") return null;
+  const params = new URLSearchParams(window.location.search);
+  let storedEnabled = false;
+  let storedProject: string | null = null;
+  try {
+    storedEnabled = window.localStorage.getItem("aether:visualQa") === "1";
+    storedProject = window.localStorage.getItem("aether:visualQaProject");
+  } catch {
+    /* storage may be unavailable in private/test contexts */
+  }
+  const enabled =
+    params.get("aetherVisualQa") === "1" || params.get("visualQa") === "1" || storedEnabled;
+  if (!enabled) return null;
+  return (params.get("projectPath") || storedProject || "C:/Users/owner/Aether_Terminal").replace(/\\/g, "/");
+}
+
 // Validate that a parsed tab has the minimum shape we need. Without this,
 // a corrupted localStorage entry — or an older app version that stored a
 // different schema — would surface as a TypeError later when callers do
@@ -65,6 +82,16 @@ function saveTabs(tabs: Tab[], activeId: string) {
 export function useTabManager(defaultShell: ShellType = "powershell") {
   // Initialize tabs and activeTabId together to keep them in sync
   const [initialState] = useState(() => {
+    const visualQaProjectPath = readVisualQaProjectPath();
+    if (visualQaProjectPath) {
+      const tab: Tab = {
+        id: "tab-visual-qa",
+        label: visualQaProjectPath.split("/").filter(Boolean).pop() ?? "Aether_Terminal",
+        shell: defaultShell,
+        cwd: visualQaProjectPath,
+      };
+      return { tabs: [tab], activeId: tab.id };
+    }
     const saved = loadSavedTabs();
     const tabs = saved ?? [createTab(defaultShell)];
     let activeId: string;

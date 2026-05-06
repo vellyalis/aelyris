@@ -2,6 +2,11 @@ import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NativeTerminalArea } from "../features/terminal/NativeTerminalArea";
+import {
+  IME_DIAGNOSTIC_EVENT,
+  IME_DIAGNOSTIC_STORAGE_KEY,
+  type ImeDiagnosticDetail,
+} from "../features/terminal/hooks/useCanvasIME";
 
 function installCanvasMock() {
   const noop = vi.fn();
@@ -50,6 +55,16 @@ class MockResizeObserver {
   disconnect() {}
 }
 
+function deferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 describe("NativeTerminalArea", () => {
   beforeEach(() => {
     installCanvasMock();
@@ -59,6 +74,7 @@ describe("NativeTerminalArea", () => {
   });
   afterEach(() => {
     cleanup();
+    localStorage.removeItem(IME_DIAGNOSTIC_STORAGE_KEY);
     vi.restoreAllMocks();
   });
 
@@ -95,6 +111,31 @@ describe("NativeTerminalArea", () => {
     await waitFor(() => expect(resizePty).toHaveBeenCalledWith("term-42", args.cols, args.rows));
   });
 
+  it("attaches an existing PTY without spawning a replacement", async () => {
+    const spawnPty = vi.fn().mockResolvedValue("term-new");
+    const resizePty = vi.fn();
+    const onReady = vi.fn();
+
+    const { container } = render(
+      <NativeTerminalArea
+        attachedTerminalId="term-attached"
+        onTerminalReady={onReady}
+        spawnPty={spawnPty}
+        resizePty={resizePty}
+        subscribeOutput={async () => () => {}}
+      />,
+    );
+
+    await waitFor(() => expect(onReady).toHaveBeenCalledWith("term-attached"));
+    expect(spawnPty).not.toHaveBeenCalled();
+    await waitFor(() => expect(container.querySelector("[data-testid='terminal-canvas']")).not.toBeNull());
+    const canvas = container.querySelector("[data-testid='terminal-canvas']") as HTMLCanvasElement;
+    expect(canvas.getAttribute("data-terminal-id")).toBe("term-attached");
+    await waitFor(() =>
+      expect(resizePty).toHaveBeenCalledWith("term-attached", expect.any(Number), expect.any(Number)),
+    );
+  });
+
   it("renders the IME input bar on mount (always visible)", async () => {
     const spawnPty = vi.fn().mockResolvedValue("term-perm");
     const { container } = render(<NativeTerminalArea spawnPty={spawnPty} subscribeOutput={async () => () => {}} />);
@@ -102,6 +143,164 @@ describe("NativeTerminalArea", () => {
     // The bar sits at the bottom and is always mounted; we don't conditionally
     // render it based on AI-CLI detection.
     expect(container.querySelector("[aria-label='ターミナル入力バー']")).not.toBeNull();
+  });
+
+  it("routes direct canvas input through the pane writer", async () => {
+    const spawnPty = vi.fn().mockResolvedValue("term-write");
+    const writePty = vi.fn();
+    const { container } = render(
+      <NativeTerminalArea spawnPty={spawnPty} writePty={writePty} subscribeOutput={async () => () => {}} />,
+    );
+
+    await waitFor(() => expect(container.querySelector("[data-testid='terminal-canvas']")).not.toBeNull());
+    const textarea = container.querySelector("[data-testid='terminal-ime-textarea']") as HTMLTextAreaElement;
+
+    fireEvent.input(textarea, { data: "a" });
+
+    expect(writePty).toHaveBeenCalledWith("term-write", "a");
+  });
+
+  it("keeps PowerShell direct textarea input on the browser input path through Enter", async () => {
+    const spawnPty = vi.fn().mockResolvedValue("term-powershell-direct");
+    const writePty = vi.fn();
+    const { container } = render(
+      <NativeTerminalArea
+        shell="powershell"
+        spawnPty={spawnPty}
+        writePty={writePty}
+        subscribeOutput={async () => () => {}}
+      />,
+    );
+
+    await waitFor(() => expect(container.querySelector("[data-testid='terminal-canvas']")).not.toBeNull());
+    const textarea = container.querySelector("[data-testid='terminal-ime-textarea']") as HTMLTextAreaElement;
+    textarea.focus();
+
+    for (const ch of "Get-Location") {
+      fireEvent.keyDown(textarea, { key: ch });
+      fireEvent.input(textarea, { data: ch });
+    }
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    const payloads = writePty.mock.calls.map(([, data]) => data);
+    expect(payloads.join("")).toBe("Get-Location\r");
+    expect(payloads.at(-1)).toBe("\r");
+  });
+
+  it("normalizes LF paste to CR for PowerShell direct input", async () => {
+    const spawnPty = vi.fn().mockResolvedValue("term-powershell-paste");
+    const writePty = vi.fn();
+    const { container } = render(
+      <NativeTerminalArea
+        shell="powershell"
+        spawnPty={spawnPty}
+        writePty={writePty}
+        subscribeOutput={async () => () => {}}
+      />,
+    );
+
+    await waitFor(() => expect(container.querySelector("[data-testid='terminal-canvas']")).not.toBeNull());
+    const textarea = container.querySelector("[data-testid='terminal-ime-textarea']") as HTMLTextAreaElement;
+    const pasteEvent = new Event("paste", {
+      bubbles: true,
+      cancelable: true,
+    }) as ClipboardEvent;
+    Object.defineProperty(pasteEvent, "clipboardData", {
+      value: {
+        getData: (type: string) => (type === "text" || type === "text/plain" ? "Get-Location\n" : ""),
+      },
+    });
+
+    act(() => {
+      textarea.dispatchEvent(pasteEvent);
+    });
+
+    expect(writePty).toHaveBeenCalledWith("term-powershell-paste", "Get-Location\r");
+    expect(pasteEvent.defaultPrevented).toBe(true);
+  });
+
+  it("surfaces direct input write failures instead of swallowing them", async () => {
+    const spawnPty = vi.fn().mockResolvedValue("term-write-fail");
+    const writePty = vi.fn().mockRejectedValue(new Error("PTY writer closed"));
+    const { container } = render(
+      <NativeTerminalArea spawnPty={spawnPty} writePty={writePty} subscribeOutput={async () => () => {}} />,
+    );
+
+    await waitFor(() => expect(container.querySelector("[data-testid='terminal-canvas']")).not.toBeNull());
+    const textarea = container.querySelector("[data-testid='terminal-ime-textarea']") as HTMLTextAreaElement;
+
+    fireEvent.input(textarea, { data: "a" });
+
+    await waitFor(() => expect(container.querySelector("[role='alert']")?.textContent).toContain("PTY writer closed"));
+  });
+
+  it("shows an opt-in terminal input diagnostics overlay without raw text", async () => {
+    localStorage.setItem(IME_DIAGNOSTIC_STORAGE_KEY, "1");
+    vi.spyOn(console, "debug").mockImplementation(() => {});
+    const spawnPty = vi.fn().mockResolvedValue("term-diag");
+    const writePty = vi.fn();
+    const { container } = render(
+      <NativeTerminalArea
+        shell="powershell"
+        spawnPty={spawnPty}
+        writePty={writePty}
+        subscribeOutput={async () => () => {}}
+      />,
+    );
+
+    await waitFor(() => expect(container.querySelector("[data-testid='terminal-canvas']")).not.toBeNull());
+    const overlay = await waitFor(() => {
+      const el = container.querySelector("[data-testid='terminal-input-diagnostics']");
+      if (!el) throw new Error("diagnostics overlay not mounted");
+      return el as HTMLElement;
+    });
+    const textarea = container.querySelector("[data-testid='terminal-ime-textarea']") as HTMLTextAreaElement;
+
+    fireEvent.input(textarea, { data: "機密" });
+    await waitFor(() => expect(overlay.textContent).toContain("canvas"));
+    expect(overlay.textContent).toContain("term-diag");
+    expect(overlay.textContent).toContain("2 chars");
+    expect(overlay.textContent).toContain("Write pathcanvas");
+    expect(overlay.textContent).toContain("Eventcommit");
+    expect(overlay.textContent).not.toContain("機密");
+
+    const detail: ImeDiagnosticDetail = {
+      phase: "keydown",
+      terminalId: "term-diag",
+      timestamp: 1,
+      composing: true,
+      active: true,
+      valueLength: 0,
+      scrollLeft: 0,
+      selectionStart: 0,
+      selectionEnd: 0,
+      anchorLeft: "12px",
+      anchorTop: "18px",
+      anchorWidth: "88px",
+      anchorHeight: "18px",
+      viewportWidth: 800,
+      viewportHeight: 600,
+      devicePixelRatio: 1.25,
+      candidateLeft: "120",
+      candidateTop: "44",
+      anchorMode: "ai-cli-input",
+      key: "F13",
+      keyCode: 124,
+      ignored: true,
+      dropped: true,
+      writePath: "ignored",
+      reason: "unmapped-key",
+    };
+    act(() => {
+      window.dispatchEvent(new CustomEvent<ImeDiagnosticDetail>(IME_DIAGNOSTIC_EVENT, { detail }));
+    });
+
+    await waitFor(() => expect(overlay.textContent).toContain("focused"));
+    expect(overlay.textContent).toContain("composing");
+    expect(overlay.textContent).toContain("Dropped keys1");
+    expect(overlay.textContent).toContain("Write pathignored");
+    expect(overlay.textContent).toContain("120, 44");
+    expect(overlay.textContent).toContain("keydown");
   });
 
   it("Ctrl+Shift+J moves focus into the IME input bar", async () => {
@@ -128,11 +327,14 @@ describe("NativeTerminalArea", () => {
     });
     await waitFor(() => expect(container.querySelector("input[placeholder='Search...']")).not.toBeNull());
     const input = container.querySelector("input[placeholder='Search...']") as HTMLInputElement;
-    // Esc closes the search bar.
+    const terminalInput = container.querySelector("[data-testid='terminal-ime-textarea']") as HTMLTextAreaElement;
+
+    // Esc closes the search bar and returns keyboard focus to the terminal.
     await act(async () => {
       fireEvent.keyDown(input, { key: "Escape" });
     });
     await waitFor(() => expect(container.querySelector("input[placeholder='Search...']")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(terminalInput));
   });
 
   it("leaves the canvas unmounted when PTY spawn fails", async () => {
@@ -154,14 +356,19 @@ describe("NativeTerminalArea", () => {
 
   it("shows a crash banner when pty-exit fires and respawns on Restart click", async () => {
     const spawnPty = vi.fn().mockResolvedValue("term-crash");
-    const respawnPty = vi.fn().mockResolvedValue(undefined);
+    const respawn = deferred();
+    const respawnPty = vi.fn(
+      (_args: { id: string; shell: string; cols: number; rows: number; cwd?: string }) => respawn.promise,
+    );
     let emitExit: ((info: { code: number | null; crashed: boolean }) => void) | null = null;
-    const subscribeExit = vi.fn(async (_id: string, onExit: (info: { code: number | null; crashed: boolean }) => void) => {
-      emitExit = onExit;
-      return () => {
-        emitExit = null;
-      };
-    });
+    const subscribeExit = vi.fn(
+      async (_id: string, onExit: (info: { code: number | null; crashed: boolean }) => void) => {
+        emitExit = onExit;
+        return () => {
+          emitExit = null;
+        };
+      },
+    );
 
     const { container } = render(
       <NativeTerminalArea
@@ -201,30 +408,121 @@ describe("NativeTerminalArea", () => {
     });
 
     await waitFor(() => expect(respawnPty).toHaveBeenCalledTimes(1));
+    expect(restartBtn.textContent).toBe("Restarting...");
+    expect(restartBtn.disabled).toBe(true);
     const respawnArgs = respawnPty.mock.calls[0][0];
     expect(respawnArgs.id).toBe("term-crash");
     expect(respawnArgs.shell).toBe("powershell");
     expect(respawnArgs.cwd).toBe("C:/tmp");
     expect(respawnArgs.cols).toBeGreaterThanOrEqual(20);
 
+    await act(async () => {
+      respawn.resolve();
+      await respawn.promise;
+    });
+
     // Banner clears after a successful respawn.
     await waitFor(() => expect(container.querySelector("[role='alert']")).toBeNull());
+  });
+
+  it("respawns from an external restart request", async () => {
+    const spawnPty = vi.fn().mockResolvedValue("term-external-restart");
+    const respawnPty = vi.fn().mockResolvedValue(undefined);
+    const forceRestartPty = vi.fn().mockResolvedValue(undefined);
+    const onComplete = vi.fn();
+
+    const { rerender } = render(
+      <NativeTerminalArea
+        shell="powershell"
+        cwd="C:/tmp"
+        spawnPty={spawnPty}
+        subscribeOutput={async () => () => {}}
+        respawnPty={respawnPty}
+        forceRestartPty={forceRestartPty}
+      />,
+    );
+
+    await waitFor(() => expect(spawnPty).toHaveBeenCalled());
+
+    rerender(
+      <NativeTerminalArea
+        shell="powershell"
+        cwd="C:/tmp"
+        spawnPty={spawnPty}
+        subscribeOutput={async () => () => {}}
+        respawnPty={respawnPty}
+        forceRestartPty={forceRestartPty}
+        restartRequest={{ sequence: 1, onComplete }}
+      />,
+    );
+
+    await waitFor(() => expect(forceRestartPty).toHaveBeenCalledTimes(1));
+    expect(forceRestartPty.mock.calls[0][0]).toMatchObject({
+      id: "term-external-restart",
+      shell: "powershell",
+      cwd: "C:/tmp",
+    });
+    expect(respawnPty).not.toHaveBeenCalled();
+    await waitFor(() => expect(onComplete).toHaveBeenCalledWith(null));
+
+    rerender(
+      <NativeTerminalArea
+        shell="powershell"
+        cwd="C:/tmp"
+        spawnPty={spawnPty}
+        subscribeOutput={async () => () => {}}
+        respawnPty={respawnPty}
+        forceRestartPty={forceRestartPty}
+        restartRequest={{ sequence: 1, onComplete }}
+      />,
+    );
+    expect(forceRestartPty).toHaveBeenCalledTimes(1);
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports external restart failures to the request owner", async () => {
+    const spawnPty = vi.fn().mockResolvedValue("term-external-restart-failed");
+    const forceRestartPty = vi.fn().mockRejectedValue(new Error("restart rejected"));
+    const onComplete = vi.fn();
+
+    const { rerender } = render(
+      <NativeTerminalArea
+        shell="powershell"
+        cwd="C:/tmp"
+        spawnPty={spawnPty}
+        subscribeOutput={async () => () => {}}
+        forceRestartPty={forceRestartPty}
+      />,
+    );
+
+    await waitFor(() => expect(spawnPty).toHaveBeenCalled());
+
+    rerender(
+      <NativeTerminalArea
+        shell="powershell"
+        cwd="C:/tmp"
+        spawnPty={spawnPty}
+        subscribeOutput={async () => () => {}}
+        forceRestartPty={forceRestartPty}
+        restartRequest={{ sequence: 1, onComplete }}
+      />,
+    );
+
+    await waitFor(() => expect(onComplete).toHaveBeenCalledWith("restart rejected"));
   });
 
   it("uses a softer message when the shell exited cleanly (code 0)", async () => {
     const spawnPty = vi.fn().mockResolvedValue("term-clean");
     let emitExit: ((info: { code: number | null; crashed: boolean }) => void) | null = null;
-    const subscribeExit = vi.fn(async (_id: string, onExit: (info: { code: number | null; crashed: boolean }) => void) => {
-      emitExit = onExit;
-      return () => {};
-    });
+    const subscribeExit = vi.fn(
+      async (_id: string, onExit: (info: { code: number | null; crashed: boolean }) => void) => {
+        emitExit = onExit;
+        return () => {};
+      },
+    );
 
     const { container } = render(
-      <NativeTerminalArea
-        spawnPty={spawnPty}
-        subscribeOutput={async () => () => {}}
-        subscribeExit={subscribeExit}
-      />,
+      <NativeTerminalArea spawnPty={spawnPty} subscribeOutput={async () => () => {}} subscribeExit={subscribeExit} />,
     );
 
     await waitFor(() => expect(subscribeExit).toHaveBeenCalled());

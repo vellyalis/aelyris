@@ -1,5 +1,6 @@
 import { ClipboardCheck, FolderSearch, GitBranch, Terminal } from "lucide-react";
-import { memo, type ReactNode } from "react";
+import { type CSSProperties, memo, type ReactNode } from "react";
+import styles from "./EmptyState.module.css";
 
 type EmptyPreset = "agents" | "files" | "tasks" | "worktrees";
 
@@ -29,49 +30,26 @@ export const EmptyState = memo(function EmptyState({ icon, preset, title, descri
   const presetColor = preset ? PRESET_COLORS[preset] : "var(--text-muted)";
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: "var(--space-5)",
-        padding: "var(--space-16)",
-        color: "var(--text-muted)",
-        textAlign: "center",
-      }}
-    >
+    <div className={styles.root}>
       {PresetIcon ? (
         <div
+          className={styles.presetIcon}
           aria-hidden="true"
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: "var(--radius-lg)",
-            background: `color-mix(in srgb, ${presetColor} 12%, transparent)`,
-            border: `1px solid color-mix(in srgb, ${presetColor} 25%, transparent)`,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
+          style={
+            {
+              "--empty-accent": presetColor,
+            } as CSSProperties
+          }
         >
-          <PresetIcon size={20} color={presetColor} strokeWidth={1.5} />
+          <PresetIcon size={18} color={presetColor} strokeWidth={1.5} />
         </div>
       ) : icon ? (
-        <span aria-hidden="true" style={{ fontSize: "var(--text-4xl)", opacity: 0.5 }}>
+        <span className={styles.customIcon} aria-hidden="true">
           {icon}
         </span>
       ) : null}
-      <span
-        style={{ fontSize: "var(--text-base)", fontWeight: "var(--weight-medium)", color: "var(--text-secondary)" }}
-      >
-        {title}
-      </span>
-      {description && (
-        <span style={{ fontSize: "var(--text-sm)", maxWidth: 220, lineHeight: "var(--leading-normal)" }}>
-          {description}
-        </span>
-      )}
+      <span className={styles.title}>{title}</span>
+      {description && <span className={styles.description}>{description}</span>}
     </div>
   );
 });

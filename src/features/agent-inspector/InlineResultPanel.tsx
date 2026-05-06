@@ -85,6 +85,13 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
   }, [session.changedFileDetails]);
 
   const activeFile = uniqueFiles[activeIndex];
+  const visibleFileTabs = useMemo(() => {
+    if (uniqueFiles.length <= 3) {
+      return uniqueFiles.map((file, index) => ({ file, index }));
+    }
+    const start = Math.min(Math.max(activeIndex - 1, 0), uniqueFiles.length - 3);
+    return uniqueFiles.slice(start, start + 3).map((file, offset) => ({ file, index: start + offset }));
+  }, [activeIndex, uniqueFiles]);
 
   // Mirror `diffs` into a ref so the load-diff effect can read freshness
   // without listing `diffs` as a dep — that would re-fire on every
@@ -162,12 +169,17 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
   if (uniqueFiles.length === 0) {
     return (
       <div className={styles.panel}>
-        <div className={styles.header}>
-          <span className={styles.title}>No file changes</span>
-          <button type="button" className={styles.closeBtn} onClick={onClose} aria-label="Close">
-            <X size={12} />
-          </button>
-        </div>
+        <PanelHeader
+          dense
+          leadingIcon={<FileText size={12} />}
+          title={session.name}
+          subtitle="No file changes"
+          actions={
+            <button type="button" className={styles.closeBtn} onClick={onClose} aria-label="Close">
+              <X size={12} />
+            </button>
+          }
+        />
         <div className={styles.empty}>This agent session has not modified any files yet.</div>
       </div>
     );
@@ -192,7 +204,7 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
 
       {/* File tabs */}
       <div className={styles.fileTabs}>
-        {uniqueFiles.map((f, i) => {
+        {visibleFileTabs.map(({ file: f, index: i }) => {
           const name = f.path.split(/[/\\]/).pop() ?? f.path;
           return (
             <button
@@ -277,7 +289,8 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
             title="Revert to original"
             aria-label="Revert file"
           >
-            <RotateCcw size={10} /> Revert
+            <RotateCcw size={10} />
+            <span className={styles.actionLabel}>Revert</span>
           </button>
           <button
             type="button"
@@ -293,7 +306,7 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
             aria-label={activeIndex < uniqueFiles.length - 1 ? "Next file" : "Done reviewing"}
           >
             <ChevronRight size={10} aria-hidden="true" />
-            {activeIndex < uniqueFiles.length - 1 ? "Next" : "Done"}
+            <span className={styles.actionLabel}>{activeIndex < uniqueFiles.length - 1 ? "Next" : "Done"}</span>
           </button>
           {onStartAgent && (
             <button
@@ -308,7 +321,7 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
               title="Ask AI to review this file"
               aria-label="Ask AI to review"
             >
-              AI Review
+              AI
             </button>
           )}
         </div>

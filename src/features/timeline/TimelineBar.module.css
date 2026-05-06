@@ -10,9 +10,7 @@
   padding: 0 var(--space-2);
   min-height: 24px;
   box-sizing: border-box;
-  background:
-    linear-gradient(180deg, rgba(142, 226, 241, 0.01), transparent 62%),
-    rgba(3, 10, 18, 0.035);
+  background: linear-gradient(180deg, rgba(142, 226, 241, 0.01), transparent 62%), rgba(3, 10, 18, 0.035);
   border-radius: var(--radius-sm);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.016),
@@ -22,11 +20,22 @@
   user-select: none;
 }
 
+.root[data-empty="true"] {
+  min-height: 18px;
+  padding: 0 var(--space-2);
+  background: transparent;
+  box-shadow: none;
+}
+
 .label {
   color: color-mix(in srgb, var(--ctp-cyan) 62%, var(--text-secondary));
   font-weight: var(--weight-semibold);
   letter-spacing: 0;
   flex: 0 0 auto;
+}
+
+.root[data-empty="true"] .label {
+  opacity: 0.72;
 }
 
 .ticks {
@@ -72,10 +81,12 @@
   box-shadow: 0 0 4px color-mix(in srgb, var(--ctp-cyan) 80%, transparent);
 }
 
-.empty {
-  color: var(--text-muted);
-  font-style: normal;
-  padding-left: var(--space-2);
+.emptyRail {
+  flex: 1 1 auto;
+  min-width: 24px;
+  height: 1px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--ctp-cyan) 18%, transparent), transparent);
+  opacity: 0.38;
 }
 
 .activePill {
@@ -108,8 +119,8 @@
 
 .markBtn {
   flex: 0 0 auto;
-  background: color-mix(in srgb, var(--ctp-magenta) 6%, transparent);
-  border: 1px solid color-mix(in srgb, var(--ctp-magenta) 16%, transparent);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--ctp-magenta) 10%, transparent);
   color: color-mix(in srgb, var(--ctp-magenta) 62%, var(--text-secondary));
   padding: 0 var(--space-3);
   border-radius: var(--radius-sm);
@@ -119,7 +130,7 @@
 }
 
 .markBtn:hover {
-  background: color-mix(in srgb, var(--ctp-magenta) 16%, transparent);
+  background: color-mix(in srgb, var(--ctp-magenta) 9%, transparent);
   color: var(--text-primary);
 }
 

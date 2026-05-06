@@ -14,8 +14,8 @@
   gap: var(--space-2);
   padding: var(--space-3) var(--space-5);
   border: none;
-  background: var(--white-3);
-  border-bottom: 1px solid var(--border);
+  background: transparent;
+  box-shadow: none;
   color: var(--text-primary);
   font-size: var(--text-base);
   font-weight: var(--weight-semibold);
@@ -25,18 +25,19 @@
   letter-spacing: 0;
 }
 .breadcrumb:hover {
-  background: var(--row-hover);
+  background: rgba(76, 184, 220, 0.018);
 }
 .rootHeader {
   display: flex;
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-5);
-  font-size: var(--text-md);
-  font-weight: var(--weight-semibold);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
   color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+  text-transform: none;
+  letter-spacing: 0;
+  opacity: 0.78;
 }
 .rootName {
   overflow: hidden;
@@ -47,6 +48,7 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding-bottom: var(--space-4);
 }
 
@@ -81,7 +83,7 @@
   height: 22px;
 }
 .row:hover {
-  background: var(--row-hover);
+  background: rgba(76, 184, 220, 0.018);
   color: var(--text-primary);
 }
 /* Keyboard-nav cursor — `rowFocused` marks the current treeitem under the
@@ -89,9 +91,9 @@
    sync, but survives mouse-leave so the cursor position is still legible
    after the user moved the mouse away. */
 .row.rowFocused {
-  background: var(--row-hover);
+  background: rgba(76, 184, 220, 0.022);
   color: var(--text-primary);
-  box-shadow: inset 2px 0 0 var(--gold);
+  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--gold) 42%, transparent);
 }
 .row:focus-visible {
   outline: 2px solid var(--gold);
@@ -123,21 +125,22 @@
   transition: color var(--duration-fast);
 }
 .fileChanged {
-  color: var(--status-edit);
+  color: var(--text-secondary);
 }
 .fileChanged[data-status="added"] {
-  color: var(--status-idle);
+  color: var(--text-secondary);
 }
 .fileChanged[data-status="deleted"] {
-  color: var(--ctp-red);
+  color: var(--text-secondary);
 }
 .fileChanged[data-status="untracked"] {
-  color: var(--ctp-green);
+  color: var(--text-secondary);
 }
 /* Pip glyph/color owned by shared GitStatusPip; keep the row-level layout
    hook here so the dot docks to the right edge. */
 .changeDot {
   margin-left: auto;
+  opacity: 0.68;
 }
 .spinner {
   font-size: var(--text-sm);
@@ -152,8 +155,8 @@
 .searchInput {
   width: 100%;
   padding: var(--space-2) var(--space-4);
-  background: var(--white-4);
-  border: 1px solid var(--border);
+  background: rgba(2, 8, 15, 0.08);
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
   color: var(--text-primary);
   font-size: var(--text-md);
@@ -161,7 +164,8 @@
   outline: none;
 }
 .searchInput:focus-visible {
-  outline: none !important;
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
   border-color: var(--gold);
 }
 .searchInput::placeholder {
@@ -184,17 +188,16 @@
   width: 100%;
   padding: var(--space-2) var(--space-5);
   font-size: var(--text-sm);
-  color: var(--gold);
+  color: color-mix(in srgb, var(--gold) 72%, var(--text-muted));
   font-family: var(--font-ui);
   border: none;
-  border-top: 1px solid var(--border);
   background: transparent;
   cursor: pointer;
   text-align: center;
   transition: background var(--duration-fast);
 }
 .changesBar:hover {
-  background: rgba(200, 160, 80, 0.06);
+  background: rgba(216, 183, 102, 0.022);
 }
 .changesBar:focus-visible {
   outline: 2px solid var(--gold);
@@ -204,13 +207,13 @@
 /* Context menu (Radix) */
 .ctxMenu {
   min-width: 160px;
-  background: var(--aether-bg-card);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid var(--white-10);
+  background: var(--popup-glass-bg);
+  backdrop-filter: var(--material-panel-filter);
+  -webkit-backdrop-filter: var(--material-panel-filter);
+  border: 1px solid var(--popup-glass-border);
   border-radius: var(--radius-sm);
   padding: var(--space-2);
-  box-shadow: var(--rim-top), var(--shadow-elevated);
+  box-shadow: var(--popup-glass-shadow);
   z-index: var(--z-dropdown);
   animation: ctxIn var(--duration-fast) var(--ease-out);
   will-change: transform, opacity;

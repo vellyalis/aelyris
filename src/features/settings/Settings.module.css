@@ -2,9 +2,11 @@
   position: fixed;
   inset: 0;
   z-index: var(--z-overlay);
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background:
+    linear-gradient(180deg, rgba(0, 12, 28, 0.1), rgba(0, 0, 0, 0.42)),
+    rgba(0, 0, 0, 0.38);
+  backdrop-filter: blur(3px) saturate(1.04) brightness(0.78);
+  -webkit-backdrop-filter: blur(3px) saturate(1.04) brightness(0.78);
 }
 
 .panel {
@@ -25,18 +27,19 @@
   width: var(--dialog-width-md);
   max-width: calc(100vw - var(--space-12));
   max-height: 80vh;
-  /* Switched from --bg-secondary (--glass-dense, 62% alpha) to the
-   * --dialog-surface token (92%) so the Settings content reads legibly
-   * over the scrim-blurred app. The previous combination was effectively
-   * stacking two semi-transparent dark layers and the panel body sank
-   * into the scrim visually (2026-04-25 live CDP review). */
-  background: var(--dialog-surface);
-  backdrop-filter: var(--dialog-surface-blur);
-  -webkit-backdrop-filter: var(--dialog-surface-blur);
-  border: 1px solid var(--white-10);
+  background:
+    linear-gradient(180deg, rgba(104, 214, 238, 0.024), transparent 28%),
+    linear-gradient(145deg, rgba(0, 126, 190, 0.054), transparent 46%),
+    rgba(4, 13, 23, 0.76);
+  backdrop-filter: blur(1px) saturate(1.05) brightness(0.8) contrast(1.08);
+  -webkit-backdrop-filter: blur(1px) saturate(1.05) brightness(0.8) contrast(1.08);
+  border: 1px solid rgba(128, 216, 235, 0.105);
   border-radius: var(--radius-dialog);
   overflow: hidden;
-  box-shadow: var(--rim-top), var(--shadow-dialog);
+  box-shadow:
+    var(--rim-top),
+    inset 0 0 0 1px rgba(80, 190, 224, 0.028),
+    0 18px 52px rgba(0, 0, 0, 0.34);
   display: flex;
   flex-direction: column;
 }
@@ -46,7 +49,8 @@
   align-items: center;
   justify-content: space-between;
   padding: var(--space-8) var(--space-10);
-  border-bottom: 1px solid var(--border);
+  background: rgba(0, 8, 18, 0.12);
+  border-bottom: 1px solid rgba(128, 216, 235, 0.055);
 }
 
 .title {
@@ -62,9 +66,9 @@
   align-items: center;
   justify-content: center;
   min-height: 30px;
-  background: var(--gold);
-  border: 1px solid color-mix(in srgb, var(--gold) 70%, var(--text-on-accent));
-  color: var(--text-on-accent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--gold) 88%, white 12%), var(--gold));
+  border: 1px solid color-mix(in srgb, var(--gold) 74%, black);
+  color: var(--aether-ink);
   font-size: var(--text-md);
   font-weight: var(--weight-semibold);
   font-family: var(--font-ui);
@@ -75,7 +79,7 @@
   box-shadow: var(--rim-top);
 }
 .saveBtn:hover {
-  background: color-mix(in srgb, var(--gold) 92%, white);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--gold) 94%, white 16%), var(--gold));
   opacity: 1;
 }
 
@@ -97,6 +101,7 @@
 .content {
   flex: 1;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: var(--space-8) var(--space-10);
 }
 
@@ -119,8 +124,12 @@
 .moodGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-3);
+  gap: var(--space-2);
   margin-top: var(--space-3);
+  padding: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  box-shadow: none;
 }
 
 .moodCard {
@@ -131,32 +140,59 @@
   align-items: center;
   gap: var(--space-3);
   min-width: 0;
-  min-height: 50px;
-  padding: var(--space-3);
+  min-height: 42px;
+  padding: var(--space-2) var(--space-3);
   text-align: left;
   color: var(--text-primary);
   background:
-    linear-gradient(135deg, color-mix(in srgb, var(--mood-a) 15%, transparent), transparent 58%),
-    color-mix(in srgb, var(--mood-c) 82%, transparent);
-  border: 1px solid color-mix(in srgb, var(--mood-a) 24%, var(--border));
-  border-radius: var(--radius);
-  box-shadow: var(--rim-top);
+    linear-gradient(135deg, color-mix(in srgb, var(--mood-a) 3%, transparent), transparent 62%),
+    rgba(1, 6, 13, 0.14);
+  border: 0;
+  border-radius: var(--radius-sm);
+  box-shadow:
+    var(--rim-top),
+    inset 0 0 0 1px rgba(98, 190, 222, 0.01);
   cursor: pointer;
+  transition:
+    background var(--duration-fast),
+    box-shadow var(--duration-fast),
+    color var(--duration-fast);
 }
 
-.moodCard:hover,
+.moodCard:hover {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--mood-a) 4%, transparent), transparent 62%),
+    rgba(3, 11, 20, 0.2);
+  box-shadow:
+    var(--rim-top),
+    inset 0 0 0 1px color-mix(in srgb, var(--mood-a) 14%, rgba(98, 190, 222, 0.012));
+}
+
 .moodCard[data-active="true"] {
-  border-color: color-mix(in srgb, var(--mood-a) 54%, var(--gold));
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--mood-a) 8%, transparent), transparent 58%),
+    rgba(3, 11, 20, 0.24);
   box-shadow:
     var(--rim-top-strong),
-    0 0 0 1px color-mix(in srgb, var(--mood-a) 20%, transparent),
-    0 8px 24px rgba(0, 0, 0, 0.16);
+    inset 2px 0 0 color-mix(in srgb, var(--mood-a) 74%, var(--gold)),
+    inset 0 0 0 1px color-mix(in srgb, var(--mood-a) 24%, rgba(98, 190, 222, 0.016));
+}
+
+.moodCard:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
 }
 
 .moodCard[data-mood="aether-sky"] {
   --mood-a: #78cfff;
   --mood-b: #f0cf7a;
   --mood-c: #1c3553;
+}
+
+.moodCard[data-mood="aether-moonwater"] {
+  --mood-a: #52d7ff;
+  --mood-b: #f5c7e3;
+  --mood-c: #06213a;
 }
 
 .moodCard[data-mood="aether-dream"] {
@@ -185,16 +221,17 @@
 
 .moodSwatch {
   position: relative;
-  width: 28px;
-  height: 28px;
+  width: 18px;
+  height: 18px;
   flex-shrink: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-pill);
   background:
     radial-gradient(circle at 72% 28%, var(--mood-b), transparent 28%),
     linear-gradient(135deg, var(--mood-a), var(--mood-c));
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.2),
-    0 0 0 1px rgba(255, 255, 255, 0.12);
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 0 0 1px rgba(255, 255, 255, 0.08);
+  opacity: 0.82;
 }
 
 .moodCopy {
@@ -208,8 +245,8 @@
   min-width: 0;
   overflow: hidden;
   color: var(--text-primary);
-  font-size: var(--text-base);
-  font-weight: var(--weight-semibold);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -217,8 +254,8 @@
 .moodTone {
   min-width: 0;
   overflow: hidden;
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
   line-height: var(--leading-normal);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -237,8 +274,8 @@
 .input {
   width: 100%;
   padding: var(--space-3) var(--space-5);
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
+  background: rgba(2, 8, 16, 0.28);
+  border: 1px solid rgba(128, 216, 235, 0.07);
   border-radius: var(--radius);
   color: var(--text-primary);
   font-size: var(--text-lg);
@@ -248,7 +285,8 @@
 
 .select:focus,
 .input:focus-visible {
-  outline: none !important;
+  outline: 2px solid var(--focus-ring) !important;
+  outline-offset: 1px;
   border-color: var(--accent);
 }
 
@@ -340,8 +378,8 @@
   flex-direction: column;
   gap: var(--space-2);
   padding: var(--space-4);
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
+  background: rgba(2, 8, 16, 0.24);
+  border: 1px solid rgba(128, 216, 235, 0.06);
   border-radius: var(--radius);
 }
 
@@ -386,7 +424,7 @@
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   color: var(--text-secondary);
-  background: var(--aether-bg);
+  background: rgba(1, 6, 13, 0.26);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
   word-break: break-all;
@@ -400,8 +438,8 @@
 }
 
 .shellBtn {
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
+  background: rgba(2, 8, 16, 0.26);
+  border: 1px solid rgba(128, 216, 235, 0.07);
   color: var(--text-primary);
   font-size: var(--text-sm);
   font-family: var(--font-ui);
@@ -412,7 +450,8 @@
 
 .shellBtn:hover:not(:disabled),
 .shellBtn:focus-visible {
-  outline: none;
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
   border-color: var(--gold);
 }
 

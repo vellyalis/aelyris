@@ -5,6 +5,11 @@ import { useCallback, useRef, useState } from "react";
  * Match is at the start of the echoed command, so e.g. `claude --resume` hits.
  */
 const AI_CLI_COMMAND = /^(?:claude|claude-code|codex|gemini|aider|cursor-agent|mentat|goose)\b/i;
+const ALT_SCREEN_SEQUENCE = /\x1b\[\?(?:1047|1048|1049)[hl]/;
+const AI_CLI_SCREEN_MARKER = /\b(?:Claude Code|Gemini CLI|Codex(?: CLI)?)\b/i;
+const AI_CLI_INPUT_MARKER =
+  /(?:Type your message|Ask me anything|Message Codex|Send a message|Enter your prompt|What can I help)/i;
+const TUI_BOX_MARKER = /[╭╮╰╯│┌┐└┘]/;
 
 /**
  * Prompts that plausibly belong to a host shell and may carry an AI CLI
@@ -55,6 +60,11 @@ function matchesEndPrompt(line: string): boolean {
   return false;
 }
 
+function matchesAiCliScreen(rawText: string, cleanText: string): boolean {
+  if (!AI_CLI_SCREEN_MARKER.test(cleanText)) return false;
+  return ALT_SCREEN_SEQUENCE.test(rawText) || AI_CLI_INPUT_MARKER.test(cleanText) || TUI_BOX_MARKER.test(cleanText);
+}
+
 export interface UseAICliDetection {
   /** True while a known AI CLI is believed to be in the foreground. */
   readonly active: boolean;
@@ -98,6 +108,11 @@ export function useAICliDetection(): UseAICliDetection {
     if (!text) return;
     // Strip CSI sequences before line splitting so prompt regex anchors work.
     const clean = text.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
+    if (!inSessionRef.current && matchesAiCliScreen(text, clean)) {
+      inSessionRef.current = true;
+      setActive(true);
+      return;
+    }
     const lines = clean.split(/\r?\n/);
     for (const rawLine of lines) {
       // PSReadLine repaints the current input by writing `\r<prompt><buf>`

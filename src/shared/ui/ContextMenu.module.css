@@ -1,12 +1,12 @@
 .menu {
   min-width: 180px;
-  background: var(--aether-bg-card);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid var(--white-10);
+  background: var(--popup-glass-bg);
+  backdrop-filter: var(--material-panel-filter);
+  -webkit-backdrop-filter: var(--material-panel-filter);
+  border: 1px solid var(--popup-glass-border);
   border-radius: var(--radius-sm);
   padding: var(--space-2);
-  box-shadow: var(--rim-top), var(--shadow-elevated);
+  box-shadow: var(--popup-glass-shadow);
   z-index: var(--z-dropdown);
   animation: ctxFadeIn var(--duration-fast) var(--ease-out);
   will-change: transform, opacity;
@@ -60,6 +60,6 @@
 
 .divider {
   height: 1px;
-  background: var(--white-6);
+  background: rgba(124, 214, 235, 0.035);
   margin: var(--space-2) var(--space-4);
 }

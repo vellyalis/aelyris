@@ -7,9 +7,7 @@ import type { AgentSession } from "../shared/types/agent";
 // when the conductor tab is active — the inner DAG fidelity is unrelated to
 // the tab-routing bug we're guarding against.
 vi.mock("@xyflow/react", () => ({
-  ReactFlow: ({ children }: { children?: React.ReactNode }) => (
-    <div data-testid="reactflow-mock">{children}</div>
-  ),
+  ReactFlow: ({ children }: { children?: React.ReactNode }) => <div data-testid="reactflow-mock">{children}</div>,
   Background: () => null,
   Controls: () => null,
   Handle: () => null,
@@ -81,11 +79,7 @@ describe("AgentInspector tab routing", () => {
 
   it("hides contextual tabs until their data exists", () => {
     render(
-      <AgentInspector
-        sessions={[baseSession("a", { logs: [] })]}
-        activeSessionId="a"
-        onSelectSession={() => {}}
-      />,
+      <AgentInspector sessions={[baseSession("a", { logs: [] })]} activeSessionId="a" onSelectSession={() => {}} />,
     );
 
     expect(screen.queryByLabelText("Activity")).toBeNull();
@@ -104,13 +98,7 @@ describe("AgentInspector tab routing", () => {
       }),
       baseSession("b"),
     ];
-    render(
-      <AgentInspector
-        sessions={sessions}
-        activeSessionId="a"
-        onSelectSession={() => {}}
-      />,
-    );
+    render(<AgentInspector sessions={sessions} activeSessionId="a" onSelectSession={() => {}} />);
 
     expect(screen.getByLabelText("Activity")).toBeTruthy();
     expect(screen.getByLabelText("Parallel sessions")).toBeTruthy();
@@ -126,31 +114,20 @@ describe("AgentInspector tab routing", () => {
         filesChanged: 1,
       }),
     ];
-    render(
-      <AgentInspector
-        sessions={sessions}
-        activeSessionId="a"
-        onSelectSession={() => {}}
-      />,
-    );
+    render(<AgentInspector sessions={sessions} activeSessionId="a" onSelectSession={() => {}} />);
 
     expect(screen.queryByLabelText("File diffs")).toBeNull();
   });
 
   it("conductor tab does not also render the parallel-pane fallback", () => {
     const sessions = [baseSession("a", { role: "implementer" }), baseSession("b", { handoffFrom: "a" })];
-    render(
-      <AgentInspector
-        sessions={sessions}
-        activeSessionId="a"
-        onSelectSession={() => {}}
-      />,
-    );
+    render(<AgentInspector sessions={sessions} activeSessionId="a" onSelectSession={() => {}} />);
 
     fireEvent.click(screen.getByLabelText("Conductor DAG"));
 
     // Conductor placeholder must be present (proves we routed to conductor).
     expect(screen.getByTestId("reactflow-mock")).toBeTruthy();
+    expect(screen.getByLabelText("Conductor role summary")).toBeTruthy();
 
     // Bug guard: the parallel-pane fallback must NOT also be rendered.
     // SessionCard buttons have aria-label "Select session ..."; the parallel
@@ -159,18 +136,25 @@ describe("AgentInspector tab routing", () => {
     expect(screen.queryAllByLabelText(/^Select session /)).toHaveLength(0);
   });
 
+  it("treats conductor role chips as summaries, not positional graph headers", () => {
+    const sources = import.meta.glob("../features/agent-inspector/ConductorView.tsx", {
+      query: "?raw",
+      import: "default",
+      eager: true,
+    }) as Record<string, string>;
+    const src = Object.values(sources)[0] ?? "";
+
+    expect(src).toContain("roleSummaries");
+    expect(src).toContain('aria-label="Conductor role summary"');
+    expect(src).not.toContain("columnLabels");
+  });
+
   it("diffs tab does not also render the parallel-pane fallback", () => {
     const sessionWithChanges = baseSession("x", {
       changedFileDetails: [{ path: "src/foo.ts", action: "edit", toolName: "Edit", timestamp: Date.now() }],
       filesChanged: 1,
     });
-    render(
-      <AgentInspector
-        sessions={[sessionWithChanges]}
-        activeSessionId="x"
-        onSelectSession={() => {}}
-      />,
-    );
+    render(<AgentInspector sessions={[sessionWithChanges]} activeSessionId="x" onSelectSession={() => {}} />);
 
     fireEvent.click(screen.getByLabelText("File diffs"));
 
@@ -183,13 +167,7 @@ describe("AgentInspector tab routing", () => {
 
   it("parallel tab still renders parallel panes", () => {
     const sessions = [baseSession("a"), baseSession("b")];
-    render(
-      <AgentInspector
-        sessions={sessions}
-        activeSessionId="a"
-        onSelectSession={() => {}}
-      />,
-    );
+    render(<AgentInspector sessions={sessions} activeSessionId="a" onSelectSession={() => {}} />);
 
     fireEvent.click(screen.getByLabelText("Parallel sessions"));
 
@@ -204,19 +182,16 @@ describe("AgentInspector tab routing", () => {
         { timestamp: 2, type: "text", content: "latest quiet summary" },
       ],
     });
-    render(
-      <AgentInspector
-        sessions={[session]}
-        activeSessionId="a"
-        onSelectSession={() => {}}
-      />,
-    );
+    render(<AgentInspector sessions={[session]} activeSessionId="a" onSelectSession={() => {}} />);
 
     const latestMentions = screen.getAllByText("latest quiet summary");
     expect(latestMentions).toHaveLength(2);
     expect(screen.queryByText("older noisy log")).toBeNull();
 
-    fireEvent.click(latestMentions[1]!);
+    const summaryButton = latestMentions[1];
+    expect(summaryButton).toBeDefined();
+    if (!summaryButton) throw new Error("Expected session activity summary trigger");
+    fireEvent.click(summaryButton);
     expect(screen.getByText("older noisy log")).toBeTruthy();
   });
 });

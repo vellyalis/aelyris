@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
   collectLeafIds,
+  collectPaneSwitcherEntries,
   countLeaves,
   createLeaf,
+  cycleLeafRole,
+  findLeaf,
+  normalizePaneTitle,
   removePane,
   splitPane,
+  uniquePaneTitle,
+  updateLeafMeta,
 } from "../features/terminal/pane-tree/operations";
 import type { PaneNode } from "../features/terminal/pane-tree/types";
 import { splitDirectionToTree } from "../features/terminal/pane-tree/types";
@@ -17,6 +23,15 @@ describe("createLeaf", () => {
     expect(a.shell).toBe("powershell");
     expect(a.cwd).toBe("/home");
     expect(a.id).not.toBe(b.id);
+  });
+
+  it("keeps optional pane identity metadata compact", () => {
+    const leaf = createLeaf("powershell", "/home", {
+      title: "  frontend    server  ",
+      role: "build",
+    });
+    expect(leaf.title).toBe("frontend server");
+    expect(leaf.role).toBe("build");
   });
 });
 
@@ -138,6 +153,75 @@ describe("collectLeafIds", () => {
   });
 });
 
+describe("collectPaneSwitcherEntries", () => {
+  it("returns a single-pane fallback entry", () => {
+    const leaf = createLeaf("powershell", "C:\\repo");
+    const entries = collectPaneSwitcherEntries(leaf, new Map([[leaf.id, "pty-main"]]), "main");
+
+    expect(entries).toEqual([
+      {
+        paneId: leaf.id,
+        terminalId: "pty-main",
+        lifecycle: "live",
+        index: 0,
+        shell: "powershell",
+        cwd: "C:\\repo",
+        title: undefined,
+        role: undefined,
+        label: "powershell pane 1",
+        route: "main.1 powershell pane 1",
+      },
+    ]);
+  });
+
+  it("classifies layout-only and explicit lifecycle states for session truth consumers", () => {
+    const leaf = createLeaf("powershell", "C:\\repo");
+
+    expect(collectPaneSwitcherEntries(leaf)[0]).toMatchObject({
+      paneId: leaf.id,
+      terminalId: null,
+      lifecycle: "layout-only",
+    });
+
+    expect(
+      collectPaneSwitcherEntries(leaf, new Map([[leaf.id, "pty-main"]]), "main", new Map([[leaf.id, "crashed"]])),
+    ).toMatchObject([
+      {
+        paneId: leaf.id,
+        terminalId: "pty-main",
+        lifecycle: "crashed",
+      },
+    ]);
+  });
+
+  it("keeps split traversal order aligned with collectLeafIds", () => {
+    const root = createLeaf("powershell", undefined, { title: "root" });
+    const rightSplit = splitPane(root, root.id, "right", "cmd");
+    if (rightSplit.type !== "split") throw new Error("expected split");
+    const rightId = rightSplit.second.id;
+
+    const nested = splitPane(rightSplit, rightId, "up", "gitbash");
+    const ids = collectLeafIds(nested);
+    const entries = collectPaneSwitcherEntries(nested);
+
+    expect(entries.map((entry) => entry.paneId)).toEqual(ids);
+    expect(entries.map((entry) => entry.index)).toEqual([0, 1, 2]);
+    expect(entries.map((entry) => entry.shell)).toEqual(["powershell", "gitbash", "cmd"]);
+  });
+
+  it("uses title and role labels without changing left split order", () => {
+    const original = createLeaf("powershell", undefined, { role: "build" });
+    const tree = splitPane(original, original.id, "left", "cmd");
+    if (tree.type !== "split") throw new Error("expected split");
+    const titled = updateLeafMeta(tree, tree.first.id, { title: "helper" });
+
+    const entries = collectPaneSwitcherEntries(titled);
+
+    expect(entries.map((entry) => entry.paneId)).toEqual(collectLeafIds(titled));
+    expect(entries.map((entry) => entry.label)).toEqual(["helper", "@build"]);
+  });
+});
+
 describe("countLeaves", () => {
   it("counts correctly for nested tree", () => {
     const leaf = createLeaf("powershell");
@@ -146,6 +230,36 @@ describe("countLeaves", () => {
       tree = splitPane(tree, tree.second.id, "down", "wsl");
     }
     expect(countLeaves(tree)).toBe(3);
+  });
+});
+
+describe("pane identity metadata", () => {
+  it("updates a leaf title without changing its id", () => {
+    const leaf = createLeaf("powershell");
+    const next = updateLeafMeta(leaf, leaf.id, { title: "reviewer" });
+    expect(next.type).toBe("terminal");
+    if (next.type === "terminal") {
+      expect(next.id).toBe(leaf.id);
+      expect(next.title).toBe("reviewer");
+    }
+  });
+
+  it("cycles roles in a stable workstation order", () => {
+    const leaf = createLeaf("powershell");
+    const work = cycleLeafRole(leaf, leaf.id);
+    expect(findLeaf(work, leaf.id)?.role).toBe("work");
+    const plan = cycleLeafRole(work, leaf.id);
+    expect(findLeaf(plan, leaf.id)?.role).toBe("plan");
+  });
+
+  it("normalizes and disambiguates pane titles for routing", () => {
+    const a = createLeaf("powershell", undefined, { title: "Build" });
+    const tree = splitPane(a, a.id, "right", "cmd");
+    if (tree.type !== "split") throw new Error("expected split");
+    const bId = tree.second.id;
+
+    expect(normalizePaneTitle("  Build   ")).toBe("Build");
+    expect(uniquePaneTitle(tree, bId, "build")).toBe("build 2");
   });
 });
 

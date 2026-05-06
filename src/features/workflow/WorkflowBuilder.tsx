@@ -25,6 +25,8 @@ interface PhaseData {
   model: string;
   prompt: string;
   maxCost: number;
+  targetPane?: string;
+  agentRole?: string;
   gateType: string | null;
 }
 
@@ -43,6 +45,9 @@ function PhaseNode({ data }: { data: PhaseData }) {
           {data.gateType}
         </div>
       )}
+      {(data.targetPane || data.agentRole) && (
+        <div className={styles.phaseRoute}>{data.targetPane || data.agentRole}</div>
+      )}
       <Handle type="source" position={Position.Right} className={styles.handle} />
     </div>
   );
@@ -51,6 +56,10 @@ function PhaseNode({ data }: { data: PhaseData }) {
 const nodeTypes: NodeTypes = {
   phase: PhaseNode,
 };
+
+const MODEL_OPTIONS = ["sonnet", "opus", "haiku"] as const;
+const ROLE_OPTIONS = ["", "implementer", "tester", "reviewer", "documenter"] as const;
+const GATE_OPTIONS = ["", "human_review", "test_pass"] as const;
 
 // ── Presets ──
 
@@ -67,6 +76,7 @@ const PRESETS: { name: string; nodes: Node[]; edges: Edge[] }[] = [
           model: "opus",
           prompt: "{task_title}の実装計画",
           maxCost: 0.5,
+          agentRole: "implementer",
           gateType: "human_review",
         },
       },
@@ -79,6 +89,7 @@ const PRESETS: { name: string; nodes: Node[]; edges: Edge[] }[] = [
           model: "sonnet",
           prompt: "計画に基づいて実装 (TDD)",
           maxCost: 2.0,
+          agentRole: "implementer",
           gateType: "test_pass",
         },
       },
@@ -86,7 +97,14 @@ const PRESETS: { name: string; nodes: Node[]; edges: Edge[] }[] = [
         id: "review",
         type: "phase",
         position: { x: 550, y: 100 },
-        data: { label: "Review", model: "opus", prompt: "実装をレビュー", maxCost: 0.5, gateType: "human_review" },
+        data: {
+          label: "Review",
+          model: "opus",
+          prompt: "実装をレビュー",
+          maxCost: 0.5,
+          agentRole: "reviewer",
+          gateType: "human_review",
+        },
       },
     ],
     edges: [
@@ -106,6 +124,7 @@ const PRESETS: { name: string; nodes: Node[]; edges: Edge[] }[] = [
           model: "sonnet",
           prompt: "バグを再現するテスト",
           maxCost: 0.5,
+          agentRole: "tester",
           gateType: "test_pass",
         },
       },
@@ -113,13 +132,27 @@ const PRESETS: { name: string; nodes: Node[]; edges: Edge[] }[] = [
         id: "fix",
         type: "phase",
         position: { x: 300, y: 100 },
-        data: { label: "Fix", model: "sonnet", prompt: "テストを通るよう修正", maxCost: 1.5, gateType: "test_pass" },
+        data: {
+          label: "Fix",
+          model: "sonnet",
+          prompt: "テストを通るよう修正",
+          maxCost: 1.5,
+          agentRole: "implementer",
+          gateType: "test_pass",
+        },
       },
       {
         id: "verify",
         type: "phase",
         position: { x: 550, y: 100 },
-        data: { label: "Verify", model: "sonnet", prompt: "回帰テスト実行", maxCost: 0.5, gateType: null },
+        data: {
+          label: "Verify",
+          model: "sonnet",
+          prompt: "回帰テスト実行",
+          maxCost: 0.5,
+          agentRole: "tester",
+          gateType: null,
+        },
       },
     ],
     edges: [
@@ -139,6 +172,7 @@ const PRESETS: { name: string; nodes: Node[]; edges: Edge[] }[] = [
           model: "opus",
           prompt: "コードの問題点と改善方針を分析",
           maxCost: 0.5,
+          agentRole: "reviewer",
           gateType: "human_review",
         },
       },
@@ -151,6 +185,7 @@ const PRESETS: { name: string; nodes: Node[]; edges: Edge[] }[] = [
           model: "sonnet",
           prompt: "分析結果に基づきリファクタリング実施",
           maxCost: 2.0,
+          agentRole: "implementer",
           gateType: "test_pass",
         },
       },
@@ -163,6 +198,7 @@ const PRESETS: { name: string; nodes: Node[]; edges: Edge[] }[] = [
           model: "sonnet",
           prompt: "リファクタリング後の全テスト実行",
           maxCost: 0.5,
+          agentRole: "tester",
           gateType: "test_pass",
         },
       },
@@ -170,7 +206,14 @@ const PRESETS: { name: string; nodes: Node[]; edges: Edge[] }[] = [
         id: "review",
         type: "phase",
         position: { x: 800, y: 100 },
-        data: { label: "Review", model: "opus", prompt: "変更差分をレビュー", maxCost: 0.5, gateType: "human_review" },
+        data: {
+          label: "Review",
+          model: "opus",
+          prompt: "変更差分をレビュー",
+          maxCost: 0.5,
+          agentRole: "reviewer",
+          gateType: "human_review",
+        },
       },
     ],
     edges: [
@@ -191,6 +234,7 @@ const PRESETS: { name: string; nodes: Node[]; edges: Edge[] }[] = [
           model: "sonnet",
           prompt: "コードベースをスキャンして問題検出",
           maxCost: 1.0,
+          agentRole: "reviewer",
           gateType: null,
         },
       },
@@ -203,6 +247,7 @@ const PRESETS: { name: string; nodes: Node[]; edges: Edge[] }[] = [
           model: "opus",
           prompt: "検出された問題を深掘りレビュー",
           maxCost: 1.0,
+          agentRole: "reviewer",
           gateType: "human_review",
         },
       },
@@ -215,6 +260,7 @@ const PRESETS: { name: string; nodes: Node[]; edges: Edge[] }[] = [
           model: "sonnet",
           prompt: "レビュー結果をMarkdownレポート作成",
           maxCost: 0.5,
+          agentRole: "documenter",
           gateType: null,
         },
       },
@@ -262,6 +308,24 @@ export function WorkflowBuilder({ onClose, onExport }: WorkflowBuilderProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState(PRESETS[0].nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(PRESETS[0].edges);
   const [workflowName, setWorkflowName] = useState("New Workflow");
+  const [selectedPhaseId, setSelectedPhaseId] = useState<string | null>(String(PRESETS[0].nodes[0]?.id ?? ""));
+
+  const selectedPhase = nodes.find((n) => n.type === "phase" && n.id === selectedPhaseId) ?? null;
+  const selectedPhaseData = selectedPhase?.data as unknown as PhaseData | undefined;
+
+  const updateSelectedPhase = useCallback(
+    (patch: Partial<PhaseData>) => {
+      if (!selectedPhaseId) return;
+      setNodes((nds) =>
+        nds.map((node) => {
+          if (node.id !== selectedPhaseId || node.type !== "phase") return node;
+          const data = node.data as unknown as PhaseData;
+          return { ...node, data: { ...data, ...patch } };
+        }),
+      );
+    },
+    [selectedPhaseId, setNodes],
+  );
 
   const onConnect = useCallback(
     (conn: Connection) => {
@@ -282,6 +346,7 @@ export function WorkflowBuilder({ onClose, onExport }: WorkflowBuilderProps) {
         data: { label: "New Phase", model: "sonnet", prompt: "{task_title}", maxCost: 1.0, gateType: null },
       },
     ]);
+    setSelectedPhaseId(id);
   }, [nodes, setNodes]);
 
   const loadPreset = useCallback(
@@ -289,6 +354,7 @@ export function WorkflowBuilder({ onClose, onExport }: WorkflowBuilderProps) {
       setNodes(PRESETS[idx].nodes);
       setEdges(PRESETS[idx].edges);
       setWorkflowName(PRESETS[idx].name.split(" (")[0]);
+      setSelectedPhaseId(String(PRESETS[idx].nodes[0]?.id ?? ""));
     },
     [setNodes, setEdges],
   );
@@ -302,6 +368,12 @@ export function WorkflowBuilder({ onClose, onExport }: WorkflowBuilderProps) {
         name: d.label.toLowerCase().replace(/\s+/g, "_"),
         agent: { model: d.model, prompt: d.prompt, max_cost: d.maxCost },
       };
+      if (d.targetPane?.trim()) {
+        phase.target_pane = d.targetPane.trim();
+      }
+      if (d.agentRole?.trim()) {
+        phase.agent_role = d.agentRole.trim();
+      }
       if (deps.length > 0) {
         const depNames = deps.map((depId) => {
           const depNode = phaseNodes.find((p) => p.id === depId);
@@ -319,6 +391,8 @@ export function WorkflowBuilder({ onClose, onExport }: WorkflowBuilderProps) {
     for (const p of phases) {
       yamlLines.push(`  - name: ${p.name}`);
       if (p.depends_on) yamlLines.push(`    depends_on: [${(p.depends_on as string[]).join(", ")}]`);
+      if (p.target_pane) yamlLines.push(`    target_pane: "${escapeYamlString(String(p.target_pane))}"`);
+      if (p.agent_role) yamlLines.push(`    agent_role: ${p.agent_role}`);
       const agent = p.agent as Record<string, unknown>;
       yamlLines.push(`    agent:`);
       yamlLines.push(`      model: ${agent.model}`);
@@ -377,6 +451,8 @@ export function WorkflowBuilder({ onClose, onExport }: WorkflowBuilderProps) {
                     model: String(currentPhase.model ?? "sonnet"),
                     prompt: String(currentPhase.prompt ?? ""),
                     maxCost: Number(currentPhase.max_cost ?? 1.0),
+                    targetPane: currentPhase.target_pane ? String(currentPhase.target_pane) : undefined,
+                    agentRole: currentPhase.agent_role ? String(currentPhase.agent_role) : undefined,
                     gateType: currentPhase.gate_type ? String(currentPhase.gate_type) : null,
                   },
                 });
@@ -391,6 +467,12 @@ export function WorkflowBuilder({ onClose, onExport }: WorkflowBuilderProps) {
               else if (trimmed.startsWith("prompt:"))
                 currentPhase.prompt = unescapeYamlString(trimmed.slice(7).trim().replace(/^"|"$/g, ""));
               else if (trimmed.startsWith("max_cost:")) currentPhase.max_cost = parseFloat(trimmed.slice(9).trim());
+              else if (trimmed.startsWith("target_pane:"))
+                currentPhase.target_pane = unescapeYamlString(trimmed.slice(12).trim().replace(/^"|"$/g, ""));
+              else if (trimmed.startsWith("targetPane:"))
+                currentPhase.target_pane = unescapeYamlString(trimmed.slice(11).trim().replace(/^"|"$/g, ""));
+              else if (trimmed.startsWith("agent_role:")) currentPhase.agent_role = trimmed.slice(11).trim();
+              else if (trimmed.startsWith("agentRole:")) currentPhase.agent_role = trimmed.slice(10).trim();
               else if (trimmed.startsWith("type:")) currentPhase.gate_type = trimmed.slice(5).trim();
             }
           }
@@ -406,6 +488,8 @@ export function WorkflowBuilder({ onClose, onExport }: WorkflowBuilderProps) {
                 model: String(currentPhase.model ?? "sonnet"),
                 prompt: String(currentPhase.prompt ?? ""),
                 maxCost: Number(currentPhase.max_cost ?? 1.0),
+                targetPane: currentPhase.target_pane ? String(currentPhase.target_pane) : undefined,
+                agentRole: currentPhase.agent_role ? String(currentPhase.agent_role) : undefined,
                 gateType: currentPhase.gate_type ? String(currentPhase.gate_type) : null,
               },
             });
@@ -418,6 +502,7 @@ export function WorkflowBuilder({ onClose, onExport }: WorkflowBuilderProps) {
             setNodes(importedNodes);
             setEdges(importedEdges);
             setWorkflowName(name);
+            setSelectedPhaseId(String(importedNodes[0]?.id ?? ""));
           }
         } catch {
           /* invalid YAML */
@@ -456,31 +541,121 @@ export function WorkflowBuilder({ onClose, onExport }: WorkflowBuilderProps) {
             <X size={14} />
           </button>
         </div>
-        <div className={styles.canvas}>
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            nodeTypes={nodeTypes}
-            fitView
-            colorMode="dark"
-            proOptions={{ hideAttribution: true }}
-            defaultEdgeOptions={{
-              animated: true,
-              style: { stroke: "var(--gold)" },
-              markerEnd: {
-                type: MarkerType.ArrowClosed,
-                color: "var(--gold)",
-                width: 14,
-                height: 14,
-              },
-            }}
-          >
-            <Background gap={20} />
-            <Controls showInteractive={false} />
-          </ReactFlow>
+        <div className={styles.workspace}>
+          <div className={styles.canvas}>
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onConnect={onConnect}
+              onNodeClick={(_, node) => setSelectedPhaseId(node.id)}
+              nodeTypes={nodeTypes}
+              fitView
+              colorMode="dark"
+              proOptions={{ hideAttribution: true }}
+              defaultEdgeOptions={{
+                animated: true,
+                style: { stroke: "var(--gold)" },
+                markerEnd: {
+                  type: MarkerType.ArrowClosed,
+                  color: "var(--gold)",
+                  width: 14,
+                  height: 14,
+                },
+              }}
+            >
+              <Background gap={20} />
+              <Controls showInteractive={false} />
+            </ReactFlow>
+          </div>
+          <aside className={styles.inspector} aria-label="Phase inspector">
+            <div className={styles.inspectorHeader}>
+              <span className={styles.inspectorTitle}>Phase</span>
+              {selectedPhase && <span className={styles.inspectorId}>{selectedPhase.id}</span>}
+            </div>
+            {selectedPhaseData ? (
+              <div className={styles.inspectorFields}>
+                <label className={styles.field}>
+                  <span>Name</span>
+                  <input
+                    value={selectedPhaseData.label}
+                    onChange={(event) => updateSelectedPhase({ label: event.target.value })}
+                  />
+                </label>
+                <div className={styles.fieldGrid}>
+                  <label className={styles.field}>
+                    <span>Model</span>
+                    <select
+                      value={selectedPhaseData.model}
+                      onChange={(event) => updateSelectedPhase({ model: event.target.value })}
+                    >
+                      {MODEL_OPTIONS.map((model) => (
+                        <option key={model} value={model}>
+                          {model}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className={styles.field}>
+                    <span>Budget</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={selectedPhaseData.maxCost}
+                      onChange={(event) => updateSelectedPhase({ maxCost: Number(event.target.value) || 0 })}
+                    />
+                  </label>
+                </div>
+                <label className={styles.field}>
+                  <span>Target pane</span>
+                  <input
+                    placeholder="PowerShell / claude / reviewer"
+                    value={selectedPhaseData.targetPane ?? ""}
+                    onChange={(event) => updateSelectedPhase({ targetPane: event.target.value })}
+                  />
+                </label>
+                <div className={styles.fieldGrid}>
+                  <label className={styles.field}>
+                    <span>Agent role</span>
+                    <select
+                      value={selectedPhaseData.agentRole ?? ""}
+                      onChange={(event) => updateSelectedPhase({ agentRole: event.target.value || undefined })}
+                    >
+                      {ROLE_OPTIONS.map((role) => (
+                        <option key={role || "none"} value={role}>
+                          {role || "none"}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className={styles.field}>
+                    <span>Gate</span>
+                    <select
+                      value={selectedPhaseData.gateType ?? ""}
+                      onChange={(event) => updateSelectedPhase({ gateType: event.target.value || null })}
+                    >
+                      {GATE_OPTIONS.map((gate) => (
+                        <option key={gate || "none"} value={gate}>
+                          {gate || "none"}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <label className={styles.field}>
+                  <span>Prompt</span>
+                  <textarea
+                    value={selectedPhaseData.prompt}
+                    onChange={(event) => updateSelectedPhase({ prompt: event.target.value })}
+                  />
+                </label>
+              </div>
+            ) : (
+              <div className={styles.emptyInspector}>Select a phase</div>
+            )}
+          </aside>
         </div>
       </div>
     </div>

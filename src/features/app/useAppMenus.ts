@@ -1,5 +1,6 @@
 import {
   Bot,
+  ClipboardList,
   X as CloseIcon,
   FileX,
   FolderOpen,
@@ -9,22 +10,40 @@ import {
   Globe,
   History,
   Info,
+  RadioTower,
   Search,
+  Send,
   Settings as SettingsIcon,
   Shield,
   Terminal as TerminalIcon,
 } from "lucide-react";
 import { useMemo } from "react";
-import type { ShellType } from "../../App";
+import type { ShellType, TerminalPaneTarget } from "../../App";
+import { formatOperationalPaneChoice, resolveOperationalPaneChoice } from "../../shared/lib/operationalPaneSelection";
+import { normalizeCommandInput } from "../../shared/lib/terminalInput";
 import { toast } from "../../shared/store/toastStore";
+import { showConfirm } from "../../shared/ui/ConfirmDialog";
 import { showPrompt } from "../../shared/ui/PromptDialog";
 import type { CommandItem } from "../command-palette/CommandPalette";
 import { showHistorySearch } from "../history/HistorySearchDialog";
 import type { Menu } from "../menubar/MenuBar";
+import {
+  copyImeDiagnostics,
+  disableImeDiagnostics,
+  enableImeDiagnostics,
+  imeDiagnosticsEnabled,
+} from "../terminal/hooks/useCanvasIME";
 
 interface UseAppMenusOptions {
   addTab: (shell: ShellType) => void;
   closeTab: (id: string) => void;
+  switchTab?: (id: string) => undefined | boolean | Promise<undefined | boolean>;
+  tabs?: Array<{ id: string; label: string; shell: ShellType; cwd?: string; worktreeBranch?: string }>;
+  switchPane?: (tabId: string, paneId: string) => void | Promise<void>;
+  openPaneSwitcher?: () => void;
+  focusNextPane?: () => void | Promise<void>;
+  focusPreviousPane?: () => void | Promise<void>;
+  panes?: TerminalPaneTarget[];
   activeTabId: string;
   activeFile: string | null;
   projectPath: string;
@@ -47,6 +66,13 @@ export function useAppMenus(opts: UseAppMenusOptions) {
   const {
     addTab,
     closeTab,
+    switchTab,
+    tabs = [],
+    switchPane,
+    openPaneSwitcher,
+    focusNextPane,
+    focusPreviousPane,
+    panes = [],
     activeTabId,
     activeFile,
     projectPath,
@@ -105,6 +131,164 @@ export function useAppMenus(opts: UseAppMenusOptions) {
     };
   }, [projectPath]);
 
+  const sendToPaneTarget = useMemo(() => {
+    return async () => {
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        type PaneInfo = { name: string; role: string; shell_type: string; cwd: string };
+        const panes = await invoke<PaneInfo[]>("list_panes_info").catch(() => []);
+        const targets = panes
+          .flatMap((pane) => [pane.name ? pane.name : null, pane.role ? `@${pane.role}` : null])
+          .filter((target): target is string => !!target)
+          .filter((target, index, all) => all.indexOf(target) === index)
+          .slice(0, 6)
+          .join(", ");
+        const target = await showPrompt("Send to pane", {
+          placeholder: targets || "@build, @review, or pane name",
+        });
+        const trimmedTarget = target?.trim();
+        if (!trimmedTarget) return;
+
+        const text = await showPrompt(`Send to ${trimmedTarget}`, {
+          placeholder: "command or text",
+        });
+        if (!text?.trim()) return;
+        const count = await invoke<number>("send_keys_by_target", {
+          target: trimmedTarget,
+          data: normalizeCommandInput(text),
+        });
+        toast.success("Sent to pane", `${count} target${count === 1 ? "" : "s"}`);
+      } catch (e) {
+        toast.error("Send to pane failed", String(e));
+      }
+    };
+  }, []);
+
+  const broadcastToAllPanes = useMemo(() => {
+    return async () => {
+      try {
+        const text = await showPrompt("Broadcast to all panes", {
+          placeholder: "command or text",
+        });
+        if (!text?.trim()) return;
+        const { invoke } = await import("@tauri-apps/api/core");
+        const panes = await invoke<unknown[]>("list_panes_info").catch(() => []);
+        if (panes.length < 1) {
+          toast.error("Broadcast unavailable", "No live terminal panes are available.");
+          return;
+        }
+        if (panes.length > 1) {
+          const ok = await showConfirm({
+            title: "Broadcast to all panes",
+            description: `This will send the same input to ${panes.length} live panes.`,
+            confirmLabel: `Send to ${panes.length} panes`,
+            cancelLabel: "Review first",
+          });
+          if (!ok) return;
+          const refreshedPanes = await invoke<unknown[]>("list_panes_info").catch(() => []);
+          if (refreshedPanes.length < 1) {
+            toast.error("Broadcast target changed", "No live terminal panes are available.");
+            return;
+          }
+        }
+        const count = await invoke<number>("broadcast_keys", { data: normalizeCommandInput(text) });
+        toast.success("Broadcast sent", `${count} pane${count === 1 ? "" : "s"}`);
+      } catch (e) {
+        toast.error("Broadcast failed", String(e));
+      }
+    };
+  }, []);
+
+  const switchTerminalTab = useMemo(() => {
+    return async () => {
+      if (!switchTab || tabs.length === 0) {
+        toast.error("Switch terminal tab", "No terminal tabs are available");
+        return;
+      }
+
+      const hints = tabs
+        .map((tab, index) => `${index + 1}:${tab.label}${tab.worktreeBranch ? `/${tab.worktreeBranch}` : ""}`)
+        .slice(0, 8)
+        .join(", ");
+      const choice = await showPrompt("Switch terminal tab", {
+        placeholder: hints || "number, tab label, or tab id",
+      });
+      const target = resolveTabChoice(tabs, choice);
+      if (!target) {
+        toast.error("Tab not found", choice ? `No tab matched "${choice}"` : "Enter a tab number, label, or id");
+        return;
+      }
+
+      await switchTab(target.id);
+      toast.success("Terminal tab active", target.label);
+    };
+  }, [switchTab, tabs]);
+
+  const switchTerminalPane = useMemo(() => {
+    return async () => {
+      if (!switchPane || panes.length === 0) {
+        toast.error("Switch terminal pane", "No live terminal panes are available");
+        return;
+      }
+
+      if (openPaneSwitcher) {
+        openPaneSwitcher();
+        return;
+      }
+
+      const hints = panes
+        .map((pane, index) => `${index + 1}:${formatOperationalPaneChoice(pane)}`)
+        .slice(0, 8)
+        .join(", ");
+      const choice = await showPrompt("Switch terminal pane", {
+        placeholder: hints || "number, pane title, @role, pane id, or PTY id",
+      });
+      const result = resolveOperationalPaneChoice(panes, choice);
+      if (result.kind === "ambiguous") {
+        toast.error(
+          "Pane target is ambiguous",
+          `Matched ${result.matches.length} panes. Use tab.index, pane id, or PTY id.`,
+        );
+        return;
+      }
+      if (result.kind !== "match") {
+        toast.error("Pane not found", choice ? `No pane matched "${choice}"` : "Enter a pane number, label, or id");
+        return;
+      }
+
+      await switchPane(result.pane.tabId, result.pane.paneId);
+      toast.success("Terminal pane active", formatOperationalPaneChoice(result.pane));
+    };
+  }, [openPaneSwitcher, panes, switchPane]);
+
+  const enableImeTrace = useMemo(() => {
+    return () => {
+      enableImeDiagnostics(window);
+      toast.success("IME diagnostics enabled", "Reproduce the input bug, then copy the trace");
+    };
+  }, []);
+
+  const copyImeTrace = useMemo(() => {
+    return async () => {
+      if (!imeDiagnosticsEnabled(window)) {
+        enableImeDiagnostics(window);
+      }
+      const copied = await copyImeDiagnostics(window);
+      if (copied) {
+        toast.success("IME trace copied", "The diagnostic event ring is on the clipboard");
+      } else {
+        toast.error("No IME trace yet", "Reproduce the terminal input bug, then run this again");
+      }
+    };
+  }, []);
+
+  const disableImeTrace = useMemo(() => {
+    return () => {
+      disableImeDiagnostics(window);
+      toast.success("IME diagnostics disabled", "New IME events will no longer be recorded");
+    };
+  }, []);
+
   const commands: CommandItem[] = useMemo(
     () => [
       {
@@ -152,6 +336,90 @@ export function useAppMenus(opts: UseAppMenusOptions) {
         category: "Terminal",
         icon: CloseIcon,
         action: () => closeTab(activeTabId),
+      },
+      {
+        id: "switch-terminal-tab",
+        label: "Switch Terminal Tab...",
+        description: "Choose a live terminal tab by number, label, or id",
+        category: "Terminal",
+        icon: TerminalIcon,
+        keywords: ["tmux", "choose-tree", "session", "window", "tab", "switch"],
+        action: switchTerminalTab,
+      },
+      {
+        id: "switch-terminal-pane",
+        label: "Switch Terminal Pane...",
+        description: "Choose a live pane without detaching or respawning PTYs",
+        shortcut: "Ctrl+Shift+`",
+        category: "Terminal",
+        icon: TerminalIcon,
+        keywords: ["tmux", "choose-tree", "pane", "focus", "window", "switch"],
+        action: switchTerminalPane,
+      },
+      {
+        id: "focus-next-terminal-pane",
+        label: "Focus Next Terminal Pane",
+        description: "Move focus to the next live pane in tmux order",
+        shortcut: "Ctrl+Shift+]",
+        category: "Terminal",
+        icon: TerminalIcon,
+        keywords: ["tmux", "pane", "next", "cycle", "focus"],
+        action: () => void focusNextPane?.(),
+      },
+      {
+        id: "focus-previous-terminal-pane",
+        label: "Focus Previous Terminal Pane",
+        description: "Move focus to the previous live pane in tmux order",
+        shortcut: "Ctrl+Shift+[",
+        category: "Terminal",
+        icon: TerminalIcon,
+        keywords: ["tmux", "pane", "previous", "prev", "cycle", "focus"],
+        action: () => void focusPreviousPane?.(),
+      },
+      {
+        id: "send-to-pane",
+        label: "Send Command to Pane...",
+        description: "Route input to a named pane or role",
+        category: "Terminal",
+        icon: Send,
+        keywords: ["pane", "role", "target", "tmux", "send-keys"],
+        action: sendToPaneTarget,
+      },
+      {
+        id: "broadcast-to-all-panes",
+        label: "Broadcast Command to All Panes...",
+        description: "Send the same command to every live pane",
+        category: "Terminal",
+        icon: RadioTower,
+        keywords: ["tmux", "broadcast", "synchronize", "sync", "panes", "send-keys"],
+        action: broadcastToAllPanes,
+      },
+      {
+        id: "enable-ime-diagnostics",
+        label: "Enable IME Diagnostics",
+        description: "Record terminal IME events for Japanese input debugging",
+        category: "Terminal",
+        icon: ClipboardList,
+        keywords: ["ime", "japanese", "composition", "candidate", "debug"],
+        action: enableImeTrace,
+      },
+      {
+        id: "copy-ime-diagnostics",
+        label: "Copy IME Diagnostic Trace",
+        description: "Copy the latest redacted IME event ring",
+        category: "Terminal",
+        icon: ClipboardList,
+        keywords: ["ime", "japanese", "composition", "candidate", "clipboard"],
+        action: copyImeTrace,
+      },
+      {
+        id: "disable-ime-diagnostics",
+        label: "Disable IME Diagnostics",
+        description: "Stop recording terminal IME events",
+        category: "Terminal",
+        icon: ClipboardList,
+        keywords: ["ime", "japanese", "composition", "candidate", "debug"],
+        action: disableImeTrace,
       },
       {
         id: "open-settings",
@@ -269,6 +537,21 @@ export function useAppMenus(opts: UseAppMenusOptions) {
       handleOpenFolder,
       handleCloseFolder,
       compareBranch,
+      sendToPaneTarget,
+      broadcastToAllPanes,
+      switchTerminalTab,
+      switchTerminalPane,
+      focusNextPane,
+      focusPreviousPane,
+      enableImeTrace,
+      copyImeTrace,
+      disableImeTrace,
+      setAboutVisible,
+      setPrInspectorVisible,
+      setSearchVisible,
+      setSettingsVisible,
+      setWatchdogVisible,
+      setWebInspectorVisible,
     ],
   );
 
@@ -336,6 +619,18 @@ export function useAppMenus(opts: UseAppMenusOptions) {
           { label: "New CMD", action: () => addTab("cmd") },
           { label: "New Git Bash", action: () => addTab("gitbash") },
           { label: "New WSL", action: () => addTab("wsl") },
+          { divider: true, label: "" },
+          { label: "Switch Terminal Tab...", action: switchTerminalTab },
+          { label: "Switch Terminal Pane...", shortcut: "Ctrl+Shift+`", action: switchTerminalPane },
+          { label: "Focus Next Pane", shortcut: "Ctrl+Shift+]", action: () => void focusNextPane?.() },
+          { label: "Focus Previous Pane", shortcut: "Ctrl+Shift+[", action: () => void focusPreviousPane?.() },
+          { divider: true, label: "" },
+          { label: "Send Command to Pane...", action: sendToPaneTarget },
+          { label: "Broadcast Command to All Panes...", action: broadcastToAllPanes },
+          { divider: true, label: "" },
+          { label: "Enable IME Diagnostics", action: enableImeTrace },
+          { label: "Copy IME Diagnostic Trace", action: copyImeTrace },
+          { label: "Disable IME Diagnostics", action: disableImeTrace },
         ],
       },
       {
@@ -356,6 +651,15 @@ export function useAppMenus(opts: UseAppMenusOptions) {
       projectPath,
       handleFileSelect,
       compareBranch,
+      sendToPaneTarget,
+      broadcastToAllPanes,
+      switchTerminalTab,
+      switchTerminalPane,
+      focusNextPane,
+      focusPreviousPane,
+      enableImeTrace,
+      copyImeTrace,
+      disableImeTrace,
       setPaletteVisible,
       setSearchVisible,
       setWebInspectorVisible,
@@ -367,4 +671,25 @@ export function useAppMenus(opts: UseAppMenusOptions) {
   );
 
   return { commands, menus };
+}
+
+function resolveTabChoice<T extends { id: string; label: string }>(
+  tabs: T[],
+  choice: string | null | undefined,
+): T | null {
+  const trimmed = choice?.trim();
+  if (!trimmed) return null;
+
+  const maybeNumber = Number.parseInt(trimmed, 10);
+  if (Number.isFinite(maybeNumber) && String(maybeNumber) === trimmed) {
+    return tabs[maybeNumber - 1] ?? null;
+  }
+
+  const normalized = trimmed.toLowerCase();
+  return (
+    tabs.find((tab) => tab.id.toLowerCase() === normalized) ??
+    tabs.find((tab) => tab.label.toLowerCase() === normalized) ??
+    tabs.find((tab) => tab.label.toLowerCase().includes(normalized)) ??
+    null
+  );
 }

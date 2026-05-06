@@ -2,14 +2,9 @@
   position: fixed;
   inset: 0;
   z-index: var(--z-modal);
-  background: rgba(0, 0, 0, 0.5);
-  /*
-   * Scrim blur is intentionally light — the palette itself carries the
-   * 20px blur below. Stacking two heavy blurs washed the underlying
-   * terminal out without adding focal depth (2026-04-24 glass audit).
-   */
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  background: rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(2px) brightness(0.82);
+  -webkit-backdrop-filter: blur(2px) brightness(0.82);
 }
 
 .palette {
@@ -18,17 +13,15 @@
   left: 50%;
   transform: translateX(-50%);
   z-index: calc(var(--z-modal) + 1);
-  width: 560px;
+  width: min(560px, calc(100vw - 32px));
   max-height: 480px;
-  /* Stacked lens-edge gradient above the thick glass — gives the corners
-     a subtle chromatic caustic, mimicking Apple Liquid Glass edge refraction. */
-  background: var(--lens-edge), var(--glass-thick);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid var(--border);
+  background: var(--lens-edge), var(--popup-glass-bg);
+  backdrop-filter: var(--material-panel-filter);
+  -webkit-backdrop-filter: var(--material-panel-filter);
+  border: 1px solid var(--popup-glass-border);
   border-radius: var(--radius);
   overflow: hidden;
-  box-shadow: var(--rim-top), var(--shadow-elevated);
+  box-shadow: var(--popup-glass-shadow);
   display: flex;
   flex-direction: column;
 }
@@ -49,7 +42,7 @@
 .input {
   padding: var(--space-6) var(--space-8);
   border: none;
-  border-bottom: 1px solid var(--border);
+  box-shadow: inset 0 -1px 0 rgba(124, 214, 235, 0.04);
   background: transparent;
   color: var(--text-primary);
   font-size: var(--text-xl);
@@ -64,6 +57,7 @@
 .list {
   flex: 1;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: var(--space-2);
 }
 
@@ -101,13 +95,18 @@
 
 /* cmdk applies data-selected to the active item */
 .item[data-selected="true"] {
-  background: var(--row-hover-strong);
+  background: rgba(124, 214, 235, 0.055);
   color: var(--text-primary);
 }
 
 .item:hover {
-  background: var(--row-hover);
+  background: rgba(124, 214, 235, 0.034);
   color: var(--text-primary);
+}
+
+.item:focus-visible {
+  outline: 2px solid rgba(124, 214, 235, 0.28);
+  outline-offset: -2px;
 }
 
 .itemIcon {
@@ -151,7 +150,7 @@
   font-size: var(--text-md);
   color: var(--text-muted);
   font-family: var(--font-mono);
-  background: var(--white-6);
+  background: rgba(124, 214, 235, 0.038);
   padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-sm);
   flex-shrink: 0;
@@ -175,25 +174,74 @@
 .footer {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-5);
   padding: var(--space-3) var(--space-6);
-  border-top: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 rgba(124, 214, 235, 0.035);
   font-size: var(--text-sm);
   font-family: var(--font-mono);
   color: var(--text-muted);
   /* Subtler than var(--white-4) so the footer reads as "below" the palette
    * body — the previous brighter shade inverted the expected hierarchy
    * (glass audit 2026-04-24). */
-  background: var(--white-2);
+  background: rgba(3, 10, 18, 0.11);
 }
 .footer kbd {
   display: inline-block;
   padding: 0 var(--space-2);
   margin-right: var(--space-2);
-  background: var(--white-6);
-  border: 1px solid var(--white-10);
+  background: rgba(124, 214, 235, 0.038);
+  border: 1px solid rgba(124, 214, 235, 0.055);
   border-radius: var(--radius-sm);
   font-family: var(--font-ui);
   font-size: var(--text-xs);
   color: var(--text-secondary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay,
+  .palette,
+  .item {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .overlay {
+    background: Canvas;
+    opacity: 0.65;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .palette,
+  .input,
+  .shortcut,
+  .footer kbd {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+
+  .palette {
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .item[data-selected="true"],
+  .item:hover {
+    outline: 2px solid Highlight;
+    background: Highlight;
+    color: HighlightText;
+  }
+
+  .item[data-selected="true"] .itemIcon,
+  .item:hover .itemIcon,
+  .item[data-selected="true"] .itemDescription,
+  .item:hover .itemDescription,
+  .item[data-selected="true"] .shortcut,
+  .item:hover .shortcut {
+    color: HighlightText;
+  }
 }

@@ -1,8 +1,7 @@
 import { PanelLeft, PanelLeftClose, RefreshCw, Settings } from "lucide-react";
-import logoPng from "../../assets/logo.png";
 import { useAttenuatedPulse } from "../../shared/hooks/useAttenuatedPulse";
 import { useAppStore } from "../../shared/store/appStore";
-import { MenuBar, type Menu } from "../menubar/MenuBar";
+import { type Menu, MenuBar } from "../menubar/MenuBar";
 import styles from "./ProjectHeaderBar.module.css";
 
 interface ProjectHeaderBarProps {
@@ -122,14 +121,16 @@ export function ProjectHeaderBar({
   };
 
   const { color, label } = STATUS_META[status] ?? STATUS_META.idle;
+  const activeAgentTitle = activeAgent
+    ? `Active agent: ${activeAgent.model}, $${activeAgent.cost.toFixed(2)}`
+    : undefined;
   const pulsePhase = useAttenuatedPulse(status !== "idle");
-  const dotPulseClass =
-    pulsePhase === "active" ? styles.dotPulse : pulsePhase === "ambient" ? styles.dotAmbient : "";
+  const dotPulseClass = pulsePhase === "active" ? styles.dotPulse : pulsePhase === "ambient" ? styles.dotAmbient : "";
 
   return (
     <div className={styles.header} data-tauri-drag-region>
       <div className={styles.left}>
-        <div className={styles.chromeCluster} aria-label="App chrome">
+        <div className={styles.chromeCluster}>
           <MenuBar menus={menus} />
           <button
             type="button"
@@ -146,8 +147,7 @@ export function ProjectHeaderBar({
             )}
           </button>
         </div>
-        <img src={logoPng} alt="Aether" width={28} height={28} className={styles.logo} />
-        <div className={styles.projectInfo}>
+        <div className={styles.projectInfo} title={activeAgentTitle}>
           <div className={styles.topRow}>
             <span className={styles.name}>{projectName}</span>
             <span className={styles.branch}>{branch}</span>
@@ -157,44 +157,50 @@ export function ProjectHeaderBar({
           </div>
           <div className={styles.bottomRow}>
             <span className={styles.status}>
-              <span
-                className={`${styles.dot} ${dotPulseClass}`}
-                style={{ background: color }}
-              />
+              <span className={`${styles.dot} ${dotPulseClass}`} style={{ background: color }} />
               <span className={styles.statusLabel}>{label}</span>
             </span>
-            {activeAgent && (
-              <>
-                <span className={styles.model}>{activeAgent.model}</span>
-                <span className={styles.cost}>&lt;${activeAgent.cost.toFixed(2)}</span>
-              </>
-            )}
           </div>
         </div>
       </div>
 
       <div className={styles.right}>
-        <button className={styles.headerBtn} onClick={onRefresh} aria-label="Refresh">
-          <RefreshCw size={14} />
+        <button type="button" className={styles.headerBtn} onClick={onRefresh} aria-label="Refresh">
+          <RefreshCw size={14} aria-hidden="true" />
         </button>
-        <button className={styles.headerBtn} onClick={onOpenSettings} aria-label="Settings">
-          <Settings size={14} />
+        <button type="button" className={styles.headerBtn} onClick={onOpenSettings} aria-label="Settings">
+          <Settings size={14} aria-hidden="true" />
         </button>
         <span className={styles.controlsSeparator} aria-hidden="true" />
         {/* Window controls — right side for Windows UX */}
         <div className={styles.controls}>
-          <button className={`${styles.ctrlBtn} ${styles.minimizeBtn}`} onClick={handleMinimize} aria-label="Minimize">
-            <svg width="10" height="1" viewBox="0 0 10 1">
+          <button
+            type="button"
+            className={`${styles.ctrlBtn} ${styles.minimizeBtn}`}
+            onClick={handleMinimize}
+            aria-label="Minimize"
+          >
+            <svg width="10" height="1" viewBox="0 0 10 1" aria-hidden="true">
               <rect width="10" height="1" fill="currentColor" />
             </svg>
           </button>
-          <button className={`${styles.ctrlBtn} ${styles.maximizeBtn}`} onClick={handleMaximize} aria-label="Maximize">
-            <svg width="10" height="10" viewBox="0 0 10 10">
+          <button
+            type="button"
+            className={`${styles.ctrlBtn} ${styles.maximizeBtn}`}
+            onClick={handleMaximize}
+            aria-label="Maximize"
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
               <rect width="8" height="8" x="1" y="1" fill="none" stroke="currentColor" strokeWidth="1" />
             </svg>
           </button>
-          <button className={`${styles.ctrlBtn} ${styles.closeBtn}`} onClick={handleClose} aria-label="Close">
-            <svg width="10" height="10" viewBox="0 0 10 10">
+          <button
+            type="button"
+            className={`${styles.ctrlBtn} ${styles.closeBtn}`}
+            onClick={handleClose}
+            aria-label="Close"
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
               <line x1="1" y1="1" x2="9" y2="9" stroke="currentColor" strokeWidth="1.2" />
               <line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" strokeWidth="1.2" />
             </svg>

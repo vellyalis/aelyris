@@ -4,7 +4,6 @@ import { type AgentStatus, getSessionColor, STATUS_COLORS, STATUS_LABELS } from 
 import type { InteractiveSession } from "../../shared/types/interactiveAgent";
 import { getCliColor, getCliLabel } from "../../shared/types/interactiveAgent";
 import { getMaxTokens } from "../../shared/types/model";
-import { ContextGauge } from "../../shared/ui/ContextGauge";
 import { PixelAvatar } from "../../shared/ui/PixelAvatar";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
 import { StopButton } from "../../shared/ui/StopButton";
@@ -61,7 +60,7 @@ export function InteractiveSessionCard({
           }
         >
           <div className={styles.cardTop}>
-            <PixelAvatar seed={is.id} size={36} />
+            <PixelAvatar seed={is.id} size={30} />
             <div className={styles.cardInfo}>
               <div className={styles.cardNameRow}>
                 <TerminalSquare size={10} style={{ color: cliColor }} />
@@ -81,10 +80,10 @@ export function InteractiveSessionCard({
                 >
                   {STATUS_LABELS[is.status as AgentStatus] ?? is.status}
                 </span>
+                {pct > 0 && pct < 100 && <span className={styles.cardPct}>{pct}%</span>}
                 <span className={styles.cardAge}>{formatAge(is.started_at * 1000)}</span>
               </div>
             </div>
-            <ContextGauge percent={pct} />
           </div>
           {is.initial_prompt && (
             <div className={styles.cardPreview}>

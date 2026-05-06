@@ -79,6 +79,7 @@
 }
 
 .title {
+  margin: 0;
   font-size: var(--text-5xl);
   font-weight: var(--weight-semibold);
   color: var(--text-primary);
@@ -87,17 +88,19 @@
 }
 
 .greeting {
+  margin: 0 0 var(--space-2);
   font-size: var(--text-xl);
   color: var(--gold);
   font-weight: var(--weight-medium);
   letter-spacing: 0;
-  margin-bottom: var(--space-2);
+  line-height: var(--leading-normal);
 }
 
 .subtitle {
+  margin: 0 0 var(--space-16);
   font-size: var(--text-lg);
   color: var(--text-muted);
-  margin-bottom: var(--space-16);
+  line-height: var(--leading-normal);
 }
 
 .openBtn {
@@ -122,7 +125,8 @@
 }
 
 .openBtn:hover {
-  box-shadow: var(--shadow-elevated),
+  box-shadow:
+    var(--shadow-elevated),
     0 0 20px rgba(200, 160, 80, 0.2); /* gold glow retained */
   transform: translateY(-1px);
 }
@@ -157,14 +161,34 @@
   background: var(--row-hover);
 }
 
+.recentSection {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.recentSection[data-empty="true"] {
+  align-items: center;
+}
+
 .recentHeader {
+  width: min(100%, 360px);
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
   text-transform: uppercase;
   letter-spacing: 0.06em;
+  line-height: 1;
   color: var(--text-muted);
-  align-self: flex-start;
-  margin-bottom: var(--space-4);
+  text-align: center;
+}
+
+.recentSection[data-empty="true"] .recentHeader {
+  width: min(100%, 360px);
+  max-width: 100%;
+  text-align: center;
 }
 
 /* Phase 1 Bento: auto-fill grid for project cards.
@@ -172,12 +196,20 @@
  * container-type: inline-size enables future @container queries. */
 .recentList {
   container-type: inline-size;
-  width: 100%;
+  width: min(100%, 480px);
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: var(--space-2);
   max-height: 300px;
   overflow-y: auto;
+  scrollbar-gutter: stable both-edges;
+}
+
+.recentSection[data-empty="true"] .recentList {
+  max-width: 360px;
+  max-height: none;
+  grid-template-columns: minmax(0, 1fr);
+  overflow: visible;
 }
 
 .projectCard {
@@ -242,6 +274,7 @@
 }
 
 .projectInfo {
+  min-width: 0;
   overflow: hidden;
 }
 
@@ -249,9 +282,13 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  min-width: 0;
   font-size: var(--text-lg);
   font-weight: var(--weight-medium);
   color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .changesDot {
@@ -284,9 +321,10 @@
 
 .hint {
   grid-column: 1 / -1; /* Phase 1 Bento: span full grid width */
-  padding: var(--space-8);
+  padding: var(--space-2) 0 0;
   text-align: center;
   font-size: var(--text-base);
+  line-height: var(--leading-normal);
   color: var(--text-muted);
 }
 

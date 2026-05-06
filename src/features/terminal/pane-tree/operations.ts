@@ -1,14 +1,29 @@
 import type { ShellType } from "../../../App";
-import type { PaneNode, SplitDirection, TerminalLeaf } from "./types";
-import { splitDirectionToTree } from "./types";
+import type { PaneLifecycleState, PaneNode, PaneRegistryEntry, PaneRole, SplitDirection, TerminalLeaf } from "./types";
+import { PANE_ROLES, splitDirectionToTree } from "./types";
 
 function uid(): string {
   return crypto.randomUUID().slice(0, 8);
 }
 
+export interface PaneSwitcherEntry extends PaneRegistryEntry {
+  label?: string;
+  route?: string;
+}
+
 /** Create a fresh terminal leaf */
-export function createLeaf(shell: ShellType, cwd?: string): TerminalLeaf {
-  return { type: "terminal", id: `pane-${uid()}`, shell, cwd };
+export function createLeaf(
+  shell: ShellType,
+  cwd?: string,
+  meta: { title?: string; role?: PaneRole } = {},
+): TerminalLeaf {
+  return {
+    type: "terminal",
+    id: `pane-${uid()}`,
+    shell,
+    cwd,
+    ...normalizeLeafMeta(meta),
+  };
 }
 
 /** Split the target leaf into a split containing the original + a new terminal */
@@ -76,4 +91,130 @@ export function collectLeafIds(tree: PaneNode): string[] {
 export function countLeaves(tree: PaneNode): number {
   if (tree.type === "terminal") return 1;
   return countLeaves(tree.first) + countLeaves(tree.second);
+}
+
+/** Locate a terminal leaf by pane id. */
+export function findLeaf(tree: PaneNode, targetId: string): TerminalLeaf | null {
+  if (tree.type === "terminal") return tree.id === targetId ? tree : null;
+  return findLeaf(tree.first, targetId) ?? findLeaf(tree.second, targetId);
+}
+
+/** Collect terminal leaves in stable tree order, enriched with current PTY ids. */
+export function collectPaneRegistry(
+  tree: PaneNode,
+  terminalIds: ReadonlyMap<string, string> = new Map(),
+  lifecycleStates: ReadonlyMap<string, PaneLifecycleState> = new Map(),
+): PaneRegistryEntry[] {
+  const entries: PaneRegistryEntry[] = [];
+  collectPaneRegistryInto(tree, terminalIds, lifecycleStates, entries);
+  return entries;
+}
+
+/** Collect pane switcher rows in stable tmux-style tree order. */
+export function collectPaneSwitcherEntries(
+  tree: PaneNode,
+  terminalIds: ReadonlyMap<string, string> = new Map(),
+  windowLabel = "window",
+  lifecycleStates: ReadonlyMap<string, PaneLifecycleState> = new Map(),
+): PaneSwitcherEntry[] {
+  return collectPaneRegistry(tree, terminalIds, lifecycleStates).map((pane) => {
+    const label = pane.title || (pane.role ? `@${pane.role}` : `${pane.shell} pane ${pane.index + 1}`);
+    return {
+      ...pane,
+      label,
+      route: `${windowLabel}.${pane.index + 1} ${label}`,
+    };
+  });
+}
+
+/** Update terminal-only metadata without disturbing PTY identity. */
+export function updateLeafMeta(
+  tree: PaneNode,
+  targetId: string,
+  patch: { title?: string | null; role?: PaneRole | null },
+): PaneNode {
+  if (tree.type === "terminal") {
+    if (tree.id !== targetId) return tree;
+    const next = { ...tree, ...normalizeLeafMeta(patch) };
+    if (patch.title !== undefined && !next.title) delete next.title;
+    if (patch.role !== undefined && !next.role) delete next.role;
+    return next;
+  }
+
+  return {
+    ...tree,
+    first: updateLeafMeta(tree.first, targetId, patch),
+    second: updateLeafMeta(tree.second, targetId, patch),
+  };
+}
+
+/** Return a compact title, or undefined when the label should be cleared. */
+export function normalizePaneTitle(title: string | null | undefined): string | undefined {
+  return typeof title === "string" ? title.replace(/\s+/g, " ").trim().slice(0, 48) || undefined : undefined;
+}
+
+/** Keep pane names unambiguous for command/workflow targeting. */
+export function uniquePaneTitle(tree: PaneNode, targetId: string, title: string): string {
+  const titleTaken = (candidate: string) => {
+    const lower = candidate.toLowerCase();
+    return collectLeafTitles(tree).some((leaf) => leaf.id !== targetId && leaf.title.toLowerCase() === lower);
+  };
+  if (!titleTaken(title)) return title;
+
+  const base = title.slice(0, 44).trim() || "Pane";
+  for (let idx = 2; idx < 100; idx += 1) {
+    const candidate = `${base} ${idx}`.slice(0, 48);
+    if (!titleTaken(candidate)) return candidate;
+  }
+  return `${base} ${uid().slice(0, 3)}`.slice(0, 48);
+}
+
+/** Cycle a pane through the small set of workstation roles. */
+export function cycleLeafRole(tree: PaneNode, targetId: string): PaneNode {
+  const leaf = findLeaf(tree, targetId);
+  const currentIndex = leaf?.role ? PANE_ROLES.indexOf(leaf.role) : -1;
+  const nextRole = PANE_ROLES[(currentIndex + 1) % PANE_ROLES.length] ?? "work";
+  return updateLeafMeta(tree, targetId, { role: nextRole });
+}
+
+function normalizeLeafMeta(meta: { title?: string | null; role?: PaneRole | null }): {
+  title?: string;
+  role?: PaneRole;
+} {
+  const title = normalizePaneTitle(meta.title);
+  return {
+    ...(title ? { title } : {}),
+    ...(meta.role ? { role: meta.role } : {}),
+  };
+}
+
+function collectLeafTitles(tree: PaneNode): { id: string; title: string }[] {
+  if (tree.type === "terminal") {
+    return tree.title ? [{ id: tree.id, title: tree.title }] : [];
+  }
+  return [...collectLeafTitles(tree.first), ...collectLeafTitles(tree.second)];
+}
+
+function collectPaneRegistryInto(
+  tree: PaneNode,
+  terminalIds: ReadonlyMap<string, string>,
+  lifecycleStates: ReadonlyMap<string, PaneLifecycleState>,
+  entries: PaneRegistryEntry[],
+): void {
+  if (tree.type === "terminal") {
+    const terminalId = terminalIds.get(tree.id) ?? null;
+    entries.push({
+      paneId: tree.id,
+      terminalId,
+      lifecycle: lifecycleStates.get(tree.id) ?? (terminalId ? "live" : "layout-only"),
+      index: entries.length,
+      shell: tree.shell,
+      cwd: tree.cwd,
+      title: tree.title,
+      role: tree.role,
+    });
+    return;
+  }
+  collectPaneRegistryInto(tree.first, terminalIds, lifecycleStates, entries);
+  collectPaneRegistryInto(tree.second, terminalIds, lifecycleStates, entries);
 }

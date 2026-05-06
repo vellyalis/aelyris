@@ -1,0 +1,212 @@
+import { AlertTriangle, CheckCircle2, Clock3, Inbox, ShieldQuestion, UserRoundCheck } from "lucide-react";
+import { useMemo } from "react";
+import {
+  buildDecisionInbox,
+  type DecisionInboxSummary,
+  type HumanDecisionItem,
+  type HumanDecisionRisk,
+  type HumanDecisionType,
+} from "../../shared/lib/decisionInbox";
+import type { AuditEventRecord } from "../../shared/types/audit";
+import type { AgentSession } from "../../shared/types/agent";
+import { EmptyState } from "../../shared/ui/EmptyState";
+import { PanelHeader } from "../../shared/ui/PanelHeader";
+import styles from "./DecisionInboxPanel.module.css";
+
+interface DecisionInboxPanelProps {
+  sessions: AgentSession[];
+  auditEvents: AuditEventRecord[];
+  activeSessionId: string | null;
+  onSelectSession: (id: string) => void;
+}
+
+const TYPE_LABELS: Record<HumanDecisionType, string> = {
+  permission_required: "Permission",
+  product_direction: "Product",
+  destructive_operation: "Destructive",
+  external_account_login: "Account",
+  merge_conflict_strategy: "Conflict",
+  test_expectation_changed: "Tests",
+  security_exception: "Security",
+};
+
+const RISK_LABELS: Record<HumanDecisionRisk, string> = {
+  critical: "Critical",
+  high: "High",
+  medium: "Medium",
+  low: "Low",
+};
+
+function formatAge(timestamp: number): string {
+  const ageMs = Math.max(0, Date.now() - timestamp);
+  const minutes = Math.floor(ageMs / 60_000);
+  if (minutes < 1) return "now";
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
+}
+
+export function DecisionInboxPanel({
+  sessions,
+  auditEvents,
+  activeSessionId,
+  onSelectSession,
+}: DecisionInboxPanelProps) {
+  const inbox = useMemo<DecisionInboxSummary>(
+    () => buildDecisionInbox({ sessions, auditEvents }),
+    [auditEvents, sessions],
+  );
+  const pending = inbox.pendingItems.slice(0, 5);
+  const history = inbox.historyItems.slice(0, 4);
+
+  return (
+    <section className={styles.panel} aria-label="Human decision inbox" data-empty={inbox.items.length === 0}>
+      <PanelHeader
+        title="Decision Inbox"
+        leadingIcon={<Inbox size={12} />}
+        count={inbox.pendingCount > 0 ? inbox.pendingCount : undefined}
+      />
+
+      {inbox.items.length === 0 ? (
+        <EmptyState icon={<ShieldQuestion size={18} />} title="No human decisions" description="Automation is clear." />
+      ) : (
+        <div className={styles.body}>
+          <fieldset className={styles.metrics} aria-label="Decision inbox summary">
+            <Metric label="Pending" value={inbox.pendingCount} />
+            <Metric label="Risk" value={inbox.highRiskCount} />
+            <Metric label="History" value={inbox.historyItems.length} />
+            <Metric label="Types" value={Object.values(inbox.byType).filter(Boolean).length} />
+          </fieldset>
+
+          {pending.length > 0 && (
+            <section className={styles.queue} aria-label="Pending human decisions">
+              {pending.map((item) => (
+                <DecisionRow
+                  key={item.id}
+                  item={item}
+                  active={item.sessionId === activeSessionId}
+                  onSelectSession={onSelectSession}
+                />
+              ))}
+            </section>
+          )}
+
+          {history.length > 0 && (
+            <section className={styles.history} aria-label="Decision history">
+              <div className={styles.historyHeader}>
+                <span>History</span>
+                <span>{history.length}</span>
+              </div>
+              {history.map((item) => (
+                <DecisionRow
+                  key={item.id}
+                  item={item}
+                  active={item.sessionId === activeSessionId}
+                  onSelectSession={onSelectSession}
+                  compact
+                />
+              ))}
+            </section>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function DecisionRow({
+  item,
+  active,
+  compact = false,
+  onSelectSession,
+}: {
+  item: HumanDecisionItem;
+  active: boolean;
+  compact?: boolean;
+  onSelectSession: (id: string) => void;
+}) {
+  const canFocus = Boolean(item.sessionId);
+  const latestHistory = item.history[0];
+  const icon =
+    item.status === "decided" ? (
+      <CheckCircle2 size={12} />
+    ) : item.risk === "critical" || item.risk === "high" ? (
+      <AlertTriangle size={12} />
+    ) : (
+      <Clock3 size={12} />
+    );
+
+  return (
+    <article
+      className={styles.item}
+      data-status={item.status}
+      data-risk={item.risk}
+      data-active={active || undefined}
+      data-compact={compact || undefined}
+    >
+      <div className={styles.itemTop}>
+        <span className={styles.icon} aria-hidden="true">
+          {icon}
+        </span>
+        <div className={styles.titleBlock}>
+          <span className={styles.title}>{item.title}</span>
+          <span className={styles.context}>{item.context}</span>
+        </div>
+        <span className={styles.typeBadge}>{TYPE_LABELS[item.type]}</span>
+        <span className={styles.riskBadge} data-risk={item.risk}>
+          {RISK_LABELS[item.risk]}
+        </span>
+      </div>
+
+      {!compact && (
+        <dl className={styles.details}>
+          <div>
+            <dt>Recommended</dt>
+            <dd>{item.recommendedOption}</dd>
+          </div>
+          <div>
+            <dt>Consequence</dt>
+            <dd>{item.consequence}</dd>
+          </div>
+          <div>
+            <dt>Timeout</dt>
+            <dd>{item.timeoutPolicy}</dd>
+          </div>
+        </dl>
+      )}
+
+      <div className={styles.footer}>
+        <span>{formatAge(item.requestedAt)}</span>
+        <span>{item.source}</span>
+        {latestHistory && <span>{latestHistory.action}</span>}
+        {item.evidence.slice(0, compact ? 1 : 3).map((entry) => (
+          <span key={entry} title={entry}>
+            {entry}
+          </span>
+        ))}
+        {canFocus && (
+          <button
+            type="button"
+            className={styles.focusBtn}
+            onClick={() => onSelectSession(item.sessionId ?? "")}
+            aria-label={`Focus ${item.title}`}
+            title={`Focus ${item.title}`}
+          >
+            <UserRoundCheck size={11} aria-hidden="true" />
+            Focus
+          </button>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className={styles.metric}>
+      <span className={styles.metricValue}>{value}</span>
+      <span className={styles.metricLabel}>{label}</span>
+    </div>
+  );
+}

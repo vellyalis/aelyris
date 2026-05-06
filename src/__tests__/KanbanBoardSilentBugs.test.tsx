@@ -72,3 +72,12 @@ describe("KanbanBoard nested button keyboard", () => {
     expect(src).toMatch(/aria-label=\{`Delete task: \$\{t\.title\}`\}/);
   });
 });
+
+describe("KanbanBoard completed visibility", () => {
+  it("does not collapse completed work by default", () => {
+    const src = getSrc();
+
+    expect(src).not.toMatch(/useState<Record<string,\s*boolean>>\(\{\s*done:\s*true\s*\}\)/);
+    expect(src).toMatch(/useState<Record<string,\s*boolean>>\(\{\s*\}\)/);
+  });
+});

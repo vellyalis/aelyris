@@ -1,8 +1,7 @@
-import { render, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { PromptMark } from "../shared/hooks/usePromptMarks";
-
 import { TerminalInfoBar } from "../features/terminal/TerminalInfoBar";
+import type { PromptMark } from "../shared/hooks/usePromptMarks";
 
 // TerminalInfoBar subscribes to OSC 133 prompt marks via usePromptMarks.
 // In the jsdom test environment we mock Tauri core/event so the seed
@@ -46,8 +45,8 @@ describe("TerminalInfoBar — exit status dot", () => {
     await waitFor(() => {
       const dot = container.querySelector("[role='status']") as HTMLElement | null;
       expect(dot).not.toBeNull();
-      expect(dot!.style.background).toBe("var(--ctp-green)");
-      expect(dot!.getAttribute("aria-label")).toContain("succeeded");
+      expect(dot?.style.background).toBe("var(--ctp-green)");
+      expect(dot?.getAttribute("aria-label")).toContain("succeeded");
     });
   });
 
@@ -57,8 +56,8 @@ describe("TerminalInfoBar — exit status dot", () => {
     await waitFor(() => {
       const dot = container.querySelector("[role='status']") as HTMLElement | null;
       expect(dot).not.toBeNull();
-      expect(dot!.style.background).toBe("var(--ctp-red)");
-      expect(dot!.getAttribute("aria-label")).toContain("137");
+      expect(dot?.style.background).toBe("var(--ctp-red)");
+      expect(dot?.getAttribute("aria-label")).toContain("137");
     });
   });
 
@@ -68,7 +67,7 @@ describe("TerminalInfoBar — exit status dot", () => {
     await waitFor(() => {
       const dot = container.querySelector("[role='status']") as HTMLElement | null;
       expect(dot).not.toBeNull();
-      expect(dot!.style.background).toBe("var(--text-muted)");
+      expect(dot?.style.background).toBe("var(--text-muted)");
     });
   });
 
@@ -84,8 +83,8 @@ describe("TerminalInfoBar — exit status dot", () => {
       const dot = container.querySelector("[role='status']") as HTMLElement | null;
       expect(dot).not.toBeNull();
       // Latest is exit 2 — must be red, not green from the earlier 0.
-      expect(dot!.style.background).toBe("var(--ctp-red)");
-      expect(dot!.getAttribute("aria-label")).toContain("2");
+      expect(dot?.style.background).toBe("var(--ctp-red)");
+      expect(dot?.getAttribute("aria-label")).toContain("2");
     });
   });
 
@@ -94,5 +93,71 @@ describe("TerminalInfoBar — exit status dot", () => {
     expect(container.querySelector("[role='status']")).toBeNull();
     // And we didn't call the backend — hook respects the null id.
     expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it("renders pane identity and cycles its role from the compact badge", () => {
+    const onCycle = vi.fn();
+    render(
+      <TerminalInfoBar
+        shell="pwsh"
+        terminalId={null}
+        paneTitle="frontend"
+        paneRole="build"
+        onCyclePaneRole={onCycle}
+      />,
+    );
+
+    const identity = screen.getByRole("button", { name: /Pane identity: Build · frontend/ });
+    expect(identity.textContent).toContain("Build · frontend");
+    fireEvent.click(identity);
+    expect(onCycle).toHaveBeenCalledTimes(1);
+  });
+
+  it("sets a pane role from the explicit role menu", async () => {
+    const onSetPaneRole = vi.fn();
+    render(
+      <TerminalInfoBar
+        shell="pwsh"
+        terminalId={null}
+        paneTitle="frontend"
+        paneRole="build"
+        onSetPaneRole={onSetPaneRole}
+      />,
+    );
+
+    const trigger = screen.getByRole("button", { name: /Pane identity: Build · frontend/ });
+    fireEvent.pointerDown(trigger);
+    const items = await screen.findAllByRole("menuitem");
+    const review = items.find((item) => item.textContent?.replace(/\s+/g, " ").includes("Review@review"));
+    if (!review) throw new Error("Review role menu item was not rendered");
+    fireEvent.click(review);
+
+    expect(onSetPaneRole).toHaveBeenCalledWith("review");
+  });
+
+  it("renames the pane from the explicit rename button without cycling the role", () => {
+    const onCycle = vi.fn();
+    const onRename = vi.fn();
+    vi.spyOn(window, "prompt").mockReturnValue("  reviewer  ");
+    render(
+      <TerminalInfoBar
+        shell="pwsh"
+        terminalId={null}
+        paneRole="review"
+        onCyclePaneRole={onCycle}
+        onRenamePane={onRename}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Rename pane: Review/ }));
+    expect(onCycle).not.toHaveBeenCalled();
+    expect(onRename).toHaveBeenCalledWith("reviewer");
+  });
+
+  it("does not duplicate global branch metadata inside each terminal pane bar", () => {
+    render(<TerminalInfoBar shell="pwsh" terminalId={null} branch="feature/noise" cwd="C:/repo" />);
+
+    expect(screen.queryByText("feature/noise")).toBeNull();
+    expect(screen.getByText("~/C:/repo")).not.toBeNull();
   });
 });

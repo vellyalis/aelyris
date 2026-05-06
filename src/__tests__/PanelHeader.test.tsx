@@ -79,6 +79,7 @@ describe("PanelHeader", () => {
       fireEvent.click(container.querySelector("[data-testid='act']")!);
       expect(onAction).toHaveBeenCalledTimes(1);
       expect(onToggle).not.toHaveBeenCalled();
+      expect(container.querySelector("button button")).toBeNull();
     });
   });
 });

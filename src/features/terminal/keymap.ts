@@ -48,6 +48,11 @@ export function keyEventToBytes(ev: KeyEventLike): string | null {
 
   if (ev.key.length !== 1) return null;
 
+  // Ctrl+Alt + printable is how Windows exposes AltGr on many keyboard
+  // layouts. Let the browser text-input path emit the composed printable
+  // glyph instead of preempting it from keydown and preventing default.
+  if (ev.ctrlKey && ev.altKey) return null;
+
   if (ev.ctrlKey && !ev.altKey) {
     return ctrlChar(ev.key);
   }

@@ -19,6 +19,7 @@
   max-width: calc(100vw - var(--space-12));
   max-height: 80vh;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   background: var(--dialog-surface);
   backdrop-filter: var(--dialog-surface-blur);
   -webkit-backdrop-filter: var(--dialog-surface-blur);
@@ -94,6 +95,7 @@
   margin-bottom: var(--space-6);
   max-height: 200px;
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 .ruleRow {
   display: flex;

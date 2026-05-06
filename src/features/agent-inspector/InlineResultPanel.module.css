@@ -1,5 +1,7 @@
 .panel {
   display: flex;
+  min-width: 0;
+  min-height: 0;
   flex-direction: column;
   flex: 1;
   overflow: hidden;
@@ -24,18 +26,24 @@
 }
 .closeBtn:focus-visible {
   outline: 2px solid var(--gold);
-  outline-offset: 1px;
+  outline-offset: -2px;
 }
 
 .fileTabs {
-  display: flex;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(74px, 1fr);
+  min-width: 0;
+  min-height: 30px;
   gap: 1px; /* whisper gap: タブ区切り (sub-token) */
   padding: var(--space-2) var(--space-5);
-  overflow-x: auto;
+  overflow: hidden;
   border-bottom: 1px solid var(--border);
 }
 
 .fileTab {
+  min-width: 0;
+  height: 22px;
   background: none;
   border: none;
   color: var(--text-muted);
@@ -47,7 +55,9 @@
   display: flex;
   align-items: center;
   gap: var(--space-2); /* 4px, round up from 3px */
+  overflow: hidden;
   white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .fileTab:hover {
   color: var(--text-primary);
@@ -60,6 +70,7 @@
 }
 
 .fileAction {
+  flex: 0 0 auto;
   font-size: var(--text-2xs);
   font-weight: var(--weight-semibold);
   width: 16px;
@@ -80,10 +91,13 @@
 }
 
 .nav {
-  display: flex;
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 18px 34px 18px minmax(0, 1fr) minmax(88px, auto);
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-2) var(--space-5);
+  min-height: 32px;
   font-size: var(--text-xs);
   font-family: var(--font-mono);
   color: var(--text-muted);
@@ -91,6 +105,8 @@
 }
 
 .navBtn {
+  width: 18px;
+  height: 18px;
   background: none;
   border: none;
   color: var(--text-muted);
@@ -107,16 +123,32 @@
 }
 
 .navLabel {
+  min-width: 0;
   font-weight: var(--weight-medium);
+  text-align: center;
 }
 .filePath {
+  min-width: 0;
+  overflow: hidden;
   color: var(--ctp-blue);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .navActions {
-  margin-left: auto;
-  display: flex;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(24px, auto);
+  min-width: 0;
   gap: var(--space-2);
+  justify-content: end;
+  overflow: hidden;
+}
+
+.actionLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .acceptBtn,
@@ -126,11 +158,14 @@
   font-size: var(--text-2xs);
   font-family: var(--font-mono);
   padding: 1px 6px;
+  min-width: 0;
+  height: 22px;
   border-radius: var(--radius-sm);
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: var(--space-2); /* 4px, round up from 3px */
+  white-space: nowrap;
 }
 .acceptBtn {
   border-color: var(--ctp-green);
@@ -155,8 +190,14 @@
   font-size: var(--text-2xs);
   font-family: var(--font-mono);
   padding: 1px 6px;
+  min-width: 0;
+  max-width: 70px;
+  height: 22px;
   border-radius: var(--radius-sm);
   cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .aiFixBtn:hover {
   background: var(--ctp-mauve);
@@ -165,7 +206,30 @@
 
 .diffArea {
   flex: 1;
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
+}
+
+@container (max-width: 330px) {
+  .fileTabs {
+    grid-auto-columns: minmax(54px, 1fr);
+    padding-inline: var(--space-4);
+  }
+
+  .nav {
+    grid-template-columns: 18px 30px 18px minmax(0, 1fr) minmax(78px, auto);
+    padding-inline: var(--space-4);
+    gap: var(--space-2);
+  }
+
+  .aiFixBtn {
+    max-width: 26px;
+  }
+
+  .revertBtn .actionLabel {
+    display: none;
+  }
 }
 
 .loading,

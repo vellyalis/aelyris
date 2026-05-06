@@ -3,14 +3,11 @@
 :root {
   /* Layered glass system — high contrast between zones.
    *
-   * Alphas tuned 2026-05-02 to let the Win11 Acrylic/Mica material show
-   * through cleanly. Previous values (0.45 / 0.55 / 0.62 …) plus
-   * 12-20 px backdrop-filter blur were stacking enough opaque
-   * paint that the OS wallpaper was barely perceptible. The new
-   * values keep enough darkness for legible text while letting
-   * the Mica's subtle wallpaper-derived tint read through —
-   * Apple-class "translucent panels stacked on a real desktop"
-   * rather than "dark slab pretending to be glass". */
+   * Tauri's native Mica/Acrylic is intentionally visible, but bright
+   * wallpapers must not become the dominant material. These alphas sit
+   * closer to the Settings dialog's deep water surface than to frosted
+   * grey glass: translucent enough to keep depth, dark enough to own
+   * the app's color. */
   --aether-ink: #090b13;
   --aether-obsidian: #111017;
   --aether-graphite: #1b1920;
@@ -21,15 +18,15 @@
   /* Level 0: Terminal center, clear dark water passthrough */
   --glass-clear: rgba(5, 9, 15, 0.026);
   /* Level 1: Ground, sidebar rail, darkest anchor */
-  --glass-ground: rgba(2, 6, 11, 0.17);
+  --glass-ground: rgba(2, 7, 13, 0.44);
   /* Level 2: Frame, header, statusbar */
-  --glass-frame: rgba(8, 13, 20, 0.11);
+  --glass-frame: rgba(4, 12, 21, 0.36);
   /* Level 3: Standard, left panel */
-  --glass-standard: rgba(4, 10, 17, 0.086);
+  --glass-standard: rgba(3, 12, 22, 0.5);
   /* Level 3.5: Dense, right panel, higher information density */
-  --glass-dense: rgba(5, 12, 20, 0.112);
+  --glass-dense: rgba(4, 13, 23, 0.58);
   /* Level 4: Thick, cards and elevated surfaces */
-  --glass-thick: rgba(7, 16, 24, 0.145);
+  --glass-thick: rgba(4, 14, 25, 0.64);
   /* Level 5: Solid — modals, dialogs (still opaque-ish so dialog
      chrome reads against any wallpaper, not just dark ones). */
   --glass-solid: rgba(26, 26, 26, 0.78);
@@ -40,24 +37,24 @@
   --aether-bg-elevated: var(--glass-dense);
   --aether-bg-card: var(--glass-thick);
   --aether-bg-surface: var(--glass-dense);
-  --aether-border: rgba(143, 213, 232, 0.058);
-  --aether-border-strong: rgba(156, 225, 240, 0.11);
+  --aether-border: rgba(121, 202, 226, 0.052);
+  --aether-border-strong: rgba(146, 221, 239, 0.096);
 
-  --terminal-canvas-bg: rgba(3, 10, 22, 0.46);
+  --terminal-canvas-bg: rgba(3, 10, 22, 0.62);
   --terminal-well-bg:
-    radial-gradient(ellipse at 48% -18%, rgba(96, 203, 232, 0.045), transparent 44%),
-    linear-gradient(180deg, rgba(5, 13, 22, 0.18), rgba(1, 5, 12, 0.44)),
-    linear-gradient(90deg, rgba(91, 190, 224, 0.014), transparent 26%, transparent 74%, rgba(170, 230, 240, 0.012));
-  --terminal-chrome-bg: rgba(4, 9, 15, 0.2);
-  --terminal-chrome-bg-focus: rgba(5, 11, 18, 0.34);
-  --terminal-rim-warm: rgba(142, 226, 241, 0.082);
-  --terminal-border: rgba(124, 205, 230, 0.044);
+    radial-gradient(ellipse at 48% -18%, rgba(72, 185, 220, 0.034), transparent 44%),
+    linear-gradient(180deg, rgba(4, 11, 20, 0.44), rgba(1, 5, 12, 0.68)),
+    linear-gradient(90deg, rgba(74, 174, 212, 0.012), transparent 26%, transparent 74%, rgba(137, 214, 231, 0.01));
+  --terminal-chrome-bg: rgba(3, 8, 14, 0.44);
+  --terminal-chrome-bg-focus: rgba(4, 10, 18, 0.58);
+  --terminal-rim-warm: rgba(116, 213, 238, 0.064);
+  --terminal-border: rgba(96, 184, 215, 0.04);
   --terminal-shadow-inset:
-    inset 0 1px 0 rgba(174, 231, 242, 0.026),
+    inset 0 1px 0 rgba(146, 221, 238, 0.018),
     inset 0 0 0 1px var(--terminal-border),
     inset 0 30px 84px rgba(0, 0, 0, 0.26),
     inset 0 -28px 78px rgba(3, 4, 8, 0.24);
-  --terminal-shell-shadow: 0 24px 70px rgba(0, 0, 0, 0.18);
+  --terminal-shell-shadow: 0 24px 70px rgba(0, 0, 0, 0.24);
   --terminal-viewport-shadow:
     inset 0 0 0 1px rgba(137, 220, 235, 0.038),
     inset 0 1px 0 rgba(190, 238, 246, 0.024),
@@ -67,86 +64,60 @@
     linear-gradient(180deg, rgba(0, 0, 0, 0.14), transparent 48px),
     linear-gradient(0deg, rgba(0, 0, 0, 0.12), transparent 42px),
     linear-gradient(90deg, rgba(92, 188, 219, 0.014), transparent 28%, transparent 72%, rgba(167, 226, 239, 0.016));
-  --terminal-watermark-opacity: 0.064;
-  --terminal-watermark-filter: drop-shadow(0 18px 54px rgba(101, 205, 234, 0.07));
+  --terminal-watermark-opacity: 0.052;
+  --terminal-watermark-filter: drop-shadow(0 18px 54px rgba(101, 205, 234, 0.055));
 
   --chrome-frame-bg:
-    linear-gradient(180deg, rgba(166, 226, 239, 0.022), transparent 72%),
-    linear-gradient(90deg, rgba(107, 204, 230, 0.026), transparent 34%, transparent 66%, rgba(178, 228, 238, 0.012)),
+    linear-gradient(180deg, rgba(119, 211, 236, 0.014), transparent 72%),
+    linear-gradient(90deg, rgba(80, 184, 220, 0.018), transparent 34%, transparent 66%, rgba(150, 221, 235, 0.008)),
     var(--glass-frame);
-  --chrome-frame-filter: blur(14px) saturate(1.08) contrast(1.01);
-  --chrome-frame-shadow:
-    inset 0 1px 0 rgba(171, 231, 244, 0.052),
-    inset 0 -1px 0 rgba(113, 201, 227, 0.02);
+  --chrome-frame-filter: blur(8px) saturate(1.08) brightness(0.82) contrast(1.08);
+  --chrome-frame-shadow: inset 0 1px 0 rgba(140, 220, 238, 0.032), inset 0 -1px 0 rgba(69, 152, 190, 0.026);
   --material-stage-bg:
     radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--accent) 2.4%, transparent), transparent 48%),
-    linear-gradient(180deg, rgba(127, 215, 235, 0.009), rgba(0, 0, 0, 0.024)),
-    var(--glass-clear);
+    linear-gradient(180deg, rgba(127, 215, 235, 0.009), rgba(0, 0, 0, 0.024)), var(--glass-clear);
   --material-stage-shadow:
-    inset 0 1px 0 rgba(160, 228, 242, 0.03),
-    inset 0 0 0 1px rgba(131, 215, 236, 0.014),
+    inset 0 1px 0 rgba(160, 228, 242, 0.03), inset 0 0 0 1px rgba(131, 215, 236, 0.014),
     inset 0 -28px 80px rgba(0, 0, 0, 0.11);
-  --material-panel-filter: blur(10px) saturate(1.08) contrast(1.01);
-  --material-panel-shadow:
-    var(--rim-top),
-    inset 0 0 0 1px rgba(122, 211, 235, 0.026),
-    0 8px 24px rgba(0, 0, 0, 0.12);
+  --material-panel-filter: blur(1px) saturate(1.05) brightness(0.72) contrast(1.08);
+  --material-panel-shadow: var(--rim-top), inset 0 0 0 1px rgba(112, 202, 229, 0.022), 0 8px 24px rgba(0, 0, 0, 0.18);
   --material-card-shadow:
-    var(--rim-top),
-    0 0 0 1px rgba(122, 211, 235, 0.032),
-    0 1px 2px rgba(0, 0, 0, 0.1),
-    0 6px 16px rgba(0, 0, 0, 0.08);
-  --terminal-shell-filter: blur(8px) saturate(1.06) brightness(0.94) contrast(1.02);
+    var(--rim-top), 0 0 0 1px rgba(112, 202, 229, 0.026), 0 1px 2px rgba(0, 0, 0, 0.1), 0 6px 16px rgba(0, 0, 0, 0.08);
+  --popup-glass-bg: linear-gradient(180deg, rgba(136, 222, 240, 0.012), transparent 30%), rgba(4, 11, 19, 0.58);
+  --popup-glass-border: rgba(124, 214, 235, 0.06);
+  --popup-glass-shadow: var(--rim-top), inset 0 0 0 1px rgba(112, 202, 229, 0.018), 0 12px 34px rgba(0, 0, 0, 0.28);
+  --terminal-shell-filter: blur(1px) saturate(1.05) brightness(0.74) contrast(1.08);
   --terminal-shell-depth:
-    var(--terminal-shadow-inset),
-    inset 0 0 0 1px color-mix(in srgb, var(--terminal-border) 70%, transparent),
-    inset 0 1px 0 rgba(174, 231, 242, 0.04),
-    inset 0 -1px 0 rgba(98, 188, 216, 0.022);
+    var(--terminal-shadow-inset), inset 0 0 0 1px color-mix(in srgb, var(--terminal-border) 70%, transparent),
+    inset 0 1px 0 rgba(174, 231, 242, 0.04), inset 0 -1px 0 rgba(98, 188, 216, 0.022);
 
   --mood-root-glow:
     linear-gradient(125deg, rgba(95, 116, 205, 0.028), transparent 32%),
     linear-gradient(300deg, rgba(74, 185, 218, 0.038), transparent 38%),
     linear-gradient(180deg, rgba(5, 10, 18, 0.04), rgba(3, 9, 16, 0.12));
-  --mood-root-glow-opacity: 0.16;
+  --mood-root-glow-opacity: 0.22;
   --native-backdrop-veil: transparent;
-  --mood-root-texture:
-    linear-gradient(90deg, transparent, rgba(132, 214, 235, 0.008) 50%, transparent),
-    repeating-linear-gradient(0deg, rgba(124, 202, 224, 0.005) 0 1px, transparent 1px 4px);
-  --mood-root-texture-opacity: 0.036;
+  --mood-root-texture: linear-gradient(90deg, transparent, rgba(132, 214, 235, 0.006) 50%, transparent);
+  --mood-root-texture-opacity: 0.018;
   --mood-window-rim:
-    inset 0 1px 0 rgba(180, 235, 246, 0.065),
-    inset 0 0 0 1px rgba(109, 205, 232, 0.048),
+    inset 0 1px 0 rgba(180, 235, 246, 0.065), inset 0 0 0 1px rgba(109, 205, 232, 0.048),
     inset 0 -1px 0 rgba(84, 171, 207, 0.038);
   --mood-left-panel-bg:
-    linear-gradient(180deg, rgba(142, 222, 240, 0.012), transparent 26%),
-    linear-gradient(135deg, rgba(5, 12, 21, 0.034), rgba(1, 7, 13, 0.056)),
-    var(--glass-standard);
-  --mood-center-panel-bg:
-    linear-gradient(180deg, rgba(4, 10, 17, 0.026), rgba(1, 5, 10, 0.018)),
-    var(--aether-bg);
+    linear-gradient(180deg, rgba(104, 214, 238, 0.018), transparent 26%),
+    linear-gradient(145deg, rgba(0, 126, 190, 0.042), transparent 48%), rgba(4, 13, 23, 0.56);
+  --mood-center-panel-bg: linear-gradient(180deg, rgba(4, 13, 23, 0.2), rgba(1, 6, 12, 0.18)), var(--aether-bg);
   --mood-right-panel-bg:
-    linear-gradient(180deg, rgba(151, 226, 242, 0.008), transparent 24%),
-    linear-gradient(145deg, rgba(4, 11, 19, 0.014), rgba(1, 7, 14, 0.026)),
-    rgba(4, 10, 17, 0.052);
-  --mood-widget-bg:
-    linear-gradient(180deg, rgba(151, 226, 242, 0.008), transparent 30%),
-    rgba(5, 12, 20, 0.096);
+    linear-gradient(180deg, rgba(104, 214, 238, 0.02), transparent 28%),
+    linear-gradient(145deg, rgba(0, 126, 190, 0.05), transparent 48%), rgba(4, 13, 23, 0.64);
+  --mood-widget-bg: linear-gradient(180deg, rgba(104, 214, 238, 0.012), transparent 30%), rgba(4, 13, 23, 0.48);
   --mood-widget-veil:
-    linear-gradient(180deg, rgba(168, 236, 246, 0.008), transparent 22%),
-    linear-gradient(135deg, rgba(95, 178, 217, 0.01), transparent 42%),
-    linear-gradient(315deg, rgba(137, 220, 235, 0.008), transparent 48%);
-  --mood-sessions-widget-bg:
-    linear-gradient(160deg, rgba(6, 15, 25, 0.082), rgba(2, 8, 15, 0.09)),
-    rgba(5, 12, 20, 0.092);
-  --mood-workflow-widget-bg:
-    linear-gradient(180deg, rgba(5, 16, 28, 0.064), rgba(2, 8, 15, 0.08)),
-    rgba(5, 12, 20, 0.088);
-  --mood-toolkit-widget-bg:
-    linear-gradient(150deg, rgba(5, 16, 28, 0.058), rgba(2, 8, 16, 0.084)),
-    rgba(5, 12, 20, 0.086);
-  --mood-logs-widget-bg:
-    linear-gradient(180deg, rgba(6, 15, 25, 0.09), rgba(3, 9, 18, 0.12)),
-    var(--glass-dense);
+    linear-gradient(180deg, rgba(168, 236, 246, 0.012), transparent 22%),
+    linear-gradient(135deg, rgba(0, 126, 190, 0.018), transparent 42%),
+    linear-gradient(315deg, rgba(137, 220, 235, 0.01), transparent 48%);
+  --mood-sessions-widget-bg: linear-gradient(160deg, rgba(5, 18, 31, 0.34), rgba(2, 9, 17, 0.4)), rgba(4, 13, 23, 0.32);
+  --mood-workflow-widget-bg: linear-gradient(180deg, rgba(5, 18, 31, 0.32), rgba(2, 9, 17, 0.38)), rgba(4, 13, 23, 0.3);
+  --mood-toolkit-widget-bg: linear-gradient(150deg, rgba(5, 18, 31, 0.31), rgba(2, 9, 17, 0.38)), rgba(4, 13, 23, 0.3);
+  --mood-logs-widget-bg: linear-gradient(180deg, rgba(5, 18, 31, 0.38), rgba(3, 10, 19, 0.44)), var(--glass-dense);
   --mood-selection-bg: rgba(200, 160, 80, 0.25);
 
   /* Gold accent — 18K gold warmth */
@@ -207,8 +178,8 @@
   --accent: #4fc1ff;
 
   /* State tokens — use these for interactive element states */
-  --state-hover: var(--white-6);
-  --state-active: var(--white-10);
+  --state-hover: rgba(6, 18, 30, 0.24);
+  --state-active: rgba(9, 30, 48, 0.34);
   --state-selected: var(--gold);
   --state-disabled-opacity: 0.35;
 
@@ -218,8 +189,8 @@
    * Added after the 2026-04-24 per-feature audit flagged 3 different
    * hover shades across sibling row lists. Unit the tone here so a
    * future theme can swing them all together. */
-  --row-hover: var(--white-6);
-  --row-hover-strong: var(--white-10);
+  --row-hover: rgba(6, 18, 30, 0.24);
+  --row-hover-strong: rgba(9, 30, 48, 0.34);
 
   /* Typography */
   --font-ui: "IBM Plex Sans", -apple-system, "Segoe UI", sans-serif;
@@ -334,8 +305,8 @@
 
   /* Specular rim — the 1px inner top highlight that makes glass feel lit.
      Apply via `box-shadow: var(--rim-top), <rest>`. */
-  --rim-top: inset 0 1px 0 rgba(178, 236, 246, 0.046);
-  --rim-top-strong: inset 0 1px 0 rgba(194, 244, 250, 0.086);
+  --rim-top: inset 0 1px 0 rgba(144, 224, 240, 0.03);
+  --rim-top-strong: inset 0 1px 0 rgba(169, 236, 246, 0.056);
 
   /* Inset shadow — "recessed" panel affordance (Linear Level 2b). */
   --inset-recessed: inset 0 0 12px rgba(0, 0, 0, 0.2);
@@ -405,6 +376,29 @@
   --row-h-dense: 24px; /* FileTree, SCM fileRow, Conductor chip */
   --row-h-standard: 28px; /* Kanban card, Helm task, WorkspaceTabs */
   --row-h-comfortable: 32px; /* AgentInspector-style cards */
+
+  /* Density and role typography tokens. Balanced is the default; the
+     app shell scopes focus/dense overrides with data-density so dialogs
+     mounted in portals keep their own compact geometry. */
+  --density-mode: balanced;
+  --density-scrollbar-gutter: stable;
+  --density-rail-inset: var(--space-4);
+  --density-panel-gap: var(--space-5);
+  --density-panel-padding: var(--space-5);
+  --density-widget-gap: var(--space-4);
+  --density-row-h-dense: var(--row-h-dense);
+  --density-row-h-standard: var(--row-h-standard);
+  --density-row-h-comfortable: var(--row-h-comfortable);
+  --type-terminal-chrome: var(--text-xs);
+  --type-rail-section-title: var(--text-sm);
+  --type-card-title: var(--text-sm);
+  --type-metadata-label: var(--text-2xs);
+  --type-metric-value: var(--text-lg);
+  --type-mono-telemetry: var(--text-2xs);
+  --type-empty-title: var(--text-sm);
+  --type-button-label: var(--text-base);
+  --radius-card: var(--radius);
+  --radius-control: 6px;
 
   /* Icon size tiers (goal: 3 tiers across the whole app). */
   --icon-sm: 10px; /* dense lists, status pips */
@@ -511,8 +505,8 @@
   container-type: inline-size;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(var(--bento-cell), 1fr));
-  gap: var(--space-6);     /* 12px = sibling-but-distinct */
-  padding: var(--space-8); /* 16px = card-to-edge breathing */
+  gap: var(--density-widget-gap);
+  padding: var(--density-panel-padding);
 }
 
 /* Cell span utility. Defaults to a square; wide/tall/2x2 modifiers
@@ -532,18 +526,20 @@
   grid-row: span 2;
 }
 
-/* Bento card surface (depth-1 parent). Uses --glass-thick + 20px blur
-   so it reads as the elevated layer over a dimmer panel container.
-   `--rim-top` paints the 1px specular highlight on the top edge for
-   the "lit glass" feel; --rim-hairline ADDS a 1px outer outline at
-   call sites that want full-perimeter shadow-as-border. */
+/* Bento card surface (depth-1 parent). Keep this closer to clear dark
+   water than frosted glass: one gentle blur, black-blue fill, and a
+   cool hairline instead of a white border. */
 .bento-card {
-  background: var(--glass-thick);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-radius: var(--radius);
-  border: 1px solid var(--white-6);
-  box-shadow: var(--rim-top);
+  background:
+    linear-gradient(180deg, rgba(104, 214, 238, 0.014), transparent 34%),
+    linear-gradient(145deg, rgba(0, 126, 190, 0.026), transparent 52%), var(--glass-thick);
+  backdrop-filter: var(--material-panel-filter);
+  -webkit-backdrop-filter: var(--material-panel-filter);
+  border-radius: var(--radius-card);
+  border: 1px solid rgba(98, 190, 222, 0.04);
+  box-shadow:
+    var(--rim-top),
+    0 6px 18px rgba(0, 0, 0, 0.14);
   padding: var(--space-8);
 }
 
@@ -621,13 +617,13 @@ html[data-aether-host="browser"] body {
  * translucent, but the backdrop now reads as clear depth instead of milk. */
 html[data-aether-host="tauri"] #root {
   --native-backdrop-veil:
-    radial-gradient(ellipse at 38% -8%, rgba(75, 181, 220, 0.05), transparent 46%),
-    radial-gradient(ellipse at 86% 12%, rgba(154, 224, 238, 0.024), transparent 36%),
-    linear-gradient(180deg, rgba(1, 4, 10, 0.3), rgba(1, 6, 12, 0.38));
+    radial-gradient(ellipse at 38% -8%, rgba(75, 181, 220, 0.09), transparent 46%),
+    radial-gradient(ellipse at 86% 12%, rgba(154, 224, 238, 0.032), transparent 36%),
+    linear-gradient(180deg, rgba(0, 8, 18, 0.68), rgba(1, 7, 14, 0.74));
   background:
-    radial-gradient(ellipse at 42% 0%, rgba(87, 190, 224, 0.052), transparent 42%),
-    radial-gradient(ellipse at 82% 16%, rgba(180, 232, 242, 0.028), transparent 34%),
-    linear-gradient(180deg, rgba(1, 4, 10, 0.24), rgba(1, 6, 12, 0.31));
+    radial-gradient(ellipse at 42% 0%, rgba(87, 190, 224, 0.07), transparent 42%),
+    radial-gradient(ellipse at 82% 16%, rgba(180, 232, 242, 0.032), transparent 34%),
+    linear-gradient(180deg, rgba(0, 8, 18, 0.58), rgba(1, 7, 14, 0.66));
 }
 
 /* Window-focus override.
@@ -648,13 +644,13 @@ html[data-aether-host="tauri"] #root {
  * event listener). The override below applies only when the
  * dataset attribute explicitly says the window is blurred. */
 body[data-window-focused="false"] {
-  --glass-frame: rgba(8, 13, 20, 0.14);
-  --glass-standard: rgba(4, 10, 17, 0.125);
-  --glass-dense: rgba(5, 12, 20, 0.155);
-  --glass-thick: rgba(7, 16, 24, 0.195);
+  --glass-frame: rgba(5, 12, 20, 0.36);
+  --glass-standard: rgba(4, 12, 21, 0.48);
+  --glass-dense: rgba(4, 13, 23, 0.56);
+  --glass-thick: rgba(5, 15, 26, 0.62);
   /* Ground anchor stays readable on inactive, but must not turn
    * the window into an opaque slab when Acrylic is muted by DWM. */
-  --glass-ground: rgba(3, 7, 12, 0.24);
+  --glass-ground: rgba(2, 7, 13, 0.46);
 }
 
 /* Broad light leak, not a decorative orb: warm console glow + cool moon edge. */
@@ -716,13 +712,61 @@ body[data-window-focused="false"] {
   box-shadow: var(--mood-window-rim);
 }
 
+.app-container[data-density="focus"] {
+  --density-mode: focus;
+  --density-rail-inset: 10px;
+  --density-panel-gap: 12px;
+  --density-panel-padding: 12px;
+  --density-widget-gap: 10px;
+  --space-2: 5px;
+  --space-3: 7px;
+  --space-4: 10px;
+  --space-5: 12px;
+  --space-6: 14px;
+  --space-8: 18px;
+  --row-h-dense: 28px;
+  --row-h-standard: 32px;
+  --row-h-comfortable: 36px;
+  --density-row-h-dense: var(--row-h-dense);
+  --density-row-h-standard: var(--row-h-standard);
+  --density-row-h-comfortable: var(--row-h-comfortable);
+}
+
+.app-container[data-density="balanced"] {
+  --density-mode: balanced;
+  --density-rail-inset: var(--space-4);
+  --density-panel-gap: var(--space-5);
+  --density-panel-padding: var(--space-5);
+  --density-widget-gap: var(--space-4);
+}
+
+.app-container[data-density="dense"] {
+  --density-mode: dense;
+  --density-rail-inset: 6px;
+  --density-panel-gap: 8px;
+  --density-panel-padding: 8px;
+  --density-widget-gap: 6px;
+  --space-2: 3px;
+  --space-3: 5px;
+  --space-4: 6px;
+  --space-5: 8px;
+  --space-6: 10px;
+  --space-8: 12px;
+  --row-h-dense: 22px;
+  --row-h-standard: 26px;
+  --row-h-comfortable: 30px;
+  --density-row-h-dense: var(--row-h-dense);
+  --density-row-h-standard: var(--row-h-standard);
+  --density-row-h-comfortable: var(--row-h-comfortable);
+}
+
 .app-main {
   position: relative;
   isolation: isolate;
   flex: 1;
   display: flex;
-  gap: var(--space-5);
-  padding: var(--space-5);
+  gap: var(--density-panel-gap);
+  padding: var(--density-panel-padding);
   overflow: hidden;
   background: transparent;
   box-shadow: var(--material-stage-shadow);
@@ -736,9 +780,9 @@ body[data-window-focused="false"] {
   pointer-events: none;
   z-index: 0;
   background:
-    linear-gradient(90deg, transparent, rgba(117, 207, 232, 0.006) 50%, transparent),
-    repeating-linear-gradient(0deg, rgba(116, 200, 226, 0.004) 0 1px, transparent 1px 5px);
-  opacity: 0.04;
+    radial-gradient(ellipse at 50% 0%, rgba(118, 214, 238, 0.012), transparent 44%),
+    linear-gradient(90deg, transparent, rgba(117, 207, 232, 0.004) 50%, transparent);
+  opacity: 0.026;
 }
 
 .app-main > * {
@@ -757,16 +801,19 @@ body[data-window-focused="false"] {
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border-radius: var(--radius-lg);
+  gap: var(--space-2);
+  padding: var(--density-rail-inset);
+  border-radius: var(--radius);
   background: var(--mood-left-panel-bg);
   backdrop-filter: var(--material-panel-filter);
   -webkit-backdrop-filter: var(--material-panel-filter);
   border-right: 0;
-  box-shadow: var(--material-panel-shadow);
+  box-shadow:
+    inset 1px 0 0 rgba(160, 228, 242, 0.025),
+    inset 0 1px 0 rgba(160, 228, 242, 0.012);
   overflow-y: auto;
   overflow-x: hidden;
+  scrollbar-gutter: stable;
   /* Width transition for the chrome toggle (Ctrl+B). */
   transition:
     width 120ms var(--ease-silk, cubic-bezier(0.4, 0, 0.2, 1)),
@@ -780,11 +827,21 @@ body[data-window-focused="false"] {
  * cleared too, otherwise it would clamp the collapse to 120 px. */
 .left-panel-collapsed {
   width: 0 !important;
+  max-width: 0 !important;
   min-width: 0 !important;
+  flex: 0 0 0 !important;
   padding: 0;
   gap: 0;
   border-right-color: transparent;
   box-shadow: none;
+  overflow: hidden;
+  pointer-events: none;
+  scrollbar-gutter: auto;
+}
+
+.left-panel-collapsed > * {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 /* Visible drag handle on the sidebar's right edge. The hit target stays
@@ -795,6 +852,9 @@ body[data-window-focused="false"] {
   right: 0;
   bottom: 0;
   width: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
   cursor: col-resize;
   z-index: 1;
   background: transparent;
@@ -846,18 +906,14 @@ body[data-window-focused="false"] {
   box-sizing: border-box;
   flex-shrink: 0;
   container-type: inline-size;
-  display: grid;
-  grid-template-columns: 1fr;
-  grid-template-rows: minmax(200px, max-content) auto auto;
-  align-content: start;
-  gap: 0;
-  padding: var(--space-4);
+  display: block;
+  padding: 0;
   border-radius: var(--radius-lg);
   background: var(--mood-right-panel-bg);
   backdrop-filter: var(--material-panel-filter);
   -webkit-backdrop-filter: var(--material-panel-filter);
   box-shadow: var(--material-panel-shadow);
-  overflow-y: auto;
+  overflow-y: hidden;
   overflow-x: hidden;
   transition: width 120ms var(--ease-silk, cubic-bezier(0.4, 0, 0.2, 1));
 }
@@ -870,12 +926,12 @@ body[data-window-focused="false"] {
   pointer-events: none;
   border-radius: calc(var(--radius-lg) - 1px);
   background:
-    linear-gradient(180deg, rgba(128, 220, 238, 0.018), transparent 18%),
-    linear-gradient(90deg, rgba(91, 190, 224, 0.012), transparent 18%, transparent 82%, rgba(174, 235, 246, 0.01));
+    linear-gradient(180deg, rgba(96, 208, 236, 0.006), transparent 18%),
+    linear-gradient(90deg, rgba(66, 172, 214, 0.004), transparent 18%, transparent 82%, rgba(128, 216, 235, 0.004));
   box-shadow:
-    inset 0 1px 0 rgba(194, 244, 250, 0.03),
+    inset 0 1px 0 rgba(145, 226, 243, 0.014),
     inset 0 -24px 58px rgba(0, 0, 0, 0.16);
-  opacity: 0.38;
+  opacity: 0.2;
 }
 
 .right-panel > * {
@@ -883,21 +939,259 @@ body[data-window-focused="false"] {
   z-index: 1;
 }
 
-.right-panel > .right-panel-resize-handle {
-  z-index: 2;
+.right-panel-content {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--density-widget-gap);
+  padding: var(--density-rail-inset);
+  overflow: hidden;
+}
+
+.right-panel-mode-switch {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-rows: 26px;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid rgba(126, 205, 226, 0.08);
+  border-radius: calc(var(--radius-md) + 2px);
+  background: linear-gradient(180deg, rgba(154, 223, 238, 0.028), transparent 72%), rgba(2, 9, 18, 0.34);
+  box-shadow:
+    inset 0 1px 0 rgba(220, 248, 255, 0.035),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.22);
+}
+
+.right-panel-mode-tab {
+  position: relative;
+  min-width: 0;
+  height: 26px;
+  padding: 0 18px 0 6px;
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  overflow: hidden;
+  contain: layout paint;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--type-metadata-label);
+  font-weight: 700;
+  letter-spacing: 0;
+  cursor: pointer;
+  transition:
+    background 120ms var(--ease-silk, cubic-bezier(0.4, 0, 0.2, 1)),
+    border-color 120ms var(--ease-silk, cubic-bezier(0.4, 0, 0.2, 1)),
+    color 120ms var(--ease-silk, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+.right-panel-mode-tab span:first-of-type {
+  min-width: 0;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.right-panel-mode-tab:hover {
+  color: var(--text);
+  background: rgba(104, 214, 238, 0.045);
+}
+
+.right-panel-mode-tab[data-active="true"] {
+  color: var(--text);
+  border-color: rgba(142, 226, 241, 0.2);
+  background: linear-gradient(180deg, rgba(148, 226, 241, 0.13), rgba(148, 226, 241, 0.045)), rgba(4, 14, 25, 0.58);
+  box-shadow:
+    inset 0 1px 0 rgba(235, 252, 255, 0.12),
+    0 0 0 1px rgba(0, 0, 0, 0.14);
+}
+
+.right-panel-mode-tab:focus-visible {
+  outline: 2px solid rgba(142, 226, 241, 0.34) !important;
+  outline-offset: -2px !important;
+}
+
+.right-panel-mode-badge {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  min-width: 14px;
+  max-width: 28px;
+  height: 14px;
+  padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(244, 214, 146, 0.16);
+  color: var(--gold);
+  font-size: var(--type-mono-telemetry);
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.right-panel-advisor {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  height: 40px;
+  min-height: 40px;
+  padding: var(--space-2);
+  border: 1px solid rgba(142, 226, 241, 0.12);
+  border-radius: calc(var(--radius-md) + 2px);
+  background: linear-gradient(135deg, rgba(142, 226, 241, 0.08), transparent 64%), rgba(2, 9, 18, 0.34);
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+  box-shadow:
+    var(--rim-top),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+
+.right-panel-advisor[data-tone="warn"] {
+  border-color: rgba(244, 214, 146, 0.22);
+  background: linear-gradient(135deg, rgba(244, 214, 146, 0.12), transparent 64%), rgba(2, 9, 18, 0.36);
+}
+
+.right-panel-advisor[data-tone="review"] {
+  border-color: rgba(137, 180, 250, 0.18);
+  background: linear-gradient(135deg, rgba(137, 180, 250, 0.09), transparent 64%), rgba(2, 9, 18, 0.34);
+}
+
+.right-panel-advisor:hover {
+  color: var(--text);
+  border-color: rgba(142, 226, 241, 0.22);
+  background: linear-gradient(135deg, rgba(142, 226, 241, 0.12), transparent 64%), rgba(4, 14, 25, 0.48);
+}
+
+.right-panel-advisor:focus-visible {
+  outline: 2px solid rgba(142, 226, 241, 0.34) !important;
+  outline-offset: -2px !important;
+}
+
+.right-panel-advisor-kicker {
+  align-self: start;
+  color: var(--gold);
+  font-family: var(--font-mono);
+  font-size: var(--type-mono-telemetry);
+  font-weight: 700;
+  line-height: 24px;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+.right-panel-advisor-icon {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  color: var(--gold);
+  background: rgba(244, 214, 146, 0.085);
+}
+
+.right-panel-advisor-copy {
+  min-width: 0;
+  height: 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+}
+
+.right-panel-advisor-label,
+.right-panel-advisor-detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.right-panel-advisor-label {
+  color: var(--text-primary);
+  font-size: var(--type-card-title);
+  font-weight: var(--weight-semibold);
+}
+
+.right-panel-advisor-detail {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--type-mono-telemetry);
+}
+
+.right-panel-advisor-target {
+  min-width: 0;
+  justify-self: end;
+  overflow: hidden;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(142, 226, 241, 0.08);
+  color: var(--text-muted);
+  font-size: var(--type-metadata-label);
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@container (max-width: 330px) {
+  .right-panel-mode-tab {
+    gap: 0;
+    grid-template-columns: 1fr;
+    padding-inline: 0;
+  }
+
+  .right-panel-mode-tab span:first-of-type {
+    display: none;
+  }
+
+  .right-panel-advisor {
+    grid-template-columns: 24px minmax(0, 1fr);
+  }
+
+  .right-panel-advisor-kicker,
+  .right-panel-advisor-target {
+    display: none;
+  }
+}
+
+.right-panel-stack {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--density-widget-gap);
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .bento-widget {
   position: relative;
   isolation: isolate;
+  flex: 0 0 auto;
   background: transparent;
   border-radius: calc(var(--radius-lg) - 4px);
   box-shadow: none;
   padding: 0;
-  overflow: visible;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  min-height: min-content;
+  min-width: 0;
+  max-width: 100%;
   transition: background var(--duration-normal) var(--ease-apple, cubic-bezier(0.25, 0.1, 0.25, 1));
 }
 
@@ -908,58 +1202,83 @@ body[data-window-focused="false"] {
   z-index: 0;
   pointer-events: none;
   border-radius: inherit;
-  background:
-    linear-gradient(180deg, rgba(142, 226, 241, 0.026), transparent 22%),
-    var(--mood-widget-veil);
-  opacity: 0.028;
+  background: linear-gradient(180deg, rgba(104, 214, 238, 0.008), transparent 22%), var(--mood-widget-veil);
+  opacity: 0.012;
 }
 
 .bento-widget > * {
   position: relative;
   z-index: 1;
+  min-width: 0;
 }
 
 .bento-widget + .bento-widget {
-  margin-top: var(--space-4);
-  padding-top: var(--space-4);
-  box-shadow: inset 0 1px 0 rgba(142, 226, 241, 0.032);
+  margin-top: 0;
+  padding-top: 0;
+  box-shadow: none;
 }
 
 .bento-widget[data-widget="sessions"]::before {
-  background:
-    linear-gradient(180deg, rgba(142, 226, 241, 0.034), transparent 24%),
-    var(--mood-sessions-widget-bg);
-  opacity: 0.045;
+  background: linear-gradient(180deg, rgba(104, 214, 238, 0.008), transparent 24%), var(--mood-sessions-widget-bg);
+  opacity: 0.014;
 }
 
 .bento-widget[data-widget="workflow"]::before {
   background: var(--mood-workflow-widget-bg);
 }
 
-.bento-widget[data-widget="toolkit"]::before {
-  background:
-    linear-gradient(180deg, rgba(142, 226, 241, 0.024), transparent 30%),
-    var(--mood-toolkit-widget-bg);
+.bento-widget[data-widget="scm"]::before {
+  background: linear-gradient(180deg, rgba(244, 214, 146, 0.012), transparent 30%), var(--mood-workflow-widget-bg);
+  opacity: 0.016;
 }
 
-.bento-widget[data-widget="logs"] {
-  align-self: start;
+.bento-widget[data-widget="review-queue"]::before {
+  background: linear-gradient(180deg, rgba(244, 214, 146, 0.014), transparent 28%), var(--mood-workflow-widget-bg);
+  opacity: 0.018;
+}
+
+.bento-widget[data-widget="toolkit"]::before {
+  background: linear-gradient(180deg, rgba(142, 226, 241, 0.01), transparent 30%), var(--mood-toolkit-widget-bg);
+}
+
+.bento-widget[data-widget="context"] {
+  align-self: stretch;
+}
+
+.bento-widget[data-widget="context"]::before {
+  background: linear-gradient(180deg, rgba(142, 226, 241, 0.014), transparent 28%), var(--mood-logs-widget-bg);
+  opacity: 0.014;
+}
+
+.bento-widget[data-widget="run-graph"]::before {
+  background: linear-gradient(180deg, rgba(137, 180, 250, 0.014), transparent 28%), var(--mood-workflow-widget-bg);
+  opacity: 0.016;
+}
+
+.bento-widget[data-widget="tool-ledger"]::before {
+  background: linear-gradient(180deg, rgba(142, 226, 241, 0.012), transparent 28%), var(--mood-toolkit-widget-bg);
+  opacity: 0.014;
+}
+
+.bento-widget[data-widget="reliability"]::before {
+  background: linear-gradient(180deg, rgba(166, 227, 161, 0.014), transparent 28%), var(--mood-toolkit-widget-bg);
+  opacity: 0.014;
 }
 
 .bento-widget[data-widget="logs"]::before {
-  background: var(--mood-logs-widget-bg);
-  opacity: 0.038;
+  background: linear-gradient(180deg, rgba(244, 214, 146, 0.01), transparent 28%), var(--mood-logs-widget-bg);
+  opacity: 0.012;
 }
 
 .bento-widget:hover {
-  background: rgba(142, 226, 241, 0.012);
+  background: rgba(74, 174, 212, 0.006);
   transform: none;
 }
 
 /* Focus ring for keyboard navigation (Apple HIG compliance) */
 .bento-widget:focus-within {
   box-shadow:
-    inset 0 0 0 1px rgba(137, 220, 235, 0.052),
+    inset 0 0 0 1px rgba(112, 202, 229, 0.046),
     0 0 0 2px var(--gold-dim);
 }
 
@@ -973,9 +1292,49 @@ body[data-window-focused="false"] {
   }
 }
 
+@media (forced-colors: active) {
+  .right-panel,
+  .right-panel-mode-switch,
+  .right-panel-mode-tab,
+  .right-panel-advisor,
+  .right-panel-advisor-target,
+  .right-panel-mode-badge,
+  .bento-widget {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+    box-shadow: none;
+    forced-color-adjust: auto;
+  }
+
+  .right-panel,
+  .right-panel-advisor {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .right-panel-mode-tab[data-active="true"],
+  .right-panel-advisor:focus-visible,
+  .right-panel-mode-tab:focus-visible,
+  .bento-widget:focus-within {
+    outline: 2px solid Highlight !important;
+    outline-offset: -2px !important;
+    background: Highlight;
+    color: HighlightText;
+  }
+
+  .right-panel-mode-tab[data-active="true"] .right-panel-mode-badge,
+  .right-panel-mode-tab[data-active="true"] svg,
+  .right-panel-advisor:focus-visible *,
+  .right-panel-mode-tab:focus-visible *,
+  .bento-widget:focus-within * {
+    color: HighlightText;
+  }
+}
+
 .right-panel-bottom-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.18fr) minmax(0, 0.82fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-4);
   align-items: start;
 }
@@ -995,8 +1354,11 @@ body[data-window-focused="false"] {
   left: 0;
   bottom: 0;
   width: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
   cursor: col-resize;
-  z-index: 1;
+  z-index: 2;
   background: transparent;
   transition: background var(--duration-fast);
   user-select: none;
@@ -1221,6 +1583,52 @@ button:disabled,
  * butted straight up against the window edge while the other
  * three sides still had their visual gap. The window's `minWidth`
  * (960 px in tauri.conf.json) is the only floor we enforce. */
+
+/* Browser/dev QA can render below the native Tauri minWidth. In that
+ * under-floor range the terminal must remain the primary surface instead
+ * of being squeezed to zero by two fixed-width side decks. Keep the native
+ * desktop contract intact above this breakpoint, then progressively trade
+ * secondary chrome for a stable centre well. */
+@media (max-width: 860px) {
+  .app-main {
+    gap: var(--space-4);
+    padding: var(--space-4);
+  }
+
+  .left-panel:not(.left-panel-collapsed) {
+    width: clamp(176px, 28vw, 220px) !important;
+    min-width: 176px;
+    max-width: 220px;
+  }
+
+  .right-panel {
+    width: clamp(280px, 42vw, 320px) !important;
+    min-width: 280px;
+    max-width: 320px;
+  }
+}
+
+@media (max-width: 720px) {
+  .left-panel:not(.left-panel-collapsed) {
+    width: 0 !important;
+    min-width: 0 !important;
+    max-width: 0 !important;
+    padding: 0;
+    gap: 0;
+    overflow: hidden;
+    box-shadow: none;
+  }
+
+  .left-panel:not(.left-panel-collapsed) .left-panel-resize-handle {
+    display: none;
+  }
+
+  .right-panel {
+    width: clamp(260px, 40vw, 280px) !important;
+    min-width: 260px;
+    max-width: 280px;
+  }
+}
 
 /* ─── Ghost Diff Overlay (Phase 3C-1b) ─── */
 

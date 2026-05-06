@@ -5,13 +5,16 @@
   overflow: hidden;
   position: relative;
   isolation: isolate;
-  gap: var(--space-2);
+  gap: var(--space-1);
   min-height: 0;
   margin: 0;
   border-radius: var(--radius-lg);
-  background: transparent;
+  padding: var(--space-2);
+  background: linear-gradient(180deg, rgba(100, 210, 236, 0.006), transparent 22%), rgba(0, 5, 12, 0.018);
   border: 0;
-  box-shadow: none;
+  box-shadow:
+    inset 0 1px 0 rgba(178, 236, 246, 0.012),
+    inset 0 0 0 1px rgba(96, 184, 215, 0.01);
 }
 
 .terminalArea::before,
@@ -46,6 +49,7 @@
   padding: 0;
   position: relative;
   min-height: 0;
+  border-radius: calc(var(--radius-lg) - 5px);
 }
 
 .terminalViewport {
@@ -58,15 +62,14 @@
   width: 100%;
   height: 100%;
   overflow: hidden;
-  border-radius: calc(var(--radius-lg) - 6px);
+  border-radius: calc(var(--radius-lg) - 5px);
   background:
-    radial-gradient(ellipse at 50% -18%, rgba(116, 216, 238, 0.026), transparent 42%),
-    radial-gradient(ellipse at 52% 118%, rgba(65, 155, 210, 0.022), transparent 48%),
-    linear-gradient(180deg, rgba(116, 216, 238, 0.012), transparent 36%, rgba(0, 5, 12, 0.06)),
-    var(--terminal-canvas-bg);
+    radial-gradient(ellipse at 50% -18%, rgba(116, 216, 238, 0.012), transparent 42%),
+    radial-gradient(ellipse at 52% 118%, rgba(65, 155, 210, 0.01), transparent 48%),
+    linear-gradient(180deg, rgba(116, 216, 238, 0.004), transparent 36%, rgba(0, 5, 12, 0.04)), rgba(0, 4, 10, 0.045);
   box-shadow:
-    inset 0 0 0 1px rgba(137, 220, 235, 0.024),
-    inset 0 1px 0 rgba(210, 247, 252, 0.018),
+    inset 0 0 0 1px rgba(137, 220, 235, 0.018),
+    inset 0 1px 0 rgba(210, 247, 252, 0.012),
     var(--terminal-viewport-shadow);
 }
 
@@ -86,25 +89,87 @@
   z-index: 3;
   pointer-events: none;
   border-radius: calc(var(--radius-lg) - 5px);
-  background:
-    linear-gradient(115deg, rgba(173, 235, 245, 0.014), transparent 24%, transparent 72%, rgba(87, 190, 224, 0.012)),
-    linear-gradient(180deg, rgba(217, 250, 255, 0.01), transparent 16%, transparent 82%, rgba(0, 0, 0, 0.044));
-  mix-blend-mode: screen;
+  background: linear-gradient(
+    180deg,
+    rgba(217, 250, 255, 0.006),
+    transparent 12%,
+    transparent 84%,
+    rgba(0, 0, 0, 0.05)
+  );
+  opacity: 0.9;
 }
 
-.terminalWatermark {
+.writeErrorBadge {
   position: absolute;
-  left: 50%;
-  top: 50%;
-  z-index: 1;
-  width: clamp(170px, 28vmin, 300px);
-  height: auto;
-  transform: translate(-50%, -50%);
-  opacity: var(--terminal-watermark-opacity);
-  pointer-events: none;
-  user-select: none;
-  mix-blend-mode: screen;
-  filter: var(--terminal-watermark-filter);
+  top: var(--space-3);
+  right: var(--space-3);
+  z-index: 8;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "title close"
+    "detail close";
+  align-items: center;
+  max-width: min(360px, calc(100% - var(--space-6)));
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--ctp-red) 42%, transparent);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(243, 139, 168, 0.11), rgba(6, 10, 16, 0.72)), rgba(8, 12, 18, 0.78);
+  box-shadow:
+    var(--rim-top),
+    0 12px 28px rgba(0, 0, 0, 0.28);
+  color: var(--text-primary);
+  font-size: var(--text-xs);
+  line-height: 1.25;
+  pointer-events: auto;
+  backdrop-filter: var(--material-panel-filter);
+  -webkit-backdrop-filter: var(--material-panel-filter);
+}
+
+.writeErrorBadge > span:first-child {
+  grid-area: title;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ctp-red);
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.writeErrorDetail {
+  grid-area: detail;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.writeErrorDismiss {
+  grid-area: close;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.writeErrorDismiss:hover {
+  background: rgba(243, 139, 168, 0.1);
+  color: var(--text-primary);
+}
+
+.writeErrorDismiss:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
 }
 
 .livePill {
@@ -142,7 +207,91 @@
 
 .livePill:focus-visible {
   outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
+  outline-offset: -2px;
+}
+
+.imeCompositionOverlay {
+  position: absolute;
+  z-index: 5;
+  max-width: min(34ch, calc(100% - var(--space-4)));
+  padding: 0 var(--space-1);
+  overflow: hidden;
+  border-radius: 3px;
+  background: linear-gradient(180deg, rgba(142, 226, 241, 0.09), transparent 78%), rgba(0, 10, 20, 0.74);
+  box-shadow:
+    var(--rim-top),
+    inset 0 0 0 1px rgba(142, 226, 241, 0.16);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  pointer-events: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inputDiagnosticsOverlay {
+  position: absolute;
+  left: var(--space-4);
+  bottom: var(--space-4);
+  z-index: 7;
+  width: min(360px, calc(100% - var(--space-8)));
+  padding: var(--space-3);
+  border: 1px solid rgba(142, 226, 241, 0.16);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(142, 226, 241, 0.09), rgba(3, 9, 16, 0.74)), rgba(5, 10, 16, 0.84);
+  box-shadow:
+    var(--rim-top),
+    0 14px 30px rgba(0, 0, 0, 0.3);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  pointer-events: none;
+  backdrop-filter: var(--material-panel-filter);
+  -webkit-backdrop-filter: var(--material-panel-filter);
+}
+
+.inputDiagnosticsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.inputDiagnosticsHeader span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inputDiagnosticsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2) var(--space-3);
+  margin: 0;
+}
+
+.inputDiagnosticsGrid div {
+  min-width: 0;
+}
+
+.inputDiagnosticsGrid dt {
+  margin: 0 0 2px;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.inputDiagnosticsGrid dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .previewPrompt {
@@ -188,9 +337,7 @@
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-4);
-  background:
-    linear-gradient(180deg, rgba(139, 224, 240, 0.018), transparent 70%),
-    var(--terminal-chrome-bg);
+  background: linear-gradient(180deg, rgba(139, 224, 240, 0.018), transparent 70%), var(--terminal-chrome-bg);
   border-radius: var(--radius);
   box-shadow:
     inset 0 1px 0 rgba(166, 231, 242, 0.038),
@@ -268,7 +415,6 @@
   color: var(--text-primary);
 }
 
-
 /*
  * Crash / clean-exit banner. Sits inside the terminal container (above the
  * canvas) so the existing scrollback stays visible behind it; the banner
@@ -284,9 +430,7 @@
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
-  background:
-    linear-gradient(180deg, rgba(139, 224, 240, 0.018), transparent 70%),
-    var(--terminal-chrome-bg);
+  background: linear-gradient(180deg, rgba(139, 224, 240, 0.018), transparent 70%), var(--terminal-chrome-bg);
   border-radius: var(--radius);
   box-shadow:
     inset 0 1px 0 rgba(166, 231, 242, 0.038),

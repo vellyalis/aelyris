@@ -66,17 +66,18 @@ export function TimelineBar({
     if (!activeOverlay) return null;
     return snapshots.find((s) => s.id === activeOverlay.snapshotId) ?? null;
   }, [snapshots, activeOverlay]);
+  const isEmpty = snapshots.length === 0 && !activeOverlay;
 
   return (
-    <div className={styles.root} data-testid="timeline-bar" aria-label="Timeline">
+    <section
+      className={styles.root}
+      data-testid="timeline-bar"
+      aria-label="Timeline"
+      data-empty={isEmpty ? "true" : "false"}
+    >
       <span className={styles.label}>TIMELINE</span>
-      {snapshots.length === 0 ? (
-        // Empty hint used to read "press Enter to capture" — Enter does
-        // nothing of the sort (it goes to the PTY as `\r`); snapshots
-        // are captured automatically on prompt marks and explicitly via
-        // the Mark button on the right of this bar. Tell the user
-        // *that* instead of inviting a key combo that fires a newline.
-        <span className={styles.empty}>No snapshots yet — click Mark to bookmark, or run a command</span>
+      {isEmpty ? (
+        <span className={styles.emptyRail} aria-hidden="true" />
       ) : (
         <div className={styles.ticks} role="listbox" aria-label="Snapshots">
           {snapshots.map((snap) => {
@@ -127,6 +128,6 @@ export function TimelineBar({
           </button>
         </div>
       )}
-    </div>
+    </section>
   );
 }

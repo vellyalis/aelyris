@@ -1,39 +1,54 @@
 import { invoke } from "@tauri-apps/api/core";
-import { openUrl as tauriOpenUrl } from "@tauri-apps/plugin-opener";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { ChevronUp, ChevronDown, X } from "lucide-react";
+import { openUrl as tauriOpenUrl } from "@tauri-apps/plugin-opener";
+import { ChevronDown, ChevronUp, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { ShellType } from "../../App";
-import logoWatermarkPng from "../../assets/logo-watermark.png";
+import { useHistorySearch } from "../../shared/hooks/useHistorySearch";
 import { useSnapshots } from "../../shared/hooks/useSnapshots";
 import { useTerminalSnapshot } from "../../shared/hooks/useTerminalSnapshot";
+import { decodeBase64ToBytes } from "../../shared/lib/decodeBase64";
+import { isTauriRuntime } from "../../shared/lib/tauriRuntime";
 import { useAppStore } from "../../shared/store/appStore";
 import type { LayerIdPayload } from "../../shared/types/ghostdiff";
 import type { SnapshotSummary } from "../../shared/types/snapshot";
 import { type ActiveSnapshotOverlay, TimelineBar } from "../timeline/TimelineBar";
 import { useAICliDetection } from "./hooks/useAICliDetection";
+import {
+  IME_DIAGNOSTIC_EVENT,
+  IME_DIAGNOSTIC_STORAGE_KEY,
+  IME_DIAGNOSTIC_TOGGLE_EVENT,
+  imeDiagnosticsEnabled,
+  type ImeDiagnosticDetail,
+  type ImeDiagnosticWritePath,
+} from "./hooks/useCanvasIME";
 import { useInputMirror } from "./hooks/useInputMirror";
 import { IMEInputBar, type IMEInputBarHandle } from "./IMEInputBar";
 import { openTerminalUrlWith } from "./openTerminalUrl";
+import type { PaneLifecycleState } from "./pane-tree";
 import {
   type AnyMatch,
   combineMatches,
   findMatches,
   nextMatch,
   previousMatch,
-  scrollOffsetForMatch,
   type SearchMatch,
+  scrollOffsetForMatch,
 } from "./search";
-import { useHistorySearch } from "../../shared/hooks/useHistorySearch";
-import { isTauriRuntime } from "../../shared/lib/tauriRuntime";
 import styles from "./TerminalArea.module.css";
 import { TerminalCanvas, type TerminalNav } from "./TerminalCanvas";
+import { TERMINAL_FONT_FAMILY, TERMINAL_FONT_SIZE, useTerminalCellMetrics } from "./terminalMetrics";
 
 interface NativeTerminalAreaProps {
   shell?: ShellType;
   cwd?: string;
+  /** Existing backend PTY id to bind instead of spawning a new shell. */
+  attachedTerminalId?: string | null;
   onTerminalReady?: (terminalId: string) => void;
+  onLifecycleChange?: (lifecycle: PaneLifecycleState) => void;
+  /** Imperative restart bridge for workstation/process-manager surfaces. */
+  restartRequest?: { sequence: number; onComplete?: (error: string | null) => void } | null;
   /** Override for tests — defaults to `invoke("spawn_terminal", ...)`. */
   spawnPty?: (args: { shell: string; cols: number; rows: number; cwd?: string }) => Promise<string>;
   /** Override for tests — defaults to `invoke("resize_terminal", ...)`. */
@@ -45,13 +60,9 @@ interface NativeTerminalAreaProps {
   /** Override for tests — defaults to Tauri `listen("pty-exit-<id>")`. */
   subscribeExit?: (terminalId: string, onExit: (info: PtyExitInfo) => void) => Promise<UnlistenFn>;
   /** Override for tests — defaults to `invoke("respawn_terminal", ...)`. */
-  respawnPty?: (args: {
-    id: string;
-    shell: string;
-    cols: number;
-    rows: number;
-    cwd?: string;
-  }) => Promise<void>;
+  respawnPty?: (args: { id: string; shell: string; cols: number; rows: number; cwd?: string }) => Promise<void>;
+  /** Override for tests — defaults to `invoke("force_restart_terminal", ...)`. */
+  forceRestartPty?: (args: { id: string; shell: string; cols: number; rows: number; cwd?: string }) => Promise<void>;
   /** Override for tests — opens an in-cwd file:// URL in the editor.
    *  Defaults to `useAppStore.getState().openFile`. */
   openInEditor?: (absolutePath: string) => void;
@@ -73,36 +84,42 @@ export interface PtyExitInfo {
   crashed: boolean;
 }
 
-const FONT_SIZE = 14;
-const CELL_H = Math.round(FONT_SIZE * 1.25);
 const MIN_COLS = 20;
 const MIN_ROWS = 5;
 // Must match `.terminalViewport` padding so PTY cols/rows describe the
 // drawable canvas well, not the decorative glass gutter around it.
 const CANVAS_GUTTER = 10;
 
-/* Cell width was previously hardcoded to `Math.round(FONT_SIZE * 0.6)`
- * (= 8 px at fontSize 14). The actual IBM Plex Mono advance at 14 px
- * is **8.4 px**, so `Math.floor(paneWidth / 8)` over-counted cols by
- * ~5 % — at a 672-px-wide pane it reported 84 cols when only 80
- * actually fit. The PTY would receive the inflated cols and emit
- * wraps that bled past the pane edge. Same sub-pixel drift family
- * as the rendering fix in `7e4aea8`; we measure once at module load
- * via the shared `<canvas>` so this hook and `TerminalCanvas` agree
- * on the same advance. Falls back to the old heuristic on jsdom /
- * SSR where `getContext` returns null. */
-const CELL_W = (() => {
-  if (typeof document === "undefined") return FONT_SIZE * 0.6;
-  const ctx = document.createElement("canvas").getContext("2d");
-  if (!ctx) return FONT_SIZE * 0.6;
-  ctx.font = `${FONT_SIZE}px 'IBM Plex Mono', 'Cascadia Code', 'BIZ UDGothic', 'Yu Gothic UI', 'Meiryo', 'Noto Sans Mono CJK JP', monospace`;
-  const measured = ctx.measureText("M").width;
-  return measured > 0 ? measured : FONT_SIZE * 0.6;
-})();
-
 interface Dims {
   cols: number;
   rows: number;
+}
+
+type InputWritePath = "idle" | "input-bar" | "ghost-suggestion" | ImeDiagnosticWritePath;
+
+function inputWritePathLabel(path: InputWritePath): string {
+  switch (path) {
+    case "canvas":
+      return "canvas";
+    case "canvas-keymap":
+      return "canvas keymap";
+    case "ime-composition":
+      return "IME composition";
+    case "ime-commit":
+      return "IME commit";
+    case "input-bar":
+      return "input bar";
+    case "ghost-suggestion":
+      return "ghost suggestion";
+    case "paste":
+      return "paste";
+    case "focus":
+      return "focus";
+    case "ignored":
+      return "ignored";
+    case "idle":
+      return "idle";
+  }
 }
 
 function defaultSpawn(args: { shell: string; cols: number; rows: number; cwd?: string }): Promise<string> {
@@ -119,32 +136,44 @@ function defaultResize(id: string, cols: number, rows: number): Promise<void> {
 }
 
 function defaultWrite(id: string, data: string): Promise<void> {
-  return invoke<void>("write_terminal", { id, data }).catch(() => {});
+  return invoke<void>("write_terminal", { id, data });
 }
 
 async function defaultSubscribeOutput(terminalId: string, onBytes: (bytes: Uint8Array) => void): Promise<UnlistenFn> {
-  return listen<number[]>(`pty-output-${terminalId}`, (event) => {
-    onBytes(new Uint8Array(event.payload));
+  return listen<number[] | { dataBase64: string }>(`pty-output-${terminalId}`, (event) => {
+    const payload = event.payload;
+    if (Array.isArray(payload)) {
+      onBytes(new Uint8Array(payload));
+      return;
+    }
+    onBytes(decodeBase64ToBytes(payload.dataBase64));
   });
 }
 
-async function defaultSubscribeExit(
-  terminalId: string,
-  onExit: (info: PtyExitInfo) => void,
-): Promise<UnlistenFn> {
+async function defaultSubscribeExit(terminalId: string, onExit: (info: PtyExitInfo) => void): Promise<UnlistenFn> {
   return listen<PtyExitInfo>(`pty-exit-${terminalId}`, (event) => {
     onExit(event.payload);
   });
 }
 
-function defaultRespawn(args: {
+function defaultRespawn(args: { id: string; shell: string; cols: number; rows: number; cwd?: string }): Promise<void> {
+  return invoke<void>("respawn_terminal", {
+    id: args.id,
+    shell: args.shell,
+    cols: args.cols,
+    rows: args.rows,
+    cwd: args.cwd ?? null,
+  });
+}
+
+function defaultForceRestart(args: {
   id: string;
   shell: string;
   cols: number;
   rows: number;
   cwd?: string;
 }): Promise<void> {
-  return invoke<void>("respawn_terminal", {
+  return invoke<void>("force_restart_terminal", {
     id: args.id,
     shell: args.shell,
     cols: args.cols,
@@ -155,13 +184,42 @@ function defaultRespawn(args: {
 
 function exitBannerMessage(info: PtyExitInfo): string {
   if (info.crashed) {
-    return info.code === null
-      ? "Shell crashed (no exit code)."
-      : `Shell crashed (code ${info.code}).`;
+    return info.code === null ? "Shell crashed (no exit code)." : `Shell crashed (code ${info.code}).`;
   }
-  return info.code === null
-    ? "Shell exited."
-    : `Shell exited (code ${info.code}).`;
+  return info.code === null ? "Shell exited." : `Shell exited (code ${info.code}).`;
+}
+
+function formatErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  return String(err);
+}
+
+function formatInputPayloadSummary(data: string): string {
+  if (data.length === 0) return "0 chars";
+  const lineBreaks = data.match(/\r\n|\n|\r/g)?.length ?? 0;
+  const suffix = lineBreaks > 0 ? `, ${lineBreaks} enter${lineBreaks === 1 ? "" : "s"}` : "";
+  return `${data.length} char${data.length === 1 ? "" : "s"}${suffix}`;
+}
+
+function formatImeEventSummary(event: ImeDiagnosticDetail | null): string {
+  if (!event) return "none";
+  if (event.sentLength !== undefined) {
+    return `${event.phase} ${event.sentLength} char${event.sentLength === 1 ? "" : "s"}`;
+  }
+  if (event.dataLength !== null && event.dataLength !== undefined) {
+    return `${event.phase} data=${event.dataLength}`;
+  }
+  return event.phase;
+}
+
+function formatCandidateRect(event: ImeDiagnosticDetail | null): string {
+  if (!event || !event.candidateLeft || !event.candidateTop) return "n/a";
+  return `${event.candidateLeft}, ${event.candidateTop}`;
+}
+
+function shouldCountDroppedKey(event: ImeDiagnosticDetail): boolean {
+  return event.dropped === true;
 }
 
 /**
@@ -184,17 +242,22 @@ function exitBannerMessage(info: PtyExitInfo): string {
 export function NativeTerminalArea({
   shell = "powershell",
   cwd,
+  attachedTerminalId = null,
   onTerminalReady,
+  onLifecycleChange,
+  restartRequest,
   spawnPty = defaultSpawn,
   resizePty = defaultResize,
   writePty = defaultWrite,
   subscribeOutput = defaultSubscribeOutput,
   subscribeExit = defaultSubscribeExit,
   respawnPty = defaultRespawn,
+  forceRestartPty = defaultForceRestart,
   openInEditor,
   openExternal,
 }: NativeTerminalAreaProps) {
   const previewMode = !isTauriRuntime();
+  const cellMetrics = useTerminalCellMetrics(TERMINAL_FONT_SIZE, TERMINAL_FONT_FAMILY);
   const containerRef = useRef<HTMLDivElement>(null);
   const [canvasEl, setCanvasEl] = useState<HTMLCanvasElement | null>(null);
   // Phase B: the hidden IME textarea on the canvas is the real keyboard-
@@ -207,10 +270,12 @@ export function NativeTerminalArea({
   const shellRef = useRef(shell);
   const cwdRef = useRef(cwd);
   const onReadyRef = useRef(onTerminalReady);
+  const onLifecycleChangeRef = useRef(onLifecycleChange);
   const spawnFnRef = useRef(spawnPty);
   shellRef.current = shell;
   cwdRef.current = cwd;
   onReadyRef.current = onTerminalReady;
+  onLifecycleChangeRef.current = onLifecycleChange;
   spawnFnRef.current = spawnPty;
 
   const snapshot = useTerminalSnapshot(terminalId);
@@ -239,6 +304,7 @@ export function NativeTerminalArea({
   // cleanup fires before the next effect, so the order is
   //   previous cleanup (dismiss backend) → setSnapshotOverlay(null).
   useEffect(() => {
+    void terminalId;
     if (previewMode) return;
     setSnapshotOverlay(null);
     return () => {
@@ -347,18 +413,11 @@ export function NativeTerminalArea({
   openInEditorRef.current = openInEditor;
   const openExternalRef = useRef<((url: string) => Promise<void> | void) | undefined>(openExternal);
   openExternalRef.current = openExternal;
-  const onOpenUrl = useCallback(
-    async (url: string) => {
-      const editor = openInEditorRef.current ?? ((p: string) => useAppStore.getState().openFile(p));
-      const external = openExternalRef.current ?? ((u: string) => tauriOpenUrl(u));
-      await openTerminalUrlWith(
-        url,
-        { cwd: cwdRef.current ?? null },
-        { openInEditor: editor, openExternal: external },
-      );
-    },
-    [],
-  );
+  const onOpenUrl = useCallback(async (url: string) => {
+    const editor = openInEditorRef.current ?? ((p: string) => useAppStore.getState().openFile(p));
+    const external = openExternalRef.current ?? ((u: string) => tauriOpenUrl(u));
+    await openTerminalUrlWith(url, { cwd: cwdRef.current ?? null }, { openInEditor: editor, openExternal: external });
+  }, []);
 
   // ── AI CLI detection ──
   // Still used to disable ghost-text autosuggest while an AI CLI owns the
@@ -366,12 +425,54 @@ export function NativeTerminalArea({
   // visibility from this state.
   const aiCli = useAICliDetection();
   const imeBarRef = useRef<IMEInputBarHandle>(null);
+  const [inputDiagnosticsEnabled, setInputDiagnosticsEnabled] = useState(() =>
+    typeof window !== "undefined" ? imeDiagnosticsEnabled(window) : false,
+  );
+  const [lastImeDiagnostic, setLastImeDiagnostic] = useState<ImeDiagnosticDetail | null>(null);
+  const [inputWritePath, setInputWritePath] = useState<InputWritePath>("idle");
+  const [lastInputCommit, setLastInputCommit] = useState("none");
+  const [droppedKeyCount, setDroppedKeyCount] = useState(0);
   // Latest nav bundle from <TerminalCanvas>. Stored in a ref so the
   // keybinding effect below depends only on the ref identity, not on
   // state that changes every prompt-mark event.
   const navRef = useRef<TerminalNav | null>(null);
   const setNav = useCallback((nav: TerminalNav | null) => {
     navRef.current = nav;
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const refreshEnabled = () => setInputDiagnosticsEnabled(imeDiagnosticsEnabled(window));
+    const onImeDiagnostic = (event: Event) => {
+      const detail = (event as CustomEvent<ImeDiagnosticDetail>).detail;
+      if (!detail) return;
+      setInputDiagnosticsEnabled(true);
+      setLastImeDiagnostic(detail);
+      if (detail.writePath) {
+        setInputWritePath(detail.writePath);
+      }
+      if (detail.sentLength !== undefined) {
+        setLastInputCommit(formatImeEventSummary(detail));
+      }
+      if (shouldCountDroppedKey(detail)) {
+        setDroppedKeyCount((count) => count + 1);
+      }
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === IME_DIAGNOSTIC_STORAGE_KEY) refreshEnabled();
+    };
+
+    refreshEnabled();
+    window.addEventListener(IME_DIAGNOSTIC_EVENT, onImeDiagnostic);
+    window.addEventListener(IME_DIAGNOSTIC_TOGGLE_EVENT, refreshEnabled);
+    window.addEventListener("storage", onStorage);
+    const timer = window.setInterval(refreshEnabled, 1000);
+    return () => {
+      window.removeEventListener(IME_DIAGNOSTIC_EVENT, onImeDiagnostic);
+      window.removeEventListener(IME_DIAGNOSTIC_TOGGLE_EVENT, refreshEnabled);
+      window.removeEventListener("storage", onStorage);
+      window.clearInterval(timer);
+    };
   }, []);
 
   useEffect(() => {
@@ -433,9 +534,26 @@ export function NativeTerminalArea({
   // on every resize tick.
   const [exitInfo, setExitInfo] = useState<PtyExitInfo | null>(null);
   const [respawning, setRespawning] = useState(false);
+  const [writeError, setWriteError] = useState<string | null>(null);
   const dimsRef = useRef<Dims | null>(null);
+  const handledRestartRequestRef = useRef<number | null>(null);
   dimsRef.current = dims;
   const exitBannerBtnRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const lifecycle: PaneLifecycleState = respawning
+      ? "restarting"
+      : exitInfo
+        ? exitInfo.crashed
+          ? "crashed"
+          : "exited"
+        : terminalId
+          ? "live"
+          : spawnStartedRef.current
+            ? "starting"
+            : "layout-only";
+    onLifecycleChangeRef.current?.(lifecycle);
+  }, [exitInfo, respawning, terminalId]);
 
   useEffect(() => {
     if (previewMode) return;
@@ -463,8 +581,10 @@ export function NativeTerminalArea({
 
   // Reset banner state when a brand-new terminal id mounts (project switch).
   useEffect(() => {
+    void terminalId;
     setExitInfo(null);
     setRespawning(false);
+    setWriteError(null);
   }, [terminalId]);
 
   // Move keyboard focus into the banner's restart button when it appears
@@ -473,6 +593,19 @@ export function NativeTerminalArea({
   useEffect(() => {
     if (exitInfo) exitBannerBtnRef.current?.focus();
   }, [exitInfo]);
+
+  const writeToPty = useCallback(
+    (id: string, data: string) => {
+      void Promise.resolve(writePty(id, data))
+        .then(() => {
+          setWriteError((prev) => (prev === null ? prev : null));
+        })
+        .catch((err) => {
+          setWriteError(formatErrorMessage(err));
+        });
+    },
+    [writePty],
+  );
 
   const dismissExitBanner = useCallback(() => {
     setExitInfo(null);
@@ -498,13 +631,15 @@ export function NativeTerminalArea({
     return () => window.removeEventListener("keydown", handler, true);
   }, [exitInfo, dismissExitBanner]);
 
-  const restartShell = useCallback(async () => {
-    if (!terminalId || respawning) return;
+  const restartShell = useCallback(async (): Promise<string | null> => {
+    if (!terminalId) return "Terminal is not ready to restart.";
+    if (respawning) return "Restart is already in progress.";
     const dimsSnap = dimsRef.current;
-    if (!dimsSnap) return;
+    if (!dimsSnap) return "Terminal size is not ready.";
     setRespawning(true);
     try {
-      await respawnPty({
+      const restartPty = exitInfo ? respawnPty : forceRestartPty;
+      await restartPty({
         id: terminalId,
         shell: shellRef.current,
         cols: dimsSnap.cols,
@@ -512,14 +647,23 @@ export function NativeTerminalArea({
         cwd: cwdRef.current,
       });
       setExitInfo(null);
-    } catch {
+      return null;
+    } catch (err) {
       // Backend rejected (e.g. id is still alive after a stale event).
       // Leave the banner up so the user can retry; release the lock so
       // the button is clickable again.
+      return formatErrorMessage(err);
     } finally {
       setRespawning(false);
     }
-  }, [terminalId, respawning, respawnPty]);
+  }, [exitInfo, forceRestartPty, terminalId, respawning, respawnPty]);
+
+  useEffect(() => {
+    if (!restartRequest) return;
+    if (handledRestartRequestRef.current === restartRequest.sequence) return;
+    handledRestartRequestRef.current = restartRequest.sequence;
+    void restartShell().then((error) => restartRequest.onComplete?.(error));
+  }, [restartRequest, restartShell]);
 
   const focusImeBar = useCallback(() => {
     imeBarRef.current?.focus();
@@ -538,10 +682,7 @@ export function NativeTerminalArea({
   const [activeMatchIdx, setActiveMatchIdx] = useState<number | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  const liveMatches: SearchMatch[] = useMemo(
-    () => findMatches(snapshot, searchQuery),
-    [snapshot, searchQuery],
-  );
+  const liveMatches: SearchMatch[] = useMemo(() => findMatches(snapshot, searchQuery), [snapshot, searchQuery]);
   // Backend pass returns history matches once the user pauses typing
   // (default 120 ms debounce inside the hook). When the active terminal
   // changes mid-search the hook resets, so an empty array is the right
@@ -567,15 +708,8 @@ export function NativeTerminalArea({
 
   const activeSearchMatch = activeMatchIdx !== null ? (searchMatches[activeMatchIdx] ?? null) : null;
 
-  // Scroll the canvas into view whenever the active match's anchor moves
-  // from a live row into history or vice versa. Watching the anchor key
-  // rather than the index avoids repeated scrolls when the user just
-  // re-types the same query and indices renumber.
-  const activeAnchor = activeSearchMatch
-    ? activeSearchMatch.kind === "history"
-      ? `h:${activeSearchMatch.historyIndex}`
-      : `l:${activeSearchMatch.row}`
-    : null;
+  // Scroll the canvas into view whenever the active match moves from a
+  // live row into history or vice versa.
   useEffect(() => {
     if (!activeSearchMatch) return;
     const nav = navRef.current;
@@ -585,11 +719,7 @@ export function NativeTerminalArea({
     } else {
       nav.scrollToLive();
     }
-    // We intentionally key off the anchor string, not the match object,
-    // so identical re-renders (e.g. snapshot polling) don't churn the
-    // scroll offset.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeAnchor]);
+  }, [activeSearchMatch, dims?.rows]);
 
   const gotoNext = useCallback(() => {
     if (searchMatches.length === 0) return;
@@ -613,7 +743,12 @@ export function NativeTerminalArea({
     setSearchVisible(false);
     setSearchQuery("");
     setActiveMatchIdx(null);
-  }, []);
+    if (typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(focusCanvas);
+    } else {
+      focusCanvas();
+    }
+  }, [focusCanvas]);
 
   // ── Measurement + spawn ──
   useEffect(() => {
@@ -625,8 +760,8 @@ export function NativeTerminalArea({
       const h = el.clientHeight - CANVAS_GUTTER * 2;
       if (w <= 0 || h <= 0) return null;
       return {
-        cols: Math.max(MIN_COLS, Math.floor(w / CELL_W)),
-        rows: Math.max(MIN_ROWS, Math.floor(h / CELL_H)),
+        cols: Math.max(MIN_COLS, Math.floor(w / cellMetrics.width)),
+        rows: Math.max(MIN_ROWS, Math.floor(h / cellMetrics.height)),
       };
     };
     const apply = () => {
@@ -651,7 +786,15 @@ export function NativeTerminalArea({
       if (pending !== null) window.clearTimeout(pending);
       ro.disconnect();
     };
-  }, []);
+  }, [cellMetrics.height, cellMetrics.width]);
+
+  useEffect(() => {
+    if (previewMode) return;
+    if (!attachedTerminalId || terminalId === attachedTerminalId || spawnStartedRef.current) return;
+    spawnStartedRef.current = true;
+    setTerminalId(attachedTerminalId);
+    onReadyRef.current?.(attachedTerminalId);
+  }, [attachedTerminalId, previewMode, terminalId]);
 
   useEffect(() => {
     if (previewMode) return;
@@ -708,7 +851,7 @@ export function NativeTerminalArea({
       // <TerminalCanvas> once a terminal has spawned.
       if (e.ctrlKey && e.shiftKey && e.key === "ArrowUp") {
         const nav = navRef.current;
-        if (!nav || !nav.hasHistory()) return;
+        if (!nav?.hasHistory()) return;
         e.preventDefault();
         nav.jumpToPrevPrompt();
         return;
@@ -733,10 +876,26 @@ export function NativeTerminalArea({
 
   const sendIMEBytes = useCallback(
     (text: string) => {
-      if (!terminalId) return;
-      void writePty(terminalId, text);
+      if (!terminalId) {
+        setDroppedKeyCount((count) => count + 1);
+        return;
+      }
+      setInputWritePath("input-bar");
+      setLastInputCommit(formatInputPayloadSummary(text));
+      aiCli.feedInput(text);
+      writeToPty(terminalId, text);
     },
-    [terminalId, writePty],
+    [aiCli.feedInput, terminalId, writeToPty],
+  );
+
+  const writeTerminalBytes = useCallback(
+    (id: string, data: string) => {
+      setInputWritePath("canvas");
+      setLastInputCommit(formatInputPayloadSummary(data));
+      aiCli.feedInput(data);
+      writeToPty(id, data);
+    },
+    [aiCli.feedInput, writeToPty],
   );
 
   // ── Ghost-text suggestion (Phase 3A-2) ──
@@ -747,11 +906,16 @@ export function NativeTerminalArea({
 
   const acceptSuggestion = useCallback(
     (suffix: string) => {
-      if (!terminalId) return;
-      void writePty(terminalId, suffix);
+      if (!terminalId) {
+        setDroppedKeyCount((count) => count + 1);
+        return;
+      }
+      setInputWritePath("ghost-suggestion");
+      setLastInputCommit(formatInputPayloadSummary(suffix));
+      writeToPty(terminalId, suffix);
       setSuggestion(null);
     },
-    [terminalId, writePty],
+    [terminalId, writeToPty],
   );
 
   const commitCommand = useCallback(
@@ -807,6 +971,11 @@ export function NativeTerminalArea({
   // TerminalCanvas already handles cols/rows changes via its own
   // dimsChanged path inside the paint effect.
   const canvasKey = terminalId;
+  const diagnosticTerminal = terminalId ?? "not ready";
+  const diagnosticFocus = lastImeDiagnostic?.active ? "focused" : "not focused";
+  const diagnosticComposition = lastImeDiagnostic?.composing ? "composing" : "idle";
+  const diagnosticCandidate = formatCandidateRect(lastImeDiagnostic);
+  const diagnosticLastEvent = formatImeEventSummary(lastImeDiagnostic);
 
   return (
     <div className={styles.terminalArea}>
@@ -895,7 +1064,7 @@ export function NativeTerminalArea({
             }}
             disabled={respawning}
           >
-            {respawning ? "Restarting…" : "Restart"}
+            {respawning ? "Restarting..." : "Restart"}
           </button>
         </div>
       )}
@@ -909,26 +1078,73 @@ export function NativeTerminalArea({
               <span className={styles.previewCommand}>git diff --stat</span>
               <span className={styles.previewCursor} />
             </div>
-            <img src={logoWatermarkPng} alt="" aria-hidden="true" className={styles.terminalWatermark} />
           </div>
         ) : terminalId && dims ? (
           <div className={styles.terminalViewport}>
+            {inputDiagnosticsEnabled && (
+              <div
+                className={styles.inputDiagnosticsOverlay}
+                data-testid="terminal-input-diagnostics"
+                aria-live="polite"
+              >
+                <div className={styles.inputDiagnosticsHeader}>
+                  <span>Input diagnostics</span>
+                  <span>{aiCli.active ? "AI CLI" : shell}</span>
+                </div>
+                <dl className={styles.inputDiagnosticsGrid}>
+                  <dt>Active pane</dt>
+                  <dd>{diagnosticFocus}</dd>
+                  <dt>Terminal</dt>
+                  <dd>{diagnosticTerminal}</dd>
+                  <dt>Composition</dt>
+                  <dd>{diagnosticComposition}</dd>
+                  <dt>Write path</dt>
+                  <dd>{inputWritePathLabel(inputWritePath)}</dd>
+                  <dt>Last commit</dt>
+                  <dd>{lastInputCommit}</dd>
+                  <dt>Dropped keys</dt>
+                  <dd>{droppedKeyCount}</dd>
+                  <dt>Candidate</dt>
+                  <dd>{diagnosticCandidate}</dd>
+                  <dt>Event</dt>
+                  <dd>{diagnosticLastEvent}</dd>
+                </dl>
+              </div>
+            )}
+            {writeError && (
+              <div className={styles.writeErrorBadge} role="alert">
+                <span>Input write failed</span>
+                <span className={styles.writeErrorDetail}>{writeError}</span>
+                <button
+                  type="button"
+                  className={styles.writeErrorDismiss}
+                  onClick={() => setWriteError(null)}
+                  aria-label="Dismiss input write error"
+                  title="Dismiss"
+                >
+                  <X size={12} aria-hidden="true" />
+                </button>
+              </div>
+            )}
             <TerminalCanvas
               key={canvasKey ?? undefined}
               terminalId={terminalId}
               cols={dims.cols}
               rows={dims.rows}
-              fontSize={FONT_SIZE}
+              fontSize={TERMINAL_FONT_SIZE}
+              fontFamily={TERMINAL_FONT_FAMILY}
               searchMatches={searchMatches}
               activeSearchMatch={activeSearchMatch}
               ghostSuggestion={snapshotOverlay ? null : mirrorEnabled ? suggestion : null}
+              preferAiInputAnchor={aiCli.active}
+              showInputDiagnosticsOverlay={false}
               snapshotOverride={snapshotOverlay?.grid}
+              writeBytes={writeTerminalBytes}
               onCanvasRef={setCanvasEl}
               onInputRef={setCanvasInputEl}
               onRegisterNav={setNav}
               onOpenUrl={onOpenUrl}
             />
-            <img src={logoWatermarkPng} alt="" aria-hidden="true" className={styles.terminalWatermark} />
           </div>
         ) : null}
       </div>

@@ -103,11 +103,11 @@ describe("TerminalCanvas", () => {
   it("keeps the jump-to-live affordance tokenized instead of inline-styled", () => {
     expect(terminalCanvasSource).toContain("className={styles.livePill}");
     expect(terminalCanvasSource).not.toContain("rgba(200, 160, 80");
-    expect(terminalCanvasSource).not.toContain('borderRadius: 999');
+    expect(terminalCanvasSource).not.toContain("borderRadius: 999");
     expect(terminalCanvasSource).not.toContain('color: "#c8a050"');
   });
 
-  it("clears rows before repainting the translucent terminal background", () => {
+  it("clears rows without repainting a default-background slab", () => {
     const first = snapshot([[cell("a"), cell(" ")]], { shape: "hidden" });
     const { rerender } = render(
       <TerminalCanvas terminalId="t1" cols={2} rows={1} fontSize={10} snapshotOverride={first} />,
@@ -126,15 +126,12 @@ describe("TerminalCanvas", () => {
         (c.args[2] as number) === 16 &&
         (c.args[3] as number) === Math.round(10 * 1.25),
     );
-    const backgroundFillIndex = repaintCalls.findIndex(
-      (c, index) =>
-        index > rowClearIndex &&
-        c.op === "fillStyle" &&
-        (c.args[0] as string) === "rgba(3, 10, 22, 0.46)",
+    const defaultBackgroundFills = repaintCalls.filter(
+      (c) => c.op === "fillStyle" && (c.args[0] as string) === "rgba(3, 10, 22, 0.54)",
     );
 
     expect(rowClearIndex).toBeGreaterThanOrEqual(0);
-    expect(backgroundFillIndex).toBeGreaterThan(rowClearIndex);
+    expect(defaultBackgroundFills).toHaveLength(0);
   });
 
   it("paints cell characters via fillText when a snapshot is provided", () => {
@@ -200,6 +197,13 @@ describe("TerminalCanvas", () => {
 
   it("hides the cursor when shape is 'hidden'", () => {
     const snap = snapshot([[cell("x")]], { shape: "hidden", visible: true });
+    render(<TerminalCanvas terminalId="t1" cols={1} rows={1} snapshotOverride={snap} />);
+    const cursorFills = calls.filter((c) => c.op === "fillStyle" && (c.args[0] as string) === "#cba6f7");
+    expect(cursorFills).toHaveLength(0);
+  });
+
+  it("hides the cursor when the backend marks SHOW_CURSOR off", () => {
+    const snap = snapshot([[cell("x")]], { shape: "block", visible: false });
     render(<TerminalCanvas terminalId="t1" cols={1} rows={1} snapshotOverride={snap} />);
     const cursorFills = calls.filter((c) => c.op === "fillStyle" && (c.args[0] as string) === "#cba6f7");
     expect(cursorFills).toHaveLength(0);

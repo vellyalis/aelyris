@@ -5,7 +5,6 @@ import type { ShellType } from "../../App";
 import type { Tab } from "../../shared/hooks/useTabManager";
 import type { InteractiveSession } from "../../shared/types/interactiveAgent";
 import { getCliColor, getCliLabel } from "../../shared/types/interactiveAgent";
-import { PixelAvatar } from "../../shared/ui/PixelAvatar";
 import styles from "./WorkspaceTabs.module.css";
 
 interface WorkspaceTabsProps {
@@ -75,7 +74,7 @@ export function WorkspaceTabs({
 
   return (
     <div className={styles.bar}>
-      <Tabs.Root value={effectiveActiveId} onValueChange={handleValueChange}>
+      <Tabs.Root className={styles.root} value={effectiveActiveId} onValueChange={handleValueChange}>
         <Tabs.List className={styles.tabs} aria-label="Terminal tabs">
           {tabs.map((tab) => (
             <div
@@ -93,7 +92,6 @@ export function WorkspaceTabs({
                 onDrop={(e) => handleDrop(e, tab.id)}
                 onDragEnd={handleDragEnd}
               >
-                <PixelAvatar seed={tab.label} size={12} />
                 {activityTabs?.has(tab.id) && <span className={styles.activityDot} />}
                 <span className={styles.tabLabel}>{tab.label}</span>
                 {tab.worktreeBranch && (

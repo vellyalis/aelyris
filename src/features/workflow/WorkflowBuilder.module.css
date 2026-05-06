@@ -12,7 +12,7 @@
 .builder {
   width: 90vw;
   height: 80vh;
-  max-width: 1100px;
+  max-width: 1180px;
   background: var(--dialog-surface);
   backdrop-filter: var(--dialog-surface-blur);
   -webkit-backdrop-filter: var(--dialog-surface-blur);
@@ -27,11 +27,13 @@
 .toolbar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-3);
   padding: var(--space-4) var(--space-6);
   border-bottom: 1px solid var(--border);
 }
 .nameInput {
+  min-width: 0;
   padding: var(--space-2) var(--space-4);
   background: var(--white-4);
   border: 1px solid var(--border);
@@ -48,10 +50,15 @@
 
 .presets {
   display: flex;
+  flex: 1 1 260px;
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: var(--space-2);
   margin-left: auto;
 }
 .presetBtn {
+  max-width: 150px;
   padding: var(--space-1) var(--space-4);
   background: var(--white-6);
   border: none;
@@ -59,6 +66,9 @@
   color: var(--text-secondary);
   font-size: var(--text-xs);
   cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .presetBtn:hover {
   background: var(--white-10);
@@ -105,7 +115,7 @@
 }
 .runBtn:focus-visible {
   outline: 2px solid var(--gold);
-  outline-offset: 2px;
+  outline-offset: -2px;
 }
 
 .closeBtn {
@@ -119,8 +129,127 @@
   color: var(--text-primary);
 }
 
-.canvas {
+.workspace {
   flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+}
+
+.canvas {
+  min-height: 0;
+  min-width: 0;
+}
+
+.inspector {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  background: rgba(4, 11, 18, 0.26);
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+}
+
+.inspectorHeader {
+  flex: 0 0 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--border);
+}
+
+.inspectorTitle {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+
+.inspectorId {
+  min-width: 0;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inspectorFields {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-6) var(--space-6);
+}
+
+.field,
+.fieldGrid {
+  min-width: 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+}
+
+.fieldGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid rgba(124, 214, 235, 0.06);
+  border-radius: var(--radius-sm);
+  background: rgba(2, 8, 14, 0.42);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  outline: none;
+}
+
+.field input,
+.field select {
+  height: 28px;
+  padding: 0 var(--space-3);
+}
+
+.field textarea {
+  min-height: 140px;
+  resize: vertical;
+  padding: var(--space-3);
+  font-family: var(--font-mono);
+  line-height: 1.45;
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  border-color: rgba(142, 226, 241, 0.26);
+  box-shadow: 0 0 0 2px rgba(142, 226, 241, 0.08);
+}
+
+.emptyInspector {
+  padding: var(--space-6);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
 }
 
 /* Custom phase node */
@@ -161,9 +290,37 @@
   color: var(--ctp-yellow);
   border-top: 1px solid var(--border);
 }
+.phaseRoute {
+  max-width: 160px;
+  padding: 2px var(--space-4);
+  border-top: 1px solid var(--border);
+  color: var(--ctp-sapphire);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .handle {
   width: 8px !important;
   height: 8px !important;
   background: var(--ctp-blue) !important;
+}
+
+@media (max-width: 900px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .inspector {
+    max-height: 34vh;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .fieldGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

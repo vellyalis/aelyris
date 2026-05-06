@@ -17,7 +17,7 @@ function packIndexed(i: number): number {
 
 describe("resolveColor", () => {
   it("keeps the default terminal canvas on a translucent deep-water stage", () => {
-    expect(DEFAULT_BG).toBe("rgba(3, 10, 22, 0.46)");
+    expect(DEFAULT_BG).toBe("rgba(3, 10, 22, 0.54)");
   });
 
   it("maps NamedColor 0..15 to Catppuccin ANSI slots", () => {

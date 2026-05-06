@@ -1,8 +1,20 @@
-import { act, fireEvent, render } from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { createRef } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { IMEInputBar, type IMEInputBarHandle } from "../features/terminal/IMEInputBar";
+import {
+  clampImeBarCandidateX,
+  clampImeBarCandidateY,
+  IMEInputBar,
+  measureTextareaImeAnchor,
+  type IMEInputBarHandle,
+} from "../features/terminal/IMEInputBar";
+
+const invokeMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: invokeMock,
+}));
 
 function renderBar(
   props: Partial<React.ComponentProps<typeof IMEInputBar>> & {
@@ -15,6 +27,8 @@ function renderBar(
     autoFocus: props.autoFocus,
     maxHistory: props.maxHistory,
     disabled: props.disabled,
+    pickAttachmentFiles: props.pickAttachmentFiles,
+    saveClipboardImage: props.saveClipboardImage,
   };
   const utils = render(
     <IMEInputBar ref={props.ref} onSubmit={onSubmit} onRequestCanvasFocus={onRequestCanvasFocus} {...rest} />,
@@ -24,6 +38,11 @@ function renderBar(
 }
 
 describe("IMEInputBar", () => {
+  afterEach(() => {
+    invokeMock.mockClear();
+    vi.restoreAllMocks();
+  });
+
   it("submits the current value and \\r on Enter, then clears", () => {
     const { textarea, onSubmit } = renderBar();
     fireEvent.change(textarea, { target: { value: "echo hi" } });
@@ -186,5 +205,182 @@ describe("IMEInputBar", () => {
 
     fireEvent.keyDown(textarea, { key: "Enter" });
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("anchors IME candidates to the textarea caret, not the input's left edge", () => {
+    const { textarea } = renderBar();
+    fireEvent.change(textarea, { target: { value: "0123456789あいうえお" } });
+    textarea.setSelectionRange(8, 8);
+
+    vi.spyOn(textarea, "getBoundingClientRect").mockReturnValue({
+      x: 100,
+      y: 200,
+      left: 100,
+      top: 200,
+      right: 700,
+      bottom: 230,
+      width: 600,
+      height: 30,
+      toJSON: () => ({}),
+    } as DOMRect);
+
+    const offsetLeftDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetLeft");
+    const offsetTopDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetTop");
+    Object.defineProperty(HTMLElement.prototype, "offsetLeft", {
+      configurable: true,
+      get() {
+        return (this as HTMLElement).dataset.imeCaretMarker === "true" ? 96 : 0;
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, "offsetTop", {
+      configurable: true,
+      get() {
+        return (this as HTMLElement).dataset.imeCaretMarker === "true" ? 18 : 0;
+      },
+    });
+
+    try {
+      const anchor = measureTextareaImeAnchor(textarea);
+      expect(anchor?.x).toBe(196);
+      expect(anchor?.y).toBeGreaterThan(218);
+
+      fireEvent.compositionStart(textarea);
+      expect(invokeMock).toHaveBeenCalledWith(
+        "set_ime_position",
+        expect.objectContaining({
+          x: 196,
+          candidateX: 196,
+        }),
+      );
+    } finally {
+      if (offsetLeftDescriptor) {
+        Object.defineProperty(HTMLElement.prototype, "offsetLeft", offsetLeftDescriptor);
+      }
+      if (offsetTopDescriptor) {
+        Object.defineProperty(HTMLElement.prototype, "offsetTop", offsetTopDescriptor);
+      }
+    }
+  });
+
+  it("keeps IME candidates inside the input bar when the caret is near the right edge", () => {
+    expect(clampImeBarCandidateX(660, 100, 700)).toBe(260);
+    expect(clampImeBarCandidateX(180, 100, 700)).toBe(180);
+  });
+
+  it("keeps IME candidates above the viewport bottom", () => {
+    expect(clampImeBarCandidateY(760, 800)).toBe(540);
+    expect(clampImeBarCandidateY(240, 800)).toBe(240);
+  });
+
+  it("adds selected file paths into the composer where the user can edit before submit", async () => {
+    const pickAttachmentFiles = vi.fn().mockResolvedValue(["C:\\Users\\owner\\Pictures\\shot one.png"]);
+    const { textarea, getByLabelText, getByText } = renderBar({ pickAttachmentFiles });
+
+    fireEvent.click(getByLabelText("写真とファイルを追加"));
+
+    await waitFor(() => {
+      expect(textarea.value).toBe('"C:\\Users\\owner\\Pictures\\shot one.png"');
+    });
+    expect(getByText("shot one.png")).toBeTruthy();
+  });
+
+  it("shows a compact attachment error without breaking the composer", async () => {
+    const pickAttachmentFiles = vi.fn().mockRejectedValue(new Error("dialog unavailable"));
+    const { textarea, getByLabelText, getByRole } = renderBar({ pickAttachmentFiles });
+
+    fireEvent.click(getByLabelText("写真とファイルを追加"));
+
+    await waitFor(() => {
+      expect(getByRole("status").textContent).toBe("dialog unavailable");
+    });
+    expect(textarea.value).toBe("");
+  });
+
+  it("removes attachment chips from both the visible list and the composer text", async () => {
+    const pickAttachmentFiles = vi.fn().mockResolvedValue(["C:\\Users\\owner\\Pictures\\shot one.png"]);
+    const { textarea, getByLabelText, queryByText } = renderBar({ pickAttachmentFiles });
+
+    fireEvent.click(getByLabelText("写真とファイルを追加"));
+    await waitFor(() => expect(queryByText("shot one.png")).toBeTruthy());
+
+    fireEvent.click(getByLabelText("shot one.png を削除"));
+
+    expect(queryByText("shot one.png")).toBeNull();
+    expect(textarea.value).toBe("");
+  });
+
+  it("clears attachment chips after submit", async () => {
+    const pickAttachmentFiles = vi.fn().mockResolvedValue(["C:\\Users\\owner\\Pictures\\shot one.png"]);
+    const { textarea, getByLabelText, queryByText } = renderBar({ pickAttachmentFiles });
+
+    fireEvent.click(getByLabelText("写真とファイルを追加"));
+    await waitFor(() => expect(queryByText("shot one.png")).toBeTruthy());
+
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    expect(queryByText("shot one.png")).toBeNull();
+    expect(textarea.value).toBe("");
+  });
+
+  it("saves pasted clipboard images and inserts the temp image path", async () => {
+    const saveClipboardImage = vi.fn().mockResolvedValue("C:\\Temp\\aether-chat-images\\clip.png");
+    const { textarea } = renderBar({ saveClipboardImage });
+    const image = new File(["png"], "clip.png", { type: "image/png" });
+
+    fireEvent.paste(textarea, {
+      clipboardData: {
+        files: [image],
+        items: [],
+      },
+    });
+
+    await waitFor(() => {
+      expect(saveClipboardImage).toHaveBeenCalledWith(expect.stringContaining("data:image/png"));
+      expect(textarea.value).toBe('"C:\\Temp\\aether-chat-images\\clip.png"');
+    });
+  });
+
+  it("ignores repeated clipboard image paste while a save is already in flight", async () => {
+    let resolveSave!: (path: string) => void;
+    const saveClipboardImage = vi.fn(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveSave = resolve;
+        }),
+    );
+    const { textarea } = renderBar({ saveClipboardImage });
+    const image = new File(["png"], "clip.png", { type: "image/png" });
+    const paste = {
+      clipboardData: {
+        files: [image],
+        items: [],
+      },
+    };
+
+    fireEvent.paste(textarea, paste);
+    fireEvent.paste(textarea, paste);
+
+    await waitFor(() => expect(saveClipboardImage).toHaveBeenCalledTimes(1));
+    resolveSave("C:\\Temp\\aether-chat-images\\clip.png");
+    await waitFor(() => expect(textarea.value).toBe('"C:\\Temp\\aether-chat-images\\clip.png"'));
+  });
+
+  it("reports clipboard image save failures without leaving stale chips", async () => {
+    const saveClipboardImage = vi.fn().mockRejectedValue(new Error("save failed"));
+    const { textarea, getByRole, queryByText } = renderBar({ saveClipboardImage });
+    const image = new File(["png"], "clip.png", { type: "image/png" });
+
+    fireEvent.paste(textarea, {
+      clipboardData: {
+        files: [image],
+        items: [],
+      },
+    });
+
+    await waitFor(() => {
+      expect(getByRole("status").textContent).toBe("save failed");
+    });
+    expect(queryByText("clip.png")).toBeNull();
+    expect(textarea.value).toBe("");
   });
 });

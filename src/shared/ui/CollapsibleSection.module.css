@@ -37,12 +37,13 @@
 
 .header {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: var(--space-2);
   width: 100%;
   height: 32px;
   padding: 0 var(--space-3);
-  background: rgba(255, 255, 255, 0.012);
+  background: rgba(3, 10, 18, 0.035);
   border: none;
   color: var(--text-muted);
   font-family: var(--font-ui);
@@ -58,12 +59,14 @@
 
 .header:hover {
   color: var(--text-secondary);
-  background: var(--white-3);
+  background: rgba(6, 15, 24, 0.16);
 }
 
 .header:focus-visible {
-  outline: 2px solid var(--gold);
-  outline-offset: -2px;
+  outline: none !important;
+  box-shadow:
+    inset 2px 0 0 var(--focus-ring),
+    inset 0 0 0 1px color-mix(in srgb, var(--focus-ring) 24%, transparent);
 }
 
 .chevron {
@@ -81,15 +84,28 @@
 }
 
 .title {
+  min-width: 0;
   flex: 1;
+  overflow: hidden;
   text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .actions {
   display: inline-flex;
+  min-width: 0;
+  max-width: min(44%, 116px);
   align-items: center;
+  justify-content: flex-end;
   gap: var(--space-1);
+  flex-shrink: 0;
+  overflow: hidden;
   cursor: default;
+}
+
+.actions > * {
+  min-width: 0;
 }
 
 .content {
@@ -101,34 +117,9 @@
   background: transparent;
 }
 
-/* Smooth height animation when toggling. Radix exposes the
- * collapsible's measured height as `--radix-collapsible-content-
- * height` so the keyframes can interpolate from 0 to that exact
- * value — no layout jank, no maximum-height guesses. */
 .content[data-state="open"] {
-  animation: collapsibleOpen 180ms var(--ease-out, cubic-bezier(0.4, 0, 0.2, 1));
+  animation: none;
 }
 .content[data-state="closed"] {
-  animation: collapsibleClose 180ms var(--ease-out, cubic-bezier(0.4, 0, 0.2, 1));
-}
-
-@keyframes collapsibleOpen {
-  from {
-    height: 0;
-    opacity: 0;
-  }
-  to {
-    height: var(--radix-collapsible-content-height);
-    opacity: 1;
-  }
-}
-@keyframes collapsibleClose {
-  from {
-    height: var(--radix-collapsible-content-height);
-    opacity: 1;
-  }
-  to {
-    height: 0;
-    opacity: 0;
-  }
+  animation: none;
 }

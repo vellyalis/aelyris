@@ -29,13 +29,13 @@
 
 .dropdown {
   min-width: 240px;
-  background: var(--dialog-surface);
-  backdrop-filter: var(--dialog-surface-blur);
-  -webkit-backdrop-filter: var(--dialog-surface-blur);
-  border: 1px solid var(--aether-border-strong);
+  background: var(--popup-glass-bg);
+  backdrop-filter: var(--material-panel-filter);
+  -webkit-backdrop-filter: var(--material-panel-filter);
+  border: 1px solid var(--popup-glass-border);
   border-radius: var(--radius-dialog);
   padding: var(--space-2);
-  box-shadow: var(--rim-top), var(--shadow-elevated);
+  box-shadow: var(--popup-glass-shadow);
   z-index: var(--z-dropdown);
   animation: menuFadeIn var(--duration-fast) var(--ease-out);
   will-change: transform, opacity;

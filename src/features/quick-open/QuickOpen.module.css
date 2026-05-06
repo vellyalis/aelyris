@@ -6,9 +6,9 @@
   position: fixed;
   inset: 0;
   z-index: var(--z-modal);
-  background: var(--scrim-standard-bg);
-  backdrop-filter: var(--scrim-standard-blur);
-  -webkit-backdrop-filter: var(--scrim-standard-blur);
+  background: rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(2px) brightness(0.82);
+  -webkit-backdrop-filter: blur(2px) brightness(0.82);
 }
 
 .panel {
@@ -19,15 +19,13 @@
   z-index: calc(var(--z-modal) + 1);
   width: var(--dialog-width-md);
   max-height: 480px;
-  /* Lens-edge caustic matches CommandPalette — the two typeahead dialogs
-     are designed as twins. */
-  background: var(--lens-edge), var(--glass-thick);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid var(--border);
+  background: var(--lens-edge), var(--popup-glass-bg);
+  backdrop-filter: var(--material-panel-filter);
+  -webkit-backdrop-filter: var(--material-panel-filter);
+  border: 1px solid var(--popup-glass-border);
   border-radius: var(--radius);
   overflow: hidden;
-  box-shadow: var(--rim-top), var(--shadow-elevated);
+  box-shadow: var(--popup-glass-shadow);
   display: flex;
   flex-direction: column;
 }
@@ -37,7 +35,7 @@
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-4) var(--space-6);
-  border-bottom: 1px solid var(--border);
+  box-shadow: inset 0 -1px 0 rgba(124, 214, 235, 0.04);
 }
 
 .modeTag {
@@ -46,8 +44,8 @@
   font-weight: var(--weight-semibold);
   padding: 1px var(--space-3);
   border-radius: var(--radius-sm);
-  background: var(--ctp-blue);
-  color: var(--ctp-base);
+  background: rgba(137, 180, 250, 0.14);
+  color: color-mix(in srgb, var(--ctp-blue) 82%, var(--text-primary));
   white-space: nowrap;
 }
 
@@ -75,6 +73,7 @@
 .list {
   flex: 1;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: var(--space-2);
 }
 
@@ -96,11 +95,11 @@
     color var(--duration-fast);
 }
 .item:hover {
-  background: var(--row-hover);
+  background: rgba(124, 214, 235, 0.034);
   color: var(--text-primary);
 }
 .itemActive {
-  background: var(--row-hover-strong);
+  background: rgba(124, 214, 235, 0.055);
   color: var(--text-primary);
 }
 
@@ -134,10 +133,10 @@
   align-items: center;
   gap: var(--space-5);
   padding: var(--space-3) var(--space-6);
-  border-top: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 rgba(124, 214, 235, 0.035);
   font-size: var(--text-sm);
   font-family: var(--font-mono);
   color: var(--text-muted);
-  background: var(--white-2);
+  background: rgba(3, 10, 18, 0.11);
   justify-content: space-between;
 }

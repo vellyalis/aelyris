@@ -49,4 +49,21 @@ describe("WorkflowBuilder YAML escape", () => {
     // The unescape must run on the prompt assignment in the importer.
     expect(src).toMatch(/currentPhase\.prompt\s*=\s*unescapeYamlString\(/);
   });
+
+  it("emits workflow routing metadata for agent roles and pane targets", () => {
+    const entries = Object.entries(sources);
+    const src = entries[0][1];
+
+    expect(src).toContain("agentRole?: string");
+    expect(src).toContain("targetPane?: string");
+    expect(src).toContain("selectedPhaseId");
+    expect(src).toContain("updateSelectedPhase");
+    expect(src).toContain('aria-label="Phase inspector"');
+    expect(src).toContain("onNodeClick={(_, node) => setSelectedPhaseId(node.id)}");
+    expect(src).toContain('placeholder="PowerShell / claude / reviewer"');
+    expect(src).toContain("phase.agent_role = d.agentRole.trim()");
+    expect(src).toContain('target_pane: "${escapeYamlString(String(p.target_pane))}"');
+    expect(src).toContain("currentPhase.target_pane");
+    expect(src).toContain("currentPhase.agent_role");
+  });
 });

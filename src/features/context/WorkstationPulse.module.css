@@ -1,0 +1,134 @@
+.pulse {
+  min-width: 0;
+  min-height: 50px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr);
+  align-items: stretch;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid rgba(126, 205, 226, 0.09);
+  border-radius: calc(var(--radius-md) + 2px);
+  background: linear-gradient(180deg, rgba(142, 226, 241, 0.035), transparent 78%), rgba(1, 8, 17, 0.34);
+  box-shadow:
+    var(--rim-top),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.16);
+}
+
+.pulse[data-tone="danger"],
+.pulse[data-tone="warn"] {
+  border-color: rgba(244, 214, 146, 0.16);
+  background: linear-gradient(135deg, rgba(244, 214, 146, 0.07), transparent 68%), rgba(1, 8, 17, 0.36);
+}
+
+.pulse[data-tone="review"] {
+  border-color: rgba(137, 180, 250, 0.14);
+  background: linear-gradient(135deg, rgba(137, 180, 250, 0.055), transparent 68%), rgba(1, 8, 17, 0.34);
+}
+
+.signal {
+  min-width: 0;
+  min-height: 32px;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.signalIcon {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 24px;
+  border-radius: 7px;
+  color: var(--gold);
+  background: rgba(244, 214, 146, 0.08);
+}
+
+.signalText {
+  min-width: 0;
+  height: 28px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+}
+
+.signalLabel,
+.signalDetail,
+.metricValue,
+.metricLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signalLabel {
+  color: var(--text-primary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.signalDetail {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+}
+
+.metrics {
+  min-width: 0;
+  height: 32px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 2px;
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.metric {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  min-height: 30px;
+  height: 32px;
+  padding: 3px 4px;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 6, 14, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(98, 190, 222, 0.01);
+}
+
+.metricValue {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+}
+
+.metricLabel {
+  color: var(--text-muted);
+  font-size: 9px;
+  line-height: 1;
+  text-align: center;
+}
+
+@container (max-width: 360px) {
+  .pulse {
+    min-height: 84px;
+    grid-template-columns: 1fr;
+  }
+
+  .metrics {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}

@@ -120,6 +120,27 @@ describe("useAICliDetection", () => {
     expect(result.current.active).toBe(true);
   });
 
+  it("activates from an alternate-screen AI CLI redraw when the shell echo is unavailable", () => {
+    const { result } = renderHook(() => useAICliDetection());
+    const redraw =
+      "\x1b[?1049h\x1b[2J" +
+      "Gemini CLI v0.40.0\r\n" +
+      "──────────────────────────────────────────── ? for shortcuts\r\n" +
+      "> Type your message or @path/to/file\r\n";
+
+    act(() => result.current.feed(redraw));
+
+    expect(result.current.active).toBe(true);
+  });
+
+  it("does not activate on plain output that only mentions an AI CLI", () => {
+    const { result } = renderHook(() => useAICliDetection());
+
+    act(() => result.current.feed("Install Codex CLI with pnpm if you need it.\r\n"));
+
+    expect(result.current.active).toBe(false);
+  });
+
   describe("feedInput (user keystroke path)", () => {
     it("activates when the user types `gemini` + Enter", () => {
       const { result } = renderHook(() => useAICliDetection());

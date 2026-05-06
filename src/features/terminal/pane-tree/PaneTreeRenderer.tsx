@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SplitPane } from "../../../shared/ui/SplitPane";
 import { NativeTerminalArea } from "../NativeTerminalArea";
 import { TerminalInfoBar } from "../TerminalInfoBar";
+import type { PaneRestartRequest } from "./PaneTreeContainer";
 import styles from "./PaneTreeRenderer.module.css";
-import type { PaneNode, SplitDirection } from "./types";
+import type { PaneLifecycleState, PaneNode, PaneRole, SplitDirection } from "./types";
 
 interface PaneTreeRendererProps {
   tree: PaneNode;
@@ -19,7 +20,13 @@ interface PaneTreeRendererProps {
   onClose: (id: string) => void;
   onResize: (splitId: string, ratio: number) => void;
   onToggleMaximize: (id: string) => void;
+  onRenamePane: (id: string, title: string | null) => void;
+  onCyclePaneRole: (id: string) => void;
+  onSetPaneRole: (id: string, role: PaneRole) => void;
   onTerminalReady: (paneId: string, terminalId: string) => void;
+  onPaneLifecycleChange?: (paneId: string, lifecycle: PaneLifecycleState) => void;
+  restartPaneRequest?: PaneRestartRequest | null;
+  suspendTerminalMounts?: boolean;
   canClose: boolean;
 }
 
@@ -34,6 +41,8 @@ interface LeafInfo {
   id: string;
   shell: string;
   cwd?: string;
+  title?: string;
+  role?: PaneRole;
 }
 
 /**
@@ -58,7 +67,13 @@ export function PaneTreeRenderer({
   onClose,
   onResize,
   onToggleMaximize,
+  onRenamePane,
+  onCyclePaneRole,
+  onSetPaneRole,
   onTerminalReady,
+  onPaneLifecycleChange,
+  restartPaneRequest,
+  suspendTerminalMounts = false,
   canClose,
 }: PaneTreeRendererProps) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -91,6 +106,7 @@ export function PaneTreeRenderer({
 
   // Stable array derived from the map (order doesn't matter for absolute positioning)
   const stableLeaves = Array.from(leavesRef.current.values());
+  const layoutMeasurementKey = `${maximizedPaneId ?? "split"}:${currentLeaves.map((leaf) => leaf.id).join("|")}`;
 
   // Slot rects: paneId → DOMRect (updated by ResizeObserver)
   const [slotRects, setSlotRects] = useState<Map<string, DOMRect>>(new Map());
@@ -203,28 +219,25 @@ export function PaneTreeRenderer({
   // Remeasure when the layout topology changes (split, close, maximize) —
   // the DOM may have reshuffled without any one slot changing size, so the
   // observer alone won't fire.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: topology/maximize changes intentionally retrigger measurement.
   useEffect(() => {
     scheduleUpdate();
-  }, [tree, maximizedPaneId, scheduleUpdate]);
+  }, [layoutMeasurementKey, scheduleUpdate]);
 
   return (
     <div ref={rootRef} className={styles.paneRoot}>
       {/* Layer 1: Layout tree (invisible slots for sizing) */}
       <div className={styles.layoutLayer}>
-        {maximizedPaneId ? (
-          <>
-            {currentLeaves.map((leaf) => (
+        {maximizedPaneId
+          ? currentLeaves.map((leaf) => (
               <div
                 key={leaf.id}
                 ref={getSlotRef(leaf.id)}
                 className={styles.paneSlot}
                 style={leaf.id === maximizedPaneId ? { display: "flex", flex: 1 } : { display: "none" }}
               />
-            ))}
-          </>
-        ) : (
-          renderLayout(tree, getSlotRef, onResize)
-        )}
+            ))
+          : renderLayout(tree, getSlotRef, onResize)}
       </div>
 
       {/* Layer 2: Stable terminal instances (absolute positioned).
@@ -252,9 +265,10 @@ export function PaneTreeRenderer({
         // of the pane.  This survives maximize (non-max slots get rect=0
         // via display:none) without unmounting and re-spawning the PTY.
         if (hasRealSize) initializedRef.current.add(leaf.id);
-        const shouldMount = hasRealSize || initializedRef.current.has(leaf.id);
+        const shouldMount = !suspendTerminalMounts && (hasRealSize || initializedRef.current.has(leaf.id));
 
         return (
+          // biome-ignore lint/a11y/noStaticElementInteractions: the terminal mount itself claims focus without changing keyboard semantics.
           <div
             key={leaf.id}
             className={styles.terminalMount}
@@ -277,8 +291,13 @@ export function PaneTreeRenderer({
               shell={SHELL_LABELS[leaf.shell] ?? leaf.shell}
               cwd={leaf.cwd}
               terminalId={terminalIds.get(leaf.id) ?? null}
+              paneTitle={leaf.title}
+              paneRole={leaf.role}
               isActive={isActive}
               isMaximized={isMaximized}
+              onRenamePane={(title) => onRenamePane(leaf.id, title)}
+              onCyclePaneRole={() => onCyclePaneRole(leaf.id)}
+              onSetPaneRole={(role) => onSetPaneRole(leaf.id, role)}
               onSplitRight={() => onSplit(leaf.id, "right")}
               onSplitDown={() => onSplit(leaf.id, "down")}
               onToggleMaximize={() => onToggleMaximize(leaf.id)}
@@ -288,7 +307,10 @@ export function PaneTreeRenderer({
               <NativeTerminalArea
                 shell={leaf.shell as ShellKind}
                 cwd={leaf.cwd}
+                attachedTerminalId={terminalIds.get(leaf.id) ?? null}
                 onTerminalReady={(tid) => onTerminalReady(leaf.id, tid)}
+                onLifecycleChange={(lifecycle) => onPaneLifecycleChange?.(leaf.id, lifecycle)}
+                restartRequest={restartPaneRequest?.paneId === leaf.id ? restartPaneRequest : null}
               />
             )}
           </div>
@@ -323,7 +345,9 @@ function renderLayout(
 }
 
 function collectLeaves(tree: PaneNode): LeafInfo[] {
-  if (tree.type === "terminal") return [{ id: tree.id, shell: tree.shell, cwd: tree.cwd }];
+  if (tree.type === "terminal") {
+    return [{ id: tree.id, shell: tree.shell, cwd: tree.cwd, title: tree.title, role: tree.role }];
+  }
   return [...collectLeaves(tree.first), ...collectLeaves(tree.second)];
 }
 

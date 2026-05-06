@@ -137,6 +137,7 @@ describe("themes/moods — preset metadata", () => {
   it("defines every expected mood preset", () => {
     expect(MOOD_PRESETS.map((preset) => preset.id)).toEqual([
       "aether-sky",
+      "aether-moonwater",
       "aether-dream",
       "aether-cute",
       "aether-obsidian",
@@ -169,14 +170,14 @@ describe("themes/moods — preset metadata", () => {
     }
   });
 
-  it("keeps mood glass presets transparent enough for native Acrylic", () => {
+  it("keeps mood glass presets translucent while allowing dark clear-water tint", () => {
     const ceilings = {
       "--glass-clear": 0.02,
-      "--glass-ground": 0.26,
-      "--glass-frame": 0.14,
-      "--glass-standard": 0.16,
-      "--glass-dense": 0.2,
-      "--glass-thick": 0.24,
+      "--glass-ground": 0.28,
+      "--glass-frame": 0.2,
+      "--glass-standard": 0.18,
+      "--glass-dense": 0.22,
+      "--glass-thick": 0.26,
     } as const;
 
     for (const preset of MOOD_PRESETS) {
@@ -194,6 +195,35 @@ describe("themes/moods — preset metadata", () => {
     expect(vars["--mood-widget-veil"]).not.toContain("235, 248, 255");
     expect(vars["--mood-right-panel-bg"]).not.toContain("235, 248, 255");
     expect(vars["--terminal-shadow-inset"]).not.toContain("235, 248, 255");
+  });
+
+  it("defines Aether Moonwater as a clear cyan water preset without scanlines", () => {
+    const vars = moodPresetToCSS("aether-moonwater");
+
+    expect(normalizeMoodPreset("aether-moonwater")).toBe("aether-moonwater");
+    expect(vars["--accent"]).toBe("#52d7ff");
+    expect(vars["--gold"]).toBe("#f5c7e3");
+    expect(vars["--mood-root-texture"]).not.toContain("repeating-linear-gradient");
+    expect(Number(vars["--mood-root-texture-opacity"])).toBeLessThanOrEqual(0.03);
+    expect(vars["--mood-root-glow"]).toContain("12, 113, 203");
+  });
+
+  it("keeps Aether Pro graphite deep instead of cloudy grey", () => {
+    const vars = moodPresetToCSS("aether-pro");
+
+    expect(vars["--chrome-frame-bg"]).toContain("rgba(4, 12, 21, 0.48)");
+    expect(vars["--mood-left-panel-bg"]).toContain("rgba(4, 13, 23, 0.58)");
+    expect(vars["--mood-right-panel-bg"]).toContain("rgba(4, 13, 23, 0.66)");
+    expect(vars["--mood-left-panel-bg"]).not.toContain("238, 246, 250");
+    expect(vars["--mood-right-panel-bg"]).not.toContain("var(--glass-dense)");
+  });
+
+  it("keeps mood root textures clear instead of synthetic scanlines", () => {
+    for (const preset of MOOD_PRESETS) {
+      const vars = moodPresetToCSS(preset.id);
+      expect(vars["--mood-root-texture"], preset.id).not.toContain("repeating-linear-gradient");
+      expect(Number(vars["--mood-root-texture-opacity"]), preset.id).toBeLessThanOrEqual(0.05);
+    }
   });
 
   it("keeps mood canvas tokens aligned with the native terminal renderer", () => {

@@ -1,6 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef } from "react";
 
+import {
+  classifyTerminalPasteInput,
+  countTerminalPasteLineEndings,
+  normalizeTerminalPasteInput,
+  TERMINAL_PASTE_GUARD_EVENT,
+  type TerminalPasteGuard,
+} from "../../../shared/lib/terminalInput";
 import { keyEventToBytes } from "../keymap";
 
 /**
@@ -23,9 +30,250 @@ import { keyEventToBytes } from "../keymap";
 
 export type WriteBytesFn = (id: string, data: string) => void;
 
+const FALLBACK_COMPOSITION_COMMIT_DELAY_MS = 32;
+const MAX_IME_DIAGNOSTIC_EVENTS = 80;
+
+export const IME_DIAGNOSTIC_EVENT = "aether:ime-diagnostic";
+export const IME_DIAGNOSTIC_TOGGLE_EVENT = "aether:ime-diagnostic-toggle";
+export const IME_DIAGNOSTIC_STORAGE_KEY = "aether:debug:ime";
+
+export type ImeDiagnosticPhase =
+  | "keydown"
+  | "input"
+  | "compositionstart"
+  | "compositionupdate"
+  | "compositionend"
+  | "paste"
+  | "blur"
+  | "commit";
+
+export type ImeDiagnosticWritePath =
+  | "canvas"
+  | "canvas-keymap"
+  | "ime-composition"
+  | "ime-commit"
+  | "paste"
+  | "focus"
+  | "ignored";
+
+export interface ImeDiagnosticDetail {
+  phase: ImeDiagnosticPhase;
+  terminalId: string;
+  timestamp: number;
+  composing: boolean;
+  active: boolean;
+  valueLength: number;
+  scrollLeft: number;
+  selectionStart: number | null;
+  selectionEnd: number | null;
+  anchorLeft: string;
+  anchorTop: string;
+  anchorWidth: string;
+  anchorHeight: string;
+  viewportWidth: number;
+  viewportHeight: number;
+  devicePixelRatio: number;
+  candidateLeft: string | null;
+  candidateTop: string | null;
+  anchorMode?: string | null;
+  key?: string;
+  keyCode?: number;
+  inputType?: string | null;
+  isComposing?: boolean;
+  dataLength?: number | null;
+  sentLength?: number;
+  normalizedLineBreaks?: number;
+  riskSeverity?: string;
+  riskClasses?: string[];
+  pasteGuardAction?: "allowed" | "confirmed" | "cancelled" | "blocked";
+  ignored?: boolean;
+  dropped?: boolean;
+  writePath?: ImeDiagnosticWritePath;
+  reason?: string;
+}
+
+declare global {
+  interface Window {
+    __AETHER_IME_DEBUG__?: boolean;
+    __AETHER_IME_EVENTS__?: ImeDiagnosticDetail[];
+    __AETHER_ENABLE_IME_DEBUG__?: () => void;
+    __AETHER_DISABLE_IME_DEBUG__?: () => void;
+    __AETHER_COPY_IME_EVENTS__?: () => Promise<boolean>;
+  }
+}
+
+function eventTimestamp(): number {
+  if (typeof performance !== "undefined" && typeof performance.now === "function") {
+    return performance.now();
+  }
+  return Date.now();
+}
+
+export function imeDiagnosticsEnabled(win: Window | null | undefined = typeof window !== "undefined" ? window : null) {
+  if (!win) return false;
+  if (win.__AETHER_IME_DEBUG__ === true) return true;
+  try {
+    const value = win.localStorage.getItem(IME_DIAGNOSTIC_STORAGE_KEY);
+    return value === "1" || value === "true";
+  } catch {
+    return false;
+  }
+}
+
+export function enableImeDiagnostics(win: Window = window) {
+  win.__AETHER_IME_DEBUG__ = true;
+  try {
+    win.localStorage.setItem(IME_DIAGNOSTIC_STORAGE_KEY, "1");
+  } catch {
+    /* localStorage can be unavailable in tests or hardened WebViews. */
+  }
+  win.dispatchEvent(new CustomEvent(IME_DIAGNOSTIC_TOGGLE_EVENT, { detail: { enabled: true } }));
+}
+
+export function disableImeDiagnostics(win: Window = window) {
+  win.__AETHER_IME_DEBUG__ = false;
+  try {
+    win.localStorage.removeItem(IME_DIAGNOSTIC_STORAGE_KEY);
+  } catch {
+    /* localStorage can be unavailable in tests or hardened WebViews. */
+  }
+  win.dispatchEvent(new CustomEvent(IME_DIAGNOSTIC_TOGGLE_EVENT, { detail: { enabled: false } }));
+}
+
+export async function copyImeDiagnostics(win: Window = window): Promise<boolean> {
+  const events = win.__AETHER_IME_EVENTS__ ?? [];
+  if (events.length === 0) return false;
+  const payload = JSON.stringify(events, null, 2);
+  try {
+    await win.navigator.clipboard.writeText(payload);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function installImeDiagnosticHelpers(win: Window = window) {
+  win.__AETHER_ENABLE_IME_DEBUG__ = () => enableImeDiagnostics(win);
+  win.__AETHER_DISABLE_IME_DEBUG__ = () => disableImeDiagnostics(win);
+  win.__AETHER_COPY_IME_EVENTS__ = () => copyImeDiagnostics(win);
+}
+
+function imeDataLength(value: string | null | undefined): number | null {
+  return typeof value === "string" ? value.length : null;
+}
+
+function recordImeDiagnostic(
+  textarea: HTMLTextAreaElement,
+  terminalId: string,
+  composing: boolean,
+  detail: Omit<
+    ImeDiagnosticDetail,
+    | "terminalId"
+    | "timestamp"
+    | "composing"
+    | "active"
+    | "valueLength"
+    | "scrollLeft"
+    | "selectionStart"
+    | "selectionEnd"
+    | "anchorLeft"
+    | "anchorTop"
+    | "anchorWidth"
+    | "anchorHeight"
+    | "viewportWidth"
+    | "viewportHeight"
+    | "devicePixelRatio"
+    | "candidateLeft"
+    | "candidateTop"
+  >,
+) {
+  const win = textarea.ownerDocument.defaultView ?? (typeof window !== "undefined" ? window : null);
+  if (!win || !imeDiagnosticsEnabled(win)) return;
+
+  const entry: ImeDiagnosticDetail = {
+    ...detail,
+    terminalId,
+    timestamp: eventTimestamp(),
+    composing,
+    active: textarea.ownerDocument.activeElement === textarea,
+    valueLength: textarea.value.length,
+    scrollLeft: textarea.scrollLeft,
+    selectionStart: textarea.selectionStart ?? null,
+    selectionEnd: textarea.selectionEnd ?? null,
+    anchorLeft: textarea.style.left,
+    anchorTop: textarea.style.top,
+    anchorWidth: textarea.style.width,
+    anchorHeight: textarea.style.height,
+    viewportWidth: win.innerWidth,
+    viewportHeight: win.innerHeight,
+    devicePixelRatio: win.devicePixelRatio,
+    candidateLeft: textarea.dataset.imeCandidateX ?? null,
+    candidateTop: textarea.dataset.imeCandidateY ?? null,
+    anchorMode: textarea.dataset.imeAnchorMode ?? null,
+  };
+
+  const ring = win.__AETHER_IME_EVENTS__ ?? [];
+  ring.push(entry);
+  if (ring.length > MAX_IME_DIAGNOSTIC_EVENTS) {
+    ring.splice(0, ring.length - MAX_IME_DIAGNOSTIC_EVENTS);
+  }
+  win.__AETHER_IME_EVENTS__ = ring;
+  win.dispatchEvent(new CustomEvent<ImeDiagnosticDetail>(IME_DIAGNOSTIC_EVENT, { detail: entry }));
+  // Keep console output opt-in with the same flag so dogfood sessions can
+  // capture a precise event trace without polluting normal terminal use.
+  console.debug?.("[Aether IME]", entry);
+}
+
 const defaultWriteBytes: WriteBytesFn = (id, data) => {
   invoke("write_terminal", { id, data }).catch(() => {});
 };
+
+function dispatchPasteGuardEvent(
+  textarea: HTMLTextAreaElement,
+  terminalId: string,
+  guard: TerminalPasteGuard,
+  action: ImeDiagnosticDetail["pasteGuardAction"],
+) {
+  const win = textarea.ownerDocument.defaultView ?? (typeof window !== "undefined" ? window : null);
+  win?.dispatchEvent(
+    new CustomEvent(TERMINAL_PASTE_GUARD_EVENT, {
+      detail: {
+        terminalId,
+        action,
+        shouldBlock: guard.shouldBlock,
+        shouldConfirm: guard.shouldConfirm,
+        reason: guard.reason,
+        risk: {
+          classes: guard.risk.classes,
+          severity: guard.risk.severity,
+          requiresApproval: guard.risk.requiresApproval,
+          allowExecution: guard.risk.allowExecution,
+          lineCount: guard.risk.lineCount,
+          multiline: guard.risk.multiline,
+          preview: guard.risk.preview,
+          redacted: guard.risk.redactedCommand !== guard.risk.command,
+        },
+      },
+    }),
+  );
+}
+
+function confirmPasteGuard(textarea: HTMLTextAreaElement, guard: TerminalPasteGuard): boolean {
+  if (!guard.shouldConfirm) return true;
+  const win = textarea.ownerDocument.defaultView ?? (typeof window !== "undefined" ? window : null);
+  if (typeof win?.confirm !== "function") return false;
+  return win.confirm(
+    [
+      "Paste this command into the terminal?",
+      `Risk: ${guard.risk.severity}`,
+      `Classes: ${guard.risk.classes.join(", ")}`,
+      guard.reason,
+      guard.risk.preview,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
+}
 
 /**
  * A key event should be consumed by `keydown` (rather than left to the
@@ -54,9 +302,20 @@ export interface UseCanvasIMEArgs {
   terminalId: string | null;
   textarea: HTMLTextAreaElement | null;
   writeBytes?: WriteBytesFn;
+  onCompositionTextChange?: (text: string) => void;
 }
 
-export function useCanvasIME({ terminalId, textarea, writeBytes = defaultWriteBytes }: UseCanvasIMEArgs) {
+export function useCanvasIME({
+  terminalId,
+  textarea,
+  writeBytes = defaultWriteBytes,
+  onCompositionTextChange,
+}: UseCanvasIMEArgs) {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    installImeDiagnosticHelpers(window);
+  }, []);
+
   // Hold `writeBytes` in a ref so its identity does NOT appear in the
   // effect's dependency array. If it did, any parent passing an inline
   // function literal (common in tests, easy in production) would
@@ -66,6 +325,8 @@ export function useCanvasIME({ terminalId, textarea, writeBytes = defaultWriteBy
   // in-flight IME commit.
   const writeBytesRef = useRef(writeBytes);
   writeBytesRef.current = writeBytes;
+  const onCompositionTextChangeRef = useRef(onCompositionTextChange);
+  onCompositionTextChangeRef.current = onCompositionTextChange;
 
   // Track composition state across listeners via refs so handlers stay
   // stable under React's re-renders.
@@ -78,39 +339,165 @@ export function useCanvasIME({ terminalId, textarea, writeBytes = defaultWriteBy
   // `input(isComposing=false, data=final)` with the same text. This flag
   // tells that next `input` handler to drop the duplicate.
   const skipNextCommittedInputRef = useRef<string | null>(null);
+  const skipNextCommittedInputTimerRef = useRef<number | null>(null);
+  // Some Windows IME paths fire `compositionend(data="")` before the final
+  // non-composing input. Do not immediately commit stale interim preedit
+  // text in that case; give the browser one macrotask to deliver final input.
+  const pendingCompositionCommitTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!textarea || !terminalId) return;
 
+    const clearPendingCompositionCommit = () => {
+      if (pendingCompositionCommitTimerRef.current === null) return;
+      window.clearTimeout(pendingCompositionCommitTimerRef.current);
+      pendingCompositionCommitTimerRef.current = null;
+    };
+
+    const clearSkipNextCommittedInput = () => {
+      if (skipNextCommittedInputTimerRef.current !== null) {
+        window.clearTimeout(skipNextCommittedInputTimerRef.current);
+        skipNextCommittedInputTimerRef.current = null;
+      }
+      skipNextCommittedInputRef.current = null;
+    };
+
+    const armSkipNextCommittedInput = (text: string) => {
+      clearSkipNextCommittedInput();
+      skipNextCommittedInputRef.current = text;
+      skipNextCommittedInputTimerRef.current = window.setTimeout(() => {
+        skipNextCommittedInputTimerRef.current = null;
+        skipNextCommittedInputRef.current = null;
+      }, 160);
+    };
+
+    const clearCompositionState = () => {
+      composingRef.current = false;
+      pendingCompositionRef.current = "";
+      textarea.value = "";
+      onCompositionTextChangeRef.current?.("");
+    };
+
+    const resetComposition = () => {
+      clearPendingCompositionCommit();
+      clearCompositionState();
+    };
+
+    const updateCompositionText = (text: string) => {
+      pendingCompositionRef.current = text;
+      onCompositionTextChangeRef.current?.(text);
+    };
+
     const onKeyDown = (e: KeyboardEvent) => {
       // IME composition keys: let the IME handle them entirely.
-      if (e.isComposing || e.keyCode === 229) return;
+      if (composingRef.current || e.isComposing || e.keyCode === 229) {
+        recordImeDiagnostic(textarea, terminalId, composingRef.current, {
+          phase: "keydown",
+          writePath: "ignored",
+          key: e.key,
+          keyCode: e.keyCode,
+          isComposing: e.isComposing,
+          ignored: true,
+          dropped: true,
+          reason: "ime-composition-key",
+        });
+        return;
+      }
 
       if (!isSpecialKeyEvent(e)) {
         // Plain printable — let the `input` event handle it.  keymap.ts
         // would return the char itself here, which would double-send.
+        recordImeDiagnostic(textarea, terminalId, composingRef.current, {
+          phase: "keydown",
+          writePath: "ignored",
+          key: e.key,
+          keyCode: e.keyCode,
+          isComposing: e.isComposing,
+          ignored: true,
+          reason: "printable-input-path",
+        });
         return;
       }
 
+      // A pending empty-compositionend fallback represents stale preedit
+      // text waiting one macrotask for the real committed input. If the
+      // user sends an editing/control key first (Backspace, Escape, Enter,
+      // arrows), that preedit must not resurrect after the key has already
+      // been applied to the PTY.
+      clearPendingCompositionCommit();
       const bytes = keyEventToBytes(e);
-      if (bytes === null) return;
+      if (bytes === null) {
+        recordImeDiagnostic(textarea, terminalId, composingRef.current, {
+          phase: "keydown",
+          writePath: "ignored",
+          key: e.key,
+          keyCode: e.keyCode,
+          isComposing: e.isComposing,
+          ignored: true,
+          dropped: true,
+          reason: "unmapped-key",
+        });
+        return;
+      }
       e.preventDefault();
       e.stopPropagation();
       writeBytesRef.current(terminalId, bytes);
+      recordImeDiagnostic(textarea, terminalId, composingRef.current, {
+        phase: "keydown",
+        key: e.key,
+        keyCode: e.keyCode,
+        isComposing: e.isComposing,
+        sentLength: bytes.length,
+        writePath: "canvas-keymap",
+      });
     };
 
     const onInput = (e: Event) => {
       const ev = e as InputEvent;
+      clearPendingCompositionCommit();
+      recordImeDiagnostic(textarea, terminalId, composingRef.current, {
+        phase: "input",
+        writePath: ev.isComposing || composingRef.current ? "ime-composition" : "canvas",
+        inputType: ev.inputType,
+        isComposing: ev.isComposing,
+        dataLength: imeDataLength(ev.data),
+      });
       // During composition, record the latest interim text so we can
       // recover it on `compositionend` if the browser/IME commits through
       // the interim path (Windows TSF: some Japanese IMEs fire the final
       // `input` while `isComposing` is still `true`, then `compositionend`
       // with an empty `data`).
-      if (ev.isComposing || composingRef.current) {
-        if (ev.data) pendingCompositionRef.current = ev.data;
-        // Keep the backing value clear so a later commit lands on an empty
-        // buffer — some IMEs otherwise leave interim text behind.
-        textarea.value = "";
+      if (ev.isComposing) {
+        // A few WebView2/TSF paths can deliver a late composing input after
+        // an empty `compositionend` without replaying `compositionstart`.
+        // Treat that input as re-entering composition so a later final input
+        // commits through the guarded composition path instead of plain text
+        // bookkeeping.
+        composingRef.current = true;
+        const text =
+          textarea.value.length > 0
+            ? textarea.value
+            : typeof ev.data === "string"
+              ? ev.data
+              : (ev.inputType ?? "").toLowerCase().includes("delete")
+                ? ""
+                : pendingCompositionRef.current;
+        updateCompositionText(text);
+        return;
+      }
+
+      if (composingRef.current) {
+        const data = textarea.value || ev.data || pendingCompositionRef.current;
+        resetComposition();
+        if (!data || data.length === 0) return;
+        writeBytesRef.current(terminalId, data);
+        recordImeDiagnostic(textarea, terminalId, false, {
+          phase: "commit",
+          inputType: ev.inputType,
+          isComposing: ev.isComposing,
+          sentLength: data.length,
+          writePath: "ime-commit",
+        });
         return;
       }
 
@@ -122,35 +509,115 @@ export function useCanvasIME({ terminalId, textarea, writeBytes = defaultWriteBy
       // we already sent the committed text from the compositionend handler,
       // so drop the duplicate echo here.
       if (skipNextCommittedInputRef.current === data) {
-        skipNextCommittedInputRef.current = null;
+        clearSkipNextCommittedInput();
+        recordImeDiagnostic(textarea, terminalId, false, {
+          phase: "commit",
+          writePath: "ignored",
+          inputType: ev.inputType,
+          isComposing: ev.isComposing,
+          dataLength: data.length,
+          ignored: true,
+          dropped: true,
+          reason: "duplicate-trailing-input",
+        });
         return;
       }
-      skipNextCommittedInputRef.current = null;
+      clearSkipNextCommittedInput();
 
       writeBytesRef.current(terminalId, data);
+      recordImeDiagnostic(textarea, terminalId, false, {
+        phase: "commit",
+        inputType: ev.inputType,
+        isComposing: ev.isComposing,
+        sentLength: data.length,
+        writePath: "canvas",
+      });
     };
 
     const onCompositionStart = () => {
+      clearPendingCompositionCommit();
       composingRef.current = true;
       pendingCompositionRef.current = "";
-      // Deliberately leave `skipNextCommittedInputRef` alone — see the
-      // block comment below `onCompositionEnd`.
+      clearSkipNextCommittedInput();
+      onCompositionTextChangeRef.current?.("");
+      recordImeDiagnostic(textarea, terminalId, composingRef.current, {
+        phase: "compositionstart",
+        writePath: "ime-composition",
+      });
+    };
+
+    const onCompositionUpdate = (e: CompositionEvent) => {
+      // Windows WebView2 + Japanese IME can update the preedit string via
+      // `compositionupdate` without firing an `input(isComposing)` event on
+      // every tick. If we only listen to `input`, the OS candidate window
+      // shows text while the terminal line stays blank.
+      composingRef.current = true;
+      const text = textarea.value.length > 0 ? textarea.value : e.data;
+      updateCompositionText(text);
+      recordImeDiagnostic(textarea, terminalId, composingRef.current, {
+        phase: "compositionupdate",
+        writePath: "ime-composition",
+        dataLength: imeDataLength(e.data),
+      });
     };
 
     const onCompositionEnd = (e: CompositionEvent) => {
-      composingRef.current = false;
+      const hadComposition =
+        composingRef.current || pendingCompositionRef.current.length > 0 || pendingCompositionCommitTimerRef.current !== null;
+      if (!hadComposition) {
+        textarea.value = "";
+        recordImeDiagnostic(textarea, terminalId, false, {
+          phase: "compositionend",
+          writePath: "ignored",
+          dataLength: imeDataLength(e.data),
+          ignored: true,
+          reason: "compositionend-without-composition",
+        });
+        return;
+      }
       // Prefer the compositionend event's own `data` (Chromium / WebKit
-      // spec-compliant path). Fall back to whatever the last interim
-      // `input(isComposing=true)` reported — the TSF order on Windows.
-      const text = e.data || pendingCompositionRef.current;
-      pendingCompositionRef.current = "";
-      textarea.value = "";
-      if (!text || text.length === 0) return;
+      // spec-compliant path). If it is empty, do not trust the textarea's
+      // live value as the commit. Windows TSF/WebView2 often leaves stale
+      // preedit text there while the real committed string arrives in the
+      // next non-composing input event; committing the live value immediately
+      // is what makes long Japanese input appear stuck or undeletable.
+      const text = e.data;
+      const pendingText = pendingCompositionRef.current;
+      recordImeDiagnostic(textarea, terminalId, composingRef.current, {
+        phase: "compositionend",
+        writePath: "ime-composition",
+        dataLength: imeDataLength(e.data),
+      });
+      clearPendingCompositionCommit();
+      clearCompositionState();
+      if (!text || text.length === 0) {
+        if (pendingText.length > 0) {
+          pendingCompositionCommitTimerRef.current = window.setTimeout(() => {
+            pendingCompositionCommitTimerRef.current = null;
+            writeBytesRef.current(terminalId, pendingText);
+            skipNextCommittedInputRef.current = pendingText;
+            recordImeDiagnostic(textarea, terminalId, false, {
+              phase: "commit",
+              sentLength: pendingText.length,
+              writePath: "ime-commit",
+              reason: "fallback-compositionend-empty",
+            });
+            armSkipNextCommittedInput(pendingText);
+          }, FALLBACK_COMPOSITION_COMMIT_DELAY_MS);
+        }
+        return;
+      }
 
       writeBytesRef.current(terminalId, text);
+      recordImeDiagnostic(textarea, terminalId, false, {
+        phase: "commit",
+        sentLength: text.length,
+        writePath: "ime-commit",
+        reason: "compositionend",
+      });
       // Arm the dedup flag so the trailing `input(!isComposing, data=text)`
       // we expect on Chromium doesn't send the same characters twice.
-      skipNextCommittedInputRef.current = text;
+      armSkipNextCommittedInput(text);
     };
 
     const onPaste = (e: ClipboardEvent) => {
@@ -158,22 +625,96 @@ export function useCanvasIME({ terminalId, textarea, writeBytes = defaultWriteBy
       if (!text) return;
       e.preventDefault();
       e.stopPropagation();
-      textarea.value = "";
-      writeBytesRef.current(terminalId, text);
+      const hadComposition =
+        composingRef.current || pendingCompositionRef.current.length > 0 || pendingCompositionCommitTimerRef.current !== null;
+      resetComposition();
+      const pasteGuard = classifyTerminalPasteInput(text);
+      if (pasteGuard.shouldBlock) {
+        dispatchPasteGuardEvent(textarea, terminalId, pasteGuard, "blocked");
+        recordImeDiagnostic(textarea, terminalId, false, {
+          phase: "paste",
+          sentLength: 0,
+          normalizedLineBreaks: pasteGuard.lineEndingCount,
+          riskSeverity: pasteGuard.risk.severity,
+          riskClasses: pasteGuard.risk.classes,
+          pasteGuardAction: "blocked",
+          writePath: "ignored",
+          ignored: true,
+          dropped: true,
+          reason: "paste-risk-blocked",
+        });
+        return;
+      }
+      if (pasteGuard.shouldConfirm && !confirmPasteGuard(textarea, pasteGuard)) {
+        dispatchPasteGuardEvent(textarea, terminalId, pasteGuard, "cancelled");
+        recordImeDiagnostic(textarea, terminalId, false, {
+          phase: "paste",
+          sentLength: 0,
+          normalizedLineBreaks: pasteGuard.lineEndingCount,
+          riskSeverity: pasteGuard.risk.severity,
+          riskClasses: pasteGuard.risk.classes,
+          pasteGuardAction: "cancelled",
+          writePath: "ignored",
+          ignored: true,
+          dropped: true,
+          reason: "paste-risk-cancelled",
+        });
+        return;
+      }
+      const normalizedText = normalizeTerminalPasteInput(text);
+      const normalizedLineBreaks = countTerminalPasteLineEndings(text);
+      writeBytesRef.current(terminalId, normalizedText);
+      dispatchPasteGuardEvent(textarea, terminalId, pasteGuard, pasteGuard.shouldConfirm ? "confirmed" : "allowed");
+      recordImeDiagnostic(textarea, terminalId, false, {
+        phase: "paste",
+        sentLength: normalizedText.length,
+        normalizedLineBreaks,
+        riskSeverity: pasteGuard.risk.severity,
+        riskClasses: pasteGuard.risk.classes,
+        pasteGuardAction: pasteGuard.shouldConfirm ? "confirmed" : "allowed",
+        writePath: "paste",
+        reason: hadComposition ? "paste-cancelled-composition" : undefined,
+      });
+    };
+
+    const onBlur = () => {
+      recordImeDiagnostic(textarea, terminalId, composingRef.current, {
+        phase: "blur",
+        writePath: "focus",
+      });
+      if (
+        composingRef.current ||
+        pendingCompositionRef.current.length > 0 ||
+        pendingCompositionCommitTimerRef.current !== null
+      ) {
+        recordImeDiagnostic(textarea, terminalId, composingRef.current, {
+          phase: "blur",
+          writePath: "focus",
+          reason: "preserve-composition",
+        });
+        return;
+      }
+      resetComposition();
     };
 
     textarea.addEventListener("keydown", onKeyDown);
     textarea.addEventListener("input", onInput);
     textarea.addEventListener("compositionstart", onCompositionStart);
+    textarea.addEventListener("compositionupdate", onCompositionUpdate);
     textarea.addEventListener("compositionend", onCompositionEnd);
     textarea.addEventListener("paste", onPaste);
+    textarea.addEventListener("blur", onBlur);
 
     return () => {
+      clearPendingCompositionCommit();
+      clearSkipNextCommittedInput();
       textarea.removeEventListener("keydown", onKeyDown);
       textarea.removeEventListener("input", onInput);
       textarea.removeEventListener("compositionstart", onCompositionStart);
+      textarea.removeEventListener("compositionupdate", onCompositionUpdate);
       textarea.removeEventListener("compositionend", onCompositionEnd);
       textarea.removeEventListener("paste", onPaste);
+      textarea.removeEventListener("blur", onBlur);
     };
   }, [terminalId, textarea]);
 }
@@ -183,11 +724,61 @@ export interface UseImePositionArgs {
   textarea: HTMLTextAreaElement | null;
   /** Row/col in terminal grid. */
   cursor: { row: number; col: number } | null;
+  /** Visible terminal grid dimensions. */
+  cols: number;
+  rows: number;
   /** Cell dimensions in CSS pixels. */
   cellWidth: number;
   cellHeight: number;
   /** Canvas bounding rect origin, used to convert cell coord to screen coord. */
   canvas: HTMLCanvasElement | null;
+}
+
+const CANDIDATE_POPUP_GUARD_PX = 440;
+const CANDIDATE_POPUP_HEIGHT_GUARD_PX = 260;
+const IME_ANCHOR_MIN_WIDTH_PX = 2;
+
+function clampAxis(value: number, maxExclusive: number): number {
+  if (!Number.isFinite(value)) return 0;
+  const max = Math.max(0, maxExclusive - 1);
+  return Math.min(max, Math.max(0, Math.trunc(value)));
+}
+
+export function clampTerminalCursor(
+  cursor: { row: number; col: number },
+  cols: number,
+  rows: number,
+): { row: number; col: number } {
+  return {
+    row: clampAxis(cursor.row, rows),
+    col: clampAxis(cursor.col, cols),
+  };
+}
+
+export function imeCandidateAnchorX(caretX: number, canvasWidth: number): number {
+  const safeWidth = Number.isFinite(canvasWidth) ? Math.max(0, canvasWidth) : 0;
+  const safeCaret = Number.isFinite(caretX) ? Math.max(0, caretX) : 0;
+  const guardedRight = Math.max(0, safeWidth - CANDIDATE_POPUP_GUARD_PX);
+  return Math.min(safeCaret, guardedRight);
+}
+
+export function imeCandidateAnchorY(screenY: number, viewportHeight: number): number {
+  const safeViewportHeight = Number.isFinite(viewportHeight) ? Math.max(0, viewportHeight) : 0;
+  const safeScreenY = Number.isFinite(screenY) ? Math.max(0, screenY) : 0;
+  const guardedBottom = Math.max(0, safeViewportHeight - CANDIDATE_POPUP_HEIGHT_GUARD_PX);
+  return Math.min(safeScreenY, guardedBottom);
+}
+
+export function imeTextareaAnchorWidth(anchorX: number, canvasWidth: number): number {
+  const safeWidth = Number.isFinite(canvasWidth) ? Math.max(0, canvasWidth) : 0;
+  const safeAnchor = Number.isFinite(anchorX) ? Math.min(Math.max(0, anchorX), safeWidth) : 0;
+  const runway = Math.max(0, safeWidth - safeAnchor);
+  return Math.max(IME_ANCHOR_MIN_WIDTH_PX, runway);
+}
+
+function rememberImeCandidateAnchor(textarea: HTMLTextAreaElement, candidateX: number, candidateY: number) {
+  textarea.dataset.imeCandidateX = `${Math.round(candidateX)}`;
+  textarea.dataset.imeCandidateY = `${Math.round(candidateY)}`;
 }
 
 /**
@@ -209,7 +800,9 @@ export interface UseImePositionArgs {
  * element. When focus moves elsewhere we stop emitting and the OS reverts
  * to the focused element's natural position on the next composition.
  */
-export function useImePosition({ textarea, cursor, cellWidth, cellHeight, canvas }: UseImePositionArgs) {
+export function useImePosition({ textarea, cursor, cols, rows, cellWidth, cellHeight, canvas }: UseImePositionArgs) {
+  const cursorRow = cursor?.row ?? null;
+  const cursorCol = cursor?.col ?? null;
   /* Push the canvas-cursor IMM position through the IPC. Codex review
    * (round 4) caught that the previous "fire on cursor move only" loop
    * left stale IMM coordinates when the user pinged-pinged between the
@@ -221,21 +814,42 @@ export function useImePosition({ textarea, cursor, cellWidth, cellHeight, canvas
   const pushImePosition = useCallback(() => {
     if (!textarea || !cursor || !canvas) return;
     if (typeof document === "undefined" || document.activeElement !== textarea) return;
+    const safeCursor = clampTerminalCursor(cursor, cols, rows);
     const rect = canvas.getBoundingClientRect();
-    const screenX = rect.left + cursor.col * cellWidth;
-    const screenY = rect.top + cursor.row * cellHeight + cellHeight;
-    invoke("set_ime_position", { x: screenX, y: screenY }).catch(() => {});
-  }, [textarea, cursor, canvas, cellWidth, cellHeight]);
+    const canvasWidth = cols * cellWidth;
+    const caretX = safeCursor.col * cellWidth;
+    const caretY = safeCursor.row * cellHeight + cellHeight;
+    const candidateX = imeCandidateAnchorX(caretX, canvasWidth);
+    const screenX = rect.left + caretX;
+    const screenY = rect.top + caretY;
+    const candidateScreenX = rect.left + candidateX;
+    const candidateScreenY = imeCandidateAnchorY(screenY, window.innerHeight);
+    rememberImeCandidateAnchor(textarea, candidateScreenX, candidateScreenY);
+    invoke("set_ime_position", {
+      x: screenX,
+      y: screenY,
+      candidateX: candidateScreenX,
+      candidateY: candidateScreenY,
+    }).catch(() => {});
+  }, [textarea, cursor, cols, rows, canvas, cellWidth, cellHeight]);
 
   // Mirror the cursor position to the textarea's CSS box (so the
   // browser-native IME path has a sensible default anchor) and steer
   // IMM when we own focus.
   useEffect(() => {
-    if (!textarea || !cursor || !canvas) return;
-    textarea.style.left = `${cursor.col * cellWidth}px`;
-    textarea.style.top = `${cursor.row * cellHeight}px`;
+    if (!textarea || cursorRow === null || cursorCol === null || !canvas) return;
+    const safeCursor = clampTerminalCursor({ row: cursorRow, col: cursorCol }, cols, rows);
+    const canvasWidth = cols * cellWidth;
+    const caretX = safeCursor.col * cellWidth;
+    const anchorX = imeCandidateAnchorX(caretX, canvasWidth);
+    const anchorWidth = imeTextareaAnchorWidth(anchorX, canvasWidth);
+    textarea.style.left = `${anchorX}px`;
+    textarea.style.top = `${safeCursor.row * cellHeight}px`;
+    textarea.style.width = `${anchorWidth}px`;
+    textarea.style.paddingLeft = "0px";
+    rememberImeCandidateAnchor(textarea, anchorX, safeCursor.row * cellHeight + cellHeight);
     pushImePosition();
-  }, [textarea, cursor?.row, cursor?.col, cellWidth, cellHeight, canvas, pushImePosition]);
+  }, [textarea, cursorRow, cursorCol, cols, rows, cellWidth, cellHeight, canvas, pushImePosition]);
 
   // Re-push on focus / compositionstart so a focus return from
   // IMEInputBar or any other text input that called `set_ime_position`
@@ -244,12 +858,27 @@ export function useImePosition({ textarea, cursor, cellWidth, cellHeight, canvas
   // candidate window at the previous input's coordinates.
   useEffect(() => {
     if (!textarea) return;
-    const reanchor = () => pushImePosition();
+    const reanchor = () => {
+      pushImePosition();
+      window.requestAnimationFrame(pushImePosition);
+    };
+    const reanchorWhileComposing = (event: Event) => {
+      const inputEvent = event as InputEvent;
+      if (inputEvent.isComposing) reanchor();
+    };
     textarea.addEventListener("focus", reanchor);
     textarea.addEventListener("compositionstart", reanchor);
+    textarea.addEventListener("compositionupdate", reanchor);
+    textarea.addEventListener("input", reanchorWhileComposing);
+    window.addEventListener("resize", reanchor);
+    window.visualViewport?.addEventListener("resize", reanchor);
     return () => {
       textarea.removeEventListener("focus", reanchor);
       textarea.removeEventListener("compositionstart", reanchor);
+      textarea.removeEventListener("compositionupdate", reanchor);
+      textarea.removeEventListener("input", reanchorWhileComposing);
+      window.removeEventListener("resize", reanchor);
+      window.visualViewport?.removeEventListener("resize", reanchor);
     };
   }, [textarea, pushImePosition]);
 }

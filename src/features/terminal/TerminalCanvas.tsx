@@ -7,8 +7,11 @@ import { useTerminalSnapshot } from "../../shared/hooks/useTerminalSnapshot";
 import { usePromptMarks } from "../../shared/hooks/usePromptMarks";
 import { useTerminalImages } from "../../shared/hooks/useTerminalImages";
 import {
+  estimateScrollbackMemoryBytes,
+  publishTerminalPerformanceSample,
+} from "../analytics/performanceObservatory";
+import {
   CURSOR_COLOR,
-  DEFAULT_BG,
   DEFAULT_FG,
   CURSOR_TEXT_BG,
   isDefaultBg,
@@ -21,17 +24,31 @@ import {
 import {
   CellAttr,
   type CellSnapshot,
+  type CursorSnapshot,
   type GridSnapshot,
   hasAttr,
   type ImageRef,
 } from "../../shared/types/terminal";
-import { useCanvasIME, useImePosition, type WriteBytesFn } from "./hooks/useCanvasIME";
+import {
+  clampTerminalCursor,
+  IME_DIAGNOSTIC_EVENT,
+  IME_DIAGNOSTIC_STORAGE_KEY,
+  IME_DIAGNOSTIC_TOGGLE_EVENT,
+  imeDiagnosticsEnabled,
+  imeCandidateAnchorX,
+  imeTextareaAnchorWidth,
+  useCanvasIME,
+  useImePosition,
+  type ImeDiagnosticDetail,
+  type WriteBytesFn,
+} from "./hooks/useCanvasIME";
 import { type CopyTextFn, useTerminalSelection } from "./hooks/useTerminalSelection";
 import { pixelToCell } from "./keymap";
 import { type LinkSpan, linkAt, scanLinks } from "./links";
 import type { AnyMatch } from "./search";
 import { viewportRowOf } from "./search";
 import { rowSelection, type SelectionRange } from "./selection";
+import { TERMINAL_FONT_FAMILY, useTerminalCellMetrics, type TerminalCellMetrics } from "./terminalMetrics";
 import styles from "./TerminalArea.module.css";
 
 export type OpenUrlFn = (url: string) => Promise<void> | void;
@@ -75,8 +92,16 @@ export interface TerminalCanvasProps {
   activeSearchMatch?: AnyMatch | null;
   /** Invoked on Ctrl+Click over a detected URL. */
   onOpenUrl?: OpenUrlFn;
+  /** NativeTerminalArea owns the full P0-15 overlay; standalone canvases keep their local overlay. */
+  showInputDiagnosticsOverlay?: boolean;
   /** Fish-style suggestion to paint after the cursor (Phase 3A-2). */
   ghostSuggestion?: string | null;
+  /**
+   * AI CLIs often draw a full-screen input box and leave the real terminal
+   * cursor on a status/footer row. When true, IME composition is anchored to
+   * the visible AI input line when we can identify one.
+   */
+  preferAiInputAnchor?: boolean;
   /** Exposes the underlying canvas element so parents can attach input
    *  mirrors (Phase 3A-2) without duplicating the ref forwarding. */
   onCanvasRef?: (el: HTMLCanvasElement | null) => void;
@@ -106,9 +131,172 @@ export interface TerminalNav {
   scrollToOffset(offset: number): void;
 }
 
-interface CellMetrics {
-  width: number;
-  height: number;
+type CursorPoint = { row: number; col: number };
+type RowTextMap = { text: string; startCols: number[]; endCols: number[] };
+
+const AI_INPUT_PLACEHOLDERS = [
+  "Type your message",
+  "Ask me anything",
+  "Message Codex",
+  "Send a message",
+  "Enter your prompt",
+  "What can I help",
+] as const;
+
+const AI_SHORTCUT_HINTS = ["? for shortcuts"] as const;
+const AI_PROMPT_MARKERS = new Set([">", "❯", "›", "»", "λ", "→"]);
+const AI_INPUT_RIGHT_FRAME_CHARS = new Set(["│", "┃", "║", "▌", "▐", "╎", "┆", "┊", "┋", "╏", "┤", "╮", "╯"]);
+const AI_INPUT_MIN_ROW_RATIO = 0.35;
+const IME_COMPOSITION_OVERLAY_MAX_CELLS = 34;
+
+function rowToTextMap(row: readonly CellSnapshot[]): RowTextMap {
+  const startCols: number[] = [];
+  const endCols: number[] = [];
+  let text = "";
+
+  for (let col = 0; col < row.length; col++) {
+    const cell = row[col];
+    if (!cell || hasAttr(cell, CellAttr.WIDE_CHAR_SPACER)) continue;
+    const ch = cell.ch && cell.ch !== "\0" ? cell.ch : " ";
+    const startIndex = text.length;
+    text += ch;
+    const endCol = col + (hasAttr(cell, CellAttr.WIDE_CHAR) ? 2 : 1);
+    for (let i = startIndex; i < text.length; i++) {
+      startCols[i] = col;
+      endCols[i] = endCol;
+    }
+  }
+
+  return { text, startCols, endCols };
+}
+
+function lastNonSpaceTextIndex(text: string): number {
+  return Math.max(0, text.trimEnd().length);
+}
+
+function trimRightFrameIndex(text: string): number {
+  let end = text.trimEnd().length;
+  while (end > 0 && AI_INPUT_RIGHT_FRAME_CHARS.has(text[end - 1])) {
+    end = text.slice(0, end - 1).trimEnd().length;
+  }
+  return end;
+}
+
+function columnAtTextIndex(rowText: RowTextMap, index: number): number {
+  if (rowText.text.length === 0) return 0;
+  const clamped = Math.min(Math.max(0, index), rowText.text.length - 1);
+  return rowText.startCols[clamped] ?? 0;
+}
+
+function columnAfterTextIndex(rowText: RowTextMap, index: number): number {
+  if (index <= 0 || rowText.text.length === 0) return 0;
+  const clamped = Math.min(index - 1, rowText.text.length - 1);
+  return rowText.endCols[clamped] ?? 0;
+}
+
+function aiPromptInputColumn(rowText: RowTextMap, promptCol: number): number {
+  return Math.max(promptCol, columnAfterTextIndex(rowText, trimRightFrameIndex(rowText.text)));
+}
+
+function clampColumn(col: number, cols: number): number {
+  return Math.min(Math.max(0, col), Math.max(0, cols - 1));
+}
+
+function terminalCellSpan(text: string): number {
+  let cells = 0;
+  for (const ch of text) {
+    const code = ch.codePointAt(0) ?? 0;
+    cells += code > 0x7f ? 2 : 1;
+  }
+  return cells;
+}
+
+function diagnosticCompositionState(detail: ImeDiagnosticDetail | null): string {
+  if (!detail) return "idle";
+  if (detail.composing) return "composing";
+  if (detail.phase === "blur") return detail.reason === "preserve-composition" ? "blurred-preserved" : "blurred";
+  if (detail.phase === "commit") return "committed";
+  if (detail.phase === "paste") return "pasted";
+  return "idle";
+}
+
+function diagnosticWritePath(detail: ImeDiagnosticDetail | null): string {
+  if (!detail) return "waiting";
+  return detail.writePath ?? detail.phase;
+}
+
+function diagnosticLastCommit(detail: ImeDiagnosticDetail | null): string {
+  if (!detail?.sentLength) return "none";
+  return `${detail.sentLength} char${detail.sentLength === 1 ? "" : "s"}`;
+}
+
+function diagnosticCandidateRect(
+  detail: ImeDiagnosticDetail | null,
+  textarea: HTMLTextAreaElement | null,
+): string {
+  const x = detail?.candidateLeft ?? textarea?.dataset.imeCandidateX ?? null;
+  const y = detail?.candidateTop ?? textarea?.dataset.imeCandidateY ?? null;
+  if (!x || !y) return "unset";
+  return `${x}, ${y}`;
+}
+
+function isVisibleCursor(cursor: CursorSnapshot | null | undefined): cursor is CursorSnapshot {
+  return !!cursor && cursor.visible && cursor.shape !== "hidden";
+}
+
+function isPromptBoundary(ch: string | undefined): boolean {
+  return ch === undefined || ch === " " || ch === "\t" || ch === "│" || ch === "┃" || ch === "╎" || ch === "┆";
+}
+
+function findPromptInputColumn(rowText: RowTextMap, beforeIndex = rowText.text.length): number | null {
+  const { text } = rowText;
+  const limit = Math.min(Math.max(0, beforeIndex), text.length);
+  for (let i = 0; i < limit; i++) {
+    if (!AI_PROMPT_MARKERS.has(text[i])) continue;
+    if (!isPromptBoundary(text[i - 1]) || !isPromptBoundary(text[i + 1])) continue;
+    const markerEndCol = columnAfterTextIndex(rowText, i + 1);
+    if (text[i + 1] === undefined) return markerEndCol + 1;
+    return columnAfterTextIndex(rowText, i + 2);
+  }
+  return null;
+}
+
+export function findAiCliInputAnchor(snapshot: GridSnapshot | null): CursorPoint | null {
+  if (!snapshot) return null;
+
+  const minInputRow = Math.max(0, Math.floor(snapshot.cells.length * AI_INPUT_MIN_ROW_RATIO));
+  for (let row = snapshot.cells.length - 1; row >= minInputRow; row--) {
+    const rowText = rowToTextMap(snapshot.cells[row] ?? []);
+    const { text } = rowText;
+    for (const placeholder of AI_INPUT_PLACEHOLDERS) {
+      const hintIndex = text.indexOf(placeholder);
+      if (hintIndex < 0) continue;
+      const promptCol = findPromptInputColumn(rowText, hintIndex);
+      return { row, col: clampColumn(promptCol ?? columnAtTextIndex(rowText, hintIndex), snapshot.cols) };
+    }
+
+    for (const hint of AI_SHORTCUT_HINTS) {
+      const hintIndex = text.indexOf(hint);
+      if (hintIndex < 0) continue;
+      const hintEnd = hintIndex + hint.length + 1;
+      const typedEnd = lastNonSpaceTextIndex(text);
+      if (typedEnd <= hintEnd) continue;
+      return {
+        row,
+        col: clampColumn(
+          Math.max(columnAfterTextIndex(rowText, hintEnd), columnAfterTextIndex(rowText, typedEnd)),
+          snapshot.cols,
+        ),
+      };
+    }
+
+    const promptCol = findPromptInputColumn(rowText);
+    if (promptCol !== null) {
+      return { row, col: clampColumn(aiPromptInputColumn(rowText, promptCol), snapshot.cols) };
+    }
+  }
+
+  return null;
 }
 
 export function TerminalCanvas({
@@ -127,7 +315,7 @@ export function TerminalCanvas({
    * Cascadia Code (limited CJK), then Windows-installed BIZ UDGothic
    * / Yu Gothic UI / Meiryo (monospace at common sizes), then Linux
    * Noto Sans Mono CJK, finally generic monospace. */
-  fontFamily = "'IBM Plex Mono', 'Cascadia Code', 'BIZ UDGothic', 'Yu Gothic UI', 'Meiryo', 'Noto Sans Mono CJK JP', monospace",
+  fontFamily = TERMINAL_FONT_FAMILY,
   className,
   snapshotOverride,
   writeBytes,
@@ -135,7 +323,9 @@ export function TerminalCanvas({
   searchMatches,
   activeSearchMatch,
   onOpenUrl = defaultOpenUrl,
+  showInputDiagnosticsOverlay = true,
   ghostSuggestion,
+  preferAiInputAnchor = false,
   onCanvasRef,
   onInputRef,
   onRegisterNav,
@@ -153,18 +343,83 @@ export function TerminalCanvas({
   const prevCursorRef = useRef<{ row: number; col: number } | null>(null);
   const prevCursorOnRef = useRef<boolean>(true);
   const prevGhostRef = useRef<string>("");
+  const renderPerfRef = useRef({ lastPaintAt: 0, droppedRenderFrames: 0 });
   const [hoveredLink, setHoveredLink] = useState<LinkSpan | null>(null);
+  const [compositionText, setCompositionText] = useState("");
+  const [diagnosticsVisible, setDiagnosticsVisible] = useState(() =>
+    typeof window !== "undefined" ? imeDiagnosticsEnabled(window) : false,
+  );
+  const [latestImeDiagnostic, setLatestImeDiagnostic] = useState<ImeDiagnosticDetail | null>(null);
+  const [droppedKeyCount, setDroppedKeyCount] = useState(0);
+  const [diagnosticPaneActive, setDiagnosticPaneActive] = useState(false);
 
-  useCanvasIME({ terminalId, textarea: textareaEl, writeBytes });
+  useCanvasIME({
+    terminalId,
+    textarea: textareaEl,
+    writeBytes,
+    onCompositionTextChange: setCompositionText,
+  });
+
+  useEffect(() => {
+    renderPerfRef.current = { lastPaintAt: 0, droppedRenderFrames: 0 };
+  }, [terminalId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const syncVisibility = () => {
+      const enabled = imeDiagnosticsEnabled(window);
+      setDiagnosticsVisible(enabled);
+      if (!enabled) {
+        setLatestImeDiagnostic(null);
+        setDroppedKeyCount(0);
+        setDiagnosticPaneActive(false);
+      }
+    };
+    const onDiagnostic = (event: Event) => {
+      const detail = (event as CustomEvent<ImeDiagnosticDetail>).detail;
+      if (!detail || detail.terminalId !== terminalId) return;
+      setDiagnosticsVisible(true);
+      setLatestImeDiagnostic(detail);
+      setDiagnosticPaneActive(detail.active);
+      if (detail.dropped) {
+        setDroppedKeyCount((count) => count + 1);
+      }
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === IME_DIAGNOSTIC_STORAGE_KEY) syncVisibility();
+    };
+    syncVisibility();
+    window.addEventListener(IME_DIAGNOSTIC_TOGGLE_EVENT, syncVisibility);
+    window.addEventListener(IME_DIAGNOSTIC_EVENT, onDiagnostic as EventListener);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(IME_DIAGNOSTIC_TOGGLE_EVENT, syncVisibility);
+      window.removeEventListener(IME_DIAGNOSTIC_EVENT, onDiagnostic as EventListener);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [terminalId]);
+
+  useEffect(() => {
+    if (!textareaEl) {
+      setDiagnosticPaneActive(false);
+      return;
+    }
+    const updateFocus = () => setDiagnosticPaneActive(textareaEl.ownerDocument.activeElement === textareaEl);
+    updateFocus();
+    textareaEl.addEventListener("focus", updateFocus);
+    textareaEl.addEventListener("blur", updateFocus);
+    return () => {
+      textareaEl.removeEventListener("focus", updateFocus);
+      textareaEl.removeEventListener("blur", updateFocus);
+    };
+  }, [textareaEl]);
+
   const liveSnapshot = useTerminalSnapshot(snapshotOverride === undefined ? terminalId : null);
   const snapshot = snapshotOverride !== undefined ? snapshotOverride : liveSnapshot;
   // Inline image overlays — fetched + cached as ImageBitmap by id. The
   // hook silently no-ops when `terminalId` is null (test fixtures inject
   // snapshots directly without a real backend).
-  const imageBitmaps = useTerminalImages(
-    snapshotOverride !== undefined ? null : terminalId,
-    snapshot?.images,
-  );
+  const imageBitmaps = useTerminalImages(snapshotOverride !== undefined ? null : terminalId, snapshot?.images);
   // Scrollback: feed it the *live-source* terminal id so the test path
   // (snapshotOverride) never reaches out to IPC.
   const scrollbackTerminalId = snapshotOverride !== undefined ? null : terminalId;
@@ -179,19 +434,11 @@ export function TerminalCanvas({
     if (!onRegisterNav) return;
     const nav: TerminalNav = {
       jumpToPrevPrompt: () => {
-        const mark = findPrevPromptMark(
-          promptMarks,
-          scrollback.scrollOffset,
-          scrollback.historySize,
-        );
+        const mark = findPrevPromptMark(promptMarks, scrollback.scrollOffset, scrollback.historySize);
         if (mark) scrollback.scrollToMark(mark);
       },
       jumpToNextPrompt: () => {
-        const mark = findNextPromptMark(
-          promptMarks,
-          scrollback.scrollOffset,
-          scrollback.historySize,
-        );
+        const mark = findNextPromptMark(promptMarks, scrollback.scrollOffset, scrollback.historySize);
         if (mark) {
           scrollback.scrollToMark(mark);
         } else {
@@ -215,29 +462,7 @@ export function TerminalCanvas({
 
   const [cursorOn, setCursorOn] = useState(true);
 
-  const cellMetrics: CellMetrics = useMemo(() => {
-    /* The previous heuristic — `Math.round(fontSize * 0.6)` — produced
-     * 8 px at fontSize 14. The real IBM Plex Mono advance at 14 px is
-     * **8.4 px**, so every `ctx.fillText(ch, col * 8, …)` call drew
-     * ASCII glyphs that visually rendered 8.4 px wide; after ~30 cells
-     * the cumulative 0.4-px drift compounded into ~12 px of overlap,
-     * which dogfood (2026-05-03) caught as "ターミナルの品質が悪い"
-     * with mangled CJK text. Measuring the font via `ctx.measureText`
-     * uses the exact advance instead — sub-pixel positioning is
-     * fine, browsers rasterise glyphs at fractional X without
-     * blurring monospace columns. */
-    let width = fontSize * 0.6;
-    if (typeof document !== "undefined") {
-      const probe = document.createElement("canvas").getContext("2d");
-      if (probe) {
-        probe.font = `${fontSize}px ${fontFamily}`;
-        const measured = probe.measureText("M").width;
-        if (measured > 0) width = measured;
-      }
-    }
-    const height = Math.round(fontSize * 1.25);
-    return { width, height };
-  }, [fontSize, fontFamily]);
+  const cellMetrics = useTerminalCellMetrics(fontSize, fontFamily);
 
   const canvasWidth = cols * cellMetrics.width;
   const canvasHeight = rows * cellMetrics.height;
@@ -354,10 +579,7 @@ export function TerminalCanvas({
       // only modes browsers emit in practice on mouse wheels / trackpads.
       const pixelsPerRow = cellMetrics.height || 18;
       const rowsPerLine = 3;
-      const deltaRows =
-        ev.deltaMode === 1
-          ? Math.round(ev.deltaY) * rowsPerLine
-          : Math.round(ev.deltaY / pixelsPerRow);
+      const deltaRows = ev.deltaMode === 1 ? Math.round(ev.deltaY) * rowsPerLine : Math.round(ev.deltaY / pixelsPerRow);
       if (deltaRows === 0) return;
       ev.preventDefault();
       scrollback.scrollBy(-deltaRows);
@@ -403,12 +625,12 @@ export function TerminalCanvas({
 
     if (!snapshot) {
       ctx.clearRect?.(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = DEFAULT_BG;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
       prevSnapshotRef.current = null;
       return;
     }
 
+    const paintStartedAt =
+      typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
     const prev = prevSnapshotRef.current;
     const dimsChanged = !prev || prev.cols !== snapshot.cols || prev.rows !== snapshot.rows;
     const prevSel = prevSelectionRef.current;
@@ -436,16 +658,9 @@ export function TerminalCanvas({
 
     if (dimsChanged) {
       ctx.clearRect?.(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = DEFAULT_BG;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 
-    const affectedBySearch = buildRowMask(
-      searchMatches,
-      activeSearchMatch,
-      snapshot.rows,
-      scrollback.scrollOffset,
-    );
+    const affectedBySearch = buildRowMask(searchMatches, activeSearchMatch, snapshot.rows, scrollback.scrollOffset);
     const affectedByHover = rowsCoveredByLink(hoveredLink, prevHover);
 
     // When the viewport is in scrollback, use the composed grid (history
@@ -453,9 +668,7 @@ export function TerminalCanvas({
     // hover / cursor / ghost) are anchored to the live coordinate system,
     // so we suppress them here; returning to `scrollToLive()` reinstates
     // every overlay at once.
-    const viewCells = scrolledUp && scrollback.compositeCells
-      ? scrollback.compositeCells
-      : snapshot.cells;
+    const viewCells = scrolledUp && scrollback.compositeCells ? scrollback.compositeCells : snapshot.cells;
 
     for (let row = 0; row < snapshot.rows; row++) {
       const rowCells = viewCells[row];
@@ -483,15 +696,7 @@ export function TerminalCanvas({
       // Search bands paint over both live and history rows — viewportRowOf
       // does the routing so a history match becomes visible the moment the
       // user scrolls its row into view.
-      paintSearchBands(
-        ctx,
-        row,
-        searchMatches,
-        activeSearchMatch,
-        cellMetrics,
-        snapshot.rows,
-        scrollback.scrollOffset,
-      );
+      paintSearchBands(ctx, row, searchMatches, activeSearchMatch, cellMetrics, snapshot.rows, scrollback.scrollOffset);
       if (!scrolledUp) {
         if (inNew) {
           paintSelectionBand(ctx, row, inNew, cellMetrics);
@@ -523,6 +728,29 @@ export function TerminalCanvas({
       paintImages(ctx, snapshot.images, imageBitmaps, cellMetrics);
     }
 
+    const paintFinishedAt =
+      typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
+    const lastPaintAt = renderPerfRef.current.lastPaintAt;
+    const frameIntervalMs = lastPaintAt > 0 ? paintFinishedAt - lastPaintAt : 0;
+    if (frameIntervalMs > 0) {
+      const targetFrameMs = 1_000 / 60;
+      renderPerfRef.current.droppedRenderFrames += Math.max(0, Math.floor(frameIntervalMs / targetFrameMs) - 1);
+    }
+    renderPerfRef.current.lastPaintAt = paintFinishedAt;
+    publishTerminalPerformanceSample({
+      terminalId,
+      sampledAt: Date.now(),
+      fps: frameIntervalMs > 0 ? Math.min(240, 1_000 / frameIntervalMs) : null,
+      frameMs: Math.max(0, paintFinishedAt - paintStartedAt),
+      droppedRenderFrames: renderPerfRef.current.droppedRenderFrames,
+      renderer: "canvas2d",
+      webglFallback: true,
+      cols: snapshot.cols,
+      rows: snapshot.rows,
+      scrollbackRows: scrollback.historySize,
+      scrollbackMemoryBytes: estimateScrollbackMemoryBytes(scrollback.historySize, snapshot.cols),
+    });
+
     prevSnapshotRef.current = snapshot;
     prevSelectionRef.current = selection;
     prevMatchesKeyRef.current = matchesKey;
@@ -542,6 +770,9 @@ export function TerminalCanvas({
     hoveredLink,
     ghostSuggestion,
     imageBitmaps,
+    scrolledUp,
+    scrollback.scrollOffset,
+    scrollback.compositeCells,
   ]);
 
   useEffect(() => {
@@ -553,7 +784,8 @@ export function TerminalCanvas({
      * solid cursor is more comfortable for vestibular / attention
      * sensitivity, and matches what every accessible-mode terminal
      * (macOS Terminal, iTerm2, Windows Terminal) does. */
-    const reduce = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const reduce =
+      typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reduce) {
       setCursorOn(true);
       return;
@@ -588,9 +820,19 @@ export function TerminalCanvas({
 
   // Keep the hidden textarea parked at the cursor position and tell Windows
   // where to anchor the IME candidate window.
+  const visibleSnapshotCursor = isVisibleCursor(snapshot?.cursor) ? snapshot.cursor : null;
+  const aiCliInputAnchor = preferAiInputAnchor ? findAiCliInputAnchor(snapshot) : null;
+  const effectiveImeCursor = preferAiInputAnchor ? (aiCliInputAnchor ?? visibleSnapshotCursor) : visibleSnapshotCursor;
+  const imeAnchorMode = preferAiInputAnchor
+    ? aiCliInputAnchor
+      ? "ai-cli-input"
+      : "ai-cli-fallback-cursor"
+    : "terminal-cursor";
   useImePosition({
     textarea: textareaEl,
-    cursor: snapshot?.cursor ? { row: snapshot.cursor.row, col: snapshot.cursor.col } : null,
+    cursor: effectiveImeCursor,
+    cols,
+    rows,
     cellWidth: cellMetrics.width,
     cellHeight: cellMetrics.height,
     canvas: canvasEl,
@@ -600,6 +842,31 @@ export function TerminalCanvas({
     textareaEl?.focus();
   }, [textareaEl]);
 
+  const compositionCursor = effectiveImeCursor
+    ? clampTerminalCursor(effectiveImeCursor, cols, rows)
+    : { row: 0, col: 0 };
+  const compositionCursorX = compositionCursor.col * cellMetrics.width;
+  const compositionCursorY = compositionCursor.row * cellMetrics.height;
+  const imeAnchorX = imeCandidateAnchorX(compositionCursorX, canvasWidth);
+  const imeAnchorWidth = imeTextareaAnchorWidth(imeAnchorX, canvasWidth);
+  const compositionOverlayCells =
+    compositionText.length > 0
+      ? Math.min(IME_COMPOSITION_OVERLAY_MAX_CELLS, terminalCellSpan(compositionText))
+      : 1;
+  const compositionOverlayWidth =
+    compositionText.length > 0
+      ? Math.min(canvasWidth, Math.max(cellMetrics.width, compositionOverlayCells * cellMetrics.width))
+      : cellMetrics.width;
+  const compositionOverlayX =
+    compositionText.length > 0
+      ? Math.min(compositionCursorX, Math.max(0, canvasWidth - compositionOverlayWidth))
+      : compositionCursorX;
+  const diagnosticState = diagnosticCompositionState(latestImeDiagnostic);
+  const diagnosticPath = diagnosticWritePath(latestImeDiagnostic);
+  const diagnosticCommit = diagnosticLastCommit(latestImeDiagnostic);
+  const diagnosticCandidate = diagnosticCandidateRect(latestImeDiagnostic, textareaEl);
+  const diagnosticAnchor = latestImeDiagnostic?.anchorMode ?? imeAnchorMode;
+
   return (
     <div
       className={className}
@@ -607,6 +874,7 @@ export function TerminalCanvas({
         position: "relative",
         width: `${canvasWidth}px`,
         height: `${canvasHeight}px`,
+        flex: "0 0 auto",
         outline: "none",
       }}
       // Keep the pane reachable via Tab by making the container the
@@ -655,25 +923,33 @@ export function TerminalCanvas({
         }}
       />
       {/*
-        Hidden IME textarea. `aria-hidden` + explicit offscreen placement
+        Hidden IME textarea. `aria-hidden` + explicit transparent placement
         hides it from screen readers and the visible layout; `opacity: 0`
         + `pointer-events: none` keeps it invisible and non-blocking to
-        mouse selection on the canvas. Its `left`/`top` style is updated
-        by `useImePosition` so IME candidate windows anchor at the caret.
+        mouse selection on the canvas. The real input is parked at a
+        candidate-window-safe x coordinate; the visible composition overlay
+        below stays at the actual terminal cursor.
       */}
       <textarea
         ref={setTextareaEl}
         data-testid="terminal-ime-textarea"
+        data-ime-anchor-mode={imeAnchorMode}
         aria-hidden="true"
         tabIndex={-1}
         autoComplete="off"
         autoCorrect="off"
         spellCheck={false}
+        wrap="off"
         style={{
           position: "absolute",
-          left: 0,
-          top: 0,
-          width: `${cellMetrics.width}px`,
+          left: `${imeAnchorX}px`,
+          top: `${compositionCursorY}px`,
+          // Windows TSF keeps long Japanese composition state in the
+          // backing textarea. Give it the remaining canvas runway so
+          // long conversion / deletion stays editable, while the left
+          // edge is still clamped away from the right rail and the
+          // native candidate position is steered by set_ime_position.
+          width: `${imeAnchorWidth}px`,
           height: `${cellMetrics.height}px`,
           opacity: 0,
           pointerEvents: "none",
@@ -686,13 +962,78 @@ export function TerminalCanvas({
           fontFamily,
           fontSize: `${fontSize}px`,
           lineHeight: `${cellMetrics.height}px`,
+          boxSizing: "border-box",
           padding: 0,
           margin: 0,
           overflow: "hidden",
+          whiteSpace: "pre",
+          overflowWrap: "normal",
           // Caret would flash in the wrong position; hide it.
           caretColor: "transparent",
         }}
       />
+      {compositionText.length > 0 && (
+        <div
+          className={styles.imeCompositionOverlay}
+          style={{
+            left: `${compositionOverlayX}px`,
+            top: `${compositionCursorY}px`,
+            maxWidth: `min(${IME_COMPOSITION_OVERLAY_MAX_CELLS}ch, ${Math.max(
+              cellMetrics.width,
+              canvasWidth - compositionOverlayX,
+            )}px)`,
+            minHeight: `${cellMetrics.height}px`,
+            fontFamily,
+            fontSize: `${fontSize}px`,
+            lineHeight: `${cellMetrics.height}px`,
+          }}
+          aria-hidden="true"
+        >
+          {compositionText}
+        </div>
+      )}
+      {diagnosticsVisible && showInputDiagnosticsOverlay && (
+        <div className={styles.inputDiagnosticsOverlay} data-testid="terminal-input-diagnostics" aria-live="polite">
+          <div className={styles.inputDiagnosticsHeader}>
+            <span>IME Diagnostics</span>
+            <span>{terminalId}</span>
+          </div>
+          <dl className={styles.inputDiagnosticsGrid}>
+            <div>
+              <dt>Target</dt>
+              <dd>{diagnosticPaneActive ? "focused" : "unfocused"}</dd>
+            </div>
+            <div>
+              <dt>State</dt>
+              <dd>{diagnosticState}</dd>
+            </div>
+            <div>
+              <dt>Write path</dt>
+              <dd>{diagnosticPath}</dd>
+            </div>
+            <div>
+              <dt>Event</dt>
+              <dd>{latestImeDiagnostic?.phase ?? "waiting"}</dd>
+            </div>
+            <div>
+              <dt>Last commit</dt>
+              <dd>{diagnosticCommit}</dd>
+            </div>
+            <div>
+              <dt>Dropped keys</dt>
+              <dd>{droppedKeyCount}</dd>
+            </div>
+            <div>
+              <dt>Candidate</dt>
+              <dd>{diagnosticCandidate}</dd>
+            </div>
+            <div>
+              <dt>Anchor</dt>
+              <dd>{diagnosticAnchor}</dd>
+            </div>
+          </dl>
+        </div>
+      )}
       {/* "Jump to live" pill — only renders while the user is in
        * scrollback (scrollOffset > 0). Without this the only way back
        * to the live tail was the Ctrl+Shift+End keybinding the
@@ -728,18 +1069,17 @@ function paintRow(
   ctx: CanvasRenderingContext2D,
   cells: CellSnapshot[],
   row: number,
-  metrics: CellMetrics,
+  metrics: TerminalCellMetrics,
   fontSize: number,
   fontFamily: string,
 ) {
   const { width, height } = metrics;
   const y = row * height;
 
-  // Clear the row in default bg. Per-cell custom bg is painted below.
+  // Clear to transparent so the terminal inherits the water-dark viewport.
+  // Per-cell custom ANSI backgrounds are painted below.
   ctx.globalAlpha = 1;
   ctx.clearRect?.(0, y, cells.length * width, height);
-  ctx.fillStyle = DEFAULT_BG;
-  ctx.fillRect(0, y, cells.length * width, height);
 
   for (let col = 0; col < cells.length; col++) {
     const cell = cells[col];
@@ -877,7 +1217,7 @@ function paintSearchBands(
   row: number,
   matches: readonly AnyMatch[] | undefined,
   active: AnyMatch | null | undefined,
-  metrics: CellMetrics,
+  metrics: TerminalCellMetrics,
   totalRows: number,
   scrollOffset: number,
 ) {
@@ -905,7 +1245,7 @@ function paintLinkUnderline(
   row: number,
   link: LinkSpan | null,
   totalCols: number,
-  metrics: CellMetrics,
+  metrics: TerminalCellMetrics,
 ) {
   if (!link) return;
   if (row < link.startRow || row > link.endRow) return;
@@ -930,7 +1270,7 @@ function paintSelectionBand(
   ctx: CanvasRenderingContext2D,
   row: number,
   band: { startCol: number; endColExclusive: number },
-  { width, height }: CellMetrics,
+  { width, height }: TerminalCellMetrics,
 ) {
   const x = band.startCol * width;
   const y = row * height;
@@ -959,7 +1299,7 @@ function paintGhostSuggestion(
   ctx: CanvasRenderingContext2D,
   snapshot: GridSnapshot,
   text: string,
-  { width, height }: CellMetrics,
+  { width, height }: TerminalCellMetrics,
   fontSize: number,
   fontFamily: string,
 ) {
@@ -1007,7 +1347,7 @@ function paintImages(
   ctx: CanvasRenderingContext2D,
   images: readonly ImageRef[],
   bitmaps: ReadonlyMap<number, ImageBitmap>,
-  { width, height }: CellMetrics,
+  { width, height }: TerminalCellMetrics,
 ) {
   for (const ref of images) {
     const bmp = bitmaps.get(ref.id);
@@ -1020,9 +1360,9 @@ function paintImages(
   }
 }
 
-function paintCursor(ctx: CanvasRenderingContext2D, snapshot: GridSnapshot, { width, height }: CellMetrics) {
+function paintCursor(ctx: CanvasRenderingContext2D, snapshot: GridSnapshot, { width, height }: TerminalCellMetrics) {
+  if (!isVisibleCursor(snapshot.cursor)) return;
   const { row, col, shape } = snapshot.cursor;
-  if (shape === "hidden") return;
   const x = col * width;
   const y = row * height;
   ctx.globalAlpha = 1;

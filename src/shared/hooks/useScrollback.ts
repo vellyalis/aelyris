@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { ColorKind, type CellSnapshot, type GridSnapshot } from "../types/terminal";
+import { type CellSnapshot, ColorKind, type GridSnapshot } from "../types/terminal";
 import type { PromptMark } from "./usePromptMarks";
 
 const BLANK_CELL: CellSnapshot = {
@@ -10,6 +10,8 @@ const BLANK_CELL: CellSnapshot = {
   bg: (ColorKind.NAMED << 24) | 257,
   attrs: 0,
 };
+
+const HISTORY_SIZE_REFRESH_INTERVAL_MS = 250;
 
 function blankRow(cols: number): CellSnapshot[] {
   return Array.from({ length: cols }, () => BLANK_CELL);
@@ -62,35 +64,92 @@ export interface ScrollbackState {
  * typing at the live prompt (which leaves `scrollOffset` at 0) makes
  * zero extra IPC calls.
  */
-export function useScrollback(
-  terminalId: string | null,
-  snapshot: GridSnapshot | null,
-): ScrollbackState {
+export function useScrollback(terminalId: string | null, snapshot: GridSnapshot | null): ScrollbackState {
   const [scrollOffset, setScrollOffset] = useState(0);
   const [historySize, setHistorySize] = useState(0);
   const [historyRows, setHistoryRows] = useState<CellSnapshot[][]>([]);
+  const [historyWindowFrom, setHistoryWindowFrom] = useState(0);
+  const historySizeRefreshRef = useRef<{
+    terminalId: string | null;
+    lastStartedAt: number;
+    timer: ReturnType<typeof setTimeout> | null;
+    inFlight: boolean;
+  }>({
+    terminalId: null,
+    lastStartedAt: 0,
+    timer: null,
+    inFlight: false,
+  });
+
+  const requestHistorySize = useCallback((id: string) => {
+    const state = historySizeRefreshRef.current;
+    if (state.terminalId !== id) {
+      if (state.timer) clearTimeout(state.timer);
+      state.terminalId = id;
+      state.lastStartedAt = 0;
+      state.timer = null;
+      state.inFlight = false;
+    }
+
+    const refresh = () => {
+      const current = historySizeRefreshRef.current;
+      current.timer = null;
+      current.lastStartedAt = Date.now();
+      current.inFlight = true;
+      invoke<number>("term_history_size", { id })
+        .then((n) => {
+          if (historySizeRefreshRef.current.terminalId === id) setHistorySize(n);
+        })
+        .catch(() => {
+          // Backend unavailable (e.g. jsdom unit tests) — keep the last value.
+        })
+        .finally(() => {
+          if (historySizeRefreshRef.current.terminalId === id) {
+            historySizeRefreshRef.current.inFlight = false;
+          }
+        });
+    };
+
+    if (state.inFlight) return;
+    const elapsed = Date.now() - state.lastStartedAt;
+    if (state.lastStartedAt === 0 || elapsed >= HISTORY_SIZE_REFRESH_INTERVAL_MS) {
+      refresh();
+      return;
+    }
+    if (!state.timer) {
+      state.timer = setTimeout(refresh, HISTORY_SIZE_REFRESH_INTERVAL_MS - elapsed);
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      const state = historySizeRefreshRef.current;
+      if (state.timer) clearTimeout(state.timer);
+      state.terminalId = null;
+      state.timer = null;
+      state.inFlight = false;
+    };
+  }, []);
 
   // Pull the latest history size on terminal change or whenever the live
-  // snapshot mutates (live output extends history over time).
+  // snapshot mutates (live output extends history over time). A noisy PTY can
+  // publish many snapshots per second, so this is throttled.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the snapshot object is the live-output clock; requestHistorySize applies the throttle.
   useEffect(() => {
     if (!terminalId) {
+      const state = historySizeRefreshRef.current;
+      if (state.timer) clearTimeout(state.timer);
+      state.terminalId = null;
+      state.timer = null;
+      state.inFlight = false;
       setHistorySize(0);
       setScrollOffset(0);
       setHistoryRows([]);
+      setHistoryWindowFrom(0);
       return;
     }
-    let cancelled = false;
-    invoke<number>("term_history_size", { id: terminalId })
-      .then((n) => {
-        if (!cancelled) setHistorySize(n);
-      })
-      .catch(() => {
-        // Backend unavailable (e.g. jsdom unit tests) — stay at 0.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [terminalId, snapshot]);
+    requestHistorySize(terminalId);
+  }, [terminalId, snapshot, requestHistorySize]);
 
   // Clamp offset whenever the retained history shrinks (rare — usually
   // only on terminal reset or scrollback eviction at the 10k cap).
@@ -103,24 +162,39 @@ export function useScrollback(
     if (!terminalId || scrollOffset === 0) {
       // Live-view: no history rows needed for the composite path.
       setHistoryRows([]);
+      setHistoryWindowFrom(0);
       return;
     }
+    const viewportRows = snapshot?.rows ?? 0;
+    if (viewportRows <= 0) {
+      setHistoryRows([]);
+      setHistoryWindowFrom(0);
+      return;
+    }
+    const visibleHistoryRows = Math.min(scrollOffset, viewportRows);
+    const fromN = Math.max(0, scrollOffset - visibleHistoryRows);
     let cancelled = false;
     invoke<CellSnapshot[][]>("term_history_rows", {
       id: terminalId,
-      fromN: 0,
-      count: scrollOffset,
+      fromN,
+      count: visibleHistoryRows,
     })
       .then((rows) => {
-        if (!cancelled) setHistoryRows(rows);
+        if (!cancelled) {
+          setHistoryWindowFrom(fromN);
+          setHistoryRows(rows);
+        }
       })
       .catch(() => {
-        if (!cancelled) setHistoryRows([]);
+        if (!cancelled) {
+          setHistoryRows([]);
+          setHistoryWindowFrom(fromN);
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [terminalId, scrollOffset]);
+  }, [terminalId, scrollOffset, snapshot?.rows]);
 
   const canScrollUp = historySize > scrollOffset;
   const canScrollDown = scrollOffset > 0;
@@ -180,25 +254,29 @@ export function useScrollback(
     const rows = snapshot.rows;
     const cols = snapshot.cols;
     const out: CellSnapshot[][] = [];
+    const historyRow = (n: number): CellSnapshot[] | undefined => {
+      const idx = n - historyWindowFrom;
+      return idx >= 0 ? historyRows[idx] : undefined;
+    };
 
     if (scrollOffset >= rows) {
       // Viewport entirely in history. Render the oldest visible history
       // row at the top so the reading order matches the live display.
       for (let i = 0; i < rows; i++) {
         const n = scrollOffset - 1 - i;
-        out.push(historyRows[n] ?? blankRow(cols));
+        out.push(historyRow(n) ?? blankRow(cols));
       }
     } else {
       for (let i = 0; i < scrollOffset; i++) {
         const n = scrollOffset - 1 - i;
-        out.push(historyRows[n] ?? blankRow(cols));
+        out.push(historyRow(n) ?? blankRow(cols));
       }
       for (let i = 0; i < rows - scrollOffset; i++) {
         out.push(snapshot.cells[i] ?? blankRow(cols));
       }
     }
     return out;
-  }, [snapshot, scrollOffset, historyRows]);
+  }, [snapshot, scrollOffset, historyRows, historyWindowFrom]);
 
   return {
     scrollOffset,

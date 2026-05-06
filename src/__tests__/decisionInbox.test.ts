@@ -1,0 +1,156 @@
+import { describe, expect, it } from "vitest";
+import { buildDecisionInbox, isTrueHumanDecisionKind } from "../shared/lib/decisionInbox";
+import type { AuditEventRecord } from "../shared/types/audit";
+import type { AgentSession } from "../shared/types/agent";
+
+function session(id: string, overrides: Partial<AgentSession> = {}): AgentSession {
+  return {
+    id,
+    name: `Agent ${id}`,
+    status: "coding",
+    model: "claude-sonnet",
+    prompt: "work",
+    startedAt: 1_000,
+    logs: [],
+    cost: 0,
+    tokensUsed: 0,
+    ...overrides,
+  };
+}
+
+function audit(id: number, overrides: Partial<AuditEventRecord> = {}): AuditEventRecord {
+  return {
+    id,
+    timestamp: "2026-05-05T00:00:00.000Z",
+    category: "workflow",
+    action: "decision_requested",
+    severity: "warn",
+    entityType: "workflow",
+    entityId: "workflow-a",
+    summary: "Decision requested",
+    metadata: {},
+    ...overrides,
+  };
+}
+
+describe("decisionInbox", () => {
+  it("keeps only explicit human decision kinds", () => {
+    expect(isTrueHumanDecisionKind("product_decision")).toBe(true);
+    expect(isTrueHumanDecisionKind("code_conflict")).toBe(true);
+    expect(isTrueHumanDecisionKind("destructive")).toBe(true);
+    expect(isTrueHumanDecisionKind("external_dependency")).toBe(false);
+    expect(isTrueHumanDecisionKind("validation_failed")).toBe(false);
+    expect(isTrueHumanDecisionKind("timeout")).toBe(false);
+  });
+
+  it("derives pending manual watchdog approvals and excludes auto approvals", () => {
+    const inbox = buildDecisionInbox({
+      now: 10_000,
+      sessions: [
+        session("manual", {
+          name: "Builder",
+          logs: [
+            {
+              timestamp: 9_000,
+              type: "system",
+              content: "Needs manual approval: Bash(rm -rf .cache)",
+              metadata: {
+                event: "watchdog_decision",
+                decision: "manual",
+                toolName: "Bash",
+                riskClasses: ["destructive", "delete"],
+              },
+            },
+          ],
+        }),
+        session("approved", {
+          logs: [
+            {
+              timestamp: 8_000,
+              type: "system",
+              content: "Auto-approved: Read",
+              metadata: { event: "watchdog_decision", decision: "approved", toolName: "Read" },
+            },
+          ],
+        }),
+      ],
+    });
+
+    expect(inbox.pendingCount).toBe(1);
+    expect(inbox.pendingItems[0]).toMatchObject({
+      sessionId: "manual",
+      type: "destructive_operation",
+      risk: "critical",
+      status: "pending",
+    });
+    expect(inbox.items.some((item) => item.sessionId === "approved")).toBe(false);
+  });
+
+  it("routes workflow product and conflict decisions while ignoring self-healable blockers", () => {
+    const inbox = buildDecisionInbox({
+      auditEvents: [
+        audit(1, {
+          metadata: {
+            decisionRequest: {
+              kind: "product_decision",
+              reason: "Pick whether release doctor blocks unsigned dev builds.",
+            },
+            workflowId: "workflow-product",
+          },
+        }),
+        audit(2, {
+          metadata: {
+            blockerAnalysis: {
+              kind: "code_conflict",
+              reason: "Merge conflict strategy required for src/App.tsx.",
+              status: "blocked",
+            },
+            taskId: "P2-02",
+            notifyUser: true,
+          },
+        }),
+        audit(3, {
+          action: "retry_scheduled",
+          summary: "External dependency probe scheduled",
+          metadata: {
+            blockerAnalysis: { kind: "external_dependency", status: "blocked" },
+            retryPolicy: { action: "probe" },
+            notifyUser: true,
+          },
+        }),
+      ],
+    });
+
+    expect(inbox.pendingItems.map((item) => item.type)).toEqual([
+      "merge_conflict_strategy",
+      "product_direction",
+    ]);
+    expect(inbox.pendingItems.some((item) => item.context.includes("External dependency"))).toBe(false);
+  });
+
+  it("keeps denied watchdog decisions in history instead of the pending queue", () => {
+    const inbox = buildDecisionInbox({
+      sessions: [
+        session("denied", {
+          logs: [
+            {
+              timestamp: 7_000,
+              type: "error",
+              content: "Auto-denied: Bash(curl token)",
+              metadata: {
+                event: "watchdog_decision",
+                decision: "denied",
+                toolName: "Bash",
+                riskClasses: ["network", "secret-bearing"],
+              },
+            },
+          ],
+        }),
+      ],
+    });
+
+    expect(inbox.pendingCount).toBe(0);
+    expect(inbox.historyItems).toHaveLength(1);
+    expect(inbox.historyItems[0]).toMatchObject({ status: "decided", type: "security_exception" });
+  });
+});

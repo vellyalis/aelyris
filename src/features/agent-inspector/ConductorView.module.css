@@ -1,41 +1,101 @@
 .view {
   position: relative;
   flex: 1;
+  min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   background: rgba(10, 10, 10, 0.35);
+  overflow: hidden;
 }
 
-.columnLabels {
+.roleSummary {
   position: relative;
-  height: 28px;
+  min-height: 28px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(78px, 1fr));
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-2);
   border-bottom: 1px solid var(--white-6);
   background: rgba(0, 0, 0, 0.2);
   flex-shrink: 0;
+  overflow: hidden;
 }
 
-.columnLabel {
-  position: absolute;
-  top: 6px;
-  padding: 0 var(--space-6);
+.controlSummary {
+  min-height: 28px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(62px, 1fr));
+  gap: var(--space-2);
+  padding: 0 var(--space-2) var(--space-2);
+  border-bottom: 1px solid var(--white-6);
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.summaryChip {
+  min-width: 0;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 6, 14, 0.22);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.summaryChip span,
+.summaryChip strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.summaryChip strong {
+  flex: 0 0 auto;
+  color: var(--text-primary);
+  font-weight: var(--weight-semibold);
+}
+
+.roleChip {
+  min-width: 0;
+  height: 22px;
+  padding: 0 var(--space-3);
+  border: 1px solid rgba(142, 226, 241, 0.08);
+  border-radius: var(--radius-sm);
+  background: rgba(142, 226, 241, 0.025);
   font-family: var(--font-ui);
-  font-size: var(--text-sm);
+  font-size: var(--text-2xs);
   font-weight: var(--weight-semibold);
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: var(--space-2);
-  width: 260px;
+  overflow: hidden;
 }
 
-.columnCount {
+.roleChipText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roleChipCount {
+  flex: 0 0 auto;
   background: var(--white-10);
   color: var(--text-primary);
   border-radius: var(--radius-pill);
-  padding: 0 var(--space-3);
-  font-size: var(--text-xs);
+  padding: 0 var(--space-2);
+  font-size: 9px;
   font-weight: var(--weight-medium);
   letter-spacing: 0;
 }
@@ -139,6 +199,12 @@
   height: 8px;
   background: var(--gold);
   border: 1px solid var(--gold-dim);
+}
+
+.view :global(.react-flow) {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
 }
 
 /* Override ReactFlow's default white-pill Controls chrome to match the

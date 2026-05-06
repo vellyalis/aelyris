@@ -14,6 +14,7 @@ import "@xyflow/react/dist/style.css";
 
 import { Layers } from "lucide-react";
 import { layoutConductor, NODE_HEIGHT, NODE_WIDTH } from "../../shared/lib/conductorLayout";
+import { buildRunGraph } from "../../shared/lib/workstationGraph";
 import { getRole } from "../../shared/lib/orchestrator";
 import { type AgentSession, getSessionColor, STATUS_COLORS, STATUS_LABELS } from "../../shared/types/agent";
 import { EmptyState } from "../../shared/ui/EmptyState";
@@ -74,8 +75,9 @@ const nodeTypes: NodeTypes = { conductor: ConductorNode };
  * parent → child for handoff chains. Clicking a node selects the session.
  */
 export function ConductorView({ sessions, activeSessionId, onSelectSession }: ConductorViewProps) {
-  const { flowNodes, flowEdges, columnLabels } = useMemo(() => {
+  const { flowNodes, flowEdges, roleSummaries, runSummary } = useMemo(() => {
     const layout = layoutConductor(sessions);
+    const runSummary = buildRunGraph(sessions, { now: Date.now(), staleAfterMs: 15 * 60 * 1000 });
     const flowNodes: Node[] = layout.nodes.map((n) => {
       const role = getRole(n.session.role);
       const accent = role?.color ?? getSessionColor(n.session.id).accent;
@@ -110,8 +112,8 @@ export function ConductorView({ sessions, activeSessionId, onSelectSession }: Co
         height: 14,
       },
     }));
-    const columnLabels = layout.columns;
-    return { flowNodes, flowEdges, columnLabels };
+    const roleSummaries = layout.columns;
+    return { flowNodes, flowEdges, roleSummaries, runSummary };
   }, [sessions, activeSessionId]);
 
   if (sessions.length === 0) {
@@ -128,14 +130,21 @@ export function ConductorView({ sessions, activeSessionId, onSelectSession }: Co
 
   return (
     <div className={styles.view}>
-      <div className={styles.columnLabels}>
-        {columnLabels.map((c) => (
-          <div key={c.id} className={styles.columnLabel} style={{ left: c.x }}>
-            {c.label}
-            <span className={styles.columnCount}>{c.count}</span>
+      <section className={styles.roleSummary} aria-label="Conductor role summary">
+        {roleSummaries.map((c) => (
+          <div key={c.id} className={styles.roleChip}>
+            <span className={styles.roleChipText}>{c.label}</span>
+            <span className={styles.roleChipCount}>{c.count}</span>
           </div>
         ))}
-      </div>
+      </section>
+      <section className={styles.controlSummary} aria-label="Agent run control summary">
+        <SummaryChip label="Live" value={runSummary.liveCount} />
+        <SummaryChip label="Done" value={runSummary.doneCount} />
+        <SummaryChip label="Blocked" value={runSummary.blockedCount} />
+        <SummaryChip label="Stale" value={runSummary.staleCount} />
+        <SummaryChip label="Collect" value={runSummary.collectableCount} />
+      </section>
       <ReactFlow
         nodes={flowNodes}
         edges={flowEdges}
@@ -151,6 +160,15 @@ export function ConductorView({ sessions, activeSessionId, onSelectSession }: Co
         <Background color="rgba(255,255,255,0.08)" gap={16} />
         <Controls showInteractive={false} position="bottom-right" />
       </ReactFlow>
+    </div>
+  );
+}
+
+function SummaryChip({ label, value }: { label: string; value: number }) {
+  return (
+    <div className={styles.summaryChip}>
+      <span>{label}</span>
+      <strong>{value}</strong>
     </div>
   );
 }

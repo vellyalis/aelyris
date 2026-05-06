@@ -20,12 +20,12 @@
 }
 
 .scrollbar:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(124, 214, 235, 0.018);
 }
 
 .thumb {
   flex: 1;
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(124, 214, 235, 0.07);
   border-radius: var(--radius-sm);
   position: relative;
 }
@@ -43,5 +43,5 @@
 }
 
 .thumb:hover {
-  background: rgba(255, 255, 255, 0.25);
+  background: rgba(142, 226, 241, 0.13);
 }

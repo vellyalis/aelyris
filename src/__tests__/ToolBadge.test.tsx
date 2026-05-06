@@ -11,7 +11,20 @@ describe("ToolBadge", () => {
   });
 
   it("renders for each tool name", () => {
-    const tools: ToolName[] = ["Read", "Edit", "Write", "Bash", "Glob", "Grep", "Search", "Agent"];
+    const tools: ToolName[] = [
+      "Read",
+      "Edit",
+      "Write",
+      "MultiEdit",
+      "Bash",
+      "Glob",
+      "Grep",
+      "LS",
+      "Search",
+      "WebFetch",
+      "WebSearch",
+      "Agent",
+    ];
     for (const tool of tools) {
       const { container } = render(<ToolBadge tool={tool} />);
       expect(container.textContent).toBe(tool);
@@ -37,6 +50,12 @@ describe("extractToolName", () => {
 
   it("extracts Read from Read(path/to/file)", () => {
     expect(extractToolName("Read(path/to/file)")).toBe("Read");
+  });
+
+  it("extracts common Claude workstation tools", () => {
+    expect(extractToolName("MultiEdit(src/App.tsx)")).toBe("MultiEdit");
+    expect(extractToolName("WebFetch(https://example.com)")).toBe("WebFetch");
+    expect(extractToolName("LS(src)")).toBe("LS");
   });
 
   it("returns null for no tool", () => {

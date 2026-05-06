@@ -37,7 +37,7 @@ export const PanelHeader = memo(function PanelHeader({
 }: PanelHeaderProps) {
   const classes = [styles.header, dense ? styles.dense : "", className].filter(Boolean).join(" ");
 
-  const body = (
+  const titleBody = (
     <>
       {collapsible && (
         <ChevronRight
@@ -54,21 +54,24 @@ export const PanelHeader = memo(function PanelHeader({
       <span className={styles.title}>{title}</span>
       {subtitle != null && <span className={styles.subtitle}>{subtitle}</span>}
       {count != null && <span className={styles.count}>{count}</span>}
-      {actions && (
-        <span className={styles.actions} onClick={(e) => e.stopPropagation()}>
-          {actions}
-        </span>
-      )}
     </>
   );
 
   if (collapsible) {
     return (
-      <button type="button" className={classes} onClick={onToggle} aria-expanded={!collapsed}>
-        {body}
-      </button>
+      <div className={classes} data-collapsible="true">
+        <button type="button" className={styles.toggle} onClick={onToggle} aria-expanded={!collapsed}>
+          {titleBody}
+        </button>
+        {actions && <span className={styles.actions}>{actions}</span>}
+      </div>
     );
   }
 
-  return <div className={classes}>{body}</div>;
+  return (
+    <div className={classes}>
+      {titleBody}
+      {actions && <span className={styles.actions}>{actions}</span>}
+    </div>
+  );
 });

@@ -2,6 +2,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import {
   AlertCircle,
   ClipboardList,
+  Crosshair,
   FileUp,
   FlaskConical,
   FolderOpen,
@@ -10,8 +11,8 @@ import {
   Play,
   Plus,
   ScrollText,
-  Sparkles,
   Upload,
+  Wrench,
 } from "lucide-react";
 import { useCallback, useState } from "react";
 import { detectDangerousCommand } from "../../shared/lib/shellSafety";
@@ -41,7 +42,9 @@ export interface ToolkitAction {
 
 interface ToolkitPanelProps {
   projectName?: string;
-  onRunCommand?: (command: string) => void;
+  onRunCommand?: (command: string) => void | Promise<void>;
+  activeTargetLabel?: string;
+  activeTargetReady?: boolean;
 }
 
 const DEFAULT_ACTIONS: ToolkitAction[] = [
@@ -125,7 +128,12 @@ function saveActions(projectName: string, actions: ToolkitAction[]) {
   }
 }
 
-export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitPanelProps) {
+export function ToolkitPanel({
+  projectName = "default",
+  onRunCommand,
+  activeTargetLabel = "No target",
+  activeTargetReady = false,
+}: ToolkitPanelProps) {
   const [actions, setActions] = useState<ToolkitAction[]>(() => loadActions(projectName));
   const [collapsed, setCollapsed] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -278,15 +286,25 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
     <div className={styles.toolkit} role="region" aria-label="Toolkit">
       <PanelHeader
         title="Toolkit"
-        leadingIcon={<Sparkles size={12} />}
+        leadingIcon={<Wrench size={12} />}
         count={actions.length}
         collapsible
         collapsed={collapsed}
         onToggle={() => setCollapsed((value) => !value)}
         actions={
-          <button className={styles.addBtn} onClick={handleAdd} title="Add action" aria-label="Add tool">
-            <Plus size={12} aria-hidden="true" />
-          </button>
+          <>
+            <span
+              className={styles.targetPill}
+              data-ready={activeTargetReady}
+              title={`Command target: ${activeTargetLabel}`}
+            >
+              <Crosshair size={11} aria-hidden="true" />
+              <span>{activeTargetLabel}</span>
+            </span>
+            <button className={styles.addBtn} onClick={handleAdd} title="Add action" aria-label="Add tool">
+              <Plus size={12} aria-hidden="true" />
+            </button>
+          </>
         }
       />
 
@@ -364,13 +382,13 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
                       });
                       if (!ok) return;
                     }
-                    onRunCommand?.(command);
+                    await onRunCommand?.(command);
                   }}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     handleEdit(a);
                   }}
-                  title={a.command}
+                  title={`${a.command}\nTarget: ${activeTargetLabel}`}
                 >
                   <span className={styles.actionIcon}>{ICON_MAP[a.id] ?? null}</span>
                   <span className={styles.actionBody}>
@@ -383,27 +401,6 @@ export function ToolkitPanel({ projectName = "default", onRunCommand }: ToolkitP
             })}
           </div>
           <div className={styles.bottomActions}>
-            <button
-              type="button"
-              className={styles.bottomBtn}
-              onClick={async () => {
-                const cmd = await showPrompt("Generate Tool", { placeholder: "Describe what the tool should do..." });
-                if (cmd) {
-                  const newAction: ToolkitAction = {
-                    id: makeActionId("gen"),
-                    label: cmd.split(" ").slice(0, 3).join(" "),
-                    badge: "var(--ctp-mauve)",
-                    command: cmd,
-                  };
-                  const updated = [...actions, newAction];
-                  setActions(updated);
-                  saveActions(projectName, updated);
-                }
-              }}
-            >
-              <Sparkles size={11} aria-hidden="true" />
-              <span>Generate</span>
-            </button>
             <button type="button" className={styles.bottomBtn} onClick={handleAdd}>
               <Plus size={11} aria-hidden="true" />
               <span>Create</span>

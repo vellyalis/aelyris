@@ -17,6 +17,18 @@ export interface FileChangeDetail {
   timestamp: number;
 }
 
+export type AgentFinalReportStatus = "missing" | "pending" | "ready" | "collected";
+
+export interface AgentFinalReportInfo {
+  status: AgentFinalReportStatus;
+  title?: string;
+  path?: string;
+  summary?: string;
+  updatedAt?: number;
+}
+
+export type AgentCloseState = "active" | "collectable" | "collected";
+
 export interface AgentSession {
   id: string;
   name: string;
@@ -39,12 +51,36 @@ export interface AgentSession {
   role?: import("../lib/orchestrator").OrchestraRoleId;
   /** Optional parent session id when spawned via handoff. */
   handoffFrom?: string;
+  /** Human or automation owner responsible for the run. */
+  owner?: string;
+  /** Workspace or worktree scope the run is allowed to operate in. */
+  workspaceScope?: string;
+  /** Explicit write set when supplied by a backend/subagent controller. */
+  writeSet?: string[];
+  /** Latest final report status for this run. */
+  finalReport?: AgentFinalReportInfo;
+  /** Completion collection state for closed/done runs. */
+  closeState?: AgentCloseState;
+  /** Typed blocked reason when the run needs intervention. */
+  blockedReason?: string;
+  /** Required actor for blocked policy handling. */
+  nextActor?: string;
 }
 
 export interface AgentLog {
   timestamp: number;
   type: "text" | "tool_use" | "tool_result" | "error" | "system";
   content: string;
+  metadata?: {
+    event?: "watchdog_decision";
+    toolName?: string;
+    decision?: "approved" | "denied" | "manual";
+    rule?: string;
+    approvalReplayKey?: string;
+    approvalReplayRecord?: import("../lib/watchdogDecision").ApprovalReplayRecord;
+    riskClasses?: import("../lib/shellSafety").CommandRiskClass[];
+    riskSeverity?: import("../lib/shellSafety").CommandRiskSeverity;
+  };
 }
 
 export const STATUS_COLORS: Record<AgentStatus, string> = {

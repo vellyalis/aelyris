@@ -132,4 +132,25 @@ describe("InlineResultPanel load-diff effect deps", () => {
     expect(stripped).toMatch(/aria-label=\{activeIndex < uniqueFiles\.length - 1 \? "Next file" : "Done reviewing"\}/);
     expect(stripped).toMatch(/onClose\(\)/);
   });
+
+  it("keeps the active file tab reachable without horizontal scroll", () => {
+    const entries = Object.entries(sources);
+    const src = entries[0][1];
+
+    expect(src).toMatch(/const visibleFileTabs = useMemo/);
+    expect(src).toMatch(/Math\.min\(Math\.max\(activeIndex - 1, 0\), uniqueFiles\.length - 3\)/);
+    expect(src).toMatch(/visibleFileTabs\.map/);
+    expect(src).toMatch(/onClick=\{\(\) => setActiveIndex\(i\)\}/);
+  });
+
+  it("uses the shared panel header for the empty state", () => {
+    const entries = Object.entries(sources);
+    const src = entries[0][1];
+    const emptyStateBranch =
+      src.match(/if \(uniqueFiles\.length === 0\) \{[\s\S]*?return \([\s\S]*?\);\n {2}\}/)?.[0] ?? "";
+
+    expect(emptyStateBranch).toContain("<PanelHeader");
+    expect(emptyStateBranch).not.toContain("styles.header");
+    expect(emptyStateBranch).not.toContain("styles.title");
+  });
 });

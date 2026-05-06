@@ -48,6 +48,7 @@
 .list {
   flex: 1;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: var(--space-2) 0;
 }
 
@@ -191,6 +192,7 @@
   border-radius: var(--radius-sm);
   max-height: 150px;
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .fileRow {

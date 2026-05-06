@@ -69,6 +69,7 @@ interface LoadedConfig {
   ghost_diff?: {
     live_mode?: boolean;
   };
+  workspace_profile?: unknown;
 }
 
 export function Settings({ visible, onClose }: SettingsProps) {

@@ -1,9 +1,13 @@
+// @ts-expect-error Node types are intentionally absent from the app tsconfig.
+import { readFileSync } from "node:fs";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { LogsPanel } from "../features/logs/LogsPanel";
 import type { Invoke } from "../shared/hooks/useLogStream";
 import type { LogEntry } from "../shared/types/logs";
+
+declare const process: { cwd(): string };
 
 // Real-timer cadence — see useLogStream.test.ts for rationale.
 const TEST_POLL_MS = 30;
@@ -43,10 +47,7 @@ describe("LogsPanel", () => {
   it("shows hydrated entries and the count meta", async () => {
     const invoke = vi.fn(async (cmd: string) => {
       if (cmd === "logs_recent") {
-        return [
-          entry(1, { level: "INFO", message: "hello" }),
-          entry(2, { level: "WARN", message: "watch out" }),
-        ];
+        return [entry(1, { level: "INFO", message: "hello" }), entry(2, { level: "WARN", message: "watch out" })];
       }
       return [];
     }) as unknown as Invoke;
@@ -113,10 +114,7 @@ describe("LogsPanel", () => {
     expect(screen.getByText(/No log entries match this filter/)).toBeTruthy();
 
     allowFresh = true;
-    await waitFor(
-      () => expect(screen.getByText("fresh")).toBeTruthy(),
-      { timeout: 4_000, interval: 50 },
-    );
+    await waitFor(() => expect(screen.getByText("fresh")).toBeTruthy(), { timeout: 4_000, interval: 50 });
     expect(screen.getByRole("log").getAttribute("data-empty")).toBe("false");
     expect(screen.queryByText("old-1")).toBeNull();
   });
@@ -142,5 +140,21 @@ describe("LogsPanel", () => {
 
     fireEvent.click(header);
     expect(screen.queryByRole("toolbar")).toBeNull();
+  });
+
+  it("keeps expanded logs visually stable inside the right rail", () => {
+    const css = readFileSync(`${process.cwd()}/src/features/logs/LogsPanel.module.css`, "utf8");
+    const controlsRule = css.match(/\.controls\s*{[\s\S]*?}/)?.[0] ?? "";
+    const emptyRule = css.match(/\.list\[data-empty="true"\]\s*{[\s\S]*?}/)?.[0] ?? "";
+    const messageRule = css.match(/\.message\s*{[\s\S]*?}/)?.[0] ?? "";
+
+    expect(controlsRule).toContain("display: grid");
+    expect(controlsRule).toContain("grid-template-columns: minmax(0, 1fr) 44px 24px");
+    expect(controlsRule).toContain("min-height: 24px");
+    expect(css).toContain("max-height: 180px");
+    expect(emptyRule).toContain("background: rgba(3, 9, 16, 0.12)");
+    expect(emptyRule).not.toContain("border-color: transparent");
+    expect(messageRule).toContain("overflow-wrap: anywhere");
+    expect(messageRule).toContain("word-break: normal");
   });
 });

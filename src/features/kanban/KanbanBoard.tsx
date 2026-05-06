@@ -42,7 +42,7 @@ export function KanbanBoard({
   const [newTitle, setNewTitle] = useState("");
   const [newPriority, setNewPriority] = useState<TaskPriority>("medium");
   const [showForm, setShowForm] = useState(false);
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({ done: true });
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const formRef = useRef<HTMLDivElement>(null);
 
   // Close form on outside click (mousedown for WebView2 reliability)

@@ -30,3 +30,26 @@
 .arrow {
   fill: var(--aether-bg-card);
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .content {
+    animation: none;
+    transition: none;
+    will-change: auto;
+  }
+}
+
+@media (forced-colors: active) {
+  .content {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .arrow {
+    fill: Canvas;
+  }
+}

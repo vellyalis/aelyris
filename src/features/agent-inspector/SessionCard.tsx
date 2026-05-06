@@ -14,7 +14,6 @@ import { type BudgetThresholds, getBudgetWarning } from "../../shared/lib/budget
 import { getRole } from "../../shared/lib/orchestrator";
 import { type AgentSession, getSessionColor, STATUS_COLORS, STATUS_LABELS } from "../../shared/types/agent";
 import { getMaxTokens } from "../../shared/types/model";
-import { ContextGauge } from "../../shared/ui/ContextGauge";
 import { PixelAvatar } from "../../shared/ui/PixelAvatar";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
 import { StopButton } from "../../shared/ui/StopButton";
@@ -126,7 +125,7 @@ export function SessionCard({
           }
         >
           <div className={styles.cardTop}>
-            <PixelAvatar seed={s.id} size={36} />
+            <PixelAvatar seed={s.id} size={30} />
             <div className={styles.cardInfo}>
               <div className={styles.cardNameRow}>
                 <span className={styles.cardName}>{s.name}</span>
@@ -134,9 +133,8 @@ export function SessionCard({
                   <span
                     className={styles.roleBadge}
                     style={{
-                      background: role.color,
-                      color: "rgba(0,0,0,0.78)",
-                    }}
+                      "--role-color": role.color,
+                    } as React.CSSProperties}
                     title={`Orchestra role: ${role.label}`}
                   >
                     {role.icon} {role.label}
@@ -204,7 +202,6 @@ export function SessionCard({
                 <span className={styles.cardAge}>{formatAge(s.startedAt)}</span>
               </div>
             </div>
-            <ContextGauge percent={pct} />
           </div>
           {lastLog && (
             <div className={styles.cardPreview}>

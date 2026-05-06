@@ -1,4 +1,15 @@
 import { create } from "zustand";
+import {
+  buildWorkspaceProfile,
+  createWorkspaceProfileState,
+  parseWorkspaceProfileState,
+  upsertThreadRunState,
+  upsertWorkspaceProfileOverride,
+  type ResolvedWorkspaceProfile,
+  type WorkspaceProfileOverride,
+  type WorkspaceProfileState,
+  type WorkspaceThreadRunState,
+} from "../lib/workspaceProfile";
 import type { AccentKey, AccentOverrides } from "../themes/catppuccin";
 import { DEFAULT_MOOD_PRESET, normalizeMoodPreset, type MoodPresetId } from "../themes/moods";
 import type { KanbanColumnId, KanbanTask } from "../types/kanban";
@@ -7,6 +18,7 @@ export type SidebarSection = "files" | "tasks" | "agents" | "tools";
 
 const THEME_OVERRIDES_KEY = "aether:themeOverrides";
 const MOOD_PRESET_KEY = "aether:moodPreset";
+const WORKSPACE_PROFILES_KEY = "aether:workspaceProfiles";
 
 function loadThemeOverrides(): Record<string, AccentOverrides> {
   try {
@@ -130,10 +142,86 @@ interface AppState {
   /** When true, inline ghost paint shows layers that are still in progress. */
   ghostDiffLiveMode: boolean;
   setGhostDiffLiveMode: (v: boolean) => void;
+
+  // Workspace Profile System (P2-03)
+  workspaceProfiles: WorkspaceProfileState;
+  resolveWorkspaceProfile: (
+    workspaceRoot: string | null | undefined,
+    threadId: string | null | undefined,
+  ) => ResolvedWorkspaceProfile;
+  setWorkspaceProfileOverride: (workspaceRoot: string, override: WorkspaceProfileOverride) => void;
+  setWorkspaceThreadRunState: (
+    workspaceRoot: string,
+    threadId: string,
+    patch: Partial<WorkspaceThreadRunState>,
+  ) => void;
 }
 
 function toggleOrSet(v: boolean | ((prev: boolean) => boolean), prev: boolean): boolean {
   return typeof v === "function" ? v(prev) : v;
+}
+
+function readStorageJson(key: string, fallback: unknown): unknown {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    return JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
+}
+
+function finiteNumberOr(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function loadAgentBudget(): { spent: number; limit: number } {
+  const parsed = readStorageJson("aether:budget", {});
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return { spent: 0, limit: 10 };
+  const record = parsed as Record<string, unknown>;
+  return {
+    spent: Math.max(0, finiteNumberOr(record.spent, 0)),
+    limit: Math.max(0, finiteNumberOr(record.limit, 10)),
+  };
+}
+
+const KANBAN_COLUMN_IDS = new Set<KanbanColumnId>(["todo", "in_progress", "review", "done"]);
+const TASK_PRIORITIES = new Set<KanbanTask["priority"]>(["low", "medium", "high", "critical"]);
+
+function loadKanbanTasks(): KanbanTask[] {
+  const parsed = readStorageJson("aether:kanban", []);
+  if (!Array.isArray(parsed)) return [];
+  return parsed
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item))
+    .map((item) => {
+      const id = typeof item.id === "string" && item.id.trim() ? item.id : null;
+      const title = typeof item.title === "string" && item.title.trim() ? item.title : null;
+      const column = KANBAN_COLUMN_IDS.has(item.column as KanbanColumnId) ? (item.column as KanbanColumnId) : "todo";
+      const priority = TASK_PRIORITIES.has(item.priority as KanbanTask["priority"]) ? (item.priority as KanbanTask["priority"]) : "medium";
+      if (!id || !title) return null;
+      const task: KanbanTask = {
+        id,
+        title,
+        column,
+        priority,
+        createdAt: finiteNumberOr(item.createdAt, Date.now()),
+        updatedAt: finiteNumberOr(item.updatedAt, Date.now()),
+      };
+      if (typeof item.description === "string") task.description = item.description;
+      if (typeof item.assignedAgentId === "string") task.assignedAgentId = item.assignedAgentId;
+      if (typeof item.branch === "string") task.branch = item.branch;
+      if (typeof item.worktreePath === "string") task.worktreePath = item.worktreePath;
+      if (typeof item.terminalTabId === "string") task.terminalTabId = item.terminalTabId;
+      if (Array.isArray(item.labels)) task.labels = item.labels.filter((label): label is string => typeof label === "string").slice(0, 20);
+      return task;
+    })
+    .filter((task): task is KanbanTask => task != null);
+}
+
+function loadOpenFiles(): string[] {
+  const parsed = readStorageJson("aether:openFiles", []);
+  if (!Array.isArray(parsed)) return [];
+  return [...new Set(parsed.filter((item): item is string => typeof item === "string" && item.length > 0))];
 }
 
 function isPathOrDescendant(path: string, root: string): boolean {
@@ -154,6 +242,22 @@ function persistEditorFiles(openFiles: string[], activeFile: string | null): voi
     if (activeFile) localStorage.setItem("aether:activeFile", activeFile);
     else localStorage.removeItem("aether:activeFile");
   } catch {}
+}
+
+function loadWorkspaceProfiles(): WorkspaceProfileState {
+  try {
+    return parseWorkspaceProfileState(localStorage.getItem(WORKSPACE_PROFILES_KEY));
+  } catch {
+    return createWorkspaceProfileState();
+  }
+}
+
+function persistWorkspaceProfiles(state: WorkspaceProfileState): void {
+  try {
+    localStorage.setItem(WORKSPACE_PROFILES_KEY, JSON.stringify(state));
+  } catch {
+    /* ignore storage errors */
+  }
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -329,13 +433,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   // Budget
-  agentBudget: (() => {
-    try {
-      return JSON.parse(localStorage.getItem("aether:budget") ?? '{"spent":0,"limit":10}');
-    } catch {
-      return { spent: 0, limit: 10 };
-    }
-  })(),
+  agentBudget: loadAgentBudget(),
   addAgentCost: (cost: number) =>
     set((s) => {
       const budget = { ...s.agentBudget, spent: s.agentBudget.spent + cost };
@@ -382,13 +480,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   // Kanban
-  kanbanTasks: (() => {
-    try {
-      return JSON.parse(localStorage.getItem("aether:kanban") ?? "[]") as KanbanTask[];
-    } catch {
-      return [] as KanbanTask[];
-    }
-  })(),
+  kanbanTasks: loadKanbanTasks(),
   activeTaskId: null,
   addKanbanTask: (title, priority = "medium") =>
     set((s) => {
@@ -433,13 +525,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setActiveTaskId: (taskId) => set({ activeTaskId: taskId }),
 
   // Editor
-  openFiles: (() => {
-    try {
-      return JSON.parse(localStorage.getItem("aether:openFiles") ?? "[]");
-    } catch {
-      return [];
-    }
-  })(),
+  openFiles: loadOpenFiles(),
   activeFile: (() => {
     try {
       return localStorage.getItem("aether:activeFile") ?? null;
@@ -546,4 +632,24 @@ export const useAppStore = create<AppState>((set, get) => ({
       localStorage.setItem("aether:ghostDiffLiveMode", v ? "1" : "0");
     } catch {}
   },
+
+  workspaceProfiles: loadWorkspaceProfiles(),
+  resolveWorkspaceProfile: (workspaceRoot, threadId) =>
+    buildWorkspaceProfile({
+      state: get().workspaceProfiles,
+      workspaceRoot,
+      threadId,
+    }),
+  setWorkspaceProfileOverride: (workspaceRoot, override) =>
+    set((s) => {
+      const next = upsertWorkspaceProfileOverride(s.workspaceProfiles, workspaceRoot, override);
+      persistWorkspaceProfiles(next);
+      return { workspaceProfiles: next };
+    }),
+  setWorkspaceThreadRunState: (workspaceRoot, threadId, patch) =>
+    set((s) => {
+      const next = upsertThreadRunState(s.workspaceProfiles, workspaceRoot, threadId, patch);
+      persistWorkspaceProfiles(next);
+      return { workspaceProfiles: next };
+    }),
 }));

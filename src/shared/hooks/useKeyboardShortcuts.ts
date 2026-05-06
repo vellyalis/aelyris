@@ -24,6 +24,9 @@ interface UseKeyboardShortcutsOptions {
   handleFileSelect: (path: string) => void;
   handleStartAgent: (prompt: string) => void;
   setQuickOpenMode?: (mode: "files" | "buffers" | null) => void;
+  openPaneSwitcher?: () => void;
+  focusNextPane?: () => void | Promise<void>;
+  focusPreviousPane?: () => void | Promise<void>;
   setHelpVisible?: (v: boolean | ((prev: boolean) => boolean)) => void;
   /** Toggle the left sidebar (Ctrl+B). Optional so legacy
    *  consumers without the new chrome cluster keep working. */
@@ -49,6 +52,9 @@ export function useKeyboardShortcuts({
   handleFileSelect,
   handleStartAgent,
   setQuickOpenMode,
+  openPaneSwitcher,
+  focusNextPane,
+  focusPreviousPane,
   setHelpVisible,
   setSidebarCollapsed,
 }: UseKeyboardShortcutsOptions) {
@@ -111,6 +117,15 @@ export function useKeyboardShortcuts({
         showPrompt("Start Agent", { placeholder: "What should the agent do?" }).then((p) => {
           if (p) handleStartAgent(p);
         });
+      } else if (e.ctrlKey && e.shiftKey && e.key === "`") {
+        e.preventDefault();
+        openPaneSwitcher?.();
+      } else if (e.ctrlKey && e.shiftKey && e.key === "]") {
+        e.preventDefault();
+        void focusNextPane?.();
+      } else if (e.ctrlKey && e.shiftKey && e.key === "[") {
+        e.preventDefault();
+        void focusPreviousPane?.();
       } else if (e.ctrlKey && e.key === "`") {
         // Ctrl+` — focus the active terminal pane
         e.preventDefault();
@@ -178,6 +193,9 @@ export function useKeyboardShortcuts({
     handleFileSelect,
     handleStartAgent,
     setQuickOpenMode,
+    openPaneSwitcher,
+    focusNextPane,
+    focusPreviousPane,
     setHelpVisible,
     setSidebarCollapsed,
   ]);

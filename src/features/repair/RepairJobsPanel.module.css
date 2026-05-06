@@ -59,6 +59,7 @@
 
 .list {
   overflow-y: auto;
+  scrollbar-gutter: stable;
   flex: 1;
   padding: var(--space-2);
   display: flex;

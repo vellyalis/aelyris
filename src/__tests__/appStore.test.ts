@@ -9,6 +9,7 @@ beforeEach(() => {
   try {
     localStorage.removeItem("aether:themeOverrides");
     localStorage.removeItem("aether:moodPreset");
+    localStorage.removeItem("aether:workspaceProfiles");
   } catch {
     /* ignore */
   }
@@ -27,6 +28,12 @@ beforeEach(() => {
     activeFile: null,
     moodPresetId: DEFAULT_MOOD_PRESET,
     themeOverrides: {},
+    workspaceProfiles: {
+      version: 1,
+      globalDefaults: useAppStore.getState().workspaceProfiles.globalDefaults,
+      workspaceOverrides: {},
+      threadRunState: {},
+    },
   });
 });
 
@@ -310,5 +317,28 @@ describe("appStore — mood presets", () => {
     setMoodPresetId("unknown");
     expect(useAppStore.getState().moodPresetId).toBe(DEFAULT_MOOD_PRESET);
     expect(localStorage.getItem("aether:moodPreset")).toBe(DEFAULT_MOOD_PRESET);
+  });
+});
+
+describe("appStore — workspace profiles", () => {
+  it("persists workspace overrides and resolves thread-specific run state", () => {
+    const { setWorkspaceProfileOverride, setWorkspaceThreadRunState, resolveWorkspaceProfile } = useAppStore.getState();
+
+    setWorkspaceProfileOverride("C:/repo/Aether", {
+      preferredModel: "gpt-5.2",
+      visualDensity: "dense",
+      safePaths: ["C:/repo/Aether/scripts"],
+    });
+    setWorkspaceThreadRunState("C:/repo/Aether", "thread-a", {
+      status: "active",
+      activeRoadmapId: "P2-03",
+    });
+
+    const profile = resolveWorkspaceProfile("C:/repo/Aether", "thread-a");
+    expect(profile.preferredModel).toBe("gpt-5.2");
+    expect(profile.visualDensity).toBe("dense");
+    expect(profile.safePaths).toEqual(["C:/repo/Aether", "C:/repo/Aether/scripts"]);
+    expect(profile.runState.activeRoadmapId).toBe("P2-03");
+    expect(JSON.parse(localStorage.getItem("aether:workspaceProfiles") ?? "{}").version).toBe(1);
   });
 });

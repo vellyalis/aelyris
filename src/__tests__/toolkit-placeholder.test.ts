@@ -1,4 +1,12 @@
+// Vitest runs this source-contract test in Node. The app tsconfig does not
+// include @types/node, so keep the Node-only imports scoped and ignored here.
+// @ts-expect-error Node types are intentionally absent from the app tsconfig.
+import { readFileSync } from "node:fs";
+// @ts-expect-error Node types are intentionally absent from the app tsconfig.
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+
+declare const process: { cwd(): string };
 
 /**
  * Tests for ToolkitPanel placeholder interpolation logic.
@@ -68,6 +76,11 @@ function getToolkitSrc(): string {
   return entries[0][1];
 }
 
+function getToolkitCss(): string {
+  const cssPath = join(process.cwd(), "src", "features", "toolkit", "ToolkitPanel.module.css");
+  return readFileSync(cssPath, "utf8");
+}
+
 describe("Toolkit adaptive density", () => {
   it("collapses generic command actions by default while keeping the header affordance", () => {
     const src = getToolkitSrc();
@@ -78,5 +91,35 @@ describe("Toolkit adaptive density", () => {
     expect(src).toContain("collapsed={collapsed}");
     expect(src).toContain("!collapsed &&");
     expect(src).not.toContain('subtitle="Command deck"');
+    expect(src).not.toContain("Sparkles");
+    expect(src).not.toContain("Generate Tool");
+  });
+
+  it("surfaces the active command target in compact header chrome", () => {
+    const src = getToolkitSrc();
+    const css = getToolkitCss();
+
+    expect(src).toContain("activeTargetLabel");
+    expect(src).toContain("activeTargetReady");
+    expect(src).toContain("Command target:");
+    expect(src).toContain("styles.targetPill");
+    expect(css).toContain(".targetPill");
+    expect(css).toContain("width: 104px");
+    expect(css).toContain("text-overflow: ellipsis");
+  });
+
+  it("uses a connected dark liquid action surface instead of isolated milky cards", () => {
+    const css = getToolkitCss();
+    const gridRule = css.match(/\.grid\s*{[\s\S]*?}/)?.[0] ?? "";
+    const actionRule = css.match(/\.action\s*{[\s\S]*?}/)?.[0] ?? "";
+
+    expect(gridRule).toContain("grid-template-columns: repeat(auto-fit");
+    expect(gridRule).toContain("grid-auto-rows: minmax(38px, auto)");
+    expect(gridRule).toContain("gap: 1px");
+    expect(gridRule).toContain("rgba(0, 6, 14, 0.3)");
+    expect(actionRule).toContain("rgba(0, 7, 15, 0.34)");
+    expect(`${gridRule}\n${actionRule}`).not.toContain("rgba(255, 255, 255, 0.14)");
+    expect(gridRule).not.toContain("rgba(245, 199, 227");
+    expect(`${gridRule}\n${actionRule}`).not.toContain("filter: blur(");
   });
 });

@@ -1,5 +1,14 @@
+import { Bot, GitCompare, type LucideIcon, Radio } from "lucide-react";
 import { MotionConfig } from "motion/react";
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 import appStyles from "./App.module.css";
 import { AgentTerminal } from "./features/agent-terminal";
 import { UpdateBanner } from "./features/app/UpdateBanner";
@@ -7,8 +16,30 @@ import { useAppMenus } from "./features/app/useAppMenus";
 import { FileTree } from "./features/file-tree/FileTree";
 import { ProjectHeaderBar } from "./features/header/ProjectHeaderBar";
 import { StatusBar } from "./features/statusbar/StatusBar";
-import { PaneTreeContainer } from "./features/terminal/pane-tree";
+import type { PaneSwitcherEntry } from "./features/terminal/pane-tree";
+import {
+  deletePaneTreeSnapshot,
+  deletePaneTreeSnapshotFromBackend,
+  PaneTreeContainer,
+  paneTreeStorageKey,
+} from "./features/terminal/pane-tree";
+import type {
+  PaneAttachRequest,
+  PaneCloseRequest,
+  PaneFocusRequest,
+  PaneRenameRequest,
+  PaneRestartRequest,
+  PaneRoleCycleRequest,
+} from "./features/terminal/pane-tree/PaneTreeContainer";
 import { WorkspaceTabs } from "./features/workspace-tabs/WorkspaceTabs";
+import {
+  clearEndedOperationalTerminal,
+  type OperationalPaneSelection,
+  reconcileOperationalPaneSelection,
+} from "./shared/lib/operationalPaneSelection";
+import { filterWorkspaceScopedEvents } from "./shared/lib/workspaceProfile";
+import { buildWorkstationGraph, filterWorkstationGraph } from "./shared/lib/workstationGraph";
+import type { AuditEventRecord } from "./shared/types/audit";
 
 // Right-panel + secondary UIs: lazy-loaded so they do not block first paint.
 const KanbanBoard = lazy(() => import("./features/kanban/KanbanBoard").then((m) => ({ default: m.KanbanBoard })));
@@ -19,13 +50,47 @@ const ToolkitPanel = lazy(() => import("./features/toolkit/ToolkitPanel").then((
 const WorkflowPanel = lazy(() =>
   import("./features/workflow/WorkflowPanel").then((m) => ({ default: m.WorkflowPanel })),
 );
-const SCMPanel = lazy(() => import("./features/scm/SCMPanel").then((m) => ({ default: m.SCMPanel })));
+const MissionControlHome = lazy(() =>
+  import("./features/dashboard/MissionControlHome").then((m) => ({ default: m.MissionControlHome })),
+);
+const ContextPanel = lazy(() => import("./features/context/ContextPanel").then((m) => ({ default: m.ContextPanel })));
+const DecisionInboxPanel = lazy(() =>
+  import("./features/decision-inbox").then((m) => ({ default: m.DecisionInboxPanel })),
+);
+const WorkstationPulse = lazy(() =>
+  import("./features/context/WorkstationPulse").then((m) => ({ default: m.WorkstationPulse })),
+);
+const RunGraphPanel = lazy(() =>
+  import("./features/context/RunGraphPanel").then((m) => ({ default: m.RunGraphPanel })),
+);
+const ToolLedgerPanel = lazy(() =>
+  import("./features/context/ToolLedgerPanel").then((m) => ({ default: m.ToolLedgerPanel })),
+);
+const AuditTimelinePanel = lazy(() =>
+  import("./features/context/AuditTimelinePanel").then((m) => ({ default: m.AuditTimelinePanel })),
+);
+const LivePanesPanel = lazy(() =>
+  import("./features/context/LivePanesPanel").then((m) => ({ default: m.LivePanesPanel })),
+);
+const ReliabilityPanel = lazy(() =>
+  import("./features/context/ReliabilityPanel").then((m) => ({ default: m.ReliabilityPanel })),
+);
 const LogsPanel = lazy(() => import("./features/logs/LogsPanel").then((m) => ({ default: m.LogsPanel })));
+const ProcessManagerPanel = lazy(() =>
+  import("./features/process-manager").then((m) => ({ default: m.ProcessManagerPanel })),
+);
+const ReviewQueuePanel = lazy(() =>
+  import("./features/review/ReviewQueuePanel").then((m) => ({ default: m.ReviewQueuePanel })),
+);
+const SCMPanel = lazy(() => import("./features/scm/SCMPanel").then((m) => ({ default: m.SCMPanel })));
 const QuickOpen = lazy(() => import("./features/quick-open/QuickOpen").then((m) => ({ default: m.QuickOpen })));
 
 const EditorPanel = lazy(() => import("./features/editor/EditorPanel").then((m) => ({ default: m.EditorPanel })));
 const CommandPalette = lazy(() =>
   import("./features/command-palette/CommandPalette").then((m) => ({ default: m.CommandPalette })),
+);
+const PaneSwitcherDialog = lazy(() =>
+  import("./features/terminal/pane-switcher").then((m) => ({ default: m.PaneSwitcherDialog })),
 );
 const Settings = lazy(() => import("./features/settings/Settings").then((m) => ({ default: m.Settings })));
 const WatchdogDialog = lazy(() =>
@@ -44,6 +109,7 @@ const WebInspector = lazy(() =>
 
 import { HistorySearchDialog } from "./features/history/HistorySearchDialog";
 import { useAgentManager } from "./shared/hooks/useAgentManager";
+import { useAuditEvents } from "./shared/hooks/useAuditEvents";
 import { useGitStatus } from "./shared/hooks/useGitStatus";
 import { useInteractiveAgent } from "./shared/hooks/useInteractiveAgent";
 import { useKeyboardShortcuts } from "./shared/hooks/useKeyboardShortcuts";
@@ -53,7 +119,11 @@ import { useTerminalNotifications } from "./shared/hooks/useTerminalNotification
 import { useThemeApplier } from "./shared/hooks/useTheme";
 import { useWorktreeActions } from "./shared/hooks/useWorktreeActions";
 import { markFirstPaint } from "./shared/lib/bootMetrics";
+import { buildDecisionInbox } from "./shared/lib/decisionInbox";
+import { classifyCommand, formatCommandRiskSummary } from "./shared/lib/shellSafety";
+import { deriveRightRailRecommendation, type RightRailMode } from "./shared/lib/rightRailAdvisor";
 import { useAppStore } from "./shared/store/appStore";
+import { toast } from "./shared/store/toastStore";
 import type { SearchHit } from "./shared/types/history";
 import { CollapsibleSection } from "./shared/ui/CollapsibleSection";
 import { ConfirmDialog, showConfirm } from "./shared/ui/ConfirmDialog";
@@ -68,6 +138,306 @@ import { ToastProvider } from "./shared/ui/Toast";
 import { TooltipProvider } from "./shared/ui/Tooltip";
 
 export type ShellType = "powershell" | "cmd" | "gitbash" | "wsl";
+
+const SHELL_LABELS: Record<ShellType, string> = {
+  powershell: "PowerShell",
+  cmd: "CMD",
+  gitbash: "Git Bash",
+  wsl: "WSL",
+};
+
+interface ActiveTerminalTarget {
+  terminalId: string | null;
+  tabId: string;
+  shell: ShellType;
+  label: string;
+  ready: boolean;
+}
+
+export interface TerminalPaneTarget extends PaneSwitcherEntry {
+  tabId: string;
+  tabLabel: string;
+  tabShell: ShellType;
+  tabCwd?: string;
+}
+
+interface AppPaneFocusRequest extends PaneFocusRequest {
+  tabId: string;
+}
+
+interface AppPaneCloseRequest extends PaneCloseRequest {
+  tabId: string;
+}
+
+interface AppPaneRestartRequest extends PaneRestartRequest {
+  tabId: string;
+}
+
+interface AppPaneAttachRequest extends PaneAttachRequest {
+  tabId: string;
+}
+
+interface AppPaneRenameRequest extends PaneRenameRequest {
+  tabId: string;
+}
+
+interface AppPaneRoleCycleRequest extends PaneRoleCycleRequest {
+  tabId: string;
+}
+
+interface DevVisualQaState {
+  enabled: boolean;
+  attachFixture: boolean;
+  diagnosticsEnabled: boolean;
+  incidentFixtures: boolean;
+  projectPath: string;
+  railMode: RightRailMode;
+}
+
+function formatTerminalTarget(shell: ShellType, terminalId: string | null): string {
+  const shellLabel = SHELL_LABELS[shell] ?? shell;
+  if (!terminalId) return `${shellLabel} · no active pane`;
+  return `${shellLabel} · ${terminalId.slice(0, 8)}`;
+}
+
+function readDevVisualQaState(): DevVisualQaState {
+  if (!import.meta.env.DEV || typeof window === "undefined") {
+    return {
+      enabled: false,
+      attachFixture: false,
+      diagnosticsEnabled: false,
+      incidentFixtures: false,
+      projectPath: "",
+      railMode: "observe",
+    };
+  }
+  const params = new URLSearchParams(window.location.search);
+  let storedEnabled = false;
+  let storedProject: string | null = null;
+  try {
+    storedEnabled = window.localStorage.getItem("aether:visualQa") === "1";
+    storedProject = window.localStorage.getItem("aether:visualQaProject");
+  } catch {
+    /* storage may be unavailable in private/test contexts */
+  }
+  const enabled = params.get("aetherVisualQa") === "1" || params.get("visualQa") === "1" || storedEnabled;
+  if (!enabled)
+    return {
+      enabled: false,
+      attachFixture: false,
+      diagnosticsEnabled: false,
+      incidentFixtures: false,
+      projectPath: "",
+      railMode: "observe",
+    };
+  const attachFixture = params.get("attachFixture") === "1" || params.get("processAttach") === "1";
+  const diagnosticsEnabled = params.get("diagnostics") === "1" || params.get("logs") === "1";
+  const incidentFixtures = params.get("incidents") === "1" || params.get("auditRisk") === "1";
+  const projectPath = params.get("projectPath") || storedProject || "C:/Users/owner/Aether_Terminal";
+  const requestedRail = params.get("rail");
+  const railMode: RightRailMode =
+    requestedRail === "command" || requestedRail === "review" || requestedRail === "observe"
+      ? requestedRail
+      : "observe";
+  return {
+    enabled: true,
+    attachFixture,
+    diagnosticsEnabled,
+    incidentFixtures,
+    projectPath: projectPath.replace(/\\/g, "/"),
+    railMode,
+  };
+}
+
+function createDevVisualQaAuditEvents(): AuditEventRecord[] {
+  return [
+    {
+      id: 3,
+      timestamp: "2026-05-01T12:10:00.000Z",
+      category: "terminal",
+      action: "stream_lagged",
+      severity: "warn",
+      entityType: "terminal",
+      entityId: "visual-terminal-with-a-very-long-id",
+      summary: "Terminal stream lagged while rendering dense output",
+      metadata: { droppedChunks: 12, redacted: true },
+    },
+    {
+      id: 2,
+      timestamp: "2026-05-01T12:09:00.000Z",
+      category: "terminal",
+      action: "spawn_failed",
+      severity: "error",
+      entityType: "terminal",
+      entityId: "review-pane",
+      summary: "Terminal spawn failed",
+      metadata: { redacted: true },
+    },
+    {
+      id: 1,
+      timestamp: "2026-05-01T12:08:00.000Z",
+      category: "workflow",
+      action: "reject_gate",
+      severity: "warn",
+      entityType: "workflow",
+      entityId: "bug-fix",
+      summary: "Workflow gate rejected",
+      metadata: { redacted: true },
+    },
+  ];
+}
+
+function createDevVisualQaPanes(
+  projectPath: string,
+  tabId: string,
+  tabLabel: string,
+  tabShell: ShellType,
+  attachFixture = false,
+): TerminalPaneTarget[] {
+  const cwd = projectPath || "C:/Users/owner/Aether_Terminal";
+  if (attachFixture) {
+    return [
+      {
+        paneId: "qa-detached-left",
+        terminalId: null,
+        lifecycle: "detached",
+        index: 0,
+        shell: tabShell,
+        cwd,
+        title: "Detached Left",
+        role: "work",
+        label: "Detached Left",
+        route: `${tabLabel}.1 Detached Left`,
+        tabId,
+        tabLabel,
+        tabShell,
+        tabCwd: cwd,
+      },
+      {
+        paneId: "qa-detached-review",
+        terminalId: null,
+        lifecycle: "detached",
+        index: 1,
+        shell: tabShell,
+        cwd,
+        title: "Review Resume Target",
+        role: "review",
+        label: "Review Resume Target",
+        route: `${tabLabel}.2 Review Resume Target`,
+        tabId,
+        tabLabel,
+        tabShell,
+        tabCwd: cwd,
+      },
+      {
+        paneId: "qa-orphaned-backend",
+        terminalId: "qa-orphaned-agent-pty",
+        lifecycle: "orphaned",
+        index: 2,
+        shell: tabShell,
+        cwd,
+        title: "Orphaned Agent PTY",
+        role: "agent",
+        label: "Orphaned Agent PTY",
+        route: `${tabLabel}.3 Orphaned Agent PTY`,
+        tabId,
+        tabLabel,
+        tabShell,
+        tabCwd: cwd,
+      },
+    ];
+  }
+  return [
+    {
+      paneId: "qa-work",
+      terminalId: "qa-main-powershell",
+      lifecycle: "live",
+      index: 0,
+      shell: tabShell,
+      cwd,
+      title: "PowerShell",
+      role: "work",
+      label: "PowerShell",
+      route: `${tabLabel}.1 PowerShell`,
+      tabId,
+      tabLabel,
+      tabShell,
+      tabCwd: cwd,
+    },
+    {
+      paneId: "qa-agent",
+      terminalId: "qa-gemini-agent",
+      lifecycle: "live",
+      index: 1,
+      shell: tabShell,
+      cwd,
+      title: "Gemini CLI",
+      role: "agent",
+      label: "Gemini CLI",
+      route: `${tabLabel}.2 Gemini CLI`,
+      tabId,
+      tabLabel,
+      tabShell,
+      tabCwd: cwd,
+    },
+    {
+      paneId: "qa-review",
+      terminalId: "qa-review-shell",
+      lifecycle: "live",
+      index: 2,
+      shell: tabShell,
+      cwd,
+      title: "Review Shell",
+      role: "review",
+      label: "Review Shell",
+      route: `${tabLabel}.3 Review Shell`,
+      tabId,
+      tabLabel,
+      tabShell,
+      tabCwd: cwd,
+    },
+  ];
+}
+
+const RIGHT_RAIL_MODES: Array<{
+  id: RightRailMode;
+  label: string;
+  title: string;
+  icon: LucideIcon;
+}> = [
+  {
+    id: "command",
+    label: "Command",
+    title: "Agent launch, workflows, and toolkit controls",
+    icon: Bot,
+  },
+  {
+    id: "review",
+    label: "Review",
+    title: "Agent output, source control, and context pressure",
+    icon: GitCompare,
+  },
+  {
+    id: "observe",
+    label: "Observe",
+    title: "Live context, agent activity, and diagnostic logs",
+    icon: Radio,
+  },
+];
+
+function getNextRightRailMode(current: RightRailMode, key: string): RightRailMode | null {
+  const currentIndex = RIGHT_RAIL_MODES.findIndex((mode) => mode.id === current);
+  if (currentIndex < 0) return null;
+  if (key === "Home") return RIGHT_RAIL_MODES[0]?.id ?? null;
+  if (key === "End") return RIGHT_RAIL_MODES.at(-1)?.id ?? null;
+  if (key === "ArrowRight" || key === "ArrowDown") {
+    return RIGHT_RAIL_MODES[(currentIndex + 1) % RIGHT_RAIL_MODES.length]?.id ?? null;
+  }
+  if (key === "ArrowLeft" || key === "ArrowUp") {
+    return RIGHT_RAIL_MODES[(currentIndex - 1 + RIGHT_RAIL_MODES.length) % RIGHT_RAIL_MODES.length]?.id ?? null;
+  }
+  return null;
+}
 
 export function App() {
   const {
@@ -105,6 +475,10 @@ export function App() {
     setActiveFile,
     kanbanTasks,
     moveKanbanTask,
+    contextWarnPct,
+    workspaceProfiles,
+    resolveWorkspaceProfile,
+    setWorkspaceThreadRunState,
   } = useAppStore();
   const themeOverridesForActive = useAppStore((s) => s.themeOverrides[themeId]);
   useThemeApplier(themeId, themeOverridesForActive, moodPresetId);
@@ -116,10 +490,14 @@ export function App() {
     return () => cancelAnimationFrame(raf);
   }, []);
 
+  const devVisualQa = useMemo(readDevVisualQaState, []);
+
   const [editorLine, setEditorLine] = useState<number | undefined>(undefined);
   const [openInDiff, setOpenInDiff] = useState(false);
   const [fileTreeKey, setFileTreeKey] = useState(0);
   const [quickOpenMode, setQuickOpenMode] = useState<"files" | "buffers" | null>(null);
+  const [rightRailMode, setRightRailMode] = useState<RightRailMode>("command");
+  const [paneSwitcherVisible, setPaneSwitcherVisible] = useState(false);
 
   // Map<tabId, focused-pane PTY id>. Each `<PaneTreeContainer>` reports
   // its tab's focused-pane PTY id through `onActiveTerminalChange`; the
@@ -133,6 +511,22 @@ export function App() {
     setTabActivePtyIds((prev) => {
       if (prev[tabId] === ptyId) return prev;
       return { ...prev, [tabId]: ptyId };
+    });
+  }, []);
+  const [tabPaneRegistries, setTabPaneRegistries] = useState<Record<string, PaneSwitcherEntry[]>>({});
+  const [paneFocusRequest, setPaneFocusRequest] = useState<AppPaneFocusRequest | null>(null);
+  const [paneCloseRequest, setPaneCloseRequest] = useState<AppPaneCloseRequest | null>(null);
+  const [paneRestartRequest, setPaneRestartRequest] = useState<AppPaneRestartRequest | null>(null);
+  const [paneAttachRequest, setPaneAttachRequest] = useState<AppPaneAttachRequest | null>(null);
+  const [paneRenameRequest, setPaneRenameRequest] = useState<AppPaneRenameRequest | null>(null);
+  const [paneRoleCycleRequest, setPaneRoleCycleRequest] = useState<AppPaneRoleCycleRequest | null>(null);
+  const [selectedAuditEventId, setSelectedAuditEventId] = useState<number | null>(null);
+  const [selectedAuditTraceFilter, setSelectedAuditTraceFilter] = useState<string | null>(null);
+  const [selectedOperationalPane, setSelectedOperationalPane] = useState<OperationalPaneSelection | null>(null);
+  const setTabPaneRegistry = useCallback((tabId: string, panes: PaneSwitcherEntry[]) => {
+    setTabPaneRegistries((prev) => {
+      if (paneRegistryEqual(prev[tabId] ?? [], panes)) return prev;
+      return { ...prev, [tabId]: panes };
     });
   }, []);
 
@@ -149,6 +543,107 @@ export function App() {
     reorderTab,
   } = useTabManager("powershell");
   const activePtyId = tabActivePtyIds[activeTabId] ?? null;
+  const activeTerminalTarget = useMemo<ActiveTerminalTarget>(
+    () => ({
+      terminalId: activePtyId,
+      tabId: activeTabId,
+      shell: activeTab.shell,
+      label: formatTerminalTarget(activeTab.shell, activePtyId),
+      ready: Boolean(activePtyId),
+    }),
+    [activePtyId, activeTab.shell, activeTabId],
+  );
+  const terminalPaneTargets = useMemo<TerminalPaneTarget[]>(
+    () =>
+      tabs.flatMap((tab) =>
+        (tabPaneRegistries[tab.id] ?? []).map((pane) => ({
+          ...pane,
+          tabId: tab.id,
+          tabLabel: tab.label,
+          tabShell: tab.shell,
+          tabCwd: tab.cwd,
+        })),
+      ),
+    [tabPaneRegistries, tabs],
+  );
+  const visualTerminalPaneTargets = useMemo<TerminalPaneTarget[]>(() => {
+    if (!devVisualQa.enabled) return terminalPaneTargets;
+    if (terminalPaneTargets.some((pane) => pane.terminalId)) return terminalPaneTargets;
+    return createDevVisualQaPanes(
+      devVisualQa.projectPath,
+      activeTabId,
+      activeTab.label,
+      activeTab.shell,
+      devVisualQa.attachFixture,
+    );
+  }, [
+    activeTab.label,
+    activeTab.shell,
+    activeTabId,
+    devVisualQa.attachFixture,
+    devVisualQa.enabled,
+    devVisualQa.projectPath,
+    terminalPaneTargets,
+  ]);
+  const visualActivePtyId =
+    activePtyId ??
+    (devVisualQa.enabled && visualTerminalPaneTargets.length > 0 ? visualTerminalPaneTargets[0].terminalId : null);
+  const visualAuditEvents = useMemo(
+    () => (devVisualQa.incidentFixtures ? createDevVisualQaAuditEvents() : undefined),
+    [devVisualQa.incidentFixtures],
+  );
+  const auditStream = useAuditEvents({ enabled: visualAuditEvents === undefined, limit: 40, pollMs: 3_000 });
+  const operationalAuditEvents = visualAuditEvents ?? auditStream.entries;
+  const selectedOperationalPaneTarget = useMemo(
+    () =>
+      selectedOperationalPane
+        ? visualTerminalPaneTargets.find(
+            (pane) => pane.tabId === selectedOperationalPane.tabId && pane.paneId === selectedOperationalPane.paneId,
+          )
+        : undefined,
+    [selectedOperationalPane, visualTerminalPaneTargets],
+  );
+
+  const selectOperationalPane = useCallback((pane?: TerminalPaneTarget) => {
+    setSelectedOperationalPane(
+      pane
+        ? {
+            tabId: pane.tabId,
+            paneId: pane.paneId,
+            terminalId: pane.terminalId,
+          }
+        : null,
+    );
+  }, []);
+
+  useEffect(() => {
+    setSelectedOperationalPane((selected) => reconcileOperationalPaneSelection(selected, visualTerminalPaneTargets));
+  }, [visualTerminalPaneTargets]);
+
+  const handleSelectAuditEvent = useCallback(
+    (entry: AuditEventRecord, pane?: TerminalPaneTarget) => {
+      setSelectedAuditEventId(entry.id);
+      selectOperationalPane(pane);
+    },
+    [selectOperationalPane],
+  );
+
+  const handleSelectReliabilityIncident = useCallback(
+    (incident: { eventId: number; pane?: TerminalPaneTarget }) => {
+      setSelectedAuditEventId(incident.eventId);
+      selectOperationalPane(incident.pane);
+    },
+    [selectOperationalPane],
+  );
+
+  const handleTraceReliabilityIncident = useCallback(
+    (correlationId: string, incident: { eventId: number; pane?: TerminalPaneTarget }) => {
+      setSelectedAuditTraceFilter(correlationId);
+      setSelectedAuditEventId(incident.eventId);
+      selectOperationalPane(incident.pane);
+    },
+    [selectOperationalPane],
+  );
 
   // Prune `tabActivePtyIds` entries whose tab has been closed. Without
   // this the map grows unboundedly across the lifetime of the session
@@ -167,7 +662,32 @@ export function App() {
       }
       return mutated ? next : prev;
     });
+    setTabPaneRegistries((prev) => {
+      let mutated = false;
+      const next: Record<string, PaneSwitcherEntry[]> = {};
+      for (const [id, panes] of Object.entries(prev)) {
+        if (liveIds.has(id)) {
+          next[id] = panes;
+        } else {
+          mutated = true;
+        }
+      }
+      return mutated ? next : prev;
+    });
   }, [tabs]);
+
+  const handleCloseTab = useCallback(
+    (tabId: string) => {
+      if (tabs.length > 1 && tabs.some((tab) => tab.id === tabId)) {
+        const storageKey = paneTreeStorageKey(tabId);
+        deletePaneTreeSnapshot(storageKey);
+        void deletePaneTreeSnapshotFromBackend(storageKey);
+      }
+      closeTab(tabId);
+    },
+    [closeTab, tabs],
+  );
+
   const { sessions, activeSessionId, setActiveSessionId, startAgent, stopAgent, renameSession } = useAgentManager();
   const {
     sessions: interactiveSessions,
@@ -180,10 +700,82 @@ export function App() {
 
   const projectPath = activeTab.cwd ?? rootProjectPath ?? "";
   const projectName = projectPath ? (projectPath.split("/").filter(Boolean).pop() ?? "Aether") : "Aether";
+  const workspaceProfile = useMemo(
+    () => resolveWorkspaceProfile(projectPath || rootProjectPath || "workspace", activeTabId),
+    [activeTabId, projectPath, resolveWorkspaceProfile, rootProjectPath, workspaceProfiles],
+  );
+  const scopedOperationalAuditEvents = useMemo(
+    () => filterWorkspaceScopedEvents(operationalAuditEvents, workspaceProfile),
+    [operationalAuditEvents, workspaceProfile],
+  );
+
+  useEffect(() => {
+    if (!projectPath) return;
+    setWorkspaceThreadRunState(projectPath, activeTabId, {
+      status: "active",
+      activePaneId: visualActivePtyId,
+      lastActiveAt: new Date().toISOString(),
+    });
+  }, [activeTabId, projectPath, setWorkspaceThreadRunState, visualActivePtyId]);
 
   // ── Derived state ──
 
   const { branch, changedFiles, refresh: refreshGitStatus } = useGitStatus(projectPath);
+  const rightRailAuditRisks = useMemo(
+    () =>
+      scopedOperationalAuditEvents
+        .filter((event) => event.severity === "warn" || event.severity === "error")
+        .slice(0, 20)
+        .map((event) => ({
+          id: `audit-${event.id}`,
+          title: event.summary || event.action,
+          status: "open",
+          severity: event.severity,
+          agentId:
+            event.entityType === "agent" && event.entityId
+              ? event.entityId
+              : typeof event.metadata.agentId === "string"
+                ? event.metadata.agentId
+                : undefined,
+          filePath:
+            typeof event.metadata.filePath === "string"
+              ? event.metadata.filePath
+              : typeof event.metadata.path === "string"
+                ? event.metadata.path
+                : undefined,
+        })),
+    [scopedOperationalAuditEvents],
+  );
+  const rightRailGraph = useMemo(
+    () =>
+      buildWorkstationGraph({
+        workspaceId: projectPath || "workspace",
+        threadId: activeTabId,
+        sessions,
+        panes: visualTerminalPaneTargets.map((pane) => ({
+          paneId: pane.paneId,
+          terminalId: pane.terminalId,
+          title: pane.title || pane.label,
+          role: pane.role,
+          status: pane.lifecycle,
+        })),
+        changedFiles,
+        risks: rightRailAuditRisks,
+      }),
+    [activeTabId, changedFiles, projectPath, rightRailAuditRisks, sessions, visualTerminalPaneTargets],
+  );
+  const focusedRightRailGraph = useMemo(
+    () =>
+      filterWorkstationGraph(rightRailGraph, {
+        agentId: activeSessionId,
+        paneId: selectedOperationalPaneTarget?.paneId ?? null,
+      }),
+    [activeSessionId, rightRailGraph, selectedOperationalPaneTarget?.paneId],
+  );
+  const decisionInbox = useMemo(
+    () => buildDecisionInbox({ sessions, auditEvents: scopedOperationalAuditEvents }),
+    [scopedOperationalAuditEvents, sessions],
+  );
   const activeAgent = sessions.find((s) => s.id === activeSessionId);
   const headerStatus = activeAgent
     ? activeAgent.status === "thinking" || activeAgent.status === "generating"
@@ -262,14 +854,166 @@ export function App() {
     }
   }, [handleOpenProject]);
 
+  useEffect(() => {
+    if (!devVisualQa.enabled) return;
+    try {
+      window.localStorage.setItem("aether:onboarding-done", "true");
+    } catch {
+      /* storage may be unavailable in private/test contexts */
+    }
+    if (!rootProjectPath) {
+      setRootProjectPath(devVisualQa.projectPath);
+    }
+    setRightRailMode(devVisualQa.railMode);
+    if (rightPanelWidth < 340) {
+      setRightPanelWidth(340);
+    }
+  }, [
+    devVisualQa.enabled,
+    devVisualQa.projectPath,
+    devVisualQa.railMode,
+    rightPanelWidth,
+    rootProjectPath,
+    setRightPanelWidth,
+    setRootProjectPath,
+  ]);
+
   const handleTabSwitch = useCallback(
     async (tabId: string) => {
-      if (tabId === activeTabId) return;
-      if (!(await confirmDiscardUnsavedFiles("Switch tabs and discard them"))) return;
+      if (tabId === activeTabId) return true;
+      if (!(await confirmDiscardUnsavedFiles("Switch tabs and discard them"))) return false;
       setActiveTabId(tabId);
       clearFiles();
+      return true;
     },
     [activeTabId, clearFiles, confirmDiscardUnsavedFiles, setActiveTabId],
+  );
+
+  const handlePaneSwitch = useCallback(
+    async (tabId: string, paneId: string) => {
+      const switched = tabId === activeTabId ? true : await handleTabSwitch(tabId);
+      if (!switched) return;
+      if (interactiveSessionId) selectInteractiveSession("");
+      setPaneFocusRequest((prev) => ({
+        tabId,
+        paneId,
+        sequence: (prev?.sequence ?? 0) + 1,
+      }));
+    },
+    [activeTabId, handleTabSwitch, interactiveSessionId, selectInteractiveSession],
+  );
+
+  const handleFocusOperationalPane = useCallback(
+    async (tabId: string, paneId: string) => {
+      const target = visualTerminalPaneTargets.find((pane) => pane.tabId === tabId && pane.paneId === paneId);
+      if (target) selectOperationalPane(target);
+      await handlePaneSwitch(tabId, paneId);
+    },
+    [handlePaneSwitch, selectOperationalPane, visualTerminalPaneTargets],
+  );
+
+  const focusAdjacentPane = useCallback(
+    async (delta: 1 | -1) => {
+      if (visualTerminalPaneTargets.length <= 1) return;
+      const currentIndex = findActivePaneIndex(visualTerminalPaneTargets, activeTabId, visualActivePtyId);
+      const baseIndex =
+        currentIndex >= 0
+          ? currentIndex
+          : Math.max(
+              0,
+              visualTerminalPaneTargets.findIndex((pane) => pane.tabId === activeTabId),
+            );
+      const nextIndex = (baseIndex + delta + visualTerminalPaneTargets.length) % visualTerminalPaneTargets.length;
+      const target = visualTerminalPaneTargets[nextIndex];
+      if (!target) return;
+      await handlePaneSwitch(target.tabId, target.paneId);
+      selectOperationalPane(target);
+    },
+    [activeTabId, handlePaneSwitch, selectOperationalPane, visualActivePtyId, visualTerminalPaneTargets],
+  );
+
+  const handlePaneClose = useCallback((tabId: string, paneId: string) => {
+    setPaneCloseRequest((prev) => ({
+      tabId,
+      paneId,
+      sequence: (prev?.sequence ?? 0) + 1,
+    }));
+  }, []);
+
+  const handlePaneRestart = useCallback(
+    async (tabId: string, paneId: string) => {
+      const switched = tabId === activeTabId ? true : await handleTabSwitch(tabId);
+      if (!switched) {
+        throw new Error("Restart target tab is unavailable.");
+      }
+      await new Promise<void>((resolve, reject) => {
+        setPaneRestartRequest((prev) => ({
+          tabId,
+          paneId,
+          sequence: (prev?.sequence ?? 0) + 1,
+          onComplete: (error) => {
+            if (error) {
+              reject(new Error(error));
+              return;
+            }
+            resolve();
+          },
+        }));
+      });
+    },
+    [activeTabId, handleTabSwitch],
+  );
+
+  const handlePaneAttach = useCallback(
+    async (tabId: string, paneId: string, terminalId: string) => {
+      const switched = tabId === activeTabId ? true : await handleTabSwitch(tabId);
+      if (!switched) {
+        throw new Error("Attach target tab is unavailable.");
+      }
+      await new Promise<void>((resolve, reject) => {
+        setPaneAttachRequest((prev) => ({
+          tabId,
+          paneId,
+          terminalId,
+          sequence: (prev?.sequence ?? 0) + 1,
+          onComplete: (error) => {
+            if (error) {
+              reject(new Error(error));
+              return;
+            }
+            resolve();
+          },
+        }));
+      });
+    },
+    [activeTabId, handleTabSwitch],
+  );
+
+  const handlePaneRename = useCallback(
+    async (tabId: string, paneId: string, title: string | null) => {
+      const switched = tabId === activeTabId ? true : await handleTabSwitch(tabId);
+      if (!switched) return;
+      setPaneRenameRequest((prev) => ({
+        tabId,
+        paneId,
+        title,
+        sequence: (prev?.sequence ?? 0) + 1,
+      }));
+    },
+    [activeTabId, handleTabSwitch],
+  );
+
+  const handlePaneRoleCycle = useCallback(
+    async (tabId: string, paneId: string) => {
+      const switched = tabId === activeTabId ? true : await handleTabSwitch(tabId);
+      if (!switched) return;
+      setPaneRoleCycleRequest((prev) => ({
+        tabId,
+        paneId,
+        sequence: (prev?.sequence ?? 0) + 1,
+      }));
+    },
+    [activeTabId, handleTabSwitch],
   );
 
   const handleStartAgent = useCallback(
@@ -320,34 +1064,58 @@ export function App() {
     [closeFile, unsavedFiles],
   );
 
-  const handleRunCommand = useCallback(async (command: string) => {
-    try {
-      const { invoke } = await import("@tauri-apps/api/core");
-      const terminals = await invoke<string[]>("list_terminals");
-      if (terminals.length > 0) {
-        await invoke("write_terminal", { id: terminals[0], data: `${command}\r` });
+  const writeToActiveTerminal = useCallback(
+    async (data: string, unavailableDetail = "Click a terminal pane before sending commands.") => {
+      if (!activeTerminalTarget.terminalId) {
+        toast.error("No active terminal", unavailableDetail);
+        return false;
       }
-    } catch (err) {
-      /* command error */
-    }
-  }, []);
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        await invoke("write_terminal", { id: activeTerminalTarget.terminalId, data });
+        return true;
+      } catch (err) {
+        toast.error("Terminal write failed", String(err));
+        return false;
+      }
+    },
+    [activeTerminalTarget.terminalId],
+  );
+
+  const handleRunCommand = useCallback(
+    async (command: string) => {
+      const risk = classifyCommand(command, {
+        workspaceRoot: workspaceProfile.workspaceRoot,
+        safePaths: workspaceProfile.safePaths,
+      });
+      if (risk.requiresApproval) {
+        const ok = await showConfirm({
+          title: "Command risk review",
+          description: formatCommandRiskSummary(risk),
+          confirmLabel: risk.severity === "deny" ? "Run anyway" : "Run command",
+          tone: risk.severity === "deny" ? "danger" : "default",
+        });
+        if (!ok) {
+          toast.error("Command not sent", "The command risk firewall cancelled the terminal write.");
+          return;
+        }
+      }
+      await writeToActiveTerminal(`${command}\r`);
+    },
+    [workspaceProfile.safePaths, workspaceProfile.workspaceRoot, writeToActiveTerminal],
+  );
 
   /**
    * Ctrl+R history hit → stage the command at the current prompt without
    * pressing Enter. Matches fish/zsh `history-pager` behaviour so the user
    * can still edit before running.
    */
-  const handleHistoryAccept = useCallback(async (hit: SearchHit) => {
-    try {
-      const { invoke } = await import("@tauri-apps/api/core");
-      const terminals = await invoke<string[]>("list_terminals");
-      if (terminals.length > 0) {
-        await invoke("write_terminal", { id: terminals[0], data: hit.entry.command });
-      }
-    } catch {
-      /* not in Tauri */
-    }
-  }, []);
+  const handleHistoryAccept = useCallback(
+    async (hit: SearchHit) => {
+      await writeToActiveTerminal(hit.entry.command, "Click a terminal pane before staging a history command.");
+    },
+    [writeToActiveTerminal],
+  );
 
   const handleSelectSession = useCallback(
     (sessionId: string) => {
@@ -387,7 +1155,7 @@ export function App() {
     projectPath,
     tabs,
     addTab,
-    closeTab,
+    closeTab: handleCloseTab,
     activeTabId,
     setActiveTabId,
     activeFile,
@@ -402,6 +1170,9 @@ export function App() {
     handleFileSelect,
     handleStartAgent,
     setQuickOpenMode,
+    openPaneSwitcher: () => setPaneSwitcherVisible(true),
+    focusNextPane: () => focusAdjacentPane(1),
+    focusPreviousPane: () => focusAdjacentPane(-1),
     setHelpVisible,
     setSidebarCollapsed,
   });
@@ -439,7 +1210,7 @@ export function App() {
           });
       })
       .catch(() => {});
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [addTabWithCwd]);
 
   // ── Window setup ──
 
@@ -551,7 +1322,14 @@ export function App() {
 
   const { commands, menus } = useAppMenus({
     addTab,
-    closeTab,
+    closeTab: handleCloseTab,
+    switchTab: handleTabSwitch,
+    tabs,
+    switchPane: handlePaneSwitch,
+    focusNextPane: () => focusAdjacentPane(1),
+    focusPreviousPane: () => focusAdjacentPane(-1),
+    openPaneSwitcher: () => setPaneSwitcherVisible(true),
+    panes: visualTerminalPaneTargets,
     activeTabId,
     activeFile,
     projectPath,
@@ -580,9 +1358,21 @@ export function App() {
       <PaneTreeContainer
         shell={tab.shell}
         cwd={tab.cwd}
+        layoutStorageKey={paneTreeStorageKey(tab.id)}
+        switcherWindowLabel={tab.label}
+        projectPath={tab.cwd ?? rootProjectPath ?? ""}
         onActiveTerminalChange={(terminalId) => {
           setTabActivePtyId(tab.id, terminalId);
         }}
+        onPaneRegistryChange={(panes) => {
+          setTabPaneRegistry(tab.id, panes);
+        }}
+        focusPaneRequest={paneFocusRequest?.tabId === tab.id ? paneFocusRequest : null}
+        closePaneRequest={paneCloseRequest?.tabId === tab.id ? paneCloseRequest : null}
+        restartPaneRequest={paneRestartRequest?.tabId === tab.id ? paneRestartRequest : null}
+        attachPaneRequest={paneAttachRequest?.tabId === tab.id ? paneAttachRequest : null}
+        renamePaneRequest={paneRenameRequest?.tabId === tab.id ? paneRenameRequest : null}
+        cyclePaneRoleRequest={paneRoleCycleRequest?.tabId === tab.id ? paneRoleCycleRequest : null}
       />
     </div>
   ));
@@ -591,12 +1381,9 @@ export function App() {
     return (
       <TooltipProvider>
         <ToastProvider>
-          <div className="app-container">
+          <div className="app-container" data-density={workspaceProfile.visualDensity}>
             <Suspense fallback={null}>
-              <WelcomeScreen
-                onOpenProject={handleOpenProject}
-                onOpenSettings={() => setSettingsVisible(true)}
-              />
+              <WelcomeScreen onOpenProject={handleOpenProject} onOpenSettings={() => setSettingsVisible(true)} />
             </Suspense>
             {/* Settings is reachable before a project is open (theme /
              * default shell pick on first run). Same LazyDialog wrapper
@@ -612,6 +1399,91 @@ export function App() {
       </TooltipProvider>
     );
   }
+
+  const liveAgentCount =
+    sessions.filter((s) => s.status !== "idle" && s.status !== "done").length + interactiveSessions.length;
+  const rightRailModeBadges: Record<RightRailMode, number> = {
+    command: decisionInbox.pendingCount > 0 ? decisionInbox.pendingCount : liveAgentCount,
+    review: changedFiles.length,
+    observe: decisionInbox.pendingCount + liveAgentCount,
+  };
+  const rightRailRecommendation = deriveRightRailRecommendation({
+    sessions,
+    interactiveSessionCount: interactiveSessions.length,
+    changedFilesCount: changedFiles.length,
+    contextWarnPct,
+    currentMode: rightRailMode,
+    workstationGraph: rightRailGraph,
+    selectedPane: selectedOperationalPaneTarget
+      ? {
+          role: selectedOperationalPaneTarget.role,
+          title: selectedOperationalPaneTarget.title,
+          label: selectedOperationalPaneTarget.label,
+        }
+      : null,
+  });
+  const rightRailRecommendedMode = rightRailRecommendation
+    ? RIGHT_RAIL_MODES.find((mode) => mode.id === rightRailRecommendation.mode)
+    : undefined;
+  const RightRailRecommendedIcon = rightRailRecommendedMode?.icon;
+  const handleRightRailModeKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+      const nextMode = getNextRightRailMode(rightRailMode, event.key);
+      if (!nextMode) return;
+      event.preventDefault();
+      setRightRailMode(nextMode);
+      requestAnimationFrame(() => {
+        document.querySelector<HTMLButtonElement>(`[data-right-rail-mode="${nextMode}"]`)?.focus();
+      });
+    },
+    [rightRailMode],
+  );
+  const terminalSurface = (
+    <div className={appStyles.terminalContainer}>
+      {terminalTabs}
+      {activeInteractive && (
+        <div className={appStyles.terminalTabPane} data-active>
+          <AgentTerminal
+            ptyId={activeInteractive.pty_id}
+            cli={activeInteractive.cli}
+            status={
+              activeInteractive.status as
+                | "idle"
+                | "thinking"
+                | "coding"
+                | "generating"
+                | "waiting"
+                | "error"
+                | "done"
+            }
+            model={activeInteractive.model}
+            cost={activeInteractive.cost}
+          />
+        </div>
+      )}
+    </div>
+  );
+  const missionControlHome = (
+    <ErrorBoundary>
+      <Suspense fallback={null}>
+        <MissionControlHome
+          projectName={projectName}
+          projectPath={projectPath}
+          branch={branch}
+          panes={visualTerminalPaneTargets}
+          sessions={sessions}
+          interactiveSessionCount={interactiveSessions.length}
+          changedFiles={changedFiles}
+          auditEvents={scopedOperationalAuditEvents}
+          workstationGraph={rightRailGraph}
+          contextWarnPct={contextWarnPct}
+          onOpenCommand={() => setRightRailMode("command")}
+          onOpenReview={() => setRightRailMode("review")}
+          onOpenObserve={() => setRightRailMode("observe")}
+        />
+      </Suspense>
+    </ErrorBoundary>
+  );
 
   const editorArea = activeFile ? (
     <div className={appStyles.editorArea}>
@@ -678,376 +1550,710 @@ export function App() {
      * springs across CommandPalette/WelcomeScreen/SearchPanel/PRInspector/
      * WebInspector/OnboardingOverlay. */
     <MotionConfig reducedMotion="user">
-    <TooltipProvider>
-      <ToastProvider>
-        <div className="app-container">
-          <UpdateBanner />
-          <ProjectHeaderBar
-            projectName={projectName}
-            branch={branch}
-            changedCount={changedFiles.length}
-            status={headerStatus as "idle" | "edit" | "thinking" | "error" | "waiting" | "done"}
-            activeAgent={activeAgent ? { model: activeAgent.model, cost: activeAgent.cost } : null}
-            onOpenSettings={() => setSettingsVisible(true)}
-            onRefresh={handleRefresh}
-            menus={menus}
-            sidebarCollapsed={sidebarCollapsed}
-            onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
-          />
+      <TooltipProvider>
+        <ToastProvider>
+          <div className="app-container" data-density={workspaceProfile.visualDensity}>
+            <UpdateBanner />
+            <ProjectHeaderBar
+              projectName={projectName}
+              branch={branch}
+              changedCount={changedFiles.length}
+              status={headerStatus as "idle" | "edit" | "thinking" | "error" | "waiting" | "done"}
+              activeAgent={activeAgent ? { model: activeAgent.model, cost: activeAgent.cost } : null}
+              onOpenSettings={() => setSettingsVisible(true)}
+              onRefresh={handleRefresh}
+              menus={menus}
+              sidebarCollapsed={sidebarCollapsed}
+              onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
+            />
 
-          <main className="app-main">
-            <nav
-              className={`left-panel${sidebarCollapsed ? " left-panel-collapsed" : ""}`}
-              aria-label="Project sidebar"
-              data-collapsed={sidebarCollapsed}
-              style={sidebarCollapsed ? undefined : { width: `${sidebarWidth}px` }}
-            >
-              <CollapsibleSection storageKey="files" title="Files" defaultOpen>
-                <ErrorBoundary>
-                  <FileTree
-                    key={fileTreeKey}
-                    rootPath={projectPath}
-                    onFileSelect={handleFileSelect}
-                    onOpenDiff={handleOpenDiff}
-                    changedFiles={changedFiles}
-                  />
-                </ErrorBoundary>
-              </CollapsibleSection>
-              <CollapsibleSection storageKey="tasks" title="Tasks" defaultOpen={false}>
-                <ErrorBoundary>
-                  <Suspense fallback={null}>
-                    <KanbanBoard
-                      onStartAgent={handleStartAgent}
-                      projectPath={projectPath}
-                      agentStatuses={agentStatuses}
-                    />
-                  </Suspense>
-                </ErrorBoundary>
-              </CollapsibleSection>
-              <CollapsibleSection
-                storageKey="source-control"
-                title="Source Control"
-                defaultOpen={false}
+            <main className="app-main">
+              <nav
+                className={`left-panel${sidebarCollapsed ? " left-panel-collapsed" : ""}`}
+                aria-label="Project sidebar"
+                data-collapsed={sidebarCollapsed}
+                style={sidebarCollapsed ? undefined : { width: `${sidebarWidth}px` }}
               >
-                <ErrorBoundary>
-                  <Suspense fallback={null}>
-                    <SCMPanel
-                      projectPath={projectPath}
-                      onOpenFile={handleFileSelect}
-                      onOpenDiff={handleOpenDiff}
-                    />
-                  </Suspense>
-                </ErrorBoundary>
-              </CollapsibleSection>
-              {searchVisible && (
-                <Suspense fallback={null}>
+                <CollapsibleSection storageKey="files" title="Files" defaultOpen>
                   <ErrorBoundary>
-                    <SearchPanel
-                      visible
+                    <FileTree
+                      key={fileTreeKey}
                       rootPath={projectPath}
-                      onClose={() => setSearchVisible(false)}
-                      onResultClick={(file, line) => {
-                        handleFileSelect(file);
-                        setEditorLine(line);
-                      }}
+                      onFileSelect={handleFileSelect}
+                      onOpenDiff={handleOpenDiff}
+                      changedFiles={changedFiles}
                     />
                   </ErrorBoundary>
-                </Suspense>
-              )}
-              <div
-                className="left-panel-resize-handle"
-                role="separator"
-                aria-orientation="vertical"
-                aria-label="Resize sidebar"
-                aria-valuemin={200}
-                aria-valuemax={480}
-                aria-valuenow={sidebarWidth}
-                tabIndex={0}
-                onPointerDown={(e) => {
-                  // Drag-to-resize. We capture the pointer on the handle so
-                  // the move events keep coming even if the cursor leaves
-                  // the handle's bounds (large drags).
-                  const startX = e.clientX;
-                  const startWidth = sidebarWidth;
-                  const handleEl = e.currentTarget;
-                  handleEl.setPointerCapture(e.pointerId);
-                  document.body.style.cursor = "col-resize";
-                  const onMove = (ev: PointerEvent) => {
-                    setSidebarWidth(startWidth + (ev.clientX - startX));
-                  };
-                  const onUp = () => {
-                    document.body.style.cursor = "";
-                    handleEl.releasePointerCapture(e.pointerId);
-                    handleEl.removeEventListener("pointermove", onMove);
-                    handleEl.removeEventListener("pointerup", onUp);
-                  };
-                  handleEl.addEventListener("pointermove", onMove);
-                  handleEl.addEventListener("pointerup", onUp);
-                }}
-                onKeyDown={(e) => {
-                  // Keyboard accessibility — Arrow keys nudge the
-                  // sidebar by 16 px, Shift+Arrow by 64 px.
-                  const step = e.shiftKey ? 64 : 16;
-                  if (e.key === "ArrowLeft") {
-                    e.preventDefault();
-                    setSidebarWidth(sidebarWidth - step);
-                  } else if (e.key === "ArrowRight") {
-                    e.preventDefault();
-                    setSidebarWidth(sidebarWidth + step);
-                  }
-                }}
-              />
-            </nav>
-
-            <section className="center-panel" aria-label="Terminal and editor">
-              {editorArea ? (
-                <SplitPane
-                  direction="vertical"
-                  defaultRatio={0.5}
-                  first={editorArea}
-                  second={
-                    <div className={appStyles.terminalContainer}>
-                      {terminalTabs}
-                      {activeInteractive && (
-                        <div className={appStyles.terminalTabPane} data-active>
-                          <AgentTerminal
-                            ptyId={activeInteractive.pty_id}
-                            cli={activeInteractive.cli}
-                            status={
-                              activeInteractive.status as
-                                | "idle"
-                                | "thinking"
-                                | "coding"
-                                | "generating"
-                                | "waiting"
-                                | "error"
-                                | "done"
-                            }
-                            model={activeInteractive.model}
-                            cost={activeInteractive.cost}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  }
-                />
-              ) : (
-                <div className={appStyles.terminalContainer}>
-                  {terminalTabs}
-                  {activeInteractive && (
-                    <div className={appStyles.terminalTabPane} data-active>
-                      <AgentTerminal
-                        ptyId={activeInteractive.pty_id}
-                        cli={activeInteractive.cli}
-                        status={
-                          activeInteractive.status as
-                            | "idle"
-                            | "thinking"
-                            | "coding"
-                            | "generating"
-                            | "waiting"
-                            | "error"
-                            | "done"
-                        }
-                        model={activeInteractive.model}
-                        cost={activeInteractive.cost}
+                </CollapsibleSection>
+                <CollapsibleSection storageKey="tasks" title="Tasks" defaultOpen={false}>
+                  <ErrorBoundary>
+                    <Suspense fallback={null}>
+                      <KanbanBoard
+                        onStartAgent={handleStartAgent}
+                        projectPath={projectPath}
+                        agentStatuses={agentStatuses}
                       />
-                    </div>
+                    </Suspense>
+                  </ErrorBoundary>
+                </CollapsibleSection>
+                <CollapsibleSection storageKey="source-control" title="Source Control" defaultOpen={false}>
+                  <ErrorBoundary>
+                    <Suspense fallback={null}>
+                      <SCMPanel projectPath={projectPath} onOpenFile={handleFileSelect} onOpenDiff={handleOpenDiff} />
+                    </Suspense>
+                  </ErrorBoundary>
+                </CollapsibleSection>
+                {searchVisible && (
+                  <Suspense fallback={null}>
+                    <ErrorBoundary>
+                      <SearchPanel
+                        visible
+                        rootPath={projectPath}
+                        onClose={() => setSearchVisible(false)}
+                        onResultClick={(file, line) => {
+                          handleFileSelect(file);
+                          setEditorLine(line);
+                        }}
+                      />
+                    </ErrorBoundary>
+                  </Suspense>
+                )}
+                <hr
+                  className="left-panel-resize-handle"
+                  aria-orientation="vertical"
+                  aria-label="Resize sidebar"
+                  aria-valuemin={200}
+                  aria-valuemax={480}
+                  aria-valuenow={sidebarWidth}
+                  tabIndex={0}
+                  onPointerDown={(e) => {
+                    // Drag-to-resize. We capture the pointer on the handle so
+                    // the move events keep coming even if the cursor leaves
+                    // the handle's bounds (large drags).
+                    const startX = e.clientX;
+                    const startWidth = sidebarWidth;
+                    const handleEl = e.currentTarget;
+                    handleEl.setPointerCapture(e.pointerId);
+                    document.body.style.cursor = "col-resize";
+                    const onMove = (ev: PointerEvent) => {
+                      setSidebarWidth(startWidth + (ev.clientX - startX));
+                    };
+                    const onUp = () => {
+                      document.body.style.cursor = "";
+                      handleEl.releasePointerCapture(e.pointerId);
+                      handleEl.removeEventListener("pointermove", onMove);
+                      handleEl.removeEventListener("pointerup", onUp);
+                    };
+                    handleEl.addEventListener("pointermove", onMove);
+                    handleEl.addEventListener("pointerup", onUp);
+                  }}
+                  onKeyDown={(e) => {
+                    // Keyboard accessibility — Arrow keys nudge the
+                    // sidebar by 16 px, Shift+Arrow by 64 px.
+                    const step = e.shiftKey ? 64 : 16;
+                    if (e.key === "ArrowLeft") {
+                      e.preventDefault();
+                      setSidebarWidth(sidebarWidth - step);
+                    } else if (e.key === "ArrowRight") {
+                      e.preventDefault();
+                      setSidebarWidth(sidebarWidth + step);
+                    }
+                  }}
+                />
+              </nav>
+
+              <section className="center-panel" aria-label="Terminal and editor">
+                {editorArea ? (
+                  <SplitPane
+                    direction="vertical"
+                    defaultRatio={0.5}
+                    first={editorArea}
+                    second={terminalSurface}
+                  />
+                ) : (
+                  <div className={appStyles.workspaceHome}>
+                    {missionControlHome}
+                    {terminalSurface}
+                  </div>
+                )}
+              </section>
+
+              <aside
+                className="right-panel"
+                aria-label="Agent inspector"
+                /* `flex-basis` (not `width`) is what flex layout reads as
+                 * the preferred size. Setting only `width` left the
+                 * computed width at the CSS default (320 px) on Chromium
+                 * even with `flex-shrink: 0`, because `flex-basis: auto`
+                 * resolved against the *original* declared width rather
+                 * than re-resolving on inline-style change. Driving
+                 * basis directly is the canonical fix and matches how
+                 * VS Code / Linear size their resizable side panels. */
+                style={{ flexBasis: `${rightPanelWidth}px`, width: `${rightPanelWidth}px` }}
+              >
+                <hr
+                  className="right-panel-resize-handle"
+                  aria-orientation="vertical"
+                  aria-label="Resize agent inspector panel"
+                  aria-valuemin={260}
+                  aria-valuemax={480}
+                  aria-valuenow={rightPanelWidth}
+                  tabIndex={0}
+                  onPointerDown={(e) => {
+                    // Mirror of the left-panel handle. Handle lives on the
+                    // panel's LEFT edge, so dragging *left* (negative dx)
+                    // makes the panel WIDER — invert the sign vs. the
+                    // sidebar handler.
+                    const startX = e.clientX;
+                    const startWidth = rightPanelWidth;
+                    const handleEl = e.currentTarget;
+                    handleEl.setPointerCapture(e.pointerId);
+                    document.body.style.cursor = "col-resize";
+                    const onMove = (ev: PointerEvent) => {
+                      setRightPanelWidth(startWidth - (ev.clientX - startX));
+                    };
+                    const onUp = () => {
+                      document.body.style.cursor = "";
+                      handleEl.releasePointerCapture(e.pointerId);
+                      handleEl.removeEventListener("pointermove", onMove);
+                      handleEl.removeEventListener("pointerup", onUp);
+                    };
+                    handleEl.addEventListener("pointermove", onMove);
+                    handleEl.addEventListener("pointerup", onUp);
+                  }}
+                  onKeyDown={(e) => {
+                    // Inverted vs. left-panel: handle on LEFT edge, so
+                    // ArrowLeft *grows* the panel toward the centre and
+                    // ArrowRight shrinks it. Shift accelerates 16→64 px.
+                    const step = e.shiftKey ? 64 : 16;
+                    if (e.key === "ArrowLeft") {
+                      e.preventDefault();
+                      setRightPanelWidth(rightPanelWidth + step);
+                    } else if (e.key === "ArrowRight") {
+                      e.preventDefault();
+                      setRightPanelWidth(rightPanelWidth - step);
+                    }
+                  }}
+                />
+                <div className="right-panel-content">
+                  <div className="right-panel-mode-switch" role="tablist" aria-label="Right rail mode">
+                    {RIGHT_RAIL_MODES.map((mode) => {
+                      const Icon = mode.icon;
+                      const badge = rightRailModeBadges[mode.id];
+                      return (
+                        <button
+                          key={mode.id}
+                          type="button"
+                          role="tab"
+                          id={`right-rail-tab-${mode.id}`}
+                          className="right-panel-mode-tab"
+                          data-active={rightRailMode === mode.id}
+                          data-right-rail-mode={mode.id}
+                          aria-selected={rightRailMode === mode.id}
+                          aria-controls="right-rail-panel"
+                          tabIndex={rightRailMode === mode.id ? 0 : -1}
+                          title={mode.title}
+                          onClick={() => setRightRailMode(mode.id)}
+                          onKeyDown={handleRightRailModeKeyDown}
+                        >
+                          <Icon size={12} strokeWidth={1.8} aria-hidden="true" />
+                          <span>{mode.label}</span>
+                          {badge > 0 && <span className="right-panel-mode-badge">{badge}</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {rightRailRecommendation && rightRailRecommendedMode && RightRailRecommendedIcon && (
+                    <button
+                      type="button"
+                      className="right-panel-advisor"
+                      data-tone={rightRailRecommendation.tone}
+                      onClick={() => setRightRailMode(rightRailRecommendation.mode)}
+                      title={`Switch to ${rightRailRecommendedMode.label}: ${rightRailRecommendation.detail}`}
+                    >
+                      <span className="right-panel-advisor-kicker">Suggested</span>
+                      <span className="right-panel-advisor-icon" aria-hidden="true">
+                        <RightRailRecommendedIcon size={12} strokeWidth={1.8} />
+                      </span>
+                      <span className="right-panel-advisor-copy">
+                        <span className="right-panel-advisor-label">{rightRailRecommendation.label}</span>
+                        <span className="right-panel-advisor-detail">{rightRailRecommendation.detail}</span>
+                      </span>
+                      <span className="right-panel-advisor-target">{rightRailRecommendedMode.label}</span>
+                    </button>
                   )}
+
+                  <ErrorBoundary>
+                    <Suspense fallback={null}>
+                      <WorkstationPulse
+                        sessions={sessions}
+                        changedFilesCount={changedFiles.length}
+                        workstationGraph={focusedRightRailGraph}
+                      />
+                    </Suspense>
+                  </ErrorBoundary>
+
+                  <div
+                    id="right-rail-panel"
+                    className="right-panel-stack"
+                    data-mode={rightRailMode}
+                    role="tabpanel"
+                    aria-labelledby={`right-rail-tab-${rightRailMode}`}
+                  >
+                    {rightRailMode === "command" && (
+                      <>
+                        <ErrorBoundary>
+                          <Suspense fallback={null}>
+                            <div className="bento-widget" data-widget="decision-inbox">
+                              <DecisionInboxPanel
+                                sessions={sessions}
+                                auditEvents={scopedOperationalAuditEvents}
+                                activeSessionId={activeSessionId}
+                                onSelectSession={handleSelectSession}
+                              />
+                            </div>
+                          </Suspense>
+                        </ErrorBoundary>
+                        <ErrorBoundary>
+                          <Suspense fallback={null}>
+                            <div className="bento-widget" data-widget="sessions" style={{ minHeight: 200 }}>
+                              <AgentInspector
+                                sessions={sessions}
+                                activeSessionId={activeSessionId}
+                                onSelectSession={handleSelectSession}
+                                onStartAgent={handleStartAgent}
+                                onStopAgent={stopAgent}
+                                onCreateWorktree={createWorktree}
+                                onRemoveWorktree={removeWorktree}
+                                onRenameSession={renameSession}
+                                interactiveSessions={interactiveSessions}
+                                onFocusInteractiveSession={handleFocusInteractiveSession}
+                                onStopInteractiveSession={stopInteractiveSession}
+                                onEndSessionAndRemoveWorktree={endSessionAndRemoveWorktree}
+                                onStartInteractiveSession={handleStartInteractiveSession}
+                              />
+                            </div>
+                          </Suspense>
+                        </ErrorBoundary>
+                        <ErrorBoundary>
+                          <Suspense fallback={null}>
+                            <div className="bento-widget" data-widget="workflow">
+                              <WorkflowPanel
+                                projectPath={projectPath}
+                                sessions={sessions}
+                                onStartAgent={handleStartAgent}
+                              />
+                            </div>
+                          </Suspense>
+                        </ErrorBoundary>
+                        <div className="right-panel-bottom-grid">
+                          <ErrorBoundary>
+                            <Suspense fallback={null}>
+                              <div className="bento-widget" data-widget="toolkit">
+                                <ToolkitPanel
+                                  projectName={projectName}
+                                  onRunCommand={handleRunCommand}
+                                  activeTargetLabel={activeTerminalTarget.label}
+                                  activeTargetReady={activeTerminalTarget.ready}
+                                />
+                              </div>
+                            </Suspense>
+                          </ErrorBoundary>
+                          <ErrorBoundary>
+                            <Suspense fallback={null}>
+                              <div className="bento-widget" data-widget="context">
+                                <ContextPanel
+                                  sessions={sessions}
+                                  activeSessionId={activeSessionId}
+                                  changedFilesCount={changedFiles.length}
+                                  changedFiles={changedFiles}
+                                  panes={visualTerminalPaneTargets}
+                                  auditEvents={scopedOperationalAuditEvents}
+                                  projectName={projectName}
+                                  projectPath={projectPath}
+                                  branch={branch}
+                                  workstationGraph={focusedRightRailGraph}
+                                />
+                              </div>
+                            </Suspense>
+                          </ErrorBoundary>
+                        </div>
+                      </>
+                    )}
+
+                    {rightRailMode === "review" && (
+                      <>
+                        <ErrorBoundary>
+                          <Suspense fallback={null}>
+                            <div className="bento-widget" data-widget="review-queue">
+                              <ReviewQueuePanel
+                                sessions={sessions}
+                                changedFiles={changedFiles}
+                                activeSessionId={activeSessionId}
+                                onSelectSession={handleSelectSession}
+                                onOpenDiff={handleOpenDiff}
+                                onStartAgent={handleStartAgent}
+                                workstationGraph={focusedRightRailGraph}
+                              />
+                            </div>
+                          </Suspense>
+                        </ErrorBoundary>
+                        <ErrorBoundary>
+                          <Suspense fallback={null}>
+                            <div className="bento-widget" data-widget="sessions" style={{ minHeight: 200 }}>
+                              <AgentInspector
+                                sessions={sessions}
+                                activeSessionId={activeSessionId}
+                                onSelectSession={handleSelectSession}
+                                onStartAgent={handleStartAgent}
+                                onStopAgent={stopAgent}
+                                onCreateWorktree={createWorktree}
+                                onRemoveWorktree={removeWorktree}
+                                onRenameSession={renameSession}
+                                interactiveSessions={interactiveSessions}
+                                onFocusInteractiveSession={handleFocusInteractiveSession}
+                                onStopInteractiveSession={stopInteractiveSession}
+                                onEndSessionAndRemoveWorktree={endSessionAndRemoveWorktree}
+                                onStartInteractiveSession={handleStartInteractiveSession}
+                              />
+                            </div>
+                          </Suspense>
+                        </ErrorBoundary>
+                        <ErrorBoundary>
+                          <Suspense fallback={null}>
+                            <div className="bento-widget" data-widget="scm">
+                              <SCMPanel
+                                projectPath={projectPath}
+                                onOpenFile={handleFileSelect}
+                                onOpenDiff={handleOpenDiff}
+                              />
+                            </div>
+                          </Suspense>
+                        </ErrorBoundary>
+                        <ErrorBoundary>
+                          <Suspense fallback={null}>
+                            <div className="bento-widget" data-widget="context">
+                              <ContextPanel
+                                sessions={sessions}
+                                activeSessionId={activeSessionId}
+                                changedFilesCount={changedFiles.length}
+                                changedFiles={changedFiles}
+                                panes={visualTerminalPaneTargets}
+                                auditEvents={scopedOperationalAuditEvents}
+                                projectName={projectName}
+                                projectPath={projectPath}
+                                branch={branch}
+                                density="compact"
+                                workstationGraph={focusedRightRailGraph}
+                              />
+                            </div>
+                          </Suspense>
+                        </ErrorBoundary>
+                      </>
+                    )}
+
+                    {rightRailMode === "observe" && (
+                      <>
+                        <ErrorBoundary>
+                          <Suspense fallback={null}>
+                            <div className="bento-widget" data-widget="processes">
+                              <ProcessManagerPanel
+                                panes={visualTerminalPaneTargets}
+                                activeTerminalId={visualActivePtyId}
+                                highlightedPaneId={selectedOperationalPane?.paneId ?? null}
+                                highlightedTerminalId={selectedOperationalPane?.terminalId ?? null}
+                                onFocusPane={handleFocusOperationalPane}
+                                onClosePane={handlePaneClose}
+                                onRestartPane={handlePaneRestart}
+                                onAttachProcess={handlePaneAttach}
+                                onProcessEnded={(terminalId) => {
+                                  setSelectedOperationalPane((selected) =>
+                                    clearEndedOperationalTerminal(selected, terminalId),
+                                  );
+                                  setTabActivePtyIds((prev) => {
+                                    let changed = false;
+                                    const next = { ...prev };
+                                    for (const [tabId, ptyId] of Object.entries(next)) {
+                                      if (ptyId === terminalId) {
+                                        next[tabId] = null;
+                                        changed = true;
+                                      }
+                                    }
+                                    return changed ? next : prev;
+                                  });
+                                }}
+                              />
+                            </div>
+                          </Suspense>
+                        </ErrorBoundary>
+                        <ErrorBoundary>
+                          <Suspense fallback={null}>
+                            <div className="bento-widget" data-widget="live-panes">
+                              <LivePanesPanel
+                                panes={visualTerminalPaneTargets}
+                                highlightedPaneId={selectedOperationalPane?.paneId ?? null}
+                                highlightedTerminalId={selectedOperationalPane?.terminalId ?? null}
+                                onFocusPane={handleFocusOperationalPane}
+                                onAttachPane={handlePaneAttach}
+                                onSelectPane={selectOperationalPane}
+                              />
+                            </div>
+                          </Suspense>
+                        </ErrorBoundary>
+                        <ErrorBoundary>
+                          <Suspense fallback={null}>
+                            <div className="bento-widget" data-widget="audit-timeline">
+                              <AuditTimelinePanel
+                                auditEvents={scopedOperationalAuditEvents}
+                                auditError={visualAuditEvents === undefined ? auditStream.error : null}
+                                auditReady={visualAuditEvents === undefined ? auditStream.ready : true}
+                                panes={visualTerminalPaneTargets}
+                                selectedEventId={selectedAuditEventId}
+                                traceFilter={selectedAuditTraceFilter}
+                                workstationGraph={focusedRightRailGraph}
+                                onFocusPane={handleFocusOperationalPane}
+                                onRestartPane={handlePaneRestart}
+                                onSelectEvent={handleSelectAuditEvent}
+                                onTraceFilterChange={setSelectedAuditTraceFilter}
+                              />
+                            </div>
+                          </Suspense>
+                        </ErrorBoundary>
+                        <ErrorBoundary>
+                          <Suspense fallback={null}>
+                            <div className="bento-widget" data-widget="context">
+                              <ContextPanel
+                                sessions={sessions}
+                                activeSessionId={activeSessionId}
+                                changedFilesCount={changedFiles.length}
+                                changedFiles={changedFiles}
+                                panes={visualTerminalPaneTargets}
+                                auditEvents={scopedOperationalAuditEvents}
+                                projectName={projectName}
+                                projectPath={projectPath}
+                                branch={branch}
+                                density="compact"
+                                workstationGraph={focusedRightRailGraph}
+                              />
+                            </div>
+                          </Suspense>
+                        </ErrorBoundary>
+                        <ErrorBoundary>
+                          <Suspense fallback={null}>
+                            <div className="bento-widget" data-widget="run-graph">
+                              <RunGraphPanel
+                                sessions={sessions}
+                                activeSessionId={activeSessionId}
+                                onSelectSession={handleSelectSession}
+                                workstationGraph={focusedRightRailGraph}
+                              />
+                            </div>
+                          </Suspense>
+                        </ErrorBoundary>
+                        <ErrorBoundary>
+                          <Suspense fallback={null}>
+                            <div className="bento-widget" data-widget="tool-ledger">
+                              <ToolLedgerPanel
+                                sessions={sessions}
+                                activeSessionId={activeSessionId}
+                                onSelectSession={handleSelectSession}
+                                workstationGraph={focusedRightRailGraph}
+                              />
+                            </div>
+                          </Suspense>
+                        </ErrorBoundary>
+                        <ErrorBoundary>
+                          <Suspense fallback={null}>
+                            <div className="bento-widget" data-widget="sessions" style={{ minHeight: 200 }}>
+                              <AgentInspector
+                                sessions={sessions}
+                                activeSessionId={activeSessionId}
+                                onSelectSession={handleSelectSession}
+                                onStartAgent={handleStartAgent}
+                                onStopAgent={stopAgent}
+                                onCreateWorktree={createWorktree}
+                                onRemoveWorktree={removeWorktree}
+                                onRenameSession={renameSession}
+                                interactiveSessions={interactiveSessions}
+                                onFocusInteractiveSession={handleFocusInteractiveSession}
+                                onStopInteractiveSession={stopInteractiveSession}
+                                onEndSessionAndRemoveWorktree={endSessionAndRemoveWorktree}
+                                onStartInteractiveSession={handleStartInteractiveSession}
+                              />
+                            </div>
+                          </Suspense>
+                        </ErrorBoundary>
+                        <ErrorBoundary>
+                          <Suspense fallback={null}>
+                            <div className="bento-widget" data-widget="reliability">
+                              <ReliabilityPanel
+                                sessions={sessions}
+                                panes={visualTerminalPaneTargets}
+                                changedFilesCount={changedFiles.length}
+                                auditEvents={scopedOperationalAuditEvents}
+                                workstationGraph={focusedRightRailGraph}
+                                selectedEventId={selectedAuditEventId}
+                                onFocusPane={handleFocusOperationalPane}
+                                onRestartPane={handlePaneRestart}
+                                onSelectIncident={handleSelectReliabilityIncident}
+                                onTraceIncident={handleTraceReliabilityIncident}
+                              />
+                            </div>
+                          </Suspense>
+                        </ErrorBoundary>
+                        {devVisualQa.diagnosticsEnabled && (
+                          <ErrorBoundary>
+                            <Suspense fallback={null}>
+                              <div className="bento-widget" data-widget="logs">
+                                <LogsPanel defaultCollapsed />
+                              </div>
+                            </Suspense>
+                          </ErrorBoundary>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </div>
-              )}
-            </section>
+              </aside>
+            </main>
 
-            <aside
-              className="right-panel"
-              aria-label="Agent inspector"
-              /* `flex-basis` (not `width`) is what flex layout reads as
-               * the preferred size. Setting only `width` left the
-               * computed width at the CSS default (320 px) on Chromium
-               * even with `flex-shrink: 0`, because `flex-basis: auto`
-               * resolved against the *original* declared width rather
-               * than re-resolving on inline-style change. Driving
-               * basis directly is the canonical fix and matches how
-               * VS Code / Linear size their resizable side panels. */
-              style={{ flexBasis: `${rightPanelWidth}px`, width: `${rightPanelWidth}px` }}
-            >
-              <div
-                className="right-panel-resize-handle"
-                role="separator"
-                aria-orientation="vertical"
-                aria-label="Resize agent inspector panel"
-                aria-valuemin={260}
-                aria-valuemax={480}
-                aria-valuenow={rightPanelWidth}
-                tabIndex={0}
-                onPointerDown={(e) => {
-                  // Mirror of the left-panel handle. Handle lives on the
-                  // panel's LEFT edge, so dragging *left* (negative dx)
-                  // makes the panel WIDER — invert the sign vs. the
-                  // sidebar handler.
-                  const startX = e.clientX;
-                  const startWidth = rightPanelWidth;
-                  const handleEl = e.currentTarget;
-                  handleEl.setPointerCapture(e.pointerId);
-                  document.body.style.cursor = "col-resize";
-                  const onMove = (ev: PointerEvent) => {
-                    setRightPanelWidth(startWidth - (ev.clientX - startX));
-                  };
-                  const onUp = () => {
-                    document.body.style.cursor = "";
-                    handleEl.releasePointerCapture(e.pointerId);
-                    handleEl.removeEventListener("pointermove", onMove);
-                    handleEl.removeEventListener("pointerup", onUp);
-                  };
-                  handleEl.addEventListener("pointermove", onMove);
-                  handleEl.addEventListener("pointerup", onUp);
-                }}
-                onKeyDown={(e) => {
-                  // Inverted vs. left-panel: handle on LEFT edge, so
-                  // ArrowLeft *grows* the panel toward the centre and
-                  // ArrowRight shrinks it. Shift accelerates 16→64 px.
-                  const step = e.shiftKey ? 64 : 16;
-                  if (e.key === "ArrowLeft") {
-                    e.preventDefault();
-                    setRightPanelWidth(rightPanelWidth + step);
-                  } else if (e.key === "ArrowRight") {
-                    e.preventDefault();
-                    setRightPanelWidth(rightPanelWidth - step);
-                  }
-                }}
-              />
-              <ErrorBoundary>
-                <Suspense fallback={null}>
-                  <div className="bento-widget" data-widget="sessions" style={{ minHeight: 200 }}>
-                    <AgentInspector
-                      sessions={sessions}
-                      activeSessionId={activeSessionId}
-                      onSelectSession={handleSelectSession}
-                      onStartAgent={handleStartAgent}
-                      onStopAgent={stopAgent}
-                      onCreateWorktree={createWorktree}
-                      onRemoveWorktree={removeWorktree}
-                      onRenameSession={renameSession}
-                      interactiveSessions={interactiveSessions}
-                      onFocusInteractiveSession={handleFocusInteractiveSession}
-                      onStopInteractiveSession={stopInteractiveSession}
-                      onEndSessionAndRemoveWorktree={endSessionAndRemoveWorktree}
-                      onStartInteractiveSession={handleStartInteractiveSession}
-                    />
-                  </div>
-                </Suspense>
-              </ErrorBoundary>
-              <ErrorBoundary>
-                <Suspense fallback={null}>
-                  <div className="bento-widget" data-widget="workflow">
-                    <WorkflowPanel projectPath={projectPath} onStartAgent={handleStartAgent} />
-                  </div>
-                </Suspense>
-              </ErrorBoundary>
-              <div className="right-panel-bottom-grid">
-                <ErrorBoundary>
-                  <Suspense fallback={null}>
-                    <div className="bento-widget" data-widget="toolkit">
-                      <ToolkitPanel projectName={projectName} onRunCommand={handleRunCommand} />
-                    </div>
-                  </Suspense>
-                </ErrorBoundary>
-                <ErrorBoundary>
-                  <Suspense fallback={null}>
-                    <div className="bento-widget" data-widget="logs">
-                      <LogsPanel />
-                    </div>
-                  </Suspense>
-                </ErrorBoundary>
-              </div>
-            </aside>
-          </main>
+            <WorkspaceTabs
+              tabs={tabs}
+              activeTabId={activeTabId}
+              activityTabs={activityTabs}
+              onSelectTab={(id) => {
+                if (interactiveSessionId) selectInteractiveSession("");
+                void handleTabSwitch(id);
+              }}
+              onCloseTab={handleCloseTab}
+              onNewTab={addTab}
+              onReorderTab={reorderTab}
+              interactiveSessions={interactiveSessions}
+              activeInteractiveId={interactiveSessionId}
+              onSelectInteractive={handleFocusInteractiveSession}
+              onCloseInteractive={stopInteractiveSession}
+            />
 
-          <WorkspaceTabs
-            tabs={tabs}
-            activeTabId={activeTabId}
-            activityTabs={activityTabs}
-            onSelectTab={(id) => {
-              if (interactiveSessionId) selectInteractiveSession("");
-              void handleTabSwitch(id);
-            }}
-            onCloseTab={closeTab}
-            onNewTab={addTab}
-            onReorderTab={reorderTab}
-            interactiveSessions={interactiveSessions}
-            activeInteractiveId={interactiveSessionId}
-            onSelectInteractive={handleFocusInteractiveSession}
-            onCloseInteractive={stopInteractiveSession}
-          />
+            <StatusBar
+              shell={activeTab.shell}
+              branch={branch}
+              changedCount={changedFiles.length}
+              agentStatus={activeAgent ? `${activeAgent.model} · $${activeAgent.cost.toFixed(2)}` : undefined}
+              terminalId={activePtyId}
+              paneCount={visualTerminalPaneTargets.length}
+              rightRailMode={rightRailMode}
+              rightRailWidth={rightPanelWidth}
+            />
 
-          <StatusBar
-            shell={activeTab.shell}
-            branch={branch}
-            changedCount={changedFiles.length}
-            agentStatus={activeAgent ? `${activeAgent.model} · $${activeAgent.cost.toFixed(2)}` : undefined}
-            terminalId={activePtyId}
-          />
-
-          {paletteVisible && (
-            <LazyDialog>
-              <CommandPalette visible onClose={() => setPaletteVisible(false)} commands={commands} />
-            </LazyDialog>
-          )}
-          {settingsVisible && (
-            <LazyDialog>
-              <Settings visible onClose={() => setSettingsVisible(false)} />
-            </LazyDialog>
-          )}
-          {watchdogVisible && (
-            <LazyDialog>
-              <WatchdogDialog visible onClose={() => setWatchdogVisible(false)} />
-            </LazyDialog>
-          )}
-          {aboutVisible && (
-            <LazyDialog>
-              <AboutDialog visible onClose={() => setAboutVisible(false)} />
-            </LazyDialog>
-          )}
-          {helpVisible && (
-            <LazyDialog>
-              <HelpDialog visible onClose={() => setHelpVisible(false)} />
-            </LazyDialog>
-          )}
-          {webInspectorVisible && (
-            <LazyDialog>
-              <WebInspector visible onClose={() => setWebInspectorVisible(false)} />
-            </LazyDialog>
-          )}
-          {prInspectorVisible && (
-            <LazyDialog>
-              <PRInspector
-                visible
-                projectPath={projectPath}
-                onClose={() => setPrInspectorVisible(false)}
-                onStartReview={handleStartAgent}
-              />
-            </LazyDialog>
-          )}
-          {quickOpenMode && (
-            <LazyDialog>
-              <QuickOpen
-                projectPath={projectPath}
-                openFiles={openFiles}
-                onSelectFile={handleFileSelect}
-                onClose={() => setQuickOpenMode(null)}
-                initialMode={quickOpenMode}
-              />
-            </LazyDialog>
-          )}
-          <PromptDialog />
-          <ConfirmDialog />
-          <HandoffDialog />
-          <OrchestraDialog />
-          <HistorySearchDialog onAccept={handleHistoryAccept} defaultCwdPrefix={projectPath || undefined} />
-          <OnboardingOverlay />
-        </div>
-      </ToastProvider>
-    </TooltipProvider>
+            {paletteVisible && (
+              <LazyDialog>
+                <CommandPalette visible onClose={() => setPaletteVisible(false)} commands={commands} />
+              </LazyDialog>
+            )}
+            {settingsVisible && (
+              <LazyDialog>
+                <Settings visible onClose={() => setSettingsVisible(false)} />
+              </LazyDialog>
+            )}
+            {watchdogVisible && (
+              <LazyDialog>
+                <WatchdogDialog visible onClose={() => setWatchdogVisible(false)} />
+              </LazyDialog>
+            )}
+            {aboutVisible && (
+              <LazyDialog>
+                <AboutDialog visible onClose={() => setAboutVisible(false)} />
+              </LazyDialog>
+            )}
+            {helpVisible && (
+              <LazyDialog>
+                <HelpDialog visible onClose={() => setHelpVisible(false)} />
+              </LazyDialog>
+            )}
+            {webInspectorVisible && (
+              <LazyDialog>
+                <WebInspector visible onClose={() => setWebInspectorVisible(false)} />
+              </LazyDialog>
+            )}
+            {prInspectorVisible && (
+              <LazyDialog>
+                <PRInspector
+                  visible
+                  projectPath={projectPath}
+                  onClose={() => setPrInspectorVisible(false)}
+                  onStartReview={handleStartAgent}
+                />
+              </LazyDialog>
+            )}
+            {quickOpenMode && (
+              <LazyDialog>
+                <QuickOpen
+                  projectPath={projectPath}
+                  openFiles={openFiles}
+                  onSelectFile={handleFileSelect}
+                  onClose={() => setQuickOpenMode(null)}
+                  initialMode={quickOpenMode}
+                />
+              </LazyDialog>
+            )}
+            {paneSwitcherVisible && (
+              <LazyDialog>
+                <PaneSwitcherDialog
+                  visible
+                  panes={visualTerminalPaneTargets}
+                  activeTabId={activeTabId}
+                  activeTerminalId={visualActivePtyId}
+                  onFocusPane={handleFocusOperationalPane}
+                  onRestartPane={handlePaneRestart}
+                  onClosePane={handlePaneClose}
+                  onRenamePane={handlePaneRename}
+                  onCyclePaneRole={handlePaneRoleCycle}
+                  onClose={() => setPaneSwitcherVisible(false)}
+                />
+              </LazyDialog>
+            )}
+            <PromptDialog />
+            <ConfirmDialog />
+            <HandoffDialog />
+            <OrchestraDialog />
+            <HistorySearchDialog onAccept={handleHistoryAccept} defaultCwdPrefix={projectPath || undefined} />
+            <OnboardingOverlay />
+          </div>
+        </ToastProvider>
+      </TooltipProvider>
     </MotionConfig>
   );
+}
+
+function paneRegistryEqual(a: PaneSwitcherEntry[], b: PaneSwitcherEntry[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((left, index) => {
+    const right = b[index];
+    return (
+      !!right &&
+      left.paneId === right.paneId &&
+      left.terminalId === right.terminalId &&
+      left.lifecycle === right.lifecycle &&
+      left.index === right.index &&
+      left.shell === right.shell &&
+      left.cwd === right.cwd &&
+      left.title === right.title &&
+      left.role === right.role &&
+      left.label === right.label &&
+      left.route === right.route
+    );
+  });
+}
+
+function findActivePaneIndex(
+  panes: readonly TerminalPaneTarget[],
+  activeTabId: string,
+  activeTerminalId: string | null,
+): number {
+  if (activeTerminalId) {
+    const ptyIndex = panes.findIndex((pane) => pane.terminalId === activeTerminalId);
+    if (ptyIndex >= 0) return ptyIndex;
+  }
+  return panes.findIndex((pane) => pane.tabId === activeTabId);
 }

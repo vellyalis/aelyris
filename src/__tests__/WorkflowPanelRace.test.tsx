@@ -92,7 +92,7 @@ describe("WorkflowPanel empty state", () => {
     const src = getSrc();
 
     expect(src).not.toContain("workflows.length === 0 && running.length === 0) return null");
-    expect(src).toContain("aria-label=\"Workflow panel\"");
+    expect(src).toContain('aria-label="Workflow panel"');
     expect(src).toContain("Visual Builder");
   });
 
@@ -104,5 +104,59 @@ describe("WorkflowPanel empty state", () => {
     expect(src).toContain("collapsible");
     expect(src).toContain("collapsed={!expanded}");
     expect(src).toContain("if (running.length > 0) setExpanded(true)");
+    expect(src).toContain("styles.runningName");
+  });
+});
+
+describe("WorkflowPanel agent completion bridge", () => {
+  it("syncs completed agent sessions back into workflow phases", () => {
+    const src = getSrc();
+
+    expect(src).toContain("sessions?: AgentSession[]");
+    expect(src).toContain("completedPhaseRef");
+    expect(src).toContain('invoke<WorkflowPhaseDoneResult>("workflow_phase_done"');
+    expect(src).toContain("result.waiting_gate");
+    expect(src).toContain("await advancePhaseRef.current?.(workflow.id)");
+  });
+
+  it("routes workflow phases to named terminal panes when target_pane is present", () => {
+    const src = getSrc();
+
+    expect(src).toContain("target_pane: string | null");
+    expect(src).toContain('invoke<number>("send_keys_by_target"');
+    expect(src).toContain('import { normalizeCommandInput } from "../../shared/lib/terminalInput"');
+    expect(src).toContain('import { showConfirm } from "../../shared/ui/ConfirmDialog"');
+    expect(src).toContain("confirmWorkflowPaneTarget(targetPane)");
+    expect(src).toContain('invoke<PaneInfo[]>("list_panes_info")');
+    expect(src).toContain("countPaneTargetMatches");
+    expect(src).toContain("Workflow pane target changed");
+    expect(src).toContain("Send workflow phase to multiple panes");
+    expect(src).toContain("data: normalizeCommandInput(phase.prompt)");
+    expect(src).not.toContain("appendEnterIfNeeded");
+    expect(src).toContain("agentSessionId: paneSessionId(targetPane)");
+    expect(src).toContain("Mark pane phase done");
+  });
+
+  it("passes workflow agent_role metadata into Orchestra tracking for headless agents", () => {
+    const src = getSrc();
+
+    expect(src).toContain("agent_role: string | null");
+    expect(src).toContain("toOrchestraRoleId(phase.agent_role)");
+    expect(src).toContain("meta?: { role?: OrchestraRoleId; handoffFrom?: string }");
+  });
+
+  it("surfaces workflow resume metadata, phase evidence, and decision-aware gates", () => {
+    const src = getSrc();
+
+    expect(src).toContain("resume_point?:");
+    expect(src).toContain("decision_request?:");
+    expect(src).toContain("gate_decision?:");
+    expect(src).toContain("duration_ms?: number | null");
+    expect(src).toContain("artifacts?: unknown[]");
+    expect(src).toContain('invoke<boolean>("workflow_approve_gate_decision"');
+    expect(src).toContain('invoke("workflow_reject_gate_decision"');
+    expect(src).toContain('comment.trim().toLowerCase().startsWith("conditional:")');
+    expect(src).toContain("p.artifacts?.length");
+    expect(src).toContain("wf.resume_point.phase_name");
   });
 });

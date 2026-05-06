@@ -1,8 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import { Check, CheckCircle, Clock, Loader, Play, Workflow, X, XCircle } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import type { OrchestraRoleId } from "../../shared/lib/orchestrator";
 import { isTauriRuntime } from "../../shared/lib/tauriRuntime";
+import { normalizeCommandInput } from "../../shared/lib/terminalInput";
 import { toast } from "../../shared/store/toastStore";
+import type { AgentSession } from "../../shared/types/agent";
+import { showConfirm } from "../../shared/ui/ConfirmDialog";
 import { PanelHeader } from "../../shared/ui/PanelHeader";
 import { showPrompt } from "../../shared/ui/PromptDialog";
 import styles from "./WorkflowPanel.module.css";
@@ -20,7 +24,33 @@ interface PhaseResult {
   name: string;
   status: "pending" | "running" | "waiting_gate" | "passed" | "failed" | "skipped";
   agent_session_id: string | null;
+  target_pane: string | null;
+  agent_role: string | null;
   cost: number;
+  started_at?: string | null;
+  completed_at?: string | null;
+  duration_ms?: number | null;
+  retry_count?: number;
+  artifacts?: unknown[];
+  commands?: unknown[];
+  validation?: unknown[];
+  final_report?: string | null;
+  decision_request?: {
+    kind: string;
+    reason: string;
+    options?: string[];
+    default_option?: string | null;
+    requested_at: string;
+  } | null;
+  gate_decision?: {
+    decision: "approved" | "rejected" | "conditional";
+    comment?: string;
+    conditional?: boolean;
+    decided_at: string;
+  } | null;
+  split_from?: string | null;
+  split_reason?: string | null;
+  blocked_reason?: string | null;
 }
 
 interface WorkflowStatus {
@@ -28,6 +58,15 @@ interface WorkflowStatus {
   workflow_name: string;
   task_title: string;
   current_phase: number;
+  started_at?: string;
+  updated_at?: string;
+  resume_point?: {
+    phase_index: number;
+    phase_name: string;
+    reason: string;
+    recorded_at: string;
+  } | null;
+  final_report?: string | null;
   phases: PhaseResult[];
 }
 
@@ -36,13 +75,25 @@ interface WorkflowPhaseInfo {
   model: string;
   prompt: string;
   max_cost: number;
+  target_pane: string | null;
+  agent_role: string | null;
   has_gate: boolean;
   gate_type: string | null;
 }
 
+interface WorkflowPhaseDoneResult {
+  done: boolean;
+  waiting_gate: boolean;
+}
+
 interface WorkflowPanelProps {
   projectPath: string;
-  onStartAgent?: (prompt: string, model?: string) => Promise<string | undefined>;
+  sessions?: AgentSession[];
+  onStartAgent?: (
+    prompt: string,
+    model?: string,
+    meta?: { role?: OrchestraRoleId; handoffFrom?: string },
+  ) => Promise<string | undefined>;
 }
 
 const STATUS_ICON: Record<string, React.ReactNode> = {
@@ -54,7 +105,76 @@ const STATUS_ICON: Record<string, React.ReactNode> = {
   skipped: <Clock size={12} className={styles.iconMuted} />,
 };
 
-export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps) {
+const ORCHESTRA_ROLE_IDS: ReadonlySet<string> = new Set(["implementer", "tester", "reviewer", "documenter"]);
+
+function toOrchestraRoleId(value: string | null | undefined): OrchestraRoleId | undefined {
+  const role = value?.trim();
+  if (!role || !ORCHESTRA_ROLE_IDS.has(role)) return undefined;
+  return role as OrchestraRoleId;
+}
+
+function paneSessionId(targetPane: string): string {
+  return `pane:${targetPane}`;
+}
+
+interface PaneInfo {
+  terminal_id: string;
+  name: string;
+  role: string;
+}
+
+function paneTargetRole(target: string): string | null {
+  const trimmed = target.trim();
+  const role = trimmed.startsWith("@") ? trimmed.slice(1) : trimmed.startsWith("role:") ? trimmed.slice(5) : trimmed;
+  return role.trim() || null;
+}
+
+function countPaneTargetMatches(panes: PaneInfo[], target: string): number {
+  const trimmed = target.trim();
+  if (!trimmed) return 0;
+  const normalized = trimmed.toLowerCase();
+  if (panes.some((pane) => pane.terminal_id.toLowerCase() === normalized)) return 1;
+  if (!trimmed.startsWith("@") && !trimmed.startsWith("role:")) {
+    const nameMatches = panes.filter((pane) => pane.name.trim().toLowerCase() === normalized).length;
+    if (nameMatches > 0) return nameMatches;
+  }
+  const role = paneTargetRole(trimmed)?.toLowerCase();
+  if (!role) return 0;
+  return panes.filter((pane) => pane.role.trim().toLowerCase() === role).length;
+}
+
+function formatDuration(ms: number | null | undefined): string | null {
+  if (ms == null) return null;
+  if (ms < 1000) return `${ms}ms`;
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
+
+async function confirmWorkflowPaneTarget(target: string): Promise<boolean> {
+  const panes = await invoke<PaneInfo[]>("list_panes_info").catch(() => [] as PaneInfo[]);
+  const targetCount = countPaneTargetMatches(panes, target);
+  if (targetCount < 1) {
+    toast.error("Workflow pane target changed", `No live pane matches "${target}".`);
+    return false;
+  }
+  if (targetCount <= 1) return true;
+  const ok = await showConfirm({
+    title: "Send workflow phase to multiple panes",
+    description: `Target "${target}" currently resolves to ${targetCount} live panes.`,
+    confirmLabel: `Send to ${targetCount} panes`,
+    cancelLabel: "Review first",
+  });
+  if (!ok) return false;
+  const refreshed = await invoke<PaneInfo[]>("list_panes_info").catch(() => [] as PaneInfo[]);
+  if (countPaneTargetMatches(refreshed, target) < 1) {
+    toast.error("Workflow pane target changed", `No live pane matches "${target}".`);
+    return false;
+  }
+  return true;
+}
+
+export function WorkflowPanel({ projectPath, sessions = [], onStartAgent }: WorkflowPanelProps) {
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
   const [running, setRunning] = useState<WorkflowStatus[]>([]);
   const [expanded, setExpanded] = useState(false);
@@ -170,16 +290,50 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
   }, []);
 
   const advancingRef = useRef(new Set<string>());
+  const completedPhaseRef = useRef(new Set<string>());
+
+  const handlePhaseDoneResult = useCallback(
+    async (workflow: WorkflowStatus, phaseName: string, result: WorkflowPhaseDoneResult) => {
+      if (result.done) {
+        toast.success("Workflow completed", workflow.task_title);
+        return;
+      }
+      if (result.waiting_gate) {
+        toast.info("Phase ready for review", phaseName);
+        return;
+      }
+      toast.info("Phase passed", `${phaseName} → next phase`);
+      await advancePhaseRef.current?.(workflow.id);
+    },
+    [],
+  );
 
   const advancePhase = useCallback(
     async (workflowId: string) => {
-      if (!onStartAgent) return;
       // Prevent double execution if approve is clicked rapidly
       if (advancingRef.current.has(workflowId)) return;
       advancingRef.current.add(workflowId);
       try {
         const phase = await invoke<WorkflowPhaseInfo>("workflow_current_phase", { workflowId });
-        const sessionId = await onStartAgent(phase.prompt, phase.model);
+        const targetPane = phase.target_pane?.trim();
+        if (targetPane) {
+          if (!(await confirmWorkflowPaneTarget(targetPane))) return;
+          const sent = await invoke<number>("send_keys_by_target", {
+            target: targetPane,
+            data: normalizeCommandInput(phase.prompt),
+          });
+          await invoke("workflow_set_agent", {
+            workflowId,
+            agentSessionId: paneSessionId(targetPane),
+          });
+          toast.info("Phase sent to pane", `${phase.name} → ${targetPane}${sent > 1 ? ` (${sent} panes)` : ""}`);
+          return;
+        }
+
+        if (!onStartAgent) return;
+        const sessionId = await onStartAgent(phase.prompt, phase.model, {
+          role: toOrchestraRoleId(phase.agent_role),
+        });
         if (sessionId) {
           await invoke("workflow_set_agent", { workflowId, agentSessionId: sessionId });
         }
@@ -191,6 +345,49 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
     },
     [onStartAgent],
   );
+  const advancePhaseRef = useRef(advancePhase);
+  advancePhaseRef.current = advancePhase;
+
+  const handleManualPhaseDone = useCallback(
+    async (workflow: WorkflowStatus, phaseName: string) => {
+      try {
+        const result = await invoke<WorkflowPhaseDoneResult>("workflow_phase_done", {
+          workflowId: workflow.id,
+          cost: 0,
+        });
+        await handlePhaseDoneResult(workflow, phaseName, result);
+      } catch (err) {
+        toast.error("Phase completion failed", String(err));
+      }
+    },
+    [handlePhaseDoneResult],
+  );
+
+  useEffect(() => {
+    if (!onStartAgent || running.length === 0 || sessions.length === 0) return;
+    const sessionsById = new Map(sessions.map((session) => [session.id, session]));
+
+    for (const workflow of running) {
+      const phase = workflow.phases.find((candidate) => candidate.status === "running" && candidate.agent_session_id);
+      if (!phase?.agent_session_id) continue;
+      const session = sessionsById.get(phase.agent_session_id);
+      if (session?.status !== "done") continue;
+
+      const phaseKey = `${workflow.id}:${phase.name}:${phase.agent_session_id}`;
+      if (completedPhaseRef.current.has(phaseKey)) continue;
+      completedPhaseRef.current.add(phaseKey);
+
+      invoke<WorkflowPhaseDoneResult>("workflow_phase_done", {
+        workflowId: workflow.id,
+        cost: session.cost,
+      })
+        .then((result) => handlePhaseDoneResult(workflow, phase.name, result))
+        .catch((err) => {
+          completedPhaseRef.current.delete(phaseKey);
+          toast.error("Workflow sync failed", String(err));
+        });
+    }
+  }, [handlePhaseDoneResult, onStartAgent, running, sessions]);
 
   const handleStart = useCallback(
     async (wf: WorkflowSummary, taskTitle?: string) => {
@@ -220,7 +417,12 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
       });
       if (comment === null) return; // cancelled
       try {
-        const done = await invoke<boolean>("workflow_approve_gate", { workflowId });
+        const conditional = comment.trim().toLowerCase().startsWith("conditional:");
+        const done = await invoke<boolean>("workflow_approve_gate_decision", {
+          workflowId,
+          comment,
+          conditional,
+        });
         if (done) {
           toast.success("Workflow completed", "All phases passed");
         } else {
@@ -243,7 +445,7 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
     if (confirmed !== "reject") return;
 
     try {
-      await invoke("workflow_reject_gate", { workflowId });
+      await invoke("workflow_reject_gate_decision", { workflowId, comment: confirmed });
       setRunning((prev) => prev.filter((wf) => wf.id !== workflowId));
       toast.warning("Workflow rejected", "Workflow has been stopped");
       invoke("workflow_remove", { workflowId }).catch(() => {});
@@ -275,13 +477,25 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
             return (
               <div key={wf.id} className={styles.runningCard}>
                 <div className={styles.runningTitle}>
-                  {wf.task_title}
+                  <span className={styles.runningName}>{wf.task_title}</span>
                   {totalCost > 0 && <span className={styles.totalCost}>${totalCost.toFixed(2)}</span>}
                 </div>
+                {wf.resume_point && (
+                  <div className={styles.phaseDetail}>
+                    <div className={styles.phaseDetailRow}>
+                      <span>Resume:</span>{" "}
+                      <span className={styles.phaseDetailMono}>{wf.resume_point.phase_name}</span>
+                    </div>
+                    <div className={styles.phaseDetailRow}>
+                      <span>Reason:</span> <span>{wf.resume_point.reason}</span>
+                    </div>
+                  </div>
+                )}
                 <div className={styles.stepBar}>
                   {wf.phases.map((p, i) => {
                     const phaseKey = `${wf.id}:${p.name}`;
                     const isExpanded = expandedPhase === phaseKey;
+                    const duration = formatDuration(p.duration_ms);
                     return (
                       <div key={p.name} className={styles.stepWrapper}>
                         <div className={styles.stepRow}>
@@ -295,8 +509,24 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
                           >
                             {STATUS_ICON[p.status]}
                             <span className={styles.stepName}>{p.name}</span>
+                            {p.target_pane && <span className={styles.stepTarget}>{p.target_pane}</span>}
+                            {(p.retry_count ?? 0) > 0 && <span className={styles.stepCost}>r{p.retry_count}</span>}
+                            {duration && <span className={styles.stepCost}>{duration}</span>}
                             {p.cost > 0 && <span className={styles.stepCost}>${p.cost.toFixed(2)}</span>}
                           </button>
+                          {p.status === "running" && p.agent_session_id?.startsWith("pane:") && (
+                            <span className={styles.gateActions}>
+                              <button
+                                type="button"
+                                className={styles.approveBtn}
+                                onClick={() => handleManualPhaseDone(wf, p.name)}
+                                title="Mark pane phase done"
+                                aria-label={`Mark ${p.name} done`}
+                              >
+                                <Check size={12} strokeWidth={2.25} aria-hidden="true" />
+                              </button>
+                            </span>
+                          )}
                           {p.status === "waiting_gate" && (
                             <span className={styles.gateActions}>
                               <button
@@ -329,10 +559,60 @@ export function WorkflowPanel({ projectPath, onStartAgent }: WorkflowPanelProps)
                             <div className={styles.phaseDetailRow}>
                               <span>Cost:</span> <span>${p.cost.toFixed(4)}</span>
                             </div>
+                            {(p.retry_count ?? 0) > 0 && (
+                              <div className={styles.phaseDetailRow}>
+                                <span>Retries:</span> <span>{p.retry_count}</span>
+                              </div>
+                            )}
+                            {duration && (
+                              <div className={styles.phaseDetailRow}>
+                                <span>Duration:</span> <span>{duration}</span>
+                              </div>
+                            )}
                             {p.agent_session_id && (
                               <div className={styles.phaseDetailRow}>
                                 <span>Agent:</span>{" "}
                                 <span className={styles.phaseDetailMono}>{p.agent_session_id.slice(0, 12)}</span>
+                              </div>
+                            )}
+                            {p.target_pane && (
+                              <div className={styles.phaseDetailRow}>
+                                <span>Target:</span> <span className={styles.phaseDetailMono}>{p.target_pane}</span>
+                              </div>
+                            )}
+                            {p.agent_role && (
+                              <div className={styles.phaseDetailRow}>
+                                <span>Role:</span> <span>{p.agent_role}</span>
+                              </div>
+                            )}
+                            {p.decision_request && (
+                              <div className={styles.phaseDetailRow}>
+                                <span>Decision:</span>{" "}
+                                <span className={styles.phaseDetailMono}>{p.decision_request.kind}</span>
+                              </div>
+                            )}
+                            {p.gate_decision && (
+                              <div className={styles.phaseDetailRow}>
+                                <span>Gate:</span> <span>{p.gate_decision.decision}</span>
+                              </div>
+                            )}
+                            {p.split_from && (
+                              <div className={styles.phaseDetailRow}>
+                                <span>Split from:</span> <span className={styles.phaseDetailMono}>{p.split_from}</span>
+                              </div>
+                            )}
+                            {p.blocked_reason && (
+                              <div className={styles.phaseDetailRow}>
+                                <span>Reason:</span> <span>{p.blocked_reason}</span>
+                              </div>
+                            )}
+                            {Boolean((p.artifacts?.length ?? 0) + (p.commands?.length ?? 0) + (p.validation?.length ?? 0)) && (
+                              <div className={styles.phaseDetailRow}>
+                                <span>Evidence:</span>{" "}
+                                <span>
+                                  {p.artifacts?.length ?? 0} artifacts / {p.commands?.length ?? 0} commands /{" "}
+                                  {p.validation?.length ?? 0} validation
+                                </span>
                               </div>
                             )}
                           </div>
