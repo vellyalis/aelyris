@@ -81,4 +81,3 @@ Scope: `C:\Users\owner\.codex` longrun automation.
 - The longrun parent PID is still a hidden-runner wrapper. Dashboard health now records server PID correctly, but worker-process identity for the auto-loop can still be improved further with child PID discovery.
 - Duplicate dashboards for unrelated/global workspaces may still exist outside this Aether workspace. This pass fixed this workspace's canonical dashboard and added stronger primitives, but a global cleanup command/registry lock should still be added.
 - `/state` is fast in the live smoke, but a future hard latency-budget selftest with very large logs would make the performance guarantee stronger.
-

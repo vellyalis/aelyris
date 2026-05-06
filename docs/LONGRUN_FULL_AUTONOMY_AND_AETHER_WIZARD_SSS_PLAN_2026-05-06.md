@@ -1,7 +1,7 @@
 # Longrun Full Autonomy + Aether Wizard S+++ Plan
 
-Date: 2026-05-06  
-Workspace: `C:\Users\owner\Aether_Terminal`  
+Date: 2026-05-06
+Workspace: `C:\Users\owner\Aether_Terminal`
 Related plans:
 - `docs/LONGRUN_FULL_AUTONOMY_SPP_PLAN_2026-05-05.md`
 - `docs/AI_WORKSTATION_98_IMPLEMENTATION_PLAN_2026-05-02.md`

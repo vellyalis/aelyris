@@ -1,6 +1,6 @@
 # Aether Terminal Quality Audit
 
-Date: 2026-05-02  
+Date: 2026-05-02
 Scope: Aether Terminal app, AI workstation surfaces, terminal/IME reliability, pane/process/session model, longrun/ops dashboard, release and verification system.
 
 ## Executive Score
