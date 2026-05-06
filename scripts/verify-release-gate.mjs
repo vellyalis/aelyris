@@ -1,0 +1,232 @@
+import { spawn } from "node:child_process";
+import { access, readFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const cargo = process.platform === "win32" ? "cargo.exe" : "cargo";
+const args = new Set(process.argv.slice(2));
+const withIme = args.has("--with-ime") || process.env.AETHER_RELEASE_WITH_IME === "1";
+const preflightOnly = args.has("--preflight") || process.env.AETHER_RELEASE_PREFLIGHT === "1";
+
+const focusedVitestSuites = [
+  "src/__tests__/backendSilentBugs.test.ts",
+  "src/__tests__/useCanvasIME.test.ts",
+  "src/__tests__/IMEInputBar.test.tsx",
+  "src/__tests__/TerminalCanvasInput.test.tsx",
+  "src/__tests__/PaneSwitcherDialog.test.tsx",
+  "src/__tests__/ProcessManagerPanel.test.tsx",
+  "src/__tests__/LivePanesPanel.test.tsx",
+  "src/__tests__/AuditTimelinePanel.test.tsx",
+  "src/__tests__/ReliabilityPanel.test.tsx",
+  "src/__tests__/ContextPanel.test.tsx",
+  "src/__tests__/WorkstationPulse.test.tsx",
+  "src/__tests__/RunGraphPanel.test.tsx",
+  "src/__tests__/ToolLedgerPanel.test.tsx",
+];
+
+const syntaxCheckedScripts = [
+  "scripts/verify-dist-artifacts.mjs",
+  "scripts/verify-ime.mjs",
+  "scripts/release-doctor.mjs",
+  "scripts/verify-release-gate.mjs",
+];
+
+const requiredReleaseFiles = [
+  "docs/release-build-playbook.md",
+  "src-tauri/tauri.conf.json",
+  "src-tauri/tauri.dist.conf.json",
+  "src-tauri/Cargo.toml",
+  "src-tauri/Cargo.lock",
+];
+
+const requiredPackageScripts = {
+  "tauri:build:dist": "tauri build --config src-tauri/tauri.dist.conf.json --no-sign",
+  "verify:dist": "node scripts/verify-dist-artifacts.mjs",
+  "verify:release:doctor": "node scripts/release-doctor.mjs",
+  "verify:release:preflight": "node scripts/verify-release-gate.mjs --preflight",
+  "verify:release": "node scripts/verify-release-gate.mjs",
+  "verify:release:ime": "node scripts/verify-release-gate.mjs --with-ime",
+};
+
+function formatCommand(command, commandArgs) {
+  return [command, ...commandArgs].join(" ");
+}
+
+function describeSpawnError(label, command, commandArgs, error) {
+  const commandLine = formatCommand(command, commandArgs);
+  const details = [`${label} could not start`, `command: ${commandLine}`, `error: ${error.message}`];
+
+  if (error.code === "EPERM") {
+    details.push(
+      "hint: Windows blocked process creation. Check endpoint protection, PowerShell language-mode policy, and whether pnpm/esbuild/vitest binaries are quarantined.",
+    );
+  }
+
+  return new Error(details.join("\n"));
+}
+
+function describeExitFailure(label, code) {
+  const details = [`${label} failed with exit code ${code}`];
+
+  if (label === "Focused workstation Vitest") {
+    details.push(
+      "hint: If the log shows `failed to load config` with `Error: spawn EPERM`, Vite could not start esbuild. Check endpoint protection, PowerShell language-mode policy, and quarantined pnpm/esbuild/vitest binaries before treating this as a test assertion failure.",
+    );
+  }
+
+  if (label === "Rust backend check") {
+    details.push(
+      "hint: If this fails during the Windows link step with `LNK1104` on a temp `lnk*.tmp` file, retry after endpoint protection or temp-file policy stops blocking the linker.",
+    );
+  }
+
+  return new Error(details.join("\n"));
+}
+
+async function fileExists(relativePath) {
+  try {
+    await access(path.join(repoRoot, relativePath));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function readJson(relativePath) {
+  return JSON.parse(await readFile(path.join(repoRoot, relativePath), "utf8"));
+}
+
+async function run(label, command, commandArgs) {
+  const spawnCommand = process.platform === "win32" && command.endsWith(".cmd") ? "cmd.exe" : command;
+  const spawnArgs =
+    process.platform === "win32" && command.endsWith(".cmd")
+      ? ["/d", "/s", "/c", command, ...commandArgs]
+      : commandArgs;
+  console.log(`\n[release] ${label}`);
+  console.log(`[release] $ ${formatCommand(command, commandArgs)}`);
+  const started = Date.now();
+  await new Promise((resolve, reject) => {
+    const child = spawn(spawnCommand, spawnArgs, {
+      cwd: repoRoot,
+      stdio: "inherit",
+      shell: false,
+      windowsHide: true,
+    });
+    child.on("error", (error) => {
+      reject(describeSpawnError(label, command, commandArgs, error));
+    });
+    child.on("exit", (code) => {
+      if (code === 0) resolve();
+      else reject(describeExitFailure(label, code));
+    });
+  });
+  const seconds = ((Date.now() - started) / 1000).toFixed(1);
+  console.log(`[release] ${label} passed in ${seconds}s`);
+}
+
+async function verifyReleaseContract() {
+  const failures = [];
+  const missingFiles = [];
+  for (const file of requiredReleaseFiles) {
+    if (!(await fileExists(file))) missingFiles.push(file);
+  }
+  if (missingFiles.length > 0) {
+    failures.push("[release] Missing required release files:");
+    for (const file of missingFiles) failures.push(`  - ${file}`);
+  }
+
+  const pkg = await readJson("package.json");
+  const tauriConfig = await readJson("src-tauri/tauri.conf.json");
+  const tauriDistConfig = await readJson("src-tauri/tauri.dist.conf.json");
+
+  for (const [script, expected] of Object.entries(requiredPackageScripts)) {
+    if (pkg.scripts?.[script] !== expected) {
+      failures.push(
+        `[release] package.json script ${script} mismatch: expected ${JSON.stringify(expected)}, got ${JSON.stringify(
+          pkg.scripts?.[script],
+        )}`,
+      );
+    }
+  }
+
+  if (pkg.version !== tauriConfig.version) {
+    failures.push(
+      `[release] package.json version (${pkg.version}) must match src-tauri/tauri.conf.json version (${tauriConfig.version})`,
+    );
+  }
+  if (tauriConfig.productName !== "Aether Terminal") {
+    failures.push(
+      `[release] Tauri productName must be "Aether Terminal", got ${JSON.stringify(tauriConfig.productName)}`,
+    );
+  }
+  if (tauriConfig.bundle?.active !== true) {
+    failures.push(`[release] Tauri bundle.active must be true, got ${JSON.stringify(tauriConfig.bundle?.active)}`);
+  }
+  if (tauriDistConfig.bundle?.createUpdaterArtifacts !== false) {
+    failures.push(
+      `[release] src-tauri/tauri.dist.conf.json must disable updater artifacts, got ${JSON.stringify(
+        tauriDistConfig.bundle?.createUpdaterArtifacts,
+      )}`,
+    );
+  }
+
+  const targets = tauriConfig.bundle?.targets;
+  const hasWindowsInstallerTarget =
+    targets === "all" || (Array.isArray(targets) && (targets.includes("nsis") || targets.includes("msi")));
+  if (!hasWindowsInstallerTarget) {
+    failures.push(`[release] Tauri bundle targets must include Windows installers, got ${JSON.stringify(targets)}`);
+  }
+
+  if (failures.length > 0) {
+    console.error(failures.join("\n"));
+    process.exit(1);
+  }
+}
+
+async function main() {
+  const missingSuites = [];
+  for (const suite of focusedVitestSuites) {
+    if (!(await fileExists(suite))) missingSuites.push(suite);
+  }
+
+  if (missingSuites.length > 0) {
+    console.error("[release] Missing focused test suites:");
+    for (const suite of missingSuites) console.error(`  - ${suite}`);
+    process.exit(1);
+  }
+
+  await verifyReleaseContract();
+
+  for (const script of syntaxCheckedScripts) {
+    await run(`Node syntax check: ${script}`, "node", ["--check", script]);
+  }
+  await run("Release Doctor", pnpm, ["verify:release:doctor"]);
+
+  if (preflightOnly) {
+    console.log("\n[release] Preflight passed.");
+    console.log("[release] Run `pnpm.cmd verify:release` for the full TypeScript, Vitest, and artifact gate.");
+    return;
+  }
+
+  await run("TypeScript", pnpm, ["exec", "tsc", "--noEmit"]);
+  await run("Rust backend check", cargo, ["check", "--manifest-path", "src-tauri/Cargo.toml", "--lib"]);
+  await run("Focused workstation Vitest", pnpm, ["exec", "vitest", "run", ...focusedVitestSuites, "--reporter=dot"]);
+
+  await run("Distribution artifacts", pnpm, ["verify:dist"]);
+
+  if (withIme) {
+    await run("Native IME CDP verification", pnpm, ["verify:ime"]);
+  } else {
+    console.log("\n[release] Native IME CDP verification skipped.");
+    console.log("[release] Run `pnpm.cmd verify:release:ime` with Tauri dev/CDP running before a human handoff build.");
+  }
+
+  console.log("\n[release] Release gate passed.");
+}
+
+main().catch((error) => {
+  console.error(`\n[release] ${error.message}`);
+  process.exit(1);
+});

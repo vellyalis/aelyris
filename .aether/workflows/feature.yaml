@@ -3,6 +3,7 @@ description: Plan → Implement (TDD) → Review の3段パイプライン
 
 phases:
   - name: plan
+    agent_role: implementer
     agent:
       model: claude-opus
       prompt: |
@@ -15,6 +16,7 @@ phases:
 
   - name: implement
     depends_on: [plan]
+    agent_role: implementer
     agent:
       model: claude-sonnet
       prompt: |
@@ -27,6 +29,7 @@ phases:
 
   - name: review
     depends_on: [implement]
+    agent_role: reviewer
     agent:
       model: claude-opus
       prompt: |

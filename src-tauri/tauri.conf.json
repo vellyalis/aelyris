@@ -52,7 +52,7 @@
       "endpoints": [
         "https://updates.aether.invalid/{{target}}/{{current_version}}"
       ],
-      "pubkey": "REPLACE_VIA_SCRIPTS_SETUP_UPDATER_KEYS",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI1MTE0REZDREY1MDAzQ0QKUldUTkExRGYvRTBSdGJOc3BmMDkvcVZnallISkE4QTZUOEc5TE9RUXVJRWgxNVVoU1VwYi8zelYK",
       "windows": {
         "installMode": "passive"
       }

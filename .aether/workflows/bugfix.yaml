@@ -3,6 +3,7 @@ description: Reproduce → Fix → Verify の3段パイプライン
 
 phases:
   - name: reproduce
+    agent_role: tester
     agent:
       model: claude-sonnet
       prompt: |
@@ -15,6 +16,7 @@ phases:
 
   - name: fix
     depends_on: [reproduce]
+    agent_role: implementer
     agent:
       model: claude-sonnet
       prompt: |
@@ -27,6 +29,7 @@ phases:
 
   - name: verify
     depends_on: [fix]
+    agent_role: tester
     agent:
       model: claude-sonnet
       prompt: |

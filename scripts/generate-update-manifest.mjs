@@ -56,18 +56,24 @@ async function readBundleFile(filePath) {
   return { signature };
 }
 
-async function findInstaller(dir, extensions) {
+async function findInstaller(dir, extensions, version) {
   if (!existsSync(dir)) return null;
   const entries = await readdir(dir);
+  const candidates = [];
   for (const entry of entries) {
     const lower = entry.toLowerCase();
     if (extensions.some((ext) => lower.endsWith(ext))) {
       const full = join(dir, entry);
       const s = await stat(full);
-      if (s.isFile()) return full;
+      if (s.isFile()) candidates.push({ entry, full, mtimeMs: s.mtimeMs });
     }
   }
-  return null;
+  const versionPattern = new RegExp(`(^|[_ -])${version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([_ -]|\\.)`);
+  return (
+    candidates
+      .filter(({ entry }) => versionPattern.test(entry))
+      .sort((a, b) => b.mtimeMs - a.mtimeMs)[0]?.full ?? null
+  );
 }
 
 function bundleUrl(downloadBase, filePath) {
@@ -97,10 +103,10 @@ async function main() {
   // MSI is included alongside for users who still want it, but NSIS is
   // the entry written into the manifest.
   const nsisDir = join(bundleRoot, "nsis");
-  const nsisInstaller = await findInstaller(nsisDir, [".exe"]);
+  const nsisInstaller = await findInstaller(nsisDir, [".exe"], version);
   if (!nsisInstaller) {
     console.error(
-      `error: no NSIS installer found under ${nsisDir}.\n` +
+      `error: no NSIS installer for version ${version} found under ${nsisDir}.\n` +
         `Run \`pnpm tauri build\` first; ensure tauri.conf.json's bundle.targets includes "nsis".`,
     );
     process.exit(1);
