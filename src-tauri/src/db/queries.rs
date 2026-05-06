@@ -1,5 +1,6 @@
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::path::Path;
 use uuid::Uuid;
@@ -1509,14 +1510,12 @@ fn redact_audit_string(value: &str) -> serde_json::Value {
 }
 
 fn audit_journal_hash(parts: &[String]) -> String {
-    let mut hash = 0xcbf29ce484222325u64;
+    let mut hash = Sha256::new();
     for part in parts {
-        for byte in part.as_bytes().iter().copied().chain(std::iter::once(0)) {
-            hash ^= byte as u64;
-            hash = hash.wrapping_mul(0x100000001b3);
-        }
+        hash.update(part.as_bytes());
+        hash.update([0]);
     }
-    format!("fnv1a64:{hash:016x}")
+    format!("sha256:{:x}", hash.finalize())
 }
 
 fn build_audit_snapshot_json(
@@ -1990,7 +1989,8 @@ mod tests {
             first.redacted_payload_json["nested"]["apiKey"],
             "[REDACTED]"
         );
-        assert!(first.hash.starts_with("fnv1a64:"));
+        assert!(first.hash.starts_with("sha256:"));
+        assert_eq!(first.hash.len(), "sha256:".len() + 64);
 
         let listed = db
             .list_audit_journal_events(&AuditJournalFilter {

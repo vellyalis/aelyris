@@ -12,7 +12,7 @@ use tokio::sync::broadcast;
 /// Real ConPTY shells can be slow to produce the first post-startup bytes on
 /// loaded Windows machines, especially when the full Rust and frontend suites
 /// are running at the same time.
-pub const DEFAULT_TIMEOUT_MS: u64 = 15_000;
+pub const DEFAULT_TIMEOUT_MS: u64 = 30_000;
 
 /// Spawn a PTY, send input, collect output until timeout or expected string found.
 ///
@@ -36,7 +36,7 @@ pub fn spawn_and_exec(
     // PowerShell can take longer than cmd.exe to reach an input-ready prompt,
     // especially on cold CI/dev machines.
     let startup_delay_ms = match shell {
-        ShellType::PowerShell => 1_200,
+        ShellType::PowerShell => 3_000,
         _ => 300,
     };
     std::thread::sleep(Duration::from_millis(startup_delay_ms));
