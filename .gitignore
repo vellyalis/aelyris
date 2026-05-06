@@ -1,10 +1,12 @@
 # Dependencies
 node_modules/
 target/
+target-*/
 
 # Build output
 dist/
 src-tauri/target/
+src-tauri/target-*/
 
 # Environment
 .env
@@ -37,6 +39,11 @@ src-tauri/target/
 # Cache
 .turbo/
 .cache/
+.codex-auto/
+.codex-ui-*.png
+
+# Local Codex handoff state
+AGENT_STATE.md
 
 # Playwright
 test-results/
