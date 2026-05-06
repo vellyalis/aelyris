@@ -37,7 +37,13 @@ fn test_large_output() {
 
     // Generate ~10KB of output via CMD for loop
     let cmd = "for /L %i in (1,1,100) do @echo LINE_%i_PADDING_DATA_HERE\r\n";
-    let result = spawn_and_exec(&mgr, &ShellType::Cmd, Some(cmd), 10000, Some("LINE_100_"));
+    let result = spawn_and_exec(
+        &mgr,
+        &ShellType::Cmd,
+        Some(cmd),
+        DEFAULT_TIMEOUT_MS * 2,
+        Some("LINE_100_"),
+    );
 
     match result {
         Ok((_, output)) => {

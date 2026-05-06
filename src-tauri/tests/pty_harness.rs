@@ -7,8 +7,12 @@ use aether_terminal_lib::pty::{PtyManager, ShellType};
 use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
 
-/// Default timeout for PTY output reads
-pub const DEFAULT_TIMEOUT_MS: u64 = 5000;
+/// Default timeout for PTY output reads.
+///
+/// Real ConPTY shells can be slow to produce the first post-startup bytes on
+/// loaded Windows machines, especially when the full Rust and frontend suites
+/// are running at the same time.
+pub const DEFAULT_TIMEOUT_MS: u64 = 15_000;
 
 /// Spawn a PTY, send input, collect output until timeout or expected string found.
 ///
