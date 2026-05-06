@@ -41,7 +41,9 @@ pub struct NativeTerminalRegistry {
 
 impl NativeTerminalRegistry {
     pub fn new() -> Self {
-        Self { sessions: Mutex::new(HashMap::new()) }
+        Self {
+            sessions: Mutex::new(HashMap::new()),
+        }
     }
 
     /// Create a session for `id`. Idempotent: if a session already exists
@@ -88,11 +90,17 @@ impl NativeTerminalRegistry {
     /// for "jump to prompt" to feel responsive.
     pub fn advance(&self, id: &str, bytes: &[u8]) -> AdvanceResult {
         let Ok(mut guard) = self.lock() else {
-            log::warn!("native advance: registry mutex poisoned, dropping {} bytes", bytes.len());
+            log::warn!(
+                "native advance: registry mutex poisoned, dropping {} bytes",
+                bytes.len()
+            );
             return AdvanceResult::default();
         };
         let Some(session) = guard.get_mut(id) else {
-            log::debug!("native advance: unknown session id={id}, dropping {} bytes", bytes.len());
+            log::debug!(
+                "native advance: unknown session id={id}, dropping {} bytes",
+                bytes.len()
+            );
             return AdvanceResult::default();
         };
         let new_marks = session.engine.advance(bytes);
@@ -106,14 +114,23 @@ impl NativeTerminalRegistry {
 
         let now = Instant::now();
         if now.duration_since(session.last_emit_at) < COALESCE_INTERVAL {
-            return AdvanceResult { diff: None, new_marks };
+            return AdvanceResult {
+                diff: None,
+                new_marks,
+            };
         }
         let diff = session.tracker.diff(&session.engine);
         if diff.is_noop() {
-            return AdvanceResult { diff: None, new_marks };
+            return AdvanceResult {
+                diff: None,
+                new_marks,
+            };
         }
         session.last_emit_at = now;
-        AdvanceResult { diff: Some(diff), new_marks }
+        AdvanceResult {
+            diff: Some(diff),
+            new_marks,
+        }
     }
 
     /// Full history of prompt marks retained for the given session.
@@ -193,7 +210,10 @@ impl NativeTerminalRegistry {
         let Some(session) = guard.get_mut(id) else {
             return Ok(None);
         };
-        session.engine.resize(cols as usize, rows as usize).map_err(|e| e.to_string())?;
+        session
+            .engine
+            .resize(cols as usize, rows as usize)
+            .map_err(|e| e.to_string())?;
         // Resize forces a full frame via the tracker's dimension check.
         let diff = session.tracker.diff(&session.engine);
         session.last_emit_at = Instant::now();
@@ -250,8 +270,8 @@ impl NativeTerminalRegistry {
         // handle without a buffer adapter. The decode path on the
         // frontend runs once per image (cached as `ImageBitmap`) so
         // the 33% overhead is paid once, not per frame.
-        use base64::Engine;
         use base64::engine::general_purpose::STANDARD as B64;
+        use base64::Engine;
         Some(ImageDataResponse {
             format,
             data_base64: B64.encode(bytes_ref),
@@ -282,7 +302,9 @@ impl NativeTerminalRegistry {
     }
 
     fn lock(&self) -> Result<std::sync::MutexGuard<'_, HashMap<String, NativeSession>>, String> {
-        self.sessions.lock().map_err(|_| "native registry mutex poisoned".to_string())
+        self.sessions
+            .lock()
+            .map_err(|_| "native registry mutex poisoned".to_string())
     }
 }
 
@@ -358,7 +380,7 @@ mod tests {
         reg.create("t", 10, 2).expect("create");
         assert!(reg.advance("t", b"a").diff.is_some());
         assert!(reg.advance("t", b"b").diff.is_none()); // coalesced
-        // Flush should see the pending "b" and emit it.
+                                                        // Flush should see the pending "b" and emit it.
         let diff = reg.flush("t").expect("flush emits pending");
         assert!(!diff.full);
         assert_eq!(diff.rows.len(), 1);
@@ -440,8 +462,8 @@ mod tests {
 
     #[test]
     fn image_metrics_reflects_engine_image_store() {
-        use base64::Engine;
         use base64::engine::general_purpose::STANDARD as B64;
+        use base64::Engine;
 
         let reg = NativeTerminalRegistry::new();
         reg.create("t", 80, 24).expect("create");
@@ -456,9 +478,7 @@ mod tests {
         // tiny — the metric only needs `count > 0` and `bytes_used > 0`.
         let raw = b"\x89PNG\r\n\x1a\nXYZ";
         let b64 = B64.encode(raw);
-        let frame = format!(
-            "\x1b]1338;B;1;png;1;1\x07\x1b]1338;D;1;0;{b64}\x07\x1b]1338;E;1\x07"
-        );
+        let frame = format!("\x1b]1338;B;1;png;1;1\x07\x1b]1338;D;1;0;{b64}\x07\x1b]1338;E;1\x07");
         let _ = reg.advance("t", frame.as_bytes());
 
         let m1 = reg.image_metrics("t").expect("session exists");

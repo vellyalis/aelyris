@@ -44,7 +44,11 @@ fn client() -> reqwest::Client {
 async fn missing_bearer_returns_401() {
     let (base, state, join) = spawn_server(AuthConfig::with_token("s3cret")).await;
 
-    let res = client().get(format!("{}/sessions", base)).send().await.unwrap();
+    let res = client()
+        .get(format!("{}/sessions", base))
+        .send()
+        .await
+        .unwrap();
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 
     state.trigger_shutdown();
@@ -292,8 +296,7 @@ async fn resize_unknown_session_returns_404() {
 #[tokio::test]
 async fn session_cap_returns_400_when_full() {
     // Override the cap to something tiny so the test doesn't spawn 32 PTYs.
-    let state = ApiState::new(PtyManager::new(), AuthConfig::disabled())
-        .with_max_sessions(2);
+    let state = ApiState::new(PtyManager::new(), AuthConfig::disabled()).with_max_sessions(2);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
     let join = tokio::spawn({

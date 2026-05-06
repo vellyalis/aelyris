@@ -229,8 +229,7 @@ mod tests {
             )
             .unwrap();
 
-        let result =
-            manager.evaluate("pty-1", "Allow tool to execute cargo build? [y/n]");
+        let result = manager.evaluate("pty-1", "Allow tool to execute cargo build? [y/n]");
         assert_eq!(result, Some((0, WatchdogAction::AutoApprove)));
     }
 
@@ -247,8 +246,7 @@ mod tests {
             )
             .unwrap();
 
-        let result =
-            manager.evaluate("pty-1", "Allow tool to delete files? [y/n]");
+        let result = manager.evaluate("pty-1", "Allow tool to delete files? [y/n]");
         assert_eq!(result, Some((0, WatchdogAction::AutoDeny)));
     }
 
@@ -266,8 +264,7 @@ mod tests {
             .unwrap();
 
         // Permission prompt but no pattern matches
-        let result =
-            manager.evaluate("pty-1", "Do you want to install this package? [Y/n]");
+        let result = manager.evaluate("pty-1", "Do you want to install this package? [Y/n]");
         assert_eq!(result, Some((0, WatchdogAction::AskUser)));
     }
 
@@ -285,8 +282,7 @@ mod tests {
             .unwrap();
 
         // Normal output with no permission prompt indicators
-        let result =
-            manager.evaluate("pty-1", "Compiling aether-terminal v0.1.0");
+        let result = manager.evaluate("pty-1", "Compiling aether-terminal v0.1.0");
         assert_eq!(result, Some((0, WatchdogAction::Ignore)));
     }
 

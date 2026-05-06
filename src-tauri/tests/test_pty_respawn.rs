@@ -57,8 +57,16 @@ fn id_can_be_reused_after_close_for_respawn() {
     assert!(!mgr.contains(&id), "id should be free after close");
 
     // Respawn under the same id.
-    mgr.spawn_command_with_id(&id, "cmd", &["/c".to_string(), "exit 0".to_string()], 80, 24, None, None)
-        .expect("respawn under same id");
+    mgr.spawn_command_with_id(
+        &id,
+        "cmd",
+        &["/c".to_string(), "exit 0".to_string()],
+        80,
+        24,
+        None,
+        None,
+    )
+    .expect("respawn under same id");
     assert!(mgr.contains(&id), "id should be live after respawn");
 
     let _ = mgr.close(&id);

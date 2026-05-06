@@ -27,8 +27,8 @@
 
 use std::collections::HashMap;
 
-use base64::Engine;
 use base64::engine::general_purpose::STANDARD as B64;
+use base64::Engine;
 
 use super::decoded::{DecodedImage, DecodedPayload};
 use super::sequences::ImageProtocol;
@@ -132,7 +132,10 @@ pub enum KittyDecodeError {
 /// Decode a fully-assembled Kitty payload into a `DecodedImage`. The
 /// payload is the base64 body the boundary scanner extracted (or the
 /// concatenation of a chunked stream).
-pub fn decode_kitty(header: &KittyHeader, payload: &[u8]) -> Result<DecodedImage, KittyDecodeError> {
+pub fn decode_kitty(
+    header: &KittyHeader,
+    payload: &[u8],
+) -> Result<DecodedImage, KittyDecodeError> {
     if let Some(t) = header.transmission {
         if t != b'd' {
             return Err(KittyDecodeError::UnsupportedTransmission(t));
@@ -142,12 +145,10 @@ pub fn decode_kitty(header: &KittyHeader, payload: &[u8]) -> Result<DecodedImage
         return Err(KittyDecodeError::Empty);
     }
 
-    let raw = B64
-        .decode(payload)
-        .map_err(|e| KittyDecodeError::Base64 {
-            offset: 0,
-            message: e.to_string(),
-        })?;
+    let raw = B64.decode(payload).map_err(|e| KittyDecodeError::Base64 {
+        offset: 0,
+        message: e.to_string(),
+    })?;
     if raw.is_empty() {
         return Err(KittyDecodeError::Empty);
     }
@@ -248,8 +249,12 @@ fn decode_rgb(header: &KittyHeader, raw: Vec<u8>) -> Result<DecodedImage, KittyD
 }
 
 fn require_dims(header: &KittyHeader) -> Result<(u32, u32), KittyDecodeError> {
-    let w = header.pixel_width.ok_or(KittyDecodeError::DimensionsMissing)?;
-    let h = header.pixel_height.ok_or(KittyDecodeError::DimensionsMissing)?;
+    let w = header
+        .pixel_width
+        .ok_or(KittyDecodeError::DimensionsMissing)?;
+    let h = header
+        .pixel_height
+        .ok_or(KittyDecodeError::DimensionsMissing)?;
     if w == 0 || h == 0 {
         return Err(KittyDecodeError::DimensionsMissing);
     }
@@ -313,11 +318,7 @@ impl KittyChunkAssembler {
     /// the input completes an image (either standalone or the final
     /// chunk of a chain), otherwise `None` while the assembler waits for
     /// more chunks.
-    pub fn ingest(
-        &mut self,
-        header: KittyHeader,
-        body: Vec<u8>,
-    ) -> Option<(KittyHeader, Vec<u8>)> {
+    pub fn ingest(&mut self, header: KittyHeader, body: Vec<u8>) -> Option<(KittyHeader, Vec<u8>)> {
         let Some(id) = header.image_id else {
             // No id means chunked re-assembly is impossible per the
             // protocol. Pass it through immediately — a `m=1` without
@@ -341,13 +342,7 @@ impl KittyChunkAssembler {
         match self.pending.get_mut(&id) {
             Some(existing) => existing.body.extend_from_slice(&body),
             None => {
-                self.pending.insert(
-                    id,
-                    PendingChunk {
-                        header,
-                        body,
-                    },
-                );
+                self.pending.insert(id, PendingChunk { header, body });
             }
         }
     }

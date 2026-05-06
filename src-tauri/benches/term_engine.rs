@@ -108,19 +108,15 @@ fn bench_advance(c: &mut Criterion) {
     for &prompts in &[1usize, 10, 100] {
         let chunk = make_osc133_chunk(prompts);
         osc_group.throughput(Throughput::Bytes(chunk.len() as u64));
-        osc_group.bench_with_input(
-            BenchmarkId::from_parameter(prompts),
-            &chunk,
-            |b, input| {
-                b.iter_batched(
-                    || TermEngine::new(120, 40).expect("engine"),
-                    |mut engine| {
-                        engine.advance(black_box(input));
-                    },
-                    criterion::BatchSize::SmallInput,
-                );
-            },
-        );
+        osc_group.bench_with_input(BenchmarkId::from_parameter(prompts), &chunk, |b, input| {
+            b.iter_batched(
+                || TermEngine::new(120, 40).expect("engine"),
+                |mut engine| {
+                    engine.advance(black_box(input));
+                },
+                criterion::BatchSize::SmallInput,
+            );
+        });
     }
     osc_group.finish();
 }

@@ -112,11 +112,7 @@ impl AutoRepairManager {
     /// Start a repair job for a detected error.
     ///
     /// Returns the job ID if accepted, or `None` if debounced or at capacity.
-    pub fn trigger(
-        &mut self,
-        error: ErrorContext,
-        repo_path: &Path,
-    ) -> Option<String> {
+    pub fn trigger(&mut self, error: ErrorContext, repo_path: &Path) -> Option<String> {
         let now = Instant::now();
 
         // Debounce: same error line within DEBOUNCE_SECS
@@ -275,10 +271,7 @@ fn repair_worker(
     error: ErrorContext,
 ) {
     // Step 1: Create worktree
-    let worktree_path = match crate::git::create_worktree(
-        &repo_path.to_string_lossy(),
-        &branch,
-    ) {
+    let worktree_path = match crate::git::create_worktree(&repo_path.to_string_lossy(), &branch) {
         Ok(info) => PathBuf::from(&info.path),
         Err(e) => {
             let _ = tx.send(WorkerMsg::Done(
@@ -398,11 +391,7 @@ fn repair_worker(
 
 /// Clean up a worktree on failure (best-effort).
 fn cleanup_worktree(repo_path: &Path, branch: &str) {
-    let _ = crate::git::remove_worktree(
-        &repo_path.to_string_lossy(),
-        branch,
-        true,
-    );
+    let _ = crate::git::remove_worktree(&repo_path.to_string_lossy(), branch, true);
 }
 
 // ---------------------------------------------------------------------------

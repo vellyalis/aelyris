@@ -89,7 +89,10 @@ pub fn diff_snapshots(prev: Option<&GridSnapshot>, next: &GridSnapshot) -> GridD
             .cells
             .iter()
             .enumerate()
-            .map(|(i, row)| RowDiff { row: i as u16, cells: row.clone() })
+            .map(|(i, row)| RowDiff {
+                row: i as u16,
+                cells: row.clone(),
+            })
             .collect();
         return GridDiff {
             cols: next.cols,
@@ -109,7 +112,10 @@ pub fn diff_snapshots(prev: Option<&GridSnapshot>, next: &GridSnapshot) -> GridD
     let mut changed = Vec::new();
     for (i, row) in next.cells.iter().enumerate() {
         if prev.cells.get(i) != Some(row) {
-            changed.push(RowDiff { row: i as u16, cells: row.clone() });
+            changed.push(RowDiff {
+                row: i as u16,
+                cells: row.clone(),
+            });
         }
     }
 
@@ -199,7 +205,10 @@ mod tests {
         assert!(!d.full);
         assert!(d.rows.is_empty());
         assert_eq!(d.cursor.col, 3);
-        assert!(!d.is_noop(), "cursor change should not be noop by cursor value");
+        assert!(
+            !d.is_noop(),
+            "cursor change should not be noop by cursor value"
+        );
     }
 
     #[test]

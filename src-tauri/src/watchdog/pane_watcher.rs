@@ -19,14 +19,9 @@ pub enum WatchAction {
     /// Emit an event to Agent Inspector for manual review
     Notify,
     /// Capture context and start an AI agent to investigate
-    AgentInvestigate {
-        prompt_template: String,
-    },
+    AgentInvestigate { prompt_template: String },
     /// Send a command to another pane
-    SendKeys {
-        target_pane: String,
-        keys: String,
-    },
+    SendKeys { target_pane: String, keys: String },
 }
 
 /// Result of evaluating output against watch rules
@@ -40,7 +35,11 @@ pub struct WatchTrigger {
 
 /// Evaluate a set of output lines against watch rules.
 /// Returns all triggers that fired.
-pub fn evaluate_output(rules: &[PaneWatchRule], source_pane: &str, lines: &[String]) -> Vec<WatchTrigger> {
+pub fn evaluate_output(
+    rules: &[PaneWatchRule],
+    source_pane: &str,
+    lines: &[String],
+) -> Vec<WatchTrigger> {
     let mut triggers = Vec::new();
 
     for (i, rule) in rules.iter().enumerate() {

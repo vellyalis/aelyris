@@ -5,8 +5,7 @@ use std::path::Path;
 pub fn parse_workflow(yaml_path: &str) -> Result<Workflow, String> {
     let content = std::fs::read_to_string(yaml_path)
         .map_err(|e| format!("Failed to read workflow file: {}", e))?;
-    serde_yaml::from_str(&content)
-        .map_err(|e| format!("Failed to parse workflow YAML: {}", e))
+    serde_yaml::from_str(&content).map_err(|e| format!("Failed to parse workflow YAML: {}", e))
 }
 
 /// List all workflow files in a project's .aether/workflows/ directory
@@ -20,7 +19,11 @@ pub fn list_workflow_files(project_path: &str) -> Vec<WorkflowSummary> {
     if let Ok(entries) = std::fs::read_dir(&dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.extension().map(|e| e == "yaml" || e == "yml").unwrap_or(false) {
+            if path
+                .extension()
+                .map(|e| e == "yaml" || e == "yml")
+                .unwrap_or(false)
+            {
                 match parse_workflow(&path.to_string_lossy()) {
                     Ok(wf) => results.push(WorkflowSummary {
                         name: wf.name,

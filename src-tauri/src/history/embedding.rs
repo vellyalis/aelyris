@@ -80,8 +80,10 @@ impl Embedder for HashingNgramEmbedder {
 
             // Guard characters so prefix/suffix n-grams look different from
             // internal ones.
-            let guarded: Vec<char> =
-                std::iter::once('^').chain(token.chars()).chain(std::iter::once('$')).collect();
+            let guarded: Vec<char> = std::iter::once('^')
+                .chain(token.chars())
+                .chain(std::iter::once('$'))
+                .collect();
 
             for n in NGRAM_MIN..=NGRAM_MAX {
                 if guarded.len() < n {

@@ -46,9 +46,7 @@ fn base_state() -> ApiState {
         .with_rate_limiter(Arc::new(RateLimiter::unlimited()))
         // Explicit CORS list avoids leaking from AETHER_API_CORS_ORIGIN env
         // set in the surrounding process.
-        .with_cors_origins(vec![
-            HeaderValue::from_static("http://127.0.0.1:1420"),
-        ])
+        .with_cors_origins(vec![HeaderValue::from_static("http://127.0.0.1:1420")])
 }
 
 // ─── CORS ──────────────────────────────────────────────────────────────────

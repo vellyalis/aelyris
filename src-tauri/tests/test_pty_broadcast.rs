@@ -106,7 +106,11 @@ fn existing_receiver_sees_closed_after_close() {
         }
     });
 
-    assert!(outcome.is_ok(), "receiver never observed Closed: {:?}", outcome);
+    assert!(
+        outcome.is_ok(),
+        "receiver never observed Closed: {:?}",
+        outcome
+    );
 }
 
 #[test]
@@ -167,7 +171,11 @@ fn slow_subscriber_does_not_block_fast() {
         .build()
         .expect("rt");
 
-    let fast = rt.block_on(drain_until(&mut rx_fast, "FAST_READER_OK", Duration::from_secs(5)));
+    let fast = rt.block_on(drain_until(
+        &mut rx_fast,
+        "FAST_READER_OK",
+        Duration::from_secs(5),
+    ));
 
     assert!(
         fast.contains("FAST_READER_OK"),
@@ -195,7 +203,8 @@ fn late_subscriber_sees_future_bytes() {
     let mut rx_early = mgr.subscribe_output(&id).expect("subscribe early");
 
     std::thread::sleep(Duration::from_millis(300));
-    mgr.write(&id, b"echo EARLY_MARKER\r\n").expect("write early");
+    mgr.write(&id, b"echo EARLY_MARKER\r\n")
+        .expect("write early");
 
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()

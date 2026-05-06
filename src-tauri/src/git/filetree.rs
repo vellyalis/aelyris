@@ -11,8 +11,17 @@ pub struct FileEntry {
 }
 
 const SKIP_DIRS: &[&str] = &[
-    ".git", "node_modules", "target", "__pycache__", ".venv", "venv",
-    ".next", "dist", ".turbo", ".cache", "coverage",
+    ".git",
+    "node_modules",
+    "target",
+    "__pycache__",
+    ".venv",
+    "venv",
+    ".next",
+    "dist",
+    ".turbo",
+    ".cache",
+    "coverage",
 ];
 
 pub fn list_directory(dir_path: &str) -> Result<Vec<FileEntry>, String> {
@@ -21,8 +30,7 @@ pub fn list_directory(dir_path: &str) -> Result<Vec<FileEntry>, String> {
         return Err(format!("Not a directory: {}", dir_path));
     }
 
-    let entries = std::fs::read_dir(path)
-        .map_err(|e| format!("Read error: {}", e))?;
+    let entries = std::fs::read_dir(path).map_err(|e| format!("Read error: {}", e))?;
 
     let mut dirs = Vec::new();
     let mut files = Vec::new();
@@ -51,8 +59,18 @@ pub fn list_directory(dir_path: &str) -> Result<Vec<FileEntry>, String> {
             0
         };
 
-        let fe = FileEntry { name, path: full_path, is_dir, file_type, children_count };
-        if is_dir { dirs.push(fe); } else { files.push(fe); }
+        let fe = FileEntry {
+            name,
+            path: full_path,
+            is_dir,
+            file_type,
+            children_count,
+        };
+        if is_dir {
+            dirs.push(fe);
+        } else {
+            files.push(fe);
+        }
     }
 
     dirs.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
@@ -80,5 +98,6 @@ pub fn ext_to_type(name: &str) -> String {
         "py" => "py",
         "sh" | "bash" => "shell",
         _ => "file",
-    }.to_string()
+    }
+    .to_string()
 }

@@ -91,22 +91,102 @@ const TRANSPARENT: Rgba = Rgba {
 /// so a body that only uses `#0..#15` decodes correctly even without
 /// explicit palette setup.
 const DEFAULT_PALETTE: [Rgba; 16] = [
-    Rgba { r: 0,   g: 0,   b: 0,   a: 255 }, // 0  black
-    Rgba { r: 51,  g: 51,  b: 204, a: 255 }, // 1  blue
-    Rgba { r: 204, g: 51,  b: 51,  a: 255 }, // 2  red
-    Rgba { r: 51,  g: 204, b: 51,  a: 255 }, // 3  green
-    Rgba { r: 204, g: 51,  b: 204, a: 255 }, // 4  magenta
-    Rgba { r: 51,  g: 204, b: 204, a: 255 }, // 5  cyan
-    Rgba { r: 204, g: 204, b: 51,  a: 255 }, // 6  yellow
-    Rgba { r: 128, g: 128, b: 128, a: 255 }, // 7  grey
-    Rgba { r: 64,  g: 64,  b: 64,  a: 255 }, // 8  dark grey
-    Rgba { r: 102, g: 102, b: 153, a: 255 }, // 9  light blue
-    Rgba { r: 153, g: 102, b: 102, a: 255 }, // 10 light red
-    Rgba { r: 102, g: 153, b: 102, a: 255 }, // 11 light green
-    Rgba { r: 153, g: 102, b: 153, a: 255 }, // 12 light magenta
-    Rgba { r: 102, g: 153, b: 153, a: 255 }, // 13 light cyan
-    Rgba { r: 153, g: 153, b: 102, a: 255 }, // 14 light yellow
-    Rgba { r: 204, g: 204, b: 204, a: 255 }, // 15 white
+    Rgba {
+        r: 0,
+        g: 0,
+        b: 0,
+        a: 255,
+    }, // 0  black
+    Rgba {
+        r: 51,
+        g: 51,
+        b: 204,
+        a: 255,
+    }, // 1  blue
+    Rgba {
+        r: 204,
+        g: 51,
+        b: 51,
+        a: 255,
+    }, // 2  red
+    Rgba {
+        r: 51,
+        g: 204,
+        b: 51,
+        a: 255,
+    }, // 3  green
+    Rgba {
+        r: 204,
+        g: 51,
+        b: 204,
+        a: 255,
+    }, // 4  magenta
+    Rgba {
+        r: 51,
+        g: 204,
+        b: 204,
+        a: 255,
+    }, // 5  cyan
+    Rgba {
+        r: 204,
+        g: 204,
+        b: 51,
+        a: 255,
+    }, // 6  yellow
+    Rgba {
+        r: 128,
+        g: 128,
+        b: 128,
+        a: 255,
+    }, // 7  grey
+    Rgba {
+        r: 64,
+        g: 64,
+        b: 64,
+        a: 255,
+    }, // 8  dark grey
+    Rgba {
+        r: 102,
+        g: 102,
+        b: 153,
+        a: 255,
+    }, // 9  light blue
+    Rgba {
+        r: 153,
+        g: 102,
+        b: 102,
+        a: 255,
+    }, // 10 light red
+    Rgba {
+        r: 102,
+        g: 153,
+        b: 102,
+        a: 255,
+    }, // 11 light green
+    Rgba {
+        r: 153,
+        g: 102,
+        b: 153,
+        a: 255,
+    }, // 12 light magenta
+    Rgba {
+        r: 102,
+        g: 153,
+        b: 153,
+        a: 255,
+    }, // 13 light cyan
+    Rgba {
+        r: 153,
+        g: 153,
+        b: 102,
+        a: 255,
+    }, // 14 light yellow
+    Rgba {
+        r: 204,
+        g: 204,
+        b: 204,
+        a: 255,
+    }, // 15 white
 ];
 
 struct SixelState {
@@ -203,7 +283,11 @@ impl SixelState {
         Ok(())
     }
 
-    fn handle_color(&mut self, params: &[Option<u32>], offset: usize) -> Result<(), SixelDecodeError> {
+    fn handle_color(
+        &mut self,
+        params: &[Option<u32>],
+        offset: usize,
+    ) -> Result<(), SixelDecodeError> {
         match params.len() {
             0 => Ok(()),
             1 => {
@@ -314,7 +398,9 @@ fn read_uint(body: &[u8], start: usize) -> (Option<u32>, usize) {
     let mut acc: u32 = 0;
     let mut any = false;
     while i < body.len() && body[i].is_ascii_digit() {
-        acc = acc.saturating_mul(10).saturating_add((body[i] - b'0') as u32);
+        acc = acc
+            .saturating_mul(10)
+            .saturating_add((body[i] - b'0') as u32);
         any = true;
         i += 1;
     }
@@ -382,9 +468,18 @@ fn hls_to_rgb(h: u32, l: u32, s: u32) -> Rgba {
     let s = (s.min(100) as f32) / 100.0;
     if s == 0.0 {
         let v = (l * 255.0).round() as u8;
-        return Rgba { r: v, g: v, b: v, a: 255 };
+        return Rgba {
+            r: v,
+            g: v,
+            b: v,
+            a: 255,
+        };
     }
-    let q = if l < 0.5 { l * (1.0 + s) } else { l + s - l * s };
+    let q = if l < 0.5 {
+        l * (1.0 + s)
+    } else {
+        l + s - l * s
+    };
     let p = 2.0 * l - q;
     let r = hue_to_rgb(p, q, h + 1.0 / 3.0);
     let g = hue_to_rgb(p, q, h);
@@ -452,7 +547,11 @@ mod tests {
         assert_eq!(img.width_px, 1);
         assert_eq!(img.height_px, 6);
         for y in 0..6 {
-            assert_eq!(pixel(&img, 0, y), [0, 0, 0, 255], "row {y} should be palette[0]");
+            assert_eq!(
+                pixel(&img, 0, y),
+                [0, 0, 0, 255],
+                "row {y} should be palette[0]"
+            );
         }
     }
 

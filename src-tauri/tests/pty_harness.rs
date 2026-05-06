@@ -29,8 +29,13 @@ pub fn spawn_and_exec(
         .subscribe_output(&id)
         .map_err(|e| format!("subscribe_output: {}", e))?;
 
-    // Small delay to let the shell initialize
-    std::thread::sleep(Duration::from_millis(300));
+    // PowerShell can take longer than cmd.exe to reach an input-ready prompt,
+    // especially on cold CI/dev machines.
+    let startup_delay_ms = match shell {
+        ShellType::PowerShell => 1_200,
+        _ => 300,
+    };
+    std::thread::sleep(Duration::from_millis(startup_delay_ms));
 
     if let Some(payload) = input {
         manager.write(&id, payload.as_bytes())?;
@@ -80,7 +85,13 @@ pub fn assert_output_contains(
     input: &str,
     expected: &str,
 ) {
-    let result = spawn_and_exec(manager, shell, Some(input), DEFAULT_TIMEOUT_MS, Some(expected));
+    let result = spawn_and_exec(
+        manager,
+        shell,
+        Some(input),
+        DEFAULT_TIMEOUT_MS,
+        Some(expected),
+    );
     match result {
         Ok((_, output)) => {
             assert!(
@@ -123,5 +134,7 @@ fn truncate_output(s: &str, max: usize) -> String {
 /// Check if a shell is available on this system
 pub fn is_shell_available(shell: &ShellType) -> bool {
     let available = ShellType::detect_available();
-    available.iter().any(|s| std::mem::discriminant(s) == std::mem::discriminant(shell))
+    available
+        .iter()
+        .any(|s| std::mem::discriminant(s) == std::mem::discriminant(shell))
 }

@@ -39,7 +39,10 @@ impl LspManager {
 
         if let Ok(servers) = self.servers.lock() {
             if servers.contains_key(&key) {
-                return Err(format!("LSP server already running for {:?} at {}", language, root_path));
+                return Err(format!(
+                    "LSP server already running for {:?} at {}",
+                    language, root_path
+                ));
             }
         }
 
@@ -73,22 +76,45 @@ impl LspManager {
         self.servers
             .lock()
             .map_err(|_| "Lock poisoned".to_string())?
-            .insert(key, LspProcess { child, info: info.clone() });
+            .insert(
+                key,
+                LspProcess {
+                    child,
+                    info: info.clone(),
+                },
+            );
 
-        log::info!("Started LSP server {:?} (PID {}) for {}", language, pid, root_path);
+        log::info!(
+            "Started LSP server {:?} (PID {}) for {}",
+            language,
+            pid,
+            root_path
+        );
         Ok(info)
     }
 
     /// Send a JSON-RPC message to a running language server.
-    pub fn send(&self, language: &LspLanguage, root_path: &str, json_rpc: &str) -> Result<(), String> {
+    pub fn send(
+        &self,
+        language: &LspLanguage,
+        root_path: &str,
+        json_rpc: &str,
+    ) -> Result<(), String> {
         let key = format!("{:?}:{}", language, root_path);
-        let mut servers = self.servers.lock().map_err(|_| "Lock poisoned".to_string())?;
-        let proc = servers.get_mut(&key).ok_or(format!("No LSP server for {:?} at {}", language, root_path))?;
+        let mut servers = self
+            .servers
+            .lock()
+            .map_err(|_| "Lock poisoned".to_string())?;
+        let proc = servers
+            .get_mut(&key)
+            .ok_or(format!("No LSP server for {:?} at {}", language, root_path))?;
 
         let stdin = proc.child.stdin.as_mut().ok_or("stdin not available")?;
         let content_length = json_rpc.len();
         let message = format!("Content-Length: {}\r\n\r\n{}", content_length, json_rpc);
-        stdin.write_all(message.as_bytes()).map_err(|e| format!("Write failed: {}", e))?;
+        stdin
+            .write_all(message.as_bytes())
+            .map_err(|e| format!("Write failed: {}", e))?;
         stdin.flush().map_err(|e| format!("Flush failed: {}", e))?;
 
         Ok(())
@@ -97,7 +123,10 @@ impl LspManager {
     /// Stop a language server.
     pub fn stop(&self, language: &LspLanguage, root_path: &str) -> Result<(), String> {
         let key = format!("{:?}:{}", language, root_path);
-        let mut servers = self.servers.lock().map_err(|_| "Lock poisoned".to_string())?;
+        let mut servers = self
+            .servers
+            .lock()
+            .map_err(|_| "Lock poisoned".to_string())?;
         if let Some(mut proc) = servers.remove(&key) {
             let _ = proc.child.kill();
             let _ = proc.child.wait();

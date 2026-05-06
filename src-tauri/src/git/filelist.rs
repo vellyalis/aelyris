@@ -46,8 +46,17 @@ fn list_git_tracked(root_path: &str, max_files: usize) -> Result<Vec<FileListEnt
 }
 
 const SKIP_DIRS: &[&str] = &[
-    "node_modules", ".git", "target", "dist", "build", ".next",
-    "__pycache__", ".venv", "venv", ".tox", "coverage",
+    "node_modules",
+    ".git",
+    "target",
+    "dist",
+    "build",
+    ".next",
+    "__pycache__",
+    ".venv",
+    "venv",
+    ".tox",
+    "coverage",
 ];
 
 fn list_dir_walk(root_path: &str, max_files: usize) -> Result<Vec<FileListEntry>, String> {
@@ -90,7 +99,10 @@ fn walk_dir_recursive(base: &Path, dir: &Path, max_files: usize, entries: &mut V
                 .to_string()
                 .replace('\\', "/");
             let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
-            entries.push(FileListEntry { relative_path: relative, size });
+            entries.push(FileListEntry {
+                relative_path: relative,
+                size,
+            });
         }
     }
 }

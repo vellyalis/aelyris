@@ -13,8 +13,8 @@
 //!   bits 0..24  — payload per the kind above
 
 use alacritty_terminal::index::{Column, Line, Point};
-use alacritty_terminal::term::TermMode;
 use alacritty_terminal::term::cell::{Cell, Flags};
+use alacritty_terminal::term::TermMode;
 use alacritty_terminal::vte::ansi::{Color, CursorShape, NamedColor};
 use serde::{Deserialize, Serialize};
 
@@ -259,11 +259,7 @@ impl TermEngine {
     ///
     /// History indexing matches `history_rows`: `0` is the row directly
     /// above the live screen, growing into older history.
-    pub fn search_history(
-        &self,
-        needle: &str,
-        case_sensitive: bool,
-    ) -> Vec<HistorySearchMatch> {
+    pub fn search_history(&self, needle: &str, case_sensitive: bool) -> Vec<HistorySearchMatch> {
         if needle.is_empty() {
             return Vec::new();
         }
@@ -370,9 +366,11 @@ impl TermEngine {
         let cursor_point = grid.cursor.point;
         let style = self.term().cursor_style();
         let visible = self.term().mode().contains(TermMode::SHOW_CURSOR);
+        let cursor_row = cursor_point.line.0.clamp(0, rows.saturating_sub(1) as i32) as u16;
+        let cursor_col = cursor_point.column.0.min(cols.saturating_sub(1)) as u16;
         let cursor = CursorSnapshot {
-            row: cursor_point.line.0.max(0) as u16,
-            col: cursor_point.column.0 as u16,
+            row: cursor_row,
+            col: cursor_col,
             shape: style.shape.into(),
             blinking: style.blinking,
             visible,
@@ -417,12 +415,8 @@ impl TermEngine {
                 cell_col: entry.placement.col_at_insert,
                 width_px: decoded.width_px,
                 height_px: decoded.height_px,
-                cell_w: decoded
-                    .cell_cols
-                    .map(|c| c.min(u16::MAX as u32) as u16),
-                cell_h: decoded
-                    .cell_rows
-                    .map(|r| r.min(u16::MAX as u32) as u16),
+                cell_w: decoded.cell_cols.map(|c| c.min(u16::MAX as u32) as u16),
+                cell_h: decoded.cell_rows.map(|r| r.min(u16::MAX as u32) as u16),
             });
         }
         out
@@ -443,13 +437,16 @@ mod tests {
         assert_eq!(snap.cells[0].len(), 4);
         assert_eq!(snap.cells[0][0].ch, ' ');
         assert_eq!(snap.cells[0][0].attrs, 0);
-        assert_eq!(snap.cursor, CursorSnapshot {
-            row: 0,
-            col: 0,
-            shape: CursorShapeSnapshot::Block,
-            blinking: false,
-            visible: true,
-        });
+        assert_eq!(
+            snap.cursor,
+            CursorSnapshot {
+                row: 0,
+                col: 0,
+                shape: CursorShapeSnapshot::Block,
+                blinking: false,
+                visible: true,
+            }
+        );
     }
 
     #[test]
@@ -536,7 +533,11 @@ mod tests {
         }
         for col in 4..snap.cols as usize {
             let cell = &snap.cells[0][col];
-            assert!(cell.hyperlink.is_none(), "cell {col} ({:?}) must not carry hyperlink", cell.ch);
+            assert!(
+                cell.hyperlink.is_none(),
+                "cell {col} ({:?}) must not carry hyperlink",
+                cell.ch
+            );
         }
     }
 
@@ -569,11 +570,10 @@ mod tests {
     fn search_history_finds_match_in_scrolled_off_row() {
         // 2-row screen so older lines spill into history.
         let mut engine = TermEngine::new(40, 2).expect("engine");
-        push_into_history(&mut engine, &[
-            "alpha needle beta",
-            "gamma delta epsilon",
-            "zeta eta theta",
-        ]);
+        push_into_history(
+            &mut engine,
+            &["alpha needle beta", "gamma delta epsilon", "zeta eta theta"],
+        );
         let matches = engine.search_history("needle", false);
         assert_eq!(matches.len(), 1, "got {:?}", matches);
         let m = matches[0];
@@ -608,11 +608,7 @@ mod tests {
     #[test]
     fn search_history_returns_multiple_per_row() {
         let mut engine = TermEngine::new(40, 2).expect("engine");
-        push_into_history(&mut engine, &[
-            "abcabcabc xyz",
-            "filler one",
-            "filler two",
-        ]);
+        push_into_history(&mut engine, &["abcabcabc xyz", "filler one", "filler two"]);
         let matches = engine.search_history("abc", false);
         assert_eq!(matches.len(), 3);
         // Same row, ascending start cols 0,3,6.
@@ -665,7 +661,10 @@ mod tests {
         engine.advance_str("ab");
         let snap = engine.snapshot();
         let json = serde_json::to_string(&snap).expect("serialize");
-        assert!(!json.contains("hyperlink"), "expected absent field, got: {json}");
+        assert!(
+            !json.contains("hyperlink"),
+            "expected absent field, got: {json}"
+        );
     }
 
     // ---------- Sprint 3: image overlays ----------
@@ -730,9 +729,7 @@ mod tests {
         // returns None, so the decoder falls back to the header's s/v
         // (which we leave unset). The cell overrides survive the
         // snapshot path regardless.
-        engine.advance(
-            b"\x1b_Ga=T,f=100,c=10,r=4,s=80,v=24;aGVsbG8=\x1b\\",
-        );
+        engine.advance(b"\x1b_Ga=T,f=100,c=10,r=4,s=80,v=24;aGVsbG8=\x1b\\");
         let snap = engine.snapshot();
         assert_eq!(snap.images.len(), 1);
         let img = &snap.images[0];

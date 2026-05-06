@@ -1,6 +1,7 @@
 //! Agent integration tests — mock agent spawn, stream-json parsing, watchdog evaluation
 
 use aether_terminal_lib::agent::parser::{StreamEvent, StreamParser};
+use aether_terminal_lib::agent::AgentSessionInfo;
 use aether_terminal_lib::watchdog::engine::{WatchdogDecision, WatchdogEngine};
 use aether_terminal_lib::watchdog::{AutoApproveRule, WatchdogRules};
 use std::io::{BufRead, BufReader};
@@ -9,7 +10,33 @@ use std::process::{Command, Stdio};
 /// Path to mock agent script
 fn mock_agent_path() -> String {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    format!("{}/tests/fixtures/mock_agent.ps1", manifest_dir.replace('\\', "/"))
+    format!(
+        "{}/tests/fixtures/mock_agent.ps1",
+        manifest_dir.replace('\\', "/")
+    )
+}
+
+#[test]
+fn test_agent_session_info_serialization_contract() {
+    let session = AgentSessionInfo {
+        id: "agent-1".to_string(),
+        status: "coding".to_string(),
+        model: "sonnet".to_string(),
+        prompt: "summarize".to_string(),
+        cwd: "C:/repo".to_string(),
+        cost: 0.25,
+        tokens_used: 42,
+    };
+
+    let value = serde_json::to_value(session).expect("serialize AgentSessionInfo");
+
+    assert_eq!(value["id"], "agent-1");
+    assert_eq!(value["status"], "coding");
+    assert_eq!(value["model"], "sonnet");
+    assert_eq!(value["prompt"], "summarize");
+    assert_eq!(value["cwd"], "C:/repo");
+    assert_eq!(value["cost"], 0.25);
+    assert_eq!(value["tokens_used"], 42);
 }
 
 // --- Mock agent spawn + parser integration ---
@@ -63,11 +90,17 @@ fn test_mock_agent_spawn_and_parse() {
 
     // First event should be system init
     assert!(all_events[0].is_system());
-    assert_eq!(all_events[0].session_id.as_deref(), Some("mock-session-001"));
+    assert_eq!(
+        all_events[0].session_id.as_deref(),
+        Some("mock-session-001")
+    );
 
     // Should have at least one tool_use event
     let tool_uses: Vec<&StreamEvent> = all_events.iter().filter(|e| e.is_tool_use()).collect();
-    assert!(!tool_uses.is_empty(), "Should have at least one tool_use event");
+    assert!(
+        !tool_uses.is_empty(),
+        "Should have at least one tool_use event"
+    );
     assert_eq!(tool_uses[0].tool_name.as_deref(), Some("Read"));
 
     // Last event should be result with cost
@@ -82,13 +115,23 @@ fn test_mock_agent_kill() {
     let script = mock_agent_path();
 
     let mut child = Command::new("pwsh.exe")
-        .args(["-NoProfile", "-NoLogo", "-Command", "Start-Sleep -Seconds 30"])
+        .args([
+            "-NoProfile",
+            "-NoLogo",
+            "-Command",
+            "Start-Sleep -Seconds 30",
+        ])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
         .or_else(|_| {
             Command::new("powershell.exe")
-                .args(["-NoProfile", "-NoLogo", "-Command", "Start-Sleep -Seconds 30"])
+                .args([
+                    "-NoProfile",
+                    "-NoLogo",
+                    "-Command",
+                    "Start-Sleep -Seconds 30",
+                ])
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .spawn()
@@ -154,8 +197,18 @@ fn test_watchdog_evaluates_parsed_events() {
         .collect();
 
     assert_eq!(decisions.len(), 3);
-    assert_eq!(decisions[0], WatchdogDecision::AutoApprove { rule: "Read".into() });
-    assert_eq!(decisions[1], WatchdogDecision::AutoDeny { rule: "Bash(rm*)".into() });
+    assert_eq!(
+        decisions[0],
+        WatchdogDecision::AutoApprove {
+            rule: "Read".into()
+        }
+    );
+    assert_eq!(
+        decisions[1],
+        WatchdogDecision::AutoDeny {
+            rule: "Bash(rm*)".into()
+        }
+    );
     assert_eq!(decisions[2], WatchdogDecision::AskUser);
 }
 
@@ -178,15 +231,21 @@ fn test_enabled_default_watchdog_rules() {
     // Default rules auto-approve Read, Glob, Grep
     assert_eq!(
         engine.evaluate("Read"),
-        WatchdogDecision::AutoApprove { rule: "Read".into() }
+        WatchdogDecision::AutoApprove {
+            rule: "Read".into()
+        }
     );
     assert_eq!(
         engine.evaluate("Glob"),
-        WatchdogDecision::AutoApprove { rule: "Glob".into() }
+        WatchdogDecision::AutoApprove {
+            rule: "Glob".into()
+        }
     );
     assert_eq!(
         engine.evaluate("Grep"),
-        WatchdogDecision::AutoApprove { rule: "Grep".into() }
+        WatchdogDecision::AutoApprove {
+            rule: "Grep".into()
+        }
     );
     // Unknown tools -> AskUser
     assert_eq!(engine.evaluate("Edit"), WatchdogDecision::AskUser);

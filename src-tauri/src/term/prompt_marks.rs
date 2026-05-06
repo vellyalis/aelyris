@@ -67,7 +67,10 @@ const MAX_MARKS: usize = 1024;
 /// Parsed result of examining the first few bytes of a buffer.
 pub enum ParseStep {
     /// A complete OSC 133 mark was consumed.
-    Consumed { bytes: usize, mark: PromptMarkPayload },
+    Consumed {
+        bytes: usize,
+        mark: PromptMarkPayload,
+    },
     /// A recognised `OSC 133;` prefix is present but the terminator has not
     /// yet arrived. Caller should wait for more bytes before re-scanning.
     Incomplete,
@@ -165,7 +168,9 @@ fn parse_exit_code(payload: &[u8]) -> Option<i32> {
     if num_bytes.is_empty() {
         return None;
     }
-    std::str::from_utf8(num_bytes).ok().and_then(|s| s.parse::<i32>().ok())
+    std::str::from_utf8(num_bytes)
+        .ok()
+        .and_then(|s| s.parse::<i32>().ok())
 }
 
 /// Rolling window of prompt marks for a single terminal session.
@@ -304,8 +309,22 @@ mod tests {
     #[test]
     fn log_records_in_order_with_monotonic_sequence() {
         let mut log = PromptMarkLog::new();
-        let a = log.record(PromptMarkPayload { kind: PromptMarkKind::PromptStart, exit_code: None }, 3, 0);
-        let b = log.record(PromptMarkPayload { kind: PromptMarkKind::CommandEnd, exit_code: Some(0) }, 5, 0);
+        let a = log.record(
+            PromptMarkPayload {
+                kind: PromptMarkKind::PromptStart,
+                exit_code: None,
+            },
+            3,
+            0,
+        );
+        let b = log.record(
+            PromptMarkPayload {
+                kind: PromptMarkKind::CommandEnd,
+                exit_code: Some(0),
+            },
+            5,
+            0,
+        );
         assert_eq!(a.sequence, 0);
         assert_eq!(b.sequence, 1);
         assert_eq!(log.len(), 2);
@@ -318,7 +337,10 @@ mod tests {
         let mut log = PromptMarkLog::new();
         for _ in 0..MAX_MARKS + 50 {
             log.record(
-                PromptMarkPayload { kind: PromptMarkKind::PromptStart, exit_code: None },
+                PromptMarkPayload {
+                    kind: PromptMarkKind::PromptStart,
+                    exit_code: None,
+                },
                 0,
                 0,
             );
@@ -327,20 +349,43 @@ mod tests {
         // Monotonic sequence must reflect every call, even after eviction,
         // so consumers can detect gaps.
         assert_eq!(log.as_slice()[0].sequence, 50);
-        assert_eq!(log.as_slice().last().unwrap().sequence, (MAX_MARKS + 49) as u64);
+        assert_eq!(
+            log.as_slice().last().unwrap().sequence,
+            (MAX_MARKS + 49) as u64
+        );
     }
 
     #[test]
     fn clear_drops_marks_but_keeps_sequence_counter() {
         let mut log = PromptMarkLog::new();
-        log.record(PromptMarkPayload { kind: PromptMarkKind::PromptStart, exit_code: None }, 0, 0);
-        log.record(PromptMarkPayload { kind: PromptMarkKind::CommandEnd, exit_code: Some(0) }, 0, 0);
-        log.clear();
-        let next = log.record(
-            PromptMarkPayload { kind: PromptMarkKind::PromptStart, exit_code: None },
+        log.record(
+            PromptMarkPayload {
+                kind: PromptMarkKind::PromptStart,
+                exit_code: None,
+            },
             0,
             0,
         );
-        assert_eq!(next.sequence, 2, "sequence counter must stay monotonic across clears");
+        log.record(
+            PromptMarkPayload {
+                kind: PromptMarkKind::CommandEnd,
+                exit_code: Some(0),
+            },
+            0,
+            0,
+        );
+        log.clear();
+        let next = log.record(
+            PromptMarkPayload {
+                kind: PromptMarkKind::PromptStart,
+                exit_code: None,
+            },
+            0,
+            0,
+        );
+        assert_eq!(
+            next.sequence, 2,
+            "sequence counter must stay monotonic across clears"
+        );
     }
 }

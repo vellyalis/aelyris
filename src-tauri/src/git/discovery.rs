@@ -72,10 +72,7 @@ fn extract_project_info(repo: &Repository, dir: &Path) -> Option<ProjectInfo> {
         .and_then(|h| h.shorthand().map(String::from))
         .unwrap_or_else(|| "HEAD".to_string());
 
-    let has_changes = repo
-        .statuses(None)
-        .map(|s| !s.is_empty())
-        .unwrap_or(false);
+    let has_changes = repo.statuses(None).map(|s| !s.is_empty()).unwrap_or(false);
 
     Some(ProjectInfo {
         name,

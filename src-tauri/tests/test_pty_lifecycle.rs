@@ -25,7 +25,10 @@ fn test_close_removes_from_list() {
 
     assert!(mgr.list().contains(&id));
     mgr.close(&id).expect("close failed");
-    assert!(!mgr.list().contains(&id), "Terminal should be removed after close");
+    assert!(
+        !mgr.list().contains(&id),
+        "Terminal should be removed after close"
+    );
 }
 
 #[test]
@@ -38,7 +41,10 @@ fn test_close_all() {
 
     assert_eq!(mgr.list().len(), 3);
     mgr.close_all();
-    assert!(mgr.list().is_empty(), "All terminals should be removed after close_all");
+    assert!(
+        mgr.list().is_empty(),
+        "All terminals should be removed after close_all"
+    );
 }
 
 #[test]

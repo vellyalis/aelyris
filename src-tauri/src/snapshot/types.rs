@@ -130,8 +130,7 @@ mod tests {
     fn snapshot_round_trips_through_serde() {
         let snap = sample_snapshot("s1", 4, 2);
         let json = serde_json::to_string(&snap).expect("serialize");
-        let parsed: TerminalSnapshot =
-            serde_json::from_str(&json).expect("deserialize");
+        let parsed: TerminalSnapshot = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(parsed, snap);
     }
 
@@ -152,7 +151,9 @@ mod tests {
 
     #[test]
     fn trigger_variants_tag_on_wire() {
-        let marked = SnapshotTrigger::UserMarked { label: Some("boom".into()) };
+        let marked = SnapshotTrigger::UserMarked {
+            label: Some("boom".into()),
+        };
         let json = serde_json::to_string(&marked).unwrap();
         assert!(json.contains("\"kind\":\"userMarked\""));
         assert!(json.contains("\"label\":\"boom\""));
@@ -166,6 +167,9 @@ mod tests {
     fn user_marked_without_label_is_omitted() {
         let t = SnapshotTrigger::UserMarked { label: None };
         let json = serde_json::to_string(&t).unwrap();
-        assert!(!json.contains("\"label\""), "label:null should be omitted, got {json}");
+        assert!(
+            !json.contains("\"label\""),
+            "label:null should be omitted, got {json}"
+        );
     }
 }

@@ -76,10 +76,9 @@ impl WatcherPool {
                     // Ignore events buried inside `.git/objects/` and
                     // `node_modules/` — they fire constantly and never
                     // reflect a user-visible change.
-                    let relevant = events.iter().any(|e| {
-                        e.kind == DebouncedEventKind::Any
-                            && !is_noise(&e.path)
-                    });
+                    let relevant = events
+                        .iter()
+                        .any(|e| e.kind == DebouncedEventKind::Any && !is_noise(&e.path));
                     if relevant {
                         on_change(&id_for_thread);
                     }

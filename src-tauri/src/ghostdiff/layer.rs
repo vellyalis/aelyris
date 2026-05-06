@@ -78,9 +78,7 @@ pub enum LayerContent {
     /// these cells into the terminal viewport in place of the live grid
     /// while the overlay is active.
     #[serde(rename_all = "camelCase")]
-    TerminalState {
-        grid: GridSnapshot,
-    },
+    TerminalState { grid: GridSnapshot },
 }
 
 /// Per-file delta: which hunks changed and the full before/after text so the
@@ -454,7 +452,9 @@ mod tests {
             0,
         );
         assert_eq!(
-            layer.worktree_path().map(|p| p.to_string_lossy().to_string()),
+            layer
+                .worktree_path()
+                .map(|p| p.to_string_lossy().to_string()),
             Some("/worktree".to_string())
         );
         assert_eq!(
@@ -598,14 +598,20 @@ mod tests {
         assert!(layer.worktree_path().is_none());
         assert!(layer.repo_path().is_none());
         match &layer.source {
-            LayerSource::Snapshot { session_id, snapshot_id, captured_at } => {
+            LayerSource::Snapshot {
+                session_id,
+                snapshot_id,
+                captured_at,
+            } => {
                 assert_eq!(session_id, "session-x");
                 assert_eq!(snapshot_id, "snap-id-abc");
                 assert_eq!(*captured_at, 1_700_000_000);
             }
             _ => panic!("expected Snapshot source"),
         }
-        let grid = layer.terminal_grid().expect("terminal grid on snapshot layer");
+        let grid = layer
+            .terminal_grid()
+            .expect("terminal grid on snapshot layer");
         assert_eq!(grid.cols, 3);
     }
 

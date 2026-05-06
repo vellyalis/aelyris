@@ -23,8 +23,8 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use base64::Engine;
 use base64::engine::general_purpose::STANDARD as B64;
+use base64::Engine;
 
 use super::decoded::{DecodedImage, DecodedPayload};
 use super::sequences::ImageProtocol;
@@ -83,7 +83,10 @@ pub enum ChunkedOscPayload {
 #[derive(Debug)]
 pub enum ParseStep {
     /// A complete frame was consumed.
-    Consumed { bytes: usize, payload: ChunkedOscPayload },
+    Consumed {
+        bytes: usize,
+        payload: ChunkedOscPayload,
+    },
     /// The buffer starts with `\e]1338;` but the terminator (`BEL` or
     /// `ESC \`) has not arrived yet. Caller should stash and retry.
     Incomplete,
@@ -126,7 +129,10 @@ pub fn try_parse(bytes: &[u8]) -> ParseStep {
     let consumed = i + term_len;
 
     let payload = parse_body(body);
-    ParseStep::Consumed { bytes: consumed, payload }
+    ParseStep::Consumed {
+        bytes: consumed,
+        payload,
+    }
 }
 
 /// Split the body on `;` and dispatch to the verb-specific parser.
@@ -161,7 +167,12 @@ fn parse_begin(fields: &[&[u8]]) -> ChunkedOscPayload {
     let Some(height) = parse_u32(fields[4]).filter(|h| *h > 0 && *h <= MAX_DIMENSION) else {
         return ChunkedOscPayload::Malformed;
     };
-    ChunkedOscPayload::Begin { image_id, format, width, height }
+    ChunkedOscPayload::Begin {
+        image_id,
+        format,
+        width,
+        height,
+    }
 }
 
 fn parse_data(fields: &[&[u8]]) -> ChunkedOscPayload {
@@ -229,7 +240,11 @@ pub enum AssemblerError {
     InvalidBase64(u32),
     /// `format=rgba` declared `w*h*4` but the decoded byte length differed.
     #[error("rgba size mismatch image_id={image_id} expected={expected} got={got}")]
-    DimensionMismatch { image_id: u32, expected: usize, got: usize },
+    DimensionMismatch {
+        image_id: u32,
+        expected: usize,
+        got: usize,
+    },
 }
 
 /// Per-id state carried between `BEGIN` and `END`.
@@ -301,7 +316,12 @@ impl ChunkAssembler {
     /// would be a programmer error).
     pub fn ingest(&mut self, payload: ChunkedOscPayload) -> AssemblerOutcome {
         match payload {
-            ChunkedOscPayload::Begin { image_id, format, width, height } => {
+            ChunkedOscPayload::Begin {
+                image_id,
+                format,
+                width,
+                height,
+            } => {
                 self.pending.insert(
                     image_id,
                     PendingImage {
@@ -314,9 +334,11 @@ impl ChunkAssembler {
                 );
                 AssemblerOutcome::Pending
             }
-            ChunkedOscPayload::Data { image_id, chunk_idx, chunk_b64 } => {
-                self.ingest_data(image_id, chunk_idx, chunk_b64)
-            }
+            ChunkedOscPayload::Data {
+                image_id,
+                chunk_idx,
+                chunk_b64,
+            } => self.ingest_data(image_id, chunk_idx, chunk_b64),
             ChunkedOscPayload::End { image_id } => self.ingest_end(image_id),
             ChunkedOscPayload::Malformed => {
                 // Treat as a soft no-op. The engine should not be passing
@@ -345,7 +367,10 @@ impl ChunkAssembler {
             let partial = drain_partial_bytes(self.pending.remove(&image_id));
             return AssemblerOutcome::Failed {
                 image_id,
-                error: AssemblerError::DuplicateChunk { image_id, chunk_idx },
+                error: AssemblerError::DuplicateChunk {
+                    image_id,
+                    chunk_idx,
+                },
                 partial_bytes: partial,
             };
         }
@@ -359,9 +384,7 @@ impl ChunkAssembler {
         }
         // base64 inflates by 4/3 — convert the cap up front so we compare
         // apples to apples without doing 64-bit math per chunk.
-        let base64_cap = MAX_RAW_BYTES_PER_IMAGE
-            .saturating_mul(4)
-            .saturating_div(3);
+        let base64_cap = MAX_RAW_BYTES_PER_IMAGE.saturating_mul(4).saturating_div(3);
         if entry.footprint_after(chunk_b64.len()) > base64_cap {
             let partial = drain_partial_bytes(self.pending.remove(&image_id));
             return AssemblerOutcome::Failed {
@@ -391,7 +414,10 @@ impl ChunkAssembler {
                 let partial = concat_partial(&entry);
                 return AssemblerOutcome::Failed {
                     image_id,
-                    error: AssemblerError::ChunkGap { image_id, chunk_idx: idx },
+                    error: AssemblerError::ChunkGap {
+                        image_id,
+                        chunk_idx: idx,
+                    },
                     partial_bytes: partial,
                 };
             }
@@ -424,7 +450,9 @@ impl ChunkAssembler {
         let decoded = match entry.format {
             ChunkedOscFormat::Png => DecodedImage {
                 protocol: ImageProtocol::Kitty,
-                payload: DecodedPayload::Png { bytes: raw_bytes.clone() },
+                payload: DecodedPayload::Png {
+                    bytes: raw_bytes.clone(),
+                },
                 width_px: entry.width,
                 height_px: entry.height,
                 cell_cols: None,
@@ -447,7 +475,9 @@ impl ChunkAssembler {
                 }
                 DecodedImage {
                     protocol: ImageProtocol::Kitty,
-                    payload: DecodedPayload::Rgba8 { bytes: raw_bytes.clone() },
+                    payload: DecodedPayload::Rgba8 {
+                        bytes: raw_bytes.clone(),
+                    },
                     width_px: entry.width,
                     height_px: entry.height,
                     cell_cols: None,
@@ -511,7 +541,10 @@ mod tests {
     #[test]
     fn returns_incomplete_when_terminator_missing() {
         // Full prefix + body but no BEL / ST yet.
-        assert!(matches!(try_parse(b"\x1b]1338;B;1;png;100;100"), ParseStep::Incomplete));
+        assert!(matches!(
+            try_parse(b"\x1b]1338;B;1;png;100;100"),
+            ParseStep::Incomplete
+        ));
     }
 
     #[test]
@@ -534,12 +567,15 @@ mod tests {
     fn parses_begin_with_st() {
         let input = b"\x1b]1338;B;7;rgba;2;2\x1b\\done";
         let (_n, payload) = assert_consumed(try_parse(input));
-        assert!(
-            matches!(
-                payload,
-                ChunkedOscPayload::Begin { image_id: 7, format: ChunkedOscFormat::Rgba, width: 2, height: 2 }
-            )
-        );
+        assert!(matches!(
+            payload,
+            ChunkedOscPayload::Begin {
+                image_id: 7,
+                format: ChunkedOscFormat::Rgba,
+                width: 2,
+                height: 2
+            }
+        ));
     }
 
     #[test]
@@ -563,7 +599,11 @@ mod tests {
         let (_n, payload) = assert_consumed(try_parse(input));
         assert_eq!(
             payload,
-            ChunkedOscPayload::Data { image_id: 1, chunk_idx: 0, chunk_b64: Vec::new() }
+            ChunkedOscPayload::Data {
+                image_id: 1,
+                chunk_idx: 0,
+                chunk_b64: Vec::new()
+            }
         );
     }
 
@@ -655,7 +695,12 @@ mod tests {
             other => panic!("DATA should be Pending, got {other:?}"),
         }
         match asm.ingest(ChunkedOscPayload::End { image_id: 1 }) {
-            AssemblerOutcome::Completed { image_id, format, raw_bytes, decoded } => {
+            AssemblerOutcome::Completed {
+                image_id,
+                format,
+                raw_bytes,
+                decoded,
+            } => {
                 assert_eq!(image_id, 1);
                 assert_eq!(format, ChunkedOscFormat::Png);
                 assert_eq!(raw_bytes, raw);
@@ -665,7 +710,11 @@ mod tests {
             }
             other => panic!("END should Complete, got {other:?}"),
         }
-        assert_eq!(asm.pending_count(), 0, "completed transfer should be drained");
+        assert_eq!(
+            asm.pending_count(),
+            0,
+            "completed transfer should be drained"
+        );
     }
 
     #[test]
@@ -820,7 +869,10 @@ mod tests {
     fn assembler_end_without_begin_fails() {
         let mut asm = ChunkAssembler::new();
         match asm.ingest(ChunkedOscPayload::End { image_id: 99 }) {
-            AssemblerOutcome::Failed { error: AssemblerError::UnknownImageId(99), .. } => {}
+            AssemblerOutcome::Failed {
+                error: AssemblerError::UnknownImageId(99),
+                ..
+            } => {}
             other => panic!("expected UnknownImageId, got {other:?}"),
         }
     }
@@ -930,7 +982,12 @@ mod tests {
         });
         match asm.ingest(ChunkedOscPayload::End { image_id: 1 }) {
             AssemblerOutcome::Failed {
-                error: AssemblerError::DimensionMismatch { expected: 64, got: 8, .. },
+                error:
+                    AssemblerError::DimensionMismatch {
+                        expected: 64,
+                        got: 8,
+                        ..
+                    },
                 ..
             } => {}
             other => panic!("expected DimensionMismatch, got {other:?}"),
@@ -964,7 +1021,9 @@ mod tests {
             chunk_b64: B64.encode(b"hi").into_bytes(),
         });
         match asm.ingest(ChunkedOscPayload::End { image_id: 1 }) {
-            AssemblerOutcome::Completed { raw_bytes, decoded, .. } => {
+            AssemblerOutcome::Completed {
+                raw_bytes, decoded, ..
+            } => {
                 assert_eq!(raw_bytes, b"hi");
                 // New BEGIN's dims won.
                 assert_eq!(decoded.width_px, 2);

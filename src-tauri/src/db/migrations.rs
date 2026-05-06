@@ -31,6 +31,16 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             position    TEXT NOT NULL DEFAULT 'center'
         );
 
+        CREATE TABLE IF NOT EXISTS pane_tree_layouts (
+            storage_key  TEXT PRIMARY KEY,
+            project_path TEXT NOT NULL DEFAULT '',
+            layout_json  TEXT NOT NULL,
+            created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_pane_tree_layouts_project
+            ON pane_tree_layouts(project_path, updated_at DESC);
+
         CREATE TABLE IF NOT EXISTS agent_sessions (
             id          TEXT PRIMARY KEY,
             pane_id     TEXT REFERENCES panes(id) ON DELETE SET NULL,
@@ -42,6 +52,15 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             started_at  TEXT NOT NULL DEFAULT (datetime('now')),
             ended_at    TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS agent_telemetry_snapshots (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            snapshot_json TEXT NOT NULL,
+            source        TEXT NOT NULL DEFAULT 'frontend',
+            saved_at      TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_agent_telemetry_snapshots_saved
+            ON agent_telemetry_snapshots(saved_at DESC, id DESC);
 
         CREATE TABLE IF NOT EXISTS command_history (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -74,6 +93,103 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             tokens      INTEGER NOT NULL DEFAULT 0
         );
         CREATE INDEX IF NOT EXISTS idx_usage_ts ON usage_log(timestamp DESC);
+
+        CREATE TABLE IF NOT EXISTS audit_events (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp   TEXT NOT NULL DEFAULT (datetime('now')),
+            category    TEXT NOT NULL,
+            action      TEXT NOT NULL,
+            severity    TEXT NOT NULL DEFAULT 'info',
+            entity_type TEXT,
+            entity_id   TEXT,
+            summary     TEXT NOT NULL,
+            metadata    TEXT NOT NULL DEFAULT '{}'
+        );
+        CREATE INDEX IF NOT EXISTS idx_audit_events_ts
+            ON audit_events(timestamp DESC);
+        CREATE INDEX IF NOT EXISTS idx_audit_events_category
+            ON audit_events(category, action, timestamp DESC);
+        CREATE INDEX IF NOT EXISTS idx_audit_events_entity
+            ON audit_events(entity_type, entity_id, timestamp DESC);
+
+        CREATE TABLE IF NOT EXISTS audit_event_sequence (
+            id            INTEGER PRIMARY KEY CHECK (id = 1),
+            next_sequence INTEGER NOT NULL DEFAULT 1
+        );
+        INSERT OR IGNORE INTO audit_event_sequence (id, next_sequence)
+            VALUES (1, 1);
+
+        CREATE TABLE IF NOT EXISTS audit_event_journal (
+            id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+            workspace_id          TEXT NOT NULL,
+            thread_id             TEXT,
+            session_id            TEXT,
+            pane_id               TEXT,
+            terminal_id           TEXT,
+            agent_id              TEXT,
+            workflow_id           TEXT,
+            task_id               TEXT,
+            correlation_id        TEXT NOT NULL,
+            sequence              INTEGER NOT NULL UNIQUE,
+            kind                  TEXT NOT NULL,
+            severity              TEXT NOT NULL DEFAULT 'info',
+            source                TEXT NOT NULL,
+            confidence            REAL NOT NULL DEFAULT 1.0,
+            created_at            TEXT NOT NULL,
+            payload_json          TEXT NOT NULL,
+            redacted_payload_json TEXT NOT NULL,
+            hash                  TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_audit_event_journal_workspace_sequence
+            ON audit_event_journal(workspace_id, sequence);
+        CREATE INDEX IF NOT EXISTS idx_audit_event_journal_correlation
+            ON audit_event_journal(correlation_id, sequence);
+        CREATE INDEX IF NOT EXISTS idx_audit_event_journal_terminal
+            ON audit_event_journal(terminal_id, sequence);
+        CREATE INDEX IF NOT EXISTS idx_audit_event_journal_agent
+            ON audit_event_journal(agent_id, sequence);
+        CREATE INDEX IF NOT EXISTS idx_audit_event_journal_task
+            ON audit_event_journal(task_id, sequence);
+        CREATE INDEX IF NOT EXISTS idx_audit_event_journal_kind
+            ON audit_event_journal(kind, severity, sequence);
+        CREATE TRIGGER IF NOT EXISTS audit_event_journal_no_update
+            BEFORE UPDATE ON audit_event_journal
+        BEGIN
+            SELECT RAISE(ABORT, 'audit_event_journal rows are append-only');
+        END;
+        UPDATE audit_event_sequence
+        SET next_sequence = CASE
+            WHEN next_sequence < (
+                SELECT COALESCE(MAX(sequence), 0) + 1 FROM audit_event_journal
+            )
+            THEN (
+                SELECT COALESCE(MAX(sequence), 0) + 1 FROM audit_event_journal
+            )
+            ELSE next_sequence
+        END
+        WHERE id = 1;
+
+        CREATE TABLE IF NOT EXISTS audit_event_snapshots (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            workspace_id     TEXT NOT NULL,
+            through_sequence INTEGER NOT NULL,
+            event_count      INTEGER NOT NULL,
+            snapshot_json    TEXT NOT NULL,
+            created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_audit_event_snapshots_workspace
+            ON audit_event_snapshots(workspace_id, through_sequence DESC, id DESC);
+
+        CREATE TABLE IF NOT EXISTS terminal_output_journal (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            terminal_id TEXT NOT NULL,
+            captured_at TEXT NOT NULL DEFAULT (datetime('now')),
+            byte_count  INTEGER NOT NULL DEFAULT 0,
+            chunk_count INTEGER NOT NULL DEFAULT 0,
+            text        TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_terminal_output_journal_terminal
+            ON terminal_output_journal(terminal_id, id DESC);
 
         -- Phase 3B-2: semantic history search. One row per indexed command.
         -- vector is a little-endian f32 BLOB of length dim*4.

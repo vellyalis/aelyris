@@ -25,6 +25,7 @@
 
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
+use std::path::{Component, Path as FsPath};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -45,10 +46,10 @@ use axum::{
 };
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
+use subtle::ConstantTimeEq;
 use thiserror::Error;
 use tokio::sync::{broadcast, Notify};
 use tower_http::cors::{AllowOrigin, CorsLayer};
-use subtle::ConstantTimeEq;
 
 use crate::pty::{PtyError, PtyManager, ShellType, TerminalInfo};
 
@@ -944,6 +945,80 @@ fn parse_shell(s: &str) -> Result<ShellType, ApiError> {
     }
 }
 
+fn validate_api_cwd(path: &str) -> Result<(), ApiError> {
+    if path.trim().is_empty() {
+        return Ok(());
+    }
+    if path.contains('\0') {
+        return Err(ApiError::BadRequest("cwd contains a NUL byte".into()));
+    }
+    if path.starts_with("\\\\") || path.starts_with("//") {
+        return Err(ApiError::BadRequest("UNC cwd paths are not allowed".into()));
+    }
+    let raw_path = FsPath::new(path);
+    if raw_path
+        .components()
+        .any(|component| matches!(component, Component::ParentDir))
+    {
+        return Err(ApiError::BadRequest(
+            "cwd path traversal is not allowed".into(),
+        ));
+    }
+    if is_dangerous_api_cwd(raw_path) {
+        return Err(ApiError::BadRequest(
+            "cwd cannot point at a system directory".into(),
+        ));
+    }
+    let canonical = std::fs::canonicalize(raw_path)
+        .map_err(|_| ApiError::BadRequest("cwd must exist and be accessible".into()))?;
+    if !canonical.is_dir() {
+        return Err(ApiError::BadRequest("cwd must be a directory".into()));
+    }
+    if is_dangerous_api_cwd(&canonical) {
+        return Err(ApiError::BadRequest(
+            "cwd cannot point at a system directory".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn api_cwd_policy_text(path: &FsPath) -> String {
+    let mut normalized = path.to_string_lossy().replace('\\', "/").to_lowercase();
+    if let Some(stripped) = normalized.strip_prefix("//?/") {
+        normalized = stripped.to_string();
+    }
+    normalized
+}
+
+fn is_dangerous_api_cwd(path: &FsPath) -> bool {
+    let normalized = api_cwd_policy_text(path);
+    let dangerous = [
+        "c:/windows",
+        "c:/program files",
+        "c:/program files (x86)",
+        "d:/windows",
+        "/etc",
+        "/usr",
+        "/bin",
+        "/sbin",
+    ];
+    dangerous
+        .iter()
+        .any(|prefix| normalized == *prefix || normalized.starts_with(&format!("{prefix}/")))
+}
+
+fn normalize_api_cwd(cwd: Option<String>) -> Result<Option<String>, ApiError> {
+    let Some(cwd) = cwd else {
+        return Ok(None);
+    };
+    let trimmed = cwd.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    validate_api_cwd(trimmed)?;
+    Ok(Some(trimmed.to_string()))
+}
+
 // ─── Handlers ───────────────────────────────────────────────────────────────
 
 async fn create_session(
@@ -960,9 +1035,10 @@ async fn create_session(
             state.max_sessions
         )));
     }
+    let cwd = normalize_api_cwd(body.cwd)?;
     let id = state
         .pty
-        .spawn(&shell, body.cols, body.rows, body.cwd.as_deref())
+        .spawn(&shell, body.cols, body.rows, cwd.as_deref())
         .map_err(ApiError::Internal)?;
     Ok(Json(CreateSessionResponse { id }))
 }
@@ -975,10 +1051,7 @@ async fn close_session(
     State(state): State<ApiState>,
     Path(id): Path<String>,
 ) -> ApiResult<StatusCode> {
-    state
-        .pty
-        .close(&id)
-        .map_err(|e| map_pty_err(&id, e))?;
+    state.pty.close(&id).map_err(|e| map_pty_err(&id, e))?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1217,7 +1290,10 @@ mod tests {
 
     #[test]
     fn parse_shell_accepts_aliases() {
-        assert!(matches!(parse_shell("pwsh").unwrap(), ShellType::PowerShell));
+        assert!(matches!(
+            parse_shell("pwsh").unwrap(),
+            ShellType::PowerShell
+        ));
         assert!(matches!(
             parse_shell("POWERSHELL").unwrap(),
             ShellType::PowerShell
@@ -1230,6 +1306,33 @@ mod tests {
     fn parse_shell_rejects_unknown() {
         let err = parse_shell("fish").unwrap_err();
         assert!(matches!(err, ApiError::BadRequest(_)));
+    }
+
+    #[test]
+    fn validate_api_cwd_blocks_traversal_and_system_dirs() {
+        assert!(matches!(
+            validate_api_cwd("C:/Users/owner/../Windows"),
+            Err(ApiError::BadRequest(_))
+        ));
+        assert!(matches!(
+            validate_api_cwd("C:/Windows/System32"),
+            Err(ApiError::BadRequest(_))
+        ));
+        assert!(matches!(
+            validate_api_cwd("\\\\server\\share"),
+            Err(ApiError::BadRequest(_))
+        ));
+    }
+
+    #[test]
+    fn normalize_api_cwd_allows_empty_and_existing_dirs() {
+        assert_eq!(normalize_api_cwd(None).unwrap(), None);
+        assert_eq!(normalize_api_cwd(Some("   ".into())).unwrap(), None);
+        let cwd = std::env::current_dir().unwrap();
+        assert_eq!(
+            normalize_api_cwd(Some(cwd.to_string_lossy().to_string())).unwrap(),
+            Some(cwd.to_string_lossy().to_string())
+        );
     }
 
     #[test]

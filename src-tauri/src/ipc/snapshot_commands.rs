@@ -13,9 +13,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
 use crate::ghostdiff::{LayerRegistry, LayerSummary, LayerTint};
-use crate::snapshot::{
-    SnapshotStore, SnapshotSummary, SnapshotTrigger, TerminalSnapshot,
-};
+use crate::snapshot::{SnapshotStore, SnapshotSummary, SnapshotTrigger, TerminalSnapshot};
 use crate::term::NativeTerminalRegistry;
 
 /// Wire-level summary used by the timeline list endpoint. Mirrors
@@ -25,10 +23,7 @@ pub type SnapshotSummaryDto = SnapshotSummary;
 
 /// Return all snapshots for `session_id`, oldest-to-newest.
 #[tauri::command]
-pub fn list_snapshots(
-    app: AppHandle,
-    session_id: String,
-) -> Vec<SnapshotSummaryDto> {
+pub fn list_snapshots(app: AppHandle, session_id: String) -> Vec<SnapshotSummaryDto> {
     let Some(store) = app.try_state::<Arc<SnapshotStore>>() else {
         return Vec::new();
     };
@@ -38,10 +33,7 @@ pub fn list_snapshots(
 /// Fetch the full snapshot (including grid cells) by id. Returns `None` when
 /// the id is unknown or has been evicted from its ring buffer.
 #[tauri::command]
-pub fn get_snapshot(
-    app: AppHandle,
-    snapshot_id: String,
-) -> Option<TerminalSnapshot> {
+pub fn get_snapshot(app: AppHandle, snapshot_id: String) -> Option<TerminalSnapshot> {
     let store = app.try_state::<Arc<SnapshotStore>>()?;
     store.inner().get(&snapshot_id)
 }
@@ -79,10 +71,7 @@ fn sanitize_label(raw: Option<String>) -> Option<String> {
 /// "bookmark now" entry point. Returns the summary of the new snapshot so
 /// the UI can scroll the timeline to it.
 #[tauri::command]
-pub fn mark_snapshot(
-    app: AppHandle,
-    args: MarkSnapshotArgs,
-) -> Result<SnapshotSummaryDto, String> {
+pub fn mark_snapshot(app: AppHandle, args: MarkSnapshotArgs) -> Result<SnapshotSummaryDto, String> {
     let native_registry = app
         .try_state::<Arc<NativeTerminalRegistry>>()
         .ok_or_else(|| "native terminal registry missing".to_string())?;
@@ -160,10 +149,7 @@ mod tests {
 /// Apply / Tab operations are automatically rejected via the existing
 /// `is_read_only` gate on `apply_ghost_hunk` / `apply_ghost_file`.
 #[tauri::command]
-pub fn start_snapshot_overlay(
-    app: AppHandle,
-    snapshot_id: String,
-) -> Result<LayerSummary, String> {
+pub fn start_snapshot_overlay(app: AppHandle, snapshot_id: String) -> Result<LayerSummary, String> {
     let store = app
         .try_state::<Arc<SnapshotStore>>()
         .ok_or_else(|| "snapshot store missing".to_string())?;

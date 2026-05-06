@@ -9,6 +9,4 @@ pub mod store;
 pub mod types;
 
 pub use store::{SnapshotStore, DEFAULT_MAX_PER_SESSION};
-pub use types::{
-    SnapshotId, SnapshotSummary, SnapshotTrigger, TerminalSnapshot,
-};
+pub use types::{SnapshotId, SnapshotSummary, SnapshotTrigger, TerminalSnapshot};

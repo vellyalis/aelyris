@@ -222,7 +222,12 @@ impl PtyManager {
         drop(_initial_rx);
 
         let reader_alive = Arc::new(AtomicBool::new(true));
-        spawn_reader_thread(id.to_string(), reader, output_tx.clone(), reader_alive.clone());
+        spawn_reader_thread(
+            id.to_string(),
+            reader,
+            output_tx.clone(),
+            reader_alive.clone(),
+        );
 
         let instance = PtyInstance {
             pair,
@@ -235,8 +240,7 @@ impl PtyManager {
             child: Arc::new(Mutex::new(Some(child))),
         };
 
-        self.lock_instances()?
-            .insert(id.to_string(), instance);
+        self.lock_instances()?.insert(id.to_string(), instance);
 
         Ok(())
     }
@@ -253,6 +257,10 @@ impl PtyManager {
         instance.writer.write_all(data).map_err(|e| {
             log::error!("pty write error id={id}: {e}");
             format!("Write error: {}", e)
+        })?;
+        instance.writer.flush().map_err(|e| {
+            log::error!("pty flush error id={id}: {e}");
+            format!("Write flush error: {}", e)
         })?;
 
         Ok(())
@@ -346,7 +354,10 @@ impl PtyManager {
         self.instances
             .lock()
             .map(|i| {
-                let mut entries: Vec<_> = i.iter().map(|(id, inst)| (id.clone(), inst.spawned_at)).collect();
+                let mut entries: Vec<_> = i
+                    .iter()
+                    .map(|(id, inst)| (id.clone(), inst.spawned_at))
+                    .collect();
                 entries.sort_by(|a, b| b.1.cmp(&a.1)); // newest first
                 entries.into_iter().map(|(id, _)| id).collect()
             })
@@ -385,7 +396,9 @@ impl PtyManager {
         }
     }
 
-    fn lock_instances(&self) -> Result<std::sync::MutexGuard<'_, HashMap<String, PtyInstance>>, PtyError> {
+    fn lock_instances(
+        &self,
+    ) -> Result<std::sync::MutexGuard<'_, HashMap<String, PtyInstance>>, PtyError> {
         self.instances.lock().map_err(|_| PtyError::LockPoisoned)
     }
 }

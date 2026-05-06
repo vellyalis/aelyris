@@ -126,9 +126,8 @@ mod tests {
     #[test]
     fn test_parse_single_line() {
         let mut parser = StreamParser::new();
-        let events = parser.feed(
-            "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"abc\"}\n",
-        );
+        let events =
+            parser.feed("{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"abc\"}\n");
         assert_eq!(events.len(), 1);
         assert!(events[0].is_system());
         assert_eq!(events[0].session_id.as_deref(), Some("abc"));

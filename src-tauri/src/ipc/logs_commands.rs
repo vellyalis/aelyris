@@ -24,11 +24,7 @@ pub fn logs_recent(limit: Option<usize>, ring: State<'_, LogRing>) -> Vec<LogEnt
 }
 
 #[tauri::command]
-pub fn logs_since(
-    after_seq: u64,
-    limit: Option<usize>,
-    ring: State<'_, LogRing>,
-) -> Vec<LogEntry> {
+pub fn logs_since(after_seq: u64, limit: Option<usize>, ring: State<'_, LogRing>) -> Vec<LogEntry> {
     let n = limit.unwrap_or(MAX_LIMIT).min(MAX_LIMIT);
     ring.since(after_seq, n)
 }

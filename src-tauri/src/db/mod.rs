@@ -1,7 +1,11 @@
 pub mod migrations;
 pub mod queries;
 
-pub use queries::{Database, AgentSessionRecord, CommandRecord};
+pub use queries::{
+    AgentSessionRecord, AgentTelemetrySnapshotRecord, AuditEventRecord, AuditJournalAppend,
+    AuditJournalCompactResult, AuditJournalEventRecord, AuditJournalFilter,
+    AuditJournalSnapshotRecord, CommandRecord, Database, PaneTreeLayoutRecord,
+};
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -13,14 +17,19 @@ pub struct ManagedDb {
 
 impl ManagedDb {
     pub fn new(db: Database) -> Self {
-        Self { inner: Mutex::new(db) }
+        Self {
+            inner: Mutex::new(db),
+        }
     }
 
     pub fn with<F, T>(&self, f: F) -> Result<T, String>
     where
         F: FnOnce(&Database) -> Result<T, String>,
     {
-        let db = self.inner.lock().map_err(|_| "Database lock poisoned".to_string())?;
+        let db = self
+            .inner
+            .lock()
+            .map_err(|_| "Database lock poisoned".to_string())?;
         f(&db)
     }
 }

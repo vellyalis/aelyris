@@ -11,10 +11,10 @@ pub mod native;
 pub mod prompt_marks;
 pub mod snapshot;
 
-pub use diff::{DiffTracker, GridDiff, RowDiff, diff_snapshots};
+pub use diff::{diff_snapshots, DiffTracker, GridDiff, RowDiff};
 pub use engine::{TermEngine, TermEngineError};
 pub use native::NativeTerminalRegistry;
 pub use prompt_marks::{PromptMark, PromptMarkKind};
 pub use snapshot::{
-    CellSnapshot, CursorShapeSnapshot, CursorSnapshot, GridSnapshot, HistorySearchMatch, attr,
+    attr, CellSnapshot, CursorShapeSnapshot, CursorSnapshot, GridSnapshot, HistorySearchMatch,
 };

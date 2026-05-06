@@ -1,6 +1,6 @@
-use super::rules::WatchdogRules;
 #[cfg(test)]
 use super::rules::AutoApproveRule;
+use super::rules::WatchdogRules;
 
 /// Decision made by the watchdog engine for a tool invocation
 #[derive(Debug, Clone, PartialEq)]
@@ -130,7 +130,9 @@ mod tests {
         let engine = WatchdogEngine::new(make_rules(true, vec![("Read", true)]));
         assert_eq!(
             engine.evaluate("Read"),
-            WatchdogDecision::AutoApprove { rule: "Read".into() }
+            WatchdogDecision::AutoApprove {
+                rule: "Read".into()
+            }
         );
     }
 
@@ -139,7 +141,9 @@ mod tests {
         let engine = WatchdogEngine::new(make_rules(true, vec![("Bash(rm*)", false)]));
         assert_eq!(
             engine.evaluate("Bash(rm -rf /)"),
-            WatchdogDecision::AutoDeny { rule: "Bash(rm*)".into() }
+            WatchdogDecision::AutoDeny {
+                rule: "Bash(rm*)".into()
+            }
         );
     }
 
@@ -154,7 +158,9 @@ mod tests {
         let engine = WatchdogEngine::new(make_rules(true, vec![("Bash(git status*)", true)]));
         assert_eq!(
             engine.evaluate("Bash(git status --short)"),
-            WatchdogDecision::AutoApprove { rule: "Bash(git status*)".into() }
+            WatchdogDecision::AutoApprove {
+                rule: "Bash(git status*)".into()
+            }
         );
     }
 
@@ -169,7 +175,9 @@ mod tests {
         let engine = WatchdogEngine::new(make_rules(true, vec![("read", true)]));
         assert_eq!(
             engine.evaluate("Read"),
-            WatchdogDecision::AutoApprove { rule: "read".into() }
+            WatchdogDecision::AutoApprove {
+                rule: "read".into()
+            }
         );
     }
 
@@ -182,7 +190,9 @@ mod tests {
         // First rule matches, so deny
         assert_eq!(
             engine.evaluate("Bash(git status)"),
-            WatchdogDecision::AutoDeny { rule: "Bash*".into() }
+            WatchdogDecision::AutoDeny {
+                rule: "Bash*".into()
+            }
         );
     }
 

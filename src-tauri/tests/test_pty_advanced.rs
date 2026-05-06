@@ -12,7 +12,9 @@ fn test_concurrent_spawn() {
     let mut ids = Vec::new();
 
     for _ in 0..5 {
-        let id = mgr.spawn(&ShellType::Cmd, 80, 24, None).expect("spawn failed");
+        let id = mgr
+            .spawn(&ShellType::Cmd, 80, 24, None)
+            .expect("spawn failed");
         ids.push(id);
     }
 
@@ -35,13 +37,7 @@ fn test_large_output() {
 
     // Generate ~10KB of output via CMD for loop
     let cmd = "for /L %i in (1,1,100) do @echo LINE_%i_PADDING_DATA_HERE\r\n";
-    let result = spawn_and_exec(
-        &mgr,
-        &ShellType::Cmd,
-        Some(cmd),
-        10000,
-        Some("LINE_100_"),
-    );
+    let result = spawn_and_exec(&mgr, &ShellType::Cmd, Some(cmd), 10000, Some("LINE_100_"));
 
     match result {
         Ok((_, output)) => {
@@ -90,7 +86,10 @@ fn test_escape_sequences() {
 
     match result {
         Ok((_, output)) => {
-            assert!(output.contains("test_esc_marker"), "Basic output should work through ConPTY");
+            assert!(
+                output.contains("test_esc_marker"),
+                "Basic output should work through ConPTY"
+            );
         }
         Err(e) => panic!("Escape sequence test failed: {}", e),
     }
@@ -112,7 +111,10 @@ fn test_zombie_prevention() {
 
     // New manager should start clean
     let mgr2 = PtyManager::new();
-    assert!(mgr2.list().is_empty(), "New manager should have no terminals");
+    assert!(
+        mgr2.list().is_empty(),
+        "New manager should have no terminals"
+    );
 }
 
 // --- send-keys / broadcast-keys tests ---
@@ -129,7 +131,8 @@ fn test_send_keys_to_pane() {
     std::thread::sleep(std::time::Duration::from_millis(300));
 
     // send-keys: write to a specific terminal by ID
-    mgr.write(&id, b"echo SENDKEY_TEST_OK\r\n").expect("send_keys failed");
+    mgr.write(&id, b"echo SENDKEY_TEST_OK\r\n")
+        .expect("send_keys failed");
 
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -141,12 +144,16 @@ fn test_send_keys_to_pane() {
         let total = std::time::Duration::from_secs(3);
         loop {
             let elapsed = start.elapsed();
-            if elapsed >= total { break; }
+            if elapsed >= total {
+                break;
+            }
             let remaining = total - elapsed;
             match tokio::time::timeout(remaining, rx.recv()).await {
                 Ok(Ok(chunk)) => {
                     acc.push_str(&String::from_utf8_lossy(&chunk));
-                    if acc.contains("SENDKEY_TEST_OK") { break; }
+                    if acc.contains("SENDKEY_TEST_OK") {
+                        break;
+                    }
                 }
                 Ok(Err(broadcast::error::RecvError::Lagged(_))) => continue,
                 Ok(Err(broadcast::error::RecvError::Closed)) => break,
@@ -156,7 +163,11 @@ fn test_send_keys_to_pane() {
         acc
     });
 
-    assert!(output.contains("SENDKEY_TEST_OK"), "send_keys output not found: {}", &output[..output.len().min(200)]);
+    assert!(
+        output.contains("SENDKEY_TEST_OK"),
+        "send_keys output not found: {}",
+        &output[..output.len().min(200)]
+    );
     mgr.close_all();
 }
 

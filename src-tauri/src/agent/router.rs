@@ -200,7 +200,7 @@ impl AgentRouter {
         let est_output_tokens = input_tokens * 2.0;
 
         let (input_price, output_price) = match model {
-            "claude-opus" => (15.0, 75.0),    // per million tokens
+            "claude-opus" => (15.0, 75.0), // per million tokens
             "claude-sonnet" => (3.0, 15.0),
             "claude-haiku" => (0.25, 1.25),
             _ => (3.0, 15.0), // default to sonnet pricing
@@ -228,7 +228,8 @@ mod tests {
 
     #[test]
     fn test_architecture_routes_to_opus() {
-        let decision = AgentRouter::route("Design the database architecture for this project", None);
+        let decision =
+            AgentRouter::route("Design the database architecture for this project", None);
         assert_eq!(decision.recommended_model, "claude-opus");
     }
 

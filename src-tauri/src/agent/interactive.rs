@@ -32,9 +32,7 @@ impl AgentCli {
                 // OpenAI Codex CLI
                 ("codex".to_string(), Vec::new())
             }
-            AgentCli::Custom(bin) => {
-                (bin.clone(), Vec::new())
-            }
+            AgentCli::Custom(bin) => (bin.clone(), Vec::new()),
         }
     }
 
@@ -65,7 +63,10 @@ impl AgentCli {
                 if ALLOWED_CUSTOM.contains(&bin.as_str()) {
                     Ok(())
                 } else {
-                    Err(format!("Unknown CLI '{}'. Allowed: {:?}", bin, ALLOWED_CUSTOM))
+                    Err(format!(
+                        "Unknown CLI '{}'. Allowed: {:?}",
+                        bin, ALLOWED_CUSTOM
+                    ))
                 }
             }
         }
@@ -113,10 +114,11 @@ impl InteractiveSessionManager {
     pub fn register(&self, info: InteractiveSessionInfo) -> Result<(), String> {
         log::info!(
             "interactive session register id={} cli={:?} model={}",
-            info.id, info.cli, info.model
+            info.id,
+            info.cli,
+            info.model
         );
-        self.lock_sessions()?
-            .insert(info.id.clone(), info);
+        self.lock_sessions()?.insert(info.id.clone(), info);
         Ok(())
     }
 
@@ -126,7 +128,9 @@ impl InteractiveSessionManager {
         if let Some(ref info) = removed {
             log::info!(
                 "interactive session unregister id={} cost=${:.2} tokens={}",
-                info.id, info.cost, info.tokens_used,
+                info.id,
+                info.cost,
+                info.tokens_used,
             );
         }
         Ok(removed)
@@ -143,7 +147,9 @@ impl InteractiveSessionManager {
             if session.status != status {
                 log::debug!(
                     "interactive session id={} status {} -> {}",
-                    id, session.status, status,
+                    id,
+                    session.status,
+                    status,
                 );
             }
             session.status = status.to_string();
@@ -168,7 +174,9 @@ impl InteractiveSessionManager {
             .unwrap_or_default()
     }
 
-    fn lock_sessions(&self) -> Result<std::sync::MutexGuard<'_, HashMap<String, InteractiveSessionInfo>>, String> {
+    fn lock_sessions(
+        &self,
+    ) -> Result<std::sync::MutexGuard<'_, HashMap<String, InteractiveSessionInfo>>, String> {
         self.sessions
             .lock()
             .map_err(|_| "Interactive session lock poisoned".to_string())

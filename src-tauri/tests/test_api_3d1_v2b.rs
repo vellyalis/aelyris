@@ -223,10 +223,7 @@ async fn ws_accepts_ticket_query_param() {
 
     // WS connect using the ticket (no Authorization header).
     let ws_url = base.replacen("http://", "ws://", 1);
-    let url = format!(
-        "{}/sessions/{}/stream?ticket={}",
-        ws_url, id, ticket
-    );
+    let url = format!("{}/sessions/{}/stream?ticket={}", ws_url, id, ticket);
     let (mut ws, _resp) = tokio_tungstenite::connect_async(&url)
         .await
         .expect("ws connect with ticket");
@@ -243,10 +240,7 @@ async fn ws_accepts_ticket_query_param() {
     assert!(matches!(first, Message::Binary(_) | Message::Text(_)));
 
     // Redeeming the same ticket again must fail.
-    let url2 = format!(
-        "{}/sessions/{}/stream?ticket={}",
-        ws_url, id, ticket
-    );
+    let url2 = format!("{}/sessions/{}/stream?ticket={}", ws_url, id, ticket);
     let second = tokio_tungstenite::connect_async(&url2).await;
     assert!(
         second.is_err(),
@@ -289,10 +283,7 @@ async fn ws_still_accepts_legacy_token_query_param() {
         .unwrap();
 
     let ws_url = base.replacen("http://", "ws://", 1);
-    let url = format!(
-        "{}/sessions/{}/stream?token={}",
-        ws_url, id, TOKEN
-    );
+    let url = format!("{}/sessions/{}/stream?token={}", ws_url, id, TOKEN);
     let connect_res = tokio_tungstenite::connect_async(&url).await;
     assert!(
         connect_res.is_ok(),
@@ -320,10 +311,7 @@ async fn ws_rejects_unknown_ticket() {
         ws_url
     );
     let connect_res = tokio_tungstenite::connect_async(&url).await;
-    assert!(
-        connect_res.is_err(),
-        "unknown ticket must not authenticate"
-    );
+    assert!(connect_res.is_err(), "unknown ticket must not authenticate");
 
     state.trigger_shutdown();
     let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
@@ -341,7 +329,11 @@ async fn ticket_bound_to_different_session_is_rejected_on_ws() {
     let (base, state, join) = spawn(state).await;
 
     let ws_url = base.replacen("http://", "ws://", 1);
-    let url = format!("{}/sessions/sess-b/stream?ticket={}", ws_url, ticket.as_str());
+    let url = format!(
+        "{}/sessions/sess-b/stream?ticket={}",
+        ws_url,
+        ticket.as_str()
+    );
     let connect_res = tokio_tungstenite::connect_async(&url).await;
     assert!(
         connect_res.is_err(),

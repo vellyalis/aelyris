@@ -1,5 +1,5 @@
-mod settings;
 pub mod keybindings;
+mod settings;
 
-pub use settings::{AppConfig, load_config, save_config};
 pub use keybindings::KeybindingsConfig;
+pub use settings::{load_config, save_config, AppConfig};

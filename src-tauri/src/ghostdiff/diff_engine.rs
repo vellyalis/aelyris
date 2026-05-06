@@ -58,7 +58,11 @@ pub fn compute_diff(worktree_path: &Path, base_sha: &str) -> Result<Vec<FileDelt
         if file.is_binary {
             continue;
         }
-        let path = if file.is_deleted { file.old_path } else { file.new_path };
+        let path = if file.is_deleted {
+            file.old_path
+        } else {
+            file.new_path
+        };
         if path.is_empty() {
             continue;
         }
@@ -117,7 +121,11 @@ pub fn compute_branch_comparison(
         if file.is_binary {
             continue;
         }
-        let path = if file.is_deleted { file.old_path } else { file.new_path };
+        let path = if file.is_deleted {
+            file.old_path
+        } else {
+            file.new_path
+        };
         if path.is_empty() {
             continue;
         }
@@ -214,7 +222,9 @@ pub(crate) fn parse_unified_diff(text: &str) -> Vec<ParsedFile> {
             continue;
         }
 
-        let Some(file) = current.as_mut() else { continue };
+        let Some(file) = current.as_mut() else {
+            continue;
+        };
 
         if line.starts_with("new file mode") {
             file.is_new = true;
@@ -435,7 +445,10 @@ diff --git a/a.txt b/a.txt
         assert!(!f.is_new && !f.is_deleted && !f.is_binary);
         assert_eq!(f.hunks.len(), 1);
         let h = &f.hunks[0];
-        assert_eq!((h.base_start, h.base_len, h.head_start, h.head_len), (1, 3, 1, 4));
+        assert_eq!(
+            (h.base_start, h.base_len, h.head_start, h.head_len),
+            (1, 3, 1, 4)
+        );
         assert_eq!(h.lines.len(), 5);
         assert!(matches!(h.lines[0], HunkLine::Context(ref s) if s == "line1"));
         assert!(matches!(h.lines[1], HunkLine::Remove(ref s) if s == "line2"));

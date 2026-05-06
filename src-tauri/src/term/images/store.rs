@@ -89,7 +89,12 @@ impl ImageEntry {
     /// Total bytes attributable to this entry (raw + decoded). Drives
     /// the FIFO eviction loop in `ImageStore::insert`.
     fn footprint(&self) -> usize {
-        self.bytes.len() + self.decoded.as_ref().map(|d| d.payload.byte_len()).unwrap_or(0)
+        self.bytes.len()
+            + self
+                .decoded
+                .as_ref()
+                .map(|d| d.payload.byte_len())
+                .unwrap_or(0)
     }
 }
 
@@ -434,7 +439,11 @@ mod tests {
         assert!(ev_a.is_empty());
         assert!(ev_b.is_empty());
         assert_eq!(ev_c.count, 1);
-        assert_eq!(ev_c.bytes, 5 + 36, "evicted entry's full footprint reported");
+        assert_eq!(
+            ev_c.bytes,
+            5 + 36,
+            "evicted entry's full footprint reported"
+        );
     }
 
     #[test]
@@ -445,12 +454,7 @@ mod tests {
             screen_row_at_insert: 3,
             col_at_insert: 17,
         };
-        let (id, _) = s.insert_full(
-            ImageProtocol::Kitty,
-            b"raw".to_vec(),
-            None,
-            placement,
-        );
+        let (id, _) = s.insert_full(ImageProtocol::Kitty, b"raw".to_vec(), None, placement);
         assert_eq!(s.get(id).unwrap().placement, placement);
     }
 

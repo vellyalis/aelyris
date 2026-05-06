@@ -52,10 +52,13 @@ impl AgentManager {
             ("gemini", vec!["-p".to_string(), prompt.to_string()])
         } else {
             let mut args = vec![
-                "-p".to_string(), prompt.to_string(),
-                "--output-format".to_string(), "stream-json".to_string(),
+                "-p".to_string(),
+                prompt.to_string(),
+                "--output-format".to_string(),
+                "stream-json".to_string(),
                 "--verbose".to_string(),
-                "--model".to_string(), model_str.to_string(),
+                "--model".to_string(),
+                model_str.to_string(),
             ];
 
             // Resume existing session if requested
@@ -155,6 +158,22 @@ impl AgentManager {
         Ok(())
     }
 
+    /// Reap a naturally exited child while keeping its session metadata visible.
+    pub fn reap_session(&self, id: &str) -> Result<(), String> {
+        let mut sessions = self.lock_sessions()?;
+        if let Some(proc) = sessions.get_mut(id) {
+            if proc
+                .child
+                .try_wait()
+                .map_err(|e| format!("Failed to reap session {}: {}", id, e))?
+                .is_some()
+            {
+                log::info!("Reaped completed agent session {}", id);
+            }
+        }
+        Ok(())
+    }
+
     /// Stop a session, killing the entire process tree on Windows
     pub fn stop_session(&self, id: &str) -> Result<(), String> {
         let mut sessions = self.lock_sessions()?;
@@ -162,7 +181,11 @@ impl AgentManager {
             let pid = proc.child.id();
             // Try process tree kill first (Windows)
             if let Err(e) = kill_process_tree(pid) {
-                log::warn!("taskkill failed for PID {}: {}. Falling back to child.kill().", pid, e);
+                log::warn!(
+                    "taskkill failed for PID {}: {}. Falling back to child.kill().",
+                    pid,
+                    e
+                );
                 let _ = proc.child.kill();
             }
             let _ = proc.child.wait();
@@ -193,7 +216,9 @@ impl AgentManager {
         }
     }
 
-    fn lock_sessions(&self) -> Result<std::sync::MutexGuard<'_, HashMap<String, AgentProcess>>, String> {
+    fn lock_sessions(
+        &self,
+    ) -> Result<std::sync::MutexGuard<'_, HashMap<String, AgentProcess>>, String> {
         self.sessions
             .lock()
             .map_err(|_| "Agent session lock poisoned".to_string())

@@ -58,10 +58,7 @@ pub fn apply_hunk_to_main(main: &str, hunk: &DiffHunk) -> Result<String, String>
         return insert_at_line(main, hunk.base_start, &after_view);
     }
 
-    let positions: Vec<usize> = main
-        .match_indices(&base_view)
-        .map(|(i, _)| i)
-        .collect();
+    let positions: Vec<usize> = main.match_indices(&base_view).map(|(i, _)| i).collect();
     match positions.len() {
         0 => {
             log::warn!(
@@ -80,7 +77,11 @@ pub fn apply_hunk_to_main(main: &str, hunk: &DiffHunk) -> Result<String, String>
             out.push_str(&main[..pos]);
             out.push_str(&after_view);
             out.push_str(&main[pos + base_view.len()..]);
-            log::debug!("ghost diff apply ok pos={} hunk_lines={}", pos, hunk.lines.len());
+            log::debug!(
+                "ghost diff apply ok pos={} hunk_lines={}",
+                pos,
+                hunk.lines.len()
+            );
             Ok(out)
         }
         _ => {

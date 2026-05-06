@@ -109,11 +109,7 @@ pub fn register_worktree_and_watch(
 /// registry entry first, `get_source_snapshot(id)` returns `None` and the
 /// callback becomes a silent no-op instead of running `git diff` against a
 /// worktree that's about to be `rm -rf`'d.
-pub fn unregister_and_unwatch(
-    registry: &Arc<LayerRegistry>,
-    pool: &Arc<WatcherPool>,
-    id: &str,
-) {
+pub fn unregister_and_unwatch(registry: &Arc<LayerRegistry>, pool: &Arc<WatcherPool>, id: &str) {
     let _ = registry.unregister(id);
     pool.unwatch(id);
 }

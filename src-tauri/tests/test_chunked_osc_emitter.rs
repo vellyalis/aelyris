@@ -16,22 +16,31 @@
 use std::path::PathBuf;
 use std::process::Command;
 
-use aether_terminal_lib::term::TermEngine;
 use aether_terminal_lib::term::images::DecodedPayload;
+use aether_terminal_lib::term::TermEngine;
 
 /// Repo root resolved from the Cargo manifest dir. The `tests/` directory
 /// is one level under `src-tauri/`, so the repo root is two levels up.
 fn repo_root() -> PathBuf {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    manifest.parent().expect("src-tauri has parent").to_path_buf()
+    manifest
+        .parent()
+        .expect("src-tauri has parent")
+        .to_path_buf()
 }
 
 fn fixture_tiny() -> PathBuf {
-    repo_root().join("e2e").join("fixtures").join("inline-image-1x1.png")
+    repo_root()
+        .join("e2e")
+        .join("fixtures")
+        .join("inline-image-1x1.png")
 }
 
 fn fixture_large() -> PathBuf {
-    repo_root().join("e2e").join("fixtures").join("inline-image-32x32.png")
+    repo_root()
+        .join("e2e")
+        .join("fixtures")
+        .join("inline-image-32x32.png")
 }
 
 /// Probe whether `cmd --help` (or similar) succeeds. Used to skip the
@@ -105,7 +114,12 @@ fn run_emitter_into_engine(program: &str, args: &[String]) -> TermEngine {
 
 fn assert_png_image_registered(engine: &TermEngine, expected_w: u32, expected_h: u32) {
     let store = engine.images();
-    assert_eq!(store.len(), 1, "expected exactly one image, got {}", store.len());
+    assert_eq!(
+        store.len(),
+        1,
+        "expected exactly one image, got {}",
+        store.len()
+    );
     let entry = store
         .iter()
         .next()
@@ -217,8 +231,8 @@ fn malformed_then_valid_chunk_oscs_keep_assembler_clean() {
     // path doesn't get poisoned when a malformed frame arrives between
     // valid ones — same scenario the chunked-osc-flows.spec.ts E2E
     // exercises, but executable without Tauri / a shell.
-    use base64::Engine;
     use base64::engine::general_purpose::STANDARD as B64;
+    use base64::Engine;
     let mut engine = TermEngine::new(120, 30).expect("engine");
     let raw = b"\x89PNG\r\n\x1a\nSPRINT3";
     let b64 = B64.encode(raw);

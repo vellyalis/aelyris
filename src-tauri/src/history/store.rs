@@ -46,7 +46,10 @@ impl<E: Embedder> HistoryStore<E> {
         let dim = vec.len() as i64;
         let model = self.embedder.model_id();
 
-        let conn = self.conn.lock().map_err(|_| "HistoryStore mutex poisoned")?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| "HistoryStore mutex poisoned")?;
         conn.execute(
             "INSERT OR REPLACE INTO command_embeddings (command_id, dim, vector, model, indexed_at)
              VALUES (?1, ?2, ?3, ?4, datetime('now'))",
@@ -61,7 +64,10 @@ impl<E: Embedder> HistoryStore<E> {
     /// Returns the number of rows indexed.
     pub fn backfill(&self) -> Result<usize, String> {
         let model = self.embedder.model_id().to_string();
-        let conn = self.conn.lock().map_err(|_| "HistoryStore mutex poisoned")?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| "HistoryStore mutex poisoned")?;
 
         let mut stmt = conn
             .prepare(
@@ -139,7 +145,10 @@ impl<E: Embedder> HistoryStore<E> {
             sql.push_str(" AND h.exit_code IS NOT NULL AND h.exit_code != 0");
         }
 
-        let conn = self.conn.lock().map_err(|_| "HistoryStore mutex poisoned")?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| "HistoryStore mutex poisoned")?;
         let mut stmt = conn
             .prepare(&sql)
             .map_err(|e| format!("search prepare: {e}"))?;
@@ -248,12 +257,14 @@ mod tests {
         let store = store();
         let cargo_id = insert_cmd(&store, "cargo build --release", "/repo", Some(0));
         let push_id = insert_cmd(&store, "git push origin main", "/repo", Some(0));
-        store.index_command(cargo_id, "cargo build --release").unwrap();
-        store.index_command(push_id, "git push origin main").unwrap();
-
-        let hits = store
-            .search("cargo", 5, &SearchFilters::default())
+        store
+            .index_command(cargo_id, "cargo build --release")
             .unwrap();
+        store
+            .index_command(push_id, "git push origin main")
+            .unwrap();
+
+        let hits = store.search("cargo", 5, &SearchFilters::default()).unwrap();
         assert!(!hits.is_empty(), "expected at least one hit");
         assert!(
             hits[0].entry.command.contains("cargo"),

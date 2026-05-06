@@ -10,10 +10,8 @@ use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
-use crate::watchdog::{
-    self, AutoRepairConfig, ErrorContext, RepairJobInfo, WatchdogRules,
-};
 use crate::watchdog::auto_repair::AutoRepairManager;
+use crate::watchdog::{self, AutoRepairConfig, ErrorContext, RepairJobInfo, WatchdogRules};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AutoRepairConfigDto {
@@ -23,21 +21,25 @@ pub struct AutoRepairConfigDto {
 
 impl From<AutoRepairConfig> for AutoRepairConfigDto {
     fn from(cfg: AutoRepairConfig) -> Self {
-        Self { enabled: cfg.enabled, pattern: cfg.pattern }
+        Self {
+            enabled: cfg.enabled,
+            pattern: cfg.pattern,
+        }
     }
 }
 
 impl From<AutoRepairConfigDto> for AutoRepairConfig {
     fn from(dto: AutoRepairConfigDto) -> Self {
-        Self { enabled: dto.enabled, pattern: dto.pattern }
+        Self {
+            enabled: dto.enabled,
+            pattern: dto.pattern,
+        }
     }
 }
 
 /// Snapshot of all active / recent repair jobs.
 #[tauri::command]
-pub fn list_repair_jobs(
-    app: AppHandle,
-) -> Vec<RepairJobInfo> {
+pub fn list_repair_jobs(app: AppHandle) -> Vec<RepairJobInfo> {
     let Some(state) = app.try_state::<Arc<Mutex<AutoRepairManager>>>() else {
         return Vec::new();
     };
@@ -63,7 +65,10 @@ pub fn trigger_repair_manual(
         .inner()
         .lock()
         .map_err(|_| "auto-repair mutex poisoned".to_string())?;
-    let ctx = ErrorContext { matched_line: error_line, source_pane };
+    let ctx = ErrorContext {
+        matched_line: error_line,
+        source_pane,
+    };
     Ok(mgr.trigger(ctx, &PathBuf::from(repo_path)))
 }
 

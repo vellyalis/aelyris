@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionState {
     pub pid: u32,
-    pub status: String,           // idle, thinking, coding, waiting
+    pub status: String, // idle, thinking, coding, waiting
     pub git_branch: String,
     pub cwd: String,
     pub timestamp: String,
@@ -64,10 +64,9 @@ impl SessionMonitor {
     /// Write a session state file (for sessions we manage)
     pub fn write_state(&self, state: &SessionState) -> Result<(), String> {
         let path = self.state_dir.join(format!("{}.json", state.pid));
-        let json = serde_json::to_string_pretty(state)
-            .map_err(|e| format!("Serialize error: {}", e))?;
-        std::fs::write(&path, json)
-            .map_err(|e| format!("Write error: {}", e))?;
+        let json =
+            serde_json::to_string_pretty(state).map_err(|e| format!("Serialize error: {}", e))?;
+        std::fs::write(&path, json).map_err(|e| format!("Write error: {}", e))?;
         Ok(())
     }
 
@@ -75,8 +74,7 @@ impl SessionMonitor {
     pub fn remove_state(&self, pid: u32) -> Result<(), String> {
         let path = self.state_dir.join(format!("{}.json", pid));
         if path.exists() {
-            std::fs::remove_file(&path)
-                .map_err(|e| format!("Remove error: {}", e))?;
+            std::fs::remove_file(&path).map_err(|e| format!("Remove error: {}", e))?;
         }
         Ok(())
     }

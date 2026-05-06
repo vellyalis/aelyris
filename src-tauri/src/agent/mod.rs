@@ -6,4 +6,4 @@ pub mod router;
 pub mod watchdog;
 
 pub use claude::*;
-pub use interactive::{InteractiveSessionManager, InteractiveSessionInfo, AgentCli};
+pub use interactive::{AgentCli, InteractiveSessionInfo, InteractiveSessionManager};

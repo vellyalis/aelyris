@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use serde::Deserialize;
+use std::collections::HashMap;
 
 /// Customizable keybindings loaded from `~/.aether/keybindings.toml`.
 ///
@@ -102,10 +102,7 @@ mod tests {
         let config = KeybindingsConfig {
             bindings: default_keybindings(),
         };
-        assert_eq!(
-            config.action_for("ctrl+shift+p"),
-            Some("command_palette")
-        );
+        assert_eq!(config.action_for("ctrl+shift+p"), Some("command_palette"));
     }
 
     #[test]
@@ -142,10 +139,7 @@ mod tests {
         assert_eq!(config.action_for("ctrl+b"), Some("toggle_panel"));
         assert_eq!(config.action_for("f5"), Some("run_tool_0"));
         // Non-overridden bindings remain intact
-        assert_eq!(
-            config.action_for("ctrl+shift+p"),
-            Some("command_palette")
-        );
+        assert_eq!(config.action_for("ctrl+shift+p"), Some("command_palette"));
     }
 
     #[test]
@@ -199,10 +193,7 @@ mod tests {
         // We rely on the fact that the test environment likely doesn't have
         // ~/.aether/keybindings.toml (or if it does, we still get at least defaults).
         let config = KeybindingsConfig::load();
-        assert_eq!(
-            config.action_for("ctrl+shift+p"),
-            Some("command_palette")
-        );
+        assert_eq!(config.action_for("ctrl+shift+p"), Some("command_palette"));
         assert!(config.bindings.len() >= 15);
     }
 

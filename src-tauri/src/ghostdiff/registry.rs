@@ -18,9 +18,7 @@ use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
-use super::layer::{
-    FileDelta, Layer, LayerContent, LayerId, LayerSource, LayerSummary, LayerTint,
-};
+use super::layer::{FileDelta, Layer, LayerContent, LayerId, LayerSource, LayerSummary, LayerTint};
 use crate::term::GridSnapshot;
 
 /// Snapshot the watcher needs to recompute a diff for one layer.
@@ -237,9 +235,10 @@ impl LayerRegistry {
         let mut guard = self.lock_layers()?;
         if guard.remove(id).is_some() {
             let seq = self.next_seq();
-            let _ = self
-                .tx
-                .send(LayerEvent::Removed { seq, layer_id: id.to_string() });
+            let _ = self.tx.send(LayerEvent::Removed {
+                seq,
+                layer_id: id.to_string(),
+            });
         }
         drop(guard);
         Ok(())
@@ -374,7 +373,9 @@ impl LayerRegistry {
     /// comparisons, which the user does not own). IPC reads this before
     /// touching the main worktree.
     pub fn is_read_only(&self, id: &str) -> bool {
-        let Ok(guard) = self.layers.lock() else { return false };
+        let Ok(guard) = self.layers.lock() else {
+            return false;
+        };
         guard.get(id).map(|l| l.is_read_only()).unwrap_or(false)
     }
 
@@ -509,9 +510,7 @@ impl LayerRegistry {
         events
     }
 
-    fn lock_layers(
-        &self,
-    ) -> Result<std::sync::MutexGuard<'_, HashMap<LayerId, Layer>>, String> {
+    fn lock_layers(&self) -> Result<std::sync::MutexGuard<'_, HashMap<LayerId, Layer>>, String> {
         self.layers
             .lock()
             .map_err(|_| "ghostdiff layer lock poisoned".to_string())
@@ -659,9 +658,7 @@ mod tests {
         r.unregister("j1").unwrap();
         let events = r.poll();
         assert_eq!(events.len(), 1);
-        assert!(
-            matches!(&events[0], LayerEvent::Removed { layer_id, .. } if layer_id == "j1"),
-        );
+        assert!(matches!(&events[0], LayerEvent::Removed { layer_id, .. } if layer_id == "j1"),);
     }
 
     #[test]
@@ -782,11 +779,8 @@ mod tests {
     fn clear_file_hunks_drops_file_and_emits_updated() {
         let r = LayerRegistry::new();
         reg_layer(&r, "j1", 0);
-        r.refresh(
-            "j1",
-            vec![make_delta_two_hunks("a.ts"), make_delta("b.ts")],
-        )
-        .unwrap();
+        r.refresh("j1", vec![make_delta_two_hunks("a.ts"), make_delta("b.ts")])
+            .unwrap();
         let _ = r.poll();
 
         let removed = r.clear_file_hunks("j1", "a.ts").unwrap();
@@ -828,8 +822,7 @@ mod tests {
         assert!(r.is_read_only("bc1"));
         // Repo path is reachable (IPC needs it later for resolve_main_path).
         assert_eq!(
-            r.repo_path("bc1")
-                .map(|p| p.to_string_lossy().to_string()),
+            r.repo_path("bc1").map(|p| p.to_string_lossy().to_string()),
             Some("/tmp/repo".to_string())
         );
         // Branch comparisons are not fs-watched — no snapshot returned.
@@ -947,8 +940,8 @@ mod tests {
         let r = LayerRegistry::new();
         reg_snapshot(&r, "s1", 0);
         let _ = r.poll(); // drain the register Updated event
-        // Refresh with a bogus file delta must silently no-op — snapshot
-        // content is immutable after registration.
+                          // Refresh with a bogus file delta must silently no-op — snapshot
+                          // content is immutable after registration.
         r.refresh("s1", vec![make_delta("a.ts")]).unwrap();
         assert!(r.poll().is_empty(), "snapshot refresh should emit nothing");
         // File count stays zero because the TerminalState content is unchanged.
@@ -1096,8 +1089,7 @@ mod tests {
                     summary: summary.clone(),
                 };
                 let json = serde_json::to_string(&payload).expect("serialize");
-                let parsed: LayerUpdatedPayload =
-                    serde_json::from_str(&json).expect("deserialize");
+                let parsed: LayerUpdatedPayload = serde_json::from_str(&json).expect("deserialize");
                 assert_eq!(parsed.seq, *seq);
                 assert_eq!(parsed.summary.id, summary.id);
                 // camelCase contract for the frontend wire shape.
@@ -1154,8 +1146,7 @@ mod tests {
                 let json = serde_json::to_string(&payload).expect("serialize");
                 // camelCase: layer_id → layerId on the wire.
                 assert!(json.contains("\"layerId\""));
-                let parsed: LayerIdPayload =
-                    serde_json::from_str(&json).expect("deserialize");
+                let parsed: LayerIdPayload = serde_json::from_str(&json).expect("deserialize");
                 assert_eq!(parsed.seq, *seq);
                 assert_eq!(parsed.layer_id, *layer_id);
             }

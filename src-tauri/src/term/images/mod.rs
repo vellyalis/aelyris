@@ -16,16 +16,14 @@ pub mod sixel;
 pub mod store;
 
 pub use chunked_osc::{
-    AssemblerError, AssemblerOutcome, ChunkAssembler, ChunkedOscFormat, ChunkedOscPayload,
-    ParseStep as ChunkedOscParseStep, try_parse as try_parse_chunked_osc,
+    try_parse as try_parse_chunked_osc, AssemblerError, AssemblerOutcome, ChunkAssembler,
+    ChunkedOscFormat, ChunkedOscPayload, ParseStep as ChunkedOscParseStep,
 };
 pub use decoded::{DecodedImage, DecodedPayload};
 pub use kitty::{
-    KittyChunkAssembler, KittyDecodeError, KittyHeader, decode_kitty, parse_kitty_header,
-    png_dimensions,
+    decode_kitty, parse_kitty_header, png_dimensions, KittyChunkAssembler, KittyDecodeError,
+    KittyHeader,
 };
-pub use sequences::{ImagePayload, ImageProtocol, ParseStep, try_parse};
-pub use sixel::{SixelDecodeError, SixelHeader, decode_sixel, parse_sixel_header};
-pub use store::{
-    EvictionStats, IMAGE_BYTE_CAP, ImageEntry, ImageId, ImagePlacement, ImageStore,
-};
+pub use sequences::{try_parse, ImagePayload, ImageProtocol, ParseStep};
+pub use sixel::{decode_sixel, parse_sixel_header, SixelDecodeError, SixelHeader};
+pub use store::{EvictionStats, ImageEntry, ImageId, ImagePlacement, ImageStore, IMAGE_BYTE_CAP};

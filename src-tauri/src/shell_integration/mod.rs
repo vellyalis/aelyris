@@ -157,8 +157,8 @@ pub fn source_line(kind: ShellKind, script_path: &Path) -> String {
 /// Snapshot the integration state for a single shell.
 pub fn status(kind: ShellKind) -> Result<ShellIntegrationStatus, String> {
     let script = script_path(kind)?;
-    let profile = profile_path(kind)
-        .ok_or_else(|| "could not resolve home directory".to_string())?;
+    let profile =
+        profile_path(kind).ok_or_else(|| "could not resolve home directory".to_string())?;
     let profile_exists = profile.is_file();
     let installed = if profile_exists {
         match fs::read_to_string(&profile) {
@@ -197,8 +197,8 @@ pub fn status_all() -> Vec<ShellIntegrationStatus> {
 /// function performs the action; the UI gates it on a click.
 pub fn install(kind: ShellKind) -> Result<InstallResult, String> {
     let script = script_path(kind)?;
-    let profile = profile_path(kind)
-        .ok_or_else(|| "could not resolve home directory".to_string())?;
+    let profile =
+        profile_path(kind).ok_or_else(|| "could not resolve home directory".to_string())?;
     let line = source_line(kind, &script);
 
     write_script_to_disk(kind, &script)?;
@@ -220,8 +220,7 @@ pub fn install(kind: ShellKind) -> Result<InstallResult, String> {
 
 fn write_script_to_disk(kind: ShellKind, script: &Path) -> Result<(), String> {
     if let Some(parent) = script.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("create {}: {}", parent.display(), e))?;
+        fs::create_dir_all(parent).map_err(|e| format!("create {}: {}", parent.display(), e))?;
     }
     fs::write(script, kind.script_contents())
         .map_err(|e| format!("write {}: {}", script.display(), e))
@@ -232,8 +231,7 @@ fn append_source_line_if_missing(profile: &Path, line: &str) -> Result<bool, Str
         // PowerShell's profile sits inside `Documents/PowerShell/` which
         // doesn't exist by default on Windows. Create the directory tree
         // so write doesn't fail on a fresh install.
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("create {}: {}", parent.display(), e))?;
+        fs::create_dir_all(parent).map_err(|e| format!("create {}: {}", parent.display(), e))?;
     }
 
     if profile.is_file() {
@@ -282,8 +280,10 @@ mod tests {
 
     #[test]
     fn source_line_quotes_paths_per_shell() {
-        let pwsh =
-            source_line(ShellKind::PowerShell, Path::new("C:\\tmp\\with space\\aether.ps1"));
+        let pwsh = source_line(
+            ShellKind::PowerShell,
+            Path::new("C:\\tmp\\with space\\aether.ps1"),
+        );
         assert_eq!(pwsh, ". \"C:\\tmp\\with space\\aether.ps1\"");
 
         let bash = source_line(ShellKind::Bash, Path::new("/home/x/.aether/aether.bash"));
@@ -350,10 +350,7 @@ mod tests {
     #[test]
     fn status_for_existing_profile_with_marker_is_installed() {
         let tmp = TempDir::new().expect("tempdir");
-        let profile = write_profile(
-            tmp.path(),
-            &format!("\n{}\nsource 'x'\n", INSTALL_MARKER),
-        );
+        let profile = write_profile(tmp.path(), &format!("\n{}\nsource 'x'\n", INSTALL_MARKER));
         // Use the helper directly to keep the test independent of the
         // user's real home directory.
         let exists = profile.is_file();

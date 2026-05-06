@@ -12,20 +12,20 @@
 use alacritty_terminal::event::VoidListener;
 use alacritty_terminal::grid::Dimensions;
 use alacritty_terminal::index::{Line, Point};
-use alacritty_terminal::term::{Config, cell::Cell};
+use alacritty_terminal::term::{cell::Cell, Config};
 use alacritty_terminal::vte::ansi::Processor;
 use alacritty_terminal::Term;
 
 use crate::logging::LogRing;
 
-use super::images::{
-    AssemblerOutcome, ChunkAssembler, ChunkedOscParseStep, ChunkedOscPayload, EvictionStats,
-    ImageId, ImagePlacement, ImageStore, KittyChunkAssembler, ParseStep as ImageParseStep,
-    decode_kitty, decode_sixel, parse_kitty_header, try_parse as try_parse_image,
-    try_parse_chunked_osc,
-};
 use super::images::sequences::{ImagePayload, ImageProtocol};
-use super::prompt_marks::{ParseStep, PromptMark, PromptMarkLog, try_parse as try_parse_osc133};
+use super::images::{
+    decode_kitty, decode_sixel, parse_kitty_header, try_parse as try_parse_image,
+    try_parse_chunked_osc, AssemblerOutcome, ChunkAssembler, ChunkedOscParseStep,
+    ChunkedOscPayload, EvictionStats, ImageId, ImagePlacement, ImageStore, KittyChunkAssembler,
+    ParseStep as ImageParseStep,
+};
+use super::prompt_marks::{try_parse as try_parse_osc133, ParseStep, PromptMark, PromptMarkLog};
 
 #[derive(Debug, thiserror::Error)]
 pub enum TermEngineError {
@@ -215,8 +215,7 @@ impl TermEngine {
                     // protocols swallow decode failures (raw bytes still
                     // get retained for diagnostics) so a malformed image
                     // never crashes the engine.
-                    let _id: Option<ImageId> =
-                        self.handle_image_payload(payload, placement);
+                    let _id: Option<ImageId> = self.handle_image_payload(payload, placement);
                     // Image bytes are *consumed*, not forwarded to
                     // alacritty — that's the whole point of pre-empting
                     // here. The grid stays free of escape garbage.
@@ -270,8 +269,7 @@ impl TermEngine {
                     // Forward the OSC bytes to alacritty too. Alacritty
                     // ignores unknown OSCs, so this is a no-op for grid
                     // state but keeps its VTE state machine consistent.
-                    self.parser
-                        .advance(&mut self.term, &combined[i..i + n]);
+                    self.parser.advance(&mut self.term, &combined[i..i + n]);
                     i += n;
                     consumed = i;
                 }
@@ -308,11 +306,7 @@ impl TermEngine {
     /// transfers retain their partial bytes (with `decoded=None`) so the
     /// diagnostic surface still sees what arrived, mirroring the
     /// existing single-shot Kitty error path.
-    fn handle_chunked_osc_frame(
-        &mut self,
-        payload: ChunkedOscPayload,
-        placement: ImagePlacement,
-    ) {
+    fn handle_chunked_osc_frame(&mut self, payload: ChunkedOscPayload, placement: ImagePlacement) {
         // Malformed frames are consumed off the wire but never reach the
         // assembler — feeding one in would be a programmer error.
         if matches!(payload, ChunkedOscPayload::Malformed) {
@@ -320,7 +314,9 @@ impl TermEngine {
         }
         match self.chunked_osc.ingest(payload) {
             AssemblerOutcome::Pending => {}
-            AssemblerOutcome::Completed { raw_bytes, decoded, .. } => {
+            AssemblerOutcome::Completed {
+                raw_bytes, decoded, ..
+            } => {
                 let (_id, eviction) = self.images.insert_full(
                     ImageProtocol::Kitty,
                     raw_bytes,
@@ -364,24 +360,18 @@ impl TermEngine {
                 let (resolved_header, body) = self.kitty_chunks.ingest(header, payload.body)?;
                 let raw_bytes = body.clone();
                 let decoded = decode_kitty(&resolved_header, &body).ok();
-                let (id, eviction) = self.images.insert_full(
-                    ImageProtocol::Kitty,
-                    raw_bytes,
-                    decoded,
-                    placement,
-                );
+                let (id, eviction) =
+                    self.images
+                        .insert_full(ImageProtocol::Kitty, raw_bytes, decoded, placement);
                 self.record_eviction(eviction);
                 Some(id)
             }
             ImageProtocol::Sixel => {
                 let raw_bytes = payload.body.clone();
                 let decoded = decode_sixel(&payload.body, &payload.header).ok();
-                let (id, eviction) = self.images.insert_full(
-                    ImageProtocol::Sixel,
-                    raw_bytes,
-                    decoded,
-                    placement,
-                );
+                let (id, eviction) =
+                    self.images
+                        .insert_full(ImageProtocol::Sixel, raw_bytes, decoded, placement);
                 self.record_eviction(eviction);
                 Some(id)
             }
@@ -440,10 +430,8 @@ impl TermEngine {
         }
         let mut out = String::with_capacity(self.size.cols);
         for col in 0..self.size.cols {
-            let cell: &Cell = &self.term.grid()[Point::new(
-                Line(line as i32),
-                alacritty_terminal::index::Column(col),
-            )];
+            let cell: &Cell = &self.term.grid()
+                [Point::new(Line(line as i32), alacritty_terminal::index::Column(col))];
             out.push(cell.c);
         }
         Ok(out.trim_end().to_string())
@@ -586,7 +574,10 @@ mod tests {
         engine.advance_str("line0\r\nline1\r\n");
         let marks = engine.advance(b"\x1b]133;A\x07$ ");
         assert_eq!(marks.len(), 1);
-        assert_eq!(marks[0].screen_line, 2, "prompt mark must land on the cursor's line");
+        assert_eq!(
+            marks[0].screen_line, 2,
+            "prompt mark must land on the cursor's line"
+        );
     }
 
     #[test]
@@ -741,8 +732,14 @@ mod tests {
             engine.images().bytes_used(),
             b"aGVsbG8=".len() + b"hello".len()
         );
-        let entry = engine.images().get(crate::term::images::ImageId(0)).unwrap();
-        assert!(entry.decoded.is_some(), "PNG passthrough should attach a decoded payload");
+        let entry = engine
+            .images()
+            .get(crate::term::images::ImageId(0))
+            .unwrap();
+        assert!(
+            entry.decoded.is_some(),
+            "PNG passthrough should attach a decoded payload"
+        );
     }
 
     #[test]
@@ -755,7 +752,10 @@ mod tests {
         // Sprint 2: the Sixel decoder runs, leaving an attached RGBA
         // payload sized to the resolved bitmap. `!1~~~~` is 4 columns
         // of full-mask sixels → 4×6 = 24 RGBA pixels.
-        let entry = engine.images().get(crate::term::images::ImageId(0)).unwrap();
+        let entry = engine
+            .images()
+            .get(crate::term::images::ImageId(0))
+            .unwrap();
         let decoded = entry.decoded.as_ref().expect("Sixel should decode");
         assert_eq!(decoded.width_px, 4);
         assert_eq!(decoded.height_px, 6);
@@ -775,7 +775,10 @@ mod tests {
         assert_eq!(engine.images().len(), 1);
         // The retained raw bytes are the concatenation of all three
         // chunk bodies — that's what's available for diagnostics.
-        let entry = engine.images().get(crate::term::images::ImageId(0)).unwrap();
+        let entry = engine
+            .images()
+            .get(crate::term::images::ImageId(0))
+            .unwrap();
         assert_eq!(entry.bytes, b"AAAABBBBCCCC");
     }
 
@@ -786,8 +789,14 @@ mod tests {
         let mut engine = TermEngine::new(80, 24).expect("engine");
         engine.advance(b"\x1b_Ga=T,f=100;!!!\x1b\\");
         assert_eq!(engine.images().len(), 1);
-        let entry = engine.images().get(crate::term::images::ImageId(0)).unwrap();
-        assert!(entry.decoded.is_none(), "decode failure leaves decoded=None");
+        let entry = engine
+            .images()
+            .get(crate::term::images::ImageId(0))
+            .unwrap();
+        assert!(
+            entry.decoded.is_none(),
+            "decode failure leaves decoded=None"
+        );
         assert_eq!(entry.bytes, b"!!!");
     }
 
@@ -803,7 +812,11 @@ mod tests {
         assert_eq!(engine.row_text(0).unwrap(), "hello");
         engine.advance(b"sbG8=\x1b\\after");
         assert_eq!(engine.images().len(), 1);
-        let payload = &engine.images().get(crate::term::images::ImageId(0)).unwrap().bytes;
+        let payload = &engine
+            .images()
+            .get(crate::term::images::ImageId(0))
+            .unwrap()
+            .bytes;
         assert_eq!(payload, b"aGVsbG8=");
         assert_eq!(engine.row_text(0).unwrap(), "helloafter");
     }
@@ -811,9 +824,7 @@ mod tests {
     #[test]
     fn osc133_and_image_escape_can_coexist_in_one_advance() {
         let mut engine = TermEngine::new(80, 24).expect("engine");
-        let marks = engine.advance(
-            b"\x1b]133;A\x07$ \x1b_Ga=T,f=100;aGVsbG8=\x1b\\done",
-        );
+        let marks = engine.advance(b"\x1b]133;A\x07$ \x1b_Ga=T,f=100;aGVsbG8=\x1b\\done");
         assert_eq!(marks.len(), 1, "OSC 133 mark should still emit");
         assert_eq!(engine.images().len(), 1, "image should still register");
         // Grid sees the OSC 133 prompt + literal text only.
@@ -837,8 +848,8 @@ mod tests {
     fn chunked_osc_single_chunk_completes_inline() {
         // BEGIN + one DATA + END in a single advance() — the smallest
         // possible end-to-end exercise of the OSC 1338 path.
-        use base64::Engine;
         use base64::engine::general_purpose::STANDARD as B64;
+        use base64::Engine;
 
         let mut engine = TermEngine::new(80, 24).expect("engine");
         let raw = b"\x89PNGfake";
@@ -850,7 +861,10 @@ mod tests {
         // OSC 1338 bytes are NEVER forwarded to alacritty.
         assert_eq!(engine.row_text(0).unwrap(), "beforeafter");
         assert_eq!(engine.images().len(), 1);
-        let entry = engine.images().get(crate::term::images::ImageId(0)).unwrap();
+        let entry = engine
+            .images()
+            .get(crate::term::images::ImageId(0))
+            .unwrap();
         assert_eq!(entry.bytes, raw);
         let decoded = entry.decoded.as_ref().expect("PNG should attach decoded");
         assert_eq!(decoded.width_px, 4);
@@ -862,8 +876,8 @@ mod tests {
         // Three chunks delivered in three separate advance() calls —
         // mirrors how an emitter would actually dribble the bytes through
         // ConPTY one short OSC at a time.
-        use base64::Engine;
         use base64::engine::general_purpose::STANDARD as B64;
+        use base64::Engine;
 
         let mut engine = TermEngine::new(80, 24).expect("engine");
         let raw = b"AAAABBBBCCCCDDDDEEEEFFFFGGGG"; // 28 bytes -> 40 b64 chars
@@ -881,7 +895,10 @@ mod tests {
         }
         engine.advance(b"\x1b]1338;E;7\x07");
         assert_eq!(engine.images().len(), 1, "END should promote to ImageStore");
-        let entry = engine.images().get(crate::term::images::ImageId(0)).unwrap();
+        let entry = engine
+            .images()
+            .get(crate::term::images::ImageId(0))
+            .unwrap();
         assert_eq!(entry.bytes, raw);
     }
 
@@ -911,8 +928,8 @@ mod tests {
     fn chunked_osc_terminator_split_across_advances_completes() {
         // Engine receives `\x1b]1338;E;1` and then `\x07` in two calls.
         // The first should stash, the second should complete.
-        use base64::Engine;
         use base64::engine::general_purpose::STANDARD as B64;
+        use base64::Engine;
 
         let mut engine = TermEngine::new(80, 24).expect("engine");
         let b64 = B64.encode(b"hi");
@@ -930,8 +947,8 @@ mod tests {
     fn chunked_osc_and_osc133_can_coexist_in_one_advance() {
         // OSC 133 mark, then a complete chunked-OSC image, then text.
         // Both surfaces must land cleanly.
-        use base64::Engine;
         use base64::engine::general_purpose::STANDARD as B64;
+        use base64::Engine;
 
         let mut engine = TermEngine::new(80, 24).expect("engine");
         let b64 = B64.encode(b"x");
@@ -955,7 +972,10 @@ mod tests {
 
         let first = engine.advance(b"\x1b]133;A\x07first\r\n");
         assert_eq!(first.len(), 1);
-        assert_eq!(first[0].history_size, 0, "first mark should see empty history");
+        assert_eq!(
+            first[0].history_size, 0,
+            "first mark should see empty history"
+        );
 
         // Drop five more lines to push content into scrollback.
         for i in 0..5 {
@@ -1005,8 +1025,14 @@ mod tests {
             only.fields.get("terminal_id").map(String::as_str),
             Some("term-9"),
         );
-        assert_eq!(only.fields.get("evicted_count").map(String::as_str), Some("3"));
-        assert_eq!(only.fields.get("evicted_bytes").map(String::as_str), Some("4096"));
+        assert_eq!(
+            only.fields.get("evicted_count").map(String::as_str),
+            Some("3")
+        );
+        assert_eq!(
+            only.fields.get("evicted_bytes").map(String::as_str),
+            Some("4096")
+        );
         // bytes_used / cap reflect the live store, which the helper
         // resolves at emit time — for an empty engine that's 0/cap.
         assert_eq!(
@@ -1034,12 +1060,12 @@ mod tests {
         // the engine with a deliberately tiny image cap so the third
         // insert evicts the first. Asserts the eviction surfaces as a
         // structured `image_evicted` event in the engine's log ring.
-        use base64::Engine;
         use base64::engine::general_purpose::STANDARD as B64;
+        use base64::Engine;
 
         let ring = LogRing::new();
-        let mut engine =
-            TermEngine::new_with_telemetry(80, 24, "term-cap".into(), ring.clone()).expect("engine");
+        let mut engine = TermEngine::new_with_telemetry(80, 24, "term-cap".into(), ring.clone())
+            .expect("engine");
         // Replace the default 50-MiB store with a tiny cap so the test
         // forces eviction without piping multi-megabyte payloads. The
         // helper is gated to test-only construction paths.
@@ -1074,7 +1100,10 @@ mod tests {
             Some("term-cap"),
         );
         // Cap is the small test-only cap, surfaced as a string field.
-        assert_eq!(first_evict.fields.get("cap").map(String::as_str), Some("32"));
+        assert_eq!(
+            first_evict.fields.get("cap").map(String::as_str),
+            Some("32")
+        );
     }
 
     #[test]
@@ -1087,8 +1116,8 @@ mod tests {
         // ring. Tiny cap (1 KiB) + ~50-byte raw payload per frame
         // forces eviction every few frames so the test exercises
         // the loop instead of the cap's headroom.
-        use base64::Engine;
         use base64::engine::general_purpose::STANDARD as B64;
+        use base64::Engine;
 
         let ring = LogRing::new();
         let mut engine =

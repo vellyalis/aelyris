@@ -39,7 +39,9 @@ fn test_create_pane() {
     let db = Database::open_memory().unwrap();
     let s = db.create_session("proj").unwrap();
     let w = db.create_window(&s.id, "Tab 1").unwrap();
-    let pane = db.create_pane(&w.id, "cmd", "C:/Users/owner", 120, 30).unwrap();
+    let pane = db
+        .create_pane(&w.id, "cmd", "C:/Users/owner", 120, 30)
+        .unwrap();
 
     assert_eq!(pane.window_id, w.id);
     assert_eq!(pane.shell_type, "cmd");
@@ -56,13 +58,18 @@ fn test_save_and_restore() {
     let s = db.create_session("my-project").unwrap();
     let w1 = db.create_window(&s.id, "Tab 1").unwrap();
     let w2 = db.create_window(&s.id, "Tab 2").unwrap();
-    db.create_pane(&w1.id, "powershell", "C:/proj1", 120, 30).unwrap();
+    db.create_pane(&w1.id, "powershell", "C:/proj1", 120, 30)
+        .unwrap();
     db.create_pane(&w1.id, "cmd", "C:/proj1", 80, 24).unwrap();
-    db.create_pane(&w2.id, "gitbash", "C:/proj2", 100, 25).unwrap();
+    db.create_pane(&w2.id, "gitbash", "C:/proj2", 100, 25)
+        .unwrap();
     db.update_window_layout(&w1.id, "hsplit").unwrap();
 
     // Restore
-    let restored = db.restore_last_session().unwrap().expect("should find a session");
+    let restored = db
+        .restore_last_session()
+        .unwrap()
+        .expect("should find a session");
     assert_eq!(restored.session.name, "my-project");
     assert_eq!(restored.windows.len(), 2);
 
@@ -115,9 +122,9 @@ fn test_session_manager_create_pane_spawns_pty() {
 
     let session = sm.create_session("test").unwrap();
     let window = sm.create_window(&session.id, "Tab 1").unwrap();
-    let (pane, terminal_id) = sm.create_pane(
-        &window.id, &ShellType::Cmd, ".", 80, 24, &pty,
-    ).unwrap();
+    let (pane, terminal_id) = sm
+        .create_pane(&window.id, &ShellType::Cmd, ".", 80, 24, &pty)
+        .unwrap();
 
     assert_eq!(pane.shell_type, "cmd");
     assert!(!terminal_id.is_empty());
@@ -135,14 +142,21 @@ fn test_split_pane() {
     let w = sm.create_window(&s.id, "Tab").unwrap();
 
     // First pane
-    sm.create_pane(&w.id, &ShellType::Cmd, ".", 80, 24, &pty).unwrap();
+    sm.create_pane(&w.id, &ShellType::Cmd, ".", 80, 24, &pty)
+        .unwrap();
 
     // Split horizontally
-    let (pane2, tid2) = sm.split_pane(
-        &w.id,
-        aether_terminal_lib::session::manager::SplitDirection::Horizontal,
-        &ShellType::Cmd, ".", 80, 24, &pty,
-    ).unwrap();
+    let (pane2, tid2) = sm
+        .split_pane(
+            &w.id,
+            aether_terminal_lib::session::manager::SplitDirection::Horizontal,
+            &ShellType::Cmd,
+            ".",
+            80,
+            24,
+            &pty,
+        )
+        .unwrap();
 
     assert_eq!(pane2.shell_type, "cmd");
     assert!(pty.list().contains(&tid2));
@@ -164,7 +178,8 @@ fn test_restore_with_missing_shell() {
     // Create a session with a non-existent shell type
     let s = db.create_session("test").unwrap();
     let w = db.create_window(&s.id, "Tab").unwrap();
-    db.create_pane(&w.id, "nonexistent_shell", ".", 80, 24).unwrap();
+    db.create_pane(&w.id, "nonexistent_shell", ".", 80, 24)
+        .unwrap();
 
     // SessionManager should fallback to CMD
     let sm = SessionManager::open_memory().unwrap();
@@ -183,7 +198,9 @@ fn test_close_pane_cleans_up() {
 
     let s = sm.create_session("test").unwrap();
     let w = sm.create_window(&s.id, "Tab").unwrap();
-    let (pane, tid) = sm.create_pane(&w.id, &ShellType::Cmd, ".", 80, 24, &pty).unwrap();
+    let (pane, tid) = sm
+        .create_pane(&w.id, &ShellType::Cmd, ".", 80, 24, &pty)
+        .unwrap();
 
     assert!(pty.list().contains(&tid));
 

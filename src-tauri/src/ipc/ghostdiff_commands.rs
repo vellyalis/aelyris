@@ -108,9 +108,7 @@ pub fn apply_ghost_hunk(
     // Phase 3C-2: read-only layers (e.g. branch comparisons) must refuse
     // apply operations — the source revision is not owned by the user.
     if registry.is_read_only(&layer_id) {
-        return Err(format!(
-            "layer {layer_id} is read-only — apply is rejected"
-        ));
+        return Err(format!("layer {layer_id} is read-only — apply is rejected"));
     }
 
     let delta = registry
@@ -128,11 +126,10 @@ pub fn apply_ghost_hunk(
         .ok_or_else(|| format!("layer {layer_id} has no repo path"))?;
     let target = resolve_main_path(&repo_path, &file_path)?;
 
-    let current = std::fs::read_to_string(&target)
-        .map_err(|e| format!("read {}: {e}", target.display()))?;
+    let current =
+        std::fs::read_to_string(&target).map_err(|e| format!("read {}: {e}", target.display()))?;
     let patched = ghostdiff::apply::apply_hunk_to_main(&current, &hunk)?;
-    std::fs::write(&target, &patched)
-        .map_err(|e| format!("write {}: {e}", target.display()))?;
+    std::fs::write(&target, &patched).map_err(|e| format!("write {}: {e}", target.display()))?;
 
     // Drop the applied hunk so the panel count + inline paint refresh.
     let _ = registry.remove_hunk(&layer_id, &file_path, hunk_idx);
@@ -164,9 +161,7 @@ pub fn apply_ghost_file(
         .ok_or_else(|| "LayerRegistry state missing".to_string())?;
 
     if registry.is_read_only(&layer_id) {
-        return Err(format!(
-            "layer {layer_id} is read-only — apply is rejected"
-        ));
+        return Err(format!("layer {layer_id} is read-only — apply is rejected"));
     }
 
     let delta = registry
@@ -229,14 +224,17 @@ pub fn start_branch_comparison(
 
     // Populate the diff. On failure, roll back the empty registration so
     // the panel doesn't show a ghost that will never gain content.
-    let deltas =
-        match ghostdiff::diff_engine::compute_branch_comparison(&repo, &base_branch, &head_branch) {
-            Ok(d) => d,
-            Err(e) => {
-                let _ = registry.unregister(&id);
-                return Err(e);
-            }
-        };
+    let deltas = match ghostdiff::diff_engine::compute_branch_comparison(
+        &repo,
+        &base_branch,
+        &head_branch,
+    ) {
+        Ok(d) => d,
+        Err(e) => {
+            let _ = registry.unregister(&id);
+            return Err(e);
+        }
+    };
     let _ = registry.refresh(&id, deltas);
 
     registry

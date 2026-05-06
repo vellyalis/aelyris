@@ -1,5 +1,6 @@
 pub mod agent;
 pub mod api;
+pub mod audit;
 pub mod config;
 pub mod db;
 pub mod ghostdiff;
@@ -12,21 +13,21 @@ pub mod pty;
 pub mod session;
 pub mod shell_integration;
 pub mod snapshot;
-pub mod term;
 pub mod suggest;
-mod watcher;
+pub mod term;
 pub mod watchdog;
+mod watcher;
 pub mod workflow;
 
-use tauri::{Emitter, Manager};
 use agent::AgentManager;
 use agent::InteractiveSessionManager;
 use db::Database;
 use ghostdiff::{LayerEvent, LayerRegistry, LayerTint, WatcherPool};
-use pty::PtyManager;
-use watchdog::auto_repair::{AutoRepairManager, RepairPhase};
-use suggest::SuggestEngine;
 use history::{HashingNgramEmbedder, HistoryStore};
+use pty::PtyManager;
+use suggest::SuggestEngine;
+use tauri::{Emitter, Manager};
+use watchdog::auto_repair::{AutoRepairManager, RepairPhase};
 
 /// Store handle managed by Tauri. Wraps the default (char-n-gram) embedder;
 /// the trait object abstraction is intentionally hidden here — if we ever
@@ -60,6 +61,7 @@ pub fn run() {
         .manage(AgentManager::new())
         .manage(InteractiveSessionManager::new())
         .manage(ipc::OutputBufferRegistry::new())
+        .manage(ipc::TerminalGenerationRegistry::new())
         .manage(pty::PaneRegistry::new())
         .manage(ipc::FsWatcherRegistry::new())
         .manage(workflow::WorkflowExecutor::new())
@@ -157,11 +159,26 @@ pub fn run() {
             // that actually shows translucency does.
             #[cfg(windows)]
             {
+                use windows::core::HSTRING;
                 use windows::Win32::Foundation::HWND;
                 use windows::Win32::Graphics::Dwm::{
                     DWMSBT_MAINWINDOW, DWMSBT_TRANSIENTWINDOW, DWMWA_SYSTEMBACKDROP_TYPE,
                     DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DwmSetWindowAttribute,
                 };
+                use windows::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID;
+
+                // Give dev and installed builds a real Windows app identity.
+                // WebView2 child processes will still exist (Tauri's renderer
+                // is WebView2 on Windows), but taskbar grouping, notifications,
+                // and shell surfaces should identify the top-level app as
+                // Aether Terminal instead of a generic webview host.
+                let app_user_model_id = HSTRING::from("com.aether.terminal");
+                if let Err(e) = unsafe {
+                    SetCurrentProcessExplicitAppUserModelID(&app_user_model_id)
+                } {
+                    log::debug!("windows app identity: AppUserModelID not applied: {e}");
+                }
+
                 if let Some(window) = app.get_webview_window("main") {
                     match window.hwnd() {
                         Ok(hwnd_raw) => {
@@ -445,6 +462,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             ipc::spawn_terminal,
             ipc::respawn_terminal,
+            ipc::force_restart_terminal,
             ipc::write_terminal,
             ipc::resize_terminal,
             ipc::close_terminal,
@@ -457,6 +475,7 @@ pub fn run() {
             ipc::term_search_history,
             ipc::term_image_data,
             ipc::term_image_metrics,
+            ipc::performance_observatory_metrics,
             ipc::discover_projects,
             ipc::default_project_scan_dirs,
             ipc::list_branches,
@@ -504,17 +523,31 @@ pub fn run() {
             ipc::create_window,
             ipc::create_pane,
             ipc::save_session_state,
+            ipc::save_pane_tree_layout,
+            ipc::get_pane_tree_layout,
+            ipc::delete_pane_tree_layout,
             // Command history
             ipc::save_command_history,
             ipc::search_command_history,
             ipc::recent_commands,
+            ipc::recent_audit_events,
+            ipc::append_audit_event,
+            ipc::append_audit_events,
+            ipc::list_audit_events,
+            ipc::get_audit_trace,
+            ipc::get_latest_snapshot,
+            ipc::rebuild_snapshot_from_events,
+            ipc::compact_event_journal,
             // Workspace pane commands
             ipc::send_keys,
             ipc::broadcast_keys,
             ipc::capture_pane,
             ipc::command_blocks,
             ipc::rename_pane,
+            ipc::set_pane_role,
             ipc::send_keys_by_name,
+            ipc::send_keys_by_role,
+            ipc::send_keys_by_target,
             ipc::list_panes_info,
             ipc::start_fs_watcher,
             ipc::stop_fs_watcher,
@@ -525,7 +558,13 @@ pub fn run() {
             ipc::workflow_set_agent,
             ipc::workflow_phase_done,
             ipc::workflow_approve_gate,
+            ipc::workflow_approve_gate_decision,
             ipc::workflow_reject_gate,
+            ipc::workflow_reject_gate_decision,
+            ipc::workflow_resume_from_phase,
+            ipc::workflow_split_current_phase,
+            ipc::workflow_request_decision,
+            ipc::workflow_record_phase_evidence,
             ipc::workflow_status,
             ipc::list_running_workflows,
             ipc::workflow_remove,
@@ -533,6 +572,8 @@ pub fn run() {
             ipc::save_agent_to_db,
             ipc::update_agent_in_db,
             ipc::list_agent_history,
+            ipc::save_agent_telemetry_snapshot,
+            ipc::list_agent_telemetry_snapshots,
             // LSP commands
             ipc::lsp_start,
             ipc::lsp_request,

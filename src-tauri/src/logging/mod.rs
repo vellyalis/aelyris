@@ -20,22 +20,22 @@
 
 use std::collections::HashMap;
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::OnceLock;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use serde::Deserialize;
 use serde::Serialize;
+use tracing::field::Field;
+use tracing::field::Visit;
 use tracing::Event;
 use tracing::Level;
 use tracing::Subscriber;
-use tracing::field::Field;
-use tracing::field::Visit;
-use tracing_subscriber::Layer;
 use tracing_subscriber::layer::Context;
+use tracing_subscriber::Layer;
 
 /// Maximum number of events retained in the ring buffer. Sized so the
 /// buffer's worst-case footprint (`limit × ~1 KiB per entry`) stays
@@ -235,7 +235,8 @@ impl Visit for FieldVisitor {
         if field.name() == "message" {
             self.message = Some(value.to_string());
         } else {
-            self.fields.insert(field.name().to_string(), value.to_string());
+            self.fields
+                .insert(field.name().to_string(), value.to_string());
         }
     }
 
@@ -291,10 +292,10 @@ where
 /// place, which is fine; the `LogRing` returned is still the global
 /// one and continues to receive events.
 pub fn init() -> LogRing {
-    use tracing_subscriber::EnvFilter;
     use tracing_subscriber::fmt;
     use tracing_subscriber::layer::SubscriberExt;
     use tracing_subscriber::util::SubscriberInitExt;
+    use tracing_subscriber::EnvFilter;
 
     let ring = ring_buffer();
 
@@ -336,12 +337,7 @@ mod tests {
     fn ring_caps_at_limit() {
         let ring = fresh_ring();
         for i in 0..(RING_LIMIT + 50) {
-            ring.push_entry(
-                "INFO",
-                "test",
-                format!("msg-{i}"),
-                HashMap::new(),
-            );
+            ring.push_entry("INFO", "test", format!("msg-{i}"), HashMap::new());
         }
         let recent = ring.recent(RING_LIMIT * 2);
         assert_eq!(recent.len(), RING_LIMIT);
@@ -456,8 +452,14 @@ mod tests {
             only.fields.get("terminal_id").map(String::as_str),
             Some("term-1"),
         );
-        assert_eq!(only.fields.get("evicted_count").map(String::as_str), Some("2"));
-        assert_eq!(only.fields.get("evicted_bytes").map(String::as_str), Some("4096"));
+        assert_eq!(
+            only.fields.get("evicted_count").map(String::as_str),
+            Some("2")
+        );
+        assert_eq!(
+            only.fields.get("evicted_bytes").map(String::as_str),
+            Some("4096")
+        );
         assert_eq!(
             only.fields.get("remaining_bytes_used").map(String::as_str),
             Some(&*format!("{}", 49 * 1024 * 1024)),
@@ -484,6 +486,9 @@ mod tests {
         ring.log_image_evicted("", 1, 100, 100, 1024);
         let only = ring.recent(1).into_iter().next().unwrap();
         assert!(!only.fields.contains_key("terminal_id"));
-        assert_eq!(only.fields.get("event").map(String::as_str), Some("image_evicted"));
+        assert_eq!(
+            only.fields.get("event").map(String::as_str),
+            Some("image_evicted")
+        );
     }
 }

@@ -15,10 +15,7 @@ pub fn start_watcher(app: AppHandle, watch_path: String) -> Result<WatcherHandle
 
     debouncer
         .watcher()
-        .watch(
-            Path::new(&watch_path),
-            notify::RecursiveMode::Recursive,
-        )
+        .watch(Path::new(&watch_path), notify::RecursiveMode::Recursive)
         .map_err(|e| format!("Failed to watch path: {}", e))?;
 
     let path_clone = watch_path.clone();
@@ -36,10 +33,13 @@ pub fn start_watcher(app: AppHandle, watch_path: String) -> Result<WatcherHandle
                         .collect();
 
                     if !changed_paths.is_empty() {
-                        let _ = app.emit("fs:changed", serde_json::json!({
-                            "root": path_clone,
-                            "paths": changed_paths,
-                        }));
+                        let _ = app.emit(
+                            "fs:changed",
+                            serde_json::json!({
+                                "root": path_clone,
+                                "paths": changed_paths,
+                            }),
+                        );
                     }
                 }
                 Err(e) => {
@@ -49,7 +49,9 @@ pub fn start_watcher(app: AppHandle, watch_path: String) -> Result<WatcherHandle
         }
     });
 
-    Ok(WatcherHandle { _debouncer: debouncer })
+    Ok(WatcherHandle {
+        _debouncer: debouncer,
+    })
 }
 
 /// Handle that keeps the watcher alive. Drop to stop watching.

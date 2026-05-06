@@ -32,14 +32,19 @@ pub fn list_worktrees(repo_path: &str) -> Result<Vec<WorktreeInfo>, String> {
     let mut result = Vec::new();
 
     // Add the main worktree first
-    let main_branch = repo.head().ok()
+    let main_branch = repo
+        .head()
+        .ok()
         .and_then(|h| h.shorthand().map(String::from))
         .unwrap_or_else(|| "HEAD".to_string());
-    let main_sha = repo.head().ok()
+    let main_sha = repo
+        .head()
+        .ok()
         .and_then(|h| h.peel_to_commit().ok())
         .map(|c| c.id().to_string())
         .unwrap_or_default();
-    let main_path = repo.workdir()
+    let main_path = repo
+        .workdir()
         .map(|p| p.to_string_lossy().to_string().replace('\\', "/"))
         .unwrap_or_else(|| repo_path.replace('\\', "/"));
     let main_status = worktree_status_for_repo(&repo);
@@ -62,10 +67,14 @@ pub fn list_worktrees(repo_path: &str) -> Result<Vec<WorktreeInfo>, String> {
             let wt_path = wt.path().to_string_lossy().to_string().replace('\\', "/");
             let (branch, head_sha, status) = match Repository::open(wt.path()) {
                 Ok(wt_repo) => {
-                    let b = wt_repo.head().ok()
+                    let b = wt_repo
+                        .head()
+                        .ok()
                         .and_then(|h| h.shorthand().map(String::from))
                         .unwrap_or_else(|| "detached".to_string());
-                    let sha = wt_repo.head().ok()
+                    let sha = wt_repo
+                        .head()
+                        .ok()
                         .and_then(|h| h.peel_to_commit().ok())
                         .map(|c| c.id().to_string())
                         .unwrap_or_default();
@@ -108,7 +117,11 @@ fn worktree_status_for_repo(repo: &Repository) -> WorktreeStatus {
 }
 
 /// Remove a worktree and optionally delete the branch
-pub fn remove_worktree(repo_path: &str, worktree_name: &str, delete_branch: bool) -> Result<(), String> {
+pub fn remove_worktree(
+    repo_path: &str,
+    worktree_name: &str,
+    delete_branch: bool,
+) -> Result<(), String> {
     validate_branch_name(worktree_name)?;
     // Use git CLI for reliable worktree removal (handles locked worktrees)
     let output = std::process::Command::new("git")
@@ -136,7 +149,12 @@ pub fn remove_worktree(repo_path: &str, worktree_name: &str, delete_branch: bool
             .map_err(|e| format!("Git branch delete failed: {}", e))?;
         if !branch_output.status.success() {
             let still_exists = std::process::Command::new("git")
-                .args(["show-ref", "--verify", "--quiet", &format!("refs/heads/{}", worktree_name)])
+                .args([
+                    "show-ref",
+                    "--verify",
+                    "--quiet",
+                    &format!("refs/heads/{}", worktree_name),
+                ])
                 .current_dir(repo_path)
                 .status()
                 .map(|s| s.success())
@@ -156,10 +174,14 @@ fn validate_branch_name(name: &str) -> Result<(), String> {
     if name.is_empty() {
         return Err("Branch name cannot be empty".to_string());
     }
-    if name.contains("..") || name.starts_with('/') || name.starts_with('\\') || name.contains(':') {
+    if name.contains("..") || name.starts_with('/') || name.starts_with('\\') || name.contains(':')
+    {
         return Err(format!("Invalid branch name: {}", name));
     }
-    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '/' || c == '.') {
+    if !name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '/' || c == '.')
+    {
         return Err(format!("Branch name contains invalid characters: {}", name));
     }
     Ok(())
@@ -183,11 +205,20 @@ pub fn create_worktree(repo_path: &str, branch_name: &str) -> Result<WorktreeInf
     let _repo = Repository::open(repo_path).map_err(|e| format!("Open repo: {}", e))?;
     let worktree_dir = predict_worktree_path(repo_path, branch_name);
 
-    let worktree_path = worktree_dir.to_string_lossy().to_string().replace('\\', "/");
+    let worktree_path = worktree_dir
+        .to_string_lossy()
+        .to_string()
+        .replace('\\', "/");
 
     // Use git command directly for reliability
     let output = std::process::Command::new("git")
-        .args(["worktree", "add", &worktree_dir.to_string_lossy(), "-b", branch_name])
+        .args([
+            "worktree",
+            "add",
+            &worktree_dir.to_string_lossy(),
+            "-b",
+            branch_name,
+        ])
         .current_dir(repo_path)
         .output()
         .map_err(|e| format!("Git command failed: {}", e))?;
@@ -196,7 +227,12 @@ pub fn create_worktree(repo_path: &str, branch_name: &str) -> Result<WorktreeInf
         let stderr = String::from_utf8_lossy(&output.stderr);
         // Try without -b (branch already exists)
         let output2 = std::process::Command::new("git")
-            .args(["worktree", "add", &worktree_dir.to_string_lossy(), branch_name])
+            .args([
+                "worktree",
+                "add",
+                &worktree_dir.to_string_lossy(),
+                branch_name,
+            ])
             .current_dir(repo_path)
             .output()
             .map_err(|e| format!("Git command failed: {}", e))?;
@@ -207,7 +243,9 @@ pub fn create_worktree(repo_path: &str, branch_name: &str) -> Result<WorktreeInf
 
     // Get the HEAD sha of the new worktree
     let head_sha = match Repository::open(&worktree_dir) {
-        Ok(wt_repo) => wt_repo.head().ok()
+        Ok(wt_repo) => wt_repo
+            .head()
+            .ok()
             .and_then(|h| h.peel_to_commit().ok())
             .map(|c| c.id().to_string())
             .unwrap_or_default(),

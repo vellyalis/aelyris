@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
-use crate::db::{self, Database};
 use crate::db::queries::{Pane, RestoredSession, Session, Window};
+use crate::db::{self, Database};
 use crate::pty::{PtyManager, ShellType};
 
 /// Bridges database persistence with live PTY management.
@@ -75,7 +75,8 @@ impl SessionManager {
         let shell_name = format!("{:?}", shell).to_lowercase();
 
         let terminal_id = pty_manager.spawn(shell, cols, rows, Some(cwd))?;
-        let pane = match self.with_db(|db| db.create_pane(window_id, &shell_name, cwd, cols, rows)) {
+        let pane = match self.with_db(|db| db.create_pane(window_id, &shell_name, cwd, cols, rows))
+        {
             Ok(pane) => pane,
             Err(err) => {
                 let _ = pty_manager.close(&terminal_id);
@@ -150,10 +151,17 @@ impl SessionManager {
                     Err(e) => {
                         log::warn!(
                             "Failed to restore pane {} (shell: {}): {}. Falling back to CMD.",
-                            pane.id, pane.shell_type, e
+                            pane.id,
+                            pane.shell_type,
+                            e
                         );
                         // Fallback to CMD
-                        if let Ok(tid) = pty_manager.spawn(&ShellType::Cmd, pane.cols, pane.rows, Some(&pane.cwd)) {
+                        if let Ok(tid) = pty_manager.spawn(
+                            &ShellType::Cmd,
+                            pane.cols,
+                            pane.rows,
+                            Some(&pane.cwd),
+                        ) {
                             results.push((pane.clone(), tid));
                         }
                     }

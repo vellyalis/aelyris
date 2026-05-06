@@ -1,5 +1,5 @@
-use regex::Regex;
 use super::interactive::AgentCli;
+use regex::Regex;
 
 /// Detected state from terminal output
 #[derive(Debug, Clone, PartialEq)]
@@ -55,10 +55,18 @@ impl CliOutputParser for ClaudeParser {
 
         // Status detection from Claude Code interactive output patterns
         // These are heuristic — Claude Code may change its output format
-        if text.contains("Thinking") || text.contains("⠋") || text.contains("⠙") || text.contains("⠹") {
+        if text.contains("Thinking")
+            || text.contains("⠋")
+            || text.contains("⠙")
+            || text.contains("⠹")
+        {
             status = Some(DetectedStatus::Thinking);
-        } else if text.contains("Edit") || text.contains("Write") || text.contains("Bash")
-            || text.contains("── file") || text.contains("Created") || text.contains("Updated")
+        } else if text.contains("Edit")
+            || text.contains("Write")
+            || text.contains("Bash")
+            || text.contains("── file")
+            || text.contains("Created")
+            || text.contains("Updated")
         {
             status = Some(DetectedStatus::Coding);
         } else if text.contains("Allow") || text.contains("(y/n)") || text.contains("permission") {
@@ -98,7 +106,10 @@ impl CliOutputParser for GeminiParser {
         } else {
             None
         };
-        MonitorResult { status, usage: DetectedUsage::default() }
+        MonitorResult {
+            status,
+            usage: DetectedUsage::default(),
+        }
     }
 }
 
@@ -114,7 +125,10 @@ impl CliOutputParser for CodexParser {
         } else {
             None
         };
-        MonitorResult { status, usage: DetectedUsage::default() }
+        MonitorResult {
+            status,
+            usage: DetectedUsage::default(),
+        }
     }
 }
 
@@ -123,7 +137,10 @@ struct GenericParser;
 
 impl CliOutputParser for GenericParser {
     fn parse_chunk(&self, _text: &str) -> MonitorResult {
-        MonitorResult { status: None, usage: DetectedUsage::default() }
+        MonitorResult {
+            status: None,
+            usage: DetectedUsage::default(),
+        }
     }
 }
 
@@ -141,9 +158,8 @@ pub fn create_parser(cli: &AgentCli) -> Box<dyn CliOutputParser> {
 /// This is intentionally simple — we only need it for status heuristics, not rendering.
 pub fn strip_ansi(input: &str) -> String {
     use std::sync::LazyLock;
-    static ANSI_RE: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"\x1b\[[0-9;]*[a-zA-Z]").unwrap()
-    });
+    static ANSI_RE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"\x1b\[[0-9;]*[a-zA-Z]").unwrap());
     ANSI_RE.replace_all(input, "").to_string()
 }
 

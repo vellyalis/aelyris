@@ -20,12 +20,23 @@ impl OutputBuffer {
     /// Feed raw output data (may contain partial lines, ANSI codes, etc.)
     pub fn feed(&mut self, data: &str) {
         self.partial.push_str(data);
+        if !self.partial.contains('\n') {
+            return;
+        }
 
-        // Split on newlines, keeping the last segment as partial
-        while let Some(pos) = self.partial.find('\n') {
-            let line = self.partial[..pos].to_string();
-            self.partial = self.partial[pos + 1..].to_string();
-            self.push_line(line);
+        // Split on newlines while keeping the final segment as the next
+        // partial line. `mem::take` avoids repeatedly reallocating and copying
+        // the remainder for every newline during large build-log floods.
+        let pending = std::mem::take(&mut self.partial);
+        let mut start = 0;
+        for (idx, ch) in pending.char_indices() {
+            if ch == '\n' {
+                self.push_line(pending[start..idx].to_string());
+                start = idx + ch.len_utf8();
+            }
+        }
+        if start < pending.len() {
+            self.partial.push_str(&pending[start..]);
         }
     }
 
@@ -93,7 +104,11 @@ pub fn extract_command_blocks(lines: &[String]) -> Vec<CommandBlock> {
                 i += 1;
             }
             if !cmd.is_empty() {
-                blocks.push(CommandBlock { command: cmd, output, start_line: start });
+                blocks.push(CommandBlock {
+                    command: cmd,
+                    output,
+                    start_line: start,
+                });
             }
         } else {
             i += 1;
@@ -140,7 +155,7 @@ pub fn strip_ansi(input: &str) -> String {
             // ESC [ ... (letter) — CSI sequence
             if chars.peek() == Some(&'[') {
                 chars.next(); // consume '['
-                // Read until we hit a letter (the terminator)
+                              // Read until we hit a letter (the terminator)
                 while let Some(&next) = chars.peek() {
                     chars.next();
                     if next.is_ascii_alphabetic() {
@@ -199,6 +214,16 @@ mod tests {
         buf.feed("world\n");
         assert_eq!(buf.len(), 1);
         assert_eq!(buf.tail(1), vec!["hello world"]);
+    }
+
+    #[test]
+    fn test_buffer_many_newlines_preserves_tail_and_partial() {
+        let mut buf = OutputBuffer::new(3);
+        buf.feed("a\nb\nc\nd\npartial");
+
+        assert_eq!(buf.len(), 3);
+        assert_eq!(buf.tail(10), vec!["b", "c", "d"]);
+        assert_eq!(buf.content(), "b\nc\nd\npartial");
     }
 
     #[test]
@@ -274,19 +299,14 @@ mod tests {
 
     #[test]
     fn test_command_blocks_no_prompts() {
-        let lines = vec![
-            "just some output".to_string(),
-            "more output".to_string(),
-        ];
+        let lines = vec!["just some output".to_string(), "more output".to_string()];
         let blocks = extract_command_blocks(&lines);
         assert_eq!(blocks.len(), 0);
     }
 
     #[test]
     fn test_command_blocks_empty_prompt() {
-        let lines = vec![
-            "PS C:\\Users\\owner>".to_string(),
-        ];
+        let lines = vec!["PS C:\\Users\\owner>".to_string()];
         let blocks = extract_command_blocks(&lines);
         // Empty command should be excluded
         assert_eq!(blocks.len(), 0);

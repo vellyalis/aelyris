@@ -1,11 +1,11 @@
-use tokio::sync::broadcast;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use tauri::{AppHandle, Emitter, Manager};
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use tauri::{AppHandle, Emitter, Manager};
+use tokio::sync::broadcast;
 
-use crate::agent::{InteractiveSessionManager, InteractiveSessionInfo, AgentCli};
 use crate::agent::output_monitor;
+use crate::agent::{AgentCli, InteractiveSessionInfo, InteractiveSessionManager};
 use crate::ghostdiff::{self, LayerRegistry, LayerTint, WatcherPool};
 use crate::pty::PtyManager;
 use crate::term::NativeTerminalRegistry;
@@ -39,7 +39,10 @@ pub fn spawn_interactive_agent(
         if branch.is_empty() || branch.len() > 200 {
             return Err("Branch name must be 1-200 characters".to_string());
         }
-        if !branch.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '/' || c == '.') {
+        if !branch
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '/' || c == '.')
+        {
             return Err("Branch name contains invalid characters".to_string());
         }
         if branch.contains("..") || branch.starts_with('-') || branch.starts_with('.') {
@@ -48,13 +51,19 @@ pub fn spawn_interactive_agent(
     }
 
     // If branch_name is set, create a worktree and use it as cwd
-    let (resolved_cwd, worktree_branch, worktree_path, repo_path) = if let Some(ref branch) = branch_name {
-        let wt = crate::git::create_worktree(&cwd, branch)?;
-        let wt_path = wt.path.clone();
-        (wt_path.clone(), Some(branch.clone()), Some(wt_path), Some(cwd.clone()))
-    } else {
-        (cwd.clone(), None, None, None)
-    };
+    let (resolved_cwd, worktree_branch, worktree_path, repo_path) =
+        if let Some(ref branch) = branch_name {
+            let wt = crate::git::create_worktree(&cwd, branch)?;
+            let wt_path = wt.path.clone();
+            (
+                wt_path.clone(),
+                Some(branch.clone()),
+                Some(wt_path),
+                Some(cwd.clone()),
+            )
+        } else {
+            (cwd.clone(), None, None, None)
+        };
 
     // If initial_prompt is provided and this is Claude, pass it via -p flag
     // so Claude starts working immediately (but stays interactive after)
@@ -87,14 +96,8 @@ pub fn spawn_interactive_agent(
 
     // Spawn via PtyManager (reuses existing PTY infrastructure)
     let pty_manager = app.state::<PtyManager>();
-    let pty_id = pty_manager.spawn_command(
-        &program,
-        &args,
-        cols,
-        rows,
-        Some(&resolved_cwd),
-        Some(env),
-    )?;
+    let pty_id =
+        pty_manager.spawn_command(&program, &args, cols, rows, Some(&resolved_cwd), Some(env))?;
 
     // Register interactive session
     let session_id = pty_id.clone(); // session ID = pty ID for simplicity
@@ -107,7 +110,11 @@ pub fn spawn_interactive_agent(
         id: session_id.clone(),
         pty_id: pty_id.clone(),
         cli: cli.clone(),
-        status: if initial_prompt.is_some() { "thinking".to_string() } else { "idle".to_string() },
+        status: if initial_prompt.is_some() {
+            "thinking".to_string()
+        } else {
+            "idle".to_string()
+        },
         model: model_str.to_string(),
         initial_prompt: initial_prompt.clone(),
         cwd: resolved_cwd,
@@ -145,7 +152,10 @@ pub fn spawn_interactive_agent(
                 std::path::PathBuf::from(&repo),
                 LayerTint::orchestra_default(),
             ) {
-                log::warn!("ghostdiff: orchestra register failed for {}: {e}", session_id);
+                log::warn!(
+                    "ghostdiff: orchestra register failed for {}: {e}",
+                    session_id
+                );
             }
         }
     }
@@ -204,7 +214,9 @@ pub fn spawn_interactive_agent(
 
     log::info!(
         "Spawned interactive agent {} (cli={:?}, model={})",
-        session_id, cli, model_str,
+        session_id,
+        cli,
+        model_str,
     );
 
     Ok(SpawnResult {
@@ -265,7 +277,10 @@ pub fn end_session_and_remove_worktree(app: AppHandle, id: String) -> Result<(),
 
     // Close PTY (use pty_id from session info)
     let pty_manager = app.state::<PtyManager>();
-    let pty_id = info.as_ref().map(|s| s.pty_id.clone()).unwrap_or_else(|| id.clone());
+    let pty_id = info
+        .as_ref()
+        .map(|s| s.pty_id.clone())
+        .unwrap_or_else(|| id.clone());
     let _ = pty_manager.close(&pty_id);
 
     // Tear down native engine session for this PTY.
@@ -392,7 +407,11 @@ async fn run_output_monitor(
                 // Missing a chunk means the CLI parser sees a discontinuity,
                 // but status/cost detection is self-healing: the next chunk
                 // will re-trigger detection. Logging is enough.
-                log::warn!("ui: agent {} monitor lagged, dropped {} chunks", session_id, n);
+                log::warn!(
+                    "ui: agent {} monitor lagged, dropped {} chunks",
+                    session_id,
+                    n
+                );
                 continue;
             }
             Err(broadcast::error::RecvError::Closed) => break,
@@ -409,4 +428,3 @@ async fn run_output_monitor(
     // Emit exit event
     let _ = app.emit(&format!("pty-exit-{}", session_id), ());
 }
-
