@@ -146,8 +146,9 @@ describe("InlineResultPanel load-diff effect deps", () => {
   it("uses the shared panel header for the empty state", () => {
     const entries = Object.entries(sources);
     const src = entries[0][1];
-    const emptyStateBranch =
-      src.match(/if \(uniqueFiles\.length === 0\) \{[\s\S]*?return \([\s\S]*?\);\n {2}\}/)?.[0] ?? "";
+    const start = src.indexOf("if (uniqueFiles.length === 0) {");
+    const end = src.indexOf("const currentDiff", start);
+    const emptyStateBranch = start >= 0 && end > start ? src.slice(start, end) : "";
 
     expect(emptyStateBranch).toContain("<PanelHeader");
     expect(emptyStateBranch).not.toContain("styles.header");

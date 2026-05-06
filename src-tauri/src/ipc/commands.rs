@@ -2969,6 +2969,13 @@ pub fn start_workflow(
     let workflow_name = workflow.name.clone();
     let phase_count = workflow.phases.len();
     let executor = app.state::<crate::workflow::WorkflowExecutor>();
+    if let Err(err) = executor.restore_project(&project_path) {
+        log::warn!(
+            "failed to restore workflow runs before start for project={:?}: {}",
+            project_path,
+            err
+        );
+    }
     let id = executor.start(workflow, &task_title, &project_path)?;
     record_audit_event(
         &app,
@@ -3323,8 +3330,20 @@ pub fn workflow_status(
 
 /// List all running workflows
 #[tauri::command]
-pub fn list_running_workflows(app: AppHandle) -> Vec<crate::workflow::WorkflowStatus> {
+pub fn list_running_workflows(
+    app: AppHandle,
+    project_path: Option<String>,
+) -> Vec<crate::workflow::WorkflowStatus> {
     let executor = app.state::<crate::workflow::WorkflowExecutor>();
+    if let Some(project_path) = project_path.as_deref() {
+        if let Err(err) = executor.restore_project(project_path) {
+            log::warn!(
+                "failed to restore workflow runs for project={:?}: {}",
+                project_path,
+                err
+            );
+        }
+    }
     executor.list()
 }
 

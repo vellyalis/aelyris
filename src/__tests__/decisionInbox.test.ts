@@ -128,6 +128,41 @@ describe("decisionInbox", () => {
     expect(inbox.pendingItems.some((item) => item.context.includes("External dependency"))).toBe(false);
   });
 
+  it("lifts live workflow waiting-gate state into the decision inbox without audit delivery", () => {
+    const inbox = buildDecisionInbox({
+      now: 11_000,
+      workflows: [
+        {
+          id: "workflow-live",
+          workflow_name: "Release gate",
+          task_title: "Ship release",
+          current_phase: 1,
+          phases: [
+            {
+              name: "review",
+              status: "waiting_gate",
+              decision_request: {
+                kind: "human_review",
+                reason: "Approve signed updater manifest before publish.",
+                options: ["approve", "reject"],
+                default_option: "approve",
+                requested_at: "10000",
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(inbox.pendingCount).toBe(1);
+    expect(inbox.pendingItems[0]).toMatchObject({
+      source: "workflow",
+      workflowId: "workflow-live",
+      type: "permission_required",
+      context: "Approve signed updater manifest before publish.",
+    });
+  });
+
   it("keeps denied watchdog decisions in history instead of the pending queue", () => {
     const inbox = buildDecisionInbox({
       sessions: [

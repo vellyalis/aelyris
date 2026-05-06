@@ -69,7 +69,7 @@ const DANGEROUS_PATTERNS: Array<{ pattern: RegExp; reason: string; riskClass: Co
   /\biex\b.*downloadstring/i,
   /\bgit\s+reset\s+--hard\b/i,
   /\bgit\s+clean\s+-[a-z]*f/i,
-  /\bRemove-Item\b[\s\S]*\b-Recurse\b[\s\S]*\b-Force\b/i,
+  /\bRemove-Item\b[\s\S]*(?:^|\s)-Recurse\b[\s\S]*(?:^|\s)-Force\b/i,
 ].map((pattern) => ({
   pattern,
   reason: `Potentially dangerous pattern detected: ${pattern.source}`,
@@ -173,6 +173,65 @@ function findSecretFindings(command: string): CommandSecretFinding[] {
   return findings.sort((a, b) => a.index - b.index);
 }
 
+function maskQuotedShellText(command: string): string {
+  let out = "";
+  let quote: '"' | "'" | "`" | null = null;
+  let escaped = false;
+
+  for (let index = 0; index < command.length; index += 1) {
+    const char = command[index];
+    const next = command[index + 1];
+
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+        out += " ";
+        continue;
+      }
+      if (char === "\\" || (quote === "`" && char === "`")) {
+        escaped = true;
+        out += " ";
+        continue;
+      }
+      if (char === quote) {
+        quote = null;
+        out += char;
+        continue;
+      }
+      out += char === "\n" || char === "\r" ? char : " ";
+      continue;
+    }
+
+    if (char === '"' || char === "'" || char === "`") {
+      quote = char;
+      out += char;
+      continue;
+    }
+
+    if (char === "#" && (index === 0 || /\s/.test(command[index - 1] ?? ""))) {
+      while (index < command.length && command[index] !== "\n" && command[index] !== "\r") {
+        out += " ";
+        index += 1;
+      }
+      index -= 1;
+      continue;
+    }
+
+    if (char === "/" && next === "/" && (index === 0 || /\s/.test(command[index - 1] ?? ""))) {
+      while (index < command.length && command[index] !== "\n" && command[index] !== "\r") {
+        out += " ";
+        index += 1;
+      }
+      index -= 1;
+      continue;
+    }
+
+    out += char;
+  }
+
+  return out;
+}
+
 export function redactSensitiveCommand(command: string): string {
   let redacted = command;
   redacted = redacted.replace(/\b(Bearer\s+)[A-Za-z0-9._~+/=-]{12,}/gi, "$1[REDACTED]");
@@ -189,13 +248,14 @@ export function redactSensitiveCommand(command: string): string {
 }
 
 function classifyByPattern(command: string): { classes: CommandRiskClass[]; reasons: string[] } {
-  const lower = command.toLowerCase();
+  const scan = maskQuotedShellText(command);
+  const lower = scan.toLowerCase();
   const classes: CommandRiskClass[] = [];
   const reasons: string[] = [];
 
   if (
     /^(git\s+(status|diff|log|show|branch|rev-parse|remote\s+-v)\b|rg\b|grep\b|ls\b|dir\b|pwd\b|cat\b|type\b|where\b|echo\b|printf\b|write-host\b|get-content\b|get-childitem\b|get-location\b|select-string\b)/i.test(
-      command,
+      scan,
     )
   ) {
     classes.push("read-only");
@@ -204,7 +264,7 @@ function classifyByPattern(command: string): { classes: CommandRiskClass[]; reas
 
   if (
     /\b(cargo\s+(test|check|build|clippy)|pnpm(\.cmd)?\s+(test|build|exec\s+(vitest|tsc|playwright)|run\s+(test|build|lint|typecheck))|npm\s+(test|run\s+(test|build|lint|typecheck))|yarn\s+(test|build)|bun\s+(test|run)|vitest\s+run|tsc\s+--noemit|playwright\s+test)\b/i.test(
-      command,
+      scan,
     )
   ) {
     classes.push("build/test");
@@ -213,7 +273,7 @@ function classifyByPattern(command: string): { classes: CommandRiskClass[]; reas
 
   if (
     /\b(git\s+(add|commit|push|pull|merge|rebase|reset|checkout|switch|restore|clean|cherry-pick|tag)\b)/i.test(
-      command,
+      scan,
     )
   ) {
     classes.push("git mutation");
@@ -222,34 +282,34 @@ function classifyByPattern(command: string): { classes: CommandRiskClass[]; reas
 
   if (
     /\b(pnpm|npm|yarn|bun)\s+(add|install|remove|uninstall|update|upgrade)\b|\b(cargo\s+(add|install|update)|pip\s+install|uv\s+(add|pip\s+install))\b/i.test(
-      command,
+      scan,
     )
   ) {
     classes.push("package install");
     reasons.push("Changes dependencies or installs executable code.");
   }
 
-  if (/\b(curl|wget|iwr|irm|invoke-webrequest|invoke-restmethod|gh\s+release|git\s+clone)\b/i.test(command)) {
+  if (/\b(curl|wget|iwr|irm|invoke-webrequest|invoke-restmethod|gh\s+release|git\s+clone)\b/i.test(scan)) {
     classes.push("network");
     reasons.push("Contacts the network or downloads remote content.");
   }
 
-  if (/\b(taskkill|stop-process|killall|pkill|kill\s+-9|kill\s+\d+)/i.test(command)) {
+  if (/\b(taskkill|stop-process|killall|pkill|kill\s+-9|kill\s+\d+)/i.test(scan)) {
     classes.push("process kill");
     reasons.push("Stops a process or process tree.");
   }
 
-  if (/\b(sudo|runas|set-executionpolicy|icacls|takeown|chmod|chown|start-process\b[\s\S]*-verb\s+runas)/i.test(command)) {
+  if (/\b(sudo|runas|set-executionpolicy|icacls|takeown|chmod|chown|start-process\b[\s\S]*-verb\s+runas)/i.test(scan)) {
     classes.push("permission");
     reasons.push("Changes permissions or requests elevation.");
   }
 
   if (
-    /\b(remove-item|del|erase|rmdir|rm)\b/i.test(command) ||
-    /(^|[^>])>\s*[^&]/.test(command) ||
-    /\b(set-content|add-content|out-file|new-item|move-item|copy-item|mkdir|touch)\b/i.test(command)
+    /\b(remove-item|del|erase|rmdir|rm)\b/i.test(scan) ||
+    /(^|[^>])>\s*[^&]/.test(scan) ||
+    /\b(set-content|add-content|out-file|new-item|move-item|copy-item|mkdir|touch)\b/i.test(scan)
   ) {
-    classes.push(/\b(remove-item|del|erase|rmdir|rm)\b/i.test(command) ? "delete" : "file mutation");
+    classes.push(/\b(remove-item|del|erase|rmdir|rm)\b/i.test(scan) ? "delete" : "file mutation");
     reasons.push("Mutates files or directories.");
   }
 
@@ -293,8 +353,9 @@ export function classifyCommand(command: string, options: CommandRiskOptions = {
   classes.push(...patternMatch.classes);
   reasons.push(...patternMatch.reasons);
 
+  const scanCommand = maskQuotedShellText(trimmed);
   for (const dangerous of DANGEROUS_PATTERNS) {
-    if (dangerous.pattern.test(trimmed)) {
+    if (dangerous.pattern.test(scanCommand)) {
       classes.push(dangerous.riskClass, "destructive");
       reasons.push(dangerous.reason);
     }
@@ -354,8 +415,9 @@ export function formatCommandRiskSummary(report: CommandRiskReport): string {
 
 /** Check if a command string contains potentially dangerous patterns. */
 export function detectDangerousCommand(command: string): string | null {
+  const scanCommand = maskQuotedShellText(command);
   for (const { pattern, reason } of DANGEROUS_PATTERNS) {
-    if (pattern.test(command)) {
+    if (pattern.test(scanCommand)) {
       return reason;
     }
   }

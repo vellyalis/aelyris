@@ -273,7 +273,7 @@ export function WorkflowPanel({ projectPath, sessions = [], onStartAgent }: Work
 
     // Initial fetch + slow fallback poll (30s instead of 3s)
     const poll = () => {
-      invoke<WorkflowStatus[]>("list_running_workflows")
+      invoke<WorkflowStatus[]>("list_running_workflows", { projectPath })
         .then(processUpdate)
         .catch(() => {
           if (active) setRunning([]);
@@ -287,7 +287,7 @@ export function WorkflowPanel({ projectPath, sessions = [], onStartAgent }: Work
       clearInterval(interval);
       unlisten?.();
     };
-  }, []);
+  }, [projectPath]);
 
   const advancingRef = useRef(new Set<string>());
   const completedPhaseRef = useRef(new Set<string>());

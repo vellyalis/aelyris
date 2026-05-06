@@ -52,9 +52,36 @@ export interface DecisionInboxSummary {
   newestPendingAt: number | null;
 }
 
+export interface DecisionWorkflowPhase {
+  name: string;
+  status: string;
+  decision_request?: {
+    kind: string;
+    reason: string;
+    options?: string[];
+    default_option?: string | null;
+    requested_at: string;
+  } | null;
+  gate_decision?: {
+    decision: string;
+    comment?: string;
+    decided_at: string;
+  } | null;
+  blocked_reason?: string | null;
+}
+
+export interface DecisionWorkflowStatus {
+  id: string;
+  workflow_name?: string;
+  task_title: string;
+  current_phase: number;
+  phases: DecisionWorkflowPhase[];
+}
+
 export interface DecisionInboxInput {
   sessions?: readonly AgentSession[];
   auditEvents?: readonly AuditEventRecord[];
+  workflows?: readonly DecisionWorkflowStatus[];
   now?: number;
 }
 
@@ -132,6 +159,12 @@ export function buildDecisionInbox(input: DecisionInboxInput): DecisionInboxSumm
   for (const event of input.auditEvents ?? []) {
     const item = decisionFromAuditEvent(event);
     if (item) upsertDecision(items, item);
+  }
+
+  for (const workflow of input.workflows ?? []) {
+    for (const item of decisionsFromWorkflow(workflow, now)) {
+      upsertDecision(items, item);
+    }
   }
 
   const sorted = [...items.values()].sort(compareDecisions);
@@ -221,6 +254,37 @@ function decisionsFromSession(session: AgentSession, now: number): HumanDecision
     }
   }
 
+  return decisions;
+}
+
+function decisionsFromWorkflow(workflow: DecisionWorkflowStatus, now: number): HumanDecisionItem[] {
+  const decisions: HumanDecisionItem[] = [];
+  for (const phase of workflow.phases) {
+    const request = phase.decision_request;
+    if (!request || phase.status !== "waiting_gate" || phase.gate_decision) continue;
+    const type = typeFromKind(request.kind) ?? typeFromText(request.reason, phase.blocked_reason);
+    if (!type) continue;
+    const requestedAt = Number.parseInt(request.requested_at, 10);
+    const time = Number.isFinite(requestedAt) ? requestedAt : now;
+    decisions.push(
+      createDecision({
+        id: `workflow:${workflow.id}:${phase.name}:${request.requested_at}`,
+        type,
+        status: "pending",
+        source: "workflow",
+        title: `${TYPE_LABELS[type]} · ${workflow.task_title || workflow.workflow_name || workflow.id}`,
+        context: shortText(request.reason || phase.blocked_reason || "Workflow gate requires a human decision."),
+        requestedAt: time,
+        workflowId: workflow.id,
+        evidence: [
+          `phase=${phase.name}`,
+          `kind=${request.kind}`,
+          request.default_option ? `default=${request.default_option}` : "",
+        ],
+        history: historyEntry(time, "workflow", "requested", request.reason || phase.blocked_reason || phase.name),
+      }),
+    );
+  }
   return decisions;
 }
 

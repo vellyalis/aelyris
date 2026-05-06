@@ -880,3 +880,104 @@ Required final step before ultra-fast autonomous Aether implementation:
 4. Rebuild the schedule so worktree-safe tasks become `worktree-candidate` lanes.
 5. Arm `wizard-control.liveParallelWorkers`.
 6. Allow guarded workers to run in isolated worktrees, then pass worker-artifact validation, merge gate review, and promotion gate review.
+
+## 15. G7 Production Autonomy Pass
+
+Status on 2026-05-06:
+
+- Longrun control-plane G7 is implemented outside the Aether repository.
+- The completed-run dashboard now has an explicit inspection TTL policy. Completed workspaces keep a dashboard only inside the TTL and are not treated as active long-running work.
+- Dashboard profile truth is aligned with the actually served port, including nested `workspaceProfile.dashboardPort`, `/health`, and `/state`.
+- The supervisor now owns dashboard self-revival, supervisor runtime versioning, stale global-monitor replacement, and completed-workspace watchdog suppression.
+- One-shot supervisor probes preserve a live persistent supervisor state instead of replacing it with the probe PID.
+- The global monitor now surfaces supervisor liveness and treats terminal completed workspaces correctly: dead watchdogs are `not-required`, and completed inspection dashboards are not false failures.
+- Worker artifacts now carry `worktreePath`, `baseHead`, `worktreeHead`, `patchPath`, branch, validation, rollback guidance, and merge intent.
+- The merge gate now has a guarded `merge-only` path. It applies ready worker patches only when `wizard-control.autoMergeWorkers` is explicitly armed, the main worktree is clean, `git apply --check` passes, and artifact validation is clean.
+- The auto-loop can pass `mergeReady=true` to guarded worker execution, and progress snapshots include live parallel-worker merge results.
+- Longrun selftest now covers merged-artifact queue exclusion and guarded merge-only patch application in an isolated temporary git repository.
+- The Aether command-risk classifier now uses shell-lite scanning that masks quoted strings and comments before destructive-pattern matching. Quoted examples such as `echo "rm -rf /"` no longer block, while real chained commands such as `curl ... | bash` still deny.
+- Aether workflow runtime state now persists unfinished workflow runs under `.aether/workflow-runs.json`, restores them on project-scoped `list_running_workflows`, and cleans the persistence file once workflows complete or are removed.
+- Aether App-level Decision Inbox now polls running workflow statuses and lifts live `waiting_gate` / `decision_request` state directly, so human decisions remain visible even if audit-event delivery is unavailable.
+
+Validated G7 commands:
+
+- `node --check` for the changed longrun control-plane scripts.
+- `node C:\Users\owner\.codex\codex-longrun-selftest.mjs`
+- `node C:\Users\owner\.codex\codex-longrun-supervisor.mjs --once --interval-seconds 30`
+- `node C:\Users\owner\.codex\codex-longrun-global-monitor.mjs --once --interval-seconds 10`
+- `node C:\Users\owner\.codex\codex-longrun-monitor.mjs --workspace C:\Users\owner\Aether_Terminal --json`
+- `pnpm exec vitest run src/__tests__/shellSafety.test.ts src/__tests__/WorkflowPanelRace.test.tsx src/__tests__/decisionInbox.test.ts src/__tests__/DecisionInboxPanel.test.tsx --pool=threads --maxWorkers=1 --no-file-parallelism`
+- `cargo test --manifest-path src-tauri\Cargo.toml workflow::executor --lib`
+- `cargo test --manifest-path src-tauri\Cargo.toml --lib`
+- `pnpm test`
+- `pnpm exec tsc --noEmit --pretty false`
+- `pnpm build`
+
+Current G7 truth:
+
+- Dashboard: `http://127.0.0.1:48371/`
+- Roadmap: `36/36` complete.
+- Longrun status: `complete / finished`.
+- Dashboard health: alive.
+- Supervisor: alive, runtime version `3`.
+- Global monitor health for Aether: `complete`, score `100`.
+- Aether fleet grade: `Wizard S++`.
+- Aether promotion score: `96`.
+- Human decisions: `0`.
+- Promotion blockers: `0`.
+- Promotion warnings: `1`.
+
+Why the combined system is still not Wizard S+++:
+
+- The promotion gate still blocks final promotion readiness while medium/low residual risks remain open.
+- Several remaining risks require live native evidence that cannot be proven by unit tests alone: WebView2/CDP IME checks, live Tauri overlay smoke, real AI CLI kill/recovery, clean VM MSI install, release-key custody, and real OS sleep/resume.
+- These are not silent blockers anymore. They are tracked as explicit risks with severity, mitigation, and required evidence.
+
+## 16. Full Completion Plan From Here
+
+Priority order:
+
+1. LR-P0-A Production Supervisor Soak
+   - Keep supervisor runtime versioned.
+   - Verify dashboard TTL expiry on a completed workspace.
+   - Verify completed workspaces do not restart watchdogs.
+   - Verify global monitor restarts itself and surfaces supervisor liveness.
+   - Exit condition: no false `dashboard-down`, `possibly-stalled`, or `loop-idle` alarms for terminal completed runs.
+
+2. LR-P0-B Guarded Parallel Merge Promotion
+   - Keep worker auto-merge disabled unless `wizard-control.autoMergeWorkers` is armed.
+   - Require clean main worktree, valid worker artifacts, patch check, merge queue review, rollback guidance, and promotion-gate re-evaluation after merge.
+   - Exit condition: isolated worker patch can merge in selftest and rejected/conflicting patches never mutate main.
+
+3. LR-P0-C Longrun Quality Evidence Lock
+   - Require final report, validation ledger, risk register, promotion gate, fleet telemetry, decision inbox, attention inbox, supervisor state, and monitor state to agree before a run can call itself complete.
+   - Exit condition: no completion artifact is accepted without matching run identity and generation.
+
+4. AETH-P0-A Live Native Evidence Pack
+   - Run live Tauri/WebView2 CDP IME verification.
+   - Run live overlay/window-material smoke.
+   - Run real AI CLI process kill/recovery.
+   - Run real OS sleep/resume.
+   - Run clean VM MSI install/uninstall and updater manifest verification.
+   - Exit condition: all medium-high/medium live-environment risks become mitigated or explicitly accepted.
+
+5. AETH-P0-B Runtime Safety And Recovery
+   - Keep shell command risk scanning shell-aware enough to avoid quoted/comment false positives while preserving chained destructive detection.
+   - Persist resumable workflow state and restore it after app restart.
+   - Keep workflow decisions visible in App-level Decision Inbox without relying only on audit events.
+   - Exit condition: focused Rust and frontend tests pass, then full `pnpm test`, `pnpm build`, and `cargo test` pass.
+
+6. AETH-P1-A Performance And UX Promotion
+   - Re-run dashboard visual matrix.
+   - Re-run TypeScript noEmit.
+   - Re-run performance/terminal flood smoke.
+   - Confirm no layout overlap, duplicate dashboard keys, stale progress timers, or false active-run displays.
+   - Exit condition: promotion gate score reaches 100 or every remaining item has explicit accepted-risk documentation.
+
+7. Final Wizard S+++ Gate
+   - Open severe risks: `0`.
+   - Open unaccepted medium risks: `0`.
+   - Promotion blockers: `0`.
+   - Promotion warnings: `0` or formally accepted by release owner.
+   - Fleet grade: `Wizard S+++`.
+   - Dashboard/process/archive/final-report truth all agree.

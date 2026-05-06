@@ -119,7 +119,7 @@ import { useTerminalNotifications } from "./shared/hooks/useTerminalNotification
 import { useThemeApplier } from "./shared/hooks/useTheme";
 import { useWorktreeActions } from "./shared/hooks/useWorktreeActions";
 import { markFirstPaint } from "./shared/lib/bootMetrics";
-import { buildDecisionInbox } from "./shared/lib/decisionInbox";
+import { buildDecisionInbox, type DecisionWorkflowStatus } from "./shared/lib/decisionInbox";
 import { classifyCommand, formatCommandRiskSummary } from "./shared/lib/shellSafety";
 import { deriveRightRailRecommendation, type RightRailMode } from "./shared/lib/rightRailAdvisor";
 import { useAppStore } from "./shared/store/appStore";
@@ -594,6 +594,7 @@ export function App() {
   );
   const auditStream = useAuditEvents({ enabled: visualAuditEvents === undefined, limit: 40, pollMs: 3_000 });
   const operationalAuditEvents = visualAuditEvents ?? auditStream.entries;
+  const [workflowStatuses, setWorkflowStatuses] = useState<DecisionWorkflowStatus[]>([]);
   const selectedOperationalPaneTarget = useMemo(
     () =>
       selectedOperationalPane
@@ -710,6 +711,34 @@ export function App() {
   );
 
   useEffect(() => {
+    let active = true;
+    if (!projectPath) {
+      setWorkflowStatuses([]);
+      return () => {
+        active = false;
+      };
+    }
+
+    const refresh = () => {
+      import("@tauri-apps/api/core")
+        .then(({ invoke }) => invoke<DecisionWorkflowStatus[]>("list_running_workflows", { projectPath }))
+        .then((statuses) => {
+          if (active) setWorkflowStatuses(statuses);
+        })
+        .catch(() => {
+          if (active) setWorkflowStatuses([]);
+        });
+    };
+
+    refresh();
+    const interval = window.setInterval(refresh, 30_000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [projectPath]);
+
+  useEffect(() => {
     if (!projectPath) return;
     setWorkspaceThreadRunState(projectPath, activeTabId, {
       status: "active",
@@ -773,8 +802,8 @@ export function App() {
     [activeSessionId, rightRailGraph, selectedOperationalPaneTarget?.paneId],
   );
   const decisionInbox = useMemo(
-    () => buildDecisionInbox({ sessions, auditEvents: scopedOperationalAuditEvents }),
-    [scopedOperationalAuditEvents, sessions],
+    () => buildDecisionInbox({ sessions, auditEvents: scopedOperationalAuditEvents, workflows: workflowStatuses }),
+    [scopedOperationalAuditEvents, sessions, workflowStatuses],
   );
   const activeAgent = sessions.find((s) => s.id === activeSessionId);
   const headerStatus = activeAgent
@@ -1809,6 +1838,7 @@ export function App() {
                               <DecisionInboxPanel
                                 sessions={sessions}
                                 auditEvents={scopedOperationalAuditEvents}
+                                workflows={workflowStatuses}
                                 activeSessionId={activeSessionId}
                                 onSelectSession={handleSelectSession}
                               />

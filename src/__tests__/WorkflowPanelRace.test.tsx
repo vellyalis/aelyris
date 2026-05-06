@@ -115,6 +115,7 @@ describe("WorkflowPanel agent completion bridge", () => {
     expect(src).toContain("sessions?: AgentSession[]");
     expect(src).toContain("completedPhaseRef");
     expect(src).toContain('invoke<WorkflowPhaseDoneResult>("workflow_phase_done"');
+    expect(src).toContain('invoke<WorkflowStatus[]>("list_running_workflows", { projectPath })');
     expect(src).toContain("result.waiting_gate");
     expect(src).toContain("await advancePhaseRef.current?.(workflow.id)");
   });

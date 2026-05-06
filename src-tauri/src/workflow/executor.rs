@@ -1,4 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
@@ -11,6 +13,7 @@ pub struct WorkflowExecutor {
     instances: Arc<Mutex<HashMap<String, WorkflowInstance>>>,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
 struct WorkflowInstance {
     workflow: Workflow,
     status: WorkflowStatus,
@@ -33,6 +36,79 @@ fn duration_from(started_at: &Option<String>, completed_at: &str) -> Option<u64>
     let start = started_at.as_deref()?.parse::<u64>().ok()?;
     let end = completed_at.parse::<u64>().ok()?;
     Some(end.saturating_sub(start))
+}
+
+fn workflow_runs_path(project_path: &str) -> PathBuf {
+    Path::new(project_path)
+        .join(".aether")
+        .join("workflow-runs.json")
+}
+
+fn workflow_is_finished(status: &WorkflowStatus) -> bool {
+    status.current_phase >= status.phases.len()
+        || status.phases.iter().all(|phase| {
+            matches!(
+                phase.status,
+                PhaseStatus::Passed | PhaseStatus::Failed | PhaseStatus::Skipped
+            )
+        })
+}
+
+fn load_project_instances(project_path: &str) -> Result<Vec<WorkflowInstance>, String> {
+    let path = workflow_runs_path(project_path);
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let content = std::fs::read_to_string(&path)
+        .map_err(|err| format!("Failed to read workflow run state: {err}"))?;
+    if content.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    serde_json::from_str::<Vec<WorkflowInstance>>(&content)
+        .map(|instances| {
+            instances
+                .into_iter()
+                .filter(|instance| !workflow_is_finished(&instance.status))
+                .collect()
+        })
+        .map_err(|err| format!("Failed to parse workflow run state: {err}"))
+}
+
+fn save_project_instances(
+    project_path: &str,
+    instances: Vec<WorkflowInstance>,
+) -> Result<(), String> {
+    let path = workflow_runs_path(project_path);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|err| format!("Failed to create workflow state directory: {err}"))?;
+    }
+    let tmp_path = path.with_extension("json.tmp");
+    let content = serde_json::to_string_pretty(&instances)
+        .map_err(|err| format!("Failed to serialize workflow run state: {err}"))?;
+    std::fs::write(&tmp_path, format!("{content}\n"))
+        .map_err(|err| format!("Failed to write workflow run state: {err}"))?;
+    if path.exists() {
+        std::fs::remove_file(&path)
+            .map_err(|err| format!("Failed to replace workflow run state: {err}"))?;
+    }
+    std::fs::rename(&tmp_path, &path)
+        .map_err(|err| format!("Failed to commit workflow run state: {err}"))?;
+    Ok(())
+}
+
+fn persist_project_locked(
+    instances: &HashMap<String, WorkflowInstance>,
+    project_path: &str,
+) -> Result<(), String> {
+    let project_instances = instances
+        .values()
+        .filter(|instance| {
+            instance.project_path == project_path && !workflow_is_finished(&instance.status)
+        })
+        .cloned()
+        .collect();
+    save_project_instances(project_path, project_instances)
 }
 
 fn gate_type_name(gate_type: &GateType) -> &'static str {
@@ -91,6 +167,26 @@ impl WorkflowExecutor {
         }
     }
 
+    /// Load unfinished workflow runs for a project from disk into memory.
+    /// Existing in-memory instances win so live updates are not overwritten.
+    pub fn restore_project(&self, project_path: &str) -> Result<usize, String> {
+        let loaded = load_project_instances(project_path)?;
+        let mut instances = self
+            .instances
+            .lock()
+            .map_err(|_| "Lock poisoned".to_string())?;
+        let mut restored = 0;
+        for instance in loaded {
+            let id = instance.status.id.clone();
+            if instances.contains_key(&id) {
+                continue;
+            }
+            instances.insert(id, instance);
+            restored += 1;
+        }
+        Ok(restored)
+    }
+
     /// Start a new workflow execution
     pub fn start(
         &self,
@@ -128,10 +224,14 @@ impl WorkflowExecutor {
 
         let phase_count = instance.status.phases.len();
         let workflow_name = instance.status.workflow_name.clone();
-        self.instances
-            .lock()
-            .map_err(|_| "Lock poisoned".to_string())?
-            .insert(id.clone(), instance);
+        {
+            let mut instances = self
+                .instances
+                .lock()
+                .map_err(|_| "Lock poisoned".to_string())?;
+            instances.insert(id.clone(), instance);
+            persist_project_locked(&instances, project_path)?;
+        }
 
         log::info!(
             "workflow start id={} name={:?} task={:?} phases={}",
@@ -169,17 +269,22 @@ impl WorkflowExecutor {
             .instances
             .lock()
             .map_err(|_| "Lock poisoned".to_string())?;
-        let inst = instances.get_mut(workflow_id).ok_or("Workflow not found")?;
-        let idx = inst.status.current_phase;
-        let now = runtime_timestamp();
-        if let Some(pr) = inst.status.phases.get_mut(idx) {
-            pr.status = PhaseStatus::Running;
-            pr.agent_session_id = Some(agent_session_id.to_string());
-            if pr.started_at.is_none() {
-                pr.started_at = Some(now.clone());
+        let project_path;
+        {
+            let inst = instances.get_mut(workflow_id).ok_or("Workflow not found")?;
+            let idx = inst.status.current_phase;
+            let now = runtime_timestamp();
+            if let Some(pr) = inst.status.phases.get_mut(idx) {
+                pr.status = PhaseStatus::Running;
+                pr.agent_session_id = Some(agent_session_id.to_string());
+                if pr.started_at.is_none() {
+                    pr.started_at = Some(now.clone());
+                }
             }
+            inst.status.updated_at = now;
+            project_path = inst.project_path.clone();
         }
-        inst.status.updated_at = now;
+        persist_project_locked(&instances, &project_path)?;
         Ok(())
     }
 
@@ -189,27 +294,32 @@ impl WorkflowExecutor {
             .instances
             .lock()
             .map_err(|_| "Lock poisoned".to_string())?;
-        let inst = instances.get_mut(workflow_id).ok_or("Workflow not found")?;
-        let idx = inst.status.current_phase;
-        let now = runtime_timestamp();
-        let gate = inst
-            .workflow
-            .phases
-            .get(idx)
-            .and_then(|phase| phase.quality_gate.as_ref());
-        if let Some(pr) = inst.status.phases.get_mut(idx) {
-            pr.status = PhaseStatus::WaitingGate;
-            pr.cost = cost;
-            if let Some(gate) = gate {
-                pr.decision_request = Some(decision_request(
-                    gate_type_name(&gate.gate_type),
-                    gate.criteria.clone(),
-                    vec!["approve".to_string(), "reject".to_string()],
-                    Some("approve".to_string()),
-                ));
+        let project_path;
+        {
+            let inst = instances.get_mut(workflow_id).ok_or("Workflow not found")?;
+            let idx = inst.status.current_phase;
+            let now = runtime_timestamp();
+            let gate = inst
+                .workflow
+                .phases
+                .get(idx)
+                .and_then(|phase| phase.quality_gate.as_ref());
+            if let Some(pr) = inst.status.phases.get_mut(idx) {
+                pr.status = PhaseStatus::WaitingGate;
+                pr.cost = cost;
+                if let Some(gate) = gate {
+                    pr.decision_request = Some(decision_request(
+                        gate_type_name(&gate.gate_type),
+                        gate.criteria.clone(),
+                        vec!["approve".to_string(), "reject".to_string()],
+                        Some("approve".to_string()),
+                    ));
+                }
             }
+            inst.status.updated_at = now;
+            project_path = inst.project_path.clone();
         }
-        inst.status.updated_at = now;
+        persist_project_locked(&instances, &project_path)?;
         Ok(())
     }
 
@@ -224,52 +334,60 @@ impl WorkflowExecutor {
             .instances
             .lock()
             .map_err(|_| "Lock poisoned".to_string())?;
-        let inst = instances.get_mut(workflow_id).ok_or("Workflow not found")?;
-        let idx = inst.status.current_phase;
-        let gate = inst
-            .workflow
-            .phases
-            .get(idx)
-            .map(|phase| phase.quality_gate.clone())
-            .ok_or("Workflow already complete")?;
-        let now = runtime_timestamp();
-        let pr = inst
-            .status
-            .phases
-            .get_mut(idx)
-            .ok_or("Workflow already complete")?;
-        pr.cost = cost;
-        if gate.is_some() {
-            pr.status = PhaseStatus::WaitingGate;
-            if let Some(gate) = gate {
-                pr.decision_request = Some(decision_request(
-                    gate_type_name(&gate.gate_type),
-                    if gate.criteria.is_empty() {
-                        "Phase quality gate requires approval.".to_string()
-                    } else {
-                        gate.criteria
-                    },
-                    vec!["approve".to_string(), "reject".to_string()],
-                    Some("approve".to_string()),
-                ));
+        let project_path;
+        let outcome;
+        {
+            let inst = instances.get_mut(workflow_id).ok_or("Workflow not found")?;
+            let idx = inst.status.current_phase;
+            let gate = inst
+                .workflow
+                .phases
+                .get(idx)
+                .map(|phase| phase.quality_gate.clone())
+                .ok_or("Workflow already complete")?;
+            let now = runtime_timestamp();
+            let pr = inst
+                .status
+                .phases
+                .get_mut(idx)
+                .ok_or("Workflow already complete")?;
+            pr.cost = cost;
+            if gate.is_some() {
+                pr.status = PhaseStatus::WaitingGate;
+                if let Some(gate) = gate {
+                    pr.decision_request = Some(decision_request(
+                        gate_type_name(&gate.gate_type),
+                        if gate.criteria.is_empty() {
+                            "Phase quality gate requires approval.".to_string()
+                        } else {
+                            gate.criteria
+                        },
+                        vec!["approve".to_string(), "reject".to_string()],
+                        Some("approve".to_string()),
+                    ));
+                }
+                inst.status.updated_at = now;
+                project_path = inst.project_path.clone();
+                outcome = PhaseDoneOutcome {
+                    done: false,
+                    waiting_gate: true,
+                };
+            } else {
+                pr.status = PhaseStatus::Passed;
+                pr.completed_at = Some(now.clone());
+                pr.duration_ms = duration_from(&pr.started_at, &now);
+                pr.decision_request = None;
+                inst.status.current_phase += 1;
+                inst.status.updated_at = now;
+                project_path = inst.project_path.clone();
+                outcome = PhaseDoneOutcome {
+                    done: inst.status.current_phase >= inst.workflow.phases.len(),
+                    waiting_gate: false,
+                };
             }
-            inst.status.updated_at = now;
-            return Ok(PhaseDoneOutcome {
-                done: false,
-                waiting_gate: true,
-            });
         }
-
-        pr.status = PhaseStatus::Passed;
-        pr.completed_at = Some(now.clone());
-        pr.duration_ms = duration_from(&pr.started_at, &now);
-        pr.decision_request = None;
-        inst.status.current_phase += 1;
-        inst.status.updated_at = now;
-        Ok(PhaseDoneOutcome {
-            done: inst.status.current_phase >= inst.workflow.phases.len(),
-            waiting_gate: false,
-        })
+        persist_project_locked(&instances, &project_path)?;
+        Ok(outcome)
     }
 
     /// Approve the current phase's quality gate and advance to the next phase
@@ -288,32 +406,38 @@ impl WorkflowExecutor {
             .instances
             .lock()
             .map_err(|_| "Lock poisoned".to_string())?;
-        let inst = instances.get_mut(workflow_id).ok_or("Workflow not found")?;
-        let idx = inst.status.current_phase;
-        let now = runtime_timestamp();
-        let pr = inst
-            .status
-            .phases
-            .get_mut(idx)
-            .ok_or("Workflow already complete")?;
-        pr.status = PhaseStatus::Passed;
-        pr.completed_at = Some(now.clone());
-        pr.duration_ms = duration_from(&pr.started_at, &now);
-        pr.decision_request = None;
-        pr.gate_decision = Some(WorkflowGateDecision {
-            decision: if conditional {
-                GateDecisionKind::Conditional
-            } else {
-                GateDecisionKind::Approved
-            },
-            comment: comment.to_string(),
-            conditional,
-            decided_at: now.clone(),
-        });
-        // Advance
-        inst.status.current_phase += 1;
-        let done = inst.status.current_phase >= inst.workflow.phases.len();
-        inst.status.updated_at = now;
+        let project_path;
+        let done;
+        {
+            let inst = instances.get_mut(workflow_id).ok_or("Workflow not found")?;
+            let idx = inst.status.current_phase;
+            let now = runtime_timestamp();
+            let pr = inst
+                .status
+                .phases
+                .get_mut(idx)
+                .ok_or("Workflow already complete")?;
+            pr.status = PhaseStatus::Passed;
+            pr.completed_at = Some(now.clone());
+            pr.duration_ms = duration_from(&pr.started_at, &now);
+            pr.decision_request = None;
+            pr.gate_decision = Some(WorkflowGateDecision {
+                decision: if conditional {
+                    GateDecisionKind::Conditional
+                } else {
+                    GateDecisionKind::Approved
+                },
+                comment: comment.to_string(),
+                conditional,
+                decided_at: now.clone(),
+            });
+            // Advance
+            inst.status.current_phase += 1;
+            done = inst.status.current_phase >= inst.workflow.phases.len();
+            inst.status.updated_at = now;
+            project_path = inst.project_path.clone();
+        }
+        persist_project_locked(&instances, &project_path)?;
         Ok(done)
     }
 
@@ -329,25 +453,30 @@ impl WorkflowExecutor {
             .instances
             .lock()
             .map_err(|_| "Lock poisoned".to_string())?;
-        let inst = instances.get_mut(workflow_id).ok_or("Workflow not found")?;
-        let idx = inst.status.current_phase;
-        let now = runtime_timestamp();
-        if let Some(pr) = inst.status.phases.get_mut(idx) {
-            pr.status = PhaseStatus::Pending; // Reset to retry
-            pr.agent_session_id = None;
-            pr.retry_count = pr.retry_count.saturating_add(1);
-            pr.started_at = None;
-            pr.completed_at = None;
-            pr.duration_ms = None;
-            pr.decision_request = None;
-            pr.gate_decision = Some(WorkflowGateDecision {
-                decision: GateDecisionKind::Rejected,
-                comment: comment.to_string(),
-                conditional: false,
-                decided_at: now.clone(),
-            });
+        let project_path;
+        {
+            let inst = instances.get_mut(workflow_id).ok_or("Workflow not found")?;
+            let idx = inst.status.current_phase;
+            let now = runtime_timestamp();
+            if let Some(pr) = inst.status.phases.get_mut(idx) {
+                pr.status = PhaseStatus::Pending; // Reset to retry
+                pr.agent_session_id = None;
+                pr.retry_count = pr.retry_count.saturating_add(1);
+                pr.started_at = None;
+                pr.completed_at = None;
+                pr.duration_ms = None;
+                pr.decision_request = None;
+                pr.gate_decision = Some(WorkflowGateDecision {
+                    decision: GateDecisionKind::Rejected,
+                    comment: comment.to_string(),
+                    conditional: false,
+                    decided_at: now.clone(),
+                });
+            }
+            inst.status.updated_at = now;
+            project_path = inst.project_path.clone();
         }
-        inst.status.updated_at = now;
+        persist_project_locked(&instances, &project_path)?;
         Ok(())
     }
 
@@ -363,32 +492,39 @@ impl WorkflowExecutor {
             .instances
             .lock()
             .map_err(|_| "Lock poisoned".to_string())?;
-        let inst = instances.get_mut(workflow_id).ok_or("Workflow not found")?;
-        let idx = inst
-            .status
-            .phases
-            .iter()
-            .position(|phase| phase.name == phase_name)
-            .ok_or_else(|| format!("Phase not found: {phase_name}"))?;
-        let now = runtime_timestamp();
-        inst.status.current_phase = idx;
-        inst.status.resume_point = Some(WorkflowResumePoint {
-            phase_index: idx,
-            phase_name: phase_name.to_string(),
-            reason: reason.to_string(),
-            recorded_at: now.clone(),
-        });
-        if let Some(phase) = inst.status.phases.get_mut(idx) {
-            phase.status = PhaseStatus::Pending;
-            phase.agent_session_id = None;
-            phase.retry_count = phase.retry_count.saturating_add(1);
-            phase.started_at = None;
-            phase.completed_at = None;
-            phase.duration_ms = None;
-            phase.blocked_reason = Some(reason.to_string());
+        let project_path;
+        let status;
+        {
+            let inst = instances.get_mut(workflow_id).ok_or("Workflow not found")?;
+            let idx = inst
+                .status
+                .phases
+                .iter()
+                .position(|phase| phase.name == phase_name)
+                .ok_or_else(|| format!("Phase not found: {phase_name}"))?;
+            let now = runtime_timestamp();
+            inst.status.current_phase = idx;
+            inst.status.resume_point = Some(WorkflowResumePoint {
+                phase_index: idx,
+                phase_name: phase_name.to_string(),
+                reason: reason.to_string(),
+                recorded_at: now.clone(),
+            });
+            if let Some(phase) = inst.status.phases.get_mut(idx) {
+                phase.status = PhaseStatus::Pending;
+                phase.agent_session_id = None;
+                phase.retry_count = phase.retry_count.saturating_add(1);
+                phase.started_at = None;
+                phase.completed_at = None;
+                phase.duration_ms = None;
+                phase.blocked_reason = Some(reason.to_string());
+            }
+            inst.status.updated_at = now;
+            project_path = inst.project_path.clone();
+            status = inst.status.clone();
         }
-        inst.status.updated_at = now;
-        Ok(inst.status.clone())
+        persist_project_locked(&instances, &project_path)?;
+        Ok(status)
     }
 
     /// Split the current oversized phase into narrower child phases. The
@@ -413,52 +549,59 @@ impl WorkflowExecutor {
             .instances
             .lock()
             .map_err(|_| "Lock poisoned".to_string())?;
-        let inst = instances.get_mut(workflow_id).ok_or("Workflow not found")?;
-        let idx = inst.status.current_phase;
-        let original_phase = inst
-            .workflow
-            .phases
-            .get(idx)
-            .cloned()
-            .ok_or("Workflow already complete")?;
-        let original_name = original_phase.name.clone();
-        let now = runtime_timestamp();
+        let project_path;
+        let status;
+        {
+            let inst = instances.get_mut(workflow_id).ok_or("Workflow not found")?;
+            let idx = inst.status.current_phase;
+            let original_phase = inst
+                .workflow
+                .phases
+                .get(idx)
+                .cloned()
+                .ok_or("Workflow already complete")?;
+            let original_name = original_phase.name.clone();
+            let now = runtime_timestamp();
 
-        let mut inserted_phases = Vec::new();
-        let mut inserted_results = Vec::new();
-        for child_name in child_phase_names {
-            let mut child_phase = original_phase.clone();
-            child_phase.name = child_name.clone();
-            child_phase.depends_on = vec![original_name.clone()];
-            let mut result = phase_result_from_phase(&child_phase);
-            result.split_from = Some(original_name.clone());
-            result.split_reason = Some(reason.to_string());
-            inserted_phases.push(child_phase);
-            inserted_results.push(result);
-        }
+            let mut inserted_phases = Vec::new();
+            let mut inserted_results = Vec::new();
+            for child_name in child_phase_names {
+                let mut child_phase = original_phase.clone();
+                child_phase.name = child_name.clone();
+                child_phase.depends_on = vec![original_name.clone()];
+                let mut result = phase_result_from_phase(&child_phase);
+                result.split_from = Some(original_name.clone());
+                result.split_reason = Some(reason.to_string());
+                inserted_phases.push(child_phase);
+                inserted_results.push(result);
+            }
 
-        if let Some(result) = inst.status.phases.get_mut(idx) {
-            result.status = PhaseStatus::Skipped;
-            result.completed_at = Some(now.clone());
-            result.duration_ms = duration_from(&result.started_at, &now);
-            result.split_reason = Some(reason.to_string());
-            result.blocked_reason = Some(reason.to_string());
+            if let Some(result) = inst.status.phases.get_mut(idx) {
+                result.status = PhaseStatus::Skipped;
+                result.completed_at = Some(now.clone());
+                result.duration_ms = duration_from(&result.started_at, &now);
+                result.split_reason = Some(reason.to_string());
+                result.blocked_reason = Some(reason.to_string());
+            }
+            inst.workflow
+                .phases
+                .splice((idx + 1)..(idx + 1), inserted_phases);
+            inst.status
+                .phases
+                .splice((idx + 1)..(idx + 1), inserted_results);
+            inst.status.current_phase = idx + 1;
+            inst.status.resume_point = Some(WorkflowResumePoint {
+                phase_index: idx + 1,
+                phase_name: inst.status.phases[idx + 1].name.clone(),
+                reason: format!("split from {original_name}: {reason}"),
+                recorded_at: now.clone(),
+            });
+            inst.status.updated_at = now;
+            project_path = inst.project_path.clone();
+            status = inst.status.clone();
         }
-        inst.workflow
-            .phases
-            .splice((idx + 1)..(idx + 1), inserted_phases);
-        inst.status
-            .phases
-            .splice((idx + 1)..(idx + 1), inserted_results);
-        inst.status.current_phase = idx + 1;
-        inst.status.resume_point = Some(WorkflowResumePoint {
-            phase_index: idx + 1,
-            phase_name: inst.status.phases[idx + 1].name.clone(),
-            reason: format!("split from {original_name}: {reason}"),
-            recorded_at: now.clone(),
-        });
-        inst.status.updated_at = now;
-        Ok(inst.status.clone())
+        persist_project_locked(&instances, &project_path)?;
+        Ok(status)
     }
 
     /// Convert a blocker into an explicit decision request/gate for the current
@@ -475,26 +618,33 @@ impl WorkflowExecutor {
             .instances
             .lock()
             .map_err(|_| "Lock poisoned".to_string())?;
-        let inst = instances.get_mut(workflow_id).ok_or("Workflow not found")?;
-        let idx = inst.status.current_phase;
-        let now = runtime_timestamp();
-        if let Some(pr) = inst.status.phases.get_mut(idx) {
-            pr.status = PhaseStatus::WaitingGate;
-            pr.blocked_reason = Some(reason.to_string());
-            pr.decision_request = Some(decision_request(kind, reason, options, default_option));
+        let project_path;
+        let status;
+        {
+            let inst = instances.get_mut(workflow_id).ok_or("Workflow not found")?;
+            let idx = inst.status.current_phase;
+            let now = runtime_timestamp();
+            if let Some(pr) = inst.status.phases.get_mut(idx) {
+                pr.status = PhaseStatus::WaitingGate;
+                pr.blocked_reason = Some(reason.to_string());
+                pr.decision_request = Some(decision_request(kind, reason, options, default_option));
+            }
+            inst.status.resume_point =
+                inst.status
+                    .phases
+                    .get(idx)
+                    .map(|phase| WorkflowResumePoint {
+                        phase_index: idx,
+                        phase_name: phase.name.clone(),
+                        reason: reason.to_string(),
+                        recorded_at: now.clone(),
+                    });
+            inst.status.updated_at = now;
+            project_path = inst.project_path.clone();
+            status = inst.status.clone();
         }
-        inst.status.resume_point = inst
-            .status
-            .phases
-            .get(idx)
-            .map(|phase| WorkflowResumePoint {
-                phase_index: idx,
-                phase_name: phase.name.clone(),
-                reason: reason.to_string(),
-                recorded_at: now.clone(),
-            });
-        inst.status.updated_at = now;
-        Ok(inst.status.clone())
+        persist_project_locked(&instances, &project_path)?;
+        Ok(status)
     }
 
     /// Attach artifacts, commands, validation evidence, and final report text to
@@ -512,30 +662,37 @@ impl WorkflowExecutor {
             .instances
             .lock()
             .map_err(|_| "Lock poisoned".to_string())?;
-        let inst = instances.get_mut(workflow_id).ok_or("Workflow not found")?;
-        let idx = match phase_name {
-            Some(name) => inst
+        let project_path;
+        let status;
+        {
+            let inst = instances.get_mut(workflow_id).ok_or("Workflow not found")?;
+            let idx = match phase_name {
+                Some(name) => inst
+                    .status
+                    .phases
+                    .iter()
+                    .position(|phase| phase.name == name)
+                    .ok_or_else(|| format!("Phase not found: {name}"))?,
+                None => inst.status.current_phase,
+            };
+            let phase = inst
                 .status
                 .phases
-                .iter()
-                .position(|phase| phase.name == name)
-                .ok_or_else(|| format!("Phase not found: {name}"))?,
-            None => inst.status.current_phase,
-        };
-        let phase = inst
-            .status
-            .phases
-            .get_mut(idx)
-            .ok_or("Workflow already complete")?;
-        phase.artifacts.extend(artifacts);
-        phase.commands.extend(commands);
-        phase.validation.extend(validation);
-        if let Some(report) = final_report {
-            phase.final_report = Some(report.clone());
-            inst.status.final_report = Some(report);
+                .get_mut(idx)
+                .ok_or("Workflow already complete")?;
+            phase.artifacts.extend(artifacts);
+            phase.commands.extend(commands);
+            phase.validation.extend(validation);
+            if let Some(report) = final_report {
+                phase.final_report = Some(report.clone());
+                inst.status.final_report = Some(report);
+            }
+            inst.status.updated_at = runtime_timestamp();
+            project_path = inst.project_path.clone();
+            status = inst.status.clone();
         }
-        inst.status.updated_at = runtime_timestamp();
-        Ok(inst.status.clone())
+        persist_project_locked(&instances, &project_path)?;
+        Ok(status)
     }
 
     /// Get workflow status
@@ -559,7 +716,20 @@ impl WorkflowExecutor {
     /// Remove a completed/cancelled workflow
     pub fn remove(&self, workflow_id: &str) {
         if let Ok(mut instances) = self.instances.lock() {
+            let project_path = instances
+                .get(workflow_id)
+                .map(|instance| instance.project_path.clone());
             instances.remove(workflow_id);
+            if let Some(project_path) = project_path {
+                if let Err(err) = persist_project_locked(&instances, &project_path) {
+                    log::warn!(
+                        "failed to persist workflow removal id={} project={:?}: {}",
+                        workflow_id,
+                        project_path,
+                        err
+                    );
+                }
+            }
         }
     }
 }
@@ -573,6 +743,14 @@ pub struct PhaseDoneOutcome {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn temp_project() -> tempfile::TempDir {
+        tempfile::tempdir().expect("temp project")
+    }
+
+    fn project_path(project: &tempfile::TempDir) -> String {
+        project.path().to_string_lossy().to_string()
+    }
 
     fn one_phase_workflow() -> Workflow {
         Workflow {
@@ -607,8 +785,9 @@ mod tests {
     #[test]
     fn approve_gate_rejects_repeated_approval_after_completion() {
         let executor = WorkflowExecutor::new();
+        let project = temp_project();
         let id = executor
-            .start(one_phase_workflow(), "task", "C:/repo")
+            .start(one_phase_workflow(), "task", &project_path(&project))
             .expect("workflow starts");
 
         assert_eq!(executor.approve_gate(&id), Ok(true));
@@ -627,8 +806,9 @@ mod tests {
     #[test]
     fn agent_done_auto_passes_phase_without_gate() {
         let executor = WorkflowExecutor::new();
+        let project = temp_project();
         let id = executor
-            .start(one_phase_workflow(), "task", "C:/repo")
+            .start(one_phase_workflow(), "task", &project_path(&project))
             .expect("workflow starts");
         executor
             .set_phase_agent(&id, "agent-1")
@@ -654,8 +834,9 @@ mod tests {
     #[test]
     fn agent_done_waits_when_phase_has_gate() {
         let executor = WorkflowExecutor::new();
+        let project = temp_project();
         let id = executor
-            .start(gated_workflow(), "task", "C:/repo")
+            .start(gated_workflow(), "task", &project_path(&project))
             .expect("workflow starts");
         executor
             .set_phase_agent(&id, "agent-1")
@@ -677,14 +858,51 @@ mod tests {
     }
 
     #[test]
+    fn restores_unfinished_project_workflows_from_disk() {
+        let project = temp_project();
+        let project_path = project_path(&project);
+        let executor = WorkflowExecutor::new();
+        let id = executor
+            .start(gated_workflow(), "task", &project_path)
+            .expect("workflow starts");
+        executor
+            .set_phase_agent(&id, "agent-1")
+            .expect("agent assigned");
+        executor.phase_agent_done(&id, 0.24).expect("phase waits");
+
+        let restored = WorkflowExecutor::new();
+        assert_eq!(
+            restored
+                .restore_project(&project_path)
+                .expect("project restores"),
+            1
+        );
+        let status = restored.status(&id).expect("restored status");
+        assert_eq!(status.phases[0].status, PhaseStatus::WaitingGate);
+        assert!(status.phases[0].decision_request.is_some());
+
+        restored
+            .approve_gate_with_decision(&id, "approved", false)
+            .expect("gate completes");
+        let clean = WorkflowExecutor::new();
+        assert_eq!(
+            clean
+                .restore_project(&project_path)
+                .expect("project restores"),
+            0
+        );
+    }
+
+    #[test]
     fn start_copies_phase_routing_metadata_into_status() {
         let executor = WorkflowExecutor::new();
+        let project = temp_project();
         let mut workflow = one_phase_workflow();
         workflow.phases[0].target_pane = Some("@review".to_string());
         workflow.phases[0].agent_role = Some("reviewer".to_string());
 
         let id = executor
-            .start(workflow, "task", "C:/repo")
+            .start(workflow, "task", &project_path(&project))
             .expect("workflow starts");
 
         let status = executor.status(&id).expect("status");
@@ -695,8 +913,9 @@ mod tests {
     #[test]
     fn records_phase_evidence_and_resume_point() {
         let executor = WorkflowExecutor::new();
+        let project = temp_project();
         let id = executor
-            .start(one_phase_workflow(), "task", "C:/repo")
+            .start(one_phase_workflow(), "task", &project_path(&project))
             .expect("workflow starts");
 
         let status = executor
@@ -746,8 +965,9 @@ mod tests {
     #[test]
     fn split_current_phase_creates_resumeable_child_phases() {
         let executor = WorkflowExecutor::new();
+        let project = temp_project();
         let id = executor
-            .start(one_phase_workflow(), "task", "C:/repo")
+            .start(one_phase_workflow(), "task", &project_path(&project))
             .expect("workflow starts");
 
         let status = executor
@@ -782,8 +1002,9 @@ mod tests {
     #[test]
     fn blocker_decision_request_waits_at_gate_until_approved() {
         let executor = WorkflowExecutor::new();
+        let project = temp_project();
         let id = executor
-            .start(gated_workflow(), "task", "C:/repo")
+            .start(gated_workflow(), "task", &project_path(&project))
             .expect("workflow starts");
         executor
             .request_decision_for_current_phase(

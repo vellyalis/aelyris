@@ -2,6 +2,7 @@ import { AlertTriangle, CheckCircle2, Clock3, Inbox, ShieldQuestion, UserRoundCh
 import { useMemo } from "react";
 import {
   buildDecisionInbox,
+  type DecisionWorkflowStatus,
   type DecisionInboxSummary,
   type HumanDecisionItem,
   type HumanDecisionRisk,
@@ -16,6 +17,7 @@ import styles from "./DecisionInboxPanel.module.css";
 interface DecisionInboxPanelProps {
   sessions: AgentSession[];
   auditEvents: AuditEventRecord[];
+  workflows?: DecisionWorkflowStatus[];
   activeSessionId: string | null;
   onSelectSession: (id: string) => void;
 }
@@ -50,12 +52,13 @@ function formatAge(timestamp: number): string {
 export function DecisionInboxPanel({
   sessions,
   auditEvents,
+  workflows = [],
   activeSessionId,
   onSelectSession,
 }: DecisionInboxPanelProps) {
   const inbox = useMemo<DecisionInboxSummary>(
-    () => buildDecisionInbox({ sessions, auditEvents }),
-    [auditEvents, sessions],
+    () => buildDecisionInbox({ sessions, auditEvents, workflows }),
+    [auditEvents, sessions, workflows],
   );
   const pending = inbox.pendingItems.slice(0, 5);
   const history = inbox.historyItems.slice(0, 4);
