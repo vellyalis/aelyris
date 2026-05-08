@@ -49,32 +49,38 @@ describe("useThemeApplier", () => {
     expect(document.documentElement.style.getPropertyValue("--terminal-watermark-opacity").trim()).toBe("0.045");
   });
 
-  it("removes Sakura-only glass tokens when switching to darker moods", async () => {
-    const { rerender } = render(<ThemeProbe themeId="aether-dark" moodPresetId="aether-sakura" />);
+  it("replaces Sakura surface tokens when switching to darker moods", async () => {
+    const { rerender } = render(<ThemeProbe themeId="sakura-hub" moodPresetId="aether-sakura" />);
 
     await waitFor(() => {
       expect(document.documentElement.dataset.mood).toBe("aether-sakura");
     });
+    expect(document.documentElement.dataset.theme).toBe("sakura-hub");
     expect(document.documentElement.style.getPropertyValue("--statusbar-bg")).toContain("255, 248, 251");
     expect(document.documentElement.style.getPropertyValue("--dialog-surface")).toContain("255, 240, 247");
     expect(document.documentElement.style.getPropertyValue("--settings-card-bg")).toContain("255, 245, 250");
 
-    rerender(<ThemeProbe themeId="aether-dark" moodPresetId="aether-pro" />);
+    rerender(<ThemeProbe themeId="sakura-hub" moodPresetId="aether-pro" />);
 
     await waitFor(() => {
       expect(document.documentElement.dataset.mood).toBe("aether-pro");
     });
-    expect(document.documentElement.style.getPropertyValue("--statusbar-bg").trim()).toBe("");
-    expect(document.documentElement.style.getPropertyValue("--dialog-surface").trim()).toBe("");
-    expect(document.documentElement.style.getPropertyValue("--settings-card-bg").trim()).toBe("");
-    expect(document.documentElement.style.getPropertyValue("--toolkit-grid-bg").trim()).toBe("");
-    expect(document.documentElement.style.getPropertyValue("--chrome-frame-bg")).toContain("rgba(4, 12, 21, 0.48)");
+    expect(document.documentElement.dataset.theme).toBe("sakura-hub");
+    expect(document.documentElement.style.getPropertyValue("--statusbar-bg")).toContain("2, 8, 16");
+    expect(document.documentElement.style.getPropertyValue("--dialog-surface")).toContain("8, 22, 34");
+    expect(document.documentElement.style.getPropertyValue("--settings-card-bg")).toContain("4, 13, 23");
+    expect(document.documentElement.style.getPropertyValue("--toolkit-grid-bg")).toContain("4, 13, 23");
+    expect(document.documentElement.style.getPropertyValue("--chrome-frame-bg")).toContain("2, 8, 16");
+    expect(document.documentElement.style.getPropertyValue("--statusbar-bg")).not.toContain("255, 248, 251");
+    expect(document.documentElement.style.getPropertyValue("--dialog-surface")).not.toContain("255, 240, 247");
+    expect(document.documentElement.style.getPropertyValue("--settings-card-bg")).not.toContain("255, 245, 250");
 
-    rerender(<ThemeProbe themeId="aether-dark" moodPresetId="aether-sky" />);
+    rerender(<ThemeProbe themeId="sakura-hub" moodPresetId="aether-sky" />);
 
     await waitFor(() => {
       expect(document.documentElement.dataset.mood).toBe("aether-sky");
     });
-    expect(document.documentElement.style.getPropertyValue("--chrome-frame-bg").trim()).toBe("");
+    expect(document.documentElement.style.getPropertyValue("--chrome-frame-bg")).toContain("2, 8, 18");
+    expect(document.documentElement.style.getPropertyValue("--statusbar-bg")).not.toContain("255, 248, 251");
   });
 });

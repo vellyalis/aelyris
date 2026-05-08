@@ -34,8 +34,194 @@ export function normalizeMoodPreset(value: string | null | undefined): MoodPrese
 }
 
 export function moodPresetToCSS(value: string | null | undefined): Record<string, string> {
-  return MOOD_CSS[normalizeMoodPreset(value)];
+  const mood = normalizeMoodPreset(value);
+  return {
+    ...MOOD_CSS[mood],
+    ...MOOD_SURFACE_CSS[mood],
+  };
 }
+
+export const MOOD_SURFACE_CSS_KEYS = [
+  "--chrome-frame-bg",
+  "--chrome-frame-filter",
+  "--chrome-frame-shadow",
+  "--chrome-control-hover-bg",
+  "--chrome-control-hover-border",
+  "--chrome-separator-bg",
+  "--statusbar-bg",
+  "--statusbar-filter",
+  "--statusbar-shadow",
+  "--material-panel-filter",
+  "--terminal-shell-filter",
+  "--material-panel-shadow",
+  "--material-card-shadow",
+  "--popup-glass-bg",
+  "--popup-glass-border",
+  "--popup-glass-shadow",
+  "--scrim-standard-bg",
+  "--scrim-heavy-bg",
+  "--dialog-surface",
+  "--dialog-surface-blur",
+  "--settings-control-bg",
+  "--settings-card-bg",
+  "--settings-card-bg-hover",
+  "--settings-card-bg-active",
+  "--toolkit-grid-bg",
+  "--toolkit-grid-shadow",
+  "--toolkit-tile-bg",
+  "--toolkit-tile-primary-bg",
+  "--toolkit-tile-hover-bg",
+  "--toolkit-tile-text",
+  "--toolkit-icon-bg",
+  "--toolkit-bottom-bg",
+  "--toolkit-bottom-btn-bg",
+] as const;
+
+type MoodSurfaceKey = (typeof MOOD_SURFACE_CSS_KEYS)[number];
+type MoodSurfaceCSS = Record<MoodSurfaceKey, string>;
+
+function darkMoodSurfaces(tone: {
+  shell: string;
+  panel: string;
+  panelStrong: string;
+  accent: string;
+  gold: string;
+  text: string;
+}): MoodSurfaceCSS {
+  return {
+    "--chrome-frame-bg": `linear-gradient(180deg, rgba(${tone.accent}, 0.026), transparent 72%), linear-gradient(90deg, rgba(${tone.accent}, 0.022), transparent 36%, transparent 66%, rgba(${tone.gold}, 0.012)), rgba(${tone.shell}, 0.62)`,
+    "--chrome-frame-filter": "blur(8px) saturate(1.04) brightness(0.76) contrast(1.12)",
+    "--chrome-frame-shadow": `inset 0 1px 0 rgba(${tone.text}, 0.08), inset 0 -1px 0 rgba(${tone.accent}, 0.08)`,
+    "--chrome-control-hover-bg": `rgba(${tone.accent}, 0.095)`,
+    "--chrome-control-hover-border": `rgba(${tone.accent}, 0.16)`,
+    "--chrome-separator-bg": `linear-gradient(180deg, transparent, rgba(${tone.accent}, 0.18), transparent)`,
+    "--statusbar-bg": `rgba(${tone.shell}, 0.72)`,
+    "--statusbar-filter": "blur(1px) saturate(1.04) brightness(0.78) contrast(1.1)",
+    "--statusbar-shadow": `inset 0 1px 0 rgba(${tone.text}, 0.055), inset 0 -1px 0 rgba(${tone.accent}, 0.07)`,
+    "--material-panel-filter": "blur(1px) saturate(1.04) brightness(0.82) contrast(1.12)",
+    "--terminal-shell-filter": "blur(1px) saturate(1.04) brightness(0.82) contrast(1.12)",
+    "--material-panel-shadow": `var(--rim-top), inset 0 0 0 1px rgba(${tone.accent}, 0.055), 0 12px 30px rgba(0, 0, 0, 0.2)`,
+    "--material-card-shadow": `var(--rim-top), 0 0 0 1px rgba(${tone.accent}, 0.05), 0 8px 20px rgba(0, 0, 0, 0.18)`,
+    "--popup-glass-bg": `linear-gradient(180deg, rgba(${tone.text}, 0.045), transparent 40%), linear-gradient(145deg, rgba(${tone.accent}, 0.04), transparent 52%), rgba(${tone.panelStrong}, 0.9)`,
+    "--popup-glass-border": `rgba(${tone.accent}, 0.14)`,
+    "--popup-glass-shadow": `var(--rim-top), inset 0 0 0 1px rgba(${tone.accent}, 0.055), 0 16px 38px rgba(0, 0, 0, 0.26)`,
+    "--scrim-standard-bg": `linear-gradient(180deg, rgba(0, 0, 0, 0.34), rgba(${tone.shell}, 0.46)), rgba(${tone.shell}, 0.2)`,
+    "--scrim-heavy-bg": `linear-gradient(180deg, rgba(0, 0, 0, 0.42), rgba(${tone.shell}, 0.58)), rgba(${tone.shell}, 0.28)`,
+    "--dialog-surface": `linear-gradient(180deg, rgba(${tone.text}, 0.045), transparent 32%), linear-gradient(145deg, rgba(${tone.accent}, 0.045), transparent 50%), rgba(${tone.panelStrong}, 0.92)`,
+    "--dialog-surface-blur": "blur(20px)",
+    "--settings-control-bg": `rgba(${tone.panel}, 0.84)`,
+    "--settings-card-bg": `rgba(${tone.panel}, 0.66)`,
+    "--settings-card-bg-hover": `rgba(${tone.panelStrong}, 0.76)`,
+    "--settings-card-bg-active": `rgba(${tone.panelStrong}, 0.84)`,
+    "--toolkit-grid-bg": `linear-gradient(135deg, rgba(${tone.accent}, 0.075), transparent 38%, rgba(${tone.gold}, 0.04)), rgba(${tone.panel}, 0.42)`,
+    "--toolkit-grid-shadow": `inset 0 1px 0 rgba(${tone.text}, 0.055), inset 0 -1px 0 rgba(${tone.accent}, 0.06)`,
+    "--toolkit-tile-bg": `linear-gradient(180deg, rgba(${tone.text}, 0.035), rgba(${tone.accent}, 0.022)), rgba(${tone.panel}, 0.56)`,
+    "--toolkit-tile-primary-bg": `linear-gradient(135deg, color-mix(in srgb, var(--tone, var(--gold)) 14%, transparent), transparent 46%), rgba(${tone.panelStrong}, 0.62)`,
+    "--toolkit-tile-hover-bg": `linear-gradient(180deg, color-mix(in srgb, var(--tone, var(--gold)) 12%, transparent), transparent 58%), rgba(${tone.panelStrong}, 0.72)`,
+    "--toolkit-tile-text": "var(--text-primary)",
+    "--toolkit-icon-bg": `linear-gradient(180deg, rgba(${tone.text}, 0.055), rgba(${tone.accent}, 0.035)), color-mix(in srgb, var(--tone, var(--accent)) 12%, rgba(${tone.panelStrong}, 0.72))`,
+    "--toolkit-bottom-bg": `linear-gradient(90deg, rgba(${tone.accent}, 0.07), transparent 52%, rgba(${tone.gold}, 0.045)), rgba(${tone.panel}, 0.48)`,
+    "--toolkit-bottom-btn-bg": `rgba(${tone.panelStrong}, 0.62)`,
+  };
+}
+
+const MOOD_SURFACE_CSS: Record<MoodPresetId, MoodSurfaceCSS> = {
+  "aether-sky": darkMoodSurfaces({
+    shell: "2, 8, 18",
+    panel: "6, 20, 36",
+    panelStrong: "8, 27, 50",
+    accent: "120, 207, 255",
+    gold: "240, 207, 122",
+    text: "246, 251, 255",
+  }),
+  "aether-moonwater": darkMoodSurfaces({
+    shell: "0, 8, 22",
+    panel: "2, 25, 48",
+    panelStrong: "3, 35, 65",
+    accent: "82, 215, 255",
+    gold: "245, 199, 227",
+    text: "246, 253, 255",
+  }),
+  "aether-dream": darkMoodSurfaces({
+    shell: "10, 6, 20",
+    panel: "34, 25, 50",
+    panelStrong: "48, 38, 68",
+    accent: "200, 182, 255",
+    gold: "255, 217, 150",
+    text: "253, 248, 255",
+  }),
+  "aether-cute": darkMoodSurfaces({
+    shell: "3, 13, 13",
+    panel: "18, 48, 44",
+    panelStrong: "30, 70, 66",
+    accent: "114, 240, 220",
+    gold: "255, 209, 220",
+    text: "246, 255, 253",
+  }),
+  "aether-sakura": {
+    "--chrome-frame-bg":
+      "linear-gradient(180deg, rgba(255, 255, 255, 0.3), transparent 72%), linear-gradient(90deg, rgba(189, 63, 104, 0.08), transparent 34%, transparent 66%, rgba(252, 201, 185, 0.08)), rgba(255, 236, 245, 0.46)",
+    "--chrome-frame-filter": "blur(8px) saturate(1.08) brightness(0.94) contrast(1.08)",
+    "--chrome-frame-shadow": "inset 0 1px 0 rgba(255, 255, 255, 0.46), inset 0 -1px 0 rgba(130, 49, 73, 0.12)",
+    "--chrome-control-hover-bg": "rgba(189, 63, 104, 0.1)",
+    "--chrome-control-hover-border": "rgba(130, 49, 73, 0.18)",
+    "--chrome-separator-bg": "linear-gradient(180deg, transparent, rgba(130, 49, 73, 0.22), transparent)",
+    "--statusbar-bg": "rgba(255, 248, 251, 0.84)",
+    "--statusbar-filter": "blur(1px) saturate(1.02) brightness(1) contrast(1)",
+    "--statusbar-shadow": "inset 0 1px 0 rgba(255, 255, 255, 0.52), inset 0 -1px 0 rgba(159, 75, 97, 0.08)",
+    "--material-panel-filter": "blur(1px) saturate(1.06) brightness(0.96) contrast(1.08)",
+    "--terminal-shell-filter": "blur(1px) saturate(1.08) brightness(0.86) contrast(1.12)",
+    "--material-panel-shadow":
+      "var(--rim-top), inset 0 0 0 1px rgba(159, 75, 97, 0.06), 0 10px 28px rgba(80, 32, 52, 0.12)",
+    "--material-card-shadow": "var(--rim-top), 0 0 0 1px rgba(159, 75, 97, 0.07), 0 8px 18px rgba(80, 32, 52, 0.1)",
+    "--popup-glass-bg": "linear-gradient(180deg, rgba(255, 255, 255, 0.38), transparent 38%), rgba(255, 242, 248, 0.9)",
+    "--popup-glass-border": "rgba(130, 49, 73, 0.22)",
+    "--popup-glass-shadow":
+      "var(--rim-top), inset 0 0 0 1px rgba(159, 75, 97, 0.08), 0 14px 32px rgba(80, 32, 52, 0.16)",
+    "--scrim-standard-bg":
+      "linear-gradient(180deg, rgba(83, 37, 54, 0.18), rgba(54, 25, 39, 0.28)), rgba(255, 238, 245, 0.14)",
+    "--scrim-heavy-bg":
+      "linear-gradient(180deg, rgba(83, 37, 54, 0.24), rgba(54, 25, 39, 0.34)), rgba(255, 230, 240, 0.16)",
+    "--dialog-surface":
+      "linear-gradient(180deg, rgba(255, 255, 255, 0.34), transparent 32%), linear-gradient(145deg, rgba(252, 201, 185, 0.16), transparent 50%), rgba(255, 240, 247, 0.86)",
+    "--dialog-surface-blur": "blur(18px)",
+    "--settings-control-bg": "rgba(255, 250, 253, 0.72)",
+    "--settings-card-bg": "rgba(255, 245, 250, 0.66)",
+    "--settings-card-bg-hover": "rgba(255, 239, 247, 0.78)",
+    "--settings-card-bg-active": "rgba(255, 235, 245, 0.84)",
+    "--toolkit-grid-bg":
+      "linear-gradient(135deg, rgba(189, 63, 104, 0.12), transparent 38%, rgba(252, 201, 185, 0.14)), rgba(255, 242, 248, 0.46)",
+    "--toolkit-grid-shadow": "inset 0 1px 0 rgba(255, 255, 255, 0.44), inset 0 -1px 0 rgba(130, 49, 73, 0.12)",
+    "--toolkit-tile-bg":
+      "linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(255, 218, 233, 0.12)), rgba(255, 245, 250, 0.58)",
+    "--toolkit-tile-primary-bg":
+      "linear-gradient(135deg, color-mix(in srgb, var(--tone, var(--gold)) 14%, transparent), transparent 46%), rgba(255, 239, 247, 0.68)",
+    "--toolkit-tile-hover-bg":
+      "linear-gradient(180deg, color-mix(in srgb, var(--tone, var(--gold)) 13%, transparent), transparent 58%), rgba(255, 235, 245, 0.78)",
+    "--toolkit-tile-text": "rgba(47, 22, 33, 0.92)",
+    "--toolkit-icon-bg":
+      "linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(189, 63, 104, 0.06)), color-mix(in srgb, var(--tone, var(--accent)) 12%, rgba(255, 247, 251, 0.78))",
+    "--toolkit-bottom-bg":
+      "linear-gradient(90deg, rgba(189, 63, 104, 0.12), transparent 52%, rgba(252, 201, 185, 0.12)), rgba(255, 242, 248, 0.58)",
+    "--toolkit-bottom-btn-bg": "rgba(255, 250, 253, 0.64)",
+  },
+  "aether-obsidian": darkMoodSurfaces({
+    shell: "8, 8, 13",
+    panel: "21, 20, 26",
+    panelStrong: "31, 30, 37",
+    accent: "216, 183, 102",
+    gold: "137, 220, 235",
+    text: "250, 246, 235",
+  }),
+  "aether-pro": darkMoodSurfaces({
+    shell: "2, 8, 16",
+    panel: "4, 13, 23",
+    panelStrong: "8, 22, 34",
+    accent: "155, 199, 223",
+    gold: "199, 179, 122",
+    text: "241, 247, 250",
+  }),
+};
 
 const MOOD_CSS: Record<MoodPresetId, Record<string, string>> = {
   "aether-sky": {
@@ -356,55 +542,6 @@ const MOOD_CSS: Record<MoodPresetId, Record<string, string>> = {
     "--gold-dim": "rgba(130, 49, 73, 0.4)",
     "--gold-subtle": "rgba(189, 63, 104, 0.18)",
     "--gold-surface": "linear-gradient(180deg, #ffd6df 0%, #e88fa7 42%, #823149 100%)",
-    "--chrome-frame-bg":
-      "linear-gradient(180deg, rgba(255, 255, 255, 0.3), transparent 72%), linear-gradient(90deg, rgba(189, 63, 104, 0.08), transparent 34%, transparent 66%, rgba(252, 201, 185, 0.08)), rgba(255, 236, 245, 0.46)",
-    "--chrome-frame-filter": "blur(8px) saturate(1.08) brightness(0.94) contrast(1.08)",
-    "--chrome-frame-shadow":
-      "inset 0 1px 0 rgba(255, 255, 255, 0.46), inset 0 -1px 0 rgba(130, 49, 73, 0.12)",
-    "--chrome-control-hover-bg": "rgba(189, 63, 104, 0.1)",
-    "--chrome-control-hover-border": "rgba(130, 49, 73, 0.18)",
-    "--chrome-separator-bg": "linear-gradient(180deg, transparent, rgba(130, 49, 73, 0.22), transparent)",
-    "--statusbar-bg": "rgba(255, 248, 251, 0.84)",
-    "--statusbar-filter": "blur(1px) saturate(1.02) brightness(1) contrast(1)",
-    "--statusbar-shadow":
-      "inset 0 1px 0 rgba(255, 255, 255, 0.52), inset 0 -1px 0 rgba(159, 75, 97, 0.08)",
-    "--material-panel-filter": "blur(1px) saturate(1.06) brightness(0.96) contrast(1.08)",
-    "--terminal-shell-filter": "blur(1px) saturate(1.08) brightness(0.86) contrast(1.12)",
-    "--material-panel-shadow":
-      "var(--rim-top), inset 0 0 0 1px rgba(159, 75, 97, 0.06), 0 10px 28px rgba(80, 32, 52, 0.12)",
-    "--material-card-shadow": "var(--rim-top), 0 0 0 1px rgba(159, 75, 97, 0.07), 0 8px 18px rgba(80, 32, 52, 0.1)",
-    "--popup-glass-bg":
-      "linear-gradient(180deg, rgba(255, 255, 255, 0.38), transparent 38%), rgba(255, 242, 248, 0.9)",
-    "--popup-glass-border": "rgba(130, 49, 73, 0.22)",
-    "--popup-glass-shadow":
-      "var(--rim-top), inset 0 0 0 1px rgba(159, 75, 97, 0.08), 0 14px 32px rgba(80, 32, 52, 0.16)",
-    "--scrim-standard-bg":
-      "linear-gradient(180deg, rgba(83, 37, 54, 0.18), rgba(54, 25, 39, 0.28)), rgba(255, 238, 245, 0.14)",
-    "--scrim-heavy-bg":
-      "linear-gradient(180deg, rgba(83, 37, 54, 0.24), rgba(54, 25, 39, 0.34)), rgba(255, 230, 240, 0.16)",
-    "--dialog-surface":
-      "linear-gradient(180deg, rgba(255, 255, 255, 0.34), transparent 32%), linear-gradient(145deg, rgba(252, 201, 185, 0.16), transparent 50%), rgba(255, 240, 247, 0.86)",
-    "--dialog-surface-blur": "blur(18px)",
-    "--settings-control-bg": "rgba(255, 250, 253, 0.72)",
-    "--settings-card-bg": "rgba(255, 245, 250, 0.66)",
-    "--settings-card-bg-hover": "rgba(255, 239, 247, 0.78)",
-    "--settings-card-bg-active": "rgba(255, 235, 245, 0.84)",
-    "--toolkit-grid-bg":
-      "linear-gradient(135deg, rgba(189, 63, 104, 0.12), transparent 38%, rgba(252, 201, 185, 0.14)), rgba(255, 242, 248, 0.46)",
-    "--toolkit-grid-shadow":
-      "inset 0 1px 0 rgba(255, 255, 255, 0.44), inset 0 -1px 0 rgba(130, 49, 73, 0.12)",
-    "--toolkit-tile-bg":
-      "linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(255, 218, 233, 0.12)), rgba(255, 245, 250, 0.58)",
-    "--toolkit-tile-primary-bg":
-      "linear-gradient(135deg, color-mix(in srgb, var(--tone, var(--gold)) 14%, transparent), transparent 46%), rgba(255, 239, 247, 0.68)",
-    "--toolkit-tile-hover-bg":
-      "linear-gradient(180deg, color-mix(in srgb, var(--tone, var(--gold)) 13%, transparent), transparent 58%), rgba(255, 235, 245, 0.78)",
-    "--toolkit-tile-text": "rgba(47, 22, 33, 0.92)",
-    "--toolkit-icon-bg":
-      "linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(189, 63, 104, 0.06)), color-mix(in srgb, var(--tone, var(--accent)) 12%, rgba(255, 247, 251, 0.78))",
-    "--toolkit-bottom-bg":
-      "linear-gradient(90deg, rgba(189, 63, 104, 0.12), transparent 52%, rgba(252, 201, 185, 0.12)), rgba(255, 242, 248, 0.58)",
-    "--toolkit-bottom-btn-bg": "rgba(255, 250, 253, 0.64)",
     "--text-primary": "#24121b",
     "--text-secondary": "rgba(47, 22, 33, 0.9)",
     "--text-muted": "rgba(74, 34, 49, 0.78)",
@@ -553,8 +690,6 @@ const MOOD_CSS: Record<MoodPresetId, Record<string, string>> = {
     "--gold-dim": "rgba(199, 179, 122, 0.34)",
     "--gold-subtle": "rgba(199, 179, 122, 0.14)",
     "--gold-surface": "linear-gradient(180deg, #e7dba7 0%, #c7b37a 45%, #9a844b 100%)",
-    "--chrome-frame-bg":
-      "linear-gradient(180deg, rgba(124, 214, 235, 0.012), transparent 70%), linear-gradient(90deg, rgba(74, 184, 220, 0.016), transparent 36%, transparent 66%, rgba(199, 179, 122, 0.006)), rgba(4, 12, 21, 0.48)",
     "--text-primary": "rgba(241, 247, 250, 0.9)",
     "--text-secondary": "rgba(218, 229, 235, 0.56)",
     "--text-muted": "rgba(200, 213, 222, 0.56)",
@@ -605,5 +740,7 @@ const MOOD_CSS: Record<MoodPresetId, Record<string, string>> = {
 };
 
 export const MOOD_CSS_KEYS: readonly string[] = Object.freeze(
-  Array.from(new Set(Object.values(MOOD_CSS).flatMap((vars) => Object.keys(vars)))).sort(),
+  Array.from(
+    new Set([...Object.values(MOOD_CSS).flatMap((vars) => Object.keys(vars)), ...MOOD_SURFACE_CSS_KEYS]),
+  ).sort(),
 );

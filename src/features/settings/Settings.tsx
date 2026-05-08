@@ -37,10 +37,11 @@ const SHELLS = [
   { id: "wsl", label: "WSL" },
 ];
 
-function previewConfig(theme: string, shell: string, liveMode: boolean): LoadedConfig {
+function previewConfig(theme: string, moodPreset: string, shell: string, liveMode: boolean): LoadedConfig {
   return {
     appearance: {
       theme,
+      mood_preset: normalizeMoodPreset(moodPreset),
       ui_font_family: "IBM Plex Sans",
       terminal_font_family: "IBM Plex Mono",
       font_size: 14,
@@ -68,6 +69,7 @@ function previewConfig(theme: string, shell: string, liveMode: boolean): LoadedC
 interface LoadedConfig {
   appearance: {
     theme: string;
+    mood_preset?: string;
     ui_font_family: string;
     terminal_font_family: string;
     font_size: number;
@@ -135,9 +137,10 @@ export function Settings({ visible, onClose }: SettingsProps) {
     // (Same defect class fixed in WatchdogDialog round 4 / codex r2.)
     setLoadedConfig(null);
     if (!isTauriRuntime()) {
-      const cfg = previewConfig(storeTheme, defaultShell, ghostDiffLiveMode);
+      const cfg = previewConfig(storeTheme, storeMood, defaultShell, ghostDiffLiveMode);
       setLoadedConfig(cfg);
       setTheme(cfg.appearance.theme);
+      setMood(normalizeMoodPreset(cfg.appearance.mood_preset));
       setFont(cfg.appearance.terminal_font_family);
       setFontSize(cfg.appearance.font_size);
       setLineHeight(cfg.appearance.line_height);
@@ -154,6 +157,9 @@ export function Settings({ visible, onClose }: SettingsProps) {
         if (cancelled) return;
         setLoadedConfig(cfg);
         setTheme(cfg.appearance.theme);
+        const persistedMood = normalizeMoodPreset(cfg.appearance.mood_preset ?? storeMood);
+        setMood(persistedMood);
+        setMoodPresetId(persistedMood);
         setFont(cfg.appearance.terminal_font_family.split(",")[0].trim());
         setFontSize(cfg.appearance.font_size);
         setLineHeight(cfg.appearance.line_height);
@@ -178,7 +184,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
     return () => {
       cancelled = true;
     };
-  }, [visible, setGhostDiffLiveMode, storeTheme, defaultShell, ghostDiffLiveMode]);
+  }, [visible, setGhostDiffLiveMode, setMoodPresetId, storeTheme, storeMood, defaultShell, ghostDiffLiveMode]);
 
   useEffect(() => {
     if (visible) setMood(storeMood);
@@ -209,6 +215,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
       appearance: {
         ...loadedConfig.appearance,
         theme,
+        mood_preset: mood,
         terminal_font_family: font,
         font_size: fontSize,
         line_height: lineHeight,

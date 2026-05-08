@@ -286,6 +286,8 @@ impl Default for WindowConfig {
 pub struct AppearanceConfig {
     #[serde(default = "default_theme")]
     pub theme: String,
+    #[serde(default = "default_mood_preset")]
+    pub mood_preset: String,
     #[serde(default = "default_ui_font")]
     pub ui_font_family: String,
     #[serde(default = "default_terminal_font")]
@@ -319,6 +321,7 @@ impl Default for AppConfig {
         Self {
             appearance: AppearanceConfig {
                 theme: default_theme(),
+                mood_preset: default_mood_preset(),
                 ui_font_family: default_ui_font(),
                 terminal_font_family: default_terminal_font(),
                 font_size: default_font_size(),
@@ -372,6 +375,9 @@ pub fn save_config(config: &AppConfig) -> Result<(), String> {
 
 fn default_theme() -> String {
     "catppuccin-mocha".to_string()
+}
+fn default_mood_preset() -> String {
+    "aether-sky".to_string()
 }
 fn default_ui_font() -> String {
     "Geist, Inter, Source Han Sans JP, sans-serif".to_string()
@@ -475,6 +481,18 @@ cursor_blink = true
 "#;
         let cfg: AppConfig = toml::from_str(legacy).expect("parse legacy config");
         assert!(!cfg.ghost_diff.live_mode);
+        assert_eq!(cfg.appearance.mood_preset, "aether-sky");
+    }
+
+    #[test]
+    fn appearance_mood_preset_round_trips() {
+        let mut cfg = AppConfig::default();
+        cfg.appearance.theme = "sakura-hub".to_string();
+        cfg.appearance.mood_preset = "aether-sakura".to_string();
+        let serialized = toml::to_string(&cfg).expect("serialize");
+        let back: AppConfig = toml::from_str(&serialized).expect("deserialize");
+        assert_eq!(back.appearance.theme, "sakura-hub");
+        assert_eq!(back.appearance.mood_preset, "aether-sakura");
     }
 
     #[test]

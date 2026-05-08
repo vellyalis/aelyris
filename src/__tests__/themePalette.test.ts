@@ -11,7 +11,13 @@ import {
   isValidHex,
   normalizeHex,
 } from "../shared/themes/catppuccin";
-import { DEFAULT_MOOD_PRESET, MOOD_PRESETS, moodPresetToCSS, normalizeMoodPreset } from "../shared/themes/moods";
+import {
+  DEFAULT_MOOD_PRESET,
+  MOOD_PRESETS,
+  MOOD_SURFACE_CSS_KEYS,
+  moodPresetToCSS,
+  normalizeMoodPreset,
+} from "../shared/themes/moods";
 
 describe("themes/catppuccin — hex helpers", () => {
   it("validates 6-digit hex", () => {
@@ -169,9 +175,22 @@ describe("themes/moods — preset metadata", () => {
 
     for (const preset of MOOD_PRESETS) {
       const vars = moodPresetToCSS(preset.id);
-      for (const key of required) {
+      for (const key of [...required, ...MOOD_SURFACE_CSS_KEYS]) {
         expect(vars[key], `${preset.id} missing ${key}`).toBeTruthy();
       }
+    }
+  });
+
+  it("does not let Sakura surface colors bleed into darker mood presets", () => {
+    for (const preset of MOOD_PRESETS) {
+      const vars = moodPresetToCSS(preset.id);
+      if (preset.id === "aether-sakura") continue;
+
+      expect(vars["--statusbar-bg"], preset.id).not.toContain("255, 248, 251");
+      expect(vars["--dialog-surface"], preset.id).not.toContain("255, 240, 247");
+      expect(vars["--settings-card-bg"], preset.id).not.toContain("255, 245, 250");
+      expect(vars["--toolkit-grid-bg"], preset.id).not.toContain("255, 242, 248");
+      expect(vars["--chrome-frame-bg"], preset.id).not.toContain("255, 236, 245");
     }
   });
 
@@ -225,7 +244,7 @@ describe("themes/moods — preset metadata", () => {
   it("keeps Aether Pro graphite deep instead of cloudy grey", () => {
     const vars = moodPresetToCSS("aether-pro");
 
-    expect(vars["--chrome-frame-bg"]).toContain("rgba(4, 12, 21, 0.48)");
+    expect(vars["--chrome-frame-bg"]).toContain("rgba(2, 8, 16, 0.62)");
     expect(vars["--mood-left-panel-bg"]).toContain("rgba(4, 13, 23, 0.58)");
     expect(vars["--mood-right-panel-bg"]).toContain("rgba(4, 13, 23, 0.66)");
     expect(vars["--mood-left-panel-bg"]).not.toContain("238, 246, 250");
