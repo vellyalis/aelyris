@@ -38,39 +38,42 @@ export function usePaneTree({ initialShell, initialCwd, initialTree, initialActi
     [initialShell, initialCwd],
   );
 
-  const close = useCallback((targetId: string) => {
-    const shouldClosePty = countLeaves(tree) > 1 && collectLeafIds(tree).includes(targetId);
-    setTree((prev) => {
-      if (countLeaves(prev) <= 1) return prev;
-      const nextTree = removePane(prev, targetId);
-      if (!nextTree) return prev;
-      // If the closed pane was active (or selected by JS focus), refocus
-      // a sibling instead of dropping to `null`. Without this the user
-      // would stare at an unfocused tree until their next click; with
-      // 3+ panes the gold-rule indicator went dark on the wrong frame
-      // and the agent inspector / inline-image badge lost its target
-      // until something else triggered a focus event.
-      setActivePaneId((cur) => {
-        if (cur !== targetId) return cur;
-        const remaining = collectLeafIds(nextTree);
-        return remaining[0] ?? null;
-      });
-      return nextTree;
-    });
-    setTerminalIds((prev) => {
-      if (!shouldClosePty) return prev;
-      const ptyId = prev.get(targetId);
-      if (ptyId) {
-        import("@tauri-apps/api/core").then(({ invoke }) => {
-          invoke("close_terminal", { id: ptyId }).catch(() => {});
+  const close = useCallback(
+    (targetId: string) => {
+      const shouldClosePty = countLeaves(tree) > 1 && collectLeafIds(tree).includes(targetId);
+      setTree((prev) => {
+        if (countLeaves(prev) <= 1) return prev;
+        const nextTree = removePane(prev, targetId);
+        if (!nextTree) return prev;
+        // If the closed pane was active (or selected by JS focus), refocus
+        // a sibling instead of dropping to `null`. Without this the user
+        // would stare at an unfocused tree until their next click; with
+        // 3+ panes the gold-rule indicator went dark on the wrong frame
+        // and the agent inspector / inline-image badge lost its target
+        // until something else triggered a focus event.
+        setActivePaneId((cur) => {
+          if (cur !== targetId) return cur;
+          const remaining = collectLeafIds(nextTree);
+          return remaining[0] ?? null;
         });
-      }
-      const next = new Map(prev);
-      next.delete(targetId);
-      return next;
-    });
-    setMaximizedPaneId((prev) => (prev === targetId ? null : prev));
-  }, [tree]);
+        return nextTree;
+      });
+      setTerminalIds((prev) => {
+        if (!shouldClosePty) return prev;
+        const ptyId = prev.get(targetId);
+        if (ptyId) {
+          import("@tauri-apps/api/core").then(({ invoke }) => {
+            invoke("close_terminal", { id: ptyId }).catch(() => {});
+          });
+        }
+        const next = new Map(prev);
+        next.delete(targetId);
+        return next;
+      });
+      setMaximizedPaneId((prev) => (prev === targetId ? null : prev));
+    },
+    [tree],
+  );
 
   const resize = useCallback((splitId: string, ratio: number) => {
     setTree((prev) => updateRatio(prev, splitId, ratio));

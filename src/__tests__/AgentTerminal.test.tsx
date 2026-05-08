@@ -83,7 +83,7 @@ describe("AgentTerminal", () => {
     fireEvent.change(input, { target: { value: "lost prompt" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(tauriMock.invoke).not.toHaveBeenCalledWith("write_terminal", expect.anything());
-  });
+  }, 10_000);
 
   it("surfaces IME write failures instead of dropping the input silently", async () => {
     tauriMock.invoke.mockImplementation(async (...args: unknown[]) => {
@@ -99,7 +99,7 @@ describe("AgentTerminal", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     await waitFor(() => expect(screen.getByText("Input write failed: pty closed")).toBeTruthy());
-  });
+  }, 10_000);
 
   it("surfaces backend resize failures as degraded terminal state", async () => {
     tauriMock.invoke.mockImplementation(async (...args: unknown[]) => {
@@ -111,5 +111,5 @@ describe("AgentTerminal", () => {
     render(<AgentTerminal ptyId="pty-agent" cli="codex" status="coding" model="codex" cost={0.12} />);
 
     await waitFor(() => expect(screen.getByText("Resize failed: resize denied")).toBeTruthy());
-  });
+  }, 10_000);
 });

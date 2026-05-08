@@ -1484,8 +1484,8 @@ body[data-window-focused="false"] {
     color: HighlightText;
   }
 
-  .right-panel-mode-tab[data-active="true"] .right-panel-mode-badge,
-  .right-panel-mode-tab[data-active="true"] svg,
+  :root .right-panel-mode-tab[data-active="true"] .right-panel-mode-badge,
+  :root .right-panel-mode-tab[data-active="true"] svg,
   .right-panel-advisor:focus-visible *,
   .right-panel-mode-tab:focus-visible *,
   .bento-widget:focus-within * {

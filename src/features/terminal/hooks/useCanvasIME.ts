@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef } from "react";
-
+import { reportInvokeFailure } from "../../../shared/lib/fallbackTelemetry";
 import {
   classifyTerminalPasteInput,
   countTerminalPasteLineEndings,
@@ -8,7 +8,6 @@ import {
   TERMINAL_PASTE_GUARD_EVENT,
   type TerminalPasteGuard,
 } from "../../../shared/lib/terminalInput";
-import { reportInvokeFailure } from "../../../shared/lib/fallbackTelemetry";
 import { keyEventToBytes } from "../keymap";
 
 /**

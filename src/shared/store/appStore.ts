@@ -1,8 +1,5 @@
 import { create } from "zustand";
-import {
-  formatFallbackError,
-  reportFallback,
-} from "../lib/fallbackTelemetry";
+import { formatFallbackError, reportFallback } from "../lib/fallbackTelemetry";
 import {
   buildWorkspaceProfile,
   createWorkspaceProfileState,

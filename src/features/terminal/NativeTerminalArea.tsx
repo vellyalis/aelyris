@@ -874,7 +874,7 @@ export function NativeTerminalArea({
     if (previewMode) return;
     if (!dims || spawnStartedRef.current) return;
     spawnStartedRef.current = true;
-    spawnAttemptRef.current += 1;
+    spawnAttemptRef.current = Math.max(spawnAttemptRef.current + 1, spawnRetryNonce + 1);
     const attempt = spawnAttemptRef.current;
     let cancelled = false;
     let retryTimer: number | null = null;

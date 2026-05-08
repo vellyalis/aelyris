@@ -140,8 +140,7 @@
   text-align: left;
   color: var(--text-primary);
   background:
-    linear-gradient(135deg, color-mix(in srgb, var(--mood-a) 5%, transparent), transparent 62%),
-    var(--settings-card-bg);
+    linear-gradient(135deg, color-mix(in srgb, var(--mood-a) 5%, transparent), transparent 62%), var(--settings-card-bg);
   border: 0;
   border-radius: var(--radius-sm);
   box-shadow:
@@ -275,7 +274,6 @@
 .input {
   width: 100%;
   padding: var(--space-3) var(--space-5);
-  background: color-mix(in srgb, var(--bg-surface) 78%, transparent);
   background: var(--settings-control-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -380,7 +378,6 @@
   flex-direction: column;
   gap: var(--space-2);
   padding: var(--space-4);
-  background: color-mix(in srgb, var(--bg-surface) 76%, transparent);
   background: var(--settings-card-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);

@@ -319,13 +319,9 @@ export function PaneTreeRenderer({
         if (hasRealSize) initializedRef.current.add(leaf.id);
         const lifecycle = paneLifecycleStates?.get(leaf.id);
         const terminalId = terminalIds.get(leaf.id) ?? null;
-        const shouldSuspendForLeaf =
-          suspendTerminalMounts && lifecycle !== "starting" && lifecycle !== "restarting";
+        const shouldSuspendForLeaf = suspendTerminalMounts && lifecycle !== "starting" && lifecycle !== "restarting";
         const shouldHoldForAttach =
-          !terminalId &&
-          (lifecycle === "detached" ||
-            lifecycle === "exited" ||
-            lifecycle === "crashed");
+          !terminalId && (lifecycle === "detached" || lifecycle === "exited" || lifecycle === "crashed");
         const shouldMount =
           !shouldSuspendForLeaf && !shouldHoldForAttach && (hasRealSize || initializedRef.current.has(leaf.id));
 

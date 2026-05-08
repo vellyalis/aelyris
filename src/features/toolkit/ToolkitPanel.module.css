@@ -175,8 +175,7 @@
   min-height: 42px;
   align-items: center;
   padding: var(--space-3) var(--space-4);
-  background:
-    var(--toolkit-tile-primary-bg);
+  background: var(--toolkit-tile-primary-bg);
   box-shadow: none;
 }
 
@@ -201,8 +200,7 @@
 }
 
 .action:hover {
-  background:
-    var(--toolkit-tile-hover-bg);
+  background: var(--toolkit-tile-hover-bg);
   color: var(--text-primary);
   box-shadow:
     inset 0 1px 0 rgba(206, 242, 255, 0.08),

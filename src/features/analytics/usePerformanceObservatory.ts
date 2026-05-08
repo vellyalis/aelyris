@@ -130,6 +130,7 @@ export function usePerformanceObservatory({
   const [eventLoopLagMs, setEventLoopLagMs] = useState<number | null>(null);
   const [rightRailRenderMs, setRightRailRenderMs] = useState<number | null>(null);
   const rightRailMeasuredOnceRef = useRef(false);
+  const rightRailRenderSignatureRef = useRef<string | null>(null);
   const [heapMemory, setHeapMemory] = useState(readHeapMemory);
   const [dashboardProbe, setDashboardProbe] = useState<DashboardPerformanceProbe>({
     updateLatencyMs: null,
@@ -226,11 +227,15 @@ export function usePerformanceObservatory({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    const railSignature = `${rightRailMode}:${rightRailWidth ?? "auto"}`;
     if (!rightRailMeasuredOnceRef.current) {
       rightRailMeasuredOnceRef.current = true;
+      rightRailRenderSignatureRef.current = railSignature;
       setRightRailRenderMs(null);
       return;
     }
+    if (rightRailRenderSignatureRef.current === railSignature) return;
+    rightRailRenderSignatureRef.current = railSignature;
     const startedAt = now();
     const raf = window.requestAnimationFrame(() => {
       setRightRailRenderMs(Math.max(0, now() - startedAt));
