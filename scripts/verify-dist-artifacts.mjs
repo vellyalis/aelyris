@@ -8,11 +8,31 @@ const tauriConfig = JSON.parse(await readFile(path.join(repoRoot, "src-tauri", "
 const tauriDistConfig = JSON.parse(await readFile(path.join(repoRoot, "src-tauri", "tauri.dist.conf.json"), "utf8"));
 const version = pkg.version;
 
+const failures = [];
+const releaseProvenanceInputs = [
+  "package.json",
+  "pnpm-lock.yaml",
+  "scripts/build-pty-sidecar.mjs",
+  "src-tauri/Cargo.toml",
+  "src-tauri/Cargo.lock",
+  "src-tauri/tauri.conf.json",
+  "src-tauri/tauri.dist.conf.json",
+  "src-tauri/src/pty_sidecar.rs",
+  "src-tauri/pty-server/Cargo.toml",
+  "src-tauri/pty-server/src/main.rs",
+];
+const sidecarProvenanceInputs = [
+  "scripts/build-pty-sidecar.mjs",
+  "src-tauri/pty-server/Cargo.toml",
+  "src-tauri/pty-server/src/main.rs",
+];
+
 const artifacts = [
   {
     label: "App exe",
     path: path.join(repoRoot, "src-tauri", "target", "release", "aether-terminal.exe"),
     minBytes: 10 * 1024 * 1024,
+    provenanceInputs: releaseProvenanceInputs,
   },
   {
     label: "NSIS setup exe",
@@ -26,6 +46,7 @@ const artifacts = [
       `Aether Terminal_${version}_x64-setup.exe`,
     ),
     minBytes: 4 * 1024 * 1024,
+    provenanceInputs: releaseProvenanceInputs,
   },
   {
     label: "MSI",
@@ -39,6 +60,7 @@ const artifacts = [
       `Aether Terminal_${version}_x64_en-US.msi`,
     ),
     minBytes: 4 * 1024 * 1024,
+    provenanceInputs: releaseProvenanceInputs,
   },
 ];
 
@@ -48,23 +70,9 @@ if (sidecarName) {
     label: "PTY sidecar",
     path: path.join(repoRoot, "src-tauri", "binaries", sidecarName),
     minBytes: 1024 * 1024,
+    provenanceInputs: sidecarProvenanceInputs,
   });
 }
-
-const failures = [];
-const provenanceInputs = [
-  "package.json",
-  "pnpm-lock.yaml",
-  "scripts/build-pty-sidecar.mjs",
-  "scripts/verify-dist-artifacts.mjs",
-  "src-tauri/Cargo.toml",
-  "src-tauri/Cargo.lock",
-  "src-tauri/tauri.conf.json",
-  "src-tauri/tauri.dist.conf.json",
-  "src-tauri/src/pty_sidecar.rs",
-  "src-tauri/pty-server/Cargo.toml",
-  "src-tauri/pty-server/src/main.rs",
-];
 
 function formatMiB(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
@@ -132,12 +140,12 @@ assertEqual("Tauri bundle.active", tauriConfig.bundle?.active, true);
 assertEqual("Dist updater artifacts", tauriDistConfig.bundle?.createUpdaterArtifacts, false);
 assertBundleTargets();
 await assertSidecarBundleWiring();
-const newestInputMtimeMs = await latestMtimeMs(provenanceInputs);
 
 for (const artifact of artifacts) {
   try {
     await access(artifact.path);
     const info = await stat(artifact.path);
+    const newestInputMtimeMs = await latestMtimeMs(artifact.provenanceInputs ?? releaseProvenanceInputs);
     if (info.size < artifact.minBytes) {
       recordFailure(
         `[dist] ${artifact.label} is suspiciously small: ${formatMiB(info.size)} ` +
