@@ -33,7 +33,7 @@ const COVERED_RISKS = [
   "risk-p1-03-live-tauri-fanout-smoke-gap",
   "risk-p1-03-sync-input-dormant-prop",
   "risk-p1-05-live-tauri-right-rail-smoke-gap",
-  "risk-p1-06-live-tauri-right-rail-smoke-gap",
+  "risk-p1-06-live-tauri-mission-control-smoke-gap",
   "risk-p1-07-live-tauri-context-pack-copy-smoke-gap",
   "risk-p1-07-backend-diff-hunk-provider-gap",
   "risk-p1-08-live-tauri-agent-run-graph-smoke-gap",

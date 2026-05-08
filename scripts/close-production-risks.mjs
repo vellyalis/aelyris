@@ -49,6 +49,10 @@ const LIVE_RISKS = [
   "risk-p2-03-profile-source-alignment-gap",
 ];
 
+const LIVE_RISK_ALIASES = {
+  "risk-p1-06-live-tauri-mission-control-smoke-gap": ["risk-p1-06-live-tauri-right-rail-smoke-gap"],
+};
+
 const CLOSABLE_STATUSES = new Set(["closed", "mitigated", "accepted", "resolved"]);
 
 function readJson(path) {
@@ -109,7 +113,9 @@ function verifyLiveSmoke() {
   const live = readJson(LIVE_SMOKE);
   assertPass("live smoke status", live.status === "pass", live.status);
   for (const riskId of LIVE_RISKS) {
-    assertPass(`live smoke coverage ${riskId}`, live.riskCoverage?.[riskId]?.status === "pass", JSON.stringify(live.riskCoverage?.[riskId]));
+    const aliases = LIVE_RISK_ALIASES[riskId] ?? [];
+    const covered = [riskId, ...aliases].some((candidate) => live.riskCoverage?.[candidate]?.status === "pass");
+    assertPass(`live smoke coverage ${riskId}`, covered, JSON.stringify(live.riskCoverage?.[riskId]));
   }
   return {
     status: "pass",

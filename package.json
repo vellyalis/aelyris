@@ -15,6 +15,8 @@
     "verify:release:preflight": "node scripts/verify-release-gate.mjs --preflight",
     "verify:release": "node scripts/verify-release-gate.mjs",
     "verify:release:ime": "node scripts/verify-release-gate.mjs --with-ime",
+    "verify:release:production": "node scripts/verify-production-release-gate.mjs",
+    "verify:supply-chain": "node scripts/verify-supply-chain.mjs",
     "verify:production:live": "node scripts/verify-live-tauri-workstation-surfaces.mjs",
     "verify:production:close-risks": "node scripts/close-production-risks.mjs",
     "test": "vitest run",

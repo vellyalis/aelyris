@@ -34,6 +34,8 @@ const syntaxCheckedScripts = [
   "scripts/verify-ime.mjs",
   "scripts/release-doctor.mjs",
   "scripts/verify-release-gate.mjs",
+  "scripts/verify-production-release-gate.mjs",
+  "scripts/verify-supply-chain.mjs",
 ];
 
 const requiredReleaseFiles = [
@@ -51,6 +53,8 @@ const requiredPackageScripts = {
   "verify:release:preflight": "node scripts/verify-release-gate.mjs --preflight",
   "verify:release": "node scripts/verify-release-gate.mjs",
   "verify:release:ime": "node scripts/verify-release-gate.mjs --with-ime",
+  "verify:release:production": "node scripts/verify-production-release-gate.mjs",
+  "verify:supply-chain": "node scripts/verify-supply-chain.mjs",
 };
 
 function formatCommand(command, commandArgs) {

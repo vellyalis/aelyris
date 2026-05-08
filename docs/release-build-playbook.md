@@ -37,6 +37,16 @@ Do not publish a signed release when the doctor reports placeholder pubkey, miss
 
 For the current local signed-updater smoke, Codex generated a local updater key, configured a non-placeholder pubkey, signed the NSIS/MSI artifacts, generated `latest.json`, and passed strict signing validation. Before public release, preserve the local key/password securely or rotate the updater pubkey and regenerate signatures.
 
+## Production Confidence Gate
+
+Use this path before calling a build public-release ready.
+
+1. Start the live Tauri/WebView2 validation environment with CDP enabled when fresh live proof is required.
+2. Run `pnpm.cmd verify:release:production -- --fresh-live`.
+3. If the host cannot safely perform a fresh live smoke, run `pnpm.cmd verify:release:production` and attach the latest passing `.codex-auto/production-smoke/*.json` evidence to the release record.
+4. Confirm `.codex-auto/release-doctor/supply-chain-audit.json` reports zero known npm and Rust vulnerabilities.
+5. Review any accepted low-risk controls in the Release Doctor `Known Risks` section before publishing.
+
 ## Install Smoke
 
 The install smoke is intentionally manual because it modifies the local Windows install state.

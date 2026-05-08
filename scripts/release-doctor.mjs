@@ -288,20 +288,39 @@ async function checkUpdater(version, tauriConfig) {
 async function checkKnownRisks() {
   const riskRegister = await maybeReadJson(".codex-auto/risk-register.json");
   const risks = riskRegister?.risks ?? [];
-  const openRisks = risks.filter((risk) => risk.status === "open");
+  const closedStatuses = new Set(["closed", "mitigated", "resolved"]);
+  const acceptedRisks = risks.filter((risk) => String(risk.status ?? "").toLowerCase() === "accepted");
+  const openRisks = risks.filter((risk) => {
+    const status = String(risk.status ?? "").toLowerCase();
+    return !closedStatuses.has(status) && status !== "accepted";
+  });
   const releaseKeywords = /release|dist|sign|installer|updater|crash|rollback|tauri|webview|ime/i;
   const releaseRisks = openRisks
     .filter((risk) => releaseKeywords.test(`${risk.key ?? ""} ${risk.title ?? ""} ${risk.mitigation ?? ""}`))
     .slice(-12);
+  const acceptedReleaseRisks = acceptedRisks
+    .filter((risk) =>
+      releaseKeywords.test(`${risk.key ?? ""} ${risk.title ?? ""} ${risk.mitigation ?? ""} ${risk.closureReason ?? ""}`),
+    )
+    .slice(-12);
+  const acceptedSevereRisks = acceptedRisks
+    .filter((risk) => /critical|high|medium-high/i.test(String(risk.severity ?? "")))
+    .slice(-12);
+  const status = releaseRisks.length > 0 || acceptedSevereRisks.length > 0 ? "warn" : "pass";
   return section(
     "known-risks",
     "Known Risks",
-    releaseRisks.length > 0 ? "warn" : "pass",
+    status,
     releaseRisks.length > 0
       ? `${releaseRisks.length} open release-adjacent risks remain visible for handoff.`
-      : "No open release-adjacent risks were found in the risk register.",
+      : acceptedSevereRisks.length > 0
+        ? `${acceptedSevereRisks.length} accepted severe risks remain and need explicit release-owner approval.`
+        : acceptedReleaseRisks.length > 0
+          ? `No open release-adjacent risks; ${acceptedReleaseRisks.length} accepted low-risk release controls are recorded.`
+          : "No open release-adjacent risks were found in the risk register.",
     {
       openRiskCount: openRisks.length,
+      acceptedRiskCount: acceptedRisks.length,
       releaseRisks: releaseRisks.map((risk) => ({
         id: risk.id,
         key: risk.key,
@@ -309,6 +328,20 @@ async function checkKnownRisks() {
         title: risk.title,
         parentRoadmapId: risk.parentRoadmapId,
         reason: risk.reason,
+      })),
+      acceptedReleaseRisks: acceptedReleaseRisks.map((risk) => ({
+        id: risk.id,
+        key: risk.key,
+        severity: risk.severity,
+        title: risk.title,
+        closureReason: risk.closureReason,
+      })),
+      acceptedSevereRisks: acceptedSevereRisks.map((risk) => ({
+        id: risk.id,
+        key: risk.key,
+        severity: risk.severity,
+        title: risk.title,
+        closureReason: risk.closureReason,
       })),
     },
   );
