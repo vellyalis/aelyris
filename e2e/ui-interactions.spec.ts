@@ -33,7 +33,7 @@ test.describe("Panel visibility", () => {
   });
 
   test("activity tab is visible", async ({ page }) => {
-    await expect(page.getByRole("tab", { name: "Observe" })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("tab", { name: "Health" })).toBeVisible({ timeout: 10_000 });
   });
 
   test("menu bar has File menu", async ({ page }) => {
@@ -91,6 +91,6 @@ test.describe("Welcome screen interactions", () => {
 
   test("title shows Aether Terminal branding", async ({ page }) => {
     await expect(page.getByText("Aether Terminal")).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText("AI Workspace for Windows")).toBeVisible();
+    await expect(page.getByText("Project terminal for shells, agents, edits, and review")).toBeVisible();
   });
 });

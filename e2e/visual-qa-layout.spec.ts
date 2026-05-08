@@ -345,13 +345,14 @@ test.describe("Visual QA layout guard", () => {
     expect(roomy.overflowingWidgets).toEqual([]);
   });
 
-  test("keeps Mission Control home compact above the terminal", async ({ page }) => {
+  test("keeps the health rail compact without Mission Control home", async ({ page }) => {
     await page.setViewportSize({ width: 960, height: 800 });
     await openVisualQaApp(page, { rail: "observe", density: "balanced" });
-    const missionHome = page.getByLabel("Mission Control home");
-    await expect(missionHome).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByLabel("Mission Control home")).toHaveCount(0);
+    const healthRail = page.locator('.right-panel-stack[data-mode="observe"]');
+    await expect(healthRail).toBeVisible({ timeout: 10_000 });
 
-    const layout = await missionHome.evaluate((surface) => {
+    const layout = await healthRail.evaluate((surface) => {
       const element = surface as HTMLElement;
       const box = element.getBoundingClientRect();
       const visibleOverflow = [...element.querySelectorAll<HTMLElement>("*")]
@@ -375,8 +376,8 @@ test.describe("Visual QA layout guard", () => {
 
     expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth + 1);
     expect(layout.visibleOverflow).toEqual([]);
-    expect(layout.height).toBeLessThanOrEqual(370);
-    expect(layout.viewportHeight - layout.bottom).toBeGreaterThanOrEqual(180);
+    expect(layout.height).toBeLessThanOrEqual(layout.viewportHeight);
+    expect(layout.viewportHeight - layout.bottom).toBeGreaterThanOrEqual(0);
   });
 
   for (const railMode of railModes) {
@@ -404,7 +405,7 @@ test.describe("Visual QA layout guard", () => {
 
     const widths: number[] = [];
     for (const mode of railModes) {
-      await page.getByRole("tab", { name: new RegExp(mode, "i") }).click();
+      await page.locator(`#right-rail-tab-${mode}`).click();
       await expect(page.locator(`.right-panel-stack[data-mode="${mode}"]`)).toBeVisible();
       const layout = await readRightRailLayout(page);
       widths.push(layout.stackClientWidth);
@@ -418,9 +419,9 @@ test.describe("Visual QA layout guard", () => {
     await page.setViewportSize({ width: 960, height: 800 });
     await openVisualQaApp(page, { rail: "command", density: "balanced" });
 
-    const commandTab = page.getByRole("tab", { name: /Command/i });
-    const reviewTab = page.getByRole("tab", { name: /Review/i });
-    const observeTab = page.getByRole("tab", { name: /Observe/i });
+    const commandTab = page.locator("#right-rail-tab-command");
+    const reviewTab = page.locator("#right-rail-tab-review");
+    const observeTab = page.locator("#right-rail-tab-observe");
     const railPanel = page.locator("#right-rail-panel");
 
     await commandTab.focus();

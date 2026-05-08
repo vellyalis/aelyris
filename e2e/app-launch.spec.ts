@@ -34,7 +34,7 @@ test.describe("Welcome screen (no project)", () => {
 
   test("renders the welcome screen", async ({ page }) => {
     await expect(page.getByText("Aether Terminal")).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText("AI Workspace for Windows")).toBeVisible();
+    await expect(page.getByText("Project terminal for shells, agents, edits, and review")).toBeVisible();
   });
 
   test("shows Open Folder button", async ({ page }) => {

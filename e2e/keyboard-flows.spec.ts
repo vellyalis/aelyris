@@ -81,15 +81,15 @@ test.describe("Right-panel tab navigation", () => {
     await setupProject(page);
   });
 
-  test("switching to Review tab highlights it", async ({ page }) => {
-    const tab = page.getByRole("tab", { name: /review/i }).first();
+  test("switching to Changes tab highlights it", async ({ page }) => {
+    const tab = page.getByRole("tab", { name: /changes/i }).first();
     await expect(tab).toBeVisible({ timeout: 5_000 });
     await tab.click();
     await expect(tab).toHaveAttribute("aria-selected", "true");
   });
 
-  test("switching to Observe tab highlights it", async ({ page }) => {
-    const tab = page.getByRole("tab", { name: /observe/i }).first();
+  test("switching to Health tab highlights it", async ({ page }) => {
+    const tab = page.getByRole("tab", { name: /health/i }).first();
     await expect(tab).toBeVisible({ timeout: 5_000 });
     await tab.click();
     await expect(tab).toHaveAttribute("aria-selected", "true");
