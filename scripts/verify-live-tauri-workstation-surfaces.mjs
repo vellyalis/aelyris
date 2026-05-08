@@ -33,7 +33,7 @@ const COVERED_RISKS = [
   "risk-p1-03-live-tauri-fanout-smoke-gap",
   "risk-p1-03-sync-input-dormant-prop",
   "risk-p1-05-live-tauri-right-rail-smoke-gap",
-  "risk-p1-06-live-tauri-mission-control-smoke-gap",
+  "risk-p1-06-live-tauri-right-rail-smoke-gap",
   "risk-p1-07-live-tauri-context-pack-copy-smoke-gap",
   "risk-p1-07-backend-diff-hunk-provider-gap",
   "risk-p1-08-live-tauri-agent-run-graph-smoke-gap",
@@ -250,15 +250,28 @@ async function smokeRails(page) {
     }
   }
 
-  const missionControl = await page
-    .getByLabel("Mission Control home")
-    .evaluate((node) => ({ text: node.textContent?.slice(0, 400) ?? "", visible: true }))
-    .catch(() => ({ text: "", visible: false }));
-  if (!missionControl.visible || !/Mission Control/.test(missionControl.text)) {
-    throw new Error("Mission Control home is not visible in live Tauri");
+  const chrome = await page.evaluate(() => {
+    const tabs = Array.from(document.querySelectorAll('[role="tab"][data-right-rail-mode]')).map((tab) => ({
+      mode: tab.getAttribute("data-right-rail-mode"),
+      label: tab.textContent?.trim() ?? "",
+      selected: tab.getAttribute("aria-selected") === "true",
+      describedBy: tab.getAttribute("aria-describedby") ?? "",
+    }));
+    return {
+      tabs,
+      hasMissionControl: document.body.innerText.includes("Mission Control"),
+      bodyTextSample: document.body.innerText.slice(0, 500),
+    };
+  });
+  const expectedLabels = ["Run", "Changes", "Health"];
+  if (chrome.tabs.length !== 3 || !expectedLabels.every((label) => chrome.tabs.some((tab) => tab.label.startsWith(label)))) {
+    throw new Error(`right rail mode tabs are not product-ready: ${JSON.stringify(chrome.tabs)}`);
+  }
+  if (chrome.hasMissionControl) {
+    throw new Error("retired Mission Control copy is still visible in live Tauri");
   }
 
-  return { rails: out, missionControl };
+  return { rails: out, chrome };
 }
 
 async function smokeContextAndRunGraph(page) {
