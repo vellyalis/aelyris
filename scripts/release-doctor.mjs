@@ -139,9 +139,13 @@ async function checkIconIntegrity(tauriConfig) {
   );
 }
 
-function artifactPaths(version) {
+function appBinaryName(tauriConfig) {
+  return tauriConfig?.mainBinaryName ?? "aether-terminal";
+}
+
+function artifactPaths(version, tauriConfig) {
   return {
-    appExe: path.join(repoRoot, "src-tauri", "target", "release", "aether-terminal.exe"),
+    appExe: path.join(repoRoot, "src-tauri", "target", "release", `${appBinaryName(tauriConfig)}.exe`),
     nsis: path.join(
       repoRoot,
       "src-tauri",
@@ -164,8 +168,8 @@ function artifactPaths(version) {
   };
 }
 
-async function checkDistArtifacts(version) {
-  const paths = artifactPaths(version);
+async function checkDistArtifacts(version, tauriConfig) {
+  const paths = artifactPaths(version, tauriConfig);
   const appExe = await fileInfo(paths.appExe);
   const nsis = await fileInfo(paths.nsis);
   const msi = await fileInfo(paths.msi);
@@ -215,7 +219,7 @@ async function checkTauriBuild(pkg, tauriConfig, tauriDistConfig) {
 }
 
 async function checkSigning(version, tauriConfig) {
-  const paths = artifactPaths(version);
+  const paths = artifactPaths(version, tauriConfig);
   const sigs = {
     nsis: await fileInfo(`${paths.nsis}.sig`),
     msi: await fileInfo(`${paths.msi}.sig`),
@@ -244,7 +248,7 @@ async function checkSigning(version, tauriConfig) {
 }
 
 async function checkUpdater(version, tauriConfig) {
-  const paths = artifactPaths(version);
+  const paths = artifactPaths(version, tauriConfig);
   const latest = await fileInfo(paths.latestJson);
   const endpoints = tauriConfig.plugins?.updater?.endpoints ?? [];
   let latestJson = null;
@@ -500,7 +504,7 @@ async function main() {
   const checks = [
     await checkVersion(pkg, tauriConfig),
     await checkIconIntegrity(tauriConfig),
-    await checkDistArtifacts(version),
+    await checkDistArtifacts(version, tauriConfig),
     await checkTauriBuild(pkg, tauriConfig, tauriDistConfig),
     await checkSigning(version, tauriConfig),
     await checkUpdater(version, tauriConfig),

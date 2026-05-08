@@ -1,12 +1,16 @@
+import { execFile } from "node:child_process";
 import { access, readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const execFileAsync = promisify(execFile);
 const pkg = JSON.parse(await readFile(path.join(repoRoot, "package.json"), "utf8"));
 const tauriConfig = JSON.parse(await readFile(path.join(repoRoot, "src-tauri", "tauri.conf.json"), "utf8"));
 const tauriDistConfig = JSON.parse(await readFile(path.join(repoRoot, "src-tauri", "tauri.dist.conf.json"), "utf8"));
 const version = pkg.version;
+const mainBinaryName = tauriConfig.mainBinaryName ?? pkg.name;
 
 const failures = [];
 const releaseProvenanceInputs = [
@@ -30,7 +34,7 @@ const sidecarProvenanceInputs = [
 const artifacts = [
   {
     label: "App exe",
-    path: path.join(repoRoot, "src-tauri", "target", "release", "aether-terminal.exe"),
+    path: path.join(repoRoot, "src-tauri", "target", "release", `${mainBinaryName}.exe`),
     minBytes: 10 * 1024 * 1024,
     provenanceInputs: releaseProvenanceInputs,
   },
@@ -103,6 +107,60 @@ function assertBundleTargets() {
   }
 }
 
+async function readWindowsVersionInfo(exePath) {
+  const ps = [
+    "$ErrorActionPreference = 'Stop';",
+    "$item = Get-Item -LiteralPath $exePath;",
+    "$vi = $item.VersionInfo;",
+    "[pscustomobject]@{",
+    "  ProductName = $vi.ProductName;",
+    "  FileDescription = $vi.FileDescription;",
+    "  CompanyName = $vi.CompanyName;",
+    "  FileVersion = $vi.FileVersion;",
+    "  ProductVersion = $vi.ProductVersion",
+    "} | ConvertTo-Json -Compress",
+  ].join(" ");
+  const { stdout } = await execFileAsync(
+    "powershell.exe",
+    ["-NoProfile", "-Command", `& { param($exePath) ${ps} }`, exePath],
+    {
+      windowsHide: true,
+      maxBuffer: 1024 * 1024,
+    },
+  );
+  return JSON.parse(stdout.trim());
+}
+
+async function assertWindowsAppIdentity(artifact) {
+  if (process.platform !== "win32" || artifact.label !== "App exe") return;
+
+  const basename = path.basename(artifact.path);
+  if (basename !== "Aether.exe") {
+    recordFailure(`[dist] App exe must be named Aether.exe for Task Manager discoverability, got ${basename}`);
+  }
+
+  try {
+    const versionInfo = await readWindowsVersionInfo(artifact.path);
+    const expected = {
+      ProductName: "Aether Terminal",
+      FileDescription: "Aether Terminal",
+      CompanyName: "Aether",
+    };
+    for (const [key, value] of Object.entries(expected)) {
+      if (versionInfo[key] !== value) {
+        recordFailure(`[dist] App exe VersionInfo ${key} mismatch: expected ${value}, got ${versionInfo[key]}`);
+      }
+    }
+    if (Object.entries(expected).every(([key, value]) => versionInfo[key] === value)) {
+      console.log(
+        `[dist] Windows app identity: ${basename}, ProductName=${versionInfo.ProductName}, Company=${versionInfo.CompanyName}`,
+      );
+    }
+  } catch (error) {
+    recordFailure(`[dist] Unable to read Windows VersionInfo for ${relativeArtifactPath(artifact.path)}: ${error}`);
+  }
+}
+
 async function latestMtimeMs(relativePaths) {
   let latest = 0;
   for (const relativePath of relativePaths) {
@@ -136,6 +194,7 @@ async function assertSidecarBundleWiring() {
 
 assertEqual("package.json and tauri.conf.json version", tauriConfig.version, version);
 assertEqual("Tauri productName", tauriConfig.productName, "Aether Terminal");
+assertEqual("Tauri mainBinaryName", tauriConfig.mainBinaryName, "Aether");
 assertEqual("Tauri bundle.active", tauriConfig.bundle?.active, true);
 assertEqual("Dist updater artifacts", tauriDistConfig.bundle?.createUpdaterArtifacts, false);
 assertBundleTargets();
@@ -159,6 +218,7 @@ for (const artifact of artifacts) {
       );
       continue;
     }
+    await assertWindowsAppIdentity(artifact);
     console.log(`[dist] ${artifact.label}: ${formatMiB(info.size)} (${relativeArtifactPath(artifact.path)})`);
   } catch {
     recordFailure(`[dist] Missing ${artifact.label}: ${relativeArtifactPath(artifact.path)}`);

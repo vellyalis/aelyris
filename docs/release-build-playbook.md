@@ -18,7 +18,7 @@ Use this path before handing a build to a tester on the same Windows machine.
 
 Expected local artifacts for the current version:
 
-- `src-tauri/target/release/aether-terminal.exe`
+- `src-tauri/target/release/Aether.exe`
 - `src-tauri/target/release/bundle/nsis/Aether Terminal_<version>_x64-setup.exe`
 - `src-tauri/target/release/bundle/msi/Aether Terminal_<version>_x64_en-US.msi`
 
