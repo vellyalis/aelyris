@@ -283,6 +283,18 @@ describe("themes/moods — preset metadata", () => {
       expect(ratio, preset.id).toBeGreaterThanOrEqual(4.5);
     }
   });
+
+  it("keeps muted metadata readable enough for compact chrome", () => {
+    for (const preset of MOOD_PRESETS) {
+      const vars = moodPresetToCSS(preset.id);
+      const muted = vars["--text-muted"];
+      if (preset.id === "aether-sakura") {
+        expect(rgbaAlpha(muted), preset.id).toBeGreaterThanOrEqual(0.72);
+      } else {
+        expect(rgbaAlpha(muted), preset.id).toBeGreaterThanOrEqual(0.56);
+      }
+    }
+  });
 });
 
 function rgbaAlpha(value: string): number {

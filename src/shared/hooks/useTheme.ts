@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { type AccentOverrides, applyAccentOverrides, getPalette, isLightTheme, themeToCSS } from "../themes/catppuccin";
-import { DEFAULT_MOOD_PRESET, type MoodPresetId, moodPresetToCSS, normalizeMoodPreset } from "../themes/moods";
+import { DEFAULT_MOOD_PRESET, MOOD_CSS_KEYS, type MoodPresetId, moodPresetToCSS, normalizeMoodPreset } from "../themes/moods";
 
 const STORAGE_KEY = "aether:theme";
 const MOOD_STORAGE_KEY = "aether:moodPreset";
@@ -43,6 +43,9 @@ export function useThemeApplier(
     };
 
     const root = document.documentElement;
+    for (const key of MOOD_CSS_KEYS) {
+      root.style.removeProperty(key);
+    }
     for (const [key, value] of Object.entries(vars)) {
       root.style.setProperty(key, value);
     }

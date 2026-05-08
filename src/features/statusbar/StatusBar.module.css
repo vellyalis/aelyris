@@ -11,7 +11,7 @@
   border-top: 0;
   box-shadow: var(--statusbar-shadow);
   font-size: var(--type-terminal-chrome);
-  color: var(--text-muted);
+  color: var(--text-secondary);
   user-select: none;
 }
 
@@ -39,8 +39,8 @@
 /* Passive read-only chrome (shell label, encoding, line endings, agent
    status). Muted so the actionable buttons carry the visual weight. */
 .passive {
-  color: var(--text-muted);
-  opacity: 0.85;
+  color: var(--text-secondary);
+  opacity: 1;
 }
 
 /* Actionable buttons — promoted over passive spans via a border + hover

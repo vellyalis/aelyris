@@ -791,6 +791,7 @@ describe("design token usage", () => {
     expect(changedRules).not.toContain("var(--ctp-red)");
     expect(statusRule).toContain("background: var(--statusbar-bg)");
     expect(statusRule).toContain("var(--statusbar-filter)");
+    expect(statusRule).toContain("color: var(--text-secondary)");
     expect(statusbar).not.toContain(".separator");
     expect(statusbar).not.toContain(".shellBtn");
     expect(statusbar).not.toContain(".picker");
