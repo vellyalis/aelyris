@@ -61,10 +61,7 @@ function applyOne(state: RegistryState, ev: BufferedEvent): RegistryState {
  *
  * Mutates `pending` in place — the Map is the durable per-hook buffer.
  */
-function drainContiguous(
-  state: RegistryState,
-  pending: Map<number, BufferedEvent>,
-): RegistryState {
+function drainContiguous(state: RegistryState, pending: Map<number, BufferedEvent>): RegistryState {
   // Phase 1: drop already-applied events. Iterating a snapshot of keys
   // because we delete during the walk.
   for (const seq of Array.from(pending.keys())) {
@@ -75,7 +72,8 @@ function drainContiguous(
   // Phase 2: apply the contiguous run starting at seq+1.
   let cur = state;
   while (pending.has(cur.seq + 1)) {
-    const ev = pending.get(cur.seq + 1)!;
+    const ev = pending.get(cur.seq + 1);
+    if (!ev) break;
     pending.delete(cur.seq + 1);
     cur = applyOne(cur, ev);
   }
@@ -167,7 +165,9 @@ export function useGhostLayers(): UseGhostLayersResult {
       }
 
       if (cancelled) {
-        unlistens.forEach((fn) => fn());
+        unlistens.forEach((fn) => {
+          fn();
+        });
         unlistens.length = 0;
         return;
       }
@@ -194,7 +194,9 @@ export function useGhostLayers(): UseGhostLayersResult {
 
     return () => {
       cancelled = true;
-      unlistens.forEach((fn) => fn());
+      unlistens.forEach((fn) => {
+        fn();
+      });
       pendingRef.current.clear();
     };
   }, []);
@@ -216,20 +218,17 @@ export function useGhostLayers(): UseGhostLayersResult {
     }
   }, []);
 
-  const getFile = useCallback(
-    async (layerId: string, filePath: string): Promise<FileDelta | null> => {
-      try {
-        const res = await invoke<FileDelta | null>("get_ghost_layer_file", {
-          layerId,
-          filePath,
-        });
-        return res ?? null;
-      } catch {
-        return null;
-      }
-    },
-    [],
-  );
+  const getFile = useCallback(async (layerId: string, filePath: string): Promise<FileDelta | null> => {
+    try {
+      const res = await invoke<FileDelta | null>("get_ghost_layer_file", {
+        layerId,
+        filePath,
+      });
+      return res ?? null;
+    } catch {
+      return null;
+    }
+  }, []);
 
   return { layers, activeCount, dismiss, getFile };
 }

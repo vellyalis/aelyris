@@ -73,7 +73,11 @@ const DANGEROUS_PATTERNS: Array<{ pattern: RegExp; reason: string; riskClass: Co
 ].map((pattern) => ({
   pattern,
   reason: `Potentially dangerous pattern detected: ${pattern.source}`,
-  riskClass: pattern.source.includes("git") ? "git mutation" : pattern.source.includes("del") ? "delete" : "destructive",
+  riskClass: pattern.source.includes("git")
+    ? "git mutation"
+    : pattern.source.includes("del")
+      ? "delete"
+      : "destructive",
 }));
 
 const SECRET_PATTERNS: Array<{ kind: string; pattern: RegExp }> = [
@@ -272,9 +276,7 @@ function classifyByPattern(command: string): { classes: CommandRiskClass[]; reas
   }
 
   if (
-    /\b(git\s+(add|commit|push|pull|merge|rebase|reset|checkout|switch|restore|clean|cherry-pick|tag)\b)/i.test(
-      scan,
-    )
+    /\b(git\s+(add|commit|push|pull|merge|rebase|reset|checkout|switch|restore|clean|cherry-pick|tag)\b)/i.test(scan)
   ) {
     classes.push("git mutation");
     reasons.push("Mutates git state or repository history.");

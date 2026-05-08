@@ -17,6 +17,22 @@ import type { PaneNode } from "../features/terminal/pane-tree/types";
  * without data loss or state corruption.
  */
 
+function requiredNode(node: PaneNode | null, label: string): PaneNode {
+  if (!node) throw new Error(`Expected ${label}`);
+  return node;
+}
+
+function requiredId(id: string | undefined, label: string): string {
+  if (!id) throw new Error(`Expected ${label}`);
+  return id;
+}
+
+function differentId(ids: string[], current: string): string {
+  const id = ids.find((candidate) => candidate !== current);
+  if (!id) throw new Error("expected a different pane id");
+  return id;
+}
+
 describe("Pane lifecycle: split → close", () => {
   it("3-way split → close middle → 2 panes remain with correct IDs", () => {
     const a = createLeaf("powershell", "/home");
@@ -29,12 +45,11 @@ describe("Pane lifecycle: split → close", () => {
     expect(countLeaves(tree2)).toBe(3);
 
     // Close the middle pane (B)
-    const tree3 = removePane(tree2, bId);
-    expect(tree3).not.toBeNull();
-    expect(countLeaves(tree3!)).toBe(2);
+    const tree3 = requiredNode(removePane(tree2, bId), "tree after closing middle pane");
+    expect(countLeaves(tree3)).toBe(2);
 
     // Original A and new WSL should survive
-    const ids = collectLeafIds(tree3!);
+    const ids = collectLeafIds(tree3);
     expect(ids).toContain(a.id);
   });
 
@@ -55,12 +70,11 @@ describe("Pane lifecycle: split → close", () => {
     // Close the WSL pane
     if (tree3.type !== "split" || tree3.second.type !== "split") throw new Error("expected nested split");
     const wslId = tree3.second.second.id;
-    const tree4 = removePane(tree3, wslId);
-    expect(tree4).not.toBeNull();
-    expect(countLeaves(tree4!)).toBe(2);
+    const tree4 = requiredNode(removePane(tree3, wslId), "tree after closing nested pane");
+    expect(countLeaves(tree4)).toBe(2);
     // Top-level ratio should be preserved
-    if (tree4!.type === "split") {
-      expect(tree4!.ratio).toBe(0.7);
+    if (tree4?.type === "split") {
+      expect(tree4?.ratio).toBe(0.7);
     }
   });
 });
@@ -69,11 +83,11 @@ describe("Pane lifecycle: rapid operations", () => {
   it("10 rapid splits → all IDs unique", () => {
     let tree: PaneNode = createLeaf("powershell");
     const allIds = new Set<string>();
-    allIds.add(collectLeafIds(tree)[0]);
+    allIds.add(requiredId(collectLeafIds(tree)[0], "initial pane id"));
 
     for (let i = 0; i < 10; i++) {
       const ids = collectLeafIds(tree);
-      const targetId = ids[ids.length - 1]; // always split the last pane
+      const targetId = requiredId(ids.at(-1), "last pane id"); // always split the last pane
       tree = splitPane(tree, targetId, i % 2 === 0 ? "right" : "down", "cmd");
       for (const id of collectLeafIds(tree)) {
         allIds.add(id);
@@ -87,19 +101,19 @@ describe("Pane lifecycle: rapid operations", () => {
 
   it("split all → close all but one → single leaf remains", () => {
     let tree: PaneNode = createLeaf("powershell");
-    const firstId = collectLeafIds(tree)[0];
+    const firstId = requiredId(collectLeafIds(tree)[0], "first pane id");
 
     // Split 4 times
     for (let i = 0; i < 4; i++) {
       const ids = collectLeafIds(tree);
-      tree = splitPane(tree, ids[ids.length - 1], "right", "cmd");
+      tree = splitPane(tree, requiredId(ids.at(-1), "last pane id"), "right", "cmd");
     }
     expect(countLeaves(tree)).toBe(5);
 
     // Close all except first
     while (countLeaves(tree) > 1) {
       const ids = collectLeafIds(tree);
-      const toClose = ids.find((id) => id !== firstId)!;
+      const toClose = differentId(ids, firstId);
       const result = removePane(tree, toClose);
       if (!result) break;
       tree = result;
@@ -134,7 +148,7 @@ describe("Pane lifecycle: edge cases", () => {
     let tree: PaneNode = createLeaf("powershell");
     for (let i = 0; i < 20; i++) {
       const ids = collectLeafIds(tree);
-      tree = splitPane(tree, ids[0], "right", "cmd");
+      tree = splitPane(tree, requiredId(ids[0], "first pane id"), "right", "cmd");
     }
     const ids = collectLeafIds(tree);
     expect(ids.length).toBe(21);

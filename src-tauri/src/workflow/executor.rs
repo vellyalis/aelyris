@@ -734,6 +734,12 @@ impl WorkflowExecutor {
     }
 }
 
+impl Default for WorkflowExecutor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PhaseDoneOutcome {
     pub done: bool,

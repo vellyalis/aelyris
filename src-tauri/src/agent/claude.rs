@@ -1,9 +1,11 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::BufReader;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
+
+use super::platform_cli_program;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentSessionInfo {
@@ -46,7 +48,7 @@ impl AgentManager {
         let model_str = model.unwrap_or("sonnet");
 
         // Route to different CLI based on model provider
-        let (cli_cmd, mut cli_args) = if model_str.starts_with("codex") {
+        let (cli_name, mut cli_args) = if model_str.starts_with("codex") {
             ("codex", vec!["-p".to_string(), prompt.to_string()])
         } else if model_str.starts_with("gemini") {
             ("gemini", vec!["-p".to_string(), prompt.to_string()])
@@ -69,16 +71,17 @@ impl AgentManager {
 
             ("claude", args)
         };
+        let cli_cmd = platform_cli_program(cli_name);
 
         // Allowed tools
         if let Some(tools) = &allowed_tools {
-            if cli_cmd == "claude" {
+            if cli_name == "claude" {
                 cli_args.push("--allowedTools".to_string());
                 cli_args.push(tools.join(","));
             }
         }
 
-        let mut cmd = Command::new(cli_cmd);
+        let mut cmd = crate::process::hidden_command(&cli_cmd);
         for arg in &cli_args {
             cmd.arg(arg);
         }
@@ -225,6 +228,12 @@ impl AgentManager {
     }
 }
 
+impl Default for AgentManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Drop for AgentManager {
     fn drop(&mut self) {
         self.stop_all();
@@ -233,7 +242,7 @@ impl Drop for AgentManager {
 
 /// Kill an entire process tree on Windows using taskkill /T /F
 fn kill_process_tree(pid: u32) -> Result<(), String> {
-    let output = Command::new("taskkill")
+    let output = crate::process::hidden_command("taskkill")
         .args(["/T", "/F", "/PID", &pid.to_string()])
         .stdout(Stdio::null())
         .stderr(Stdio::null())

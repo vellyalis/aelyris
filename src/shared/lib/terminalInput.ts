@@ -1,4 +1,4 @@
-import { classifyCommand, type CommandRiskOptions, type CommandRiskReport } from "./shellSafety";
+import { type CommandRiskOptions, type CommandRiskReport, classifyCommand } from "./shellSafety";
 
 /**
  * Normalize prompt-entered command text for PTY writes.
@@ -49,11 +49,11 @@ export function classifyTerminalPasteInput(text: string, options: CommandRiskOpt
   const shouldBlock = !risk.allowExecution;
   const shouldConfirm = !shouldBlock && (risk.requiresApproval || risk.multiline || lineEndingCount > 1);
   const reason = shouldBlock
-    ? risk.reasons[0] ?? "Paste blocked by command risk firewall."
+    ? (risk.reasons[0] ?? "Paste blocked by command risk firewall.")
     : shouldConfirm
       ? risk.multiline || lineEndingCount > 1
         ? "Multi-line paste requires confirmation before writing to the PTY."
-        : risk.reasons[0] ?? "Paste requires confirmation before writing to the PTY."
+        : (risk.reasons[0] ?? "Paste requires confirmation before writing to the PTY.")
       : "Paste allowed.";
 
   return {

@@ -1,13 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { applyDiff } from "../shared/hooks/useTerminalSnapshot";
-import type {
-  CellSnapshot,
-  CursorSnapshot,
-  GridDiff,
-  GridSnapshot,
-  ImageRef,
-} from "../shared/types/terminal";
+import type { CellSnapshot, CursorSnapshot, GridDiff, GridSnapshot, ImageRef } from "../shared/types/terminal";
 
 const cursor: CursorSnapshot = {
   row: 0,

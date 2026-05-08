@@ -1196,7 +1196,7 @@ mod tests {
         );
         // The most recent emission must always be retrievable —
         // FIFO never evicts the entry it just inserted.
-        assert!(engine.images().len() >= 1, "newest entry must be retained");
+        assert!(!engine.images().is_empty(), "newest entry must be retained");
         assert!(peak_count >= 1);
     }
 }

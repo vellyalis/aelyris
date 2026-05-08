@@ -109,9 +109,16 @@ export function HandoffDialog() {
             Hand off from <span className={styles.source}>{sourceName}</span>
           </Dialog.Title>
           <div className={styles.modelRow}>
-            <label className={styles.modelLabel}>Target model</label>
+            <label className={styles.modelLabel} htmlFor="handoff-target-model">
+              Target model
+            </label>
             <div className={styles.modelSelectWrap}>
-              <select className={styles.modelSelect} value={modelId} onChange={(e) => setModelId(e.target.value)}>
+              <select
+                id="handoff-target-model"
+                className={styles.modelSelect}
+                value={modelId}
+                onChange={(e) => setModelId(e.target.value)}
+              >
                 {MODEL_OPTIONS.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.label}
@@ -120,10 +127,11 @@ export function HandoffDialog() {
               </select>
               <span className={styles.modelDot} style={{ background: model?.color ?? "var(--ctp-blue)" }} />
             </div>
-            <label className={styles.modelLabel} style={{ marginLeft: "var(--space-4)" }}>
+            <label className={styles.modelLabel} style={{ marginLeft: "var(--space-4)" }} htmlFor="handoff-role">
               Role
             </label>
             <select
+              id="handoff-role"
               className={styles.modelSelect}
               value={role}
               onChange={(e) => setRole(e.target.value as OrchestraRoleId | "")}
@@ -156,10 +164,10 @@ export function HandoffDialog() {
             <span>Ctrl+Enter to send · Esc to cancel</span>
           </div>
           <div className={styles.actions}>
-            <button className={styles.cancelBtn} onClick={() => close(null)}>
+            <button type="button" className={styles.cancelBtn} onClick={() => close(null)}>
               Cancel
             </button>
-            <button className={styles.submitBtn} onClick={handleSubmit} disabled={!prompt.trim()}>
+            <button type="button" className={styles.submitBtn} onClick={handleSubmit} disabled={!prompt.trim()}>
               Hand off
             </button>
           </div>

@@ -119,6 +119,12 @@ impl StreamParser {
     }
 }
 
+impl Default for StreamParser {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

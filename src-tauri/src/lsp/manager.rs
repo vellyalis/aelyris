@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 
@@ -48,7 +48,7 @@ impl LspManager {
 
         let (cmd, args) = language.server_command();
 
-        let mut child = Command::new(cmd)
+        let mut child = crate::process::hidden_command(cmd)
             .args(&args)
             .current_dir(root_path)
             .stdin(Stdio::piped())

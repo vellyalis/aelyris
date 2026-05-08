@@ -181,8 +181,6 @@ fn test_restore_with_missing_shell() {
     db.create_pane(&w.id, "nonexistent_shell", ".", 80, 24)
         .unwrap();
 
-    // SessionManager should fallback to CMD
-    let sm = SessionManager::open_memory().unwrap();
     // We can't easily test restore_and_spawn with the in-memory DB from a different instance,
     // but we verify shell_from_str fallback logic:
     // "nonexistent_shell" -> ShellType::Cmd (the default)

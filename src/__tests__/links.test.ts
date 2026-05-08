@@ -156,9 +156,7 @@ describe("scanLinks — OSC 8 explicit hyperlinks", () => {
 
   it("merges OSC 8 spans that wrap across rows into a single LinkSpan", () => {
     const uri = "https://long.example.com/path/to/resource";
-    const row0 = Array.from("file:aaaaaaaaa").map((ch, col) =>
-      col >= 5 ? cell(ch, 0, uri) : cell(ch),
-    );
+    const row0 = Array.from("file:aaaaaaaaa").map((ch, col) => (col >= 5 ? cell(ch, 0, uri) : cell(ch)));
     // Mark the tail cell as WRAPLINE so the scanner treats row0 → row1 as continuous.
     row0[row0.length - 1] = {
       ...row0[row0.length - 1],

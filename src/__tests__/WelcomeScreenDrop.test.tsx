@@ -1,10 +1,10 @@
-import { describe, expect, it } from "vitest";
 // Vitest runs this source-contract test in Node. The app tsconfig does not
 // include @types/node, so keep the Node-only imports scoped and ignored here.
 // @ts-expect-error Node types are intentionally absent from the app tsconfig.
 import { readFileSync } from "node:fs";
 // @ts-expect-error Node types are intentionally absent from the app tsconfig.
 import { join } from "node:path";
+import { describe, expect, it } from "vitest";
 
 /**
  * Regression guard for WelcomeScreen handleDrop double-fire bug.

@@ -80,7 +80,8 @@ describe("useTabManager", () => {
 
     const saved = localStorage.getItem("aether:tabs");
     expect(saved).not.toBeNull();
-    const parsed = JSON.parse(saved!);
+    if (saved === null) throw new Error("Expected persisted tabs");
+    const parsed = JSON.parse(saved);
     expect(parsed.length).toBe(2);
   });
 

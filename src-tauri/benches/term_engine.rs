@@ -6,14 +6,14 @@
 //! - `advance_ascii`        — steady-state throughput on pure printable text.
 //! - `advance_colored`      — same character count but with SGR colour runs.
 //! - `advance_with_osc133`  — ASCII interspersed with OSC 133 prompt marks
-//!                            (the pre-scan in `TermEngine::advance` adds a
-//!                            byte loop on top of alacritty's parser, so
-//!                            this catches any regression in that hot path).
+//!   (the pre-scan in `TermEngine::advance` adds a
+//!   byte loop on top of alacritty's parser, so
+//!   this catches any regression in that hot path).
 //! - `snapshot`             — full grid snapshot cost at 80×24 and 200×50.
 //! - `diff_no_change`       — `DiffTracker::diff` when nothing changed; this
-//!                            is the common case between two frames.
+//!   is the common case between two frames.
 //! - `diff_one_row_change`  — the next common case: a single shell line was
-//!                            repainted.
+//!   repainted.
 //!
 //! We deliberately do NOT benchmark the full PTY pipeline (spawn → read →
 //! feed → render) here — that sits under portable-pty's OS thread and

@@ -256,18 +256,17 @@ async fn rest_rate_limit_refills_over_time() {
 }
 
 #[tokio::test]
-async fn rate_limit_applies_after_auth_not_before() {
-    // A request with a WRONG token must keep returning 401 forever —
-    // unauthenticated traffic must not fill the rate-limit bucket, so
-    // legitimate clients cannot be locked out by an attacker spamming bad
-    // tokens.
+async fn rate_limit_bounds_unauthenticated_hammering() {
+    // Wrong-token traffic is throttled before auth verification. The bucket
+    // map is bounded, so this closes the local brute-force/DoS gap without
+    // letting unauthenticated traffic grow memory indefinitely.
     let state = ApiState::new(PtyManager::new(), AuthConfig::with_token(TOKEN))
         .with_rate_limiter(Arc::new(RateLimiter::with_limits(2.0, 0.0, 10.0, 0.0)))
         .with_cors_origins(vec![HeaderValue::from_static("http://127.0.0.1:1420")]);
     let (base, state, join) = spawn(state).await;
     let c = client();
 
-    for _ in 0..5 {
+    for _ in 0..2 {
         let res = c
             .get(format!("{}/sessions", base))
             .header(AUTHORIZATION, "Bearer wrong")
@@ -277,14 +276,13 @@ async fn rate_limit_applies_after_auth_not_before() {
         assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
     }
 
-    // Legit client still has its 2-token budget.
     let res = c
         .get(format!("{}/sessions", base))
         .header(AUTHORIZATION, format!("Bearer {}", TOKEN))
         .send()
         .await
         .unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS);
 
     state.trigger_shutdown();
     let _ = tokio::time::timeout(Duration::from_secs(2), join).await;

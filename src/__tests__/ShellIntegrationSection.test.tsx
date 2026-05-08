@@ -1,10 +1,7 @@
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  ShellIntegrationSection,
-  type ShellIntegrationStatus,
-} from "../features/settings/ShellIntegrationSection";
+import { ShellIntegrationSection, type ShellIntegrationStatus } from "../features/settings/ShellIntegrationSection";
 
 const SAMPLE: ShellIntegrationStatus[] = [
   {
@@ -14,7 +11,7 @@ const SAMPLE: ShellIntegrationStatus[] = [
     profilePath: "C:/Users/x/Documents/PowerShell/Microsoft.PowerShell_profile.ps1",
     profileExists: true,
     installed: false,
-    sourceLine: ". \"C:/Users/x/.aether/shell-integration/aether.ps1\"",
+    sourceLine: '. "C:/Users/x/.aether/shell-integration/aether.ps1"',
   },
   {
     shell: "bash",
@@ -36,11 +33,7 @@ describe("ShellIntegrationSection", () => {
   it("renders one row per shell with installed badge reflecting status", async () => {
     const loadStatus = vi.fn().mockResolvedValue(SAMPLE);
     const { container } = render(
-      <ShellIntegrationSection
-        loadStatus={loadStatus}
-        install={vi.fn()}
-        copyToClipboard={vi.fn()}
-      />,
+      <ShellIntegrationSection loadStatus={loadStatus} install={vi.fn()} copyToClipboard={vi.fn()} />,
     );
     await waitFor(() => expect(loadStatus).toHaveBeenCalled());
     await waitFor(() =>
@@ -62,9 +55,7 @@ describe("ShellIntegrationSection", () => {
     const loadStatus = vi
       .fn<() => Promise<ShellIntegrationStatus[]>>()
       .mockResolvedValueOnce(SAMPLE)
-      .mockResolvedValue(
-        SAMPLE.map((s) => (s.shell === "powershell" ? { ...s, installed: true } : s)),
-      );
+      .mockResolvedValue(SAMPLE.map((s) => (s.shell === "powershell" ? { ...s, installed: true } : s)));
     const install = vi.fn().mockResolvedValue({
       appended: true,
       profilePath: "C:/Users/x/Documents/PowerShell/Microsoft.PowerShell_profile.ps1",
@@ -72,11 +63,7 @@ describe("ShellIntegrationSection", () => {
     });
 
     const { container } = render(
-      <ShellIntegrationSection
-        loadStatus={loadStatus}
-        install={install}
-        copyToClipboard={vi.fn()}
-      />,
+      <ShellIntegrationSection loadStatus={loadStatus} install={install} copyToClipboard={vi.fn()} />,
     );
     await waitFor(() => expect(loadStatus).toHaveBeenCalledTimes(1));
 
@@ -112,11 +99,7 @@ describe("ShellIntegrationSection", () => {
     });
 
     const { container } = render(
-      <ShellIntegrationSection
-        loadStatus={loadStatus}
-        install={install}
-        copyToClipboard={vi.fn()}
-      />,
+      <ShellIntegrationSection loadStatus={loadStatus} install={install} copyToClipboard={vi.fn()} />,
     );
     await waitFor(() => expect(loadStatus).toHaveBeenCalled());
 
@@ -145,11 +128,7 @@ describe("ShellIntegrationSection", () => {
     const copyToClipboard = vi.fn().mockResolvedValue(undefined);
 
     const { container } = render(
-      <ShellIntegrationSection
-        loadStatus={loadStatus}
-        install={vi.fn()}
-        copyToClipboard={copyToClipboard}
-      />,
+      <ShellIntegrationSection loadStatus={loadStatus} install={vi.fn()} copyToClipboard={copyToClipboard} />,
     );
     await waitFor(() => expect(loadStatus).toHaveBeenCalled());
 
@@ -178,11 +157,7 @@ describe("ShellIntegrationSection", () => {
     const install = vi.fn().mockRejectedValue(new Error("permission denied"));
 
     const { container } = render(
-      <ShellIntegrationSection
-        loadStatus={loadStatus}
-        install={install}
-        copyToClipboard={vi.fn()}
-      />,
+      <ShellIntegrationSection loadStatus={loadStatus} install={install} copyToClipboard={vi.fn()} />,
     );
     await waitFor(() => expect(loadStatus).toHaveBeenCalled());
 

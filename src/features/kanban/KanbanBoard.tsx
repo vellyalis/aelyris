@@ -137,6 +137,7 @@ export function KanbanBoard({
         count={kanbanTasks.length}
         actions={
           <button
+            type="button"
             className={styles.addBtn}
             onClick={() => setShowForm(!showForm)}
             title="New Task"
@@ -161,7 +162,6 @@ export function KanbanBoard({
                 setNewTitle("");
               }
             }}
-            autoFocus
           />
           <div className={styles.formRow}>
             <select
@@ -174,7 +174,7 @@ export function KanbanBoard({
               <option value="high">High</option>
               <option value="critical">Critical</option>
             </select>
-            <button className={styles.formSubmit} onClick={handleAdd} disabled={!newTitle.trim()}>
+            <button type="button" className={styles.formSubmit} onClick={handleAdd} disabled={!newTitle.trim()}>
               Add
             </button>
           </div>
@@ -186,6 +186,7 @@ export function KanbanBoard({
           const tasks = kanbanTasks.filter((t) => t.column === col.id);
           const isCollapsed = !!collapsed[col.id];
           return (
+            /* biome-ignore lint/a11y/noStaticElementInteractions: Column drag/drop is paired with keyboard task activation inside the column. */
             <div
               key={col.id}
               className={styles.group}
@@ -196,7 +197,7 @@ export function KanbanBoard({
               onDragLeave={(e) => e.currentTarget.classList.remove(styles.dropHover)}
               onDrop={(e) => handleDrop(e, col.id)}
             >
-              <button className={styles.groupHeader} onClick={() => toggleCollapse(col.id)}>
+              <button type="button" className={styles.groupHeader} onClick={() => toggleCollapse(col.id)}>
                 <ChevronRight size={12} className={`${styles.chevron} ${!isCollapsed ? styles.chevronOpen : ""}`} />
                 <span className={styles.groupDot} style={{ background: col.color }} />
                 <span className={styles.groupLabel}>{col.label}</span>
@@ -206,6 +207,7 @@ export function KanbanBoard({
               {!isCollapsed && tasks.length > 0 && (
                 <div className={styles.groupItems}>
                   {tasks.map((t) => (
+                    /* biome-ignore lint/a11y/useSemanticElements: The draggable task card contains nested action buttons, so a button wrapper would be invalid. */
                     <div
                       key={t.id}
                       role="button"
@@ -244,6 +246,7 @@ export function KanbanBoard({
                       )}
                       {(t.column === "todo" || t.column === "in_progress") && !t.assignedAgentId && onStartAgent && (
                         <button
+                          type="button"
                           className={styles.itemAction}
                           onClick={(e) => {
                             e.stopPropagation();
@@ -268,6 +271,7 @@ export function KanbanBoard({
                         </button>
                       )}
                       <button
+                        type="button"
                         className={styles.itemDelete}
                         onClick={(e) => {
                           e.stopPropagation();

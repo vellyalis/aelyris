@@ -22,6 +22,7 @@ export function ContextMenu({ children, items }: ContextMenuProps) {
         <RadixContextMenu.Content className={styles.menu}>
           {items.map((item, i) =>
             item.divider ? (
+              // biome-ignore lint/suspicious/noArrayIndexKey: Divider items are label-less separators in caller-provided static menu lists.
               <RadixContextMenu.Separator key={`sep-${i}`} className={styles.divider} />
             ) : (
               <RadixContextMenu.Item

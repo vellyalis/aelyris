@@ -1,16 +1,21 @@
+export type { PaneSwitcherEntry } from "./operations";
 export {
   collectLeafIds,
+  collectLeaves,
   collectPaneRegistry,
   collectPaneSwitcherEntries,
   countLeaves,
   createLeaf,
   cycleLeafRole,
+  equalizePaneRatios,
   findLeaf,
+  movePaneInOrder,
+  rebalancePaneLayout,
   removePane,
   splitPane,
+  swapPanes,
   updateLeafMeta,
 } from "./operations";
-export type { PaneSwitcherEntry } from "./operations";
 export { PaneTreeContainer } from "./PaneTreeContainer";
 export {
   deletePaneTreeSnapshot,

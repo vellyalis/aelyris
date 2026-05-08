@@ -55,7 +55,7 @@
 }
 .addBtn:hover {
   color: var(--text-primary);
-  background: rgba(6, 15, 24, 0.26);
+  background: var(--chrome-control-hover-bg);
 }
 .addBtn:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--accent) 62%, transparent);
@@ -104,12 +104,8 @@
   margin: var(--space-1) var(--space-4) var(--space-3);
   padding: 1px;
   border-radius: var(--radius-lg);
-  background:
-    linear-gradient(135deg, rgba(109, 215, 242, 0.075), transparent 36%, rgba(216, 183, 102, 0.024)),
-    rgba(0, 6, 14, 0.3);
-  box-shadow:
-    inset 0 1px 0 rgba(172, 232, 246, 0.052),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.24);
+  background: var(--toolkit-grid-bg);
+  box-shadow: var(--toolkit-grid-shadow);
   overflow: hidden;
 }
 
@@ -123,9 +119,9 @@
   padding: var(--space-2) var(--space-3);
   border: 0;
   border-radius: 0;
-  background: linear-gradient(180deg, rgba(109, 215, 242, 0.035), rgba(3, 10, 18, 0.1)), rgba(0, 7, 15, 0.34);
+  background: var(--toolkit-tile-bg);
   box-shadow: none;
-  color: color-mix(in srgb, var(--text-secondary) 84%, transparent);
+  color: var(--toolkit-tile-text);
   font-size: var(--text-sm);
   font-family: var(--font-ui);
   cursor: pointer;
@@ -180,8 +176,7 @@
   align-items: center;
   padding: var(--space-3) var(--space-4);
   background:
-    linear-gradient(135deg, color-mix(in srgb, var(--tone, var(--gold)) 11%, transparent), transparent 42%),
-    rgba(0, 8, 17, 0.44);
+    var(--toolkit-tile-primary-bg);
   box-shadow: none;
 }
 
@@ -207,8 +202,7 @@
 
 .action:hover {
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--tone, var(--gold)) 10%, transparent), transparent 58%),
-    rgba(0, 10, 22, 0.52);
+    var(--toolkit-tile-hover-bg);
   color: var(--text-primary);
   box-shadow:
     inset 0 1px 0 rgba(206, 242, 255, 0.08),
@@ -235,9 +229,7 @@
   width: 22px;
   height: 22px;
   border-radius: var(--radius-sm);
-  background:
-    linear-gradient(180deg, rgba(142, 226, 241, 0.028), rgba(0, 0, 0, 0.08)),
-    color-mix(in srgb, var(--tone, var(--accent)) 6%, rgba(0, 7, 16, 0.42));
+  background: var(--toolkit-icon-bg);
   box-shadow:
     inset 0 1px 0 rgba(166, 231, 242, 0.035),
     inset 0 0 0 1px color-mix(in srgb, var(--tone, var(--gold)) 11%, transparent);
@@ -300,7 +292,7 @@
 .editInput {
   width: 100%;
   padding: var(--space-2) var(--space-4);
-  background: rgba(3, 9, 16, 0.22);
+  background: var(--settings-control-bg);
   border: 1px solid rgba(124, 214, 235, 0.045);
   border-radius: var(--radius-sm);
   color: var(--text-primary);
@@ -337,7 +329,7 @@
   border-color: var(--gold);
 }
 .editCancel:hover {
-  background: rgba(6, 15, 24, 0.26);
+  background: var(--chrome-control-hover-bg);
 }
 .editDelete {
   background: none;
@@ -363,9 +355,7 @@
   padding: 1px;
   border-top: 0;
   border-radius: var(--radius);
-  background:
-    linear-gradient(90deg, rgba(109, 215, 242, 0.056), transparent 52%, rgba(216, 183, 102, 0.024)),
-    rgba(0, 6, 14, 0.24);
+  background: var(--toolkit-bottom-bg);
   box-shadow: inset 0 1px 0 rgba(203, 240, 255, 0.055);
   overflow: hidden;
 }
@@ -376,7 +366,7 @@
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  background: rgba(1, 7, 15, 0.34);
+  background: var(--toolkit-bottom-btn-bg);
   border: 0;
   color: var(--text-secondary);
   font-size: var(--text-xs);
@@ -397,7 +387,7 @@
   white-space: nowrap;
 }
 .bottomBtn:hover {
-  background: linear-gradient(180deg, rgba(109, 215, 242, 0.055), transparent), rgba(0, 10, 22, 0.5);
+  background: var(--toolkit-tile-hover-bg);
   color: var(--text-primary);
 }
 
@@ -474,7 +464,7 @@
   cursor: pointer;
 }
 .importCancel:hover {
-  background: rgba(6, 15, 24, 0.26);
+  background: var(--chrome-control-hover-bg);
 }
 .importSubmit {
   background: var(--gold);
@@ -516,7 +506,7 @@
   cursor: pointer;
 }
 .importFileBtn:hover {
-  background: rgba(6, 15, 24, 0.26);
+  background: var(--chrome-control-hover-bg);
   color: var(--text-primary);
 }
 

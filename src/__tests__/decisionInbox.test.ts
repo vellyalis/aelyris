@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildDecisionInbox, isTrueHumanDecisionKind } from "../shared/lib/decisionInbox";
-import type { AuditEventRecord } from "../shared/types/audit";
 import type { AgentSession } from "../shared/types/agent";
+import type { AuditEventRecord } from "../shared/types/audit";
 
 function session(id: string, overrides: Partial<AgentSession> = {}): AgentSession {
   return {
@@ -121,10 +121,7 @@ describe("decisionInbox", () => {
       ],
     });
 
-    expect(inbox.pendingItems.map((item) => item.type)).toEqual([
-      "merge_conflict_strategy",
-      "product_direction",
-    ]);
+    expect(inbox.pendingItems.map((item) => item.type)).toEqual(["merge_conflict_strategy", "product_direction"]);
     expect(inbox.pendingItems.some((item) => item.context.includes("External dependency"))).toBe(false);
   });
 

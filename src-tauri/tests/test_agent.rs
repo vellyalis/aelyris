@@ -112,8 +112,6 @@ fn test_mock_agent_spawn_and_parse() {
 
 #[test]
 fn test_mock_agent_kill() {
-    let script = mock_agent_path();
-
     let mut child = Command::new("pwsh.exe")
         .args([
             "-NoProfile",
@@ -224,8 +222,10 @@ fn test_default_watchdog_rules() {
 
 #[test]
 fn test_enabled_default_watchdog_rules() {
-    let mut rules = WatchdogRules::default();
-    rules.enabled = true;
+    let rules = WatchdogRules {
+        enabled: true,
+        ..Default::default()
+    };
     let engine = WatchdogEngine::new(rules);
 
     // Default rules auto-approve Read, Glob, Grep

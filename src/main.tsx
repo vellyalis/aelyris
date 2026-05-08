@@ -41,10 +41,7 @@ void (async () => {
     const { listen } = await import("@tauri-apps/api/event");
     setAetherHost("tauri");
     await listen<boolean>("aether:window-focused", (event) => {
-      document.body.setAttribute(
-        "data-window-focused",
-        event.payload ? "true" : "false",
-      );
+      document.body.setAttribute("data-window-focused", event.payload ? "true" : "false");
     });
   } catch {
     setAetherHost("browser");
@@ -53,7 +50,12 @@ void (async () => {
   }
 })();
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
+const root = document.getElementById("root");
+if (root === null) {
+  throw new Error("Missing #root element");
+}
+
+ReactDOM.createRoot(root).render(
   <React.StrictMode>
     <ErrorBoundary>
       <App />
@@ -71,10 +73,6 @@ requestAnimationFrame(() => {
   document.documentElement.setAttribute("data-react-mounted", "true");
   const splash = document.getElementById("splash");
   if (splash) {
-    splash.addEventListener(
-      "transitionend",
-      () => splash.parentElement?.removeChild(splash),
-      { once: true },
-    );
+    splash.addEventListener("transitionend", () => splash.parentElement?.removeChild(splash), { once: true });
   }
 });

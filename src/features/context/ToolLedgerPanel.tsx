@@ -44,7 +44,12 @@ function formatAge(ms: number): string {
   return `${Math.floor(minutes / 60)}h`;
 }
 
-export function ToolLedgerPanel({ sessions, activeSessionId, onSelectSession, workstationGraph }: ToolLedgerPanelProps) {
+export function ToolLedgerPanel({
+  sessions,
+  activeSessionId,
+  onSelectSession,
+  workstationGraph,
+}: ToolLedgerPanelProps) {
   const [now, setNow] = useState(() => Date.now());
   const graphAgentIds = useMemo(() => listWorkstationGraphAgentIds(workstationGraph), [workstationGraph]);
   const graphSessions = useMemo(() => {

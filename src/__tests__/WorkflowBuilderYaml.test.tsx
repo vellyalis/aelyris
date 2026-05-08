@@ -62,7 +62,7 @@ describe("WorkflowBuilder YAML escape", () => {
     expect(src).toContain("onNodeClick={(_, node) => setSelectedPhaseId(node.id)}");
     expect(src).toContain('placeholder="PowerShell / claude / reviewer"');
     expect(src).toContain("phase.agent_role = d.agentRole.trim()");
-    expect(src).toContain('target_pane: "${escapeYamlString(String(p.target_pane))}"');
+    expect(src).toMatch(/target_pane:\s*"\$\{escapeYamlString\(String\(p\.target_pane\)\)\}"/);
     expect(src).toContain("currentPhase.target_pane");
     expect(src).toContain("currentPhase.agent_role");
   });

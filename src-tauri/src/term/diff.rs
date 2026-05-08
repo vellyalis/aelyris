@@ -7,8 +7,8 @@
 //! Wire format:
 //!   - `full = true`   → first emit or resize; `rows` holds every line.
 //!   - `full = false`  → only rows whose cell contents changed are present;
-//!                       cursor is always included so UI keeps it in sync
-//!                       even when the grid itself is untouched.
+//!     cursor is always included so UI keeps it in sync
+//!     even when the grid itself is untouched.
 
 use serde::{Deserialize, Serialize};
 

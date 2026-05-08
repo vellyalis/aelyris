@@ -14,8 +14,8 @@ import "@xyflow/react/dist/style.css";
 
 import { Layers } from "lucide-react";
 import { layoutConductor, NODE_HEIGHT, NODE_WIDTH } from "../../shared/lib/conductorLayout";
-import { buildRunGraph } from "../../shared/lib/workstationGraph";
 import { getRole } from "../../shared/lib/orchestrator";
+import { buildRunGraph } from "../../shared/lib/workstationGraph";
 import { type AgentSession, getSessionColor, STATUS_COLORS, STATUS_LABELS } from "../../shared/types/agent";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import styles from "./ConductorView.module.css";

@@ -29,7 +29,7 @@ export interface SearchHit {
 export function formatExecutedAt(isoLike: string): string {
   // SQLite's `datetime('now')` emits "YYYY-MM-DD HH:MM:SS" in UTC without a
   // timezone suffix. Coerce to a value Date() will parse as UTC.
-  const parsed = new Date(isoLike.replace(" ", "T") + "Z");
+  const parsed = new Date(`${isoLike.replace(" ", "T")}Z`);
   if (Number.isNaN(parsed.getTime())) return isoLike;
 
   const diffMs = Date.now() - parsed.getTime();

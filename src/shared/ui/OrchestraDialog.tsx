@@ -142,10 +142,10 @@ export function OrchestraDialog() {
             Ctrl+Enter to dispatch · Esc to cancel · Each role gets its own prompt template.
           </div>
           <div className={styles.actions}>
-            <button className={styles.cancelBtn} onClick={() => close(null)}>
+            <button type="button" className={styles.cancelBtn} onClick={() => close(null)}>
               Cancel
             </button>
-            <button className={styles.submitBtn} onClick={handleSubmit} disabled={!canSubmit}>
+            <button type="button" className={styles.submitBtn} onClick={handleSubmit} disabled={!canSubmit}>
               Dispatch {selected.size} agent{selected.size === 1 ? "" : "s"}
             </button>
           </div>

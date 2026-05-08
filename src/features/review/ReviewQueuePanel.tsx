@@ -1,5 +1,6 @@
 import { AlertTriangle, Bot, FileSearch, GitCompare, ShieldAlert } from "lucide-react";
 import { useMemo } from "react";
+import type { OrchestraRoleId } from "../../shared/lib/orchestrator";
 import {
   buildReviewQueue,
   type GitChangedFile,
@@ -8,11 +9,7 @@ import {
   type ReviewRisk,
   type ReviewValidationState,
 } from "../../shared/lib/reviewQueue";
-import type { OrchestraRoleId } from "../../shared/lib/orchestrator";
-import {
-  listWorkstationGraphChangedFiles,
-  type WorkstationGraph,
-} from "../../shared/lib/workstationGraph";
+import { listWorkstationGraphChangedFiles, type WorkstationGraph } from "../../shared/lib/workstationGraph";
 import type { AgentSession } from "../../shared/types/agent";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { PanelHeader } from "../../shared/ui/PanelHeader";
@@ -125,16 +122,16 @@ export function ReviewQueuePanel({
         <EmptyState
           icon={<FileSearch size={18} />}
           title="No review queue"
-          description="Changed files and agent edits will appear here."
+          description="Changed files and agent edits will appear here before commit or merge."
         />
       ) : (
         <div className={styles.body}>
-          <div className={styles.metrics} aria-label="Review summary">
+          <section className={styles.metrics} aria-label="Review summary">
             <Metric label="Risk" value={queue.highRiskCount} />
             <Metric label="Conflicts" value={queue.conflictCount} />
             <Metric label="Validate" value={queue.needsValidationCount} />
             <Metric label="Ready" value={queue.readyCount} />
-          </div>
+          </section>
 
           <div className={styles.readinessSummary} data-readiness={queue.mergeReadiness}>
             <span>Merge readiness</span>
@@ -172,7 +169,9 @@ export function ReviewQueuePanel({
                     <span className={styles.status}>{item.status}</span>
                     <span className={styles.itemScoreLine}>
                       <span data-readiness={item.mergeReadiness}>{READINESS_LABELS[item.mergeReadiness]}</span>
-                      <span>{item.diffstat.binary ? "binary" : `${item.diffstat.additions}+/${item.diffstat.deletions}-`}</span>
+                      <span>
+                        {item.diffstat.binary ? "binary" : `${item.diffstat.additions}+/${item.diffstat.deletions}-`}
+                      </span>
                       <span>{COVERAGE_LABELS[item.coverage]}</span>
                       <span>{VALIDATION_LABELS[item.validation]}</span>
                     </span>

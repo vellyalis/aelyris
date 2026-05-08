@@ -14,9 +14,7 @@
  * decision testable without spinning up the editor or the Tauri plugin.
  */
 
-export type TerminalUrlRoute =
-  | { kind: "external"; url: string }
-  | { kind: "editor"; absolutePath: string };
+export type TerminalUrlRoute = { kind: "external"; url: string } | { kind: "editor"; absolutePath: string };
 
 export interface RouteContext {
   /** Project / pane cwd. Optional because some panes start before a

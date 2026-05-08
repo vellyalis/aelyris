@@ -9,6 +9,21 @@ import { test, expect } from "@playwright/test";
  * the frontend renders correctly in both states.
  */
 
+const PROJECT_PATH = "C:/Users/owner/Aether_Terminal";
+
+async function openProjectFixture(page: import("@playwright/test").Page) {
+  await page.goto(`/?aetherVisualQa=1&projectPath=${encodeURIComponent(PROJECT_PATH)}`, {
+    waitUntil: "domcontentloaded",
+  });
+  await page.evaluate((path) => {
+    localStorage.setItem("aether:visualQa", "1");
+    localStorage.setItem("aether:visualQaProject", path);
+    localStorage.setItem("aether:onboarding-done", "true");
+  }, PROJECT_PATH);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.locator(".app-main")).toBeVisible({ timeout: 10_000 });
+}
+
 test.describe("Welcome screen (no project)", () => {
   test.beforeEach(async ({ page }) => {
     // Clear localStorage to ensure WelcomeScreen shows
@@ -33,14 +48,7 @@ test.describe("Welcome screen (no project)", () => {
 
 test.describe("Main layout (with project path)", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/");
-    // Set a project path in localStorage to bypass WelcomeScreen
-    await page.evaluate(() => {
-      localStorage.setItem("aether:lastProject", "C:/Users/owner/Aether_Terminal");
-    });
-    await page.reload();
-    // Wait for main UI to load
-    await page.waitForTimeout(2000);
+    await openProjectFixture(page);
   });
 
   test("renders the header bar", async ({ page }) => {
@@ -50,7 +58,7 @@ test.describe("Main layout (with project path)", () => {
   });
 
   test("renders the menu bar", async ({ page }) => {
-    await expect(page.getByRole("menubar")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("button", { name: "Open application menu" })).toBeVisible({ timeout: 10_000 });
   });
 
   test("left panel is visible", async ({ page }) => {

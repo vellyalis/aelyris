@@ -16,6 +16,7 @@ import {
   imeCandidateAnchorX,
   imeCandidateAnchorY,
   imeDiagnosticsEnabled,
+  imeTextareaCaretInset,
   imeTextareaAnchorWidth,
   installImeDiagnosticHelpers,
   isSpecialKeyEvent,
@@ -23,6 +24,7 @@ import {
   useImePosition,
   type WriteBytesFn,
 } from "../features/terminal/hooks/useCanvasIME";
+import { FALLBACK_TELEMETRY_EVENT, type FallbackTelemetryDetail } from "../shared/lib/fallbackTelemetry";
 import { TERMINAL_PASTE_GUARD_EVENT } from "../shared/lib/terminalInput";
 
 function ev(overrides: Partial<Parameters<typeof isSpecialKeyEvent>[0]> = {}): Parameters<typeof isSpecialKeyEvent>[0] {
@@ -119,6 +121,16 @@ describe("imeTextareaAnchorWidth", () => {
   });
 });
 
+describe("imeTextareaCaretInset", () => {
+  it("keeps the DOM caret at the real terminal cursor when the textarea is clamped left", () => {
+    expect(imeTextareaCaretInset(880, 460, 900)).toBe(420);
+  });
+
+  it("does not create a negative inset for normal left-edge carets", () => {
+    expect(imeTextareaCaretInset(120, 120, 900)).toBe(0);
+  });
+});
+
 describe("useImePosition", () => {
   it("updates textarea runway and candidate coordinates after resize near the right edge", () => {
     const { textarea, rerenderPosition } = renderImePositionHarness({
@@ -133,6 +145,7 @@ describe("useImePosition", () => {
     expect(textarea.style.left).toBe("360px");
     expect(textarea.style.top).toBe("36px");
     expect(textarea.style.width).toBe("440px");
+    expect(textarea.style.paddingLeft).toBe("420px");
     expect(textarea.dataset.imeCandidateX).toBe("360");
     expect(textarea.dataset.imeCandidateY).toBe("54");
 
@@ -147,6 +160,7 @@ describe("useImePosition", () => {
 
     expect(textarea.style.left).toBe("60px");
     expect(textarea.style.width).toBe("440px");
+    expect(textarea.style.paddingLeft).toBe("420px");
     expect(textarea.dataset.imeCandidateX).toBe("60");
     expect(textarea.dataset.imeCandidateY).toBe("54");
   });
@@ -178,6 +192,40 @@ describe("useImePosition", () => {
     );
     expect(textarea.dataset.imeCandidateX).toBe("700");
     expect(textarea.dataset.imeCandidateY).toBe("270");
+  });
+
+  it("reports IME positioning failures through fallback telemetry", async () => {
+    invokeMock.mockClear();
+    invokeMock.mockRejectedValueOnce(new Error("IMM denied"));
+    const events: FallbackTelemetryDetail[] = [];
+    const listener = (event: Event) => events.push((event as CustomEvent<FallbackTelemetryDetail>).detail);
+    window.addEventListener(FALLBACK_TELEMETRY_EVENT, listener);
+    try {
+      const { textarea } = renderImePositionHarness({
+        cursor: { row: 1, col: 2 },
+        cols: 80,
+        rows: 24,
+        cellWidth: 10,
+        cellHeight: 18,
+        canvasRect: { left: 20, top: 40, width: 800, height: 432 },
+      });
+
+      act(() => {
+        textarea.focus();
+        textarea.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+      });
+
+      await expect.poll(() => events.some((entry) => entry.operation === "set_ime_position")).toBe(true);
+      expect(events.at(-1)).toMatchObject({
+        source: "terminal-ime",
+        operation: "set_ime_position",
+        severity: "warning",
+        message: "IMM denied",
+      });
+    } finally {
+      window.removeEventListener(FALLBACK_TELEMETRY_EVENT, listener);
+      invokeMock.mockResolvedValue(undefined);
+    }
   });
 });
 
@@ -236,6 +284,7 @@ describe("IME diagnostic helpers", () => {
   });
 
   it("records candidate anchor and DPI context in the opt-in diagnostic ring", () => {
+    const debugSpy = vi.spyOn(console, "debug").mockImplementation(() => {});
     const writeBytes = vi.fn() as WriteBytesFn;
     renderImeHarness({ writeBytes });
     const textarea = screen.getByTestId("ime-target") as HTMLTextAreaElement;
@@ -265,6 +314,7 @@ describe("IME diagnostic helpers", () => {
         viewportHeight: window.innerHeight,
       }),
     );
+    expect(debugSpy).toHaveBeenCalled();
     disableImeDiagnostics(window);
   });
 });

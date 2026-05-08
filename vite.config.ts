@@ -4,6 +4,8 @@ import react from "@vitejs/plugin-react";
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
 
+const monacoChunkWarningLimitKb = 3200;
+
 // https://vite.dev/config/
 export default defineConfig(async () => ({
   plugins: [react()],
@@ -16,11 +18,22 @@ export default defineConfig(async () => ({
   },
 
   build: {
+    chunkSizeWarningLimit: monacoChunkWarningLimitKb,
     rollupOptions: {
       output: {
         manualChunks: {
-          "radix": ["@radix-ui/react-context-menu", "@radix-ui/react-dialog", "@radix-ui/react-dropdown-menu", "@radix-ui/react-scroll-area", "@radix-ui/react-tabs", "@radix-ui/react-toast", "@radix-ui/react-tooltip"],
-          "motion": ["motion"],
+          "monaco-core": ["@monaco-editor/react", "monaco-editor"],
+          "monaco-vim": ["monaco-vim"],
+          motion: ["motion"],
+          radix: [
+            "@radix-ui/react-context-menu",
+            "@radix-ui/react-dialog",
+            "@radix-ui/react-dropdown-menu",
+            "@radix-ui/react-scroll-area",
+            "@radix-ui/react-tabs",
+            "@radix-ui/react-toast",
+            "@radix-ui/react-tooltip",
+          ],
         },
       },
     },

@@ -67,8 +67,17 @@ describe("buildReviewQueue", () => {
       [
         session("author", {
           owner: "codex",
-          changedFileDetails: [{ path: "src/shared/lib/reviewQueue.ts", action: "edit", toolName: "Edit", timestamp: 4 }],
-          logs: [{ timestamp: 5, type: "tool_result", content: "vitest reviewQueue.test.ts passed", metadata: { toolName: "vitest" } }],
+          changedFileDetails: [
+            { path: "src/shared/lib/reviewQueue.ts", action: "edit", toolName: "Edit", timestamp: 4 },
+          ],
+          logs: [
+            {
+              timestamp: 5,
+              type: "tool_result",
+              content: "vitest reviewQueue.test.ts passed",
+              metadata: { toolName: "vitest" },
+            },
+          ],
         }),
       ],
       [

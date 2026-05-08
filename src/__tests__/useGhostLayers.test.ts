@@ -2,12 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useGhostLayers } from "../shared/hooks/useGhostLayers";
-import type {
-  LayerIdPayload,
-  LayerListSnapshot,
-  LayerSummary,
-  LayerUpdatedPayload,
-} from "../shared/types/ghostdiff";
+import type { LayerIdPayload, LayerListSnapshot, LayerSummary, LayerUpdatedPayload } from "../shared/types/ghostdiff";
 
 type InvokeFn = (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
 type ListenHandler<T> = (event: { payload: T }) => void;
@@ -80,13 +75,7 @@ describe("useGhostLayers", () => {
     (invokeMock as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd) => {
       if (cmd === "list_ghost_layers") {
         return Promise.resolve(
-          snap(
-            [
-              makeLayer({ id: "j1", createdAt: 100 }),
-              makeLayer({ id: "j2", createdAt: 200, isComplete: true }),
-            ],
-            5,
-          ),
+          snap([makeLayer({ id: "j1", createdAt: 100 }), makeLayer({ id: "j2", createdAt: 200, isComplete: true })], 5),
         );
       }
       return Promise.reject(new Error(`unexpected ${cmd}`));
@@ -137,8 +126,7 @@ describe("useGhostLayers", () => {
 
   it("flips isComplete on ghost-diff:layer-completed", async () => {
     (invokeMock as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd) => {
-      if (cmd === "list_ghost_layers")
-        return Promise.resolve(snap([makeLayer({ id: "j1" })], 1));
+      if (cmd === "list_ghost_layers") return Promise.resolve(snap([makeLayer({ id: "j1" })], 1));
       return Promise.reject(new Error(`unexpected ${cmd}`));
     });
     const { result } = renderHook(() => useGhostLayers());
@@ -155,9 +143,7 @@ describe("useGhostLayers", () => {
   it("drops layers on ghost-diff:layer-removed", async () => {
     (invokeMock as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd) => {
       if (cmd === "list_ghost_layers")
-        return Promise.resolve(
-          snap([makeLayer({ id: "a" }), makeLayer({ id: "b" })], 2),
-        );
+        return Promise.resolve(snap([makeLayer({ id: "a" }), makeLayer({ id: "b" })], 2));
       return Promise.reject(new Error(`unexpected ${cmd}`));
     });
     const { result } = renderHook(() => useGhostLayers());
@@ -200,9 +186,7 @@ describe("useGhostLayers", () => {
     });
 
     const { result } = renderHook(() => useGhostLayers());
-    await waitFor(() =>
-      expect(listeners["ghost-diff:layer-updated"]).toBeDefined(),
-    );
+    await waitFor(() => expect(listeners["ghost-diff:layer-updated"]).toBeDefined());
 
     // Pre-seed event at seq=4 — contiguous to snap.seq=3 below.
     // Must land in pendingRef, not on the still-empty state map.
@@ -239,9 +223,7 @@ describe("useGhostLayers", () => {
     });
 
     const { result } = renderHook(() => useGhostLayers());
-    await waitFor(() =>
-      expect(listeners["ghost-diff:layer-updated"]).toBeDefined(),
-    );
+    await waitFor(() => expect(listeners["ghost-diff:layer-updated"]).toBeDefined());
 
     // Stale event (seq=2) arrives during IPC round-trip.
     await act(async () => {
@@ -276,9 +258,7 @@ describe("useGhostLayers", () => {
     });
 
     const { result } = renderHook(() => useGhostLayers());
-    await waitFor(() =>
-      expect(listeners["ghost-diff:layer-updated"]).toBeDefined(),
-    );
+    await waitFor(() => expect(listeners["ghost-diff:layer-updated"]).toBeDefined());
 
     // Stale Updated for j1 (seq=2), then snapshot at seq=10 with j1 GONE
     // (already removed by backend before snapshot was taken).
@@ -300,8 +280,7 @@ describe("useGhostLayers", () => {
     // older event at seq=3 must be dropped (drainContiguous deletes
     // pending entries with seq <= state.seq).
     (invokeMock as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd) => {
-      if (cmd === "list_ghost_layers")
-        return Promise.resolve(snap([makeLayer({ id: "j1", fileCount: 0 })], 4));
+      if (cmd === "list_ghost_layers") return Promise.resolve(snap([makeLayer({ id: "j1", fileCount: 0 })], 4));
       return Promise.reject(new Error(`unexpected ${cmd}`));
     });
     const { result } = renderHook(() => useGhostLayers());
@@ -341,8 +320,7 @@ describe("useGhostLayers", () => {
     // would drop 11. The reorder buffer holds 12 in pending and replays
     // when 11 arrives, restoring correct order.
     (invokeMock as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd) => {
-      if (cmd === "list_ghost_layers")
-        return Promise.resolve(snap([makeLayer({ id: "j1", fileCount: 0 })], 10));
+      if (cmd === "list_ghost_layers") return Promise.resolve(snap([makeLayer({ id: "j1", fileCount: 0 })], 10));
       return Promise.reject(new Error(`unexpected ${cmd}`));
     });
     const { result } = renderHook(() => useGhostLayers());
@@ -413,8 +391,7 @@ describe("useGhostLayers", () => {
     // so a `removed` (seq=11) followed by a missing `updated` (seq=10)
     // still applies in seq order once 10 lands.
     (invokeMock as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd) => {
-      if (cmd === "list_ghost_layers")
-        return Promise.resolve(snap([makeLayer({ id: "j1" })], 9));
+      if (cmd === "list_ghost_layers") return Promise.resolve(snap([makeLayer({ id: "j1" })], 9));
       return Promise.reject(new Error(`unexpected ${cmd}`));
     });
     const { result } = renderHook(() => useGhostLayers());

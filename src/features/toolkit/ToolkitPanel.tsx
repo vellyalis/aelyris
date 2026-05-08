@@ -283,7 +283,7 @@ export function ToolkitPanel({
   }, [parseImportText]);
 
   return (
-    <div className={styles.toolkit} role="region" aria-label="Toolkit">
+    <section className={styles.toolkit} aria-label="Toolkit">
       <PanelHeader
         title="Toolkit"
         leadingIcon={<Wrench size={12} />}
@@ -301,7 +301,13 @@ export function ToolkitPanel({
               <Crosshair size={11} aria-hidden="true" />
               <span>{activeTargetLabel}</span>
             </span>
-            <button className={styles.addBtn} onClick={handleAdd} title="Add action" aria-label="Add tool">
+            <button
+              type="button"
+              className={styles.addBtn}
+              onClick={handleAdd}
+              title="Add action"
+              aria-label="Add tool"
+            >
               <Plus size={12} aria-hidden="true" />
             </button>
           </>
@@ -309,6 +315,7 @@ export function ToolkitPanel({
       />
 
       {!collapsed && editingId && (
+        /* biome-ignore lint/a11y/noStaticElementInteractions: Blur on the wrapper commits editor focus exit while nested inputs own keyboard interaction. */
         <div
           className={styles.editForm}
           onBlur={(e) => {
@@ -330,13 +337,13 @@ export function ToolkitPanel({
             aria-label="Tool command"
           />
           <div className={styles.editActions}>
-            <button className={styles.editDelete} onClick={handleDelete}>
+            <button type="button" className={styles.editDelete} onClick={handleDelete}>
               Delete
             </button>
-            <button className={styles.editCancel} onClick={() => setEditingId(null)}>
+            <button type="button" className={styles.editCancel} onClick={() => setEditingId(null)}>
               Cancel
             </button>
-            <button className={styles.editSave} onClick={handleSaveEdit}>
+            <button type="button" className={styles.editSave} onClick={handleSaveEdit}>
               Save
             </button>
           </div>
@@ -437,7 +444,6 @@ export function ToolkitPanel({
               value={importText}
               onChange={(e) => parseImportText(e.target.value)}
               rows={5}
-              autoFocus
               onKeyDown={(e) => {
                 if (e.key === "Enter" && e.ctrlKey) handleImport();
               }}
@@ -465,14 +471,17 @@ export function ToolkitPanel({
             )}
 
             <div className={styles.importActions}>
-              <button className={styles.importFileBtn} onClick={handleImportFile} title="Load .json file">
+              <button type="button" className={styles.importFileBtn} onClick={handleImportFile} title="Load .json file">
                 <FileUp size={14} /> File
               </button>
               <div className={styles.importActionsSpacer} />
               <Dialog.Close asChild>
-                <button className={styles.importCancel}>Cancel</button>
+                <button type="button" className={styles.importCancel}>
+                  Cancel
+                </button>
               </Dialog.Close>
               <button
+                type="button"
                 className={styles.importSubmit}
                 onClick={handleImport}
                 disabled={!importParsed || importParsed.length === 0}
@@ -483,6 +492,6 @@ export function ToolkitPanel({
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
-    </div>
+    </section>
   );
 }

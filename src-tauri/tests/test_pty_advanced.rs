@@ -187,9 +187,9 @@ fn test_send_keys_invalid_id() {
 #[test]
 fn test_broadcast_keys() {
     let mgr = PtyManager::new();
-    let id1 = mgr.spawn(&ShellType::Cmd, 80, 24, None).expect("spawn 1");
-    let id2 = mgr.spawn(&ShellType::Cmd, 80, 24, None).expect("spawn 2");
-    let id3 = mgr.spawn(&ShellType::Cmd, 80, 24, None).expect("spawn 3");
+    let _id1 = mgr.spawn(&ShellType::Cmd, 80, 24, None).expect("spawn 1");
+    let _id2 = mgr.spawn(&ShellType::Cmd, 80, 24, None).expect("spawn 2");
+    let _id3 = mgr.spawn(&ShellType::Cmd, 80, 24, None).expect("spawn 3");
     std::thread::sleep(std::time::Duration::from_millis(300));
 
     // broadcast: write same data to all terminals

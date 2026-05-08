@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { Clipboard, Image as ImageIcon, Paperclip, X } from "lucide-react";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
+import { reportInvokeFailure } from "../../shared/lib/fallbackTelemetry";
 import styles from "./IMEInputBar.module.css";
 
 export interface IMEInputBarHandle {
@@ -209,12 +210,12 @@ export function measureTextareaImeAnchor(textarea: HTMLTextAreaElement): Textare
     const y = rect.top + markerTop - textarea.scrollTop + lineHeight;
     const clampedX = clamp(x, rect.left, Math.max(rect.left, rect.right - 1));
     const clampedY = clamp(y, rect.top, Math.max(rect.top, rect.bottom + lineHeight));
-      return {
-        x: clampedX,
-        y: clampedY,
-        candidateX: clampImeBarCandidateX(clampedX, rect.left, rect.right),
-        candidateY: clampImeBarCandidateY(clampedY, window.innerHeight),
-      };
+    return {
+      x: clampedX,
+      y: clampedY,
+      candidateX: clampImeBarCandidateX(clampedX, rect.left, rect.right),
+      candidateY: clampImeBarCandidateY(clampedY, window.innerHeight),
+    };
   } finally {
     mirror.remove();
   }
@@ -303,7 +304,14 @@ export const IMEInputBar = forwardRef<IMEInputBarHandle, IMEInputBarProps>(funct
       y: anchor.y,
       candidateX: anchor.candidateX,
       candidateY: anchor.candidateY,
-    }).catch(() => {});
+    }).catch((err) => {
+      reportInvokeFailure({
+        source: "ime-input-bar",
+        operation: "set_ime_position",
+        err,
+        severity: "warning",
+      });
+    });
   }, [disabled]);
 
   const pushImeBarPositionNowAndNextFrame = useCallback(() => {
@@ -375,11 +383,11 @@ export const IMEInputBar = forwardRef<IMEInputBarHandle, IMEInputBarProps>(funct
       setAttachmentBusy(true);
       try {
         const paths: string[] = [];
-      for (const file of files) {
-        const dataUrl = await readFileAsDataUrl(file);
-        paths.push(await saveClipboardImage(dataUrl));
-      }
-      insertAttachmentPaths(paths);
+        for (const file of files) {
+          const dataUrl = await readFileAsDataUrl(file);
+          paths.push(await saveClipboardImage(dataUrl));
+        }
+        insertAttachmentPaths(paths);
       } catch (err) {
         setAttachmentStatus({ tone: "error", message: attachmentErrorMessage(err, "画像を追加できませんでした") });
       } finally {
@@ -418,7 +426,10 @@ export const IMEInputBar = forwardRef<IMEInputBarHandle, IMEInputBarProps>(funct
         setAttachmentStatus({ tone: "info", message: "画像は見つかりませんでした" });
       }
     } catch (err) {
-      setAttachmentStatus({ tone: "error", message: attachmentErrorMessage(err, "クリップボード画像を追加できませんでした") });
+      setAttachmentStatus({
+        tone: "error",
+        message: attachmentErrorMessage(err, "クリップボード画像を追加できませんでした"),
+      });
     } finally {
       attachmentBusyRef.current = false;
       setAttachmentBusy(false);
@@ -606,7 +617,7 @@ export const IMEInputBar = forwardRef<IMEInputBarHandle, IMEInputBarProps>(funct
       aria-disabled={disabled}
     >
       {attachments.length > 0 && (
-        <div className={styles.attachmentDock} aria-label="添付ファイル">
+        <section className={styles.attachmentDock} aria-label="添付ファイル">
           {attachments.map((chip) => (
             <span key={chip.id} className={styles.attachmentChip} title={chip.path}>
               <Paperclip size={11} aria-hidden="true" />
@@ -622,7 +633,7 @@ export const IMEInputBar = forwardRef<IMEInputBarHandle, IMEInputBarProps>(funct
               </button>
             </span>
           ))}
-        </div>
+        </section>
       )}
       {attachmentStatus && (
         <div className={styles.attachmentStatus} data-tone={attachmentStatus.tone} role="status" aria-live="polite">

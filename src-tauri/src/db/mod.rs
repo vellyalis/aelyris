@@ -5,6 +5,7 @@ pub use queries::{
     AgentSessionRecord, AgentTelemetrySnapshotRecord, AuditEventRecord, AuditJournalAppend,
     AuditJournalCompactResult, AuditJournalEventRecord, AuditJournalFilter,
     AuditJournalSnapshotRecord, CommandRecord, Database, PaneTreeLayoutRecord,
+    TerminalOutputJournalRow,
 };
 
 use std::path::PathBuf;

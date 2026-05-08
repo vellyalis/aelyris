@@ -34,6 +34,9 @@ export function useSemanticHistory(
 
   const runSearch = useCallback(
     async (q: string) => {
+      // The request reads filters through a ref to avoid stale closures;
+      // the serialized key keeps this callback reactive to value changes.
+      void filtersKey;
       const trimmed = q.trim();
       const requestId = ++latestRequestId.current;
       if (!trimmed) {
@@ -62,7 +65,7 @@ export function useSemanticHistory(
         if (latestRequestId.current === requestId) setLoading(false);
       }
     },
-    [limit],
+    [limit, filtersKey],
   );
 
   useEffect(() => {
@@ -70,9 +73,7 @@ export function useSemanticHistory(
       void runSearch(query);
     }, debounceMs);
     return () => clearTimeout(handle);
-    // filtersKey is included so a filter mutation re-fires the query.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, debounceMs, filtersKey, runSearch]);
+  }, [query, debounceMs, runSearch]);
 
   const refresh = useCallback(() => {
     void runSearch(query);

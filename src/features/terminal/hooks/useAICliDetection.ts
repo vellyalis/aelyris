@@ -5,7 +5,10 @@ import { useCallback, useRef, useState } from "react";
  * Match is at the start of the echoed command, so e.g. `claude --resume` hits.
  */
 const AI_CLI_COMMAND = /^(?:claude|claude-code|codex|gemini|aider|cursor-agent|mentat|goose)\b/i;
-const ALT_SCREEN_SEQUENCE = /\x1b\[\?(?:1047|1048|1049)[hl]/;
+const ANSI_ESCAPE = "\\u001b";
+const ANSI_CSI_SEQUENCE = new RegExp(`${ANSI_ESCAPE}\\[[0-9;?]*[A-Za-z]`, "g");
+const ALT_SCREEN_SEQUENCE = new RegExp(`${ANSI_ESCAPE}\\[\\?(?:1047|1048|1049)[hl]`);
+const LEADING_CSI_SEQUENCE = new RegExp(`^${ANSI_ESCAPE}\\[[0-9;?]*[A-Za-z]`);
 const AI_CLI_SCREEN_MARKER = /\b(?:Claude Code|Gemini CLI|Codex(?: CLI)?)\b/i;
 const AI_CLI_INPUT_MARKER =
   /(?:Type your message|Ask me anything|Message Codex|Send a message|Enter your prompt|What can I help)/i;
@@ -107,7 +110,7 @@ export function useAICliDetection(): UseAICliDetection {
   const feed = useCallback((text: string) => {
     if (!text) return;
     // Strip CSI sequences before line splitting so prompt regex anchors work.
-    const clean = text.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
+    const clean = text.replace(ANSI_CSI_SEQUENCE, "");
     if (!inSessionRef.current && matchesAiCliScreen(text, clean)) {
       inSessionRef.current = true;
       setActive(true);
@@ -187,7 +190,7 @@ export function useAICliDetection(): UseAICliDetection {
         // Skip the full escape sequence (CSI: \x1b[...A-Za-z, or 2-char
         // simple: \x1bX).  Arrow keys etc. do not change the buffer.
         const tail = data.slice(i);
-        const csiMatch = tail.match(/^\x1b\[[0-9;?]*[A-Za-z]/);
+        const csiMatch = tail.match(LEADING_CSI_SEQUENCE);
         if (csiMatch) {
           i += csiMatch[0].length - 1;
         } else if (tail.length >= 2) {

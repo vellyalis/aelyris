@@ -22,7 +22,7 @@ export function WebInspector({ visible, onClose }: WebInspectorProps) {
           transition={{ type: "spring", stiffness: 400, damping: 30 }}
         >
           <div className={styles.header}>
-            <button className={styles.navBtn} onClick={() => setCurrentUrl(url)}>
+            <button type="button" className={styles.navBtn} onClick={() => setCurrentUrl(url)}>
               →
             </button>
             <input
@@ -32,10 +32,10 @@ export function WebInspector({ visible, onClose }: WebInspectorProps) {
               onKeyDown={(e) => e.key === "Enter" && setCurrentUrl(url)}
               placeholder="http://localhost:3000"
             />
-            <button className={styles.navBtn} onClick={() => setCurrentUrl(currentUrl)}>
+            <button type="button" className={styles.navBtn} onClick={() => setCurrentUrl(currentUrl)}>
               ↻
             </button>
-            <button className={styles.closeBtn} onClick={onClose}>
+            <button type="button" className={styles.closeBtn} onClick={onClose}>
               ×
             </button>
           </div>

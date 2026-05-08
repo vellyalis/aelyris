@@ -45,7 +45,7 @@
 }
 
 .bar[data-active="true"] .shell {
-  color: color-mix(in srgb, var(--accent) 80%, var(--gold));
+  color: color-mix(in srgb, var(--terminal-ui-primary, var(--accent)) 78%, var(--accent));
   background: transparent;
   box-shadow: none;
 }

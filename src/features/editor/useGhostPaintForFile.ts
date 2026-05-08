@@ -90,7 +90,7 @@ export function computeRelativePath(filePath: string | null, projectPath: string
   const base = toPosix(projectPath);
   if (!base) return file.replace(/^\/+/, "");
   if (file === base) return "";
-  const prefix = base.endsWith("/") ? base : base + "/";
+  const prefix = base.endsWith("/") ? base : `${base}/`;
   if (file.toLowerCase().startsWith(prefix.toLowerCase())) {
     return file.slice(prefix.length);
   }
@@ -116,13 +116,6 @@ export function useGhostPaintForFile(args: UseGhostPaintArgs): UseGhostPaintResu
 
   const relevantLayers = useMemo(() => layersForFile(layers, relativePath, liveMode), [layers, relativePath, liveMode]);
 
-  // Stable signature that changes when a matching layer's content does —
-  // triggers a FileDelta refetch.
-  const fetchSignature = useMemo(
-    () => relevantLayers.map((l) => `${l.id}:${l.fileCount}:${l.hunkCount}:${l.isComplete ? 1 : 0}`).join("|"),
-    [relevantLayers],
-  );
-
   const [deltasById, setDeltasById] = useState<Map<string, FileDelta>>(new Map());
 
   // Dirty-range tracking. Subscribe re-binds on filePath so any stale
@@ -132,6 +125,9 @@ export function useGhostPaintForFile(args: UseGhostPaintArgs): UseGhostPaintResu
   const [dirtyVersion, setDirtyVersion] = useState(0);
 
   useEffect(() => {
+    // `filePath` is the reset key: the subscription may be unchanged while
+    // Monaco swaps models, so dirty ranges must still restart per file.
+    void filePath;
     dirtyRangesRef.current = [];
     setDirtyVersion((v) => v + 1);
     if (!subscribeToModelChanges) return;
@@ -169,9 +165,7 @@ export function useGhostPaintForFile(args: UseGhostPaintArgs): UseGhostPaintResu
     return () => {
       cancelled = true;
     };
-    // `fetchSignature` encodes everything that should trigger a refetch.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [relativePath, fetchSignature, getFile]);
+  }, [relativePath, relevantLayers, getFile]);
 
   // Install / reinstall painters whenever deltas, dirty state, or editor change.
   const paintHandlesRef = useRef<GhostPaintHandle[]>([]);
@@ -187,6 +181,9 @@ export function useGhostPaintForFile(args: UseGhostPaintArgs): UseGhostPaintResu
   const [hunkAnchors, setHunkAnchors] = useState<HunkAnchor[]>([]);
 
   useEffect(() => {
+    // Dirty ranges live in a ref; `dirtyVersion` is the explicit repaint
+    // trigger when that ref changes.
+    void dirtyVersion;
     // Always dispose prior paint before considering a reinstall.
     for (const h of paintHandlesRef.current) h.dispose();
     paintHandlesRef.current = [];

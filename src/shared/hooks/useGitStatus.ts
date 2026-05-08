@@ -23,7 +23,7 @@ export function useGitStatus(repoPath: string) {
   const [branch, setBranch] = useState("main");
   const [isDirty, setIsDirty] = useState(false);
   const [changedFiles, setChangedFiles] = useState<ChangedFile[]>([]);
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [_refreshKey, setRefreshKey] = useState(0);
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
   const reset = useCallback(() => {
@@ -59,7 +59,7 @@ export function useGitStatus(repoPath: string) {
       clearTimeout(timeout);
       clearInterval(interval);
     };
-  }, [repoPath, refreshKey, reset]);
+  }, [repoPath, reset]);
 
   // Start file watcher and listen for fs:changed events
   useEffect(() => {

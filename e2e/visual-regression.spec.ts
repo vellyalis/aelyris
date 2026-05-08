@@ -27,21 +27,22 @@ const PROJECT_PATH = "C:/Users/owner/Aether_Terminal";
 
 test.describe("Phase 1 visual regression — chrome cluster", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/");
+    await page.goto(`/?aetherVisualQa=1&projectPath=${encodeURIComponent(PROJECT_PATH)}`, {
+      waitUntil: "domcontentloaded",
+    });
     await page.evaluate((path) => {
-      localStorage.setItem("aether:lastProject", path);
+      localStorage.setItem("aether:visualQa", "1");
+      localStorage.setItem("aether:visualQaProject", path);
+      localStorage.setItem("aether:onboarding-done", "true");
     }, PROJECT_PATH);
-    await page.reload();
-    // Allow main layout + initial paint to settle. The exact wait
-    // mirrors the existing app-launch.spec.ts harness so baselines
-    // are taken at the same lifecycle moment.
-    await page.waitForTimeout(2000);
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(page.locator(".app-main")).toBeVisible({ timeout: 10_000 });
   });
 
   test("welcome screen baseline", async ({ page }) => {
     // Reset to welcome state for this single test.
     await page.evaluate(() => localStorage.clear());
-    await page.reload();
+    await page.goto("/", { waitUntil: "domcontentloaded" });
     await expect(page.getByText("Aether Terminal")).toBeVisible({ timeout: 10_000 });
     await expect(page).toHaveScreenshot("welcome.png", {
       maxDiffPixelRatio: 0.02,
@@ -58,9 +59,9 @@ test.describe("Phase 1 visual regression — chrome cluster", () => {
   });
 
   test("menu bar baseline", async ({ page }) => {
-    const menuBar = page.getByRole("menubar");
-    await expect(menuBar).toBeVisible({ timeout: 10_000 });
-    await expect(menuBar).toHaveScreenshot("menubar.png", {
+    const menuButton = page.getByRole("button", { name: "Open application menu" });
+    await expect(menuButton).toBeVisible({ timeout: 10_000 });
+    await expect(menuButton).toHaveScreenshot("menubar.png", {
       maxDiffPixelRatio: 0.02,
     });
   });
@@ -77,12 +78,16 @@ test.describe("Phase 1 visual regression — chrome cluster", () => {
 
 test.describe("Phase 1 visual regression — left panel surfaces", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/");
+    await page.goto(`/?aetherVisualQa=1&projectPath=${encodeURIComponent(PROJECT_PATH)}`, {
+      waitUntil: "domcontentloaded",
+    });
     await page.evaluate((path) => {
-      localStorage.setItem("aether:lastProject", path);
+      localStorage.setItem("aether:visualQa", "1");
+      localStorage.setItem("aether:visualQaProject", path);
+      localStorage.setItem("aether:onboarding-done", "true");
     }, PROJECT_PATH);
-    await page.reload();
-    await page.waitForTimeout(2000);
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(page.locator(".app-main")).toBeVisible({ timeout: 10_000 });
   });
 
   test("file tree baseline", async ({ page }) => {
@@ -96,12 +101,16 @@ test.describe("Phase 1 visual regression — left panel surfaces", () => {
 
 test.describe("Phase 1 visual regression — right panel surfaces", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/");
+    await page.goto(`/?aetherVisualQa=1&projectPath=${encodeURIComponent(PROJECT_PATH)}`, {
+      waitUntil: "domcontentloaded",
+    });
     await page.evaluate((path) => {
-      localStorage.setItem("aether:lastProject", path);
+      localStorage.setItem("aether:visualQa", "1");
+      localStorage.setItem("aether:visualQaProject", path);
+      localStorage.setItem("aether:onboarding-done", "true");
     }, PROJECT_PATH);
-    await page.reload();
-    await page.waitForTimeout(2000);
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(page.locator(".app-main")).toBeVisible({ timeout: 10_000 });
   });
 
   test("agent inspector baseline", async ({ page }) => {
@@ -115,12 +124,16 @@ test.describe("Phase 1 visual regression — right panel surfaces", () => {
 
 test.describe("Phase 1 visual regression — overlays", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/");
+    await page.goto(`/?aetherVisualQa=1&projectPath=${encodeURIComponent(PROJECT_PATH)}`, {
+      waitUntil: "domcontentloaded",
+    });
     await page.evaluate((path) => {
-      localStorage.setItem("aether:lastProject", path);
+      localStorage.setItem("aether:visualQa", "1");
+      localStorage.setItem("aether:visualQaProject", path);
+      localStorage.setItem("aether:onboarding-done", "true");
     }, PROJECT_PATH);
-    await page.reload();
-    await page.waitForTimeout(2000);
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(page.locator(".app-main")).toBeVisible({ timeout: 10_000 });
   });
 
   test("command palette baseline", async ({ page }) => {

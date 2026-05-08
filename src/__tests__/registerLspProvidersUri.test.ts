@@ -29,9 +29,7 @@ describe("registerLspProviders URI", () => {
 
     // The hand-rebuilt form was the bug. Strip comments first because
     // the explanatory comment intentionally references the bad shape.
-    const stripped = src
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/\/\/.*$/gm, "");
+    const stripped = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
     expect(stripped).not.toMatch(/`file:\/\/\/\$\{model\.uri\.path/);
   });
 });

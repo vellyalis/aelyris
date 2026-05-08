@@ -9,7 +9,9 @@ pub mod history;
 mod ipc;
 pub mod logging;
 pub mod lsp;
+pub mod process;
 pub mod pty;
+pub mod pty_sidecar;
 pub mod session;
 pub mod shell_integration;
 pub mod snapshot;
@@ -58,6 +60,7 @@ pub fn run() {
         // that swaps the placeholder for a real pubkey.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(PtyManager::new())
+        .manage(pty_sidecar::PtySidecarState::new(None))
         .manage(AgentManager::new())
         .manage(InteractiveSessionManager::new())
         .manage(ipc::OutputBufferRegistry::new())
@@ -107,6 +110,24 @@ pub fn run() {
                     }
                 }
             }
+
+            let sidecar_state = app.state::<pty_sidecar::PtySidecarState>().inner().clone();
+            let sidecar_fallback_pty: PtyManager = app.state::<PtyManager>().inner().clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                let Some(client) = pty_sidecar::launch_or_connect() else {
+                    return;
+                };
+                if !sidecar_fallback_pty.list().is_empty() {
+                    log::info!(
+                        "PTY sidecar became ready after native PTY sessions existed; keeping native backend for this app session"
+                    );
+                    return;
+                }
+                match sidecar_state.set_client(client) {
+                    Ok(()) => log::info!("PTY sidecar connected in background"),
+                    Err(err) => log::warn!("PTY sidecar state update failed: {err}"),
+                }
+            });
 
             // Phase 3B-2: HistoryStore opens a second connection to the same
             // SQLite file (WAL mode is on) so semantic indexing writes don't
@@ -436,25 +457,34 @@ pub fn run() {
                 })
                 .ok();
 
-            // Phase 3D-1: spin up the external HTTP/WS PTY API on
+            // Phase 3D-1: spin up the fallback in-process HTTP/WS PTY API on
             // 127.0.0.1:9333. Failures (e.g. port already taken by another
-            // dev instance) log a warning and leave the rest of the app
-            // running normally. The API shares the Tauri PtyManager (Clone
-            // gives a handle to the same inner Arc), so sessions created via
-            // HTTP show up in the UI's list_terminals and vice versa.
-            let pty: PtyManager = app.state::<PtyManager>().inner().clone();
-            let api_state = api::ApiState::new(pty, api::AuthConfig::from_env());
-            app.manage(api_state.clone());
-            let serve_state = api_state.clone();
-            tauri::async_runtime::spawn(async move {
-                if let Err(e) = api::serve(serve_state, api::DEFAULT_PORT).await {
-                    log::warn!(
-                        "3D-1: PTY API server failed on port {}: {}",
-                        api::DEFAULT_PORT,
-                        e
-                    );
+            // app instance or the long-lived sidecar) log a warning and leave
+            // the rest of the app running normally.
+            let sidecar_enabled = app
+                .try_state::<pty_sidecar::PtySidecarState>()
+                .and_then(|state| state.client())
+                .is_some();
+            if sidecar_enabled {
+                log::info!("PTY sidecar is active; skipping in-process PTY API bind");
+            } else {
+                if let Some(sidecar_state) = app.try_state::<pty_sidecar::PtySidecarState>() {
+                    sidecar_state.lock_native_backend();
                 }
-            });
+                let pty: PtyManager = app.state::<PtyManager>().inner().clone();
+                let api_state = api::ApiState::new(pty, api::AuthConfig::from_env());
+                app.manage(api_state.clone());
+                let serve_state = api_state.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = api::serve(serve_state, api::DEFAULT_PORT).await {
+                        log::warn!(
+                            "3D-1: PTY API server failed on port {}: {}",
+                            api::DEFAULT_PORT,
+                            e
+                        );
+                    }
+                });
+            }
 
             log::info!("Setup complete in {:?}", t0.elapsed());
             Ok(())
@@ -473,6 +503,7 @@ pub fn run() {
             ipc::term_history_size,
             ipc::term_history_rows,
             ipc::term_search_history,
+            ipc::terminal_output_journal,
             ipc::term_image_data,
             ipc::term_image_metrics,
             ipc::performance_observatory_metrics,
@@ -631,10 +662,17 @@ pub fn run() {
                 if let Some(state) = app.try_state::<api::ApiState>() {
                     state.trigger_shutdown();
                 }
-                // Explicit session cleanup (used to live in `Drop for PtyManager`,
-                // but Clone made that unsafe — see manager.rs for context).
-                if let Some(pty) = app.try_state::<PtyManager>() {
+                // Explicit cleanup only applies to the fallback in-process PTY
+                // owner. When the sidecar is active, tmux-like sessions remain
+                // alive after the WebView/Tauri UI exits.
+                let sidecar_enabled = app
+                    .try_state::<pty_sidecar::PtySidecarState>()
+                    .and_then(|state| state.client())
+                    .is_some();
+                if !sidecar_enabled {
+                    if let Some(pty) = app.try_state::<PtyManager>() {
                     pty.close_all();
+                    }
                 }
             }
         });

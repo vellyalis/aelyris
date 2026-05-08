@@ -74,14 +74,10 @@ export function CollapsibleSection({
     <Collapsible.Root open={open} onOpenChange={handleOpenChange} className={styles.root}>
       <Collapsible.Trigger asChild>
         <button type="button" className={styles.header} aria-label={`Toggle ${title}`}>
-          <ChevronDown
-            size={12}
-            strokeWidth={2.25}
-            className={styles.chevron}
-            aria-hidden="true"
-          />
+          <ChevronDown size={12} strokeWidth={2.25} className={styles.chevron} aria-hidden="true" />
           <span className={styles.title}>{title}</span>
           {actions && (
+            /* biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: Header action controls stop propagation so they do not toggle the collapsible trigger. */
             <span
               className={styles.actions}
               onClick={(e) => {

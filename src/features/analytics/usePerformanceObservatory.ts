@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { useImageMetrics, type Invoke } from "../../shared/hooks/useImageMetrics";
+import { type Invoke, useImageMetrics } from "../../shared/hooks/useImageMetrics";
 import { usePtyLag } from "../../shared/hooks/usePtyLag";
 import {
-  buildPerformanceObservatorySnapshot,
-  TERMINAL_PERFORMANCE_EVENT,
   type BackendPerformanceMetrics,
+  buildPerformanceObservatorySnapshot,
   type DashboardPerformanceProbe,
   type RuntimePerformanceMetrics,
+  TERMINAL_PERFORMANCE_EVENT,
   type TerminalRenderSample,
 } from "./performanceObservatory";
 
@@ -82,7 +82,9 @@ function readDashboardProbe(payload: unknown, latencyMs: number): DashboardPerfo
   const state = typeof payload === "object" && payload !== null ? (payload as Record<string, unknown>) : {};
   const processTree = Array.isArray(state.processTree)
     ? state.processTree
-    : typeof state.health === "object" && state.health !== null && Array.isArray((state.health as Record<string, unknown>).processTree)
+    : typeof state.health === "object" &&
+        state.health !== null &&
+        Array.isArray((state.health as Record<string, unknown>).processTree)
       ? ((state.health as Record<string, unknown>).processTree as unknown[])
       : [];
   const dashboardProcess = processTree.find((row) => {
@@ -91,7 +93,10 @@ function readDashboardProbe(payload: unknown, latencyMs: number): DashboardPerfo
     const name = String(record.name ?? record.processName ?? "").toLowerCase();
     return name.includes("dashboard") || name.includes("codex-progress-server");
   });
-  const record = typeof dashboardProcess === "object" && dashboardProcess !== null ? (dashboardProcess as Record<string, unknown>) : {};
+  const record =
+    typeof dashboardProcess === "object" && dashboardProcess !== null
+      ? (dashboardProcess as Record<string, unknown>)
+      : {};
   const workingSetMb = Number(record.workingSetMb ?? record.memoryMb ?? NaN);
   const cpuPct = Number(record.cpu ?? record.cpuPct ?? NaN);
   return {
@@ -124,6 +129,7 @@ export function usePerformanceObservatory({
   const [backend, setBackend] = useState<BackendPerformanceMetrics | null>(null);
   const [eventLoopLagMs, setEventLoopLagMs] = useState<number | null>(null);
   const [rightRailRenderMs, setRightRailRenderMs] = useState<number | null>(null);
+  const rightRailMeasuredOnceRef = useRef(false);
   const [heapMemory, setHeapMemory] = useState(readHeapMemory);
   const [dashboardProbe, setDashboardProbe] = useState<DashboardPerformanceProbe>({
     updateLatencyMs: null,
@@ -220,12 +226,17 @@ export function usePerformanceObservatory({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (!rightRailMeasuredOnceRef.current) {
+      rightRailMeasuredOnceRef.current = true;
+      setRightRailRenderMs(null);
+      return;
+    }
     const startedAt = now();
     const raf = window.requestAnimationFrame(() => {
       setRightRailRenderMs(Math.max(0, now() - startedAt));
     });
     return () => window.cancelAnimationFrame(raf);
-  }, [rightRailMode, rightRailWidth, paneCount, terminalId]);
+  }, [rightRailMode, rightRailWidth]);
 
   const runtime = useMemo<RuntimePerformanceMetrics>(
     () => ({

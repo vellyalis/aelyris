@@ -11,9 +11,9 @@ describe("parseFileChange", () => {
     });
     const result = parseFileChange(line);
     expect(result).not.toBeNull();
-    expect(result!.path).toBe("/src/main.ts");
-    expect(result!.action).toBe("create");
-    expect(result!.toolName).toBe("Write");
+    expect(result?.path).toBe("/src/main.ts");
+    expect(result?.action).toBe("create");
+    expect(result?.toolName).toBe("Write");
   });
 
   it("detects Edit tool use", () => {
@@ -27,7 +27,7 @@ describe("parseFileChange", () => {
     });
     const result = parseFileChange(line);
     expect(result).not.toBeNull();
-    expect(result!.action).toBe("edit");
+    expect(result?.action).toBe("edit");
   });
 
   it("detects direct tool_use format", () => {
@@ -38,8 +38,8 @@ describe("parseFileChange", () => {
     });
     const result = parseFileChange(line);
     expect(result).not.toBeNull();
-    expect(result!.path).toBe("/new-file.ts");
-    expect(result!.action).toBe("create");
+    expect(result?.path).toBe("/new-file.ts");
+    expect(result?.action).toBe("create");
   });
 
   it("detects delete tool", () => {
@@ -50,7 +50,7 @@ describe("parseFileChange", () => {
     });
     const result = parseFileChange(line);
     expect(result).not.toBeNull();
-    expect(result!.action).toBe("delete");
+    expect(result?.action).toBe("delete");
   });
 
   it("returns null for non-file tool use", () => {
@@ -125,7 +125,7 @@ describe("FileChangeTracker", () => {
       }),
     );
     expect(result).not.toBeNull();
-    expect(result!.path).toBe("/new.ts");
+    expect(result?.path).toBe("/new.ts");
   });
 
   it("returns null from addLine when no file change", () => {

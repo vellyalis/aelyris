@@ -60,7 +60,7 @@ describe("usePromptMarks", () => {
     await waitFor(() => expect(result.current).toHaveLength(1));
     expect(capture).not.toBeNull();
 
-    act(() => capture!({ payload: mark(1, "commandEnd", 137) }));
+    act(() => capture?.({ payload: mark(1, "commandEnd", 137) }));
     expect(result.current).toHaveLength(2);
     expect(result.current[1]).toEqual(mark(1, "commandEnd", 137));
   });
@@ -78,14 +78,12 @@ describe("usePromptMarks", () => {
 
     // The backend may replay the same mark between the seed query and the
     // event subscription — hook must not double-append.
-    act(() => capture!({ payload: mark(1, "commandEnd", 0) }));
+    act(() => capture?.({ payload: mark(1, "commandEnd", 0) }));
     expect(result.current).toHaveLength(2);
   });
 
   it("resets marks when terminalId changes", async () => {
-    invokeMock
-      .mockResolvedValueOnce([mark(0, "promptStart")])
-      .mockResolvedValueOnce([]);
+    invokeMock.mockResolvedValueOnce([mark(0, "promptStart")]).mockResolvedValueOnce([]);
     listenMock.mockResolvedValue(() => {});
 
     const { result, rerender } = renderHook(({ id }) => usePromptMarks(id), {
@@ -146,7 +144,7 @@ describe("usePromptMarks", () => {
     // Wait for the listener to be armed.
     await waitFor(() => expect(capture).not.toBeNull());
     // Mark arrives during the seed window.
-    act(() => capture!({ payload: mark(7, "commandEnd", 0) }));
+    act(() => capture?.({ payload: mark(7, "commandEnd", 0) }));
     expect(result.current).toEqual([mark(7, "commandEnd", 0)]);
     // Seed resolves with two earlier marks; mergeMark must order them
     // BEFORE the already-buffered mark(7), not after.
@@ -168,7 +166,7 @@ describe("usePromptMarks", () => {
     // already been seeded — happens when the listener queue and the seed
     // query interleave in unexpected order. The correct list must keep
     // sequence ascending so binary search by historySize is valid.
-    act(() => capture!({ payload: mark(1, "commandStart") }));
+    act(() => capture?.({ payload: mark(1, "commandStart") }));
     expect(result.current.map((m) => m.sequence)).toEqual([0, 1, 2]);
   });
 
@@ -181,7 +179,7 @@ describe("usePromptMarks", () => {
     });
     const { result } = renderHook(() => usePromptMarks("t-1"));
     await waitFor(() => expect(result.current).toHaveLength(1));
-    act(() => capture!({ payload: mark(0, "promptStart") }));
+    act(() => capture?.({ payload: mark(0, "promptStart") }));
     expect(result.current.map((m) => m.sequence)).toEqual([0, 5]);
   });
 });

@@ -17,7 +17,9 @@ export interface LinkSpan {
   endCol: number;
 }
 
-const URL_REGEX = /\b(?:https?|ftp|file):\/\/[^\s<>"`\u0000-\u001f]+/g;
+const URL_REGEX = /\b(?:https?|ftp|file):\/\/[^\s<>"`]+/g;
+const CONTROL_CHAR_RANGE = "\\u0000-\\u001f";
+const CONTROL_CHAR_REGEX = new RegExp(`[${CONTROL_CHAR_RANGE}]`, "u");
 
 const TRAILING_PUNCT = /[.,;:!?)\]}>'"]+$/u;
 
@@ -38,9 +40,13 @@ export function scanLinks(snapshot: GridSnapshot | null): LinkSpan[] {
   for (const line of lines) {
     URL_REGEX.lastIndex = 0;
     let match: RegExpExecArray | null;
-    while ((match = URL_REGEX.exec(line.text))) {
+    while (true) {
+      match = URL_REGEX.exec(line.text);
+      if (!match) break;
       const rawStart = match.index;
       let url = match[0];
+      const controlOffset = url.search(CONTROL_CHAR_REGEX);
+      if (controlOffset >= 0) url = url.slice(0, controlOffset);
       const trimmed = url.replace(TRAILING_PUNCT, "");
       if (!trimmed) continue;
       url = trimmed;

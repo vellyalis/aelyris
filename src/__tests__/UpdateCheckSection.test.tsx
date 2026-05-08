@@ -30,9 +30,7 @@ describe("UpdateCheckSection", () => {
       fireEvent.click(btn);
     });
 
-    await waitFor(() =>
-      expect(container.textContent).toContain("Update available: 0.2.3"),
-    );
+    await waitFor(() => expect(container.textContent).toContain("Update available: 0.2.3"));
     expect(container.textContent).toContain("current 0.2.2");
   });
 
@@ -47,9 +45,7 @@ describe("UpdateCheckSection", () => {
       fireEvent.click(btn);
     });
 
-    await waitFor(() =>
-      expect(container.textContent).toContain("You are on the latest version (0.2.3)"),
-    );
+    await waitFor(() => expect(container.textContent).toContain("You are on the latest version (0.2.3)"));
   });
 
   it("surfaces error messages verbatim so misconfiguration is visible here", async () => {
@@ -63,8 +59,6 @@ describe("UpdateCheckSection", () => {
       fireEvent.click(btn);
     });
 
-    await waitFor(() =>
-      expect(container.textContent).toContain("Check failed: could not fetch latest.json"),
-    );
+    await waitFor(() => expect(container.textContent).toContain("Check failed: could not fetch latest.json"));
   });
 });

@@ -39,7 +39,6 @@ export function DiffCommentInput({
       <div className={styles.commentBox}>
         <span className={styles.commentLabel}>Line {lineNumber} — feedback for agent:</span>
         <textarea
-          autoFocus
           className={styles.commentInput}
           placeholder="Describe what to fix..."
           value={commentText}
@@ -51,10 +50,10 @@ export function DiffCommentInput({
           }}
         />
         <div className={styles.commentActions}>
-          <button className={styles.commentSend} onClick={submit}>
+          <button type="button" className={styles.commentSend} onClick={submit}>
             Send to Agent (Ctrl+Enter)
           </button>
-          <button className={styles.commentCancel} onClick={onCancel}>
+          <button type="button" className={styles.commentCancel} onClick={onCancel}>
             Cancel
           </button>
         </div>

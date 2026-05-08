@@ -80,6 +80,12 @@ impl SessionMonitor {
     }
 }
 
+impl Default for SessionMonitor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 fn dirs_home() -> Option<PathBuf> {
     std::env::var("USERPROFILE")
         .or_else(|_| std::env::var("HOME"))

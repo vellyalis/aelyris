@@ -49,11 +49,7 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select
         className={`${styles.trigger} ${triggerClassName ?? ""}`.trim()}
       >
         <RadixSelect.Value placeholder={placeholder ?? "Select…"}>
-          {selected ? (
-            <ValueLabel option={selected} />
-          ) : (
-            placeholder ?? "Select…"
-          )}
+          {selected ? <ValueLabel option={selected} /> : (placeholder ?? "Select…")}
         </RadixSelect.Value>
         <RadixSelect.Icon className={styles.icon}>
           <ChevronDown size={14} strokeWidth={1.75} aria-hidden="true" />
@@ -61,11 +57,7 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select
       </RadixSelect.Trigger>
 
       <RadixSelect.Portal>
-        <RadixSelect.Content
-          className={styles.content}
-          position="popper"
-          sideOffset={4}
-        >
+        <RadixSelect.Content className={styles.content} position="popper" sideOffset={4}>
           <RadixSelect.Viewport className={styles.viewport}>
             {options.map((opt) => (
               <RadixSelect.Item key={opt.value} value={opt.value} className={styles.item}>

@@ -102,9 +102,9 @@ export function OnboardingOverlay() {
                 transition={{ type: "spring", stiffness: 350, damping: 25 }}
               >
                 <div className={styles.stepIndicator}>
-                  {STEPS.map((_, i) => (
+                  {STEPS.map((item, i) => (
                     <div
-                      key={i}
+                      key={item.title}
                       className={`${styles.dot} ${i === step ? styles.dotActive : ""} ${i < step ? styles.dotDone : ""}`}
                     />
                   ))}
@@ -114,11 +114,11 @@ export function OnboardingOverlay() {
                 {current.shortcut && <kbd className={styles.shortcut}>{current.shortcut}</kbd>}
                 <div className={styles.actions}>
                   {!isLast && (
-                    <button className={styles.skipBtn} onClick={markDoneAndClose}>
+                    <button type="button" className={styles.skipBtn} onClick={markDoneAndClose}>
                       Skip tour
                     </button>
                   )}
-                  <button className={styles.nextBtn} onClick={handleNext} autoFocus>
+                  <button type="button" className={styles.nextBtn} onClick={handleNext}>
                     {isLast ? "Get started" : "Next"}
                   </button>
                 </div>

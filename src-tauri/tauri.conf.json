@@ -27,7 +27,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:* ws://localhost:* https://localhost:*; img-src 'self' data: blob:; font-src 'self' data:; worker-src 'self' blob:"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:* ws://localhost:* https://localhost:*; img-src 'self' data: blob:; font-src 'self' data:; worker-src 'self' blob:"
     }
   },
   "bundle": {
@@ -50,7 +50,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://updates.aether.invalid/{{target}}/{{current_version}}"
+        "https://updates.aether-terminal.app/{{target}}/{{current_version}}"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI1MTE0REZDREY1MDAzQ0QKUldUTkExRGYvRTBSdGJOc3BmMDkvcVZnallISkE4QTZUOEc5TE9RUXVJRWgxNVVoU1VwYi8zelYK",
       "windows": {

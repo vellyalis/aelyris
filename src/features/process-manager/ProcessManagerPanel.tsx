@@ -96,6 +96,7 @@ export function ProcessManagerPanel({
     processes.find(
       (process) =>
         onRestartPane &&
+        process.terminalId &&
         (endedPaneKeys.has(process.key) ||
           failedPaneMessages.has(process.key) ||
           process.lifecycle === "exited" ||
@@ -723,7 +724,7 @@ function AttachTargetSelect({
 
 function canRestartProcess(process: ProcessView, state: ProcessState): boolean {
   if (process.lifecycle === "orphaned") return false;
-  return Boolean((process.terminalId || state === "ended" || state === "failed") && state !== "restarting");
+  return Boolean(process.terminalId && state !== "restarting");
 }
 
 function countsAsLiveProcess(process: ProcessView, state: ProcessState): boolean {

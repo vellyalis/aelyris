@@ -6,6 +6,11 @@ beforeEach(() => {
   localStorage.clear();
 });
 
+function requiredElement<T extends Element>(element: T | null, label: string): T {
+  if (!element) throw new Error(`Expected ${label} to exist`);
+  return element;
+}
+
 describe("HelmPanel", () => {
   it("renders with no tasks", () => {
     const { container } = render(<HelmPanel />);
@@ -15,9 +20,8 @@ describe("HelmPanel", () => {
 
   it("shows input when + clicked", () => {
     const { container } = render(<HelmPanel />);
-    const addBtn = container.querySelector('button[aria-label="Add task"]');
-    expect(addBtn).not.toBeNull();
-    fireEvent.click(addBtn!);
+    const addBtn = requiredElement(container.querySelector('button[aria-label="Add task"]'), "add task button");
+    fireEvent.click(addBtn);
     const input = container.querySelector("input");
     expect(input).not.toBeNull();
     expect(input?.getAttribute("placeholder")).toBe("Add task...");
@@ -26,9 +30,9 @@ describe("HelmPanel", () => {
   it("adds task on Enter", () => {
     const { container } = render(<HelmPanel />);
     // Click +
-    fireEvent.click(container.querySelector('button[aria-label="Add task"]')!);
+    fireEvent.click(requiredElement(container.querySelector('button[aria-label="Add task"]'), "add task button"));
     // Type task name
-    const input = container.querySelector("input")!;
+    const input = requiredElement(container.querySelector("input"), "task input");
     fireEvent.change(input, { target: { value: "My task" } });
     fireEvent.keyDown(input, { key: "Enter" });
     // Task should appear
@@ -58,17 +62,19 @@ describe("HelmPanel", () => {
     const { container } = render(<HelmPanel />);
     expect(container.textContent).toContain("Delete me");
     // Lucide X replaced the raw "×" glyph — locate by aria-label instead.
-    const deleteBtn = container.querySelector('button[aria-label^="Delete task"]') as HTMLButtonElement | null;
-    expect(deleteBtn).not.toBeNull();
-    fireEvent.click(deleteBtn!);
+    const deleteBtn = requiredElement(
+      container.querySelector('button[aria-label^="Delete task"]'),
+      "delete task button",
+    );
+    fireEvent.click(deleteBtn);
     expect(container.textContent).not.toContain("Delete me");
     expect(container.textContent).toContain("No tasks");
   });
 
   it("persists tasks to localStorage", () => {
     const { container } = render(<HelmPanel />);
-    fireEvent.click(container.querySelector("button")!);
-    const input = container.querySelector("input")!;
+    fireEvent.click(requiredElement(container.querySelector("button"), "add task button"));
+    const input = requiredElement(container.querySelector("input"), "task input");
     fireEvent.change(input, { target: { value: "Saved task" } });
     fireEvent.keyDown(input, { key: "Enter" });
     // Check localStorage
@@ -80,8 +86,8 @@ describe("HelmPanel", () => {
 
   it("cancels adding on Escape", () => {
     const { container } = render(<HelmPanel />);
-    fireEvent.click(container.querySelector("button")!);
-    const input = container.querySelector("input")!;
+    fireEvent.click(requiredElement(container.querySelector("button"), "add task button"));
+    const input = requiredElement(container.querySelector("input"), "task input");
     fireEvent.keyDown(input, { key: "Escape" });
     // Input should be gone
     expect(container.querySelector("input")).toBeNull();

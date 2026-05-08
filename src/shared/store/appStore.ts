@@ -1,17 +1,21 @@
 import { create } from "zustand";
 import {
+  formatFallbackError,
+  reportFallback,
+} from "../lib/fallbackTelemetry";
+import {
   buildWorkspaceProfile,
   createWorkspaceProfileState,
   parseWorkspaceProfileState,
+  type ResolvedWorkspaceProfile,
   upsertThreadRunState,
   upsertWorkspaceProfileOverride,
-  type ResolvedWorkspaceProfile,
   type WorkspaceProfileOverride,
   type WorkspaceProfileState,
   type WorkspaceThreadRunState,
 } from "../lib/workspaceProfile";
 import type { AccentKey, AccentOverrides } from "../themes/catppuccin";
-import { DEFAULT_MOOD_PRESET, normalizeMoodPreset, type MoodPresetId } from "../themes/moods";
+import { DEFAULT_MOOD_PRESET, type MoodPresetId, normalizeMoodPreset } from "../themes/moods";
 import type { KanbanColumnId, KanbanTask } from "../types/kanban";
 
 export type SidebarSection = "files" | "tasks" | "agents" | "tools";
@@ -19,6 +23,18 @@ export type SidebarSection = "files" | "tasks" | "agents" | "tools";
 const THEME_OVERRIDES_KEY = "aether:themeOverrides";
 const MOOD_PRESET_KEY = "aether:moodPreset";
 const WORKSPACE_PROFILES_KEY = "aether:workspaceProfiles";
+
+function reportStorageFailure(operation: string, err: unknown, severity: "info" | "warning" = "warning"): void {
+  reportFallback(
+    {
+      source: "app-store",
+      operation,
+      severity,
+      message: formatFallbackError(err),
+    },
+    { throttleMs: 10_000 },
+  );
+}
 
 function loadThemeOverrides(): Record<string, AccentOverrides> {
   try {
@@ -29,7 +45,8 @@ function loadThemeOverrides(): Record<string, AccentOverrides> {
       return parsed as Record<string, AccentOverrides>;
     }
     return {};
-  } catch {
+  } catch (err) {
+    reportStorageFailure("load_theme_overrides", err);
     return {};
   }
 }
@@ -37,8 +54,8 @@ function loadThemeOverrides(): Record<string, AccentOverrides> {
 function persistThemeOverrides(state: Record<string, AccentOverrides>): void {
   try {
     localStorage.setItem(THEME_OVERRIDES_KEY, JSON.stringify(state));
-  } catch {
-    /* ignore storage errors (private mode, quota) */
+  } catch (err) {
+    reportStorageFailure("persist_theme_overrides", err);
   }
 }
 
@@ -166,7 +183,8 @@ function readStorageJson(key: string, fallback: unknown): unknown {
     const raw = localStorage.getItem(key);
     if (!raw) return fallback;
     return JSON.parse(raw);
-  } catch {
+  } catch (err) {
+    reportStorageFailure(`read_json:${key}`, err, "info");
     return fallback;
   }
 }
@@ -192,12 +210,16 @@ function loadKanbanTasks(): KanbanTask[] {
   const parsed = readStorageJson("aether:kanban", []);
   if (!Array.isArray(parsed)) return [];
   return parsed
-    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item))
+    .filter(
+      (item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item),
+    )
     .map((item) => {
       const id = typeof item.id === "string" && item.id.trim() ? item.id : null;
       const title = typeof item.title === "string" && item.title.trim() ? item.title : null;
       const column = KANBAN_COLUMN_IDS.has(item.column as KanbanColumnId) ? (item.column as KanbanColumnId) : "todo";
-      const priority = TASK_PRIORITIES.has(item.priority as KanbanTask["priority"]) ? (item.priority as KanbanTask["priority"]) : "medium";
+      const priority = TASK_PRIORITIES.has(item.priority as KanbanTask["priority"])
+        ? (item.priority as KanbanTask["priority"])
+        : "medium";
       if (!id || !title) return null;
       const task: KanbanTask = {
         id,
@@ -212,7 +234,8 @@ function loadKanbanTasks(): KanbanTask[] {
       if (typeof item.branch === "string") task.branch = item.branch;
       if (typeof item.worktreePath === "string") task.worktreePath = item.worktreePath;
       if (typeof item.terminalTabId === "string") task.terminalTabId = item.terminalTabId;
-      if (Array.isArray(item.labels)) task.labels = item.labels.filter((label): label is string => typeof label === "string").slice(0, 20);
+      if (Array.isArray(item.labels))
+        task.labels = item.labels.filter((label): label is string => typeof label === "string").slice(0, 20);
       return task;
     })
     .filter((task): task is KanbanTask => task != null);
@@ -237,17 +260,22 @@ function replacePathPrefix(path: string, oldPath: string, newPath: string): stri
 function persistEditorFiles(openFiles: string[], activeFile: string | null): void {
   try {
     localStorage.setItem("aether:openFiles", JSON.stringify(openFiles));
-  } catch {}
+  } catch (err) {
+    reportStorageFailure("persist_open_files", err);
+  }
   try {
     if (activeFile) localStorage.setItem("aether:activeFile", activeFile);
     else localStorage.removeItem("aether:activeFile");
-  } catch {}
+  } catch (err) {
+    reportStorageFailure("persist_active_file", err);
+  }
 }
 
 function loadWorkspaceProfiles(): WorkspaceProfileState {
   try {
     return parseWorkspaceProfileState(localStorage.getItem(WORKSPACE_PROFILES_KEY));
-  } catch {
+  } catch (err) {
+    reportStorageFailure("load_workspace_profiles", err);
     return createWorkspaceProfileState();
   }
 }
@@ -255,8 +283,8 @@ function loadWorkspaceProfiles(): WorkspaceProfileState {
 function persistWorkspaceProfiles(state: WorkspaceProfileState): void {
   try {
     localStorage.setItem(WORKSPACE_PROFILES_KEY, JSON.stringify(state));
-  } catch {
-    /* ignore storage errors */
+  } catch (err) {
+    reportStorageFailure("persist_workspace_profiles", err);
   }
 }
 
@@ -273,7 +301,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ themeId: id });
     try {
       localStorage.setItem("aether:theme", id);
-    } catch {}
+    } catch (err) {
+      reportStorageFailure("persist_theme", err);
+    }
   },
   moodPresetId: (() => {
     try {
@@ -287,7 +317,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ moodPresetId: next });
     try {
       localStorage.setItem(MOOD_PRESET_KEY, next);
-    } catch {}
+    } catch (err) {
+      reportStorageFailure("persist_mood_preset", err);
+    }
   },
 
   themeOverrides: loadThemeOverrides(),
@@ -331,7 +363,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       if (path) localStorage.setItem("aether:lastProject", path);
       else localStorage.removeItem("aether:lastProject");
-    } catch {}
+    } catch (err) {
+      reportStorageFailure("persist_last_project", err);
+    }
   },
 
   // Sidebar
@@ -349,8 +383,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       const next = toggleOrSet(v, s.sidebarCollapsed);
       try {
         localStorage.setItem("aether:sidebarCollapsed", next ? "1" : "0");
-      } catch {
-        /* ignore */
+      } catch (err) {
+        reportStorageFailure("persist_sidebar_collapsed", err, "info");
       }
       return { sidebarCollapsed: next };
     }),

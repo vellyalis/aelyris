@@ -1,17 +1,6 @@
-import { useEffect, useMemo } from "react";
-import {
-  type AccentOverrides,
-  applyAccentOverrides,
-  getPalette,
-  isLightTheme,
-  themeToCSS,
-} from "../themes/catppuccin";
-import {
-  DEFAULT_MOOD_PRESET,
-  moodPresetToCSS,
-  normalizeMoodPreset,
-  type MoodPresetId,
-} from "../themes/moods";
+import { useEffect } from "react";
+import { type AccentOverrides, applyAccentOverrides, getPalette, isLightTheme, themeToCSS } from "../themes/catppuccin";
+import { DEFAULT_MOOD_PRESET, type MoodPresetId, moodPresetToCSS, normalizeMoodPreset } from "../themes/moods";
 
 const STORAGE_KEY = "aether:theme";
 const MOOD_STORAGE_KEY = "aether:moodPreset";
@@ -42,16 +31,11 @@ export function useThemeApplier(
   overrides?: AccentOverrides,
   moodPresetId: MoodPresetId = DEFAULT_MOOD_PRESET,
 ) {
-  // Stabilise the override identity across renders so unchanged maps don't
-  // re-trigger the effect (the editor calls setState on each keystroke).
-  const overrideKey = overrides ? JSON.stringify(overrides) : "";
-  const stableOverrides = useMemo(() => overrides, [overrideKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const mood = normalizeMoodPreset(moodPresetId);
-  const themeKey = `${themeId}:${mood}`;
 
   useEffect(() => {
     const base = getPalette(themeId);
-    const palette = applyAccentOverrides(base, stableOverrides);
+    const palette = applyAccentOverrides(base, overrides);
     const light = isLightTheme(themeId);
     const vars = {
       ...themeToCSS(palette, light),
@@ -74,7 +58,7 @@ export function useThemeApplier(
       localStorage.setItem(STORAGE_KEY, themeId);
       localStorage.setItem(MOOD_STORAGE_KEY, mood);
     } catch {}
-  }, [themeKey, stableOverrides]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [themeId, overrides, mood]);
 }
 
 export { loadMoodPresetId, loadThemeId };

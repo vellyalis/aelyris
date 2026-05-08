@@ -48,6 +48,19 @@ export interface PaneRoleCycleRequest {
   sequence: number;
 }
 
+export type PaneLayoutCommand =
+  | "equalize"
+  | "even-horizontal"
+  | "even-vertical"
+  | "tiled"
+  | "move-next"
+  | "move-previous";
+
+export interface PaneLayoutRequest {
+  command: PaneLayoutCommand;
+  sequence: number;
+}
+
 interface PaneTreeContainerProps {
   shell: ShellType;
   cwd?: string;
@@ -76,6 +89,8 @@ interface PaneTreeContainerProps {
   renamePaneRequest?: PaneRenameRequest | null;
   /** Imperative role-cycle bridge used by tmux-style management surfaces. */
   cyclePaneRoleRequest?: PaneRoleCycleRequest | null;
+  /** Imperative layout bridge used by tmux-style layout and swap commands. */
+  layoutRequest?: PaneLayoutRequest | null;
   /** localStorage key used to restore this tab's pane topology and labels. */
   layoutStorageKey?: string;
   /** Used only for durable backend layout metadata; empty is accepted. */
@@ -112,6 +127,7 @@ export function PaneTreeContainer({
   attachPaneRequest,
   renamePaneRequest,
   cyclePaneRoleRequest,
+  layoutRequest,
   layoutStorageKey,
   projectPath,
 }: PaneTreeContainerProps) {
@@ -137,6 +153,9 @@ export function PaneTreeContainer({
     close,
     closeAllPtys,
     resize,
+    equalize,
+    rebalance,
+    moveActive,
     toggleMaximize,
     renamePane,
     setPaneRole,
@@ -161,6 +180,13 @@ export function PaneTreeContainer({
       }
     });
   }, []);
+  const flushPaneTreeSnapshot = useCallback(
+    (pending: PendingBackendPaneTreeSnapshot, sequence: number) => {
+      savePaneTreeSnapshot(pending.storageKey, pending.snapshot);
+      flushBackendSnapshot(pending, sequence);
+    },
+    [flushBackendSnapshot],
+  );
 
   useEffect(() => {
     if (!layoutStorageKey || hasFastSnapshot) return;
@@ -326,15 +352,14 @@ export function PaneTreeContainer({
     const sequence = backendSaveSequenceRef.current + 1;
     backendSaveSequenceRef.current = sequence;
     pendingBackendSnapshotRef.current = pending;
-    savePaneTreeSnapshot(layoutStorageKey, snapshot);
     const timer = window.setTimeout(() => {
-      flushBackendSnapshot(pending, sequence);
-    }, 250);
+      flushPaneTreeSnapshot(pending, sequence);
+    }, 180);
     return () => window.clearTimeout(timer);
   }, [
     activePaneId,
     cwd,
-    flushBackendSnapshot,
+    flushPaneTreeSnapshot,
     layoutHydrated,
     layoutStorageKey,
     paneLifecycleStates,
@@ -347,9 +372,9 @@ export function PaneTreeContainer({
     return () => {
       const pending = pendingBackendSnapshotRef.current;
       if (!pending) return;
-      flushBackendSnapshot(pending, backendSaveSequenceRef.current);
+      flushPaneTreeSnapshot(pending, backendSaveSequenceRef.current);
     };
-  }, [flushBackendSnapshot]);
+  }, [flushPaneTreeSnapshot]);
 
   // Clean up all PTYs when this tab/container is unmounted
   useEffect(() => {
@@ -399,6 +424,7 @@ export function PaneTreeContainer({
   const handledAttachSequenceRef = useRef<number | null>(null);
   const handledRenameSequenceRef = useRef<number | null>(null);
   const handledRoleCycleSequenceRef = useRef<number | null>(null);
+  const handledLayoutSequenceRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!focusPaneRequest) return;
@@ -484,6 +510,32 @@ export function PaneTreeContainer({
     cyclePaneRole(cyclePaneRoleRequest.paneId);
   }, [cyclePaneRole, cyclePaneRoleRequest, tree]);
 
+  useEffect(() => {
+    if (!layoutRequest) return;
+    if (handledLayoutSequenceRef.current === layoutRequest.sequence) return;
+    handledLayoutSequenceRef.current = layoutRequest.sequence;
+    switch (layoutRequest.command) {
+      case "equalize":
+        equalize();
+        break;
+      case "even-horizontal":
+        rebalance("horizontal");
+        break;
+      case "even-vertical":
+        rebalance("vertical");
+        break;
+      case "tiled":
+        rebalance("tiled");
+        break;
+      case "move-next":
+        moveActive(1);
+        break;
+      case "move-previous":
+        moveActive(-1);
+        break;
+    }
+  }, [equalize, layoutRequest, moveActive, rebalance]);
+
   const backendPaneRouting = useMemo(() => collectBackendPaneRouting(tree), [tree]);
   const renamedBackendNames = useRef(new Map<string, string>());
   const syncedBackendRoles = useRef(new Map<string, string>());
@@ -532,10 +584,33 @@ export function PaneTreeContainer({
       activePaneId={activePaneId}
       maximizedPaneId={maximizedPaneId}
       terminalIds={terminalIds}
+      paneLifecycleStates={paneLifecycleStates}
       onFocusPane={setActivePaneId}
       onSplit={split}
       onClose={close}
       onResize={resize}
+      onLayoutCommand={(command) => {
+        switch (command) {
+          case "equalize":
+            equalize();
+            break;
+          case "even-horizontal":
+            rebalance("horizontal");
+            break;
+          case "even-vertical":
+            rebalance("vertical");
+            break;
+          case "tiled":
+            rebalance("tiled");
+            break;
+          case "move-next":
+            moveActive(1);
+            break;
+          case "move-previous":
+            moveActive(-1);
+            break;
+        }
+      }}
       onToggleMaximize={toggleMaximize}
       onRenamePane={renamePane}
       onCyclePaneRole={cyclePaneRole}

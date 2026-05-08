@@ -61,7 +61,7 @@ export function SessionAnalytics({ session, onClose }: SessionAnalyticsProps) {
           <div className={styles.header}>
             <Dialog.Title className={styles.title}>Session Analytics</Dialog.Title>
             <Dialog.Close asChild>
-              <button className={styles.closeBtn} aria-label="Close analytics">
+              <button type="button" className={styles.closeBtn} aria-label="Close analytics">
                 <X size={12} strokeWidth={1.75} aria-hidden="true" />
               </button>
             </Dialog.Close>

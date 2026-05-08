@@ -108,7 +108,7 @@ describe("design token usage", () => {
     const viewportRule = source.match(/\.terminalViewport\s*{[\s\S]*?}/)?.[0] ?? "";
 
     expect(viewportRule).not.toContain("var(--terminal-canvas-bg)");
-    expect(viewportRule).toContain("rgba(0, 4, 10, 0.045)");
+    expect(viewportRule).toContain("var(--terminal-well-bg)");
   });
 
   it("uses the terminal shell as the single textured acrylic layer", () => {
@@ -311,7 +311,7 @@ describe("design token usage", () => {
     expect(rightModeSwitchRule).toContain("grid-auto-rows: 26px");
     expect(rightModeTabRule).toContain("display: grid");
     expect(rightModeTabRule).toContain("grid-template-columns: 12px minmax(0, 1fr)");
-    expect(rightModeTabRule).toContain("padding: 0 18px 0 6px");
+    expect(rightModeTabRule).toContain("padding: 0 8px 0 6px");
     expect(rightModeTabRule).toContain("overflow: hidden");
     expect(rightModeTabRule).toContain("contain: layout paint");
     expect(rightModeFocusRule).toContain("outline-offset: -2px !important");
@@ -319,6 +319,9 @@ describe("design token usage", () => {
     expect(rightModeBadgeRule).toContain("right: 4px");
     expect(rightModeBadgeRule).toContain("max-width: 28px");
     expect(rightModeBadgeRule).toContain("text-overflow: ellipsis");
+    expect(global).toContain('.right-panel-mode-tab[data-has-badge="true"]');
+    expect(global).toContain(".right-panel-mode-tab svg");
+    expect(global).toContain("display: inline");
     expect(advisorRule).toContain("height: 40px");
     expect(advisorRule).toContain("min-height: 40px");
     expect(advisorFocusRule).toContain("outline-offset: -2px !important");
@@ -786,8 +789,8 @@ describe("design token usage", () => {
     expect(changedRules).not.toContain("var(--status-edit)");
     expect(changedRules).not.toContain("var(--status-idle)");
     expect(changedRules).not.toContain("var(--ctp-red)");
-    expect(statusRule).toContain("background: rgba(2, 8, 16, 0.44)");
-    expect(statusRule).toContain("blur(1px)");
+    expect(statusRule).toContain("background: var(--statusbar-bg)");
+    expect(statusRule).toContain("var(--statusbar-filter)");
     expect(statusbar).not.toContain(".separator");
     expect(statusbar).not.toContain(".shellBtn");
     expect(statusbar).not.toContain(".picker");
@@ -837,10 +840,10 @@ describe("design token usage", () => {
     const collapsible =
       Object.entries(cssSources).find(([file]) => file.includes("shared/ui/CollapsibleSection.module.css"))?.[1] ?? "";
 
-    expect(toolkit).toContain("rgba(0, 6, 14, 0.3)");
-    expect(toolkit).toContain("rgba(142, 226, 241, 0.028)");
-    expect(toolkit).not.toContain("rgba(245, 199, 227");
-    expect(toolkit).not.toContain("rgba(255, 255, 255, 0.06)");
+    expect(toolkit).toContain("var(--toolkit-grid-bg)");
+    expect(toolkit).toContain("var(--toolkit-tile-bg)");
+    expect(toolkit).toContain("var(--toolkit-icon-bg)");
+    expect(toolkit).not.toContain("rgba(0, 6, 14, 0.3)");
     expect(logs).toContain("rgba(5, 16, 28, 0.34)");
     expect(logs).not.toContain("var(--white-3)");
     expect(logs).not.toContain("var(--white-6)");
@@ -864,18 +867,18 @@ describe("design token usage", () => {
     expect(bentoCardRule).toContain("backdrop-filter: var(--material-panel-filter)");
   });
 
-  it("keeps the settings dialog deep and clear instead of a solid black slab", () => {
+  it("keeps the settings dialog theme-aware instead of a solid black slab", () => {
     const settings =
       Object.entries(cssSources).find(([file]) => file.includes("features/settings/Settings.module.css"))?.[1] ?? "";
     const overlayRule = settings.match(/\.overlay\s*{[\s\S]*?}/)?.[0] ?? "";
     const panelRule = settings.match(/\.panel\s*{[\s\S]*?}/)?.[0] ?? "";
 
-    expect(overlayRule).toContain("blur(3px)");
-    expect(panelRule).toContain("rgba(4, 13, 23, 0.76)");
-    expect(panelRule).toContain("blur(1px)");
-    expect(panelRule).toContain("rgba(0, 126, 190, 0.054)");
-    expect(panelRule).not.toContain("var(--dialog-surface)");
-    expect(panelRule).not.toContain("var(--shadow-dialog)");
+    expect(overlayRule).toContain("var(--scrim-standard-bg)");
+    expect(overlayRule).toContain("var(--scrim-standard-blur)");
+    expect(panelRule).toContain("var(--dialog-surface)");
+    expect(panelRule).toContain("var(--dialog-surface-blur)");
+    expect(panelRule).toContain("var(--shadow-dialog)");
+    expect(panelRule).not.toContain("rgba(4, 13, 23, 0.76)");
   });
 
   it("keeps shared chrome from drifting into prismatic AI styling", () => {

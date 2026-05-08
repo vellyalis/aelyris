@@ -1,5 +1,6 @@
 import { type Browser, chromium, expect, type Page, test } from "@playwright/test";
-import { resolve as resolvePath } from "node:path";
+import { dirname, resolve as resolvePath } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /**
  * Chunked OSC 1338 inline-image protocol — Sprint 3 E2E coverage.
@@ -32,7 +33,7 @@ const FIXTURE_TINY = "e2e/fixtures/inline-image-1x1.png";
 const FIXTURE_LARGE = "e2e/fixtures/inline-image-32x32.png";
 const EMITTER_PS1 = "scripts/aether-imgcat.ps1";
 
-const REPO_ROOT = resolvePath(__dirname, "..");
+const REPO_ROOT = resolvePath(dirname(fileURLToPath(import.meta.url)), "..");
 
 interface ImageRef {
   id: number;

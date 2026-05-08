@@ -4,7 +4,7 @@
 //! `reqwest`. The session-creating tests require Windows (they spawn `cmd`
 //! via ConPTY) and are gated on `target_os`.
 
-use aether_terminal_lib::api::{self, ApiState, AuthConfig, MAX_PTY_SESSIONS};
+use aether_terminal_lib::api::{self, ApiState, AuthConfig};
 use aether_terminal_lib::pty::PtyManager;
 use reqwest::header::AUTHORIZATION;
 use reqwest::StatusCode;
@@ -91,7 +91,7 @@ async fn right_bearer_allows_list() {
 
 #[cfg(target_os = "windows")]
 #[tokio::test]
-async fn ws_query_string_token_fallback() {
+async fn ws_requires_stream_ticket_and_rejects_query_token() {
     use tokio_tungstenite::tungstenite::Message;
 
     let (base, state, join) = spawn_server(AuthConfig::with_token("ws-secret")).await;
@@ -113,21 +113,42 @@ async fn ws_query_string_token_fallback() {
     // Build ws:// URL from the http:// base.
     let ws_base = base.replace("http://", "ws://");
 
-    // Without token: handshake must fail.
+    // Without ticket: handshake must fail.
     let bad_url = format!("{}/sessions/{}/stream", ws_base, id);
     let bad = tokio_tungstenite::connect_async(&bad_url).await;
-    assert!(bad.is_err(), "WS without token should be rejected");
+    assert!(bad.is_err(), "WS without ticket should be rejected");
 
-    // With wrong token: also fail.
+    // Long-lived tokens in query strings must be rejected even when correct.
     let wrong_url = format!("{}/sessions/{}/stream?token=wrong", ws_base, id);
     let wrong = tokio_tungstenite::connect_async(&wrong_url).await;
-    assert!(wrong.is_err(), "WS with wrong token should be rejected");
+    assert!(
+        wrong.is_err(),
+        "WS with wrong query token should be rejected"
+    );
 
-    // With right token: handshake succeeds.
-    let good_url = format!("{}/sessions/{}/stream?token=ws-secret", ws_base, id);
+    let leaked_url = format!("{}/sessions/{}/stream?token=ws-secret", ws_base, id);
+    let leaked = tokio_tungstenite::connect_async(&leaked_url).await;
+    assert!(
+        leaked.is_err(),
+        "WS with correct query token should be rejected"
+    );
+
+    let ticket: String = c
+        .post(format!("{}/sessions/{}/stream-ticket", base, id))
+        .header(AUTHORIZATION, "Bearer ws-secret")
+        .send()
+        .await
+        .unwrap()
+        .json::<serde_json::Value>()
+        .await
+        .unwrap()["ticket"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let good_url = format!("{}/sessions/{}/stream?ticket={}", ws_base, id, ticket);
     let (mut ws, _resp) = tokio_tungstenite::connect_async(&good_url)
         .await
-        .expect("WS should connect with valid token");
+        .expect("WS should connect with valid stream ticket");
 
     // Exchange a message to confirm the socket is actually usable.
     use futures_util::SinkExt;

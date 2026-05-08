@@ -78,10 +78,10 @@ export function PromptDialog() {
             }}
           />
           <div className={styles.actions}>
-            <button className={styles.cancelBtn} onClick={() => close(null)}>
+            <button type="button" className={styles.cancelBtn} onClick={() => close(null)}>
               Cancel
             </button>
-            <button className={styles.submitBtn} onClick={handleSubmit} disabled={!value.trim()}>
+            <button type="button" className={styles.submitBtn} onClick={handleSubmit} disabled={!value.trim()}>
               OK
             </button>
           </div>

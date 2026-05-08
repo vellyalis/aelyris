@@ -1,4 +1,9 @@
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
+
+static POWERSHELL_PROGRAM: OnceLock<String> = OnceLock::new();
+static CMD_PROGRAM: OnceLock<String> = OnceLock::new();
+static WSL_PROGRAM: OnceLock<String> = OnceLock::new();
 
 /// Supported shell types on Windows
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -16,15 +21,13 @@ impl ShellType {
         match self {
             ShellType::PowerShell => {
                 // Prefer pwsh.exe (PowerShell 7+) over powershell.exe (5.1)
-                if which("pwsh.exe") {
-                    "pwsh.exe"
-                } else {
-                    "powershell.exe"
-                }
+                POWERSHELL_PROGRAM
+                    .get_or_init(resolve_powershell_program)
+                    .as_str()
             }
-            ShellType::Cmd => "cmd.exe",
+            ShellType::Cmd => CMD_PROGRAM.get_or_init(|| system32_exe("cmd.exe")).as_str(),
             ShellType::GitBash => detect_gitbash_path(),
-            ShellType::Wsl => "wsl.exe",
+            ShellType::Wsl => WSL_PROGRAM.get_or_init(|| system32_exe("wsl.exe")).as_str(),
         }
     }
 
@@ -39,6 +42,7 @@ impl ShellType {
             // that lack the -PredictionSource option.
             ShellType::PowerShell => vec![
                 "-NoLogo",
+                "-NoProfile",
                 "-NoExit",
                 "-Command",
                 "try { Set-PSReadLineOption -PredictionSource None } catch {}",
@@ -74,12 +78,16 @@ impl ShellType {
 
     /// Returns whether this is PowerShell 7+ (pwsh) vs 5.1 (powershell)
     pub fn is_pwsh7(&self) -> bool {
-        matches!(self, ShellType::PowerShell) && which("pwsh.exe")
+        matches!(self, ShellType::PowerShell)
+            && std::path::Path::new(self.program())
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.eq_ignore_ascii_case("pwsh.exe"))
     }
 
     /// List available WSL distributions
     pub fn list_wsl_distros() -> Vec<String> {
-        std::process::Command::new("wsl.exe")
+        crate::process::hidden_command("wsl.exe")
             .args(["--list", "--quiet"])
             .output()
             .ok()
@@ -103,6 +111,39 @@ impl ShellType {
     }
 }
 
+fn resolve_powershell_program() -> String {
+    let candidates = [
+        std::env::var("ProgramFiles")
+            .ok()
+            .map(|root| format!("{root}\\PowerShell\\7\\pwsh.exe")),
+        std::env::var("ProgramFiles")
+            .ok()
+            .map(|root| format!("{root}\\PowerShell\\7-preview\\pwsh.exe")),
+        Some(system32_exe("WindowsPowerShell\\v1.0\\powershell.exe")),
+    ];
+    candidates
+        .into_iter()
+        .flatten()
+        .find(|path| std::path::Path::new(path).exists())
+        .unwrap_or_else(|| {
+            if which("pwsh.exe") {
+                "pwsh.exe".to_string()
+            } else {
+                "powershell.exe".to_string()
+            }
+        })
+}
+
+fn system32_exe(name: &str) -> String {
+    if let Ok(root) = std::env::var("SystemRoot") {
+        let path = format!("{root}\\System32\\{name}");
+        if std::path::Path::new(&path).exists() {
+            return path;
+        }
+    }
+    name.to_string()
+}
+
 /// Detect Git Bash path dynamically.
 /// Tries: `where git` -> parent -> `bin/bash.exe`, then common install paths.
 fn detect_gitbash_path() -> &'static str {
@@ -123,7 +164,7 @@ fn detect_gitbash_path() -> &'static str {
 }
 
 fn which(cmd: &str) -> bool {
-    std::process::Command::new("where")
+    crate::process::hidden_command("where")
         .arg(cmd)
         .output()
         .map(|o| o.status.success())
@@ -137,4 +178,22 @@ fn decode_utf16le(bytes: &[u8]) -> String {
         .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
         .collect();
     String::from_utf16_lossy(&u16s)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ShellType;
+
+    #[test]
+    fn powershell_startup_args_skip_profile_and_keep_prediction_guard() {
+        let args = ShellType::PowerShell.args();
+
+        assert!(args.contains(&"-NoLogo"));
+        assert!(args.contains(&"-NoProfile"));
+        assert!(args.contains(&"-NoExit"));
+        assert!(args.contains(&"-Command"));
+        assert!(args
+            .iter()
+            .any(|arg| arg.contains("Set-PSReadLineOption -PredictionSource None")));
+    }
 }

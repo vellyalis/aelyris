@@ -9,8 +9,8 @@ import {
   matchToRange,
   nextMatch,
   previousMatch,
-  scrollOffsetForMatch,
   type SearchMatch,
+  scrollOffsetForMatch,
   viewportRowOf,
 } from "../features/terminal/search";
 import { type CellSnapshot, ColorKind, type GridSnapshot } from "../shared/types/terminal";

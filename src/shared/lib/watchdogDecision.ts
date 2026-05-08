@@ -1,5 +1,10 @@
 import type { AgentLog } from "../types/agent";
-import { classifyCommand, redactSensitiveCommand, type CommandRiskClass, type CommandRiskSeverity } from "./shellSafety";
+import {
+  type CommandRiskClass,
+  type CommandRiskSeverity,
+  classifyCommand,
+  redactSensitiveCommand,
+} from "./shellSafety";
 
 export interface WatchdogDecisionEvent {
   decision: "approved" | "denied" | "manual";
@@ -63,10 +68,7 @@ export function commandFromWatchdogTool(tool: string): string {
   return (bash?.[1] ?? tool).trim();
 }
 
-export function createApprovalReplayRecord(
-  event: WatchdogDecisionEvent,
-  timestamp = Date.now(),
-): ApprovalReplayRecord {
+export function createApprovalReplayRecord(event: WatchdogDecisionEvent, timestamp = Date.now()): ApprovalReplayRecord {
   const command = commandFromWatchdogTool(event.tool);
   const risk = classifyCommand(command);
   const redacted = redactSensitiveCommand(command);
@@ -89,10 +91,7 @@ export function createApprovalReplayRecord(
   };
 }
 
-export function replayApprovalRecord(
-  record: ApprovalReplayRecord,
-  event: WatchdogDecisionEvent,
-): ApprovalReplayResult {
+export function replayApprovalRecord(record: ApprovalReplayRecord, event: WatchdogDecisionEvent): ApprovalReplayResult {
   const command = commandFromWatchdogTool(event.tool);
   const risk = classifyCommand(command);
   if (record.version !== 1) return { matched: false, reason: "unsupported approval record version" };

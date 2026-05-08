@@ -1,11 +1,7 @@
-import type { GitChangedFile } from "./reviewQueue";
-import {
-  listWorkstationGraphChangedFiles,
-  type WorkstationGraph,
-  type WorkstationGraphPane,
-} from "./workstationGraph";
 import type { AgentSession } from "../types/agent";
 import type { AuditEventRecord } from "../types/audit";
+import type { GitChangedFile } from "./reviewQueue";
+import { listWorkstationGraphChangedFiles, type WorkstationGraph, type WorkstationGraphPane } from "./workstationGraph";
 
 export interface ContextPackWorkspace {
   name: string;
@@ -162,7 +158,9 @@ export function buildContextPack(input: ContextPackInput): BuiltContextPack {
   const redactions = { count: 0 };
   const generatedAt = input.generatedAt ?? new Date().toISOString();
   const sessions = [...(input.sessions ?? [])];
-  const auditEvents = [...(input.auditEvents ?? [])].sort((a, b) => timestampMs(b.timestamp) - timestampMs(a.timestamp));
+  const auditEvents = [...(input.auditEvents ?? [])].sort(
+    (a, b) => timestampMs(b.timestamp) - timestampMs(a.timestamp),
+  );
   const changedFiles = collectChangedFiles(input, sessions);
   const finalReport = redactFinalReport(input.finalReport ?? finalReportFromAudit(auditEvents), redactions);
   const blockers = redactBlockers([...deriveBlockers(sessions, auditEvents), ...(input.blockers ?? [])], redactions);
@@ -320,7 +318,10 @@ function transcriptForSession(session: AgentSession, redactions: { count: number
   };
 }
 
-function deriveBlockers(sessions: readonly AgentSession[], auditEvents: readonly AuditEventRecord[]): ContextPackBlocker[] {
+function deriveBlockers(
+  sessions: readonly AgentSession[],
+  auditEvents: readonly AuditEventRecord[],
+): ContextPackBlocker[] {
   const sessionBlockers = sessions
     .filter((session) => session.status === "waiting" || session.status === "error")
     .map<ContextPackBlocker>((session) => ({
@@ -402,8 +403,10 @@ function collectNextActions({
   for (const blocker of blockers) {
     if (blocker.nextAction) actions.add(blocker.nextAction);
   }
-  if (changedFiles.length > 0) actions.add(`Review ${changedFiles.length} changed file${changedFiles.length === 1 ? "" : "s"}.`);
-  if (validations.some((validation) => validation.result !== "pass")) actions.add("Re-run failed or partial validation.");
+  if (changedFiles.length > 0)
+    actions.add(`Review ${changedFiles.length} changed file${changedFiles.length === 1 ? "" : "s"}.`);
+  if (validations.some((validation) => validation.result !== "pass"))
+    actions.add("Re-run failed or partial validation.");
   if (!finalReport) actions.add("Write or attach the latest final report before handoff.");
   return [...actions].slice(0, 6);
 }
@@ -446,9 +449,7 @@ function diffSummaryFromFiles(files: readonly GitChangedFile[]): string {
   if (files.length === 0) return "No changed files reported.";
   const counts = new Map<string, number>();
   for (const file of files) counts.set(file.status || "modified", (counts.get(file.status || "modified") ?? 0) + 1);
-  return [...counts.entries()]
-    .map(([status, count]) => `${count} ${status}`)
-    .join(", ");
+  return [...counts.entries()].map(([status, count]) => `${count} ${status}`).join(", ");
 }
 
 function redactCommands(commands: readonly ContextPackCommand[], redactions: { count: number }): ContextPackCommand[] {
@@ -543,7 +544,8 @@ function redactUnknown(value: unknown, redactions: { count: number }, key = ""):
   if (Array.isArray(value)) return value.map((item) => redactUnknown(item, redactions, key));
   if (!value || typeof value !== "object") return value;
   const out: Record<string, unknown> = {};
-  for (const [entryKey, entryValue] of Object.entries(value)) out[entryKey] = redactUnknown(entryValue, redactions, entryKey);
+  for (const [entryKey, entryValue] of Object.entries(value))
+    out[entryKey] = redactUnknown(entryValue, redactions, entryKey);
   return out;
 }
 
@@ -552,7 +554,10 @@ function redactText(value: string, redactions: { count: number }): RedactionResu
   let count = 0;
   const replacements: Array<[RegExp, string]> = [
     [/\b(authorization\s*:\s*bearer\s+)[A-Za-z0-9._~+/-]+=*/gi, "$1[redacted]"],
-    [/\b(AETHER_API_TOKEN|OPENAI_API_KEY|ANTHROPIC_API_KEY|GITHUB_TOKEN|TOKEN|API_KEY|SECRET|PASSWORD)\s*=\s*("[^"]+"|'[^']+'|[^\s;&]+)/gi, "$1=[redacted]"],
+    [
+      /\b(AETHER_API_TOKEN|OPENAI_API_KEY|ANTHROPIC_API_KEY|GITHUB_TOKEN|TOKEN|API_KEY|SECRET|PASSWORD)\s*=\s*("[^"]+"|'[^']+'|[^\s;&]+)/gi,
+      "$1=[redacted]",
+    ],
     [/\b(sk-[A-Za-z0-9_-]{8,})\b/g, "[redacted:api_key]"],
     [/\b(gh[pousr]_[A-Za-z0-9_]{8,})\b/g, "[redacted:token]"],
     [/\b(xox[baprs]-[A-Za-z0-9-]{8,})\b/g, "[redacted:token]"],
@@ -646,7 +651,9 @@ function appendValidations(lines: string[], validations: readonly ContextPackVal
   lines.push("## Validation");
   if (validations.length === 0) lines.push("- No validation entries supplied.");
   for (const validation of validations) {
-    lines.push(`- ${validation.result}: ${validation.command}${validation.evidence ? ` (${validation.evidence})` : ""}`);
+    lines.push(
+      `- ${validation.result}: ${validation.command}${validation.evidence ? ` (${validation.evidence})` : ""}`,
+    );
   }
   lines.push("");
 }
@@ -670,7 +677,8 @@ function appendDecisions(lines: string[], decisions: readonly ContextPackDecisio
 function appendRisks(lines: string[], risks: readonly ContextPackRisk[]): void {
   lines.push("## Risks");
   if (risks.length === 0) lines.push("- None recorded.");
-  for (const risk of risks.slice(0, 16)) lines.push(`- ${risk.severity ?? "risk"}/${risk.status ?? "open"}: ${risk.title}`);
+  for (const risk of risks.slice(0, 16))
+    lines.push(`- ${risk.severity ?? "risk"}/${risk.status ?? "open"}: ${risk.title}`);
   lines.push("");
 }
 

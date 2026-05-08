@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DEFAULT_BG } from "../shared/lib/ansiPalette";
 import {
   ACCENT_KEYS,
   type AccentKey,
@@ -6,16 +7,11 @@ import {
   accentLabel,
   applyAccentOverrides,
   getPalette,
+  isLightTheme,
   isValidHex,
   normalizeHex,
 } from "../shared/themes/catppuccin";
-import {
-  DEFAULT_MOOD_PRESET,
-  MOOD_PRESETS,
-  moodPresetToCSS,
-  normalizeMoodPreset,
-} from "../shared/themes/moods";
-import { DEFAULT_BG } from "../shared/lib/ansiPalette";
+import { DEFAULT_MOOD_PRESET, MOOD_PRESETS, moodPresetToCSS, normalizeMoodPreset } from "../shared/themes/moods";
 
 describe("themes/catppuccin — hex helpers", () => {
   it("validates 6-digit hex", () => {
@@ -78,6 +74,17 @@ describe("themes/catppuccin — accent metadata", () => {
   });
 });
 
+describe("themes/catppuccin — Sakura theme", () => {
+  it("exposes Sakura Hub as a light cherry-blossom palette", () => {
+    const palette = getPalette("sakura-hub");
+
+    expect(isLightTheme("sakura-hub")).toBe(true);
+    expect(palette.base).toBe("#fff7fb");
+    expect(palette.sapphire).toBe("#e83e7a");
+    expect(palette.text).toBe("#402432");
+  });
+});
+
 describe("themes/catppuccin — applyAccentOverrides", () => {
   const base = getPalette("aether-dark");
 
@@ -111,10 +118,7 @@ describe("themes/catppuccin — applyAccentOverrides", () => {
 
   it("ignores keys outside the accent set", () => {
     // Casting through unknown to attempt smuggling a non-accent key.
-    const result = applyAccentOverrides(
-      base,
-      { text: "#ffffff", sapphire: "#aabbcc" } as unknown as AccentOverrides,
-    );
+    const result = applyAccentOverrides(base, { text: "#ffffff", sapphire: "#aabbcc" } as unknown as AccentOverrides);
     expect(result.sapphire).toBe("#aabbcc");
     // text should not be touched — applyAccentOverrides only writes accents.
     expect(result.text).toBe(base.text);
@@ -140,6 +144,7 @@ describe("themes/moods — preset metadata", () => {
       "aether-moonwater",
       "aether-dream",
       "aether-cute",
+      "aether-sakura",
       "aether-obsidian",
       "aether-pro",
     ]);
@@ -171,7 +176,7 @@ describe("themes/moods — preset metadata", () => {
   });
 
   it("keeps mood glass presets translucent while allowing dark clear-water tint", () => {
-    const ceilings = {
+    const darkCeilings = {
       "--glass-clear": 0.02,
       "--glass-ground": 0.28,
       "--glass-frame": 0.2,
@@ -179,9 +184,18 @@ describe("themes/moods — preset metadata", () => {
       "--glass-dense": 0.22,
       "--glass-thick": 0.26,
     } as const;
+    const lightCeilings = {
+      "--glass-clear": 0.4,
+      "--glass-ground": 0.78,
+      "--glass-frame": 0.84,
+      "--glass-standard": 0.76,
+      "--glass-dense": 0.82,
+      "--glass-thick": 0.88,
+    } as const;
 
     for (const preset of MOOD_PRESETS) {
       const vars = moodPresetToCSS(preset.id);
+      const ceilings = preset.id === "aether-sakura" ? lightCeilings : darkCeilings;
       for (const [key, ceiling] of Object.entries(ceilings)) {
         expect(rgbaAlpha(vars[key]), `${preset.id} ${key}`).toBeLessThanOrEqual(ceiling);
       }
@@ -218,6 +232,21 @@ describe("themes/moods — preset metadata", () => {
     expect(vars["--mood-right-panel-bg"]).not.toContain("var(--glass-dense)");
   });
 
+  it("defines Aether Sakura as a warm blossom preset with readable ink contrast", () => {
+    const vars = moodPresetToCSS("aether-sakura");
+
+    expect(vars["--accent"]).toBe("#bd3f68");
+    expect(vars["--gold"]).toBe("#823149");
+    expect(vars["--text-primary"]).toBe("#24121b");
+    expect(vars["--mood-root-glow"]).toContain("252, 201, 185");
+    expect(contrastRatio(vars["--text-primary"], "#fff9fc")).toBeGreaterThanOrEqual(10);
+    expect(rgbaAlpha(vars["--glass-standard"])).toBeLessThanOrEqual(0.34);
+    expect(rgbaAlpha(vars["--terminal-canvas-bg"])).toBeLessThanOrEqual(0.54);
+    expect(vars["--toolkit-tile-bg"]).not.toContain("0, 7, 15");
+    expect(vars["--statusbar-bg"]).toContain("255, 248, 251");
+    expect(rgbaAlpha(vars["--settings-card-bg"])).toBeLessThanOrEqual(0.7);
+  });
+
   it("keeps mood root textures clear instead of synthetic scanlines", () => {
     for (const preset of MOOD_PRESETS) {
       const vars = moodPresetToCSS(preset.id);
@@ -226,9 +255,13 @@ describe("themes/moods — preset metadata", () => {
     }
   });
 
-  it("keeps mood canvas tokens aligned with the native terminal renderer", () => {
+  it("keeps mood canvas tokens aligned with the native terminal renderer, except Sakura's rose ink well", () => {
     for (const preset of MOOD_PRESETS) {
       const vars = moodPresetToCSS(preset.id);
+      if (preset.id === "aether-sakura") {
+        expect(vars["--terminal-canvas-bg"], preset.id).toContain("83, 33, 56");
+        continue;
+      }
       expect(vars["--terminal-canvas-bg"], preset.id).toBe(DEFAULT_BG);
     }
   });

@@ -21,6 +21,7 @@ interface StopButtonProps {
  */
 export function StopButton({ onStop, label = "Stop", className }: StopButtonProps) {
   return (
+    // biome-ignore lint/a11y/useSemanticElements: This control is rendered inside clickable rows, where a nested button would be invalid HTML.
     <span
       role="button"
       tabIndex={0}

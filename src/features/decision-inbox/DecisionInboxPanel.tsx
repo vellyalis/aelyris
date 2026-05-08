@@ -2,14 +2,14 @@ import { AlertTriangle, CheckCircle2, Clock3, Inbox, ShieldQuestion, UserRoundCh
 import { useMemo } from "react";
 import {
   buildDecisionInbox,
-  type DecisionWorkflowStatus,
   type DecisionInboxSummary,
+  type DecisionWorkflowStatus,
   type HumanDecisionItem,
   type HumanDecisionRisk,
   type HumanDecisionType,
 } from "../../shared/lib/decisionInbox";
-import type { AuditEventRecord } from "../../shared/types/audit";
 import type { AgentSession } from "../../shared/types/agent";
+import type { AuditEventRecord } from "../../shared/types/audit";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { PanelHeader } from "../../shared/ui/PanelHeader";
 import styles from "./DecisionInboxPanel.module.css";
@@ -72,7 +72,11 @@ export function DecisionInboxPanel({
       />
 
       {inbox.items.length === 0 ? (
-        <EmptyState icon={<ShieldQuestion size={18} />} title="No human decisions" description="Automation is clear." />
+        <EmptyState
+          icon={<ShieldQuestion size={18} />}
+          title="No approvals needed"
+          description="Agents and workflows can continue without waiting for you."
+        />
       ) : (
         <div className={styles.body}>
           <fieldset className={styles.metrics} aria-label="Decision inbox summary">

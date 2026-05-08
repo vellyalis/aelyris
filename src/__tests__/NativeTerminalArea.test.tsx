@@ -1,12 +1,38 @@
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-import { NativeTerminalArea } from "../features/terminal/NativeTerminalArea";
 import {
   IME_DIAGNOSTIC_EVENT,
   IME_DIAGNOSTIC_STORAGE_KEY,
   type ImeDiagnosticDetail,
 } from "../features/terminal/hooks/useCanvasIME";
+import { NativeTerminalArea } from "../features/terminal/NativeTerminalArea";
+import { useTerminalSnapshot } from "../shared/hooks/useTerminalSnapshot";
+
+vi.mock("../shared/hooks/useTerminalSnapshot", () => ({
+  useTerminalSnapshot: vi.fn(() => null),
+}));
+
+function rawSource(records: Record<string, string>): string {
+  const [source] = Object.values(records);
+  if (!source) throw new Error("expected raw source");
+  return source;
+}
+
+const nativeTerminalAreaSource = rawSource(
+  import.meta.glob("../features/terminal/NativeTerminalArea.tsx", {
+    query: "?raw",
+    import: "default",
+    eager: true,
+  }) as Record<string, string>,
+);
+
+const terminalCanvasSource = rawSource(
+  import.meta.glob("../features/terminal/TerminalCanvas.tsx", {
+    query: "?raw",
+    import: "default",
+    eager: true,
+  }) as Record<string, string>,
+);
 
 function installCanvasMock() {
   const noop = vi.fn();
@@ -68,6 +94,8 @@ function deferred<T = void>() {
 describe("NativeTerminalArea", () => {
   beforeEach(() => {
     installCanvasMock();
+    vi.mocked(useTerminalSnapshot).mockClear();
+    vi.mocked(useTerminalSnapshot).mockReturnValue(null);
     stubClientSize(672, 408); // 80 cols * 8px, 24 rows * 17px
     (globalThis as unknown as { ResizeObserver: typeof ResizeObserver }).ResizeObserver =
       MockResizeObserver as unknown as typeof ResizeObserver;
@@ -111,6 +139,36 @@ describe("NativeTerminalArea", () => {
     await waitFor(() => expect(resizePty).toHaveBeenCalledWith("term-42", args.cols, args.rows));
   });
 
+  it("keeps the live terminal snapshot subscription owned by NativeTerminalArea", () => {
+    expect(nativeTerminalAreaSource).toContain("const snapshot = useTerminalSnapshot(terminalId)");
+    expect(nativeTerminalAreaSource).toContain("liveSnapshot={snapshot}");
+    expect(terminalCanvasSource).toContain("liveSnapshot?: GridSnapshot | null");
+    expect(terminalCanvasSource).toContain(
+      "const shouldSubscribeToLiveSnapshot = snapshotOverride === undefined && liveSnapshotOverride === undefined",
+    );
+    expect(terminalCanvasSource).toContain("useTerminalSnapshot(shouldSubscribeToLiveSnapshot ? terminalId : null)");
+  });
+
+  it("shows a startup state instead of a blank pane while the PTY starts", async () => {
+    const spawn = deferred<string>();
+    const spawnPty = vi.fn(() => spawn.promise);
+
+    const { container } = render(
+      <NativeTerminalArea shell="powershell" spawnPty={spawnPty} subscribeOutput={async () => () => {}} />,
+    );
+
+    await waitFor(() => expect(spawnPty).toHaveBeenCalledTimes(1));
+    expect(container.querySelector("[data-testid='terminal-canvas']")).toBeNull();
+    expect(container.textContent).toContain("Starting PowerShell...");
+
+    await act(async () => {
+      spawn.resolve("term-slow");
+      await spawn.promise;
+    });
+
+    await waitFor(() => expect(container.querySelector("[data-testid='terminal-canvas']")).not.toBeNull());
+  });
+
   it("attaches an existing PTY without spawning a replacement", async () => {
     const spawnPty = vi.fn().mockResolvedValue("term-new");
     const resizePty = vi.fn();
@@ -134,6 +192,18 @@ describe("NativeTerminalArea", () => {
     await waitFor(() =>
       expect(resizePty).toHaveBeenCalledWith("term-attached", expect.any(Number), expect.any(Number)),
     );
+  });
+
+  it("surfaces backend resize failures instead of resolving them silently", async () => {
+    const spawnPty = vi.fn().mockResolvedValue("term-resize-fails");
+    const resizePty = vi.fn().mockRejectedValue(new Error("backend resize failed"));
+
+    const { container } = render(
+      <NativeTerminalArea spawnPty={spawnPty} resizePty={resizePty} subscribeOutput={async () => () => {}} />,
+    );
+
+    await waitFor(() => expect(container.textContent).toContain("Terminal degraded"));
+    expect(container.textContent).toContain("Resize failed: backend resize failed");
   });
 
   it("renders the IME input bar on mount (always visible)", async () => {
@@ -317,13 +387,13 @@ describe("NativeTerminalArea", () => {
     expect(document.activeElement).toBe(textarea);
   });
 
-  it("opens the search bar on Ctrl+F and focuses the input", async () => {
+  it("opens the search bar on Ctrl+Shift+F and focuses the input", async () => {
     const spawnPty = vi.fn().mockResolvedValue("term-f");
     const { container } = render(<NativeTerminalArea spawnPty={spawnPty} subscribeOutput={async () => () => {}} />);
     await waitFor(() => expect(container.querySelector("[data-testid='terminal-canvas']")).not.toBeNull());
     (container.querySelector("[data-testid='terminal-canvas']") as HTMLCanvasElement)?.focus();
     await act(async () => {
-      fireEvent.keyDown(window, { key: "f", ctrlKey: true });
+      fireEvent.keyDown(window, { key: "f", ctrlKey: true, shiftKey: true });
     });
     await waitFor(() => expect(container.querySelector("input[placeholder='Search...']")).not.toBeNull());
     const input = container.querySelector("input[placeholder='Search...']") as HTMLInputElement;

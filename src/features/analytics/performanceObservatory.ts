@@ -10,6 +10,8 @@ export const PERFORMANCE_BUDGETS = {
   droppedRenderFramesMax: 0,
   scrollbackMemoryWarnBytes: 16 * MiB,
   ipcLatencyMsMax: 80,
+  terminalSpawnMsMax: 1_500,
+  terminalStreamWireMsMax: 120,
   ipcDroppedChunksMax: 0,
   eventLoopLagMsMax: 50,
   rightRailRenderMsMax: 32,
@@ -52,6 +54,8 @@ export interface BackendPerformanceMetrics {
   terminalJournalFlushBytes: number;
   terminalJournalFlushIntervalMs: number;
   ipcLatencyMs: number | null;
+  lastTerminalSpawnMs: number | null;
+  lastTerminalStreamWireMs: number | null;
   dbWriteLatencyMs: number | null;
   eventQueueLagMs: number | null;
 }
@@ -224,6 +228,27 @@ export function classifyPerformanceBudgets(snapshot: PerformanceObservatorySnaps
       value: formatMs(backend?.ipcLatencyMs ?? 0),
       budget: `<= ${b.ipcLatencyMsMax} ms`,
       severity: (backend?.ipcLatencyMs ?? 0) > 200 ? "critical" : "warn",
+    });
+  }
+  if ((backend?.lastTerminalSpawnMs ?? null) !== null && (backend?.lastTerminalSpawnMs ?? 0) > b.terminalSpawnMsMax) {
+    warnings.push({
+      id: "terminal-spawn",
+      label: "Terminal spawn",
+      value: formatMs(backend?.lastTerminalSpawnMs ?? 0),
+      budget: `<= ${b.terminalSpawnMsMax} ms`,
+      severity: (backend?.lastTerminalSpawnMs ?? 0) > b.terminalSpawnMsMax * 2 ? "critical" : "warn",
+    });
+  }
+  if (
+    (backend?.lastTerminalStreamWireMs ?? null) !== null &&
+    (backend?.lastTerminalStreamWireMs ?? 0) > b.terminalStreamWireMsMax
+  ) {
+    warnings.push({
+      id: "terminal-stream-wire",
+      label: "Terminal stream wire",
+      value: formatMs(backend?.lastTerminalStreamWireMs ?? 0),
+      budget: `<= ${b.terminalStreamWireMsMax} ms`,
+      severity: (backend?.lastTerminalStreamWireMs ?? 0) > b.terminalStreamWireMsMax * 4 ? "critical" : "warn",
     });
   }
   if (t.ipcDroppedChunks > b.ipcDroppedChunksMax) {

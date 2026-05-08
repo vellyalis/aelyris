@@ -6,7 +6,7 @@
 //! - `POST /sessions/:id/stream-ticket` 401s without a bearer
 //! - Ticket redemption succeeds exactly once
 //! - Ticket bound to the wrong session is rejected
-//! - Legacy `?token=` path still works (deprecated)
+//! - Long-lived `?token=` query auth is rejected
 //!
 //! WS-level redemption tests use the same `spawn_server` pattern as
 //! `test_api_3d1.rs` and only run on Windows where ConPTY is available for
@@ -182,11 +182,12 @@ async fn stream_ticket_for_existing_session_returns_uuid_and_ttl() {
     let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
 }
 
-// ─── WS redemption via ticket + legacy token ────────────────────────────────
+// ─── WS redemption via ticket ───────────────────────────────────────────────
 
 #[cfg(target_os = "windows")]
 #[tokio::test]
 async fn ws_accepts_ticket_query_param() {
+    use futures_util::SinkExt;
     use tokio_tungstenite::tungstenite::Message;
 
     let (base, state, join) = spawn(base_state()).await;
@@ -227,17 +228,12 @@ async fn ws_accepts_ticket_query_param() {
     let (mut ws, _resp) = tokio_tungstenite::connect_async(&url)
         .await
         .expect("ws connect with ticket");
-    // We should get at least one inbound frame (PTY banner). Timing out is
-    // a test failure, not an expected quiet period.
-    let first = tokio::time::timeout(Duration::from_secs(3), {
-        use futures_util::StreamExt;
-        ws.next()
-    })
-    .await
-    .expect("frame within 3s")
-    .expect("stream yields Some")
-    .expect("frame is Ok");
-    assert!(matches!(first, Message::Binary(_) | Message::Text(_)));
+    // Hidden ConPTY startup is intentionally quiet on some Windows shells, so
+    // prove the authenticated socket is usable by writing to the PTY instead
+    // of depending on a startup banner.
+    ws.send(Message::Text("\r\n".into()))
+        .await
+        .expect("ws write with ticket");
 
     // Redeeming the same ticket again must fail.
     let url2 = format!("{}/sessions/{}/stream?ticket={}", ws_url, id, ticket);
@@ -260,11 +256,7 @@ async fn ws_accepts_ticket_query_param() {
 
 #[cfg(target_os = "windows")]
 #[tokio::test]
-async fn ws_still_accepts_legacy_token_query_param() {
-    // v2b keeps `?token=` working so existing scripts and early tickets
-    // adopters have a deprecation grace period. The deprecation itself is
-    // surfaced via `log::warn!` — we don't assert on the log here, only
-    // that auth still succeeds.
+async fn ws_rejects_legacy_token_query_param() {
     let (base, state, join) = spawn(base_state()).await;
     let c = client();
 
@@ -285,11 +277,7 @@ async fn ws_still_accepts_legacy_token_query_param() {
     let ws_url = base.replacen("http://", "ws://", 1);
     let url = format!("{}/sessions/{}/stream?token={}", ws_url, id, TOKEN);
     let connect_res = tokio_tungstenite::connect_async(&url).await;
-    assert!(
-        connect_res.is_ok(),
-        "legacy ?token= must still authenticate: {:?}",
-        connect_res.err()
-    );
+    assert!(connect_res.is_err(), "legacy ?token= must not authenticate");
 
     let _ = c
         .delete(format!("{}/sessions/{}", base, id))

@@ -67,6 +67,17 @@ pub struct PaneTreeLayoutRecord {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct TerminalOutputJournalRow {
+    pub id: i64,
+    pub terminal_id: String,
+    pub byte_count: i64,
+    pub chunk_count: i64,
+    pub text: String,
+    pub captured_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AuditEventRecord {
     pub id: i64,
     pub timestamp: String,
@@ -809,6 +820,7 @@ impl Database {
 
     /// Save a structured operational audit event. Metadata must already be
     /// redacted by the caller when the source may contain terminal input.
+    #[allow(clippy::too_many_arguments)]
     pub fn save_audit_event(
         &self,
         category: &str,
@@ -891,6 +903,43 @@ impl Database {
             )
             .map_err(|e| format!("Prune terminal output journal: {}", e))?;
         Ok(())
+    }
+
+    pub fn list_terminal_output_journal(
+        &self,
+        terminal_id: &str,
+        limit: usize,
+    ) -> Result<Vec<TerminalOutputJournalRow>, String> {
+        validate_audit_atom("terminal id", terminal_id)?;
+        let bounded = limit.clamp(1, MAX_TERMINAL_OUTPUT_JOURNAL_ROWS_PER_TERMINAL);
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, terminal_id, byte_count, chunk_count, text, captured_at
+                 FROM (
+                   SELECT id, terminal_id, byte_count, chunk_count, text, captured_at
+                   FROM terminal_output_journal
+                   WHERE terminal_id = ?1
+                   ORDER BY id DESC
+                   LIMIT ?2
+                 )
+                 ORDER BY id ASC",
+            )
+            .map_err(|e| format!("Prepare terminal output journal: {}", e))?;
+        let rows = stmt
+            .query_map(params![terminal_id, bounded as i64], |row| {
+                Ok(TerminalOutputJournalRow {
+                    id: row.get(0)?,
+                    terminal_id: row.get(1)?,
+                    byte_count: row.get(2)?,
+                    chunk_count: row.get(3)?,
+                    text: row.get(4)?,
+                    captured_at: row.get(5)?,
+                })
+            })
+            .map_err(|e| format!("Query terminal output journal: {}", e))?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Collect terminal output journal: {}", e))
     }
 
     pub fn recent_audit_events(&self, limit: usize) -> Result<Vec<AuditEventRecord>, String> {
@@ -1819,6 +1868,28 @@ mod tests {
             .unwrap();
         assert_eq!(rows, 2);
         assert_eq!(max_len, MAX_TERMINAL_OUTPUT_JOURNAL_TEXT_BYTES as i64);
+    }
+
+    #[test]
+    fn test_terminal_output_journal_lists_bounded_rows_in_order() {
+        let db = Database::open_memory().unwrap();
+        db.save_terminal_output_chunk("term-1", "first", 5, 1)
+            .unwrap();
+        db.save_terminal_output_chunk("term-1", "second", 6, 1)
+            .unwrap();
+        db.save_terminal_output_chunk("term-2", "other", 5, 1)
+            .unwrap();
+
+        let rows = db.list_terminal_output_journal("term-1", 10).unwrap();
+        assert_eq!(
+            rows.iter().map(|row| row.text.as_str()).collect::<Vec<_>>(),
+            vec!["first", "second"]
+        );
+        assert!(rows[0].id < rows[1].id);
+
+        let tail = db.list_terminal_output_journal("term-1", 1).unwrap();
+        assert_eq!(tail.len(), 1);
+        assert_eq!(tail[0].text, "second");
     }
 
     #[test]

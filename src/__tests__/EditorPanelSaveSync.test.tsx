@@ -22,11 +22,24 @@ const sources = import.meta.glob("../features/editor/EditorPanel.tsx", {
   eager: true,
 }) as Record<string, string>;
 
+function editorPanelSource(): string {
+  const entries = Object.entries(sources);
+  expect(entries.length).toBe(1);
+  const entry = entries[0];
+  if (!entry) throw new Error("EditorPanel raw source was not loaded");
+  return entry[1];
+}
+
+function captureBody(match: RegExpMatchArray | null, label: string): string {
+  expect(match).not.toBeNull();
+  const body = match?.[1];
+  if (body === undefined) throw new Error(`${label} body was not captured`);
+  return body;
+}
+
 describe("EditorPanel Ctrl+S sync", () => {
   it("write_file success handler syncs content state to the saved value", () => {
-    const entries = Object.entries(sources);
-    expect(entries.length).toBe(1);
-    const src = entries[0][1];
+    const src = editorPanelSource();
 
     // Anchor on the success arm of the write_file invoke. The body must
     // call setContent(value) gated by the savedFilePath guard so it only
@@ -37,7 +50,7 @@ describe("EditorPanel Ctrl+S sync", () => {
   });
 
   it("Ctrl+S handler snapshots filePath and gates state writes on filePathRef (codex L3)", () => {
-    const src = Object.entries(sources)[0][1];
+    const src = editorPanelSource();
 
     // The savedFilePath snapshot decouples the in-flight save from the
     // user's later file switches, and filePathRef.current === savedFilePath
@@ -51,13 +64,14 @@ describe("EditorPanel Ctrl+S sync", () => {
     // outside the if-block (the `const stillCurrent = …` declaration
     // appears earlier and would satisfy a naive ordering check).
     const successArm = src.match(/\.then\(\s*\(\s*\)\s*=>\s*\{([\s\S]*?)\}\s*\)\s*\.catch/);
-    expect(successArm).not.toBeNull();
-    const body = successArm![1];
+    const body = captureBody(successArm, "success arm");
 
     const ifMatch = body.match(/if\s*\(\s*stillCurrent\s*\)\s*\{/);
     expect(ifMatch).not.toBeNull();
-    const ifOpenIdx = body.indexOf(ifMatch![0]);
-    const braceStart = ifOpenIdx + ifMatch![0].length - 1;
+    const ifHeader = ifMatch?.[0];
+    if (ifHeader === undefined) throw new Error("stillCurrent block was not found");
+    const ifOpenIdx = body.indexOf(ifHeader);
+    const braceStart = ifOpenIdx + ifHeader.length - 1;
     let depth = 1;
     let i = braceStart + 1;
     while (i < body.length && depth > 0) {
@@ -74,7 +88,7 @@ describe("EditorPanel Ctrl+S sync", () => {
   });
 
   it("save handlers gate state mutations on mountedRef as well as filePathRef (codex r2 M)", () => {
-    const src = Object.entries(sources)[0][1];
+    const src = editorPanelSource();
 
     // mountedRef must exist and be flipped to false in the unmount cleanup.
     expect(src).toMatch(/mountedRef\s*=\s*useRef\(\s*true\s*\)/);
@@ -84,28 +98,24 @@ describe("EditorPanel Ctrl+S sync", () => {
     // unmount mid-save lets state setters fire on a torn-down panel.
     const successArm = src.match(/\.then\(\s*\(\s*\)\s*=>\s*\{([\s\S]*?)\}\s*\)\s*\.catch/);
     expect(successArm).not.toBeNull();
-    expect(successArm![1]).toMatch(/mountedRef\.current/);
+    expect(successArm?.[1]).toMatch(/mountedRef\.current/);
 
     const catchArm = src.match(/\.catch\(\s*\(\s*err\s*\)\s*=>\s*\{([\s\S]*?)\}\s*\)\s*;/);
     expect(catchArm).not.toBeNull();
-    expect(catchArm![1]).toMatch(/mountedRef\.current/);
+    expect(catchArm?.[1]).toMatch(/mountedRef\.current/);
   });
 
   it("mountedRef teardown runs synchronously via useLayoutEffect (codex r3 M)", () => {
-    const src = Object.entries(sources)[0][1];
+    const src = editorPanelSource();
 
     // Passive useEffect cleanups can run AFTER a settled write_file
     // promise enters its .then, which means mountedRef.current would
     // still read `true` at the unmount instant and let post-unmount
     // setState slip through. The unmount path that flips mountedRef
     // must use useLayoutEffect (commit-synchronous cleanup).
-    const layoutEffectMatch = src.match(
-      /useLayoutEffect\(\s*\(\)\s*=>\s*\{([\s\S]*?)\},\s*\[\s*\]\s*\)/g,
-    );
+    const layoutEffectMatch = src.match(/useLayoutEffect\(\s*\(\)\s*=>\s*\{([\s\S]*?)\},\s*\[\s*\]\s*\)/g);
     expect(layoutEffectMatch).not.toBeNull();
-    const mountedTeardown = (layoutEffectMatch ?? []).find((block) =>
-      block.includes("mountedRef.current = false"),
-    );
+    const mountedTeardown = (layoutEffectMatch ?? []).find((block) => block.includes("mountedRef.current = false"));
     expect(mountedTeardown).toBeDefined();
     // The same effect must clear savedPillTimerRef so a save scheduled
     // right before unmount doesn't fire its 2 s setSaved(false) on a
@@ -114,7 +124,7 @@ describe("EditorPanel Ctrl+S sync", () => {
   });
 
   it("save pill setTimeout is held in a ref and cleared on unmount (codex r1 M2)", () => {
-    const src = Object.entries(sources)[0][1];
+    const src = editorPanelSource();
 
     // Without a ref the 2 s setSaved(false) timer outlives the panel
     // when the user closes the file mid-save — produces React's

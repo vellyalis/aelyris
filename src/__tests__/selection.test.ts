@@ -11,6 +11,12 @@ import {
 } from "../features/terminal/selection";
 import { CellAttr, type CellSnapshot, ColorKind, type GridSnapshot } from "../shared/types/terminal";
 
+function requireRange(range: SelectionRange | null): SelectionRange {
+  expect(range).not.toBeNull();
+  if (range === null) throw new Error("Expected a selection range");
+  return range;
+}
+
 function packNamed(n: number): number {
   return (ColorKind.NAMED << 24) | n;
 }
@@ -191,8 +197,7 @@ describe("wordRangeAt", () => {
   it("expands to the surrounding word", () => {
     const grid = gridFromRows(["hello world"]);
     const range = wordRangeAt(grid, 0, 2);
-    expect(range).not.toBeNull();
-    expect(normalizeRange(range!)).toEqual({
+    expect(normalizeRange(requireRange(range))).toEqual({
       topRow: 0,
       topCol: 0,
       bottomRow: 0,
@@ -203,8 +208,7 @@ describe("wordRangeAt", () => {
   it("returns just the space cell when clicking whitespace", () => {
     const grid = gridFromRows(["hi   there"]);
     const range = wordRangeAt(grid, 0, 3);
-    expect(range).not.toBeNull();
-    expect(normalizeRange(range!)).toEqual({
+    expect(normalizeRange(requireRange(range))).toEqual({
       topRow: 0,
       topCol: 3,
       bottomRow: 0,
@@ -215,8 +219,7 @@ describe("wordRangeAt", () => {
   it("treats punctuation as its own word class", () => {
     const grid = gridFromRows(["a==b"]);
     const range = wordRangeAt(grid, 0, 2);
-    expect(range).not.toBeNull();
-    expect(normalizeRange(range!)).toEqual({
+    expect(normalizeRange(requireRange(range))).toEqual({
       topRow: 0,
       topCol: 1,
       bottomRow: 0,
@@ -229,8 +232,7 @@ describe("lineRangeAt", () => {
   it("selects the full row", () => {
     const grid = gridFromRows(["hello", "world"]);
     const range = lineRangeAt(grid, 1);
-    expect(range).not.toBeNull();
-    expect(normalizeRange(range!)).toEqual({
+    expect(normalizeRange(requireRange(range))).toEqual({
       topRow: 1,
       topCol: 0,
       bottomRow: 1,

@@ -65,11 +65,7 @@ export function RepairJobsPanel({ jobs, config, onToggleEnabled, onClose }: Repa
           <span>Auto-repair</span>
         </div>
         <div className={styles.toggle}>
-          <Switch
-            checked={config.enabled}
-            onCheckedChange={onToggleEnabled}
-            ariaLabel="Enable auto-repair watcher"
-          />
+          <Switch checked={config.enabled} onCheckedChange={onToggleEnabled} ariaLabel="Enable auto-repair watcher" />
           <span>{config.enabled ? "Watching" : "Disabled"}</span>
         </div>
       </div>

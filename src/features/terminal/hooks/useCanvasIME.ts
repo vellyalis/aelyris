@@ -8,6 +8,7 @@ import {
   TERMINAL_PASTE_GUARD_EVENT,
   type TerminalPasteGuard,
 } from "../../../shared/lib/terminalInput";
+import { reportInvokeFailure } from "../../../shared/lib/fallbackTelemetry";
 import { keyEventToBytes } from "../keymap";
 
 /**
@@ -36,6 +37,7 @@ const MAX_IME_DIAGNOSTIC_EVENTS = 80;
 export const IME_DIAGNOSTIC_EVENT = "aether:ime-diagnostic";
 export const IME_DIAGNOSTIC_TOGGLE_EVENT = "aether:ime-diagnostic-toggle";
 export const IME_DIAGNOSTIC_STORAGE_KEY = "aether:debug:ime";
+export const TERMINAL_PREFIX_COMMAND_EVENT = "aether:terminal-prefix-command";
 
 export type ImeDiagnosticPhase =
   | "keydown"
@@ -54,6 +56,7 @@ export type ImeDiagnosticWritePath =
   | "ime-commit"
   | "paste"
   | "focus"
+  | "terminal-prefix"
   | "ignored";
 
 export interface ImeDiagnosticDetail {
@@ -225,7 +228,14 @@ function recordImeDiagnostic(
 }
 
 const defaultWriteBytes: WriteBytesFn = (id, data) => {
-  invoke("write_terminal", { id, data }).catch(() => {});
+  invoke("write_terminal", { id, data }).catch((err) => {
+    reportInvokeFailure({
+      source: "terminal-ime",
+      operation: "write_terminal",
+      err,
+      severity: "error",
+    });
+  });
 };
 
 function dispatchPasteGuardEvent(
@@ -305,6 +315,18 @@ export interface UseCanvasIMEArgs {
   onCompositionTextChange?: (text: string) => void;
 }
 
+type TerminalPrefixCommand =
+  | "split-right"
+  | "split-down"
+  | "close"
+  | "toggle-maximize"
+  | "focus-next"
+  | "focus-previous"
+  | "move-next"
+  | "move-previous"
+  | "equalize"
+  | "tiled";
+
 export function useCanvasIME({
   terminalId,
   textarea,
@@ -331,6 +353,7 @@ export function useCanvasIME({
   // Track composition state across listeners via refs so handlers stay
   // stable under React's re-renders.
   const composingRef = useRef(false);
+  const prefixArmedRef = useRef(false);
   // Remembers the most recent interim composition text so we can fall back
   // to it on `compositionend` if the browser/IME fires the two events in the
   // TSF order `input(isComposing, data=final)` → `compositionend(data="")`.
@@ -404,6 +427,45 @@ export function useCanvasIME({
         return;
       }
 
+      if (prefixArmedRef.current) {
+        prefixArmedRef.current = false;
+        e.preventDefault();
+        e.stopPropagation();
+        const command = prefixCommandFromKey(e.key);
+        if (command) {
+          textarea.dispatchEvent(
+            new CustomEvent(TERMINAL_PREFIX_COMMAND_EVENT, {
+              bubbles: true,
+              detail: { terminalId, command },
+            }),
+          );
+        }
+        recordImeDiagnostic(textarea, terminalId, composingRef.current, {
+          phase: "keydown",
+          writePath: command ? "terminal-prefix" : "ignored",
+          key: e.key,
+          keyCode: e.keyCode,
+          isComposing: e.isComposing,
+          ignored: true,
+          reason: command ? "terminal-prefix-command" : "terminal-prefix-unmapped",
+        });
+        return;
+      }
+      if (e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && (e.key === "b" || e.key === "B")) {
+        prefixArmedRef.current = true;
+        e.preventDefault();
+        e.stopPropagation();
+        recordImeDiagnostic(textarea, terminalId, composingRef.current, {
+          phase: "keydown",
+          writePath: "terminal-prefix",
+          key: e.key,
+          keyCode: e.keyCode,
+          isComposing: e.isComposing,
+          ignored: true,
+          reason: "terminal-prefix-arm",
+        });
+        return;
+      }
       if (!isSpecialKeyEvent(e)) {
         // Plain printable — let the `input` event handle it.  keymap.ts
         // would return the char itself here, which would double-send.
@@ -563,7 +625,9 @@ export function useCanvasIME({
 
     const onCompositionEnd = (e: CompositionEvent) => {
       const hadComposition =
-        composingRef.current || pendingCompositionRef.current.length > 0 || pendingCompositionCommitTimerRef.current !== null;
+        composingRef.current ||
+        pendingCompositionRef.current.length > 0 ||
+        pendingCompositionCommitTimerRef.current !== null;
       if (!hadComposition) {
         textarea.value = "";
         recordImeDiagnostic(textarea, terminalId, false, {
@@ -626,7 +690,9 @@ export function useCanvasIME({
       e.preventDefault();
       e.stopPropagation();
       const hadComposition =
-        composingRef.current || pendingCompositionRef.current.length > 0 || pendingCompositionCommitTimerRef.current !== null;
+        composingRef.current ||
+        pendingCompositionRef.current.length > 0 ||
+        pendingCompositionCommitTimerRef.current !== null;
       resetComposition();
       const pasteGuard = classifyTerminalPasteInput(text);
       if (pasteGuard.shouldBlock) {
@@ -719,6 +785,33 @@ export function useCanvasIME({
   }, [terminalId, textarea]);
 }
 
+function prefixCommandFromKey(key: string): TerminalPrefixCommand | null {
+  switch (key) {
+    case "%":
+      return "split-right";
+    case '"':
+      return "split-down";
+    case "x":
+      return "close";
+    case "z":
+      return "toggle-maximize";
+    case "n":
+      return "focus-next";
+    case "p":
+      return "focus-previous";
+    case "}":
+      return "move-next";
+    case "{":
+      return "move-previous";
+    case "=":
+      return "equalize";
+    case " ":
+      return "tiled";
+    default:
+      return null;
+  }
+}
+
 export interface UseImePositionArgs {
   /** Textarea element (position source). */
   textarea: HTMLTextAreaElement | null;
@@ -776,6 +869,13 @@ export function imeTextareaAnchorWidth(anchorX: number, canvasWidth: number): nu
   return Math.max(IME_ANCHOR_MIN_WIDTH_PX, runway);
 }
 
+export function imeTextareaCaretInset(caretX: number, anchorX: number, canvasWidth: number): number {
+  const safeWidth = Number.isFinite(canvasWidth) ? Math.max(0, canvasWidth) : 0;
+  const safeCaret = Number.isFinite(caretX) ? Math.min(Math.max(0, caretX), safeWidth) : 0;
+  const safeAnchor = Number.isFinite(anchorX) ? Math.min(Math.max(0, anchorX), safeWidth) : 0;
+  return Math.max(0, Math.round(safeCaret - safeAnchor));
+}
+
 function rememberImeCandidateAnchor(textarea: HTMLTextAreaElement, candidateX: number, candidateY: number) {
   textarea.dataset.imeCandidateX = `${Math.round(candidateX)}`;
   textarea.dataset.imeCandidateY = `${Math.round(candidateY)}`;
@@ -830,7 +930,14 @@ export function useImePosition({ textarea, cursor, cols, rows, cellWidth, cellHe
       y: screenY,
       candidateX: candidateScreenX,
       candidateY: candidateScreenY,
-    }).catch(() => {});
+    }).catch((err) => {
+      reportInvokeFailure({
+        source: "terminal-ime",
+        operation: "set_ime_position",
+        err,
+        severity: "warning",
+      });
+    });
   }, [textarea, cursor, cols, rows, canvas, cellWidth, cellHeight]);
 
   // Mirror the cursor position to the textarea's CSS box (so the
@@ -843,10 +950,11 @@ export function useImePosition({ textarea, cursor, cols, rows, cellWidth, cellHe
     const caretX = safeCursor.col * cellWidth;
     const anchorX = imeCandidateAnchorX(caretX, canvasWidth);
     const anchorWidth = imeTextareaAnchorWidth(anchorX, canvasWidth);
+    const caretInset = imeTextareaCaretInset(caretX, anchorX, canvasWidth);
     textarea.style.left = `${anchorX}px`;
     textarea.style.top = `${safeCursor.row * cellHeight}px`;
     textarea.style.width = `${anchorWidth}px`;
-    textarea.style.paddingLeft = "0px";
+    textarea.style.paddingLeft = `${caretInset}px`;
     rememberImeCandidateAnchor(textarea, anchorX, safeCursor.row * cellHeight + cellHeight);
     pushImePosition();
   }, [textarea, cursorRow, cursorCol, cols, rows, cellWidth, cellHeight, canvas, pushImePosition]);

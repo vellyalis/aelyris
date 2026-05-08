@@ -35,9 +35,9 @@ fn test_close_removes_from_list() {
 fn test_close_all() {
     let mgr = PtyManager::new();
 
-    let id1 = mgr.spawn(&ShellType::Cmd, 80, 24, None).expect("spawn 1");
-    let id2 = mgr.spawn(&ShellType::Cmd, 80, 24, None).expect("spawn 2");
-    let id3 = mgr.spawn(&ShellType::Cmd, 80, 24, None).expect("spawn 3");
+    let _id1 = mgr.spawn(&ShellType::Cmd, 80, 24, None).expect("spawn 1");
+    let _id2 = mgr.spawn(&ShellType::Cmd, 80, 24, None).expect("spawn 2");
+    let _id3 = mgr.spawn(&ShellType::Cmd, 80, 24, None).expect("spawn 3");
 
     assert_eq!(mgr.list().len(), 3);
     mgr.close_all();

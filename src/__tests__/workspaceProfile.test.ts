@@ -57,11 +57,15 @@ describe("workspaceProfile", () => {
       activeRoadmapId: "P2-04",
     });
 
-    expect(buildWorkspaceProfile({ state, workspaceRoot: "C:/repo/Aether", threadId: "thread-a" }).runState).toMatchObject({
+    expect(
+      buildWorkspaceProfile({ state, workspaceRoot: "C:/repo/Aether", threadId: "thread-a" }).runState,
+    ).toMatchObject({
       status: "active",
       activeRoadmapId: "P2-03",
     });
-    expect(buildWorkspaceProfile({ state, workspaceRoot: "C:/repo/Aether", threadId: "thread-b" }).runState).toMatchObject({
+    expect(
+      buildWorkspaceProfile({ state, workspaceRoot: "C:/repo/Aether", threadId: "thread-b" }).runState,
+    ).toMatchObject({
       status: "blocked",
       activeRoadmapId: "P2-04",
     });

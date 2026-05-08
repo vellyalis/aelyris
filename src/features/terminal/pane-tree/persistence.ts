@@ -16,6 +16,8 @@ const SNAPSHOT_VERSION = 1;
 const STORAGE_PREFIX = "aether:paneTree:";
 const VALID_SHELLS: ShellType[] = ["powershell", "cmd", "gitbash", "wsl"];
 const MAX_DEPTH = 16;
+const CONTROL_CHAR_RANGE = "\\u0000-\\u001f\\u007f";
+const CONTROL_CHARS_REGEX = new RegExp(`[${CONTROL_CHAR_RANGE}]`, "g");
 
 export interface PaneTreeSnapshot {
   version: typeof SNAPSHOT_VERSION;
@@ -308,7 +310,7 @@ function sanitizeTerminalId(value: unknown): string | undefined {
 
 function sanitizeBoundedString(value: unknown, maxLength: number): string | undefined {
   if (typeof value !== "string") return undefined;
-  const normalized = value.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
+  const normalized = value.replace(CONTROL_CHARS_REGEX, " ").replace(/\s+/g, " ").trim();
   return normalized ? normalized.slice(0, maxLength) : undefined;
 }
 

@@ -29,6 +29,7 @@ interface WelcomeScreenProps {
 // generic; the previous revision shipped developer-machine paths
 // (`H:/claude`, `C:/Users/owner/…`) that leaked into every build.
 const FALLBACK_SCAN_DIRS = ["."];
+const SKELETON_KEYS = ["recent-skeleton-1", "recent-skeleton-2", "recent-skeleton-3", "recent-skeleton-4"];
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -111,6 +112,7 @@ export function WelcomeScreen({ onOpenProject, onOpenSettings }: WelcomeScreenPr
   };
 
   return (
+    /* biome-ignore lint/a11y/noStaticElementInteractions: The welcome surface accepts OS folder drops; the explicit Open Folder button is the keyboard path. */
     <div
       className={`${styles.container} ${dragOver ? styles.dragOver : ""}`}
       onDragOver={(e) => {
@@ -143,9 +145,9 @@ export function WelcomeScreen({ onOpenProject, onOpenSettings }: WelcomeScreenPr
         >
           {userName ? `${getGreeting()}, ${userName}.` : `${getGreeting()}.`}
         </motion.p>
-        <p className={styles.subtitle}>AI Workspace for Windows</p>
+        <p className={styles.subtitle}>Project terminal for shells, agents, edits, and review</p>
 
-        <button className={styles.openBtn} onClick={handleOpenFolder}>
+        <button type="button" className={styles.openBtn} onClick={handleOpenFolder}>
           <FolderOpen size={14} strokeWidth={1.75} aria-hidden="true" />
           Open Folder
         </button>
@@ -164,8 +166,8 @@ export function WelcomeScreen({ onOpenProject, onOpenSettings }: WelcomeScreenPr
           </div>
           <div className={styles.recentList}>
             {loading &&
-              Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className={styles.skeletonCard}>
+              SKELETON_KEYS.map((key, i) => (
+                <div key={key} className={styles.skeletonCard}>
                   <div className={styles.skeletonAvatar} />
                   <div className={styles.skeletonText}>
                     <div className={styles.skeletonLine} style={{ width: `${60 + i * 10}%` }} />
@@ -190,6 +192,7 @@ export function WelcomeScreen({ onOpenProject, onOpenSettings }: WelcomeScreenPr
                       <span
                         className={styles.changesDot}
                         title="Working tree has uncommitted changes"
+                        role="img"
                         aria-label="Has uncommitted changes"
                       />
                     )}

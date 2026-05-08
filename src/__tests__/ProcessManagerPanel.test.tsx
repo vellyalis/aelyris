@@ -1,6 +1,6 @@
 // @ts-expect-error Node types are intentionally absent from the app tsconfig.
 import { readFileSync } from "node:fs";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TerminalPaneTarget } from "../App";
 import { ProcessManagerPanel } from "../features/process-manager";
@@ -633,7 +633,7 @@ describe("ProcessManagerPanel", () => {
     expect((screen.getByLabelText("End active process Claude CLI") as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("keeps pane recovery available after the ended process id is cleared", async () => {
+  it("disables restart recovery after the ended process id is cleared", async () => {
     const invoke = vi.fn(async () => undefined) as Invoke;
     const onRestartPane = vi.fn();
     const { rerender } = render(
@@ -660,17 +660,9 @@ describe("ProcessManagerPanel", () => {
     );
 
     expect(screen.getByText("ended")).toBeTruthy();
-    expect(screen.getByLabelText("Process recovery")).toBeTruthy();
-    await waitFor(() =>
-      expect((screen.getByLabelText("Restart Claude CLI") as HTMLButtonElement).disabled).toBe(false),
-    );
-
-    fireEvent.click(screen.getByLabelText("Restart affected process Claude CLI"));
-    await act(async () => {
-      useConfirmStore.getState().close(true);
-    });
-
-    expect(onRestartPane).toHaveBeenCalledWith("tab-main", "pane-claude");
+    expect(screen.queryByLabelText("Process recovery")).toBeNull();
+    expect((screen.getByLabelText("Restart Claude CLI") as HTMLButtonElement).disabled).toBe(true);
+    expect(onRestartPane).not.toHaveBeenCalled();
   });
 
   it("drops recovery state when the affected pane is removed", async () => {

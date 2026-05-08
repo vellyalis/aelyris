@@ -5,13 +5,19 @@ import { TerminalCanvas } from "../features/terminal/TerminalCanvas";
 import type { CellSnapshot, CursorSnapshot, GridSnapshot } from "../shared/types/terminal";
 import { CellAttr } from "../shared/types/terminal";
 
-const terminalCanvasSource = Object.values(
+function rawSource(records: Record<string, string>): string {
+  const [source] = Object.values(records);
+  if (!source) throw new Error("expected TerminalCanvas raw source");
+  return source;
+}
+
+const terminalCanvasSource = rawSource(
   import.meta.glob("../features/terminal/TerminalCanvas.tsx", {
     query: "?raw",
     import: "default",
     eager: true,
   }) as Record<string, string>,
-)[0]!;
+);
 
 // jsdom's HTMLCanvasElement.getContext returns null by default — stub a
 // minimal 2D context so the component can exercise its paint logic.

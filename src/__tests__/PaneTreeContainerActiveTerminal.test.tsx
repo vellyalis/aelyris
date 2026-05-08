@@ -45,6 +45,18 @@ function leafIds(node: PaneNode): string[] {
   return [...leafIds(node.first), ...leafIds(node.second)];
 }
 
+function firstLeafId(node: PaneNode): string {
+  const [id] = leafIds(node);
+  if (!id) throw new Error("expected at least one pane");
+  return id;
+}
+
+function differentLeafId(ids: string[], current: string): string {
+  const id = ids.find((candidate) => candidate !== current);
+  if (!id) throw new Error("expected a different pane id");
+  return id;
+}
+
 function findLeaf(node: PaneNode, paneId: string): Extract<PaneNode, { type: "terminal" }> | null {
   if (node.type === "terminal") return node.id === paneId ? node : null;
   return findLeaf(node.first, paneId) ?? findLeaf(node.second, paneId);
@@ -76,7 +88,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     const onChange = vi.fn();
     render(<PaneTreeContainer shell="powershell" onActiveTerminalChange={onChange} />);
     const c = captured as unknown as CapturedProps;
-    const initialPaneId = leafIds(c.tree)[0]!;
+    const initialPaneId = firstLeafId(c.tree);
     act(() => {
       c.onTerminalReady(initialPaneId, "pty-abc-123");
     });
@@ -90,7 +102,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     const onRegistryChange = vi.fn();
     render(<PaneTreeContainer shell="powershell" cwd="C:/repo" onPaneRegistryChange={onRegistryChange} />);
     const c = captured as unknown as CapturedProps;
-    const initialPaneId = leafIds(c.tree)[0]!;
+    const initialPaneId = firstLeafId(c.tree);
 
     await waitFor(() => {
       expect(onRegistryChange).toHaveBeenLastCalledWith([
@@ -124,7 +136,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     const onRegistryChange = vi.fn();
     render(<PaneTreeContainer shell="powershell" onPaneRegistryChange={onRegistryChange} />);
     const c = captured as unknown as CapturedProps;
-    const initialPaneId = leafIds(c.tree)[0]!;
+    const initialPaneId = firstLeafId(c.tree);
 
     act(() => {
       c.onTerminalReady(initialPaneId, "pty-live-1");
@@ -146,7 +158,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     const onChange = vi.fn();
     render(<PaneTreeContainer shell="powershell" onActiveTerminalChange={onChange} />);
     let c = captured as unknown as CapturedProps;
-    const firstId = leafIds(c.tree)[0]!;
+    const firstId = firstLeafId(c.tree);
     act(() => {
       c.onTerminalReady(firstId, "pty-A");
     });
@@ -158,7 +170,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     });
     c = captured as unknown as CapturedProps;
     const ids = leafIds(c.tree);
-    const newPaneId = ids.find((id) => id !== firstId)!;
+    const newPaneId = differentLeafId(ids, firstId);
     act(() => {
       c.onTerminalReady(newPaneId, "pty-B");
     });
@@ -170,14 +182,14 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     const onChange = vi.fn();
     render(<PaneTreeContainer shell="powershell" onActiveTerminalChange={onChange} />);
     let c = captured as unknown as CapturedProps;
-    const firstId = leafIds(c.tree)[0]!;
+    const firstId = firstLeafId(c.tree);
     act(() => {
       c.onTerminalReady(firstId, "pty-A");
       c.onSplit(firstId, "right");
     });
     c = captured as unknown as CapturedProps;
     const ids = leafIds(c.tree);
-    const otherId = ids.find((id) => id !== firstId)!;
+    const otherId = differentLeafId(ids, firstId);
     act(() => {
       c.onTerminalReady(otherId, "pty-B");
       c.onFocusPane(otherId);
@@ -194,7 +206,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     const onChange = vi.fn();
     const { rerender } = render(<PaneTreeContainer shell="powershell" onActiveTerminalChange={onChange} />);
     let c = captured as unknown as CapturedProps;
-    const firstId = leafIds(c.tree)[0]!;
+    const firstId = firstLeafId(c.tree);
 
     act(() => {
       c.onTerminalReady(firstId, "pty-A");
@@ -202,7 +214,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     });
     c = captured as unknown as CapturedProps;
     const originalOrder = leafIds(c.tree);
-    const otherId = originalOrder.find((id) => id !== firstId)!;
+    const otherId = differentLeafId(originalOrder, firstId);
 
     act(() => {
       c.onTerminalReady(otherId, "pty-B");
@@ -226,7 +238,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
   it("closes an existing pane from a global close request", async () => {
     const { rerender } = render(<PaneTreeContainer shell="powershell" />);
     let c = captured as unknown as CapturedProps;
-    const firstId = leafIds(c.tree)[0]!;
+    const firstId = firstLeafId(c.tree);
 
     act(() => {
       c.onTerminalReady(firstId, "pty-A");
@@ -234,7 +246,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     });
     c = captured as unknown as CapturedProps;
     const originalOrder = leafIds(c.tree);
-    const otherId = originalOrder.find((id) => id !== firstId)!;
+    const otherId = differentLeafId(originalOrder, firstId);
     act(() => {
       c.onTerminalReady(otherId, "pty-B");
     });
@@ -252,7 +264,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
   it("forwards a global restart request to the renderer without changing the tree", async () => {
     const { rerender } = render(<PaneTreeContainer shell="powershell" />);
     let c = captured as unknown as CapturedProps;
-    const firstId = leafIds(c.tree)[0]!;
+    const firstId = firstLeafId(c.tree);
 
     act(() => {
       c.onTerminalReady(firstId, "pty-A");
@@ -260,7 +272,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     });
     c = captured as unknown as CapturedProps;
     const originalOrder = leafIds(c.tree);
-    const otherId = originalOrder.find((id) => id !== firstId)!;
+    const otherId = differentLeafId(originalOrder, firstId);
 
     rerender(<PaneTreeContainer shell="powershell" restartPaneRequest={{ paneId: otherId, sequence: 3 }} />);
 
@@ -299,7 +311,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     render(<PaneTreeContainer shell="powershell" layoutStorageKey="aether:paneTree:tab-test" />);
 
     const c = captured as unknown as CapturedProps;
-    const paneId = leafIds(c.tree)[0]!;
+    const paneId = firstLeafId(c.tree);
     act(() => {
       c.onRenamePane(paneId, "frontend");
       c.onCyclePaneRole(paneId);
@@ -319,7 +331,9 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     invokeMock.mockImplementation((command: string) => {
       if (command === "get_pane_tree_layout") return Promise.resolve(null);
       if (command === "list_panes_info") {
-        return Promise.resolve([{ terminal_id: "pty-durable-1", name: "build", role: "work", shell_type: "powershell" }]);
+        return Promise.resolve([
+          { terminal_id: "pty-durable-1", name: "build", role: "work", shell_type: "powershell" },
+        ]);
       }
       if (command === "list_terminals") return Promise.resolve(["pty-durable-1"]);
       return Promise.resolve(undefined);
@@ -327,7 +341,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     render(<PaneTreeContainer shell="powershell" cwd="C:/repo" layoutStorageKey="aether:paneTree:tab-test" />);
 
     const c = captured as unknown as CapturedProps;
-    const paneId = leafIds(c.tree)[0]!;
+    const paneId = firstLeafId(c.tree);
     act(() => {
       c.onTerminalReady(paneId, "pty-durable-1");
       c.onRenamePane(paneId, "build");
@@ -400,7 +414,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     render(<PaneTreeContainer shell="powershell" layoutStorageKey="aether:paneTree:tab-test" />);
 
     const c = captured as unknown as CapturedProps;
-    const paneId = leafIds(c.tree)[0]!;
+    const paneId = firstLeafId(c.tree);
     act(() => {
       c.onTerminalReady(paneId, "pty-route-1");
       c.onRenamePane(paneId, "frontend");
@@ -423,8 +437,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     const { rerender } = render(<PaneTreeContainer shell="powershell" />);
 
     let c = captured as unknown as CapturedProps;
-    const paneId = leafIds(c.tree)[0];
-    if (!paneId) throw new Error("expected an initial pane");
+    const paneId = firstLeafId(c.tree);
 
     rerender(<PaneTreeContainer shell="powershell" cyclePaneRoleRequest={{ paneId, sequence: 7 }} />);
 
@@ -661,8 +674,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     render(<PaneTreeContainer shell="powershell" layoutStorageKey="aether:paneTree:tab-test" />);
 
     const c = captured as unknown as CapturedProps;
-    const paneId = leafIds(c.tree)[0];
-    if (!paneId) throw new Error("expected an initial pane");
+    const paneId = firstLeafId(c.tree);
     act(() => {
       c.onTerminalReady(paneId, "pty-stable-main");
     });

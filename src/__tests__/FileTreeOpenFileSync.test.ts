@@ -23,7 +23,9 @@ describe("FileTree open editor reconciliation", () => {
     const renameHandler = src.match(/const handleRename\s*=\s*useCallback\([\s\S]*?\n\s*\);/);
     expect(renameHandler).not.toBeNull();
     const renameBody = renameHandler?.[0] ?? "";
-    expect(renameBody.indexOf('await invoke("rename_path"')).toBeLessThan(renameBody.indexOf("replaceOpenPath(path, newPath)"));
+    expect(renameBody.indexOf('await invoke("rename_path"')).toBeLessThan(
+      renameBody.indexOf("replaceOpenPath(path, newPath)"),
+    );
 
     const deleteHandler = src.match(/const handleDelete\s*=\s*useCallback\([\s\S]*?\n\s*\);/);
     expect(deleteHandler).not.toBeNull();

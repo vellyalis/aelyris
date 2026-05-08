@@ -20,9 +20,7 @@
 
 /* Primary — quiet 18K gold, not a prismatic SaaS CTA. */
 .primary {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.14), transparent 42%),
-    var(--gold-surface);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), transparent 42%), var(--gold-surface);
   color: rgba(13, 13, 13, 0.9);
   font-weight: var(--weight-semibold);
   position: relative;

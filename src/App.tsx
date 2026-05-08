@@ -2,12 +2,12 @@ import { Bot, GitCompare, type LucideIcon, Radio } from "lucide-react";
 import { MotionConfig } from "motion/react";
 import {
   lazy,
+  type KeyboardEvent as ReactKeyboardEvent,
   Suspense,
   useCallback,
   useEffect,
   useMemo,
   useState,
-  type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import appStyles from "./App.module.css";
 import { AgentTerminal } from "./features/agent-terminal";
@@ -27,6 +27,8 @@ import type {
   PaneAttachRequest,
   PaneCloseRequest,
   PaneFocusRequest,
+  PaneLayoutCommand,
+  PaneLayoutRequest,
   PaneRenameRequest,
   PaneRestartRequest,
   PaneRoleCycleRequest,
@@ -49,9 +51,6 @@ const AgentInspector = lazy(() =>
 const ToolkitPanel = lazy(() => import("./features/toolkit/ToolkitPanel").then((m) => ({ default: m.ToolkitPanel })));
 const WorkflowPanel = lazy(() =>
   import("./features/workflow/WorkflowPanel").then((m) => ({ default: m.WorkflowPanel })),
-);
-const MissionControlHome = lazy(() =>
-  import("./features/dashboard/MissionControlHome").then((m) => ({ default: m.MissionControlHome })),
 );
 const ContextPanel = lazy(() => import("./features/context/ContextPanel").then((m) => ({ default: m.ContextPanel })));
 const DecisionInboxPanel = lazy(() =>
@@ -120,8 +119,9 @@ import { useThemeApplier } from "./shared/hooks/useTheme";
 import { useWorktreeActions } from "./shared/hooks/useWorktreeActions";
 import { markFirstPaint } from "./shared/lib/bootMetrics";
 import { buildDecisionInbox, type DecisionWorkflowStatus } from "./shared/lib/decisionInbox";
-import { classifyCommand, formatCommandRiskSummary } from "./shared/lib/shellSafety";
+import { formatFallbackError, reportInvokeFailure } from "./shared/lib/fallbackTelemetry";
 import { deriveRightRailRecommendation, type RightRailMode } from "./shared/lib/rightRailAdvisor";
+import { classifyCommand, formatCommandRiskSummary } from "./shared/lib/shellSafety";
 import { useAppStore } from "./shared/store/appStore";
 import { toast } from "./shared/store/toastStore";
 import type { SearchHit } from "./shared/types/history";
@@ -182,6 +182,10 @@ interface AppPaneRenameRequest extends PaneRenameRequest {
 }
 
 interface AppPaneRoleCycleRequest extends PaneRoleCycleRequest {
+  tabId: string;
+}
+
+interface AppPaneLayoutRequest extends PaneLayoutRequest {
   tabId: string;
 }
 
@@ -403,24 +407,28 @@ const RIGHT_RAIL_MODES: Array<{
   id: RightRailMode;
   label: string;
   title: string;
+  description: string;
   icon: LucideIcon;
 }> = [
   {
     id: "command",
-    label: "Command",
-    title: "Agent launch, workflows, and toolkit controls",
+    label: "Run",
+    title: "Launch agents, workflows, and project tools",
+    description: "Start agents, run saved tools, and answer workflow gates.",
     icon: Bot,
   },
   {
     id: "review",
-    label: "Review",
-    title: "Agent output, source control, and context pressure",
+    label: "Changes",
+    title: "Review agent output, source changes, and commits",
+    description: "Inspect changed files, agent output, and commit readiness.",
     icon: GitCompare,
   },
   {
     id: "observe",
-    label: "Observe",
-    title: "Live context, agent activity, and diagnostic logs",
+    label: "Health",
+    title: "Watch live panes, agent state, and reliability signals",
+    description: "Track running panes, logs, failures, and recovery actions.",
     icon: Radio,
   },
 ];
@@ -476,7 +484,6 @@ export function App() {
     kanbanTasks,
     moveKanbanTask,
     contextWarnPct,
-    workspaceProfiles,
     resolveWorkspaceProfile,
     setWorkspaceThreadRunState,
   } = useAppStore();
@@ -520,6 +527,7 @@ export function App() {
   const [paneAttachRequest, setPaneAttachRequest] = useState<AppPaneAttachRequest | null>(null);
   const [paneRenameRequest, setPaneRenameRequest] = useState<AppPaneRenameRequest | null>(null);
   const [paneRoleCycleRequest, setPaneRoleCycleRequest] = useState<AppPaneRoleCycleRequest | null>(null);
+  const [paneLayoutRequest, setPaneLayoutRequest] = useState<AppPaneLayoutRequest | null>(null);
   const [selectedAuditEventId, setSelectedAuditEventId] = useState<number | null>(null);
   const [selectedAuditTraceFilter, setSelectedAuditTraceFilter] = useState<string | null>(null);
   const [selectedOperationalPane, setSelectedOperationalPane] = useState<OperationalPaneSelection | null>(null);
@@ -703,7 +711,7 @@ export function App() {
   const projectName = projectPath ? (projectPath.split("/").filter(Boolean).pop() ?? "Aether") : "Aether";
   const workspaceProfile = useMemo(
     () => resolveWorkspaceProfile(projectPath || rootProjectPath || "workspace", activeTabId),
-    [activeTabId, projectPath, resolveWorkspaceProfile, rootProjectPath, workspaceProfiles],
+    [activeTabId, projectPath, resolveWorkspaceProfile, rootProjectPath],
   );
   const scopedOperationalAuditEvents = useMemo(
     () => filterWorkspaceScopedEvents(operationalAuditEvents, workspaceProfile),
@@ -725,8 +733,14 @@ export function App() {
         .then((statuses) => {
           if (active) setWorkflowStatuses(statuses);
         })
-        .catch(() => {
-          if (active) setWorkflowStatuses([]);
+        .catch((err) => {
+          if (!active) return;
+          reportInvokeFailure({
+            source: "app",
+            operation: "list_running_workflows",
+            err,
+            severity: "warning",
+          });
         });
     };
 
@@ -959,6 +973,17 @@ export function App() {
       selectOperationalPane(target);
     },
     [activeTabId, handlePaneSwitch, selectOperationalPane, visualActivePtyId, visualTerminalPaneTargets],
+  );
+
+  const applyPaneLayoutCommand = useCallback(
+    (command: PaneLayoutCommand, tabId = activeTabId) => {
+      setPaneLayoutRequest((prev) => ({
+        tabId,
+        command,
+        sequence: (prev?.sequence ?? 0) + 1,
+      }));
+    },
+    [activeTabId],
   );
 
   const handlePaneClose = useCallback((tabId: string, paneId: string) => {
@@ -1330,9 +1355,25 @@ export function App() {
               }
             }
           })
-          .catch(() => {});
+          .catch((err) => {
+            reportInvokeFailure({
+              source: "app",
+              operation: "onCloseRequested",
+              err,
+              severity: "error",
+              userVisible: true,
+            });
+            toast.error("Close guard unavailable", formatFallbackError(err));
+          });
       })
-      .catch(() => {});
+      .catch((err) => {
+        reportInvokeFailure({
+          source: "app",
+          operation: "window_setup",
+          err,
+          severity: "warning",
+        });
+      });
   }, []);
 
   useEffect(() => {
@@ -1357,6 +1398,10 @@ export function App() {
     switchPane: handlePaneSwitch,
     focusNextPane: () => focusAdjacentPane(1),
     focusPreviousPane: () => focusAdjacentPane(-1),
+    movePaneNext: () => applyPaneLayoutCommand("move-next"),
+    movePanePrevious: () => applyPaneLayoutCommand("move-previous"),
+    equalizePanes: () => applyPaneLayoutCommand("equalize"),
+    tilePanes: () => applyPaneLayoutCommand("tiled"),
     openPaneSwitcher: () => setPaneSwitcherVisible(true),
     panes: visualTerminalPaneTargets,
     activeTabId,
@@ -1381,6 +1426,18 @@ export function App() {
 
   // Active interactive session (if any)
   const activeInteractive = interactiveSessions.find((s) => s.id === interactiveSessionId);
+  const handleRightRailModeKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+      const nextMode = getNextRightRailMode(rightRailMode, event.key);
+      if (!nextMode) return;
+      event.preventDefault();
+      setRightRailMode(nextMode);
+      requestAnimationFrame(() => {
+        document.querySelector<HTMLButtonElement>(`[data-right-rail-mode="${nextMode}"]`)?.focus();
+      });
+    },
+    [rightRailMode],
+  );
 
   const terminalTabs = tabs.map((tab) => (
     <div key={tab.id} className={appStyles.terminalTabPane} data-active={tab.id === activeTabId && !activeInteractive}>
@@ -1402,6 +1459,7 @@ export function App() {
         attachPaneRequest={paneAttachRequest?.tabId === tab.id ? paneAttachRequest : null}
         renamePaneRequest={paneRenameRequest?.tabId === tab.id ? paneRenameRequest : null}
         cyclePaneRoleRequest={paneRoleCycleRequest?.tabId === tab.id ? paneRoleCycleRequest : null}
+        layoutRequest={paneLayoutRequest?.tabId === tab.id ? paneLayoutRequest : null}
       />
     </div>
   ));
@@ -1455,18 +1513,7 @@ export function App() {
     ? RIGHT_RAIL_MODES.find((mode) => mode.id === rightRailRecommendation.mode)
     : undefined;
   const RightRailRecommendedIcon = rightRailRecommendedMode?.icon;
-  const handleRightRailModeKeyDown = useCallback(
-    (event: ReactKeyboardEvent<HTMLButtonElement>) => {
-      const nextMode = getNextRightRailMode(rightRailMode, event.key);
-      if (!nextMode) return;
-      event.preventDefault();
-      setRightRailMode(nextMode);
-      requestAnimationFrame(() => {
-        document.querySelector<HTMLButtonElement>(`[data-right-rail-mode="${nextMode}"]`)?.focus();
-      });
-    },
-    [rightRailMode],
-  );
+  const activeRightRailMode = RIGHT_RAIL_MODES.find((mode) => mode.id === rightRailMode) ?? RIGHT_RAIL_MODES[0];
   const terminalSurface = (
     <div className={appStyles.terminalContainer}>
       {terminalTabs}
@@ -1476,14 +1523,7 @@ export function App() {
             ptyId={activeInteractive.pty_id}
             cli={activeInteractive.cli}
             status={
-              activeInteractive.status as
-                | "idle"
-                | "thinking"
-                | "coding"
-                | "generating"
-                | "waiting"
-                | "error"
-                | "done"
+              activeInteractive.status as "idle" | "thinking" | "coding" | "generating" | "waiting" | "error" | "done"
             }
             model={activeInteractive.model}
             cost={activeInteractive.cost}
@@ -1492,28 +1532,6 @@ export function App() {
       )}
     </div>
   );
-  const missionControlHome = (
-    <ErrorBoundary>
-      <Suspense fallback={null}>
-        <MissionControlHome
-          projectName={projectName}
-          projectPath={projectPath}
-          branch={branch}
-          panes={visualTerminalPaneTargets}
-          sessions={sessions}
-          interactiveSessionCount={interactiveSessions.length}
-          changedFiles={changedFiles}
-          auditEvents={scopedOperationalAuditEvents}
-          workstationGraph={rightRailGraph}
-          contextWarnPct={contextWarnPct}
-          onOpenCommand={() => setRightRailMode("command")}
-          onOpenReview={() => setRightRailMode("review")}
-          onOpenObserve={() => setRightRailMode("observe")}
-        />
-      </Suspense>
-    </ErrorBoundary>
-  );
-
   const editorArea = activeFile ? (
     <div className={appStyles.editorArea}>
       <div className={appStyles.editorTabsBar}>
@@ -1693,17 +1711,9 @@ export function App() {
 
               <section className="center-panel" aria-label="Terminal and editor">
                 {editorArea ? (
-                  <SplitPane
-                    direction="vertical"
-                    defaultRatio={0.5}
-                    first={editorArea}
-                    second={terminalSurface}
-                  />
+                  <SplitPane direction="vertical" defaultRatio={0.5} first={editorArea} second={terminalSurface} />
                 ) : (
-                  <div className={appStyles.workspaceHome}>
-                    {missionControlHome}
-                    {terminalSurface}
-                  </div>
+                  terminalSurface
                 )}
               </section>
 
@@ -1777,11 +1787,13 @@ export function App() {
                           id={`right-rail-tab-${mode.id}`}
                           className="right-panel-mode-tab"
                           data-active={rightRailMode === mode.id}
+                          data-has-badge={badge > 0 ? "true" : undefined}
                           data-right-rail-mode={mode.id}
                           aria-selected={rightRailMode === mode.id}
                           aria-controls="right-rail-panel"
+                          aria-label={`${mode.label}: ${mode.description}`}
                           tabIndex={rightRailMode === mode.id ? 0 : -1}
-                          title={mode.title}
+                          title={`${mode.title}. ${mode.description}`}
                           onClick={() => setRightRailMode(mode.id)}
                           onKeyDown={handleRightRailModeKeyDown}
                         >
@@ -1791,6 +1803,10 @@ export function App() {
                         </button>
                       );
                     })}
+                  </div>
+                  <div id="right-rail-purpose" className={appStyles.rightRailPurpose}>
+                    <span className={appStyles.rightRailPurposeKicker}>Project tools</span>
+                    <span className={appStyles.rightRailPurposeText}>{activeRightRailMode.description}</span>
                   </div>
 
                   {rightRailRecommendation && rightRailRecommendedMode && RightRailRecommendedIcon && (
@@ -1829,6 +1845,7 @@ export function App() {
                     data-mode={rightRailMode}
                     role="tabpanel"
                     aria-labelledby={`right-rail-tab-${rightRailMode}`}
+                    aria-describedby="right-rail-purpose"
                   >
                     {rightRailMode === "command" && (
                       <>

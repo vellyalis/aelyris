@@ -60,6 +60,11 @@ impl OutputBuffer {
         self.lines.len()
     }
 
+    /// Whether no complete lines are buffered.
+    pub fn is_empty(&self) -> bool {
+        self.lines.is_empty()
+    }
+
     fn push_line(&mut self, line: String) {
         if self.lines.len() >= self.max_lines {
             self.lines.pop_front();
@@ -134,8 +139,8 @@ fn detect_prompt_command(line: &str) -> Option<String> {
         return Some(after.to_string());
     }
     // Generic: > command (at start of line)
-    if line.starts_with("> ") {
-        return Some(line[2..].trim().to_string());
+    if let Some(stripped) = line.strip_prefix("> ") {
+        return Some(stripped.trim().to_string());
     }
     // Trailing $ or > with content after (single char prompt)
     if line.ends_with('$') || line.ends_with('>') || line.ends_with('#') {

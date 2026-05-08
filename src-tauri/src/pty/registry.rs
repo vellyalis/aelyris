@@ -231,6 +231,12 @@ impl PaneRegistry {
     }
 }
 
+impl Default for PaneRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 fn normalize_label(value: &str, max_len: usize) -> String {
     value
         .split_whitespace()

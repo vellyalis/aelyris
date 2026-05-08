@@ -1,15 +1,15 @@
 import { Cpu, Download, FileText, Gauge, GitBranch, Layers, Wrench, X } from "lucide-react";
 import { useState } from "react";
-import { usePerformanceObservatory } from "../analytics/usePerformanceObservatory";
 import { useGhostLayers } from "../../shared/hooks/useGhostLayers";
 import { useRepairJobs } from "../../shared/hooks/useRepairJobs";
 import {
+  createPerformanceDiagnosticBundle,
   formatBytes,
   formatFps,
   formatMs,
-  createPerformanceDiagnosticBundle,
   type PerformanceObservatorySnapshot,
 } from "../analytics/performanceObservatory";
+import { usePerformanceObservatory } from "../analytics/usePerformanceObservatory";
 import { GhostDiffPanel } from "../ghost-diff/GhostDiffPanel";
 import { RepairJobsPanel } from "../repair/RepairJobsPanel";
 import { InlineImageBudget } from "./InlineImageBudget";
@@ -159,7 +159,7 @@ function performanceTitle(snapshot: PerformanceObservatorySnapshot): string {
     `DB write: ${formatMs(snapshot.backend?.dbWriteLatencyMs)}`,
     `Event lag: ${formatMs(snapshot.runtime.eventLoopLagMs)}`,
     `Right rail: ${formatMs(snapshot.runtime.rightRailRenderMs)}`,
-    `Dashboard: ${formatMs(snapshot.runtime.dashboardUpdateLatencyMs)}`,
+    `Automation monitor: ${formatMs(snapshot.runtime.dashboardUpdateLatencyMs)}`,
     `Memory: ${formatBytes(snapshot.runtime.heapUsedBytes)}`,
   ].join("\n");
 }
@@ -182,7 +182,9 @@ function PerformanceObservatoryPanel({
         <div>
           <div className={styles.perfTitle}>Performance Observatory</div>
           <div className={styles.perfSubtitle}>
-            {warnings.length === 0 ? "Budgets nominal" : `${warnings.length} budget issue${warnings.length === 1 ? "" : "s"}`}
+            {warnings.length === 0
+              ? "Budgets nominal"
+              : `${warnings.length} budget issue${warnings.length === 1 ? "" : "s"}`}
           </div>
         </div>
         <button
@@ -221,7 +223,11 @@ function PerformanceObservatoryPanel({
           ["Panes", String(backend?.paneCount ?? 0), `${backend?.activeTerminalCount ?? 0} active PTYs`],
           ["IPC latency", formatMs(backend?.ipcLatencyMs), `<= ${snapshot.budgets.ipcLatencyMsMax} ms`],
           ["IPC dropped", String(t.ipcDroppedChunks), String(snapshot.budgets.ipcDroppedChunksMax)],
-          ["Output batch", formatBytes(backend?.ipcBatchMaxBytes), `${backend?.ipcBatchIntervalMs ?? "n/a"} ms cadence`],
+          [
+            "Output batch",
+            formatBytes(backend?.ipcBatchMaxBytes),
+            `${backend?.ipcBatchIntervalMs ?? "n/a"} ms cadence`,
+          ],
           ["DB write", formatMs(backend?.dbWriteLatencyMs), `<= ${snapshot.budgets.dbWriteLatencyMsMax} ms`],
           ["Event queue", formatMs(runtime.eventLoopLagMs), `<= ${snapshot.budgets.eventLoopLagMsMax} ms`],
         ]}
@@ -230,9 +236,21 @@ function PerformanceObservatoryPanel({
       <MetricSection
         title="UI / Processes"
         rows={[
-          ["Right rail", formatMs(runtime.rightRailRenderMs), `${runtime.rightRailMode} / ${runtime.rightRailWidth ?? "n/a"} px`],
-          ["Dashboard", formatMs(runtime.dashboardUpdateLatencyMs), `<= ${snapshot.budgets.dashboardUpdateMsMax} ms`],
-          ["Renderer heap", formatBytes(runtime.heapUsedBytes), `<= ${formatBytes(snapshot.budgets.heapUsedWarnBytes)}`],
+          [
+            "Right rail",
+            formatMs(runtime.rightRailRenderMs),
+            `${runtime.rightRailMode} / ${runtime.rightRailWidth ?? "n/a"} px`,
+          ],
+          [
+            "Automation monitor",
+            formatMs(runtime.dashboardUpdateLatencyMs),
+            `<= ${snapshot.budgets.dashboardUpdateMsMax} ms`,
+          ],
+          [
+            "Renderer heap",
+            formatBytes(runtime.heapUsedBytes),
+            `<= ${formatBytes(snapshot.budgets.heapUsedWarnBytes)}`,
+          ],
           [
             "Renderer process",
             formatBytes(runtime.rendererProcessMemoryBytes),
@@ -244,12 +262,12 @@ function PerformanceObservatoryPanel({
             `<= ${snapshot.budgets.rendererCpuPctMax}%`,
           ],
           [
-            "Dashboard memory",
+            "Monitor memory",
             formatBytes(runtime.dashboardProcessMemoryBytes),
             `<= ${formatBytes(snapshot.budgets.dashboardProcessMemoryWarnBytes)}`,
           ],
           [
-            "Dashboard CPU",
+            "Monitor CPU",
             runtime.dashboardCpuPct === null ? "n/a" : `${runtime.dashboardCpuPct.toFixed(0)}%`,
             `<= ${snapshot.budgets.dashboardCpuPctMax}%`,
           ],

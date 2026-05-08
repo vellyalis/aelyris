@@ -20,7 +20,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
 
   return (
     <RevealHighlight borderRadius={4}>
-      <button ref={ref} className={cls} {...props}>
+      <button type="button" ref={ref} className={cls} {...props}>
         {icon}
         {children}
       </button>

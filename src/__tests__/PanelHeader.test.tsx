@@ -2,6 +2,11 @@ import { fireEvent, render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { PanelHeader } from "../shared/ui/PanelHeader";
 
+function requiredElement<T extends Element>(element: T | null, label: string): T {
+  if (!element) throw new Error(`Expected ${label} to exist`);
+  return element;
+}
+
 describe("PanelHeader", () => {
   it("renders the title in a plain div when not collapsible", () => {
     const { container } = render(<PanelHeader title="Tasks" />);
@@ -57,7 +62,7 @@ describe("PanelHeader", () => {
     it("fires onToggle when the header button is clicked", () => {
       const onToggle = vi.fn();
       const { container } = render(<PanelHeader title="Workflows" collapsible onToggle={onToggle} />);
-      fireEvent.click(container.querySelector("button")!);
+      fireEvent.click(requiredElement(container.querySelector("button"), "header button"));
       expect(onToggle).toHaveBeenCalledTimes(1);
     });
 
@@ -76,7 +81,7 @@ describe("PanelHeader", () => {
           }
         />,
       );
-      fireEvent.click(container.querySelector("[data-testid='act']")!);
+      fireEvent.click(requiredElement(container.querySelector("[data-testid='act']"), "action button"));
       expect(onAction).toHaveBeenCalledTimes(1);
       expect(onToggle).not.toHaveBeenCalled();
       expect(container.querySelector("button button")).toBeNull();

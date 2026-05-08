@@ -26,7 +26,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               className={styles.action}
               altText={t.action.label}
               onClick={() => {
-                t.action!.onClick();
+                t.action?.onClick();
                 dismiss(t.id);
               }}
             >

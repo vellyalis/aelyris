@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { CLIENT_RING_LIMIT, useLogStream, type Invoke } from "../shared/hooks/useLogStream";
+import { CLIENT_RING_LIMIT, type Invoke, useLogStream } from "../shared/hooks/useLogStream";
 import type { LogEntry } from "../shared/types/logs";
 
 // Real-timer cadence: small enough that tests stay fast, large enough
@@ -35,9 +35,7 @@ describe("useLogStream", () => {
       return [];
     }) as unknown as Invoke;
 
-    const { result } = renderHook(() =>
-      useLogStream({ invoke, pollMs: 60_000, initialLimit: 50 }),
-    );
+    const { result } = renderHook(() => useLogStream({ invoke, pollMs: 60_000, initialLimit: 50 }));
 
     await waitFor(() => expect(result.current.ready).toBe(true));
     expect(result.current.entries.map((e) => e.seq)).toEqual([1, 2]);
@@ -60,9 +58,7 @@ describe("useLogStream", () => {
       return [];
     }) as unknown as Invoke;
 
-    const { result } = renderHook(() =>
-      useLogStream({ invoke, pollMs: TEST_POLL_MS }),
-    );
+    const { result } = renderHook(() => useLogStream({ invoke, pollMs: TEST_POLL_MS }));
 
     await waitFor(() => expect(result.current.ready).toBe(true));
     // The polling tick may already have appended {3, 4} by the time
@@ -116,7 +112,7 @@ describe("useLogStream", () => {
     });
     expect(result.current.entries.length).toBe(CLIENT_RING_LIMIT);
     // Oldest 50 dropped, newest 50 kept.
-    expect(result.current.entries[0]!.seq).toBe(51);
+    expect(result.current.entries[0]?.seq).toBe(51);
   });
 
   it("surfaces invoke errors without losing existing entries", async () => {
@@ -130,9 +126,7 @@ describe("useLogStream", () => {
       return [];
     }) as unknown as Invoke;
 
-    const { result } = renderHook(() =>
-      useLogStream({ invoke, pollMs: TEST_POLL_MS }),
-    );
+    const { result } = renderHook(() => useLogStream({ invoke, pollMs: TEST_POLL_MS }));
     await waitFor(() => expect(result.current.ready).toBe(true));
     expect(result.current.entries.length).toBe(1);
 
@@ -147,10 +141,9 @@ describe("useLogStream", () => {
 
   it("stays idle and resets state when enabled is false", async () => {
     const invoke = vi.fn(async () => []) as unknown as Invoke;
-    const { result, rerender } = renderHook(
-      ({ enabled }) => useLogStream({ invoke, pollMs: TEST_POLL_MS, enabled }),
-      { initialProps: { enabled: true } },
-    );
+    const { result, rerender } = renderHook(({ enabled }) => useLogStream({ invoke, pollMs: TEST_POLL_MS, enabled }), {
+      initialProps: { enabled: true },
+    });
     await waitFor(() => expect(result.current.ready).toBe(true));
     rerender({ enabled: false });
     await waitFor(() => {
@@ -162,8 +155,6 @@ describe("useLogStream", () => {
     await act(async () => {
       await sleep(TEST_POLL_MS * 3);
     });
-    expect((invoke as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(
-      callsBefore,
-    );
+    expect((invoke as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(callsBefore);
   });
 });

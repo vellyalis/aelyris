@@ -156,6 +156,7 @@ export function SplitPane({
       <div className={styles.pane} style={{ [isHorizontal ? "width" : "height"]: firstSize }}>
         {first}
       </div>
+      {/* biome-ignore lint/a11y/useSemanticElements: This is a draggable, keyboard-resizable splitter; replacing it with hr would not improve the interaction contract. */}
       <div
         className={`${styles.handle} ${isHorizontal ? styles.handleH : styles.handleV}`}
         onPointerDown={handlePointerDown}

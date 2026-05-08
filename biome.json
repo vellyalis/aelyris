@@ -16,7 +16,17 @@
         "noUnusedImports": "warn"
       },
       "suspicious": {
+        "noArrayIndexKey": "warn",
         "noExplicitAny": "warn"
+      },
+      "a11y": {
+        "noLabelWithoutControl": "warn",
+        "noNoninteractiveTabindex": "warn",
+        "noStaticElementInteractions": "warn",
+        "noSvgWithoutTitle": "warn",
+        "useAriaPropsSupportedByRole": "warn",
+        "useKeyWithClickEvents": "warn",
+        "useSemanticElements": "warn"
       },
       "security": {
         "noDangerouslySetInnerHtml": "error"

@@ -12,6 +12,10 @@ function getSrc(): string {
   return entries[0][1];
 }
 
+function templatePlaceholder(name: string): string {
+  return `${"$"}{${name}}`;
+}
+
 describe("App unsaved editor guards", () => {
   it("does not clear editor state on project/tab changes without an unsaved confirmation", () => {
     const src = getSrc();
@@ -58,7 +62,8 @@ describe("App right rail composition", () => {
     expect(src).toContain('import("./features/review/ReviewQueuePanel")');
     expect(src).toContain("filterWorkspaceScopedEvents");
     expect(src).toContain("const workspaceProfile = useMemo(");
-    const densityShells = src.match(/className="app-container" data-density=\{workspaceProfile\.visualDensity\}/g) ?? [];
+    const densityShells =
+      src.match(/className="app-container" data-density=\{workspaceProfile\.visualDensity\}/g) ?? [];
     expect(densityShells).toHaveLength(2);
     expect(src).toContain("const scopedOperationalAuditEvents = useMemo(");
     expect(src).toContain("setWorkspaceThreadRunState(projectPath, activeTabId");
@@ -100,34 +105,30 @@ describe("App right rail composition", () => {
     expect(src).toContain('if (key === "End") return RIGHT_RAIL_MODES.at(-1)?.id ?? null');
     expect(src).toContain("const handleRightRailModeKeyDown = useCallback");
     expect(src).toContain("setRightRailMode(nextMode)");
-    expect(src).toContain('document.querySelector<HTMLButtonElement>(`[data-right-rail-mode="${nextMode}"]`)?.focus()');
-    expect(src).toContain("id={`right-rail-tab-${mode.id}`}");
+    expect(src).toContain(
+      `document.querySelector<HTMLButtonElement>(\`[data-right-rail-mode="${templatePlaceholder("nextMode")}"]\`)?.focus()`,
+    );
+    expect(src).toContain(`id={\`right-rail-tab-${templatePlaceholder("mode.id")}\`}`);
     expect(src).toContain("data-right-rail-mode={mode.id}");
     expect(src).toContain('aria-controls="right-rail-panel"');
+    expect(src).toContain(
+      `aria-label={\`${templatePlaceholder("mode.label")}: ${templatePlaceholder("mode.description")}\`}`,
+    );
     expect(src).toContain("tabIndex={rightRailMode === mode.id ? 0 : -1}");
     expect(src).toContain("onKeyDown={handleRightRailModeKeyDown}");
+    expect(src).toContain('id="right-rail-purpose"');
+    expect(src).toContain("activeRightRailMode.description");
     expect(src).toContain('role="tabpanel"');
-    expect(src).toContain("aria-labelledby={`right-rail-tab-${rightRailMode}`}");
+    expect(src).toContain(`aria-labelledby={\`right-rail-tab-${templatePlaceholder("rightRailMode")}\`}`);
+    expect(src).toContain('aria-describedby="right-rail-purpose"');
   });
 
-  it("renders Mission Control as the project home without replacing terminal work", () => {
+  it("keeps the terminal as the project home instead of showing an operations dashboard", () => {
     const src = getSrc();
 
-    expect(src).toContain('import("./features/dashboard/MissionControlHome")');
-    expect(src).toContain("const missionControlHome = (");
-    expect(src).toContain("<MissionControlHome");
-    expect(src).toContain("projectName={projectName}");
-    expect(src).toContain("projectPath={projectPath}");
-    expect(src).toContain("panes={visualTerminalPaneTargets}");
-    expect(src).toContain("sessions={sessions}");
-    expect(src).toContain("interactiveSessionCount={interactiveSessions.length}");
-    expect(src).toContain("changedFiles={changedFiles}");
-    expect(src).toContain("auditEvents={scopedOperationalAuditEvents}");
-    expect(src).toContain("workstationGraph={rightRailGraph}");
-    expect(src).toContain("contextWarnPct={contextWarnPct}");
-    expect(src).toContain("onOpenReview={() => setRightRailMode(\"review\")}");
-    expect(src).toContain("className={appStyles.workspaceHome}");
-    expect(src).toContain("{missionControlHome}");
+    expect(src).not.toContain('import("./features/dashboard/MissionControlHome")');
+    expect(src).not.toContain("MissionControlHome");
+    expect(src).not.toContain("missionControlHome");
     expect(src).toContain("{terminalSurface}");
   });
 });
@@ -163,7 +164,7 @@ describe("App active terminal routing", () => {
     expect(src).not.toContain("terminals[0]");
 
     const runHandler = src.match(/const handleRunCommand\s*=\s*useCallback\([\s\S]*?\n\s*\);/);
-    expect(runHandler?.[0] ?? "").toContain("writeToActiveTerminal(`${command}\\r`)");
+    expect(runHandler?.[0] ?? "").toContain(`writeToActiveTerminal(\`${templatePlaceholder("command")}\\r\`)`);
 
     const historyHandler = src.match(/const handleHistoryAccept\s*=\s*useCallback\([\s\S]*?\n\s*\);/);
     expect(historyHandler?.[0] ?? "").toContain("writeToActiveTerminal(hit.entry.command");

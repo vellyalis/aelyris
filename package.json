@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
-    "tauri:build:dist": "tauri build --config src-tauri/tauri.dist.conf.json --no-sign",
+    "tauri:build:dist": "node scripts/build-pty-sidecar.mjs && tauri build --config src-tauri/tauri.dist.conf.json --no-sign",
     "verify:dist": "node scripts/verify-dist-artifacts.mjs",
     "verify:release:doctor": "node scripts/release-doctor.mjs",
     "verify:release:preflight": "node scripts/verify-release-gate.mjs --preflight",
@@ -47,13 +47,14 @@
     "@tauri-apps/plugin-updater": "^2.10.1",
     "@xyflow/react": "^12.10.2",
     "cmdk": "^1.1.1",
-    "dompurify": "^3.3.3",
+    "dompurify": "^3.4.2",
     "lucide-react": "^1.8.0",
-    "marked": "^18.0.0",
+    "marked": "^18.0.3",
     "match-sorter": "^8.2.0",
     "monaco-editor": "^0.55.1",
     "monaco-vim": "^0.4.4",
     "motion": "^12.38.0",
+    "postcss": "^8.5.14",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "zustand": "^5.0.12"
@@ -64,8 +65,6 @@
     "@tauri-apps/cli": "^2",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
-    "@types/dompurify": "^3.2.0",
-    "@types/marked": "^6.0.0",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
@@ -75,6 +74,11 @@
     "vitest": "^4.1.4"
   },
   "pnpm": {
+    "overrides": {
+      "dompurify": "^3.4.2",
+      "marked": "^18.0.3",
+      "postcss": "^8.5.14"
+    },
     "onlyBuiltDependencies": [
       "esbuild"
     ]

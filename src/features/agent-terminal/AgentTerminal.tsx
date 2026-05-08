@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { formatFallbackError, reportInvokeFailure } from "../../shared/lib/fallbackTelemetry";
 import { type AgentStatus, STATUS_COLORS, STATUS_LABELS } from "../../shared/types/agent";
 import { type AgentCliType, getCliColor, getCliLabel } from "../../shared/types/interactiveAgent";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
@@ -47,6 +48,7 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
   const areaRef = useRef<HTMLDivElement>(null);
   const [dims, setDims] = useState<Dims | null>(null);
   const [exited, setExited] = useState(false);
+  const [terminalError, setTerminalError] = useState<string | null>(null);
   const imeBarRef = useRef<IMEInputBarHandle>(null);
   const canvasElRef = useRef<HTMLCanvasElement | null>(null);
   const canvasInputElRef = useRef<HTMLTextAreaElement | null>(null);
@@ -88,7 +90,28 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
   // Forward every dims change to the backend PTY + native engine.
   useEffect(() => {
     if (!dims) return;
-    void invoke("resize_terminal", { id: ptyId, cols: dims.cols, rows: dims.rows }).catch(() => {});
+    let cancelled = false;
+    void invoke("resize_terminal", { id: ptyId, cols: dims.cols, rows: dims.rows })
+      .then(() => {
+        if (!cancelled) {
+          setTerminalError((prev) => (prev?.startsWith("Resize failed:") ? null : prev));
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        const message = formatFallbackError(err);
+        reportInvokeFailure({
+          source: "agent-terminal",
+          operation: "resize_terminal",
+          err,
+          severity: "warning",
+          userVisible: true,
+        });
+        setTerminalError(`Resize failed: ${message}`);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [ptyId, dims]);
 
   // Watch the PTY for exit so we can display a subtle overlay when the
@@ -135,7 +158,21 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
   const submitIme = useCallback(
     (text: string) => {
       if (exited) return;
-      void invoke("write_terminal", { id: ptyId, data: text }).catch(() => {});
+      void invoke("write_terminal", { id: ptyId, data: text })
+        .then(() => {
+          setTerminalError((prev) => (prev?.startsWith("Input write failed:") ? null : prev));
+        })
+        .catch((err) => {
+          const message = formatFallbackError(err);
+          reportInvokeFailure({
+            source: "agent-terminal",
+            operation: "write_terminal",
+            err,
+            severity: "error",
+            userVisible: true,
+          });
+          setTerminalError(`Input write failed: ${message}`);
+        });
     },
     [exited, ptyId],
   );
@@ -174,6 +211,7 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
           />
         )}
         {exited && <div className={styles.exitOverlay}>[Agent process exited]</div>}
+        {terminalError && <div className={styles.errorOverlay}>{terminalError}</div>}
       </div>
       <IMEInputBar ref={imeBarRef} onSubmit={submitIme} onRequestCanvasFocus={focusCanvas} disabled={exited} />
     </div>

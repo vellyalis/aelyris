@@ -2,6 +2,48 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+/// Resolve a CLI command name to the Windows shim that CreateProcess can run.
+///
+/// npm-style packages often install both an extensionless Unix shim and a
+/// `.cmd` shim on Windows. `CreateProcessW` can pick the extensionless file and
+/// fail with ERROR_BAD_EXE_FORMAT, so prefer native launcher extensions when
+/// they are present on PATH.
+pub fn platform_cli_program(name: &str) -> String {
+    #[cfg(windows)]
+    {
+        if has_windows_executable_extension(name) {
+            return name.to_string();
+        }
+
+        for ext in ["cmd", "exe", "bat"] {
+            let candidate = format!("{name}.{ext}");
+            if command_exists_on_path(&candidate) {
+                return candidate;
+            }
+        }
+    }
+
+    name.to_string()
+}
+
+#[cfg(windows)]
+fn has_windows_executable_extension(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    lower.ends_with(".cmd") || lower.ends_with(".exe") || lower.ends_with(".bat")
+}
+
+#[cfg(windows)]
+fn command_exists_on_path(command: &str) -> bool {
+    let command_path = std::path::Path::new(command);
+    if command_path.components().count() > 1 {
+        return command_path.is_file();
+    }
+
+    std::env::var_os("PATH")
+        .map(|path| std::env::split_paths(&path).any(|dir| dir.join(command).is_file()))
+        .unwrap_or(false)
+}
+
 /// Which AI CLI is backing this session
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -22,17 +64,17 @@ impl AgentCli {
                     args.push("--model".to_string());
                     args.push(m.to_string());
                 }
-                ("claude".to_string(), args)
+                (platform_cli_program("claude"), args)
             }
             AgentCli::Gemini => {
                 // Gemini CLI interactive mode
-                ("gemini".to_string(), Vec::new())
+                (platform_cli_program("gemini"), Vec::new())
             }
             AgentCli::Codex => {
                 // OpenAI Codex CLI
-                ("codex".to_string(), Vec::new())
+                (platform_cli_program("codex"), Vec::new())
             }
-            AgentCli::Custom(bin) => (bin.clone(), Vec::new()),
+            AgentCli::Custom(bin) => (platform_cli_program(bin), Vec::new()),
         }
     }
 
@@ -249,7 +291,7 @@ mod tests {
     fn program_and_args_claude_with_model() {
         let cli = AgentCli::Claude;
         let (prog, args) = cli.program_and_args(Some("opus"));
-        assert_eq!(prog, "claude");
+        assert_eq!(prog, platform_cli_program("claude"));
         assert_eq!(args, vec!["--model", "opus"]);
     }
 
@@ -257,7 +299,15 @@ mod tests {
     fn program_and_args_claude_no_model() {
         let cli = AgentCli::Claude;
         let (prog, args) = cli.program_and_args(None);
-        assert_eq!(prog, "claude");
+        assert_eq!(prog, platform_cli_program("claude"));
+        assert!(args.is_empty());
+    }
+
+    #[test]
+    fn program_and_args_codex_uses_platform_program() {
+        let cli = AgentCli::Codex;
+        let (prog, args) = cli.program_and_args(None);
+        assert_eq!(prog, platform_cli_program("codex"));
         assert!(args.is_empty());
     }
 

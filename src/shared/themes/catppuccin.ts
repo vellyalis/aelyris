@@ -159,6 +159,36 @@ export const palettes: Record<string, ThemePalette> = {
     sapphire: "#209fb5",
     maroon: "#e64553",
   },
+  sakura: {
+    base: "#fff7fb",
+    mantle: "#fff0f6",
+    crust: "#ffe4ef",
+    surface0: "#ffeaf3",
+    surface1: "#ffd9e8",
+    surface2: "#f5bdd1",
+    overlay0: "#c77f99",
+    overlay1: "#a7637d",
+    overlay2: "#8e516b",
+    text: "#402432",
+    subtext0: "#6f4054",
+    subtext1: "#5c3144",
+    red: "#d93c64",
+    green: "#37a970",
+    yellow: "#d5962f",
+    blue: "#4f77c8",
+    magenta: "#ee4f8c",
+    cyan: "#3ba9b7",
+    peach: "#f08a6e",
+    mauve: "#b46ae2",
+    pink: "#ff8ab3",
+    teal: "#5fc8bd",
+    sky: "#83c6f4",
+    lavender: "#9b8ef4",
+    flamingo: "#ff9baa",
+    rosewater: "#ffd2dc",
+    sapphire: "#e83e7a",
+    maroon: "#bd3a5d",
+  },
 };
 
 /** Theme IDs used in settings */
@@ -168,6 +198,7 @@ export type ThemeId =
   | "catppuccin-frappe"
   | "catppuccin-macchiato"
   | "catppuccin-latte"
+  | "sakura-hub"
   | "tokyo-night"
   | "dracula";
 
@@ -180,10 +211,8 @@ export function getPalette(themeId: string): ThemePalette {
       return palettes.macchiato;
     case "catppuccin-latte":
       return palettes.latte;
-    case "catppuccin-mocha":
-    case "aether-dark":
-    case "tokyo-night":
-    case "dracula":
+    case "sakura-hub":
+      return palettes.sakura;
     default:
       // All dark themes default to mocha base for now
       return palettes.mocha;
@@ -192,7 +221,7 @@ export function getPalette(themeId: string): ThemePalette {
 
 /** Whether the palette is a light theme */
 export function isLightTheme(themeId: string): boolean {
-  return themeId === "catppuccin-latte";
+  return themeId === "catppuccin-latte" || themeId === "sakura-hub";
 }
 
 /** Subset of the palette that the user is allowed to override via the editor. */

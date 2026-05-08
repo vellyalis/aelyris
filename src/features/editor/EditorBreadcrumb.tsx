@@ -22,16 +22,21 @@ export const EditorBreadcrumb = memo(function EditorBreadcrumb({
   // the absolute path showing through as a single breadcrumb segment.
   const relative = computeRelativePath(filePath, projectPath ?? null) ?? filePath;
   const segments = relative.split("/").filter(Boolean);
+  const breadcrumbSegments = segments.reduce<Array<{ label: string; path: string }>>((acc, seg) => {
+    const prev = acc[acc.length - 1]?.path;
+    acc.push({ label: seg, path: prev ? `${prev}/${seg}` : seg });
+    return acc;
+  }, []);
 
   const hasGhost = ghostLayerCount > 0;
   const hasConflict = ghostConflictCount > 0;
 
   return (
     <div className={styles.breadcrumb}>
-      {segments.map((seg, i) => (
-        <span key={i} className={i === segments.length - 1 ? styles.active : styles.segment}>
+      {breadcrumbSegments.map((seg, i) => (
+        <span key={seg.path} className={i === breadcrumbSegments.length - 1 ? styles.active : styles.segment}>
           {i > 0 && <ChevronRight size={10} className={styles.sep} />}
-          {seg}
+          {seg.label}
         </span>
       ))}
       {hasConflict && (

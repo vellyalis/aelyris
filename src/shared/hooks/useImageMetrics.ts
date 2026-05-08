@@ -46,10 +46,7 @@ export interface UseImageMetricsOptions {
  * change immediately re-fetches so a returning user sees fresh state
  * without waiting a full interval.
  */
-export function useImageMetrics(
-  terminalId: string | null,
-  options: UseImageMetricsOptions = {},
-): ImageMetrics | null {
+export function useImageMetrics(terminalId: string | null, options: UseImageMetricsOptions = {}): ImageMetrics | null {
   const { invoke = defaultInvoke, pollIntervalMs = DEFAULT_POLL_INTERVAL_MS } = options;
   const [metrics, setMetrics] = useState<ImageMetrics | null>(null);
   // Keep a ref to the latest invoke so the polling loop's closure can

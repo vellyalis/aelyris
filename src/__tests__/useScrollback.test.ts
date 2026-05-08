@@ -23,6 +23,12 @@ function makeSnapshot(rows: string[]): GridSnapshot {
   };
 }
 
+function requireCompositeCells(cells: CellSnapshot[][] | null | undefined): CellSnapshot[][] {
+  expect(cells).toBeDefined();
+  if (cells == null) throw new Error("Expected composite terminal cells");
+  return cells;
+}
+
 describe("useScrollback", () => {
   beforeEach(() => {
     invokeMock.mockReset();
@@ -71,7 +77,7 @@ describe("useScrollback", () => {
 
     act(() => result.current.scrollBy(2));
     await waitFor(() => {
-      const cells = result.current.compositeCells!;
+      const cells = requireCompositeCells(result.current.compositeCells);
       // Top row is the OLDER history row (n=1), then the NEWER (n=0),
       // then the first live row; the third live row falls off the bottom.
       expect(
@@ -121,7 +127,7 @@ describe("useScrollback", () => {
     );
 
     await waitFor(() => {
-      const cells = result.current.compositeCells!;
+      const cells = requireCompositeCells(result.current.compositeCells);
       expect(
         cells[0]
           .map((c) => c.ch)
@@ -264,7 +270,7 @@ describe("useScrollback", () => {
 
     act(() => result.current.scrollBy(2));
     await waitFor(() => {
-      const cells = result.current.compositeCells!;
+      const cells = requireCompositeCells(result.current.compositeCells);
       // Top two rows must be blanks (history not yet arrived), bottom one
       // is live row 0.
       expect(cells[0].every((c) => c.ch === " ")).toBe(true);

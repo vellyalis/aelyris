@@ -57,9 +57,7 @@ export function GhostDiffPanel({ layers, onDismiss, onClose }: GhostDiffPanelPro
       <PanelHeader
         leadingIcon={<Layers size={12} />}
         title="Ghost diff"
-        subtitle={
-          layers.length === 0 ? "No active layers" : `${layers.length} layer${layers.length === 1 ? "" : "s"}`
-        }
+        subtitle={layers.length === 0 ? "No active layers" : `${layers.length} layer${layers.length === 1 ? "" : "s"}`}
       />
       <div className={styles.list}>
         {layers.length === 0 ? (

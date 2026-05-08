@@ -149,9 +149,7 @@ export const DEFAULT_WORKSPACE_PROFILE_DEFAULTS: WorkspaceProfileDefaults = {
   },
 };
 
-export function createWorkspaceProfileState(
-  defaults: Partial<WorkspaceProfileDefaults> = {},
-): WorkspaceProfileState {
+export function createWorkspaceProfileState(defaults: Partial<WorkspaceProfileDefaults> = {}): WorkspaceProfileState {
   return {
     version: 1,
     globalDefaults: mergeDefaults(DEFAULT_WORKSPACE_PROFILE_DEFAULTS, defaults),

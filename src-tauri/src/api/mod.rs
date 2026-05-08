@@ -25,8 +25,7 @@
 
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
-use std::path::{Component, Path as FsPath};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::path::{Component, Path as FsPath, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -48,12 +47,14 @@ use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
 use thiserror::Error;
-use tokio::sync::{broadcast, Notify};
+use tokio::sync::{broadcast, Mutex as AsyncMutex, Notify};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
 use crate::pty::{PtyError, PtyManager, ShellType, TerminalInfo};
 
 pub const DEFAULT_PORT: u16 = 9333;
+pub const PROCESS_KIND_EMBEDDED: &str = "embedded-api";
+pub const PROCESS_KIND_SIDE_CAR: &str = "pty-sidecar";
 
 /// Per-frame write deadline for the WS send half.
 ///
@@ -64,6 +65,7 @@ pub const DEFAULT_PORT: u16 = 9333;
 /// close to full. Timing out the write disconnects that client and lets
 /// the ring drain for the rest.
 const WS_WRITE_TIMEOUT: Duration = Duration::from_secs(30);
+pub const WS_MAX_INPUT_FRAME_BYTES: usize = 1024 * 1024;
 
 /// Server-controlled sentinel template for broadcast `Lagged` events.
 ///
@@ -92,20 +94,15 @@ pub const MAX_PTY_SESSIONS: usize = 32;
 /// via `AETHER_API_CORS_ORIGIN` (comma-separated, e.g. `https://foo,https://bar`).
 pub const DEFAULT_CORS_ORIGIN: &str = "http://127.0.0.1:1420";
 
-/// REST rate-limit bucket: 60 token burst, refill at 1 token/sec → 60 req/min
-/// steady-state, bursts up to 60 requests instantly.
-pub const REST_BURST: f64 = 60.0;
-pub const REST_REFILL_PER_SEC: f64 = 1.0;
+/// REST rate-limit bucket: tolerant enough for local UI reload/reconnect storms
+/// while still bounding a runaway authenticated client.
+pub const REST_BURST: f64 = 240.0;
+pub const REST_REFILL_PER_SEC: f64 = 20.0;
 
-/// WebSocket connect bucket: 3 token burst, refill at 1 token/sec → 1 WS
-/// upgrade/sec steady-state, small burst for UI reconnect storms.
-pub const WS_BURST: f64 = 3.0;
-pub const WS_REFILL_PER_SEC: f64 = 1.0;
-
-/// Once-per-process latch for the `?token=` deprecation warning. The
-/// message is informational — repeating it per request would just pollute
-/// the log without adding signal. Reset on process restart.
-static LEGACY_TOKEN_WARNED: AtomicBool = AtomicBool::new(false);
+/// WebSocket connect bucket: enough burst for local UI reconnect storms and
+/// negative auth probes, while still bounding a runaway local client.
+pub const WS_BURST: f64 = 16.0;
+pub const WS_REFILL_PER_SEC: f64 = 4.0;
 
 // ─── State ──────────────────────────────────────────────────────────────────
 
@@ -134,6 +131,11 @@ pub struct ApiState {
     /// `POST /sessions/:id/stream-ticket`, consumed by the WS upgrade's
     /// `?ticket=<uuid>` query parameter.
     pub tickets: Arc<TicketRegistry>,
+    /// Lightweight process identity used by the Tauri host to reject an
+    /// unrelated/stale process that happens to be bound to the sidecar port.
+    pub process_kind: &'static str,
+    pub instance_id: String,
+    create_lock: Arc<AsyncMutex<()>>,
 }
 
 impl ApiState {
@@ -146,6 +148,9 @@ impl ApiState {
             rate_limiter: Arc::new(RateLimiter::new()),
             cors_origins: default_cors_origins(),
             tickets: Arc::new(TicketRegistry::new()),
+            process_kind: PROCESS_KIND_EMBEDDED,
+            instance_id: uuid::Uuid::new_v4().to_string(),
+            create_lock: Arc::new(AsyncMutex::new(())),
         }
     }
 
@@ -175,6 +180,11 @@ impl ApiState {
     /// tickets or share a registry across multiple `ApiState` clones.
     pub fn with_tickets(mut self, tickets: Arc<TicketRegistry>) -> Self {
         self.tickets = tickets;
+        self
+    }
+
+    pub fn with_process_kind(mut self, process_kind: &'static str) -> Self {
+        self.process_kind = process_kind;
         self
     }
 
@@ -278,7 +288,7 @@ struct Bucket {
 }
 
 impl RateLimiter {
-    /// Production defaults: 60 REST req/min (burst 60), 1 WS upgrade/sec
+    /// Production defaults: generous local REST burst/refill, 1 WS upgrade/sec
     /// (burst 3), cap `MAX_RATE_LIMIT_IPS` tracked IPs.
     pub fn new() -> Self {
         Self {
@@ -666,20 +676,31 @@ async fn auth_middleware(
         .and_then(|v| v.to_str().ok());
     let is_ws = req.uri().path().ends_with("/stream");
 
+    // Bound local hammering before token verification too. This does allow
+    // unauthenticated traffic to touch the bucket map, but the map is capped
+    // at MAX_RATE_LIMIT_IPS, so memory stays bounded while brute-force/DoS
+    // attempts are throttled.
+    let ip = req
+        .extensions()
+        .get::<ConnectInfo<SocketAddr>>()
+        .map(|ci| ci.0.ip())
+        .unwrap_or(IpAddr::from([127, 0, 0, 1]));
+    let allowed = if is_ws {
+        state.rate_limiter.check_ws(ip)
+    } else {
+        state.rate_limiter.check_rest(ip)
+    };
+    if !allowed {
+        return Err(ApiError::RateLimited);
+    }
+
     let authorized = if state.auth.verify(header) {
         true
     } else if is_ws {
-        // WebSocket query-string auth. Preferred path (v2b+): single-use
-        // `?ticket=<uuid>` minted by `POST /sessions/:id/stream-ticket`.
-        // Legacy path (v1): `?token=<long-lived>`; accepted for backward
-        // compatibility but logged as deprecated — to be removed one
-        // release after v2b lands.
-        //
-        // SECURITY NOTE: URLs tend to leak into logs (access logs,
-        // reverse-proxy logs, `RUST_LOG` trace output). We do not log
-        // request URIs anywhere in this module; tickets are short-lived
-        // (10s) and single-use so a leaked ticket is much less damaging
-        // than a leaked long-lived token.
+        // WebSocket query-string auth accepts only short-lived, single-use
+        // tickets minted by `POST /sessions/:id/stream-ticket`. Long-lived
+        // bearer tokens are deliberately rejected in URLs because query
+        // strings leak into logs, browser history, and debugging tools.
         let path = req.uri().path().to_string();
         req.uri()
             .query()
@@ -693,23 +714,6 @@ async fn auth_middleware(
                                 return true;
                             }
                         }
-                    } else if let Some(raw) = pair.strip_prefix("token=") {
-                        let decoded = percent_decode(raw);
-                        if state.auth.verify_token(&decoded) {
-                            // Throttle: a client that reconnects on every
-                            // network blip would otherwise spam the log
-                            // with identical deprecation warnings. One
-                            // warn per process is enough — the message is
-                            // a reminder, not a per-event audit trail.
-                            if !LEGACY_TOKEN_WARNED.swap(true, Ordering::Relaxed) {
-                                log::warn!(
-                                    "api: WS ?token= query-string auth is \
-                                     deprecated, use POST /sessions/:id/stream-ticket \
-                                     then ?ticket=<uuid>"
-                                );
-                            }
-                            return true;
-                        }
                     }
                 }
                 false
@@ -721,33 +725,6 @@ async fn auth_middleware(
 
     if !authorized {
         return Err(ApiError::Unauthorized);
-    }
-
-    // Rate limit AFTER auth so unauthenticated traffic doesn't populate the
-    // bucket map (and so a 401 never gets masked as 429). Key by peer IP;
-    // `ConnectInfo` is populated by `into_make_service_with_connect_info::<SocketAddr>`
-    // in `serve_on_listener`. Fallback to loopback if the extension is
-    // missing (happens in tests that poke the router directly without going
-    // through a real TCP connection — those should use `RateLimiter::unlimited()`).
-    //
-    // WARNING — reverse-proxy deployments: this intentionally uses the TCP
-    // peer IP only. Do NOT switch to `X-Forwarded-For` / `X-Real-IP` without
-    // also introducing a trusted-proxy CIDR list: a naive XFF read lets any
-    // authenticated client forge their own rate-limit key and bypass the
-    // limiter. See `docs/phase3/3d-1-v2-plan.md` v2d for the right fix if
-    // this server is ever exposed behind a reverse proxy.
-    let ip = req
-        .extensions()
-        .get::<ConnectInfo<SocketAddr>>()
-        .map(|ci| ci.0.ip())
-        .unwrap_or(IpAddr::from([127, 0, 0, 1]));
-    let allowed = if is_ws {
-        state.rate_limiter.check_ws(ip)
-    } else {
-        state.rate_limiter.check_rest(ip)
-    };
-    if !allowed {
-        return Err(ApiError::RateLimited);
     }
 
     Ok(next.run(req).await)
@@ -857,6 +834,7 @@ pub fn router(state: ApiState) -> Router {
         .route("/sessions/:id/resize", post(resize_session))
         .route("/sessions/:id/stream-ticket", post(issue_stream_ticket))
         .route("/sessions/:id/stream", get(ws_session))
+        .route("/health", get(health))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth_middleware,
@@ -912,6 +890,8 @@ struct CreateSessionBody {
     rows: u16,
     #[serde(default)]
     cwd: Option<String>,
+    #[serde(default)]
+    id: Option<String>,
 }
 
 fn default_shell() -> String {
@@ -927,6 +907,15 @@ fn default_rows() -> u16 {
 #[derive(Serialize)]
 struct CreateSessionResponse {
     id: String,
+}
+
+#[derive(Serialize)]
+pub struct HealthResponse {
+    process_kind: &'static str,
+    instance_id: String,
+    pid: u32,
+    exe: String,
+    version: &'static str,
 }
 
 #[derive(Deserialize)]
@@ -952,7 +941,12 @@ fn validate_api_cwd(path: &str) -> Result<(), ApiError> {
     if path.contains('\0') {
         return Err(ApiError::BadRequest("cwd contains a NUL byte".into()));
     }
-    if path.starts_with("\\\\") || path.starts_with("//") {
+    let slash_path = path.replace('\\', "/");
+    let lower_slash_path = slash_path.to_lowercase();
+    if lower_slash_path.starts_with("//?/unc/")
+        || ((slash_path.starts_with("//") || slash_path.starts_with("\\\\"))
+            && !lower_slash_path.starts_with("//?/"))
+    {
         return Err(ApiError::BadRequest("UNC cwd paths are not allowed".into()));
     }
     let raw_path = FsPath::new(path);
@@ -980,6 +974,47 @@ fn validate_api_cwd(path: &str) -> Result<(), ApiError> {
         ));
     }
     Ok(())
+}
+
+fn home_dir_for_cwd() -> Option<PathBuf> {
+    std::env::var_os("USERPROFILE")
+        .filter(|value| !value.is_empty())
+        .or_else(|| std::env::var_os("HOME").filter(|value| !value.is_empty()))
+        .map(PathBuf::from)
+}
+
+fn expand_api_cwd(path: &str) -> Result<String, ApiError> {
+    let trimmed = path.trim();
+    if trimmed == "~" {
+        return home_dir_for_cwd()
+            .map(|home| home.to_string_lossy().to_string())
+            .ok_or_else(|| ApiError::BadRequest("cwd home directory is unavailable".into()));
+    }
+    if let Some(rest) = trimmed
+        .strip_prefix("~/")
+        .or_else(|| trimmed.strip_prefix("~\\"))
+    {
+        let home = home_dir_for_cwd()
+            .ok_or_else(|| ApiError::BadRequest("cwd home directory is unavailable".into()))?;
+        return Ok(home.join(rest).to_string_lossy().to_string());
+    }
+    Ok(trimmed.to_string())
+}
+
+fn strip_local_verbatim_prefix(path: &str) -> String {
+    if let Some(rest) = path.strip_prefix(r"\\?\") {
+        if rest.to_lowercase().starts_with(r"unc\") {
+            return path.to_string();
+        }
+        return rest.to_string();
+    }
+    if let Some(rest) = path.strip_prefix("//?/") {
+        if rest.to_lowercase().starts_with("unc/") {
+            return path.to_string();
+        }
+        return rest.to_string();
+    }
+    path.to_string()
 }
 
 fn api_cwd_policy_text(path: &FsPath) -> String {
@@ -1015,8 +1050,9 @@ fn normalize_api_cwd(cwd: Option<String>) -> Result<Option<String>, ApiError> {
     if trimmed.is_empty() {
         return Ok(None);
     }
-    validate_api_cwd(trimmed)?;
-    Ok(Some(trimmed.to_string()))
+    let expanded = expand_api_cwd(trimmed)?;
+    validate_api_cwd(&expanded)?;
+    Ok(Some(strip_local_verbatim_prefix(&expanded)))
 }
 
 // ─── Handlers ───────────────────────────────────────────────────────────────
@@ -1029,6 +1065,7 @@ async fn create_session(
     if body.cols == 0 || body.rows == 0 {
         return Err(ApiError::BadRequest("cols and rows must be > 0".into()));
     }
+    let _create_guard = state.create_lock.lock().await;
     if state.pty.list_info().len() >= state.max_sessions {
         return Err(ApiError::BadRequest(format!(
             "session limit reached ({})",
@@ -1036,15 +1073,47 @@ async fn create_session(
         )));
     }
     let cwd = normalize_api_cwd(body.cwd)?;
-    let id = state
-        .pty
-        .spawn(&shell, body.cols, body.rows, cwd.as_deref())
-        .map_err(ApiError::Internal)?;
+    let id = if let Some(id) = body.id.as_deref() {
+        validate_session_id(id)?;
+        state
+            .pty
+            .spawn_with_id(id, &shell, body.cols, body.rows, cwd.as_deref())
+            .map_err(ApiError::Internal)?;
+        id.to_string()
+    } else {
+        state
+            .pty
+            .spawn(&shell, body.cols, body.rows, cwd.as_deref())
+            .map_err(ApiError::Internal)?
+    };
+    if !state.pty.reap_child_on_exit(&id) {
+        log::warn!("api: PTY {} was created without an exit reaper", id);
+    }
     Ok(Json(CreateSessionResponse { id }))
+}
+
+fn validate_session_id(id: &str) -> Result<(), ApiError> {
+    if uuid::Uuid::parse_str(id).is_ok() {
+        Ok(())
+    } else {
+        Err(ApiError::BadRequest("session id must be a UUID".into()))
+    }
 }
 
 async fn list_sessions(State(state): State<ApiState>) -> Json<Vec<TerminalInfo>> {
     Json(state.pty.list_info())
+}
+
+async fn health(State(state): State<ApiState>) -> Json<HealthResponse> {
+    Json(HealthResponse {
+        process_kind: state.process_kind,
+        instance_id: state.instance_id,
+        pid: std::process::id(),
+        exe: std::env::current_exe()
+            .map(|path| path.display().to_string())
+            .unwrap_or_default(),
+        version: env!("CARGO_PKG_VERSION"),
+    })
 }
 
 async fn close_session(
@@ -1204,6 +1273,14 @@ async fn handle_ws(
                 Ok(Message::Close(_)) | Err(_) => break,
                 Ok(_) => continue, // ping/pong handled by axum
             };
+            if bytes.len() > WS_MAX_INPUT_FRAME_BYTES {
+                log::warn!(
+                    "api: WS {} input frame too large: {} bytes",
+                    write_id,
+                    bytes.len()
+                );
+                break;
+            }
             if let Err(e) = write_state.pty.write(&write_id, &bytes) {
                 log::warn!("api: PTY write to {} failed: {}", write_id, e);
                 break;
@@ -1333,6 +1410,39 @@ mod tests {
             normalize_api_cwd(Some(cwd.to_string_lossy().to_string())).unwrap(),
             Some(cwd.to_string_lossy().to_string())
         );
+    }
+
+    #[test]
+    fn normalize_api_cwd_allows_home_relative_and_unicode_dirs() {
+        if let Some(home) = home_dir_for_cwd() {
+            assert_eq!(
+                normalize_api_cwd(Some("~".into())).unwrap(),
+                Some(home.to_string_lossy().to_string())
+            );
+        }
+
+        let unicode_dir =
+            std::env::temp_dir().join(format!("aether-cwd-馬-{}", std::process::id()));
+        std::fs::create_dir_all(&unicode_dir).unwrap();
+        assert_eq!(
+            normalize_api_cwd(Some(unicode_dir.to_string_lossy().to_string())).unwrap(),
+            Some(unicode_dir.to_string_lossy().to_string())
+        );
+        let _ = std::fs::remove_dir_all(unicode_dir);
+    }
+
+    #[test]
+    fn normalize_api_cwd_accepts_local_verbatim_paths_but_rejects_unc_verbatim() {
+        let cwd = std::env::current_dir().unwrap();
+        let verbatim = format!(r"\\?\{}", cwd.to_string_lossy());
+        assert_eq!(
+            normalize_api_cwd(Some(verbatim)).unwrap(),
+            Some(cwd.to_string_lossy().to_string())
+        );
+        assert!(matches!(
+            normalize_api_cwd(Some(r"\\?\UNC\server\share".into())),
+            Err(ApiError::BadRequest(_))
+        ));
     }
 
     #[test]

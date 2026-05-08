@@ -1,19 +1,14 @@
 import { openUrl as tauriOpenUrl } from "@tauri-apps/plugin-opener";
 import { ChevronDown } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
-import { findNextPromptMark, findPrevPromptMark, useScrollback } from "../../shared/hooks/useScrollback";
-import { useTerminalSnapshot } from "../../shared/hooks/useTerminalSnapshot";
 import { usePromptMarks } from "../../shared/hooks/usePromptMarks";
+import { findNextPromptMark, findPrevPromptMark, useScrollback } from "../../shared/hooks/useScrollback";
 import { useTerminalImages } from "../../shared/hooks/useTerminalImages";
-import {
-  estimateScrollbackMemoryBytes,
-  publishTerminalPerformanceSample,
-} from "../analytics/performanceObservatory";
+import { useTerminalSnapshot } from "../../shared/hooks/useTerminalSnapshot";
 import {
   CURSOR_COLOR,
-  DEFAULT_FG,
   CURSOR_TEXT_BG,
+  DEFAULT_FG,
   isDefaultBg,
   LINK_HOVER_FG,
   resolveColor,
@@ -29,17 +24,19 @@ import {
   hasAttr,
   type ImageRef,
 } from "../../shared/types/terminal";
+import { estimateScrollbackMemoryBytes, publishTerminalPerformanceSample } from "../analytics/performanceObservatory";
 import {
   clampTerminalCursor,
   IME_DIAGNOSTIC_EVENT,
   IME_DIAGNOSTIC_STORAGE_KEY,
   IME_DIAGNOSTIC_TOGGLE_EVENT,
-  imeDiagnosticsEnabled,
+  type ImeDiagnosticDetail,
   imeCandidateAnchorX,
+  imeDiagnosticsEnabled,
+  imeTextareaCaretInset,
   imeTextareaAnchorWidth,
   useCanvasIME,
   useImePosition,
-  type ImeDiagnosticDetail,
   type WriteBytesFn,
 } from "./hooks/useCanvasIME";
 import { type CopyTextFn, useTerminalSelection } from "./hooks/useTerminalSelection";
@@ -48,8 +45,8 @@ import { type LinkSpan, linkAt, scanLinks } from "./links";
 import type { AnyMatch } from "./search";
 import { viewportRowOf } from "./search";
 import { rowSelection, type SelectionRange } from "./selection";
-import { TERMINAL_FONT_FAMILY, useTerminalCellMetrics, type TerminalCellMetrics } from "./terminalMetrics";
 import styles from "./TerminalArea.module.css";
+import { TERMINAL_FONT_FAMILY, type TerminalCellMetrics, useTerminalCellMetrics } from "./terminalMetrics";
 
 export type OpenUrlFn = (url: string) => Promise<void> | void;
 
@@ -66,7 +63,8 @@ const defaultOpenUrl: OpenUrlFn = async (url) => {
 /**
  * Canvas 2D terminal renderer with full ANSI attr + color.
  *
- * Subscribes to `useTerminalSnapshot` and paints the grid cell-by-cell.
+ * Uses the parent-owned live snapshot when provided; otherwise subscribes
+ * to `useTerminalSnapshot` and paints the grid cell-by-cell.
  * Only rows whose cell arrays are not reference-equal to the previous
  * render are repainted (`applyDiff` preserves refs for untouched rows).
  */
@@ -80,6 +78,12 @@ export interface TerminalCanvasProps {
   className?: string;
   /** Overrides the live snapshot hook — used by tests to inject fixtures. */
   snapshotOverride?: GridSnapshot | null;
+  /**
+   * Live snapshot owned by the parent terminal surface. Supplying this keeps
+   * one `term:diff-*` subscription per pane while preserving backend extras
+   * such as scrollback, prompt marks, and inline image fetching.
+   */
+  liveSnapshot?: GridSnapshot | null;
   /** Injectable PTY writer — defaults to `invoke("write_terminal", ...)`. */
   writeBytes?: WriteBytesFn;
   /** Injectable clipboard writer — defaults to `navigator.clipboard.writeText`. */
@@ -230,10 +234,7 @@ function diagnosticLastCommit(detail: ImeDiagnosticDetail | null): string {
   return `${detail.sentLength} char${detail.sentLength === 1 ? "" : "s"}`;
 }
 
-function diagnosticCandidateRect(
-  detail: ImeDiagnosticDetail | null,
-  textarea: HTMLTextAreaElement | null,
-): string {
+function diagnosticCandidateRect(detail: ImeDiagnosticDetail | null, textarea: HTMLTextAreaElement | null): string {
   const x = detail?.candidateLeft ?? textarea?.dataset.imeCandidateX ?? null;
   const y = detail?.candidateTop ?? textarea?.dataset.imeCandidateY ?? null;
   if (!x || !y) return "unset";
@@ -318,6 +319,7 @@ export function TerminalCanvas({
   fontFamily = TERMINAL_FONT_FAMILY,
   className,
   snapshotOverride,
+  liveSnapshot: liveSnapshotOverride,
   writeBytes,
   copyText,
   searchMatches,
@@ -362,7 +364,7 @@ export function TerminalCanvas({
 
   useEffect(() => {
     renderPerfRef.current = { lastPaintAt: 0, droppedRenderFrames: 0 };
-  }, [terminalId]);
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -414,15 +416,22 @@ export function TerminalCanvas({
     };
   }, [textareaEl]);
 
-  const liveSnapshot = useTerminalSnapshot(snapshotOverride === undefined ? terminalId : null);
-  const snapshot = snapshotOverride !== undefined ? snapshotOverride : liveSnapshot;
+  const shouldSubscribeToLiveSnapshot = snapshotOverride === undefined && liveSnapshotOverride === undefined;
+  const liveSnapshot = useTerminalSnapshot(shouldSubscribeToLiveSnapshot ? terminalId : null);
+  const snapshot =
+    snapshotOverride !== undefined
+      ? snapshotOverride
+      : liveSnapshotOverride !== undefined
+        ? liveSnapshotOverride
+        : liveSnapshot;
+  const shouldUseTerminalBackends = snapshotOverride === undefined;
   // Inline image overlays — fetched + cached as ImageBitmap by id. The
   // hook silently no-ops when `terminalId` is null (test fixtures inject
   // snapshots directly without a real backend).
-  const imageBitmaps = useTerminalImages(snapshotOverride !== undefined ? null : terminalId, snapshot?.images);
+  const imageBitmaps = useTerminalImages(shouldUseTerminalBackends ? terminalId : null, snapshot?.images);
   // Scrollback: feed it the *live-source* terminal id so the test path
   // (snapshotOverride) never reaches out to IPC.
-  const scrollbackTerminalId = snapshotOverride !== undefined ? null : terminalId;
+  const scrollbackTerminalId = shouldUseTerminalBackends ? terminalId : null;
   const scrollback = useScrollback(scrollbackTerminalId, snapshot);
   const scrolledUp = scrollback.scrollOffset > 0;
   const promptMarks = usePromptMarks(scrollbackTerminalId);
@@ -773,6 +782,8 @@ export function TerminalCanvas({
     scrolledUp,
     scrollback.scrollOffset,
     scrollback.compositeCells,
+    terminalId,
+    scrollback.historySize,
   ]);
 
   useEffect(() => {
@@ -849,10 +860,9 @@ export function TerminalCanvas({
   const compositionCursorY = compositionCursor.row * cellMetrics.height;
   const imeAnchorX = imeCandidateAnchorX(compositionCursorX, canvasWidth);
   const imeAnchorWidth = imeTextareaAnchorWidth(imeAnchorX, canvasWidth);
+  const imeCaretInset = imeTextareaCaretInset(compositionCursorX, imeAnchorX, canvasWidth);
   const compositionOverlayCells =
-    compositionText.length > 0
-      ? Math.min(IME_COMPOSITION_OVERLAY_MAX_CELLS, terminalCellSpan(compositionText))
-      : 1;
+    compositionText.length > 0 ? Math.min(IME_COMPOSITION_OVERLAY_MAX_CELLS, terminalCellSpan(compositionText)) : 1;
   const compositionOverlayWidth =
     compositionText.length > 0
       ? Math.min(canvasWidth, Math.max(cellMetrics.width, compositionOverlayCells * cellMetrics.width))
@@ -868,8 +878,12 @@ export function TerminalCanvas({
   const diagnosticAnchor = latestImeDiagnostic?.anchorMode ?? imeAnchorMode;
 
   return (
+    /* biome-ignore lint/a11y/useSemanticElements: The focus target is a canvas-backed terminal surface; the hidden textarea below owns actual IME text entry. */
     <div
       className={className}
+      role="textbox"
+      aria-label="Terminal input surface"
+      aria-multiline="true"
       style={{
         position: "relative",
         width: `${canvasWidth}px`,
@@ -877,20 +891,6 @@ export function TerminalCanvas({
         flex: "0 0 auto",
         outline: "none",
       }}
-      // Keep the pane reachable via Tab by making the container the
-      // focus-target: its `onFocus` forwards into the hidden textarea so
-      // the keyboard-input element gets focus in one hop. `mousedown`
-      // covers click-to-type since the canvas itself is no longer natively
-      // focusable (see canvas `tabIndex={-1}` below).
-      //
-      // Important: `onFocus` only forwards when the wrapper itself is
-      // the focus target. React `onFocus` is a bubbling event so a
-      // focusable child (the scrollback "Live" pill, future overlays)
-      // would otherwise have its focus instantly stolen. Codex review
-      // (2026-05-03) caught the bug — Tab cycle landed on the pill
-      // and the wrapper's bubbling `onFocus` kicked focus straight
-      // back to the hidden textarea, locking keyboard users out of
-      // the affordance entirely.
       tabIndex={0}
       onFocus={(e) => {
         if (e.target === e.currentTarget) focusTextarea();
@@ -917,7 +917,7 @@ export function TerminalCanvas({
           display: "block",
           width: `${canvasWidth}px`,
           height: `${canvasHeight}px`,
-          background: "transparent",
+          background: "var(--terminal-canvas-bg, transparent)",
           imageRendering: "pixelated",
           outline: "none",
         }}
@@ -946,9 +946,10 @@ export function TerminalCanvas({
           top: `${compositionCursorY}px`,
           // Windows TSF keeps long Japanese composition state in the
           // backing textarea. Give it the remaining canvas runway so
-          // long conversion / deletion stays editable, while the left
-          // edge is still clamped away from the right rail and the
-          // native candidate position is steered by set_ime_position.
+          // long conversion / deletion stays editable. The box may be
+          // clamped left near the right rail, but padding keeps the DOM
+          // caret at the real terminal cursor so WebView2's native IME
+          // path and our explicit set_ime_position path agree.
           width: `${imeAnchorWidth}px`,
           height: `${cellMetrics.height}px`,
           opacity: 0,
@@ -963,7 +964,10 @@ export function TerminalCanvas({
           fontSize: `${fontSize}px`,
           lineHeight: `${cellMetrics.height}px`,
           boxSizing: "border-box",
-          padding: 0,
+          paddingTop: 0,
+          paddingRight: 0,
+          paddingBottom: 0,
+          paddingLeft: `${imeCaretInset}px`,
           margin: 0,
           overflow: "hidden",
           whiteSpace: "pre",

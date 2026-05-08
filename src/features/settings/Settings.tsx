@@ -1,11 +1,12 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
-import { Select } from "../../shared/ui/Select";
+import { isTauriRuntime } from "../../shared/lib/tauriRuntime";
 import { useAppStore } from "../../shared/store/appStore";
 import { toast } from "../../shared/store/toastStore";
-import { Switch } from "../../shared/ui/Switch";
 import { MOOD_PRESETS, normalizeMoodPreset } from "../../shared/themes/moods";
+import { Select } from "../../shared/ui/Select";
+import { Switch } from "../../shared/ui/Switch";
 import styles from "./Settings.module.css";
 import { ShellIntegrationSection } from "./ShellIntegrationSection";
 import { ThemePaletteEditor } from "./ThemePaletteEditor";
@@ -22,6 +23,7 @@ const THEMES = [
   { id: "catppuccin-frappe", label: "Catppuccin Frappé" },
   { id: "catppuccin-macchiato", label: "Catppuccin Macchiato" },
   { id: "catppuccin-latte", label: "Catppuccin Latte (Light)" },
+  { id: "sakura-hub", label: "Sakura Hub (Light)" },
   { id: "tokyo-night", label: "Tokyo Night" },
   { id: "dracula", label: "Dracula" },
 ];
@@ -34,6 +36,30 @@ const SHELLS = [
   { id: "gitbash", label: "Git Bash" },
   { id: "wsl", label: "WSL" },
 ];
+
+function previewConfig(theme: string, shell: string, liveMode: boolean): LoadedConfig {
+  return {
+    appearance: {
+      theme,
+      ui_font_family: "IBM Plex Sans",
+      terminal_font_family: "IBM Plex Mono",
+      font_size: 14,
+      line_height: 1.4,
+      ligatures: true,
+      window_effect: "mica",
+      opacity: 1,
+    },
+    terminal: {
+      default_shell: shell,
+      scrollback: 10000,
+      cursor_style: "bar",
+      cursor_blink: true,
+    },
+    ghost_diff: {
+      live_mode: liveMode,
+    },
+  };
+}
 
 // Mirror of Rust `AppConfig` in src-tauri/src/config/settings.rs. Holding the
 // full shape lets `handleSave` round-trip every field — even the ones the UI
@@ -108,6 +134,20 @@ export function Settings({ visible, onClose }: SettingsProps) {
     // a "Settings not saved" warning instead of silently corrupting disk.
     // (Same defect class fixed in WatchdogDialog round 4 / codex r2.)
     setLoadedConfig(null);
+    if (!isTauriRuntime()) {
+      const cfg = previewConfig(storeTheme, defaultShell, ghostDiffLiveMode);
+      setLoadedConfig(cfg);
+      setTheme(cfg.appearance.theme);
+      setFont(cfg.appearance.terminal_font_family);
+      setFontSize(cfg.appearance.font_size);
+      setLineHeight(cfg.appearance.line_height);
+      setLigatures(cfg.appearance.ligatures);
+      setDefaultShell(cfg.terminal.default_shell);
+      setCursorStyle(cfg.terminal.cursor_style);
+      setCursorBlink(cfg.terminal.cursor_blink);
+      setLiveMode(cfg.ghost_diff?.live_mode ?? false);
+      return;
+    }
     let cancelled = false;
     invoke<LoadedConfig>("load_app_config")
       .then((cfg) => {
@@ -138,7 +178,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
     return () => {
       cancelled = true;
     };
-  }, [visible, setGhostDiffLiveMode]);
+  }, [visible, setGhostDiffLiveMode, storeTheme, defaultShell, ghostDiffLiveMode]);
 
   useEffect(() => {
     if (visible) setMood(storeMood);
@@ -157,9 +197,13 @@ export function Settings({ visible, onClose }: SettingsProps) {
       onClose();
       return;
     }
-    setThemeId(theme);
-    setMoodPresetId(mood);
-    setGhostDiffLiveMode(liveMode);
+    if (!isTauriRuntime()) {
+      setThemeId(theme);
+      setMoodPresetId(mood);
+      setGhostDiffLiveMode(liveMode);
+      onClose();
+      return;
+    }
     const merged: LoadedConfig = {
       ...loadedConfig,
       appearance: {
@@ -182,7 +226,12 @@ export function Settings({ visible, onClose }: SettingsProps) {
       },
     };
     invoke("save_app_config", { config: merged })
-      .then(() => onClose())
+      .then(() => {
+        setThemeId(theme);
+        setMoodPresetId(mood);
+        setGhostDiffLiveMode(liveMode);
+        onClose();
+      })
       .catch((err) => {
         // Surface failure instead of swallowing — user otherwise sees the
         // dialog close with no indication that disk write failed.
@@ -255,6 +304,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
                 />
                 <div className={styles.moodGrid} role="radiogroup" aria-label="Mood presets">
                   {MOOD_PRESETS.map((preset) => (
+                    /* biome-ignore lint/a11y/useSemanticElements: These are custom color cards presented as radios without native radio layout constraints. */
                     <button
                       key={preset.id}
                       type="button"
@@ -278,7 +328,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
                 </div>
               </div>
               <div className={styles.field}>
-                <label className={styles.label}>Palette</label>
+                <div className={styles.label}>Palette</div>
                 <ThemePaletteEditor themeId={theme} />
               </div>
               <div className={styles.field}>
@@ -382,8 +432,8 @@ export function Settings({ visible, onClose }: SettingsProps) {
             <section className={styles.section}>
               <h3 className={styles.sectionTitle}>Shell Integration</h3>
               <p className={styles.hint}>
-                Aether parses OSC 133 prompt marks for "jump to previous prompt" and exit-code
-                coloring. Install the helper script for your shell to enable these features.
+                Aether parses OSC 133 prompt marks for "jump to previous prompt" and exit-code coloring. Install the
+                helper script for your shell to enable these features.
               </p>
               <ShellIntegrationSection />
             </section>

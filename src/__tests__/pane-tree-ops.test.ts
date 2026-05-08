@@ -1,14 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
   collectLeafIds,
+  collectLeaves,
   collectPaneSwitcherEntries,
   countLeaves,
   createLeaf,
   cycleLeafRole,
+  equalizePaneRatios,
   findLeaf,
+  movePaneInOrder,
   normalizePaneTitle,
+  rebalancePaneLayout,
   removePane,
   splitPane,
+  swapPanes,
   uniquePaneTitle,
   updateLeafMeta,
 } from "../features/terminal/pane-tree/operations";
@@ -60,8 +65,20 @@ describe("splitPane", () => {
     const leaf = createLeaf("powershell");
     const result = splitPane(leaf, leaf.id, "left", "cmd");
     if (result.type === "split") {
-      expect((result.first as { shell: string }).shell).toBe("cmd"); // new pane is first
+      expect((result.first as { shell: string }).shell).toBe("powershell"); // new pane is first
       expect((result.second as { shell: string }).shell).toBe("powershell"); // original is second
+    }
+  });
+
+  it("inherits the target pane shell and cwd instead of flashing the tab fallback shell", () => {
+    const leaf = createLeaf("powershell", "C:/repo");
+    const result = splitPane(leaf, leaf.id, "right", "cmd", "C:/fallback");
+    if (result.type !== "split") throw new Error("expected split");
+
+    expect(result.second.type).toBe("terminal");
+    if (result.second.type === "terminal") {
+      expect(result.second.shell).toBe("powershell");
+      expect(result.second.cwd).toBe("C:/repo");
     }
   });
 
@@ -114,7 +131,7 @@ describe("removePane", () => {
     if (tree.type !== "split") throw new Error("expected split");
     const result = removePane(tree, tree.second.id);
     expect(result).not.toBeNull();
-    expect(result!.type).toBe("terminal");
+    expect(result?.type).toBe("terminal");
   });
 
   it("returns null when removing the only leaf", () => {
@@ -130,7 +147,7 @@ describe("removePane", () => {
     // Close B — A should survive with same ID
     const result = removePane(tree, bId);
     expect(result).not.toBeNull();
-    expect(result!.id).toBe(a.id);
+    expect(result?.id).toBe(a.id);
   });
 
   it("returns unchanged tree when id not found", () => {
@@ -206,7 +223,7 @@ describe("collectPaneSwitcherEntries", () => {
 
     expect(entries.map((entry) => entry.paneId)).toEqual(ids);
     expect(entries.map((entry) => entry.index)).toEqual([0, 1, 2]);
-    expect(entries.map((entry) => entry.shell)).toEqual(["powershell", "gitbash", "cmd"]);
+    expect(entries.map((entry) => entry.shell)).toEqual(["powershell", "powershell", "powershell"]);
   });
 
   it("uses title and role labels without changing left split order", () => {
@@ -230,6 +247,80 @@ describe("countLeaves", () => {
       tree = splitPane(tree, tree.second.id, "down", "wsl");
     }
     expect(countLeaves(tree)).toBe(3);
+  });
+});
+
+describe("tmux-style pane layout operations", () => {
+  it("swaps panes by moving pane ids so terminal bindings move with the pane", () => {
+    const left = createLeaf("powershell", "C:/repo", { title: "left", role: "work" });
+    const tree = splitPane(left, left.id, "right", "cmd");
+    if (tree.type !== "split" || tree.second.type !== "terminal") throw new Error("expected split");
+    const rightId = tree.second.id;
+    const terminalIds = new Map([
+      [left.id, "pty-left"],
+      [rightId, "pty-right"],
+    ]);
+    const swapped = swapPanes(tree, left.id, rightId);
+
+    expect(collectLeafIds(swapped)).toEqual([rightId, left.id]);
+    expect(findLeaf(swapped, left.id)).toMatchObject({ title: "left", role: "work", cwd: "C:/repo" });
+    expect(terminalIds.get(left.id)).toBe("pty-left");
+  });
+
+  it("moves panes in tmux tree order by swapping with the adjacent leaf", () => {
+    const root = createLeaf("powershell", undefined, { title: "one" });
+    const twoPane = splitPane(root, root.id, "right", "cmd");
+    if (twoPane.type !== "split" || twoPane.second.type !== "terminal") throw new Error("expected split");
+    const threePane = splitPane(twoPane, twoPane.second.id, "down", "cmd");
+    const ids = collectLeafIds(threePane);
+
+    const moved = movePaneInOrder(threePane, ids[0], 1);
+
+    expect(collectLeafIds(moved)).toEqual([ids[1], ids[0], ids[2]]);
+    expect(findLeaf(moved, ids[0])?.title).toBe("one");
+  });
+
+  it("equalizes every split ratio without changing leaves", () => {
+    const tree: PaneNode = {
+      type: "split",
+      id: "split-root",
+      direction: "horizontal",
+      ratio: 0.2,
+      first: createLeaf("powershell"),
+      second: {
+        type: "split",
+        id: "split-child",
+        direction: "vertical",
+        ratio: 0.8,
+        first: createLeaf("cmd"),
+        second: createLeaf("wsl"),
+      },
+    };
+    const ids = collectLeafIds(tree);
+    const equalized = equalizePaneRatios(tree);
+
+    expect(collectLeafIds(equalized)).toEqual(ids);
+    if (equalized.type !== "split" || equalized.second.type !== "split") throw new Error("expected split");
+    expect(equalized.ratio).toBe(0.5);
+    expect(equalized.second.ratio).toBe(0.5);
+  });
+
+  it("rebalances leaves into horizontal, vertical, and tiled layouts", () => {
+    let tree: PaneNode = createLeaf("powershell");
+    for (let i = 0; i < 3; i += 1) {
+      tree = splitPane(tree, collectLeafIds(tree)[0], "right", "powershell");
+    }
+    const ids = collectLeafIds(tree);
+    const horizontal = rebalancePaneLayout(tree, "horizontal");
+    const vertical = rebalancePaneLayout(tree, "vertical");
+    const tiled = rebalancePaneLayout(tree, "tiled");
+
+    expect(collectLeaves(horizontal).map((leaf) => leaf.id)).toEqual(ids);
+    expect(collectLeaves(vertical).map((leaf) => leaf.id)).toEqual(ids);
+    expect(collectLeaves(tiled).map((leaf) => leaf.id)).toEqual(ids);
+    expect(horizontal.type === "split" && horizontal.direction).toBe("horizontal");
+    expect(vertical.type === "split" && vertical.direction).toBe("vertical");
+    expect(tiled.type === "split" && tiled.direction).toBe("horizontal");
   });
 });
 

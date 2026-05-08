@@ -102,16 +102,16 @@ describe("backend silent state guards", () => {
 
   it("suppresses waiter exit events before intentional terminal closes", () => {
     const commands = sourceFor("ipc/commands.rs");
-    const closeTerminal = commands.match(/pub fn close_terminal[\s\S]*?\n\}/)?.[0] ?? "";
+    const closeTerminal = commands.match(/pub (?:async )?fn close_terminal[\s\S]*?\n\}/)?.[0] ?? "";
 
     expect(closeTerminal).toContain("next_generation(&id)");
-    expect(closeTerminal.indexOf("next_generation(&id)")).toBeLessThan(closeTerminal.indexOf("pty_manager.close(&id)"));
+    expect(closeTerminal.indexOf("next_generation(&id)")).toBeLessThan(closeTerminal.indexOf("spawn_blocking"));
     expect(commands).toContain('"stale_exit_suppressed"');
   });
 
   it("treats terminal close as idempotent registry cleanup after natural exit", () => {
     const commands = sourceFor("ipc/commands.rs");
-    const closeTerminal = commands.match(/pub fn close_terminal[\s\S]*?\n\}/)?.[0] ?? "";
+    const closeTerminal = commands.match(/pub (?:async )?fn close_terminal[\s\S]*?\n\}/)?.[0] ?? "";
 
     expect(closeTerminal).toContain("Err(PtyError::NotFound(_)) => true");
     expect(closeTerminal.indexOf("Err(PtyError::NotFound(_)) => true")).toBeLessThan(
@@ -123,7 +123,7 @@ describe("backend silent state guards", () => {
 
   it("rejects successful zero-target pane broadcasts", () => {
     const commands = sourceFor("ipc/commands.rs");
-    const broadcastKeys = commands.match(/pub fn broadcast_keys[\s\S]*?\n\}/)?.[0] ?? "";
+    const broadcastKeys = commands.match(/pub (?:async )?fn broadcast_keys[\s\S]*?\n\}/)?.[0] ?? "";
 
     expect(broadcastKeys).toContain("if ids.is_empty()");
     expect(broadcastKeys).toContain('let err = "No active terminal panes".to_string()');
@@ -137,7 +137,7 @@ describe("backend silent state guards", () => {
     const lib = sourceFor("lib.rs");
 
     expect(commands).toContain("pub struct PerformanceObservatoryMetrics");
-    expect(commands).toContain("pub fn performance_observatory_metrics");
+    expect(commands).toContain("pub async fn performance_observatory_metrics");
     expect(commands).toContain("scrollback_estimated_bytes");
     expect(commands).toContain("PTY_OUTPUT_BATCH_MAX_BYTES");
     expect(lib).toContain("ipc::performance_observatory_metrics");

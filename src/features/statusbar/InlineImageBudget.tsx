@@ -29,20 +29,13 @@ export interface InlineImageBudgetProps {
 const WARN_RATIO = 0.8;
 const DANGER_RATIO = 0.95;
 
-export const InlineImageBudget = memo(function InlineImageBudget({
-  metrics,
-}: InlineImageBudgetProps) {
+export const InlineImageBudget = memo(function InlineImageBudget({ metrics }: InlineImageBudgetProps) {
   if (!metrics || metrics.count <= 0) return null;
 
   const ratio = metrics.cap > 0 ? metrics.bytesUsed / metrics.cap : 0;
   const tier = ratio >= DANGER_RATIO ? "danger" : ratio >= WARN_RATIO ? "warn" : "ok";
 
-  const tierClass =
-    tier === "danger"
-      ? styles.imageBudgetDanger
-      : tier === "warn"
-        ? styles.imageBudgetWarn
-        : "";
+  const tierClass = tier === "danger" ? styles.imageBudgetDanger : tier === "warn" ? styles.imageBudgetWarn : "";
 
   const usedMiB = formatMiB(metrics.bytesUsed);
   const capMiB = formatMiB(metrics.cap);

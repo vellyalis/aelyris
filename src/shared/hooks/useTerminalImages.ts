@@ -23,10 +23,7 @@ interface RawImageData {
 }
 
 /** Test-injectable factory mirroring the browser global of the same name. */
-export type CreateImageBitmap = (
-  source: ImageBitmapSource,
-  options?: ImageBitmapOptions,
-) => Promise<ImageBitmap>;
+export type CreateImageBitmap = (source: ImageBitmapSource, options?: ImageBitmapOptions) => Promise<ImageBitmap>;
 
 export interface UseTerminalImagesOptions {
   invoke?: Invoke;
@@ -76,10 +73,16 @@ export function useTerminalImages(
   // identity-stable across position-only changes, so the effect only
   // re-runs when the set actually changes.
   const idsKey = useMemo(
-    () => (images ? images.map((i) => i.id).sort((a, b) => a - b).join(",") : ""),
+    () =>
+      images
+        ? images
+            .map((i) => i.id)
+            .sort((a, b) => a - b)
+            .join(",")
+        : "",
     [images],
   );
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `idsKey` intentionally stabilizes by image id set; position-only changes are painted from the terminal snapshot, not this cache.
   const stableImages = useMemo(() => images, [idsKey]);
 
   useEffect(() => {
@@ -92,7 +95,9 @@ export function useTerminalImages(
       // with many transient images grow unboundedly.
       setBitmaps((prev) => {
         if (prev.size === 0) return prev;
-        prev.forEach((bmp) => bmp.close?.());
+        prev.forEach((bmp) => {
+          bmp.close?.();
+        });
         return new Map();
       });
       inflight.current.clear();
@@ -102,7 +107,9 @@ export function useTerminalImages(
     if (terminalChanged) {
       setBitmaps((prev) => {
         if (prev.size === 0) return prev;
-        prev.forEach((bmp) => bmp.close?.());
+        prev.forEach((bmp) => {
+          bmp.close?.();
+        });
         return new Map();
       });
       inflight.current.clear();
@@ -127,9 +134,7 @@ export function useTerminalImages(
     // Fetch new ones.
     const factory: CreateImageBitmap | undefined =
       factoryOverride ??
-      (typeof globalThis.createImageBitmap === "function"
-        ? globalThis.createImageBitmap.bind(globalThis)
-        : undefined);
+      (typeof globalThis.createImageBitmap === "function" ? globalThis.createImageBitmap.bind(globalThis) : undefined);
     if (!factory) {
       // jsdom or any environment without ImageBitmap support — paint
       // pass will run the cell-only fallback. Don't even fetch IPC,
@@ -207,7 +212,7 @@ export function useTerminalImages(
     // to avoid re-running on position-only changes — see the comment
     // on the `useMemo` block above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [terminalId, stableImages, invoke, factoryOverride]);
+  }, [terminalId, stableImages, invoke, factoryOverride, bitmaps.has]);
 
   return bitmaps;
 }
@@ -222,8 +227,7 @@ function decodeBase64(b64: string): Uint8Array {
     return bytes;
   }
   // Node-style fallback (jsdom builds with a Buffer global).
-  const Buf = (globalThis as unknown as { Buffer?: { from: (b: string, e: string) => Uint8Array } })
-    .Buffer;
+  const Buf = (globalThis as unknown as { Buffer?: { from: (b: string, e: string) => Uint8Array } }).Buffer;
   if (Buf) return Buf.from(b64, "base64");
   throw new Error("base64 decode unavailable");
 }

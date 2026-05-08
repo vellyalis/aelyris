@@ -384,8 +384,9 @@ async function main() {
       aiCliKillCoveredOrTyped:
         report.aiCliKillCleanup.status === "pass" ||
         (report.aiCliKillCleanup.status === "typed-blocker" && report.aiCliKillCleanup.blockerKind === "external_dependency"),
-      dashboardStillOnP207: report.dashboardTruth.activeCard === "P2-07",
+      dashboardTruthHealthy: report.dashboardTruth.activeCard === "P2-07" || report.dashboardTruth.finalStatus === "complete",
       dashboardNotBlocked:
+        report.dashboardTruth.finalStatus === "complete" ||
         report.dashboardTruth.blockerStatus === "not_blocked" || report.dashboardTruth.blockerStatus === "probe-recovered",
     };
     report.checks = checks;

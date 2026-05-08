@@ -1,10 +1,7 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  type Invoke,
-  useImageMetrics,
-} from "../shared/hooks/useImageMetrics";
+import { type Invoke, useImageMetrics } from "../shared/hooks/useImageMetrics";
 import type { ImageMetrics } from "../shared/types/terminal";
 
 function ipcSequence(responses: Array<ImageMetrics | null>): Invoke {
@@ -32,10 +29,7 @@ describe("useImageMetrics", () => {
     const invoke = ipcSequence([m]);
     const { result } = renderHook(() => useImageMetrics("t-1", { invoke, pollIntervalMs: 10_000 }));
     await waitFor(() => expect(result.current).toEqual(m));
-    expect(invoke).toHaveBeenCalledWith(
-      "term_image_metrics",
-      expect.objectContaining({ id: "t-1" }),
-    );
+    expect(invoke).toHaveBeenCalledWith("term_image_metrics", expect.objectContaining({ id: "t-1" }));
   });
 
   it("polls on the configured interval and surfaces new values", async () => {
@@ -49,9 +43,7 @@ describe("useImageMetrics", () => {
       return response;
     }) as unknown as Invoke;
 
-    const { result } = renderHook(() =>
-      useImageMetrics("t-1", { invoke, pollIntervalMs: 30 }),
-    );
+    const { result } = renderHook(() => useImageMetrics("t-1", { invoke, pollIntervalMs: 30 }));
     await waitFor(() => expect(result.current).toEqual(m1));
     response = m2;
     await waitFor(() => expect(result.current).toEqual(m2), { timeout: 1_000 });
@@ -60,9 +52,7 @@ describe("useImageMetrics", () => {
 
   it("treats an IPC null response as no metrics", async () => {
     const invoke = ipcSequence([null]);
-    const { result } = renderHook(() =>
-      useImageMetrics("t-1", { invoke, pollIntervalMs: 10_000 }),
-    );
+    const { result } = renderHook(() => useImageMetrics("t-1", { invoke, pollIntervalMs: 10_000 }));
     await waitFor(() => expect(invoke).toHaveBeenCalled());
     expect(result.current).toBeNull();
   });
@@ -71,9 +61,7 @@ describe("useImageMetrics", () => {
     const invoke = vi.fn(async () => {
       throw new Error("registry mutex poisoned");
     }) as unknown as Invoke;
-    const { result } = renderHook(() =>
-      useImageMetrics("t-1", { invoke, pollIntervalMs: 10_000 }),
-    );
+    const { result } = renderHook(() => useImageMetrics("t-1", { invoke, pollIntervalMs: 10_000 }));
     await waitFor(() => expect(invoke).toHaveBeenCalled());
     expect(result.current).toBeNull();
   });
@@ -82,13 +70,12 @@ describe("useImageMetrics", () => {
     const seen: string[] = [];
     const invoke = vi.fn(async (cmd: string, args?: Record<string, unknown>) => {
       if (cmd !== "term_image_metrics") throw new Error(`unexpected ${cmd}`);
-      const id = String((args ?? {}).id);
+      const id = String(args?.id);
       seen.push(id);
       return { bytesUsed: 1, cap: 100, count: 1 } satisfies ImageMetrics;
     }) as unknown as Invoke;
     const { rerender } = renderHook(
-      ({ id }: { id: string | null }) =>
-        useImageMetrics(id, { invoke, pollIntervalMs: 10_000 }),
+      ({ id }: { id: string | null }) => useImageMetrics(id, { invoke, pollIntervalMs: 10_000 }),
       { initialProps: { id: "t-1" as string | null } },
     );
     await waitFor(() => expect(seen).toContain("t-1"));
@@ -102,8 +89,7 @@ describe("useImageMetrics", () => {
       { bytesUsed: 100, cap: 1000, count: 1 },
     ]);
     const { result, rerender } = renderHook(
-      ({ id }: { id: string | null }) =>
-        useImageMetrics(id, { invoke, pollIntervalMs: 30 }),
+      ({ id }: { id: string | null }) => useImageMetrics(id, { invoke, pollIntervalMs: 30 }),
       { initialProps: { id: "t-1" as string | null } },
     );
     await waitFor(() => expect(result.current).not.toBeNull());

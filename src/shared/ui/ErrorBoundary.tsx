@@ -46,6 +46,7 @@ export class ErrorBoundary extends Component<Props, State> {
               {this.state.error?.message}
             </pre>
             <button
+              type="button"
               onClick={() => this.setState({ hasError: false, error: null })}
               style={{
                 background: "none",

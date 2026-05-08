@@ -658,10 +658,6 @@ mod tests {
 
     // -------- assembler: happy paths --------
 
-    fn b64_chunk(s: &str) -> Vec<u8> {
-        B64.encode(s).into_bytes()
-    }
-
     #[test]
     fn assembler_pending_count_starts_at_zero() {
         let asm = ChunkAssembler::new();

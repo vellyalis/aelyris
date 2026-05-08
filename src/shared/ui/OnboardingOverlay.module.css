@@ -47,12 +47,16 @@
    back to the overlay's flex centering so the panel no longer floats against
    a hardcoded margin (the magic 280/300px values pre-audit). */
 .center {
+  position: static;
 }
 .left {
+  position: static;
 }
 .right {
+  position: static;
 }
 .bottom {
+  position: static;
 }
 
 .stepIndicator {

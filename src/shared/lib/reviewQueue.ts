@@ -195,11 +195,7 @@ function classifyFile(
     };
   }
 
-  if (
-    normalized.includes("/config/") ||
-    fileName === "vite.config.ts" ||
-    fileName === "tsconfig.json"
-  ) {
+  if (normalized.includes("/config/") || fileName === "vite.config.ts" || fileName === "tsconfig.json") {
     return {
       riskClass: "config" as const,
       reason: "Platform/config",
@@ -308,18 +304,16 @@ export function buildReviewQueue(
     for (const detail of session.changedFileDetails ?? []) {
       const path = normalizePath(detail.path);
       const key = path.toLowerCase();
-      const existing =
-        byPath.get(key) ??
-        {
-          path,
-          status: detail.action,
-          additions: 0,
-          deletions: 0,
-          binary: isBinaryPath(path),
-          generated: isGeneratedPath(path),
-          sessions: new Map<string, ReviewQueueSession>(),
-          lastTouched: 0,
-        };
+      const existing = byPath.get(key) ?? {
+        path,
+        status: detail.action,
+        additions: 0,
+        deletions: 0,
+        binary: isBinaryPath(path),
+        generated: isGeneratedPath(path),
+        sessions: new Map<string, ReviewQueueSession>(),
+        lastTouched: 0,
+      };
       existing.action = detail.action;
       existing.status = existing.status || detail.action;
       existing.lastTouched = Math.max(existing.lastTouched, detail.timestamp);
@@ -344,8 +338,10 @@ export function buildReviewQueue(
       binary: entry.binary,
     };
     const fileRisk = classifyFile(entry.path, entry.status, entry.action, conflict, entry.binary, entry.generated);
-    const coverage = entry.coverage ?? inferCoverage(entry.path, fileRisk.riskClass, entry.binary, entry.generated, relatedTests);
-    const validation = entry.validation ?? inferValidation(entry.path, fileRisk.riskClass, itemSessions, agentSessionsById);
+    const coverage =
+      entry.coverage ?? inferCoverage(entry.path, fileRisk.riskClass, entry.binary, entry.generated, relatedTests);
+    const validation =
+      entry.validation ?? inferValidation(entry.path, fileRisk.riskClass, itemSessions, agentSessionsById);
     const agentAuthors = itemSessions.map((session) => session.owner ?? session.role ?? session.name);
     const scoreBreakdown = scoreReviewItem({
       conflict,
@@ -457,7 +453,8 @@ function scoreReviewItem({
               ? 2
               : 0;
   const coverageScore = coverage === "missing" ? 16 : coverage === "unknown" ? 6 : coverage === "covered" ? -8 : 0;
-  const validationScore = validation === "failed" ? 35 : validation === "missing" ? 14 : validation === "passed" ? -10 : 0;
+  const validationScore =
+    validation === "failed" ? 35 : validation === "missing" ? 14 : validation === "passed" ? -10 : 0;
   const flags =
     (riskClass === "security" ? 10 : 0) +
     (riskClass === "dependency" || riskClass === "config" || riskClass === "migration" ? 8 : 0) +
@@ -501,7 +498,8 @@ function readinessFor({
 }): ReviewMergeReadiness {
   if (conflict || validation === "failed") return "blocked";
   if (coverage === "missing" || validation === "missing") return "needs_validation";
-  if (risk === "critical" || risk === "high" || coverage === "unknown" || validation === "unknown") return "needs_review";
+  if (risk === "critical" || risk === "high" || coverage === "unknown" || validation === "unknown")
+    return "needs_review";
   return "ready";
 }
 
@@ -565,7 +563,8 @@ function inferCoverage(
   relatedTests: Set<string>,
 ): ReviewCoverageState {
   const normalized = normalizePath(path).toLowerCase();
-  if (binary || generated || riskClass === "docs" || riskClass === "test" || isTestPath(normalized)) return "not_required";
+  if (binary || generated || riskClass === "docs" || riskClass === "test" || isTestPath(normalized))
+    return "not_required";
   if (!isCodePath(normalized)) return "unknown";
   return relatedTests.has(testKey(path)) ? "covered" : "missing";
 }
@@ -598,7 +597,10 @@ function validationFromLogs(logs: AgentSession["logs"]): ReviewValidationState {
     const content = `${log.metadata?.toolName ?? ""} ${log.content}`;
     if (!/\b(test|vitest|playwright|tsc|cargo|validation|validated|check)\b/i.test(content)) continue;
     sawValidation = true;
-    if (/\b(fail(?:ed|ure)?|error|timed out|timeout|exit code [1-9]\d*)\b/i.test(content) && !/\b0 failed\b/i.test(content)) {
+    if (
+      /\b(fail(?:ed|ure)?|error|timed out|timeout|exit code [1-9]\d*)\b/i.test(content) &&
+      !/\b0 failed\b/i.test(content)
+    ) {
       return "failed";
     }
     if (/\b(pass(?:ed)?|success|succeeded|exit code 0|0 failed|validated)\b/i.test(content)) {

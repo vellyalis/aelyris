@@ -66,7 +66,9 @@ export function ReliabilityPanel({
     if (graphPaneIds.length === 0 && graphTerminalIds.length === 0) return panes;
     const paneIds = new Set(graphPaneIds);
     const terminalIds = new Set(graphTerminalIds);
-    return panes.filter((pane) => paneIds.has(pane.paneId) || (pane.terminalId ? terminalIds.has(pane.terminalId) : false));
+    return panes.filter(
+      (pane) => paneIds.has(pane.paneId) || (pane.terminalId ? terminalIds.has(pane.terminalId) : false),
+    );
   }, [graphPaneIds, graphTerminalIds, panes]);
   const graphEvents = useMemo(
     () => filterEventsByGraph(operationalEvents, graphAgentIds, graphRiskIds, graphPaneIds, graphTerminalIds),

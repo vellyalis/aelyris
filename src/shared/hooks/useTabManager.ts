@@ -33,8 +33,7 @@ function readVisualQaProjectPath(): string | null {
   } catch {
     /* storage may be unavailable in private/test contexts */
   }
-  const enabled =
-    params.get("aetherVisualQa") === "1" || params.get("visualQa") === "1" || storedEnabled;
+  const enabled = params.get("aetherVisualQa") === "1" || params.get("visualQa") === "1" || storedEnabled;
   if (!enabled) return null;
   return (params.get("projectPath") || storedProject || "C:/Users/owner/Aether_Terminal").replace(/\\/g, "/");
 }

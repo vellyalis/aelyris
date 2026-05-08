@@ -55,9 +55,74 @@ function fail(msg) {
   process.exitCode = 1;
 }
 
+async function ensureLiveTerminalSurface(page) {
+  const visibleSurfaceCount = await page
+    .locator('[aria-label="ターミナル入力バー"], [data-testid="terminal-ime-textarea"], canvas')
+    .count();
+  if (visibleSurfaceCount > 0) return;
+
+  const newShell = page.getByRole("button", { name: /^New shell$/ }).first();
+  if ((await newShell.count()) === 0) return;
+
+  console.log("[ime] no live terminal surface found; starting a new shell from the ended pane state");
+  await newShell.click();
+  await page
+    .locator('[aria-label="ターミナル入力バー"], [data-testid="terminal-ime-textarea"], canvas')
+    .first()
+    .waitFor({ state: "attached", timeout: 10000 })
+    .catch(() => {});
+  await page.waitForTimeout(1200);
+}
+
+async function waitForTerminalIds(page, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const ids = await page.evaluate(async () => {
+      const direct = await window.__TAURI_INTERNALS__.invoke("list_terminals", {}).catch(() => []);
+      if (Array.isArray(direct) && direct.length > 0) return direct;
+      const panes = await window.__TAURI_INTERNALS__.invoke("list_panes_info", {}).catch(() => []);
+      const paneIds = Array.isArray(panes)
+        ? panes.map((pane) => pane?.terminal_id).filter((id) => typeof id === "string" && id.length > 0)
+        : [];
+      if (paneIds.length > 0) return paneIds;
+      return Array.from(document.querySelectorAll("canvas[data-terminal-id]"))
+        .map((canvas) => canvas.getAttribute("data-terminal-id"))
+        .filter((id) => typeof id === "string" && id.length > 0);
+    });
+    if (ids.length > 0) return ids;
+    await new Promise((r) => setTimeout(r, 120));
+  }
+  return page.evaluate(async () => {
+    const direct = await window.__TAURI_INTERNALS__.invoke("list_terminals", {}).catch(() => []);
+    if (Array.isArray(direct) && direct.length > 0) return direct;
+    const panes = await window.__TAURI_INTERNALS__.invoke("list_panes_info", {}).catch(() => []);
+    const paneIds = Array.isArray(panes)
+      ? panes.map((pane) => pane?.terminal_id).filter((id) => typeof id === "string" && id.length > 0)
+      : [];
+    if (paneIds.length > 0) return paneIds;
+    return Array.from(document.querySelectorAll("canvas[data-terminal-id]"))
+      .map((canvas) => canvas.getAttribute("data-terminal-id"))
+      .filter((id) => typeof id === "string" && id.length > 0);
+  });
+}
+
 async function gridContainsMarker(page, marker) {
   return page.evaluate(async (m) => {
-    const ids = await window.__TAURI_INTERNALS__.invoke("list_terminals", {});
+    const direct = await window.__TAURI_INTERNALS__.invoke("list_terminals", {}).catch(() => []);
+    const panes = await window.__TAURI_INTERNALS__.invoke("list_panes_info", {}).catch(() => []);
+    const ids =
+      Array.isArray(direct) && direct.length > 0
+        ? direct
+        : Array.isArray(panes)
+          ? panes.map((pane) => pane?.terminal_id).filter((id) => typeof id === "string" && id.length > 0)
+          : [];
+    if (ids.length === 0) {
+      ids.push(
+        ...Array.from(document.querySelectorAll("canvas[data-terminal-id]"))
+          .map((canvas) => canvas.getAttribute("data-terminal-id"))
+          .filter((id) => typeof id === "string" && id.length > 0),
+      );
+    }
     const hits = [];
     for (const id of ids) {
       const snap = await window.__TAURI_INTERNALS__.invoke("term_snapshot", { id }).catch(() => null);
@@ -254,6 +319,18 @@ async function main() {
   );
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForTimeout(2500);
+  await ensureLiveTerminalSurface(page);
+  await page
+    .locator('[aria-label="ターミナル入力バー"]')
+    .first()
+    .waitFor({ state: "attached", timeout: 10000 })
+    .catch(() => {});
+  await page
+    .locator('[data-testid="terminal-ime-textarea"]')
+    .first()
+    .waitFor({ state: "attached", timeout: 30000 })
+    .catch(() => {});
+  await waitForTerminalIds(page);
 
   // --- Section 1: IMEInputBar DOM ---------------------------------------
   console.log("\n[ime] Section 1 — IMEInputBar DOM");
@@ -306,6 +383,7 @@ async function main() {
     await canvas.click({ position: { x: 60, y: 60 } }).catch(() => {});
     await page.waitForTimeout(200);
   }
+  await waitForTerminalIds(page);
 
   const barMarker = `AETHER_IME_BAR_${Math.random().toString(36).slice(2, 8)}`;
   await ta.first().click();
@@ -386,7 +464,21 @@ async function main() {
       // should see the marker at most once per commit cycle (plus prompt
       // echoes).
       const totalOccurrences = await page.evaluate(async (m) => {
-        const ids = await window.__TAURI_INTERNALS__.invoke("list_terminals", {});
+        const direct = await window.__TAURI_INTERNALS__.invoke("list_terminals", {}).catch(() => []);
+        const panes = await window.__TAURI_INTERNALS__.invoke("list_panes_info", {}).catch(() => []);
+        const ids =
+          Array.isArray(direct) && direct.length > 0
+            ? direct
+            : Array.isArray(panes)
+              ? panes.map((pane) => pane?.terminal_id).filter((id) => typeof id === "string" && id.length > 0)
+              : [];
+        if (ids.length === 0) {
+          ids.push(
+            ...Array.from(document.querySelectorAll("canvas[data-terminal-id]"))
+              .map((canvas) => canvas.getAttribute("data-terminal-id"))
+              .filter((id) => typeof id === "string" && id.length > 0),
+          );
+        }
         let count = 0;
         for (const id of ids) {
           const snap = await window.__TAURI_INTERNALS__.invoke("term_snapshot", { id }).catch(() => null);

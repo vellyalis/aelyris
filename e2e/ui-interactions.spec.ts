@@ -6,35 +6,46 @@ import { test, expect } from "@playwright/test";
  */
 
 const setupProject = async (page: import("@playwright/test").Page) => {
-  await page.goto("/");
-  await page.evaluate(() => {
-    localStorage.setItem("aether:lastProject", "C:/Users/owner/Aether_Terminal");
+  const projectPath = "C:/Users/owner/Aether_Terminal";
+  await page.goto(`/?aetherVisualQa=1&projectPath=${encodeURIComponent(projectPath)}`, {
+    waitUntil: "domcontentloaded",
   });
-  await page.reload();
-  await page.waitForTimeout(2000);
+  await page.evaluate((path) => {
+    localStorage.setItem("aether:visualQa", "1");
+    localStorage.setItem("aether:visualQaProject", path);
+    localStorage.setItem("aether:onboarding-done", "true");
+  }, projectPath);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.locator(".app-main")).toBeVisible({ timeout: 10_000 });
 };
 
 test.describe("Panel visibility", () => {
-  test.beforeEach(async ({ page }) => { await setupProject(page); });
+  test.beforeEach(async ({ page }) => {
+    await setupProject(page);
+  });
 
-  test("toolkit panel is visible", async ({ page }) => {
-    await expect(page.getByRole("region", { name: "Toolkit" })).toBeVisible({ timeout: 10_000 });
+  test("project sidebar is visible", async ({ page }) => {
+    await expect(page.getByRole("navigation", { name: "Project sidebar" })).toBeVisible({ timeout: 10_000 });
   });
 
   test("sessions tab is visible", async ({ page }) => {
-    await expect(page.getByText("Sessions")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("button", { name: "Sessions" })).toBeVisible({ timeout: 10_000 });
   });
 
   test("activity tab is visible", async ({ page }) => {
-    await expect(page.getByText("Activity")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("tab", { name: "Observe" })).toBeVisible({ timeout: 10_000 });
   });
 
   test("menu bar has File menu", async ({ page }) => {
-    await expect(page.getByRole("menubar").getByText("File")).toBeVisible({ timeout: 10_000 });
+    await page.getByRole("button", { name: "Open application menu" }).click();
+    await expect(page.getByRole("menu").first().getByText("File", { exact: true })).toBeVisible({ timeout: 10_000 });
   });
 
   test("menu bar has Terminal menu", async ({ page }) => {
-    await expect(page.getByRole("menubar").getByText("Terminal")).toBeVisible({ timeout: 10_000 });
+    await page.getByRole("button", { name: "Open application menu" }).click();
+    await expect(page.getByRole("menu").first().getByText("Terminal", { exact: true })).toBeVisible({
+      timeout: 10_000,
+    });
   });
 });
 
@@ -42,7 +53,8 @@ test.describe("Theme persistence", () => {
   test("theme value persists in localStorage", async ({ page }) => {
     await page.goto("/");
     await page.evaluate(() => {
-      localStorage.setItem("aether:lastProject", "C:/Users/owner/Aether_Terminal");
+      localStorage.setItem("aether:visualQa", "1");
+      localStorage.setItem("aether:visualQaProject", "C:/Users/owner/Aether_Terminal");
       localStorage.setItem("aether:theme", "catppuccin-latte");
     });
     await page.reload();

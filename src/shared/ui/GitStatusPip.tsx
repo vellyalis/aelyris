@@ -52,6 +52,7 @@ export const GitStatusPip = memo(function GitStatusPip({ status, variant = "lett
     <span
       className={classes}
       style={{ color: meta.tone }}
+      role="img"
       aria-label={meta.label}
       title={meta.label}
       data-status={status}

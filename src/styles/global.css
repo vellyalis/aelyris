@@ -73,6 +73,35 @@
     var(--glass-frame);
   --chrome-frame-filter: blur(8px) saturate(1.08) brightness(0.82) contrast(1.08);
   --chrome-frame-shadow: inset 0 1px 0 rgba(140, 220, 238, 0.032), inset 0 -1px 0 rgba(69, 152, 190, 0.026);
+  --chrome-control-hover-bg: rgba(76, 184, 220, 0.04);
+  --chrome-control-hover-border: rgba(104, 214, 238, 0.07);
+  --chrome-separator-bg: linear-gradient(180deg, transparent, rgba(104, 214, 238, 0.055), transparent);
+  --statusbar-bg: rgba(2, 8, 16, 0.44);
+  --statusbar-filter: blur(1px) saturate(1.04) brightness(0.76) contrast(1.08);
+  --statusbar-shadow: inset 0 1px 0 rgba(160, 228, 242, 0.016), inset 0 -1px 0 rgba(0, 4, 10, 0.22);
+  --toolkit-grid-bg:
+    linear-gradient(135deg, rgba(109, 215, 242, 0.075), transparent 36%, rgba(216, 183, 102, 0.024)),
+    rgba(0, 6, 14, 0.3);
+  --toolkit-grid-shadow: inset 0 1px 0 rgba(172, 232, 246, 0.052), inset 0 -1px 0 rgba(0, 0, 0, 0.24);
+  --toolkit-tile-bg: linear-gradient(180deg, rgba(109, 215, 242, 0.035), rgba(3, 10, 18, 0.1)), rgba(0, 7, 15, 0.34);
+  --toolkit-tile-primary-bg:
+    linear-gradient(135deg, color-mix(in srgb, var(--tone, var(--gold)) 11%, transparent), transparent 42%),
+    rgba(0, 8, 17, 0.44);
+  --toolkit-tile-hover-bg:
+    linear-gradient(180deg, color-mix(in srgb, var(--tone, var(--gold)) 10%, transparent), transparent 58%),
+    rgba(0, 10, 22, 0.52);
+  --toolkit-tile-text: color-mix(in srgb, var(--text-secondary) 84%, transparent);
+  --toolkit-icon-bg:
+    linear-gradient(180deg, rgba(142, 226, 241, 0.028), rgba(0, 0, 0, 0.08)),
+    color-mix(in srgb, var(--tone, var(--accent)) 6%, rgba(0, 7, 16, 0.42));
+  --toolkit-bottom-bg:
+    linear-gradient(90deg, rgba(109, 215, 242, 0.056), transparent 52%, rgba(216, 183, 102, 0.024)),
+    rgba(0, 6, 14, 0.24);
+  --toolkit-bottom-btn-bg: rgba(1, 7, 15, 0.34);
+  --settings-control-bg: color-mix(in srgb, var(--bg-surface) 78%, transparent);
+  --settings-card-bg: color-mix(in srgb, var(--bg-surface) 70%, transparent);
+  --settings-card-bg-hover: color-mix(in srgb, var(--bg-surface) 82%, transparent);
+  --settings-card-bg-active: color-mix(in srgb, var(--bg-surface) 88%, transparent);
   --material-stage-bg:
     radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--accent) 2.4%, transparent), transparent 48%),
     linear-gradient(180deg, rgba(127, 215, 235, 0.009), rgba(0, 0, 0, 0.024)), var(--glass-clear);
@@ -611,6 +640,20 @@ html[data-aether-host="browser"] body {
     linear-gradient(180deg, #0a0814 0%, #070b12 58%, #061018 100%);
 }
 
+html[data-aether-host="browser"][data-mood="aether-sakura"],
+html[data-aether-host="browser"][data-mood="aether-sakura"] body {
+  background:
+    radial-gradient(ellipse at 28% -10%, rgba(255, 218, 228, 0.72), transparent 44%),
+    radial-gradient(ellipse at 86% 12%, rgba(252, 201, 185, 0.34), transparent 38%),
+    linear-gradient(180deg, #fff8fb 0%, #ffeef5 56%, #f7dfe8 100%);
+}
+
+html[data-aether-host="browser"][data-mood="aether-sakura"] #root {
+  background:
+    linear-gradient(125deg, rgba(252, 201, 185, 0.22), transparent 42%),
+    linear-gradient(300deg, rgba(207, 95, 125, 0.1), transparent 44%), rgba(255, 248, 251, 0.46);
+}
+
 /* Native Tauri runs on real Acrylic/Mica, so bright wallpapers can leak
  * through ultra-low-alpha glass as cloudy white. This transparent water
  * veil darkens only the root backplane: panels and the app stage stay
@@ -624,6 +667,17 @@ html[data-aether-host="tauri"] #root {
     radial-gradient(ellipse at 42% 0%, rgba(87, 190, 224, 0.07), transparent 42%),
     radial-gradient(ellipse at 82% 16%, rgba(180, 232, 242, 0.032), transparent 34%),
     linear-gradient(180deg, rgba(0, 8, 18, 0.58), rgba(1, 7, 14, 0.66));
+}
+
+html[data-aether-host="tauri"][data-mood="aether-sakura"] #root {
+  --native-backdrop-veil:
+    radial-gradient(ellipse at 30% -8%, rgba(255, 218, 228, 0.34), transparent 46%),
+    radial-gradient(ellipse at 86% 12%, rgba(252, 201, 185, 0.16), transparent 36%),
+    linear-gradient(180deg, rgba(255, 248, 251, 0.46), rgba(255, 236, 244, 0.36));
+  background:
+    radial-gradient(ellipse at 36% 0%, rgba(255, 218, 228, 0.2), transparent 42%),
+    radial-gradient(ellipse at 82% 16%, rgba(207, 95, 125, 0.08), transparent 34%),
+    linear-gradient(180deg, rgba(255, 248, 251, 0.5), rgba(255, 236, 244, 0.4));
 }
 
 /* Window-focus override.
@@ -969,7 +1023,7 @@ body[data-window-focused="false"] {
   position: relative;
   min-width: 0;
   height: 26px;
-  padding: 0 18px 0 6px;
+  padding: 0 8px 0 6px;
   display: grid;
   grid-template-columns: 12px minmax(0, 1fr);
   align-items: center;
@@ -989,6 +1043,10 @@ body[data-window-focused="false"] {
     background 120ms var(--ease-silk, cubic-bezier(0.4, 0, 0.2, 1)),
     border-color 120ms var(--ease-silk, cubic-bezier(0.4, 0, 0.2, 1)),
     color 120ms var(--ease-silk, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+.right-panel-mode-tab[data-has-badge="true"] {
+  padding-right: 34px;
 }
 
 .right-panel-mode-tab span:first-of-type {
@@ -1145,15 +1203,118 @@ body[data-window-focused="false"] {
   white-space: nowrap;
 }
 
+:root[data-mood="aether-sakura"] .right-panel::before {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 20%),
+    linear-gradient(135deg, rgba(189, 63, 104, 0.07), transparent 48%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.26),
+    inset 0 -24px 58px rgba(80, 32, 52, 0.055);
+  opacity: 0.36;
+}
+
+:root[data-mood="aether-sakura"] .right-panel-mode-switch {
+  border-color: color-mix(in srgb, var(--accent) 26%, transparent);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.28), transparent 72%),
+    color-mix(in srgb, var(--accent) 11%, rgba(255, 236, 245, 0.56));
+  box-shadow:
+    var(--rim-top),
+    inset 0 0 0 1px rgba(130, 49, 73, 0.08);
+}
+
+:root[data-mood="aether-sakura"] .right-panel-mode-tab {
+  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--accent) 18%, transparent);
+  background: rgba(255, 245, 250, 0.38);
+}
+
+:root[data-mood="aether-sakura"] .right-panel-mode-tab:hover {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent) 11%, rgba(255, 244, 249, 0.44));
+}
+
+:root[data-mood="aether-sakura"] .right-panel-mode-tab[data-active="true"] {
+  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 16%, rgba(255, 247, 251, 0.62)), rgba(255, 238, 246, 0.58)),
+    rgba(255, 242, 248, 0.62);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+:root[data-mood="aether-sakura"] .right-panel-mode-badge {
+  background: color-mix(in srgb, var(--accent) 18%, rgba(255, 238, 246, 0.72));
+  color: var(--text-primary);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+:root[data-mood="aether-sakura"] .right-panel-advisor {
+  border-color: color-mix(in srgb, var(--accent) 28%, transparent);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 12%, rgba(255, 245, 250, 0.52)), transparent 64%),
+    rgba(255, 240, 247, 0.56);
+  color: var(--text-primary);
+  box-shadow:
+    var(--rim-top),
+    inset 0 0 0 1px rgba(130, 49, 73, 0.08);
+}
+
+:root[data-mood="aether-sakura"] .right-panel-advisor[data-tone="warn"] {
+  border-color: color-mix(in srgb, var(--ctp-yellow) 28%, var(--accent));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--ctp-yellow) 12%, rgba(255, 243, 248, 0.56)), transparent 64%),
+    rgba(255, 240, 247, 0.58);
+}
+
+:root[data-mood="aether-sakura"] .right-panel-advisor[data-tone="review"] {
+  border-color: color-mix(in srgb, var(--ctp-blue) 18%, var(--accent));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--ctp-blue) 9%, rgba(255, 243, 248, 0.54)), transparent 64%),
+    rgba(255, 240, 247, 0.56);
+}
+
+:root[data-mood="aether-sakura"] .right-panel-advisor:hover {
+  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--accent) 38%, transparent);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 16%, rgba(255, 245, 250, 0.56)), transparent 64%),
+    rgba(255, 240, 247, 0.64);
+}
+
+:root[data-mood="aether-sakura"] .right-panel-advisor-icon,
+:root[data-mood="aether-sakura"] .right-panel-advisor-target {
+  background: color-mix(in srgb, var(--accent) 14%, rgba(255, 238, 246, 0.64));
+  color: var(--gold);
+}
+
+:root[data-mood="aether-sakura"] .right-panel-advisor-detail,
+:root[data-mood="aether-sakura"] .right-panel-advisor-kicker,
+:root[data-mood="aether-sakura"] .right-panel-advisor-target,
+:root[data-mood="aether-sakura"] .right-panel-mode-tab svg {
+  color: var(--text-secondary);
+}
+
 @container (max-width: 330px) {
   .right-panel-mode-tab {
-    gap: 0;
+    gap: 3px;
     grid-template-columns: 1fr;
-    padding-inline: 0;
+    padding-inline: 4px;
+    font-size: 10px;
+  }
+
+  .right-panel-mode-tab[data-has-badge="true"] {
+    padding-right: 32px;
+  }
+
+  .right-panel-mode-tab svg {
+    display: none;
   }
 
   .right-panel-mode-tab span:first-of-type {
-    display: none;
+    display: inline;
   }
 
   .right-panel-advisor {

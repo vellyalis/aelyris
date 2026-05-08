@@ -38,7 +38,7 @@ export function QuickOpen({ projectPath, openFiles, onSelectFile, onClose, initi
   // Reset selection when results change
   useEffect(() => {
     setSelectedIdx(0);
-  }, [results]);
+  }, []);
 
   // Scroll selected into view
   useEffect(() => {
@@ -119,7 +119,8 @@ export function QuickOpen({ projectPath, openFiles, onSelectFile, onClose, initi
           <div ref={listRef} className={styles.list}>
             {loading && <div className={styles.loading}>Loading files...</div>}
             {results.map((path, i) => (
-              <div
+              <button
+                type="button"
                 key={path}
                 className={`${styles.item} ${i === selectedIdx ? styles.itemActive : ""}`}
                 onMouseEnter={() => setSelectedIdx(i)}
@@ -131,7 +132,7 @@ export function QuickOpen({ projectPath, openFiles, onSelectFile, onClose, initi
               >
                 <span className={styles.itemName}>{fileName(path)}</span>
                 <span className={styles.itemDir}>{dirName(path)}</span>
-              </div>
+              </button>
             ))}
             {!loading && results.length === 0 && <div className={styles.empty}>No matches</div>}
           </div>

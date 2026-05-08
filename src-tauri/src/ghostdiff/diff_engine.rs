@@ -9,14 +9,13 @@
 //! it carries the bulk of the test weight.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use super::layer::{DiffHunk, FileDelta, HunkLine};
 
 /// Capture the repo's current HEAD SHA so later diffs are anchored to the
 /// commit that existed at layer-registration time.
 pub fn capture_head_sha(repo_path: &Path) -> Result<String, String> {
-    let out = Command::new("git")
+    let out = crate::process::hidden_command("git")
         .args(["rev-parse", "HEAD"])
         .current_dir(repo_path)
         .output()
@@ -33,7 +32,7 @@ pub fn capture_head_sha(repo_path: &Path) -> Result<String, String> {
 /// Compute the diff of a worktree against `base_sha`, including uncommitted
 /// work in the worktree's working tree.
 pub fn compute_diff(worktree_path: &Path, base_sha: &str) -> Result<Vec<FileDelta>, String> {
-    let out = Command::new("git")
+    let out = crate::process::hidden_command("git")
         .args(["diff", "--no-color", base_sha])
         .current_dir(worktree_path)
         .output()
@@ -99,7 +98,7 @@ pub fn compute_branch_comparison(
     head_branch: &str,
 ) -> Result<Vec<FileDelta>, String> {
     let diff_spec = format!("{base_branch}..{head_branch}");
-    let out = Command::new("git")
+    let out = crate::process::hidden_command("git")
         .args(["diff", "--no-color", &diff_spec])
         .current_dir(repo_path)
         .output()
@@ -151,7 +150,7 @@ pub fn compute_branch_comparison(
 }
 
 fn read_git_show(worktree_path: &Path, sha: &str, rel_path: &str) -> Result<String, String> {
-    let out = Command::new("git")
+    let out = crate::process::hidden_command("git")
         .args(["show", &format!("{sha}:{rel_path}")])
         .current_dir(worktree_path)
         .output()

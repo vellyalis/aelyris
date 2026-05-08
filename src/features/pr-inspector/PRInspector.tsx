@@ -171,7 +171,7 @@ export function PRInspector({ visible, projectPath, onClose, onViewDiff, onStart
     setDiff(null);
     setError(null);
     setLoading(false);
-  }, [projectPath]);
+  }, []);
 
   useEffect(() => {
     if (visible) loadPRs();

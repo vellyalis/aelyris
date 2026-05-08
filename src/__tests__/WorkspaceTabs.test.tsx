@@ -1,11 +1,11 @@
-import { fireEvent, render } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
 // Vitest runs this source-contract test in Node. The app tsconfig does not
 // include @types/node, so keep the Node-only imports scoped and ignored here.
 // @ts-expect-error Node types are intentionally absent from the app tsconfig.
 import { readFileSync } from "node:fs";
 // @ts-expect-error Node types are intentionally absent from the app tsconfig.
 import { join } from "node:path";
+import { fireEvent, render } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { WorkspaceTabs } from "../features/workspace-tabs/WorkspaceTabs";
 import type { Tab } from "../shared/hooks/useTabManager";
 

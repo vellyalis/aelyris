@@ -52,12 +52,7 @@ export interface LogStreamState {
  * the array beyond what the renderer can virtualise.
  */
 export function useLogStream(options: UseLogStreamOptions = {}): LogStreamState {
-  const {
-    initialLimit = 200,
-    pollMs = 1_000,
-    invoke = defaultInvoke,
-    enabled = true,
-  } = options;
+  const { initialLimit = 200, pollMs = 1_000, invoke = defaultInvoke, enabled = true } = options;
 
   const [state, setState] = useState<LogStreamState>({
     entries: [],
@@ -82,13 +77,11 @@ export function useLogStream(options: UseLogStreamOptions = {}): LogStreamState 
 
     const append = (incoming: LogEntry[]) => {
       if (!incoming.length) return;
-      const lastSeq = incoming[incoming.length - 1]!.seq;
+      const lastSeq = incoming[incoming.length - 1]?.seq;
       cursorRef.current = Math.max(cursorRef.current, lastSeq);
       setState((prev) => {
         const merged = [...prev.entries, ...incoming];
-        const trimmed = merged.length > CLIENT_RING_LIMIT
-          ? merged.slice(merged.length - CLIENT_RING_LIMIT)
-          : merged;
+        const trimmed = merged.length > CLIENT_RING_LIMIT ? merged.slice(merged.length - CLIENT_RING_LIMIT) : merged;
         return { entries: trimmed, ready: true, error: null };
       });
     };
@@ -98,7 +91,7 @@ export function useLogStream(options: UseLogStreamOptions = {}): LogStreamState 
         const recent = await invoke<LogEntry[]>("logs_recent", { limit: initialLimit });
         if (cancelled) return;
         if (recent.length > 0) {
-          cursorRef.current = recent[recent.length - 1]!.seq;
+          cursorRef.current = recent[recent.length - 1]?.seq;
         }
         setState({ entries: recent, ready: true, error: null });
       } catch (e) {

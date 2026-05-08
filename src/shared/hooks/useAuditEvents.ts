@@ -10,10 +10,7 @@ const defaultInvoke: Invoke = async (cmd, args) => {
 };
 
 type AuditEventBusPayload = AuditEventRecord | AuditJournalEventRecord;
-type AuditEventBusListener = <T>(
-  event: string,
-  handler: (event: { payload: T }) => void,
-) => Promise<() => void>;
+type AuditEventBusListener = <T>(event: string, handler: (event: { payload: T }) => void) => Promise<() => void>;
 
 const defaultListen: AuditEventBusListener = async (event, handler) => {
   const { listen } = await import("@tauri-apps/api/event");
@@ -302,7 +299,10 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
-function matchesAuditFilters(entry: AuditEventRecord, filters: { category?: string; entityId?: string; severity?: string }): boolean {
+function matchesAuditFilters(
+  entry: AuditEventRecord,
+  filters: { category?: string; entityId?: string; severity?: string },
+): boolean {
   if (filters.category && entry.category !== filters.category) return false;
   if (filters.entityId && entry.entityId !== filters.entityId) return false;
   if (filters.severity && normalizeSeverity(entry.severity) !== normalizeSeverity(filters.severity)) return false;

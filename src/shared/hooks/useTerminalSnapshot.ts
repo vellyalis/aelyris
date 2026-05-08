@@ -105,8 +105,7 @@ export function applyDiff(prev: GridSnapshot | null, diff: GridDiff): GridSnapsh
   // layout. The dim-match guard only matters on full=true diffs, since
   // partial diffs never carry a different `cols`/`rows_total`.
   const dimsMatch = !!prev && prev.cols === diff.cols && prev.rows === diff.rows_total;
-  const images: ImageRef[] | undefined =
-    diff.images !== undefined ? diff.images : dimsMatch ? prev.images : undefined;
+  const images: ImageRef[] | undefined = diff.images !== undefined ? diff.images : dimsMatch ? prev.images : undefined;
 
   if (diff.full || !prev || !dimsMatch) {
     const cells = Array.from({ length: diff.rows_total }, () =>

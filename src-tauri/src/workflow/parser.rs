@@ -24,14 +24,13 @@ pub fn list_workflow_files(project_path: &str) -> Vec<WorkflowSummary> {
                 .map(|e| e == "yaml" || e == "yml")
                 .unwrap_or(false)
             {
-                match parse_workflow(&path.to_string_lossy()) {
-                    Ok(wf) => results.push(WorkflowSummary {
+                if let Ok(wf) = parse_workflow(&path.to_string_lossy()) {
+                    results.push(WorkflowSummary {
                         name: wf.name,
                         description: wf.description,
                         path: path.to_string_lossy().to_string().replace('\\', "/"),
                         phase_count: wf.phases.len(),
-                    }),
-                    Err(_) => {} // skip invalid files
+                    });
                 }
             }
         }

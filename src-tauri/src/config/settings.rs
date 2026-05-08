@@ -13,7 +13,7 @@ pub struct AppConfig {
 }
 
 /// Controls for the Ghost Diff Overlay (Phase 3C).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct GhostDiffConfig {
     /// When true, inline ghost paint appears for layers still in progress.
     /// Default: false — only agent-completed layers paint (plan 3C-1d).
@@ -21,13 +21,7 @@ pub struct GhostDiffConfig {
     pub live_mode: bool,
 }
 
-impl Default for GhostDiffConfig {
-    fn default() -> Self {
-        Self { live_mode: false }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct WorkspaceProfileConfig {
     #[serde(default)]
     pub global_defaults: WorkspaceProfileDefaultsConfig,
@@ -38,16 +32,6 @@ pub struct WorkspaceProfileConfig {
         String,
         std::collections::BTreeMap<String, ThreadRunStateConfig>,
     >,
-}
-
-impl Default for WorkspaceProfileConfig {
-    fn default() -> Self {
-        Self {
-            global_defaults: WorkspaceProfileDefaultsConfig::default(),
-            workspace_overrides: std::collections::BTreeMap::new(),
-            thread_run_state: std::collections::BTreeMap::new(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

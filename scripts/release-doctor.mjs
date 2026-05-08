@@ -191,9 +191,11 @@ function hasWindowsInstallerTarget(targets) {
 async function checkTauriBuild(pkg, tauriConfig, tauriDistConfig) {
   const script = pkg.scripts?.["tauri:build:dist"];
   const buildReady =
-    script === "tauri build --config src-tauri/tauri.dist.conf.json --no-sign" &&
+    script === "node scripts/build-pty-sidecar.mjs && tauri build --config src-tauri/tauri.dist.conf.json --no-sign" &&
     tauriConfig.bundle?.active === true &&
     hasWindowsInstallerTarget(tauriConfig.bundle?.targets) &&
+    Array.isArray(tauriDistConfig.bundle?.externalBin) &&
+    tauriDistConfig.bundle.externalBin.includes("binaries/aether-pty-server") &&
     tauriDistConfig.bundle?.createUpdaterArtifacts === false;
   return section(
     "tauri-build",
@@ -206,6 +208,7 @@ async function checkTauriBuild(pkg, tauriConfig, tauriDistConfig) {
       script,
       bundleActive: tauriConfig.bundle?.active,
       targets: tauriConfig.bundle?.targets,
+      externalBin: tauriDistConfig.bundle?.externalBin,
       distCreateUpdaterArtifacts: tauriDistConfig.bundle?.createUpdaterArtifacts,
     },
   );
@@ -253,16 +256,32 @@ async function checkUpdater(version, tauriConfig) {
     }
   }
   const endpointConfigured = Array.isArray(endpoints) && endpoints.length > 0;
+  const invalidEndpoints = endpoints.filter((endpoint) => {
+    try {
+      const url = new URL(endpoint.replace("{{target}}", "windows-x86_64").replace("{{current_version}}", version));
+      return (
+        url.protocol !== "https:" ||
+        url.hostname === "localhost" ||
+        url.hostname === "127.0.0.1" ||
+        url.hostname.endsWith(".invalid") ||
+        url.hostname.includes("example")
+      );
+    } catch {
+      return true;
+    }
+  });
   const latestMatches = latestJson?.version === version;
-  const status = endpointConfigured && latestMatches ? "pass" : "warn";
+  const status = !endpointConfigured || invalidEndpoints.length > 0 ? "fail" : latestMatches ? "pass" : "warn";
   return section(
     "updater-latest-release",
     "Updater And Latest Release",
     status,
     status === "pass"
       ? `Updater endpoint and latest.json are present for ${version}.`
-      : "Updater endpoint exists, but latest.json/signatures are not ready for a signed update channel.",
-    { endpoints, latest, latestJsonVersion: latestJson?.version ?? null },
+      : status === "fail"
+        ? "Updater endpoint is missing or points at a non-production host."
+        : "Updater endpoint exists, but latest.json/signatures are not ready for a signed update channel.",
+    { endpoints, invalidEndpoints, latest, latestJsonVersion: latestJson?.version ?? null },
   );
 }
 

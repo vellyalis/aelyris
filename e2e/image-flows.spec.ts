@@ -41,7 +41,8 @@ import { type Browser, chromium, expect, type Page, test } from "@playwright/tes
  *   vehicle changed.
  */
 
-import { resolve as resolvePath } from "node:path";
+import { dirname, resolve as resolvePath } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const CDP_URL = "http://localhost:9222";
 const VITE_HOST = "localhost:1420";
@@ -61,7 +62,7 @@ const EMITTER_PS1 = "scripts/aether-imgcat.ps1";
 /** Project root resolved from the spec file location. Both the emitter
  *  script and the fixture are repo-relative so the test runs identically
  *  regardless of where Playwright was invoked from. */
-const REPO_ROOT = resolvePath(__dirname, "..");
+const REPO_ROOT = resolvePath(dirname(fileURLToPath(import.meta.url)), "..");
 
 interface ImageRef {
   id: number;

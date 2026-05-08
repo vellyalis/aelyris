@@ -28,6 +28,9 @@ interface ErrorPattern {
   promptTemplate: string;
 }
 
+const ANSI_ESCAPE = "\\u001b";
+const ANSI_CSI_REGEX = new RegExp(`${ANSI_ESCAPE}\\[[0-9;]*[A-Za-z]`, "g");
+
 const ERROR_PATTERNS: ErrorPattern[] = [
   // TypeScript / JavaScript
   {
@@ -104,7 +107,7 @@ const ERROR_PATTERNS: ErrorPattern[] = [
  */
 export function detectError(line: string): DetectedError | null {
   // Strip ANSI escape codes
-  const clean = line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").trim();
+  const clean = line.replace(ANSI_CSI_REGEX, "").trim();
   if (clean.length === 0) return null;
 
   for (const pattern of ERROR_PATTERNS) {

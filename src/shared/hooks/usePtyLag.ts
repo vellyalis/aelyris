@@ -29,10 +29,7 @@ const INITIAL: PtyLagState = { dropped: 0, active: false };
  */
 export const LAG_DECAY_MS = 5_000;
 
-export type Subscriber = (
-  terminalId: string,
-  onEvent: (payload: LagEventPayload) => void,
-) => Promise<UnlistenFn>;
+export type Subscriber = (terminalId: string, onEvent: (payload: LagEventPayload) => void) => Promise<UnlistenFn>;
 
 const defaultSubscribe: Subscriber = (terminalId, onEvent) =>
   listen<LagEventPayload>(`term:lag-${terminalId}`, (ev) => onEvent(ev.payload));

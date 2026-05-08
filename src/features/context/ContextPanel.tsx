@@ -3,6 +3,12 @@ import { useMemo } from "react";
 import { buildContextPack } from "../../shared/lib/contextPack";
 import type { GitChangedFile } from "../../shared/lib/reviewQueue";
 import {
+  listWorkstationGraphAgentIds,
+  listWorkstationGraphChangedFiles,
+  type WorkstationGraph,
+  type WorkstationGraphPane,
+} from "../../shared/lib/workstationGraph";
+import {
   agentContextPercent,
   agentContextWindow,
   agentFileCount,
@@ -11,12 +17,6 @@ import {
   isLiveAgentStatus,
   type TelemetryConfidence,
 } from "../../shared/lib/workstationSummary";
-import {
-  listWorkstationGraphAgentIds,
-  listWorkstationGraphChangedFiles,
-  type WorkstationGraph,
-  type WorkstationGraphPane,
-} from "../../shared/lib/workstationGraph";
 import { useAppStore } from "../../shared/store/appStore";
 import type { AgentSession } from "../../shared/types/agent";
 import type { AuditEventRecord } from "../../shared/types/audit";
@@ -194,7 +194,7 @@ export function ContextPanel({
           )}
 
           {density === "full" && (
-            <div
+            <section
               className={styles.packCard}
               aria-label="Context pack builder"
               data-redactions={contextPack.json.summary.redactionCount}
@@ -202,7 +202,7 @@ export function ContextPanel({
               <div className={styles.packTop}>
                 <span className={styles.packTitle}>
                   <FileText size={12} aria-hidden="true" />
-                  Handoff pack
+                  Copy project state
                 </span>
                 <span className={styles.packBadge}>{contextPack.json.summary.redactionCount} redacted</span>
               </div>
@@ -227,7 +227,7 @@ export function ContextPanel({
                   JSON
                 </button>
               </div>
-            </div>
+            </section>
           )}
 
           {focusSession && (

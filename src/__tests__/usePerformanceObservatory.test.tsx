@@ -1,7 +1,7 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { MiB, type BackendPerformanceMetrics } from "../features/analytics/performanceObservatory";
+import { type BackendPerformanceMetrics, MiB } from "../features/analytics/performanceObservatory";
 import { usePerformanceObservatory } from "../features/analytics/usePerformanceObservatory";
 import type { Invoke } from "../shared/hooks/useImageMetrics";
 
@@ -21,6 +21,8 @@ const backend: BackendPerformanceMetrics = {
   terminalJournalFlushBytes: 32 * 1024,
   terminalJournalFlushIntervalMs: 500,
   ipcLatencyMs: 12,
+  lastTerminalSpawnMs: 650,
+  lastTerminalStreamWireMs: 30,
   dbWriteLatencyMs: null,
   eventQueueLagMs: 75,
 };

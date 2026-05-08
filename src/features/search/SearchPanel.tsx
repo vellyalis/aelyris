@@ -114,7 +114,6 @@ export function SearchPanel({ visible, rootPath, onClose, onResultClick }: Searc
         >
           <div className={styles.header}>
             <input
-              autoFocus
               className={styles.input}
               placeholder="Search in files..."
               aria-label="Search in files"
@@ -136,12 +135,17 @@ export function SearchPanel({ visible, rootPath, onClose, onResultClick }: Searc
               />
             )}
             {[...grouped.entries()].map(([file, matches]) => {
-              const shortFile = file.replace(rootPath + "/", "");
+              const shortFile = file.replace(`${rootPath}/`, "");
               return (
                 <div key={file} className={styles.fileGroup}>
                   <div className={styles.fileName}>{shortFile}</div>
-                  {matches.map((m, i) => (
-                    <button key={i} className={styles.match} onClick={() => onResultClick(m.file, m.line)}>
+                  {matches.map((m) => (
+                    <button
+                      type="button"
+                      key={`${m.file}-${m.line}-${m.content}`}
+                      className={styles.match}
+                      onClick={() => onResultClick(m.file, m.line)}
+                    >
                       <span className={styles.lineNum}>{m.line}</span>
                       <span className={styles.lineContent}>{highlightMatch(m.content, query)}</span>
                     </button>
@@ -150,7 +154,11 @@ export function SearchPanel({ visible, rootPath, onClose, onResultClick }: Searc
               );
             })}
             {!searching && !query && (
-              <EmptyState preset="files" title="Search across files" description="Type to find text anywhere in this project." />
+              <EmptyState
+                preset="files"
+                title="Search across files"
+                description="Type to find text anywhere in this project."
+              />
             )}
           </div>
         </motion.div>

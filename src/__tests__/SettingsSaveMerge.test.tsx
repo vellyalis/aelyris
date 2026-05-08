@@ -46,7 +46,7 @@ describe("Settings.tsx Save merge", () => {
     // gone from the save path.
     const handleSaveMatch = src.match(/const handleSave\s*=\s*\(\)\s*=>\s*\{([\s\S]*?)\n\s*\};/);
     expect(handleSaveMatch).not.toBeNull();
-    const body = handleSaveMatch![1];
+    const body = handleSaveMatch?.[1];
     expect(body).not.toMatch(/ui_font_family:\s*"IBM Plex Sans"/);
     expect(body).not.toMatch(/window_effect:\s*"mica"/);
     expect(body).not.toMatch(/opacity:\s*0\.95/);
@@ -68,7 +68,10 @@ describe("Settings.tsx Save merge", () => {
 
       // visible must gate + appear in deps so re-opening the dialog re-loads.
       expect(body).toMatch(/if\s*\(!visible\)\s*return/);
-      const depList = deps.split(",").map((s) => s.trim()).filter(Boolean);
+      const depList = deps
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
       expect(depList).toContain("visible");
     }
 
@@ -85,7 +88,8 @@ describe("Settings.tsx Save merge", () => {
     expect(src).toMatch(/invoke\(\s*"save_app_config"[\s\S]*?toast\.error\(/);
     // Success path must close via .then so a failed save leaves the
     // dialog open for the user to retry.
-    expect(src).toMatch(/invoke\(\s*"save_app_config"[\s\S]*?\.then\(\s*\(\s*\)\s*=>\s*onClose\(\s*\)\s*\)/);
+    expect(src).toMatch(/invoke\(\s*"save_app_config"[\s\S]*?\.then\(\s*\(\s*\)\s*=>\s*\{[\s\S]*?onClose\(\s*\)/);
+    expect(src).toMatch(/invoke\(\s*"save_app_config"[\s\S]*?\.then\(\s*\(\s*\)\s*=>\s*\{[\s\S]*?setThemeId\(theme\)/);
     // The bare `.catch(() => {})` swallow that hid failures must be gone.
     expect(src).not.toMatch(/save_app_config[\s\S]{0,200}\.catch\(\(\)\s*=>\s*\{\s*\}\)/);
   });

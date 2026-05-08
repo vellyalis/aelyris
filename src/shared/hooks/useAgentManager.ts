@@ -90,7 +90,12 @@ function mergeAgentSessions(
       ...session,
       status: LIVE_AGENT_STATUSES.has(session.status) ? ("done" as AgentStatus) : session.status,
       closeState:
-        session.closeState ?? (LIVE_AGENT_STATUSES.has(session.status) ? "collectable" : session.status === "done" ? "collectable" : "active"),
+        session.closeState ??
+        (LIVE_AGENT_STATUSES.has(session.status)
+          ? "collectable"
+          : session.status === "done"
+            ? "collectable"
+            : "active"),
     }));
   return [...liveSessions, ...retainedTelemetry];
 }

@@ -240,7 +240,7 @@ fn malformed_then_valid_chunk_oscs_keep_assembler_clean() {
     // Malformed: unknown verb 'X'.
     engine.advance(b"\x1b]1338;X;weird\x07");
     // Valid BEGIN/DATA/END.
-    let begin = format!("\x1b]1338;B;42;png;2;2\x07");
+    let begin = "\x1b]1338;B;42;png;2;2\x07".to_string();
     let data = format!("\x1b]1338;D;42;0;{b64}\x07");
     let end = b"\x1b]1338;E;42\x07";
     engine.advance(begin.as_bytes());

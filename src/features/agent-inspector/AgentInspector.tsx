@@ -68,6 +68,16 @@ interface AgentInspectorProps {
 
 type InspectorTab = "sessions" | "activity" | "parallel" | "conductor" | "diffs";
 
+const STATUS_ORDER: Record<AgentStatus, number> = {
+  generating: 0,
+  coding: 1,
+  thinking: 2,
+  waiting: 3,
+  error: 4,
+  idle: 5,
+  done: 6,
+};
+
 export function AgentInspector({
   sessions,
   activeSessionId,
@@ -164,24 +174,14 @@ export function AgentInspector({
 
   const activeSessions = useMemo(() => sessions.filter((s) => s.status !== "idle" && s.status !== "done"), [sessions]);
   const showParallelTab = activeSessions.length >= 2;
-  const showConductorTab = useMemo(
-    () => sessions.some((s) => s.role != null || s.handoffFrom != null),
-    [sessions],
-  );
+  const showConductorTab = useMemo(() => sessions.some((s) => s.role != null || s.handoffFrom != null), [sessions]);
   const showDiffsTab = useMemo(
-    () => activeSession != null && ((activeSession.changedFileDetails?.length ?? 0) > 0 || (activeSession.filesChanged ?? 0) > 0),
+    () =>
+      activeSession != null &&
+      ((activeSession.changedFileDetails?.length ?? 0) > 0 || (activeSession.filesChanged ?? 0) > 0),
     [activeSession],
   );
 
-  const STATUS_ORDER: Record<AgentStatus, number> = {
-    generating: 0,
-    coding: 1,
-    thinking: 2,
-    waiting: 3,
-    error: 4,
-    idle: 5,
-    done: 6,
-  };
   const sortedSessions = useMemo(
     () => [...sessions].sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]),
     [sessions],
@@ -309,7 +309,7 @@ export function AgentInspector({
   }, [onStartAgent, rootProjectPath]);
 
   return (
-    <div className={styles.inspector} role="region" aria-label="Agent sessions">
+    <section className={styles.inspector} aria-label="Agent sessions">
       {/* Tab toggle — active tab shows icon + label, inactive tabs show
        * icon only with title/aria tooltip. At 320px right-panel width
        * there isn't room for five full labels plus the Orchestra pill +
@@ -317,6 +317,7 @@ export function AgentInspector({
        * full labels (overflowed by ~195px). */}
       <div className={styles.tabBar}>
         <button
+          type="button"
           className={`${styles.tab} ${tab === "sessions" ? styles.tabActive : ""}`}
           onClick={() => setTab("sessions")}
           title="Sessions"
@@ -327,6 +328,7 @@ export function AgentInspector({
         </button>
         {showActivityTab && (
           <button
+            type="button"
             className={`${styles.tab} ${tab === "activity" ? styles.tabActive : ""}`}
             onClick={() => setTab("activity")}
             title="Activity"
@@ -338,6 +340,7 @@ export function AgentInspector({
         )}
         {showParallelTab && (
           <button
+            type="button"
             className={`${styles.tab} ${tab === "parallel" ? styles.tabActive : ""}`}
             onClick={() => setTab("parallel")}
             title="Parallel session view"
@@ -350,6 +353,7 @@ export function AgentInspector({
         )}
         {showConductorTab && (
           <button
+            type="button"
             className={`${styles.tab} ${tab === "conductor" ? styles.tabActive : ""}`}
             onClick={() => setTab("conductor")}
             title="Conductor DAG - see roles and handoffs"
@@ -361,6 +365,7 @@ export function AgentInspector({
         )}
         {showDiffsTab && (
           <button
+            type="button"
             className={`${styles.tab} ${tab === "diffs" ? styles.tabActive : ""}`}
             onClick={() => setTab("diffs")}
             title="View file changes"
@@ -373,6 +378,7 @@ export function AgentInspector({
         <div className={styles.tabActions}>
           {overBudgetCount > 0 && onStopAgent && (
             <button
+              type="button"
               className={styles.overBudgetChip}
               title={`Stop ${overBudgetCount} over-budget session${overBudgetCount === 1 ? "" : "s"}`}
               onClick={handleStopOverBudget}
@@ -387,6 +393,7 @@ export function AgentInspector({
             </span>
           )}
           <button
+            type="button"
             className={styles.iconBtn}
             title="Copy session info"
             aria-label="Copy session info"
@@ -397,6 +404,7 @@ export function AgentInspector({
             <ClipboardCopy size={12} aria-hidden="true" />
           </button>
           <button
+            type="button"
             className={styles.orchestraBtn}
             title="Orchestra mode (3 agents working together)"
             aria-label="Orchestra mode"
@@ -406,6 +414,7 @@ export function AgentInspector({
             <span>Orchestra</span>
           </button>
           <button
+            type="button"
             className={styles.iconBtn}
             title="Add session"
             aria-label="Add session"
@@ -420,11 +429,12 @@ export function AgentInspector({
         <div className={styles.bulkBar} role="toolbar" aria-label="Bulk session actions">
           <span className={styles.bulkCount}>{selectedIds.size} selected</span>
           {onStopAgent && (
-            <button className={styles.bulkAction} data-variant="danger" onClick={handleStopSelected}>
+            <button type="button" className={styles.bulkAction} data-variant="danger" onClick={handleStopSelected}>
               Stop selected
             </button>
           )}
           <button
+            type="button"
             className={`${styles.bulkAction} ${styles.bulkClose}`}
             onClick={clearSelection}
             title="Clear selection"
@@ -437,6 +447,7 @@ export function AgentInspector({
 
       {/* Prompt input + model selector */}
       {showPromptInput && (
+        /* biome-ignore lint/a11y/noStaticElementInteractions: Blur on the wrapper closes the transient editor after focus leaves its form controls. */
         <div
           className={styles.promptInput}
           onBlur={(e) => {
@@ -464,7 +475,6 @@ export function AgentInspector({
             />
           </div>
           <input
-            autoFocus
             placeholder={`Prompt (Enter=agent, Ctrl+Enter=interactive)...`}
             value={promptText}
             onChange={(e) => setPromptText(e.target.value)}
@@ -497,7 +507,11 @@ export function AgentInspector({
         <>
           <div className={styles.cards}>
             {sortedSessions.length === 0 && interactiveSessions.length === 0 && !showPromptInput && (
-              <EmptyState preset="agents" title="No active agents" description="Press Ctrl+Shift+A to start an agent" />
+              <EmptyState
+                preset="agents"
+                title="No active agents"
+                description="Start an agent to work in this project; its logs, files, cost, and review trail stay here."
+              />
             )}
 
             {interactiveSessions.map((is) => (
@@ -588,6 +602,7 @@ export function AgentInspector({
               />
               {activityFilterActive && (
                 <button
+                  type="button"
                   className={styles.activityResetBtn}
                   onClick={resetActivityFilter}
                   title="Clear filters"
@@ -600,6 +615,7 @@ export function AgentInspector({
             <div className={styles.activityChips}>
               {LOG_TYPES.map((t) => (
                 <button
+                  type="button"
                   key={t}
                   className={styles.activityChip}
                   data-active={activityTypes.has(t) || undefined}
@@ -615,6 +631,7 @@ export function AgentInspector({
                   const c = getSessionColor(s.id);
                   return (
                     <button
+                      type="button"
                       key={s.id}
                       className={styles.activityChip}
                       data-active={activitySessions.has(s.id) || undefined}
@@ -633,11 +650,14 @@ export function AgentInspector({
             {activityFilterActive ? `${filteredActivity.length} of ${allActivity.length}` : "All Activity"}
           </div>
           <div className={styles.logList}>
-            {filteredActivity.slice(0, 200).map((log, i) => {
+            {filteredActivity.slice(0, 200).map((log) => {
               const tool = log.type === "tool_use" ? extractToolName(log.content) : null;
               const logColor = getSessionColor(log.sessionId);
               return (
-                <div key={i} className={`${styles.logEntry} ${styles[`log_${log.type}`]}`}>
+                <div
+                  key={`${log.sessionId}-${log.timestamp}-${log.type}-${log.content}`}
+                  className={`${styles.logEntry} ${styles[`log_${log.type}`]}`}
+                >
                   <span className={styles.logTime}>
                     {new Date(log.timestamp).toLocaleTimeString("en-US", {
                       hour12: false,
@@ -690,8 +710,13 @@ export function AgentInspector({
                 </span>
               )}
               <button
+                type="button"
                 className={styles.stopAllBtn}
-                onClick={() => activeSessions.forEach((s) => onStopAgent?.(s.id))}
+                onClick={() => {
+                  activeSessions.forEach((s) => {
+                    onStopAgent?.(s.id);
+                  });
+                }}
                 title="Stop all agents"
               >
                 Stop All
@@ -716,6 +741,7 @@ export function AgentInspector({
                       ? Math.min(99, Math.round((s.tokensUsed / getMaxTokens(s.model)) * 100))
                       : 2;
               return (
+                /* biome-ignore lint/a11y/useSemanticElements: The pane is a selectable card with nested controls, so a button wrapper would create invalid interactive nesting. */
                 <div
                   key={s.id}
                   role="button"
@@ -761,10 +787,13 @@ export function AgentInspector({
                     />
                   </div>
                   <div className={styles.parallelLogs}>
-                    {s.logs.slice(-5).map((log, i) => {
+                    {s.logs.slice(-5).map((log) => {
                       const tool = log.type === "tool_use" ? extractToolName(log.content) : null;
                       return (
-                        <div key={i} className={`${styles.logEntry} ${styles[`log_${log.type}`]}`}>
+                        <div
+                          key={`${s.id}-${log.timestamp}-${log.type}-${log.content}`}
+                          className={`${styles.logEntry} ${styles[`log_${log.type}`]}`}
+                        >
                           <span className={styles.logTime}>
                             {new Date(log.timestamp).toLocaleTimeString("en-US", {
                               hour12: false,
@@ -810,6 +839,6 @@ export function AgentInspector({
         ))}
 
       {analyticsSession && <SessionAnalytics session={analyticsSession} onClose={() => setAnalyticsSessionId(null)} />}
-    </div>
+    </section>
   );
 }

@@ -53,9 +53,7 @@ async function defaultCheckUpdate(): Promise<UpdateProbe> {
  * (e.g. immediately after a release ships) and for visibility into
  * misconfigured endpoints.
  */
-export function UpdateCheckSection({
-  checkUpdate = defaultCheckUpdate,
-}: UpdateCheckSectionProps) {
+export function UpdateCheckSection({ checkUpdate = defaultCheckUpdate }: UpdateCheckSectionProps) {
   const [probe, setProbe] = useState<UpdateProbe>({ kind: "idle" });
 
   const handleClick = useCallback(async () => {
@@ -101,8 +99,8 @@ export function UpdateCheckSection({
       </div>
       {summary && <div className={className}>{summary}</div>}
       <p className={styles.hint}>
-        Aether is local-only by default; the updater requires a configured endpoint
-        and signing key. See <code>docs/auto_updater_setup.md</code> for the one-time setup.
+        Aether is local-only by default; the updater requires a configured endpoint and signing key. See{" "}
+        <code>docs/auto_updater_setup.md</code> for the one-time setup.
       </p>
     </div>
   );

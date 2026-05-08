@@ -37,22 +37,12 @@ export function MenuBar({ menus }: MenuBarProps) {
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
-        <button
-          type="button"
-          className={styles.hamburger}
-          aria-label="Open application menu"
-          title="Application menu"
-        >
+        <button type="button" className={styles.hamburger} aria-label="Open application menu" title="Application menu">
           <MenuIcon size={16} strokeWidth={1.75} aria-hidden="true" />
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        <DropdownMenu.Content
-          className={styles.dropdown}
-          sideOffset={6}
-          align="start"
-          collisionPadding={8}
-        >
+        <DropdownMenu.Content className={styles.dropdown} sideOffset={6} align="start" collisionPadding={8}>
           {menus.map((menu) => (
             <DropdownMenu.Sub key={menu.label}>
               <DropdownMenu.SubTrigger className={styles.subTrigger}>
@@ -68,6 +58,7 @@ export function MenuBar({ menus }: MenuBarProps) {
                 >
                   {menu.items.map((item, j) =>
                     item.divider ? (
+                      // biome-ignore lint/suspicious/noArrayIndexKey: Divider items are intentionally label-less separators inside a static menu definition.
                       <DropdownMenu.Separator key={`sep-${j}`} className={styles.divider} />
                     ) : (
                       <DropdownMenu.Item
@@ -77,9 +68,7 @@ export function MenuBar({ menus }: MenuBarProps) {
                         onSelect={() => item.action?.()}
                       >
                         <span>{item.label}</span>
-                        {item.shortcut && (
-                          <span className={styles.shortcut}>{item.shortcut}</span>
-                        )}
+                        {item.shortcut && <span className={styles.shortcut}>{item.shortcut}</span>}
                       </DropdownMenu.Item>
                     ),
                   )}

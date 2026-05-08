@@ -26,9 +26,5 @@ export function toMonacoModelUri(filePath: string): string {
 // `%` must be escaped first so the subsequent `%XX` sequences aren't
 // themselves treated as user-supplied literals on a second pass.
 function escapeReservedForFileUri(s: string): string {
-  return s
-    .replace(/%/g, "%25")
-    .replace(/#/g, "%23")
-    .replace(/\?/g, "%3F")
-    .replace(/ /g, "%20");
+  return s.replace(/%/g, "%25").replace(/#/g, "%23").replace(/\?/g, "%3F").replace(/ /g, "%20");
 }

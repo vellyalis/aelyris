@@ -12,13 +12,17 @@ import { test, expect } from "@playwright/test";
  */
 
 const setupProject = async (page: import("@playwright/test").Page) => {
-  await page.goto("/");
-  await page.evaluate(() => {
-    localStorage.setItem("aether:lastProject", "C:/Users/owner/Aether_Terminal");
-    localStorage.setItem("aether:onboarding-done", "1");
+  const projectPath = "C:/Users/owner/Aether_Terminal";
+  await page.goto(`/?aetherVisualQa=1&projectPath=${encodeURIComponent(projectPath)}`, {
+    waitUntil: "domcontentloaded",
   });
-  await page.reload();
-  await page.waitForTimeout(2_000);
+  await page.evaluate((path) => {
+    localStorage.setItem("aether:visualQa", "1");
+    localStorage.setItem("aether:visualQaProject", path);
+    localStorage.setItem("aether:onboarding-done", "1");
+  }, projectPath);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.locator(".app-main")).toBeVisible({ timeout: 10_000 });
 };
 
 test.describe("Keyboard shortcuts", () => {
@@ -30,11 +34,11 @@ test.describe("Keyboard shortcuts", () => {
     await page.keyboard.press("Control+Shift+P");
     // cmdk exposes a search input; the label varies with locale but the
     // placeholder "Type a command" is stable across surfaces.
-    const input = page.locator('[cmdk-input]');
+    const input = page.locator("[cmdk-input]");
     await expect(input).toBeVisible({ timeout: 5_000 });
     await input.fill("sett");
     // Search narrows to Settings — dialog remains open, result list shown.
-    await expect(page.locator('[cmdk-item]').first()).toBeVisible();
+    await expect(page.locator("[cmdk-item]").first()).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(input).not.toBeVisible();
   });
@@ -67,7 +71,7 @@ test.describe("Keyboard shortcuts", () => {
     // Settings renders a dialog with a "Settings" heading.
     const heading = page.getByRole("heading", { name: "Settings" });
     await expect(heading).toBeVisible({ timeout: 5_000 });
-    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Close settings" }).click();
     await expect(heading).not.toBeVisible();
   });
 });
@@ -77,15 +81,15 @@ test.describe("Right-panel tab navigation", () => {
     await setupProject(page);
   });
 
-  test("switching to Activity tab highlights it", async ({ page }) => {
-    const tab = page.getByRole("tab", { name: /activity/i }).first();
+  test("switching to Review tab highlights it", async ({ page }) => {
+    const tab = page.getByRole("tab", { name: /review/i }).first();
     await expect(tab).toBeVisible({ timeout: 5_000 });
     await tab.click();
     await expect(tab).toHaveAttribute("aria-selected", "true");
   });
 
-  test("switching to Conductor tab highlights it", async ({ page }) => {
-    const tab = page.getByRole("tab", { name: /conductor/i }).first();
+  test("switching to Observe tab highlights it", async ({ page }) => {
+    const tab = page.getByRole("tab", { name: /observe/i }).first();
     await expect(tab).toBeVisible({ timeout: 5_000 });
     await tab.click();
     await expect(tab).toHaveAttribute("aria-selected", "true");
@@ -118,9 +122,7 @@ test.describe("IME input bar", () => {
     await ta.evaluate((el) => {
       el.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "テスト" }));
     });
-    await expect(
-      bar.locator('[aria-label*="ASCII"]').first(),
-    ).toHaveText("A", { timeout: 2_000 });
+    await expect(bar.locator('[aria-label*="ASCII"]').first()).toHaveText("A", { timeout: 2_000 });
   });
 });
 
@@ -130,16 +132,16 @@ test.describe("Menu bar dropdowns", () => {
   });
 
   test("clicking File opens a dropdown", async ({ page }) => {
-    const fileMenu = page.getByRole("menubar").getByText("File");
-    await fileMenu.click();
-    // Radix dropdowns render their content with role=menu on open.
+    await page.getByRole("button", { name: "Open application menu" }).click();
+    await page.getByRole("menu").first().getByText("File", { exact: true }).hover();
+    // Radix dropdowns render menu content for the root and submenu.
     await expect(page.getByRole("menu").first()).toBeVisible({ timeout: 3_000 });
     await page.keyboard.press("Escape");
   });
 
   test("clicking Terminal opens a dropdown", async ({ page }) => {
-    const termMenu = page.getByRole("menubar").getByText("Terminal");
-    await termMenu.click();
+    await page.getByRole("button", { name: "Open application menu" }).click();
+    await page.getByRole("menu").first().getByText("Terminal", { exact: true }).hover();
     await expect(page.getByRole("menu").first()).toBeVisible({ timeout: 3_000 });
     await page.keyboard.press("Escape");
   });

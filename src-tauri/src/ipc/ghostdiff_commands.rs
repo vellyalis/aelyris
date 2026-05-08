@@ -5,7 +5,7 @@
 //! hunks back into the user's main worktree (3C-1c), and spin up read-only
 //! branch-comparison overlays (3C-2).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -245,11 +245,11 @@ pub fn start_branch_comparison(
 }
 
 /// Join `repo_path` and `file_path` safely — reject path traversal attempts.
-fn resolve_main_path(repo_path: &PathBuf, file_path: &str) -> Result<PathBuf, String> {
+fn resolve_main_path(repo_path: &Path, file_path: &str) -> Result<PathBuf, String> {
     if file_path.contains("..") {
         return Err(format!("rejecting traversal path: {file_path}"));
     }
-    let mut out = repo_path.clone();
+    let mut out = repo_path.to_path_buf();
     for seg in file_path.split(&['/', '\\']).filter(|s| !s.is_empty()) {
         if seg == "." || seg == ".." {
             return Err(format!("rejecting traversal path: {file_path}"));

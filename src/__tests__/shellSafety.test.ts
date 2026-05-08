@@ -159,7 +159,7 @@ describe("classifyCommand", () => {
   });
 
   it("redacts secret-bearing command previews", () => {
-    const command = "curl -H \"Authorization: Bearer abcdefghijklmnop\" https://api.test --token=secret-value";
+    const command = 'curl -H "Authorization: Bearer abcdefghijklmnop" https://api.test --token=secret-value';
     const report = classifyCommand(command);
     expect(report.classes).toContain("secret-bearing");
     expect(report.preview).not.toContain("abcdefghijklmnop");

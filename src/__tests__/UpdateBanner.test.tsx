@@ -11,21 +11,15 @@ describe("UpdateBanner", () => {
 
   it("renders nothing when no update is available", async () => {
     const checkUpdate = vi.fn<() => Promise<UpdateState>>().mockResolvedValue({ available: false });
-    const { container } = render(
-      <UpdateBanner checkUpdate={checkUpdate} relaunch={vi.fn()} />,
-    );
+    const { container } = render(<UpdateBanner checkUpdate={checkUpdate} relaunch={vi.fn()} />);
     await waitFor(() => expect(checkUpdate).toHaveBeenCalledTimes(1));
     // The banner should never appear in this branch.
     await waitFor(() => expect(container.querySelector("[role='status']")).toBeNull());
   });
 
   it("stays silent on check errors so a misconfigured endpoint does not nag", async () => {
-    const checkUpdate = vi
-      .fn<() => Promise<UpdateState>>()
-      .mockRejectedValue(new Error("network unreachable"));
-    const { container } = render(
-      <UpdateBanner checkUpdate={checkUpdate} relaunch={vi.fn()} />,
-    );
+    const checkUpdate = vi.fn<() => Promise<UpdateState>>().mockRejectedValue(new Error("network unreachable"));
+    const { container } = render(<UpdateBanner checkUpdate={checkUpdate} relaunch={vi.fn()} />);
     await waitFor(() => expect(checkUpdate).toHaveBeenCalled());
     await new Promise((r) => setTimeout(r, 0));
     expect(container.querySelector("[role='status']")).toBeNull();
@@ -40,9 +34,7 @@ describe("UpdateBanner", () => {
       downloadAndInstall,
     });
 
-    const { container } = render(
-      <UpdateBanner checkUpdate={checkUpdate} relaunch={vi.fn()} />,
-    );
+    const { container } = render(<UpdateBanner checkUpdate={checkUpdate} relaunch={vi.fn()} />);
     const banner = await waitFor(() => {
       const el = container.querySelector("[role='status']");
       if (!el) throw new Error("banner not yet rendered");
@@ -89,9 +81,7 @@ describe("UpdateBanner", () => {
       downloadAndInstall,
     });
 
-    const { container } = render(
-      <UpdateBanner checkUpdate={checkUpdate} relaunch={vi.fn()} />,
-    );
+    const { container } = render(<UpdateBanner checkUpdate={checkUpdate} relaunch={vi.fn()} />);
     const banner = await waitFor(() => {
       const el = container.querySelector("[role='status']");
       if (!el) throw new Error("banner not rendered");

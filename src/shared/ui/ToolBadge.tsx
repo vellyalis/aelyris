@@ -14,10 +14,7 @@ export const ToolBadge = memo(function ToolBadge({ tool }: ToolBadgeProps) {
   // concatenation would produce invalid CSS (`var(--ctp-yellow)40`). Use
   // `color-mix` to keep the 25%-alpha border effect theme-responsive.
   return (
-    <span
-      className={styles.badge}
-      style={{ color, borderColor: `color-mix(in srgb, ${color} 25%, transparent)` }}
-    >
+    <span className={styles.badge} style={{ color, borderColor: `color-mix(in srgb, ${color} 25%, transparent)` }}>
       {tool}
     </span>
   );

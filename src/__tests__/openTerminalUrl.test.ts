@@ -104,11 +104,7 @@ describe("openTerminalUrlWith", () => {
   it("calls openInEditor for in-cwd file URLs", async () => {
     const openInEditor = vi.fn();
     const openExternal = vi.fn();
-    await openTerminalUrlWith(
-      "file:///C:/proj/src/foo.ts",
-      { cwd: "C:/proj" },
-      { openInEditor, openExternal },
-    );
+    await openTerminalUrlWith("file:///C:/proj/src/foo.ts", { cwd: "C:/proj" }, { openInEditor, openExternal });
     expect(openInEditor).toHaveBeenCalledWith("C:/proj/src/foo.ts");
     expect(openExternal).not.toHaveBeenCalled();
   });
@@ -116,11 +112,7 @@ describe("openTerminalUrlWith", () => {
   it("calls openExternal for https URLs", async () => {
     const openInEditor = vi.fn();
     const openExternal = vi.fn().mockResolvedValue(undefined);
-    await openTerminalUrlWith(
-      "https://example.com",
-      { cwd: "C:/proj" },
-      { openInEditor, openExternal },
-    );
+    await openTerminalUrlWith("https://example.com", { cwd: "C:/proj" }, { openInEditor, openExternal });
     expect(openInEditor).not.toHaveBeenCalled();
     expect(openExternal).toHaveBeenCalledWith("https://example.com");
   });
@@ -128,11 +120,7 @@ describe("openTerminalUrlWith", () => {
   it("calls openExternal for file URLs outside cwd", async () => {
     const openInEditor = vi.fn();
     const openExternal = vi.fn().mockResolvedValue(undefined);
-    await openTerminalUrlWith(
-      "file:///C:/somewhere/else.ts",
-      { cwd: "C:/proj" },
-      { openInEditor, openExternal },
-    );
+    await openTerminalUrlWith("file:///C:/somewhere/else.ts", { cwd: "C:/proj" }, { openInEditor, openExternal });
     expect(openInEditor).not.toHaveBeenCalled();
     expect(openExternal).toHaveBeenCalledWith("file:///C:/somewhere/else.ts");
   });

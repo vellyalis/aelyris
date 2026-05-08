@@ -79,11 +79,6 @@
   background: var(--row-hover);
 }
 
-.taskDone .taskLabel {
-  text-decoration: line-through;
-  opacity: 0.4;
-}
-
 /* Task-done check — Apple Reminders / Things pattern. The empty
  * Circle reads as "open task" and the filled CircleCheck reads as
  * "done". A Switch would dwarf the row text at 32 × 18; a 14-px
@@ -122,6 +117,11 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   line-height: var(--leading-snug);
+}
+
+.taskDone .taskLabel {
+  text-decoration: line-through;
+  opacity: 0.4;
 }
 
 .deleteBtn {

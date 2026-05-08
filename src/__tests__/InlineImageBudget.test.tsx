@@ -1,10 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import {
-  InlineImageBudget,
-  formatMiB,
-} from "../features/statusbar/InlineImageBudget";
+import { formatMiB, InlineImageBudget } from "../features/statusbar/InlineImageBudget";
 import type { ImageMetrics } from "../shared/types/terminal";
 
 const MIB = 1024 * 1024;
@@ -25,18 +22,12 @@ describe("InlineImageBudget", () => {
   });
 
   it("renders nothing when count is zero", () => {
-    const { container } = render(
-      <InlineImageBudget metrics={metrics({ bytesUsed: 0, count: 0 })} />,
-    );
+    const { container } = render(<InlineImageBudget metrics={metrics({ bytesUsed: 0, count: 0 })} />);
     expect(container.firstChild).toBeNull();
   });
 
   it("renders a status badge with bytes and count for a healthy budget", () => {
-    render(
-      <InlineImageBudget
-        metrics={metrics({ bytesUsed: 12 * MIB + Math.floor(0.3 * MIB), count: 3 })}
-      />,
-    );
+    render(<InlineImageBudget metrics={metrics({ bytesUsed: 12 * MIB + Math.floor(0.3 * MIB), count: 3 })} />);
     const badge = screen.getByRole("status");
     expect(badge.textContent).toContain("12.3 MiB");
     expect(badge.textContent).toContain("50 MiB");
@@ -45,40 +36,28 @@ describe("InlineImageBudget", () => {
   });
 
   it("escalates to the warn tier above 80 % usage", () => {
-    render(
-      <InlineImageBudget
-        metrics={metrics({ bytesUsed: Math.floor(40.5 * MIB), count: 5 })}
-      />,
-    );
+    render(<InlineImageBudget metrics={metrics({ bytesUsed: Math.floor(40.5 * MIB), count: 5 })} />);
     const badge = screen.getByRole("status");
     expect(badge.className).toMatch(/imageBudgetWarn/);
     expect(badge.className).not.toMatch(/imageBudgetDanger/);
   });
 
   it("escalates to the danger tier above 95 % usage", () => {
-    render(
-      <InlineImageBudget
-        metrics={metrics({ bytesUsed: Math.floor(48 * MIB), count: 8 })}
-      />,
-    );
+    render(<InlineImageBudget metrics={metrics({ bytesUsed: Math.floor(48 * MIB), count: 8 })} />);
     const badge = screen.getByRole("status");
     expect(badge.className).toMatch(/imageBudgetDanger/);
     expect(badge.getAttribute("title")).toMatch(/eviction imminent/i);
   });
 
   it("uses the singular noun when only one image is retained", () => {
-    render(
-      <InlineImageBudget metrics={metrics({ bytesUsed: 1 * MIB, count: 1 })} />,
-    );
+    render(<InlineImageBudget metrics={metrics({ bytesUsed: 1 * MIB, count: 1 })} />);
     const badge = screen.getByRole("status");
     expect(badge.getAttribute("title")).toMatch(/1 image\b/);
     expect(badge.getAttribute("title")).not.toMatch(/1 images/);
   });
 
   it("survives a degenerate cap of zero without dividing by zero", () => {
-    render(
-      <InlineImageBudget metrics={metrics({ bytesUsed: 1, cap: 0, count: 1 })} />,
-    );
+    render(<InlineImageBudget metrics={metrics({ bytesUsed: 1, cap: 0, count: 1 })} />);
     // No throw, badge renders with the OK tier (ratio defaults to 0).
     const badge = screen.getByRole("status");
     expect(badge.className).not.toMatch(/imageBudgetDanger/);

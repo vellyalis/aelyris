@@ -198,7 +198,7 @@ export function WatchdogDialog({ visible, onClose }: WatchdogDialogProps) {
           {/* Rules list */}
           <div className={styles.rulesList}>
             {rules.auto_approve.map((rule, i) => (
-              <div key={i} className={styles.ruleRow}>
+              <div key={rule.pattern} className={styles.ruleRow}>
                 <button
                   type="button"
                   className={styles.ruleToggle}

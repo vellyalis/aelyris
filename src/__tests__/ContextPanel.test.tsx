@@ -165,7 +165,7 @@ describe("ContextPanel", () => {
 
     const pack = screen.getByLabelText("Context pack builder");
     expect(pack.getAttribute("data-redactions")).toBe("2");
-    expect(screen.getByText("Handoff pack")).toBeTruthy();
+    expect(screen.getByText("Copy project state")).toBeTruthy();
     expect(screen.getByLabelText("Copy context pack markdown")).toBeTruthy();
     expect(screen.getByLabelText("Copy context pack JSON")).toBeTruthy();
     expect(screen.queryByText("secret-value")).toBeNull();

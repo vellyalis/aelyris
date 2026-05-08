@@ -520,24 +520,24 @@ export function WorkflowBuilder({ onClose, onExport }: WorkflowBuilderProps) {
           <input className={styles.nameInput} value={workflowName} onChange={(e) => setWorkflowName(e.target.value)} />
           <div className={styles.presets}>
             {PRESETS.map((p, i) => (
-              <button key={i} className={styles.presetBtn} onClick={() => loadPreset(i)}>
+              <button type="button" key={p.name} className={styles.presetBtn} onClick={() => loadPreset(i)}>
                 {p.name.split(" (")[0]}
               </button>
             ))}
           </div>
-          <button className={styles.addBtn} onClick={addPhase}>
+          <button type="button" className={styles.addBtn} onClick={addPhase}>
             <Plus size={12} /> Phase
           </button>
-          <button className={styles.exportBtn} onClick={importYaml}>
+          <button type="button" className={styles.exportBtn} onClick={importYaml}>
             <Upload size={12} /> Import
           </button>
-          <button className={styles.exportBtn} onClick={exportYaml}>
+          <button type="button" className={styles.exportBtn} onClick={exportYaml}>
             <Save size={12} /> Save
           </button>
-          <button className={styles.runBtn} onClick={saveAndRun} title="Save then start a run">
+          <button type="button" className={styles.runBtn} onClick={saveAndRun} title="Save then start a run">
             <PlayCircle size={12} /> Save &amp; Run
           </button>
-          <button className={styles.closeBtn} onClick={onClose}>
+          <button type="button" className={styles.closeBtn} onClick={onClose}>
             <X size={14} />
           </button>
         </div>

@@ -264,7 +264,7 @@ export function EditorPanel({
     return () => {
       cancelled = true;
     };
-  }, [filePath]);
+  }, [filePath, initialDiffMode, projectPath, markSaved]);
 
   // Reload file when window regains focus (external change detection)
   useEffect(() => {
@@ -341,7 +341,12 @@ export function EditorPanel({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [filePath]);
+  }, [
+    filePath, // markSaved + toast are filePath-scoped and safe to call
+    // unconditionally — they affect the saved file's bookkeeping,
+    // not the currently-open one.
+    markSaved,
+  ]);
 
   const fileName = filePath ? (filePath.split("/").pop() ?? filePath) : "";
   const language = filePath ? detectLanguage(filePath) : "plaintext";
@@ -361,10 +366,7 @@ export function EditorPanel({
   // the URIs never match, so rust-analyzer / pyright return zero
   // completions and hovers. The same helper feeds notifyOpen below so
   // both sides converge on a single canonical URI.
-  const monacoModelPath = useMemo(
-    () => (filePath ? toMonacoModelUri(filePath) : undefined),
-    [filePath],
-  );
+  const monacoModelPath = useMemo(() => (filePath ? toMonacoModelUri(filePath) : undefined), [filePath]);
 
   if (!filePath) {
     return (
@@ -396,17 +398,22 @@ export function EditorPanel({
         </span>
         <span className={styles.lang}>{language}</span>
         {isMarkdown && (
-          <button className={styles.diffBtn} onClick={() => setPreviewMode((v) => !v)} title="Toggle markdown preview">
+          <button
+            type="button"
+            className={styles.diffBtn}
+            onClick={() => setPreviewMode((v) => !v)}
+            title="Toggle markdown preview"
+          >
             {previewMode ? "Edit" : "Preview"}
           </button>
         )}
-        <button className={styles.diffBtn} onClick={toggleVim} title="Toggle Vim mode">
+        <button type="button" className={styles.diffBtn} onClick={toggleVim} title="Toggle Vim mode">
           {vimMode ? "Vim ✓" : "Vim"}
         </button>
-        <button className={styles.diffBtn} onClick={toggleDiff} title="Toggle diff">
+        <button type="button" className={styles.diffBtn} onClick={toggleDiff} title="Toggle diff">
           {diffMode ? "Editor" : "Diff"}
         </button>
-        <button className={styles.closeBtn} onClick={onClose}>
+        <button type="button" className={styles.closeBtn} onClick={onClose}>
           ×
         </button>
       </div>
@@ -436,7 +443,9 @@ export function EditorPanel({
                   end: Math.max(c.range.startLineNumber, c.range.endLineNumber),
                 }));
                 if (ranges.length === 0) return;
-                modelChangeSubscribersRef.current.forEach((fn) => fn(ranges));
+                modelChangeSubscribersRef.current.forEach((fn) => {
+                  fn(ranges);
+                });
               });
 
               // ─── Ghost diff hotkeys (Phase 3C-1c) ──────────────────────
@@ -630,8 +639,10 @@ export function EditorPanel({
             commentText={commentText}
             onChangeText={setCommentText}
             onSubmit={(prompt, comment) => {
+              const lineNumber = commentLine;
+              if (lineNumber === null) return;
               onStartAgent?.(prompt);
-              setDiffComments((prev) => [...prev, { lineNumber: commentLine!, comment, status: "fixing" }]);
+              setDiffComments((prev) => [...prev, { lineNumber, comment, status: "fixing" }]);
               setCommentLine(null);
               setCommentText("");
             }}
@@ -644,10 +655,15 @@ export function EditorPanel({
         {/* Comment badges */}
         {diffMode && diffComments.length > 0 && (
           <div className={styles.commentBadges}>
-            {diffComments.map((c, i) => {
+            {diffComments.map((c) => {
               const Icon = c.status === "fixing" ? Wrench : c.status === "resolved" ? Check : MessageSquare;
               return (
-                <span key={i} className={styles.commentBadge} data-status={c.status} title={c.comment}>
+                <span
+                  key={`${c.lineNumber}-${c.status}-${c.comment}`}
+                  className={styles.commentBadge}
+                  data-status={c.status}
+                  title={c.comment}
+                >
                   <Icon size={10} strokeWidth={1.75} aria-hidden="true" />L{c.lineNumber}: {c.comment.slice(0, 30)}
                 </span>
               );

@@ -76,7 +76,13 @@ export function HelmPanel() {
         title="Tasks"
         count={tasks.length > 0 ? `${doneCount}/${tasks.length}` : undefined}
         actions={
-          <button className={styles.addBtn} onClick={() => setAdding(true)} title="Add task" aria-label="Add task">
+          <button
+            type="button"
+            className={styles.addBtn}
+            onClick={() => setAdding(true)}
+            title="Add task"
+            aria-label="Add task"
+          >
             <Plus size={12} aria-hidden="true" />
           </button>
         }
@@ -85,7 +91,6 @@ export function HelmPanel() {
         {adding && (
           <input
             ref={inputRef}
-            autoFocus
             className={styles.addInput}
             value={newLabel}
             onChange={(e) => setNewLabel(e.target.value)}
@@ -104,6 +109,7 @@ export function HelmPanel() {
         )}
         {tasks.map((t) => (
           <div key={t.id} className={`${styles.task} ${t.done ? styles.taskDone : ""}`}>
+            {/* biome-ignore lint/a11y/useSemanticElements: The compact icon button mirrors checkbox state without inheriting native checkbox sizing. */}
             <button
               type="button"
               role="checkbox"
@@ -116,6 +122,7 @@ export function HelmPanel() {
             </button>
             <span className={styles.taskLabel}>{t.label}</span>
             <button
+              type="button"
               className={styles.deleteBtn}
               onClick={() => deleteTask(t.id)}
               aria-label={`Delete task: ${t.label}`}

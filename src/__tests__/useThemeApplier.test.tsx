@@ -1,5 +1,5 @@
 import { render, waitFor } from "@testing-library/react";
-import { describe, expect, it, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { useThemeApplier } from "../shared/hooks/useTheme";
 import { DEFAULT_BG } from "../shared/lib/ansiPalette";
 import type { MoodPresetId } from "../shared/themes/moods";

@@ -1,12 +1,8 @@
 import { Eraser, ScrollText } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 
-import { useLogStream, type Invoke } from "../../shared/hooks/useLogStream";
-import {
-  type LogEntry,
-  type LogLevel,
-  levelAtLeast,
-} from "../../shared/types/logs";
+import { type Invoke, useLogStream } from "../../shared/hooks/useLogStream";
+import { type LogEntry, type LogLevel, levelAtLeast } from "../../shared/types/logs";
 import { PanelHeader } from "../../shared/ui/PanelHeader";
 import styles from "./LogsPanel.module.css";
 
@@ -59,9 +55,7 @@ export function LogsPanel({ invoke, pollMs, defaultCollapsed = true }: LogsPanel
   });
 
   const filtered = useMemo(() => {
-    return stream.entries.filter(
-      (e) => e.seq > hideSeq && levelAtLeast(e.level, minLevel),
-    );
+    return stream.entries.filter((e) => e.seq > hideSeq && levelAtLeast(e.level, minLevel));
   }, [stream.entries, minLevel, hideSeq]);
 
   const onClear = useCallback(() => {
@@ -69,7 +63,7 @@ export function LogsPanel({ invoke, pollMs, defaultCollapsed = true }: LogsPanel
     // just hide everything currently in view by floating the threshold
     // up. New entries with higher seq still arrive.
     if (stream.entries.length === 0) return;
-    setHideSeq(stream.entries[stream.entries.length - 1]!.seq);
+    setHideSeq(stream.entries[stream.entries.length - 1]?.seq);
   }, [stream.entries]);
 
   return (
@@ -85,7 +79,7 @@ export function LogsPanel({ invoke, pollMs, defaultCollapsed = true }: LogsPanel
       {!collapsed && (
         <div className={styles.body}>
           <div className={styles.controls} role="toolbar" aria-label="Log filters">
-            <div className={styles.levelGroup} role="group" aria-label="Minimum level">
+            <fieldset className={styles.levelGroup} aria-label="Minimum level">
               {FILTER_LEVELS.map((l) => (
                 <button
                   key={l}
@@ -98,7 +92,7 @@ export function LogsPanel({ invoke, pollMs, defaultCollapsed = true }: LogsPanel
                   {l}
                 </button>
               ))}
-            </div>
+            </fieldset>
             <span className={styles.spacer} />
             <span className={styles.meta} aria-live="polite">
               {filtered.length}/{stream.entries.length}

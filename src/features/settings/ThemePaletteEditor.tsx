@@ -51,7 +51,7 @@ export function ThemePaletteEditor({ themeId }: ThemePaletteEditorProps) {
         </button>
       </div>
 
-      <div className={styles.grid} role="list" aria-label="Theme accents">
+      <ul className={styles.grid} aria-label="Theme accents">
         {ACCENT_KEYS.map((key) => (
           <AccentRow
             key={key}
@@ -63,7 +63,7 @@ export function ThemePaletteEditor({ themeId }: ThemePaletteEditorProps) {
             onReset={() => setAccentOverride(themeId, key, undefined)}
           />
         ))}
-      </div>
+      </ul>
     </div>
   );
 }
@@ -114,7 +114,7 @@ function AccentRow({ accentKey, baseValue, currentValue, isOverridden, onChange,
   );
 
   return (
-    <div className={styles.row} role="listitem">
+    <li className={styles.row}>
       <label className={styles.swatchLabel} htmlFor={`accent-${accentKey}-color`}>
         <input
           id={`accent-${accentKey}-color`}
@@ -172,7 +172,7 @@ function AccentRow({ accentKey, baseValue, currentValue, isOverridden, onChange,
       >
         ↺
       </button>
-    </div>
+    </li>
   );
 }
 

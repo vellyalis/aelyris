@@ -277,7 +277,11 @@ async function smokeContextAndRunGraph(page) {
 }
 
 async function smokeImeDiagnostics(page) {
-  await page.evaluate(() => window.__AETHER_ENABLE_IME_DEBUG__?.());
+  await page.locator("canvas").first().waitFor({ state: "visible", timeout: 30000 });
+  await page.waitForFunction(() => typeof window.__AETHER_ENABLE_IME_DEBUG__ === "function", null, {
+    timeout: 30000,
+  });
+  await page.evaluate(() => window.__AETHER_ENABLE_IME_DEBUG__());
   await page.locator("canvas").first().click({ position: { x: 40, y: 40 }, timeout: 10000 }).catch(() => {});
   await page.locator('[data-testid="terminal-input-diagnostics"]').first().waitFor({ state: "visible", timeout: 15000 });
   const diag = await page.evaluate(() => {

@@ -6,8 +6,8 @@ import {
   clampImeBarCandidateX,
   clampImeBarCandidateY,
   IMEInputBar,
-  measureTextareaImeAnchor,
   type IMEInputBarHandle,
+  measureTextareaImeAnchor,
 } from "../features/terminal/IMEInputBar";
 
 const invokeMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));

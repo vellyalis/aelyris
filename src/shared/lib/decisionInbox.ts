@@ -1,5 +1,5 @@
-import type { AuditEventRecord } from "../types/audit";
 import type { AgentLog, AgentSession } from "../types/agent";
+import type { AuditEventRecord } from "../types/audit";
 import type { CommandRiskClass } from "./shellSafety";
 
 export type HumanDecisionType =
@@ -302,7 +302,9 @@ function decisionFromAuditEvent(event: AuditEventRecord): HumanDecisionItem | nu
     metadata.kind,
     event.action,
   );
-  const type = typeFromKind(kindCandidate) ?? typeFromText(joinText(event.summary, event.action, metadata.reason, nestedDecision.reason));
+  const type =
+    typeFromKind(kindCandidate) ??
+    typeFromText(joinText(event.summary, event.action, metadata.reason, nestedDecision.reason));
   if (!type) return null;
   if (!isExplicitHumanAudit(event, metadata, nestedDecision, nestedBlocker, type)) return null;
 
@@ -311,7 +313,11 @@ function decisionFromAuditEvent(event: AuditEventRecord): HumanDecisionItem | nu
   );
   const requestedAt = Date.parse(event.timestamp);
   const time = Number.isFinite(requestedAt) ? requestedAt : Date.now();
-  const workflowId = firstString(metadata.workflowId, metadata.workflow_id, event.entityType === "workflow" ? event.entityId : null);
+  const workflowId = firstString(
+    metadata.workflowId,
+    metadata.workflow_id,
+    event.entityType === "workflow" ? event.entityId : null,
+  );
   const taskId = firstString(metadata.taskId, metadata.task_id);
   const reason = firstString(nestedDecision.reason, metadata.reason, event.summary, event.action) ?? TYPE_LABELS[type];
 
@@ -343,7 +349,10 @@ function isExplicitHumanAudit(
 ): boolean {
   const status = joinText(metadata.status, nestedBlocker.status).toLowerCase();
   if (status === "not_blocked") return false;
-  const retryAction = joinText(asRecord(metadata.retryPolicy).action, asRecord(metadata.retry_policy).action).toLowerCase();
+  const retryAction = joinText(
+    asRecord(metadata.retryPolicy).action,
+    asRecord(metadata.retry_policy).action,
+  ).toLowerCase();
   if (retryAction === "probe" || retryAction === "decompose" || retryAction === "rerun") return false;
   const kind = firstString(nestedDecision.kind, metadata.blockerKind, nestedBlocker.kind, metadata.kind);
   if (kind && !isTrueHumanDecisionKind(kind)) return false;
@@ -410,8 +419,10 @@ function typeFromKind(kind: unknown): HumanDecisionType | null {
   if (normalized === "code_conflict" || normalized === "merge_conflict" || normalized === "merge_conflict_strategy") {
     return "merge_conflict_strategy";
   }
-  if (normalized === "test_expectation_changed" || normalized === "expectation_changed") return "test_expectation_changed";
-  if (normalized === "security_exception" || normalized === "secret" || normalized === "unsafe_path") return "security_exception";
+  if (normalized === "test_expectation_changed" || normalized === "expectation_changed")
+    return "test_expectation_changed";
+  if (normalized === "security_exception" || normalized === "secret" || normalized === "unsafe_path")
+    return "security_exception";
   return typeFromText(normalized);
 }
 
@@ -485,9 +496,7 @@ function shortText(value: string, max = 160): string {
 }
 
 function joinText(...parts: unknown[]): string {
-  return parts
-    .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
-    .join(" ");
+  return parts.filter((part): part is string => typeof part === "string" && part.trim().length > 0).join(" ");
 }
 
 function firstString(...values: unknown[]): string | null {
@@ -510,7 +519,10 @@ function firstRecord(...values: unknown[]): Record<string, unknown> {
 }
 
 function normalizeKind(kind: string): string {
-  return kind.trim().toLowerCase().replace(/[-\s]+/g, "_");
+  return kind
+    .trim()
+    .toLowerCase()
+    .replace(/[-\s]+/g, "_");
 }
 
 function stableTextKey(value: string): string {

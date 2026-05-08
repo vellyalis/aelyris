@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { Check, CheckCircle, Clock, Loader, Play, Workflow, X, XCircle } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { formatFallbackError, reportInvokeFailure } from "../../shared/lib/fallbackTelemetry";
 import type { OrchestraRoleId } from "../../shared/lib/orchestrator";
 import { isTauriRuntime } from "../../shared/lib/tauriRuntime";
 import { normalizeCommandInput } from "../../shared/lib/terminalInput";
@@ -152,7 +153,20 @@ function formatDuration(ms: number | null | undefined): string | null {
 }
 
 async function confirmWorkflowPaneTarget(target: string): Promise<boolean> {
-  const panes = await invoke<PaneInfo[]>("list_panes_info").catch(() => [] as PaneInfo[]);
+  let panes: PaneInfo[];
+  try {
+    panes = await invoke<PaneInfo[]>("list_panes_info");
+  } catch (err) {
+    reportInvokeFailure({
+      source: "workflow",
+      operation: "list_panes_info",
+      err,
+      severity: "error",
+      userVisible: true,
+    });
+    toast.error("Workflow pane check failed", formatFallbackError(err));
+    return false;
+  }
   const targetCount = countPaneTargetMatches(panes, target);
   if (targetCount < 1) {
     toast.error("Workflow pane target changed", `No live pane matches "${target}".`);
@@ -166,7 +180,20 @@ async function confirmWorkflowPaneTarget(target: string): Promise<boolean> {
     cancelLabel: "Review first",
   });
   if (!ok) return false;
-  const refreshed = await invoke<PaneInfo[]>("list_panes_info").catch(() => [] as PaneInfo[]);
+  let refreshed: PaneInfo[];
+  try {
+    refreshed = await invoke<PaneInfo[]>("list_panes_info");
+  } catch (err) {
+    reportInvokeFailure({
+      source: "workflow",
+      operation: "list_panes_info",
+      err,
+      severity: "error",
+      userVisible: true,
+    });
+    toast.error("Workflow pane check failed", formatFallbackError(err));
+    return false;
+  }
   if (countPaneTargetMatches(refreshed, target) < 1) {
     toast.error("Workflow pane target changed", `No live pane matches "${target}".`);
     return false;
@@ -180,6 +207,7 @@ export function WorkflowPanel({ projectPath, sessions = [], onStartAgent }: Work
   const [expanded, setExpanded] = useState(false);
   const [builderOpen, setBuilderOpen] = useState(false);
   const [expandedPhase, setExpandedPhase] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   const handleExportYaml = useCallback(
     async (yaml: string, opts?: { runAfterSave?: boolean }) => {
@@ -199,12 +227,26 @@ export function WorkflowPanel({ projectPath, sessions = [], onStartAgent }: Work
       const refreshed = invoke<WorkflowSummary[]>("list_workflows", { projectPath })
         .then((list) => {
           setWorkflows(list);
+          setSyncError(null);
           return list;
         })
-        .catch(() => [] as WorkflowSummary[]);
+        .catch((err) => {
+          const message = formatFallbackError(err);
+          reportInvokeFailure({
+            source: "workflow",
+            operation: "list_workflows_after_save",
+            err,
+            severity: "error",
+            userVisible: true,
+          });
+          setSyncError(`Workflow refresh failed: ${message}`);
+          toast.error("Workflow refresh failed", message);
+          return null;
+        });
 
       if (opts?.runAfterSave) {
         const list = await refreshed;
+        if (!list) return;
         const wf = list.find((w) => w.path === filePath) ?? list[list.length - 1];
         if (wf) {
           await handleStartRef.current?.(wf);
@@ -224,8 +266,21 @@ export function WorkflowPanel({ projectPath, sessions = [], onStartAgent }: Work
   // Load available workflows
   useEffect(() => {
     invoke<WorkflowSummary[]>("list_workflows", { projectPath })
-      .then(setWorkflows)
-      .catch(() => {});
+      .then((list) => {
+        setWorkflows(list);
+        setSyncError(null);
+      })
+      .catch((err) => {
+        const message = formatFallbackError(err);
+        reportInvokeFailure({
+          source: "workflow",
+          operation: "list_workflows",
+          err,
+          severity: "warning",
+          userVisible: true,
+        });
+        setSyncError(`Workflow list unavailable: ${message}`);
+      });
   }, [projectPath]);
 
   // Event-driven workflow status updates (with fallback polling)
@@ -238,9 +293,17 @@ export function WorkflowPanel({ projectPath, sessions = [], onStartAgent }: Work
       if (!active) return;
       const stillRunning = statuses.filter((wf) => !isFinished(wf));
       setRunning(stillRunning);
+      setSyncError(null);
       for (const wf of statuses) {
         if (isFinished(wf)) {
-          invoke("workflow_remove", { workflowId: wf.id }).catch(() => {});
+          invoke("workflow_remove", { workflowId: wf.id }).catch((err) => {
+            reportInvokeFailure({
+              source: "workflow",
+              operation: "workflow_remove",
+              err,
+              severity: "info",
+            });
+          });
         }
       }
     };
@@ -266,8 +329,14 @@ export function WorkflowPanel({ projectPath, sessions = [], onStartAgent }: Work
           }
           unlisten = u;
         })
-        .catch(() => {
-          /* browser preview or backend unavailable */
+        .catch((err) => {
+          if (!active || !isTauriRuntime()) return;
+          reportInvokeFailure({
+            source: "workflow",
+            operation: "listen_workflow_updated",
+            err,
+            severity: "warning",
+          });
         });
     }
 
@@ -275,8 +344,17 @@ export function WorkflowPanel({ projectPath, sessions = [], onStartAgent }: Work
     const poll = () => {
       invoke<WorkflowStatus[]>("list_running_workflows", { projectPath })
         .then(processUpdate)
-        .catch(() => {
-          if (active) setRunning([]);
+        .catch((err) => {
+          if (!active) return;
+          const message = formatFallbackError(err);
+          reportInvokeFailure({
+            source: "workflow",
+            operation: "list_running_workflows",
+            err,
+            severity: "warning",
+            userVisible: true,
+          });
+          setSyncError(`Workflow status unavailable: ${message}`);
         });
     };
     poll();
@@ -337,8 +415,17 @@ export function WorkflowPanel({ projectPath, sessions = [], onStartAgent }: Work
         if (sessionId) {
           await invoke("workflow_set_agent", { workflowId, agentSessionId: sessionId });
         }
-      } catch {
-        /* no more phases */
+      } catch (err) {
+        const message = formatFallbackError(err);
+        if (/no more phases|already complete/i.test(message)) return;
+        reportInvokeFailure({
+          source: "workflow",
+          operation: "advance_phase",
+          err,
+          severity: "error",
+          userVisible: true,
+        });
+        toast.error("Workflow advance failed", message);
       } finally {
         advancingRef.current.delete(workflowId);
       }
@@ -448,7 +535,14 @@ export function WorkflowPanel({ projectPath, sessions = [], onStartAgent }: Work
       await invoke("workflow_reject_gate_decision", { workflowId, comment: confirmed });
       setRunning((prev) => prev.filter((wf) => wf.id !== workflowId));
       toast.warning("Workflow rejected", "Workflow has been stopped");
-      invoke("workflow_remove", { workflowId }).catch(() => {});
+      invoke("workflow_remove", { workflowId }).catch((err) => {
+        reportInvokeFailure({
+          source: "workflow",
+          operation: "workflow_remove",
+          err,
+          severity: "info",
+        });
+      });
     } catch (e) {
       toast.error("Gate rejection failed", String(e));
     }
@@ -471,6 +565,11 @@ export function WorkflowPanel({ projectPath, sessions = [], onStartAgent }: Work
 
       {expanded && (
         <div className={styles.content}>
+          {syncError && (
+            <div className={styles.syncError} role="status">
+              {syncError}
+            </div>
+          )}
           {/* Running workflows */}
           {running.map((wf) => {
             const totalCost = wf.phases.reduce((sum, p) => sum + p.cost, 0);
@@ -483,8 +582,7 @@ export function WorkflowPanel({ projectPath, sessions = [], onStartAgent }: Work
                 {wf.resume_point && (
                   <div className={styles.phaseDetail}>
                     <div className={styles.phaseDetailRow}>
-                      <span>Resume:</span>{" "}
-                      <span className={styles.phaseDetailMono}>{wf.resume_point.phase_name}</span>
+                      <span>Resume:</span> <span className={styles.phaseDetailMono}>{wf.resume_point.phase_name}</span>
                     </div>
                     <div className={styles.phaseDetailRow}>
                       <span>Reason:</span> <span>{wf.resume_point.reason}</span>
@@ -606,7 +704,9 @@ export function WorkflowPanel({ projectPath, sessions = [], onStartAgent }: Work
                                 <span>Reason:</span> <span>{p.blocked_reason}</span>
                               </div>
                             )}
-                            {Boolean((p.artifacts?.length ?? 0) + (p.commands?.length ?? 0) + (p.validation?.length ?? 0)) && (
+                            {Boolean(
+                              (p.artifacts?.length ?? 0) + (p.commands?.length ?? 0) + (p.validation?.length ?? 0),
+                            ) && (
                               <div className={styles.phaseDetailRow}>
                                 <span>Evidence:</span>{" "}
                                 <span>
@@ -633,6 +733,9 @@ export function WorkflowPanel({ projectPath, sessions = [], onStartAgent }: Work
               <span className={styles.templatePhases}>{wf.phase_count} phases</span>
             </button>
           ))}
+          {running.length === 0 && workflows.length === 0 && (
+            <p className={styles.emptyHint}>Run repeatable multi-step agent workflows with approval gates.</p>
+          )}
           <button type="button" className={styles.templateBtn} onClick={() => setBuilderOpen(true)}>
             <Workflow size={10} />
             <span>Visual Builder</span>

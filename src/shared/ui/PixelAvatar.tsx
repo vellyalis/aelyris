@@ -41,6 +41,8 @@ export const PixelAvatar = memo(function PixelAvatar({ seed, size = 32 }: PixelA
         borderRadius: s * 0.22,
         boxShadow: "inset 0 0 0 1px rgba(158, 226, 241, 0.08), 0 6px 16px rgba(0, 0, 0, 0.18)",
       }}
+      aria-hidden="true"
+      focusable="false"
     >
       {/* Background */}
       <rect width={s} height={s} rx={s * 0.15} fill={bgColor} />

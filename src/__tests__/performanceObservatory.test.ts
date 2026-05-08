@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  type BackendPerformanceMetrics,
   buildPerformanceObservatorySnapshot,
   createPerformanceDiagnosticBundle,
   estimateScrollbackMemoryBytes,
   PERFORMANCE_BUDGETS,
-  type BackendPerformanceMetrics,
   type RuntimePerformanceMetrics,
   type TerminalRenderSample,
 } from "../features/analytics/performanceObservatory";
@@ -40,6 +40,8 @@ const backend: BackendPerformanceMetrics = {
   terminalJournalFlushBytes: 32 * 1024,
   terminalJournalFlushIntervalMs: 500,
   ipcLatencyMs: 12,
+  lastTerminalSpawnMs: 650,
+  lastTerminalStreamWireMs: 30,
   dbWriteLatencyMs: null,
   eventQueueLagMs: null,
 };
@@ -93,7 +95,13 @@ describe("performance observatory", () => {
         scrollbackRows: 50_000,
         scrollbackMemoryBytes: PERFORMANCE_BUDGETS.scrollbackMemoryWarnBytes * 3,
       }),
-      backend: { ...backend, ipcLatencyMs: 240, dbWriteLatencyMs: 180 },
+      backend: {
+        ...backend,
+        ipcLatencyMs: 240,
+        lastTerminalSpawnMs: PERFORMANCE_BUDGETS.terminalSpawnMsMax * 3,
+        lastTerminalStreamWireMs: PERFORMANCE_BUDGETS.terminalStreamWireMsMax * 5,
+        dbWriteLatencyMs: 180,
+      },
       runtime: {
         ...runtime,
         eventLoopLagMs: 180,
@@ -116,6 +124,8 @@ describe("performance observatory", () => {
         "terminal-dropped-render",
         "scrollback-memory",
         "ipc-latency",
+        "terminal-spawn",
+        "terminal-stream-wire",
         "ipc-dropped",
         "event-loop-lag",
         "right-rail-render",

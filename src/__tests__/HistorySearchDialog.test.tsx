@@ -96,7 +96,7 @@ describe("HistorySearchDialog", () => {
     await waitFor(() => {
       const call = invokeMock.mock.calls.find((c) => c[0] === "semantic_search_history");
       expect(call).toBeTruthy();
-      expect((call![1] as { filters: { only_failed?: boolean } }).filters.only_failed).toBe(true);
+      expect((call?.[1] as { filters: { only_failed?: boolean } }).filters.only_failed).toBe(true);
     });
   });
 });

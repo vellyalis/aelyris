@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
 
+import { isTauriRuntime } from "../../shared/lib/tauriRuntime";
 import styles from "./Settings.module.css";
 
 /**
@@ -61,10 +62,12 @@ function fromRaw(raw: RawStatus): ShellIntegrationStatus {
 }
 
 function defaultLoadStatus(): Promise<ShellIntegrationStatus[]> {
+  if (!isTauriRuntime()) return Promise.resolve([]);
   return invoke<RawStatus[]>("shell_integration_status").then((rows) => rows.map(fromRaw));
 }
 
 function defaultInstall(shell: ShellIntegrationStatus["shell"]) {
+  if (!isTauriRuntime()) return Promise.reject(new Error("shell integration is available in the desktop app"));
   return invoke<RawInstall>("shell_integration_install", { shell }).then((r) => ({
     appended: r.appended,
     profilePath: r.profile_path,
@@ -177,9 +180,7 @@ export function ShellIntegrationSection({
     return <p className={styles.hint}>Loading shell integration status…</p>;
   }
   if (rows.length === 0) {
-    return (
-      <p className={styles.hint}>Could not detect shell profiles in this environment.</p>
-    );
+    return <p className={styles.hint}>Could not detect shell profiles in this environment.</p>;
   }
 
   return (
@@ -210,19 +211,11 @@ export function ShellIntegrationSection({
               >
                 {isPending ? "Installing…" : row.installed ? "Reinstall" : "Install"}
               </button>
-              <button
-                type="button"
-                className={styles.shellBtn}
-                onClick={() => void handleCopy(row)}
-              >
+              <button type="button" className={styles.shellBtn} onClick={() => void handleCopy(row)}>
                 Copy line
               </button>
             </div>
-            {fb && (
-              <div className={fb.kind === "ok" ? styles.shellFeedback : styles.shellError}>
-                {fb.message}
-              </div>
-            )}
+            {fb && <div className={fb.kind === "ok" ? styles.shellFeedback : styles.shellError}>{fb.message}</div>}
           </div>
         );
       })}

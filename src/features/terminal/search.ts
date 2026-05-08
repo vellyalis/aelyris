@@ -87,9 +87,7 @@ function isHistoryMatch(m: AnyMatch): m is HistoryMatch {
 }
 
 function matchKey(m: AnyMatch): string {
-  return isHistoryMatch(m)
-    ? `h:${m.historyIndex},${m.startCol},${m.endCol}`
-    : `l:${m.row},${m.startCol},${m.endCol}`;
+  return isHistoryMatch(m) ? `h:${m.historyIndex},${m.startCol},${m.endCol}` : `l:${m.row},${m.startCol},${m.endCol}`;
 }
 
 function sameMatch(a: AnyMatch, b: AnyMatch): boolean {
@@ -137,11 +135,7 @@ export function combineMatches(
  *     row first).
  *   • `scrollOffset >= rows` → entirely history.
  */
-export function viewportRowOf(
-  match: AnyMatch,
-  rows: number,
-  scrollOffset: number,
-): number | null {
+export function viewportRowOf(match: AnyMatch, rows: number, scrollOffset: number): number | null {
   if (rows <= 0) return null;
   if (isHistoryMatch(match)) {
     if (scrollOffset === 0) return null;

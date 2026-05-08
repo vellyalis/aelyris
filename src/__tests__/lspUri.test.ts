@@ -25,9 +25,7 @@ describe("toMonacoModelUri", () => {
   });
 
   it("nested POSIX path with multiple segments is left intact", () => {
-    expect(toMonacoModelUri("/var/log/app/2026/04/27.log")).toBe(
-      "file:///var/log/app/2026/04/27.log",
-    );
+    expect(toMonacoModelUri("/var/log/app/2026/04/27.log")).toBe("file:///var/log/app/2026/04/27.log");
   });
 
   // codex r2 BLOCK: reserved URI characters (#, ?, %, space) inside a
@@ -47,9 +45,7 @@ describe("toMonacoModelUri", () => {
   });
 
   it("escapes a literal space character", () => {
-    expect(toMonacoModelUri("C:/Program Files/foo.ts")).toBe(
-      "file:///C:/Program%20Files/foo.ts",
-    );
+    expect(toMonacoModelUri("C:/Program Files/foo.ts")).toBe("file:///C:/Program%20Files/foo.ts");
   });
 
   it("a path with `%` then `#` does not double-escape the % into the # encoding", () => {

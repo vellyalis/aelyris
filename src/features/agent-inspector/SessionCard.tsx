@@ -93,6 +93,7 @@ export function SessionCard({
   return (
     <RadixContextMenu.Root>
       <RadixContextMenu.Trigger asChild>
+        {/* biome-ignore lint/a11y/useSemanticElements: This selectable context-menu card contains nested action buttons. */}
         <div
           role="button"
           tabIndex={0}
@@ -132,9 +133,11 @@ export function SessionCard({
                 {role && (
                   <span
                     className={styles.roleBadge}
-                    style={{
-                      "--role-color": role.color,
-                    } as React.CSSProperties}
+                    style={
+                      {
+                        "--role-color": role.color,
+                      } as React.CSSProperties
+                    }
                     title={`Orchestra role: ${role.label}`}
                   >
                     {role.icon} {role.label}
@@ -210,11 +213,7 @@ export function SessionCard({
           )}
           {isLive && (
             <div className={styles.cardMeta}>
-              <StopButton
-                className={styles.stopBtn}
-                label={`Stop session ${s.name}`}
-                onStop={() => onStop?.(s.id)}
-              />
+              <StopButton className={styles.stopBtn} label={`Stop session ${s.name}`} onStop={() => onStop?.(s.id)} />
             </div>
           )}
           <div className={styles.progressTrack}>
@@ -229,10 +228,10 @@ export function SessionCard({
               </span>
             </div>
           ) : worktreeInputId === s.id ? (
+            /* biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: Stop propagation keeps the inline branch form from selecting the card while its own controls handle keyboard input. */
             <div className={styles.worktreeCreate} onClick={(e) => e.stopPropagation()}>
               <GitBranch size={10} />
               <input
-                autoFocus
                 className={styles.worktreeInput}
                 placeholder="branch name"
                 value={worktreeBranch}
@@ -242,7 +241,7 @@ export function SessionCard({
                   if (e.key === "Escape") onWorktreeCancel();
                 }}
               />
-              <button className={styles.worktreeBtn} onClick={() => onWorktreeSubmit(s.id)}>
+              <button type="button" className={styles.worktreeBtn} onClick={() => onWorktreeSubmit(s.id)}>
                 Create
               </button>
             </div>

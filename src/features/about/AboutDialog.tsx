@@ -24,7 +24,7 @@ export function AboutDialog({ visible, onClose }: AboutDialogProps) {
           <img src={logoPng} alt="" width={64} height={64} className={styles.logo} />
           <Dialog.Title className={styles.title}>Aether Terminal</Dialog.Title>
           <p className={styles.version}>Version {APP_VERSION}</p>
-          <p className={styles.desc}>AI Workspace for Windows</p>
+          <p className={styles.desc}>Project-first AI terminal for Windows development</p>
           <div className={styles.info}>
             <div className={styles.row}>
               <span>Framework</span>

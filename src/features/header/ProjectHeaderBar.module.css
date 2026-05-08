@@ -135,7 +135,7 @@
     color var(--duration-fast);
 }
 .headerBtn:hover {
-  background: rgba(76, 184, 220, 0.04);
+  background: var(--chrome-control-hover-bg);
   color: var(--text-secondary);
 }
 .headerBtn:focus-visible {
@@ -148,7 +148,7 @@
 .controlsSeparator {
   width: 1px;
   height: 24px;
-  background: linear-gradient(180deg, transparent, rgba(104, 214, 238, 0.055), transparent);
+  background: var(--chrome-separator-bg);
   opacity: 0.32;
   margin: 0 var(--space-2);
 }
@@ -184,12 +184,12 @@
 }
 
 .minimizeBtn:hover {
-  background: rgba(76, 184, 220, 0.05);
+  background: var(--chrome-control-hover-bg);
   color: var(--text-primary);
 }
 
 .maximizeBtn:hover {
-  background: rgba(76, 184, 220, 0.05);
+  background: var(--chrome-control-hover-bg);
   color: var(--text-primary);
 }
 

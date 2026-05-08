@@ -34,22 +34,19 @@ export function useArrowKeyList<T>({
 }: UseArrowKeyListOptions<T>) {
   const activeIndexRef = useRef(0);
 
-  const setActive = useCallback(
-    (i: number, container: HTMLElement | null) => {
-      if (!container) return;
-      const rows = container.querySelectorAll<HTMLElement>("[data-list-row]");
-      const row = rows[i];
-      if (row) {
-        // Roving tabindex: the newly-active row becomes the sole tab stop.
-        rows.forEach((el, idx) => {
-          el.tabIndex = idx === i ? 0 : -1;
-        });
-        row.focus();
-      }
-      activeIndexRef.current = i;
-    },
-    [],
-  );
+  const setActive = useCallback((i: number, container: HTMLElement | null) => {
+    if (!container) return;
+    const rows = container.querySelectorAll<HTMLElement>("[data-list-row]");
+    const row = rows[i];
+    if (row) {
+      // Roving tabindex: the newly-active row becomes the sole tab stop.
+      rows.forEach((el, idx) => {
+        el.tabIndex = idx === i ? 0 : -1;
+      });
+      row.focus();
+    }
+    activeIndexRef.current = i;
+  }, []);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLElement>) => {

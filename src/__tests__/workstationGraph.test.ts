@@ -185,7 +185,15 @@ describe("buildWorkstationGraph", () => {
           agentId: "agent-a",
         },
       ],
-      blockers: [{ id: "blocker-a", title: "Needs validation", kind: "validation_failed", status: "blocked", agentId: "agent-a" }],
+      blockers: [
+        {
+          id: "blocker-a",
+          title: "Needs validation",
+          kind: "validation_failed",
+          status: "blocked",
+          agentId: "agent-a",
+        },
+      ],
       notifications: [{ id: "notification-a", title: "Needs attention", status: "delivered", agentId: "agent-a" }],
       finalReports: [{ id: "report-a", title: "Final report", status: "draft", agentId: "agent-a" }],
       contextPacks: [{ id: "pack-a", title: "Context pack", status: "ready", agentId: "agent-a" }],
@@ -235,7 +243,9 @@ describe("buildWorkstationGraph", () => {
         }),
       ],
       tests: [{ id: "auth-test", name: "auth test", status: "fail", filePath: "src/secure/auth.ts" }],
-      risks: [{ id: "risk-auth", title: "Auth change", status: "open", severity: "high", filePath: "src/secure/auth.ts" }],
+      risks: [
+        { id: "risk-auth", title: "Auth change", status: "open", severity: "high", filePath: "src/secure/auth.ts" },
+      ],
       notifications: [{ id: "notification-a", title: "Review ready", agentId: "agent-a" }],
       finalReports: [{ id: "report-a", title: "Agent report", agentId: "agent-a" }],
       contextPacks: [{ id: "pack-a", title: "Handoff pack", agentId: "agent-a" }],

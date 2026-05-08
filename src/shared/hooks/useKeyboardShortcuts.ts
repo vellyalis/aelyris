@@ -129,11 +129,11 @@ export function useKeyboardShortcuts({
       } else if (e.ctrlKey && e.key === "`") {
         // Ctrl+` — focus the active terminal pane
         e.preventDefault();
-        // Find the visible terminal's textarea (inside active tab pane)
+        // Find the visible native terminal IME textarea (inside active pane).
         const activePane = document.querySelector(
-          "[data-active='true'] .xterm-helper-textarea",
+          "[data-active='true'] [data-testid='terminal-ime-textarea']",
         ) as HTMLTextAreaElement | null;
-        const fallback = document.querySelector(".xterm-helper-textarea") as HTMLTextAreaElement | null;
+        const fallback = document.querySelector("[data-testid='terminal-ime-textarea']") as HTMLTextAreaElement | null;
         (activePane ?? fallback)?.focus();
       } else if (e.ctrlKey && !e.shiftKey && e.key === "w") {
         e.preventDefault();
@@ -168,7 +168,7 @@ export function useKeyboardShortcuts({
         }
       } else if (e.ctrlKey && e.key >= "0" && e.key <= "9") {
         e.preventDefault();
-        const idx = parseInt(e.key);
+        const idx = parseInt(e.key, 10);
         if (idx < sessions.length) setActiveSessionId(sessions[idx].id);
       }
     };

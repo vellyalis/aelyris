@@ -64,6 +64,25 @@
   pointer-events: none;
 }
 
+.errorOverlay {
+  position: absolute;
+  right: var(--space-6);
+  bottom: var(--space-6);
+  max-width: min(360px, calc(100% - var(--space-12)));
+  padding: var(--space-2) var(--space-4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--ctp-red);
+  background: linear-gradient(180deg, rgba(243, 139, 168, 0.12), rgba(8, 12, 18, 0.78)), var(--glass-solid);
+  border: 1px solid color-mix(in srgb, var(--ctp-red) 38%, transparent);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--rim-top);
+  pointer-events: none;
+}
+
 /* Accent glow on active */
 .agentTerminal:focus-within {
   box-shadow:

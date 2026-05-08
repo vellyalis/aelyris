@@ -88,6 +88,7 @@ impl SessionManager {
     }
 
     /// Split an existing pane: create a new pane in the same window
+    #[allow(clippy::too_many_arguments)]
     pub fn split_pane(
         &self,
         window_id: &str,

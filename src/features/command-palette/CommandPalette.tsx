@@ -100,7 +100,11 @@ export function CommandPalette({ visible, onClose, commands }: CommandPalettePro
                 className={styles.palette}
                 initial={reduceMotion ? false : { opacity: 0, x: "-50%", y: -20, scale: 0.97 }}
                 animate={{ opacity: 1, x: "-50%", y: 0, scale: 1 }}
-                exit={reduceMotion ? { opacity: 1, x: "-50%", y: 0, scale: 1 } : { opacity: 0, x: "-50%", y: -10, scale: 0.97 }}
+                exit={
+                  reduceMotion
+                    ? { opacity: 1, x: "-50%", y: 0, scale: 1 }
+                    : { opacity: 0, x: "-50%", y: -10, scale: 0.97 }
+                }
                 transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 400, damping: 30 }}
               >
                 <Dialog.Title className="sr-only">Command Palette</Dialog.Title>

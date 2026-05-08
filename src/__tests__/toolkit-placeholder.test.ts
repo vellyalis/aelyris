@@ -116,8 +116,8 @@ describe("Toolkit adaptive density", () => {
     expect(gridRule).toContain("grid-template-columns: repeat(auto-fit");
     expect(gridRule).toContain("grid-auto-rows: minmax(38px, auto)");
     expect(gridRule).toContain("gap: 1px");
-    expect(gridRule).toContain("rgba(0, 6, 14, 0.3)");
-    expect(actionRule).toContain("rgba(0, 7, 15, 0.34)");
+    expect(gridRule).toMatch(/rgba\(0, 6, 14, 0\.3\)|var\(--toolkit-grid-bg\)/);
+    expect(actionRule).toMatch(/rgba\(0, 7, 15, 0\.34\)|var\(--toolkit-tile-bg\)/);
     expect(`${gridRule}\n${actionRule}`).not.toContain("rgba(255, 255, 255, 0.14)");
     expect(gridRule).not.toContain("rgba(245, 199, 227");
     expect(`${gridRule}\n${actionRule}`).not.toContain("filter: blur(");

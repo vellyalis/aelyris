@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::io::BufRead;
+use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -21,6 +22,8 @@ const DB_WRITE_LATENCY_UNSET: u64 = u64::MAX;
 
 static LAST_TERMINAL_JOURNAL_DB_WRITE_LATENCY_MS: AtomicU64 =
     AtomicU64::new(DB_WRITE_LATENCY_UNSET);
+static LAST_TERMINAL_SPAWN_MS: AtomicU64 = AtomicU64::new(DB_WRITE_LATENCY_UNSET);
+static LAST_TERMINAL_STREAM_WIRE_MS: AtomicU64 = AtomicU64::new(DB_WRITE_LATENCY_UNSET);
 
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -35,6 +38,7 @@ enum TerminalAnalysisWork {
     Stop,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn record_audit_event(
     app: &AppHandle,
     category: &str,
@@ -216,16 +220,106 @@ impl TerminalGenerationRegistry {
 
 /// Validate path is not dangerous (no traversal, no system dirs)
 fn validate_path(path: &str) -> Result<(), String> {
-    // Block path traversal
-    if path.contains("..") {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Ok(());
+    }
+    if trimmed.contains('\0') {
+        return Err("NUL bytes not allowed in paths".to_string());
+    }
+    // Block path traversal by component, not substring, so names like
+    // "project..bak" remain valid while real parent traversal is rejected.
+    if Path::new(trimmed)
+        .components()
+        .any(|component| matches!(component, Component::ParentDir))
+    {
         return Err("Path traversal not allowed".to_string());
     }
-    // Block UNC paths
-    if path.starts_with("\\\\") || path.starts_with("//") {
+    // Block network UNC paths while allowing Windows extended-length local
+    // paths (`\\?\C:\...`) returned by `canonicalize()`.
+    let slash_path = trimmed.replace('\\', "/");
+    let lower_slash_path = slash_path.to_lowercase();
+    if lower_slash_path.starts_with("//?/unc/")
+        || ((slash_path.starts_with("//") || slash_path.starts_with("\\\\"))
+            && !lower_slash_path.starts_with("//?/"))
+    {
         return Err("UNC paths not allowed".to_string());
     }
+    if is_dangerous_path(Path::new(trimmed)) {
+        return Err("Access to system directory not allowed".to_string());
+    }
+    if let Ok(canonical) = std::fs::canonicalize(trimmed) {
+        if is_dangerous_path(&canonical) {
+            return Err("Access to system directory not allowed".to_string());
+        }
+    }
+    Ok(())
+}
+
+fn validate_existing_directory_path(path: &str) -> Result<String, String> {
+    let expanded = expand_cwd_path(path)?;
+    validate_path(&expanded)?;
+    let canonical = std::fs::canonicalize(&expanded)
+        .map_err(|_| "Path must exist and be accessible".to_string())?;
+    if !canonical.is_dir() {
+        return Err("Path must be a directory".to_string());
+    }
+    let canonical = strip_local_verbatim_prefix(&canonical.to_string_lossy());
+    validate_path(&canonical)?;
+    Ok(canonical)
+}
+
+fn normalize_cwd(cwd: Option<String>) -> Result<Option<String>, String> {
+    cwd.map(|dir| validate_existing_directory_path(&dir))
+        .transpose()
+}
+
+fn home_dir_for_cwd() -> Option<PathBuf> {
+    std::env::var_os("USERPROFILE")
+        .filter(|value| !value.is_empty())
+        .or_else(|| std::env::var_os("HOME").filter(|value| !value.is_empty()))
+        .map(PathBuf::from)
+}
+
+fn expand_cwd_path(path: &str) -> Result<String, String> {
+    let trimmed = path.trim();
+    if trimmed == "~" {
+        return home_dir_for_cwd()
+            .map(|home| home.to_string_lossy().to_string())
+            .ok_or_else(|| "Home directory is unavailable".to_string());
+    }
+    if let Some(rest) = trimmed
+        .strip_prefix("~/")
+        .or_else(|| trimmed.strip_prefix("~\\"))
+    {
+        let home = home_dir_for_cwd().ok_or_else(|| "Home directory is unavailable".to_string())?;
+        return Ok(home.join(rest).to_string_lossy().to_string());
+    }
+    Ok(trimmed.to_string())
+}
+
+fn strip_local_verbatim_prefix(path: &str) -> String {
+    if let Some(rest) = path.strip_prefix(r"\\?\") {
+        if rest.to_lowercase().starts_with(r"unc\") {
+            return path.to_string();
+        }
+        return rest.to_string();
+    }
+    if let Some(rest) = path.strip_prefix("//?/") {
+        if rest.to_lowercase().starts_with("unc/") {
+            return path.to_string();
+        }
+        return rest.to_string();
+    }
+    path.to_string()
+}
+
+fn is_dangerous_path(path: &Path) -> bool {
     // Normalize and compare case-insensitively (Windows is case-insensitive)
-    let normalized = path.replace('\\', "/").to_lowercase();
+    let mut normalized = path.to_string_lossy().replace('\\', "/").to_lowercase();
+    if let Some(stripped) = normalized.strip_prefix("//?/") {
+        normalized = stripped.to_string();
+    }
     let dangerous = [
         "c:/windows",
         "c:/program files",
@@ -236,23 +330,39 @@ fn validate_path(path: &str) -> Result<(), String> {
         "/bin",
         "/sbin",
     ];
-    for d in &dangerous {
-        if normalized.starts_with(d) {
-            return Err("Access to system directory not allowed".to_string());
-        }
-    }
-    Ok(())
+    dangerous
+        .iter()
+        .any(|d| normalized == *d || normalized.starts_with(&format!("{d}/")))
 }
 
 /// Spawn a new terminal session
 #[tauri::command]
-pub fn spawn_terminal(
+pub async fn spawn_terminal(
     app: AppHandle,
     shell: ShellType,
     cols: u16,
     rows: u16,
     cwd: Option<String>,
 ) -> Result<String, String> {
+    let cwd = match normalize_cwd(cwd) {
+        Ok(cwd) => cwd,
+        Err(err) => {
+            record_audit_event(
+                &app,
+                "terminal",
+                "spawn_rejected",
+                "warn",
+                Some("terminal"),
+                None,
+                "Terminal spawn rejected",
+                serde_json::json!({
+                    "error": sanitize_audit_error(&err),
+                    "redacted": true,
+                }),
+            );
+            return Err(err);
+        }
+    };
     if let Some(ref dir) = cwd {
         if let Err(err) = validate_path(dir) {
             record_audit_event(
@@ -271,8 +381,92 @@ pub fn spawn_terminal(
             return Err(err);
         }
     }
-    let pty_manager = app.state::<PtyManager>();
-    let id = match pty_manager.spawn(&shell, cols, rows, cwd.as_deref()) {
+    if let Some(sidecar) = app
+        .try_state::<crate::pty_sidecar::PtySidecarState>()
+        .and_then(|state| state.client())
+    {
+        let spawn_started_at = Instant::now();
+        let id = sidecar
+            .spawn(&shell, cols, rows, cwd.as_deref())
+            .await
+            .inspect_err(|err| {
+                record_audit_event(
+                    &app,
+                    "terminal",
+                    "spawn_failed",
+                    "error",
+                    Some("terminal"),
+                    None,
+                    "Terminal sidecar spawn failed",
+                    {
+                        let mut metadata =
+                            terminal_audit_metadata(&shell, cols, rows, cwd.as_deref());
+                        if let Some(obj) = metadata.as_object_mut() {
+                            obj.insert(
+                                "backend".to_string(),
+                                serde_json::Value::String("sidecar".to_string()),
+                            );
+                            obj.insert(
+                                "error".to_string(),
+                                serde_json::Value::String(sanitize_audit_error(err)),
+                            );
+                        }
+                        metadata
+                    },
+                );
+            })?;
+        let spawn_ms = duration_ms_u64(spawn_started_at.elapsed());
+        LAST_TERMINAL_SPAWN_MS.store(spawn_ms, Ordering::Relaxed);
+        let shell_name = format!("{:?}", shell).to_lowercase();
+        app.state::<crate::pty::PaneRegistry>().register(
+            &id,
+            &shell_name,
+            cwd.as_deref().unwrap_or("."),
+        );
+        wire_sidecar_terminal_streaming(
+            &app,
+            sidecar,
+            &id,
+            cols,
+            rows,
+            cwd.as_deref(),
+            &shell_name,
+        )
+        .await?;
+        record_audit_event(
+            &app,
+            "terminal",
+            "spawn",
+            "info",
+            Some("terminal"),
+            Some(&id),
+            "Terminal spawned",
+            {
+                let mut metadata = terminal_audit_metadata(&shell, cols, rows, cwd.as_deref());
+                if let Some(obj) = metadata.as_object_mut() {
+                    obj.insert(
+                        "backend".to_string(),
+                        serde_json::Value::String("sidecar".to_string()),
+                    );
+                    obj.insert("spawnMs".to_string(), serde_json::json!(spawn_ms));
+                }
+                metadata
+            },
+        );
+        return Ok(id);
+    }
+    let pty_manager = app.state::<PtyManager>().inner().clone();
+    let spawn_shell = shell.clone();
+    let spawn_cwd = cwd.clone();
+    let spawn_started_at = Instant::now();
+    let spawn_result = tauri::async_runtime::spawn_blocking(move || {
+        pty_manager.spawn(&spawn_shell, cols, rows, spawn_cwd.as_deref())
+    })
+    .await
+    .map_err(|err| format!("Terminal spawn task failed: {}", err))?;
+    let spawn_ms = duration_ms_u64(spawn_started_at.elapsed());
+    LAST_TERMINAL_SPAWN_MS.store(spawn_ms, Ordering::Relaxed);
+    let id = match spawn_result {
         Ok(id) => id,
         Err(err) => {
             record_audit_event(
@@ -309,6 +503,7 @@ pub fn spawn_terminal(
         cwd.as_deref().unwrap_or("."),
     );
 
+    let stream_wire_started_at = Instant::now();
     if let Err(err) = wire_terminal_streaming(&app, &id, cols, rows, cwd.as_deref(), &shell_name) {
         record_audit_event(
             &app,
@@ -331,6 +526,8 @@ pub fn spawn_terminal(
         );
         return Err(err);
     }
+    let stream_wire_ms = duration_ms_u64(stream_wire_started_at.elapsed());
+    LAST_TERMINAL_STREAM_WIRE_MS.store(stream_wire_ms, Ordering::Relaxed);
     record_audit_event(
         &app,
         "terminal",
@@ -339,7 +536,17 @@ pub fn spawn_terminal(
         Some("terminal"),
         Some(&id),
         "Terminal spawned",
-        terminal_audit_metadata(&shell, cols, rows, cwd.as_deref()),
+        {
+            let mut metadata = terminal_audit_metadata(&shell, cols, rows, cwd.as_deref());
+            if let Some(obj) = metadata.as_object_mut() {
+                obj.insert("spawnMs".to_string(), serde_json::json!(spawn_ms));
+                obj.insert(
+                    "streamWireMs".to_string(),
+                    serde_json::json!(stream_wire_ms),
+                );
+            }
+            metadata
+        },
     );
     Ok(id)
 }
@@ -357,7 +564,7 @@ pub fn spawn_terminal(
 /// case is a UI bug (banner shown while the PTY is healthy) and silently
 /// double-spawning would orphan the live session.
 #[tauri::command]
-pub fn respawn_terminal(
+pub async fn respawn_terminal(
     app: AppHandle,
     id: String,
     shell: ShellType,
@@ -365,6 +572,25 @@ pub fn respawn_terminal(
     rows: u16,
     cwd: Option<String>,
 ) -> Result<(), String> {
+    let cwd = match normalize_cwd(cwd) {
+        Ok(cwd) => cwd,
+        Err(err) => {
+            record_audit_event(
+                &app,
+                "terminal",
+                "respawn_rejected",
+                "warn",
+                Some("terminal"),
+                Some(&id),
+                "Terminal respawn rejected",
+                serde_json::json!({
+                    "error": sanitize_audit_error(&err),
+                    "redacted": true,
+                }),
+            );
+            return Err(err);
+        }
+    };
     if let Some(ref dir) = cwd {
         if let Err(err) = validate_path(dir) {
             record_audit_event(
@@ -383,8 +609,74 @@ pub fn respawn_terminal(
             return Err(err);
         }
     }
-    let pty_manager = app.state::<PtyManager>();
-    if pty_manager.contains(&id) {
+    if let Some(sidecar) = app
+        .try_state::<crate::pty_sidecar::PtySidecarState>()
+        .and_then(|state| state.client())
+    {
+        let live_ids = sidecar.list().await.map_err(|err| {
+            format!("respawn rejected: unable to verify sidecar session state: {err}")
+        })?;
+        if live_ids.iter().any(|live_id| live_id == &id) {
+            let err = format!("respawn rejected: terminal {} is still alive", id);
+            record_audit_event(
+                &app,
+                "terminal",
+                "respawn_rejected",
+                "warn",
+                Some("terminal"),
+                Some(&id),
+                "Terminal respawn rejected",
+                serde_json::json!({
+                    "backend": "sidecar",
+                    "reason": "still_alive",
+                    "redacted": true,
+                }),
+            );
+            return Err(err);
+        }
+        sidecar
+            .spawn_with_id(&id, &shell, cols, rows, cwd.as_deref())
+            .await?;
+        let shell_name = format!("{:?}", shell).to_lowercase();
+        app.state::<crate::pty::PaneRegistry>().ensure_registered(
+            &id,
+            &shell_name,
+            cwd.as_deref().unwrap_or("."),
+        );
+        wire_sidecar_terminal_streaming(
+            &app,
+            sidecar,
+            &id,
+            cols,
+            rows,
+            cwd.as_deref(),
+            &shell_name,
+        )
+        .await?;
+        record_audit_event(
+            &app,
+            "terminal",
+            "respawn",
+            "info",
+            Some("terminal"),
+            Some(&id),
+            "Terminal respawned",
+            {
+                let mut metadata = terminal_audit_metadata(&shell, cols, rows, cwd.as_deref());
+                if let Some(obj) = metadata.as_object_mut() {
+                    obj.insert("backend".to_string(), serde_json::json!("sidecar"));
+                }
+                metadata
+            },
+        );
+        return Ok(());
+    }
+    let pty_manager = app.state::<PtyManager>().inner().clone();
+    let contains_id = id.clone();
+    let is_alive = tauri::async_runtime::spawn_blocking(move || pty_manager.contains(&contains_id))
+        .await
+        .map_err(|err| format!("Terminal respawn state check task failed: {}", err))?;
+    if is_alive {
         let err = format!("respawn rejected: terminal {} is still alive", id);
         record_audit_event(
             &app,
@@ -402,20 +694,33 @@ pub fn respawn_terminal(
         return Err(err);
     }
 
-    let program = shell.program().to_string();
-    let args: Vec<String> = shell.args().into_iter().map(|s| s.to_string()).collect();
-    let mut env = std::collections::HashMap::new();
-    env.insert("AETHER_SHELL".to_string(), program.clone());
+    let pty_manager = app.state::<PtyManager>().inner().clone();
+    let spawn_id = id.clone();
+    let spawn_shell = shell.clone();
+    let spawn_cwd = cwd.clone();
+    let spawn_result = tauri::async_runtime::spawn_blocking(move || {
+        let program = spawn_shell.program().to_string();
+        let args: Vec<String> = spawn_shell
+            .args()
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect();
+        let mut env = std::collections::HashMap::new();
+        env.insert("AETHER_SHELL".to_string(), program.clone());
+        pty_manager.spawn_command_with_id(
+            &spawn_id,
+            &program,
+            &args,
+            cols,
+            rows,
+            spawn_cwd.as_deref(),
+            Some(env),
+        )
+    })
+    .await
+    .map_err(|err| format!("Terminal respawn task failed: {}", err))?;
 
-    if let Err(err) = pty_manager.spawn_command_with_id(
-        &id,
-        &program,
-        &args,
-        cols,
-        rows,
-        cwd.as_deref(),
-        Some(env),
-    ) {
+    if let Err(err) = spawn_result {
         record_audit_event(
             &app,
             "terminal",
@@ -486,7 +791,7 @@ pub fn respawn_terminal(
 /// before teardown so the old waiter cannot later emit a stale exit event or
 /// close the freshly spawned replacement.
 #[tauri::command]
-pub fn force_restart_terminal(
+pub async fn force_restart_terminal(
     app: AppHandle,
     id: String,
     shell: ShellType,
@@ -494,6 +799,25 @@ pub fn force_restart_terminal(
     rows: u16,
     cwd: Option<String>,
 ) -> Result<(), String> {
+    let cwd = match normalize_cwd(cwd) {
+        Ok(cwd) => cwd,
+        Err(err) => {
+            record_audit_event(
+                &app,
+                "terminal",
+                "force_restart_rejected",
+                "warn",
+                Some("terminal"),
+                Some(&id),
+                "Terminal force restart rejected",
+                serde_json::json!({
+                    "error": sanitize_audit_error(&err),
+                    "redacted": true,
+                }),
+            );
+            return Err(err);
+        }
+    };
     if let Some(ref dir) = cwd {
         if let Err(err) = validate_path(dir) {
             record_audit_event(
@@ -513,25 +837,85 @@ pub fn force_restart_terminal(
         }
     }
 
-    let pty_manager = app.state::<PtyManager>();
     let generations = app.state::<TerminalGenerationRegistry>();
     generations.next_generation(&id);
-    let close_result = pty_manager.close(&id);
+    if let Some(sidecar) = app
+        .try_state::<crate::pty_sidecar::PtySidecarState>()
+        .and_then(|state| state.client())
+    {
+        let close_result = sidecar.close(&id).await;
+        sidecar
+            .spawn_with_id(&id, &shell, cols, rows, cwd.as_deref())
+            .await?;
+        let shell_name = format!("{:?}", shell).to_lowercase();
+        app.state::<crate::pty::PaneRegistry>().ensure_registered(
+            &id,
+            &shell_name,
+            cwd.as_deref().unwrap_or("."),
+        );
+        wire_sidecar_terminal_streaming(
+            &app,
+            sidecar,
+            &id,
+            cols,
+            rows,
+            cwd.as_deref(),
+            &shell_name,
+        )
+        .await?;
+        record_audit_event(
+            &app,
+            "terminal",
+            "force_restart",
+            "info",
+            Some("terminal"),
+            Some(&id),
+            "Terminal force restarted",
+            {
+                let mut metadata = terminal_audit_metadata(&shell, cols, rows, cwd.as_deref());
+                if let Some(obj) = metadata.as_object_mut() {
+                    obj.insert("backend".to_string(), serde_json::json!("sidecar"));
+                    obj.insert("closeResult".to_string(), serde_json::json!("requested"));
+                    obj.insert(
+                        "oldCloseOk".to_string(),
+                        serde_json::Value::Bool(close_result.is_ok()),
+                    );
+                }
+                metadata
+            },
+        );
+        return Ok(());
+    }
 
-    let program = shell.program().to_string();
-    let args: Vec<String> = shell.args().into_iter().map(|s| s.to_string()).collect();
-    let mut env = std::collections::HashMap::new();
-    env.insert("AETHER_SHELL".to_string(), program.clone());
+    let pty_manager = app.state::<PtyManager>().inner().clone();
+    let spawn_id = id.clone();
+    let spawn_shell = shell.clone();
+    let spawn_cwd = cwd.clone();
+    let (close_result, spawn_result) = tauri::async_runtime::spawn_blocking(move || {
+        let close_result = pty_manager.close(&spawn_id);
+        let program = spawn_shell.program().to_string();
+        let args: Vec<String> = spawn_shell
+            .args()
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect();
+        let mut env = std::collections::HashMap::new();
+        env.insert("AETHER_SHELL".to_string(), program.clone());
+        let spawn_result = pty_manager.spawn_command_with_id(
+            &spawn_id,
+            &program,
+            &args,
+            cols,
+            rows,
+            spawn_cwd.as_deref(),
+            Some(env),
+        );
+        (close_result, spawn_result)
+    })
+    .await
+    .map_err(|err| format!("Terminal force restart task failed: {}", err))?;
 
-    if let Err(err) = pty_manager.spawn_command_with_id(
-        &id,
-        &program,
-        &args,
-        cols,
-        rows,
-        cwd.as_deref(),
-        Some(env),
-    ) {
+    if let Err(err) = spawn_result {
         record_audit_event(
             &app,
             "terminal",
@@ -855,22 +1239,184 @@ fn wire_terminal_streaming(
     Ok(())
 }
 
+async fn wire_sidecar_terminal_streaming(
+    app: &AppHandle,
+    sidecar: crate::pty_sidecar::PtySidecarClient,
+    terminal_id: &str,
+    cols: u16,
+    rows: u16,
+    cwd: Option<&str>,
+    shell_name: &str,
+) -> Result<(), String> {
+    let mut rx = sidecar.subscribe_output(terminal_id).await?;
+    let terminal_generation = app
+        .state::<TerminalGenerationRegistry>()
+        .next_generation(terminal_id);
+
+    let buffer_registry = app.state::<OutputBufferRegistry>().inner().clone();
+    buffer_registry.create(terminal_id);
+
+    let native_registry = app.state::<Arc<NativeTerminalRegistry>>().inner().clone();
+    if let Err(e) = native_registry.create(terminal_id, cols, rows) {
+        log::warn!("native engine create failed for {}: {}", terminal_id, e);
+    }
+
+    let flush_alive = Arc::new(std::sync::atomic::AtomicBool::new(true));
+    {
+        let alive = flush_alive.clone();
+        let flush_registry = native_registry.clone();
+        let flush_handle = app.clone();
+        let flush_id = terminal_id.to_string();
+        let flush_event = format!("term:diff-{terminal_id}");
+        std::thread::spawn(move || {
+            use std::sync::atomic::Ordering;
+            while alive.load(Ordering::Acquire) {
+                std::thread::sleep(std::time::Duration::from_millis(33));
+                if let Some(diff) = flush_registry.flush(&flush_id) {
+                    let _ = flush_handle.emit(&flush_event, diff);
+                }
+            }
+        });
+    }
+    let reader_alive = flush_alive.clone();
+
+    let app_handle = app.clone();
+    let terminal_id_owned = terminal_id.to_string();
+    let repair_cwd = cwd.map(str::to_string);
+    let repair_pane = shell_name.to_string();
+    let analysis_tx = spawn_terminal_analysis_worker(
+        app.clone(),
+        terminal_id.to_string(),
+        repair_pane,
+        repair_cwd,
+    );
+
+    tauri::async_runtime::spawn(async move {
+        let terminal_id = terminal_id_owned;
+        let event_name = format!("pty-output-{}", terminal_id);
+        let diff_event_name = format!("term:diff-{}", terminal_id);
+        let prompt_mark_event_name = format!("term:prompt-mark-{}", terminal_id);
+        let lag_event_name = format!("term:lag-{}", terminal_id);
+        let mut output_batch = Vec::<u8>::with_capacity(PTY_OUTPUT_BATCH_MAX_BYTES);
+        let mut output_batch_chunks = 0usize;
+        let mut flush_tick = tokio::time::interval(PTY_OUTPUT_BATCH_INTERVAL);
+        flush_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            tokio::select! {
+                _ = flush_tick.tick() => {
+                    emit_pty_output_batch(
+                        &app_handle,
+                        &event_name,
+                        &mut output_batch,
+                        &mut output_batch_chunks,
+                    );
+                    continue;
+                }
+                recv = rx.recv() => match recv {
+                    Ok(chunk) => {
+                        let data: &[u8] = &chunk;
+                        output_batch.extend_from_slice(data);
+                        output_batch_chunks = output_batch_chunks.saturating_add(1);
+                        if output_batch.len() >= PTY_OUTPUT_BATCH_MAX_BYTES {
+                            emit_pty_output_batch(
+                                &app_handle,
+                                &event_name,
+                                &mut output_batch,
+                                &mut output_batch_chunks,
+                            );
+                        }
+
+                        let text = String::from_utf8_lossy(data).into_owned();
+                        buffer_registry.feed(&terminal_id, &text);
+                        let _ = analysis_tx.send(TerminalAnalysisWork::Text(text));
+
+                        let advance_result = native_registry.advance(&terminal_id, data);
+                        if let Some(diff) = advance_result.diff {
+                            let _ = app_handle.emit(&diff_event_name, diff);
+                        }
+                        for mark in advance_result.new_marks {
+                            let _ = app_handle.emit(&prompt_mark_event_name, mark);
+                        }
+
+                        if data.contains(&0x07) {
+                            let _ = app_handle.emit(
+                                "terminal:bell",
+                                serde_json::json!({
+                                    "terminal_id": terminal_id,
+                                }),
+                            );
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(n)) => {
+                        log::warn!("ui: sidecar terminal {} lagged, dropped {} chunks", terminal_id, n);
+                        let _ = app_handle.emit(
+                            &lag_event_name,
+                            serde_json::json!({ "dropped": n }),
+                        );
+                        continue;
+                    }
+                    Err(broadcast::error::RecvError::Closed) => break,
+                },
+            }
+        }
+        emit_pty_output_batch(
+            &app_handle,
+            &event_name,
+            &mut output_batch,
+            &mut output_batch_chunks,
+        );
+        let _ = analysis_tx.send(TerminalAnalysisWork::Stop);
+        reader_alive.store(false, std::sync::atomic::Ordering::Release);
+
+        let is_current_generation = app_handle
+            .try_state::<TerminalGenerationRegistry>()
+            .is_some_and(|generations| {
+                generations.is_current_generation(&terminal_id, terminal_generation)
+            });
+        if is_current_generation {
+            record_audit_event(
+                &app_handle,
+                "terminal",
+                "exit",
+                "info",
+                Some("terminal"),
+                Some(&terminal_id),
+                "Sidecar terminal stream closed",
+                serde_json::json!({
+                    "backend": "sidecar",
+                    "generation": terminal_generation,
+                    "redacted": true,
+                }),
+            );
+            let _ = app_handle.emit(
+                &format!("pty-exit-{}", terminal_id),
+                ExitInfo {
+                    code: None,
+                    crashed: false,
+                },
+            );
+        }
+    });
+
+    Ok(())
+}
+
 /// Write input to a terminal. On Enter (`\r` in the input payload) we also
 /// capture a `TerminalSnapshot` into the session-scoped ring buffer — this is
 /// the time-travel capture point (Phase 3C-3a). The snapshot reflects the
 /// grid *as it was when the user submitted the command*, before the shell
 /// produces output for it.
 #[tauri::command]
-pub fn write_terminal(app: AppHandle, id: String, data: String) -> Result<(), String> {
+pub async fn write_terminal(app: AppHandle, id: String, data: String) -> Result<(), String> {
     validate_keys_payload(&data)?;
-    let pty_manager = app.state::<PtyManager>();
-    let bytes = data.as_bytes();
+    let bytes = data.into_bytes();
     let metadata = serde_json::json!({
         "bytes": bytes.len(),
         "containsEnter": bytes.contains(&b'\r'),
         "redacted": true,
     });
-    match pty_manager.write(&id, bytes) {
+    let write_result = terminal_write_async(&app, &id, &bytes).await;
+    match write_result {
         Ok(()) => {
             if bytes.contains(&b'\r') || bytes.len() >= 128 {
                 record_audit_event(
@@ -888,7 +1434,7 @@ pub fn write_terminal(app: AppHandle, id: String, data: String) -> Result<(), St
                     metadata,
                 );
             }
-            capture_if_enter(&app, &id, bytes);
+            capture_if_enter(&app, &id, &bytes);
             Ok(())
         }
         Err(err) => {
@@ -920,6 +1466,38 @@ fn capture_if_enter(app: &AppHandle, terminal_id: &str, data: &[u8]) {
     if data.contains(&b'\r') {
         capture_user_submit_snapshot(app, terminal_id);
     }
+}
+
+async fn terminal_write_async(
+    app: &AppHandle,
+    terminal_id: &str,
+    data: &[u8],
+) -> Result<(), String> {
+    if let Some(sidecar) = app
+        .try_state::<crate::pty_sidecar::PtySidecarState>()
+        .and_then(|state| state.client())
+    {
+        return sidecar.write(terminal_id, data).await;
+    }
+    let pty_manager = app.state::<PtyManager>().inner().clone();
+    let terminal_id = terminal_id.to_string();
+    let data = data.to_vec();
+    tauri::async_runtime::spawn_blocking(move || pty_manager.write(&terminal_id, &data))
+        .await
+        .map_err(|err| format!("Terminal write task failed: {}", err))?
+}
+
+async fn terminal_ids_async(app: &AppHandle) -> Vec<String> {
+    if let Some(sidecar) = app
+        .try_state::<crate::pty_sidecar::PtySidecarState>()
+        .and_then(|state| state.client())
+    {
+        return sidecar.list().await.unwrap_or_default();
+    }
+    let pty_manager = app.state::<PtyManager>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move || pty_manager.list())
+        .await
+        .unwrap_or_default()
 }
 
 /// Grab the current grid from the native engine and push it into the snapshot
@@ -956,9 +1534,29 @@ fn capture_user_submit_snapshot(app: &AppHandle, terminal_id: &str) {
 
 /// Resize a terminal
 #[tauri::command]
-pub fn resize_terminal(app: AppHandle, id: String, cols: u16, rows: u16) -> Result<(), String> {
-    let pty_manager = app.state::<PtyManager>();
-    if let Err(err) = pty_manager.resize(&id, cols, rows) {
+pub async fn resize_terminal(
+    app: AppHandle,
+    id: String,
+    cols: u16,
+    rows: u16,
+) -> Result<(), String> {
+    let resize_result = if let Some(sidecar) = app
+        .try_state::<crate::pty_sidecar::PtySidecarState>()
+        .and_then(|state| state.client())
+    {
+        sidecar.resize(&id, cols, rows).await
+    } else {
+        let pty_manager = app.state::<PtyManager>().inner().clone();
+        let resize_id = id.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            pty_manager
+                .resize(&resize_id, cols, rows)
+                .map_err(|err| err.to_string())
+        })
+        .await
+        .map_err(|err| format!("Terminal resize task failed: {}", err))?
+    };
+    if let Err(err) = resize_result {
         let err = err.to_string();
         record_audit_event(
             &app,
@@ -1010,14 +1608,28 @@ pub fn resize_terminal(app: AppHandle, id: String, cols: u16, rows: u16) -> Resu
 
 /// Close a terminal
 #[tauri::command]
-pub fn close_terminal(app: AppHandle, id: String) -> Result<(), String> {
-    let pty_manager = app.state::<PtyManager>();
+pub async fn close_terminal(app: AppHandle, id: String) -> Result<(), String> {
     // Mark the currently wired waiter as stale before dropping the PTY. The
     // child will exit as a side effect of the close, but that should not emit
     // a user-facing crash/exit banner for intentional process-manager ends.
     app.state::<TerminalGenerationRegistry>()
         .next_generation(&id);
-    let already_closed = match pty_manager.close(&id) {
+    let close_result: Result<(), PtyError> = if let Some(sidecar) = app
+        .try_state::<crate::pty_sidecar::PtySidecarState>()
+        .and_then(|state| state.client())
+    {
+        sidecar
+            .close(&id)
+            .await
+            .map_err(|err| PtyError::Other(err.to_string()))
+    } else {
+        let pty_manager = app.state::<PtyManager>().inner().clone();
+        let close_id = id.clone();
+        tauri::async_runtime::spawn_blocking(move || pty_manager.close(&close_id))
+            .await
+            .map_err(|err| PtyError::Other(format!("Terminal close task failed: {}", err)))?
+    };
+    let already_closed = match close_result {
         Ok(()) => false,
         Err(PtyError::NotFound(_)) => true,
         Err(err) => {
@@ -1295,6 +1907,16 @@ pub fn term_history_rows(
         .history_rows(&id, fromN, count)
 }
 
+#[tauri::command]
+pub fn terminal_output_journal(
+    app: AppHandle,
+    terminal_id: String,
+    limit: Option<usize>,
+) -> Result<Vec<crate::db::TerminalOutputJournalRow>, String> {
+    let db = app.state::<crate::db::ManagedDb>();
+    db.with(|d| d.list_terminal_output_journal(&terminal_id, limit.unwrap_or(200)))
+}
+
 /// Search retained scrollback for `query`. The frontend pairs the
 /// returned matches with the existing live-grid match list to drive
 /// Ctrl+F across the entire 10 000-line history without round-tripping
@@ -1369,6 +1991,8 @@ pub struct PerformanceObservatoryMetrics {
     pub terminal_journal_flush_bytes: usize,
     pub terminal_journal_flush_interval_ms: u64,
     pub ipc_latency_ms: Option<u64>,
+    pub last_terminal_spawn_ms: Option<u64>,
+    pub last_terminal_stream_wire_ms: Option<u64>,
     pub db_write_latency_ms: Option<u64>,
     pub event_queue_lag_ms: Option<u64>,
 }
@@ -1389,12 +2013,11 @@ fn estimate_scrollback_memory_bytes(rows: usize, cols: usize) -> u64 {
 /// command must not mutate the audit journal just to observe it.
 #[tauri::command]
 #[allow(non_snake_case)]
-pub fn performance_observatory_metrics(
+pub async fn performance_observatory_metrics(
     app: AppHandle,
     terminalId: Option<String>,
 ) -> PerformanceObservatoryMetrics {
-    let pty_manager = app.state::<PtyManager>();
-    let active_terminals = pty_manager.list();
+    let active_terminals = terminal_ids_async(&app).await;
     let active_terminal_count = active_terminals.len();
     let pane_count = app
         .state::<crate::pty::PaneRegistry>()
@@ -1446,6 +2069,14 @@ pub fn performance_observatory_metrics(
         terminal_journal_flush_bytes: TERMINAL_JOURNAL_FLUSH_BYTES,
         terminal_journal_flush_interval_ms: duration_ms_u64(TERMINAL_JOURNAL_FLUSH_INTERVAL),
         ipc_latency_ms: None,
+        last_terminal_spawn_ms: match LAST_TERMINAL_SPAWN_MS.load(Ordering::Relaxed) {
+            DB_WRITE_LATENCY_UNSET => None,
+            ms => Some(ms),
+        },
+        last_terminal_stream_wire_ms: match LAST_TERMINAL_STREAM_WIRE_MS.load(Ordering::Relaxed) {
+            DB_WRITE_LATENCY_UNSET => None,
+            ms => Some(ms),
+        },
         db_write_latency_ms: match LAST_TERMINAL_JOURNAL_DB_WRITE_LATENCY_MS.load(Ordering::Relaxed)
         {
             DB_WRITE_LATENCY_UNSET => None,
@@ -1457,9 +2088,8 @@ pub fn performance_observatory_metrics(
 
 /// List active terminals
 #[tauri::command]
-pub fn list_terminals(app: AppHandle) -> Vec<String> {
-    let pty_manager = app.state::<PtyManager>();
-    pty_manager.list()
+pub async fn list_terminals(app: AppHandle) -> Vec<String> {
+    terminal_ids_async(&app).await
 }
 
 /// Detect available shells
@@ -1589,7 +2219,7 @@ fn run_git_cmd_with_output(
     repo_path: &str,
     args: &[impl AsRef<std::ffi::OsStr>],
 ) -> Result<String, String> {
-    let output = std::process::Command::new("git")
+    let output = crate::process::hidden_command("git")
         .args(args)
         .current_dir(repo_path)
         .output()
@@ -1776,7 +2406,7 @@ pub fn git_file_original(repo_path: String, file_path: String) -> Result<String,
         .trim_start_matches('/')
         .to_string();
 
-    let output = std::process::Command::new("git")
+    let output = crate::process::hidden_command("git")
         .args(["show", &format!("HEAD:{}", relative)])
         .current_dir(&repo_path)
         .output()
@@ -1800,7 +2430,7 @@ pub fn git_diff_file(repo_path: String, file_path: String) -> Result<String, Str
         .trim_start_matches('/')
         .to_string();
 
-    let output = std::process::Command::new("git")
+    let output = crate::process::hidden_command("git")
         .args(["diff", "HEAD", "--", &relative])
         .current_dir(&repo_path)
         .output()
@@ -1832,7 +2462,7 @@ pub fn git_diff_files(
             .trim_start_matches('/')
             .to_string();
 
-        let output = std::process::Command::new("git")
+        let output = crate::process::hidden_command("git")
             .args(["diff", "HEAD", "--", &relative])
             .current_dir(&repo_path)
             .output();
@@ -1850,7 +2480,7 @@ pub fn git_diff_files(
 /// List GitHub PRs for a repo
 #[tauri::command]
 pub fn list_pull_requests(cwd: String) -> Result<Vec<PullRequestInfo>, String> {
-    let output = std::process::Command::new("gh")
+    let output = crate::process::hidden_command("gh")
         .args([
             "pr",
             "list",
@@ -1895,7 +2525,7 @@ pub struct PullRequestInfo {
 /// View a specific PR's diff
 #[tauri::command]
 pub fn get_pr_diff(cwd: String, pr_number: u32) -> Result<String, String> {
-    let output = std::process::Command::new("gh")
+    let output = crate::process::hidden_command("gh")
         .args(["pr", "diff", &pr_number.to_string()])
         .current_dir(&cwd)
         .output()
@@ -2541,11 +3171,10 @@ fn validate_keys_payload(data: &str) -> Result<(), String> {
 /// snapshot hook so Orchestra agents that drive a pane through this IPC
 /// also appear on the time-travel timeline.
 #[tauri::command]
-pub fn send_keys(app: AppHandle, terminal_id: String, data: String) -> Result<(), String> {
+pub async fn send_keys(app: AppHandle, terminal_id: String, data: String) -> Result<(), String> {
     validate_keys_payload(&data)?;
-    let pty_manager = app.state::<PtyManager>();
     let bytes = data.as_bytes();
-    match pty_manager.write(&terminal_id, bytes) {
+    match terminal_write_async(&app, &terminal_id, bytes).await {
         Ok(()) => {
             record_audit_event(
                 &app,
@@ -2613,10 +3242,9 @@ pub fn command_blocks(
 /// successfully written pane also gets its own snapshot captured when the
 /// payload ends a command, so the timeline stays consistent across panes.
 #[tauri::command]
-pub fn broadcast_keys(app: AppHandle, data: String) -> Result<u32, String> {
+pub async fn broadcast_keys(app: AppHandle, data: String) -> Result<u32, String> {
     validate_keys_payload(&data)?;
-    let pty_manager = app.state::<PtyManager>();
-    let ids = pty_manager.list();
+    let ids = terminal_ids_async(&app).await;
     if ids.is_empty() {
         let err = "No active terminal panes".to_string();
         record_audit_event(
@@ -2641,7 +3269,7 @@ pub fn broadcast_keys(app: AppHandle, data: String) -> Result<u32, String> {
     let mut count: u32 = 0;
     let mut last_error: Option<String> = None;
     for id in &ids {
-        match pty_manager.write(id, data.as_bytes()) {
+        match terminal_write_async(&app, id, data.as_bytes()).await {
             Ok(()) => {
                 count += 1;
                 capture_if_enter(&app, id, data.as_bytes());
@@ -2697,15 +3325,14 @@ pub fn set_pane_role(app: AppHandle, terminal_id: String, role: String) -> Resul
 /// Send keystrokes to a pane by its user-assigned name. Same snapshot
 /// hook as `send_keys` so name-addressed writes appear on the timeline.
 #[tauri::command]
-pub fn send_keys_by_name(app: AppHandle, name: String, data: String) -> Result<(), String> {
+pub async fn send_keys_by_name(app: AppHandle, name: String, data: String) -> Result<(), String> {
     validate_keys_payload(&data)?;
     let pane_registry = app.state::<crate::pty::PaneRegistry>();
     let terminal_id = pane_registry
         .find_by_name_unique(&name)?
         .ok_or_else(|| format!("No pane named '{}'", name))?;
-    let pty_manager = app.state::<PtyManager>();
     let bytes = data.as_bytes();
-    match pty_manager.write(&terminal_id, bytes) {
+    match terminal_write_async(&app, &terminal_id, bytes).await {
         Ok(()) => {
             record_audit_event(
                 &app,
@@ -2750,7 +3377,7 @@ pub fn send_keys_by_name(app: AppHandle, name: String, data: String) -> Result<(
 /// Send keystrokes to every pane assigned a role. Role sends are intentionally
 /// scoped broadcasts because several panes may share a workstation role.
 #[tauri::command]
-pub fn send_keys_by_role(app: AppHandle, role: String, data: String) -> Result<u32, String> {
+pub async fn send_keys_by_role(app: AppHandle, role: String, data: String) -> Result<u32, String> {
     validate_keys_payload(&data)?;
     let pane_registry = app.state::<crate::pty::PaneRegistry>();
     let terminal_ids = pane_registry.find_by_role(&role);
@@ -2774,7 +3401,7 @@ pub fn send_keys_by_role(app: AppHandle, role: String, data: String) -> Result<u
         );
         return Err(err);
     }
-    write_to_terminals(&app, terminal_ids, data.as_bytes())
+    write_to_terminals(&app, terminal_ids, data.as_bytes()).await
 }
 
 /// Send keystrokes to a pane target. Targets prefixed with `@` or `role:`
@@ -2782,7 +3409,11 @@ pub fn send_keys_by_role(app: AppHandle, role: String, data: String) -> Result<u
 /// resolve by pane name or role, but a name/role collision is rejected so
 /// input is not silently sent to the wrong pane.
 #[tauri::command]
-pub fn send_keys_by_target(app: AppHandle, target: String, data: String) -> Result<u32, String> {
+pub async fn send_keys_by_target(
+    app: AppHandle,
+    target: String,
+    data: String,
+) -> Result<u32, String> {
     validate_keys_payload(&data)?;
     let trimmed = target.trim();
     if trimmed.is_empty() {
@@ -2833,20 +3464,19 @@ pub fn send_keys_by_target(app: AppHandle, target: String, data: String) -> Resu
         );
         return Err(err);
     }
-    write_to_terminals(&app, terminal_ids, data.as_bytes())
+    write_to_terminals(&app, terminal_ids, data.as_bytes()).await
 }
 
-fn write_to_terminals(
+async fn write_to_terminals(
     app: &AppHandle,
     terminal_ids: Vec<String>,
     data: &[u8],
 ) -> Result<u32, String> {
-    let pty_manager = app.state::<PtyManager>();
     let mut count: u32 = 0;
     let mut last_error: Option<String> = None;
     let target_count = terminal_ids.len();
     for terminal_id in terminal_ids {
-        match pty_manager.write(&terminal_id, data) {
+        match terminal_write_async(app, &terminal_id, data).await {
             Ok(()) => {
                 count += 1;
                 capture_if_enter(app, &terminal_id, data);
@@ -2895,9 +3525,9 @@ fn write_to_terminals(
 
 /// List all registered panes with metadata
 #[tauri::command]
-pub fn list_panes_info(app: AppHandle) -> Vec<crate::pty::registry::PaneEntry> {
+pub async fn list_panes_info(app: AppHandle) -> Vec<crate::pty::registry::PaneEntry> {
     let registry = app.state::<crate::pty::PaneRegistry>();
-    let active_terminal_ids = app.state::<PtyManager>().list();
+    let active_terminal_ids = terminal_ids_async(&app).await;
     registry.list_active(&active_terminal_ids)
 }
 
@@ -3634,6 +4264,28 @@ fn ime_coord(value: f64) -> i32 {
     }
 }
 
+fn ime_position_result(
+    composition_ok: bool,
+    candidate_successes: usize,
+    release_ok: bool,
+) -> Result<(), String> {
+    let mut failures = Vec::new();
+    if !composition_ok {
+        failures.push("ImmSetCompositionWindow failed");
+    }
+    if candidate_successes == 0 {
+        failures.push("ImmSetCandidateWindow failed for every candidate index");
+    }
+    if !release_ok {
+        failures.push("ImmReleaseContext failed");
+    }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures.join("; "))
+    }
+}
+
 #[tauri::command]
 pub fn set_ime_position(
     app: AppHandle,
@@ -3672,7 +4324,7 @@ pub fn set_ime_position(
             }
         };
 
-        unsafe {
+        let ime_result = unsafe {
             let himc = ImmGetContext(ime_hwnd);
             if himc.is_invalid() {
                 return Err("Failed to get IME context".into());
@@ -3686,12 +4338,13 @@ pub fn set_ime_position(
                 },
                 ..Default::default()
             };
-            let _ = ImmSetCompositionWindow(himc, &cf);
+            let composition_ok = ImmSetCompositionWindow(himc, &cf).as_bool();
 
             // Also set candidate window position. The candidate popup is
             // much wider than the caret; the frontend may clamp this point
             // leftward near the terminal's right edge so the OS popup does
             // not spill into the inspector rail.
+            let mut candidate_successes = 0usize;
             for dw_index in 0..4 {
                 let cand = CANDIDATEFORM {
                     dwIndex: dw_index,
@@ -3702,11 +4355,15 @@ pub fn set_ime_position(
                     },
                     ..Default::default()
                 };
-                let _ = ImmSetCandidateWindow(himc, &cand);
+                if ImmSetCandidateWindow(himc, &cand).as_bool() {
+                    candidate_successes += 1;
+                }
             }
 
-            let _ = ImmReleaseContext(ime_hwnd, himc);
-        }
+            let release_ok = ImmReleaseContext(ime_hwnd, himc).as_bool();
+            ime_position_result(composition_ok, candidate_successes, release_ok)
+        };
+        ime_result?;
     }
     Ok(())
 }
@@ -3766,6 +4423,42 @@ mod tests {
     }
 
     #[test]
+    fn normalize_cwd_allows_home_relative_and_unicode_dirs() {
+        if let Some(home) = home_dir_for_cwd() {
+            let canonical_home = std::fs::canonicalize(home).unwrap();
+            let normalized = normalize_cwd(Some("~".into())).unwrap();
+            assert_eq!(
+                normalized,
+                Some(strip_local_verbatim_prefix(
+                    &canonical_home.to_string_lossy()
+                ))
+            );
+        }
+
+        let unicode_dir =
+            std::env::temp_dir().join(format!("aether-ipc-cwd-馬-{}", std::process::id()));
+        std::fs::create_dir_all(&unicode_dir).unwrap();
+        let normalized = normalize_cwd(Some(unicode_dir.to_string_lossy().to_string())).unwrap();
+        let canonical = std::fs::canonicalize(&unicode_dir).unwrap();
+        assert_eq!(
+            normalized,
+            Some(strip_local_verbatim_prefix(&canonical.to_string_lossy()))
+        );
+        let _ = std::fs::remove_dir_all(unicode_dir);
+    }
+
+    #[test]
+    fn normalize_cwd_accepts_local_verbatim_paths_but_rejects_unc_verbatim() {
+        let cwd = std::env::current_dir().unwrap();
+        let verbatim = format!(r"\\?\{}", cwd.to_string_lossy());
+        assert_eq!(
+            normalize_cwd(Some(verbatim)).unwrap(),
+            Some(cwd.to_string_lossy().to_string())
+        );
+        assert!(normalize_cwd(Some(r"\\?\UNC\server\share".into())).is_err());
+    }
+
+    #[test]
     fn ime_coord_rounds_and_sanitizes_frontend_values() {
         assert_eq!(ime_coord(12.49), 12);
         assert_eq!(ime_coord(12.5), 13);
@@ -3773,6 +4466,16 @@ mod tests {
         assert_eq!(ime_coord(f64::INFINITY), 0);
         assert_eq!(ime_coord((i32::MAX as f64) + 10_000.0), i32::MAX);
         assert_eq!(ime_coord((i32::MIN as f64) - 10_000.0), i32::MIN);
+    }
+
+    #[test]
+    fn ime_position_result_reports_win32_failures() {
+        assert!(ime_position_result(true, 1, true).is_ok());
+
+        let err = ime_position_result(false, 0, false).expect_err("failures should surface");
+        assert!(err.contains("ImmSetCompositionWindow failed"));
+        assert!(err.contains("ImmSetCandidateWindow failed"));
+        assert!(err.contains("ImmReleaseContext failed"));
     }
 
     #[test]

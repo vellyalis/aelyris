@@ -9,6 +9,7 @@ import { useHistorySearch } from "../../shared/hooks/useHistorySearch";
 import { useSnapshots } from "../../shared/hooks/useSnapshots";
 import { useTerminalSnapshot } from "../../shared/hooks/useTerminalSnapshot";
 import { decodeBase64ToBytes } from "../../shared/lib/decodeBase64";
+import { formatFallbackError, reportInvokeFailure } from "../../shared/lib/fallbackTelemetry";
 import { isTauriRuntime } from "../../shared/lib/tauriRuntime";
 import { useAppStore } from "../../shared/store/appStore";
 import type { LayerIdPayload } from "../../shared/types/ghostdiff";
@@ -19,9 +20,9 @@ import {
   IME_DIAGNOSTIC_EVENT,
   IME_DIAGNOSTIC_STORAGE_KEY,
   IME_DIAGNOSTIC_TOGGLE_EVENT,
-  imeDiagnosticsEnabled,
   type ImeDiagnosticDetail,
   type ImeDiagnosticWritePath,
+  imeDiagnosticsEnabled,
 } from "./hooks/useCanvasIME";
 import { useInputMirror } from "./hooks/useInputMirror";
 import { IMEInputBar, type IMEInputBarHandle } from "./IMEInputBar";
@@ -96,6 +97,7 @@ interface Dims {
 }
 
 type InputWritePath = "idle" | "input-bar" | "ghost-suggestion" | ImeDiagnosticWritePath;
+type SpawnStatus = "idle" | "starting" | "failed";
 
 function inputWritePathLabel(path: InputWritePath): string {
   switch (path) {
@@ -115,10 +117,25 @@ function inputWritePathLabel(path: InputWritePath): string {
       return "paste";
     case "focus":
       return "focus";
+    case "terminal-prefix":
+      return "terminal prefix";
     case "ignored":
       return "ignored";
     case "idle":
       return "idle";
+  }
+}
+
+function shellDisplayName(shell: ShellType): string {
+  switch (shell) {
+    case "powershell":
+      return "PowerShell";
+    case "cmd":
+      return "CMD";
+    case "gitbash":
+      return "Git Bash";
+    case "wsl":
+      return "WSL";
   }
 }
 
@@ -132,7 +149,7 @@ function defaultSpawn(args: { shell: string; cols: number; rows: number; cwd?: s
 }
 
 function defaultResize(id: string, cols: number, rows: number): Promise<void> {
-  return invoke<void>("resize_terminal", { id, cols, rows }).catch(() => {});
+  return invoke<void>("resize_terminal", { id, cols, rows });
 }
 
 function defaultWrite(id: string, data: string): Promise<void> {
@@ -190,9 +207,7 @@ function exitBannerMessage(info: PtyExitInfo): string {
 }
 
 function formatErrorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  if (typeof err === "string") return err;
-  return String(err);
+  return formatFallbackError(err);
 }
 
 function formatInputPayloadSummary(data: string): string {
@@ -214,7 +229,7 @@ function formatImeEventSummary(event: ImeDiagnosticDetail | null): string {
 }
 
 function formatCandidateRect(event: ImeDiagnosticDetail | null): string {
-  if (!event || !event.candidateLeft || !event.candidateTop) return "n/a";
+  if (!event?.candidateLeft || !event.candidateTop) return "n/a";
   return `${event.candidateLeft}, ${event.candidateTop}`;
 }
 
@@ -266,7 +281,11 @@ export function NativeTerminalArea({
   const [canvasInputEl, setCanvasInputEl] = useState<HTMLTextAreaElement | null>(null);
   const [terminalId, setTerminalId] = useState<string | null>(null);
   const [dims, setDims] = useState<Dims | null>(null);
+  const [spawnStatus, setSpawnStatus] = useState<SpawnStatus>("idle");
+  const [spawnRetryNonce, setSpawnRetryNonce] = useState(0);
+  const [spawnError, setSpawnError] = useState<string | null>(null);
   const spawnStartedRef = useRef(false);
+  const spawnAttemptRef = useRef(0);
   const shellRef = useRef(shell);
   const cwdRef = useRef(cwd);
   const onReadyRef = useRef(onTerminalReady);
@@ -512,17 +531,41 @@ export function NativeTerminalArea({
           terminalId,
           lines: 80,
           stripAnsiCodes: false,
-        }).catch(() => "");
+        }).catch((err) => {
+          reportInvokeFailure({
+            source: "terminal",
+            operation: "capture_pane",
+            err,
+            severity: "warning",
+          });
+          return "";
+        });
         if (!cancelled && replay) {
           aiCli.feed(replay);
         }
-      } catch {
-        /* listener unavailable (e.g. native engine off) */
+      } catch (err) {
+        if (!cancelled) {
+          const message = formatErrorMessage(err);
+          reportInvokeFailure({
+            source: "terminal",
+            operation: "subscribe_pty_output",
+            err,
+            severity: "error",
+            userVisible: true,
+          });
+          setTerminalWarning(`Output listener unavailable: ${message}`);
+        }
       }
     })();
     return () => {
       cancelled = true;
-      if (flushTimer !== null) window.clearTimeout(flushTimer);
+      const tail = decoder.decode();
+      if (tail) buffer += tail;
+      if (flushTimer !== null) {
+        window.clearTimeout(flushTimer);
+        flushTimer = null;
+      }
+      flush();
       unlisten?.();
     };
   }, [terminalId, subscribeOutput, aiCli, previewMode]);
@@ -535,6 +578,7 @@ export function NativeTerminalArea({
   const [exitInfo, setExitInfo] = useState<PtyExitInfo | null>(null);
   const [respawning, setRespawning] = useState(false);
   const [writeError, setWriteError] = useState<string | null>(null);
+  const [terminalWarning, setTerminalWarning] = useState<string | null>(null);
   const dimsRef = useRef<Dims | null>(null);
   const handledRestartRequestRef = useRef<number | null>(null);
   dimsRef.current = dims;
@@ -549,11 +593,11 @@ export function NativeTerminalArea({
           : "exited"
         : terminalId
           ? "live"
-          : spawnStartedRef.current
+          : spawnStatus === "starting"
             ? "starting"
             : "layout-only";
     onLifecycleChangeRef.current?.(lifecycle);
-  }, [exitInfo, respawning, terminalId]);
+  }, [exitInfo, respawning, spawnStatus, terminalId]);
 
   useEffect(() => {
     if (previewMode) return;
@@ -569,8 +613,15 @@ export function NativeTerminalArea({
           unlisten?.();
           unlisten = null;
         }
-      } catch {
-        /* listener unavailable in tests */
+      } catch (err) {
+        if (!cancelled && isTauriRuntime()) {
+          reportInvokeFailure({
+            source: "terminal",
+            operation: "subscribe_pty_exit",
+            err,
+            severity: "warning",
+          });
+        }
       }
     })();
     return () => {
@@ -582,9 +633,13 @@ export function NativeTerminalArea({
   // Reset banner state when a brand-new terminal id mounts (project switch).
   useEffect(() => {
     void terminalId;
+    setSpawnStatus("idle");
+    setSpawnError(null);
+    spawnAttemptRef.current = 0;
     setExitInfo(null);
     setRespawning(false);
     setWriteError(null);
+    setTerminalWarning(null);
   }, [terminalId]);
 
   // Move keyboard focus into the banner's restart button when it appears
@@ -754,7 +809,8 @@ export function NativeTerminalArea({
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    let pending: number | null = null;
+    let frame: number | null = null;
+    let settleTimer: number | null = null;
     const computeDims = (): Dims | null => {
       const w = el.clientWidth - CANVAS_GUTTER * 2;
       const h = el.clientHeight - CANVAS_GUTTER * 2;
@@ -765,25 +821,42 @@ export function NativeTerminalArea({
       };
     };
     const apply = () => {
-      pending = null;
       const next = computeDims();
       if (!next) return;
       setDims((prev) => (prev && prev.cols === next.cols && prev.rows === next.rows ? prev : next));
     };
+    const requestFrame =
+      typeof window.requestAnimationFrame === "function"
+        ? window.requestAnimationFrame.bind(window)
+        : (callback: FrameRequestCallback) => window.setTimeout(() => callback(Date.now()), 16);
+    const cancelFrame =
+      typeof window.cancelAnimationFrame === "function"
+        ? window.cancelAnimationFrame.bind(window)
+        : window.clearTimeout.bind(window);
     const schedule = () => {
-      // Trailing-edge debounce ~120ms — only fires after the window stops
-      // resizing for the full window. Leading-edge would still snap every
-      // 100ms during a continuous drag, repainting the whole canvas and
-      // causing the visible text flicker.
-      if (pending !== null) window.clearTimeout(pending);
-      pending = window.setTimeout(apply, 120);
+      if (frame === null) {
+        frame = requestFrame(() => {
+          frame = null;
+          apply();
+        });
+      }
+      if (settleTimer !== null) window.clearTimeout(settleTimer);
+      settleTimer = window.setTimeout(() => {
+        settleTimer = null;
+        if (frame !== null) {
+          cancelFrame(frame);
+          frame = null;
+        }
+        apply();
+      }, 48);
     };
     // First mount: apply immediately so PTY spawns without waiting.
     apply();
     const ro = new ResizeObserver(schedule);
     ro.observe(el);
     return () => {
-      if (pending !== null) window.clearTimeout(pending);
+      if (frame !== null) cancelFrame(frame);
+      if (settleTimer !== null) window.clearTimeout(settleTimer);
       ro.disconnect();
     };
   }, [cellMetrics.height, cellMetrics.width]);
@@ -792,6 +865,7 @@ export function NativeTerminalArea({
     if (previewMode) return;
     if (!attachedTerminalId || terminalId === attachedTerminalId || spawnStartedRef.current) return;
     spawnStartedRef.current = true;
+    setSpawnStatus("starting");
     setTerminalId(attachedTerminalId);
     onReadyRef.current?.(attachedTerminalId);
   }, [attachedTerminalId, previewMode, terminalId]);
@@ -800,7 +874,12 @@ export function NativeTerminalArea({
     if (previewMode) return;
     if (!dims || spawnStartedRef.current) return;
     spawnStartedRef.current = true;
+    spawnAttemptRef.current += 1;
+    const attempt = spawnAttemptRef.current;
     let cancelled = false;
+    let retryTimer: number | null = null;
+    setSpawnStatus("starting");
+    setSpawnError(null);
     (async () => {
       try {
         const id = await spawnFnRef.current({
@@ -810,21 +889,53 @@ export function NativeTerminalArea({
           cwd: cwdRef.current,
         });
         if (cancelled) return;
+        setSpawnError(null);
         setTerminalId(id);
         onReadyRef.current?.(id);
-      } catch {
+      } catch (err) {
         spawnStartedRef.current = false;
+        if (!cancelled) {
+          setSpawnError(formatErrorMessage(err));
+          setSpawnStatus("failed");
+          if (attempt < 3) {
+            retryTimer = window.setTimeout(() => {
+              if (!cancelled) setSpawnRetryNonce((value) => value + 1);
+            }, 400 * attempt);
+          }
+        }
       }
     })();
     return () => {
       cancelled = true;
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
     };
-  }, [dims, previewMode]);
+  }, [dims, previewMode, spawnRetryNonce]);
 
   useEffect(() => {
     if (previewMode) return;
     if (!terminalId || !dims) return;
-    void resizePty(terminalId, dims.cols, dims.rows);
+    let cancelled = false;
+    void Promise.resolve(resizePty(terminalId, dims.cols, dims.rows))
+      .then(() => {
+        if (!cancelled) {
+          setTerminalWarning((prev) => (prev?.startsWith("Resize failed:") ? null : prev));
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        const message = formatErrorMessage(err);
+        reportInvokeFailure({
+          source: "terminal",
+          operation: "resize_terminal",
+          err,
+          severity: "warning",
+          userVisible: true,
+        });
+        setTerminalWarning(`Resize failed: ${message}`);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [terminalId, dims, resizePty, previewMode]);
 
   // ── Global keybindings ──
@@ -839,7 +950,7 @@ export function NativeTerminalArea({
         return;
       }
       if (!insideArea) return;
-      if (e.ctrlKey && !e.shiftKey && e.key === "f") {
+      if (e.ctrlKey && e.shiftKey && (e.key === "F" || e.key === "f")) {
         e.preventDefault();
         setSearchVisible(true);
         requestAnimationFrame(() => searchInputRef.current?.focus());
@@ -976,6 +1087,10 @@ export function NativeTerminalArea({
   const diagnosticComposition = lastImeDiagnostic?.composing ? "composing" : "idle";
   const diagnosticCandidate = formatCandidateRect(lastImeDiagnostic);
   const diagnosticLastEvent = formatImeEventSummary(lastImeDiagnostic);
+  const startupMessage =
+    spawnStatus === "failed"
+      ? `Failed to start ${shellDisplayName(shell)}${spawnError ? `: ${spawnError}` : ""}`
+      : `${dims ? "Starting" : "Preparing"} ${shellDisplayName(shell)}...`;
 
   return (
     <div className={styles.terminalArea}>
@@ -1126,6 +1241,24 @@ export function NativeTerminalArea({
                 </button>
               </div>
             )}
+            {terminalWarning && (
+              <div
+                className={`${styles.writeErrorBadge} ${writeError ? styles.terminalWarningBadgeStacked : styles.terminalWarningBadge}`}
+                role="status"
+              >
+                <span>Terminal degraded</span>
+                <span className={styles.writeErrorDetail}>{terminalWarning}</span>
+                <button
+                  type="button"
+                  className={styles.writeErrorDismiss}
+                  onClick={() => setTerminalWarning(null)}
+                  aria-label="Dismiss terminal warning"
+                  title="Dismiss"
+                >
+                  <X size={12} aria-hidden="true" />
+                </button>
+              </div>
+            )}
             <TerminalCanvas
               key={canvasKey ?? undefined}
               terminalId={terminalId}
@@ -1139,6 +1272,7 @@ export function NativeTerminalArea({
               preferAiInputAnchor={aiCli.active}
               showInputDiagnosticsOverlay={false}
               snapshotOverride={snapshotOverlay?.grid}
+              liveSnapshot={snapshot}
               writeBytes={writeTerminalBytes}
               onCanvasRef={setCanvasEl}
               onInputRef={setCanvasInputEl}
@@ -1146,7 +1280,14 @@ export function NativeTerminalArea({
               onOpenUrl={onOpenUrl}
             />
           </div>
-        ) : null}
+        ) : (
+          <div className={styles.terminalViewport} data-state={spawnStatus === "failed" ? "failed" : "starting"}>
+            <div className={styles.terminalStarting} role="status" aria-live="polite">
+              <span className={styles.terminalStartingDot} aria-hidden="true" />
+              <span>{startupMessage}</span>
+            </div>
+          </div>
+        )}
       </div>
       <IMEInputBar ref={imeBarRef} onSubmit={sendIMEBytes} onRequestCanvasFocus={focusCanvas} />
     </div>

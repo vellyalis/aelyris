@@ -225,7 +225,11 @@ export function PaneSwitcherDialog({
                 className={styles.panel}
                 initial={reduceMotion ? false : { opacity: 0, x: "-50%", y: -18, scale: 0.98 }}
                 animate={{ opacity: 1, x: "-50%", y: 0, scale: 1 }}
-                exit={reduceMotion ? { opacity: 1, x: "-50%", y: 0, scale: 1 } : { opacity: 0, x: "-50%", y: -10, scale: 0.98 }}
+                exit={
+                  reduceMotion
+                    ? { opacity: 1, x: "-50%", y: 0, scale: 1 }
+                    : { opacity: 0, x: "-50%", y: -10, scale: 0.98 }
+                }
                 transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 32 }}
               >
                 <Command label="Switch terminal pane" loop shouldFilter>
@@ -233,12 +237,16 @@ export function PaneSwitcherDialog({
                     <div className={styles.titleBlock}>
                       <Dialog.Title className={styles.title}>Switch Terminal Pane</Dialog.Title>
                       <Dialog.Description className="sr-only">
-                        Filter panes by tab, role, title, shell, cwd, or PTY. Use arrow keys and Enter to focus a
-                        pane.
+                        Filter panes by tab, role, title, shell, cwd, or PTY. Use arrow keys and Enter to focus a pane.
                       </Dialog.Description>
                       <div className={styles.subtitle}>tmux choose-tree · live panes</div>
                     </div>
-                    <span className={styles.count} title="Live panes" aria-label={`${choices.length} live panes`}>
+                    <span
+                      className={styles.count}
+                      title={`${choices.length} live panes`}
+                      role="status"
+                      aria-label={`${choices.length} live panes`}
+                    >
                       {choices.length}
                     </span>
                   </div>

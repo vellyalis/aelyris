@@ -36,9 +36,7 @@ describe("KanbanBoard store subscription", () => {
     // Strip line/block comments before negative-asserting on the
     // unselectored `useAppStore()` form — the explanatory comment
     // about the bug intentionally references the bad pattern.
-    const stripped = src
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/\/\/.*$/gm, "");
+    const stripped = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 
     // The unselectored form `useAppStore()` re-renders on every store
     // mutation app-wide and is the bug we're guarding against.

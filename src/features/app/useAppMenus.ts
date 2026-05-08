@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useMemo } from "react";
 import type { ShellType, TerminalPaneTarget } from "../../App";
+import { formatFallbackError, reportInvokeFailure } from "../../shared/lib/fallbackTelemetry";
 import { formatOperationalPaneChoice, resolveOperationalPaneChoice } from "../../shared/lib/operationalPaneSelection";
 import { normalizeCommandInput } from "../../shared/lib/terminalInput";
 import { toast } from "../../shared/store/toastStore";
@@ -43,6 +44,10 @@ interface UseAppMenusOptions {
   openPaneSwitcher?: () => void;
   focusNextPane?: () => void | Promise<void>;
   focusPreviousPane?: () => void | Promise<void>;
+  movePaneNext?: () => void | Promise<void>;
+  movePanePrevious?: () => void | Promise<void>;
+  equalizePanes?: () => void | Promise<void>;
+  tilePanes?: () => void | Promise<void>;
   panes?: TerminalPaneTarget[];
   activeTabId: string;
   activeFile: string | null;
@@ -72,6 +77,10 @@ export function useAppMenus(opts: UseAppMenusOptions) {
     openPaneSwitcher,
     focusNextPane,
     focusPreviousPane,
+    movePaneNext,
+    movePanePrevious,
+    equalizePanes,
+    tilePanes,
     panes = [],
     activeTabId,
     activeFile,
@@ -136,7 +145,18 @@ export function useAppMenus(opts: UseAppMenusOptions) {
       try {
         const { invoke } = await import("@tauri-apps/api/core");
         type PaneInfo = { name: string; role: string; shell_type: string; cwd: string };
-        const panes = await invoke<PaneInfo[]>("list_panes_info").catch(() => []);
+        let panes: PaneInfo[] = [];
+        try {
+          panes = await invoke<PaneInfo[]>("list_panes_info");
+        } catch (err) {
+          reportInvokeFailure({
+            source: "app-menu",
+            operation: "list_panes_info",
+            err,
+            severity: "warning",
+          });
+          toast.warning("Pane list unavailable", formatFallbackError(err));
+        }
         const targets = panes
           .flatMap((pane) => [pane.name ? pane.name : null, pane.role ? `@${pane.role}` : null])
           .filter((target): target is string => !!target)
@@ -172,7 +192,20 @@ export function useAppMenus(opts: UseAppMenusOptions) {
         });
         if (!text?.trim()) return;
         const { invoke } = await import("@tauri-apps/api/core");
-        const panes = await invoke<unknown[]>("list_panes_info").catch(() => []);
+        let panes: unknown[];
+        try {
+          panes = await invoke<unknown[]>("list_panes_info");
+        } catch (err) {
+          reportInvokeFailure({
+            source: "app-menu",
+            operation: "list_panes_info",
+            err,
+            severity: "error",
+            userVisible: true,
+          });
+          toast.error("Broadcast unavailable", formatFallbackError(err));
+          return;
+        }
         if (panes.length < 1) {
           toast.error("Broadcast unavailable", "No live terminal panes are available.");
           return;
@@ -185,7 +218,20 @@ export function useAppMenus(opts: UseAppMenusOptions) {
             cancelLabel: "Review first",
           });
           if (!ok) return;
-          const refreshedPanes = await invoke<unknown[]>("list_panes_info").catch(() => []);
+          let refreshedPanes: unknown[];
+          try {
+            refreshedPanes = await invoke<unknown[]>("list_panes_info");
+          } catch (err) {
+            reportInvokeFailure({
+              source: "app-menu",
+              operation: "list_panes_info",
+              err,
+              severity: "error",
+              userVisible: true,
+            });
+            toast.error("Broadcast target check failed", formatFallbackError(err));
+            return;
+          }
           if (refreshedPanes.length < 1) {
             toast.error("Broadcast target changed", "No live terminal panes are available.");
             return;
@@ -377,6 +423,46 @@ export function useAppMenus(opts: UseAppMenusOptions) {
         action: () => void focusPreviousPane?.(),
       },
       {
+        id: "move-terminal-pane-next",
+        label: "Move Pane Next",
+        description: "Swap the active pane with the next pane in tmux order",
+        shortcut: "Ctrl+B }",
+        category: "Terminal",
+        icon: TerminalIcon,
+        keywords: ["tmux", "swap-pane", "move", "pane"],
+        action: () => void movePaneNext?.(),
+      },
+      {
+        id: "move-terminal-pane-previous",
+        label: "Move Pane Previous",
+        description: "Swap the active pane with the previous pane in tmux order",
+        shortcut: "Ctrl+B {",
+        category: "Terminal",
+        icon: TerminalIcon,
+        keywords: ["tmux", "swap-pane", "move", "pane"],
+        action: () => void movePanePrevious?.(),
+      },
+      {
+        id: "equalize-terminal-panes",
+        label: "Equalize Pane Sizes",
+        description: "Reset terminal split ratios to even sizes",
+        shortcut: "Ctrl+B =",
+        category: "Terminal",
+        icon: TerminalIcon,
+        keywords: ["tmux", "resize-pane", "even", "layout"],
+        action: () => void equalizePanes?.(),
+      },
+      {
+        id: "tile-terminal-panes",
+        label: "Tile Terminal Panes",
+        description: "Rebuild terminal panes into a balanced tiled layout",
+        shortcut: "Ctrl+B Space",
+        category: "Terminal",
+        icon: TerminalIcon,
+        keywords: ["tmux", "select-layout", "tiled", "even"],
+        action: () => void tilePanes?.(),
+      },
+      {
         id: "send-to-pane",
         label: "Send Command to Pane...",
         description: "Route input to a named pane or role",
@@ -543,6 +629,10 @@ export function useAppMenus(opts: UseAppMenusOptions) {
       switchTerminalPane,
       focusNextPane,
       focusPreviousPane,
+      movePaneNext,
+      movePanePrevious,
+      equalizePanes,
+      tilePanes,
       enableImeTrace,
       copyImeTrace,
       disableImeTrace,
@@ -567,8 +657,20 @@ export function useAppMenus(opts: UseAppMenusOptions) {
               const name = await showPrompt("New File", { placeholder: "file name..." });
               if (name && projectPath) {
                 const { invoke } = await import("@tauri-apps/api/core");
-                await invoke("create_file", { path: `${projectPath}/${name}` }).catch(() => {});
-                handleFileSelect(`${projectPath}/${name}`);
+                const path = `${projectPath}/${name}`;
+                try {
+                  await invoke("create_file", { path });
+                  handleFileSelect(path);
+                } catch (err) {
+                  reportInvokeFailure({
+                    source: "app-menu",
+                    operation: "create_file",
+                    err,
+                    severity: "error",
+                    userVisible: true,
+                  });
+                  toast.error("Create file failed", formatFallbackError(err));
+                }
               }
             },
           },
@@ -624,6 +726,10 @@ export function useAppMenus(opts: UseAppMenusOptions) {
           { label: "Switch Terminal Pane...", shortcut: "Ctrl+Shift+`", action: switchTerminalPane },
           { label: "Focus Next Pane", shortcut: "Ctrl+Shift+]", action: () => void focusNextPane?.() },
           { label: "Focus Previous Pane", shortcut: "Ctrl+Shift+[", action: () => void focusPreviousPane?.() },
+          { label: "Move Pane Next", shortcut: "Ctrl+B }", action: () => void movePaneNext?.() },
+          { label: "Move Pane Previous", shortcut: "Ctrl+B {", action: () => void movePanePrevious?.() },
+          { label: "Equalize Pane Sizes", shortcut: "Ctrl+B =", action: () => void equalizePanes?.() },
+          { label: "Tile Panes", shortcut: "Ctrl+B Space", action: () => void tilePanes?.() },
           { divider: true, label: "" },
           { label: "Send Command to Pane...", action: sendToPaneTarget },
           { label: "Broadcast Command to All Panes...", action: broadcastToAllPanes },
@@ -657,6 +763,10 @@ export function useAppMenus(opts: UseAppMenusOptions) {
       switchTerminalPane,
       focusNextPane,
       focusPreviousPane,
+      movePaneNext,
+      movePanePrevious,
+      equalizePanes,
+      tilePanes,
       enableImeTrace,
       copyImeTrace,
       disableImeTrace,

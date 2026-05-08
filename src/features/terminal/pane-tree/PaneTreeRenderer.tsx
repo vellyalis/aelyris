@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SplitPane } from "../../../shared/ui/SplitPane";
+import { TERMINAL_PREFIX_COMMAND_EVENT } from "../hooks/useCanvasIME";
 import { NativeTerminalArea } from "../NativeTerminalArea";
 import { TerminalInfoBar } from "../TerminalInfoBar";
 import type { PaneRestartRequest } from "./PaneTreeContainer";
@@ -15,10 +16,14 @@ interface PaneTreeRendererProps {
    * spawning; consumers must gracefully fall back while it is absent.
    */
   terminalIds: Map<string, string>;
+  paneLifecycleStates?: ReadonlyMap<string, PaneLifecycleState>;
   onFocusPane: (id: string) => void;
   onSplit: (id: string, direction: SplitDirection) => void;
   onClose: (id: string) => void;
   onResize: (splitId: string, ratio: number) => void;
+  onLayoutCommand?: (
+    command: "equalize" | "even-horizontal" | "even-vertical" | "tiled" | "move-next" | "move-previous",
+  ) => void;
   onToggleMaximize: (id: string) => void;
   onRenamePane: (id: string, title: string | null) => void;
   onCyclePaneRole: (id: string) => void;
@@ -62,10 +67,12 @@ export function PaneTreeRenderer({
   activePaneId,
   maximizedPaneId,
   terminalIds,
+  paneLifecycleStates,
   onFocusPane,
   onSplit,
   onClose,
   onResize,
+  onLayoutCommand,
   onToggleMaximize,
   onRenamePane,
   onCyclePaneRole,
@@ -224,6 +231,51 @@ export function PaneTreeRenderer({
     scheduleUpdate();
   }, [layoutMeasurementKey, scheduleUpdate]);
 
+  useEffect(() => {
+    const onPrefixCommand = (event: Event) => {
+      const detail = (event as CustomEvent<{ terminalId?: string; command?: string }>).detail;
+      if (!detail?.terminalId || !detail.command) return;
+      const paneId = [...terminalIds.entries()].find(([, terminalId]) => terminalId === detail.terminalId)?.[0];
+      if (!paneId) return;
+      switch (detail.command) {
+        case "split-right":
+          onSplit(paneId, "right");
+          break;
+        case "split-down":
+          onSplit(paneId, "down");
+          break;
+        case "close":
+          if (canClose) onClose(paneId);
+          break;
+        case "toggle-maximize":
+          onToggleMaximize(paneId);
+          break;
+        case "focus-next":
+          onFocusPane(nextPaneId(currentLeaves, paneId, 1));
+          break;
+        case "focus-previous":
+          onFocusPane(nextPaneId(currentLeaves, paneId, -1));
+          break;
+        case "move-next":
+          onFocusPane(paneId);
+          onLayoutCommand?.("move-next");
+          break;
+        case "move-previous":
+          onFocusPane(paneId);
+          onLayoutCommand?.("move-previous");
+          break;
+        case "equalize":
+          onLayoutCommand?.("equalize");
+          break;
+        case "tiled":
+          onLayoutCommand?.("tiled");
+          break;
+      }
+    };
+    document.addEventListener(TERMINAL_PREFIX_COMMAND_EVENT, onPrefixCommand);
+    return () => document.removeEventListener(TERMINAL_PREFIX_COMMAND_EVENT, onPrefixCommand);
+  }, [canClose, currentLeaves, onClose, onFocusPane, onLayoutCommand, onSplit, onToggleMaximize, terminalIds]);
+
   return (
     <div ref={rootRef} className={styles.paneRoot}>
       {/* Layer 1: Layout tree (invisible slots for sizing) */}
@@ -265,7 +317,17 @@ export function PaneTreeRenderer({
         // of the pane.  This survives maximize (non-max slots get rect=0
         // via display:none) without unmounting and re-spawning the PTY.
         if (hasRealSize) initializedRef.current.add(leaf.id);
-        const shouldMount = !suspendTerminalMounts && (hasRealSize || initializedRef.current.has(leaf.id));
+        const lifecycle = paneLifecycleStates?.get(leaf.id);
+        const terminalId = terminalIds.get(leaf.id) ?? null;
+        const shouldSuspendForLeaf =
+          suspendTerminalMounts && lifecycle !== "starting" && lifecycle !== "restarting";
+        const shouldHoldForAttach =
+          !terminalId &&
+          (lifecycle === "detached" ||
+            lifecycle === "exited" ||
+            lifecycle === "crashed");
+        const shouldMount =
+          !shouldSuspendForLeaf && !shouldHoldForAttach && (hasRealSize || initializedRef.current.has(leaf.id));
 
         return (
           // biome-ignore lint/a11y/noStaticElementInteractions: the terminal mount itself claims focus without changing keyboard semantics.
@@ -290,7 +352,7 @@ export function PaneTreeRenderer({
             <TerminalInfoBar
               shell={SHELL_LABELS[leaf.shell] ?? leaf.shell}
               cwd={leaf.cwd}
-              terminalId={terminalIds.get(leaf.id) ?? null}
+              terminalId={terminalId}
               paneTitle={leaf.title}
               paneRole={leaf.role}
               isActive={isActive}
@@ -303,16 +365,35 @@ export function PaneTreeRenderer({
               onToggleMaximize={() => onToggleMaximize(leaf.id)}
               onClose={canClose ? () => onClose(leaf.id) : undefined}
             />
-            {shouldMount && (
+            {shouldMount ? (
               <NativeTerminalArea
                 shell={leaf.shell as ShellKind}
                 cwd={leaf.cwd}
-                attachedTerminalId={terminalIds.get(leaf.id) ?? null}
+                attachedTerminalId={terminalId}
                 onTerminalReady={(tid) => onTerminalReady(leaf.id, tid)}
                 onLifecycleChange={(lifecycle) => onPaneLifecycleChange?.(leaf.id, lifecycle)}
                 restartRequest={restartPaneRequest?.paneId === leaf.id ? restartPaneRequest : null}
               />
-            )}
+            ) : shouldHoldForAttach ? (
+              <div className={styles.lifecyclePlaceholder} data-lifecycle={lifecycle}>
+                <span>
+                  {lifecycle === "detached" ? "Detached pane" : lifecycle === "crashed" ? "Crashed pane" : "Ended pane"}
+                </span>
+                <button
+                  type="button"
+                  onMouseDown={(event) => {
+                    event.stopPropagation();
+                    onPaneLifecycleChange?.(leaf.id, "starting");
+                  }}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onPaneLifecycleChange?.(leaf.id, "starting");
+                  }}
+                >
+                  New shell
+                </button>
+              </div>
+            ) : null}
           </div>
         );
       })}
@@ -349,6 +430,12 @@ function collectLeaves(tree: PaneNode): LeafInfo[] {
     return [{ id: tree.id, shell: tree.shell, cwd: tree.cwd, title: tree.title, role: tree.role }];
   }
   return [...collectLeaves(tree.first), ...collectLeaves(tree.second)];
+}
+
+function nextPaneId(leaves: readonly LeafInfo[], paneId: string, delta: 1 | -1): string {
+  const index = leaves.findIndex((leaf) => leaf.id === paneId);
+  if (index < 0 || leaves.length === 0) return paneId;
+  return leaves[(index + delta + leaves.length) % leaves.length].id;
 }
 
 /** Shallow structural equality over two rect maps (same keys, same L/T/W/H). */

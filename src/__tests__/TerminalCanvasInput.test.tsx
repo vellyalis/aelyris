@@ -1,12 +1,12 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-import { findAiCliInputAnchor, TerminalCanvas } from "../features/terminal/TerminalCanvas";
 import {
   disableImeDiagnostics,
   enableImeDiagnostics,
   IME_DIAGNOSTIC_EVENT,
+  TERMINAL_PREFIX_COMMAND_EVENT,
 } from "../features/terminal/hooks/useCanvasIME";
+import { findAiCliInputAnchor, TerminalCanvas } from "../features/terminal/TerminalCanvas";
 import { CellAttr, type CellSnapshot, type GridSnapshot } from "../shared/types/terminal";
 
 const invokeMock = vi.fn((_cmd: string, _args?: Record<string, unknown>) => Promise.resolve());
@@ -45,6 +45,12 @@ function renderCanvas(writeBytes?: (id: string, data: string) => void) {
   const canvas = utils.getByTestId("terminal-canvas") as HTMLCanvasElement;
   const textarea = utils.getByTestId("terminal-ime-textarea") as HTMLTextAreaElement;
   return { ...utils, canvas, textarea };
+}
+
+function canvasContainer(canvas: HTMLCanvasElement): HTMLElement {
+  const container = canvas.parentElement;
+  if (!container) throw new Error("expected terminal canvas container");
+  return container;
 }
 
 function cell(ch = " "): CellSnapshot {
@@ -163,6 +169,23 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
     const { textarea } = renderCanvas(writeBytes);
     dispatchKey(textarea, { key: "c", ctrlKey: true });
     expect(writeBytes).toHaveBeenCalledWith("t1", "\x03");
+  });
+
+  it("uses Ctrl+B as a terminal prefix without sending bytes to the PTY", () => {
+    const writeBytes = vi.fn();
+    const { textarea } = renderCanvas(writeBytes);
+    const commands: string[] = [];
+    textarea.addEventListener(TERMINAL_PREFIX_COMMAND_EVENT, (event) => {
+      commands.push((event as CustomEvent<{ command: string }>).detail.command);
+    });
+
+    const prefix = dispatchKey(textarea, { key: "b", ctrlKey: true });
+    const split = dispatchKey(textarea, { key: "%" });
+
+    expect(prefix.defaultPrevented).toBe(true);
+    expect(split.defaultPrevented).toBe(true);
+    expect(writeBytes).not.toHaveBeenCalled();
+    expect(commands).toEqual(["split-right"]);
   });
 
   it("lets Ctrl+Alt printable input use the browser input path for AltGr-style layouts", () => {
@@ -396,21 +419,25 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
 
   it("container owns tabIndex=0; canvas stays at -1 to avoid focus-loop with the container", () => {
     const { canvas } = renderCanvas();
-    const container = canvas.parentElement!;
+    const container = canvasContainer(canvas);
     expect(container.tabIndex).toBe(0);
     expect(canvas.tabIndex).toBe(-1);
   });
 
   it("programmatic canvas.focus() still redirects to the IME textarea", () => {
     const { canvas, textarea } = renderCanvas();
-    canvas.focus();
+    act(() => {
+      canvas.focus();
+    });
     expect(document.activeElement).toBe(textarea);
   });
 
   it("tabbing into the container also forwards focus into the textarea", () => {
     const { canvas, textarea } = renderCanvas();
-    const container = canvas.parentElement!;
-    container.focus();
+    const container = canvasContainer(canvas);
+    act(() => {
+      container.focus();
+    });
     expect(document.activeElement).toBe(textarea);
   });
 
@@ -471,13 +498,18 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
     expect(swappedWrite).toHaveBeenCalledWith("t1", "今日");
   });
 
-  it("mousedown on the container focuses the textarea (click-to-type)", () => {
+  it("mousedown on the container focuses the textarea (click-to-type)", async () => {
     const writeBytes = vi.fn();
     const { canvas, textarea } = renderCanvas(writeBytes);
     // Blur first so we can measure the change.
-    (document.activeElement as HTMLElement | null)?.blur();
-    const container = canvas.parentElement!;
-    fireEvent.mouseDown(container);
+    act(() => {
+      (document.activeElement as HTMLElement | null)?.blur();
+    });
+    const container = canvasContainer(canvas);
+    await act(async () => {
+      fireEvent.mouseDown(container);
+      await Promise.resolve();
+    });
     expect(document.activeElement).toBe(textarea);
   });
 
@@ -496,7 +528,7 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
     expect(overlay.style.top).toBe("18px");
     expect(textarea.style.left).toBe("0px");
     expect(textarea.style.top).toBe("18px");
-    expect(textarea.style.paddingLeft).toBe("0px");
+    expect(textarea.style.paddingLeft).toBe("24px");
     expect(textarea.style.width).toBe("32px");
   });
 
@@ -564,7 +596,7 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
     expect(parseFloat(textarea.style.left) + parseFloat(textarea.style.width)).toBeLessThanOrEqual(
       parseFloat(canvas.style.width),
     );
-    expect(textarea.style.paddingLeft).toBe("0px");
+    expect(textarea.style.paddingLeft).toBe("24px");
   });
 
   it("does not reset the hidden textarea scroll position while Windows IME owns long composition editing", () => {
@@ -692,6 +724,7 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
     expect(args.candidateX).toBeLessThan(args.x);
     expect(parseFloat(textarea.style.left)).toBeLessThan(args.x);
     expect(textarea.style.width).toBe("440px");
+    expect(parseFloat(textarea.style.left) + parseFloat(textarea.style.paddingLeft)).toBe(args.x);
   });
 
   it("recomputes IME anchor after resize without devicePixelRatio scaling drift", () => {
@@ -778,17 +811,33 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
     const writeBytes = vi.fn();
     const { getAllByTestId } = render(
       <>
-        <TerminalCanvas terminalId="t1" cols={4} rows={2} snapshotOverride={snapshotWithCursor(0, 1)} writeBytes={writeBytes} />
-        <TerminalCanvas terminalId="t2" cols={4} rows={2} snapshotOverride={snapshotWithCursor(1, 2)} writeBytes={writeBytes} />
+        <TerminalCanvas
+          terminalId="t1"
+          cols={4}
+          rows={2}
+          snapshotOverride={snapshotWithCursor(0, 1)}
+          writeBytes={writeBytes}
+        />
+        <TerminalCanvas
+          terminalId="t2"
+          cols={4}
+          rows={2}
+          snapshotOverride={snapshotWithCursor(1, 2)}
+          writeBytes={writeBytes}
+        />
       </>,
     );
     const [firstTextarea, secondTextarea] = getAllByTestId("terminal-ime-textarea") as HTMLTextAreaElement[];
 
-    secondTextarea.focus();
+    act(() => {
+      secondTextarea.focus();
+    });
     fireEvent.compositionStart(secondTextarea);
     fireEvent.compositionEnd(secondTextarea, { data: "二" });
 
-    firstTextarea.focus();
+    act(() => {
+      firstTextarea.focus();
+    });
     fireEvent.compositionStart(firstTextarea);
     fireEvent.compositionEnd(firstTextarea, { data: "一" });
 
@@ -899,7 +948,14 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
       },
     };
     const { container } = render(
-      <TerminalCanvas terminalId="t1" cols={80} rows={4} fontSize={14} snapshotOverride={snapshot} preferAiInputAnchor />,
+      <TerminalCanvas
+        terminalId="t1"
+        cols={80}
+        rows={4}
+        fontSize={14}
+        snapshotOverride={snapshot}
+        preferAiInputAnchor
+      />,
     );
     const textarea = container.querySelector("[data-testid='terminal-ime-textarea']") as HTMLTextAreaElement;
 

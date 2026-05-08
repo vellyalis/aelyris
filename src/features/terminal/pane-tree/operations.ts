@@ -37,7 +37,7 @@ export function splitPane(
   if (tree.type === "terminal") {
     if (tree.id !== targetId) return tree;
     const { direction, newFirst } = splitDirectionToTree(splitDir);
-    const newLeaf = createLeaf(shell, cwd);
+    const newLeaf = createLeaf(tree.shell ?? shell, tree.cwd ?? cwd);
     return {
       type: "split",
       id: `split-${uid()}`,
@@ -48,11 +48,11 @@ export function splitPane(
     };
   }
 
-  return {
-    ...tree,
-    first: splitPane(tree.first, targetId, splitDir, shell, cwd),
-    second: splitPane(tree.second, targetId, splitDir, shell, cwd),
-  };
+  const first = splitPane(tree.first, targetId, splitDir, shell, cwd);
+  if (first !== tree.first) return { ...tree, first };
+  const second = splitPane(tree.second, targetId, splitDir, shell, cwd);
+  if (second !== tree.second) return { ...tree, second };
+  return tree;
 }
 
 /** Remove a terminal leaf. Returns null if the entire tree is removed. */
@@ -62,29 +62,78 @@ export function removePane(tree: PaneNode, targetId: string): PaneNode | null {
   }
 
   const first = removePane(tree.first, targetId);
+  if (first === null) return tree.second;
+  if (first !== tree.first) return { ...tree, first };
+
   const second = removePane(tree.second, targetId);
+  if (second === null) return tree.first;
+  if (second !== tree.second) return { ...tree, second };
 
-  if (first === null) return second;
-  if (second === null) return first;
-
-  return { ...tree, first, second };
+  return tree;
 }
 
 /** Update the split ratio for a specific split node */
 export function updateRatio(tree: PaneNode, splitId: string, ratio: number): PaneNode {
   if (tree.type === "terminal") return tree;
   if (tree.id === splitId) return { ...tree, ratio };
+  const first = updateRatio(tree.first, splitId, ratio);
+  if (first !== tree.first) return { ...tree, first };
+  const second = updateRatio(tree.second, splitId, ratio);
+  if (second !== tree.second) return { ...tree, second };
+  return tree;
+}
+
+/** Set every split ratio to 50/50 without touching terminal leaf ids. */
+export function equalizePaneRatios(tree: PaneNode): PaneNode {
+  if (tree.type === "terminal") return tree;
   return {
     ...tree,
-    first: updateRatio(tree.first, splitId, ratio),
-    second: updateRatio(tree.second, splitId, ratio),
+    ratio: 0.5,
+    first: equalizePaneRatios(tree.first),
+    second: equalizePaneRatios(tree.second),
   };
+}
+
+/** Rebuild the current leaves into an even tree along one direction. */
+export function rebalancePaneLayout(tree: PaneNode, direction: "horizontal" | "vertical" | "tiled"): PaneNode {
+  const leaves = collectLeaves(tree);
+  if (leaves.length <= 1) return tree;
+  if (direction === "tiled") return buildTiledPaneTree(leaves);
+  return buildBalancedPaneTree(leaves, direction);
+}
+
+/** Swap two terminal leaves, including pane ids, so PTY bindings move visually. */
+export function swapPanes(tree: PaneNode, paneA: string, paneB: string): PaneNode {
+  if (paneA === paneB) return tree;
+  const a = findLeaf(tree, paneA);
+  const b = findLeaf(tree, paneB);
+  if (!a || !b) return tree;
+  return mapLeaves(tree, (leaf) => {
+    if (leaf.id === paneA) return b;
+    if (leaf.id === paneB) return a;
+    return leaf;
+  });
+}
+
+/** Move a pane one step in tree order, matching tmux swap-pane -U/-D for quick rearrangement. */
+export function movePaneInOrder(tree: PaneNode, paneId: string, delta: 1 | -1): PaneNode {
+  const leaves = collectLeaves(tree);
+  const index = leaves.findIndex((leaf) => leaf.id === paneId);
+  if (index < 0 || leaves.length <= 1) return tree;
+  const targetIndex = (index + delta + leaves.length) % leaves.length;
+  return swapPanes(tree, leaves[index].id, leaves[targetIndex].id);
 }
 
 /** Collect all terminal leaf IDs in tree order (for navigation) */
 export function collectLeafIds(tree: PaneNode): string[] {
   if (tree.type === "terminal") return [tree.id];
   return [...collectLeafIds(tree.first), ...collectLeafIds(tree.second)];
+}
+
+/** Collect terminal leaves in tree order. */
+export function collectLeaves(tree: PaneNode): TerminalLeaf[] {
+  if (tree.type === "terminal") return [tree];
+  return [...collectLeaves(tree.first), ...collectLeaves(tree.second)];
 }
 
 /** Count terminal leaves */
@@ -141,11 +190,11 @@ export function updateLeafMeta(
     return next;
   }
 
-  return {
-    ...tree,
-    first: updateLeafMeta(tree.first, targetId, patch),
-    second: updateLeafMeta(tree.second, targetId, patch),
-  };
+  const first = updateLeafMeta(tree.first, targetId, patch);
+  if (first !== tree.first) return { ...tree, first };
+  const second = updateLeafMeta(tree.second, targetId, patch);
+  if (second !== tree.second) return { ...tree, second };
+  return tree;
 }
 
 /** Return a compact title, or undefined when the label should be cleared. */
@@ -193,6 +242,41 @@ function collectLeafTitles(tree: PaneNode): { id: string; title: string }[] {
     return tree.title ? [{ id: tree.id, title: tree.title }] : [];
   }
   return [...collectLeafTitles(tree.first), ...collectLeafTitles(tree.second)];
+}
+
+function mapLeaves(tree: PaneNode, map: (leaf: TerminalLeaf) => TerminalLeaf): PaneNode {
+  if (tree.type === "terminal") return map(tree);
+  return {
+    ...tree,
+    first: mapLeaves(tree.first, map),
+    second: mapLeaves(tree.second, map),
+  };
+}
+
+function buildBalancedPaneTree(leaves: readonly TerminalLeaf[], direction: "horizontal" | "vertical"): PaneNode {
+  if (leaves.length === 1) return leaves[0];
+  const midpoint = Math.ceil(leaves.length / 2);
+  return {
+    type: "split",
+    id: `split-${uid()}`,
+    direction,
+    ratio: 0.5,
+    first: buildBalancedPaneTree(leaves.slice(0, midpoint), direction),
+    second: buildBalancedPaneTree(leaves.slice(midpoint), direction),
+  };
+}
+
+function buildTiledPaneTree(leaves: readonly TerminalLeaf[], depth = 0): PaneNode {
+  if (leaves.length === 1) return leaves[0];
+  const midpoint = Math.ceil(leaves.length / 2);
+  return {
+    type: "split",
+    id: `split-${uid()}`,
+    direction: depth % 2 === 0 ? "horizontal" : "vertical",
+    ratio: 0.5,
+    first: buildTiledPaneTree(leaves.slice(0, midpoint), depth + 1),
+    second: buildTiledPaneTree(leaves.slice(midpoint), depth + 1),
+  };
 }
 
 function collectPaneRegistryInto(

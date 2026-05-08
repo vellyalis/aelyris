@@ -254,7 +254,8 @@ function blockedReason(session: AgentSession): string | undefined {
   const watchdogLog = [...session.logs]
     .reverse()
     .find((log) => log.metadata?.event === "watchdog_decision" || log.type === "error");
-  if (watchdogLog?.metadata?.decision === "manual") return `Awaiting approval for ${watchdogLog.metadata.toolName ?? "tool"}`;
+  if (watchdogLog?.metadata?.decision === "manual")
+    return `Awaiting approval for ${watchdogLog.metadata.toolName ?? "tool"}`;
   if (watchdogLog?.metadata?.decision === "denied") return `Denied ${watchdogLog.metadata.toolName ?? "tool"}`;
   if (watchdogLog?.type === "error") return watchdogLog.content;
   if (session.status === "waiting") return "Waiting for approval";
@@ -467,7 +468,13 @@ export function buildWorkstationGraph(input: WorkstationGraphInput): Workstation
     for (const detail of session.changedFileDetails ?? []) {
       const filePath = normalizePath(detail.path);
       const fileNodeId = nodeId("file", filePath);
-      addNode(nodes, { id: fileNodeId, kind: "file", label: fileName(filePath), path: filePath, status: detail.action });
+      addNode(nodes, {
+        id: fileNodeId,
+        kind: "file",
+        label: fileName(filePath),
+        path: filePath,
+        status: detail.action,
+      });
       addEdge(edges, agentNodeId, fileNodeId, detail.action === "create" ? "wrote" : "changed", {
         toolName: detail.toolName,
         timestamp: detail.timestamp,

@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import styles from "./LoadingSkeleton.module.css";
 
 interface LoadingSkeletonProps {
@@ -29,13 +29,16 @@ export const LoadingSkeleton = memo(function LoadingSkeleton({
   static: isStatic,
   label = "Loading",
 }: LoadingSkeletonProps) {
-  const shapeClass =
-    variant === "card" ? styles.card : variant === "line" ? styles.line : styles.row;
+  const shapeClass = variant === "card" ? styles.card : variant === "line" ? styles.line : styles.row;
   const staticClass = isStatic ? ` ${styles.static}` : "";
+  const skeletonKeys = useMemo(
+    () => Array.from({ length: count }, (_, i) => `skeleton-${variant}-${count}-${i}`),
+    [count, variant],
+  );
   return (
     <div className={styles.stack} role="status" aria-live="polite" aria-label={label}>
-      {Array.from({ length: count }, (_, i) => (
-        <div key={i} className={`${shapeClass}${staticClass}`} aria-hidden="true" />
+      {skeletonKeys.map((key) => (
+        <div key={key} className={`${shapeClass}${staticClass}`} aria-hidden="true" />
       ))}
     </div>
   );

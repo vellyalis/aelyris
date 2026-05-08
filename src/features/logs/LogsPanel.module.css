@@ -28,6 +28,8 @@
   display: inline-flex;
   min-width: 0;
   width: 100%;
+  margin: 0;
+  padding: 0;
   background: rgba(2, 8, 16, 0.12);
   border: 1px solid rgba(124, 214, 235, 0.035);
   border-radius: var(--radius-sm);

@@ -40,7 +40,7 @@ export function useTerminalCellMetrics(
   fontSize: number = TERMINAL_FONT_SIZE,
   fontFamily: string = TERMINAL_FONT_FAMILY,
 ): TerminalCellMetrics {
-  const [fontEpoch, setFontEpoch] = useState(0);
+  const [_fontEpoch, setFontEpoch] = useState(0);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -60,5 +60,5 @@ export function useTerminalCellMetrics(
     };
   }, []);
 
-  return useMemo(() => measureTerminalCellMetrics(fontSize, fontFamily), [fontSize, fontFamily, fontEpoch]);
+  return useMemo(() => measureTerminalCellMetrics(fontSize, fontFamily), [fontSize, fontFamily]);
 }

@@ -465,6 +465,7 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
         <div className={styles.list}>
           {searchResults.map((entry) => (
             <button
+              type="button"
               key={entry.path}
               className={styles.row}
               style={{ paddingLeft: 8 }}
@@ -472,7 +473,7 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
             >
               <FileIcon type={entry.file_type} />
               <span className={styles.fileName}>{entry.name}</span>
-              <span className={styles.searchPath}>{entry.path.replace(rootPath + "/", "")}</span>
+              <span className={styles.searchPath}>{entry.path.replace(`${rootPath}/`, "")}</span>
             </button>
           ))}
           {searchResults.length === 0 && (
@@ -483,6 +484,7 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
         <>
           {currentRoot !== rootPath && (
             <button
+              type="button"
               className={styles.breadcrumb}
               onClick={() => {
                 const parent = currentRoot.split("/").slice(0, -1).join("/");
@@ -601,6 +603,7 @@ function TreeRow({
       <RadixContextMenu.Root>
         <RadixContextMenu.Trigger asChild>
           <button
+            type="button"
             ref={rowRef}
             className={`${styles.row} ${isFocused ? styles.rowFocused : ""}`}
             style={{ paddingLeft: 8 + entry.depth * 16 }}
@@ -645,7 +648,7 @@ function TreeRow({
             {!entry.is_dir && actions.changedSet.has(entry.path) && actions.onOpenDiff && (
               <>
                 <RadixContextMenu.Separator className={styles.ctxDivider} />
-                <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => actions.onOpenDiff!(entry.path)}>
+                <RadixContextMenu.Item className={styles.ctxItem} onSelect={() => actions.onOpenDiff?.(entry.path)}>
                   Open Diff
                 </RadixContextMenu.Item>
               </>

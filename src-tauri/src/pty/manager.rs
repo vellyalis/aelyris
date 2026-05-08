@@ -26,6 +26,10 @@ struct PtyInstance {
     /// so Tauri UI and the external API can read the same byte stream
     /// without racing for bytes on the physical master.
     output_tx: broadcast::Sender<Vec<u8>>,
+    /// First receiver kept alive across the spawn-to-subscribe gap. Without
+    /// this, a fast shell prompt can be read before UI streaming subscribes,
+    /// making the terminal look blank even though the child already started.
+    initial_rx: Mutex<Option<broadcast::Receiver<Vec<u8>>>>,
     /// Shutdown signal for the reader thread. Cleared in `Drop` so the
     /// thread exits on its next read boundary instead of running until the
     /// child process happens to close master. Belt-and-suspenders on top of
@@ -85,7 +89,7 @@ impl Drop for PtyInstance {
 }
 
 /// Info about an active terminal, safe to serialize and send to frontend
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TerminalInfo {
     pub id: String,
     pub shell_type: ShellType,
@@ -124,8 +128,37 @@ impl PtyManager {
         env.insert("AETHER_SHELL".to_string(), program.clone());
 
         let id = self.spawn_command(&program, &args, cols, rows, cwd, Some(env))?;
+        if let Ok(mut instances) = self.instances.lock() {
+            if let Some(instance) = instances.get_mut(&id) {
+                instance.shell_type = shell.clone();
+            }
+        }
         log::info!("Spawned terminal {} ({:?})", id, shell);
         Ok(id)
+    }
+
+    /// Spawn a shell PTY with a caller-provided id.
+    pub fn spawn_with_id(
+        &self,
+        id: &str,
+        shell: &ShellType,
+        cols: u16,
+        rows: u16,
+        cwd: Option<&str>,
+    ) -> Result<(), String> {
+        let program = shell.program().to_string();
+        let args: Vec<String> = shell.args().into_iter().map(|s| s.to_string()).collect();
+        let mut env = std::collections::HashMap::new();
+        env.insert("AETHER_SHELL".to_string(), program.clone());
+
+        self.spawn_command_with_id(id, &program, &args, cols, rows, cwd, Some(env))?;
+        if let Ok(mut instances) = self.instances.lock() {
+            if let Some(instance) = instances.get_mut(id) {
+                instance.shell_type = shell.clone();
+            }
+        }
+        log::info!("Spawned terminal {} ({:?}) with fixed id", id, shell);
+        Ok(())
     }
 
     /// Spawn a PTY running an arbitrary command (shell, AI CLI, or any program).
@@ -213,13 +246,7 @@ impl PtyManager {
             .try_clone_reader()
             .map_err(|e| format!("Failed to clone PTY reader: {}", e))?;
 
-        let (output_tx, _initial_rx) = broadcast::channel::<Vec<u8>>(OUTPUT_BROADCAST_CAPACITY);
-
-        // Drop the initial receiver so the channel is empty-consumer until the
-        // first subscribe_output call. Keeping the Sender alive in the
-        // PtyInstance plus the Sender clone the reader thread holds is all
-        // that's needed — Receivers are created lazily by subscribers.
-        drop(_initial_rx);
+        let (output_tx, initial_rx) = broadcast::channel::<Vec<u8>>(OUTPUT_BROADCAST_CAPACITY);
 
         let reader_alive = Arc::new(AtomicBool::new(true));
         spawn_reader_thread(
@@ -236,6 +263,7 @@ impl PtyManager {
             cwd: resolved_cwd,
             spawned_at: Instant::now(),
             output_tx,
+            initial_rx: Mutex::new(Some(initial_rx)),
             reader_alive,
             child: Arc::new(Mutex::new(Some(child))),
         };
@@ -296,12 +324,53 @@ impl PtyManager {
         slot.take()
     }
 
+    /// Start a background waiter for a manager-owned child process.
+    ///
+    /// UI-spawned terminals call [`take_child`] directly so the IPC layer can
+    /// emit `pty-exit-*` with an exit code. API/sidecar-spawned terminals do
+    /// not have that UI waiter, so this method takes the child handle and
+    /// removes the session from the manager once the process exits. Dropping
+    /// the `PtyInstance` closes the broadcast sender, which in turn lets API
+    /// and sidecar stream clients observe the session end instead of hanging
+    /// forever on a dead PTY.
+    pub fn reap_child_on_exit(&self, id: &str) -> bool {
+        let Some(mut child) = self.take_child(id) else {
+            return false;
+        };
+        let manager = self.clone();
+        let id = id.to_string();
+        std::thread::Builder::new()
+            .name(format!("pty-reaper-{id}"))
+            .spawn(move || {
+                let status = child.wait();
+                match status {
+                    Ok(status) => {
+                        let exit = ExitInfo::from_status(&status);
+                        log::info!(
+                            "pty {} exited via manager reaper: code={:?} crashed={}",
+                            id,
+                            exit.code,
+                            exit.crashed
+                        );
+                    }
+                    Err(err) => {
+                        log::warn!("pty {} manager reaper wait failed: {}", id, err);
+                    }
+                }
+                if let Err(err) = manager.close(&id) {
+                    log::debug!("pty {} manager reaper close skipped: {}", id, err);
+                }
+            })
+            .is_ok()
+    }
+
     /// Subscribe to a PTY's output stream.
     ///
-    /// Returns a fresh `broadcast::Receiver` on every call. A single
-    /// OS-level reader thread, spawned when the PTY starts, fans out master
-    /// bytes to every subscriber, so UI and API can read the same byte
-    /// stream without racing each other on the physical master.
+    /// Returns the spawn-time receiver for the first subscriber, then a fresh
+    /// `broadcast::Receiver` on later calls. A single OS-level reader thread,
+    /// spawned when the PTY starts, fans out master bytes to every subscriber,
+    /// so UI and API can read the same byte stream without racing each other
+    /// on the physical master.
     ///
     /// Slow subscribers may observe `RecvError::Lagged(n)` when the
     /// capacity-[`OUTPUT_BROADCAST_CAPACITY`] ring overwrites unread chunks.
@@ -313,6 +382,14 @@ impl PtyManager {
         let instance = instances
             .get(id)
             .ok_or_else(|| PtyError::NotFound(id.to_string()))?;
+
+        let mut initial_rx = instance
+            .initial_rx
+            .lock()
+            .map_err(|_| PtyError::LockPoisoned)?;
+        if let Some(rx) = initial_rx.take() {
+            return Ok(rx);
+        }
 
         Ok(instance.output_tx.subscribe())
     }
@@ -403,6 +480,12 @@ impl PtyManager {
     }
 }
 
+impl Default for PtyManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Spawn the single OS-level reader thread for a PTY.
 ///
 /// Runs on a plain `std::thread` because `Read::read` on the portable-pty
@@ -418,12 +501,9 @@ impl PtyManager {
 ///      need to complete, but no further chunks will be published once the
 ///      flag is down.
 ///
-/// `send` failures are intentionally ignored: during the gap between
-/// `spawn_command` returning and the first `subscribe_output`, there are
-/// no receivers, so bytes would otherwise pile up in the OS pipe buffer
-/// until the child process blocks on write. Draining the pipe into the
-/// broadcast channel (and letting the channel drop bytes on the floor when
-/// no one is listening) keeps the child unblocked.
+/// `send` failures are intentionally ignored: once the initial receiver is
+/// consumed and later subscribers disconnect, there may be no receivers.
+/// Draining the pipe into the broadcast channel keeps the child unblocked.
 fn spawn_reader_thread(
     id: String,
     mut reader: Box<dyn Read + Send>,

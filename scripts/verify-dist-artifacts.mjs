@@ -42,7 +42,29 @@ const artifacts = [
   },
 ];
 
+const sidecarName = process.platform === "win32" ? "aether-pty-server-x86_64-pc-windows-msvc.exe" : null;
+if (sidecarName) {
+  artifacts.push({
+    label: "PTY sidecar",
+    path: path.join(repoRoot, "src-tauri", "binaries", sidecarName),
+    minBytes: 1024 * 1024,
+  });
+}
+
 const failures = [];
+const provenanceInputs = [
+  "package.json",
+  "pnpm-lock.yaml",
+  "scripts/build-pty-sidecar.mjs",
+  "scripts/verify-dist-artifacts.mjs",
+  "src-tauri/Cargo.toml",
+  "src-tauri/Cargo.lock",
+  "src-tauri/tauri.conf.json",
+  "src-tauri/tauri.dist.conf.json",
+  "src-tauri/src/pty_sidecar.rs",
+  "src-tauri/pty-server/Cargo.toml",
+  "src-tauri/pty-server/src/main.rs",
+];
 
 function formatMiB(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
@@ -73,11 +95,44 @@ function assertBundleTargets() {
   }
 }
 
+async function latestMtimeMs(relativePaths) {
+  let latest = 0;
+  for (const relativePath of relativePaths) {
+    try {
+      latest = Math.max(latest, (await stat(path.join(repoRoot, relativePath))).mtimeMs);
+    } catch {
+      recordFailure(`[dist] Missing provenance input: ${relativePath}`);
+    }
+  }
+  return latest;
+}
+
+async function assertSidecarBundleWiring() {
+  const externalBin = tauriDistConfig.bundle?.externalBin ?? [];
+  if (!Array.isArray(externalBin) || !externalBin.includes("binaries/aether-pty-server")) {
+    recordFailure(`[dist] PTY sidecar externalBin missing from tauri.dist.conf.json`);
+  }
+
+  if (process.platform !== "win32") return;
+  const wxsPath = path.join(repoRoot, "src-tauri", "target", "release", "wix", "x64", "main.wxs");
+  try {
+    const wxs = await readFile(wxsPath, "utf8");
+    const matches = wxs.match(/aether-pty-server\.exe/g) ?? [];
+    if (matches.length !== 1) {
+      recordFailure(`[dist] MSI manifest should include exactly one PTY sidecar exe, found ${matches.length}`);
+    }
+  } catch {
+    recordFailure(`[dist] Missing WiX manifest for sidecar verification: ${relativeArtifactPath(wxsPath)}`);
+  }
+}
+
 assertEqual("package.json and tauri.conf.json version", tauriConfig.version, version);
 assertEqual("Tauri productName", tauriConfig.productName, "Aether Terminal");
 assertEqual("Tauri bundle.active", tauriConfig.bundle?.active, true);
 assertEqual("Dist updater artifacts", tauriDistConfig.bundle?.createUpdaterArtifacts, false);
 assertBundleTargets();
+await assertSidecarBundleWiring();
+const newestInputMtimeMs = await latestMtimeMs(provenanceInputs);
 
 for (const artifact of artifacts) {
   try {
@@ -87,6 +142,12 @@ for (const artifact of artifacts) {
       recordFailure(
         `[dist] ${artifact.label} is suspiciously small: ${formatMiB(info.size)} ` +
           `(expected at least ${formatMiB(artifact.minBytes)}): ${relativeArtifactPath(artifact.path)}`,
+      );
+      continue;
+    }
+    if (newestInputMtimeMs > 0 && info.mtimeMs + 1000 < newestInputMtimeMs) {
+      recordFailure(
+        `[dist] ${artifact.label} is older than release inputs; rebuild required: ${relativeArtifactPath(artifact.path)}`,
       );
       continue;
     }

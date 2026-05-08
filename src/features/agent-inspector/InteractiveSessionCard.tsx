@@ -37,6 +37,7 @@ export function InteractiveSessionCard({
   return (
     <RadixContextMenu.Root>
       <RadixContextMenu.Trigger asChild>
+        {/* biome-ignore lint/a11y/useSemanticElements: This context-menu card contains nested action buttons, so a button wrapper would be invalid HTML. */}
         <div
           role="button"
           tabIndex={0}

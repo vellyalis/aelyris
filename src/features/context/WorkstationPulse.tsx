@@ -1,12 +1,12 @@
 import { Activity, AlertTriangle, GitCompare, Radio, Route } from "lucide-react";
 import type { ReactNode } from "react";
 import { useMemo } from "react";
+import { listWorkstationGraphAgentIds, type WorkstationGraph } from "../../shared/lib/workstationGraph";
 import {
   buildWorkstationSummary,
   compactWorkstationNumber,
   type TelemetryConfidence,
 } from "../../shared/lib/workstationSummary";
-import { listWorkstationGraphAgentIds, type WorkstationGraph } from "../../shared/lib/workstationGraph";
 import { useAppStore } from "../../shared/store/appStore";
 import type { AgentSession } from "../../shared/types/agent";
 import styles from "./WorkstationPulse.module.css";

@@ -2,13 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useTerminalSnapshot } from "../shared/hooks/useTerminalSnapshot";
-import type {
-  CellSnapshot,
-  CursorSnapshot,
-  GridDiff,
-  GridSnapshot,
-  ImageRef,
-} from "../shared/types/terminal";
+import type { CellSnapshot, CursorSnapshot, GridDiff, GridSnapshot, ImageRef } from "../shared/types/terminal";
 
 type InvokeFn = (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
 type ListenHandler<T> = (event: { payload: T }) => void;

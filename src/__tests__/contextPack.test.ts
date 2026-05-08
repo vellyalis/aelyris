@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildContextPack,
   buildContextPackMarkdown,
-  redactSensitiveText,
   type ContextPackInput,
+  redactSensitiveText,
 } from "../shared/lib/contextPack";
 import { buildWorkstationGraph } from "../shared/lib/workstationGraph";
 import type { AgentSession } from "../shared/types/agent";
@@ -31,7 +31,9 @@ function session(overrides: Partial<AgentSession> = {}): AgentSession {
     ],
     cost: 0.4,
     tokensUsed: 44_000,
-    changedFileDetails: [{ path: "src/shared/lib/contextPack.ts", action: "create", toolName: "apply_patch", timestamp: 4 }],
+    changedFileDetails: [
+      { path: "src/shared/lib/contextPack.ts", action: "create", toolName: "apply_patch", timestamp: 4 },
+    ],
     ...overrides,
   };
 }
@@ -88,7 +90,7 @@ function baseInput(overrides: Partial<ContextPackInput> = {}): ContextPackInput 
     diffSummary: "2 files changed, 120 insertions",
     finalReport: {
       title: "P1-06 final report",
-      summary: "Mission Control completed with focused validation.",
+      summary: "Aether run completed with focused validation.",
       markdown: "Final report body",
     },
     dashboardState: { status: "running", token: "dashboard-secret-token", fileContent: "raw source should not leak" },
@@ -105,11 +107,11 @@ describe("buildContextPack", () => {
     expect(pack.threadSummary).toContain("Final report included: yes");
     expect(pack.markdown).toContain("# Context Pack: Aether");
     expect(pack.markdown).toContain("## Agent Transcripts");
-    expect(pack.markdown).toContain("Mission Control completed with focused validation.");
+    expect(pack.markdown).toContain("Aether run completed with focused validation.");
     expect(pack.markdown).toContain("src/features/context/ContextPanel.tsx");
     expect(pack.markdown).toContain("pnpm exec vitest contextPack.test.ts");
     expect(pack.json.summary.nextActions).toContain("Run focused context pack validation.");
-    expect(pack.json.finalReport?.summary).toBe("Mission Control completed with focused validation.");
+    expect(pack.json.finalReport?.summary).toBe("Aether run completed with focused validation.");
     expect(pack.json.workstationGraph.nodeCount).toBeGreaterThan(0);
   });
 

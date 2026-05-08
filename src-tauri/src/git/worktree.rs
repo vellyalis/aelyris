@@ -124,7 +124,7 @@ pub fn remove_worktree(
 ) -> Result<(), String> {
     validate_branch_name(worktree_name)?;
     // Use git CLI for reliable worktree removal (handles locked worktrees)
-    let output = std::process::Command::new("git")
+    let output = crate::process::hidden_command("git")
         .args(["worktree", "remove", worktree_name, "--force"])
         .current_dir(repo_path)
         .output()
@@ -136,19 +136,19 @@ pub fn remove_worktree(
     }
 
     // Prune stale worktree references
-    let _ = std::process::Command::new("git")
+    let _ = crate::process::hidden_command("git")
         .args(["worktree", "prune"])
         .current_dir(repo_path)
         .output();
 
     if delete_branch {
-        let branch_output = std::process::Command::new("git")
+        let branch_output = crate::process::hidden_command("git")
             .args(["branch", "-D", worktree_name])
             .current_dir(repo_path)
             .output()
             .map_err(|e| format!("Git branch delete failed: {}", e))?;
         if !branch_output.status.success() {
-            let still_exists = std::process::Command::new("git")
+            let still_exists = crate::process::hidden_command("git")
                 .args([
                     "show-ref",
                     "--verify",
@@ -211,7 +211,7 @@ pub fn create_worktree(repo_path: &str, branch_name: &str) -> Result<WorktreeInf
         .replace('\\', "/");
 
     // Use git command directly for reliability
-    let output = std::process::Command::new("git")
+    let output = crate::process::hidden_command("git")
         .args([
             "worktree",
             "add",
@@ -226,7 +226,7 @@ pub fn create_worktree(repo_path: &str, branch_name: &str) -> Result<WorktreeInf
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         // Try without -b (branch already exists)
-        let output2 = std::process::Command::new("git")
+        let output2 = crate::process::hidden_command("git")
             .args([
                 "worktree",
                 "add",

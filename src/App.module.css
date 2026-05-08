@@ -20,9 +20,7 @@
 .editorTabsBar {
   display: flex;
   height: var(--bottom-tabs-height);
-  background:
-    linear-gradient(180deg, rgba(142, 226, 241, 0.018), rgba(3, 10, 18, 0.018)),
-    rgba(3, 10, 18, 0.08);
+  background: linear-gradient(180deg, rgba(142, 226, 241, 0.018), rgba(3, 10, 18, 0.018)), rgba(3, 10, 18, 0.08);
   backdrop-filter: blur(10px) saturate(1.04);
   -webkit-backdrop-filter: blur(10px) saturate(1.04);
   border-bottom: 0;
@@ -62,9 +60,7 @@
   color: var(--text-secondary);
 }
 .editorTab[data-active="true"] {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(142, 226, 241, 0.018)),
-    rgba(4, 13, 22, 0.18);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(142, 226, 241, 0.018)), rgba(4, 13, 22, 0.18);
   color: var(--text-primary);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
@@ -127,4 +123,31 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.rightRailPurpose {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: 0 2px;
+  color: var(--text-muted);
+  font-size: var(--type-metadata-label);
+  line-height: 1.25;
+}
+
+.rightRailPurposeKicker {
+  flex: 0 0 auto;
+  color: var(--gold);
+  font-family: var(--font-mono);
+  font-size: var(--type-mono-telemetry);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.rightRailPurposeText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

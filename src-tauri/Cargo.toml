@@ -4,6 +4,7 @@ version = "0.2.3"
 description = "Windows-native AI workspace terminal"
 authors = ["vellyalis"]
 edition = "2021"
+default-run = "aether-terminal"
 
 [lib]
 name = "aether_terminal_lib"
@@ -40,7 +41,7 @@ portable-pty = "0.8"
 alacritty_terminal = "0.26"
 
 # Git operations
-git2 = "0.19"
+git2 = "0.20"
 
 # Config
 toml = "0.8"
@@ -84,6 +85,8 @@ notify-debouncer-mini = "0.5"
 # Phase 3D-1 spike: HTTP/WebSocket external PTY API
 axum = { version = "0.7", features = ["ws"] }
 futures-util = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
+tokio-tungstenite = "0.24"
 # Phase 3D-1 v2a: CORS middleware
 tower-http = { version = "0.5", features = ["cors"] }
 # Phase 3D-1 v2b: audited constant-time byte equality for token / ticket
@@ -113,12 +116,6 @@ features = [
 
 [dev-dependencies]
 tempfile = "3"
-# Phase 3D-1: integration tests for external PTY API. `default-features =
-# false` drops TLS on purpose — tests only hit `http://127.0.0.1:*`. If a
-# future test needs HTTPS (say a redirect chain), add `rustls-tls` to this
-# feature list explicitly.
-reqwest = { version = "0.12", default-features = false, features = ["json"] }
-tokio-tungstenite = "0.24"
 # Criterion for terminal-engine microbenchmarks. `html_reports` is a
 # default feature that pulls in a lot of transitive graph-drawing deps we
 # do not need on CI; turning default features off keeps the dev build
@@ -128,3 +125,6 @@ criterion = { version = "0.5", default-features = false }
 [[bench]]
 name = "term_engine"
 harness = false
+
+[patch.crates-io]
+portable-pty = { path = "vendor/portable-pty-0.8.1" }

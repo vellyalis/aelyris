@@ -24,10 +24,10 @@ const HELP_CONTENT: Record<HelpSection, { title: string; items: string[] }> = {
   overview: {
     title: "Aether Terminal",
     items: [
-      "AI-integrated development workspace for Windows.",
-      "Combines terminal, editor, AI agents, and workflow engine in one window.",
-      "Open a project folder to get started. All features activate around the project context.",
-      "Use Ctrl+Shift+P to open the Command Palette for quick access to any feature.",
+      "Project-first Windows terminal for shipping code with AI agents beside the shell.",
+      "Run PowerShell/CMD/Git Bash/WSL panes, edit files, review diffs, and launch agents from one project window.",
+      "Use the right panel as a work rail: Run starts agents/tools, Changes reviews outputs and git state, Health watches live panes and failures.",
+      "Aether is useful when shell work, file edits, agent output, and release checks must stay tied to the same project context.",
     ],
   },
   terminal: {
@@ -62,7 +62,9 @@ const HELP_CONTENT: Record<HelpSection, { title: string; items: string[] }> = {
     title: "AI Agent",
     items: [
       "Ctrl+Shift+A: Start a headless agent session with a prompt.",
-      "Agent Inspector (right panel): View all running sessions, logs, and costs.",
+      "Run tab (right panel): Start agents, workflows, and project tool commands.",
+      "Changes tab (right panel): Review files changed by agents and prepare commits.",
+      "Health tab (right panel): View running sessions, logs, reliability signals, and costs.",
       "Interactive mode: Ctrl+Enter in the prompt input to start a PTY-based interactive session.",
       "Context gauge: Shows token usage percentage per session.",
       "Session actions (right-click): Rename, View Analytics, View Diffs, Create Worktree.",
@@ -88,7 +90,7 @@ const HELP_CONTENT: Record<HelpSection, { title: string; items: string[] }> = {
   toolkit: {
     title: "Toolkit",
     items: [
-      "Quick-action buttons for common commands (Git, Dev Server, Tests, etc.).",
+      "Run tab quick-action buttons cover common project commands such as Git, dev server, tests, and builds.",
       "Right-click any button to edit its label and command.",
       "'+' button: Add custom tools with any shell command.",
       "Import: Paste JSON or load a .json file to import tool definitions.",
@@ -158,8 +160,8 @@ export function HelpDialog({ visible, onClose }: HelpDialogProps) {
             <div className={styles.content}>
               <h3 className={styles.sectionTitle}>{content.title}</h3>
               <ul className={styles.list}>
-                {content.items.map((item, i) => (
-                  <li key={i} className={styles.item}>
+                {content.items.map((item) => (
+                  <li key={`${content.title}-${item}`} className={styles.item}>
                     {item}
                   </li>
                 ))}

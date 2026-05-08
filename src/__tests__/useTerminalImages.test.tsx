@@ -1,11 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
-import {
-  type CreateImageBitmap,
-  type Invoke,
-  useTerminalImages,
-} from "../shared/hooks/useTerminalImages";
+import { type CreateImageBitmap, type Invoke, useTerminalImages } from "../shared/hooks/useTerminalImages";
 import type { ImageRef } from "../shared/types/terminal";
 
 // jsdom does not provide a constructible ImageData. The hook only
@@ -24,8 +20,7 @@ beforeAll(() => {
         this.height = height;
       }
     }
-    (globalThis as { ImageData?: typeof ImageData }).ImageData =
-      StubImageData as unknown as typeof ImageData;
+    (globalThis as { ImageData?: typeof ImageData }).ImageData = StubImageData as unknown as typeof ImageData;
   }
 });
 
@@ -72,7 +67,7 @@ function makeFactory(byId: Record<string, ImageBitmap>): CreateImageBitmap {
 function ipcReturning(map: Record<number, RawImageData>): Invoke {
   return vi.fn(async (cmd: string, args?: Record<string, unknown>) => {
     if (cmd !== "term_image_data") throw new Error(`unexpected ${cmd}`);
-    const id = Number((args ?? {}).imageId);
+    const id = Number(args?.imageId);
     return map[id] ?? null;
   }) as unknown as Invoke;
 }
@@ -90,9 +85,7 @@ describe("useTerminalImages", () => {
   it("returns an empty map when terminal id is null", async () => {
     const invoke = ipcReturning({});
     const factory = makeFactory({});
-    const { result } = renderHook(() =>
-      useTerminalImages(null, [ref(1)], { invoke, createImageBitmap: factory }),
-    );
+    const { result } = renderHook(() => useTerminalImages(null, [ref(1)], { invoke, createImageBitmap: factory }));
     await waitFor(() => expect(result.current.size).toBe(0));
     expect(invoke).not.toHaveBeenCalled();
   });
@@ -100,9 +93,7 @@ describe("useTerminalImages", () => {
   it("returns an empty map for an empty image list", async () => {
     const invoke = ipcReturning({});
     const factory = makeFactory({});
-    const { result } = renderHook(() =>
-      useTerminalImages("t-1", [], { invoke, createImageBitmap: factory }),
-    );
+    const { result } = renderHook(() => useTerminalImages("t-1", [], { invoke, createImageBitmap: factory }));
     await waitFor(() => expect(result.current.size).toBe(0));
     expect(invoke).not.toHaveBeenCalled();
   });
@@ -118,15 +109,10 @@ describe("useTerminalImages", () => {
         heightPx: 4,
       },
     });
-    const { result } = renderHook(() =>
-      useTerminalImages("t-1", [ref(42)], { invoke, createImageBitmap: factory }),
-    );
+    const { result } = renderHook(() => useTerminalImages("t-1", [ref(42)], { invoke, createImageBitmap: factory }));
     await waitFor(() => expect(result.current.size).toBe(1));
     expect(result.current.get(42)).toBe(png42);
-    expect(invoke).toHaveBeenCalledWith(
-      "term_image_data",
-      expect.objectContaining({ id: "t-1", imageId: 42 }),
-    );
+    expect(invoke).toHaveBeenCalledWith("term_image_data", expect.objectContaining({ id: "t-1", imageId: 42 }));
   });
 
   it("does not re-fetch an id that is already cached", async () => {
@@ -135,8 +121,7 @@ describe("useTerminalImages", () => {
       7: { format: "png", dataBase64: btoa("hi"), widthPx: 1, heightPx: 1 },
     });
     const { result, rerender } = renderHook(
-      ({ refs }: { refs: ImageRef[] }) =>
-        useTerminalImages("t-1", refs, { invoke, createImageBitmap: factory }),
+      ({ refs }: { refs: ImageRef[] }) => useTerminalImages("t-1", refs, { invoke, createImageBitmap: factory }),
       { initialProps: { refs: [ref(7)] } },
     );
     await waitFor(() => expect(result.current.size).toBe(1));
@@ -153,8 +138,8 @@ describe("useTerminalImages", () => {
     const factory = makeFactory({ "payload-a": termA, "payload-b": termB });
     const invoke = vi.fn(async (cmd: string, args?: Record<string, unknown>) => {
       if (cmd !== "term_image_data") throw new Error(`unexpected ${cmd}`);
-      const terminal = String((args ?? {}).id);
-      const imageId = Number((args ?? {}).imageId);
+      const terminal = String(args?.id);
+      const imageId = Number(args?.imageId);
       if (imageId !== 0) return null;
       if (terminal === "term-a") {
         return { format: "png", dataBase64: btoa("payload-a"), widthPx: 1, heightPx: 1 };
@@ -175,10 +160,7 @@ describe("useTerminalImages", () => {
     rerender({ terminalId: "term-b", refs: [ref(0, { cellRow: 3, cellCol: 4 })] });
 
     await waitFor(() =>
-      expect(invoke).toHaveBeenCalledWith(
-        "term_image_data",
-        expect.objectContaining({ id: "term-b", imageId: 0 }),
-      ),
+      expect(invoke).toHaveBeenCalledWith("term_image_data", expect.objectContaining({ id: "term-b", imageId: 0 })),
     );
     await waitFor(() => expect(result.current.get(0)).toBe(termB));
     expect(termA.close).toHaveBeenCalled();
@@ -191,8 +173,7 @@ describe("useTerminalImages", () => {
       1: { format: "png", dataBase64: btoa("a"), widthPx: 1, heightPx: 1 },
     });
     const { result, rerender } = renderHook(
-      ({ refs }: { refs: ImageRef[] }) =>
-        useTerminalImages("t-1", refs, { invoke, createImageBitmap: factory }),
+      ({ refs }: { refs: ImageRef[] }) => useTerminalImages("t-1", refs, { invoke, createImageBitmap: factory }),
       { initialProps: { refs: [ref(1)] } },
     );
     await waitFor(() => expect(result.current.size).toBe(1));
@@ -204,9 +185,7 @@ describe("useTerminalImages", () => {
   it("treats an IPC null response as 'skip this image'", async () => {
     const factory = makeFactory({});
     const invoke = ipcReturning({}); // returns null for everything
-    const { result } = renderHook(() =>
-      useTerminalImages("t-1", [ref(99)], { invoke, createImageBitmap: factory }),
-    );
+    const { result } = renderHook(() => useTerminalImages("t-1", [ref(99)], { invoke, createImageBitmap: factory }));
     await waitFor(() => expect(invoke).toHaveBeenCalled());
     // Cache stays empty — paint pass will skip the entry.
     expect(result.current.size).toBe(0);
@@ -217,9 +196,7 @@ describe("useTerminalImages", () => {
     const invoke = vi.fn(async () => {
       throw new Error("registry mutex poisoned");
     }) as unknown as Invoke;
-    const { result } = renderHook(() =>
-      useTerminalImages("t-1", [ref(5)], { invoke, createImageBitmap: factory }),
-    );
+    const { result } = renderHook(() => useTerminalImages("t-1", [ref(5)], { invoke, createImageBitmap: factory }));
     await waitFor(() => expect(invoke).toHaveBeenCalled());
     expect(result.current.size).toBe(0);
   });
@@ -233,9 +210,7 @@ describe("useTerminalImages", () => {
     const invoke = ipcReturning({
       11: { format: "rgba8", dataBase64, widthPx: 2, heightPx: 1 },
     });
-    const { result } = renderHook(() =>
-      useTerminalImages("t-1", [ref(11)], { invoke, createImageBitmap: factory }),
-    );
+    const { result } = renderHook(() => useTerminalImages("t-1", [ref(11)], { invoke, createImageBitmap: factory }));
     await waitFor(() => expect(result.current.size).toBe(1));
     expect(result.current.get(11)).toBe(rgbaBitmap);
   });
@@ -254,8 +229,7 @@ describe("useTerminalImages", () => {
       9: { format: "png", dataBase64: btoa("a"), widthPx: 1, heightPx: 1 },
     });
     const { result, rerender } = renderHook(
-      ({ refs }: { refs: ImageRef[] }) =>
-        useTerminalImages("t-1", refs, { invoke, createImageBitmap: factory }),
+      ({ refs }: { refs: ImageRef[] }) => useTerminalImages("t-1", refs, { invoke, createImageBitmap: factory }),
       { initialProps: { refs: [ref(9, { cellRow: 0, cellCol: 0 })] } },
     );
     await waitFor(() => expect(result.current.size).toBe(1));
@@ -279,13 +253,12 @@ describe("useTerminalImages", () => {
     const factory = makeFactory({ pending: png });
     const invoke = vi.fn(async (cmd: string, args?: Record<string, unknown>) => {
       if (cmd !== "term_image_data") throw new Error(`unexpected ${cmd}`);
-      if (Number((args ?? {}).imageId) !== 9) return null;
+      if (Number(args?.imageId) !== 9) return null;
       return pendingFetch;
     }) as unknown as Invoke;
 
     const { result, rerender } = renderHook(
-      ({ refs }: { refs: ImageRef[] }) =>
-        useTerminalImages("t-1", refs, { invoke, createImageBitmap: factory }),
+      ({ refs }: { refs: ImageRef[] }) => useTerminalImages("t-1", refs, { invoke, createImageBitmap: factory }),
       { initialProps: { refs: [ref(9, { cellRow: 0, cellCol: 0 })] } },
     );
 
@@ -324,7 +297,7 @@ describe("useTerminalImages", () => {
     let aCallCount = 0;
     const invoke = vi.fn(async (cmd: string, args?: Record<string, unknown>) => {
       if (cmd !== "term_image_data") throw new Error(`unexpected ${cmd}`);
-      const id = Number((args ?? {}).imageId);
+      const id = Number(args?.imageId);
       if (id === 1) {
         aCallCount++;
         if (aCallCount === 1) {
@@ -342,8 +315,7 @@ describe("useTerminalImages", () => {
     }) as unknown as Invoke;
 
     const { result, rerender } = renderHook(
-      ({ refs }: { refs: ImageRef[] }) =>
-        useTerminalImages("t-1", refs, { invoke, createImageBitmap: factory }),
+      ({ refs }: { refs: ImageRef[] }) => useTerminalImages("t-1", refs, { invoke, createImageBitmap: factory }),
       { initialProps: { refs: [ref(1)] } },
     );
     // Wait until the first fetch has been issued (still pending).
@@ -370,8 +342,7 @@ describe("useTerminalImages", () => {
       2: { format: "png", dataBase64: btoa("b"), widthPx: 1, heightPx: 1 },
     });
     const { result, rerender } = renderHook(
-      ({ refs }: { refs: ImageRef[] }) =>
-        useTerminalImages("t-1", refs, { invoke, createImageBitmap: factory }),
+      ({ refs }: { refs: ImageRef[] }) => useTerminalImages("t-1", refs, { invoke, createImageBitmap: factory }),
       { initialProps: { refs: [ref(1)] } },
     );
     await waitFor(() => expect(result.current.size).toBe(1));

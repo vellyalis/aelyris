@@ -3,6 +3,8 @@
 //! Utilities for testing PTY spawn, I/O, lifecycle via nested ConPTY.
 //! Spawns real shells as child processes and validates stdin/stdout behavior.
 
+#![allow(dead_code)]
+
 use aether_terminal_lib::pty::{PtyManager, ShellType};
 use std::time::{Duration, Instant};
 use tokio::sync::broadcast;

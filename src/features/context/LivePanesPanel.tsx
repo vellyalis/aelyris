@@ -515,10 +515,7 @@ function isControllableLivePane(pane: PaneView): boolean {
   return pane.state === "live" && Boolean(pane.terminalId);
 }
 
-function buildAttachCandidates(
-  panes: readonly PaneView[],
-  enabled: boolean,
-): ReadonlyMap<string, readonly PaneView[]> {
+function buildAttachCandidates(panes: readonly PaneView[], enabled: boolean): ReadonlyMap<string, readonly PaneView[]> {
   const candidates = new Map<string, readonly PaneView[]>();
   if (!enabled) return candidates;
   const detachedByTab = new Map<string, PaneView[]>();

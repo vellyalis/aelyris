@@ -1,14 +1,17 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const cargo = process.platform === "win32" ? "cargo.exe" : "cargo";
+const execFileAsync = promisify(execFile);
 const args = new Set(process.argv.slice(2));
 const withIme = args.has("--with-ime") || process.env.AETHER_RELEASE_WITH_IME === "1";
 const preflightOnly = args.has("--preflight") || process.env.AETHER_RELEASE_PREFLIGHT === "1";
+const allowDirtyWorktree = args.has("--allow-dirty") || process.env.AETHER_RELEASE_ALLOW_DIRTY === "1";
 
 const focusedVitestSuites = [
   "src/__tests__/backendSilentBugs.test.ts",
@@ -42,7 +45,7 @@ const requiredReleaseFiles = [
 ];
 
 const requiredPackageScripts = {
-  "tauri:build:dist": "tauri build --config src-tauri/tauri.dist.conf.json --no-sign",
+  "tauri:build:dist": "node scripts/build-pty-sidecar.mjs && tauri build --config src-tauri/tauri.dist.conf.json --no-sign",
   "verify:dist": "node scripts/verify-dist-artifacts.mjs",
   "verify:release:doctor": "node scripts/release-doctor.mjs",
   "verify:release:preflight": "node scripts/verify-release-gate.mjs --preflight",
@@ -96,6 +99,42 @@ async function fileExists(relativePath) {
 
 async function readJson(relativePath) {
   return JSON.parse(await readFile(path.join(repoRoot, relativePath), "utf8"));
+}
+
+async function readDirtyWorktreeEntries() {
+  const { stdout } = await execFileAsync("git", ["status", "--porcelain=v1", "--untracked-files=all"], {
+    cwd: repoRoot,
+    windowsHide: true,
+    maxBuffer: 1024 * 1024 * 16,
+  });
+  return stdout
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd())
+    .filter(Boolean);
+}
+
+async function verifyCleanWorktree() {
+  if (allowDirtyWorktree) {
+    console.warn("[release] Dirty worktree check bypassed by --allow-dirty/AETHER_RELEASE_ALLOW_DIRTY=1.");
+    return;
+  }
+  let entries;
+  try {
+    entries = await readDirtyWorktreeEntries();
+  } catch (error) {
+    throw new Error(`[release] Could not inspect git worktree cleanliness: ${error.message}`);
+  }
+  if (entries.length === 0) return;
+  const shown = entries.slice(0, 80).map((line) => `  - ${line}`);
+  const hidden = entries.length > shown.length ? [`  ... ${entries.length - shown.length} more`] : [];
+  throw new Error(
+    [
+      "Worktree must be clean before claiming production/world-class release readiness.",
+      "Commit, stash, or intentionally park active changes first; dirty source invalidates build evidence.",
+      ...shown,
+      ...hidden,
+    ].join("\n"),
+  );
 }
 
 async function run(label, command, commandArgs) {
@@ -186,6 +225,8 @@ async function verifyReleaseContract() {
 }
 
 async function main() {
+  await verifyCleanWorktree();
+
   const missingSuites = [];
   for (const suite of focusedVitestSuites) {
     if (!(await fileExists(suite))) missingSuites.push(suite);

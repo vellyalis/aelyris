@@ -50,9 +50,7 @@ describe("EditorPanel LSP URI alignment", () => {
     // produced the four-slash bug must be gone from the LSP wiring.
     // (We strip comments first because the explanatory comment for the
     // fix references the bad pattern intentionally.)
-    const stripped = src
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/\/\/.*$/gm, "");
+    const stripped = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
     expect(stripped).not.toMatch(/`file:\/\/\/\$\{filePath\.replace\(\/\\\\\/g/);
     // Helper output must NOT be passed directly to notifyOpen — that
     // was the codex r3 BLOCK regression.
@@ -65,6 +63,6 @@ describe("EditorPanel LSP URI alignment", () => {
     // can't quietly start dispatching with a stale model URI.
     const lspBlockMatch = src.match(/if\s*\(\s*lsp\.isAvailable\s*\)\s*\{([\s\S]*?)\n\s+\}\s*\n\s+\}\}/);
     expect(lspBlockMatch).not.toBeNull();
-    expect(lspBlockMatch![1]).toMatch(/if\s*\(\s*filePath\s*&&\s*content\s*!==\s*null\s*\)/);
+    expect(lspBlockMatch?.[1]).toMatch(/if\s*\(\s*filePath\s*&&\s*content\s*!==\s*null\s*\)/);
   });
 });

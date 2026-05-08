@@ -293,7 +293,8 @@ fn repair_worker(
     ));
 
     let prompt = build_agent_prompt(&error);
-    let agent_result = std::process::Command::new("claude")
+    let agent_program = crate::agent::platform_cli_program("claude");
+    let agent_result = crate::process::hidden_command(agent_program)
         .args(["-p", &prompt, "--output-format", "text"])
         .current_dir(&worktree_path)
         .output();
@@ -317,7 +318,7 @@ fn repair_worker(
     }
 
     // Step 3: Check if agent made any changes
-    let has_changes = std::process::Command::new("git")
+    let has_changes = crate::process::hidden_command("git")
         .args(["status", "--porcelain"])
         .current_dir(&worktree_path)
         .output()
@@ -341,12 +342,12 @@ fn repair_worker(
     }
 
     // Commit the changes
-    let _ = std::process::Command::new("git")
+    let _ = crate::process::hidden_command("git")
         .args(["add", "-A"])
         .current_dir(&worktree_path)
         .output();
     let commit_msg = format!("fix(auto-repair): {}", truncate(&error.matched_line, 72));
-    let _ = std::process::Command::new("git")
+    let _ = crate::process::hidden_command("git")
         .args(["commit", "-m", &commit_msg])
         .current_dir(&worktree_path)
         .output();
@@ -454,7 +455,7 @@ pub(crate) struct TestCommand {
 
 /// Run a test command and return whether it passed.
 fn run_test_command(cwd: &Path, cmd: &TestCommand) -> bool {
-    std::process::Command::new(&cmd.program)
+    crate::process::hidden_command(&cmd.program)
         .args(&cmd.args)
         .current_dir(cwd)
         .output()

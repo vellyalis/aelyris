@@ -5,13 +5,11 @@
   justify-content: space-between;
   height: var(--statusbar-height);
   padding: 0 var(--space-6);
-  background: rgba(2, 8, 16, 0.44);
-  backdrop-filter: blur(1px) saturate(1.04) brightness(0.76) contrast(1.08);
-  -webkit-backdrop-filter: blur(1px) saturate(1.04) brightness(0.76) contrast(1.08);
+  background: var(--statusbar-bg);
+  backdrop-filter: var(--statusbar-filter);
+  -webkit-backdrop-filter: var(--statusbar-filter);
   border-top: 0;
-  box-shadow:
-    inset 0 1px 0 rgba(160, 228, 242, 0.016),
-    inset 0 -1px 0 rgba(0, 4, 10, 0.22);
+  box-shadow: var(--statusbar-shadow);
   font-size: var(--type-terminal-chrome);
   color: var(--text-muted);
   user-select: none;
@@ -72,9 +70,9 @@
     border-color var(--duration-fast);
 }
 .actionBtn:hover {
-  background: rgba(76, 184, 220, 0.035);
+  background: var(--chrome-control-hover-bg);
   color: var(--text-primary);
-  border-color: rgba(104, 214, 238, 0.07);
+  border-color: var(--chrome-control-hover-border);
 }
 .actionBtn:focus-visible {
   outline: 2px solid var(--gold);
@@ -138,6 +136,18 @@
   font-weight: var(--weight-medium);
 }
 
+:global(:root[data-mood="aether-sakura"]) .passive,
+:global(:root[data-mood="aether-sakura"]) .imageBudget {
+  color: var(--text-secondary);
+  opacity: 1;
+}
+
+:global(:root[data-mood="aether-sakura"]) .repairBadge {
+  background: rgba(255, 248, 251, 0.94);
+  color: var(--status-done);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--status-done) 26%, transparent);
+}
+
 .perfPanel {
   position: absolute;
   right: var(--space-6);
@@ -197,8 +207,8 @@
 .perfIconButton:hover,
 .perfClose:hover {
   color: var(--text-primary);
-  background: rgba(76, 184, 220, 0.035);
-  border-color: rgba(104, 214, 238, 0.07);
+  background: var(--chrome-control-hover-bg);
+  border-color: var(--chrome-control-hover-border);
 }
 
 .perfIconButton:focus-visible,

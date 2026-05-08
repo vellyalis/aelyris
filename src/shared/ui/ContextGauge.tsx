@@ -19,11 +19,7 @@ export const ContextGauge = memo(function ContextGauge({ percent, width = 60 }: 
   const isCritical = percent >= 95;
   const pulsePhase = useAttenuatedPulse(isCritical);
   const barPulseClass =
-    pulsePhase === "active"
-      ? styles.barCritical
-      : pulsePhase === "ambient"
-        ? styles.barCriticalAmbient
-        : "";
+    pulsePhase === "active" ? styles.barCritical : pulsePhase === "ambient" ? styles.barCriticalAmbient : "";
   return (
     <div className={styles.gauge} style={{ width }}>
       <div className={styles.track}>

@@ -41,10 +41,7 @@ export interface ConductorLayout {
   }>;
 }
 
-const COLUMN_ORDER: Array<OrchestraRoleId | "unassigned"> = [
-  ...ORCHESTRA_ROLES.map((r) => r.id),
-  "unassigned",
-];
+const COLUMN_ORDER: Array<OrchestraRoleId | "unassigned"> = [...ORCHESTRA_ROLES.map((r) => r.id), "unassigned"];
 const KNOWN_COLUMNS = new Set<string>(COLUMN_ORDER);
 
 function columnLabel(id: OrchestraRoleId | "unassigned"): string {

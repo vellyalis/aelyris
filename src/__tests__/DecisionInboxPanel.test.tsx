@@ -1,8 +1,8 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DecisionInboxPanel } from "../features/decision-inbox";
-import type { AuditEventRecord } from "../shared/types/audit";
 import type { AgentSession } from "../shared/types/agent";
+import type { AuditEventRecord } from "../shared/types/audit";
 
 afterEach(() => cleanup());
 
@@ -118,7 +118,7 @@ describe("DecisionInboxPanel", () => {
       />,
     );
 
-    expect(screen.getByText("No human decisions")).toBeTruthy();
+    expect(screen.getByText("No approvals needed")).toBeTruthy();
     expect(screen.queryByText("External dependency probe scheduled")).toBeNull();
     expect(screen.queryByText("Agent approved")).toBeNull();
   });
