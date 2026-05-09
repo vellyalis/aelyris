@@ -27,6 +27,11 @@ const focusedVitestSuites = [
   "src/__tests__/WorkstationPulse.test.tsx",
   "src/__tests__/RunGraphPanel.test.tsx",
   "src/__tests__/ToolLedgerPanel.test.tsx",
+  "src/__tests__/SettingsSaveMerge.test.tsx",
+  "src/__tests__/ThemePaletteEditor.test.tsx",
+  "src/__tests__/useThemeApplier.test.tsx",
+  "src/__tests__/themePalette.test.ts",
+  "src/__tests__/appStore.test.ts",
 ];
 
 const syntaxCheckedScripts = [

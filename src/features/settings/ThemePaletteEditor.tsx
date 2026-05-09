@@ -14,6 +14,7 @@ import styles from "./ThemePaletteEditor.module.css";
 
 interface ThemePaletteEditorProps {
   themeId: string;
+  onDirty?: () => void;
 }
 
 /**
@@ -24,7 +25,7 @@ interface ThemePaletteEditorProps {
  * The edit is "live preview" by definition — the running app *is* the
  * preview surface. There is no preview canvas, only Reset.
  */
-export function ThemePaletteEditor({ themeId }: ThemePaletteEditorProps) {
+export function ThemePaletteEditor({ themeId, onDirty }: ThemePaletteEditorProps) {
   const overrides = useAppStore((s) => s.themeOverrides[themeId]) as AccentOverrides | undefined;
   const setAccentOverride = useAppStore((s) => s.setAccentOverride);
   const resetThemeOverrides = useAppStore((s) => s.resetThemeOverrides);
@@ -43,7 +44,10 @@ export function ThemePaletteEditor({ themeId }: ThemePaletteEditorProps) {
         <button
           type="button"
           className={styles.resetBtn}
-          onClick={() => resetThemeOverrides(themeId)}
+          onClick={() => {
+            onDirty?.();
+            resetThemeOverrides(themeId);
+          }}
           disabled={overriddenCount === 0}
           aria-label="Reset all accents to theme default"
         >
@@ -59,6 +63,7 @@ export function ThemePaletteEditor({ themeId }: ThemePaletteEditorProps) {
             baseValue={base[key]}
             currentValue={effective[key]}
             isOverridden={Boolean(overrides && key in overrides)}
+            onDirty={onDirty}
             onChange={(value) => setAccentOverride(themeId, key, value)}
             onReset={() => setAccentOverride(themeId, key, undefined)}
           />
@@ -73,11 +78,12 @@ interface AccentRowProps {
   baseValue: string;
   currentValue: string;
   isOverridden: boolean;
+  onDirty?: () => void;
   onChange: (value: string) => void;
   onReset: () => void;
 }
 
-function AccentRow({ accentKey, baseValue, currentValue, isOverridden, onChange, onReset }: AccentRowProps) {
+function AccentRow({ accentKey, baseValue, currentValue, isOverridden, onDirty, onChange, onReset }: AccentRowProps) {
   const [draft, setDraft] = useState<string>(currentValue);
   const [invalid, setInvalid] = useState(false);
   const label = accentLabel(accentKey);
@@ -94,6 +100,7 @@ function AccentRow({ accentKey, baseValue, currentValue, isOverridden, onChange,
 
   const commit = useCallback(
     (raw: string) => {
+      onDirty?.();
       const trimmed = raw.trim();
       if (trimmed === "") return;
       const value = trimmed.startsWith("#") ? trimmed : `#${trimmed}`;
@@ -110,7 +117,7 @@ function AccentRow({ accentKey, baseValue, currentValue, isOverridden, onChange,
         onChange(normalized);
       }
     },
-    [baseValue, onChange, onReset],
+    [baseValue, onChange, onDirty, onReset],
   );
 
   return (
@@ -121,6 +128,7 @@ function AccentRow({ accentKey, baseValue, currentValue, isOverridden, onChange,
           type="color"
           value={normalizeHex(draft)}
           onChange={(e) => {
+            onDirty?.();
             const next = e.target.value;
             setDraft(next);
             commit(next);
@@ -140,15 +148,18 @@ function AccentRow({ accentKey, baseValue, currentValue, isOverridden, onChange,
           className={styles.hexInput}
           value={draft}
           onChange={(e) => {
+            onDirty?.();
             setDraft(e.target.value);
             setInvalid(false);
           }}
           onBlur={(e) => commit(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
+              onDirty?.();
               e.preventDefault();
               commit(e.currentTarget.value);
             } else if (e.key === "Escape") {
+              onDirty?.();
               setDraft(currentValue);
               setInvalid(false);
             }
@@ -162,6 +173,7 @@ function AccentRow({ accentKey, baseValue, currentValue, isOverridden, onChange,
         type="button"
         className={styles.rowReset}
         onClick={() => {
+          onDirty?.();
           onReset();
           setDraft(baseValue);
           setInvalid(false);

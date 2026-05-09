@@ -16,12 +16,24 @@ const failures = [];
 const releaseProvenanceInputs = [
   "package.json",
   "pnpm-lock.yaml",
+  "index.html",
+  "vite.config.ts",
+  "tsconfig.json",
   "scripts/build-pty-sidecar.mjs",
   "src-tauri/Cargo.toml",
   "src-tauri/Cargo.lock",
   "src-tauri/tauri.conf.json",
   "src-tauri/tauri.dist.conf.json",
   "src-tauri/src/pty_sidecar.rs",
+  {
+    path: "src",
+    exclude: [
+      /(^|[\\/])__tests__([\\/]|$)/,
+      /\.test\.[cm]?[jt]sx?$/i,
+      /\.spec\.[cm]?[jt]sx?$/i,
+    ],
+  },
+  "public",
   "src-tauri/pty-server/Cargo.toml",
   "src-tauri/pty-server/src/main.rs",
 ];
@@ -161,14 +173,34 @@ async function assertWindowsAppIdentity(artifact) {
   }
 }
 
+async function latestMtimeForInput(input) {
+  const relativePath = typeof input === "string" ? input : input.path;
+  const absolutePath = path.join(repoRoot, relativePath);
+  let info;
+  try {
+    info = await stat(absolutePath);
+  } catch {
+    recordFailure(`[dist] Missing provenance input: ${relativePath}`);
+    return 0;
+  }
+  if (!info.isDirectory()) return info.mtimeMs;
+
+  const exclude = typeof input === "string" ? [] : (input.exclude ?? []);
+  let latest = info.mtimeMs;
+  const { readdir } = await import("node:fs/promises");
+  const entries = await readdir(absolutePath, { withFileTypes: true });
+  for (const entry of entries) {
+    const childRelativePath = path.join(relativePath, entry.name);
+    if (exclude.some((pattern) => pattern.test(childRelativePath))) continue;
+    latest = Math.max(latest, await latestMtimeForInput({ path: childRelativePath, exclude }));
+  }
+  return latest;
+}
+
 async function latestMtimeMs(relativePaths) {
   let latest = 0;
-  for (const relativePath of relativePaths) {
-    try {
-      latest = Math.max(latest, (await stat(path.join(repoRoot, relativePath))).mtimeMs);
-    } catch {
-      recordFailure(`[dist] Missing provenance input: ${relativePath}`);
-    }
+  for (const input of relativePaths) {
+    latest = Math.max(latest, await latestMtimeForInput(input));
   }
   return latest;
 }

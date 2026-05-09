@@ -1,6 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { isTauriRuntime } from "../../shared/lib/tauriRuntime";
 import { useAppStore } from "../../shared/store/appStore";
 import { toast } from "../../shared/store/toastStore";
@@ -121,6 +121,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
   // edit (window state, ui_font_family, opacity, scrollback). Without this,
   // every Save click resets those fields to the Rust defaults.
   const [loadedConfig, setLoadedConfig] = useState<LoadedConfig | null>(null);
+  const userEditedRef = useRef(false);
 
   useEffect(() => {
     // Re-load every time the dialog opens so a user who edited config.toml
@@ -136,8 +137,10 @@ export function Settings({ visible, onClose }: SettingsProps) {
     // a "Settings not saved" warning instead of silently corrupting disk.
     // (Same defect class fixed in WatchdogDialog round 4 / codex r2.)
     setLoadedConfig(null);
+    userEditedRef.current = false;
     if (!isTauriRuntime()) {
-      const cfg = previewConfig(storeTheme, storeMood, defaultShell, ghostDiffLiveMode);
+      const current = useAppStore.getState();
+      const cfg = previewConfig(current.themeId, current.moodPresetId, defaultShell, current.ghostDiffLiveMode);
       setLoadedConfig(cfg);
       setTheme(cfg.appearance.theme);
       setMood(normalizeMoodPreset(cfg.appearance.mood_preset));
@@ -156,8 +159,9 @@ export function Settings({ visible, onClose }: SettingsProps) {
       .then((cfg) => {
         if (cancelled) return;
         setLoadedConfig(cfg);
+        if (userEditedRef.current) return;
         setTheme(cfg.appearance.theme);
-        const persistedMood = normalizeMoodPreset(cfg.appearance.mood_preset ?? storeMood);
+        const persistedMood = normalizeMoodPreset(cfg.appearance.mood_preset ?? useAppStore.getState().moodPresetId);
         setMood(persistedMood);
         setMoodPresetId(persistedMood);
         setFont(cfg.appearance.terminal_font_family.split(",")[0].trim());
@@ -184,7 +188,11 @@ export function Settings({ visible, onClose }: SettingsProps) {
     return () => {
       cancelled = true;
     };
-  }, [visible, setGhostDiffLiveMode, setMoodPresetId, storeTheme, storeMood, defaultShell, ghostDiffLiveMode]);
+  }, [visible, setGhostDiffLiveMode, setMoodPresetId]);
+
+  const markEdited = () => {
+    userEditedRef.current = true;
+  };
 
   useEffect(() => {
     if (visible) setMood(storeMood);
@@ -281,6 +289,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
                   id="settings-theme"
                   value={theme}
                   onValueChange={(next) => {
+                    markEdited();
                     setTheme(next);
                     // Apply immediately so the palette editor below targets
                     // the live theme (the running window is the preview).
@@ -298,6 +307,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
                   id="settings-mood"
                   value={mood}
                   onValueChange={(next) => {
+                    markEdited();
                     const preset = normalizeMoodPreset(next);
                     setMood(preset);
                     setMoodPresetId(preset);
@@ -321,6 +331,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
                       role="radio"
                       aria-checked={mood === preset.id}
                       onClick={() => {
+                        markEdited();
                         setMood(preset.id);
                         setMoodPresetId(preset.id);
                       }}
@@ -336,7 +347,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
               </div>
               <div className={styles.field}>
                 <div className={styles.label}>Palette</div>
-                <ThemePaletteEditor themeId={theme} />
+                <ThemePaletteEditor themeId={theme} onDirty={markEdited} />
               </div>
               <div className={styles.field}>
                 <label className={styles.label} htmlFor="settings-font">
@@ -345,7 +356,10 @@ export function Settings({ visible, onClose }: SettingsProps) {
                 <Select
                   id="settings-font"
                   value={font}
-                  onValueChange={setFont}
+                  onValueChange={(next) => {
+                    markEdited();
+                    setFont(next);
+                  }}
                   options={FONTS.map((f) => ({ value: f, label: f }))}
                   ariaLabel="Terminal font"
                 />
@@ -362,7 +376,10 @@ export function Settings({ visible, onClose }: SettingsProps) {
                     value={fontSize}
                     min={10}
                     max={24}
-                    onChange={(e) => setFontSize(Number(e.target.value))}
+                    onChange={(e) => {
+                      markEdited();
+                      setFontSize(Number(e.target.value));
+                    }}
                   />
                 </div>
                 <div className={styles.field}>
@@ -377,7 +394,10 @@ export function Settings({ visible, onClose }: SettingsProps) {
                     min={1}
                     max={2}
                     step={0.1}
-                    onChange={(e) => setLineHeight(Number(e.target.value))}
+                    onChange={(e) => {
+                      markEdited();
+                      setLineHeight(Number(e.target.value));
+                    }}
                   />
                 </div>
               </div>
@@ -386,7 +406,10 @@ export function Settings({ visible, onClose }: SettingsProps) {
                   id="settings-ligatures"
                   label="Font Ligatures"
                   checked={ligatures}
-                  onCheckedChange={setLigatures}
+                  onCheckedChange={(next) => {
+                    markEdited();
+                    setLigatures(next);
+                  }}
                 />
               </div>
             </section>
@@ -400,7 +423,10 @@ export function Settings({ visible, onClose }: SettingsProps) {
                 <Select
                   id="settings-default-shell"
                   value={defaultShell}
-                  onValueChange={setDefaultShell}
+                  onValueChange={(next) => {
+                    markEdited();
+                    setDefaultShell(next);
+                  }}
                   options={SHELLS.map((s) => ({ value: s.id, label: s.label }))}
                   ariaLabel="Default shell"
                 />
@@ -412,7 +438,10 @@ export function Settings({ visible, onClose }: SettingsProps) {
                 <Select
                   id="settings-cursor-style"
                   value={cursorStyle}
-                  onValueChange={setCursorStyle}
+                  onValueChange={(next) => {
+                    markEdited();
+                    setCursorStyle(next);
+                  }}
                   options={[
                     { value: "bar", label: "Bar" },
                     { value: "block", label: "Block" },
@@ -426,7 +455,10 @@ export function Settings({ visible, onClose }: SettingsProps) {
                   id="settings-cursor-blink"
                   label="Cursor Blink"
                   checked={cursorBlink}
-                  onCheckedChange={setCursorBlink}
+                  onCheckedChange={(next) => {
+                    markEdited();
+                    setCursorBlink(next);
+                  }}
                 />
               </div>
             </section>
@@ -453,7 +485,10 @@ export function Settings({ visible, onClose }: SettingsProps) {
                   label="Live mode (paint in-progress layers)"
                   hint="When off, ghost paint appears only after the agent run finishes. When on, every fs change from the agent's worktree streams into the editor as it happens."
                   checked={liveMode}
-                  onCheckedChange={setLiveMode}
+                  onCheckedChange={(next) => {
+                    markEdited();
+                    setLiveMode(next);
+                  }}
                 />
               </div>
             </section>

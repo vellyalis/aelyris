@@ -78,6 +78,42 @@ describe("Settings.tsx Save merge", () => {
     expect(found).toBe(true);
   });
 
+  it("load useEffect does not re-run from editable field changes", () => {
+    const src = getSrc();
+    const effectRegex = /useEffect\(\s*\(\)\s*=>\s*\{([\s\S]*?)\},\s*\[([^\]]*)\]\s*\)/g;
+    const matches = Array.from(src.matchAll(effectRegex));
+
+    let found = false;
+    for (const m of matches) {
+      const body = m[1];
+      const deps = m[2];
+      if (!body.includes("load_app_config")) continue;
+      found = true;
+
+      const depList = deps
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      expect(depList).toContain("visible");
+      expect(depList).not.toContain("storeTheme");
+      expect(depList).not.toContain("storeMood");
+      expect(depList).not.toContain("defaultShell");
+      expect(depList).not.toContain("ghostDiffLiveMode");
+    }
+
+    expect(found).toBe(true);
+  });
+
+  it("late load_app_config responses do not overwrite user edits", () => {
+    const src = getSrc();
+
+    expect(src).toMatch(/const userEditedRef\s*=\s*useRef\(false\)/);
+    expect(src).toMatch(/userEditedRef\.current\s*=\s*false/);
+    expect(src).toMatch(/setLoadedConfig\(cfg\);\s*if\s*\(userEditedRef\.current\)\s*return;/);
+    expect(src).toMatch(/const markEdited\s*=\s*\(\)\s*=>\s*\{[\s\S]*?userEditedRef\.current\s*=\s*true/);
+  });
+
   it("Save failure surfaces a toast instead of closing silently", () => {
     const src = getSrc();
 

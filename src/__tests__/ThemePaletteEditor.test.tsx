@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ThemePaletteEditor } from "../features/settings/ThemePaletteEditor";
 import { useAppStore } from "../shared/store/appStore";
@@ -28,7 +28,8 @@ describe("ThemePaletteEditor", () => {
   });
 
   it("commits a hex edit through the input on Enter and writes to the store", () => {
-    render(<ThemePaletteEditor themeId="aether-dark" />);
+    const onDirty = vi.fn();
+    render(<ThemePaletteEditor themeId="aether-dark" onDirty={onDirty} />);
     const input = screen.getByLabelText(/sapphire hex value/i) as HTMLInputElement;
 
     fireEvent.change(input, { target: { value: "#abcdef" } });
@@ -37,6 +38,7 @@ describe("ThemePaletteEditor", () => {
     expect(useAppStore.getState().themeOverrides["aether-dark"]).toEqual({
       sapphire: "#abcdef",
     });
+    expect(onDirty).toHaveBeenCalled();
   });
 
   it("normalises 3-digit shorthand on commit", () => {
@@ -68,14 +70,16 @@ describe("ThemePaletteEditor", () => {
   });
 
   it("global Reset button drops every override and reflects the count", () => {
+    const onDirty = vi.fn();
     useAppStore.getState().setAccentOverride("aether-dark", "sapphire", "#111111");
     useAppStore.getState().setAccentOverride("aether-dark", "mauve", "#222222");
-    render(<ThemePaletteEditor themeId="aether-dark" />);
+    render(<ThemePaletteEditor themeId="aether-dark" onDirty={onDirty} />);
 
     const resetBtn = screen.getByRole("button", { name: /reset all accents/i });
     expect(resetBtn.textContent).toContain("Reset (2)");
     fireEvent.click(resetBtn);
     expect(useAppStore.getState().themeOverrides).toEqual({});
+    expect(onDirty).toHaveBeenCalled();
   });
 
   it("shows a per-accent reset button only for overridden accents", () => {

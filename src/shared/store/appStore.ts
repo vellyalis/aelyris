@@ -11,7 +11,7 @@ import {
   type WorkspaceProfileState,
   type WorkspaceThreadRunState,
 } from "../lib/workspaceProfile";
-import type { AccentKey, AccentOverrides } from "../themes/catppuccin";
+import { ACCENT_KEYS, isValidHex, normalizeHex, type AccentKey, type AccentOverrides } from "../themes/catppuccin";
 import { DEFAULT_MOOD_PRESET, type MoodPresetId, normalizeMoodPreset } from "../themes/moods";
 import type { KanbanColumnId, KanbanTask } from "../types/kanban";
 
@@ -33,15 +33,29 @@ function reportStorageFailure(operation: string, err: unknown, severity: "info" 
   );
 }
 
+export function sanitizeThemeOverrides(value: unknown): Record<string, AccentOverrides> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const cleaned: Record<string, AccentOverrides> = {};
+  for (const [themeId, overrideValue] of Object.entries(value as Record<string, unknown>)) {
+    if (!overrideValue || typeof overrideValue !== "object" || Array.isArray(overrideValue)) continue;
+    const next: AccentOverrides = {};
+    for (const key of ACCENT_KEYS) {
+      const rawOverride = (overrideValue as Record<string, unknown>)[key];
+      if (typeof rawOverride === "string" && isValidHex(rawOverride)) {
+        next[key] = normalizeHex(rawOverride);
+      }
+    }
+    if (Object.keys(next).length > 0) cleaned[themeId] = next;
+  }
+  return cleaned;
+}
+
 function loadThemeOverrides(): Record<string, AccentOverrides> {
   try {
     const raw = localStorage.getItem(THEME_OVERRIDES_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as unknown;
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed as Record<string, AccentOverrides>;
-    }
-    return {};
+    return sanitizeThemeOverrides(parsed);
   } catch (err) {
     reportStorageFailure("load_theme_overrides", err);
     return {};

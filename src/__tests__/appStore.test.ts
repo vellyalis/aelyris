@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { useAppStore } from "../shared/store/appStore";
+import { sanitizeThemeOverrides, useAppStore } from "../shared/store/appStore";
 import { DEFAULT_MOOD_PRESET } from "../shared/themes/moods";
 
 // Reset store between tests
@@ -301,6 +301,23 @@ describe("appStore — theme overrides", () => {
     const raw = localStorage.getItem("aether:themeOverrides");
     expect(raw).toBeTruthy();
     expect(JSON.parse(raw ?? "{}")).toEqual({ "aether-dark": { sapphire: "#112233" } });
+  });
+
+  it("sanitizes persisted overrides before applying them", () => {
+    expect(
+      sanitizeThemeOverrides({
+        "aether-dark": {
+          sapphire: "#abc",
+          mauve: "not-a-color",
+          unknown: "#ffffff",
+          red: "url(javascript:alert(1))",
+        },
+        empty: { unknown: "#ffffff" },
+        invalid: ["#ffffff"],
+      }),
+    ).toEqual({
+      "aether-dark": { sapphire: "#aabbcc" },
+    });
   });
 });
 
