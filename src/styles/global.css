@@ -650,8 +650,8 @@ html[data-aether-host="browser"][data-mood="aether-sakura"] body {
 
 html[data-aether-host="browser"][data-mood="aether-sakura"] #root {
   background:
-    linear-gradient(125deg, rgba(252, 201, 185, 0.22), transparent 42%),
-    linear-gradient(300deg, rgba(207, 95, 125, 0.1), transparent 44%), rgba(255, 248, 251, 0.46);
+    linear-gradient(125deg, rgba(252, 201, 185, 0.18), transparent 42%),
+    linear-gradient(300deg, rgba(207, 95, 125, 0.08), transparent 44%), rgba(255, 242, 249, 0.48);
 }
 
 /* Native Tauri runs on real Acrylic/Mica, so bright wallpapers can leak
@@ -671,13 +671,13 @@ html[data-aether-host="tauri"] #root {
 
 html[data-aether-host="tauri"][data-mood="aether-sakura"] #root {
   --native-backdrop-veil:
-    radial-gradient(ellipse at 30% -8%, rgba(255, 218, 228, 0.34), transparent 46%),
-    radial-gradient(ellipse at 86% 12%, rgba(252, 201, 185, 0.16), transparent 36%),
-    linear-gradient(180deg, rgba(255, 248, 251, 0.46), rgba(255, 236, 244, 0.36));
+    radial-gradient(ellipse at 30% -8%, rgba(255, 218, 228, 0.24), transparent 46%),
+    radial-gradient(ellipse at 86% 12%, rgba(252, 201, 185, 0.12), transparent 36%),
+    linear-gradient(180deg, rgba(255, 246, 251, 0.3), rgba(255, 232, 243, 0.22));
   background:
-    radial-gradient(ellipse at 36% 0%, rgba(255, 218, 228, 0.2), transparent 42%),
-    radial-gradient(ellipse at 82% 16%, rgba(207, 95, 125, 0.08), transparent 34%),
-    linear-gradient(180deg, rgba(255, 248, 251, 0.5), rgba(255, 236, 244, 0.4));
+    radial-gradient(ellipse at 36% 0%, rgba(255, 218, 228, 0.16), transparent 42%),
+    radial-gradient(ellipse at 82% 16%, rgba(207, 95, 125, 0.06), transparent 34%),
+    linear-gradient(180deg, rgba(255, 246, 251, 0.32), rgba(255, 232, 243, 0.24));
 }
 
 /* Window-focus override.
@@ -705,6 +705,14 @@ body[data-window-focused="false"] {
   /* Ground anchor stays readable on inactive, but must not turn
    * the window into an opaque slab when Acrylic is muted by DWM. */
   --glass-ground: rgba(2, 7, 13, 0.46);
+}
+
+html[data-mood="aether-sakura"] body[data-window-focused="false"] {
+  --glass-frame: rgba(255, 238, 247, 0.28);
+  --glass-standard: rgba(255, 238, 247, 0.34);
+  --glass-dense: rgba(255, 234, 245, 0.4);
+  --glass-thick: rgba(255, 230, 242, 0.46);
+  --glass-ground: rgba(255, 240, 247, 0.3);
 }
 
 /* Broad light leak, not a decorative orb: warm console glow + cool moon edge. */

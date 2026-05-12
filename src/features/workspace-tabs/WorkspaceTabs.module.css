@@ -224,15 +224,17 @@
 
 :global(:root[data-mood="aether-sakura"]) .bar {
   --workspace-tabbar-bg:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.56), transparent 72%),
-    linear-gradient(90deg, rgba(207, 95, 125, 0.05), transparent 40%, rgba(252, 201, 185, 0.07)),
-    rgba(255, 248, 251, 0.88);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.34), transparent 72%),
+    linear-gradient(90deg, rgba(207, 95, 125, 0.035), transparent 40%, rgba(252, 201, 185, 0.05)),
+    rgba(255, 228, 241, 0.62);
   --workspace-tabbar-top-rim: rgba(255, 255, 255, 0.6);
   --workspace-tabbar-bottom-rim: rgba(159, 75, 97, 0.12);
   --workspace-tab-hover-bg: rgba(207, 95, 125, 0.08);
   --workspace-tab-close-hover-bg: rgba(207, 95, 125, 0.12);
   --workspace-tab-add-hover-bg: rgba(207, 95, 125, 0.1);
   --workspace-tab-drag-rim: rgba(159, 75, 97, 0.22);
+  backdrop-filter: blur(12px) saturate(1.12) brightness(1.02);
+  -webkit-backdrop-filter: blur(12px) saturate(1.12) brightness(1.02);
 }
 
 :global(:root[data-mood="aether-sakura"]) .tab {

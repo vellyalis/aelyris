@@ -160,17 +160,17 @@ const MOOD_SURFACE_CSS: Record<MoodPresetId, MoodSurfaceCSS> = {
   }),
   "aether-sakura": {
     "--chrome-frame-bg":
-      "linear-gradient(180deg, rgba(255, 255, 255, 0.3), transparent 72%), linear-gradient(90deg, rgba(189, 63, 104, 0.08), transparent 34%, transparent 66%, rgba(252, 201, 185, 0.08)), rgba(255, 236, 245, 0.46)",
-    "--chrome-frame-filter": "blur(8px) saturate(1.08) brightness(0.94) contrast(1.08)",
-    "--chrome-frame-shadow": "inset 0 1px 0 rgba(255, 255, 255, 0.46), inset 0 -1px 0 rgba(130, 49, 73, 0.12)",
+      "linear-gradient(180deg, rgba(255, 255, 255, 0.4), transparent 72%), linear-gradient(90deg, rgba(189, 63, 104, 0.05), transparent 34%, transparent 66%, rgba(252, 201, 185, 0.07)), rgba(255, 232, 243, 0.48)",
+    "--chrome-frame-filter": "blur(12px) saturate(1.14) brightness(1.02) contrast(1.02)",
+    "--chrome-frame-shadow": "inset 0 1px 0 rgba(255, 255, 255, 0.56), inset 0 -1px 0 rgba(130, 49, 73, 0.09)",
     "--chrome-control-hover-bg": "rgba(189, 63, 104, 0.1)",
     "--chrome-control-hover-border": "rgba(130, 49, 73, 0.18)",
     "--chrome-separator-bg": "linear-gradient(180deg, transparent, rgba(130, 49, 73, 0.22), transparent)",
-    "--statusbar-bg": "rgba(255, 248, 251, 0.84)",
-    "--statusbar-filter": "blur(1px) saturate(1.02) brightness(1) contrast(1)",
-    "--statusbar-shadow": "inset 0 1px 0 rgba(255, 255, 255, 0.52), inset 0 -1px 0 rgba(159, 75, 97, 0.08)",
-    "--material-panel-filter": "blur(1px) saturate(1.06) brightness(0.96) contrast(1.08)",
-    "--terminal-shell-filter": "blur(1px) saturate(1.08) brightness(0.86) contrast(1.12)",
+    "--statusbar-bg": "rgba(255, 228, 241, 0.66)",
+    "--statusbar-filter": "blur(12px) saturate(1.12) brightness(1.02) contrast(1.02)",
+    "--statusbar-shadow": "inset 0 1px 0 rgba(255, 255, 255, 0.5), inset 0 -1px 0 rgba(159, 75, 97, 0.07)",
+    "--material-panel-filter": "blur(14px) saturate(1.14) brightness(1.02) contrast(1.02)",
+    "--terminal-shell-filter": "blur(12px) saturate(1.12) brightness(0.96) contrast(1.06)",
     "--material-panel-shadow":
       "var(--rim-top), inset 0 0 0 1px rgba(159, 75, 97, 0.06), 0 10px 28px rgba(80, 32, 52, 0.12)",
     "--material-card-shadow": "var(--rim-top), 0 0 0 1px rgba(159, 75, 97, 0.07), 0 8px 18px rgba(80, 32, 52, 0.1)",
@@ -183,27 +183,27 @@ const MOOD_SURFACE_CSS: Record<MoodPresetId, MoodSurfaceCSS> = {
     "--scrim-heavy-bg":
       "linear-gradient(180deg, rgba(83, 37, 54, 0.24), rgba(54, 25, 39, 0.34)), rgba(255, 230, 240, 0.16)",
     "--dialog-surface":
-      "linear-gradient(180deg, rgba(255, 255, 255, 0.34), transparent 32%), linear-gradient(145deg, rgba(252, 201, 185, 0.16), transparent 50%), rgba(255, 240, 247, 0.86)",
+      "linear-gradient(180deg, rgba(255, 255, 255, 0.4), transparent 32%), linear-gradient(145deg, rgba(252, 201, 185, 0.12), transparent 50%), rgba(255, 247, 251, 0.74)",
     "--dialog-surface-blur": "blur(18px)",
-    "--settings-control-bg": "rgba(255, 250, 253, 0.72)",
-    "--settings-card-bg": "rgba(255, 245, 250, 0.66)",
-    "--settings-card-bg-hover": "rgba(255, 239, 247, 0.78)",
-    "--settings-card-bg-active": "rgba(255, 235, 245, 0.84)",
+    "--settings-control-bg": "rgba(255, 250, 253, 0.54)",
+    "--settings-card-bg": "rgba(255, 247, 251, 0.46)",
+    "--settings-card-bg-hover": "rgba(255, 243, 249, 0.56)",
+    "--settings-card-bg-active": "rgba(255, 238, 247, 0.64)",
     "--toolkit-grid-bg":
-      "linear-gradient(135deg, rgba(189, 63, 104, 0.12), transparent 38%, rgba(252, 201, 185, 0.14)), rgba(255, 242, 248, 0.46)",
+      "linear-gradient(135deg, rgba(189, 63, 104, 0.08), transparent 38%, rgba(252, 201, 185, 0.1)), rgba(255, 247, 251, 0.3)",
     "--toolkit-grid-shadow": "inset 0 1px 0 rgba(255, 255, 255, 0.44), inset 0 -1px 0 rgba(130, 49, 73, 0.12)",
     "--toolkit-tile-bg":
-      "linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(255, 218, 233, 0.12)), rgba(255, 245, 250, 0.58)",
+      "linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 218, 233, 0.08)), rgba(255, 248, 252, 0.34)",
     "--toolkit-tile-primary-bg":
-      "linear-gradient(135deg, color-mix(in srgb, var(--tone, var(--gold)) 14%, transparent), transparent 46%), rgba(255, 239, 247, 0.68)",
+      "linear-gradient(135deg, color-mix(in srgb, var(--tone, var(--gold)) 10%, transparent), transparent 46%), rgba(255, 246, 251, 0.42)",
     "--toolkit-tile-hover-bg":
-      "linear-gradient(180deg, color-mix(in srgb, var(--tone, var(--gold)) 13%, transparent), transparent 58%), rgba(255, 235, 245, 0.78)",
+      "linear-gradient(180deg, color-mix(in srgb, var(--tone, var(--gold)) 10%, transparent), transparent 58%), rgba(255, 241, 248, 0.52)",
     "--toolkit-tile-text": "rgba(47, 22, 33, 0.92)",
     "--toolkit-icon-bg":
       "linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(189, 63, 104, 0.06)), color-mix(in srgb, var(--tone, var(--accent)) 12%, rgba(255, 247, 251, 0.78))",
     "--toolkit-bottom-bg":
-      "linear-gradient(90deg, rgba(189, 63, 104, 0.12), transparent 52%, rgba(252, 201, 185, 0.12)), rgba(255, 242, 248, 0.58)",
-    "--toolkit-bottom-btn-bg": "rgba(255, 250, 253, 0.64)",
+      "linear-gradient(90deg, rgba(189, 63, 104, 0.08), transparent 52%, rgba(252, 201, 185, 0.08)), rgba(255, 248, 252, 0.34)",
+    "--toolkit-bottom-btn-bg": "rgba(255, 250, 253, 0.46)",
   },
   "aether-obsidian": darkMoodSurfaces({
     shell: "8, 8, 13",
@@ -523,12 +523,12 @@ const MOOD_CSS: Record<MoodPresetId, Record<string, string>> = {
     "--aether-smoke-mauve": "#e8a6b8",
     "--aether-moon": "#fffafd",
     "--aether-champagne": "#823149",
-    "--glass-clear": "rgba(255, 226, 237, 0.16)",
-    "--glass-ground": "rgba(97, 37, 61, 0.34)",
-    "--glass-frame": "rgba(124, 48, 76, 0.3)",
-    "--glass-standard": "rgba(255, 225, 237, 0.32)",
-    "--glass-dense": "rgba(255, 218, 233, 0.38)",
-    "--glass-thick": "rgba(255, 212, 229, 0.46)",
+    "--glass-clear": "rgba(255, 242, 248, 0.075)",
+    "--glass-ground": "rgba(255, 240, 247, 0.28)",
+    "--glass-frame": "rgba(255, 238, 247, 0.26)",
+    "--glass-standard": "rgba(255, 238, 247, 0.32)",
+    "--glass-dense": "rgba(255, 234, 245, 0.38)",
+    "--glass-thick": "rgba(255, 230, 242, 0.44)",
     "--glass-solid": "rgba(255, 247, 251, 0.88)",
     "--aether-bg": "var(--glass-clear)",
     "--aether-bg-sidebar": "var(--glass-standard)",
@@ -548,47 +548,47 @@ const MOOD_CSS: Record<MoodPresetId, Record<string, string>> = {
     "--text-on-accent": "#fffaff",
     "--row-hover": "rgba(189, 63, 104, 0.13)",
     "--row-hover-strong": "rgba(189, 63, 104, 0.2)",
-    "--terminal-canvas-bg": "rgba(83, 33, 56, 0.52)",
+    "--terminal-canvas-bg": "rgba(83, 33, 56, 0.36)",
     "--terminal-well-bg":
-      "radial-gradient(ellipse at 44% -18%, rgba(255, 198, 219, 0.22), transparent 46%), radial-gradient(ellipse at 78% 18%, rgba(252, 201, 185, 0.14), transparent 38%), linear-gradient(180deg, rgba(111, 43, 73, 0.42), rgba(54, 22, 42, 0.58))",
-    "--terminal-chrome-bg": "rgba(78, 31, 54, 0.38)",
-    "--terminal-chrome-bg-focus": "rgba(91, 35, 62, 0.54)",
+      "radial-gradient(ellipse at 44% -18%, rgba(255, 198, 219, 0.14), transparent 46%), radial-gradient(ellipse at 78% 18%, rgba(252, 201, 185, 0.09), transparent 38%), linear-gradient(180deg, rgba(111, 43, 73, 0.26), rgba(54, 22, 42, 0.38))",
+    "--terminal-chrome-bg": "rgba(78, 31, 54, 0.24)",
+    "--terminal-chrome-bg-focus": "rgba(91, 35, 62, 0.34)",
     "--terminal-rim-warm": "rgba(255, 205, 220, 0.22)",
     "--terminal-border": "rgba(255, 184, 210, 0.24)",
     "--terminal-shadow-inset":
-      "inset 0 1px 0 rgba(255, 226, 237, 0.16), inset 0 0 0 1px rgba(255, 168, 196, 0.14), inset 0 30px 72px rgba(72, 26, 46, 0.22), inset 0 -22px 58px rgba(42, 16, 31, 0.2)",
-    "--terminal-shell-shadow": "0 24px 68px rgba(80, 32, 52, 0.24), 0 0 44px rgba(189, 63, 104, 0.12)",
+      "inset 0 1px 0 rgba(255, 226, 237, 0.14), inset 0 0 0 1px rgba(255, 168, 196, 0.12), inset 0 30px 72px rgba(72, 26, 46, 0.16), inset 0 -22px 58px rgba(42, 16, 31, 0.15)",
+    "--terminal-shell-shadow": "0 24px 68px rgba(80, 32, 52, 0.18), 0 0 44px rgba(189, 63, 104, 0.1)",
     "--terminal-viewport-shadow":
-      "inset 0 0 0 1px rgba(255, 174, 204, 0.16), inset 0 1px 0 rgba(255, 238, 245, 0.12), inset 0 26px 68px rgba(86, 32, 54, 0.2), inset 0 -20px 50px rgba(46, 18, 34, 0.18)",
+      "inset 0 0 0 1px rgba(255, 174, 204, 0.14), inset 0 1px 0 rgba(255, 238, 245, 0.1), inset 0 26px 68px rgba(86, 32, 54, 0.14), inset 0 -20px 50px rgba(46, 18, 34, 0.13)",
     "--terminal-viewport-occlusion":
       "linear-gradient(180deg, rgba(255, 218, 228, 0.06), transparent 52px), linear-gradient(0deg, rgba(31, 10, 24, 0.16), transparent 42px), linear-gradient(90deg, rgba(232, 62, 122, 0.035), transparent 25%, transparent 74%, rgba(255, 210, 220, 0.03))",
     "--terminal-watermark-opacity": "0.032",
     "--terminal-watermark-filter": "drop-shadow(0 18px 54px rgba(189, 63, 104, 0.1))",
     "--mood-root-glow":
-      "linear-gradient(125deg, rgba(252, 201, 185, 0.24), transparent 35%), linear-gradient(300deg, rgba(189, 63, 104, 0.12), transparent 42%), linear-gradient(180deg, rgba(255, 250, 253, 0.3), rgba(255, 224, 237, 0.16))",
-    "--mood-root-glow-opacity": "0.34",
+      "linear-gradient(125deg, rgba(252, 201, 185, 0.18), transparent 35%), linear-gradient(300deg, rgba(189, 63, 104, 0.08), transparent 42%), linear-gradient(180deg, rgba(255, 250, 253, 0.2), rgba(255, 224, 237, 0.1))",
+    "--mood-root-glow-opacity": "0.28",
     "--mood-root-texture": "linear-gradient(90deg, transparent, rgba(189, 63, 104, 0.01) 50%, transparent)",
     "--mood-root-texture-opacity": "0.038",
     "--mood-window-rim":
       "inset 0 1px 0 rgba(255, 255, 255, 0.46), inset 0 0 0 1px rgba(130, 49, 73, 0.12), inset 0 -1px 0 rgba(130, 49, 73, 0.06)",
     "--mood-left-panel-bg":
-      "linear-gradient(180deg, rgba(255, 255, 255, 0.32), transparent 30%), linear-gradient(135deg, rgba(252, 201, 185, 0.14), rgba(255, 218, 233, 0.22)), rgba(255, 241, 247, 0.48)",
+      "linear-gradient(180deg, rgba(255, 255, 255, 0.38), transparent 30%), linear-gradient(135deg, rgba(252, 201, 185, 0.2), rgba(255, 218, 233, 0.22)), rgba(255, 228, 241, 0.64)",
     "--mood-center-panel-bg":
-      "radial-gradient(ellipse at 50% 0%, rgba(189, 63, 104, 0.1), transparent 44%), linear-gradient(180deg, rgba(255, 248, 252, 0.3), rgba(255, 222, 236, 0.22)), rgba(255, 244, 249, 0.28)",
+      "radial-gradient(ellipse at 50% 0%, rgba(189, 63, 104, 0.08), transparent 44%), linear-gradient(180deg, rgba(255, 248, 252, 0.2), rgba(255, 222, 236, 0.12)), rgba(255, 248, 252, 0.2)",
     "--mood-right-panel-bg":
-      "linear-gradient(180deg, rgba(255, 255, 255, 0.28), transparent 26%), linear-gradient(145deg, rgba(252, 201, 185, 0.14), rgba(255, 218, 233, 0.24)), rgba(255, 242, 248, 0.52)",
+      "linear-gradient(180deg, rgba(255, 255, 255, 0.36), transparent 26%), linear-gradient(145deg, rgba(252, 201, 185, 0.2), rgba(255, 218, 233, 0.24)), rgba(255, 228, 241, 0.66)",
     "--mood-widget-bg":
-      "linear-gradient(160deg, rgba(255, 255, 255, 0.34), rgba(255, 226, 237, 0.24)), rgba(255, 244, 249, 0.54)",
+      "linear-gradient(160deg, rgba(255, 255, 255, 0.32), rgba(255, 226, 237, 0.2)), rgba(255, 236, 246, 0.56)",
     "--mood-widget-veil":
       "linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 22%), linear-gradient(135deg, rgba(189, 63, 104, 0.075), transparent 44%), linear-gradient(315deg, rgba(252, 201, 185, 0.07), transparent 50%)",
     "--mood-sessions-widget-bg":
-      "linear-gradient(160deg, rgba(255, 255, 255, 0.34), rgba(255, 224, 235, 0.24)), rgba(255, 244, 249, 0.54)",
+      "linear-gradient(160deg, rgba(255, 255, 255, 0.3), rgba(255, 224, 235, 0.18)), rgba(255, 244, 250, 0.46)",
     "--mood-workflow-widget-bg":
-      "linear-gradient(180deg, rgba(255, 250, 253, 0.32), rgba(255, 224, 235, 0.24)), rgba(255, 244, 249, 0.52)",
+      "linear-gradient(180deg, rgba(255, 250, 253, 0.28), rgba(255, 224, 235, 0.18)), rgba(255, 244, 250, 0.44)",
     "--mood-toolkit-widget-bg":
-      "linear-gradient(150deg, rgba(255, 250, 253, 0.3), rgba(255, 224, 235, 0.23)), rgba(255, 244, 249, 0.52)",
+      "linear-gradient(150deg, rgba(255, 250, 253, 0.26), rgba(255, 224, 235, 0.18)), rgba(255, 244, 250, 0.44)",
     "--mood-logs-widget-bg":
-      "linear-gradient(180deg, rgba(255, 247, 251, 0.28), rgba(255, 224, 235, 0.22)), rgba(255, 235, 244, 0.48)",
+      "linear-gradient(180deg, rgba(255, 247, 251, 0.24), rgba(255, 224, 235, 0.16)), rgba(255, 240, 247, 0.4)",
     "--mood-selection-bg": "rgba(189, 63, 104, 0.22)",
   },
   "aether-obsidian": {

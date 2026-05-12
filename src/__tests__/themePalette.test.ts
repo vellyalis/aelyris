@@ -260,10 +260,23 @@ describe("themes/moods — preset metadata", () => {
     expect(vars["--mood-root-glow"]).toContain("252, 201, 185");
     expect(contrastRatio(vars["--text-primary"], "#fff9fc")).toBeGreaterThanOrEqual(10);
     expect(rgbaAlpha(vars["--glass-standard"])).toBeLessThanOrEqual(0.34);
-    expect(rgbaAlpha(vars["--terminal-canvas-bg"])).toBeLessThanOrEqual(0.54);
+    expect(rgbaAlpha(vars["--terminal-canvas-bg"])).toBeLessThanOrEqual(0.38);
     expect(vars["--toolkit-tile-bg"]).not.toContain("0, 7, 15");
-    expect(vars["--statusbar-bg"]).toContain("255, 248, 251");
-    expect(rgbaAlpha(vars["--settings-card-bg"])).toBeLessThanOrEqual(0.7);
+    expect(vars["--statusbar-bg"]).toContain("255, 228, 241");
+    expect(rgbaAlpha(vars["--settings-card-bg"])).toBeLessThanOrEqual(0.5);
+  });
+
+  it("keeps Aether Sakura rails translucent white-blossom instead of grey glass", () => {
+    const vars = moodPresetToCSS("aether-sakura");
+
+    expect(vars["--mood-left-panel-bg"]).toContain("255, 228, 241");
+    expect(vars["--mood-right-panel-bg"]).toContain("255, 228, 241");
+    expect(rgbaAlpha(vars["--statusbar-bg"])).toBeLessThanOrEqual(0.68);
+    expect(vars["--glass-ground"]).toContain("255, 240, 247");
+    expect(vars["--glass-frame"]).toContain("255, 238, 247");
+    expect(rgbaAlpha(vars["--glass-ground"])).toBeLessThanOrEqual(0.3);
+    expect(vars["--mood-left-panel-bg"]).not.toContain("97, 37, 61");
+    expect(vars["--mood-right-panel-bg"]).not.toContain("4, 13, 23");
   });
 
   it("keeps mood root textures clear instead of synthetic scanlines", () => {
