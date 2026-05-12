@@ -224,9 +224,9 @@
 
 :global(:root[data-mood="aether-sakura"]) .bar {
   --workspace-tabbar-bg:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.34), transparent 72%),
-    linear-gradient(90deg, rgba(207, 95, 125, 0.035), transparent 40%, rgba(252, 201, 185, 0.05)),
-    rgba(255, 228, 241, 0.62);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.42), transparent 72%),
+    linear-gradient(90deg, rgba(207, 95, 125, 0.03), transparent 40%, rgba(252, 201, 185, 0.04)),
+    rgba(255, 240, 248, 0.84);
   --workspace-tabbar-top-rim: rgba(255, 255, 255, 0.6);
   --workspace-tabbar-bottom-rim: rgba(159, 75, 97, 0.12);
   --workspace-tab-hover-bg: rgba(207, 95, 125, 0.08);
