@@ -84,7 +84,9 @@ describe("App right rail composition", () => {
     expect(src).toContain("<RunGraphPanel");
     expect(src).toContain("<ToolLedgerPanel");
     expect(src).toContain("<ReliabilityPanel");
-    expect(src).toContain("changedFilesCount={changedFiles.length}");
+    expect(src).toContain("const rightRailChangedFiles = useMemo(");
+    expect(src).toContain("changedFilesCount={rightRailChangedFiles.length}");
+    expect(src).toContain("changedFiles={rightRailChangedFiles}");
     expect(commandRail).not.toContain('data-widget="logs"');
     expect(commandRail).not.toContain("LogsPanel");
     expect(commandRail).not.toContain('density="compact"');

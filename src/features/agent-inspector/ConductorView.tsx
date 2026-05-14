@@ -9,7 +9,7 @@ import {
   Position,
   ReactFlow,
 } from "@xyflow/react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import "@xyflow/react/dist/style.css";
 
 import { Layers } from "lucide-react";
@@ -75,9 +75,16 @@ const nodeTypes: NodeTypes = { conductor: ConductorNode };
  * parent → child for handoff chains. Clicking a node selects the session.
  */
 export function ConductorView({ sessions, activeSessionId, onSelectSession }: ConductorViewProps) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+
   const { flowNodes, flowEdges, roleSummaries, runSummary } = useMemo(() => {
     const layout = layoutConductor(sessions);
-    const runSummary = buildRunGraph(sessions, { now: Date.now(), staleAfterMs: 15 * 60 * 1000 });
+    const runSummary = buildRunGraph(sessions, { now, staleAfterMs: 15 * 60 * 1000 });
     const flowNodes: Node[] = layout.nodes.map((n) => {
       const role = getRole(n.session.role);
       const accent = role?.color ?? getSessionColor(n.session.id).accent;
@@ -114,7 +121,7 @@ export function ConductorView({ sessions, activeSessionId, onSelectSession }: Co
     }));
     const roleSummaries = layout.columns;
     return { flowNodes, flowEdges, roleSummaries, runSummary };
-  }, [sessions, activeSessionId]);
+  }, [sessions, activeSessionId, now]);
 
   if (sessions.length === 0) {
     return (

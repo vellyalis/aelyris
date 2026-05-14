@@ -46,6 +46,12 @@ describe("collectActivity", () => {
   it("returns empty array for no sessions", () => {
     expect(collectActivity([])).toEqual([]);
   });
+
+  it("can collect only the newest entries without materializing the full activity rail", () => {
+    const result = collectActivity(sessions, { limit: 2 });
+
+    expect(result.map((entry) => entry.timestamp)).toEqual([400, 300]);
+  });
 });
 
 describe("filterActivity", () => {

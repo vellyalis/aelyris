@@ -27,6 +27,8 @@ export interface RightRailAction extends RightRailRecommendation {
   id: RightRailActionId;
   priority: number;
   state: "blocked" | "review-ready" | "running" | "idle" | "unhealthy";
+  targetSessionId?: string;
+  targetPaneRole?: string;
 }
 
 export interface RightRailNowState {
@@ -90,6 +92,7 @@ export function deriveRightRailActions({
       priority: 110,
       label: "Handoff watch",
       detail: `${summary.peakSession.name} is at ${peakContext}% context`,
+      targetSessionId: summary.peakSession.id,
     });
   }
 
@@ -106,6 +109,7 @@ export function deriveRightRailActions({
   }
 
   if (summary.attentionCount > 0) {
+    const attentionSession = sessions.find((session) => session.status === "waiting" || session.status === "error");
     actions.push({
       id: "recover-attention",
       mode: "observe",
@@ -114,6 +118,7 @@ export function deriveRightRailActions({
       priority: 95,
       label: "Recover blocked run",
       detail: plural(summary.attentionCount, "agent"),
+      targetSessionId: attentionSession?.id,
     });
   }
 
@@ -126,10 +131,12 @@ export function deriveRightRailActions({
       priority: selectedRole === "test" ? 88 : 90,
       label: selectedRole === "test" ? "Verify changes" : "Focused review",
       detail: `${selectedName} · ${plural(summary.changedFilesCount, "changed file")}`,
+      targetPaneRole: selectedRole,
     });
   }
 
   if (summary.changedFilesCount > 0) {
+    const changedSession = sessions.find((session) => (session.changedFileDetails?.length ?? session.filesChanged ?? 0) > 0);
     actions.push({
       id: "review-queue",
       mode: "review",
@@ -138,6 +145,7 @@ export function deriveRightRailActions({
       priority: 80,
       label: "Review queue",
       detail: plural(summary.changedFilesCount, "changed file"),
+      targetSessionId: changedSession?.id,
     });
   }
 
@@ -150,6 +158,7 @@ export function deriveRightRailActions({
       priority: 72,
       label: selectedRole === "logs" ? "Inspect logs" : "Track agent",
       detail: `${selectedName} · ${plural(summary.liveRunCount, "live session")}`,
+      targetPaneRole: selectedRole,
     });
   }
 
@@ -162,10 +171,12 @@ export function deriveRightRailActions({
       priority: 68,
       label: "Parallel run",
       detail: plural(summary.liveRunCount, "live session"),
+      targetSessionId: summary.liveSessions[0]?.id,
     });
   }
 
   if (summary.tracedSessionCount >= 2) {
+    const tracedSession = sessions.find((session) => session.role || session.handoffFrom);
     actions.push({
       id: "open-conductor",
       mode: "observe",
@@ -174,6 +185,7 @@ export function deriveRightRailActions({
       priority: 64,
       label: "Open topology",
       detail: plural(summary.tracedSessionCount, "traced run"),
+      targetSessionId: tracedSession?.id,
     });
   }
 
@@ -186,6 +198,7 @@ export function deriveRightRailActions({
       priority: 50,
       label: "Track current run",
       detail: plural(summary.liveRunCount, "live session"),
+      targetSessionId: summary.liveSessions[0]?.id,
     });
   }
 

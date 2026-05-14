@@ -175,6 +175,24 @@ describe("AgentInspector tab routing", () => {
     expect(screen.queryAllByLabelText(/^Select session /).length).toBeGreaterThanOrEqual(2);
   });
 
+  it("promotes conductor when parallel sessions have roles or handoffs", () => {
+    const sessions = [baseSession("a", { role: "implementer" }), baseSession("b", { handoffFrom: "a" })];
+    render(<AgentInspector sessions={sessions} activeSessionId="a" onSelectSession={() => {}} />);
+
+    expect(screen.getByTestId("reactflow-mock")).toBeTruthy();
+    expect(screen.getByLabelText("Conductor role summary")).toBeTruthy();
+  });
+
+  it("lets users return to the parallel pane view after conductor auto-promotion", () => {
+    const sessions = [baseSession("a", { role: "implementer" }), baseSession("b", { handoffFrom: "a" })];
+    render(<AgentInspector sessions={sessions} activeSessionId="a" onSelectSession={() => {}} />);
+
+    fireEvent.click(screen.getByLabelText("Parallel sessions"));
+
+    expect(screen.queryAllByLabelText(/^Select session /).length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByTestId("reactflow-mock")).toBeNull();
+  });
+
   it("keeps session activity adaptive instead of rendering a persistent log list", () => {
     const session = baseSession("a", {
       logs: [

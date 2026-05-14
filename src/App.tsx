@@ -125,11 +125,13 @@ import {
   deriveRightRailActions,
   deriveRightRailNowState,
   deriveRightRailRecommendation,
+  type RightRailAction,
   type RightRailMode,
 } from "./shared/lib/rightRailAdvisor";
 import { classifyCommand, formatCommandRiskSummary } from "./shared/lib/shellSafety";
 import { useAppStore } from "./shared/store/appStore";
 import { toast } from "./shared/store/toastStore";
+import type { AgentSession } from "./shared/types/agent";
 import type { SearchHit } from "./shared/types/history";
 import { CollapsibleSection } from "./shared/ui/CollapsibleSection";
 import { ConfirmDialog, showConfirm } from "./shared/ui/ConfirmDialog";
@@ -202,6 +204,8 @@ interface DevVisualQaState {
   incidentFixtures: boolean;
   projectPath: string;
   railMode: RightRailMode;
+  railScenario: "idle" | "running" | "blocked" | "review" | "conductor" | "unhealthy";
+  railScenarioExplicit: boolean;
 }
 
 function formatTerminalTarget(shell: ShellType, terminalId: string | null): string {
@@ -219,6 +223,8 @@ function readDevVisualQaState(): DevVisualQaState {
       incidentFixtures: false,
       projectPath: "",
       railMode: "observe",
+      railScenario: "idle",
+      railScenarioExplicit: false,
     };
   }
   const params = new URLSearchParams(window.location.search);
@@ -239,12 +245,24 @@ function readDevVisualQaState(): DevVisualQaState {
       incidentFixtures: false,
       projectPath: "",
       railMode: "observe",
+      railScenario: "idle",
+      railScenarioExplicit: false,
     };
   const attachFixture = params.get("attachFixture") === "1" || params.get("processAttach") === "1";
   const diagnosticsEnabled = params.get("diagnostics") === "1" || params.get("logs") === "1";
   const incidentFixtures = params.get("incidents") === "1" || params.get("auditRisk") === "1";
   const projectPath = params.get("projectPath") || storedProject || "C:/Users/owner/Aether_Terminal";
   const requestedRail = params.get("rail");
+  const requestedScenario = params.get("railState") ?? params.get("state") ?? params.get("scenario");
+  const railScenarioExplicit = requestedScenario != null;
+  const railScenario =
+    requestedScenario === "running" ||
+    requestedScenario === "blocked" ||
+    requestedScenario === "review" ||
+    requestedScenario === "conductor" ||
+    requestedScenario === "unhealthy"
+      ? requestedScenario
+      : "idle";
   const railMode: RightRailMode =
     requestedRail === "command" || requestedRail === "review" || requestedRail === "observe"
       ? requestedRail
@@ -256,7 +274,107 @@ function readDevVisualQaState(): DevVisualQaState {
     incidentFixtures,
     projectPath: projectPath.replace(/\\/g, "/"),
     railMode,
+    railScenario,
+    railScenarioExplicit,
   };
+}
+
+function createDevVisualQaSessions(scenario: DevVisualQaState["railScenario"], projectPath: string): AgentSession[] {
+  const now = Date.now();
+  const worktree = {
+    name: "aether-command-center",
+    path: `${projectPath}/.aether/worktrees/command-center`,
+    branch: "feature/command-center",
+    is_main: false,
+    head_sha: "qa12345",
+    status: "Modified" as const,
+  };
+  const base = (id: string, overrides: Partial<AgentSession> = {}): AgentSession => ({
+    id,
+    name: id,
+    status: "coding",
+    model: "claude-sonnet",
+    prompt: "Harden Aether Command Center",
+    startedAt: now - 120_000,
+    logs: [
+      { timestamp: now - 90_000, type: "tool_use", content: 'Edit({"file":"src/App.tsx"})' },
+      { timestamp: now - 30_000, type: "text", content: "Mapped right rail state into next actions." },
+    ],
+    cost: 0.42,
+    tokensUsed: 18_000,
+    branch: "feature/command-center",
+    filesChanged: 2,
+    changedFileDetails: [
+      { path: "src/App.tsx", action: "edit", toolName: "Edit", timestamp: now - 60_000 },
+      { path: "src/shared/lib/rightRailAdvisor.ts", action: "edit", toolName: "Edit", timestamp: now - 45_000 },
+    ],
+    worktree,
+    workspaceScope: projectPath,
+    ...overrides,
+  });
+
+  if (scenario === "idle") return [];
+  if (scenario === "review") {
+    return [
+      base("qa-review", {
+        name: "Review ready",
+        status: "done",
+        role: "reviewer",
+        finalReport: { status: "ready", title: "Command Center review", updatedAt: now - 5_000 },
+        closeState: "collectable",
+      }),
+    ];
+  }
+  if (scenario === "blocked") {
+    return [
+      base("qa-blocked", {
+        name: "Blocked implementer",
+        status: "waiting",
+        role: "implementer",
+        blockedReason: "Approval required for file-system write",
+        nextActor: "owner",
+      }),
+    ];
+  }
+  if (scenario === "unhealthy") {
+    return [
+      base("qa-unhealthy", {
+        name: "Long context runner",
+        status: "coding",
+        role: "implementer",
+        tokensUsed: 192_000,
+        logs: [{ timestamp: now - 45_000, type: "error", content: "Context pressure is above handoff threshold." }],
+      }),
+    ];
+  }
+  if (scenario === "conductor") {
+    return [
+      base("qa-impl", { name: "Implementer", role: "implementer", startedAt: now - 180_000 }),
+      base("qa-test", { name: "Tester", role: "tester", handoffFrom: "qa-impl", startedAt: now - 120_000 }),
+      base("qa-reviewer", { name: "Reviewer", role: "reviewer", handoffFrom: "qa-test", startedAt: now - 60_000 }),
+    ];
+  }
+  return [
+    base("qa-impl", { name: "Implementer", role: "implementer" }),
+    base("qa-reviewer", { name: "Reviewer", role: "reviewer", handoffFrom: "qa-impl" }),
+  ];
+}
+
+function createDevVisualQaChangedFiles(
+  scenario: DevVisualQaState["railScenario"],
+): Array<{ path: string; status: string }> {
+  if (scenario === "idle") return [];
+  if (scenario === "blocked" || scenario === "unhealthy") {
+    return [
+      { path: "src/App.tsx", status: "modified" },
+      { path: "src/shared/lib/rightRailAdvisor.ts", status: "modified" },
+    ];
+  }
+  return [
+    { path: "src/App.tsx", status: "modified" },
+    { path: "src/shared/lib/rightRailAdvisor.ts", status: "modified" },
+    { path: "src/styles/global.css", status: "modified" },
+  ];
 }
 
 function createDevVisualQaAuditEvents(): AuditEventRecord[] {
@@ -453,6 +571,13 @@ function getNextRightRailMode(current: RightRailMode, key: string): RightRailMod
   return null;
 }
 
+const CLOSED_INTERACTIVE_STATUSES = new Set(["idle", "done", "complete", "completed", "stopped", "exited", "closed"]);
+
+function isLiveInteractiveSessionStatus(status: string): boolean {
+  const normalized = status.trim().toLowerCase();
+  return normalized.length > 0 && !CLOSED_INTERACTIVE_STATUSES.has(normalized);
+}
+
 export function App() {
   const {
     themeId,
@@ -512,7 +637,12 @@ export function App() {
   const [fileTreeKey, setFileTreeKey] = useState(0);
   const [quickOpenMode, setQuickOpenMode] = useState<"files" | "buffers" | null>(null);
   const [rightRailMode, setRightRailMode] = useState<RightRailMode>("command");
+  const [rightRailFixtureSelectedSessionId, setRightRailFixtureSelectedSessionId] = useState<string | null>(null);
   const [paneSwitcherVisible, setPaneSwitcherVisible] = useState(false);
+
+  useEffect(() => {
+    setRightRailFixtureSelectedSessionId(null);
+  }, [devVisualQa.enabled, devVisualQa.railScenario]);
 
   // Map<tabId, focused-pane PTY id>. Each `<PaneTreeContainer>` reports
   // its tab's focused-pane PTY id through `onActiveTerminalChange`; the
@@ -622,8 +752,11 @@ export function App() {
     return () => document.removeEventListener(TERMINAL_PREFIX_COMMAND_EVENT, onPrefixCommand);
   }, [activeTab.cwd, activeTab.shell, addTab, addTabWithCwd, terminalPaneTargets]);
   const visualAuditEvents = useMemo(
-    () => (devVisualQa.incidentFixtures ? createDevVisualQaAuditEvents() : undefined),
-    [devVisualQa.incidentFixtures],
+    () =>
+      devVisualQa.incidentFixtures || devVisualQa.railScenario === "blocked" || devVisualQa.railScenario === "unhealthy"
+        ? createDevVisualQaAuditEvents()
+        : undefined,
+    [devVisualQa.incidentFixtures, devVisualQa.railScenario],
   );
   const auditStream = useAuditEvents({ enabled: visualAuditEvents === undefined, limit: 40, pollMs: 3_000 });
   const operationalAuditEvents = visualAuditEvents ?? auditStream.entries;
@@ -789,6 +922,30 @@ export function App() {
   // ── Derived state ──
 
   const { branch, changedFiles, refresh: refreshGitStatus } = useGitStatus(projectPath);
+  const rightRailUsesFixtures = devVisualQa.enabled && devVisualQa.railScenarioExplicit;
+  const rightRailSessions = useMemo(
+    () =>
+      rightRailUsesFixtures
+        ? createDevVisualQaSessions(devVisualQa.railScenario, devVisualQa.projectPath || projectPath)
+        : sessions,
+    [devVisualQa.projectPath, devVisualQa.railScenario, projectPath, rightRailUsesFixtures, sessions],
+  );
+  const rightRailChangedFiles = useMemo(
+    () =>
+      rightRailUsesFixtures
+        ? createDevVisualQaChangedFiles(devVisualQa.railScenario)
+        : changedFiles,
+    [changedFiles, devVisualQa.railScenario, rightRailUsesFixtures],
+  );
+  const rightRailSelectedFixtureSessionExists =
+    rightRailFixtureSelectedSessionId != null &&
+    rightRailSessions.some((session) => session.id === rightRailFixtureSelectedSessionId);
+  const rightRailActiveSessionId =
+    rightRailUsesFixtures && rightRailSessions.length > 0
+      ? rightRailSelectedFixtureSessionExists
+        ? rightRailFixtureSelectedSessionId
+        : (rightRailSessions[0]?.id ?? null)
+      : activeSessionId;
   const rightRailAuditRisks = useMemo(
     () =>
       scopedOperationalAuditEvents
@@ -819,7 +976,7 @@ export function App() {
       buildWorkstationGraph({
         workspaceId: projectPath || "workspace",
         threadId: activeTabId,
-        sessions,
+        sessions: rightRailSessions,
         panes: visualTerminalPaneTargets.map((pane) => ({
           paneId: pane.paneId,
           terminalId: pane.terminalId,
@@ -827,22 +984,22 @@ export function App() {
           role: pane.role,
           status: pane.lifecycle,
         })),
-        changedFiles,
+        changedFiles: rightRailChangedFiles,
         risks: rightRailAuditRisks,
       }),
-    [activeTabId, changedFiles, projectPath, rightRailAuditRisks, sessions, visualTerminalPaneTargets],
+    [activeTabId, projectPath, rightRailAuditRisks, rightRailChangedFiles, rightRailSessions, visualTerminalPaneTargets],
   );
   const focusedRightRailGraph = useMemo(
     () =>
       filterWorkstationGraph(rightRailGraph, {
-        agentId: activeSessionId,
+        agentId: rightRailActiveSessionId,
         paneId: selectedOperationalPaneTarget?.paneId ?? null,
       }),
-    [activeSessionId, rightRailGraph, selectedOperationalPaneTarget?.paneId],
+    [rightRailActiveSessionId, rightRailGraph, selectedOperationalPaneTarget?.paneId],
   );
   const decisionInbox = useMemo(
-    () => buildDecisionInbox({ sessions, auditEvents: scopedOperationalAuditEvents, workflows: workflowStatuses }),
-    [scopedOperationalAuditEvents, sessions, workflowStatuses],
+    () => buildDecisionInbox({ sessions: rightRailSessions, auditEvents: scopedOperationalAuditEvents, workflows: workflowStatuses }),
+    [rightRailSessions, scopedOperationalAuditEvents, workflowStatuses],
   );
   const activeAgent = sessions.find((s) => s.id === activeSessionId);
   const headerStatus = activeAgent
@@ -1208,6 +1365,31 @@ export function App() {
     [sessions, tabs, setActiveSessionId, handleTabSwitch],
   );
 
+  const handleSelectRightRailSession = useCallback(
+    (sessionId: string) => {
+      if (rightRailUsesFixtures) {
+        setRightRailFixtureSelectedSessionId(sessionId);
+        return;
+      }
+      handleSelectSession(sessionId);
+    },
+    [handleSelectSession, rightRailUsesFixtures],
+  );
+
+  const handleRightRailAction = useCallback(
+    (action: RightRailAction) => {
+      setRightRailMode(action.mode);
+      if (action.targetSessionId) {
+        handleSelectRightRailSession(action.targetSessionId);
+      }
+      if (action.targetPaneRole) {
+        const pane = visualTerminalPaneTargets.find((candidate) => candidate.role === action.targetPaneRole);
+        if (pane) selectOperationalPane(pane);
+      }
+    },
+    [handleSelectRightRailSession, selectOperationalPane, visualTerminalPaneTargets],
+  );
+
   // ── Interactive agent session handlers ──
 
   const handleFocusInteractiveSession = useCallback(
@@ -1516,17 +1698,20 @@ export function App() {
     );
   }
 
+  const liveInteractiveSessionCount = interactiveSessions.filter((session) =>
+    isLiveInteractiveSessionStatus(session.status),
+  ).length;
   const liveAgentCount =
-    sessions.filter((s) => s.status !== "idle" && s.status !== "done").length + interactiveSessions.length;
+    rightRailSessions.filter((s) => s.status !== "idle" && s.status !== "done").length + liveInteractiveSessionCount;
   const rightRailModeBadges: Record<RightRailMode, number> = {
     command: decisionInbox.pendingCount > 0 ? decisionInbox.pendingCount : liveAgentCount,
-    review: changedFiles.length,
+    review: rightRailChangedFiles.length,
     observe: decisionInbox.pendingCount + liveAgentCount,
   };
   const rightRailAdvisorInput = {
-    sessions,
-    interactiveSessionCount: interactiveSessions.length,
-    changedFilesCount: changedFiles.length,
+    sessions: rightRailSessions,
+    interactiveSessionCount: liveInteractiveSessionCount,
+    changedFilesCount: rightRailChangedFiles.length,
     contextWarnPct,
     currentMode: rightRailMode,
     pendingDecisionCount: decisionInbox.pendingCount,
@@ -1858,7 +2043,16 @@ export function App() {
                       type="button"
                       className="right-panel-advisor"
                       data-tone={rightRailRecommendation.tone}
-                      onClick={() => setRightRailMode(rightRailRecommendation.mode)}
+                      onClick={() => {
+                        const matchingAction = rightRailActions.find(
+                          (action) =>
+                            action.mode === rightRailRecommendation.mode &&
+                            action.label === rightRailRecommendation.label &&
+                            action.detail === rightRailRecommendation.detail,
+                        );
+                        if (matchingAction) handleRightRailAction(matchingAction);
+                        else setRightRailMode(rightRailRecommendation.mode);
+                      }}
                       title={`Switch to ${rightRailRecommendedMode.label}: ${rightRailRecommendation.detail}`}
                     >
                       <span className="right-panel-advisor-kicker">Suggested</span>
@@ -1885,7 +2079,7 @@ export function App() {
                             className="right-panel-action"
                             data-tone={action.tone}
                             data-state={action.state}
-                            onClick={() => setRightRailMode(action.mode)}
+                            onClick={() => handleRightRailAction(action)}
                             title={`${action.label}: ${action.detail}`}
                           >
                             <span className="right-panel-action-icon" aria-hidden="true">
@@ -1905,8 +2099,8 @@ export function App() {
                   <ErrorBoundary>
                     <Suspense fallback={null}>
                       <WorkstationPulse
-                        sessions={sessions}
-                        changedFilesCount={changedFiles.length}
+                        sessions={rightRailSessions}
+                        changedFilesCount={rightRailChangedFiles.length}
                         workstationGraph={focusedRightRailGraph}
                       />
                     </Suspense>
@@ -1926,11 +2120,11 @@ export function App() {
                           <Suspense fallback={null}>
                             <div className="bento-widget" data-widget="decision-inbox">
                               <DecisionInboxPanel
-                                sessions={sessions}
+                                sessions={rightRailSessions}
                                 auditEvents={scopedOperationalAuditEvents}
                                 workflows={workflowStatuses}
-                                activeSessionId={activeSessionId}
-                                onSelectSession={handleSelectSession}
+                                activeSessionId={rightRailActiveSessionId}
+                                onSelectSession={handleSelectRightRailSession}
                               />
                             </div>
                           </Suspense>
@@ -1939,9 +2133,9 @@ export function App() {
                           <Suspense fallback={null}>
                             <div className="bento-widget" data-widget="sessions" style={{ minHeight: 200 }}>
                               <AgentInspector
-                                sessions={sessions}
-                                activeSessionId={activeSessionId}
-                                onSelectSession={handleSelectSession}
+                                sessions={rightRailSessions}
+                                activeSessionId={rightRailActiveSessionId}
+                                onSelectSession={handleSelectRightRailSession}
                                 onStartAgent={handleStartAgent}
                                 onStopAgent={stopAgent}
                                 onCreateWorktree={createWorktree}
@@ -1961,7 +2155,7 @@ export function App() {
                             <div className="bento-widget" data-widget="workflow">
                               <WorkflowPanel
                                 projectPath={projectPath}
-                                sessions={sessions}
+                                sessions={rightRailSessions}
                                 onStartAgent={handleStartAgent}
                               />
                             </div>
@@ -1984,10 +2178,10 @@ export function App() {
                             <Suspense fallback={null}>
                               <div className="bento-widget" data-widget="context">
                                 <ContextPanel
-                                  sessions={sessions}
-                                  activeSessionId={activeSessionId}
-                                  changedFilesCount={changedFiles.length}
-                                  changedFiles={changedFiles}
+                                  sessions={rightRailSessions}
+                                  activeSessionId={rightRailActiveSessionId}
+                                  changedFilesCount={rightRailChangedFiles.length}
+                                  changedFiles={rightRailChangedFiles}
                                   panes={visualTerminalPaneTargets}
                                   auditEvents={scopedOperationalAuditEvents}
                                   projectName={projectName}
@@ -2008,10 +2202,10 @@ export function App() {
                           <Suspense fallback={null}>
                             <div className="bento-widget" data-widget="review-queue">
                               <ReviewQueuePanel
-                                sessions={sessions}
-                                changedFiles={changedFiles}
-                                activeSessionId={activeSessionId}
-                                onSelectSession={handleSelectSession}
+                                sessions={rightRailSessions}
+                                changedFiles={rightRailChangedFiles}
+                                activeSessionId={rightRailActiveSessionId}
+                                onSelectSession={handleSelectRightRailSession}
                                 onOpenDiff={handleOpenDiff}
                                 onStartAgent={handleStartAgent}
                                 workstationGraph={focusedRightRailGraph}
@@ -2023,9 +2217,9 @@ export function App() {
                           <Suspense fallback={null}>
                             <div className="bento-widget" data-widget="sessions" style={{ minHeight: 200 }}>
                               <AgentInspector
-                                sessions={sessions}
-                                activeSessionId={activeSessionId}
-                                onSelectSession={handleSelectSession}
+                                sessions={rightRailSessions}
+                                activeSessionId={rightRailActiveSessionId}
+                                onSelectSession={handleSelectRightRailSession}
                                 onStartAgent={handleStartAgent}
                                 onStopAgent={stopAgent}
                                 onCreateWorktree={createWorktree}
@@ -2055,10 +2249,10 @@ export function App() {
                           <Suspense fallback={null}>
                             <div className="bento-widget" data-widget="context">
                               <ContextPanel
-                                sessions={sessions}
-                                activeSessionId={activeSessionId}
-                                changedFilesCount={changedFiles.length}
-                                changedFiles={changedFiles}
+                                sessions={rightRailSessions}
+                                activeSessionId={rightRailActiveSessionId}
+                                changedFilesCount={rightRailChangedFiles.length}
+                                changedFiles={rightRailChangedFiles}
                                 panes={visualTerminalPaneTargets}
                                 auditEvents={scopedOperationalAuditEvents}
                                 projectName={projectName}
@@ -2144,10 +2338,10 @@ export function App() {
                           <Suspense fallback={null}>
                             <div className="bento-widget" data-widget="context">
                               <ContextPanel
-                                sessions={sessions}
-                                activeSessionId={activeSessionId}
-                                changedFilesCount={changedFiles.length}
-                                changedFiles={changedFiles}
+                                sessions={rightRailSessions}
+                                activeSessionId={rightRailActiveSessionId}
+                                changedFilesCount={rightRailChangedFiles.length}
+                                changedFiles={rightRailChangedFiles}
                                 panes={visualTerminalPaneTargets}
                                 auditEvents={scopedOperationalAuditEvents}
                                 projectName={projectName}
@@ -2163,9 +2357,9 @@ export function App() {
                           <Suspense fallback={null}>
                             <div className="bento-widget" data-widget="run-graph">
                               <RunGraphPanel
-                                sessions={sessions}
-                                activeSessionId={activeSessionId}
-                                onSelectSession={handleSelectSession}
+                                sessions={rightRailSessions}
+                                activeSessionId={rightRailActiveSessionId}
+                                onSelectSession={handleSelectRightRailSession}
                                 workstationGraph={focusedRightRailGraph}
                               />
                             </div>
@@ -2175,9 +2369,9 @@ export function App() {
                           <Suspense fallback={null}>
                             <div className="bento-widget" data-widget="tool-ledger">
                               <ToolLedgerPanel
-                                sessions={sessions}
-                                activeSessionId={activeSessionId}
-                                onSelectSession={handleSelectSession}
+                                sessions={rightRailSessions}
+                                activeSessionId={rightRailActiveSessionId}
+                                onSelectSession={handleSelectRightRailSession}
                                 workstationGraph={focusedRightRailGraph}
                               />
                             </div>
@@ -2187,9 +2381,9 @@ export function App() {
                           <Suspense fallback={null}>
                             <div className="bento-widget" data-widget="sessions" style={{ minHeight: 200 }}>
                               <AgentInspector
-                                sessions={sessions}
-                                activeSessionId={activeSessionId}
-                                onSelectSession={handleSelectSession}
+                                sessions={rightRailSessions}
+                                activeSessionId={rightRailActiveSessionId}
+                                onSelectSession={handleSelectRightRailSession}
                                 onStartAgent={handleStartAgent}
                                 onStopAgent={stopAgent}
                                 onCreateWorktree={createWorktree}
@@ -2208,9 +2402,9 @@ export function App() {
                           <Suspense fallback={null}>
                             <div className="bento-widget" data-widget="reliability">
                               <ReliabilityPanel
-                                sessions={sessions}
+                                sessions={rightRailSessions}
                                 panes={visualTerminalPaneTargets}
-                                changedFilesCount={changedFiles.length}
+                                changedFilesCount={rightRailChangedFiles.length}
                                 auditEvents={scopedOperationalAuditEvents}
                                 workstationGraph={focusedRightRailGraph}
                                 selectedEventId={selectedAuditEventId}

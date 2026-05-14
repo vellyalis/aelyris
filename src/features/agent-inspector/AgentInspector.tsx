@@ -146,7 +146,7 @@ export function AgentInspector({
     setActivitySessions(new Set());
   }, []);
 
-  const allActivity = useMemo(() => collectActivity(sessions), [sessions]);
+  const allActivity = useMemo(() => collectActivity(sessions, { limit: 500 }), [sessions]);
   const filteredActivity = useMemo(
     () => filterActivity(allActivity, { query: activityQuery, types: activityTypes, sessionIds: activitySessions }),
     [allActivity, activityQuery, activityTypes, activitySessions],
@@ -240,13 +240,19 @@ export function AgentInspector({
   const prevActiveCount = useRef(activeSessions.length);
   useEffect(() => {
     if (showParallelTab && prevActiveCount.current < 2 && tab === "sessions") {
-      setTab("parallel");
+      setTab(showConductorTab ? "conductor" : "parallel");
     }
     if (!showParallelTab && prevActiveCount.current >= 2 && tab === "parallel") {
       setTab("sessions");
     }
     prevActiveCount.current = activeSessions.length;
-  }, [activeSessions.length, showParallelTab, tab]);
+  }, [activeSessions.length, showConductorTab, showParallelTab, tab]);
+
+  useEffect(() => {
+    if (showConductorTab && activeSessions.length >= 2 && tab === "sessions") {
+      setTab("conductor");
+    }
+  }, [activeSessions.length, showConductorTab, tab]);
 
   useEffect(() => {
     if (

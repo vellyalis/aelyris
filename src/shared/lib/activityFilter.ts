@@ -19,21 +19,44 @@ export interface ActivityFilter {
   sessionIds: ReadonlySet<string>;
 }
 
+export interface CollectActivityOptions {
+  limit?: number;
+}
+
 export const EMPTY_FILTER: ActivityFilter = {
   query: "",
   types: new Set(),
   sessionIds: new Set(),
 };
 
+function insertByTimestampDesc(entries: ActivityEntry[], entry: ActivityEntry, limit: number): void {
+  let lo = 0;
+  let hi = entries.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (entries[mid].timestamp < entry.timestamp) hi = mid;
+    else lo = mid + 1;
+  }
+  if (lo >= limit) return;
+  entries.splice(lo, 0, entry);
+  if (entries.length > limit) entries.length = limit;
+}
+
 /** Build a flat, time-desc-sorted activity list from all sessions. */
-export function collectActivity(sessions: readonly AgentSession[]): ActivityEntry[] {
+export function collectActivity(
+  sessions: readonly AgentSession[],
+  options: CollectActivityOptions = {},
+): ActivityEntry[] {
+  const limit = options.limit;
   const out: ActivityEntry[] = [];
   for (const s of sessions) {
     for (const log of s.logs) {
-      out.push({ ...log, sessionId: s.id, sessionName: s.name });
+      const entry = { ...log, sessionId: s.id, sessionName: s.name };
+      if (typeof limit === "number" && limit > 0) insertByTimestampDesc(out, entry, limit);
+      else out.push(entry);
     }
   }
-  out.sort((a, b) => b.timestamp - a.timestamp);
+  if (typeof limit !== "number" || limit <= 0) out.sort((a, b) => b.timestamp - a.timestamp);
   return out;
 }
 
