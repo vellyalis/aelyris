@@ -18,6 +18,9 @@ The safest path is to make the Rust core the product boundary first, then replac
 Detailed Rust-core goals, grade ladder, acceptance criteria, and performance budgets are locked in
 `docs/RUST_CORE_WEZTERM_TMUX_WIZARD_GOALS.md`.
 
+The product edge for the right rail, agent orchestration, review loop, and PraisonAI/Warp/cmux-style
+command-center experience is locked in `docs/AETHER_COMMAND_CENTER_EDGE_PLAN.md`.
+
 ## What WezTerm Sets As The Bar
 
 WezTerm is not just a renderer. The competitive bar is:
