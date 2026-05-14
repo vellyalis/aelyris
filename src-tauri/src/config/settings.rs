@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
@@ -283,6 +284,42 @@ impl Default for WindowConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MoodMaterialOverrideConfig {
+    #[serde(default)]
+    pub backdrop_color: Option<String>,
+    #[serde(default)]
+    pub backdrop_alpha: Option<f32>,
+    #[serde(default)]
+    pub panel_color: Option<String>,
+    #[serde(default)]
+    pub panel_alpha: Option<f32>,
+    #[serde(default)]
+    pub chrome_color: Option<String>,
+    #[serde(default)]
+    pub chrome_alpha: Option<f32>,
+    #[serde(default)]
+    pub terminal_color: Option<String>,
+    #[serde(default)]
+    pub terminal_alpha: Option<f32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WallpaperConfig {
+    #[serde(default)]
+    pub image_path: Option<String>,
+    #[serde(default)]
+    pub opacity: Option<f32>,
+    #[serde(default)]
+    pub position_x: Option<f32>,
+    #[serde(default)]
+    pub position_y: Option<f32>,
+    #[serde(default)]
+    pub scale: Option<f32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppearanceConfig {
     #[serde(default = "default_theme")]
     pub theme: String,
@@ -302,6 +339,10 @@ pub struct AppearanceConfig {
     pub window_effect: String,
     #[serde(default = "default_opacity")]
     pub opacity: f32,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub mood_material_overrides: BTreeMap<String, MoodMaterialOverrideConfig>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub wallpaper_settings_by_mood: BTreeMap<String, WallpaperConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -329,6 +370,8 @@ impl Default for AppConfig {
                 ligatures: true,
                 window_effect: default_window_effect(),
                 opacity: default_opacity(),
+                mood_material_overrides: BTreeMap::new(),
+                wallpaper_settings_by_mood: BTreeMap::new(),
             },
             terminal: TerminalConfig {
                 default_shell: default_shell(),
@@ -493,6 +536,52 @@ cursor_blink = true
         let back: AppConfig = toml::from_str(&serialized).expect("deserialize");
         assert_eq!(back.appearance.theme, "sakura-hub");
         assert_eq!(back.appearance.mood_preset, "aether-sakura");
+    }
+
+    #[test]
+    fn appearance_material_and_wallpaper_customization_round_trips() {
+        let mut cfg = AppConfig::default();
+        cfg.appearance.mood_material_overrides.insert(
+            "aether-sakura".to_string(),
+            MoodMaterialOverrideConfig {
+                backdrop_color: Some("#fff7fb".to_string()),
+                backdrop_alpha: Some(0.08),
+                panel_color: Some("#fff2f7".to_string()),
+                panel_alpha: Some(0.94),
+                chrome_color: Some("#ffe4ee".to_string()),
+                chrome_alpha: Some(0.96),
+                terminal_color: Some("#6b2140".to_string()),
+                terminal_alpha: Some(0.58),
+            },
+        );
+        cfg.appearance.wallpaper_settings_by_mood.insert(
+            "aether-sakura".to_string(),
+            WallpaperConfig {
+                image_path: Some("C:\\Images\\sakura.jpg".to_string()),
+                opacity: Some(0.24),
+                position_x: Some(42.0),
+                position_y: Some(58.0),
+                scale: Some(135.0),
+            },
+        );
+
+        let serialized = toml::to_string(&cfg).expect("serialize");
+        let back: AppConfig = toml::from_str(&serialized).expect("deserialize");
+        let material = back
+            .appearance
+            .mood_material_overrides
+            .get("aether-sakura")
+            .expect("material overrides");
+        let wallpaper = back
+            .appearance
+            .wallpaper_settings_by_mood
+            .get("aether-sakura")
+            .expect("wallpaper settings");
+
+        assert_eq!(material.panel_color.as_deref(), Some("#fff2f7"));
+        assert_eq!(material.terminal_alpha, Some(0.58));
+        assert_eq!(wallpaper.image_path.as_deref(), Some("C:\\Images\\sakura.jpg"));
+        assert_eq!(wallpaper.scale, Some(135.0));
     }
 
     #[test]

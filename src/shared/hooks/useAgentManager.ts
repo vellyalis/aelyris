@@ -127,10 +127,21 @@ function mergeRestoredTelemetry(prev: AgentSession[], restored: AgentSession[]):
   return [...mergedById.values()].sort((a, b) => b.startedAt - a.startedAt);
 }
 
+function completeRestoredLiveTelemetry(sessions: AgentSession[]): AgentSession[] {
+  return sessions.map((session) => {
+    if (!LIVE_AGENT_STATUSES.has(session.status)) return session;
+    return {
+      ...session,
+      status: "done",
+      closeState: session.closeState ?? "collectable",
+    };
+  });
+}
+
 export function useAgentManager() {
   const [sessions, setSessions] = useState<AgentSession[]>(() => {
     if (typeof window === "undefined") return [];
-    return loadAgentTelemetrySnapshot();
+    return completeRestoredLiveTelemetry(loadAgentTelemetrySnapshot());
   });
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const unlistenRefs = useRef<Map<string, UnlistenFn[]>>(new Map());

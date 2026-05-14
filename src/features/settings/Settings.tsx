@@ -2,13 +2,15 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import { isTauriRuntime } from "../../shared/lib/tauriRuntime";
-import { useAppStore } from "../../shared/store/appStore";
+import { type WallpaperSettings, useAppStore } from "../../shared/store/appStore";
 import { toast } from "../../shared/store/toastStore";
 import {
   MOOD_MATERIAL_DEFAULTS,
   MOOD_PRESETS,
   type MoodMaterialAlphaKey,
   type MoodMaterialColorKey,
+  type MoodMaterialOverrides,
+  type MoodPresetId,
   normalizeMoodPreset,
 } from "../../shared/themes/moods";
 import { Select } from "../../shared/ui/Select";
@@ -68,6 +70,8 @@ function previewConfig(theme: string, moodPreset: string, shell: string, liveMod
       ligatures: true,
       window_effect: "mica",
       opacity: 1,
+      mood_material_overrides: {},
+      wallpaper_settings_by_mood: {},
     },
     terminal: {
       default_shell: shell,
@@ -96,6 +100,8 @@ interface LoadedConfig {
     ligatures: boolean;
     window_effect: string;
     opacity: number;
+    mood_material_overrides?: Partial<Record<MoodPresetId, MoodMaterialOverrides>>;
+    wallpaper_settings_by_mood?: Partial<Record<MoodPresetId, Partial<WallpaperSettings>>>;
   };
   terminal: {
     default_shell: string;
@@ -127,8 +133,10 @@ export function Settings({ visible, onClose }: SettingsProps) {
   const moodMaterialOverrides = useAppStore((s) => s.moodMaterialOverrides);
   const setMoodMaterialOverride = useAppStore((s) => s.setMoodMaterialOverride);
   const resetMoodMaterialOverrides = useAppStore((s) => s.resetMoodMaterialOverrides);
+  const replaceMoodMaterialOverrides = useAppStore((s) => s.replaceMoodMaterialOverrides);
   const wallpaperSettingsByMood = useAppStore((s) => s.wallpaperSettingsByMood);
   const setWallpaperSettingsForMood = useAppStore((s) => s.setWallpaperSettingsForMood);
+  const replaceWallpaperSettingsByMood = useAppStore((s) => s.replaceWallpaperSettingsByMood);
   const ghostDiffLiveMode = useAppStore((s) => s.ghostDiffLiveMode);
   const setGhostDiffLiveMode = useAppStore((s) => s.setGhostDiffLiveMode);
   const [theme, setTheme] = useState(storeTheme);
@@ -197,6 +205,12 @@ export function Settings({ visible, onClose }: SettingsProps) {
         if (userEditedRef.current) return;
         setTheme(cfg.appearance.theme);
         const persistedMood = normalizeMoodPreset(cfg.appearance.mood_preset ?? useAppStore.getState().moodPresetId);
+        if (cfg.appearance.mood_material_overrides) {
+          replaceMoodMaterialOverrides(cfg.appearance.mood_material_overrides);
+        }
+        if (cfg.appearance.wallpaper_settings_by_mood) {
+          replaceWallpaperSettingsByMood(cfg.appearance.wallpaper_settings_by_mood);
+        }
         setMood(persistedMood);
         setMoodPresetId(persistedMood);
         setFont(cfg.appearance.terminal_font_family.split(",")[0].trim());
@@ -223,7 +237,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
     return () => {
       cancelled = true;
     };
-  }, [visible, setGhostDiffLiveMode, setMoodPresetId]);
+  }, [visible, setGhostDiffLiveMode, setMoodPresetId, replaceMoodMaterialOverrides, replaceWallpaperSettingsByMood]);
 
   const markEdited = () => {
     userEditedRef.current = true;
@@ -306,6 +320,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
       onClose();
       return;
     }
+    const latestStore = useAppStore.getState();
     const merged: LoadedConfig = {
       ...loadedConfig,
       appearance: {
@@ -316,6 +331,8 @@ export function Settings({ visible, onClose }: SettingsProps) {
         font_size: fontSize,
         line_height: lineHeight,
         ligatures,
+        mood_material_overrides: latestStore.moodMaterialOverrides,
+        wallpaper_settings_by_mood: latestStore.wallpaperSettingsByMood,
       },
       terminal: {
         ...loadedConfig.terminal,

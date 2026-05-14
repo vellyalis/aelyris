@@ -270,6 +270,7 @@ interface AppState {
   moodMaterialOverrides: Partial<Record<MoodPresetId, MoodMaterialOverrides>>;
   setMoodMaterialOverride: (mood: MoodPresetId, key: MoodMaterialKey, value: string | number | undefined) => void;
   resetMoodMaterialOverrides: (mood: MoodPresetId) => void;
+  replaceMoodMaterialOverrides: (overrides: Partial<Record<MoodPresetId, MoodMaterialOverrides>>) => void;
   /** Legacy Sakura aliases kept so older tests and stored state keep working. */
   sakuraMaterialOverrides: SakuraMaterialOverrides;
   setSakuraMaterialOverride: (key: SakuraMaterialKey, value: string | number | undefined) => void;
@@ -278,6 +279,7 @@ interface AppState {
   wallpaperOpacity: number;
   wallpaperSettingsByMood: Record<MoodPresetId, WallpaperSettings>;
   setWallpaperSettingsForMood: (mood: MoodPresetId, patch: Partial<WallpaperSettings>) => void;
+  replaceWallpaperSettingsByMood: (settings: Partial<Record<MoodPresetId, Partial<WallpaperSettings>>>) => void;
   setWallpaperImagePath: (path: string | null) => void;
   setWallpaperOpacity: (opacity: number) => void;
 
@@ -593,6 +595,20 @@ export const useAppStore = create<AppState>((set, get) => ({
         ...(preset === "aether-sakura" ? { sakuraMaterialOverrides: {} } : {}),
       };
     }),
+  replaceMoodMaterialOverrides: (overrides) =>
+    set(() => {
+      const nextAll: Partial<Record<MoodPresetId, MoodMaterialOverrides>> = {};
+      for (const preset of MOOD_PRESETS) {
+        const cleaned = sanitizeMaterialOverrides(overrides[preset.id], MOOD_MATERIAL_DEFAULTS[preset.id]);
+        if (Object.keys(cleaned).length > 0) nextAll[preset.id] = cleaned;
+      }
+      persistMoodMaterialOverrides(nextAll);
+      persistSakuraMaterialOverrides(nextAll["aether-sakura"] ?? {});
+      return {
+        moodMaterialOverrides: nextAll,
+        sakuraMaterialOverrides: nextAll["aether-sakura"] ?? {},
+      };
+    }),
   sakuraMaterialOverrides: loadMoodMaterialOverrides()["aether-sakura"] ?? {},
   setSakuraMaterialOverride: (key, value) =>
     set((s) => {
@@ -650,6 +666,19 @@ export const useAppStore = create<AppState>((set, get) => ({
         ...(preset === s.moodPresetId
           ? { wallpaperImagePath: nextForMood.imagePath, wallpaperOpacity: nextForMood.opacity }
           : {}),
+      };
+    }),
+  replaceWallpaperSettingsByMood: (settings) =>
+    set((s) => {
+      const nextAll = Object.fromEntries(
+        MOOD_PRESETS.map((preset) => [preset.id, normalizeWallpaperSettings(settings[preset.id])]),
+      ) as Record<MoodPresetId, WallpaperSettings>;
+      const current = nextAll[s.moodPresetId] ?? DEFAULT_WALLPAPER_SETTINGS;
+      persistWallpaperSettingsByMood(nextAll);
+      return {
+        wallpaperSettingsByMood: nextAll,
+        wallpaperImagePath: current.imagePath,
+        wallpaperOpacity: current.opacity,
       };
     }),
   setWallpaperImagePath: (path) => {

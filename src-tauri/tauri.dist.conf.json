@@ -1,7 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "bundle": {
-    "externalBin": ["binaries/aether-pty-server"],
-    "createUpdaterArtifacts": false
+    "externalBin": ["binaries/aether-pty-server"]
   }
 }

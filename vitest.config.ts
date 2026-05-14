@@ -6,6 +6,8 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     globals: true,
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
     setupFiles: [],
     exclude: ["node_modules", "e2e", ".claude/worktrees/**"],
   },

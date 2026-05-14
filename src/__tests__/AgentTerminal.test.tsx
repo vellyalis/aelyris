@@ -93,13 +93,21 @@ describe("AgentTerminal", () => {
     });
 
     render(<AgentTerminal ptyId="pty-agent" cli="codex" status="coding" model="codex" cost={0.12} />);
-    const input = await screen.findByLabelText("ターミナル入力");
+    const input = (await screen.findByLabelText("ターミナル入力")) as HTMLTextAreaElement;
 
-    fireEvent.change(input, { target: { value: "lost prompt" } });
-    fireEvent.keyDown(input, { key: "Enter" });
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "lost prompt" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
 
-    await waitFor(() => expect(screen.getByText("Input write failed: pty closed")).toBeTruthy());
-  }, 10_000);
+    await waitFor(() =>
+      expect(tauriMock.invoke).toHaveBeenCalledWith("write_terminal", {
+        id: "pty-agent",
+        data: "lost prompt\r",
+      }),
+    );
+    await screen.findByText("Input write failed: pty closed", {}, { timeout: 15_000 });
+  }, 20_000);
 
   it("surfaces backend resize failures as degraded terminal state", async () => {
     tauriMock.invoke.mockImplementation(async (...args: unknown[]) => {

@@ -258,7 +258,9 @@ assertEqual("package.json and tauri.conf.json version", tauriConfig.version, ver
 assertEqual("Tauri productName", tauriConfig.productName, "Aether Terminal");
 assertEqual("Tauri mainBinaryName", tauriConfig.mainBinaryName, "Aether");
 assertEqual("Tauri bundle.active", tauriConfig.bundle?.active, true);
-assertEqual("Dist updater artifacts", tauriDistConfig.bundle?.createUpdaterArtifacts, false);
+if (tauriDistConfig.bundle?.createUpdaterArtifacts === false) {
+  recordFailure("[dist] Dist config must not disable updater artifacts; release builds need signed update payloads");
+}
 assertBundleTargets();
 await assertSidecarBundleWiring();
 

@@ -7,6 +7,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import appStyles from "./App.module.css";
@@ -557,6 +558,23 @@ const RIGHT_RAIL_MODES: Array<{
   },
 ];
 
+const RIGHT_RAIL_ACTION_WIDGET: Partial<Record<RightRailAction["id"], string>> = {
+  "handoff-context": "context",
+  "resolve-approvals": "decision-inbox",
+  "recover-attention": "sessions",
+  "inspect-risk": "reliability",
+  "focused-review": "review-queue",
+  "collect-final-report": "review-queue",
+  "trace-provenance": "run-graph",
+  "review-queue": "review-queue",
+  "track-selected": "live-panes",
+  "parallel-run": "sessions",
+  "open-conductor": "run-graph",
+  "inspect-context": "context",
+  "ready-command": "toolkit",
+  "track-run": "processes",
+};
+
 function getNextRightRailMode(current: RightRailMode, key: string): RightRailMode | null {
   const currentIndex = RIGHT_RAIL_MODES.findIndex((mode) => mode.id === current);
   if (currentIndex < 0) return null;
@@ -656,12 +674,35 @@ export function App() {
   const [fileTreeKey, setFileTreeKey] = useState(0);
   const [quickOpenMode, setQuickOpenMode] = useState<"files" | "buffers" | null>(null);
   const [rightRailMode, setRightRailMode] = useState<RightRailMode>("command");
+  const [rightRailFocusWidget, setRightRailFocusWidget] = useState<string | null>(null);
   const [rightRailFixtureSelectedSessionId, setRightRailFixtureSelectedSessionId] = useState<string | null>(null);
   const [paneSwitcherVisible, setPaneSwitcherVisible] = useState(false);
+  const rightRailPanelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setRightRailFixtureSelectedSessionId(null);
   }, [devVisualQa.enabled, devVisualQa.railScenario]);
+
+  useEffect(() => {
+    if (!rightRailFocusWidget) return;
+    let cleanupTimer: number | undefined;
+    const raf = window.requestAnimationFrame(() => {
+      const widget = Array.from(rightRailPanelRef.current?.querySelectorAll<HTMLElement>("[data-widget]") ?? []).find(
+        (candidate) => candidate.dataset.widget === rightRailFocusWidget,
+      );
+      if (!widget) return;
+      widget.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      widget.dataset.railFocus = "true";
+      cleanupTimer = window.setTimeout(() => {
+        delete widget.dataset.railFocus;
+        setRightRailFocusWidget(null);
+      }, 1_400);
+    });
+    return () => {
+      window.cancelAnimationFrame(raf);
+      if (cleanupTimer) window.clearTimeout(cleanupTimer);
+    };
+  }, [rightRailFocusWidget, rightRailMode]);
 
   // Map<tabId, focused-pane PTY id>. Each `<PaneTreeContainer>` reports
   // its tab's focused-pane PTY id through `onActiveTerminalChange`; the
@@ -1398,6 +1439,7 @@ export function App() {
   const handleRightRailAction = useCallback(
     (action: RightRailAction) => {
       setRightRailMode(action.mode);
+      setRightRailFocusWidget(RIGHT_RAIL_ACTION_WIDGET[action.id] ?? null);
       if (action.targetSessionId) {
         handleSelectRightRailSession(action.targetSessionId);
       }
@@ -2127,6 +2169,7 @@ export function App() {
 
                   <div
                     id="right-rail-panel"
+                    ref={rightRailPanelRef}
                     className="right-panel-stack"
                     data-mode={rightRailMode}
                     role="tabpanel"

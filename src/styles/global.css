@@ -75,6 +75,14 @@
   --chrome-frame-shadow: inset 0 1px 0 rgba(140, 220, 238, 0.032), inset 0 -1px 0 rgba(69, 152, 190, 0.026);
   --chrome-control-hover-bg: rgba(76, 184, 220, 0.04);
   --chrome-control-hover-border: rgba(104, 214, 238, 0.07);
+  --rail-accent-wash: rgba(142, 226, 241, 0.08);
+  --rail-control-bg: rgba(2, 9, 18, 0.34);
+  --rail-control-hover-bg: rgba(4, 14, 25, 0.48);
+  --rail-control-border: rgba(142, 226, 241, 0.12);
+  --rail-control-border-strong: rgba(142, 226, 241, 0.22);
+  --rail-control-active-bg: linear-gradient(180deg, rgba(148, 226, 241, 0.13), rgba(148, 226, 241, 0.045)), rgba(4, 14, 25, 0.58);
+  --rail-chip-bg: rgba(142, 226, 241, 0.08);
+  --rail-focus-ring: rgba(142, 226, 241, 0.34);
   --chrome-separator-bg: linear-gradient(180deg, transparent, rgba(104, 214, 238, 0.055), transparent);
   --statusbar-bg: rgba(2, 8, 16, 0.44);
   --statusbar-filter: blur(1px) saturate(1.04) brightness(0.76) contrast(1.08);
@@ -1048,9 +1056,10 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
   grid-auto-rows: 26px;
   gap: 4px;
   padding: 4px;
-  border: 1px solid rgba(126, 205, 226, 0.08);
+  border: 1px solid var(--rail-control-border);
   border-radius: calc(var(--radius-md) + 2px);
-  background: linear-gradient(180deg, rgba(154, 223, 238, 0.028), transparent 72%), rgba(2, 9, 18, 0.34);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--rail-accent-wash) 36%, transparent), transparent 72%),
+    var(--rail-control-bg);
   box-shadow:
     inset 0 1px 0 rgba(220, 248, 255, 0.035),
     inset 0 -1px 0 rgba(0, 0, 0, 0.22);
@@ -1096,20 +1105,20 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
 
 .right-panel-mode-tab:hover {
   color: var(--text);
-  background: rgba(104, 214, 238, 0.045);
+  background: color-mix(in srgb, var(--rail-accent-wash) 56%, transparent);
 }
 
 .right-panel-mode-tab[data-active="true"] {
   color: var(--text);
-  border-color: rgba(142, 226, 241, 0.2);
-  background: linear-gradient(180deg, rgba(148, 226, 241, 0.13), rgba(148, 226, 241, 0.045)), rgba(4, 14, 25, 0.58);
+  border-color: var(--rail-control-border-strong);
+  background: var(--rail-control-active-bg);
   box-shadow:
     inset 0 1px 0 rgba(235, 252, 255, 0.12),
     0 0 0 1px rgba(0, 0, 0, 0.14);
 }
 
 .right-panel-mode-tab:focus-visible {
-  outline: 2px solid rgba(142, 226, 241, 0.34) !important;
+  outline: 2px solid var(--rail-focus-ring) !important;
   outline-offset: -2px !important;
 }
 
@@ -1143,9 +1152,9 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
   height: 40px;
   min-height: 40px;
   padding: var(--space-2);
-  border: 1px solid rgba(142, 226, 241, 0.12);
+  border: 1px solid var(--rail-control-border);
   border-radius: calc(var(--radius-md) + 2px);
-  background: linear-gradient(135deg, rgba(142, 226, 241, 0.08), transparent 64%), rgba(2, 9, 18, 0.34);
+  background: linear-gradient(135deg, var(--rail-accent-wash), transparent 64%), var(--rail-control-bg);
   color: var(--text-secondary);
   text-align: left;
   cursor: pointer;
@@ -1166,12 +1175,13 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
 
 .right-panel-advisor:hover {
   color: var(--text);
-  border-color: rgba(142, 226, 241, 0.22);
-  background: linear-gradient(135deg, rgba(142, 226, 241, 0.12), transparent 64%), rgba(4, 14, 25, 0.48);
+  border-color: var(--rail-control-border-strong);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--rail-accent-wash) 150%, transparent), transparent 64%),
+    var(--rail-control-hover-bg);
 }
 
 .right-panel-advisor:focus-visible {
-  outline: 2px solid rgba(142, 226, 241, 0.34) !important;
+  outline: 2px solid var(--rail-focus-ring) !important;
   outline-offset: -2px !important;
 }
 
@@ -1232,7 +1242,7 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
   overflow: hidden;
   padding: 2px 6px;
   border-radius: 999px;
-  background: rgba(142, 226, 241, 0.08);
+  background: var(--rail-chip-bg);
   color: var(--text-muted);
   font-size: var(--type-metadata-label);
   font-weight: 700;
@@ -1248,9 +1258,10 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
   align-items: center;
   gap: var(--space-2);
   padding: 7px 8px;
-  border: 1px solid rgba(142, 226, 241, 0.11);
+  border: 1px solid var(--rail-control-border);
   border-radius: calc(var(--radius-md) + 2px);
-  background: linear-gradient(135deg, rgba(142, 226, 241, 0.055), transparent 68%), rgba(2, 9, 18, 0.28);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--rail-accent-wash) 68%, transparent), transparent 68%),
+    color-mix(in srgb, var(--rail-control-bg) 82%, transparent);
   color: var(--text-secondary);
   box-shadow:
     var(--rim-top),
@@ -1280,7 +1291,7 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
   min-width: 0;
   padding: 2px 6px;
   border-radius: 999px;
-  background: rgba(142, 226, 241, 0.08);
+  background: var(--rail-chip-bg);
   color: var(--text-primary);
   font-size: var(--type-metadata-label);
   font-weight: 800;
@@ -1312,9 +1323,9 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
   gap: 7px;
   min-height: 34px;
   padding: 6px 7px;
-  border: 1px solid rgba(142, 226, 241, 0.09);
+  border: 1px solid var(--rail-control-border);
   border-radius: calc(var(--radius-md) + 1px);
-  background: rgba(2, 9, 18, 0.22);
+  background: color-mix(in srgb, var(--rail-control-bg) 70%, transparent);
   color: var(--text-secondary);
   text-align: left;
   cursor: pointer;
@@ -1322,12 +1333,12 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
 
 .right-panel-action:hover {
   color: var(--text);
-  border-color: rgba(142, 226, 241, 0.2);
-  background: rgba(4, 14, 25, 0.42);
+  border-color: var(--rail-control-border-strong);
+  background: var(--rail-control-hover-bg);
 }
 
 .right-panel-action:focus-visible {
-  outline: 2px solid rgba(142, 226, 241, 0.34) !important;
+  outline: 2px solid var(--rail-focus-ring) !important;
   outline-offset: -2px !important;
 }
 
@@ -1346,7 +1357,7 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
   align-items: center;
   justify-content: center;
   border-radius: 7px;
-  background: rgba(142, 226, 241, 0.07);
+  background: var(--rail-chip-bg);
   color: var(--gold);
 }
 
@@ -1383,12 +1394,25 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
   overflow: hidden;
   padding: 2px 6px;
   border-radius: 999px;
-  background: rgba(142, 226, 241, 0.07);
+  background: var(--rail-chip-bg);
   color: var(--text-muted);
   font-size: var(--type-metadata-label);
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+:root[data-mood="aether-sakura"] {
+  --rail-accent-wash: color-mix(in srgb, var(--accent) 12%, rgba(255, 248, 252, 0.42));
+  --rail-control-bg: rgba(255, 247, 251, 0.88);
+  --rail-control-hover-bg: color-mix(in srgb, var(--accent) 10%, rgba(255, 244, 249, 0.72));
+  --rail-control-border: color-mix(in srgb, var(--accent) 24%, transparent);
+  --rail-control-border-strong: color-mix(in srgb, var(--accent) 40%, transparent);
+  --rail-control-active-bg:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 14%, rgba(255, 249, 252, 0.86)), rgba(255, 241, 248, 0.82)),
+    rgba(255, 245, 250, 0.92);
+  --rail-chip-bg: color-mix(in srgb, var(--accent) 14%, rgba(255, 238, 246, 0.66));
+  --rail-focus-ring: color-mix(in srgb, var(--accent) 44%, transparent);
 }
 
 :root[data-mood="aether-sakura"] .right-panel::before {
@@ -1593,6 +1617,14 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
   min-width: 0;
   max-width: 100%;
   transition: background var(--duration-normal) var(--ease-apple, cubic-bezier(0.25, 0.1, 0.25, 1));
+}
+
+.bento-widget[data-rail-focus="true"] {
+  outline: 2px solid var(--rail-focus-ring);
+  outline-offset: 2px;
+  box-shadow:
+    0 0 0 1px var(--rail-control-border-strong),
+    0 0 24px color-mix(in srgb, var(--rail-focus-ring) 32%, transparent);
 }
 
 .bento-widget::before {

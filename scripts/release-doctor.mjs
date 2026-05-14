@@ -168,6 +168,26 @@ function artifactPaths(version, tauriConfig) {
   };
 }
 
+function fileMtimeMs(info) {
+  const time = info?.modifiedAt ? Date.parse(info.modifiedAt) : NaN;
+  return Number.isFinite(time) ? time : null;
+}
+
+function isFreshForArtifact(signatureInfo, artifactInfo) {
+  const signatureTime = fileMtimeMs(signatureInfo);
+  const artifactTime = fileMtimeMs(artifactInfo);
+  return Boolean(signatureInfo?.exists && artifactInfo?.exists && signatureTime != null && artifactTime != null && signatureTime >= artifactTime);
+}
+
+function basenameFromLatestUrl(value) {
+  if (typeof value !== "string" || value.length === 0) return null;
+  try {
+    return decodeURIComponent(path.basename(new URL(value).pathname));
+  } catch {
+    return path.basename(value);
+  }
+}
+
 async function checkDistArtifacts(version, tauriConfig) {
   const paths = artifactPaths(version, tauriConfig);
   const appExe = await fileInfo(paths.appExe);
@@ -200,7 +220,7 @@ async function checkTauriBuild(pkg, tauriConfig, tauriDistConfig) {
     hasWindowsInstallerTarget(tauriConfig.bundle?.targets) &&
     Array.isArray(tauriDistConfig.bundle?.externalBin) &&
     tauriDistConfig.bundle.externalBin.includes("binaries/aether-pty-server") &&
-    tauriDistConfig.bundle?.createUpdaterArtifacts === false;
+    tauriDistConfig.bundle?.createUpdaterArtifacts !== false;
   return section(
     "tauri-build",
     "Tauri Build Contract",
@@ -213,13 +233,17 @@ async function checkTauriBuild(pkg, tauriConfig, tauriDistConfig) {
       bundleActive: tauriConfig.bundle?.active,
       targets: tauriConfig.bundle?.targets,
       externalBin: tauriDistConfig.bundle?.externalBin,
-      distCreateUpdaterArtifacts: tauriDistConfig.bundle?.createUpdaterArtifacts,
+      distCreateUpdaterArtifacts: tauriDistConfig.bundle?.createUpdaterArtifacts ?? "inherits-base-config",
     },
   );
 }
 
 async function checkSigning(version, tauriConfig) {
   const paths = artifactPaths(version, tauriConfig);
+  const artifacts = {
+    nsis: await fileInfo(paths.nsis),
+    msi: await fileInfo(paths.msi),
+  };
   const sigs = {
     nsis: await fileInfo(`${paths.nsis}.sig`),
     msi: await fileInfo(`${paths.msi}.sig`),
@@ -228,7 +252,11 @@ async function checkSigning(version, tauriConfig) {
   const hasPlaceholderPubkey = !pubkey || pubkey.includes("REPLACE_");
   const hasPrivateKey = Boolean(process.env.TAURI_SIGNING_PRIVATE_KEY);
   const allSigsPresent = sigs.nsis.exists && sigs.msi.exists;
-  const signedReady = allSigsPresent && !hasPlaceholderPubkey;
+  const freshness = {
+    nsis: isFreshForArtifact(sigs.nsis, artifacts.nsis),
+    msi: isFreshForArtifact(sigs.msi, artifacts.msi),
+  };
+  const signedReady = allSigsPresent && freshness.nsis && freshness.msi && !hasPlaceholderPubkey;
   const status = signedReady ? "pass" : strictSigning ? "fail" : "warn";
   return section(
     "signing-state",
@@ -236,28 +264,38 @@ async function checkSigning(version, tauriConfig) {
     status,
     signedReady
       ? "Updater signatures and a non-placeholder updater pubkey are present."
+      : allSigsPresent && (!freshness.nsis || !freshness.msi)
+        ? "Updater signatures are present but older than the current installer artifacts; regenerate signatures before release."
       : "Current artifacts are suitable for local no-sign smoke only; signed updater release requires keys and .sig files.",
     {
       strictSigning,
       hasPrivateKey,
       hasPlaceholderPubkey,
       pubkeyState: hasPlaceholderPubkey ? "placeholder-or-missing" : "configured",
+      artifacts,
       signatures: sigs,
+      freshness,
     },
   );
 }
 
 async function checkUpdater(version, tauriConfig) {
   const paths = artifactPaths(version, tauriConfig);
+  const nsis = await fileInfo(paths.nsis);
+  const nsisSig = await fileInfo(`${paths.nsis}.sig`);
   const latest = await fileInfo(paths.latestJson);
   const endpoints = tauriConfig.plugins?.updater?.endpoints ?? [];
   let latestJson = null;
+  let nsisSigText = null;
   if (latest.exists) {
     try {
       latestJson = JSON.parse(await readFile(paths.latestJson, "utf8"));
     } catch {
       latestJson = null;
     }
+  }
+  if (nsisSig.exists) {
+    nsisSigText = (await readFile(`${paths.nsis}.sig`, "utf8")).trim();
   }
   const endpointConfigured = Array.isArray(endpoints) && endpoints.length > 0;
   const invalidEndpoints = endpoints.filter((endpoint) => {
@@ -275,17 +313,42 @@ async function checkUpdater(version, tauriConfig) {
     }
   });
   const latestMatches = latestJson?.version === version;
-  const status = !endpointConfigured || invalidEndpoints.length > 0 ? "fail" : latestMatches ? "pass" : "warn";
+  const latestTime = fileMtimeMs(latest);
+  const nsisTime = fileMtimeMs(nsis);
+  const pubDateTime = latestJson?.pub_date ? Date.parse(latestJson.pub_date) : NaN;
+  const platform = latestJson?.platforms?.["windows-x86_64"] ?? null;
+  const urlBasename = basenameFromLatestUrl(platform?.url);
+  const expectedNsisBasename = path.basename(paths.nsis);
+  const latestIntegrity = {
+    versionMatches: latestMatches,
+    manifestFreshForNsis: latestTime != null && nsisTime != null && latestTime >= nsisTime,
+    pubDateFreshForNsis: Number.isFinite(pubDateTime) && nsisTime != null && pubDateTime >= nsisTime,
+    signatureMatchesNsisSig: Boolean(nsisSigText && platform?.signature === nsisSigText),
+    urlTargetsCurrentNsis: urlBasename === expectedNsisBasename,
+  };
+  const updaterReady = Object.values(latestIntegrity).every(Boolean);
+  const status =
+    !endpointConfigured || invalidEndpoints.length > 0 ? "fail" : updaterReady ? "pass" : strictSigning ? "fail" : "warn";
   return section(
     "updater-latest-release",
     "Updater And Latest Release",
     status,
     status === "pass"
       ? `Updater endpoint and latest.json are present for ${version}.`
-      : status === "fail"
+      : !endpointConfigured || invalidEndpoints.length > 0
         ? "Updater endpoint is missing or points at a non-production host."
-        : "Updater endpoint exists, but latest.json/signatures are not ready for a signed update channel.",
-    { endpoints, invalidEndpoints, latest, latestJsonVersion: latestJson?.version ?? null },
+        : "Updater endpoint exists, but latest.json is stale or does not match the current signed installer.",
+    {
+      endpoints,
+      invalidEndpoints,
+      latest,
+      latestJsonVersion: latestJson?.version ?? null,
+      latestIntegrity,
+      nsis,
+      nsisSig,
+      expectedNsisBasename,
+      latestUrlBasename: urlBasename,
+    },
   );
 }
 

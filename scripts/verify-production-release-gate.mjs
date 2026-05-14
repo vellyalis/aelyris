@@ -47,9 +47,20 @@ async function main() {
   else console.log("\n[production-release] Fresh live smoke explicitly reused via --reuse-live/AETHER_RELEASE_REUSE_LIVE=1.");
   if (!freshIme) console.log("\n[production-release] Fresh Native IME CDP evidence explicitly reused via --reuse-ime.");
 
+  await run("Strict release doctor before risk closure", pnpm, [
+    "verify:release:doctor",
+    "--",
+    "--strict-signing",
+    "--fail-on-warn",
+  ]);
   await run("Production risk closure evidence", pnpm, ["verify:production:close-risks"]);
   await run("Supply-chain audit", pnpm, ["verify:supply-chain"]);
-  await run("Strict release doctor", pnpm, ["verify:release:doctor", "--", "--strict-signing", "--fail-on-warn"]);
+  await run("Strict release doctor after risk closure", pnpm, [
+    "verify:release:doctor",
+    "--",
+    "--strict-signing",
+    "--fail-on-warn",
+  ]);
   console.log("\n[production-release] Production release gate passed.");
 }
 

@@ -456,7 +456,7 @@ export const IMEInputBar = forwardRef<IMEInputBarHandle, IMEInputBarProps>(funct
 
   const submit = useCallback(() => {
     if (disabled) return;
-    const text = value;
+    const text = textareaRef.current?.value ?? value;
     // Intentionally allow a bare Enter submit (`text === ""`) — users
     // hitting Enter on a blank bar usually mean "send a newline to the
     // shell/AI CLI to advance its prompt".

@@ -95,7 +95,7 @@ describe("useAgentManager telemetry hydration", () => {
     expect(result.current.sessions[0]).toMatchObject({
       id: "agent-live",
       name: "Reviewer",
-      status: "coding",
+      status: "done",
       role: "reviewer",
       handoffFrom: "root-agent",
       startedAt: 42,

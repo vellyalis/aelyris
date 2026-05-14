@@ -12,6 +12,7 @@ const args = new Set(process.argv.slice(2));
 const withIme = args.has("--with-ime") || process.env.AETHER_RELEASE_WITH_IME === "1";
 const preflightOnly = args.has("--preflight") || process.env.AETHER_RELEASE_PREFLIGHT === "1";
 const allowDirtyWorktree = args.has("--allow-dirty") || process.env.AETHER_RELEASE_ALLOW_DIRTY === "1";
+const skipFullVitest = args.has("--skip-full-vitest") || process.env.AETHER_RELEASE_SKIP_FULL_VITEST === "1";
 
 const focusedVitestSuites = [
   "src/__tests__/backendSilentBugs.test.ts",
@@ -219,9 +220,9 @@ async function verifyReleaseContract() {
   if (tauriConfig.bundle?.active !== true) {
     failures.push(`[release] Tauri bundle.active must be true, got ${JSON.stringify(tauriConfig.bundle?.active)}`);
   }
-  if (tauriDistConfig.bundle?.createUpdaterArtifacts !== false) {
+  if (tauriDistConfig.bundle?.createUpdaterArtifacts === false) {
     failures.push(
-      `[release] src-tauri/tauri.dist.conf.json must disable updater artifacts, got ${JSON.stringify(
+      `[release] src-tauri/tauri.dist.conf.json must not disable updater artifacts, got ${JSON.stringify(
         tauriDistConfig.bundle?.createUpdaterArtifacts,
       )}`,
     );
@@ -280,6 +281,11 @@ async function main() {
   await run("Mux performance smoke", pnpm, ["verify:mux-performance"]);
   await run("Scrollback capture/search smoke", pnpm, ["verify:scrollback-gates"]);
   await run("Focused workstation Vitest", pnpm, ["exec", "vitest", "run", ...focusedVitestSuites, "--reporter=dot"]);
+  if (skipFullVitest) {
+    console.log("\n[release] Full frontend Vitest explicitly skipped.");
+  } else {
+    await run("Full frontend Vitest", pnpm, ["test", "--", "--reporter=dot"]);
+  }
 
   await run("Distribution artifacts", pnpm, ["verify:dist"]);
 
