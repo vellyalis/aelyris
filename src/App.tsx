@@ -1,4 +1,4 @@
-import { Bot, GitCompare, type LucideIcon, Radio } from "lucide-react";
+import { Activity, Bot, GitCompare, type LucideIcon, Radio } from "lucide-react";
 import { MotionConfig } from "motion/react";
 import {
   lazy,
@@ -121,7 +121,12 @@ import { useWorktreeActions } from "./shared/hooks/useWorktreeActions";
 import { markFirstPaint } from "./shared/lib/bootMetrics";
 import { buildDecisionInbox, type DecisionWorkflowStatus } from "./shared/lib/decisionInbox";
 import { formatFallbackError, reportInvokeFailure } from "./shared/lib/fallbackTelemetry";
-import { deriveRightRailRecommendation, type RightRailMode } from "./shared/lib/rightRailAdvisor";
+import {
+  deriveRightRailActions,
+  deriveRightRailNowState,
+  deriveRightRailRecommendation,
+  type RightRailMode,
+} from "./shared/lib/rightRailAdvisor";
 import { classifyCommand, formatCommandRiskSummary } from "./shared/lib/shellSafety";
 import { useAppStore } from "./shared/store/appStore";
 import { toast } from "./shared/store/toastStore";
@@ -1518,12 +1523,13 @@ export function App() {
     review: changedFiles.length,
     observe: decisionInbox.pendingCount + liveAgentCount,
   };
-  const rightRailRecommendation = deriveRightRailRecommendation({
+  const rightRailAdvisorInput = {
     sessions,
     interactiveSessionCount: interactiveSessions.length,
     changedFilesCount: changedFiles.length,
     contextWarnPct,
     currentMode: rightRailMode,
+    pendingDecisionCount: decisionInbox.pendingCount,
     workstationGraph: rightRailGraph,
     selectedPane: selectedOperationalPaneTarget
       ? {
@@ -1532,7 +1538,10 @@ export function App() {
           label: selectedOperationalPaneTarget.label,
         }
       : null,
-  });
+  };
+  const rightRailActions = deriveRightRailActions(rightRailAdvisorInput);
+  const rightRailNowState = deriveRightRailNowState(rightRailAdvisorInput);
+  const rightRailRecommendation = deriveRightRailRecommendation(rightRailAdvisorInput);
   const rightRailRecommendedMode = rightRailRecommendation
     ? RIGHT_RAIL_MODES.find((mode) => mode.id === rightRailRecommendation.mode)
     : undefined;
@@ -1833,6 +1842,17 @@ export function App() {
                     <span className={appStyles.rightRailPurposeText}>{activeRightRailMode.description}</span>
                   </div>
 
+                  <section
+                    className="right-panel-now"
+                    data-tone={rightRailNowState.tone}
+                    data-state={rightRailNowState.state}
+                    aria-label={`Workspace state: ${rightRailNowState.label}`}
+                  >
+                    <span className="right-panel-now-kicker">Now</span>
+                    <span className="right-panel-now-state">{rightRailNowState.label}</span>
+                    <span className="right-panel-now-detail">{rightRailNowState.detail}</span>
+                  </section>
+
                   {rightRailRecommendation && rightRailRecommendedMode && RightRailRecommendedIcon && (
                     <button
                       type="button"
@@ -1851,6 +1871,35 @@ export function App() {
                       </span>
                       <span className="right-panel-advisor-target">{rightRailRecommendedMode.label}</span>
                     </button>
+                  )}
+
+                  {rightRailActions.length > 0 && (
+                    <div className="right-panel-action-stack" aria-label="Ranked next actions">
+                      {rightRailActions.slice(0, 4).map((action) => {
+                        const mode = RIGHT_RAIL_MODES.find((candidate) => candidate.id === action.mode);
+                        const ActionIcon = mode?.icon ?? Activity;
+                        return (
+                          <button
+                            key={action.id}
+                            type="button"
+                            className="right-panel-action"
+                            data-tone={action.tone}
+                            data-state={action.state}
+                            onClick={() => setRightRailMode(action.mode)}
+                            title={`${action.label}: ${action.detail}`}
+                          >
+                            <span className="right-panel-action-icon" aria-hidden="true">
+                              <ActionIcon size={12} strokeWidth={1.8} />
+                            </span>
+                            <span className="right-panel-action-copy">
+                              <span className="right-panel-action-label">{action.label}</span>
+                              <span className="right-panel-action-detail">{action.detail}</span>
+                            </span>
+                            <span className="right-panel-action-target">{mode?.label ?? action.mode}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   )}
 
                   <ErrorBoundary>
