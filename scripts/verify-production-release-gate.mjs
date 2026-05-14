@@ -52,6 +52,7 @@ async function main() {
     "--",
     "--strict-signing",
     "--fail-on-warn",
+    "--fail-accepted-release-risk",
   ]);
   await run("Production risk closure evidence", pnpm, ["verify:production:close-risks"]);
   await run("Supply-chain audit", pnpm, ["verify:supply-chain"]);
@@ -60,6 +61,7 @@ async function main() {
     "--",
     "--strict-signing",
     "--fail-on-warn",
+    "--fail-accepted-release-risk",
   ]);
   console.log("\n[production-release] Production release gate passed.");
 }

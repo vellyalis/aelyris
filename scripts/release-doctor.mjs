@@ -9,6 +9,8 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const args = new Set(process.argv.slice(2));
 const strictSigning = args.has("--strict-signing") || process.env.AETHER_RELEASE_STRICT_SIGNING === "1";
 const failOnWarning = args.has("--fail-on-warn") || process.env.AETHER_RELEASE_FAIL_ON_WARN === "1";
+const failAcceptedReleaseRisk =
+  args.has("--fail-accepted-release-risk") || process.env.AETHER_RELEASE_FAIL_ACCEPTED_RELEASE_RISK === "1";
 const outputDir = path.join(repoRoot, ".codex-auto", "release-doctor");
 const outputJson = path.join(outputDir, "p2-08-release-doctor.json");
 const outputMarkdown = path.join(outputDir, "p2-08-release-doctor.md");
@@ -373,7 +375,12 @@ async function checkKnownRisks() {
   const acceptedSevereRisks = acceptedRisks
     .filter((risk) => /critical|high|medium-high/i.test(String(risk.severity ?? "")))
     .slice(-12);
-  const status = releaseRisks.length > 0 || acceptedSevereRisks.length > 0 ? "warn" : "pass";
+  const status =
+    releaseRisks.length > 0 ||
+    acceptedSevereRisks.length > 0 ||
+    (failAcceptedReleaseRisk && acceptedReleaseRisks.length > 0)
+      ? "warn"
+      : "pass";
   return section(
     "known-risks",
     "Known Risks",
@@ -382,9 +389,11 @@ async function checkKnownRisks() {
       ? `${releaseRisks.length} open release-adjacent risks remain visible for handoff.`
       : acceptedSevereRisks.length > 0
         ? `${acceptedSevereRisks.length} accepted severe risks remain and need explicit release-owner approval.`
-        : acceptedReleaseRisks.length > 0
-          ? `No open release-adjacent risks; ${acceptedReleaseRisks.length} accepted low-risk release controls are recorded.`
-          : "No open release-adjacent risks were found in the risk register.",
+        : failAcceptedReleaseRisk && acceptedReleaseRisks.length > 0
+          ? `${acceptedReleaseRisks.length} accepted release risks remain; production mode requires mitigation evidence instead of acceptance.`
+          : acceptedReleaseRisks.length > 0
+            ? `No open release-adjacent risks; ${acceptedReleaseRisks.length} accepted low-risk release controls are recorded.`
+            : "No open release-adjacent risks were found in the risk register.",
     {
       openRiskCount: openRisks.length,
       acceptedRiskCount: acceptedRisks.length,
@@ -594,6 +603,7 @@ async function main() {
     },
     strictSigning,
     failOnWarning,
+    failAcceptedReleaseRisk,
     overallStatus,
     releaseCandidateReady: overallStatus === "pass",
     localUnsignedSmokeReady: checks
