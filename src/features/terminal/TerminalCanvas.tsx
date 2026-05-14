@@ -254,10 +254,12 @@ function isParkedAiCliCursor(
   if (!aiInputAnchor) return false;
   if (!isVisibleCursor(cursor)) return true;
   if (!snapshot) return false;
-  if (cursor.row === aiInputAnchor.row) return false;
 
   const rowText = rowToTextMap(snapshot.cells[cursor.row] ?? []).text.trim();
   const parkedAtRightEdge = cursor.col >= Math.max(0, snapshot.cols - 2);
+  if (cursor.row === aiInputAnchor.row) {
+    return parkedAtRightEdge || cursor.col > aiInputAnchor.col + 8;
+  }
   const parkedBelowInput = cursor.row > aiInputAnchor.row;
   const statusLikeRow =
     rowText.length === 0 ||

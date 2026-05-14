@@ -1074,6 +1074,45 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
     expect(textarea.dataset.imeAnchorMode).toBe("ai-cli-real-cursor");
   });
 
+  it("re-anchors Codex or Claude IME when the visible cursor is parked on the input row edge", () => {
+    const snapshot: GridSnapshot = {
+      cols: 80,
+      rows: 5,
+      cells: [
+        rowFromText("Claude Code", 80),
+        rowFromText("╭─────────────────────────────────────────────────────────────────────────────╮", 80),
+        rowFromTerminalText("│ ❯ あああああ                                                              │", 80),
+        rowFromText("╰─────────────────────────────────────────────────────────────────────────────╯", 80),
+        rowFromText("tokens: 12k                                  ", 80),
+      ],
+      cursor: {
+        row: 2,
+        col: 79,
+        shape: "beam",
+        blinking: false,
+        visible: true,
+      },
+    };
+    const { container } = render(
+      <TerminalCanvas
+        terminalId="t1"
+        cols={80}
+        rows={5}
+        fontSize={14}
+        snapshotOverride={snapshot}
+        preferAiInputAnchor
+      />,
+    );
+    const textarea = container.querySelector("[data-testid='terminal-ime-textarea']") as HTMLTextAreaElement;
+
+    textarea.focus();
+    fireEvent.compositionStart(textarea);
+
+    expect(textarea.style.left).toBe("112px");
+    expect(textarea.style.top).toBe("36px");
+    expect(textarea.dataset.imeAnchorMode).toBe("ai-cli-input");
+  });
+
   it("does not mistake an AI CLI logo prompt glyph near the top for the input row", () => {
     const snapshot = snapshotFromRows(
       [

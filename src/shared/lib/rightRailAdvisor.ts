@@ -15,11 +15,15 @@ export type RightRailActionId =
   | "handoff-context"
   | "resolve-approvals"
   | "recover-attention"
+  | "inspect-risk"
   | "focused-review"
+  | "collect-final-report"
+  | "trace-provenance"
   | "review-queue"
   | "track-selected"
   | "parallel-run"
   | "open-conductor"
+  | "inspect-context"
   | "ready-command"
   | "track-run";
 
@@ -72,6 +76,11 @@ export function deriveRightRailActions({
 }: RightRailAdvisorInput): RightRailAction[] {
   const graphChangedFilesCount = workstationGraph?.nodeCountByKind.file ?? 0;
   const graphPaneCount = workstationGraph?.nodeCountByKind.pane ?? 0;
+  const graphRiskCount = (workstationGraph?.nodeCountByKind.risk ?? 0) + (workstationGraph?.nodeCountByKind.blocker ?? 0);
+  const graphContextPackCount = workstationGraph?.nodeCountByKind.context_pack ?? 0;
+  const graphFinalReportCount = workstationGraph?.nodeCountByKind.final_report ?? 0;
+  const graphOwnedChangeCount =
+    (workstationGraph?.edgeCountByKind.wrote ?? 0) + (workstationGraph?.edgeCountByKind.changed ?? 0);
   const summary = buildWorkstationSummary({
     sessions,
     changedFilesCount: Math.max(changedFilesCount, graphChangedFilesCount),
@@ -122,6 +131,20 @@ export function deriveRightRailActions({
     });
   }
 
+  if (graphRiskCount > 0) {
+    const riskSession = sessions.find((session) => session.status === "waiting" || session.status === "error");
+    actions.push({
+      id: "inspect-risk",
+      mode: "observe",
+      tone: "warn",
+      state: "blocked",
+      priority: 92,
+      label: "Inspect blockers",
+      detail: plural(graphRiskCount, "risk or blocker", "risks or blockers"),
+      targetSessionId: riskSession?.id,
+    });
+  }
+
   if ((selectedRole === "review" || selectedRole === "test") && summary.changedFilesCount > 0) {
     actions.push({
       id: "focused-review",
@@ -132,6 +155,38 @@ export function deriveRightRailActions({
       label: selectedRole === "test" ? "Verify changes" : "Focused review",
       detail: `${selectedName} · ${plural(summary.changedFilesCount, "changed file")}`,
       targetPaneRole: selectedRole,
+    });
+  }
+
+  const reportSession = sessions.find(
+    (session) => session.finalReport?.status === "ready" || session.closeState === "collectable",
+  );
+  if (reportSession || graphFinalReportCount > 0) {
+    actions.push({
+      id: "collect-final-report",
+      mode: "review",
+      tone: "review",
+      state: "review-ready",
+      priority: 86,
+      label: "Collect report",
+      detail: reportSession
+        ? `${reportSession.name} · final report ready`
+        : plural(graphFinalReportCount, "final report"),
+      targetSessionId: reportSession?.id,
+    });
+  }
+
+  if (graphOwnedChangeCount > 0) {
+    const ownerSession = sessions.find((session) => (session.changedFileDetails?.length ?? 0) > 0);
+    actions.push({
+      id: "trace-provenance",
+      mode: "review",
+      tone: "review",
+      state: "review-ready",
+      priority: 84,
+      label: "Trace changes",
+      detail: plural(graphOwnedChangeCount, "owned change"),
+      targetSessionId: ownerSession?.id,
     });
   }
 
@@ -146,6 +201,19 @@ export function deriveRightRailActions({
       label: "Review queue",
       detail: plural(summary.changedFilesCount, "changed file"),
       targetSessionId: changedSession?.id,
+    });
+  }
+
+  if (graphContextPackCount > 0 && summary.liveRunCount > 0) {
+    actions.push({
+      id: "inspect-context",
+      mode: "command",
+      tone: "command",
+      state: "running",
+      priority: 70,
+      label: "Inspect context",
+      detail: plural(graphContextPackCount, "context pack"),
+      targetSessionId: summary.liveSessions[0]?.id,
     });
   }
 

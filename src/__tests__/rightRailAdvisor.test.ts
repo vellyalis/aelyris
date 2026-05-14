@@ -219,6 +219,57 @@ describe("deriveRightRailActions", () => {
     expect(actions.some((action) => action.id === "open-conductor")).toBe(true);
   });
 
+  it("turns graph risks, final reports, provenance, and context packs into concrete actions", () => {
+    const actions = deriveRightRailActions({
+      sessions: [
+        session("impl", {
+          role: "implementer",
+          changedFileDetails: [{ path: "src/App.tsx", action: "edit", toolName: "edit", timestamp: 1 }],
+          finalReport: { status: "ready" },
+          closeState: "collectable",
+        }),
+      ],
+      interactiveSessionCount: 0,
+      changedFilesCount: 0,
+      contextWarnPct: 85,
+      currentMode: "command",
+      workstationGraph: buildWorkstationGraph({
+        workspaceId: "C:/repo",
+        sessions: [
+          session("impl", {
+            role: "implementer",
+            changedFileDetails: [{ path: "src/App.tsx", action: "edit", toolName: "edit", timestamp: 1 }],
+          }),
+        ],
+        risks: [{ id: "r1", title: "test failure", status: "open", agentId: "impl" }],
+        blockers: [{ id: "b1", title: "approval", kind: "approval", status: "open", agentId: "impl" }],
+        finalReports: [{ id: "fr1", title: "Final report", status: "ready", agentId: "impl" }],
+        contextPacks: [{ id: "ctx1", title: "Release context", status: "attached", agentId: "impl" }],
+      }),
+    });
+
+    expect(actions.map((action) => action.id)).toEqual([
+      "inspect-risk",
+      "collect-final-report",
+      "trace-provenance",
+      "review-queue",
+      "inspect-context",
+    ]);
+    expect(actions[0]).toMatchObject({
+      label: "Inspect blockers",
+      detail: "2 risks or blockers",
+      state: "blocked",
+    });
+    expect(actions[1]).toMatchObject({
+      targetSessionId: "impl",
+      detail: "Agent impl · final report ready",
+    });
+    expect(actions[2]).toMatchObject({
+      targetSessionId: "impl",
+      detail: "1 owned change",
+    });
+  });
+
   it("keeps idle rail actionable", () => {
     const actions = deriveRightRailActions({
       sessions: [],
