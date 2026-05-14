@@ -16,6 +16,7 @@
     "verify:release": "node scripts/verify-release-gate.mjs",
     "verify:release:ime": "node scripts/verify-release-gate.mjs --with-ime",
     "verify:release:production": "node scripts/verify-production-release-gate.mjs",
+    "verify:quality-score": "node scripts/score-release-quality.mjs",
     "verify:mux-performance": "node scripts/verify-mux-performance.mjs",
     "verify:supply-chain": "node scripts/verify-supply-chain.mjs",
     "verify:production:live": "node scripts/verify-live-tauri-workstation-surfaces.mjs",

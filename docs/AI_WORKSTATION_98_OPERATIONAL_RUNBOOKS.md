@@ -226,7 +226,8 @@ Do not promote partial chaos evidence to a full live claim. The remaining releas
 
 Production promotion now requires mitigation evidence for accepted release risks. For the real OS suspend/resume
 gap, create the manual evidence template, perform an actual Windows sleep/resume cycle with the release app running,
-then update all checks to `true` and `status` to `pass`:
+then update all checks to `true`, set `status` to `pass`, and run the verifier. The verifier also queries the
+Windows System event log and requires matching suspend/resume power events, so a hand-written JSON file is not enough:
 
 ```powershell
 pnpm.cmd verify:production:suspend -- --write-template

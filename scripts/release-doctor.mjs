@@ -12,8 +12,9 @@ const failOnWarning = args.has("--fail-on-warn") || process.env.AETHER_RELEASE_F
 const failAcceptedReleaseRisk =
   args.has("--fail-accepted-release-risk") || process.env.AETHER_RELEASE_FAIL_ACCEPTED_RELEASE_RISK === "1";
 const outputDir = path.join(repoRoot, ".codex-auto", "release-doctor");
-const outputJson = path.join(outputDir, "p2-08-release-doctor.json");
-const outputMarkdown = path.join(outputDir, "p2-08-release-doctor.md");
+const outputBasename = failAcceptedReleaseRisk ? "p2-08-production-release-doctor" : "p2-08-release-doctor";
+const outputJson = path.join(outputDir, `${outputBasename}.json`);
+const outputMarkdown = path.join(outputDir, `${outputBasename}.md`);
 
 const minArtifactBytes = {
   appExe: 10 * 1024 * 1024,

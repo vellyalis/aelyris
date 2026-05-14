@@ -242,6 +242,7 @@ function countFiles(dir) {
 }
 
 function verifyChaosAcceptance() {
+  const suspendVerification = run("node", ["scripts/verify-real-os-suspend-evidence.mjs"]);
   const liveChaos = existsSync(CHAOS_LIVE) ? readJson(CHAOS_LIVE) : null;
   const sleepChaos = existsSync(SLEEP_CHAOS) ? readJson(SLEEP_CHAOS) : null;
   const realOsSuspend = existsSync(REAL_OS_SUSPEND) ? readJson(REAL_OS_SUSPEND) : null;
@@ -250,7 +251,9 @@ function verifyChaosAcceptance() {
     realOsSuspend?.checks?.appResponsive === true &&
     realOsSuspend?.checks?.terminalResponsive === true &&
     realOsSuspend?.checks?.sqliteWritable === true &&
-    realOsSuspend?.checks?.paneStatePreserved === true;
+    realOsSuspend?.checks?.paneStatePreserved === true &&
+    realOsSuspend?.validation?.windowsPowerEvents?.suspendEventFound === true &&
+    realOsSuspend?.validation?.windowsPowerEvents?.resumeEventFound === true;
   const acceptance = {
     version: 1,
     generatedAt: new Date().toISOString(),
@@ -271,9 +274,12 @@ function verifyChaosAcceptance() {
         injectedChaosArtifact: SLEEP_CHAOS,
         observedStatus: sleepChaos?.status ?? "missing",
         manualObservedStatus: realOsSuspend?.status ?? "missing",
+        verifierExitCode: suspendVerification.status,
+        verifierStdout: suspendVerification.stdout?.slice(-1200) ?? "",
+        verifierStderr: suspendVerification.stderr?.slice(-1200) ?? "",
         control: realOsSuspendPass
-          ? "Injected sleep/resume chaos and manual real OS suspend/resume soak both passed."
-          : "Manual real OS suspend/resume evidence is required at .codex-auto/production-smoke/real-os-suspend-resume.json before production release.",
+          ? "Injected sleep/resume chaos, manual real OS suspend/resume soak, and Windows power event-log validation all passed."
+          : "Manual real OS suspend/resume evidence plus Windows System event-log validation is required before production release.",
       },
     },
   };
