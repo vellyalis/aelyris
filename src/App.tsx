@@ -578,6 +578,25 @@ function isLiveInteractiveSessionStatus(status: string): boolean {
   return normalized.length > 0 && !CLOSED_INTERACTIVE_STATUSES.has(normalized);
 }
 
+function normalizeProjectPath(path?: string | null): string | null {
+  if (!path) return null;
+  const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function sameOrNestedPath(left: string, right: string): boolean {
+  return left === right || left.startsWith(`${right}/`) || right.startsWith(`${left}/`);
+}
+
+function sessionTabMatches(session: AgentSession, tabCwd?: string): boolean {
+  const normalizedTabCwd = normalizeProjectPath(tabCwd);
+  if (!normalizedTabCwd) return false;
+  const candidates = [session.workspaceScope, session.worktree?.path]
+    .map((path) => normalizeProjectPath(path))
+    .filter((path): path is string => path != null);
+  return candidates.some((candidate) => sameOrNestedPath(candidate, normalizedTabCwd));
+}
+
 export function App() {
   const {
     themeId,
@@ -1358,7 +1377,7 @@ export function App() {
       setActiveSessionId(sessionId);
       const agent = sessions.find((s) => s.id === sessionId);
       if (agent) {
-        const matchTab = tabs.find((t) => t.cwd && agent.prompt.includes(t.cwd.split("/").pop() ?? ""));
+        const matchTab = tabs.find((t) => sessionTabMatches(agent, t.cwd));
         if (matchTab) void handleTabSwitch(matchTab.id);
       }
     },

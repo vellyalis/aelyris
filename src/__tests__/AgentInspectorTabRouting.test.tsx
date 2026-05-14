@@ -165,6 +165,32 @@ describe("AgentInspector tab routing", () => {
     expect(screen.queryAllByLabelText(/^Select session /)).toHaveLength(0);
   });
 
+  it("does not claim there are no file changes when only an estimated file count exists", () => {
+    const sessionWithEstimatedChanges = baseSession("x", { changedFileDetails: [], filesChanged: 3 });
+    render(<AgentInspector sessions={[sessionWithEstimatedChanges]} activeSessionId="x" onSelectSession={() => {}} />);
+
+    fireEvent.click(screen.getByLabelText("File diffs"));
+
+    expect(
+      screen.getByText("This session reported changed files, but file-level diff details were not captured yet."),
+    ).toBeTruthy();
+    expect(screen.queryByText("This agent session has not modified any files yet.")).toBeNull();
+  });
+
+  it("keeps app session tab routing anchored on explicit workspace paths", () => {
+    const sources = import.meta.glob("../App.tsx", {
+      query: "?raw",
+      import: "default",
+      eager: true,
+    }) as Record<string, string>;
+    const src = Object.values(sources)[0] ?? "";
+
+    expect(src).toContain("function sessionTabMatches(session: AgentSession, tabCwd?: string): boolean");
+    expect(src).toContain("session.workspaceScope");
+    expect(src).toContain("session.worktree?.path");
+    expect(src).not.toContain("agent.prompt.includes");
+  });
+
   it("parallel tab still renders parallel panes", () => {
     const sessions = [baseSession("a"), baseSession("b")];
     render(<AgentInspector sessions={sessions} activeSessionId="a" onSelectSession={() => {}} />);

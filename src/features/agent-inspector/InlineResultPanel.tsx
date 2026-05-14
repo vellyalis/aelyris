@@ -69,6 +69,7 @@ function detectLanguage(path: string): string {
 export function InlineResultPanel({ session, projectPath, onClose, onStartAgent }: InlineResultPanelProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [diffs, setDiffs] = useState<Map<string, FileDiffData>>(new Map());
+  const reportedFileCount = session.filesChanged ?? 0;
   // Manual reload trigger. Bumped after a successful Revert so the load
   // effect re-fires for the same activeFile (the effect can't list `diffs`
   // in its deps without re-introducing the IPC double-fetch loop).
@@ -167,20 +168,29 @@ export function InlineResultPanel({ session, projectPath, onClose, onStartAgent 
   }, [activeFile, projectPath, reloadTick]);
 
   if (uniqueFiles.length === 0) {
+    const hasEstimatedChanges = reportedFileCount > 0;
     return (
       <div className={styles.panel}>
         <PanelHeader
           dense
           leadingIcon={<FileText size={12} />}
           title={session.name}
-          subtitle="No file changes"
+          subtitle={
+            hasEstimatedChanges
+              ? `${reportedFileCount} file${reportedFileCount === 1 ? "" : "s"} reported`
+              : "No file changes"
+          }
           actions={
             <button type="button" className={styles.closeBtn} onClick={onClose} aria-label="Close">
               <X size={12} />
             </button>
           }
         />
-        <div className={styles.empty}>This agent session has not modified any files yet.</div>
+        <div className={styles.empty}>
+          {hasEstimatedChanges
+            ? "This session reported changed files, but file-level diff details were not captured yet."
+            : "This agent session has not modified any files yet."}
+        </div>
       </div>
     );
   }
