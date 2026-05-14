@@ -17,9 +17,19 @@ export function createLeaf(
   cwd?: string,
   meta: { title?: string; role?: PaneRole } = {},
 ): TerminalLeaf {
+  return createLeafWithId(`pane-${uid()}`, shell, cwd, meta);
+}
+
+/** Create a terminal leaf with a caller-owned id, used when Rust mux owns the pane id. */
+export function createLeafWithId(
+  id: string,
+  shell: ShellType,
+  cwd?: string,
+  meta: { title?: string; role?: PaneRole } = {},
+): TerminalLeaf {
   return {
     type: "terminal",
-    id: `pane-${uid()}`,
+    id,
     shell,
     cwd,
     ...normalizeLeafMeta(meta),
@@ -33,11 +43,12 @@ export function splitPane(
   splitDir: SplitDirection,
   shell: ShellType,
   cwd?: string,
+  nextLeaf?: TerminalLeaf,
 ): PaneNode {
   if (tree.type === "terminal") {
     if (tree.id !== targetId) return tree;
     const { direction, newFirst } = splitDirectionToTree(splitDir);
-    const newLeaf = createLeaf(tree.shell ?? shell, tree.cwd ?? cwd);
+    const newLeaf = nextLeaf ?? createLeaf(tree.shell ?? shell, tree.cwd ?? cwd);
     return {
       type: "split",
       id: `split-${uid()}`,
@@ -48,9 +59,9 @@ export function splitPane(
     };
   }
 
-  const first = splitPane(tree.first, targetId, splitDir, shell, cwd);
+  const first = splitPane(tree.first, targetId, splitDir, shell, cwd, nextLeaf);
   if (first !== tree.first) return { ...tree, first };
-  const second = splitPane(tree.second, targetId, splitDir, shell, cwd);
+  const second = splitPane(tree.second, targetId, splitDir, shell, cwd, nextLeaf);
   if (second !== tree.second) return { ...tree, second };
   return tree;
 }
@@ -122,6 +133,22 @@ export function movePaneInOrder(tree: PaneNode, paneId: string, delta: 1 | -1): 
   if (index < 0 || leaves.length <= 1) return tree;
   const targetIndex = (index + delta + leaves.length) % leaves.length;
   return swapPanes(tree, leaves[index].id, leaves[targetIndex].id);
+}
+
+/** Rotate pane identities through the existing split topology, matching tmux rotate-pane. */
+export function rotatePanesInOrder(tree: PaneNode, delta: 1 | -1): PaneNode {
+  const leaves = collectLeaves(tree);
+  if (leaves.length <= 1) return tree;
+  const rotated = [...leaves];
+  if (delta > 0) {
+    const tail = rotated.pop();
+    if (tail) rotated.unshift(tail);
+  } else {
+    const head = rotated.shift();
+    if (head) rotated.push(head);
+  }
+  let index = 0;
+  return mapLeaves(tree, () => rotated[index++] ?? leaves[0]);
 }
 
 /** Collect all terminal leaf IDs in tree order (for navigation) */

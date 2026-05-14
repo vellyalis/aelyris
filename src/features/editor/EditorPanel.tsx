@@ -1,5 +1,5 @@
 import Editor, { type OnMount } from "@monaco-editor/react";
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import DOMPurify from "dompurify";
 import { Check, MessageSquare, Wrench } from "lucide-react";
 import { marked } from "marked";
@@ -58,9 +58,28 @@ const EXT_TO_LANG: Record<string, string> = {
   sql: "sql",
 };
 
+const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "webp", "bmp", "gif", "svg", "ico"]);
+
+function getExtension(path: string): string {
+  return path.split(/[\\/]/).pop()?.split(".").pop()?.toLowerCase() ?? "";
+}
+
 function detectLanguage(path: string): string {
-  const ext = path.split(".").pop()?.toLowerCase() ?? "";
+  const ext = getExtension(path);
   return EXT_TO_LANG[ext] ?? "plaintext";
+}
+
+function isImageFile(path: string): boolean {
+  return IMAGE_EXTENSIONS.has(getExtension(path));
+}
+
+function resolveFileSrc(path: string): string {
+  try {
+    return convertFileSrc(path);
+  } catch {
+    if (/^(https?:|data:|blob:|asset:|file:)/i.test(path)) return path;
+    return `file:///${path.replace(/\\/g, "/").replace(/^\/+/, "")}`;
+  }
 }
 
 export function EditorPanel({
@@ -95,6 +114,8 @@ export function EditorPanel({
 
   // LSP integration
   const currentLanguage = filePath ? detectLanguage(filePath) : "plaintext";
+  const isImage = filePath ? isImageFile(filePath) : false;
+  const imageSrc = useMemo(() => (filePath && isImage ? resolveFileSrc(filePath) : ""), [filePath, isImage]);
   const lsp = useLsp({ projectPath: projectPath ?? "", monacoLanguage: currentLanguage });
   const lspDispose = useRef<(() => void) | null>(null);
 
@@ -227,6 +248,7 @@ export function EditorPanel({
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setContent(null);
     setModified(false);
     if (filePath) markSaved(filePath);
     setDiffMode(false);
@@ -234,6 +256,13 @@ export function EditorPanel({
     // tears down its decorations before the new Editor mount fires.
     setGhostEditor(null);
     setGhostMonaco(null);
+
+    if (isImage) {
+      setLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
 
     (async () => {
       try {
@@ -264,7 +293,7 @@ export function EditorPanel({
     return () => {
       cancelled = true;
     };
-  }, [filePath, initialDiffMode, projectPath, markSaved]);
+  }, [filePath, initialDiffMode, projectPath, markSaved, isImage]);
 
   // Reload file when window regains focus (external change detection)
   useEffect(() => {
@@ -348,7 +377,7 @@ export function EditorPanel({
     markSaved,
   ]);
 
-  const fileName = filePath ? (filePath.split("/").pop() ?? filePath) : "";
+  const fileName = filePath ? (filePath.split(/[\\/]/).pop() ?? filePath) : "";
   const language = filePath ? detectLanguage(filePath) : "plaintext";
   const isMarkdown = language === "markdown";
 
@@ -407,12 +436,16 @@ export function EditorPanel({
             {previewMode ? "Edit" : "Preview"}
           </button>
         )}
-        <button type="button" className={styles.diffBtn} onClick={toggleVim} title="Toggle Vim mode">
-          {vimMode ? "Vim ✓" : "Vim"}
-        </button>
-        <button type="button" className={styles.diffBtn} onClick={toggleDiff} title="Toggle diff">
-          {diffMode ? "Editor" : "Diff"}
-        </button>
+        {!isImage && (
+          <>
+            <button type="button" className={styles.diffBtn} onClick={toggleVim} title="Toggle Vim mode">
+              {vimMode ? "Vim ✓" : "Vim"}
+            </button>
+            <button type="button" className={styles.diffBtn} onClick={toggleDiff} title="Toggle diff">
+              {diffMode ? "Editor" : "Diff"}
+            </button>
+          </>
+        )}
         <button type="button" className={styles.closeBtn} onClick={onClose}>
           ×
         </button>
@@ -420,8 +453,13 @@ export function EditorPanel({
       <div className={styles.body}>
         {loading && <div className={styles.status}>Loading...</div>}
         {error && <div className={styles.error}>{error}</div>}
+        {isImage && !loading && !error && (
+          <div className={styles.imagePreview}>
+            <img className={styles.imagePreviewImage} src={imageSrc} alt={fileName} />
+          </div>
+        )}
         {content !== null && !loading && previewMode && isMarkdown && <MarkdownPreview html={renderedHtml} />}
-        {content !== null && !loading && !diffMode && !previewMode && (
+        {content !== null && !loading && !diffMode && !previewMode && !isImage && (
           <Editor
             key={filePath}
             path={monacoModelPath}

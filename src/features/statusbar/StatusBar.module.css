@@ -148,6 +148,16 @@
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--status-done) 26%, transparent);
 }
 
+:global(:root[data-mood="aether-sakura"]) .actionBtnDanger,
+:global(:root[data-mood="aether-sakura"]) .imageBudgetDanger {
+  color: #7a2140;
+}
+
+:global(:root[data-mood="aether-sakura"]) .actionBtnDanger {
+  background: rgba(255, 248, 251, 0.74);
+  border-color: rgba(122, 33, 64, 0.28);
+}
+
 .perfPanel {
   position: absolute;
   right: var(--space-6);

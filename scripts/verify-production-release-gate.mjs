@@ -6,8 +6,10 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const node = process.platform === "win32" ? "node.exe" : "node";
 const args = new Set(process.argv.slice(2));
-const freshLive = args.has("--fresh-live") || process.env.AETHER_RELEASE_FRESH_LIVE === "1";
-const freshIme = freshLive || args.has("--fresh-ime") || process.env.AETHER_RELEASE_FRESH_IME === "1";
+const reuseLive = args.has("--reuse-live") || process.env.AETHER_RELEASE_REUSE_LIVE === "1";
+const reuseIme = args.has("--reuse-ime") || process.env.AETHER_RELEASE_REUSE_IME === "1";
+const freshLive = !reuseLive || args.has("--fresh-live") || process.env.AETHER_RELEASE_FRESH_LIVE === "1";
+const freshIme = !reuseIme || freshLive || args.has("--fresh-ime") || process.env.AETHER_RELEASE_FRESH_IME === "1";
 
 function format(command, commandArgs) {
   return [command, ...commandArgs].join(" ");
@@ -41,16 +43,9 @@ async function main() {
   if (freshIme) releaseGateArgs.push("--with-ime");
   await run(freshIme ? "Release gate with fresh Native IME evidence" : "Release gate", node, releaseGateArgs);
 
-  if (freshLive) {
-    await run("Fresh live Tauri/WebView2 workstation smoke", pnpm, ["verify:production:live"]);
-  } else {
-    console.log("\n[production-release] Fresh live smoke skipped.");
-    console.log("[production-release] Pass --fresh-live or set AETHER_RELEASE_FRESH_LIVE=1 to require a live Tauri/CDP run.");
-  }
-  if (!freshIme) {
-    console.log("\n[production-release] Fresh Native IME CDP verification skipped.");
-    console.log("[production-release] Pass --fresh-ime or --fresh-live to require a live Tauri/CDP IME run.");
-  }
+  if (freshLive) await run("Fresh live Tauri/WebView2 workstation smoke", pnpm, ["verify:production:live"]);
+  else console.log("\n[production-release] Fresh live smoke explicitly reused via --reuse-live/AETHER_RELEASE_REUSE_LIVE=1.");
+  if (!freshIme) console.log("\n[production-release] Fresh Native IME CDP evidence explicitly reused via --reuse-ime.");
 
   await run("Production risk closure evidence", pnpm, ["verify:production:close-risks"]);
   await run("Supply-chain audit", pnpm, ["verify:supply-chain"]);

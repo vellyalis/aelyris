@@ -4,12 +4,14 @@ import {
   collectLeafIds,
   countLeaves,
   createLeaf,
+  createLeafWithId,
   cycleLeafRole,
   equalizePaneRatios,
   movePaneInOrder,
   normalizePaneTitle,
   rebalancePaneLayout,
   removePane,
+  rotatePanesInOrder,
   splitPane,
   uniquePaneTitle,
   updateLeafMeta,
@@ -38,8 +40,20 @@ export function usePaneTree({ initialShell, initialCwd, initialTree, initialActi
     [initialShell, initialCwd],
   );
 
+  const splitWithExistingTerminal = useCallback(
+    (targetId: string, direction: SplitDirection, terminalId: string, shell: ShellType, cwd?: string) => {
+      const newLeaf = createLeafWithId(terminalId, shell, cwd);
+      setTree((prev) => splitPane(prev, targetId, direction, initialShell, initialCwd, newLeaf));
+      setTerminalIds((prev) => new Map(prev).set(terminalId, terminalId));
+      setActivePaneId(terminalId);
+      setMaximizedPaneId(null);
+    },
+    [initialShell, initialCwd],
+  );
+
   const close = useCallback(
-    (targetId: string) => {
+    (targetId: string, options: { closeBackend?: boolean } = {}) => {
+      const closeBackend = options.closeBackend ?? true;
       const shouldClosePty = countLeaves(tree) > 1 && collectLeafIds(tree).includes(targetId);
       setTree((prev) => {
         if (countLeaves(prev) <= 1) return prev;
@@ -61,7 +75,7 @@ export function usePaneTree({ initialShell, initialCwd, initialTree, initialActi
       setTerminalIds((prev) => {
         if (!shouldClosePty) return prev;
         const ptyId = prev.get(targetId);
-        if (ptyId) {
+        if (ptyId && closeBackend) {
           import("@tauri-apps/api/core").then(({ invoke }) => {
             invoke("close_terminal", { id: ptyId }).catch(() => {});
           });
@@ -97,6 +111,11 @@ export function usePaneTree({ initialShell, initialCwd, initialTree, initialActi
     },
     [activePaneId],
   );
+
+  const rotatePanes = useCallback((delta: 1 | -1) => {
+    setTree((prev) => rotatePanesInOrder(prev, delta));
+    setMaximizedPaneId(null);
+  }, []);
 
   const toggleMaximize = useCallback((paneId: string) => {
     setMaximizedPaneId((prev) => (prev === paneId ? null : paneId));
@@ -167,12 +186,14 @@ export function usePaneTree({ initialShell, initialCwd, initialTree, initialActi
     maximizedPaneId,
     terminalIds,
     split,
+    splitWithExistingTerminal,
     close,
     closeAllPtys,
     resize,
     equalize,
     rebalance,
     moveActive,
+    rotatePanes,
     toggleMaximize,
     renamePane,
     setPaneRole,

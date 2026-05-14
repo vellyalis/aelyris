@@ -13,9 +13,10 @@ fn parse_port() -> u16 {
 async fn main() {
     let _log_ring = logging::init();
     let port = parse_port();
-    let pty = PtyManager::new();
-    let state =
-        api::ApiState::new(pty, api::AuthConfig::from_env()).with_process_kind(api::PROCESS_KIND_SIDE_CAR);
+    let pty = PtyManager::new().with_env_scrollback_store();
+    let state = api::ApiState::new(pty, api::AuthConfig::from_env())
+        .with_process_kind(api::PROCESS_KIND_SIDE_CAR)
+        .with_env_mux_store();
 
     log::info!("aether pty server starting on 127.0.0.1:{port}");
     if let Err(err) = api::serve(state, port).await {

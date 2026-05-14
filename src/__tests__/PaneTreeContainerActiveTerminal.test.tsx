@@ -19,12 +19,27 @@ interface CapturedProps {
   tree: PaneNode;
   activePaneId: string | null;
   terminalIds: Map<string, string>;
+  synchronizedPanes?: boolean;
   onFocusPane: (id: string) => void;
   onSplit: (id: string, direction: SplitDirection) => void;
   onClose: (id: string) => void;
   onRenamePane: (id: string, title: string | null) => void;
   onCyclePaneRole: (id: string) => void;
+  onToggleMaximize: (id: string) => void;
   onTerminalReady: (paneId: string, terminalId: string) => void;
+  onLayoutCommand?: (
+    command:
+      | "equalize"
+      | "even-horizontal"
+      | "even-vertical"
+      | "tiled"
+      | "move-next"
+      | "move-previous"
+      | "rotate-next"
+      | "rotate-previous"
+      | "sync-panes-on"
+      | "sync-panes-off",
+  ) => void;
   onPaneLifecycleChange?: (paneId: string, lifecycle: PaneLifecycleState) => void;
   restartPaneRequest?: PaneRestartRequest | null;
   attachPaneRequest?: PaneAttachRequest | null;
@@ -62,13 +77,29 @@ function findLeaf(node: PaneNode, paneId: string): Extract<PaneNode, { type: "te
   return findLeaf(node.first, paneId) ?? findLeaf(node.second, paneId);
 }
 
+let muxSplitCounter = 0;
+
+async function splitAndFlush(c: CapturedProps, paneId: string, direction: SplitDirection): Promise<CapturedProps> {
+  await act(async () => {
+    const latest = (captured as unknown as CapturedProps) ?? c;
+    latest.onSplit(paneId, direction);
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+  return captured as unknown as CapturedProps;
+}
+
 describe("PaneTreeContainer onActiveTerminalChange", () => {
   beforeEach(() => {
     localStorage.clear();
+    muxSplitCounter = 0;
     invokeMock.mockReset();
     invokeMock.mockImplementation((command: string) => {
       if (command === "get_pane_tree_layout") return Promise.resolve(null);
       if (command === "list_terminals") return Promise.resolve([]);
+      if (command === "mux_split_pane") return Promise.resolve(`pty-mux-${++muxSplitCounter}`);
+      if (command === "mux_close_pane") return Promise.resolve(undefined);
+      if (command === "mux_set_pane_zoom") return Promise.resolve(undefined);
       return Promise.resolve(undefined);
     });
   });
@@ -154,7 +185,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     });
   });
 
-  it("reports null with two unfocused panes — fallback only fires when exactly one pane exists", () => {
+  it("focuses the mux-created split pane instead of leaving focus ambiguous", async () => {
     const onChange = vi.fn();
     render(<PaneTreeContainer shell="powershell" onActiveTerminalChange={onChange} />);
     let c = captured as unknown as CapturedProps;
@@ -165,29 +196,109 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     expect(onChange).toHaveBeenLastCalledWith("pty-A");
 
     // Split → 2 panes. The new pane has not yet registered its PTY id.
-    act(() => {
-      c.onSplit(firstId, "right");
-    });
-    c = captured as unknown as CapturedProps;
+    c = await splitAndFlush(c, firstId, "right");
     const ids = leafIds(c.tree);
     const newPaneId = differentLeafId(ids, firstId);
     act(() => {
       c.onTerminalReady(newPaneId, "pty-B");
     });
-    // Two panes, no explicit focus → ambiguous → null.
-    expect(onChange).toHaveBeenLastCalledWith(null);
+    // Rust-mux split returns the pane id that the UI attaches, and the new
+    // pane becomes active like tmux/WezTerm split workflows.
+    expect(onChange).toHaveBeenLastCalledWith("pty-B");
   });
 
-  it("switches to the focused pane's PTY id when the user clicks into it", () => {
+  it("keeps pane splitting usable when the Rust mux split path rejects", async () => {
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "get_pane_tree_layout") return Promise.resolve(null);
+      if (command === "list_terminals") return Promise.resolve([]);
+      if (command === "mux_split_pane") return Promise.reject(new Error("mux graph is stale"));
+      return Promise.resolve(undefined);
+    });
+    render(<PaneTreeContainer shell="powershell" />);
+    let c = captured as unknown as CapturedProps;
+    const firstId = firstLeafId(c.tree);
+    act(() => {
+      c.onTerminalReady(firstId, "pty-A");
+    });
+
+    c = await splitAndFlush(c, firstId, "right");
+
+    await waitFor(() => {
+      c = captured as unknown as CapturedProps;
+      expect(leafIds(c.tree)).toHaveLength(2);
+    });
+    expect(invokeMock).toHaveBeenCalledWith(
+      "mux_split_pane",
+      expect.objectContaining({ workspaceId: "pty-A", targetPaneId: "pty-A" }),
+    );
+  });
+
+  it("rebinds stale saved mux workspace ids to the live terminal workspace before local split recovery", async () => {
+    localStorage.setItem(
+      "aether:paneTree:tab-test",
+      JSON.stringify({
+        version: 1,
+        tree: { type: "terminal", id: "pane-left", shell: "powershell" },
+        activePaneId: "pane-left",
+        muxWorkspaceId: "stale-workspace",
+      }),
+    );
+    invokeMock.mockImplementation((command: string, args?: Record<string, unknown>) => {
+      if (command === "get_pane_tree_layout") return Promise.resolve(null);
+      if (command === "list_terminals") return Promise.resolve([]);
+      if (command === "mux_get_workspace") return Promise.resolve(null);
+      if (command === "mux_split_pane") {
+        if (args?.workspaceId === "stale-workspace") return Promise.reject(new Error("workspace not found"));
+        if (args?.workspaceId === "pty-A") return Promise.resolve("pty-mux-rebound");
+      }
+      return Promise.resolve(undefined);
+    });
+
+    render(<PaneTreeContainer shell="powershell" layoutStorageKey="aether:paneTree:tab-test" />);
+    let c = captured as unknown as CapturedProps;
+    const firstId = firstLeafId(c.tree);
+    act(() => {
+      c.onTerminalReady(firstId, "pty-A");
+    });
+
+    await splitAndFlush(c, firstId, "right");
+
+    await waitFor(() => {
+      c = captured as unknown as CapturedProps;
+      expect(leafIds(c.tree)).toContain("pty-mux-rebound");
+    });
+    expect(invokeMock).toHaveBeenCalledWith(
+      "mux_split_pane",
+      expect.objectContaining({ workspaceId: "stale-workspace", targetPaneId: "pty-A" }),
+    );
+    expect(invokeMock).toHaveBeenCalledWith(
+      "mux_split_pane",
+      expect.objectContaining({ workspaceId: "pty-A", targetPaneId: "pty-A" }),
+    );
+  });
+
+  it("does not ignore split requests before the initial pane has registered a PTY id", async () => {
+    render(<PaneTreeContainer shell="powershell" />);
+    const c = captured as unknown as CapturedProps;
+    const firstId = firstLeafId(c.tree);
+
+    await splitAndFlush(c, firstId, "right");
+
+    await waitFor(() => {
+      expect(leafIds((captured as unknown as CapturedProps).tree)).toHaveLength(2);
+    });
+    expect(invokeMock).not.toHaveBeenCalledWith("mux_split_pane", expect.anything());
+  });
+
+  it("switches to the focused pane's PTY id when the user clicks into it", async () => {
     const onChange = vi.fn();
     render(<PaneTreeContainer shell="powershell" onActiveTerminalChange={onChange} />);
     let c = captured as unknown as CapturedProps;
     const firstId = firstLeafId(c.tree);
     act(() => {
       c.onTerminalReady(firstId, "pty-A");
-      c.onSplit(firstId, "right");
     });
-    c = captured as unknown as CapturedProps;
+    c = await splitAndFlush(c, firstId, "right");
     const ids = leafIds(c.tree);
     const otherId = differentLeafId(ids, firstId);
     act(() => {
@@ -210,9 +321,8 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
 
     act(() => {
       c.onTerminalReady(firstId, "pty-A");
-      c.onSplit(firstId, "right");
     });
-    c = captured as unknown as CapturedProps;
+    c = await splitAndFlush(c, firstId, "right");
     const originalOrder = leafIds(c.tree);
     const otherId = differentLeafId(originalOrder, firstId);
 
@@ -242,9 +352,8 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
 
     act(() => {
       c.onTerminalReady(firstId, "pty-A");
-      c.onSplit(firstId, "right");
     });
-    c = captured as unknown as CapturedProps;
+    c = await splitAndFlush(c, firstId, "right");
     const originalOrder = leafIds(c.tree);
     const otherId = differentLeafId(originalOrder, firstId);
     act(() => {
@@ -258,7 +367,239 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
       expect(leafIds(c.tree)).toEqual([firstId]);
       expect(c.terminalIds.has(otherId)).toBe(false);
     });
+    expect(invokeMock).toHaveBeenCalledWith("mux_close_pane", { workspaceId: "pty-A", paneId: "pty-B" });
+  });
+
+  it("keeps pane closing usable when the Rust mux close path rejects", async () => {
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "get_pane_tree_layout") return Promise.resolve(null);
+      if (command === "list_terminals") return Promise.resolve([]);
+      if (command === "mux_split_pane") return Promise.resolve(`pty-mux-${++muxSplitCounter}`);
+      if (command === "mux_close_pane") return Promise.reject(new Error("mux close graph is stale"));
+      return Promise.resolve(undefined);
+    });
+    render(<PaneTreeContainer shell="powershell" />);
+    let c = captured as unknown as CapturedProps;
+    const firstId = firstLeafId(c.tree);
+    act(() => {
+      c.onTerminalReady(firstId, "pty-A");
+    });
+    c = await splitAndFlush(c, firstId, "right");
+    const otherId = differentLeafId(leafIds(c.tree), firstId);
+    act(() => {
+      c.onTerminalReady(otherId, "pty-B");
+    });
+
+    await act(async () => {
+      (captured as unknown as CapturedProps).onClose(otherId);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      c = captured as unknown as CapturedProps;
+      expect(leafIds(c.tree)).toEqual([firstId]);
+    });
     expect(invokeMock).toHaveBeenCalledWith("close_terminal", { id: "pty-B" });
+  });
+
+  it("rebinds stale saved mux workspace ids to the live terminal workspace before local close recovery", async () => {
+    localStorage.setItem(
+      "aether:paneTree:tab-test",
+      JSON.stringify({
+        version: 1,
+        tree: {
+          type: "split",
+          id: "split-root",
+          direction: "horizontal",
+          ratio: 0.5,
+          first: { type: "terminal", id: "pane-left", shell: "powershell" },
+          second: { type: "terminal", id: "pane-right", shell: "powershell" },
+        },
+        activePaneId: "pane-right",
+        muxWorkspaceId: "stale-workspace",
+      }),
+    );
+    invokeMock.mockImplementation((command: string, args?: Record<string, unknown>) => {
+      if (command === "get_pane_tree_layout") return Promise.resolve(null);
+      if (command === "list_terminals") return Promise.resolve([]);
+      if (command === "mux_get_workspace") return Promise.resolve(null);
+      if (command === "mux_close_pane") {
+        if (args?.workspaceId === "stale-workspace") return Promise.reject(new Error("workspace not found"));
+        if (args?.workspaceId === "pty-A") return Promise.resolve(undefined);
+      }
+      return Promise.resolve(undefined);
+    });
+
+    render(<PaneTreeContainer shell="powershell" layoutStorageKey="aether:paneTree:tab-test" />);
+    let c = captured as unknown as CapturedProps;
+    act(() => {
+      c.onTerminalReady("pane-left", "pty-A");
+      c.onTerminalReady("pane-right", "pty-B");
+    });
+    invokeMock.mockClear();
+
+    await act(async () => {
+      (captured as unknown as CapturedProps).onClose("pane-right");
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      c = captured as unknown as CapturedProps;
+      expect(leafIds(c.tree)).toEqual(["pane-left"]);
+    });
+    expect(invokeMock).toHaveBeenCalledWith("mux_close_pane", {
+      workspaceId: "stale-workspace",
+      paneId: "pty-B",
+    });
+    expect(invokeMock).toHaveBeenCalledWith("mux_close_pane", {
+      workspaceId: "pty-A",
+      paneId: "pty-B",
+    });
+    expect(invokeMock).not.toHaveBeenCalledWith("close_terminal", expect.anything());
+  });
+
+  it("routes layout rebalance commands through the Rust mux before mirroring locally", async () => {
+    render(<PaneTreeContainer shell="powershell" />);
+    let c = captured as unknown as CapturedProps;
+    const firstId = firstLeafId(c.tree);
+    act(() => {
+      c.onTerminalReady(firstId, "pty-A");
+    });
+    c = await splitAndFlush(c, firstId, "right");
+    const otherId = differentLeafId(leafIds(c.tree), firstId);
+    act(() => {
+      c.onTerminalReady(otherId, "pty-B");
+    });
+
+    await act(async () => {
+      (captured as unknown as CapturedProps).onLayoutCommand?.("tiled");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(invokeMock).toHaveBeenCalledWith("mux_apply_layout", {
+      workspaceId: "pty-A",
+      command: "tiled",
+    });
+  });
+
+  it("routes synchronized panes mode through the Rust mux tab state", async () => {
+    render(<PaneTreeContainer shell="powershell" />);
+    let c = captured as unknown as CapturedProps;
+    const firstId = firstLeafId(c.tree);
+    act(() => {
+      c.onTerminalReady(firstId, "pty-A");
+    });
+    c = await splitAndFlush(c, firstId, "right");
+    const otherId = differentLeafId(leafIds(c.tree), firstId);
+    act(() => {
+      c.onTerminalReady(otherId, "pty-B");
+    });
+
+    await act(async () => {
+      (captured as unknown as CapturedProps).onLayoutCommand?.("sync-panes-on");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect((captured as unknown as CapturedProps).synchronizedPanes).toBe(true);
+    await act(async () => {
+      (captured as unknown as CapturedProps).onLayoutCommand?.("sync-panes-off");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect((captured as unknown as CapturedProps).synchronizedPanes).toBe(false);
+
+    expect(invokeMock).toHaveBeenCalledWith("mux_set_panes_synchronized", {
+      workspaceId: "pty-A",
+      enabled: true,
+    });
+    expect(invokeMock).toHaveBeenCalledWith("mux_set_panes_synchronized", {
+      workspaceId: "pty-A",
+      enabled: false,
+    });
+  });
+
+  it("routes move-next through mux pane swap before changing local order", async () => {
+    render(<PaneTreeContainer shell="powershell" />);
+    let c = captured as unknown as CapturedProps;
+    const firstId = firstLeafId(c.tree);
+    act(() => {
+      c.onTerminalReady(firstId, "pty-A");
+    });
+    c = await splitAndFlush(c, firstId, "right");
+    const otherId = differentLeafId(leafIds(c.tree), firstId);
+    act(() => {
+      c.onTerminalReady(otherId, "pty-B");
+      c.onFocusPane(firstId);
+    });
+
+    await act(async () => {
+      (captured as unknown as CapturedProps).onLayoutCommand?.("move-next");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(invokeMock).toHaveBeenCalledWith("mux_swap_panes", {
+      workspaceId: "pty-A",
+      firstPaneId: "pty-A",
+      secondPaneId: "pty-B",
+    });
+    expect(leafIds((captured as unknown as CapturedProps).tree)).toEqual([otherId, firstId]);
+  });
+
+  it("routes rotate-next through the Rust mux before rotating local pane order", async () => {
+    render(<PaneTreeContainer shell="powershell" />);
+    let c = captured as unknown as CapturedProps;
+    const firstId = firstLeafId(c.tree);
+    act(() => {
+      c.onTerminalReady(firstId, "pty-A");
+    });
+    c = await splitAndFlush(c, firstId, "right");
+    const otherId = differentLeafId(leafIds(c.tree), firstId);
+    act(() => {
+      c.onTerminalReady(otherId, "pty-B");
+    });
+
+    await act(async () => {
+      (captured as unknown as CapturedProps).onLayoutCommand?.("rotate-next");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(invokeMock).toHaveBeenCalledWith("mux_apply_layout", {
+      workspaceId: "pty-A",
+      command: "rotate-next",
+    });
+    expect(leafIds((captured as unknown as CapturedProps).tree)).toEqual([otherId, firstId]);
+  });
+
+  it("routes maximize through the Rust mux zoom state before mirroring locally", async () => {
+    render(<PaneTreeContainer shell="powershell" />);
+    let c = captured as unknown as CapturedProps;
+    const firstId = firstLeafId(c.tree);
+    act(() => {
+      c.onTerminalReady(firstId, "pty-A");
+    });
+    c = await splitAndFlush(c, firstId, "right");
+    const otherId = differentLeafId(leafIds(c.tree), firstId);
+    act(() => {
+      c.onTerminalReady(otherId, "pty-B");
+    });
+
+    await act(async () => {
+      (captured as unknown as CapturedProps).onToggleMaximize(otherId);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(invokeMock).toHaveBeenCalledWith("mux_set_pane_zoom", {
+      workspaceId: "pty-A",
+      paneId: "pty-B",
+      zoomed: true,
+    });
   });
 
   it("forwards a global restart request to the renderer without changing the tree", async () => {
@@ -268,9 +609,8 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
 
     act(() => {
       c.onTerminalReady(firstId, "pty-A");
-      c.onSplit(firstId, "right");
     });
-    c = captured as unknown as CapturedProps;
+    c = await splitAndFlush(c, firstId, "right");
     const originalOrder = leafIds(c.tree);
     const otherId = differentLeafId(originalOrder, firstId);
 
@@ -382,6 +722,10 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
       const { unmount } = render(
         <PaneTreeContainer shell="powershell" layoutStorageKey="aether:paneTree:tab-test" projectPath="C:/repo" />,
       );
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
       const c = captured as unknown as CapturedProps;
 
       invokeMock.mockClear();
@@ -484,6 +828,89 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
       const c = captured as unknown as CapturedProps;
       expect(leafIds(c.tree)).toEqual(["pane-db-left", "pane-db-right"]);
       expect(c.activePaneId).toBe("pane-db-right");
+    });
+  });
+
+  it("prefers a Rust mux graph over the legacy local pane-tree snapshot during hydration", async () => {
+    localStorage.setItem(
+      "aether:paneTree:tab-test",
+      JSON.stringify({
+        version: 1,
+        tree: { type: "terminal", id: "legacy-pane", shell: "powershell" },
+        activePaneId: "legacy-pane",
+        muxWorkspaceId: "workspace-pty-a",
+      }),
+    );
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "mux_get_workspace") {
+        return Promise.resolve({
+          version: 1,
+          activeWorkspaceId: "workspace-pty-a",
+          workspaces: {
+            "workspace-pty-a": {
+              id: "workspace-pty-a",
+              activeWindowId: "window-a",
+              windows: {
+                "window-a": {
+                  id: "window-a",
+                  activeTabId: "tab-a",
+                  tabs: {
+                    "tab-a": {
+                      id: "tab-a",
+                      synchronizedPanes: true,
+                      layout: {
+                        activePaneId: "pty-b",
+                        root: {
+                          kind: "split",
+                          axis: "horizontal",
+                          ratio: 0.5,
+                          first: { kind: "pane", paneId: "pty-a" },
+                          second: { kind: "pane", paneId: "pty-b" },
+                        },
+                      },
+                      panes: {
+                        "pty-a": {
+                          id: "pty-a",
+                          title: "build",
+                          shell: "powershell",
+                          cwd: "C:/repo",
+                          lifecycle: "active",
+                          pty: { terminalId: "pty-a", processId: 1, cols: 120, rows: 30 },
+                        },
+                        "pty-b": {
+                          id: "pty-b",
+                          title: "tests",
+                          shell: "cmd",
+                          cwd: "C:/repo",
+                          lifecycle: "active",
+                          pty: { terminalId: "pty-b", processId: 2, cols: 120, rows: 30 },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        });
+      }
+      if (command === "list_panes_info") {
+        return Promise.resolve([
+          { terminal_id: "pty-a", name: "build", shell_type: "powershell" },
+          { terminal_id: "pty-b", name: "tests", shell_type: "cmd" },
+        ]);
+      }
+      if (command === "list_terminals") return Promise.resolve(["pty-a", "pty-b"]);
+      return Promise.resolve(undefined);
+    });
+
+    render(<PaneTreeContainer shell="powershell" layoutStorageKey="aether:paneTree:tab-test" />);
+
+    await waitFor(() => {
+      const c = captured as unknown as CapturedProps;
+      expect(leafIds(c.tree)).toEqual(["pty-a", "pty-b"]);
+      expect(c.activePaneId).toBe("pty-b");
+      expect(c.synchronizedPanes).toBe(true);
     });
   });
 

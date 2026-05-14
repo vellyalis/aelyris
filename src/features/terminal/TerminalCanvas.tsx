@@ -32,6 +32,7 @@ import {
   IME_DIAGNOSTIC_TOGGLE_EVENT,
   type ImeDiagnosticDetail,
   imeCandidateAnchorX,
+  imeCandidateAnchorXForViewport,
   imeDiagnosticsEnabled,
   imeTextareaAnchorWidth,
   imeTextareaCaretInset,
@@ -243,6 +244,27 @@ function diagnosticCandidateRect(detail: ImeDiagnosticDetail | null, textarea: H
 
 function isVisibleCursor(cursor: CursorSnapshot | null | undefined): cursor is CursorSnapshot {
   return !!cursor && cursor.visible && cursor.shape !== "hidden";
+}
+
+function isParkedAiCliCursor(
+  snapshot: GridSnapshot | null,
+  cursor: CursorSnapshot | null,
+  aiInputAnchor: CursorPoint | null,
+): boolean {
+  if (!aiInputAnchor) return false;
+  if (!isVisibleCursor(cursor)) return true;
+  if (!snapshot) return false;
+  if (cursor.row === aiInputAnchor.row) return false;
+
+  const rowText = rowToTextMap(snapshot.cells[cursor.row] ?? []).text.trim();
+  const parkedAtRightEdge = cursor.col >= Math.max(0, snapshot.cols - 2);
+  const parkedBelowInput = cursor.row > aiInputAnchor.row;
+  const statusLikeRow =
+    rowText.length === 0 ||
+    /^[╰└┗╚─━┄┅┈┉═]+/.test(rowText) ||
+    /\b(tokens?|workspace|branch|model|quota|shortcuts?|directory)\b/i.test(rowText);
+
+  return parkedAtRightEdge || (parkedBelowInput && statusLikeRow);
 }
 
 function isPromptBoundary(ch: string | undefined): boolean {
@@ -833,12 +855,14 @@ export function TerminalCanvas({
   // where to anchor the IME candidate window.
   const visibleSnapshotCursor = isVisibleCursor(snapshot?.cursor) ? snapshot.cursor : null;
   const aiCliInputAnchor = preferAiInputAnchor ? findAiCliInputAnchor(snapshot) : null;
-  const effectiveImeCursor = preferAiInputAnchor ? (aiCliInputAnchor ?? visibleSnapshotCursor) : visibleSnapshotCursor;
-  const imeAnchorMode = preferAiInputAnchor
-    ? aiCliInputAnchor
-      ? "ai-cli-input"
-      : "ai-cli-fallback-cursor"
-    : "terminal-cursor";
+  const useAiCliInputAnchor =
+    preferAiInputAnchor && isParkedAiCliCursor(snapshot, visibleSnapshotCursor, aiCliInputAnchor);
+  const effectiveImeCursor = useAiCliInputAnchor ? aiCliInputAnchor : visibleSnapshotCursor;
+  const imeAnchorMode = useAiCliInputAnchor
+    ? "ai-cli-input"
+    : preferAiInputAnchor
+      ? "ai-cli-real-cursor"
+      : "terminal-cursor";
   useImePosition({
     textarea: textareaEl,
     cursor: effectiveImeCursor,
@@ -858,7 +882,12 @@ export function TerminalCanvas({
     : { row: 0, col: 0 };
   const compositionCursorX = compositionCursor.col * cellMetrics.width;
   const compositionCursorY = compositionCursor.row * cellMetrics.height;
-  const imeAnchorX = imeCandidateAnchorX(compositionCursorX, canvasWidth);
+  const viewportLeft = typeof window !== "undefined" ? (window.visualViewport?.offsetLeft ?? 0) : 0;
+  const viewportWidth = typeof window !== "undefined" ? (window.visualViewport?.width ?? window.innerWidth) : canvasWidth;
+  const canvasLeft = canvasEl?.getBoundingClientRect().left ?? 0;
+  const imeAnchorX = canvasEl
+    ? imeCandidateAnchorXForViewport(compositionCursorX, canvasLeft, canvasWidth, viewportLeft, viewportWidth)
+    : imeCandidateAnchorX(compositionCursorX, canvasWidth);
   const imeAnchorWidth = imeTextareaAnchorWidth(imeAnchorX, canvasWidth);
   const imeCaretInset = imeTextareaCaretInset(compositionCursorX, imeAnchorX, canvasWidth);
   const compositionOverlayCells =

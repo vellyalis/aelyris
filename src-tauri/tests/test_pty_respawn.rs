@@ -115,3 +115,25 @@ fn take_child_is_one_shot() {
     std::thread::sleep(Duration::from_millis(50));
     let _ = mgr.close(&id);
 }
+
+#[cfg(target_os = "windows")]
+#[test]
+fn close_terminates_child_even_after_waiter_takes_handle() {
+    let mgr = PtyManager::new();
+    let id = mgr.spawn(&ShellType::Cmd, 80, 24, None).expect("spawn cmd");
+    let mut child = mgr
+        .take_child(&id)
+        .expect("waiter can take child handle before close");
+
+    mgr.close(&id).expect("close should remove and terminate");
+
+    for _ in 0..50 {
+        if child.try_wait().expect("try_wait after close").is_some() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+
+    let _ = child.kill();
+    panic!("close did not terminate the child process within 1s");
+}

@@ -1,21 +1,28 @@
-use portable_pty::{native_pty_system, Child, CommandBuilder, PtyPair, PtySize};
+use portable_pty::{native_pty_system, Child, ChildKiller, CommandBuilder, PtyPair, PtySize};
 use std::collections::HashMap;
 use std::io::{Read, Write};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
+use super::buffer::{strip_ansi, OutputBuffer};
 use super::error::PtyError;
+use super::scrollback::{search_scrollback_text, FilePtyScrollbackStore, PtyScrollbackSearchMatch};
 use super::shell::ShellType;
+
+pub const PTY_SCROLLBACK_DIR_ENV: &str = "AETHER_PTY_SCROLLBACK_DIR";
 
 /// Broadcast channel capacity per PTY. Sized for burst safety: at 4 KiB per
 /// chunk this is ~4 MiB of backlog before a slow subscriber starts lagging.
 const OUTPUT_BROADCAST_CAPACITY: usize = 1024;
+const CAPTURE_BUFFER_MAX_LINES: usize = 20_000;
 
 /// A single PTY instance with its reader/writer and metadata
 struct PtyInstance {
+    spawn_token: Uuid,
     pair: PtyPair,
     writer: Box<dyn Write + Send>,
     shell_type: ShellType,
@@ -30,6 +37,10 @@ struct PtyInstance {
     /// this, a fast shell prompt can be read before UI streaming subscribes,
     /// making the terminal look blank even though the child already started.
     initial_rx: Mutex<Option<broadcast::Receiver<Vec<u8>>>>,
+    /// Bounded output buffer used by REST/CLI capture-pane style reads.
+    /// This lives with the PTY instance so daemon-side sessions can be
+    /// inspected without a Tauri UI OutputBufferRegistry.
+    output_buffer: Arc<Mutex<OutputBuffer>>,
     /// Shutdown signal for the reader thread. Cleared in `Drop` so the
     /// thread exits on its next read boundary instead of running until the
     /// child process happens to close master. Belt-and-suspenders on top of
@@ -44,6 +55,10 @@ struct PtyInstance {
     /// `PtyInstance` is the single owner of teardown — if the waiter
     /// already took it, this is `None` and drop is a no-op for the child.
     child: Arc<Mutex<Option<Box<dyn Child + Send + Sync>>>>,
+    /// A kill-only handle cloned from `child` before any waiter thread takes
+    /// ownership. This lets explicit close/detach terminate the process even
+    /// while another thread is blocked in `wait()`.
+    child_killer: Arc<Mutex<Option<Box<dyn ChildKiller + Send + Sync>>>>,
 }
 
 /// Best-effort exit information for a PTY child process.
@@ -105,13 +120,31 @@ pub struct TerminalInfo {
 #[derive(Clone)]
 pub struct PtyManager {
     instances: Arc<Mutex<HashMap<String, PtyInstance>>>,
+    scrollback_store: Option<Arc<FilePtyScrollbackStore>>,
 }
 
 impl PtyManager {
     pub fn new() -> Self {
         Self {
             instances: Arc::new(Mutex::new(HashMap::new())),
+            scrollback_store: None,
         }
+    }
+
+    pub fn with_scrollback_dir(mut self, dir: impl Into<PathBuf>) -> Self {
+        self.scrollback_store = Some(Arc::new(FilePtyScrollbackStore::new(dir)));
+        self
+    }
+
+    pub fn with_env_scrollback_store(self) -> Self {
+        match std::env::var_os(PTY_SCROLLBACK_DIR_ENV) {
+            Some(dir) if !dir.is_empty() => self.with_scrollback_dir(PathBuf::from(dir)),
+            _ => self,
+        }
+    }
+
+    pub fn durable_scrollback_enabled(&self) -> bool {
+        self.scrollback_store.is_some()
     }
 
     /// Spawn a new PTY session for a shell, returns the terminal ID
@@ -193,9 +226,12 @@ impl PtyManager {
         cwd: Option<&str>,
         extra_env: Option<std::collections::HashMap<String, String>>,
     ) -> Result<(), String> {
-        // Reject collisions before doing any work so callers can't accidentally
-        // overwrite a live session and leak its reader thread.
-        if self.contains(id) {
+        // Hold the session map lock from the collision check through insert.
+        // This makes caller-provided ids atomic for concurrent restore/attach
+        // paths: a second spawn with the same id blocks until the first either
+        // publishes the instance or returns an error.
+        let mut instances = self.lock_instances()?;
+        if instances.contains_key(id) {
             return Err(format!("terminal id {} already exists", id));
         }
         let pty_system = native_pty_system();
@@ -233,6 +269,7 @@ impl PtyManager {
             .slave
             .spawn_command(cmd)
             .map_err(|e| format!("Failed to spawn command '{}': {}", program, e))?;
+        let child_killer = child.clone_killer();
 
         let writer = pair
             .master
@@ -249,14 +286,18 @@ impl PtyManager {
         let (output_tx, initial_rx) = broadcast::channel::<Vec<u8>>(OUTPUT_BROADCAST_CAPACITY);
 
         let reader_alive = Arc::new(AtomicBool::new(true));
+        let output_buffer = Arc::new(Mutex::new(OutputBuffer::new(CAPTURE_BUFFER_MAX_LINES)));
         spawn_reader_thread(
             id.to_string(),
             reader,
             output_tx.clone(),
             reader_alive.clone(),
+            output_buffer.clone(),
+            self.scrollback_store.clone(),
         );
 
         let instance = PtyInstance {
+            spawn_token: Uuid::new_v4(),
             pair,
             writer,
             shell_type: ShellType::PowerShell, // placeholder for non-shell commands
@@ -264,11 +305,13 @@ impl PtyManager {
             spawned_at: Instant::now(),
             output_tx,
             initial_rx: Mutex::new(Some(initial_rx)),
+            output_buffer,
             reader_alive,
             child: Arc::new(Mutex::new(Some(child))),
+            child_killer: Arc::new(Mutex::new(Some(child_killer))),
         };
 
-        self.lock_instances()?.insert(id.to_string(), instance);
+        instances.insert(id.to_string(), instance);
 
         Ok(())
     }
@@ -318,10 +361,15 @@ impl PtyManager {
     /// the "drop after wait" double-free that portable-pty's `Child` does
     /// not guard against on Windows.
     pub fn take_child(&self, id: &str) -> Option<Box<dyn Child + Send + Sync>> {
+        self.take_child_with_token(id).map(|(child, _)| child)
+    }
+
+    fn take_child_with_token(&self, id: &str) -> Option<(Box<dyn Child + Send + Sync>, Uuid)> {
         let instances = self.instances.lock().ok()?;
         let instance = instances.get(id)?;
+        let spawn_token = instance.spawn_token;
         let mut slot = instance.child.lock().ok()?;
-        slot.take()
+        slot.take().map(|child| (child, spawn_token))
     }
 
     /// Start a background waiter for a manager-owned child process.
@@ -334,7 +382,7 @@ impl PtyManager {
     /// and sidecar stream clients observe the session end instead of hanging
     /// forever on a dead PTY.
     pub fn reap_child_on_exit(&self, id: &str) -> bool {
-        let Some(mut child) = self.take_child(id) else {
+        let Some((mut child, spawn_token)) = self.take_child_with_token(id) else {
             return false;
         };
         let manager = self.clone();
@@ -357,8 +405,14 @@ impl PtyManager {
                         log::warn!("pty {} manager reaper wait failed: {}", id, err);
                     }
                 }
-                if let Err(err) = manager.close(&id) {
-                    log::debug!("pty {} manager reaper close skipped: {}", id, err);
+                match manager.remove_exited_if_current(&id, spawn_token) {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        log::info!("pty {} stale manager reaper suppressed", id);
+                    }
+                    Err(err) => {
+                        log::debug!("pty {} manager reaper close skipped: {}", id, err);
+                    }
                 }
             })
             .is_ok()
@@ -394,6 +448,69 @@ impl PtyManager {
         Ok(instance.output_tx.subscribe())
     }
 
+    /// Capture the recent PTY output from the daemon-side ring buffer.
+    pub fn capture(&self, id: &str, lines: usize, clean: bool) -> Result<String, PtyError> {
+        let instances = self.lock_instances()?;
+        if let Some(instance) = instances.get(id) {
+            let buffer = instance
+                .output_buffer
+                .lock()
+                .map_err(|_| PtyError::LockPoisoned)?;
+            let line_count = lines.clamp(1, CAPTURE_BUFFER_MAX_LINES);
+            let output = buffer.tail_including_partial(line_count).join("\n");
+            return if clean {
+                Ok(strip_ansi(&output))
+            } else {
+                Ok(output)
+            };
+        }
+        drop(instances);
+        if let Some(store) = &self.scrollback_store {
+            if store.has_terminal(id) {
+                return store
+                    .capture(id, lines, clean)
+                    .map_err(|err| PtyError::Other(format!("scrollback capture: {err}")));
+            }
+        }
+        Err(PtyError::NotFound(id.to_string()))
+    }
+
+    pub fn search_scrollback(
+        &self,
+        id: &str,
+        query: &str,
+        lines: usize,
+        case_sensitive: bool,
+        limit: usize,
+    ) -> Result<Vec<PtyScrollbackSearchMatch>, PtyError> {
+        let line_count = lines.clamp(1, CAPTURE_BUFFER_MAX_LINES);
+        let hit_limit = limit.clamp(1, 1000);
+
+        let instances = self.lock_instances()?;
+        if let Some(instance) = instances.get(id) {
+            let buffer = instance
+                .output_buffer
+                .lock()
+                .map_err(|_| PtyError::LockPoisoned)?;
+            let output = buffer.tail_including_partial(line_count).join("\n");
+            return Ok(search_scrollback_text(
+                &output,
+                query,
+                case_sensitive,
+                hit_limit,
+            ));
+        }
+        drop(instances);
+        if let Some(store) = &self.scrollback_store {
+            if store.has_terminal(id) {
+                return store
+                    .search(id, query, line_count, case_sensitive, hit_limit)
+                    .map_err(|err| PtyError::Other(format!("scrollback search: {err}")));
+            }
+        }
+        Err(PtyError::NotFound(id.to_string()))
+    }
+
     /// Resize a PTY. Typed errors so callers can distinguish NotFound from
     /// a real failure without string-matching.
     pub fn resize(&self, id: &str, cols: u16, rows: u16) -> Result<(), PtyError> {
@@ -417,13 +534,36 @@ impl PtyManager {
 
     /// Close and remove a PTY session.
     pub fn close(&self, id: &str) -> Result<(), PtyError> {
-        self.lock_instances()?.remove(id).ok_or_else(|| {
-            log::debug!("pty close: unknown terminal id={id}");
-            PtyError::NotFound(id.to_string())
-        })?;
-
+        self.remove_instance(id, true)?;
         log::info!("Closed terminal {}", id);
         Ok(())
+    }
+
+    /// Remove an instance after its child has already exited and a waiter has
+    /// observed the exit status. Unlike [`close`], this does not send a kill
+    /// signal, so natural exits do not produce noisy terminate errors.
+    pub fn remove_exited(&self, id: &str) -> Result<(), PtyError> {
+        self.remove_instance(id, false)?;
+        log::info!("Removed exited terminal {}", id);
+        Ok(())
+    }
+
+    /// Remove an exited instance only if it is the same generation the waiter
+    /// observed. Detach/attach can intentionally reuse a pane id immediately;
+    /// without this guard, the old wait thread can wake after the new PTY is
+    /// inserted and delete the replacement.
+    pub fn remove_exited_if_current(&self, id: &str, spawn_token: Uuid) -> Result<bool, PtyError> {
+        let mut instances = self.lock_instances()?;
+        let Some(instance) = instances.get(id) else {
+            log::debug!("pty reaper: unknown terminal id={id}");
+            return Err(PtyError::NotFound(id.to_string()));
+        };
+        if instance.spawn_token != spawn_token {
+            return Ok(false);
+        }
+        instances.remove(id);
+        log::info!("Removed exited terminal {}", id);
+        Ok(true)
     }
 
     /// List active terminal IDs (sorted by spawn time, newest first)
@@ -468,15 +608,39 @@ impl PtyManager {
     pub fn close_all(&self) {
         if let Ok(mut instances) = self.instances.lock() {
             let count = instances.len();
+            for (_, instance) in instances.iter_mut() {
+                terminate_instance(instance);
+            }
             instances.clear();
             log::info!("Closed {} PTY sessions", count);
         }
+    }
+
+    fn remove_instance(&self, id: &str, terminate: bool) -> Result<(), PtyError> {
+        let mut instance = self.lock_instances()?.remove(id).ok_or_else(|| {
+            log::debug!("pty close: unknown terminal id={id}");
+            PtyError::NotFound(id.to_string())
+        })?;
+        if terminate {
+            terminate_instance(&mut instance);
+        }
+        Ok(())
     }
 
     fn lock_instances(
         &self,
     ) -> Result<std::sync::MutexGuard<'_, HashMap<String, PtyInstance>>, PtyError> {
         self.instances.lock().map_err(|_| PtyError::LockPoisoned)
+    }
+}
+
+fn terminate_instance(instance: &mut PtyInstance) {
+    if let Ok(mut killer_slot) = instance.child_killer.lock() {
+        if let Some(mut killer) = killer_slot.take() {
+            if let Err(err) = killer.kill() {
+                log::debug!("pty child kill skipped or failed: {}", err);
+            }
+        }
     }
 }
 
@@ -509,6 +673,8 @@ fn spawn_reader_thread(
     mut reader: Box<dyn Read + Send>,
     tx: broadcast::Sender<Vec<u8>>,
     reader_alive: Arc<AtomicBool>,
+    output_buffer: Arc<Mutex<OutputBuffer>>,
+    scrollback_store: Option<Arc<FilePtyScrollbackStore>>,
 ) {
     std::thread::spawn(move || {
         let mut buf = [0u8; 4096];
@@ -523,6 +689,15 @@ fn spawn_reader_thread(
                     break;
                 }
                 Ok(n) => {
+                    let text = String::from_utf8_lossy(&buf[..n]);
+                    if let Ok(mut output_buffer) = output_buffer.lock() {
+                        output_buffer.feed(&text);
+                    }
+                    if let Some(store) = &scrollback_store {
+                        if let Err(err) = store.append(&id, &text) {
+                            log::warn!("pty {} scrollback append failed: {}", id, err);
+                        }
+                    }
                     // `send` returns Err when there are no active receivers;
                     // that's expected (see doc comment) and not an error.
                     let _ = tx.send(buf[..n].to_vec());

@@ -1,5 +1,5 @@
-import { renderHook, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useHistorySearch } from "../shared/hooks/useHistorySearch";
 
@@ -18,11 +18,21 @@ function makeInvoke(rows: RawHistoryMatch[]) {
 }
 
 describe("useHistorySearch", () => {
+  beforeEach(() => {
+    vi.useRealTimers();
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
+
   it("returns an empty list when terminal id is null", async () => {
     const invoke = makeInvoke([{ historyIndex: 0, startCol: 0, endCol: 1 }]);
     const { result } = renderHook(() => useHistorySearch(null, "needle", { invoke, debounceMs: 0 }));
     // Hook never calls the backend without a terminal id.
-    await waitFor(() => expect(result.current).toEqual([]));
+    expect(result.current).toEqual([]);
+    expect(invoke).not.toHaveBeenCalled();
   });
 
   it("returns an empty list while query is empty", async () => {

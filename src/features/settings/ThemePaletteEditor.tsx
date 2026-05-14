@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAppStore } from "../../shared/store/appStore";
 import {
   ACCENT_KEYS,
@@ -88,15 +88,10 @@ function AccentRow({ accentKey, baseValue, currentValue, isOverridden, onDirty, 
   const [invalid, setInvalid] = useState(false);
   const label = accentLabel(accentKey);
 
-  // Keep draft in sync with the store when the user resets or switches theme.
-  // We track currentValue in a ref-style guard rather than a useEffect to
-  // avoid clobbering an in-progress edit; the input's `key` rerenders us
-  // when the prop changes after a reset.
-  const lastSeenCurrent = useRefValue(currentValue, () => {
+  useEffect(() => {
     setDraft(currentValue);
     setInvalid(false);
-  });
-  void lastSeenCurrent;
+  }, [currentValue]);
 
   const commit = useCallback(
     (raw: string) => {
@@ -186,17 +181,4 @@ function AccentRow({ accentKey, baseValue, currentValue, isOverridden, onDirty, 
       </button>
     </li>
   );
-}
-
-/**
- * Tracks the last seen `value`. When it changes, runs `onChange`.
- * Implemented via React state to keep the file dependency-free.
- */
-function useRefValue<T>(value: T, onChange: () => void): T {
-  const [seen, setSeen] = useState(value);
-  if (seen !== value) {
-    setSeen(value);
-    onChange();
-  }
-  return seen;
 }

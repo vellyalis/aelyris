@@ -46,8 +46,12 @@ interface UseAppMenusOptions {
   focusPreviousPane?: () => void | Promise<void>;
   movePaneNext?: () => void | Promise<void>;
   movePanePrevious?: () => void | Promise<void>;
+  rotatePanesNext?: () => void | Promise<void>;
+  rotatePanesPrevious?: () => void | Promise<void>;
   equalizePanes?: () => void | Promise<void>;
   tilePanes?: () => void | Promise<void>;
+  syncPanesOn?: () => void | Promise<void>;
+  syncPanesOff?: () => void | Promise<void>;
   panes?: TerminalPaneTarget[];
   activeTabId: string;
   activeFile: string | null;
@@ -79,8 +83,12 @@ export function useAppMenus(opts: UseAppMenusOptions) {
     focusPreviousPane,
     movePaneNext,
     movePanePrevious,
+    rotatePanesNext,
+    rotatePanesPrevious,
     equalizePanes,
     tilePanes,
+    syncPanesOn,
+    syncPanesOff,
     panes = [],
     activeTabId,
     activeFile,
@@ -443,6 +451,26 @@ export function useAppMenus(opts: UseAppMenusOptions) {
         action: () => void movePanePrevious?.(),
       },
       {
+        id: "rotate-terminal-panes-next",
+        label: "Rotate Panes Next",
+        description: "Rotate panes through the current split layout",
+        shortcut: "Ctrl+B o",
+        category: "Terminal",
+        icon: TerminalIcon,
+        keywords: ["tmux", "rotate-pane", "layout", "pane"],
+        action: () => void rotatePanesNext?.(),
+      },
+      {
+        id: "rotate-terminal-panes-previous",
+        label: "Rotate Panes Previous",
+        description: "Rotate panes backward through the current split layout",
+        shortcut: "Ctrl+B O",
+        category: "Terminal",
+        icon: TerminalIcon,
+        keywords: ["tmux", "rotate-pane", "layout", "pane"],
+        action: () => void rotatePanesPrevious?.(),
+      },
+      {
         id: "equalize-terminal-panes",
         label: "Equalize Pane Sizes",
         description: "Reset terminal split ratios to even sizes",
@@ -461,6 +489,24 @@ export function useAppMenus(opts: UseAppMenusOptions) {
         icon: TerminalIcon,
         keywords: ["tmux", "select-layout", "tiled", "even"],
         action: () => void tilePanes?.(),
+      },
+      {
+        id: "synchronize-terminal-panes-on",
+        label: "Synchronize Panes On",
+        description: "Mirror typed input from the active pane to every live pane in the active mux tab",
+        category: "Terminal",
+        icon: RadioTower,
+        keywords: ["tmux", "synchronize-panes", "sync", "broadcast", "pane"],
+        action: () => void syncPanesOn?.(),
+      },
+      {
+        id: "synchronize-terminal-panes-off",
+        label: "Synchronize Panes Off",
+        description: "Stop mirroring typed input across panes in the active mux tab",
+        category: "Terminal",
+        icon: RadioTower,
+        keywords: ["tmux", "synchronize-panes", "sync", "broadcast", "pane"],
+        action: () => void syncPanesOff?.(),
       },
       {
         id: "send-to-pane",
@@ -631,8 +677,12 @@ export function useAppMenus(opts: UseAppMenusOptions) {
       focusPreviousPane,
       movePaneNext,
       movePanePrevious,
+      rotatePanesNext,
+      rotatePanesPrevious,
       equalizePanes,
       tilePanes,
+      syncPanesOn,
+      syncPanesOff,
       enableImeTrace,
       copyImeTrace,
       disableImeTrace,
@@ -728,8 +778,12 @@ export function useAppMenus(opts: UseAppMenusOptions) {
           { label: "Focus Previous Pane", shortcut: "Ctrl+Shift+[", action: () => void focusPreviousPane?.() },
           { label: "Move Pane Next", shortcut: "Ctrl+B }", action: () => void movePaneNext?.() },
           { label: "Move Pane Previous", shortcut: "Ctrl+B {", action: () => void movePanePrevious?.() },
+          { label: "Rotate Panes Next", shortcut: "Ctrl+B o", action: () => void rotatePanesNext?.() },
+          { label: "Rotate Panes Previous", shortcut: "Ctrl+B O", action: () => void rotatePanesPrevious?.() },
           { label: "Equalize Pane Sizes", shortcut: "Ctrl+B =", action: () => void equalizePanes?.() },
           { label: "Tile Panes", shortcut: "Ctrl+B Space", action: () => void tilePanes?.() },
+          { label: "Synchronize Panes On", action: () => void syncPanesOn?.() },
+          { label: "Synchronize Panes Off", action: () => void syncPanesOff?.() },
           { divider: true, label: "" },
           { label: "Send Command to Pane...", action: sendToPaneTarget },
           { label: "Broadcast Command to All Panes...", action: broadcastToAllPanes },
@@ -765,8 +819,12 @@ export function useAppMenus(opts: UseAppMenusOptions) {
       focusPreviousPane,
       movePaneNext,
       movePanePrevious,
+      rotatePanesNext,
+      rotatePanesPrevious,
       equalizePanes,
       tilePanes,
+      syncPanesOn,
+      syncPanesOff,
       enableImeTrace,
       copyImeTrace,
       disableImeTrace,

@@ -17,12 +17,23 @@ interface PaneTreeRendererProps {
    */
   terminalIds: Map<string, string>;
   paneLifecycleStates?: ReadonlyMap<string, PaneLifecycleState>;
+  synchronizedPanes?: boolean;
   onFocusPane: (id: string) => void;
   onSplit: (id: string, direction: SplitDirection) => void;
   onClose: (id: string) => void;
   onResize: (splitId: string, ratio: number) => void;
   onLayoutCommand?: (
-    command: "equalize" | "even-horizontal" | "even-vertical" | "tiled" | "move-next" | "move-previous",
+    command:
+      | "equalize"
+      | "even-horizontal"
+      | "even-vertical"
+      | "tiled"
+      | "move-next"
+      | "move-previous"
+      | "rotate-next"
+      | "rotate-previous"
+      | "sync-panes-on"
+      | "sync-panes-off",
   ) => void;
   onToggleMaximize: (id: string) => void;
   onRenamePane: (id: string, title: string | null) => void;
@@ -68,6 +79,7 @@ export function PaneTreeRenderer({
   maximizedPaneId,
   terminalIds,
   paneLifecycleStates,
+  synchronizedPanes = false,
   onFocusPane,
   onSplit,
   onClose,
@@ -264,17 +276,36 @@ export function PaneTreeRenderer({
           onFocusPane(paneId);
           onLayoutCommand?.("move-previous");
           break;
+        case "rotate-next":
+          onLayoutCommand?.("rotate-next");
+          break;
+        case "rotate-previous":
+          onLayoutCommand?.("rotate-previous");
+          break;
         case "equalize":
           onLayoutCommand?.("equalize");
           break;
         case "tiled":
           onLayoutCommand?.("tiled");
           break;
+        case "sync-panes":
+          onLayoutCommand?.(synchronizedPanes ? "sync-panes-off" : "sync-panes-on");
+          break;
       }
     };
     document.addEventListener(TERMINAL_PREFIX_COMMAND_EVENT, onPrefixCommand);
     return () => document.removeEventListener(TERMINAL_PREFIX_COMMAND_EVENT, onPrefixCommand);
-  }, [canClose, currentLeaves, onClose, onFocusPane, onLayoutCommand, onSplit, onToggleMaximize, terminalIds]);
+  }, [
+    canClose,
+    currentLeaves,
+    onClose,
+    onFocusPane,
+    onLayoutCommand,
+    onSplit,
+    onToggleMaximize,
+    synchronizedPanes,
+    terminalIds,
+  ]);
 
   return (
     <div ref={rootRef} className={styles.paneRoot}>
@@ -358,6 +389,8 @@ export function PaneTreeRenderer({
               onSetPaneRole={(role) => onSetPaneRole(leaf.id, role)}
               onSplitRight={() => onSplit(leaf.id, "right")}
               onSplitDown={() => onSplit(leaf.id, "down")}
+              syncMode={synchronizedPanes}
+              onToggleSync={() => onLayoutCommand?.(synchronizedPanes ? "sync-panes-off" : "sync-panes-on")}
               onToggleMaximize={() => onToggleMaximize(leaf.id)}
               onClose={canClose ? () => onClose(leaf.id) : undefined}
             />

@@ -9,6 +9,7 @@ pub mod history;
 mod ipc;
 pub mod logging;
 pub mod lsp;
+pub mod mux;
 pub mod process;
 pub mod pty;
 pub mod pty_sidecar;
@@ -59,12 +60,14 @@ pub fn run() {
         // docs/auto_updater_setup.md for the one-time key generation step
         // that swaps the placeholder for a real pubkey.
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .manage(PtyManager::new())
+        .manage(PtyManager::new().with_env_scrollback_store())
         .manage(pty_sidecar::PtySidecarState::new(None))
         .manage(AgentManager::new())
         .manage(InteractiveSessionManager::new())
+        .manage(std::sync::Arc::new(std::sync::Mutex::new(mux::manager::MuxManager::new())))
         .manage(ipc::OutputBufferRegistry::new())
         .manage(ipc::TerminalGenerationRegistry::new())
+        .manage(ipc::MuxKeymapRegistry::new())
         .manage(pty::PaneRegistry::new())
         .manage(ipc::FsWatcherRegistry::new())
         .manage(workflow::WorkflowExecutor::new())
@@ -468,11 +471,15 @@ pub fn run() {
             if sidecar_enabled {
                 log::info!("PTY sidecar is active; skipping in-process PTY API bind");
             } else {
-                if let Some(sidecar_state) = app.try_state::<pty_sidecar::PtySidecarState>() {
-                    sidecar_state.lock_native_backend();
-                }
                 let pty: PtyManager = app.state::<PtyManager>().inner().clone();
-                let api_state = api::ApiState::new(pty, api::AuthConfig::from_env());
+                let mux_manager = app
+                    .state::<std::sync::Arc<std::sync::Mutex<mux::manager::MuxManager>>>()
+                    .inner()
+                    .clone();
+                let api_state =
+                    api::ApiState::new(pty, api::AuthConfig::from_env())
+                        .with_mux(mux_manager)
+                        .with_env_mux_store();
                 app.manage(api_state.clone());
                 let serve_state = api_state.clone();
                 tauri::async_runtime::spawn(async move {
@@ -496,6 +503,16 @@ pub fn run() {
             ipc::write_terminal,
             ipc::resize_terminal,
             ipc::close_terminal,
+            ipc::mux_process_keymap_event,
+            ipc::mux_split_pane,
+            ipc::mux_close_pane,
+            ipc::mux_get_workspace,
+            ipc::mux_swap_panes,
+            ipc::mux_break_pane,
+            ipc::mux_join_pane,
+            ipc::mux_set_panes_synchronized,
+            ipc::mux_apply_layout,
+            ipc::mux_set_pane_zoom,
             ipc::list_terminals,
             ipc::detect_shells,
             ipc::term_snapshot,

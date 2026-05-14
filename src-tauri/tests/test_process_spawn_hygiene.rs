@@ -92,6 +92,9 @@ fn tauri_builder_does_not_launch_sidecar_synchronously() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let lib = root.join("src/lib.rs");
     let text = fs::read_to_string(&lib).expect("lib source should be readable");
+    let commands = root.join("src/ipc/commands.rs");
+    let commands_text =
+        fs::read_to_string(&commands).expect("IPC commands source should be readable");
 
     assert!(
         !text.contains("PtySidecarState::new(pty_sidecar::launch_or_connect())"),
@@ -102,8 +105,12 @@ fn tauri_builder_does_not_launch_sidecar_synchronously() {
         "sidecar connection should be initialized in the background"
     );
     assert!(
-        text.contains("lock_native_backend()"),
-        "fallback native backend selection must lock out late sidecar adoption"
+        !text.contains("sidecar_state.lock_native_backend()"),
+        "builder setup must not lock native before the bounded sidecar probe can finish"
+    );
+    assert!(
+        commands_text.contains("sidecar_state.lock_native_backend()"),
+        "first native PTY spawn must lock out late sidecar adoption after native state exists"
     );
 }
 

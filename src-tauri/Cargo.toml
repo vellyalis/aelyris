@@ -4,7 +4,16 @@ version = "0.2.3"
 description = "Windows-native AI workspace terminal"
 authors = ["vellyalis"]
 edition = "2021"
-default-run = "aether-terminal"
+default-run = "Aether"
+autobins = false
+
+[[bin]]
+name = "Aether"
+path = "src/main.rs"
+
+[[bin]]
+name = "aetherctl"
+path = "src/bin/aetherctl.rs"
 
 [lib]
 name = "aether_terminal_lib"
@@ -22,7 +31,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 # Tauri core
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-opener = "2"
 tauri-plugin-notification = "2"
 

@@ -88,6 +88,39 @@
   color: var(--ctp-red);
 }
 
+.imagePreview {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  overflow: auto;
+  background:
+    linear-gradient(45deg, var(--white-6) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--white-6) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--white-6) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--white-6) 75%),
+    var(--aether-bg);
+  background-position:
+    0 0,
+    0 10px,
+    10px -10px,
+    -10px 0;
+  background-size: 20px 20px;
+}
+
+.imagePreviewImage {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-elev-2);
+}
+
 /* Markdown preview iframe — paint the iframe element with the app bg so there
    is no white flash between the iframe mount and the srcdoc's body style
    taking over (the inner body is transparent, but the iframe itself repaints

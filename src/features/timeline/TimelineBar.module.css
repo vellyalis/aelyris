@@ -10,7 +10,9 @@
   padding: 0 var(--space-2);
   min-height: 24px;
   box-sizing: border-box;
-  background: linear-gradient(180deg, rgba(142, 226, 241, 0.01), transparent 62%), rgba(3, 10, 18, 0.035);
+  background:
+    linear-gradient(180deg, var(--terminal-chrome-bg-focus), var(--terminal-chrome-bg)),
+    color-mix(in srgb, var(--terminal-canvas-bg) 74%, rgba(3, 10, 18, 0.34));
   border-radius: var(--radius-sm);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.016),
@@ -119,9 +121,9 @@
 
 .markBtn {
   flex: 0 0 auto;
-  background: transparent;
-  border: 1px solid color-mix(in srgb, var(--ctp-magenta) 10%, transparent);
-  color: color-mix(in srgb, var(--ctp-magenta) 62%, var(--text-secondary));
+  background: color-mix(in srgb, var(--terminal-canvas-bg) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--terminal-ui-primary, var(--ctp-magenta)) 18%, transparent);
+  color: var(--terminal-ui-primary, var(--text-primary));
   padding: 0 var(--space-3);
   border-radius: var(--radius-sm);
   cursor: pointer;

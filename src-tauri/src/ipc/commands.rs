@@ -4,7 +4,7 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::broadcast;
 
 use crate::pty::buffer::{strip_ansi, OutputBuffer};
@@ -87,6 +87,217 @@ fn terminal_audit_metadata(
         "hasCwd": cwd.is_some(),
         "redacted": true,
     })
+}
+
+fn parse_mux_axis(axis: &str) -> Result<crate::mux::layout::SplitAxis, String> {
+    match axis {
+        "horizontal" => Ok(crate::mux::layout::SplitAxis::Horizontal),
+        "vertical" => Ok(crate::mux::layout::SplitAxis::Vertical),
+        other => Err(format!("unknown split axis: {other}")),
+    }
+}
+
+fn normalized_mux_key(
+    key: &str,
+    ctrl_key: bool,
+    alt_key: bool,
+    shift_key: bool,
+    meta_key: bool,
+) -> Result<crate::mux::keymap::Key, String> {
+    use crate::mux::keymap::{Key, KeyCode, Modifiers};
+
+    let mods = Modifiers {
+        ctrl: ctrl_key,
+        alt: alt_key,
+        shift: shift_key,
+        super_key: meta_key,
+    };
+    let key = match key {
+        "Enter" => Key {
+            code: KeyCode::Enter,
+            mods,
+        },
+        "Escape" => Key {
+            code: KeyCode::Escape,
+            mods,
+        },
+        "Backspace" => Key {
+            code: KeyCode::Backspace,
+            mods,
+        },
+        "Tab" => Key {
+            code: KeyCode::Tab,
+            mods,
+        },
+        " " | "Space" | "Spacebar" => Key {
+            code: KeyCode::Space,
+            mods,
+        },
+        "ArrowUp" => Key {
+            code: KeyCode::Up,
+            mods,
+        },
+        "ArrowDown" => Key {
+            code: KeyCode::Down,
+            mods,
+        },
+        "ArrowLeft" => Key {
+            code: KeyCode::Left,
+            mods,
+        },
+        "ArrowRight" => Key {
+            code: KeyCode::Right,
+            mods,
+        },
+        "Home" => Key {
+            code: KeyCode::Home,
+            mods,
+        },
+        "End" => Key {
+            code: KeyCode::End,
+            mods,
+        },
+        "PageUp" => Key {
+            code: KeyCode::PageUp,
+            mods,
+        },
+        "PageDown" => Key {
+            code: KeyCode::PageDown,
+            mods,
+        },
+        "Insert" => Key {
+            code: KeyCode::Insert,
+            mods,
+        },
+        "Delete" => Key {
+            code: KeyCode::Delete,
+            mods,
+        },
+        value if value.starts_with('F') && value.len() <= 3 => {
+            let number = value[1..]
+                .parse::<u8>()
+                .map_err(|_| format!("unsupported function key: {value}"))?;
+            Key {
+                code: KeyCode::Function(number),
+                mods,
+            }
+        }
+        value => {
+            let mut chars = value.chars();
+            let Some(mut ch) = chars.next() else {
+                return Err("empty key".to_string());
+            };
+            if chars.next().is_some() {
+                return Err(format!("unsupported key: {value}"));
+            }
+            if ctrl_key && !alt_key && !meta_key {
+                ch = ch.to_ascii_lowercase();
+            }
+            let printable_mods = if !ctrl_key && !alt_key && !meta_key {
+                Modifiers {
+                    shift: false,
+                    ..mods
+                }
+            } else {
+                mods
+            };
+            Key {
+                code: KeyCode::Char(ch),
+                mods: printable_mods,
+            }
+        }
+    };
+    Ok(key)
+}
+
+fn sync_mux_terminal_spawn(
+    app: &AppHandle,
+    terminal_id: &str,
+    shell_name: &str,
+    cwd: &str,
+    cols: u16,
+    rows: u16,
+) {
+    let Some(mux) = app.try_state::<Arc<Mutex<crate::mux::manager::MuxManager>>>() else {
+        return;
+    };
+    let result = mux
+        .inner()
+        .lock()
+        .map_err(|_| "MuxManager lock poisoned".to_string())
+        .and_then(|mut mux| {
+            mux.upsert_standalone_terminal(terminal_id, shell_name, cwd, cols, rows)
+                .map_err(|err| err.to_string())
+        });
+    if let Err(err) = result {
+        log::warn!("mux sync spawn failed terminal={terminal_id}: {err}");
+    }
+}
+
+fn sync_mux_terminal_remove(app: &AppHandle, terminal_id: &str) {
+    if let Some(keymap) = app.try_state::<MuxKeymapRegistry>() {
+        keymap.remove(terminal_id);
+    }
+    let Some(mux) = app.try_state::<Arc<Mutex<crate::mux::manager::MuxManager>>>() else {
+        return;
+    };
+    match mux.inner().lock() {
+        Ok(mut mux) => {
+            mux.remove_graph(terminal_id);
+        }
+        Err(_) => log::warn!("mux sync remove failed terminal={terminal_id}: lock poisoned"),
+    }
+}
+
+fn sync_mux_pane_name(app: &AppHandle, terminal_id: &str, name: &str) {
+    let Some(mux) = app.try_state::<Arc<Mutex<crate::mux::manager::MuxManager>>>() else {
+        return;
+    };
+    let result = mux
+        .inner()
+        .lock()
+        .map_err(|_| "MuxManager lock poisoned".to_string())
+        .and_then(|mut mux| {
+            mux.update_pane_name(terminal_id, name)
+                .map_err(|err| err.to_string())
+        });
+    if let Err(err) = result {
+        log::debug!("mux sync rename skipped terminal={terminal_id}: {err}");
+    }
+}
+
+fn sync_mux_pane_role(app: &AppHandle, terminal_id: &str, role: &str) {
+    let Some(mux) = app.try_state::<Arc<Mutex<crate::mux::manager::MuxManager>>>() else {
+        return;
+    };
+    let result = mux
+        .inner()
+        .lock()
+        .map_err(|_| "MuxManager lock poisoned".to_string())
+        .and_then(|mut mux| {
+            mux.update_pane_role(terminal_id, role)
+                .map_err(|err| err.to_string())
+        });
+    if let Err(err) = result {
+        log::debug!("mux sync role skipped terminal={terminal_id}: {err}");
+    }
+}
+
+fn sync_mux_pane_size(app: &AppHandle, terminal_id: &str, cols: u16, rows: u16) {
+    let Some(mux) = app.try_state::<Arc<Mutex<crate::mux::manager::MuxManager>>>() else {
+        return;
+    };
+    let result = mux
+        .inner()
+        .lock()
+        .map_err(|_| "MuxManager lock poisoned".to_string())
+        .and_then(|mut mux| {
+            mux.update_pane_size(terminal_id, cols, rows)
+                .map_err(|err| err.to_string())
+        });
+    if let Err(err) = result {
+        log::debug!("mux sync resize skipped terminal={terminal_id}: {err}");
+    }
 }
 
 fn emit_pty_output_batch(
@@ -216,6 +427,52 @@ impl TerminalGenerationRegistry {
             generations.remove(id);
         }
     }
+}
+
+/// Per-terminal Rust mux keymap state. The frontend may keep a tiny
+/// synchronous gate so browser keydown can be prevented in time, but command
+/// lookup, prefix tables, remapping, and dispatch semantics live here.
+#[derive(Clone)]
+pub struct MuxKeymapRegistry {
+    engines: Arc<Mutex<HashMap<String, crate::mux::keymap::KeymapEngine>>>,
+}
+
+impl MuxKeymapRegistry {
+    pub fn new() -> Self {
+        Self {
+            engines: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    fn process_key(
+        &self,
+        terminal_id: &str,
+        key: crate::mux::keymap::Key,
+    ) -> Result<crate::mux::keymap::KeymapEvent, String> {
+        let mut engines = self
+            .engines
+            .lock()
+            .map_err(|_| "MuxKeymapRegistry lock poisoned".to_string())?;
+        let engine = engines.entry(terminal_id.to_string()).or_insert_with(|| {
+            crate::mux::keymap::KeymapEngine::aether_default()
+                .unwrap_or_else(|_| crate::mux::keymap::KeymapEngine::default())
+        });
+        Ok(engine.process_key(key))
+    }
+
+    pub fn remove(&self, terminal_id: &str) {
+        if let Ok(mut engines) = self.engines.lock() {
+            engines.remove(terminal_id);
+        }
+    }
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MuxKeymapResponse {
+    kind: String,
+    table: Option<String>,
+    command: Option<String>,
 }
 
 /// Validate path is not dangerous (no traversal, no system dirs)
@@ -423,6 +680,14 @@ pub async fn spawn_terminal(
             &shell_name,
             cwd.as_deref().unwrap_or("."),
         );
+        sync_mux_terminal_spawn(
+            &app,
+            &id,
+            &shell_name,
+            cwd.as_deref().unwrap_or("."),
+            cols,
+            rows,
+        );
         wire_sidecar_terminal_streaming(
             &app,
             sidecar,
@@ -454,6 +719,9 @@ pub async fn spawn_terminal(
             },
         );
         return Ok(id);
+    }
+    if let Some(sidecar_state) = app.try_state::<crate::pty_sidecar::PtySidecarState>() {
+        sidecar_state.lock_native_backend();
     }
     let pty_manager = app.state::<PtyManager>().inner().clone();
     let spawn_shell = shell.clone();
@@ -501,6 +769,14 @@ pub async fn spawn_terminal(
         &id,
         &shell_name,
         cwd.as_deref().unwrap_or("."),
+    );
+    sync_mux_terminal_spawn(
+        &app,
+        &id,
+        &shell_name,
+        cwd.as_deref().unwrap_or("."),
+        cols,
+        rows,
     );
 
     let stream_wire_started_at = Instant::now();
@@ -1215,7 +1491,7 @@ fn wire_terminal_streaming(
                 return;
             }
             if let Some(pty_state) = waiter_app.try_state::<PtyManager>() {
-                let _ = pty_state.close(&waiter_id);
+                let _ = pty_state.remove_exited(&waiter_id);
             }
             record_audit_event(
                 &waiter_app,
@@ -1480,11 +1756,25 @@ async fn terminal_write_async(
         return sidecar.write(terminal_id, data).await;
     }
     let pty_manager = app.state::<PtyManager>().inner().clone();
-    let terminal_id = terminal_id.to_string();
+    let targets = app
+        .try_state::<Arc<Mutex<crate::mux::manager::MuxManager>>>()
+        .and_then(|mux| {
+            mux.inner()
+                .lock()
+                .ok()
+                .and_then(|mux| mux.synchronized_input_targets_for_pane(terminal_id))
+        })
+        .filter(|targets| !targets.is_empty())
+        .unwrap_or_else(|| vec![terminal_id.to_string()]);
     let data = data.to_vec();
-    tauri::async_runtime::spawn_blocking(move || pty_manager.write(&terminal_id, &data))
-        .await
-        .map_err(|err| format!("Terminal write task failed: {}", err))?
+    tauri::async_runtime::spawn_blocking(move || {
+        for target in targets {
+            pty_manager.write(&target, &data)?;
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|err| format!("Terminal write task failed: {}", err))?
 }
 
 async fn terminal_ids_async(app: &AppHandle) -> Vec<String> {
@@ -1603,6 +1893,7 @@ pub async fn resize_terminal(
     if let Some(diff) = native_diff {
         let _ = app.emit(&format!("term:diff-{}", id), diff);
     }
+    sync_mux_pane_size(&app, &id, cols, rows);
     Ok(())
 }
 
@@ -1654,6 +1945,7 @@ pub async fn close_terminal(app: AppHandle, id: String) -> Result<(), String> {
     // Clean up associated registries
     app.state::<OutputBufferRegistry>().remove(&id);
     app.state::<crate::pty::PaneRegistry>().remove(&id);
+    sync_mux_terminal_remove(&app, &id);
     app.state::<Arc<NativeTerminalRegistry>>().remove(&id);
     if let Some(store) = app.try_state::<Arc<SnapshotStore>>() {
         store.inner().remove_session(&id);
@@ -1675,6 +1967,594 @@ pub async fn close_terminal(app: AppHandle, id: String) -> Result<(), String> {
             "Terminal closed"
         },
         serde_json::json!({ "redacted": true }),
+    );
+    Ok(())
+}
+
+#[tauri::command]
+pub fn mux_process_keymap_event(
+    registry: State<'_, MuxKeymapRegistry>,
+    terminal_id: String,
+    key: String,
+    ctrl_key: bool,
+    alt_key: bool,
+    shift_key: bool,
+    meta_key: bool,
+) -> Result<MuxKeymapResponse, String> {
+    use crate::mux::keymap::{KeyAction, KeymapEvent};
+
+    let normalized = normalized_mux_key(&key, ctrl_key, alt_key, shift_key, meta_key)?;
+    let event = registry.process_key(&terminal_id, normalized)?;
+    let response = match event {
+        KeymapEvent::PrefixStarted => MuxKeymapResponse {
+            kind: "prefixStarted".to_string(),
+            table: Some(crate::mux::keymap::PREFIX_TABLE.to_string()),
+            command: None,
+        },
+        KeymapEvent::SequencePending { table, .. } => MuxKeymapResponse {
+            kind: "sequencePending".to_string(),
+            table: Some(table),
+            command: None,
+        },
+        KeymapEvent::TableChanged { table } => MuxKeymapResponse {
+            kind: "tableChanged".to_string(),
+            table: Some(table),
+            command: None,
+        },
+        KeymapEvent::Dispatch { table, action, .. } => {
+            let command = match action {
+                KeyAction::Command(command) => Some(command.name),
+                _ => None,
+            };
+            MuxKeymapResponse {
+                kind: "dispatch".to_string(),
+                table: Some(table),
+                command,
+            }
+        }
+        KeymapEvent::PassThrough(_) => MuxKeymapResponse {
+            kind: "passThrough".to_string(),
+            table: None,
+            command: None,
+        },
+        KeymapEvent::Cancelled { table, .. } => MuxKeymapResponse {
+            kind: "cancelled".to_string(),
+            table: Some(table),
+            command: None,
+        },
+        KeymapEvent::Timeout { table } => MuxKeymapResponse {
+            kind: "timeout".to_string(),
+            table: Some(table),
+            command: None,
+        },
+    };
+    Ok(response)
+}
+
+#[tauri::command]
+pub async fn mux_split_pane(
+    app: AppHandle,
+    workspace_id: String,
+    target_pane_id: String,
+    axis: String,
+    shell: ShellType,
+    cols: u16,
+    rows: u16,
+    cwd: Option<String>,
+    title: Option<String>,
+) -> Result<String, String> {
+    if cols == 0 || rows == 0 {
+        return Err("cols and rows must be > 0".to_string());
+    }
+    let split_axis = parse_mux_axis(&axis)?;
+    let cwd = match normalize_cwd(cwd) {
+        Ok(cwd) => cwd,
+        Err(err) => return Err(err),
+    };
+    if let Some(ref dir) = cwd {
+        validate_path(dir)?;
+    }
+
+    if let Some(sidecar) = app
+        .try_state::<crate::pty_sidecar::PtySidecarState>()
+        .and_then(|state| state.client())
+    {
+        let pane_id = sidecar
+            .mux_split_pane(
+                &workspace_id,
+                &target_pane_id,
+                &axis,
+                &shell,
+                cols,
+                rows,
+                cwd.as_deref(),
+                title.as_deref(),
+            )
+            .await?;
+        let shell_name = format!("{:?}", shell).to_lowercase();
+        let cwd_for_graph = cwd.as_deref().unwrap_or(".");
+        app.state::<crate::pty::PaneRegistry>()
+            .register(&pane_id, &shell_name, cwd_for_graph);
+        if let Err(err) = wire_sidecar_terminal_streaming(
+            &app,
+            sidecar.clone(),
+            &pane_id,
+            cols,
+            rows,
+            cwd.as_deref(),
+            &shell_name,
+        )
+        .await
+        {
+            cleanup_terminal_ui_registries(&app, &pane_id);
+            let _ = sidecar.mux_close_pane(&workspace_id, &pane_id).await;
+            return Err(err);
+        }
+        record_audit_event(
+            &app,
+            "terminal",
+            "mux_split",
+            "info",
+            Some("terminal"),
+            Some(&pane_id),
+            "Mux pane split",
+            terminal_audit_metadata(&shell, cols, rows, cwd.as_deref()),
+        );
+        return Ok(pane_id);
+    }
+
+    let pane_id = uuid::Uuid::new_v4().to_string();
+    let pty_manager = app.state::<PtyManager>().inner().clone();
+    let spawn_shell = shell.clone();
+    let spawn_cwd = cwd.clone();
+    let spawn_id = pane_id.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        pty_manager.spawn_with_id(&spawn_id, &spawn_shell, cols, rows, spawn_cwd.as_deref())
+    })
+    .await
+    .map_err(|err| format!("Mux split spawn task failed: {err}"))?
+    .map_err(|err| format!("Mux split spawn failed: {err}"))?;
+
+    let shell_name = format!("{:?}", shell).to_lowercase();
+    let cwd_for_graph = cwd.as_deref().unwrap_or(".");
+    let pane_title = title
+        .as_deref()
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+        .unwrap_or(&shell_name);
+    let mut pane =
+        crate::mux::graph::PaneRecord::new(&pane_id, pane_title, &shell_name, cwd_for_graph);
+    pane.lifecycle = crate::mux::graph::LifecycleState::Active;
+    pane.pty = Some(crate::mux::graph::PtyBinding {
+        terminal_id: pane_id.clone(),
+        process_id: None,
+        cols,
+        rows,
+    });
+
+    let split_result = app
+        .state::<Arc<Mutex<crate::mux::manager::MuxManager>>>()
+        .inner()
+        .lock()
+        .map_err(|_| "MuxManager lock poisoned".to_string())
+        .and_then(|mut mux| {
+            mux.split_active_pane(&workspace_id, &target_pane_id, pane, split_axis)
+                .map_err(|err| err.to_string())
+        });
+    if let Err(err) = split_result {
+        let _ = app.state::<PtyManager>().close(&pane_id);
+        return Err(err);
+    }
+
+    app.state::<crate::pty::PaneRegistry>()
+        .register(&pane_id, &shell_name, cwd_for_graph);
+    if let Err(err) =
+        wire_terminal_streaming(&app, &pane_id, cols, rows, cwd.as_deref(), &shell_name)
+    {
+        let _ = app.state::<PtyManager>().close(&pane_id);
+        if let Ok(mut mux) = app
+            .state::<Arc<Mutex<crate::mux::manager::MuxManager>>>()
+            .inner()
+            .lock()
+        {
+            let _ = mux.close_active_pane(&workspace_id, &pane_id);
+        }
+        app.state::<crate::pty::PaneRegistry>().remove(&pane_id);
+        return Err(err);
+    }
+
+    record_audit_event(
+        &app,
+        "terminal",
+        "mux_split",
+        "info",
+        Some("terminal"),
+        Some(&pane_id),
+        "Mux pane split",
+        terminal_audit_metadata(&shell, cols, rows, cwd.as_deref()),
+    );
+    Ok(pane_id)
+}
+
+fn cleanup_terminal_ui_registries(app: &AppHandle, terminal_id: &str) {
+    app.state::<TerminalGenerationRegistry>()
+        .next_generation(terminal_id);
+    app.state::<TerminalGenerationRegistry>()
+        .remove(terminal_id);
+    app.state::<OutputBufferRegistry>().remove(terminal_id);
+    app.state::<crate::pty::PaneRegistry>().remove(terminal_id);
+    app.state::<Arc<NativeTerminalRegistry>>()
+        .remove(terminal_id);
+    if let Some(store) = app.try_state::<Arc<SnapshotStore>>() {
+        store.inner().remove_session(terminal_id);
+    }
+}
+
+#[tauri::command]
+pub async fn mux_close_pane(
+    app: AppHandle,
+    workspace_id: String,
+    pane_id: String,
+) -> Result<(), String> {
+    if let Some(sidecar) = app
+        .try_state::<crate::pty_sidecar::PtySidecarState>()
+        .and_then(|state| state.client())
+    {
+        sidecar.mux_close_pane(&workspace_id, &pane_id).await?;
+        cleanup_terminal_ui_registries(&app, &pane_id);
+    } else {
+        let removed = app
+            .state::<Arc<Mutex<crate::mux::manager::MuxManager>>>()
+            .inner()
+            .lock()
+            .map_err(|_| "MuxManager lock poisoned".to_string())
+            .and_then(|mut mux| {
+                mux.close_active_pane(&workspace_id, &pane_id)
+                    .map_err(|err| err.to_string())
+            })?;
+        if let Some(pty) = removed.pty {
+            let pty_id = pty.terminal_id;
+            app.state::<TerminalGenerationRegistry>()
+                .next_generation(&pty_id);
+            let pty_manager = app.state::<PtyManager>().inner().clone();
+            let close_id = pty_id.clone();
+            let close_result =
+                tauri::async_runtime::spawn_blocking(move || pty_manager.close(&close_id))
+                    .await
+                    .map_err(|err| format!("Mux pane close task failed: {err}"))?;
+            match close_result {
+                Ok(()) | Err(PtyError::NotFound(_)) => {}
+                Err(err) => return Err(err.to_string()),
+            }
+            cleanup_terminal_ui_registries(&app, &pty_id);
+        }
+    }
+
+    record_audit_event(
+        &app,
+        "terminal",
+        "mux_close_pane",
+        "info",
+        Some("terminal"),
+        Some(&pane_id),
+        "Mux pane closed",
+        serde_json::json!({ "workspaceId": workspace_id, "redacted": true }),
+    );
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn mux_get_workspace(
+    app: AppHandle,
+    workspace_id: String,
+) -> Result<Option<crate::mux::graph::MuxGraph>, String> {
+    if let Some(sidecar) = app
+        .try_state::<crate::pty_sidecar::PtySidecarState>()
+        .and_then(|state| state.client())
+    {
+        return sidecar.mux_get_workspace(&workspace_id).await;
+    }
+    let graph = app
+        .state::<Arc<Mutex<crate::mux::manager::MuxManager>>>()
+        .inner()
+        .lock()
+        .map_err(|_| "MuxManager lock poisoned".to_string())?
+        .graph(&workspace_id)
+        .cloned();
+    Ok(graph)
+}
+
+#[tauri::command]
+pub async fn mux_swap_panes(
+    app: AppHandle,
+    workspace_id: String,
+    first_pane_id: String,
+    second_pane_id: String,
+) -> Result<(), String> {
+    if first_pane_id == second_pane_id {
+        return Ok(());
+    }
+    if let Some(sidecar) = app
+        .try_state::<crate::pty_sidecar::PtySidecarState>()
+        .and_then(|state| state.client())
+    {
+        sidecar
+            .mux_swap_panes(&workspace_id, &first_pane_id, &second_pane_id)
+            .await?;
+    } else {
+        app.state::<Arc<Mutex<crate::mux::manager::MuxManager>>>()
+            .inner()
+            .lock()
+            .map_err(|_| "MuxManager lock poisoned".to_string())
+            .and_then(|mut mux| {
+                mux.swap_active_panes(&workspace_id, &first_pane_id, &second_pane_id)
+                    .map_err(|err| err.to_string())
+            })?;
+    }
+    record_audit_event(
+        &app,
+        "terminal",
+        "mux_swap_panes",
+        "info",
+        Some("terminal"),
+        Some(&workspace_id),
+        "Mux panes swapped",
+        serde_json::json!({ "redacted": true }),
+    );
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn mux_break_pane(
+    app: AppHandle,
+    workspace_id: String,
+    pane_id: String,
+) -> Result<(), String> {
+    if let Some(sidecar) = app
+        .try_state::<crate::pty_sidecar::PtySidecarState>()
+        .and_then(|state| state.client())
+    {
+        sidecar.mux_break_pane(&workspace_id, &pane_id).await?;
+    } else {
+        app.state::<Arc<Mutex<crate::mux::manager::MuxManager>>>()
+            .inner()
+            .lock()
+            .map_err(|_| "MuxManager lock poisoned".to_string())
+            .and_then(|mut mux| {
+                mux.break_active_pane_to_new_tab(&workspace_id, &pane_id)
+                    .map(|_| ())
+                    .map_err(|err| err.to_string())
+            })?;
+    }
+    record_audit_event(
+        &app,
+        "terminal",
+        "mux_break_pane",
+        "info",
+        Some("terminal"),
+        Some(&pane_id),
+        "Mux pane broken into a new tab",
+        serde_json::json!({ "workspaceId": workspace_id, "redacted": true }),
+    );
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn mux_join_pane(
+    app: AppHandle,
+    workspace_id: String,
+    source_pane_id: String,
+    target_pane_id: String,
+    axis: String,
+) -> Result<(), String> {
+    let axis_enum = match axis.as_str() {
+        "horizontal" => crate::mux::layout::SplitAxis::Horizontal,
+        "vertical" => crate::mux::layout::SplitAxis::Vertical,
+        other => return Err(format!("unknown mux join axis: {other}")),
+    };
+    if let Some(sidecar) = app
+        .try_state::<crate::pty_sidecar::PtySidecarState>()
+        .and_then(|state| state.client())
+    {
+        sidecar
+            .mux_join_pane(&workspace_id, &source_pane_id, &target_pane_id, &axis)
+            .await?;
+    } else {
+        app.state::<Arc<Mutex<crate::mux::manager::MuxManager>>>()
+            .inner()
+            .lock()
+            .map_err(|_| "MuxManager lock poisoned".to_string())
+            .and_then(|mut mux| {
+                mux.join_pane_into_active_tab(
+                    &workspace_id,
+                    &source_pane_id,
+                    &target_pane_id,
+                    axis_enum,
+                )
+                .map_err(|err| err.to_string())
+            })?;
+    }
+    record_audit_event(
+        &app,
+        "terminal",
+        "mux_join_pane",
+        "info",
+        Some("terminal"),
+        Some(&workspace_id),
+        "Mux pane joined into the active tab",
+        serde_json::json!({ "sourcePaneId": source_pane_id, "targetPaneId": target_pane_id, "redacted": true }),
+    );
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn mux_set_panes_synchronized(
+    app: AppHandle,
+    workspace_id: String,
+    enabled: bool,
+) -> Result<(), String> {
+    if let Some(sidecar) = app
+        .try_state::<crate::pty_sidecar::PtySidecarState>()
+        .and_then(|state| state.client())
+    {
+        sidecar
+            .mux_set_panes_synchronized(&workspace_id, enabled)
+            .await?;
+    } else {
+        app.state::<Arc<Mutex<crate::mux::manager::MuxManager>>>()
+            .inner()
+            .lock()
+            .map_err(|_| "MuxManager lock poisoned".to_string())
+            .and_then(|mut mux| {
+                mux.set_active_tab_synchronized_panes(&workspace_id, enabled)
+                    .map_err(|err| err.to_string())
+            })?;
+    }
+    record_audit_event(
+        &app,
+        "terminal",
+        if enabled {
+            "mux_synchronize_panes_on"
+        } else {
+            "mux_synchronize_panes_off"
+        },
+        "info",
+        Some("terminal"),
+        Some(&workspace_id),
+        if enabled {
+            "Mux synchronized panes enabled"
+        } else {
+            "Mux synchronized panes disabled"
+        },
+        serde_json::json!({ "enabled": enabled, "redacted": true }),
+    );
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn mux_apply_layout(
+    app: AppHandle,
+    workspace_id: String,
+    command: String,
+) -> Result<(), String> {
+    let even_axis = match command.as_str() {
+        "equalize" | "tiled" | "rotate-next" | "rotate-previous" => None,
+        "even-horizontal" => Some((
+            "even",
+            "horizontal",
+            crate::mux::layout::SplitAxis::Horizontal,
+        )),
+        "even-vertical" => Some(("even", "vertical", crate::mux::layout::SplitAxis::Vertical)),
+        other => return Err(format!("unknown mux layout command: {other}")),
+    };
+
+    if let Some(sidecar) = app
+        .try_state::<crate::pty_sidecar::PtySidecarState>()
+        .and_then(|state| state.client())
+    {
+        match command.as_str() {
+            "equalize" => {
+                sidecar
+                    .mux_apply_layout(&workspace_id, "equalize", None)
+                    .await?
+            }
+            "tiled" => {
+                sidecar
+                    .mux_apply_layout(&workspace_id, "tiled", None)
+                    .await?
+            }
+            "rotate-next" | "rotate-previous" => {
+                sidecar
+                    .mux_apply_layout(&workspace_id, &command, None)
+                    .await?
+            }
+            _ => {
+                let (_, axis, _) = even_axis.expect("even axis checked above");
+                sidecar
+                    .mux_apply_layout(&workspace_id, "even", Some(axis))
+                    .await?;
+            }
+        }
+    } else {
+        app.state::<Arc<Mutex<crate::mux::manager::MuxManager>>>()
+            .inner()
+            .lock()
+            .map_err(|_| "MuxManager lock poisoned".to_string())
+            .and_then(|mut mux| match command.as_str() {
+                "equalize" => mux
+                    .equalize_active_tab(&workspace_id)
+                    .map_err(|err| err.to_string()),
+                "tiled" => mux
+                    .apply_tiled_to_active_tab(&workspace_id)
+                    .map_err(|err| err.to_string()),
+                "rotate-next" => mux
+                    .rotate_active_tab(&workspace_id, false)
+                    .map_err(|err| err.to_string()),
+                "rotate-previous" => mux
+                    .rotate_active_tab(&workspace_id, true)
+                    .map_err(|err| err.to_string()),
+                _ => {
+                    let (_, _, axis) = even_axis.expect("even axis checked above");
+                    mux.apply_even_to_active_tab(&workspace_id, axis)
+                        .map_err(|err| err.to_string())
+                }
+            })?;
+    }
+    record_audit_event(
+        &app,
+        "terminal",
+        "mux_apply_layout",
+        "info",
+        Some("terminal"),
+        Some(&workspace_id),
+        "Mux layout applied",
+        serde_json::json!({ "layoutCommand": command, "redacted": true }),
+    );
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn mux_set_pane_zoom(
+    app: AppHandle,
+    workspace_id: String,
+    pane_id: String,
+    zoomed: bool,
+) -> Result<(), String> {
+    if let Some(sidecar) = app
+        .try_state::<crate::pty_sidecar::PtySidecarState>()
+        .and_then(|state| state.client())
+    {
+        sidecar
+            .mux_set_pane_zoom(&workspace_id, &pane_id, zoomed)
+            .await?;
+    } else {
+        app.state::<Arc<Mutex<crate::mux::manager::MuxManager>>>()
+            .inner()
+            .lock()
+            .map_err(|_| "MuxManager lock poisoned".to_string())
+            .and_then(|mut mux| {
+                let target = if zoomed { Some(pane_id.clone()) } else { None };
+                mux.set_active_tab_zoom(&workspace_id, target)
+                    .map_err(|err| err.to_string())
+            })?;
+    }
+    record_audit_event(
+        &app,
+        "terminal",
+        if zoomed {
+            "mux_zoom_pane"
+        } else {
+            "mux_unzoom_pane"
+        },
+        "info",
+        Some("terminal"),
+        Some(&pane_id),
+        if zoomed {
+            "Mux pane zoomed"
+        } else {
+            "Mux pane restored"
+        },
+        serde_json::json!({ "workspaceId": workspace_id, "zoomed": zoomed, "redacted": true }),
     );
     Ok(())
 }
@@ -3312,14 +4192,18 @@ pub async fn broadcast_keys(app: AppHandle, data: String) -> Result<u32, String>
 #[tauri::command]
 pub fn rename_pane(app: AppHandle, terminal_id: String, name: String) -> Result<(), String> {
     let registry = app.state::<crate::pty::PaneRegistry>();
-    registry.rename(&terminal_id, &name)
+    registry.rename(&terminal_id, &name)?;
+    sync_mux_pane_name(&app, &terminal_id, &name);
+    Ok(())
 }
 
 /// Assign a role to a terminal pane for workstation routing.
 #[tauri::command]
 pub fn set_pane_role(app: AppHandle, terminal_id: String, role: String) -> Result<(), String> {
     let registry = app.state::<crate::pty::PaneRegistry>();
-    registry.set_role(&terminal_id, &role)
+    registry.set_role(&terminal_id, &role)?;
+    sync_mux_pane_role(&app, &terminal_id, &role);
+    Ok(())
 }
 
 /// Send keystrokes to a pane by its user-assigned name. Same snapshot

@@ -154,6 +154,17 @@ describe("TerminalInfoBar — exit status dot", () => {
     expect(onRename).toHaveBeenCalledWith("reviewer");
   });
 
+  it("shows synchronized input as a pressed toolbar toggle", () => {
+    const onToggleSync = vi.fn();
+    render(<TerminalInfoBar shell="pwsh" terminalId={null} syncMode onToggleSync={onToggleSync} />);
+
+    const toggle = screen.getByRole("button", { name: "Toggle synchronized input" });
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(toggle.getAttribute("title")).toBe("Disable Sync Input");
+    fireEvent.click(toggle);
+    expect(onToggleSync).toHaveBeenCalledTimes(1);
+  });
+
   it("does not duplicate global branch metadata inside each terminal pane bar", () => {
     render(<TerminalInfoBar shell="pwsh" terminalId={null} branch="feature/noise" cwd="C:/repo" />);
 

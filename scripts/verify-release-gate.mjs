@@ -41,6 +41,9 @@ const syntaxCheckedScripts = [
   "scripts/verify-release-gate.mjs",
   "scripts/verify-production-release-gate.mjs",
   "scripts/verify-supply-chain.mjs",
+  "scripts/verify-mux-live-restore.mjs",
+  "scripts/verify-mux-performance.mjs",
+  "scripts/verify-scrollback-gates.mjs",
 ];
 
 const requiredReleaseFiles = [
@@ -60,6 +63,9 @@ const requiredPackageScripts = {
   "verify:release:ime": "node scripts/verify-release-gate.mjs --with-ime",
   "verify:release:production": "node scripts/verify-production-release-gate.mjs",
   "verify:supply-chain": "node scripts/verify-supply-chain.mjs",
+  "verify:mux-live": "node scripts/verify-mux-live-restore.mjs",
+  "verify:mux-performance": "node scripts/verify-mux-performance.mjs",
+  "verify:scrollback-gates": "cargo build --manifest-path src-tauri/pty-server/Cargo.toml --release && node scripts/verify-scrollback-gates.mjs",
 };
 
 function formatCommand(command, commandArgs) {
@@ -262,16 +268,19 @@ async function main() {
 
   await run("TypeScript", pnpm, ["exec", "tsc", "--noEmit"]);
   await run("Rust backend check", cargo, ["check", "--manifest-path", "src-tauri/Cargo.toml", "--lib"]);
-  await run("Focused workstation Vitest", pnpm, ["exec", "vitest", "run", ...focusedVitestSuites, "--reporter=dot"]);
-
-  await run("Distribution artifacts", pnpm, ["verify:dist"]);
-
   if (withIme) {
     await run("Native IME CDP verification", pnpm, ["verify:ime"]);
   } else {
     console.log("\n[release] Native IME CDP verification skipped.");
     console.log("[release] Run `pnpm.cmd verify:release:ime` with Tauri dev/CDP running before a human handoff build.");
   }
+
+  await run("Mux live restore smoke", pnpm, ["verify:mux-live"]);
+  await run("Mux performance smoke", pnpm, ["verify:mux-performance"]);
+  await run("Scrollback capture/search smoke", pnpm, ["verify:scrollback-gates"]);
+  await run("Focused workstation Vitest", pnpm, ["exec", "vitest", "run", ...focusedVitestSuites, "--reporter=dot"]);
+
+  await run("Distribution artifacts", pnpm, ["verify:dist"]);
 
   console.log("\n[release] Release gate passed.");
 }

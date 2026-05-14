@@ -9,7 +9,7 @@ import {
 import { findAiCliInputAnchor, TerminalCanvas } from "../features/terminal/TerminalCanvas";
 import { CellAttr, type CellSnapshot, type GridSnapshot } from "../shared/types/terminal";
 
-const invokeMock = vi.fn((_cmd: string, _args?: Record<string, unknown>) => Promise.resolve());
+const invokeMock = vi.fn((_cmd: string, _args?: Record<string, unknown>): Promise<unknown> => Promise.resolve());
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: Record<string, unknown>) => invokeMock(cmd, args),
@@ -119,6 +119,36 @@ function snapshotFromRows(rows: string[], cursor: { row: number; col: number }, 
 describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", () => {
   beforeEach(() => {
     installCanvasMock();
+    invokeMock.mockReset();
+    invokeMock.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "mux_process_keymap_event") {
+        if (args?.key === "b" && args?.ctrlKey === true) {
+          return Promise.resolve({ kind: "prefixStarted", table: "prefix", command: null });
+        }
+        const commandByKey: Record<string, string> = {
+          c: "new-window",
+          "%": "split-right",
+          '"': "split-down",
+          x: "close",
+          z: "toggle-maximize",
+          n: "focus-next",
+          p: "focus-previous",
+          "}": "move-next",
+          "{": "move-previous",
+          o: "rotate-next",
+          O: "rotate-previous",
+          "=": "equalize",
+          " ": "tiled",
+          s: "sync-panes",
+        };
+        return Promise.resolve({
+          kind: commandByKey[String(args?.key)] ? "dispatch" : "cancelled",
+          table: "prefix",
+          command: commandByKey[String(args?.key)] ?? null,
+        });
+      }
+      return Promise.resolve();
+    });
   });
 
   afterEach(() => {
@@ -127,7 +157,6 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
     localStorage.removeItem("aether:debug:ime");
     delete window.__AETHER_IME_DEBUG__;
     delete window.__AETHER_IME_EVENTS__;
-    invokeMock.mockClear();
     vi.restoreAllMocks();
   });
 
@@ -171,7 +200,7 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
     expect(writeBytes).toHaveBeenCalledWith("t1", "\x03");
   });
 
-  it("uses Ctrl+B as a terminal prefix without sending bytes to the PTY", () => {
+  it("uses Ctrl+B as a Rust mux terminal prefix without sending bytes to the PTY", async () => {
     const writeBytes = vi.fn();
     const { textarea } = renderCanvas(writeBytes);
     const commands: string[] = [];
@@ -185,7 +214,39 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
     expect(prefix.defaultPrevented).toBe(true);
     expect(split.defaultPrevented).toBe(true);
     expect(writeBytes).not.toHaveBeenCalled();
-    expect(commands).toEqual(["split-right"]);
+    await waitFor(() => expect(commands).toEqual(["split-right"]));
+    expect(invokeMock).toHaveBeenCalledWith("mux_process_keymap_event", {
+      terminalId: "t1",
+      key: "b",
+      ctrlKey: true,
+      altKey: false,
+      shiftKey: false,
+      metaKey: false,
+    });
+    expect(invokeMock).toHaveBeenCalledWith("mux_process_keymap_event", {
+      terminalId: "t1",
+      key: "%",
+      ctrlKey: false,
+      altKey: false,
+      shiftKey: false,
+      metaKey: false,
+    });
+  });
+
+  it("dispatches Ctrl+B c as the Rust mux new-window command", async () => {
+    const writeBytes = vi.fn();
+    const { textarea } = renderCanvas(writeBytes);
+    const commands: string[] = [];
+    textarea.addEventListener(TERMINAL_PREFIX_COMMAND_EVENT, (event) => {
+      commands.push((event as CustomEvent<{ command: string }>).detail.command);
+    });
+
+    dispatchKey(textarea, { key: "b", ctrlKey: true });
+    const create = dispatchKey(textarea, { key: "c" });
+
+    expect(create.defaultPrevented).toBe(true);
+    expect(writeBytes).not.toHaveBeenCalled();
+    await waitFor(() => expect(commands).toEqual(["new-window"]));
   });
 
   it("lets Ctrl+Alt printable input use the browser input path for AltGr-style layouts", () => {
@@ -721,10 +782,10 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
     const imeCall = invokeMock.mock.calls.find(([cmd]) => cmd === "set_ime_position");
     expect(imeCall).toBeDefined();
     const args = imeCall?.[1] as { x: number; candidateX: number };
-    expect(args.candidateX).toBeLessThan(args.x);
-    expect(parseFloat(textarea.style.left)).toBeLessThan(args.x);
+    expect(args.candidateX).toBe(args.x);
+    expect(parseFloat(textarea.style.left)).toBeLessThanOrEqual(args.x);
     expect(textarea.style.width).toBe("440px");
-    expect(parseFloat(textarea.style.left) + parseFloat(textarea.style.paddingLeft)).toBe(args.x);
+    expect(parseFloat(textarea.style.left) + parseFloat(textarea.style.paddingLeft)).toBeGreaterThan(args.x);
   });
 
   it("recomputes IME anchor after resize without devicePixelRatio scaling drift", () => {
@@ -800,7 +861,7 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
 
     const imeCall = invokeMock.mock.calls.find(([cmd]) => cmd === "set_ime_position");
     expect(imeCall?.[1]).toMatchObject({
-      x: 56,
+      x: 40,
       y: 96,
       candidateX: 40,
       candidateY: 96,
@@ -972,6 +1033,45 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
     expect(args.y).toBe(54);
     expect(args.candidateX).toBe(112);
     expect(args.candidateY).toBe(54);
+  });
+
+  it("uses the real AI CLI cursor when Codex or Claude keeps it on the input row", () => {
+    const snapshot: GridSnapshot = {
+      cols: 80,
+      rows: 5,
+      cells: [
+        rowFromText("Claude Code", 80),
+        rowFromText("╭─────────────────────────────────────────────────────────────────────────────╮", 80),
+        rowFromTerminalText("│ ❯ あああああ                                                              │", 80),
+        rowFromText("╰─────────────────────────────────────────────────────────────────────────────╯", 80),
+        rowFromText("tokens: 12k                                  ", 80),
+      ],
+      cursor: {
+        row: 2,
+        col: 14,
+        shape: "beam",
+        blinking: false,
+        visible: true,
+      },
+    };
+    const { container } = render(
+      <TerminalCanvas
+        terminalId="t1"
+        cols={80}
+        rows={5}
+        fontSize={14}
+        snapshotOverride={snapshot}
+        preferAiInputAnchor
+      />,
+    );
+    const textarea = container.querySelector("[data-testid='terminal-ime-textarea']") as HTMLTextAreaElement;
+
+    textarea.focus();
+    fireEvent.compositionStart(textarea);
+
+    expect(textarea.style.left).toBe("112px");
+    expect(textarea.style.top).toBe("36px");
+    expect(textarea.dataset.imeAnchorMode).toBe("ai-cli-real-cursor");
   });
 
   it("does not mistake an AI CLI logo prompt glyph near the top for the input row", () => {

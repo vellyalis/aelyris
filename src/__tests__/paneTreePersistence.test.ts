@@ -4,6 +4,8 @@ import {
   deletePaneTreeSnapshotFromBackend,
   loadPaneTreeSnapshot,
   loadPaneTreeSnapshotFromBackend,
+  muxWorkspaceIdCandidates,
+  paneTreeSnapshotFromMuxGraph,
   savePaneTreeSnapshot,
   savePaneTreeSnapshotToBackend,
 } from "../features/terminal/pane-tree/persistence";
@@ -180,6 +182,121 @@ describe("pane tree persistence", () => {
     );
 
     expect(loadPaneTreeSnapshot(KEY, "powershell")?.activePaneId).toBeNull();
+  });
+
+  it("keeps mux-owned pane ids that do not use the legacy pane prefix", () => {
+    const muxPaneId = "8a4e1c18-2e4b-4b59-9c67-a28b5efc8d22";
+    savePaneTreeSnapshot(KEY, {
+      tree: { type: "terminal", id: muxPaneId, shell: "powershell" },
+      activePaneId: muxPaneId,
+      backendBindings: { [muxPaneId]: { terminalId: muxPaneId } },
+      muxWorkspaceId: muxPaneId,
+    });
+
+    const loaded = loadPaneTreeSnapshot(KEY, "cmd");
+
+    expect(loaded?.tree).toMatchObject({ id: muxPaneId, shell: "powershell" });
+    expect(loaded?.activePaneId).toBe(muxPaneId);
+    expect(loaded?.muxWorkspaceId).toBe(muxPaneId);
+  });
+
+  it("converts a Rust mux graph into a pane tree snapshot", () => {
+    const graph = {
+      version: 1,
+      activeWorkspaceId: "workspace-pty-a",
+      workspaces: {
+        "workspace-pty-a": {
+          id: "workspace-pty-a",
+          activeWindowId: "window-a",
+          windows: {
+            "window-a": {
+              id: "window-a",
+              activeTabId: "tab-a",
+              tabs: {
+                "tab-a": {
+                  id: "tab-a",
+                  layout: {
+                    activePaneId: "pty-b",
+                    root: {
+                      kind: "split",
+                      axis: "horizontal",
+                      ratio: 0.42,
+                      first: { kind: "pane", paneId: "pty-a" },
+                      second: { kind: "pane", paneId: "pty-b" },
+                    },
+                  },
+                  panes: {
+                    "pty-a": {
+                      id: "pty-a",
+                      title: "build",
+                      shell: "powershell",
+                      cwd: "C:/repo",
+                      role: "build",
+                      lifecycle: "active",
+                      pty: { terminalId: "pty-a", processId: 111, cols: 120, rows: 30 },
+                    },
+                    "pty-b": {
+                      id: "pty-b",
+                      title: "review",
+                      shell: "cmd",
+                      cwd: "C:/repo",
+                      role: "review",
+                      lifecycle: "detached",
+                      pty: { terminalId: "pty-b", processId: null, cols: 120, rows: 30 },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    } as const;
+
+    const snapshot = paneTreeSnapshotFromMuxGraph(graph, "powershell");
+
+    expect(snapshot).toMatchObject({
+      activePaneId: "pty-b",
+      muxWorkspaceId: "workspace-pty-a",
+      tree: {
+        type: "split",
+        direction: "horizontal",
+        ratio: 0.42,
+        first: { id: "pty-a", title: "build", role: "build" },
+        second: { id: "pty-b", shell: "cmd", title: "review", role: "review" },
+      },
+      backendBindings: {
+        "pty-a": { terminalId: "pty-a" },
+        "pty-b": { terminalId: "pty-b" },
+      },
+    });
+    expect(snapshot?.paneIntents?.["pty-a"]).toMatchObject({
+      terminalId: "pty-a",
+      processId: 111,
+      lifecycle: "live",
+      attachState: "attached",
+      health: "healthy",
+    });
+    expect(snapshot?.paneIntents?.["pty-b"]).toMatchObject({
+      lifecycle: "detached",
+      attachState: "detached",
+    });
+  });
+
+  it("orders mux workspace lookup candidates from explicit mux id to bindings", () => {
+    expect(
+      muxWorkspaceIdCandidates(
+        {
+          version: 1,
+          tree: { type: "terminal", id: "pty-a", shell: "powershell" },
+          activePaneId: "pty-a",
+          muxWorkspaceId: "workspace-explicit",
+          backendBindings: { "pty-a": { terminalId: "pty-a" } },
+          paneIntents: { "pty-b": { paneId: "pty-b", terminalId: "pty-b" } },
+        },
+        "aether:paneTree:tab",
+      ),
+    ).toEqual(["workspace-explicit", "pty-a", "pty-b", "aether:paneTree:tab"]);
   });
 
   it("loads a sanitized snapshot from the backend mirror", async () => {

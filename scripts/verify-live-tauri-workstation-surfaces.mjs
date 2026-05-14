@@ -8,20 +8,26 @@
 //   AETHER_TAURI_PROJECT=C:/Users/owner/Aether_Terminal
 //   AETHER_DASHBOARD_STATE_URL=http://127.0.0.1:48371/state
 //   AETHER_PRODUCTION_SMOKE_OUT=.codex-auto/production-smoke/live-tauri-workstation-surfaces.json
+//   AETHER_PRODUCTION_SMOKE_SCREENSHOT_DIR=.codex-auto/production-smoke/screenshots
 
 import { mkdirSync, writeFileSync } from "node:fs";
+import http from "node:http";
 import net from "node:net";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { chromium } from "@playwright/test";
 
 const CDP = process.env.AETHER_TAURI_CDP ?? process.env.AETHER_IME_CDP ?? "http://127.0.0.1:9222";
 const PROJECT_PATH = (process.env.AETHER_TAURI_PROJECT ?? process.cwd()).replaceAll("\\", "/");
-const DASHBOARD_STATE_URL = process.env.AETHER_DASHBOARD_STATE_URL ?? "http://127.0.0.1:48371/state";
+let DASHBOARD_STATE_URL = process.env.AETHER_DASHBOARD_STATE_URL ?? "";
 const OUT =
   process.env.AETHER_PRODUCTION_SMOKE_OUT ?? ".codex-auto/production-smoke/live-tauri-workstation-surfaces.json";
+const SCREENSHOT_DIR = resolve(
+  process.env.AETHER_PRODUCTION_SMOKE_SCREENSHOT_DIR ?? ".codex-auto/production-smoke/screenshots",
+);
 const WAIT_MS = Number.parseInt(process.env.AETHER_PRODUCTION_SMOKE_WAIT_MS ?? "90000", 10);
 const APP_READY_WAIT_MS = Number.parseInt(process.env.AETHER_PRODUCTION_APP_READY_WAIT_MS ?? "90000", 10);
+const QUIET_WINDOW_MS = Number.parseInt(process.env.AETHER_PRODUCTION_SMOKE_QUIET_MS ?? "3500", 10);
 
 const COVERED_RISKS = [
   "1777959386787-browser-denied-visual-pass",
@@ -47,11 +53,376 @@ const COVERED_RISKS = [
   "risk-p2-03-profile-source-alignment-gap",
 ];
 
+async function startDashboardFixtureIfNeeded(report) {
+  if (DASHBOARD_STATE_URL) return null;
+  const server = http.createServer((request, response) => {
+    if (request.url !== "/state") {
+      response.writeHead(404, { "content-type": "application/json" });
+      response.end('{"error":"not found"}');
+      return;
+    }
+    response.writeHead(200, {
+      "content-type": "application/json",
+      "cache-control": "no-store",
+      "access-control-allow-origin": "*",
+    });
+    response.end(
+      JSON.stringify({
+        finalReport: { finalStatus: "fixture-pass" },
+        roadmap: { done: 1, total: 1 },
+        summary: { done: 1, total: 1 },
+        promotionGate: { status: "fixture", score: 100 },
+      }),
+    );
+  });
+  await new Promise((resolveListen, rejectListen) => {
+    server.once("error", rejectListen);
+    server.listen(0, "127.0.0.1", resolveListen);
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("dashboard fixture did not expose a TCP address");
+  DASHBOARD_STATE_URL = `http://127.0.0.1:${address.port}/state`;
+  report.dashboardFixture = { url: DASHBOARD_STATE_URL };
+  return server;
+}
+
 function writeArtifact(report) {
   const path = resolve(OUT);
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(report, null, 2)}\n`);
   return path;
+}
+
+function attachQualityCollectors(page) {
+  const events = {
+    consoleErrors: [],
+    pageErrors: [],
+    requestFailures: [],
+  };
+  page.on("console", (message) => {
+    if (message.type() !== "error") return;
+    events.consoleErrors.push({
+      type: message.type(),
+      text: message.text().slice(0, 1000),
+      location: message.location(),
+    });
+  });
+  page.on("pageerror", (error) => {
+    events.pageErrors.push({
+      message: error.message,
+      stack: error.stack?.slice(0, 2000) ?? null,
+    });
+  });
+  page.on("requestfailed", (request) => {
+    const url = request.url();
+    const failure = request.failure()?.errorText ?? "unknown";
+    if (url.startsWith("data:") || url.startsWith("blob:")) return;
+    if (url.startsWith("http://ipc.localhost/") && failure === "net::ERR_ABORTED") return;
+    events.requestFailures.push({
+      url,
+      method: request.method(),
+      failure,
+      resourceType: request.resourceType(),
+    });
+  });
+  return events;
+}
+
+async function smokeRuntimeQuietWindow(page, events) {
+  events.consoleErrors.length = 0;
+  events.pageErrors.length = 0;
+  events.requestFailures.length = 0;
+  await page.waitForTimeout(QUIET_WINDOW_MS);
+  const failures = [
+    ...events.consoleErrors.map((event) => `console error: ${event.text}`),
+    ...events.pageErrors.map((event) => `pageerror: ${event.message}`),
+    ...events.requestFailures.map((event) => `request failed: ${event.method} ${event.url} (${event.failure})`),
+  ];
+  if (failures.length > 0) {
+    throw new Error(`runtime quality window found ${failures.length} issue(s): ${failures.slice(0, 6).join(" | ")}`);
+  }
+  return {
+    quietWindowMs: QUIET_WINDOW_MS,
+    consoleErrors: 0,
+    pageErrors: 0,
+    requestFailures: 0,
+  };
+}
+
+async function smokeVisualSurface(page) {
+  mkdirSync(SCREENSHOT_DIR, { recursive: true });
+  const screenshotPath = join(SCREENSHOT_DIR, `workstation-${Date.now()}.png`);
+  const screenshotBuffer = await page.screenshot({ path: screenshotPath, fullPage: true });
+
+  const result = await page.evaluate(() => {
+    function rectFor(selector) {
+      const el = document.querySelector(selector);
+      if (!el) return null;
+      const rect = el.getBoundingClientRect();
+      return {
+        selector,
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+        left: Math.round(rect.left),
+        top: Math.round(rect.top),
+        visible: rect.width > 1 && rect.height > 1,
+      };
+    }
+
+    function parseRgb(value) {
+      const match = /rgba?\((\d+(?:\.\d+)?),\s*(\d+(?:\.\d+)?),\s*(\d+(?:\.\d+)?)(?:,\s*(\d*\.?\d+))?\)/.exec(value);
+      if (!match) return null;
+      return {
+        r: Number(match[1]),
+        g: Number(match[2]),
+        b: Number(match[3]),
+        a: match[4] === undefined ? 1 : Number(match[4]),
+      };
+    }
+
+    function parseSurfaceColor(value) {
+      const parsed = parseRgb(value);
+      if (!parsed) return null;
+      return { ...parsed, a: 1 };
+    }
+
+    function imageSurfaceColor(style) {
+      const image = style.backgroundImage;
+      if (!image || image === "none") return null;
+      return (
+        parseSurfaceColor(style.getPropertyValue("--terminal-chrome-bg-focus")) ??
+        parseSurfaceColor(style.getPropertyValue("--terminal-chrome-bg")) ??
+        parseSurfaceColor(style.getPropertyValue("--terminal-canvas-bg")) ??
+        parseSurfaceColor(image)
+      );
+    }
+
+    function blend(top, bottom) {
+      const alpha = top.a + bottom.a * (1 - top.a);
+      if (alpha <= 0) return { r: 255, g: 255, b: 255, a: 1 };
+      return {
+        r: Math.round((top.r * top.a + bottom.r * bottom.a * (1 - top.a)) / alpha),
+        g: Math.round((top.g * top.a + bottom.g * bottom.a * (1 - top.a)) / alpha),
+        b: Math.round((top.b * top.a + bottom.b * bottom.a * (1 - top.a)) / alpha),
+        a: alpha,
+      };
+    }
+
+    function effectiveBackground(element) {
+      let bg = { r: 255, g: 255, b: 255, a: 1 };
+      const stack = [];
+      let current = element;
+      while (current && current instanceof Element) {
+        stack.push(current);
+        current = current.parentElement;
+      }
+      for (const el of stack.reverse()) {
+        const style = getComputedStyle(el);
+        const color = parseRgb(style.backgroundColor) ?? imageSurfaceColor(style);
+        if (color && color.a > 0) bg = blend(color, bg);
+      }
+      return bg;
+    }
+
+    function luminance(color) {
+      const channels = [color.r, color.g, color.b].map((channel) => {
+        const value = channel / 255;
+        return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+    }
+
+    function contrast(a, b) {
+      const lighter = Math.max(luminance(a), luminance(b));
+      const darker = Math.min(luminance(a), luminance(b));
+      return (lighter + 0.05) / (darker + 0.05);
+    }
+
+    const canvases = Array.from(document.querySelectorAll("canvas"));
+    const canvasRects = canvases.map((canvas, index) => {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        index,
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+        visible: rect.width > 8 && rect.height > 8,
+      };
+    });
+    const canvasSamples = canvases.slice(0, 4).map((canvas, index) => {
+      const rect = canvas.getBoundingClientRect();
+      let nonBlankPixels = 0;
+      let sampledPixels = 0;
+      let unique = new Set();
+      try {
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        const width = canvas.width;
+        const height = canvas.height;
+        if (ctx && width > 0 && height > 0) {
+          const stepX = Math.max(1, Math.floor(width / 24));
+          const stepY = Math.max(1, Math.floor(height / 18));
+          for (let y = 0; y < height; y += stepY) {
+            for (let x = 0; x < width; x += stepX) {
+              const data = ctx.getImageData(x, y, 1, 1).data;
+              sampledPixels += 1;
+              const key = `${data[0]},${data[1]},${data[2]},${data[3]}`;
+              unique.add(key);
+              if (data[3] > 0 && (data[0] !== 0 || data[1] !== 0 || data[2] !== 0)) nonBlankPixels += 1;
+            }
+          }
+        }
+      } catch (error) {
+        return {
+          index,
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+          nonBlankPixels: 0,
+          sampledPixels: 0,
+          uniqueColors: 0,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+      return {
+        index,
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+        nonBlankPixels,
+        sampledPixels,
+        uniqueColors: unique.size,
+      };
+    });
+
+    const textContrast = Array.from(
+      document.querySelectorAll("button, [role='tab'], [data-widget], .statusbar, .terminal-shell"),
+    )
+      .filter((el) => {
+        const rect = el.getBoundingClientRect();
+        const style = getComputedStyle(el);
+        return rect.width > 8 && rect.height > 8 && style.visibility !== "hidden" && style.display !== "none";
+      })
+      .slice(0, 80)
+      .map((el) => {
+        const style = getComputedStyle(el);
+        const bg = effectiveBackground(el);
+        const rawFg = parseRgb(style.color) ?? { r: 0, g: 0, b: 0, a: 1 };
+        const fg = rawFg.a < 1 ? blend(rawFg, bg) : rawFg;
+        return {
+          tag: el.tagName.toLowerCase(),
+          text: (el.textContent ?? "").trim().slice(0, 80),
+          className: String(el.className ?? "").slice(0, 120),
+          ariaLabel: el.getAttribute("aria-label") ?? "",
+          rect: {
+            left: Math.round(el.getBoundingClientRect().left),
+            top: Math.round(el.getBoundingClientRect().top),
+            width: Math.round(el.getBoundingClientRect().width),
+            height: Math.round(el.getBoundingClientRect().height),
+          },
+          color: style.color,
+          background: bg,
+          ratio: Number(contrast(fg, bg).toFixed(2)),
+        };
+      })
+      .filter((entry) => entry.text.length > 0);
+
+    const lowContrast = textContrast.filter((entry) => entry.ratio < 2.6);
+
+    return {
+      rects: [rectFor(".app-container"), rectFor(".app-main"), rectFor("#right-rail-panel")],
+      screenshotTargets: [
+        ...canvasRects.filter((rect) => rect.visible).slice(0, 2),
+        rectFor(".terminal-shell"),
+        rectFor(".app-main"),
+      ].filter(Boolean),
+      canvasSamples,
+      textContrast: {
+        checked: textContrast.length,
+        minimum: textContrast.length ? Math.min(...textContrast.map((entry) => entry.ratio)) : null,
+        lowContrast: lowContrast.slice(0, 10),
+      },
+    };
+  });
+
+  const screenshotSurface = await page.evaluate(
+    ({ dataUrl, targets }) =>
+      new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => {
+          try {
+            const canvas = document.createElement("canvas");
+            canvas.width = image.naturalWidth;
+            canvas.height = image.naturalHeight;
+            const ctx = canvas.getContext("2d", { willReadFrequently: true });
+            if (!ctx) throw new Error("2d context unavailable for screenshot analysis");
+            ctx.drawImage(image, 0, 0);
+            const cssWidth = Math.max(1, document.documentElement.scrollWidth, window.innerWidth);
+            const cssHeight = Math.max(1, document.documentElement.scrollHeight, window.innerHeight);
+            const scaleX = image.naturalWidth / cssWidth;
+            const scaleY = image.naturalHeight / cssHeight;
+            const samples = targets.map((target) => {
+              const left = Math.max(0, Math.floor((target.left ?? 0) * scaleX));
+              const top = Math.max(0, Math.floor((target.top ?? 0) * scaleY));
+              const width = Math.max(1, Math.min(image.naturalWidth - left, Math.floor((target.width ?? 1) * scaleX)));
+              const height = Math.max(1, Math.min(image.naturalHeight - top, Math.floor((target.height ?? 1) * scaleY)));
+              const stepX = Math.max(1, Math.floor(width / 32));
+              const stepY = Math.max(1, Math.floor(height / 24));
+              const unique = new Set();
+              let sampledPixels = 0;
+              let nonBlankPixels = 0;
+              for (let y = top; y < top + height; y += stepY) {
+                for (let x = left; x < left + width; x += stepX) {
+                  const data = ctx.getImageData(x, y, 1, 1).data;
+                  sampledPixels += 1;
+                  unique.add(`${data[0]},${data[1]},${data[2]},${data[3]}`);
+                  if (data[3] > 0 && (data[0] !== 0 || data[1] !== 0 || data[2] !== 0)) nonBlankPixels += 1;
+                }
+              }
+              return {
+                selector: target.selector ?? `canvas-${target.index ?? "surface"}`,
+                sampledPixels,
+                nonBlankPixels,
+                uniqueColors: unique.size,
+                width,
+                height,
+              };
+            });
+            resolve({ imageWidth: image.naturalWidth, imageHeight: image.naturalHeight, samples });
+          } catch (error) {
+            reject(error);
+          }
+        };
+        image.onerror = () => reject(new Error("screenshot image failed to load for analysis"));
+        image.src = dataUrl;
+      }),
+    {
+      dataUrl: `data:image/png;base64,${screenshotBuffer.toString("base64")}`,
+      targets: result.screenshotTargets,
+    },
+  );
+
+  for (const rect of result.rects) {
+    if (!rect?.visible) throw new Error(`visual surface missing or empty: ${rect?.selector ?? "unknown"}`);
+  }
+  if (
+    !result.canvasSamples.some((sample) => sample.sampledPixels > 0 && sample.nonBlankPixels > 0 && sample.uniqueColors > 1) &&
+    !screenshotSurface.samples.some((sample) => sample.sampledPixels > 0 && sample.nonBlankPixels > 0 && sample.uniqueColors > 8)
+  ) {
+    throw new Error(
+      `terminal surface appears blank: ${JSON.stringify({
+        canvasSamples: result.canvasSamples,
+        screenshotSamples: screenshotSurface.samples,
+      })}`,
+    );
+  }
+  if (result.textContrast.checked > 0 && result.textContrast.minimum !== null && result.textContrast.minimum < 2.6) {
+    throw new Error(`low contrast live text detected: ${JSON.stringify(result.textContrast.lowContrast)}`);
+  }
+
+  return {
+    screenshotPath,
+    screenshotSurface,
+    ...result,
+  };
 }
 
 function isAetherPage(page) {
@@ -60,6 +431,7 @@ function isAetherPage(page) {
     url.includes("localhost:1420") ||
     url.includes("127.0.0.1:1420") ||
     url.startsWith("tauri://localhost") ||
+    url.startsWith("http://tauri.localhost") ||
     url.startsWith("https://tauri.localhost")
   );
 }
@@ -132,8 +504,8 @@ async function seedQa(page, density = "balanced") {
         JSON.stringify({
           version: 1,
           globalDefaults: {
-            visualDensity: "balanced",
-            paneLayout: { density: "balanced", rightRailMode: "command" },
+            visualDensity: nextDensity,
+            paneLayout: { density: nextDensity, rightRailMode: "command" },
             riskPolicy: { approvalRequired: true, blockUnsafePaths: true, safePaths: [projectPath] },
           },
           workspaceOverrides: {
@@ -189,6 +561,14 @@ async function navigateQa(page, mode = "observe", density = "balanced") {
     });
   }
   await waitForAppReady(page);
+  await page
+    .waitForFunction(
+      (expectedDensity) =>
+        document.querySelector(".app-container")?.getAttribute("data-density") === expectedDensity,
+      density,
+      { timeout: 5000 },
+    )
+    .catch(() => {});
 }
 
 async function call(page, cmd, args = {}) {
@@ -224,7 +604,7 @@ async function smokeRails(page) {
   const modes = {
     command: ["decision-inbox", "workflow", "toolkit", "context"],
     review: ["review-queue", "scm", "context"],
-    observe: ["processes", "live-panes", "audit-timeline", "run-graph", "tool-ledger", "reliability", "logs"],
+    observe: ["processes", "live-panes", "audit-timeline", "context", "run-graph", "tool-ledger", "sessions", "reliability"],
   };
   const out = {};
   for (const [mode, widgets] of Object.entries(modes)) {
@@ -309,6 +689,67 @@ async function smokeImeDiagnostics(page) {
   });
   if (!diag.visible) throw new Error("IME diagnostics overlay did not become visible");
   return diag;
+}
+
+async function smokePaneSplitUi(page) {
+  const splitRight = page.getByRole("button", { name: "Add pane to the right" }).first();
+  await splitRight.waitFor({ state: "visible", timeout: 30000 });
+
+  const before = await page.evaluate(() => ({
+    canvases: document.querySelectorAll('[data-testid="terminal-canvas"]').length,
+    splitRightButtons: document.querySelectorAll('button[aria-label="Add pane to the right"]').length,
+    splitDownButtons: document.querySelectorAll('button[aria-label="Add pane below"]').length,
+  }));
+
+  await splitRight.click({ timeout: 15000 });
+  await page.waitForFunction(
+    (snapshot) => {
+      const canvases = document.querySelectorAll('[data-testid="terminal-canvas"]').length;
+      const splitRightButtons = document.querySelectorAll('button[aria-label="Add pane to the right"]').length;
+      return canvases > snapshot.canvases || splitRightButtons > snapshot.splitRightButtons;
+    },
+    before,
+    { timeout: 30000 },
+  );
+
+  const after = await page.evaluate(() => ({
+    canvases: document.querySelectorAll('[data-testid="terminal-canvas"]').length,
+    splitRightButtons: document.querySelectorAll('button[aria-label="Add pane to the right"]').length,
+    splitDownButtons: document.querySelectorAll('button[aria-label="Add pane below"]').length,
+  }));
+  const backendPanes = await call(page, "list_panes_info").catch(() => []);
+  if (after.canvases <= before.canvases && after.splitRightButtons <= before.splitRightButtons) {
+    throw new Error(
+      `pane split UI did not grow: before=${JSON.stringify(before)} after=${JSON.stringify(after)}`,
+    );
+  }
+
+  const closePane = page.getByRole("button", { name: "Close pane" }).last();
+  await closePane.waitFor({ state: "visible", timeout: 15000 });
+  await closePane.click({ timeout: 15000 });
+  await page.waitForFunction(
+    (snapshot) => {
+      const canvases = document.querySelectorAll('[data-testid="terminal-canvas"]').length;
+      const splitRightButtons = document.querySelectorAll('button[aria-label="Add pane to the right"]').length;
+      return canvases < snapshot.canvases || splitRightButtons < snapshot.splitRightButtons;
+    },
+    after,
+    { timeout: 30000 },
+  );
+
+  const closed = await page.evaluate(() => ({
+    canvases: document.querySelectorAll('[data-testid="terminal-canvas"]').length,
+    splitRightButtons: document.querySelectorAll('button[aria-label="Add pane to the right"]').length,
+    splitDownButtons: document.querySelectorAll('button[aria-label="Add pane below"]').length,
+  }));
+  const backendPanesAfterClose = await call(page, "list_panes_info").catch(() => []);
+  return {
+    before,
+    after,
+    closed,
+    backendPaneCount: Array.isArray(backendPanes) ? backendPanes.length : null,
+    backendPaneCountAfterClose: Array.isArray(backendPanesAfterClose) ? backendPanesAfterClose.length : null,
+  };
 }
 
 async function smokePaneRouting(page) {
@@ -499,7 +940,10 @@ async function main() {
 
   let browser;
   let page;
+  let dashboardServer;
   try {
+    dashboardServer = await startDashboardFixtureIfNeeded(report);
+    report.dashboardStateUrl = DASHBOARD_STATE_URL;
     const connected = await connectWithWait();
     browser = connected.browser;
     report.cdpWaitedMs = connected.waitedMs;
@@ -514,6 +958,7 @@ async function main() {
       process.exit(2);
     }
 
+    const qualityEvents = attachQualityCollectors(page);
     await page.bringToFront().catch(() => {});
     await navigateQa(page, "observe");
     report.native = await page.evaluate(() => ({
@@ -527,15 +972,18 @@ async function main() {
     }));
     if (!report.native.hasTauriInternals) throw new Error("attached page does not expose Tauri invoke internals");
 
+    report.visualSurface = await smokeVisualSurface(page);
     report.rails = await smokeRails(page);
     report.contextAndRunGraph = await smokeContextAndRunGraph(page);
     report.imeDiagnostics = await smokeImeDiagnostics(page);
+    report.paneSplitUi = await smokePaneSplitUi(page);
     report.paneRouting = await smokePaneRouting(page);
     report.pasteGuard = await smokePasteGuard(page);
     report.workflow = await smokeWorkflow(page);
     report.profileDensity = await smokeProfileDensity(page);
     report.gitStatus = await smokeGitStatus(page);
     report.dashboardTruth = await fetchDashboardTruth();
+    report.runtimeQuality = await smokeRuntimeQuietWindow(page, qualityEvents);
 
     report.riskCoverage = Object.fromEntries(
       COVERED_RISKS.map((riskId) => [
@@ -577,6 +1025,7 @@ async function main() {
     process.exit(report.status === "external_dependency" ? 2 : 1);
   } finally {
     if (browser) await browser.close().catch(() => {});
+    if (dashboardServer) await new Promise((resolveClose) => dashboardServer.close(resolveClose)).catch(() => {});
   }
 }
 

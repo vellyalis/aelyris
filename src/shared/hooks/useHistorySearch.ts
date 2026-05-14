@@ -54,7 +54,7 @@ export function useHistorySearch(
     }
 
     let cancelled = false;
-    const handle = window.setTimeout(() => {
+    const runSearch = () => {
       void invoke<RawHistoryMatch[]>("term_search_history", {
         id: terminalId,
         query,
@@ -77,11 +77,18 @@ export function useHistorySearch(
           // Backend unavailable (jsdom unit tests) — treat as no matches.
           setMatches([]);
         });
-    }, debounceMs);
+    };
+
+    const handle = debounceMs <= 0 ? null : window.setTimeout(runSearch, debounceMs);
+    if (handle === null) {
+      runSearch();
+    }
 
     return () => {
       cancelled = true;
-      window.clearTimeout(handle);
+      if (handle !== null) {
+        window.clearTimeout(handle);
+      }
     };
   }, [terminalId, query, caseSensitive, debounceMs, invoke]);
 

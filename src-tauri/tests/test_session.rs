@@ -172,6 +172,52 @@ fn test_split_pane() {
 }
 
 #[test]
+fn test_session_manager_restores_typed_mux_graph() {
+    let sm = SessionManager::open_memory().unwrap();
+    let pty = PtyManager::new();
+
+    let s = sm.create_session("mux-project").unwrap();
+    let w = sm.create_window(&s.id, "Tab").unwrap();
+    let (pane1, tid1) = sm
+        .create_pane(&w.id, &ShellType::Cmd, ".", 80, 24, &pty)
+        .unwrap();
+    let (pane2, tid2) = sm
+        .split_pane(
+            &w.id,
+            aether_terminal_lib::session::manager::SplitDirection::Vertical,
+            &ShellType::Cmd,
+            ".",
+            80,
+            24,
+            &pty,
+        )
+        .unwrap();
+
+    let graph = sm
+        .restore_last_mux_graph()
+        .unwrap()
+        .expect("active session restores to mux graph");
+    graph.validate().unwrap();
+
+    let workspace = graph.workspaces.get(&s.id).unwrap();
+    let window = workspace.windows.get(&w.id).unwrap();
+    let tab = window.tabs.get(&format!("{}:tab", w.id)).unwrap();
+    assert_eq!(
+        tab.layout.pane_ids(),
+        vec![pane1.id.clone(), pane2.id.clone()]
+    );
+    assert!(tab.panes.values().all(|pane| pane
+        .pty
+        .as_ref()
+        .unwrap()
+        .terminal_id
+        .starts_with("restore-pending:")));
+
+    pty.close(&tid1).unwrap();
+    pty.close(&tid2).unwrap();
+}
+
+#[test]
 fn test_restore_with_missing_shell() {
     let db = Database::open_memory().unwrap();
 

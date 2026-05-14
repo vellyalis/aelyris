@@ -1,4 +1,5 @@
 import { DEFAULT_BG } from "../lib/ansiPalette";
+import { isValidHex, normalizeHex } from "./catppuccin";
 
 export type MoodPresetId =
   | "aether-sky"
@@ -33,12 +34,338 @@ export function normalizeMoodPreset(value: string | null | undefined): MoodPrese
   return value && MOOD_SET.has(value) ? (value as MoodPresetId) : DEFAULT_MOOD_PRESET;
 }
 
+type MoodMaterialDefaults = {
+  backdropColor: string;
+  panelColor: string;
+  chromeColor: string;
+  terminalColor: string;
+  backdropAlpha: number;
+  panelAlpha: number;
+  chromeAlpha: number;
+  terminalAlpha: number;
+};
+
+export const SAKURA_MATERIAL_DEFAULTS: MoodMaterialDefaults = {
+  backdropColor: "#fff8fc",
+  panelColor: "#fff1f8",
+  chromeColor: "#ffeef7",
+  terminalColor: "#532138",
+  backdropAlpha: 0.08,
+  panelAlpha: 0.88,
+  chromeAlpha: 0.84,
+  terminalAlpha: 0.54,
+};
+
+export const MOOD_MATERIAL_DEFAULTS: Record<MoodPresetId, MoodMaterialDefaults> = {
+  "aether-sky": {
+    backdropColor: "#020812",
+    panelColor: "#061424",
+    chromeColor: "#020812",
+    terminalColor: "#020814",
+    backdropAlpha: 0.04,
+    panelAlpha: 0.68,
+    chromeAlpha: 0.72,
+    terminalAlpha: 0.58,
+  },
+  "aether-moonwater": {
+    backdropColor: "#00112a",
+    panelColor: "#021930",
+    chromeColor: "#00102a",
+    terminalColor: "#000612",
+    backdropAlpha: 0.05,
+    panelAlpha: 0.66,
+    chromeAlpha: 0.72,
+    terminalAlpha: 0.6,
+  },
+  "aether-dream": {
+    backdropColor: "#120d20",
+    panelColor: "#221932",
+    chromeColor: "#10091e",
+    terminalColor: "#120e1d",
+    backdropAlpha: 0.05,
+    panelAlpha: 0.68,
+    chromeAlpha: 0.72,
+    terminalAlpha: 0.56,
+  },
+  "aether-cute": {
+    backdropColor: "#071916",
+    panelColor: "#12302c",
+    chromeColor: "#031313",
+    terminalColor: "#0a1a19",
+    backdropAlpha: 0.05,
+    panelAlpha: 0.68,
+    chromeAlpha: 0.72,
+    terminalAlpha: 0.56,
+  },
+  "aether-sakura": SAKURA_MATERIAL_DEFAULTS,
+  "aether-obsidian": {
+    backdropColor: "#090b13",
+    panelColor: "#1b1920",
+    chromeColor: "#111017",
+    terminalColor: "#0a0b12",
+    backdropAlpha: 0.04,
+    panelAlpha: 0.72,
+    chromeAlpha: 0.74,
+    terminalAlpha: 0.62,
+  },
+  "aether-pro": {
+    backdropColor: "#040d17",
+    panelColor: "#05121f",
+    chromeColor: "#030a12",
+    terminalColor: "#040d17",
+    backdropAlpha: 0.04,
+    panelAlpha: 0.66,
+    chromeAlpha: 0.72,
+    terminalAlpha: 0.58,
+  },
+};
+
+export type SakuraMaterialColorKey = "backdropColor" | "panelColor" | "chromeColor" | "terminalColor";
+export type SakuraMaterialAlphaKey = "backdropAlpha" | "panelAlpha" | "chromeAlpha" | "terminalAlpha";
+export type SakuraMaterialKey = SakuraMaterialColorKey | SakuraMaterialAlphaKey;
+export type SakuraMaterialOverrides = Partial<Record<SakuraMaterialColorKey, string>> &
+  Partial<Record<SakuraMaterialAlphaKey, number>>;
+export type MoodMaterialColorKey = SakuraMaterialColorKey;
+export type MoodMaterialAlphaKey = SakuraMaterialAlphaKey;
+export type MoodMaterialKey = SakuraMaterialKey;
+export type MoodMaterialOverrides = SakuraMaterialOverrides;
+
+export const SAKURA_MATERIAL_COLOR_KEYS: readonly SakuraMaterialColorKey[] = [
+  "backdropColor",
+  "panelColor",
+  "chromeColor",
+  "terminalColor",
+] as const;
+
+export const SAKURA_MATERIAL_ALPHA_KEYS: readonly SakuraMaterialAlphaKey[] = [
+  "backdropAlpha",
+  "panelAlpha",
+  "chromeAlpha",
+  "terminalAlpha",
+] as const;
+
+const SAKURA_ALPHA_RANGES: Record<SakuraMaterialAlphaKey, { min: number; max: number }> = {
+  backdropAlpha: { min: 0, max: 0.3 },
+  panelAlpha: { min: 0.6, max: 0.98 },
+  chromeAlpha: { min: 0.6, max: 0.98 },
+  terminalAlpha: { min: 0.3, max: 0.72 },
+};
+
+const SAKURA_MATERIAL_CSS_KEYS = [
+  "--sakura-root-rgb",
+  "--sakura-root-alpha",
+  "--chrome-frame-bg",
+  "--statusbar-bg",
+  "--dialog-surface",
+  "--settings-control-bg",
+  "--settings-card-bg",
+  "--settings-card-bg-hover",
+  "--settings-card-bg-active",
+  "--toolkit-grid-bg",
+  "--toolkit-tile-bg",
+  "--toolkit-tile-primary-bg",
+  "--toolkit-tile-hover-bg",
+  "--toolkit-bottom-bg",
+  "--toolkit-bottom-btn-bg",
+  "--glass-clear",
+  "--glass-ground",
+  "--glass-frame",
+  "--glass-standard",
+  "--glass-dense",
+  "--glass-thick",
+  "--glass-solid",
+  "--mood-root-glow",
+  "--mood-left-panel-bg",
+  "--mood-center-panel-bg",
+  "--mood-right-panel-bg",
+  "--mood-widget-bg",
+  "--mood-sessions-widget-bg",
+  "--mood-workflow-widget-bg",
+  "--mood-toolkit-widget-bg",
+  "--mood-logs-widget-bg",
+  "--terminal-canvas-bg",
+  "--terminal-well-bg",
+  "--terminal-chrome-bg",
+  "--terminal-chrome-bg-focus",
+] as const;
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+export function sanitizeMaterialOverrides(
+  value: unknown,
+  defaults: typeof SAKURA_MATERIAL_DEFAULTS = SAKURA_MATERIAL_DEFAULTS,
+): MoodMaterialOverrides {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const raw = value as Record<string, unknown>;
+  const next: MoodMaterialOverrides = {};
+
+  for (const key of SAKURA_MATERIAL_COLOR_KEYS) {
+    const color = raw[key];
+    if (typeof color === "string" && isValidHex(color)) {
+      const normalized = normalizeHex(color);
+      if (normalized !== defaults[key]) next[key] = normalized;
+    }
+  }
+
+  for (const key of SAKURA_MATERIAL_ALPHA_KEYS) {
+    const alpha = raw[key];
+    if (typeof alpha !== "number" || !Number.isFinite(alpha)) continue;
+    const range = SAKURA_ALPHA_RANGES[key];
+    const clamped = Number(clampNumber(alpha, range.min, range.max).toFixed(2));
+    if (clamped !== defaults[key]) next[key] = clamped;
+  }
+
+  return next;
+}
+
+export function sanitizeSakuraMaterialOverrides(value: unknown): SakuraMaterialOverrides {
+  return sanitizeMaterialOverrides(value, SAKURA_MATERIAL_DEFAULTS);
+}
+
+function hexToRgbTuple(hex: string): [number, number, number] {
+  const normalized = normalizeHex(hex);
+  return [
+    Number.parseInt(normalized.slice(1, 3), 16),
+    Number.parseInt(normalized.slice(3, 5), 16),
+    Number.parseInt(normalized.slice(5, 7), 16),
+  ];
+}
+
+function rgbString(hex: string): string {
+  return hexToRgbTuple(hex).join(", ");
+}
+
+function rgba(hex: string, alpha: number): string {
+  return `rgba(${rgbString(hex)}, ${alpha})`;
+}
+
+function relativeLuminance(hex: string): number {
+  const [r, g, b] = hexToRgbTuple(hex).map((channel) => {
+    const value = channel / 255;
+    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+export function isMoodMaterialLight(
+  mood: MoodPresetId,
+  overrides?: MoodMaterialOverrides,
+): boolean {
+  const defaults = MOOD_MATERIAL_DEFAULTS[mood];
+  const clean = sanitizeMaterialOverrides(overrides, defaults);
+  const panel = clean.panelColor ?? defaults.panelColor;
+  const chrome = clean.chromeColor ?? defaults.chromeColor;
+  const panelAlpha = clean.panelAlpha ?? defaults.panelAlpha;
+  const chromeAlpha = clean.chromeAlpha ?? defaults.chromeAlpha;
+  const weightedLuminance =
+    relativeLuminance(panel) * Math.max(0.45, panelAlpha) +
+    relativeLuminance(chrome) * Math.max(0.35, chromeAlpha);
+  return weightedLuminance >= 0.78;
+}
+
+export function materialOverridesToCSS(
+  overrides?: MoodMaterialOverrides,
+  defaults: typeof SAKURA_MATERIAL_DEFAULTS = SAKURA_MATERIAL_DEFAULTS,
+): Record<string, string> {
+  const clean = sanitizeMaterialOverrides(overrides, defaults);
+  if (Object.keys(clean).length === 0) return {};
+
+  const backdrop = clean.backdropColor ?? defaults.backdropColor;
+  const panel = clean.panelColor ?? defaults.panelColor;
+  const chrome = clean.chromeColor ?? defaults.chromeColor;
+  const terminal = clean.terminalColor ?? defaults.terminalColor;
+  const backdropAlpha = clean.backdropAlpha ?? defaults.backdropAlpha;
+  const panelAlpha = clean.panelAlpha ?? defaults.panelAlpha;
+  const chromeAlpha = clean.chromeAlpha ?? defaults.chromeAlpha;
+  const terminalAlpha = clean.terminalAlpha ?? defaults.terminalAlpha;
+  const panelSoftAlpha = Number(Math.max(0.62, panelAlpha - 0.08).toFixed(2));
+  const panelStrongAlpha = Number(Math.min(0.98, panelAlpha + 0.04).toFixed(2));
+  const backdropRgb = rgbString(backdrop);
+  const chromeRgb = rgbString(chrome);
+  const panelRgb = rgbString(panel);
+  const terminalRgb = rgbString(terminal);
+  const softLight = `rgba(${backdropRgb}, ${Math.min(0.46, Math.max(0.08, panelAlpha - 0.42))})`;
+  const softAccent = `rgba(${chromeRgb}, ${Math.min(0.14, Math.max(0.04, chromeAlpha - 0.74))})`;
+  const usesLightChrome = relativeLuminance(panel) > 0.48 && panelAlpha >= 0.5;
+  const textPrimary = usesLightChrome ? "#24121b" : "rgba(246, 251, 255, 0.93)";
+  const textSecondary = usesLightChrome ? "rgba(47, 22, 33, 0.9)" : "rgba(219, 238, 255, 0.72)";
+  const textMuted = usesLightChrome ? "rgba(74, 34, 49, 0.78)" : "rgba(203, 224, 244, 0.62)";
+
+  return {
+    "--sakura-root-rgb": backdropRgb,
+    "--sakura-root-alpha": String(backdropAlpha),
+    "--text-primary": textPrimary,
+    "--text-secondary": textSecondary,
+    "--text-muted": textMuted,
+    "--chrome-frame-bg": `linear-gradient(180deg, ${softLight}, transparent 72%), linear-gradient(90deg, ${softAccent}, transparent 34%, transparent 66%, rgba(${panelRgb}, 0.06)), ${rgba(chrome, chromeAlpha)}`,
+    "--statusbar-bg": rgba(chrome, chromeAlpha),
+    "--dialog-surface": `linear-gradient(180deg, ${softLight}, transparent 32%), linear-gradient(145deg, rgba(${panelRgb}, 0.1), transparent 50%), ${rgba(backdrop, Math.min(0.96, panelAlpha))}`,
+    "--settings-control-bg": rgba(backdrop, Math.min(0.96, panelAlpha - 0.04)),
+    "--settings-card-bg": rgba(panel, panelSoftAlpha),
+    "--settings-card-bg-hover": rgba(panel, panelAlpha),
+    "--settings-card-bg-active": rgba(panel, panelStrongAlpha),
+    "--toolkit-grid-bg": `linear-gradient(135deg, ${softAccent}, transparent 38%, rgba(${panelRgb}, 0.09)), ${rgba(panel, panelSoftAlpha)}`,
+    "--toolkit-tile-bg": `linear-gradient(180deg, ${softLight}, rgba(${panelRgb}, 0.08)), ${rgba(backdrop, panelAlpha)}`,
+    "--toolkit-tile-primary-bg": `linear-gradient(135deg, color-mix(in srgb, var(--tone, var(--gold)) 10%, transparent), transparent 46%), ${rgba(panel, panelAlpha)}`,
+    "--toolkit-tile-hover-bg": `linear-gradient(180deg, color-mix(in srgb, var(--tone, var(--gold)) 10%, transparent), transparent 58%), ${rgba(panel, panelStrongAlpha)}`,
+    "--toolkit-tile-text": textPrimary,
+    "--toolkit-bottom-bg": `linear-gradient(90deg, ${softAccent}, transparent 52%, rgba(${panelRgb}, 0.07)), ${rgba(panel, panelSoftAlpha)}`,
+    "--toolkit-bottom-btn-bg": rgba(backdrop, panelAlpha),
+    "--glass-clear": rgba(backdrop, Math.min(0.18, backdropAlpha + 0.02)),
+    "--glass-ground": rgba(panel, Math.max(0.56, panelAlpha - 0.3)),
+    "--glass-frame": rgba(panel, Math.max(0.56, panelAlpha - 0.32)),
+    "--glass-standard": rgba(panel, Math.max(0.64, panelAlpha - 0.18)),
+    "--glass-dense": rgba(panel, Math.max(0.72, panelAlpha - 0.1)),
+    "--glass-thick": rgba(panel, Math.max(0.8, panelAlpha - 0.04)),
+    "--glass-solid": rgba(backdrop, Math.max(0.86, panelAlpha)),
+    "--mood-root-glow": `linear-gradient(125deg, rgba(${panelRgb}, ${Math.min(0.16, backdropAlpha + 0.03)}), transparent 35%), linear-gradient(300deg, rgba(${chromeRgb}, ${Math.min(0.08, backdropAlpha)}), transparent 42%), linear-gradient(180deg, rgba(${backdropRgb}, ${backdropAlpha}), rgba(${panelRgb}, ${Math.max(0.02, backdropAlpha / 2)}))`,
+    "--mood-left-panel-bg": `linear-gradient(180deg, ${softLight}, transparent 30%), linear-gradient(135deg, rgba(${panelRgb}, 0.14), rgba(${backdropRgb}, 0.16)), ${rgba(panel, panelAlpha)}`,
+    "--mood-center-panel-bg": `radial-gradient(ellipse at 50% 0%, rgba(${chromeRgb}, 0.05), transparent 44%), linear-gradient(180deg, rgba(${backdropRgb}, ${Math.min(0.12, backdropAlpha + 0.02)}), rgba(${panelRgb}, ${Math.min(0.08, backdropAlpha)})), ${rgba(backdrop, backdropAlpha)}`,
+    "--mood-right-panel-bg": `linear-gradient(180deg, ${softLight}, transparent 26%), linear-gradient(145deg, rgba(${panelRgb}, 0.14), rgba(${backdropRgb}, 0.17)), ${rgba(panel, panelStrongAlpha)}`,
+    "--mood-widget-bg": `linear-gradient(160deg, ${softLight}, rgba(${backdropRgb}, 0.16)), rgba(${panelRgb}, ${panelAlpha})`,
+    "--mood-sessions-widget-bg": `linear-gradient(160deg, ${softLight}, rgba(${backdropRgb}, 0.14)), rgba(${panelRgb}, ${panelSoftAlpha})`,
+    "--mood-workflow-widget-bg": `linear-gradient(180deg, ${softLight}, rgba(${backdropRgb}, 0.14)), rgba(${panelRgb}, ${panelSoftAlpha})`,
+    "--mood-toolkit-widget-bg": `linear-gradient(150deg, ${softLight}, rgba(${backdropRgb}, 0.14)), rgba(${panelRgb}, ${panelSoftAlpha})`,
+    "--mood-logs-widget-bg": `linear-gradient(180deg, ${softLight}, rgba(${backdropRgb}, 0.12)), rgba(${panelRgb}, ${Math.max(0.72, panelSoftAlpha - 0.04)})`,
+    "--terminal-canvas-bg": `rgba(${terminalRgb}, ${terminalAlpha})`,
+    "--terminal-well-bg": `radial-gradient(ellipse at 44% -18%, rgba(${panelRgb}, 0.18), transparent 46%), radial-gradient(ellipse at 78% 18%, rgba(${chromeRgb}, 0.1), transparent 38%), linear-gradient(180deg, rgba(${terminalRgb}, ${Math.min(0.68, terminalAlpha + 0.06)}), rgba(${terminalRgb}, ${Math.min(0.72, terminalAlpha + 0.08)}))`,
+    "--terminal-chrome-bg": `rgba(${terminalRgb}, ${Math.min(0.7, terminalAlpha + 0.04)})`,
+    "--terminal-chrome-bg-focus": `rgba(${terminalRgb}, ${Math.min(0.78, terminalAlpha + 0.12)})`,
+  };
+}
+
+export function sakuraMaterialOverridesToCSS(overrides?: SakuraMaterialOverrides): Record<string, string> {
+  return materialOverridesToCSS(overrides, SAKURA_MATERIAL_DEFAULTS);
+}
+
+function withMinimumAlpha(value: string | undefined, minimum: number): string | undefined {
+  if (!value) return value;
+  return value.replace(
+    /rgba\((\d+(?:\.\d+)?),\s*(\d+(?:\.\d+)?),\s*(\d+(?:\.\d+)?),\s*(\d*\.?\d+)\)/,
+    (_match, r, g, b, alpha) => `rgba(${r}, ${g}, ${b}, ${Math.max(Number(alpha), minimum)})`,
+  );
+}
+
+function applyReadableDarkGlassFloor(mood: MoodPresetId, vars: Record<string, string>): Record<string, string> {
+  if (mood === "aether-sakura") return vars;
+  return {
+    ...vars,
+    "--glass-ground": withMinimumAlpha(vars["--glass-ground"], 0.68) ?? vars["--glass-ground"],
+    "--glass-frame": withMinimumAlpha(vars["--glass-frame"], 0.64) ?? vars["--glass-frame"],
+    "--glass-standard": withMinimumAlpha(vars["--glass-standard"], 0.72) ?? vars["--glass-standard"],
+    "--glass-dense": withMinimumAlpha(vars["--glass-dense"], 0.76) ?? vars["--glass-dense"],
+    "--glass-thick": withMinimumAlpha(vars["--glass-thick"], 0.8) ?? vars["--glass-thick"],
+  };
+}
+
 export function moodPresetToCSS(value: string | null | undefined): Record<string, string> {
   const mood = normalizeMoodPreset(value);
-  return {
+  return applyReadableDarkGlassFloor(mood, {
     ...MOOD_CSS[mood],
     ...MOOD_SURFACE_CSS[mood],
-  };
+  });
 }
 
 export const MOOD_SURFACE_CSS_KEYS = [
@@ -741,6 +1068,10 @@ const MOOD_CSS: Record<MoodPresetId, Record<string, string>> = {
 
 export const MOOD_CSS_KEYS: readonly string[] = Object.freeze(
   Array.from(
-    new Set([...Object.values(MOOD_CSS).flatMap((vars) => Object.keys(vars)), ...MOOD_SURFACE_CSS_KEYS]),
+    new Set([
+      ...Object.values(MOOD_CSS).flatMap((vars) => Object.keys(vars)),
+      ...MOOD_SURFACE_CSS_KEYS,
+      ...SAKURA_MATERIAL_CSS_KEYS,
+    ]),
   ).sort(),
 );

@@ -16,6 +16,7 @@ import { useAppMenus } from "./features/app/useAppMenus";
 import { FileTree } from "./features/file-tree/FileTree";
 import { ProjectHeaderBar } from "./features/header/ProjectHeaderBar";
 import { StatusBar } from "./features/statusbar/StatusBar";
+import { TERMINAL_PREFIX_COMMAND_EVENT } from "./features/terminal/hooks/useCanvasIME";
 import type { PaneSwitcherEntry } from "./features/terminal/pane-tree";
 import {
   deletePaneTreeSnapshot,
@@ -488,7 +489,9 @@ export function App() {
     setWorkspaceThreadRunState,
   } = useAppStore();
   const themeOverridesForActive = useAppStore((s) => s.themeOverrides[themeId]);
-  useThemeApplier(themeId, themeOverridesForActive, moodPresetId);
+  const materialOverridesForMood = useAppStore((s) => s.moodMaterialOverrides[moodPresetId]);
+  const wallpaperForMood = useAppStore((s) => s.wallpaperSettingsByMood[moodPresetId]);
+  useThemeApplier(themeId, themeOverridesForActive, moodPresetId, materialOverridesForMood, wallpaperForMood);
 
   // Boot perf marker — fires after the first React commit + one frame, so the
   // number reflects when pixels actually land on screen rather than when JS ran.
@@ -596,6 +599,23 @@ export function App() {
   const visualActivePtyId =
     activePtyId ??
     (devVisualQa.enabled && visualTerminalPaneTargets.length > 0 ? visualTerminalPaneTargets[0].terminalId : null);
+
+  useEffect(() => {
+    const onPrefixCommand = (event: Event) => {
+      const detail = (event as CustomEvent<{ terminalId?: string; command?: string }>).detail;
+      if (detail?.command !== "new-window") return;
+      const source = terminalPaneTargets.find((pane) => pane.terminalId === detail.terminalId);
+      const shell = source?.tabShell ?? activeTab.shell;
+      const cwd = source?.tabCwd ?? activeTab.cwd;
+      if (cwd) {
+        addTabWithCwd(shell, cwd);
+      } else {
+        addTab(shell);
+      }
+    };
+    document.addEventListener(TERMINAL_PREFIX_COMMAND_EVENT, onPrefixCommand);
+    return () => document.removeEventListener(TERMINAL_PREFIX_COMMAND_EVENT, onPrefixCommand);
+  }, [activeTab.cwd, activeTab.shell, addTab, addTabWithCwd, terminalPaneTargets]);
   const visualAuditEvents = useMemo(
     () => (devVisualQa.incidentFixtures ? createDevVisualQaAuditEvents() : undefined),
     [devVisualQa.incidentFixtures],
@@ -1400,8 +1420,12 @@ export function App() {
     focusPreviousPane: () => focusAdjacentPane(-1),
     movePaneNext: () => applyPaneLayoutCommand("move-next"),
     movePanePrevious: () => applyPaneLayoutCommand("move-previous"),
+    rotatePanesNext: () => applyPaneLayoutCommand("rotate-next"),
+    rotatePanesPrevious: () => applyPaneLayoutCommand("rotate-previous"),
     equalizePanes: () => applyPaneLayoutCommand("equalize"),
     tilePanes: () => applyPaneLayoutCommand("tiled"),
+    syncPanesOn: () => applyPaneLayoutCommand("sync-panes-on"),
+    syncPanesOff: () => applyPaneLayoutCommand("sync-panes-off"),
     openPaneSwitcher: () => setPaneSwitcherVisible(true),
     panes: visualTerminalPaneTargets,
     activeTabId,
@@ -1536,7 +1560,7 @@ export function App() {
     <div className={appStyles.editorArea}>
       <div className={appStyles.editorTabsBar}>
         {openFiles.map((f) => {
-          const name = f.split("/").pop() ?? f;
+          const name = f.split(/[\\/]/).pop() ?? f;
           // Editor tab = row container + inline close affordance. Two nested
           // <button>s would be invalid HTML, so the outer is a tab-role div
           // with keyboard activation; the inner × is a real button.

@@ -2,6 +2,8 @@ use std::sync::{Arc, Mutex};
 
 use crate::db::queries::{Pane, RestoredSession, Session, Window};
 use crate::db::{self, Database};
+use crate::mux::graph::MuxGraph;
+use crate::mux::store::restored_session_to_mux_graph;
 use crate::pty::{PtyManager, ShellType};
 
 /// Bridges database persistence with live PTY management.
@@ -131,6 +133,20 @@ impl SessionManager {
     /// Restore the most recent active session
     pub fn restore_last_session(&self) -> Result<Option<RestoredSession>, String> {
         self.with_db(|db| db.restore_last_session())
+    }
+
+    /// Restore the most recent active session as the typed mux graph.
+    ///
+    /// This is the bridge from the legacy DB session shape into the durable
+    /// mux model. It is intentionally honest: panes restored from DB are marked
+    /// as restore-pending rather than pretending their old PTYs are still live.
+    pub fn restore_last_mux_graph(&self) -> Result<Option<MuxGraph>, String> {
+        let Some(restored) = self.restore_last_session()? else {
+            return Ok(None);
+        };
+        restored_session_to_mux_graph(&restored)
+            .map(Some)
+            .map_err(|err| format!("Restore mux graph: {err}"))
     }
 
     /// Restore and spawn PTYs for all panes in a session

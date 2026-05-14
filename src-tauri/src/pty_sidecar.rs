@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, mpsc, Mutex as AsyncMutex};
 use tokio_tungstenite::tungstenite::Message;
 
+use crate::mux::graph::MuxGraph;
 use crate::pty::{ShellType, TerminalInfo};
 
 const SIDE_CAR_PORT: u16 = 9334;
@@ -94,7 +95,11 @@ struct StreamTicket {
 #[derive(Debug, Deserialize)]
 struct HealthResponse {
     process_kind: String,
+    instance_id: String,
+    protocol_version: u32,
     exe: String,
+    pid: u32,
+    version: String,
 }
 
 #[derive(Serialize)]
@@ -112,6 +117,57 @@ struct CreateSessionBody<'a> {
 struct ResizeBody {
     cols: u16,
     rows: u16,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SplitMuxPaneBody<'a> {
+    target_pane_id: &'a str,
+    axis: &'a str,
+    shell: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cwd: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    title: Option<&'a str>,
+    cols: u16,
+    rows: u16,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SwapMuxPanesBody<'a> {
+    first_pane_id: &'a str,
+    second_pane_id: &'a str,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct JoinMuxPaneBody<'a> {
+    source_pane_id: &'a str,
+    target_pane_id: &'a str,
+    axis: &'a str,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EvenMuxLayoutBody<'a> {
+    axis: &'a str,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RotateMuxLayoutBody<'a> {
+    direction: &'a str,
+}
+
+#[derive(Serialize)]
+struct SynchronizeMuxPanesBody {
+    enabled: bool,
+}
+
+#[derive(Serialize)]
+struct ZoomMuxPaneBody {
+    zoomed: bool,
 }
 
 impl PtySidecarClient {
@@ -255,6 +311,297 @@ impl PtySidecarClient {
             Ok(())
         } else {
             Err(format!("PTY server resize failed: {}", res.status()))
+        }
+    }
+
+    pub async fn mux_split_pane(
+        &self,
+        workspace_id: &str,
+        target_pane_id: &str,
+        axis: &str,
+        shell: &ShellType,
+        cols: u16,
+        rows: u16,
+        cwd: Option<&str>,
+        title: Option<&str>,
+    ) -> Result<String, String> {
+        let body = SplitMuxPaneBody {
+            target_pane_id,
+            axis,
+            shell: shell_name(shell),
+            cwd,
+            title,
+            cols,
+            rows,
+        };
+        let res = self
+            .http
+            .post(format!(
+                "{}/mux/workspaces/{}/panes/split",
+                self.base_url, workspace_id
+            ))
+            .bearer_auth(&self.token)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|err| format!("PTY server mux split request failed: {err}"))?;
+        if !res.status().is_success() {
+            let status = res.status();
+            let detail = res.text().await.unwrap_or_default();
+            return Err(format!(
+                "PTY server mux split failed: {status}: {}",
+                detail.trim()
+            ));
+        }
+        let created = res
+            .json::<CreateSessionResponse>()
+            .await
+            .map_err(|err| format!("PTY server mux split response invalid: {err}"))?;
+        self.ensure_stream(&created.id).await?;
+        Ok(created.id)
+    }
+
+    pub async fn mux_close_pane(&self, workspace_id: &str, pane_id: &str) -> Result<(), String> {
+        let res = self
+            .http
+            .delete(format!(
+                "{}/mux/workspaces/{}/panes/{}",
+                self.base_url, workspace_id, pane_id
+            ))
+            .bearer_auth(&self.token)
+            .send()
+            .await
+            .map_err(|err| format!("PTY server mux pane close request failed: {err}"))?;
+        if let Ok(mut streams) = self.streams.lock() {
+            streams.remove(pane_id);
+        }
+        if res.status().is_success() {
+            Ok(())
+        } else {
+            let status = res.status();
+            let detail = res.text().await.unwrap_or_default();
+            Err(format!(
+                "PTY server mux pane close failed: {status}: {}",
+                detail.trim()
+            ))
+        }
+    }
+
+    pub async fn mux_get_workspace(&self, workspace_id: &str) -> Result<Option<MuxGraph>, String> {
+        let res = self
+            .http
+            .get(format!("{}/mux/workspaces/{}", self.base_url, workspace_id))
+            .bearer_auth(&self.token)
+            .send()
+            .await
+            .map_err(|err| format!("PTY server mux workspace request failed: {err}"))?;
+        if res.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        if !res.status().is_success() {
+            let status = res.status();
+            let detail = res.text().await.unwrap_or_default();
+            return Err(format!(
+                "PTY server mux workspace failed: {status}: {}",
+                detail.trim()
+            ));
+        }
+        res.json::<MuxGraph>()
+            .await
+            .map(Some)
+            .map_err(|err| format!("PTY server mux workspace response invalid: {err}"))
+    }
+
+    pub async fn mux_swap_panes(
+        &self,
+        workspace_id: &str,
+        first_pane_id: &str,
+        second_pane_id: &str,
+    ) -> Result<(), String> {
+        let res = self
+            .http
+            .post(format!(
+                "{}/mux/workspaces/{}/panes/swap",
+                self.base_url, workspace_id
+            ))
+            .bearer_auth(&self.token)
+            .json(&SwapMuxPanesBody {
+                first_pane_id,
+                second_pane_id,
+            })
+            .send()
+            .await
+            .map_err(|err| format!("PTY server mux swap request failed: {err}"))?;
+        if res.status().is_success() {
+            Ok(())
+        } else {
+            let status = res.status();
+            let detail = res.text().await.unwrap_or_default();
+            Err(format!(
+                "PTY server mux swap failed: {status}: {}",
+                detail.trim()
+            ))
+        }
+    }
+
+    pub async fn mux_break_pane(&self, workspace_id: &str, pane_id: &str) -> Result<(), String> {
+        let res = self
+            .http
+            .post(format!(
+                "{}/mux/workspaces/{}/panes/{}/break",
+                self.base_url, workspace_id, pane_id
+            ))
+            .bearer_auth(&self.token)
+            .send()
+            .await
+            .map_err(|err| format!("PTY server mux break request failed: {err}"))?;
+        if res.status().is_success() {
+            Ok(())
+        } else {
+            let status = res.status();
+            let detail = res.text().await.unwrap_or_default();
+            Err(format!(
+                "PTY server mux break failed: {status}: {}",
+                detail.trim()
+            ))
+        }
+    }
+
+    pub async fn mux_join_pane(
+        &self,
+        workspace_id: &str,
+        source_pane_id: &str,
+        target_pane_id: &str,
+        axis: &str,
+    ) -> Result<(), String> {
+        let res = self
+            .http
+            .post(format!(
+                "{}/mux/workspaces/{}/panes/join",
+                self.base_url, workspace_id
+            ))
+            .bearer_auth(&self.token)
+            .json(&JoinMuxPaneBody {
+                source_pane_id,
+                target_pane_id,
+                axis,
+            })
+            .send()
+            .await
+            .map_err(|err| format!("PTY server mux join request failed: {err}"))?;
+        if res.status().is_success() {
+            Ok(())
+        } else {
+            let status = res.status();
+            let detail = res.text().await.unwrap_or_default();
+            Err(format!(
+                "PTY server mux join failed: {status}: {}",
+                detail.trim()
+            ))
+        }
+    }
+
+    pub async fn mux_set_panes_synchronized(
+        &self,
+        workspace_id: &str,
+        enabled: bool,
+    ) -> Result<(), String> {
+        let res = self
+            .http
+            .post(format!(
+                "{}/mux/workspaces/{}/panes/synchronize",
+                self.base_url, workspace_id
+            ))
+            .bearer_auth(&self.token)
+            .json(&SynchronizeMuxPanesBody { enabled })
+            .send()
+            .await
+            .map_err(|err| format!("PTY server mux synchronize request failed: {err}"))?;
+        if res.status().is_success() {
+            Ok(())
+        } else {
+            let status = res.status();
+            let detail = res.text().await.unwrap_or_default();
+            Err(format!(
+                "PTY server mux synchronize failed: {status}: {}",
+                detail.trim()
+            ))
+        }
+    }
+
+    pub async fn mux_apply_layout(
+        &self,
+        workspace_id: &str,
+        command: &str,
+        axis: Option<&str>,
+    ) -> Result<(), String> {
+        let endpoint = match command {
+            "equalize" => "equalize",
+            "tiled" => "tiled",
+            "even" => "even",
+            "rotate-next" | "rotate-previous" => "rotate",
+            other => return Err(format!("unknown mux layout command: {other}")),
+        };
+        let mut request = self
+            .http
+            .post(format!(
+                "{}/mux/workspaces/{}/layout/{}",
+                self.base_url, workspace_id, endpoint
+            ))
+            .bearer_auth(&self.token);
+        if endpoint == "even" {
+            let axis = axis.ok_or_else(|| "even layout requires an axis".to_string())?;
+            request = request.json(&EvenMuxLayoutBody { axis });
+        } else if endpoint == "rotate" {
+            let direction = if command == "rotate-previous" {
+                "previous"
+            } else {
+                "next"
+            };
+            request = request.json(&RotateMuxLayoutBody { direction });
+        }
+        let res = request
+            .send()
+            .await
+            .map_err(|err| format!("PTY server mux layout request failed: {err}"))?;
+        if res.status().is_success() {
+            Ok(())
+        } else {
+            let status = res.status();
+            let detail = res.text().await.unwrap_or_default();
+            Err(format!(
+                "PTY server mux layout failed: {status}: {}",
+                detail.trim()
+            ))
+        }
+    }
+
+    pub async fn mux_set_pane_zoom(
+        &self,
+        workspace_id: &str,
+        pane_id: &str,
+        zoomed: bool,
+    ) -> Result<(), String> {
+        let res = self
+            .http
+            .post(format!(
+                "{}/mux/workspaces/{}/panes/{}/zoom",
+                self.base_url, workspace_id, pane_id
+            ))
+            .bearer_auth(&self.token)
+            .json(&ZoomMuxPaneBody { zoomed })
+            .send()
+            .await
+            .map_err(|err| format!("PTY server mux zoom request failed: {err}"))?;
+        if res.status().is_success() {
+            Ok(())
+        } else {
+            let status = res.status();
+            let detail = res.text().await.unwrap_or_default();
+            Err(format!(
+                "PTY server mux zoom failed: {status}: {}",
+                detail.trim()
+            ))
         }
     }
 
@@ -475,6 +822,32 @@ fn probe_expected_sidecar(client: &PtySidecarClient) -> bool {
                     "PTY sidecar probe rejected process kind {} on 127.0.0.1:{}",
                     health.process_kind,
                     SIDE_CAR_PORT
+                );
+                return false;
+            }
+            if health.protocol_version != crate::api::DAEMON_PROTOCOL_VERSION {
+                log::warn!(
+                    "PTY sidecar probe rejected protocol {} on 127.0.0.1:{}; expected {}",
+                    health.protocol_version,
+                    SIDE_CAR_PORT,
+                    crate::api::DAEMON_PROTOCOL_VERSION
+                );
+                return false;
+            }
+            if health.version != env!("CARGO_PKG_VERSION") {
+                log::warn!(
+                    "PTY sidecar probe rejected version {} on 127.0.0.1:{}; expected {}",
+                    health.version,
+                    SIDE_CAR_PORT,
+                    env!("CARGO_PKG_VERSION")
+                );
+                return false;
+            }
+            if health.pid == 0 || health.instance_id.trim().is_empty() {
+                log::warn!(
+                    "PTY sidecar probe rejected invalid identity pid={} instance_id={:?}",
+                    health.pid,
+                    health.instance_id
                 );
                 return false;
             }

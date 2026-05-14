@@ -46,6 +46,18 @@ impl OutputBuffer {
         self.lines.iter().skip(skip).cloned().collect()
     }
 
+    /// Get the last N visible lines, including the current incomplete line
+    /// when the terminal is sitting at a prompt or progress update that has
+    /// not emitted a newline yet.
+    pub fn tail_including_partial(&self, n: usize) -> Vec<String> {
+        let mut lines: Vec<String> = self.lines.iter().cloned().collect();
+        if !self.partial.is_empty() {
+            lines.push(self.partial.clone());
+        }
+        let skip = lines.len().saturating_sub(n);
+        lines.into_iter().skip(skip).collect()
+    }
+
     /// Get all buffered content as one string
     pub fn content(&self) -> String {
         let mut result: Vec<&str> = self.lines.iter().map(|s| s.as_str()).collect();
@@ -247,6 +259,14 @@ mod tests {
     }
 
     #[test]
+    fn test_tail_including_partial() {
+        let mut buf = OutputBuffer::new(100);
+        buf.feed("line1\nline2\nprompt>");
+        assert_eq!(buf.tail(2), vec!["line1", "line2"]);
+        assert_eq!(buf.tail_including_partial(2), vec!["line2", "prompt>"]);
+    }
+
+    #[test]
     fn test_strip_ansi_colors() {
         let input = "\x1b[31mERROR\x1b[0m: something failed";
         assert_eq!(strip_ansi(input), "ERROR: something failed");
@@ -315,5 +335,29 @@ mod tests {
         let blocks = extract_command_blocks(&lines);
         // Empty command should be excluded
         assert_eq!(blocks.len(), 0);
+    }
+
+    #[test]
+    fn test_command_blocks_large_tail_keeps_last_block() {
+        let mut lines = Vec::new();
+        for index in 0..1500 {
+            lines.push(format!("startup noise {index}"));
+        }
+        lines.push("PS C:\\repo> cargo test".to_string());
+        for index in 0..2000 {
+            lines.push(format!("test output {index}"));
+        }
+        lines.push("PS C:\\repo> pnpm build".to_string());
+        lines.push("build complete".to_string());
+
+        let blocks = extract_command_blocks(&lines);
+
+        assert_eq!(blocks.len(), 2);
+        assert_eq!(blocks[0].command, "cargo test");
+        assert_eq!(blocks[0].output.len(), 2000);
+        assert_eq!(blocks[0].output[0], "test output 0");
+        assert_eq!(blocks[0].output[1999], "test output 1999");
+        assert_eq!(blocks[1].command, "pnpm build");
+        assert_eq!(blocks[1].output, vec!["build complete"]);
     }
 }

@@ -14,7 +14,9 @@ import {
   enableImeDiagnostics,
   IME_DIAGNOSTIC_STORAGE_KEY,
   imeCandidateAnchorX,
+  imeCandidateAnchorXForViewport,
   imeCandidateAnchorY,
+  imeCandidateAnchorYForViewport,
   imeDiagnosticsEnabled,
   imeTextareaAnchorWidth,
   imeTextareaCaretInset,
@@ -91,6 +93,16 @@ describe("imeCandidateAnchorX", () => {
   });
 });
 
+describe("imeCandidateAnchorXForViewport", () => {
+  it("guards against the WebView right edge when the canvas itself is offset", () => {
+    expect(imeCandidateAnchorXForViewport(480, 640, 500, 0, 1000)).toBe(0);
+  });
+
+  it("honors visualViewport horizontal offset", () => {
+    expect(imeCandidateAnchorXForViewport(480, 640, 500, 240, 900)).toBe(60);
+  });
+});
+
 describe("imeCandidateAnchorY", () => {
   it("keeps the candidate below the caret when there is vertical room", () => {
     expect(imeCandidateAnchorY(320, 900)).toBe(320);
@@ -102,6 +114,12 @@ describe("imeCandidateAnchorY", () => {
 
   it("never returns a negative anchor for tiny viewports", () => {
     expect(imeCandidateAnchorY(40, 120)).toBe(0);
+  });
+});
+
+describe("imeCandidateAnchorYForViewport", () => {
+  it("guards against visual viewport bottom with an offset", () => {
+    expect(imeCandidateAnchorYForViewport(940, 120, 900)).toBe(760);
   });
 });
 
@@ -146,8 +164,8 @@ describe("useImePosition", () => {
     expect(textarea.style.top).toBe("36px");
     expect(textarea.style.width).toBe("440px");
     expect(textarea.style.paddingLeft).toBe("420px");
-    expect(textarea.dataset.imeCandidateX).toBe("360");
-    expect(textarea.dataset.imeCandidateY).toBe("54");
+    expect(textarea.dataset.imeCandidateX).toBe("400");
+    expect(textarea.dataset.imeCandidateY).toBe("134");
 
     rerenderPosition({
       cursor: { row: 2, col: 48 },
@@ -161,12 +179,13 @@ describe("useImePosition", () => {
     expect(textarea.style.left).toBe("60px");
     expect(textarea.style.width).toBe("440px");
     expect(textarea.style.paddingLeft).toBe("420px");
-    expect(textarea.dataset.imeCandidateX).toBe("60");
-    expect(textarea.dataset.imeCandidateY).toBe("54");
+    expect(textarea.dataset.imeCandidateX).toBe("100");
+    expect(textarea.dataset.imeCandidateY).toBe("134");
   });
 
   it("pushes window-relative candidate coordinates for separate pane offsets", () => {
     invokeMock.mockClear();
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1400 });
     const { textarea } = renderImePositionHarness({
       cursor: { row: 4, col: 48 },
       cols: 50,
@@ -184,7 +203,7 @@ describe("useImePosition", () => {
     expect(invokeMock).toHaveBeenCalledWith(
       "set_ime_position",
       expect.objectContaining({
-        x: 1120,
+        x: 700,
         y: 270,
         candidateX: 700,
         candidateY: 270,
@@ -192,6 +211,93 @@ describe("useImePosition", () => {
     );
     expect(textarea.dataset.imeCandidateX).toBe("700");
     expect(textarea.dataset.imeCandidateY).toBe("270");
+  });
+
+  it("keeps IME candidate coordinates inside the visible viewport for right-side panes", () => {
+    invokeMock.mockClear();
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1000 });
+    const { textarea } = renderImePositionHarness({
+      cursor: { row: 4, col: 48 },
+      cols: 50,
+      rows: 24,
+      cellWidth: 10,
+      cellHeight: 18,
+      canvasRect: { left: 640, top: 180, width: 500, height: 432 },
+    });
+
+    act(() => {
+      textarea.focus();
+      textarea.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    });
+
+    expect(invokeMock).toHaveBeenCalledWith(
+      "set_ime_position",
+      expect.objectContaining({
+        x: 640,
+        y: 270,
+        candidateX: 640,
+        candidateY: 270,
+      }),
+    );
+    expect(textarea.style.left).toBe("0px");
+    expect(textarea.style.paddingLeft).toBe("480px");
+    expect(textarea.dataset.imeCandidateX).toBe("640");
+  });
+
+  it("re-anchors the native IME candidate when pane layout resize moves the canvas", () => {
+    invokeMock.mockClear();
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1400 });
+    const callbacks: ResizeObserverCallback[] = [];
+    const OriginalResizeObserver = window.ResizeObserver;
+    class ResizeObserverMock implements ResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        callbacks.push(callback);
+      }
+      observe = vi.fn();
+      unobserve = vi.fn();
+      disconnect = vi.fn();
+    }
+    Object.defineProperty(window, "ResizeObserver", {
+      configurable: true,
+      value: ResizeObserverMock,
+    });
+    const canvasRect = { left: 640, top: 180, width: 500, height: 432 };
+
+    try {
+      const { textarea } = renderImePositionHarness({
+        cursor: { row: 4, col: 48 },
+        cols: 50,
+        rows: 24,
+        cellWidth: 10,
+        cellHeight: 18,
+        canvasRect,
+      });
+
+      act(() => {
+        textarea.focus();
+      });
+      invokeMock.mockClear();
+      canvasRect.left = 720;
+
+      act(() => {
+        callbacks.at(-1)?.([], {} as ResizeObserver);
+      });
+
+      expect(invokeMock).toHaveBeenCalledWith(
+        "set_ime_position",
+        expect.objectContaining({
+          x: 780,
+          y: 270,
+          candidateX: 780,
+          candidateY: 270,
+        }),
+      );
+    } finally {
+      Object.defineProperty(window, "ResizeObserver", {
+        configurable: true,
+        value: OriginalResizeObserver,
+      });
+    }
   });
 
   it("reports IME positioning failures through fallback telemetry", async () => {

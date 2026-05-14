@@ -13,7 +13,8 @@ export default defineConfig(async () => ({
   test: {
     environment: "jsdom",
     globals: true,
-    setupFiles: [],
+    setupFiles: ["src/__tests__/setup.ts"],
+    testTimeout: 30_000,
     exclude: ["node_modules", "e2e", ".claude/worktrees/**"],
   },
 

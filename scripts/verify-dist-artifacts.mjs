@@ -24,7 +24,10 @@ const releaseProvenanceInputs = [
   "src-tauri/Cargo.lock",
   "src-tauri/tauri.conf.json",
   "src-tauri/tauri.dist.conf.json",
-  "src-tauri/src/pty_sidecar.rs",
+  {
+    path: "src-tauri/src",
+    exclude: [],
+  },
   {
     path: "src",
     exclude: [
@@ -39,7 +42,17 @@ const releaseProvenanceInputs = [
 ];
 const sidecarProvenanceInputs = [
   "scripts/build-pty-sidecar.mjs",
+  "src-tauri/Cargo.toml",
+  "src-tauri/Cargo.lock",
+  {
+    path: "src-tauri/src",
+    exclude: [
+      /(^|[\\/])main\.rs$/i,
+      /(^|[\\/])bin([\\/]|$)/,
+    ],
+  },
   "src-tauri/pty-server/Cargo.toml",
+  "src-tauri/pty-server/Cargo.lock",
   "src-tauri/pty-server/src/main.rs",
 ];
 
@@ -87,6 +100,20 @@ if (sidecarName) {
     path: path.join(repoRoot, "src-tauri", "binaries", sidecarName),
     minBytes: 1024 * 1024,
     provenanceInputs: sidecarProvenanceInputs,
+  });
+}
+const aetherctlReleaseName = process.platform === "win32" ? "aetherctl.exe" : "aetherctl";
+if (process.platform === "win32") {
+  artifacts.push({
+    label: "aetherctl",
+    path: path.join(repoRoot, "src-tauri", "target", "release", aetherctlReleaseName),
+    minBytes: 1024 * 1024,
+    provenanceInputs: [
+      "scripts/build-pty-sidecar.mjs",
+      "src-tauri/Cargo.toml",
+      "src-tauri/Cargo.lock",
+      "src-tauri/src/bin/aetherctl.rs",
+    ],
   });
 }
 
@@ -210,14 +237,17 @@ async function assertSidecarBundleWiring() {
   if (!Array.isArray(externalBin) || !externalBin.includes("binaries/aether-pty-server")) {
     recordFailure(`[dist] PTY sidecar externalBin missing from tauri.dist.conf.json`);
   }
-
   if (process.platform !== "win32") return;
   const wxsPath = path.join(repoRoot, "src-tauri", "target", "release", "wix", "x64", "main.wxs");
   try {
     const wxs = await readFile(wxsPath, "utf8");
-    const matches = wxs.match(/aether-pty-server\.exe/g) ?? [];
-    if (matches.length !== 1) {
-      recordFailure(`[dist] MSI manifest should include exactly one PTY sidecar exe, found ${matches.length}`);
+    const sidecarMatches = wxs.match(/aether-pty-server\.exe/g) ?? [];
+    if (sidecarMatches.length !== 1) {
+      recordFailure(`[dist] MSI manifest should include exactly one PTY sidecar exe, found ${sidecarMatches.length}`);
+    }
+    const ctlMatches = wxs.match(/aetherctl\.exe/g) ?? [];
+    if (ctlMatches.length !== 1) {
+      recordFailure(`[dist] MSI manifest should include exactly one aetherctl exe, found ${ctlMatches.length}`);
     }
   } catch {
     recordFailure(`[dist] Missing WiX manifest for sidecar verification: ${relativeArtifactPath(wxsPath)}`);

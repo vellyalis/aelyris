@@ -24,12 +24,34 @@
 // Optional env:
 //   AETHER_IME_CDP=http://127.0.0.1:9222
 //   AETHER_IME_PROJECT=C:/Users/owner/Aether_Terminal
+//   AETHER_IME_OUT=.codex-auto/production-smoke/verify-ime.json
 
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import process from "node:process";
 import { chromium } from "@playwright/test";
 
 const CDP = process.env.AETHER_IME_CDP ?? "http://127.0.0.1:9222";
 const PROJECT_PATH = process.env.AETHER_IME_PROJECT ?? process.cwd().replaceAll("\\", "/");
+const OUT = process.env.AETHER_IME_OUT ?? ".codex-auto/production-smoke/verify-ime.json";
+const report = {
+  version: 1,
+  taskId: "verify-ime",
+  cdp: CDP,
+  projectPath: PROJECT_PATH,
+  startedAt: new Date().toISOString(),
+  status: "running",
+  checks: [],
+  failures: [],
+};
+
+function writeArtifact() {
+  report.completedAt = new Date().toISOString();
+  const path = resolve(OUT);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(report, null, 2)}\n`);
+  return path;
+}
 
 function isAetherPage(page) {
   const url = page.url();
@@ -37,6 +59,7 @@ function isAetherPage(page) {
     url.includes("localhost:1420") ||
     url.includes("127.0.0.1:1420") ||
     url.startsWith("tauri://localhost") ||
+    url.startsWith("http://tauri.localhost") ||
     url.startsWith("https://tauri.localhost")
   );
 }
@@ -48,11 +71,36 @@ function describePages(context) {
 }
 
 function pass(msg) {
+  report.checks.push(msg);
   console.log(`  \u2713 ${msg}`);
 }
 function fail(msg) {
+  report.failures.push(msg);
   console.log(`  \u2717 ${msg}`);
   process.exitCode = 1;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function connectOverCdpWithRetry() {
+  const timeoutMs = Number(process.env.AETHER_IME_CDP_TIMEOUT_MS ?? 90000);
+  const deadline = Date.now() + timeoutMs;
+  let lastError = null;
+
+  while (Date.now() < deadline) {
+    try {
+      return await chromium.connectOverCDP(CDP);
+    } catch (err) {
+      lastError = err;
+      await sleep(1000);
+    }
+  }
+
+  throw new Error(
+    `Cannot attach to WebView2 CDP at ${CDP} within ${timeoutMs}ms. Start Aether with "AETHER_API_TOKEN=dev pnpm.cmd tauri:dev" first.\n${lastError?.message ?? "CDP endpoint did not respond"}`,
+  );
 }
 
 async function ensureLiveTerminalSurface(page) {
@@ -294,11 +342,7 @@ async function dispatchOverlayComposition(page, sequence) {
 }
 
 async function main() {
-  const browser = await chromium.connectOverCDP(CDP).catch((err) => {
-    throw new Error(
-      `Cannot attach to WebView2 CDP at ${CDP}. Start Aether with "AETHER_API_TOKEN=dev pnpm.cmd tauri:dev" first.\n${err.message}`,
-    );
-  });
+  const browser = await connectOverCdpWithRetry();
   const ctx = browser.contexts()[0];
   const page = ctx.pages().find(isAetherPage);
   if (!page) {
@@ -655,10 +699,18 @@ async function main() {
   }
 
   await browser.close();
+  report.status = process.exitCode ? "failed" : "pass";
+  const artifact = writeArtifact();
   console.log("\n[ime] done.");
+  console.log(`[ime] artifact: ${artifact}`);
 }
 
 main().catch((e) => {
+  report.status = "failed";
+  report.error = e?.message ?? String(e);
+  report.stack = e?.stack ?? null;
+  const artifact = writeArtifact();
   console.error("[ime] fatal:", e);
+  console.error(`[ime] artifact: ${artifact}`);
   process.exit(1);
 });

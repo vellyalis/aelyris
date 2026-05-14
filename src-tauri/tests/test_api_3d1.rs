@@ -4,7 +4,8 @@
 //! `reqwest`. The session-creating tests require Windows (they spawn `cmd`
 //! via ConPTY) and are gated on `target_os`.
 
-use aether_terminal_lib::api::{self, ApiState, AuthConfig};
+use aether_terminal_lib::api::{self, ApiState, AuthConfig, WS_MAX_INPUT_FRAME_BYTES};
+use aether_terminal_lib::mux::store::FileMuxSnapshotStore;
 use aether_terminal_lib::pty::PtyManager;
 use reqwest::header::AUTHORIZATION;
 use reqwest::StatusCode;
@@ -38,6 +39,35 @@ fn client() -> reqwest::Client {
         .unwrap()
 }
 
+async fn shutdown_server(state: &ApiState, join: tokio::task::JoinHandle<()>) {
+    state.pty.close_all();
+    state.trigger_shutdown();
+    let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
+}
+
+fn collect_layout_pane_ids(node: &serde_json::Value, ids: &mut Vec<String>) {
+    if let Some(id) = node
+        .get("paneId")
+        .or_else(|| node.get("pane_id"))
+        .and_then(|value| value.as_str())
+    {
+        ids.push(id.to_string());
+        return;
+    }
+    match node["kind"].as_str() {
+        Some("pane") => {
+            if let Some(id) = node["paneId"].as_str().or_else(|| node["pane_id"].as_str()) {
+                ids.push(id.to_string());
+            }
+        }
+        Some("split") => {
+            collect_layout_pane_ids(&node["first"], ids);
+            collect_layout_pane_ids(&node["second"], ids);
+        }
+        _ => {}
+    }
+}
+
 // ─── Auth ───────────────────────────────────────────────────────────────────
 
 #[tokio::test]
@@ -51,8 +81,7 @@ async fn missing_bearer_returns_401() {
         .unwrap();
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 
-    state.trigger_shutdown();
-    let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
+    shutdown_server(&state, join).await;
 }
 
 #[tokio::test]
@@ -67,8 +96,7 @@ async fn wrong_bearer_returns_401() {
         .unwrap();
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 
-    state.trigger_shutdown();
-    let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
+    shutdown_server(&state, join).await;
 }
 
 #[tokio::test]
@@ -85,8 +113,73 @@ async fn right_bearer_allows_list() {
     let body: serde_json::Value = res.json().await.unwrap();
     assert!(body.as_array().unwrap().is_empty());
 
-    state.trigger_shutdown();
-    let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
+    shutdown_server(&state, join).await;
+}
+
+#[tokio::test]
+async fn daemon_contract_exposes_versioned_capabilities() {
+    let temp = tempfile::tempdir().unwrap();
+    let pty = PtyManager::new().with_scrollback_dir(temp.path().join("scrollback"));
+    let state = ApiState::new(pty, AuthConfig::disabled())
+        .with_max_sessions(7)
+        .with_mux_snapshot_dir(temp.path().join("mux"));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let join = tokio::spawn({
+        let st = state.clone();
+        async move {
+            let _ = api::serve_on_listener(st, listener).await;
+        }
+    });
+    tokio::task::yield_now().await;
+
+    let body: serde_json::Value = client()
+        .get(format!("{}/daemon/contract", base))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(body["processKind"], "embedded-api");
+    assert_eq!(body["protocolVersion"], api::DAEMON_PROTOCOL_VERSION);
+    assert_eq!(body["maxSessions"], 7);
+    assert_eq!(body["activeSessions"], 0);
+    assert_eq!(body["muxSnapshotEnabled"], true);
+    assert_eq!(body["durableScrollbackEnabled"], true);
+    assert!(body["capabilities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|value| value == "mux-pane-control"));
+    assert!(body["capabilities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|value| value == "mux-layout-rotate"));
+    assert!(body["capabilities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|value| value == "mux-pane-break-join"));
+    assert!(body["capabilities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|value| value == "mux-synchronized-panes"));
+
+    let health: serde_json::Value = client()
+        .get(format!("{}/health", base))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(health["protocol_version"], api::DAEMON_PROTOCOL_VERSION);
+    assert!(health["version"].as_str().unwrap().len() > 0);
+
+    shutdown_server(&state, join).await;
 }
 
 #[cfg(target_os = "windows")]
@@ -154,8 +247,7 @@ async fn ws_requires_stream_ticket_and_rejects_query_token() {
     use futures_util::SinkExt;
     ws.send(Message::Text("\r\n".into())).await.ok();
 
-    state.trigger_shutdown();
-    let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
+    shutdown_server(&state, join).await;
 }
 
 #[tokio::test]
@@ -170,8 +262,7 @@ async fn non_bearer_auth_header_rejected() {
         .unwrap();
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 
-    state.trigger_shutdown();
-    let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
+    shutdown_server(&state, join).await;
 }
 
 // ─── Errors ─────────────────────────────────────────────────────────────────
@@ -189,8 +280,7 @@ async fn unknown_session_delete_returns_404() {
     let body: serde_json::Value = res.json().await.unwrap();
     assert_eq!(body["code"], "not_found");
 
-    state.trigger_shutdown();
-    let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
+    shutdown_server(&state, join).await;
 }
 
 #[tokio::test]
@@ -205,8 +295,41 @@ async fn resize_zero_cols_returns_400() {
         .unwrap();
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
 
-    state.trigger_shutdown();
-    let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
+    shutdown_server(&state, join).await;
+}
+
+#[tokio::test]
+async fn input_unknown_session_returns_404() {
+    let (base, state, join) = spawn_server(AuthConfig::disabled()).await;
+
+    let res = client()
+        .post(format!("{}/sessions/does-not-exist/input", base))
+        .json(&json!({"text": "echo hello\r"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(body["code"], "not_found");
+
+    shutdown_server(&state, join).await;
+}
+
+#[tokio::test]
+async fn input_oversized_frame_returns_400_before_session_lookup() {
+    let (base, state, join) = spawn_server(AuthConfig::disabled()).await;
+
+    let res = client()
+        .post(format!("{}/sessions/does-not-exist/input", base))
+        .json(&json!({"text": "x".repeat(WS_MAX_INPUT_FRAME_BYTES + 1)}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(body["code"], "bad_request");
+
+    shutdown_server(&state, join).await;
 }
 
 #[tokio::test]
@@ -223,8 +346,7 @@ async fn unknown_shell_returns_400() {
     let body: serde_json::Value = res.json().await.unwrap();
     assert_eq!(body["code"], "bad_request");
 
-    state.trigger_shutdown();
-    let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
+    shutdown_server(&state, join).await;
 }
 
 // ─── Session CRUD (Windows only — spawns real ConPTY) ───────────────────────
@@ -245,6 +367,33 @@ async fn create_list_resize_delete_roundtrip() {
     assert_eq!(create_res.status(), StatusCode::OK);
     let create_body: serde_json::Value = create_res.json().await.unwrap();
     let id = create_body["id"].as_str().unwrap().to_string();
+    {
+        let mux = state.mux.lock().unwrap();
+        assert!(mux.graph(&id).is_some(), "API create should sync mux graph");
+    }
+    let mux_list: serde_json::Value = c
+        .get(format!("{}/mux/workspaces", base))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(mux_list.as_array().unwrap().len(), 1);
+    assert_eq!(mux_list[0]["id"], id);
+    assert_eq!(mux_list[0]["windowCount"], 1);
+    assert_eq!(mux_list[0]["tabCount"], 1);
+    assert_eq!(mux_list[0]["paneCount"], 1);
+
+    let mux_graph: serde_json::Value = c
+        .get(format!("{}/mux/workspaces/{}", base, id))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(mux_graph["activeWorkspaceId"], id);
 
     // List shows it.
     let list_res = c.get(format!("{}/sessions", base)).send().await.unwrap();
@@ -270,6 +419,463 @@ async fn create_list_resize_delete_roundtrip() {
         .await
         .unwrap();
     assert_eq!(resize_res.status(), StatusCode::NO_CONTENT);
+    {
+        let mux = state.mux.lock().unwrap();
+        let graph = mux.graph(&id).unwrap();
+        let pane = graph
+            .workspaces
+            .get(&id)
+            .unwrap()
+            .windows
+            .get(&format!("{}:window", id))
+            .unwrap()
+            .tabs
+            .get(&format!("{}:tab", id))
+            .unwrap()
+            .panes
+            .get(&id)
+            .unwrap();
+        assert_eq!(pane.pty.as_ref().unwrap().cols, 120);
+        assert_eq!(pane.pty.as_ref().unwrap().rows, 40);
+    }
+
+    // REST input works without requiring a WebSocket client, which is the
+    // control path used by aetherctl and future daemon attach/detach flows.
+    let input_res = c
+        .post(format!("{}/sessions/{}/input", base, id))
+        .json(&json!({"text": "echo aether-rest-input\r"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(input_res.status(), StatusCode::NO_CONTENT);
+    let mut captured = String::new();
+    for _ in 0..80 {
+        let capture_res = c
+            .get(format!(
+                "{}/sessions/{}/capture?lines=50&clean=true",
+                base, id
+            ))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(capture_res.status(), StatusCode::OK);
+        let capture_body: serde_json::Value = capture_res.json().await.unwrap();
+        captured = capture_body["text"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        if captured.contains("aether-rest-input") {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(
+        captured.contains("aether-rest-input"),
+        "capture did not include REST input echo: {}",
+        captured
+    );
+
+    // Split/close exercises the mux-owned pane lifecycle and verifies a
+    // child PTY can be disposed without tearing down the root workspace.
+    let split_close_res = c
+        .post(format!("{}/mux/workspaces/{}/panes/split", base, id))
+        .json(&json!({
+            "targetPaneId": id,
+            "axis": "horizontal",
+            "shell": "cmd",
+            "cols": 80,
+            "rows": 24
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(split_close_res.status(), StatusCode::OK);
+    let split_close_body: serde_json::Value = split_close_res.json().await.unwrap();
+    let close_pane_id = split_close_body["id"].as_str().unwrap().to_string();
+    let close_pane_res = c
+        .delete(format!(
+            "{}/mux/workspaces/{}/panes/{}",
+            base, id, close_pane_id
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(close_pane_res.status(), StatusCode::NO_CONTENT);
+
+    // Split again and drive tmux-like layout operations over HTTP. This keeps
+    // the Rust mux graph, not React state, as the operation owner.
+    let split_res = c
+        .post(format!("{}/mux/workspaces/{}/panes/split", base, id))
+        .json(&json!({
+            "targetPaneId": id,
+            "axis": "vertical",
+            "shell": "cmd",
+            "cols": 80,
+            "rows": 24
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(split_res.status(), StatusCode::OK);
+    let split_body: serde_json::Value = split_res.json().await.unwrap();
+    let child_id = split_body["id"].as_str().unwrap().to_string();
+
+    let sync_res = c
+        .post(format!("{}/mux/workspaces/{}/panes/synchronize", base, id))
+        .json(&json!({"enabled": true}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(sync_res.status(), StatusCode::OK);
+    let sync_body: serde_json::Value = sync_res.json().await.unwrap();
+    let workspace = sync_body["workspaces"].get(&id).unwrap();
+    let active_window_id = workspace["activeWindowId"].as_str().unwrap();
+    let window = workspace["windows"].get(active_window_id).unwrap();
+    let active_tab_id = window["activeTabId"].as_str().unwrap();
+    let tab = window["tabs"].get(active_tab_id).unwrap();
+    assert_eq!(tab["synchronizedPanes"], true);
+
+    let sync_input_res = c
+        .post(format!("{}/sessions/{}/input", base, id))
+        .json(&json!({"text": "echo aether-mux-sync\r"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(sync_input_res.status(), StatusCode::NO_CONTENT);
+    for pane_id in [&id, &child_id] {
+        let mut pane_capture = String::new();
+        for _ in 0..80 {
+            let capture_res = c
+                .get(format!(
+                    "{}/sessions/{}/capture?lines=80&clean=true",
+                    base, pane_id
+                ))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(capture_res.status(), StatusCode::OK);
+            let capture_body: serde_json::Value = capture_res.json().await.unwrap();
+            pane_capture = capture_body["text"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string();
+            if pane_capture.contains("aether-mux-sync") {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert!(
+            pane_capture.contains("aether-mux-sync"),
+            "mux synchronized input did not reach pane {}: {}",
+            pane_id,
+            pane_capture
+        );
+    }
+
+    let sync_off_res = c
+        .post(format!("{}/mux/workspaces/{}/panes/synchronize", base, id))
+        .json(&json!({"enabled": false}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(sync_off_res.status(), StatusCode::OK);
+
+    let broadcast_res = c
+        .post(format!("{}/mux/workspaces/{}/input", base, id))
+        .json(&json!({"text": "echo aether-mux-broadcast\r"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(broadcast_res.status(), StatusCode::OK);
+    let broadcast_body: serde_json::Value = broadcast_res.json().await.unwrap();
+    assert_eq!(broadcast_body["targets"], 2);
+    assert_eq!(broadcast_body["accepted"], 2);
+    for pane_id in [&id, &child_id] {
+        let mut pane_capture = String::new();
+        for _ in 0..80 {
+            let capture_res = c
+                .get(format!(
+                    "{}/sessions/{}/capture?lines=80&clean=true",
+                    base, pane_id
+                ))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(capture_res.status(), StatusCode::OK);
+            let capture_body: serde_json::Value = capture_res.json().await.unwrap();
+            pane_capture = capture_body["text"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string();
+            if pane_capture.contains("aether-mux-broadcast") {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert!(
+            pane_capture.contains("aether-mux-broadcast"),
+            "mux broadcast did not reach pane {}: {}",
+            pane_id,
+            pane_capture
+        );
+    }
+
+    let zoom_res = c
+        .post(format!(
+            "{}/mux/workspaces/{}/panes/{}/zoom",
+            base, id, child_id
+        ))
+        .json(&json!({"zoomed": true}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(zoom_res.status(), StatusCode::OK);
+    let zoom_body: serde_json::Value = zoom_res.json().await.unwrap();
+    let workspace = zoom_body["workspaces"].get(&id).unwrap();
+    let active_window_id = workspace["activeWindowId"].as_str().unwrap();
+    let window = workspace["windows"].get(active_window_id).unwrap();
+    let active_tab_id = window["activeTabId"].as_str().unwrap();
+    let tab = window["tabs"].get(active_tab_id).unwrap();
+    assert_eq!(tab["layout"]["zoomedPaneId"], child_id);
+
+    let unzoom_res = c
+        .post(format!(
+            "{}/mux/workspaces/{}/panes/{}/zoom",
+            base, id, child_id
+        ))
+        .json(&json!({"zoomed": false}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(unzoom_res.status(), StatusCode::OK);
+    let unzoom_body: serde_json::Value = unzoom_res.json().await.unwrap();
+    let workspace = unzoom_body["workspaces"].get(&id).unwrap();
+    let active_window_id = workspace["activeWindowId"].as_str().unwrap();
+    let window = workspace["windows"].get(active_window_id).unwrap();
+    let active_tab_id = window["activeTabId"].as_str().unwrap();
+    let tab = window["tabs"].get(active_tab_id).unwrap();
+    assert_eq!(tab["layout"]["zoomedPaneId"], serde_json::Value::Null);
+
+    let swap_res = c
+        .post(format!("{}/mux/workspaces/{}/panes/swap", base, id))
+        .json(&json!({"firstPaneId": id, "secondPaneId": child_id}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(swap_res.status(), StatusCode::OK);
+
+    let move_res = c
+        .post(format!("{}/mux/workspaces/{}/panes/move", base, id))
+        .json(&json!({
+            "sourcePaneId": child_id,
+            "targetPaneId": id,
+            "axis": "horizontal"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(move_res.status(), StatusCode::OK);
+
+    let even_res = c
+        .post(format!("{}/mux/workspaces/{}/layout/even", base, id))
+        .json(&json!({"axis": "vertical"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(even_res.status(), StatusCode::OK);
+
+    let tiled_res = c
+        .post(format!("{}/mux/workspaces/{}/layout/tiled", base, id))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(tiled_res.status(), StatusCode::OK);
+
+    let tiled_body: serde_json::Value = tiled_res.json().await.unwrap();
+    let workspace = tiled_body["workspaces"].get(&id).unwrap();
+    let active_window_id = workspace["activeWindowId"].as_str().unwrap();
+    let window = workspace["windows"].get(active_window_id).unwrap();
+    let active_tab_id = window["activeTabId"].as_str().unwrap();
+    let tab = window["tabs"].get(active_tab_id).unwrap();
+    let mut before_rotate_ids = Vec::new();
+    collect_layout_pane_ids(&tab["layout"]["root"], &mut before_rotate_ids);
+
+    let rotate_res = c
+        .post(format!("{}/mux/workspaces/{}/layout/rotate", base, id))
+        .json(&json!({"direction": "next"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(rotate_res.status(), StatusCode::OK);
+    let rotate_body: serde_json::Value = rotate_res.json().await.unwrap();
+    let workspace = rotate_body["workspaces"].get(&id).unwrap();
+    let active_window_id = workspace["activeWindowId"].as_str().unwrap();
+    let window = workspace["windows"].get(active_window_id).unwrap();
+    let active_tab_id = window["activeTabId"].as_str().unwrap();
+    let tab = window["tabs"].get(active_tab_id).unwrap();
+    let mut after_rotate_ids = Vec::new();
+    collect_layout_pane_ids(&tab["layout"]["root"], &mut after_rotate_ids);
+    let mut before_set = before_rotate_ids.clone();
+    let mut after_set = after_rotate_ids.clone();
+    before_set.sort();
+    after_set.sort();
+    assert_eq!(after_set, before_set);
+    assert_ne!(after_rotate_ids, before_rotate_ids);
+
+    let break_res = c
+        .post(format!(
+            "{}/mux/workspaces/{}/panes/{}/break",
+            base, id, child_id
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(break_res.status(), StatusCode::OK);
+    let break_body: serde_json::Value = break_res.json().await.unwrap();
+    let workspace = break_body["workspaces"].get(&id).unwrap();
+    let active_window_id = workspace["activeWindowId"].as_str().unwrap();
+    let window = workspace["windows"].get(active_window_id).unwrap();
+    assert_eq!(window["tabs"].as_object().unwrap().len(), 2);
+    let active_tab_id = window["activeTabId"].as_str().unwrap();
+    let active_tab = window["tabs"].get(active_tab_id).unwrap();
+    let mut break_active_ids = Vec::new();
+    collect_layout_pane_ids(&active_tab["layout"]["root"], &mut break_active_ids);
+    assert_eq!(break_active_ids, vec![child_id.clone()]);
+
+    let join_res = c
+        .post(format!("{}/mux/workspaces/{}/panes/join", base, id))
+        .json(&json!({
+            "sourcePaneId": id,
+            "targetPaneId": child_id,
+            "axis": "horizontal"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(join_res.status(), StatusCode::OK);
+    let join_body: serde_json::Value = join_res.json().await.unwrap();
+    let workspace = join_body["workspaces"].get(&id).unwrap();
+    let active_window_id = workspace["activeWindowId"].as_str().unwrap();
+    let window = workspace["windows"].get(active_window_id).unwrap();
+    let active_tab_id = window["activeTabId"].as_str().unwrap();
+    let active_tab = window["tabs"].get(active_tab_id).unwrap();
+    let mut join_active_ids = Vec::new();
+    collect_layout_pane_ids(&active_tab["layout"]["root"], &mut join_active_ids);
+    let mut joined_set = join_active_ids.clone();
+    joined_set.sort();
+    assert_eq!(joined_set, {
+        let mut expected = vec![id.clone(), child_id.clone()];
+        expected.sort();
+        expected
+    });
+
+    // Detach keeps the mux graph durable while preserving the live ConPTY
+    // instances. Attach should therefore be a cheap graph state transition,
+    // not a respawn, which is the daemon-side contract tmux-style clients need.
+    let detach_res = c
+        .post(format!("{}/mux/workspaces/{}/detach", base, id))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(detach_res.status(), StatusCode::OK);
+    let detach_body: serde_json::Value = detach_res.json().await.unwrap();
+    let workspace = detach_body["workspaces"].get(&id).unwrap();
+    let active_window_id = workspace["activeWindowId"].as_str().unwrap();
+    let window = workspace["windows"].get(active_window_id).unwrap();
+    let active_tab_id = window["activeTabId"].as_str().unwrap();
+    let tab = window["tabs"].get(active_tab_id).unwrap();
+    let panes = tab["panes"].as_object().unwrap();
+    for pane_id in [&id, &child_id] {
+        let pane = panes.get(pane_id).unwrap();
+        assert_eq!(pane["lifecycle"], "detached");
+        assert_eq!(pane["pty"]["terminalId"], pane_id.as_str());
+    }
+
+    let detached_sessions: serde_json::Value = c
+        .get(format!("{}/sessions", base))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let detached_ids: Vec<&str> = detached_sessions
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|value| value["id"].as_str().unwrap())
+        .collect();
+    assert!(detached_ids.contains(&id.as_str()));
+    assert!(detached_ids.contains(&child_id.as_str()));
+
+    let detached_input_res = c
+        .post(format!("{}/sessions/{}/input", base, id))
+        .json(&json!({"text": "echo aether-detached-live\r"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(detached_input_res.status(), StatusCode::NO_CONTENT);
+    let mut detached_capture = String::new();
+    for _ in 0..80 {
+        let capture_res = c
+            .get(format!(
+                "{}/sessions/{}/capture?lines=80&clean=true",
+                base, id
+            ))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(capture_res.status(), StatusCode::OK);
+        let capture_body: serde_json::Value = capture_res.json().await.unwrap();
+        detached_capture = capture_body["text"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        if detached_capture.contains("aether-detached-live") {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(
+        detached_capture.contains("aether-detached-live"),
+        "detached live PTY did not keep processing input: {}",
+        detached_capture
+    );
+
+    let attach_res = c
+        .post(format!("{}/mux/workspaces/{}/attach", base, id))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(attach_res.status(), StatusCode::OK);
+    let attach_body: serde_json::Value = attach_res.json().await.unwrap();
+    let workspace = attach_body["workspaces"].get(&id).unwrap();
+    let active_window_id = workspace["activeWindowId"].as_str().unwrap();
+    let window = workspace["windows"].get(active_window_id).unwrap();
+    let active_tab_id = window["activeTabId"].as_str().unwrap();
+    let tab = window["tabs"].get(active_tab_id).unwrap();
+    let panes = tab["panes"].as_object().unwrap();
+    for pane_id in [&id, &child_id] {
+        let pane = panes.get(pane_id).unwrap();
+        assert_eq!(pane["lifecycle"], "active");
+        assert_eq!(pane["pty"]["terminalId"], pane_id.as_str());
+    }
+    let attached_sessions: serde_json::Value = c
+        .get(format!("{}/sessions", base))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let attached_ids: Vec<&str> = attached_sessions
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|value| value["id"].as_str().unwrap())
+        .collect();
+    assert!(attached_ids.contains(&id.as_str()));
+    assert!(attached_ids.contains(&child_id.as_str()));
 
     // Delete works.
     let del_res = c
@@ -278,6 +884,22 @@ async fn create_list_resize_delete_roundtrip() {
         .await
         .unwrap();
     assert_eq!(del_res.status(), StatusCode::NO_CONTENT);
+    {
+        let mux = state.mux.lock().unwrap();
+        assert!(
+            mux.graph(&id).is_none(),
+            "API delete should remove mux graph"
+        );
+    }
+    let mux_after_delete: serde_json::Value = c
+        .get(format!("{}/mux/workspaces", base))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(mux_after_delete.as_array().unwrap().is_empty());
 
     // List is empty again.
     let list2: serde_json::Value = c
@@ -290,8 +912,180 @@ async fn create_list_resize_delete_roundtrip() {
         .unwrap();
     assert!(list2.as_array().unwrap().is_empty());
 
-    state.trigger_shutdown();
-    let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
+    shutdown_server(&state, join).await;
+}
+
+#[cfg(target_os = "windows")]
+#[tokio::test]
+async fn mux_snapshot_store_persists_and_restores_api_graphs() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = FileMuxSnapshotStore::new(temp.path());
+    let state =
+        ApiState::new(PtyManager::new(), AuthConfig::disabled()).with_mux_snapshot_dir(temp.path());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let join = tokio::spawn({
+        let st = state.clone();
+        async move {
+            let _ = api::serve_on_listener(st, listener).await;
+        }
+    });
+    tokio::task::yield_now().await;
+    let c = client();
+
+    let create_res = c
+        .post(format!("{}/sessions", base))
+        .json(&json!({"shell": "cmd", "cols": 80, "rows": 24}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create_res.status(), StatusCode::OK);
+    let id = create_res.json::<serde_json::Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(store.load_all_graphs().unwrap().len(), 1);
+
+    let split_res = c
+        .post(format!("{}/mux/workspaces/{}/panes/split", base, id))
+        .json(&json!({
+            "targetPaneId": id,
+            "axis": "horizontal",
+            "shell": "cmd"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(split_res.status(), StatusCode::OK);
+    let graph = store.load_graph(&id).unwrap();
+    let pane_count: usize = graph
+        .workspaces
+        .values()
+        .flat_map(|workspace| workspace.windows.values())
+        .flat_map(|window| window.tabs.values())
+        .map(|tab| tab.panes.len())
+        .sum();
+    assert_eq!(pane_count, 2);
+
+    let restored_state =
+        ApiState::new(PtyManager::new(), AuthConfig::disabled()).with_mux_snapshot_dir(temp.path());
+    let restored_graph = restored_state
+        .mux
+        .lock()
+        .unwrap()
+        .graph(&id)
+        .cloned()
+        .unwrap();
+    let restored_pane = restored_graph
+        .workspaces
+        .values()
+        .flat_map(|workspace| workspace.windows.values())
+        .flat_map(|window| window.tabs.values())
+        .flat_map(|tab| tab.panes.values())
+        .next()
+        .unwrap();
+    assert_eq!(
+        restored_pane.pty.as_ref().unwrap().terminal_id,
+        format!("restore-pending:{}", restored_pane.id)
+    );
+
+    let del_res = c
+        .delete(format!("{}/sessions/{}", base, id))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(del_res.status(), StatusCode::NO_CONTENT);
+    assert!(store.load_all_graphs().unwrap().is_empty());
+
+    shutdown_server(&state, join).await;
+}
+
+#[cfg(target_os = "windows")]
+#[tokio::test]
+async fn durable_scrollback_survives_session_close() {
+    let temp = tempfile::tempdir().unwrap();
+    let pty = PtyManager::new().with_scrollback_dir(temp.path());
+    let (base, state, join) = {
+        let state = ApiState::new(pty, AuthConfig::disabled());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let join = tokio::spawn({
+            let st = state.clone();
+            async move {
+                let _ = api::serve_on_listener(st, listener).await;
+            }
+        });
+        tokio::task::yield_now().await;
+        (base, state, join)
+    };
+    let c = client();
+
+    let create_res = c
+        .post(format!("{}/sessions", base))
+        .json(&json!({"shell": "cmd", "cols": 80, "rows": 24}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create_res.status(), StatusCode::OK);
+    let id = create_res.json::<serde_json::Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let marker = "aether-durable-scrollback";
+    let input_res = c
+        .post(format!("{}/sessions/{}/input", base, id))
+        .json(&json!({"text": format!("echo {marker}\r")}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(input_res.status(), StatusCode::NO_CONTENT);
+
+    let mut captured = String::new();
+    for _ in 0..80 {
+        let capture_res = c
+            .get(format!(
+                "{}/sessions/{}/capture?lines=50&clean=true",
+                base, id
+            ))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(capture_res.status(), StatusCode::OK);
+        captured = capture_res.json::<serde_json::Value>().await.unwrap()["text"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        if captured.contains(marker) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(captured.contains(marker), "live capture missing marker");
+
+    let close_res = c
+        .delete(format!("{}/sessions/{}", base, id))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(close_res.status(), StatusCode::NO_CONTENT);
+
+    let durable_res = c
+        .get(format!(
+            "{}/sessions/{}/capture?lines=50&clean=true",
+            base, id
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(durable_res.status(), StatusCode::OK);
+    let durable = durable_res.json::<serde_json::Value>().await.unwrap()["text"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    assert!(durable.contains(marker), "durable capture missing marker");
+
+    shutdown_server(&state, join).await;
 }
 
 #[cfg(target_os = "windows")]
@@ -307,8 +1101,7 @@ async fn resize_unknown_session_returns_404() {
         .unwrap();
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
 
-    state.trigger_shutdown();
-    let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
+    shutdown_server(&state, join).await;
 }
 
 // ─── Session cap ───────────────────────────────────────────────────────────
@@ -356,8 +1149,7 @@ async fn session_cap_returns_400_when_full() {
         body
     );
 
-    state.trigger_shutdown();
-    let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
+    shutdown_server(&state, join).await;
 }
 
 // ─── Shutdown ──────────────────────────────────────────────────────────────

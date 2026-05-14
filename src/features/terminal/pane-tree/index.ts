@@ -12,6 +12,7 @@ export {
   movePaneInOrder,
   rebalancePaneLayout,
   removePane,
+  rotatePanesInOrder,
   splitPane,
   swapPanes,
   updateLeafMeta,

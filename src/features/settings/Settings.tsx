@@ -4,7 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import { isTauriRuntime } from "../../shared/lib/tauriRuntime";
 import { useAppStore } from "../../shared/store/appStore";
 import { toast } from "../../shared/store/toastStore";
-import { MOOD_PRESETS, normalizeMoodPreset } from "../../shared/themes/moods";
+import {
+  MOOD_MATERIAL_DEFAULTS,
+  MOOD_PRESETS,
+  type MoodMaterialAlphaKey,
+  type MoodMaterialColorKey,
+  normalizeMoodPreset,
+} from "../../shared/themes/moods";
 import { Select } from "../../shared/ui/Select";
 import { Switch } from "../../shared/ui/Switch";
 import styles from "./Settings.module.css";
@@ -35,6 +41,19 @@ const SHELLS = [
   { id: "cmd", label: "CMD" },
   { id: "gitbash", label: "Git Bash" },
   { id: "wsl", label: "WSL" },
+];
+
+const MATERIAL_CONTROLS: readonly {
+  label: string;
+  colorKey: MoodMaterialColorKey;
+  alphaKey: MoodMaterialAlphaKey;
+  min: number;
+  max: number;
+}[] = [
+  { label: "Backdrop", colorKey: "backdropColor", alphaKey: "backdropAlpha", min: 0, max: 0.3 },
+  { label: "Panels", colorKey: "panelColor", alphaKey: "panelAlpha", min: 0.6, max: 0.98 },
+  { label: "Status bars", colorKey: "chromeColor", alphaKey: "chromeAlpha", min: 0.6, max: 0.98 },
+  { label: "Terminal well", colorKey: "terminalColor", alphaKey: "terminalAlpha", min: 0.3, max: 0.72 },
 ];
 
 function previewConfig(theme: string, moodPreset: string, shell: string, liveMode: boolean): LoadedConfig {
@@ -105,6 +124,11 @@ export function Settings({ visible, onClose }: SettingsProps) {
   const setThemeId = useAppStore((s) => s.setThemeId);
   const storeMood = useAppStore((s) => s.moodPresetId);
   const setMoodPresetId = useAppStore((s) => s.setMoodPresetId);
+  const moodMaterialOverrides = useAppStore((s) => s.moodMaterialOverrides);
+  const setMoodMaterialOverride = useAppStore((s) => s.setMoodMaterialOverride);
+  const resetMoodMaterialOverrides = useAppStore((s) => s.resetMoodMaterialOverrides);
+  const wallpaperSettingsByMood = useAppStore((s) => s.wallpaperSettingsByMood);
+  const setWallpaperSettingsForMood = useAppStore((s) => s.setWallpaperSettingsForMood);
   const ghostDiffLiveMode = useAppStore((s) => s.ghostDiffLiveMode);
   const setGhostDiffLiveMode = useAppStore((s) => s.setGhostDiffLiveMode);
   const [theme, setTheme] = useState(storeTheme);
@@ -122,6 +146,17 @@ export function Settings({ visible, onClose }: SettingsProps) {
   // every Save click resets those fields to the Rust defaults.
   const [loadedConfig, setLoadedConfig] = useState<LoadedConfig | null>(null);
   const userEditedRef = useRef(false);
+  const wallpaperFileInputRef = useRef<HTMLInputElement | null>(null);
+  const browserWallpaperUrlRef = useRef<string | null>(null);
+  const materialDefaults = MOOD_MATERIAL_DEFAULTS[mood];
+  const materialOverrides = moodMaterialOverrides[mood] ?? {};
+  const wallpaper = wallpaperSettingsByMood[mood] ?? {
+    imagePath: null,
+    opacity: 0,
+    positionX: 50,
+    positionY: 50,
+    scale: 100,
+  };
 
   useEffect(() => {
     // Re-load every time the dialog opens so a user who edited config.toml
@@ -193,6 +228,59 @@ export function Settings({ visible, onClose }: SettingsProps) {
   const markEdited = () => {
     userEditedRef.current = true;
   };
+
+  const selectMoodPreset = (value: string) => {
+    markEdited();
+    const preset = normalizeMoodPreset(value);
+    setMood(preset);
+    setMoodPresetId(preset);
+  };
+
+  const chooseWallpaperImage = async () => {
+    markEdited();
+    if (!isTauriRuntime()) {
+      wallpaperFileInputRef.current?.click();
+      return;
+    }
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const selected = await open({
+        multiple: false,
+        directory: false,
+        title: "Choose Background Image",
+        filters: [
+          {
+            name: "Images",
+            extensions: ["png", "jpg", "jpeg", "webp", "bmp", "gif"],
+          },
+        ],
+      });
+      if (typeof selected === "string") setWallpaperSettingsForMood(mood, { imagePath: selected });
+    } catch (err) {
+      toast.error("Failed to choose background image", String(err));
+    }
+  };
+
+  const handleBrowserWallpaperFile = (file: File | undefined) => {
+    markEdited();
+    if (!file) return;
+    if (browserWallpaperUrlRef.current) {
+      URL.revokeObjectURL(browserWallpaperUrlRef.current);
+      browserWallpaperUrlRef.current = null;
+    }
+    const objectUrl = URL.createObjectURL(file);
+    browserWallpaperUrlRef.current = objectUrl;
+    setWallpaperSettingsForMood(mood, { imagePath: objectUrl });
+  };
+
+  useEffect(() => {
+    return () => {
+      if (browserWallpaperUrlRef.current) {
+        URL.revokeObjectURL(browserWallpaperUrlRef.current);
+        browserWallpaperUrlRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (visible) setMood(storeMood);
@@ -306,12 +394,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
                 <Select
                   id="settings-mood"
                   value={mood}
-                  onValueChange={(next) => {
-                    markEdited();
-                    const preset = normalizeMoodPreset(next);
-                    setMood(preset);
-                    setMoodPresetId(preset);
-                  }}
+                  onValueChange={selectMoodPreset}
                   options={MOOD_PRESETS.map((preset) => ({
                     value: preset.id,
                     label: preset.label,
@@ -321,28 +404,220 @@ export function Settings({ visible, onClose }: SettingsProps) {
                 />
                 <div className={styles.moodGrid} role="radiogroup" aria-label="Mood presets">
                   {MOOD_PRESETS.map((preset) => (
-                    /* biome-ignore lint/a11y/useSemanticElements: These are custom color cards presented as radios without native radio layout constraints. */
-                    <button
+                    <label
                       key={preset.id}
-                      type="button"
                       className={styles.moodCard}
                       data-active={mood === preset.id ? "true" : undefined}
                       data-mood={preset.id}
-                      role="radio"
-                      aria-checked={mood === preset.id}
-                      onClick={() => {
-                        markEdited();
-                        setMood(preset.id);
-                        setMoodPresetId(preset.id);
-                      }}
                     >
+                      <input
+                        className={styles.radioInput}
+                        type="radio"
+                        name="settings-mood-preset"
+                        value={preset.id}
+                        checked={mood === preset.id}
+                        onChange={() => selectMoodPreset(preset.id)}
+                      />
                       <span className={styles.moodSwatch} aria-hidden="true" />
                       <span className={styles.moodCopy}>
                         <span className={styles.moodName}>{preset.label}</span>
                         <span className={styles.moodTone}>{preset.tone}</span>
                       </span>
-                    </button>
+                    </label>
                   ))}
+                </div>
+              </div>
+              <div className={styles.field}>
+                <div className={styles.materialHeader}>
+                  <div>
+                    <div className={styles.label}>Surface Material</div>
+                    <p className={styles.materialHint}>
+                      Customize colors and opacity for the selected mood preset.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className={styles.materialReset}
+                    onClick={() => {
+                      markEdited();
+                      resetMoodMaterialOverrides(mood);
+                    }}
+                  >
+                    Reset
+                  </button>
+                </div>
+                <div className={styles.materialGrid}>
+                  {MATERIAL_CONTROLS.map((control) => {
+                    const color = materialOverrides[control.colorKey] ?? materialDefaults[control.colorKey];
+                    const alpha = materialOverrides[control.alphaKey] ?? materialDefaults[control.alphaKey];
+                    return (
+                      <div className={styles.materialRow} key={control.alphaKey}>
+                        <label className={styles.materialName} htmlFor={`settings-${control.alphaKey}`}>
+                          {control.label}
+                        </label>
+                        <input
+                          className={styles.materialColor}
+                          type="color"
+                          value={color}
+                          aria-label={`${control.label} color`}
+                          onChange={(e) => {
+                            markEdited();
+                            setMoodMaterialOverride(mood, control.colorKey, e.target.value);
+                          }}
+                        />
+                        <input
+                          id={`settings-${control.alphaKey}`}
+                          className={styles.materialSlider}
+                          type="range"
+                          min={control.min}
+                          max={control.max}
+                          step={0.01}
+                          value={alpha}
+                          onChange={(e) => {
+                            markEdited();
+                            setMoodMaterialOverride(mood, control.alphaKey, Number(e.target.value));
+                          }}
+                        />
+                        <span className={styles.materialValue}>{Math.round(alpha * 100)}%</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className={styles.field}>
+                <div className={styles.materialHeader}>
+                  <div>
+                    <div className={styles.label}>Background Image</div>
+                    <p className={styles.materialHint}>
+                      Saved per mood preset. Tune the backdrop image, opacity, scale, and placement.
+                    </p>
+                  </div>
+                  <div className={styles.wallpaperActions}>
+                    <button type="button" className={styles.materialReset} onClick={chooseWallpaperImage}>
+                      Choose
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.materialReset}
+                      onClick={() => {
+                        markEdited();
+                        setWallpaperSettingsForMood(mood, { imagePath: null });
+                      }}
+                      disabled={!wallpaper.imagePath}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+                <div className={styles.wallpaperBox}>
+                  <input
+                    ref={wallpaperFileInputRef}
+                    className={styles.wallpaperFileInput}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/bmp,image/gif"
+                    tabIndex={-1}
+                    onChange={(event) => {
+                      handleBrowserWallpaperFile(event.currentTarget.files?.[0]);
+                      event.currentTarget.value = "";
+                    }}
+                  />
+                  <label className={styles.label} htmlFor="settings-wallpaper-path">
+                    Image path
+                  </label>
+                  <input
+                    id="settings-wallpaper-path"
+                    className={styles.wallpaperInput}
+                    value={wallpaper.imagePath ?? ""}
+                    onChange={(event) => {
+                      markEdited();
+                      const next = event.currentTarget.value.trim();
+                      setWallpaperSettingsForMood(mood, { imagePath: next.length > 0 ? next : null });
+                    }}
+                    placeholder="C:/Users/owner/Pictures/background.jpg"
+                  />
+                  <div className={styles.wallpaperPath} title={wallpaper.imagePath ?? "No image selected"}>
+                    {wallpaper.imagePath ?? "No image selected"}
+                  </div>
+                  <div className={styles.materialRow}>
+                    <label className={styles.materialName} htmlFor="settings-wallpaper-opacity">
+                      Opacity
+                    </label>
+                    <span className={styles.materialColorPreview} aria-hidden="true" />
+                    <input
+                      id="settings-wallpaper-opacity"
+                      className={styles.materialSlider}
+                      type="range"
+                      min={0}
+                      max={0.85}
+                      step={0.01}
+                      value={wallpaper.opacity}
+                      onChange={(e) => {
+                        markEdited();
+                        setWallpaperSettingsForMood(mood, { opacity: Number(e.target.value) });
+                      }}
+                    />
+                    <span className={styles.materialValue}>{Math.round(wallpaper.opacity * 100)}%</span>
+                  </div>
+                  <div className={styles.materialRow}>
+                    <label className={styles.materialName} htmlFor="settings-wallpaper-scale">
+                      Scale
+                    </label>
+                    <span className={styles.materialColorPreview} aria-hidden="true" />
+                    <input
+                      id="settings-wallpaper-scale"
+                      className={styles.materialSlider}
+                      type="range"
+                      min={25}
+                      max={300}
+                      step={1}
+                      value={wallpaper.scale}
+                      onChange={(e) => {
+                        markEdited();
+                        setWallpaperSettingsForMood(mood, { scale: Number(e.target.value) });
+                      }}
+                    />
+                    <span className={styles.materialValue}>{Math.round(wallpaper.scale)}%</span>
+                  </div>
+                  <div className={styles.materialRow}>
+                    <label className={styles.materialName} htmlFor="settings-wallpaper-position-x">
+                      X
+                    </label>
+                    <span className={styles.materialColorPreview} aria-hidden="true" />
+                    <input
+                      id="settings-wallpaper-position-x"
+                      className={styles.materialSlider}
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={wallpaper.positionX}
+                      onChange={(e) => {
+                        markEdited();
+                        setWallpaperSettingsForMood(mood, { positionX: Number(e.target.value) });
+                      }}
+                    />
+                    <span className={styles.materialValue}>{Math.round(wallpaper.positionX)}%</span>
+                  </div>
+                  <div className={styles.materialRow}>
+                    <label className={styles.materialName} htmlFor="settings-wallpaper-position-y">
+                      Y
+                    </label>
+                    <span className={styles.materialColorPreview} aria-hidden="true" />
+                    <input
+                      id="settings-wallpaper-position-y"
+                      className={styles.materialSlider}
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={wallpaper.positionY}
+                      onChange={(e) => {
+                        markEdited();
+                        setWallpaperSettingsForMood(mood, { positionY: Number(e.target.value) });
+                      }}
+                    />
+                    <span className={styles.materialValue}>{Math.round(wallpaper.positionY)}%</span>
+                  </div>
                 </div>
               </div>
               <div className={styles.field}>

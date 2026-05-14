@@ -9,6 +9,8 @@ beforeEach(() => {
   try {
     localStorage.removeItem("aether:themeOverrides");
     localStorage.removeItem("aether:moodPreset");
+    localStorage.removeItem("aether:moodMaterialOverrides");
+    localStorage.removeItem("aether:wallpaperSettingsByMood");
     localStorage.removeItem("aether:workspaceProfiles");
   } catch {
     /* ignore */
@@ -27,6 +29,16 @@ beforeEach(() => {
     openFiles: [],
     activeFile: null,
     moodPresetId: DEFAULT_MOOD_PRESET,
+    moodMaterialOverrides: {},
+    wallpaperSettingsByMood: {
+      "aether-sky": { imagePath: null, opacity: 0, positionX: 50, positionY: 50, scale: 100 },
+      "aether-moonwater": { imagePath: null, opacity: 0, positionX: 50, positionY: 50, scale: 100 },
+      "aether-dream": { imagePath: null, opacity: 0, positionX: 50, positionY: 50, scale: 100 },
+      "aether-cute": { imagePath: null, opacity: 0, positionX: 50, positionY: 50, scale: 100 },
+      "aether-sakura": { imagePath: null, opacity: 0, positionX: 50, positionY: 50, scale: 100 },
+      "aether-obsidian": { imagePath: null, opacity: 0, positionX: 50, positionY: 50, scale: 100 },
+      "aether-pro": { imagePath: null, opacity: 0, positionX: 50, positionY: 50, scale: 100 },
+    },
     themeOverrides: {},
     workspaceProfiles: {
       version: 1,
@@ -71,6 +83,52 @@ describe("appStore — UI visibility", () => {
     setSettingsVisible(true);
     expect(useAppStore.getState().paletteVisible).toBe(true);
     expect(useAppStore.getState().settingsVisible).toBe(true);
+  });
+});
+
+describe("appStore — appearance customization", () => {
+  it("keeps material overrides isolated per mood", () => {
+    const { setMoodMaterialOverride, resetMoodMaterialOverrides } = useAppStore.getState();
+
+    setMoodMaterialOverride("aether-sakura", "panelColor", "#fffafc");
+    setMoodMaterialOverride("aether-pro", "panelColor", "#050d16");
+
+    expect(useAppStore.getState().moodMaterialOverrides["aether-sakura"]?.panelColor).toBe("#fffafc");
+    expect(useAppStore.getState().moodMaterialOverrides["aether-pro"]?.panelColor).toBe("#050d16");
+
+    resetMoodMaterialOverrides("aether-sakura");
+
+    expect(useAppStore.getState().moodMaterialOverrides["aether-sakura"]).toBeUndefined();
+    expect(useAppStore.getState().moodMaterialOverrides["aether-pro"]?.panelColor).toBe("#050d16");
+  });
+
+  it("keeps wallpaper image controls isolated per mood", () => {
+    const { setMoodPresetId, setWallpaperSettingsForMood } = useAppStore.getState();
+
+    setWallpaperSettingsForMood("aether-sakura", {
+      imagePath: "C:/Users/owner/Pictures/sakura.jpg",
+      opacity: 0.45,
+      positionX: 20,
+      positionY: 80,
+      scale: 160,
+    });
+    setWallpaperSettingsForMood("aether-pro", {
+      imagePath: "C:/Users/owner/Pictures/pro.jpg",
+      opacity: 0.12,
+      positionX: 60,
+      positionY: 45,
+      scale: 90,
+    });
+
+    setMoodPresetId("aether-sakura");
+    expect(useAppStore.getState().wallpaperImagePath).toBe("C:/Users/owner/Pictures/sakura.jpg");
+    expect(useAppStore.getState().wallpaperOpacity).toBe(0.45);
+    expect(useAppStore.getState().wallpaperSettingsByMood["aether-sakura"].scale).toBe(160);
+
+    setMoodPresetId("aether-pro");
+    expect(useAppStore.getState().wallpaperImagePath).toBe("C:/Users/owner/Pictures/pro.jpg");
+    expect(useAppStore.getState().wallpaperOpacity).toBe(0.12);
+    expect(useAppStore.getState().wallpaperSettingsByMood["aether-pro"].positionX).toBe(60);
   });
 });
 

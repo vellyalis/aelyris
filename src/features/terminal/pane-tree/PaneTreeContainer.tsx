@@ -1,17 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import type { ShellType } from "../../../App";
 import type { PaneSwitcherEntry } from "./operations";
-import { collectLeafIds, collectPaneSwitcherEntries, countLeaves, findLeaf } from "./operations";
+import { collectLeafIds, collectLeaves, collectPaneSwitcherEntries, countLeaves, findLeaf } from "./operations";
 import { PaneTreeRenderer } from "./PaneTreeRenderer";
 import {
   loadPaneTreeSnapshot,
   loadPaneTreeSnapshotFromBackend,
+  loadPaneTreeSnapshotFromMux,
+  muxWorkspaceIdCandidates,
   type PaneBackendBindingFingerprint,
   type PaneTreeSnapshot,
   savePaneTreeSnapshot,
   savePaneTreeSnapshotToBackend,
 } from "./persistence";
-import type { PaneHealthState, PaneLifecycleState, PaneNode, PaneSessionIntent } from "./types";
+import type { PaneHealthState, PaneLifecycleState, PaneNode, PaneSessionIntent, SplitDirection } from "./types";
 import { usePaneTree } from "./usePaneTree";
 
 export interface PaneFocusRequest {
@@ -54,7 +57,11 @@ export type PaneLayoutCommand =
   | "even-vertical"
   | "tiled"
   | "move-next"
-  | "move-previous";
+  | "move-previous"
+  | "rotate-next"
+  | "rotate-previous"
+  | "sync-panes-on"
+  | "sync-panes-off";
 
 export interface PaneLayoutRequest {
   command: PaneLayoutCommand;
@@ -136,13 +143,15 @@ export function PaneTreeContainer({
     [cwd, layoutStorageKey, shell],
   );
   const hasFastSnapshot = initialSnapshot !== null;
-  const [layoutHydrated, setLayoutHydrated] = useState(() => !layoutStorageKey || hasFastSnapshot);
+  const [layoutHydrated, setLayoutHydrated] = useState(() => !layoutStorageKey);
   const [paneLifecycleStates, setPaneLifecycleStates] = useState<ReadonlyMap<string, PaneLifecycleState>>(
     () => new Map(),
   );
+  const [synchronizedPanes, setSynchronizedPanes] = useState(() => initialSnapshot?.synchronizedPanes === true);
   const [orphanedBackendPanes, setOrphanedBackendPanes] = useState<PaneSwitcherEntry[]>([]);
   const [backendReconciled, setBackendReconciled] = useState(() => !layoutStorageKey);
   const [backendRefreshNonce, setBackendRefreshNonce] = useState(0);
+  const syncModeSequenceRef = useRef(0);
   const {
     tree,
     activePaneId,
@@ -150,12 +159,14 @@ export function PaneTreeContainer({
     terminalIds,
     setActivePaneId,
     split,
+    splitWithExistingTerminal,
     close,
     closeAllPtys,
     resize,
     equalize,
     rebalance,
     moveActive,
+    rotatePanes,
     toggleMaximize,
     renamePane,
     setPaneRole,
@@ -170,6 +181,11 @@ export function PaneTreeContainer({
   });
   const backendBindingsRef = useRef<Record<string, PaneBackendBindingFingerprint> | undefined>(
     initialSnapshot?.backendBindings,
+  );
+  const workspaceTerminalIdRef = useRef<string | null>(
+    initialSnapshot?.muxWorkspaceId ??
+      Object.values(initialSnapshot?.backendBindings ?? {})[0]?.terminalId ??
+      null,
   );
   const pendingBackendSnapshotRef = useRef<PendingBackendPaneTreeSnapshot | null>(null);
   const backendSaveSequenceRef = useRef(0);
@@ -189,22 +205,41 @@ export function PaneTreeContainer({
   );
 
   useEffect(() => {
-    if (!layoutStorageKey || hasFastSnapshot) return;
+    if (!layoutStorageKey) return;
     let cancelled = false;
     setLayoutHydrated(false);
     setBackendReconciled(false);
-    loadPaneTreeSnapshotFromBackend(layoutStorageKey, shell, cwd).then((snapshot) => {
-      if (cancelled) return;
-      if (snapshot) {
-        backendBindingsRef.current = snapshot.backendBindings ?? {};
-        replaceTree(snapshot.tree, snapshot.activePaneId);
+
+    const applySnapshot = (snapshot: PaneTreeSnapshot | null, shouldReplace: boolean) => {
+      if (!snapshot) return;
+      backendBindingsRef.current = snapshot.backendBindings ?? {};
+      workspaceTerminalIdRef.current =
+        snapshot.muxWorkspaceId ?? Object.values(snapshot.backendBindings ?? {})[0]?.terminalId ?? null;
+      setSynchronizedPanes(snapshot.synchronizedPanes === true);
+      if (shouldReplace) replaceTree(snapshot.tree, snapshot.activePaneId);
+    };
+
+    const load = async () => {
+      const backendSnapshot = hasFastSnapshot ? null : await loadPaneTreeSnapshotFromBackend(layoutStorageKey, shell, cwd);
+      const seedSnapshot = initialSnapshot ?? backendSnapshot;
+      let muxSnapshot: PaneTreeSnapshot | null = null;
+      for (const workspaceId of muxWorkspaceIdCandidates(seedSnapshot, layoutStorageKey)) {
+        muxSnapshot = await loadPaneTreeSnapshotFromMux(workspaceId, shell, cwd);
+        if (muxSnapshot) break;
       }
+      if (cancelled) return;
+      const nextSnapshot = muxSnapshot ?? seedSnapshot;
+      applySnapshot(nextSnapshot, nextSnapshot !== initialSnapshot);
       setLayoutHydrated(true);
+    };
+
+    void load().catch(() => {
+      if (!cancelled) setLayoutHydrated(true);
     });
     return () => {
       cancelled = true;
     };
-  }, [cwd, hasFastSnapshot, layoutStorageKey, replaceTree, shell]);
+  }, [cwd, hasFastSnapshot, initialSnapshot, layoutStorageKey, replaceTree, shell]);
 
   useEffect(() => {
     void backendRefreshNonce;
@@ -334,6 +369,7 @@ export function PaneTreeContainer({
     backendBindingsRef.current = backendBindings;
     const sessionId = layoutStorageKey;
     const layoutId = layoutStorageKey;
+    const muxWorkspaceId = workspaceTerminalIdRef.current ?? Object.values(backendBindings ?? {})[0]?.terminalId;
     const paneIntents = buildPaneSessionIntents(
       tree,
       terminalIds,
@@ -343,7 +379,16 @@ export function PaneTreeContainer({
       layoutId,
       activePaneId,
     );
-    const snapshot = { tree, activePaneId, sessionId, layoutId, backendBindings, paneIntents };
+    const snapshot = {
+      tree,
+      activePaneId,
+      sessionId,
+      layoutId,
+      muxWorkspaceId,
+      synchronizedPanes,
+      backendBindings,
+      paneIntents,
+    };
     const pending = {
       storageKey: layoutStorageKey,
       snapshot,
@@ -364,6 +409,7 @@ export function PaneTreeContainer({
     layoutStorageKey,
     paneLifecycleStates,
     projectPath,
+    synchronizedPanes,
     terminalIds,
     tree,
   ]);
@@ -425,6 +471,241 @@ export function PaneTreeContainer({
   const handledRenameSequenceRef = useRef<number | null>(null);
   const handledRoleCycleSequenceRef = useRef<number | null>(null);
   const handledLayoutSequenceRef = useRef<number | null>(null);
+  const firstLiveTerminalId = useMemo(() => {
+    for (const paneId of collectLeafIds(tree)) {
+      const terminalId = terminalIds.get(paneId);
+      if (terminalId) return terminalId;
+    }
+    return null;
+  }, [terminalIds, tree]);
+
+  useEffect(() => {
+    if (!workspaceTerminalIdRef.current && firstLiveTerminalId) {
+      workspaceTerminalIdRef.current = firstLiveTerminalId;
+    }
+  }, [firstLiveTerminalId]);
+
+  const splitViaMux = useCallback(
+    (targetId: string, direction: SplitDirection) => {
+      const targetLeaf = findLeaf(tree, targetId);
+      const targetTerminalId = terminalIds.get(targetId);
+      const workspaceId = workspaceTerminalIdRef.current ?? firstLiveTerminalId ?? targetTerminalId;
+      if (!targetLeaf) return;
+      if (!targetTerminalId || !workspaceId) {
+        console.warn("mux split unavailable; applying local split recovery", {
+          targetId,
+          direction,
+          hasTargetTerminalId: Boolean(targetTerminalId),
+          hasWorkspaceId: Boolean(workspaceId),
+        });
+        split(targetId, direction);
+        return;
+      }
+
+      const axis = direction === "left" || direction === "right" ? "horizontal" : "vertical";
+      const invokeMuxSplit = (candidateWorkspaceId: string) =>
+        invoke<string>("mux_split_pane", {
+          workspaceId: candidateWorkspaceId,
+          targetPaneId: targetTerminalId,
+          axis,
+          shell: targetLeaf.shell,
+          cwd: targetLeaf.cwd ?? cwd,
+          cols: 80,
+          rows: 24,
+        });
+      const attachMuxPane = (terminalId: string, boundWorkspaceId: string) => {
+        workspaceTerminalIdRef.current = boundWorkspaceId;
+        splitWithExistingTerminal(targetId, direction, terminalId, targetLeaf.shell, targetLeaf.cwd ?? cwd);
+        setPaneLifecycleStates((prev) => {
+          const next = new Map(prev);
+          next.set(terminalId, "live");
+          return next;
+        });
+      };
+
+      invokeMuxSplit(workspaceId)
+        .then((terminalId) => {
+          attachMuxPane(terminalId, workspaceId);
+        })
+        .catch((err) => {
+          const retryWorkspaceId =
+            firstLiveTerminalId && firstLiveTerminalId !== workspaceId ? firstLiveTerminalId : null;
+          if (retryWorkspaceId) {
+            console.warn("mux split failed; retrying with live workspace", {
+              workspaceId,
+              retryWorkspaceId,
+              err,
+            });
+            invokeMuxSplit(retryWorkspaceId)
+              .then((terminalId) => {
+                attachMuxPane(terminalId, retryWorkspaceId);
+              })
+              .catch((retryErr) => {
+                console.warn("mux split failed after live workspace retry", retryErr);
+                split(targetId, direction);
+            });
+            return;
+          }
+          console.warn("mux split failed", err);
+          split(targetId, direction);
+        });
+    },
+    [cwd, firstLiveTerminalId, split, splitWithExistingTerminal, terminalIds, tree],
+  );
+
+  const closeViaMux = useCallback(
+    (paneId: string) => {
+      const terminalId = terminalIds.get(paneId);
+      const workspaceId = workspaceTerminalIdRef.current ?? firstLiveTerminalId;
+      if (!terminalId || !workspaceId) {
+        close(paneId);
+        return;
+      }
+
+      const invokeMuxClose = (candidateWorkspaceId: string) =>
+        invoke("mux_close_pane", { workspaceId: candidateWorkspaceId, paneId: terminalId });
+      const detachMuxPane = (boundWorkspaceId: string) => {
+        workspaceTerminalIdRef.current = boundWorkspaceId;
+        close(paneId, { closeBackend: false });
+      };
+
+      invokeMuxClose(workspaceId)
+        .then(() => {
+          detachMuxPane(workspaceId);
+        })
+        .catch((err) => {
+          const retryWorkspaceId =
+            firstLiveTerminalId && firstLiveTerminalId !== workspaceId ? firstLiveTerminalId : null;
+          if (retryWorkspaceId) {
+            console.warn("mux pane close failed; retrying with live workspace", {
+              workspaceId,
+              retryWorkspaceId,
+              err,
+            });
+            invokeMuxClose(retryWorkspaceId)
+              .then(() => {
+                detachMuxPane(retryWorkspaceId);
+              })
+              .catch((retryErr) => {
+                console.warn("mux pane close failed after live workspace retry", retryErr);
+                close(paneId);
+              });
+            return;
+          }
+          console.warn("mux pane close failed", err);
+          close(paneId);
+        });
+    },
+    [close, firstLiveTerminalId, terminalIds],
+  );
+
+  const applyLocalLayoutCommand = useCallback(
+    (command: PaneLayoutCommand) => {
+      switch (command) {
+        case "equalize":
+          equalize();
+          break;
+        case "even-horizontal":
+          rebalance("horizontal");
+          break;
+        case "even-vertical":
+          rebalance("vertical");
+          break;
+        case "tiled":
+          rebalance("tiled");
+          break;
+        case "move-next":
+          moveActive(1);
+          break;
+        case "move-previous":
+          moveActive(-1);
+          break;
+        case "rotate-next":
+          rotatePanes(1);
+          break;
+        case "rotate-previous":
+          rotatePanes(-1);
+          break;
+        case "sync-panes-on":
+        case "sync-panes-off":
+          break;
+      }
+    },
+    [equalize, moveActive, rebalance, rotatePanes],
+  );
+
+  const applyLayoutViaMux = useCallback(
+    (command: PaneLayoutCommand) => {
+      const workspaceId = workspaceTerminalIdRef.current ?? firstLiveTerminalId;
+      if (command === "sync-panes-on" || command === "sync-panes-off") {
+        if (!workspaceId) return;
+        const enabled = command === "sync-panes-on";
+        const sequence = syncModeSequenceRef.current + 1;
+        syncModeSequenceRef.current = sequence;
+        setSynchronizedPanes(enabled);
+        invoke("mux_set_panes_synchronized", {
+          workspaceId,
+          enabled,
+        }).catch((err) => {
+          if (syncModeSequenceRef.current === sequence) setSynchronizedPanes(!enabled);
+          console.warn("mux synchronized panes failed", err);
+        });
+        return;
+      }
+
+      if (!workspaceId || terminalIds.size === 0) {
+        applyLocalLayoutCommand(command);
+        return;
+      }
+
+      if (command === "move-next" || command === "move-previous") {
+        if (!activePaneId) return;
+        const leaves = collectLeaves(tree);
+        if (leaves.length <= 1) return;
+        const currentIndex = leaves.findIndex((leaf) => leaf.id === activePaneId);
+        if (currentIndex < 0) return;
+        const delta = command === "move-next" ? 1 : -1;
+        const targetPaneId = leaves[(currentIndex + delta + leaves.length) % leaves.length]?.id;
+        const firstPaneId = terminalIds.get(activePaneId);
+        const secondPaneId = targetPaneId ? terminalIds.get(targetPaneId) : undefined;
+        if (!firstPaneId || !secondPaneId) {
+          console.warn("mux swap skipped because pane PTY binding is missing", { activePaneId, targetPaneId });
+          return;
+        }
+        invoke("mux_swap_panes", { workspaceId, firstPaneId, secondPaneId })
+          .then(() => applyLocalLayoutCommand(command))
+          .catch((err) => {
+            console.warn("mux swap failed", err);
+          });
+        return;
+      }
+
+      invoke("mux_apply_layout", { workspaceId, command })
+        .then(() => applyLocalLayoutCommand(command))
+        .catch((err) => {
+          console.warn("mux layout failed", err);
+        });
+    },
+    [activePaneId, applyLocalLayoutCommand, firstLiveTerminalId, terminalIds, tree],
+  );
+
+  const toggleMaximizeViaMux = useCallback(
+    (paneId: string) => {
+      const workspaceId = workspaceTerminalIdRef.current ?? firstLiveTerminalId;
+      const backendPaneId = terminalIds.get(paneId);
+      if (!workspaceId || !backendPaneId) {
+        toggleMaximize(paneId);
+        return;
+      }
+      const zoomed = maximizedPaneId !== paneId;
+      invoke("mux_set_pane_zoom", { workspaceId, paneId: backendPaneId, zoomed })
+        .then(() => toggleMaximize(paneId))
+        .catch((err) => {
+          console.warn("mux pane zoom failed", err);
+        });
+    },
+    [firstLiveTerminalId, maximizedPaneId, terminalIds, toggleMaximize],
+  );
 
   useEffect(() => {
     if (!focusPaneRequest) return;
@@ -439,8 +720,8 @@ export function PaneTreeContainer({
     if (handledCloseSequenceRef.current === closePaneRequest.sequence) return;
     handledCloseSequenceRef.current = closePaneRequest.sequence;
     if (!findLeaf(tree, closePaneRequest.paneId)) return;
-    close(closePaneRequest.paneId);
-  }, [close, closePaneRequest, tree]);
+    closeViaMux(closePaneRequest.paneId);
+  }, [closePaneRequest, closeViaMux, tree]);
 
   useEffect(() => {
     if (!restartPaneRequest) return;
@@ -514,27 +795,8 @@ export function PaneTreeContainer({
     if (!layoutRequest) return;
     if (handledLayoutSequenceRef.current === layoutRequest.sequence) return;
     handledLayoutSequenceRef.current = layoutRequest.sequence;
-    switch (layoutRequest.command) {
-      case "equalize":
-        equalize();
-        break;
-      case "even-horizontal":
-        rebalance("horizontal");
-        break;
-      case "even-vertical":
-        rebalance("vertical");
-        break;
-      case "tiled":
-        rebalance("tiled");
-        break;
-      case "move-next":
-        moveActive(1);
-        break;
-      case "move-previous":
-        moveActive(-1);
-        break;
-    }
-  }, [equalize, layoutRequest, moveActive, rebalance]);
+    applyLayoutViaMux(layoutRequest.command);
+  }, [applyLayoutViaMux, layoutRequest]);
 
   const backendPaneRouting = useMemo(() => collectBackendPaneRouting(tree), [tree]);
   const renamedBackendNames = useRef(new Map<string, string>());
@@ -585,33 +847,13 @@ export function PaneTreeContainer({
       maximizedPaneId={maximizedPaneId}
       terminalIds={terminalIds}
       paneLifecycleStates={paneLifecycleStates}
+      synchronizedPanes={synchronizedPanes}
       onFocusPane={setActivePaneId}
-      onSplit={split}
-      onClose={close}
+      onSplit={splitViaMux}
+      onClose={closeViaMux}
       onResize={resize}
-      onLayoutCommand={(command) => {
-        switch (command) {
-          case "equalize":
-            equalize();
-            break;
-          case "even-horizontal":
-            rebalance("horizontal");
-            break;
-          case "even-vertical":
-            rebalance("vertical");
-            break;
-          case "tiled":
-            rebalance("tiled");
-            break;
-          case "move-next":
-            moveActive(1);
-            break;
-          case "move-previous":
-            moveActive(-1);
-            break;
-        }
-      }}
-      onToggleMaximize={toggleMaximize}
+      onLayoutCommand={applyLayoutViaMux}
+      onToggleMaximize={toggleMaximizeViaMux}
       onRenamePane={renamePane}
       onCyclePaneRole={cyclePaneRole}
       onSetPaneRole={setPaneRole}

@@ -12,14 +12,49 @@ import {
   type WorkspaceThreadRunState,
 } from "../lib/workspaceProfile";
 import { ACCENT_KEYS, isValidHex, normalizeHex, type AccentKey, type AccentOverrides } from "../themes/catppuccin";
-import { DEFAULT_MOOD_PRESET, type MoodPresetId, normalizeMoodPreset } from "../themes/moods";
+import {
+  DEFAULT_MOOD_PRESET,
+  MOOD_MATERIAL_DEFAULTS,
+  MOOD_PRESETS,
+  type MoodPresetId,
+  type MoodMaterialKey,
+  type MoodMaterialOverrides,
+  type SakuraMaterialKey,
+  type SakuraMaterialOverrides,
+  SAKURA_MATERIAL_ALPHA_KEYS,
+  SAKURA_MATERIAL_COLOR_KEYS,
+  normalizeMoodPreset,
+  sanitizeMaterialOverrides,
+  sanitizeSakuraMaterialOverrides,
+} from "../themes/moods";
 import type { KanbanColumnId, KanbanTask } from "../types/kanban";
 
 export type SidebarSection = "files" | "tasks" | "agents" | "tools";
 
 const THEME_OVERRIDES_KEY = "aether:themeOverrides";
 const MOOD_PRESET_KEY = "aether:moodPreset";
+const SAKURA_MATERIAL_OVERRIDES_KEY = "aether:sakuraMaterialOverrides";
+const MOOD_MATERIAL_OVERRIDES_KEY = "aether:moodMaterialOverrides";
+const WALLPAPER_IMAGE_KEY = "aether:wallpaperImagePath";
+const WALLPAPER_OPACITY_KEY = "aether:wallpaperOpacity";
+const WALLPAPER_SETTINGS_KEY = "aether:wallpaperSettingsByMood";
 const WORKSPACE_PROFILES_KEY = "aether:workspaceProfiles";
+
+export interface WallpaperSettings {
+  imagePath: string | null;
+  opacity: number;
+  positionX: number;
+  positionY: number;
+  scale: number;
+}
+
+const DEFAULT_WALLPAPER_SETTINGS: WallpaperSettings = {
+  imagePath: null,
+  opacity: 0,
+  positionX: 50,
+  positionY: 50,
+  scale: 100,
+};
 
 function reportStorageFailure(operation: string, err: unknown, severity: "info" | "warning" = "warning"): void {
   reportFallback(
@@ -70,6 +105,153 @@ function persistThemeOverrides(state: Record<string, AccentOverrides>): void {
   }
 }
 
+function loadSakuraMaterialOverrides(): SakuraMaterialOverrides {
+  try {
+    const raw = localStorage.getItem(SAKURA_MATERIAL_OVERRIDES_KEY);
+    if (!raw) return {};
+    return sanitizeSakuraMaterialOverrides(JSON.parse(raw) as unknown);
+  } catch (err) {
+    reportStorageFailure("load_sakura_material_overrides", err);
+    return {};
+  }
+}
+
+function persistSakuraMaterialOverrides(state: SakuraMaterialOverrides): void {
+  try {
+    if (Object.keys(state).length === 0) {
+      localStorage.removeItem(SAKURA_MATERIAL_OVERRIDES_KEY);
+      return;
+    }
+    localStorage.setItem(SAKURA_MATERIAL_OVERRIDES_KEY, JSON.stringify(state));
+  } catch (err) {
+    reportStorageFailure("persist_sakura_material_overrides", err);
+  }
+}
+
+function loadMoodMaterialOverrides(): Partial<Record<MoodPresetId, MoodMaterialOverrides>> {
+  const cleaned: Partial<Record<MoodPresetId, MoodMaterialOverrides>> = {};
+  try {
+    const raw = localStorage.getItem(MOOD_MATERIAL_OVERRIDES_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        for (const preset of MOOD_PRESETS) {
+          const value = (parsed as Record<string, unknown>)[preset.id];
+          const next = sanitizeMaterialOverrides(value, MOOD_MATERIAL_DEFAULTS[preset.id]);
+          if (Object.keys(next).length > 0) cleaned[preset.id] = next;
+        }
+      }
+    }
+    if (!cleaned["aether-sakura"]) {
+      const legacy = loadSakuraMaterialOverrides();
+      if (Object.keys(legacy).length > 0) cleaned["aether-sakura"] = legacy;
+    }
+  } catch (err) {
+    reportStorageFailure("load_mood_material_overrides", err);
+  }
+  return cleaned;
+}
+
+function persistMoodMaterialOverrides(state: Partial<Record<MoodPresetId, MoodMaterialOverrides>>): void {
+  try {
+    const next: Partial<Record<MoodPresetId, MoodMaterialOverrides>> = {};
+    for (const preset of MOOD_PRESETS) {
+      const clean = sanitizeMaterialOverrides(state[preset.id], MOOD_MATERIAL_DEFAULTS[preset.id]);
+      if (Object.keys(clean).length > 0) next[preset.id] = clean;
+    }
+    if (Object.keys(next).length === 0) {
+      localStorage.removeItem(MOOD_MATERIAL_OVERRIDES_KEY);
+      return;
+    }
+    localStorage.setItem(MOOD_MATERIAL_OVERRIDES_KEY, JSON.stringify(next));
+  } catch (err) {
+    reportStorageFailure("persist_mood_material_overrides", err);
+  }
+}
+
+function sanitizeWallpaperSettings(value: unknown): Partial<WallpaperSettings> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const record = value as Record<string, unknown>;
+  const next: Partial<WallpaperSettings> = {};
+  if (typeof record.imagePath === "string" && record.imagePath.trim()) next.imagePath = record.imagePath.trim();
+  if (record.imagePath === null) next.imagePath = null;
+  if (typeof record.opacity === "number" && Number.isFinite(record.opacity)) {
+    next.opacity = Math.min(0.85, Math.max(0, record.opacity));
+  }
+  if (typeof record.positionX === "number" && Number.isFinite(record.positionX)) {
+    next.positionX = Math.min(100, Math.max(0, record.positionX));
+  }
+  if (typeof record.positionY === "number" && Number.isFinite(record.positionY)) {
+    next.positionY = Math.min(100, Math.max(0, record.positionY));
+  }
+  if (typeof record.scale === "number" && Number.isFinite(record.scale)) {
+    next.scale = Math.min(300, Math.max(25, record.scale));
+  }
+  return next;
+}
+
+function normalizeWallpaperSettings(value: unknown): WallpaperSettings {
+  return { ...DEFAULT_WALLPAPER_SETTINGS, ...sanitizeWallpaperSettings(value) };
+}
+
+function loadWallpaperSettingsByMood(): Record<MoodPresetId, WallpaperSettings> {
+  const next = Object.fromEntries(
+    MOOD_PRESETS.map((preset) => [preset.id, { ...DEFAULT_WALLPAPER_SETTINGS }]),
+  ) as Record<MoodPresetId, WallpaperSettings>;
+  try {
+    const raw = localStorage.getItem(WALLPAPER_SETTINGS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        for (const preset of MOOD_PRESETS) {
+          next[preset.id] = normalizeWallpaperSettings((parsed as Record<string, unknown>)[preset.id]);
+        }
+      }
+    }
+    const legacyPath = localStorage.getItem(WALLPAPER_IMAGE_KEY);
+    const legacyOpacity = Number(localStorage.getItem(WALLPAPER_OPACITY_KEY));
+    if (legacyPath?.trim()) {
+      const mood = normalizeMoodPreset(localStorage.getItem(MOOD_PRESET_KEY));
+      next[mood] = {
+        ...next[mood],
+        imagePath: legacyPath.trim(),
+        opacity: Number.isFinite(legacyOpacity) ? Math.min(0.85, Math.max(0, legacyOpacity)) : next[mood].opacity,
+      };
+    }
+  } catch (err) {
+    reportStorageFailure("load_wallpaper_settings", err);
+  }
+  return next;
+}
+
+function persistWallpaperSettingsByMood(state: Record<MoodPresetId, WallpaperSettings>): void {
+  try {
+    const compact: Partial<Record<MoodPresetId, WallpaperSettings>> = {};
+    for (const preset of MOOD_PRESETS) {
+      const settings = normalizeWallpaperSettings(state[preset.id]);
+      const persistedSettings = settings.imagePath?.startsWith("blob:")
+        ? { ...settings, imagePath: null }
+        : settings;
+      if (
+        persistedSettings.imagePath ||
+        persistedSettings.opacity !== DEFAULT_WALLPAPER_SETTINGS.opacity ||
+        persistedSettings.positionX !== DEFAULT_WALLPAPER_SETTINGS.positionX ||
+        persistedSettings.positionY !== DEFAULT_WALLPAPER_SETTINGS.positionY ||
+        persistedSettings.scale !== DEFAULT_WALLPAPER_SETTINGS.scale
+      ) {
+        compact[preset.id] = persistedSettings;
+      }
+    }
+    if (Object.keys(compact).length === 0) {
+      localStorage.removeItem(WALLPAPER_SETTINGS_KEY);
+      return;
+    }
+    localStorage.setItem(WALLPAPER_SETTINGS_KEY, JSON.stringify(compact));
+  } catch (err) {
+    reportStorageFailure("persist_wallpaper_settings", err);
+  }
+}
+
 interface AppState {
   // Theme
   themeId: string;
@@ -84,6 +266,20 @@ interface AppState {
   setAccentOverride: (themeId: string, key: AccentKey, value: string | undefined) => void;
   /** Drop all overrides for the given theme. */
   resetThemeOverrides: (themeId: string) => void;
+  /** User-tunable material tokens for each mood preset. */
+  moodMaterialOverrides: Partial<Record<MoodPresetId, MoodMaterialOverrides>>;
+  setMoodMaterialOverride: (mood: MoodPresetId, key: MoodMaterialKey, value: string | number | undefined) => void;
+  resetMoodMaterialOverrides: (mood: MoodPresetId) => void;
+  /** Legacy Sakura aliases kept so older tests and stored state keep working. */
+  sakuraMaterialOverrides: SakuraMaterialOverrides;
+  setSakuraMaterialOverride: (key: SakuraMaterialKey, value: string | number | undefined) => void;
+  resetSakuraMaterialOverrides: () => void;
+  wallpaperImagePath: string | null;
+  wallpaperOpacity: number;
+  wallpaperSettingsByMood: Record<MoodPresetId, WallpaperSettings>;
+  setWallpaperSettingsForMood: (mood: MoodPresetId, patch: Partial<WallpaperSettings>) => void;
+  setWallpaperImagePath: (path: string | null) => void;
+  setWallpaperOpacity: (opacity: number) => void;
 
   // Project
   rootProjectPath: string | null;
@@ -325,7 +521,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   })(),
   setMoodPresetId: (id) => {
     const next = normalizeMoodPreset(id);
-    set({ moodPresetId: next });
+    const wallpaper = get().wallpaperSettingsByMood?.[next] ?? DEFAULT_WALLPAPER_SETTINGS;
+    set({ moodPresetId: next, wallpaperImagePath: wallpaper.imagePath, wallpaperOpacity: wallpaper.opacity });
     try {
       localStorage.setItem(MOOD_PRESET_KEY, next);
     } catch (err) {
@@ -360,6 +557,134 @@ export const useAppStore = create<AppState>((set, get) => ({
       persistThemeOverrides(nextAll);
       return { themeOverrides: nextAll };
     }),
+  moodMaterialOverrides: loadMoodMaterialOverrides(),
+  setMoodMaterialOverride: (mood, key, value) =>
+    set((s) => {
+      const preset = normalizeMoodPreset(mood);
+      const current = s.moodMaterialOverrides[preset] ?? {};
+      const nextForMood = { ...current } as Record<string, string | number>;
+      if (value === undefined || value === "") {
+        delete nextForMood[key];
+      } else if (SAKURA_MATERIAL_COLOR_KEYS.includes(key as (typeof SAKURA_MATERIAL_COLOR_KEYS)[number])) {
+        nextForMood[key] = String(value);
+      } else if (SAKURA_MATERIAL_ALPHA_KEYS.includes(key as (typeof SAKURA_MATERIAL_ALPHA_KEYS)[number])) {
+        nextForMood[key] = Number(value);
+      }
+      const cleanedForMood = sanitizeMaterialOverrides(nextForMood, MOOD_MATERIAL_DEFAULTS[preset]);
+      const nextAll = { ...s.moodMaterialOverrides };
+      if (Object.keys(cleanedForMood).length > 0) nextAll[preset] = cleanedForMood;
+      else delete nextAll[preset];
+      persistMoodMaterialOverrides(nextAll);
+      if (preset === "aether-sakura") persistSakuraMaterialOverrides(cleanedForMood);
+      return {
+        moodMaterialOverrides: nextAll,
+        ...(preset === "aether-sakura" ? { sakuraMaterialOverrides: cleanedForMood } : {}),
+      };
+    }),
+  resetMoodMaterialOverrides: (mood) =>
+    set((s) => {
+      const preset = normalizeMoodPreset(mood);
+      const nextAll = { ...s.moodMaterialOverrides };
+      delete nextAll[preset];
+      persistMoodMaterialOverrides(nextAll);
+      if (preset === "aether-sakura") persistSakuraMaterialOverrides({});
+      return {
+        moodMaterialOverrides: nextAll,
+        ...(preset === "aether-sakura" ? { sakuraMaterialOverrides: {} } : {}),
+      };
+    }),
+  sakuraMaterialOverrides: loadMoodMaterialOverrides()["aether-sakura"] ?? {},
+  setSakuraMaterialOverride: (key, value) =>
+    set((s) => {
+      const next = { ...s.sakuraMaterialOverrides } as Record<string, string | number>;
+      if (value === undefined || value === "") {
+        delete next[key];
+      } else if (SAKURA_MATERIAL_COLOR_KEYS.includes(key as (typeof SAKURA_MATERIAL_COLOR_KEYS)[number])) {
+        next[key] = String(value);
+      } else if (SAKURA_MATERIAL_ALPHA_KEYS.includes(key as (typeof SAKURA_MATERIAL_ALPHA_KEYS)[number])) {
+        next[key] = Number(value);
+      }
+      const cleaned = sanitizeSakuraMaterialOverrides(next);
+      persistSakuraMaterialOverrides(cleaned);
+      const nextAll = { ...s.moodMaterialOverrides };
+      if (Object.keys(cleaned).length > 0) nextAll["aether-sakura"] = cleaned;
+      else delete nextAll["aether-sakura"];
+      persistMoodMaterialOverrides(nextAll);
+      return { sakuraMaterialOverrides: cleaned, moodMaterialOverrides: nextAll };
+    }),
+  resetSakuraMaterialOverrides: () => {
+    persistSakuraMaterialOverrides({});
+    set((s) => {
+      const nextAll = { ...s.moodMaterialOverrides };
+      delete nextAll["aether-sakura"];
+      persistMoodMaterialOverrides(nextAll);
+      return { sakuraMaterialOverrides: {}, moodMaterialOverrides: nextAll };
+    });
+  },
+  wallpaperImagePath: (() => {
+    try {
+      const value = localStorage.getItem(WALLPAPER_IMAGE_KEY);
+      return value && value.trim() ? value : null;
+    } catch {
+      return null;
+    }
+  })(),
+  wallpaperOpacity: (() => {
+    try {
+      const value = Number(localStorage.getItem(WALLPAPER_OPACITY_KEY));
+      return Number.isFinite(value) ? Math.min(0.85, Math.max(0, value)) : 0;
+    } catch {
+      return 0;
+    }
+  })(),
+  wallpaperSettingsByMood: loadWallpaperSettingsByMood(),
+  setWallpaperSettingsForMood: (mood, patch) =>
+    set((s) => {
+      const preset = normalizeMoodPreset(mood);
+      const current = s.wallpaperSettingsByMood[preset] ?? DEFAULT_WALLPAPER_SETTINGS;
+      const nextForMood = normalizeWallpaperSettings({ ...current, ...patch });
+      const nextAll = { ...s.wallpaperSettingsByMood, [preset]: nextForMood };
+      persistWallpaperSettingsByMood(nextAll);
+      return {
+        wallpaperSettingsByMood: nextAll,
+        ...(preset === s.moodPresetId
+          ? { wallpaperImagePath: nextForMood.imagePath, wallpaperOpacity: nextForMood.opacity }
+          : {}),
+      };
+    }),
+  setWallpaperImagePath: (path) => {
+    const next = path?.trim() ? path.trim() : null;
+    set((s) => {
+      const preset = s.moodPresetId;
+      const current = s.wallpaperSettingsByMood[preset] ?? DEFAULT_WALLPAPER_SETTINGS;
+      const nextForMood = { ...current, imagePath: next };
+      const nextAll = { ...s.wallpaperSettingsByMood, [preset]: nextForMood };
+      persistWallpaperSettingsByMood(nextAll);
+      return { wallpaperImagePath: next, wallpaperSettingsByMood: nextAll };
+    });
+    try {
+      if (next) localStorage.setItem(WALLPAPER_IMAGE_KEY, next);
+      else localStorage.removeItem(WALLPAPER_IMAGE_KEY);
+    } catch (err) {
+      reportStorageFailure("persist_wallpaper_image", err);
+    }
+  },
+  setWallpaperOpacity: (opacity) => {
+    const next = Number.isFinite(opacity) ? Math.min(0.85, Math.max(0, opacity)) : 0;
+    set((s) => {
+      const preset = s.moodPresetId;
+      const current = s.wallpaperSettingsByMood[preset] ?? DEFAULT_WALLPAPER_SETTINGS;
+      const nextForMood = { ...current, opacity: next };
+      const nextAll = { ...s.wallpaperSettingsByMood, [preset]: nextForMood };
+      persistWallpaperSettingsByMood(nextAll);
+      return { wallpaperOpacity: next, wallpaperSettingsByMood: nextAll };
+    });
+    try {
+      localStorage.setItem(WALLPAPER_OPACITY_KEY, String(next));
+    } catch (err) {
+      reportStorageFailure("persist_wallpaper_opacity", err);
+    }
+  },
 
   // Project
   rootProjectPath: (() => {

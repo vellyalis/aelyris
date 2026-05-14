@@ -237,6 +237,44 @@ const defaultWriteBytes: WriteBytesFn = (id, data) => {
   });
 };
 
+function isTerminalPrefixKey(e: KeyboardEvent): boolean {
+  return e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && (e.key === "b" || e.key === "B");
+}
+
+function dispatchTerminalPrefixCommand(textarea: HTMLTextAreaElement, terminalId: string, command: string): void {
+  textarea.dispatchEvent(
+    new CustomEvent(TERMINAL_PREFIX_COMMAND_EVENT, {
+      bubbles: true,
+      detail: { terminalId, command },
+    }),
+  );
+}
+
+function resolveMuxKeymapEvent(terminalId: string, e: KeyboardEvent): Promise<string | null> {
+  return invoke<MuxKeymapResponse>("mux_process_keymap_event", {
+    terminalId,
+    key: e.key,
+    ctrlKey: e.ctrlKey,
+    altKey: e.altKey,
+    shiftKey: e.shiftKey,
+    metaKey: e.metaKey,
+  })
+    .then((response) =>
+      response.kind === "dispatch" && typeof response.command === "string" && response.command.length > 0
+        ? response.command
+        : null,
+    )
+    .catch((err) => {
+      reportInvokeFailure({
+        source: "terminal-ime",
+        operation: "mux_process_keymap_event",
+        err,
+        severity: "warning",
+      });
+      return null;
+    });
+}
+
 function dispatchPasteGuardEvent(
   textarea: HTMLTextAreaElement,
   terminalId: string,
@@ -314,17 +352,11 @@ export interface UseCanvasIMEArgs {
   onCompositionTextChange?: (text: string) => void;
 }
 
-type TerminalPrefixCommand =
-  | "split-right"
-  | "split-down"
-  | "close"
-  | "toggle-maximize"
-  | "focus-next"
-  | "focus-previous"
-  | "move-next"
-  | "move-previous"
-  | "equalize"
-  | "tiled";
+interface MuxKeymapResponse {
+  kind: "prefixStarted" | "sequencePending" | "dispatch" | "tableChanged" | "passThrough" | "cancelled" | "timeout";
+  table?: string | null;
+  command?: string | null;
+}
 
 export function useCanvasIME({
   terminalId,
@@ -430,30 +462,25 @@ export function useCanvasIME({
         prefixArmedRef.current = false;
         e.preventDefault();
         e.stopPropagation();
-        const command = prefixCommandFromKey(e.key);
-        if (command) {
-          textarea.dispatchEvent(
-            new CustomEvent(TERMINAL_PREFIX_COMMAND_EVENT, {
-              bubbles: true,
-              detail: { terminalId, command },
-            }),
-          );
-        }
+        void resolveMuxKeymapEvent(terminalId, e).then((command) => {
+          if (command) dispatchTerminalPrefixCommand(textarea, terminalId, command);
+        });
         recordImeDiagnostic(textarea, terminalId, composingRef.current, {
           phase: "keydown",
-          writePath: command ? "terminal-prefix" : "ignored",
+          writePath: "terminal-prefix",
           key: e.key,
           keyCode: e.keyCode,
           isComposing: e.isComposing,
           ignored: true,
-          reason: command ? "terminal-prefix-command" : "terminal-prefix-unmapped",
+          reason: "terminal-prefix-command",
         });
         return;
       }
-      if (e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && (e.key === "b" || e.key === "B")) {
+      if (isTerminalPrefixKey(e)) {
         prefixArmedRef.current = true;
         e.preventDefault();
         e.stopPropagation();
+        void resolveMuxKeymapEvent(terminalId, e);
         recordImeDiagnostic(textarea, terminalId, composingRef.current, {
           phase: "keydown",
           writePath: "terminal-prefix",
@@ -784,33 +811,6 @@ export function useCanvasIME({
   }, [terminalId, textarea]);
 }
 
-function prefixCommandFromKey(key: string): TerminalPrefixCommand | null {
-  switch (key) {
-    case "%":
-      return "split-right";
-    case '"':
-      return "split-down";
-    case "x":
-      return "close";
-    case "z":
-      return "toggle-maximize";
-    case "n":
-      return "focus-next";
-    case "p":
-      return "focus-previous";
-    case "}":
-      return "move-next";
-    case "{":
-      return "move-previous";
-    case "=":
-      return "equalize";
-    case " ":
-      return "tiled";
-    default:
-      return null;
-  }
-}
-
 export interface UseImePositionArgs {
   /** Textarea element (position source). */
   textarea: HTMLTextAreaElement | null;
@@ -854,10 +854,38 @@ export function imeCandidateAnchorX(caretX: number, canvasWidth: number): number
   return Math.min(safeCaret, guardedRight);
 }
 
+export function imeCandidateAnchorXForViewport(
+  caretX: number,
+  canvasLeft: number,
+  canvasWidth: number,
+  viewportLeft: number,
+  viewportWidth: number,
+): number {
+  const safeCanvasLeft = Number.isFinite(canvasLeft) ? canvasLeft : 0;
+  const safeViewportLeft = Number.isFinite(viewportLeft) ? viewportLeft : 0;
+  const safeViewportWidth = Number.isFinite(viewportWidth) ? Math.max(0, viewportWidth) : 0;
+  const viewportGuardedRight = safeViewportLeft + Math.max(0, safeViewportWidth - CANDIDATE_POPUP_GUARD_PX);
+  const localAnchor = imeCandidateAnchorX(caretX, canvasWidth);
+  const guardedScreenAnchor = Math.min(safeCanvasLeft + localAnchor, viewportGuardedRight);
+  return Math.max(0, guardedScreenAnchor - safeCanvasLeft);
+}
+
 export function imeCandidateAnchorY(screenY: number, viewportHeight: number): number {
   const safeViewportHeight = Number.isFinite(viewportHeight) ? Math.max(0, viewportHeight) : 0;
   const safeScreenY = Number.isFinite(screenY) ? Math.max(0, screenY) : 0;
   const guardedBottom = Math.max(0, safeViewportHeight - CANDIDATE_POPUP_HEIGHT_GUARD_PX);
+  return Math.min(safeScreenY, guardedBottom);
+}
+
+export function imeCandidateAnchorYForViewport(
+  screenY: number,
+  viewportTop: number,
+  viewportHeight: number,
+): number {
+  const safeViewportTop = Number.isFinite(viewportTop) ? viewportTop : 0;
+  const safeViewportHeight = Number.isFinite(viewportHeight) ? Math.max(0, viewportHeight) : 0;
+  const safeScreenY = Number.isFinite(screenY) ? Math.max(0, screenY) : 0;
+  const guardedBottom = safeViewportTop + Math.max(0, safeViewportHeight - CANDIDATE_POPUP_HEIGHT_GUARD_PX);
   return Math.min(safeScreenY, guardedBottom);
 }
 
@@ -878,6 +906,16 @@ export function imeTextareaCaretInset(caretX: number, anchorX: number, canvasWid
 function rememberImeCandidateAnchor(textarea: HTMLTextAreaElement, candidateX: number, candidateY: number) {
   textarea.dataset.imeCandidateX = `${Math.round(candidateX)}`;
   textarea.dataset.imeCandidateY = `${Math.round(candidateY)}`;
+}
+
+function currentImeViewport(): { left: number; top: number; width: number; height: number } {
+  const viewport = window.visualViewport;
+  return {
+    left: viewport?.offsetLeft ?? 0,
+    top: viewport?.offsetTop ?? 0,
+    width: viewport?.width ?? window.innerWidth,
+    height: viewport?.height ?? window.innerHeight,
+  };
 }
 
 /**
@@ -918,15 +956,22 @@ export function useImePosition({ textarea, cursor, cols, rows, cellWidth, cellHe
     const canvasWidth = cols * cellWidth;
     const caretX = safeCursor.col * cellWidth;
     const caretY = safeCursor.row * cellHeight + cellHeight;
-    const candidateX = imeCandidateAnchorX(caretX, canvasWidth);
+    const viewport = currentImeViewport();
+    const candidateX = imeCandidateAnchorXForViewport(
+      caretX,
+      rect.left,
+      canvasWidth,
+      viewport.left,
+      viewport.width,
+    );
     const screenX = rect.left + caretX;
     const screenY = rect.top + caretY;
     const candidateScreenX = rect.left + candidateX;
-    const candidateScreenY = imeCandidateAnchorY(screenY, window.innerHeight);
+    const candidateScreenY = imeCandidateAnchorYForViewport(screenY, viewport.top, viewport.height);
     rememberImeCandidateAnchor(textarea, candidateScreenX, candidateScreenY);
     invoke("set_ime_position", {
-      x: screenX,
-      y: screenY,
+      x: Math.min(screenX, candidateScreenX),
+      y: candidateScreenY,
       candidateX: candidateScreenX,
       candidateY: candidateScreenY,
     }).catch((err) => {
@@ -946,15 +991,17 @@ export function useImePosition({ textarea, cursor, cols, rows, cellWidth, cellHe
     if (!textarea || cursorRow === null || cursorCol === null || !canvas) return;
     const safeCursor = clampTerminalCursor({ row: cursorRow, col: cursorCol }, cols, rows);
     const canvasWidth = cols * cellWidth;
+    const rect = canvas.getBoundingClientRect();
+    const viewport = currentImeViewport();
     const caretX = safeCursor.col * cellWidth;
-    const anchorX = imeCandidateAnchorX(caretX, canvasWidth);
+    const anchorX = imeCandidateAnchorXForViewport(caretX, rect.left, canvasWidth, viewport.left, viewport.width);
     const anchorWidth = imeTextareaAnchorWidth(anchorX, canvasWidth);
     const caretInset = imeTextareaCaretInset(caretX, anchorX, canvasWidth);
     textarea.style.left = `${anchorX}px`;
     textarea.style.top = `${safeCursor.row * cellHeight}px`;
     textarea.style.width = `${anchorWidth}px`;
     textarea.style.paddingLeft = `${caretInset}px`;
-    rememberImeCandidateAnchor(textarea, anchorX, safeCursor.row * cellHeight + cellHeight);
+    rememberImeCandidateAnchor(textarea, rect.left + anchorX, rect.top + safeCursor.row * cellHeight + cellHeight);
     pushImePosition();
   }, [textarea, cursorRow, cursorCol, cols, rows, cellWidth, cellHeight, canvas, pushImePosition]);
 
@@ -978,14 +1025,28 @@ export function useImePosition({ textarea, cursor, cols, rows, cellWidth, cellHe
     textarea.addEventListener("compositionupdate", reanchor);
     textarea.addEventListener("input", reanchorWhileComposing);
     window.addEventListener("resize", reanchor);
+    window.addEventListener("scroll", reanchor, true);
     window.visualViewport?.addEventListener("resize", reanchor);
+    window.visualViewport?.addEventListener("scroll", reanchor);
+    const ResizeObserverCtor = window.ResizeObserver;
+    const resizeObserver = ResizeObserverCtor
+      ? new ResizeObserverCtor(() => reanchor())
+      : null;
+    if (resizeObserver) {
+      if (canvas) resizeObserver.observe(canvas);
+      if (canvas?.parentElement) resizeObserver.observe(canvas.parentElement);
+      if (textarea.parentElement) resizeObserver.observe(textarea.parentElement);
+    }
     return () => {
       textarea.removeEventListener("focus", reanchor);
       textarea.removeEventListener("compositionstart", reanchor);
       textarea.removeEventListener("compositionupdate", reanchor);
       textarea.removeEventListener("input", reanchorWhileComposing);
       window.removeEventListener("resize", reanchor);
+      window.removeEventListener("scroll", reanchor, true);
       window.visualViewport?.removeEventListener("resize", reanchor);
+      window.visualViewport?.removeEventListener("scroll", reanchor);
+      resizeObserver?.disconnect();
     };
-  }, [textarea, pushImePosition]);
+  }, [textarea, canvas, pushImePosition]);
 }
