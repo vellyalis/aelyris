@@ -20,6 +20,7 @@
     "verify:supply-chain": "node scripts/verify-supply-chain.mjs",
     "verify:production:live": "node scripts/verify-live-tauri-workstation-surfaces.mjs",
     "verify:production:close-risks": "node scripts/close-production-risks.mjs",
+    "verify:production:suspend": "node scripts/verify-real-os-suspend-evidence.mjs",
     "verify:mux-live": "node scripts/verify-mux-live-restore.mjs",
     "verify:scrollback-gates": "cargo build --manifest-path src-tauri/pty-server/Cargo.toml --release && node scripts/verify-scrollback-gates.mjs",
     "test": "vitest run",

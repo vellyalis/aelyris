@@ -1369,7 +1369,8 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
 }
 
 .right-panel-action-label,
-.right-panel-action-detail {
+.right-panel-action-detail,
+.right-panel-action-why {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1386,6 +1387,11 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
   color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: var(--type-mono-telemetry);
+}
+
+.right-panel-action-why {
+  color: color-mix(in srgb, var(--text-muted) 82%, transparent);
+  font-size: var(--type-metadata-label);
 }
 
 .right-panel-action-target {

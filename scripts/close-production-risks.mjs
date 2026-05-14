@@ -20,6 +20,7 @@ const LIVE_SMOKE = join(OUT_DIR, "live-tauri-workstation-surfaces.json");
 const IME_SMOKE = join(OUT_DIR, "verify-ime.json");
 const CHAOS_LIVE = join(LOG_DIR, "chaos-recovery", "p2-07-live-tauri-pty-ai-cli-chaos.json");
 const SLEEP_CHAOS = join(LOG_DIR, "chaos-recovery", "p2-07-sleep-resume-db-lock-chaos.json");
+const REAL_OS_SUSPEND = join(OUT_DIR, "real-os-suspend-resume.json");
 const RELEASE_DOCTOR = join(RELEASE_DIR, "p2-08-release-doctor.json");
 const MSI_EXTRACT = join(RELEASE_DIR, "p2-08-msi-admin-extract-production.json");
 const KEY_CUSTODY = join(RELEASE_DIR, "p2-08-key-custody.json");
@@ -243,6 +244,13 @@ function countFiles(dir) {
 function verifyChaosAcceptance() {
   const liveChaos = existsSync(CHAOS_LIVE) ? readJson(CHAOS_LIVE) : null;
   const sleepChaos = existsSync(SLEEP_CHAOS) ? readJson(SLEEP_CHAOS) : null;
+  const realOsSuspend = existsSync(REAL_OS_SUSPEND) ? readJson(REAL_OS_SUSPEND) : null;
+  const realOsSuspendPass =
+    realOsSuspend?.status === "pass" &&
+    realOsSuspend?.checks?.appResponsive === true &&
+    realOsSuspend?.checks?.terminalResponsive === true &&
+    realOsSuspend?.checks?.sqliteWritable === true &&
+    realOsSuspend?.checks?.paneStatePreserved === true;
   const acceptance = {
     version: 1,
     generatedAt: new Date().toISOString(),
@@ -258,11 +266,14 @@ function verifyChaosAcceptance() {
             : "Host CLI executable/auth is an external dependency; live PTY restart/recovery is automated, and release checklist must run AI CLI kill on a machine with a valid CLI.",
       },
       realOsSuspend: {
-        status: sleepChaos?.status === "pass" ? "accepted" : "blocked",
-        artifact: SLEEP_CHAOS,
+        status: sleepChaos?.status === "pass" && realOsSuspendPass ? "mitigated" : "blocked",
+        artifact: REAL_OS_SUSPEND,
+        injectedChaosArtifact: SLEEP_CHAOS,
         observedStatus: sleepChaos?.status ?? "missing",
-        control:
-          "Automated injected resume and DB lock chaos passed; a real OS suspend cycle remains a manual hardware release-soak condition because the test host must not be forcibly suspended by automation.",
+        manualObservedStatus: realOsSuspend?.status ?? "missing",
+        control: realOsSuspendPass
+          ? "Injected sleep/resume chaos and manual real OS suspend/resume soak both passed."
+          : "Manual real OS suspend/resume evidence is required at .codex-auto/production-smoke/real-os-suspend-resume.json before production release.",
       },
     },
   };
@@ -338,10 +349,15 @@ function main() {
     },
   });
   closureById.set("risk-p2-07-injected-sleep-resume-not-real-os-suspend", {
-    status: "accepted",
+    status: evidence.chaosAcceptance.controls.realOsSuspend.status,
     evidence: "production-chaos-sleep-resume-acceptance",
     reason: evidence.chaosAcceptance.controls.realOsSuspend.control,
-    validation: { artifact: ACCEPTANCE, sleepChaosArtifact: SLEEP_CHAOS },
+    validation: {
+      artifact: ACCEPTANCE,
+      sleepChaosArtifact: SLEEP_CHAOS,
+      realOsSuspendArtifact: REAL_OS_SUSPEND,
+      manualObservedStatus: evidence.chaosAcceptance.controls.realOsSuspend.manualObservedStatus,
+    },
   });
   closureById.set("risk-p2-08-release-key-custody", {
     status: "mitigated",

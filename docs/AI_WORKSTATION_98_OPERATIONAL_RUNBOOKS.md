@@ -224,6 +224,18 @@ Do not promote partial chaos evidence to a full live claim. The remaining releas
 - `risk-p2-07-real-ai-cli-kill-gap`
 - `risk-p2-07-injected-sleep-resume-not-real-os-suspend`
 
+Production promotion now requires mitigation evidence for accepted release risks. For the real OS suspend/resume
+gap, create the manual evidence template, perform an actual Windows sleep/resume cycle with the release app running,
+then update all checks to `true` and `status` to `pass`:
+
+```powershell
+pnpm.cmd verify:production:suspend -- --write-template
+pnpm.cmd verify:production:suspend
+```
+
+The evidence file is `.codex-auto/production-smoke/real-os-suspend-resume.json`. `verify:release:production`
+will fail until this manual hardware-soak evidence exists and passes.
+
 ## P3-02 Validation Checklist
 
 P3-02 is complete only when all of these are true:

@@ -288,8 +288,27 @@ describe("deriveRightRailActions", () => {
         priority: 10,
         label: "Ready for command",
         detail: "Launch agents, workflows, or tools",
+        why: "No active work or review pressure is detected.",
+        nextStep: "Start a workflow, launch an agent, or run a saved tool.",
       },
     ]);
+  });
+
+  it("explains why each ranked action exists and what to do next", () => {
+    const actions = deriveRightRailActions({
+      sessions: [session("blocked", { status: "waiting", blockedReason: "needs approval" })],
+      interactiveSessionCount: 0,
+      changedFilesCount: 2,
+      contextWarnPct: 85,
+      currentMode: "command",
+      pendingDecisionCount: 1,
+    });
+
+    expect(actions.length).toBeGreaterThan(1);
+    for (const action of actions) {
+      expect(action.why.length).toBeGreaterThan(12);
+      expect(action.nextStep.length).toBeGreaterThan(12);
+    }
   });
 });
 

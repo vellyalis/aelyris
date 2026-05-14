@@ -2141,7 +2141,7 @@ export function App() {
                             data-tone={action.tone}
                             data-state={action.state}
                             onClick={() => handleRightRailAction(action)}
-                            title={`${action.label}: ${action.detail}`}
+                            title={`${action.label}: ${action.detail}. ${action.nextStep}`}
                           >
                             <span className="right-panel-action-icon" aria-hidden="true">
                               <ActionIcon size={12} strokeWidth={1.8} />
@@ -2149,6 +2149,7 @@ export function App() {
                             <span className="right-panel-action-copy">
                               <span className="right-panel-action-label">{action.label}</span>
                               <span className="right-panel-action-detail">{action.detail}</span>
+                              <span className="right-panel-action-why">{action.nextStep}</span>
                             </span>
                             <span className="right-panel-action-target">{mode?.label ?? action.mode}</span>
                           </button>
