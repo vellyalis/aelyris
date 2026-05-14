@@ -113,6 +113,78 @@ Build the rail around one loop:
 
 This loop is the edge. Everything in the rail should either advance this loop or disappear.
 
+## 200-Point Quality Bar
+
+The target is not "better than the current build." The target is a product that feels unfairly useful compared with a normal terminal plus separate AI CLIs.
+
+Use a 200-point internal score, not a 100-point score. Aether should not be considered ready for a flagship release until it can score at least 180/200 in evidence-backed review, and the product goal is 200+ by exceeding the baseline with differentiating features.
+
+### Scorecard
+
+| Area | Points | 200-Point Expectation |
+| --- | ---: | --- |
+| Core terminal/mux reliability | 25 | tmux-style pane/session/layout actions are durable, scriptable, tested, and honest after crashes. |
+| Terminal performance and latency | 20 | split, close, attach, resize, scrollback, and input echo stay inside measured budgets on Windows. |
+| Visual quality and contrast | 20 | every preset, dialog, rail state, menu, terminal surface, and status bar passes contrast and polish checks. |
+| IME and international input | 15 | Japanese IME works across PowerShell, Codex CLI, Claude Code CLI, Gemini CLI, split panes, resize, DPI, and restart paths. |
+| Right rail usefulness | 25 | the rail always explains current state and gives ranked, actionable next steps. No decorative dashboard clutter. |
+| Agent orchestration edge | 20 | role-based agents, handoffs, worktrees, approvals, final reports, and parallel run topology are visible and controllable. |
+| Workflow/context/memory | 20 | reusable context packs, approval gates, traces, workflow templates, and local memory/RAG hooks are usable without prompt pasting. |
+| Review/release loop | 15 | changes, provenance, tests, PR readiness, rollback, installers, and release evidence are linked and reproducible. |
+| Security/guardrails | 10 | dangerous commands, path scope, secret exposure, API auth, stream tickets, and automation rules are explicit and tested. |
+| Product explanation and onboarding | 10 | a new user understands why Aether exists within one minute without reading docs. |
+| Distribution and operations | 10 | app identity, task-manager identity, installer, updater, logs, crash handling, and diagnostics are production-grade. |
+| Extensibility and future native path | 10 | CLI/API/config boundaries allow a future full-native Rust shell and third-party automation. |
+
+Total: 200.
+
+### Bonus Edge Points
+
+The product can exceed 200 only through capabilities that competitors do not combine cleanly:
+
+- local-first agent run trace tied to terminal panes, files, worktrees, tests, and approvals;
+- one-click recovery from failed command, stuck agent, high context, denied tool, or broken worktree;
+- replayable run history that can explain why each file changed;
+- workflow templates that launch real terminal agents and produce review-ready artifacts;
+- a native/client-agnostic mux core where Tauri, CLI, and future Rust UI can attach to the same session graph.
+
+### Non-Negotiable Fail Conditions
+
+Any one of these caps the score below 140, no matter how many features exist:
+
+- pane split/close/new shell visibly flashes a console window;
+- Japanese IME candidate placement is wrong in common agent CLIs;
+- Sakura or any preset has low-contrast text in normal operation;
+- the right rail shows metrics but no clear next action;
+- a restored/dead session is presented as live;
+- changed files cannot be traced to an owning session/agent/worktree;
+- release artifacts cannot be verified from a clean worktree;
+- a distribution build appears as generic WebView/process identity in user-facing places;
+- fallback behavior silently changes terminal/mux semantics;
+- visual QA and performance evidence are missing for the release claim.
+
+### Evidence Required For 180+
+
+- Clean worktree release gate passes.
+- Full frontend and Rust test suites pass.
+- Mux live restore and performance smoke pass.
+- IME CDP verification passes.
+- Visual smoke includes screenshots for idle, running, blocked, review-ready, unhealthy, conductor, workflow gate, settings, and every color preset.
+- Contrast audit has zero critical issues.
+- Installer and app identity checks pass.
+- At least one scripted "agent run -> change -> review -> test -> final report" scenario passes.
+
+### Evidence Required For 200+
+
+- All 180+ evidence.
+- Right rail action ranking tests cover at least 12 real states.
+- Workflow/context-pack scenario passes with approval gate and final trace.
+- Provenance test proves a changed file can be navigated back to pane, agent, worktree, and run trace.
+- 20-session stress rail render stays responsive.
+- 500-changed-file review queue stays usable.
+- Recovery scenario proves failed command detection, suggested action, retry/handoff, and audit record.
+- Full-native Rust migration boundary remains intact: no new mux truth exists only in React.
+
 ## Target UX
 
 ### Top Rail Summary
@@ -412,4 +484,3 @@ This is the highest leverage slice because it changes the product from "feature 
 - cmux Concepts: https://cmux.com/docs/concepts
 - cmux Getting Started: https://cmux.com/docs/getting-started
 - WezTerm: https://wezterm.org/
-
