@@ -33,6 +33,8 @@ interface IMEInputBarProps {
   pickAttachmentFiles?: () => Promise<string[]>;
   /** Override for tests — defaults to `save_temp_image` IPC. */
   saveClipboardImage?: (dataUrl: string) => Promise<string>;
+  /** Override for tests — defaults to native Win32 clipboard image IPC. */
+  readNativeClipboardImage?: () => Promise<string | null>;
 }
 
 const DEFAULT_MAX_HISTORY = 50;
@@ -125,6 +127,10 @@ async function defaultPickAttachmentFiles(): Promise<string[]> {
 
 function defaultSaveClipboardImage(dataUrl: string): Promise<string> {
   return invoke<string>("save_temp_image", { data: dataUrl });
+}
+
+function defaultReadNativeClipboardImage(): Promise<string | null> {
+  return invoke<string | null>("save_clipboard_image");
 }
 
 function quoteAttachmentPath(path: string): string {
@@ -253,6 +259,7 @@ export const IMEInputBar = forwardRef<IMEInputBarHandle, IMEInputBarProps>(funct
     disabled = false,
     pickAttachmentFiles = defaultPickAttachmentFiles,
     saveClipboardImage = defaultSaveClipboardImage,
+    readNativeClipboardImage = defaultReadNativeClipboardImage,
   },
   ref,
 ) {
@@ -400,29 +407,13 @@ export const IMEInputBar = forwardRef<IMEInputBarHandle, IMEInputBarProps>(funct
 
   const pasteClipboardImage = useCallback(async () => {
     if (disabled || attachmentBusyRef.current) return;
-    if (typeof navigator === "undefined") {
-      setAttachmentStatus({ tone: "error", message: "クリップボードを読み取れません" });
-      return;
-    }
-    const read = navigator.clipboard?.read;
-    if (!read) {
-      setAttachmentStatus({ tone: "error", message: "クリップボード画像を読み取れません" });
-      return;
-    }
     attachmentBusyRef.current = true;
     setAttachmentBusy(true);
     try {
-      const paths: string[] = [];
-      const items = await read.call(navigator.clipboard);
-      for (const item of items) {
-        const type = item.types.find((candidate) => candidate.startsWith("image/"));
-        if (!type) continue;
-        const blob = await item.getType(type);
-        const dataUrl = await readFileAsDataUrl(new File([blob], "clipboard-image.png", { type }));
-        paths.push(await saveClipboardImage(dataUrl));
-      }
-      insertAttachmentPaths(paths);
-      if (paths.length === 0) {
+      const path = await readNativeClipboardImage();
+      if (path) {
+        insertAttachmentPaths([path]);
+      } else {
         setAttachmentStatus({ tone: "info", message: "画像は見つかりませんでした" });
       }
     } catch (err) {
@@ -434,7 +425,7 @@ export const IMEInputBar = forwardRef<IMEInputBarHandle, IMEInputBarProps>(funct
       attachmentBusyRef.current = false;
       setAttachmentBusy(false);
     }
-  }, [disabled, insertAttachmentPaths, saveClipboardImage]);
+  }, [disabled, insertAttachmentPaths, readNativeClipboardImage]);
 
   // Auto-grow up to TEXTAREA_MAX_ROWS, then scroll. Measure after each
   // value change; scrollHeight reflects the content height regardless of
@@ -608,8 +599,6 @@ export const IMEInputBar = forwardRef<IMEInputBarHandle, IMEInputBarProps>(funct
     : focused && value.length === 0
       ? "Enter で送信  ·  Shift+Enter で改行  ·  Esc でターミナル  ·  ↑↓ で履歴"
       : "メッセージを入力";
-  const canReadClipboardImages = typeof navigator !== "undefined" && typeof navigator.clipboard?.read === "function";
-
   return (
     <fieldset
       className={`${styles.bar} ${focused ? styles.focused : ""} ${disabled ? styles.disabled : ""}`}
@@ -662,7 +651,7 @@ export const IMEInputBar = forwardRef<IMEInputBarHandle, IMEInputBarProps>(funct
           type="button"
           className={styles.toolButton}
           onClick={() => void pasteClipboardImage()}
-          disabled={disabled || attachmentBusy || !canReadClipboardImages}
+          disabled={disabled || attachmentBusy}
           aria-label="クリップボード画像を追加"
           title="クリップボード画像を追加"
         >

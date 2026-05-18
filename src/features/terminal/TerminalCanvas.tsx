@@ -1,6 +1,6 @@
 import { openUrl as tauriOpenUrl } from "@tauri-apps/plugin-opener";
 import { ChevronDown } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ClipboardEvent as ReactClipboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePromptMarks } from "../../shared/hooks/usePromptMarks";
 import { findNextPromptMark, findPrevPromptMark, useScrollback } from "../../shared/hooks/useScrollback";
 import { useTerminalImages } from "../../shared/hooks/useTerminalImages";
@@ -17,6 +17,12 @@ import {
   SELECTION_BG,
 } from "../../shared/lib/ansiPalette";
 import {
+  classifyTerminalPasteInput,
+  normalizeTerminalPasteInput,
+  TERMINAL_PASTE_GUARD_EVENT,
+  type TerminalPasteGuard,
+} from "../../shared/lib/terminalInput";
+import {
   CellAttr,
   type CellSnapshot,
   type CursorSnapshot,
@@ -28,14 +34,18 @@ import { estimateScrollbackMemoryBytes, publishTerminalPerformanceSample } from 
 import {
   clampTerminalCursor,
   IME_DIAGNOSTIC_EVENT,
+  IME_DIAGNOSTIC_OVERLAY_STORAGE_KEY,
   IME_DIAGNOSTIC_STORAGE_KEY,
   IME_DIAGNOSTIC_TOGGLE_EVENT,
   type ImeDiagnosticDetail,
   imeCandidateAnchorX,
   imeCandidateAnchorXForViewport,
   imeDiagnosticsEnabled,
+  imeDiagnosticsOverlayEnabled,
   imeTextareaAnchorWidth,
   imeTextareaCaretInset,
+  nativeTerminalInputSurfaceEnabled,
+  TERMINAL_CLIPBOARD_PASTE_EVENT,
   useCanvasIME,
   useImePosition,
   type WriteBytesFn,
@@ -50,6 +60,7 @@ import styles from "./TerminalArea.module.css";
 import { TERMINAL_FONT_FAMILY, type TerminalCellMetrics, useTerminalCellMetrics } from "./terminalMetrics";
 
 export type OpenUrlFn = (url: string) => Promise<void> | void;
+const WEBVIEW_IME_FALLBACK_TEST_ID = ["terminal", "ime", "textarea"].join("-");
 
 const defaultOpenUrl: OpenUrlFn = async (url) => {
   try {
@@ -87,7 +98,7 @@ export interface TerminalCanvasProps {
   liveSnapshot?: GridSnapshot | null;
   /** Injectable PTY writer — defaults to `invoke("write_terminal", ...)`. */
   writeBytes?: WriteBytesFn;
-  /** Injectable clipboard writer — defaults to `navigator.clipboard.writeText`. */
+  /** Injectable clipboard writer — defaults to native clipboard IPC with browser fallback. */
   copyText?: CopyTextFn;
   /** Search matches to highlight with a dim yellow band. Accepts
    *  both live-grid hits and history hits — `viewportRowOf` decides
@@ -153,6 +164,8 @@ const AI_PROMPT_MARKERS = new Set([">", "❯", "›", "»", "λ", "→"]);
 const AI_INPUT_RIGHT_FRAME_CHARS = new Set(["│", "┃", "║", "▌", "▐", "╎", "┆", "┊", "┋", "╏", "┤", "╮", "╯"]);
 const AI_INPUT_MIN_ROW_RATIO = 0.35;
 const IME_COMPOSITION_OVERLAY_MAX_CELLS = 34;
+const AI_CLI_SCREEN_SIGNATURE =
+  /\b(?:Claude Code|Codex(?: CLI)?|Gemini CLI)\b|(?:\?|\/help)\s+for shortcuts|\b(?:tokens?|MCP servers?|directory|model)\b/i;
 
 function rowToTextMap(row: readonly CellSnapshot[]): RowTextMap {
   const startCols: number[] = [];
@@ -242,6 +255,53 @@ function diagnosticCandidateRect(detail: ImeDiagnosticDetail | null, textarea: H
   return `${x}, ${y}`;
 }
 
+function dispatchNativePasteGuardEvent(
+  surface: HTMLElement,
+  terminalId: string,
+  guard: TerminalPasteGuard,
+  action: ImeDiagnosticDetail["pasteGuardAction"],
+): void {
+  const win = surface.ownerDocument.defaultView ?? (typeof window !== "undefined" ? window : null);
+  win?.dispatchEvent(
+    new CustomEvent(TERMINAL_PASTE_GUARD_EVENT, {
+      detail: {
+        terminalId,
+        action,
+        shouldBlock: guard.shouldBlock,
+        shouldConfirm: guard.shouldConfirm,
+        reason: guard.reason,
+        risk: {
+          classes: guard.risk.classes,
+          severity: guard.risk.severity,
+          requiresApproval: guard.risk.requiresApproval,
+          allowExecution: guard.risk.allowExecution,
+          lineCount: guard.risk.lineCount,
+          multiline: guard.risk.multiline,
+          preview: guard.risk.preview,
+          redacted: guard.risk.redactedCommand !== guard.risk.command,
+        },
+      },
+    }),
+  );
+}
+
+function confirmNativePasteGuard(surface: HTMLElement, guard: TerminalPasteGuard): boolean {
+  if (!guard.shouldConfirm) return true;
+  const win = surface.ownerDocument.defaultView ?? (typeof window !== "undefined" ? window : null);
+  if (typeof win?.confirm !== "function") return false;
+  return win.confirm(
+    [
+      "Paste this command into the terminal?",
+      `Risk: ${guard.risk.severity}`,
+      `Classes: ${guard.risk.classes.join(", ")}`,
+      guard.reason,
+      guard.risk.preview,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
+}
+
 function isVisibleCursor(cursor: CursorSnapshot | null | undefined): cursor is CursorSnapshot {
   return !!cursor && cursor.visible && cursor.shape !== "hidden";
 }
@@ -258,7 +318,14 @@ function isParkedAiCliCursor(
   const rowText = rowToTextMap(snapshot.cells[cursor.row] ?? []).text.trim();
   const parkedAtRightEdge = cursor.col >= Math.max(0, snapshot.cols - 2);
   if (cursor.row === aiInputAnchor.row) {
-    return parkedAtRightEdge || cursor.col > aiInputAnchor.col + 8;
+    const row = snapshot.cells[cursor.row] ?? [];
+    const betweenAnchorAndCursor = row
+      .slice(Math.min(aiInputAnchor.col, cursor.col), Math.max(aiInputAnchor.col, cursor.col))
+      .map((cell) => (cell?.ch && cell.ch !== "\0" ? cell.ch : " "))
+      .join("");
+    const cursorParkedOnInputRunway =
+      cursor.col > aiInputAnchor.col + 2 && /^[\s│┃║▌▐╎┆┊┋╏┤╮╯]*$/.test(betweenAnchorAndCursor);
+    return parkedAtRightEdge || cursor.col > aiInputAnchor.col + 8 || cursorParkedOnInputRunway;
   }
   const parkedBelowInput = cursor.row > aiInputAnchor.row;
   const statusLikeRow =
@@ -324,6 +391,15 @@ export function findAiCliInputAnchor(snapshot: GridSnapshot | null): CursorPoint
   return null;
 }
 
+export function hasAiCliScreenSignature(snapshot: GridSnapshot | null): boolean {
+  if (!snapshot) return false;
+  const startRow = Math.max(0, Math.floor(snapshot.cells.length * 0.15));
+  for (let row = startRow; row < snapshot.cells.length; row++) {
+    if (AI_CLI_SCREEN_SIGNATURE.test(rowToTextMap(snapshot.cells[row] ?? []).text)) return true;
+  }
+  return false;
+}
+
 export function TerminalCanvas({
   terminalId,
   cols,
@@ -358,7 +434,9 @@ export function TerminalCanvas({
 }: TerminalCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [canvasEl, setCanvasEl] = useState<HTMLCanvasElement | null>(null);
+  const [inputSurfaceEl, setInputSurfaceEl] = useState<HTMLDivElement | null>(null);
   const [textareaEl, setTextareaEl] = useState<HTMLTextAreaElement | null>(null);
+  const useNativeInputSurface = nativeTerminalInputSurfaceEnabled();
   // Alias kept so existing mouse-related effects (selection, link hover)
   // read the canvas element under their original name.
   const inputEl = canvasEl;
@@ -372,18 +450,28 @@ export function TerminalCanvas({
   const renderPerfRef = useRef({ lastPaintAt: 0, droppedRenderFrames: 0 });
   const [hoveredLink, setHoveredLink] = useState<LinkSpan | null>(null);
   const [compositionText, setCompositionText] = useState("");
+  const liveImeCursorRef = useRef<{ row: number; col: number } | null>(null);
+  const [compositionAnchorCursor, setCompositionAnchorCursor] = useState<{ row: number; col: number } | null>(null);
   const [diagnosticsVisible, setDiagnosticsVisible] = useState(() =>
-    typeof window !== "undefined" ? imeDiagnosticsEnabled(window) : false,
+    typeof window !== "undefined" ? imeDiagnosticsEnabled(window) && imeDiagnosticsOverlayEnabled(window) : false,
   );
   const [latestImeDiagnostic, setLatestImeDiagnostic] = useState<ImeDiagnosticDetail | null>(null);
   const [droppedKeyCount, setDroppedKeyCount] = useState(0);
   const [diagnosticPaneActive, setDiagnosticPaneActive] = useState(false);
+  const handleCompositionActiveChange = useCallback((active: boolean) => {
+    if (!active) {
+      setCompositionAnchorCursor(null);
+      return;
+    }
+    setCompositionAnchorCursor((current) => current ?? liveImeCursorRef.current);
+  }, []);
 
   useCanvasIME({
     terminalId,
-    textarea: textareaEl,
+    textarea: useNativeInputSurface ? null : textareaEl,
     writeBytes,
     onCompositionTextChange: setCompositionText,
+    onCompositionActiveChange: handleCompositionActiveChange,
   });
 
   useEffect(() => {
@@ -393,7 +481,7 @@ export function TerminalCanvas({
   useEffect(() => {
     if (typeof window === "undefined") return;
     const syncVisibility = () => {
-      const enabled = imeDiagnosticsEnabled(window);
+      const enabled = imeDiagnosticsEnabled(window) && imeDiagnosticsOverlayEnabled(window);
       setDiagnosticsVisible(enabled);
       if (!enabled) {
         setLatestImeDiagnostic(null);
@@ -404,6 +492,10 @@ export function TerminalCanvas({
     const onDiagnostic = (event: Event) => {
       const detail = (event as CustomEvent<ImeDiagnosticDetail>).detail;
       if (!detail || detail.terminalId !== terminalId) return;
+      if (!imeDiagnosticsEnabled(window) || !imeDiagnosticsOverlayEnabled(window)) {
+        setDiagnosticsVisible(false);
+        return;
+      }
       setDiagnosticsVisible(true);
       setLatestImeDiagnostic(detail);
       setDiagnosticPaneActive(detail.active);
@@ -412,7 +504,9 @@ export function TerminalCanvas({
       }
     };
     const onStorage = (event: StorageEvent) => {
-      if (event.key === IME_DIAGNOSTIC_STORAGE_KEY) syncVisibility();
+      if (event.key === IME_DIAGNOSTIC_STORAGE_KEY || event.key === IME_DIAGNOSTIC_OVERLAY_STORAGE_KEY) {
+        syncVisibility();
+      }
     };
     syncVisibility();
     window.addEventListener(IME_DIAGNOSTIC_TOGGLE_EVENT, syncVisibility);
@@ -489,9 +583,9 @@ export function TerminalCanvas({
   }, [onRegisterNav, promptMarks, scrollback]);
 
   useEffect(() => {
-    onInputRef?.(textareaEl);
+    onInputRef?.(useNativeInputSurface ? null : textareaEl);
     return () => onInputRef?.(null);
-  }, [textareaEl, onInputRef]);
+  }, [useNativeInputSurface, textareaEl, onInputRef]);
 
   const [cursorOn, setCursorOn] = useState(true);
 
@@ -628,6 +722,8 @@ export function TerminalCanvas({
   useEffect(() => {
     if (!textareaEl) return;
     const clearOnType = (ev: KeyboardEvent) => {
+      const key = ev.key.toLowerCase();
+      if ((ev.ctrlKey && key === "c") || (ev.ctrlKey && key === "v") || (ev.shiftKey && ev.key === "Insert")) return;
       if (ev.ctrlKey && ev.shiftKey) return;
       if (!selection) return;
       clearSelection();
@@ -639,16 +735,38 @@ export function TerminalCanvas({
   useEffect(() => {
     if (!textareaEl) return;
     const handler = (ev: KeyboardEvent) => {
-      if (ev.ctrlKey && ev.shiftKey && (ev.key === "c" || ev.key === "C")) {
+      const key = ev.key.toLowerCase();
+      const copyShortcut =
+        (ev.ctrlKey && ev.shiftKey && key === "c") ||
+        (ev.ctrlKey && key === "c" && !!selection) ||
+        (ev.ctrlKey && ev.key === "Insert");
+      if (copyShortcut) {
         if (!selection) return;
         ev.preventDefault();
         ev.stopPropagation();
         void copy();
       }
     };
-    textareaEl.addEventListener("keydown", handler);
-    return () => textareaEl.removeEventListener("keydown", handler);
+    textareaEl.addEventListener("keydown", handler, true);
+    return () => textareaEl.removeEventListener("keydown", handler, true);
   }, [textareaEl, selection, copy]);
+
+  useEffect(() => {
+    const el = inputEl;
+    if (!el || !textareaEl) return;
+    const handler = (ev: MouseEvent) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      textareaEl.focus();
+      if (selection) {
+        void copy();
+        return;
+      }
+      textareaEl.dispatchEvent(new Event(TERMINAL_CLIPBOARD_PASTE_EVENT, { bubbles: true }));
+    };
+    el.addEventListener("contextmenu", handler);
+    return () => el.removeEventListener("contextmenu", handler);
+  }, [inputEl, textareaEl, selection, copy]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -811,81 +929,84 @@ export function TerminalCanvas({
   ]);
 
   useEffect(() => {
-    if (!snapshot?.cursor.blinking) {
-      setCursorOn(true);
-      return;
-    }
-    /* `prefers-reduced-motion: reduce` users opt out of blink — a
-     * solid cursor is more comfortable for vestibular / attention
-     * sensitivity, and matches what every accessible-mode terminal
-     * (macOS Terminal, iTerm2, Windows Terminal) does. */
-    const reduce =
-      typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduce) {
-      setCursorOn(true);
-      return;
-    }
-    /* Apple-style asymmetric duty cycle — the cursor is visible far
-     * longer than it is hidden so the user's eye treats it as
-     * "always there, just briefly winking", rather than the jarring
-     * 50/50 strobe the previous 500/500 ms cycle produced. The
-     * pattern toggles ON for 600 ms, OFF for 250 ms, repeat. */
-    const ON_MS = 600;
-    const OFF_MS = 250;
-    let visible = true;
+    // Keep the cursor solid. In dogfood the previous blink read as a
+    // bright pink strobe on AI CLI prompt rows, and it also forced a
+    // repaint loop while the terminal was otherwise idle.
     setCursorOn(true);
-    let timer = window.setTimeout(function tick() {
-      visible = !visible;
-      setCursorOn(visible);
-      timer = window.setTimeout(tick, visible ? ON_MS : OFF_MS);
-    }, ON_MS);
-    return () => window.clearTimeout(timer);
-  }, [snapshot?.cursor.blinking]);
+  }, []);
 
-  // Auto-focus the invisible textarea the first time the terminal is mounted
-  // so the user can type immediately without first clicking. Only fires once
-  // per mount — subsequent renders do not steal focus from other widgets.
+  // Auto-focus the active terminal input owner the first time the terminal is
+  // mounted so the user can type immediately without first clicking. Only
+  // fires once per mount; subsequent renders do not steal focus.
   const autoFocusedRef = useRef(false);
   useEffect(() => {
     if (autoFocusedRef.current) return;
-    if (!textareaEl) return;
+    const focusTarget = useNativeInputSurface ? inputSurfaceEl : textareaEl;
+    if (!focusTarget) return;
     autoFocusedRef.current = true;
-    textareaEl.focus();
-  }, [textareaEl]);
+    focusTarget.focus();
+  }, [useNativeInputSurface, inputSurfaceEl, textareaEl]);
 
   // Keep the hidden textarea parked at the cursor position and tell Windows
   // where to anchor the IME candidate window.
   const visibleSnapshotCursor = isVisibleCursor(snapshot?.cursor) ? snapshot.cursor : null;
-  const aiCliInputAnchor = preferAiInputAnchor ? findAiCliInputAnchor(snapshot) : null;
+  const autoPreferAiInputAnchor = hasAiCliScreenSignature(snapshot);
+  const aiCliInputAnchor = preferAiInputAnchor || autoPreferAiInputAnchor ? findAiCliInputAnchor(snapshot) : null;
   const useAiCliInputAnchor =
-    preferAiInputAnchor && isParkedAiCliCursor(snapshot, visibleSnapshotCursor, aiCliInputAnchor);
+    (preferAiInputAnchor || autoPreferAiInputAnchor) &&
+    isParkedAiCliCursor(snapshot, visibleSnapshotCursor, aiCliInputAnchor);
   const effectiveImeCursor = useAiCliInputAnchor ? aiCliInputAnchor : visibleSnapshotCursor;
+  liveImeCursorRef.current = effectiveImeCursor ? { row: effectiveImeCursor.row, col: effectiveImeCursor.col } : null;
+  const compositionLockedImeCursor = compositionAnchorCursor ?? effectiveImeCursor;
   const imeAnchorMode = useAiCliInputAnchor
     ? "ai-cli-input"
     : preferAiInputAnchor
       ? "ai-cli-real-cursor"
       : "terminal-cursor";
-  useImePosition({
-    textarea: textareaEl,
-    cursor: effectiveImeCursor,
-    cols,
-    rows,
-    cellWidth: cellMetrics.width,
-    cellHeight: cellMetrics.height,
-    canvas: canvasEl,
-  });
 
-  const focusTextarea = useCallback(() => {
+  const focusInputSurface = useCallback(() => {
+    if (useNativeInputSurface) {
+      inputSurfaceEl?.focus();
+      return;
+    }
     textareaEl?.focus();
-  }, [textareaEl]);
+  }, [useNativeInputSurface, inputSurfaceEl, textareaEl]);
 
-  const compositionCursor = effectiveImeCursor
-    ? clampTerminalCursor(effectiveImeCursor, cols, rows)
+  const handleNativeInputSurfacePaste = useCallback(
+    (event: ReactClipboardEvent<HTMLDivElement>) => {
+      if (!useNativeInputSurface) return;
+      const surface = event.currentTarget;
+      const text = event.clipboardData.getData("text/plain") || event.clipboardData.getData("text");
+      event.preventDefault();
+      event.stopPropagation();
+      if (!text) return;
+
+      const guard = classifyTerminalPasteInput(text);
+      if (guard.shouldBlock) {
+        dispatchNativePasteGuardEvent(surface, terminalId, guard, "blocked");
+        return;
+      }
+      if (guard.shouldConfirm && !confirmNativePasteGuard(surface, guard)) {
+        dispatchNativePasteGuardEvent(surface, terminalId, guard, "cancelled");
+        return;
+      }
+
+      writeBytes?.(terminalId, normalizeTerminalPasteInput(text));
+      dispatchNativePasteGuardEvent(surface, terminalId, guard, guard.shouldConfirm ? "confirmed" : "allowed");
+    },
+    [terminalId, useNativeInputSurface, writeBytes],
+  );
+
+  const compositionCursor = compositionLockedImeCursor
+    ? clampTerminalCursor(compositionLockedImeCursor, cols, rows)
     : { row: 0, col: 0 };
   const compositionCursorX = compositionCursor.col * cellMetrics.width;
   const compositionCursorY = compositionCursor.row * cellMetrics.height;
+  const compositionCellOffset =
+    compositionText.length > 0 ? Math.min(IME_COMPOSITION_OVERLAY_MAX_CELLS, terminalCellSpan(compositionText)) : 0;
   const viewportLeft = typeof window !== "undefined" ? (window.visualViewport?.offsetLeft ?? 0) : 0;
-  const viewportWidth = typeof window !== "undefined" ? (window.visualViewport?.width ?? window.innerWidth) : canvasWidth;
+  const viewportWidth =
+    typeof window !== "undefined" ? (window.visualViewport?.width ?? window.innerWidth) : canvasWidth;
   const canvasLeft = canvasEl?.getBoundingClientRect().left ?? 0;
   const imeAnchorX = canvasEl
     ? imeCandidateAnchorXForViewport(compositionCursorX, canvasLeft, canvasWidth, viewportLeft, viewportWidth)
@@ -908,13 +1029,29 @@ export function TerminalCanvas({
   const diagnosticCandidate = diagnosticCandidateRect(latestImeDiagnostic, textareaEl);
   const diagnosticAnchor = latestImeDiagnostic?.anchorMode ?? imeAnchorMode;
 
+  useImePosition({
+    terminalId,
+    textarea: useNativeInputSurface ? null : textareaEl,
+    focusElement: inputSurfaceEl,
+    nativeInputSurface: useNativeInputSurface,
+    cursor: compositionLockedImeCursor,
+    compositionCellOffset,
+    cols,
+    rows,
+    cellWidth: cellMetrics.width,
+    cellHeight: cellMetrics.height,
+    canvas: canvasEl,
+  });
+
   return (
-    /* biome-ignore lint/a11y/useSemanticElements: The focus target is a canvas-backed terminal surface; the hidden textarea below owns actual IME text entry. */
+    /* biome-ignore lint/a11y/useSemanticElements: The focus target is a canvas-backed terminal surface; Windows builds use a native HWND input owner and non-native/test builds keep a WebView fallback textarea. */
     <div
+      ref={setInputSurfaceEl}
       className={className}
       role="textbox"
       aria-label="Terminal input surface"
       aria-multiline="true"
+      data-native-input-surface={useNativeInputSurface ? "true" : "false"}
       style={{
         position: "relative",
         width: `${canvasWidth}px`,
@@ -924,9 +1061,10 @@ export function TerminalCanvas({
       }}
       tabIndex={0}
       onFocus={(e) => {
-        if (e.target === e.currentTarget) focusTextarea();
+        if (e.target === e.currentTarget) focusInputSurface();
       }}
-      onMouseDown={focusTextarea}
+      onMouseDown={focusInputSurface}
+      onPaste={handleNativeInputSurfacePaste}
     >
       <canvas
         ref={(node) => {
@@ -943,7 +1081,7 @@ export function TerminalCanvas({
         // `onFocus` to the textarea) without giving it native click-to-
         // focus behaviour that would fight the container's focus-forward.
         tabIndex={-1}
-        onFocus={focusTextarea}
+        onFocus={focusInputSurface}
         style={{
           display: "block",
           width: `${canvasWidth}px`,
@@ -953,60 +1091,61 @@ export function TerminalCanvas({
           outline: "none",
         }}
       />
-      {/*
-        Hidden IME textarea. `aria-hidden` + explicit transparent placement
-        hides it from screen readers and the visible layout; `opacity: 0`
-        + `pointer-events: none` keeps it invisible and non-blocking to
-        mouse selection on the canvas. The real input is parked at a
-        candidate-window-safe x coordinate; the visible composition overlay
-        below stays at the actual terminal cursor.
-      */}
-      <textarea
-        ref={setTextareaEl}
-        data-testid="terminal-ime-textarea"
-        data-ime-anchor-mode={imeAnchorMode}
-        aria-hidden="true"
-        tabIndex={-1}
-        autoComplete="off"
-        autoCorrect="off"
-        spellCheck={false}
-        wrap="off"
-        style={{
-          position: "absolute",
-          left: `${imeAnchorX}px`,
-          top: `${compositionCursorY}px`,
-          // Windows TSF keeps long Japanese composition state in the
-          // backing textarea. Give it the remaining canvas runway so
-          // long conversion / deletion stays editable. The box may be
-          // clamped left near the right rail, but padding keeps the DOM
-          // caret at the real terminal cursor so WebView2's native IME
-          // path and our explicit set_ime_position path agree.
-          width: `${imeAnchorWidth}px`,
-          height: `${cellMetrics.height}px`,
-          opacity: 0,
-          pointerEvents: "none",
-          border: "none",
-          outline: "none",
-          resize: "none",
-          background: "transparent",
-          color: "transparent",
-          // Match the rendered font so the IME candidate sizing matches.
-          fontFamily,
-          fontSize: `${fontSize}px`,
-          lineHeight: `${cellMetrics.height}px`,
-          boxSizing: "border-box",
-          paddingTop: 0,
-          paddingRight: 0,
-          paddingBottom: 0,
-          paddingLeft: `${imeCaretInset}px`,
-          margin: 0,
-          overflow: "hidden",
-          whiteSpace: "pre",
-          overflowWrap: "normal",
-          // Caret would flash in the wrong position; hide it.
-          caretColor: "transparent",
-        }}
-      />
+      {!useNativeInputSurface && (
+        <>
+          {/*
+            WebView IME fallback textarea. It is disabled by default in the
+            Tauri runtime; jsdom/non-Tauri tests and emergency opt-out keep it
+            available while the native HWND surface is rolled forward.
+          */}
+          <textarea
+            ref={setTextareaEl}
+            data-testid={WEBVIEW_IME_FALLBACK_TEST_ID}
+            data-ime-anchor-mode={imeAnchorMode}
+            aria-hidden="true"
+            tabIndex={-1}
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck={false}
+            wrap="off"
+            style={{
+              position: "absolute",
+              left: `${imeAnchorX}px`,
+              top: `${compositionCursorY}px`,
+              // Windows TSF keeps long Japanese composition state in the
+              // backing textarea. Give it the remaining canvas runway so
+              // long conversion / deletion stays editable. The box may be
+              // clamped left near the right rail, but padding keeps the DOM
+              // caret at the real terminal cursor so WebView2's native IME
+              // path and our explicit set_ime_position path agree.
+              width: `${imeAnchorWidth}px`,
+              height: `${cellMetrics.height}px`,
+              opacity: 0,
+              pointerEvents: "none",
+              border: "none",
+              outline: "none",
+              resize: "none",
+              background: "transparent",
+              color: "transparent",
+              // Match the rendered font so the IME candidate sizing matches.
+              fontFamily,
+              fontSize: `${fontSize}px`,
+              lineHeight: `${cellMetrics.height}px`,
+              boxSizing: "border-box",
+              paddingTop: 0,
+              paddingRight: 0,
+              paddingBottom: 0,
+              paddingLeft: `${imeCaretInset}px`,
+              margin: 0,
+              overflow: "hidden",
+              whiteSpace: "pre",
+              overflowWrap: "normal",
+              // Caret would flash in the wrong position; hide it.
+              caretColor: "transparent",
+            }}
+          />
+        </>
+      )}
       {compositionText.length > 0 && (
         <div
           className={styles.imeCompositionOverlay}

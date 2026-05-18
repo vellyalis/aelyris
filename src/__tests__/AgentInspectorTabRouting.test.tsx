@@ -77,6 +77,23 @@ describe("AgentInspector tab routing", () => {
     expect(src).toContain('aria-label="Add session"');
   });
 
+  it("uses action-oriented empty states inside the right rail", () => {
+    const src = Object.values(
+      import.meta.glob("../features/agent-inspector/AgentInspector.tsx", {
+        query: "?raw",
+        import: "default",
+        eager: true,
+      }) as Record<string, string>,
+    )[0];
+
+    expect(src).toContain('title="No agent sessions"');
+    expect(src).toContain("Use + or Orchestra to start a run");
+    expect(src).toContain('title="No parallel runs"');
+    expect(src).toContain("Start two or more agents to compare roles, context, and handoffs.");
+    expect(src).toContain('title="No review target selected"');
+    expect(src).toContain("open Changes from the rail");
+  });
+
   it("hides contextual tabs until their data exists", () => {
     render(
       <AgentInspector sessions={[baseSession("a", { logs: [] })]} activeSessionId="a" onSelectSession={() => {}} />,

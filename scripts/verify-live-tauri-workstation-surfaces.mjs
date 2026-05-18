@@ -254,7 +254,7 @@ async function smokeVisualSurface(page) {
       const rect = canvas.getBoundingClientRect();
       let nonBlankPixels = 0;
       let sampledPixels = 0;
-      let unique = new Set();
+      const unique = new Set();
       try {
         const ctx = canvas.getContext("2d", { willReadFrequently: true });
         const width = canvas.width;
@@ -363,7 +363,10 @@ async function smokeVisualSurface(page) {
               const left = Math.max(0, Math.floor((target.left ?? 0) * scaleX));
               const top = Math.max(0, Math.floor((target.top ?? 0) * scaleY));
               const width = Math.max(1, Math.min(image.naturalWidth - left, Math.floor((target.width ?? 1) * scaleX)));
-              const height = Math.max(1, Math.min(image.naturalHeight - top, Math.floor((target.height ?? 1) * scaleY)));
+              const height = Math.max(
+                1,
+                Math.min(image.naturalHeight - top, Math.floor((target.height ?? 1) * scaleY)),
+              );
               const stepX = Math.max(1, Math.floor(width / 32));
               const stepY = Math.max(1, Math.floor(height / 24));
               const unique = new Set();
@@ -404,8 +407,12 @@ async function smokeVisualSurface(page) {
     if (!rect?.visible) throw new Error(`visual surface missing or empty: ${rect?.selector ?? "unknown"}`);
   }
   if (
-    !result.canvasSamples.some((sample) => sample.sampledPixels > 0 && sample.nonBlankPixels > 0 && sample.uniqueColors > 1) &&
-    !screenshotSurface.samples.some((sample) => sample.sampledPixels > 0 && sample.nonBlankPixels > 0 && sample.uniqueColors > 8)
+    !result.canvasSamples.some(
+      (sample) => sample.sampledPixels > 0 && sample.nonBlankPixels > 0 && sample.uniqueColors > 1,
+    ) &&
+    !screenshotSurface.samples.some(
+      (sample) => sample.sampledPixels > 0 && sample.nonBlankPixels > 0 && sample.uniqueColors > 8,
+    )
   ) {
     throw new Error(
       `terminal surface appears blank: ${JSON.stringify({
@@ -563,8 +570,7 @@ async function navigateQa(page, mode = "observe", density = "balanced") {
   await waitForAppReady(page);
   await page
     .waitForFunction(
-      (expectedDensity) =>
-        document.querySelector(".app-container")?.getAttribute("data-density") === expectedDensity,
+      (expectedDensity) => document.querySelector(".app-container")?.getAttribute("data-density") === expectedDensity,
       density,
       { timeout: 5000 },
     )
@@ -600,18 +606,35 @@ async function waitForGrid(page, terminalId, needle, timeoutMs = 15000) {
   throw new Error(`terminal ${terminalId} did not show ${needle}; last=${gridText(last).slice(0, 240)}`);
 }
 
+async function waitForPowershellPrompt(page, terminalId) {
+  await waitForGrid(page, terminalId, "PS ", 30000);
+}
+
 async function smokeRails(page) {
   const modes = {
     command: ["decision-inbox", "workflow", "toolkit", "context"],
     review: ["review-queue", "scm", "context"],
-    observe: ["processes", "live-panes", "audit-timeline", "context", "run-graph", "tool-ledger", "sessions", "reliability"],
+    observe: [
+      "processes",
+      "live-panes",
+      "audit-timeline",
+      "context",
+      "run-graph",
+      "tool-ledger",
+      "sessions",
+      "reliability",
+    ],
   };
   const out = {};
   for (const [mode, widgets] of Object.entries(modes)) {
     await page.locator(`button[data-right-rail-mode="${mode}"]`).click({ timeout: 10000 });
-    await page.waitForFunction((m) => document.querySelector("#right-rail-panel")?.getAttribute("data-mode") === m, mode, {
-      timeout: 10000,
-    });
+    await page.waitForFunction(
+      (m) => document.querySelector("#right-rail-panel")?.getAttribute("data-mode") === m,
+      mode,
+      {
+        timeout: 10000,
+      },
+    );
     await page.waitForFunction(
       (expectedWidgets) => expectedWidgets.every((widget) => !!document.querySelector(`[data-widget="${widget}"]`)),
       widgets,
@@ -626,7 +649,9 @@ async function smokeRails(page) {
       };
     }, widgets);
     if (out[mode].present.length !== widgets.length) {
-      throw new Error(`right rail ${mode} missing widgets ${widgets.filter((w) => !out[mode].present.includes(w)).join(",")}`);
+      throw new Error(
+        `right rail ${mode} missing widgets ${widgets.filter((w) => !out[mode].present.includes(w)).join(",")}`,
+      );
     }
   }
 
@@ -644,7 +669,10 @@ async function smokeRails(page) {
     };
   });
   const expectedLabels = ["Run", "Changes", "Health"];
-  if (chrome.tabs.length !== 3 || !expectedLabels.every((label) => chrome.tabs.some((tab) => tab.label.startsWith(label)))) {
+  if (
+    chrome.tabs.length !== 3 ||
+    !expectedLabels.every((label) => chrome.tabs.some((tab) => tab.label.startsWith(label)))
+  ) {
     throw new Error(`right rail mode tabs are not product-ready: ${JSON.stringify(chrome.tabs)}`);
   }
   if (chrome.hasMissionControl) {
@@ -655,16 +683,32 @@ async function smokeRails(page) {
 }
 
 async function smokeContextAndRunGraph(page) {
+  async function revealWidget(widget, label) {
+    const frame = page.locator(`[data-widget="${widget}"]`).first();
+    await frame.waitFor({ state: "attached", timeout: 10000 });
+    if ((await frame.getAttribute("data-open")) !== "true") {
+      await frame.locator(".right-panel-widget-frame-header").click();
+    }
+    await frame.evaluate((element) => element.scrollIntoView({ block: "center", inline: "nearest" }));
+    await page.waitForTimeout(250);
+    await page.getByLabel(label).first().waitFor({ state: "visible", timeout: 10000 });
+  }
+
   await page.locator('button[data-right-rail-mode="observe"]').click();
-  await page.getByLabel("Agent run graph").waitFor({ state: "visible", timeout: 10000 });
+  await revealWidget("run-graph", "Agent run graph");
+  const runGraphPresent = await page.evaluate(() => {
+    return !!document.querySelector('[aria-label="Agent run graph"]') || document.body.innerText.includes("Run Graph");
+  });
+
   await page.locator('button[data-right-rail-mode="command"]').click();
-  await page.getByLabel("Context pack builder").waitFor({ state: "visible", timeout: 10000 });
+  await revealWidget("context", "Context pack builder");
   const buttons = await page.evaluate(() => ({
     markdownCopy: !!document.querySelector('[aria-label="Copy context pack markdown"]'),
     jsonCopy: !!document.querySelector('[aria-label="Copy context pack JSON"]'),
-    runGraph: !!document.querySelector('[aria-label="Agent run graph"]') || document.body.innerText.includes("Run Graph"),
-    reviewQueue: document.body.innerText.includes("Review Queue") || !!document.querySelector('[aria-label="AI review queue"]'),
+    reviewQueue:
+      document.body.innerText.includes("Review Queue") || !!document.querySelector('[aria-label="AI review queue"]'),
   }));
+  buttons.runGraph = runGraphPresent;
   if (!buttons.markdownCopy || !buttons.jsonCopy) throw new Error("Context pack copy buttons are not visible");
   return buttons;
 }
@@ -674,16 +718,27 @@ async function smokeImeDiagnostics(page) {
   await page.waitForFunction(() => typeof window.__AETHER_ENABLE_IME_DEBUG__ === "function", null, {
     timeout: 30000,
   });
-  await page.evaluate(() => window.__AETHER_ENABLE_IME_DEBUG__());
-  await page.locator("canvas").first().click({ position: { x: 40, y: 40 }, timeout: 10000 }).catch(() => {});
-  await page.locator('[data-testid="terminal-input-diagnostics"]').first().waitFor({ state: "visible", timeout: 15000 });
+  await page.evaluate(() => {
+    window.__AETHER_ENABLE_IME_DEBUG__?.();
+    window.__AETHER_SHOW_IME_DEBUG_OVERLAY__?.();
+  });
+  await page
+    .locator("canvas")
+    .first()
+    .click({ position: { x: 40, y: 40 }, timeout: 10000 })
+    .catch(() => {});
+  await page
+    .locator('[data-testid="terminal-input-diagnostics"]')
+    .first()
+    .waitFor({ state: "visible", timeout: 15000 });
   const diag = await page.evaluate(() => {
     const el = document.querySelector('[data-testid="terminal-input-diagnostics"]');
     return {
       visible: !!el,
       text: el?.textContent?.slice(0, 500) ?? "",
       aiCliHeuristicMarkers: {
-        hasAlternateScreenDetectorSource: document.body.innerText.includes("alternate") || document.body.innerText.length > 0,
+        hasAlternateScreenDetectorSource:
+          document.body.innerText.includes("alternate") || document.body.innerText.length > 0,
       },
     };
   });
@@ -719,9 +774,7 @@ async function smokePaneSplitUi(page) {
   }));
   const backendPanes = await call(page, "list_panes_info").catch(() => []);
   if (after.canvases <= before.canvases && after.splitRightButtons <= before.splitRightButtons) {
-    throw new Error(
-      `pane split UI did not grow: before=${JSON.stringify(before)} after=${JSON.stringify(after)}`,
-    );
+    throw new Error(`pane split UI did not grow: before=${JSON.stringify(before)} after=${JSON.stringify(after)}`);
   }
 
   const closePane = page.getByRole("button", { name: "Close pane" }).last();
@@ -765,18 +818,19 @@ async function smokePaneRouting(page) {
       terminals.push({ id, role });
       await call(page, "rename_pane", { terminalId: id, name: `prod-${role}` });
       await call(page, "set_pane_role", { terminalId: id, role });
+      await waitForPowershellPrompt(page, id);
     }
 
     const byRole = Object.fromEntries(terminals.map((item) => [item.role, item.id]));
     const buildCount = await call(page, "send_keys_by_target", {
       target: "@build",
-      data: `Write-Output "${sentinels.build}"\r`,
+      data: `echo ${sentinels.build}\r`,
     });
     const reviewCount = await call(page, "send_keys_by_target", {
       target: "role:review",
-      data: `Write-Output "${sentinels.review}"\r`,
+      data: `echo ${sentinels.review}\r`,
     });
-    const allCount = await call(page, "broadcast_keys", { data: `Write-Output "${sentinels.all}"\r` });
+    const allCount = await call(page, "broadcast_keys", { data: `echo ${sentinels.all}\r` });
     await waitForGrid(page, byRole.build, sentinels.build);
     await waitForGrid(page, byRole.review, sentinels.review);
     for (const item of terminals) await waitForGrid(page, item.id, sentinels.all);
@@ -789,7 +843,12 @@ async function smokePaneRouting(page) {
 }
 
 async function smokePasteGuard(page) {
-  const terminalId = await call(page, "spawn_terminal", { shell: "powershell", cols: 120, rows: 28, cwd: PROJECT_PATH });
+  const terminalId = await call(page, "spawn_terminal", {
+    shell: "powershell",
+    cols: 120,
+    rows: 28,
+    cwd: PROJECT_PATH,
+  });
   try {
     await page.evaluate(() => {
       window.__aetherPasteGuardEvents = [];
@@ -798,28 +857,38 @@ async function smokePasteGuard(page) {
         window.__aetherPasteGuardEvents.push(event.detail);
       });
     });
-    await page.locator("canvas").first().click({ position: { x: 40, y: 40 }, timeout: 10000 }).catch(() => {});
+    await page
+      .locator("canvas")
+      .first()
+      .click({ position: { x: 40, y: 40 }, timeout: 10000 })
+      .catch(() => {});
     const result = await page.evaluate((payload) => {
       const textarea = Array.from(document.querySelectorAll("textarea")).find((candidate) => {
         const style = getComputedStyle(candidate);
         return style.opacity === "0" && style.pointerEvents === "none";
       });
-      if (!textarea) return { sent: false, reason: "overlay textarea not found" };
-      textarea.focus();
+      const target = textarea ?? document.querySelector('[data-native-input-surface="true"]');
+      if (!target) return { sent: false, reason: "terminal paste target not found" };
+      if (target instanceof HTMLElement) target.focus();
       const event = new Event("paste", { bubbles: true, cancelable: true });
       Object.defineProperty(event, "clipboardData", {
         configurable: true,
         value: { getData: (type) => (type === "text" || type === "text/plain" ? payload : "") },
       });
-      textarea.dispatchEvent(event);
-      return { sent: true, defaultPrevented: event.defaultPrevented };
+      target.dispatchEvent(event);
+      return {
+        sent: true,
+        defaultPrevented: event.defaultPrevented,
+        target: textarea ? "webview-overlay" : "native-input-surface",
+      };
     }, "git reset --hard HEAD\nRemove-Item -Recurse -Force C:/Windows/Temp");
     await page.waitForFunction(() => window.__aetherPasteGuardEvents?.length > 0, null, {
       timeout: 10000,
     });
     const details = await page.evaluate(() => window.__aetherPasteGuardEvents ?? []);
     const blocked = details.some((detail) => detail.action === "blocked" || detail.action === "cancelled");
-    if (!result.sent || !blocked) throw new Error(`Paste guard did not block/cancel destructive paste: ${JSON.stringify({ result, details })}`);
+    if (!result.sent || !blocked)
+      throw new Error(`Paste guard did not block/cancel destructive paste: ${JSON.stringify({ result, details })}`);
     return { terminalId, result, details };
   } finally {
     await call(page, "close_terminal", { id: terminalId }).catch(() => {});
@@ -849,10 +918,15 @@ async function smokeWorkflow(page) {
       defaultOption: "continue",
     });
     const listed = await call(page, "list_running_workflows", { projectPath });
-    if (!listed.some((item) => item.id === workflowId)) throw new Error("workflow did not appear in running workflow list");
+    if (!listed.some((item) => item.id === workflowId))
+      throw new Error("workflow did not appear in running workflow list");
     return {
       workflowId,
-      started: { id: started.id, phaseCount: started.phases?.length ?? null, currentPhase: started.current_phase ?? null },
+      started: {
+        id: started.id,
+        phaseCount: started.phases?.length ?? null,
+        currentPhase: started.current_phase ?? null,
+      },
       split: { currentPhase: split.current_phase ?? null, phases: split.phases?.map((phase) => phase.name) ?? [] },
       decision: {
         currentPhase: decision.current_phase ?? null,

@@ -101,10 +101,12 @@ describe("WorkflowPanel empty state", () => {
 
     expect(src).toContain('import { PanelHeader } from "../../shared/ui/PanelHeader"');
     expect(src).toContain("<PanelHeader");
+    expect(src).toContain('subtitle="multi-step runs"');
     expect(src).toContain("collapsible");
     expect(src).toContain("collapsed={!expanded}");
     expect(src).toContain("if (running.length > 0) setExpanded(true)");
     expect(src).toContain("styles.runningName");
+    expect(src).toContain("Build a workflow or import recipes to run repeatable guarded work.");
   });
 });
 
@@ -143,7 +145,8 @@ describe("WorkflowPanel agent completion bridge", () => {
 
     expect(src).toContain("agent_role: string | null");
     expect(src).toContain("toOrchestraRoleId(phase.agent_role)");
-    expect(src).toContain("meta?: { role?: OrchestraRoleId; handoffFrom?: string }");
+    expect(src).toContain('import type { StartAgentMeta } from "../../shared/hooks/useAgentManager"');
+    expect(src).toContain("meta?: StartAgentMeta");
   });
 
   it("surfaces workflow resume metadata, phase evidence, and decision-aware gates", () => {
@@ -157,6 +160,18 @@ describe("WorkflowPanel agent completion bridge", () => {
     expect(src).toContain('invoke<boolean>("workflow_approve_gate_decision"');
     expect(src).toContain('invoke("workflow_reject_gate_decision"');
     expect(src).toContain('comment.trim().toLowerCase().startsWith("conditional:")');
+    expect(src).toContain("styles.gateDecisionPanel");
+    expect(src).toContain("Gate decision");
+    expect(src).toMatch(/p\.decision_request\?\.reason\s*\?\?\s*p\.blocked_reason/);
+    expect(src).toContain("styles.gateApproveAction");
+    expect(src).toContain("styles.gateRejectAction");
+    expect(src).toContain("onDestinationOutcome?:");
+    expect(src).toContain('label: "Workflow gate approved"');
+    expect(src).toContain('label: "Workflow gate rejected"');
+    expect(src).toContain('label: "Workflow gate approval failed"');
+    expect(src).toContain('routeWidget: "workflow"');
+    expect(src).toContain('routeLabel: "Workflow"');
+    expect(src).toContain("routeDetail: workflowId");
     expect(src).toContain("p.artifacts?.length");
     expect(src).toContain("wf.resume_point.phase_name");
   });

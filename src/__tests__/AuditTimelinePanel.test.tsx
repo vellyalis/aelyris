@@ -335,6 +335,33 @@ describe("AuditTimelinePanel", () => {
     expect(screen.getByLabelText("Audit summary").textContent).toContain("1Events");
   });
 
+  it("keeps selected audit-jump rows visible even when the graph scope would hide them", () => {
+    const workstationGraph = buildWorkstationGraph({
+      workspaceId: "C:/repo",
+      panes: [{ paneId: "pane-a", terminalId: "term-1" }],
+    });
+
+    render(
+      <AuditTimelinePanel
+        auditEvents={[
+          event(1, { entityId: "term-1", summary: "Scoped terminal warning" }),
+          event(2, {
+            entityId: "missing-pane",
+            summary: "Right rail stale pane outcome",
+            metadata: { correlationId: "trace-right-rail" },
+          }),
+        ]}
+        selectedEventId={2}
+        traceFilter="trace-right-rail"
+        workstationGraph={workstationGraph}
+      />,
+    );
+
+    const selectedRow = screen.getByText("Right rail stale pane outcome").closest("article");
+    expect(selectedRow?.getAttribute("data-selected")).toBe("true");
+    expect(screen.queryByText("Scoped terminal warning")).toBeNull();
+  });
+
   it("scopes audit rows to graph agent nodes", () => {
     const workstationGraph = buildWorkstationGraph({
       workspaceId: "C:/repo",
@@ -402,6 +429,63 @@ describe("AuditTimelinePanel", () => {
     });
 
     expect(onRestartPane).toHaveBeenCalledWith("tab-a", "pane-a");
+  });
+
+  it("surfaces selected audit recovery actions at the destination", async () => {
+    const onFocusPane = vi.fn();
+    const onRestartPane = vi.fn();
+    const onSelectEvent = vi.fn();
+    const onDestinationOutcome = vi.fn();
+    render(
+      <AuditTimelinePanel
+        auditEvents={[event(1, { action: "send_keys_failed", severity: "warn", summary: "Send failed" })]}
+        panes={[pane()]}
+        selectedEventId={1}
+        onFocusPane={onFocusPane}
+        onRestartPane={onRestartPane}
+        onSelectEvent={onSelectEvent}
+        onDestinationOutcome={onDestinationOutcome}
+      />,
+    );
+
+    expect(screen.getByLabelText("Selected audit recovery").textContent).toContain("Restart pane");
+    expect(screen.getByLabelText("Selected audit recovery").textContent).toContain("Send failed");
+
+    fireEvent.click(screen.getByRole("button", { name: "Focus pane" }));
+    expect(onFocusPane).toHaveBeenCalledWith("tab-a", "pane-a");
+    expect(onDestinationOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({
+        label: "Audit pane focused",
+        auditEventId: 1,
+        tone: "success",
+        routeWidget: "audit-timeline",
+        routeLabel: "Audit",
+        routeDetail: "Send failed",
+      }),
+    );
+    expect(onSelectEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 1 }),
+      expect.objectContaining({ paneId: "pane-a" }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Restart pane" }));
+    expect(useConfirmStore.getState().open).toBe(true);
+
+    await act(async () => {
+      useConfirmStore.getState().close(true);
+    });
+
+    expect(onRestartPane).toHaveBeenCalledWith("tab-a", "pane-a");
+    expect(onDestinationOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({
+        label: "Audit recovery restarted pane",
+        auditEventId: 1,
+        tone: "success",
+        routeWidget: "audit-timeline",
+        routeLabel: "Audit",
+        routeDetail: "Send failed",
+      }),
+    );
   });
 
   it("does not restart a stale pane after audit confirmation resolves", async () => {

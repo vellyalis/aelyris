@@ -119,11 +119,11 @@
   flex: 0 0 auto;
 }
 .stageAllBtn {
-  background: var(--white-6);
-  color: var(--text-secondary);
+  background: var(--white-10);
+  color: var(--text-primary);
 }
 .stageAllBtn:hover {
-  background: var(--white-10);
+  background: var(--white-15);
 }
 .commitBtn {
   background: var(--ctp-green);

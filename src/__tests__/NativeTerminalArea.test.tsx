@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   IME_DIAGNOSTIC_EVENT,
+  IME_DIAGNOSTIC_OVERLAY_STORAGE_KEY,
   IME_DIAGNOSTIC_STORAGE_KEY,
   type ImeDiagnosticDetail,
 } from "../features/terminal/hooks/useCanvasIME";
@@ -103,6 +104,7 @@ describe("NativeTerminalArea", () => {
   afterEach(() => {
     cleanup();
     localStorage.removeItem(IME_DIAGNOSTIC_STORAGE_KEY);
+    localStorage.removeItem(IME_DIAGNOSTIC_OVERLAY_STORAGE_KEY);
     vi.restoreAllMocks();
   });
 
@@ -215,6 +217,30 @@ describe("NativeTerminalArea", () => {
     expect(container.querySelector("[aria-label='ターミナル入力バー']")).not.toBeNull();
   });
 
+  it("activates AI CLI anchoring from live PTY output before Japanese IME input", async () => {
+    const spawnPty = vi.fn().mockResolvedValue("term-ai-cli");
+    let emitOutput: ((bytes: Uint8Array) => void) | null = null;
+    const subscribeOutput = vi.fn(async (_terminalId: string, onBytes: (bytes: Uint8Array) => void) => {
+      emitOutput = onBytes;
+      return () => {};
+    });
+
+    const { container } = render(<NativeTerminalArea spawnPty={spawnPty} subscribeOutput={subscribeOutput} />);
+
+    await waitFor(() => expect(container.querySelector("[data-testid='terminal-canvas']")).not.toBeNull());
+    await waitFor(() => expect(subscribeOutput).toHaveBeenCalledWith("term-ai-cli", expect.any(Function)));
+
+    act(() => {
+      emitOutput?.(new TextEncoder().encode("PS C:\\repo> claude\r\nClaude Code\r\nType your message\r\n"));
+    });
+
+    await waitFor(() => {
+      const imeTextarea = container.querySelector("[data-testid='terminal-ime-textarea']");
+      expect(imeTextarea?.getAttribute("data-ime-anchor-mode")).toBe("ai-cli-real-cursor");
+    });
+    expect(nativeTerminalAreaSource).toContain("preferAiInputAnchor={aiCli.active}");
+  });
+
   it("routes direct canvas input through the pane writer", async () => {
     const spawnPty = vi.fn().mockResolvedValue("term-write");
     const writePty = vi.fn();
@@ -306,6 +332,7 @@ describe("NativeTerminalArea", () => {
 
   it("shows an opt-in terminal input diagnostics overlay without raw text", async () => {
     localStorage.setItem(IME_DIAGNOSTIC_STORAGE_KEY, "1");
+    localStorage.setItem(IME_DIAGNOSTIC_OVERLAY_STORAGE_KEY, "1");
     vi.spyOn(console, "debug").mockImplementation(() => {});
     const spawnPty = vi.fn().mockResolvedValue("term-diag");
     const writePty = vi.fn();
@@ -371,6 +398,26 @@ describe("NativeTerminalArea", () => {
     expect(overlay.textContent).toContain("Write pathignored");
     expect(overlay.textContent).toContain("120, 44");
     expect(overlay.textContent).toContain("keydown");
+
+    fireEvent.click(container.querySelector("[aria-label='Hide input diagnostics']") as HTMLButtonElement);
+    await waitFor(() => expect(container.querySelector("[data-testid='terminal-input-diagnostics']")).toBeNull());
+    expect(localStorage.getItem(IME_DIAGNOSTIC_OVERLAY_STORAGE_KEY)).toBeNull();
+  });
+
+  it("does not mount the diagnostics overlay when only trace recording is enabled", async () => {
+    localStorage.setItem(IME_DIAGNOSTIC_STORAGE_KEY, "1");
+    const spawnPty = vi.fn().mockResolvedValue("term-trace-only");
+    const { container } = render(
+      <NativeTerminalArea
+        shell="powershell"
+        spawnPty={spawnPty}
+        writePty={vi.fn()}
+        subscribeOutput={async () => () => {}}
+      />,
+    );
+
+    await waitFor(() => expect(container.querySelector("[data-testid='terminal-canvas']")).not.toBeNull());
+    expect(container.querySelector("[data-testid='terminal-input-diagnostics']")).toBeNull();
   });
 
   it("Ctrl+Shift+J moves focus into the IME input bar", async () => {

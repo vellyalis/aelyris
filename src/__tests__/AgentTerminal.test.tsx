@@ -22,8 +22,12 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 vi.mock("../features/terminal/TerminalCanvas", () => ({
-  TerminalCanvas: ({ terminalId }: { terminalId: string }) => (
-    <canvas data-testid="terminal-canvas" data-terminal-id={terminalId} />
+  TerminalCanvas: ({ terminalId, preferAiInputAnchor }: { terminalId: string; preferAiInputAnchor?: boolean }) => (
+    <canvas
+      data-testid="terminal-canvas"
+      data-terminal-id={terminalId}
+      data-prefer-ai-input-anchor={preferAiInputAnchor ? "true" : "false"}
+    />
   ),
 }));
 
@@ -120,4 +124,11 @@ describe("AgentTerminal", () => {
 
     await waitFor(() => expect(screen.getByText("Resize failed: resize denied")).toBeTruthy());
   }, 10_000);
+
+  it("enables AI CLI input anchoring for the embedded agent terminal canvas", async () => {
+    render(<AgentTerminal ptyId="pty-agent" cli="claude" status="coding" model="sonnet" cost={0.12} />);
+
+    const canvas = await screen.findByTestId("terminal-canvas");
+    expect(canvas.getAttribute("data-prefer-ai-input-anchor")).toBe("true");
+  });
 });

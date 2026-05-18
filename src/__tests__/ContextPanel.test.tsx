@@ -129,7 +129,7 @@ describe("ContextPanel", () => {
   it("renders a quiet empty state when no agent telemetry exists", () => {
     render(<ContextPanel activeSessionId={null} sessions={[]} />);
 
-    expect(screen.getByText("No agent telemetry yet.")).toBeTruthy();
+    expect(screen.getByText("Start an agent to capture context, handoff state, and changed files.")).toBeTruthy();
   });
 
   it("builds a redacted handoff context pack from supplied workspace state", () => {

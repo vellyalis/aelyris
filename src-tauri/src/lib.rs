@@ -73,6 +73,7 @@ pub fn run() {
         .manage(workflow::WorkflowExecutor::new())
         .manage(lsp::LspManager::new(lsp_tx))
         .manage(std::sync::Arc::new(term::NativeTerminalRegistry::new()))
+        .manage(std::sync::Arc::new(term::NativeTerminalInputHost::new()))
         .manage(std::sync::Arc::new(snapshot::SnapshotStore::new()))
         .manage(std::sync::Arc::new(std::sync::Mutex::new(AutoRepairManager::new())))
         .manage(std::sync::Arc::new(std::sync::Mutex::new(
@@ -501,6 +502,10 @@ pub fn run() {
             ipc::respawn_terminal,
             ipc::force_restart_terminal,
             ipc::write_terminal,
+            ipc::native_terminal_input_commit,
+            ipc::native_terminal_input_focus,
+            ipc::native_terminal_input_drain,
+            ipc::native_terminal_input_status,
             ipc::resize_terminal,
             ipc::close_terminal,
             ipc::mux_process_keymap_event,
@@ -548,6 +553,9 @@ pub fn run() {
             ipc::load_app_config,
             ipc::save_app_config,
             ipc::read_file,
+            ipc::open_in_vscode,
+            ipc::open_in_vscode_diff,
+            ipc::open_git_file_diff_in_vscode,
             ipc::write_file,
             ipc::create_file,
             ipc::rename_path,
@@ -563,6 +571,9 @@ pub fn run() {
             ipc::start_chat_agent,
             ipc::stop_chat_agent,
             ipc::save_temp_image,
+            ipc::save_clipboard_image,
+            ipc::read_clipboard_text,
+            ipc::write_clipboard_text,
             // Session management
             ipc::create_session,
             ipc::list_db_sessions,

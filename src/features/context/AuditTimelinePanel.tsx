@@ -40,6 +40,18 @@ interface AuditTimelinePanelProps {
   onRestartPane?: (tabId: string, paneId: string) => void | Promise<void>;
   onSelectEvent?: (entry: AuditEventRecord, pane?: TerminalPaneTarget) => void;
   onTraceFilterChange?: (correlationId: string | null) => void;
+  onDestinationOutcome?: (outcome: AuditDestinationOutcome) => void;
+}
+
+interface AuditDestinationOutcome {
+  label: string;
+  detail: string;
+  tone: "success" | "warn" | "error";
+  auditEventId?: number | null;
+  auditCorrelationId?: string | null;
+  routeWidget?: "audit-timeline";
+  routeLabel?: string;
+  routeDetail?: string;
 }
 
 const CATEGORY_ICONS = {
@@ -97,6 +109,7 @@ export function AuditTimelinePanel({
   onRestartPane,
   onSelectEvent,
   onTraceFilterChange,
+  onDestinationOutcome,
 }: AuditTimelinePanelProps) {
   const stream = useAuditEvents({ enabled: enabled && auditEvents === undefined, invoke, limit, pollMs });
   const [viewMode, setViewMode] = useState<AuditViewMode>("all");
@@ -108,9 +121,13 @@ export function AuditTimelinePanel({
   const graphPaneIds = useMemo(() => listWorkstationGraphPaneIds(workstationGraph), [workstationGraph]);
   const graphTerminalIds = useMemo(() => listWorkstationGraphTerminalIds(workstationGraph), [workstationGraph]);
   const graphRiskIds = useMemo(() => listWorkstationGraphRiskIds(workstationGraph), [workstationGraph]);
-  const graphEntries = useMemo(
+  const graphScopedEntries = useMemo(
     () => filterEntriesByGraph(entries, graphAgentIds, graphRiskIds, graphPaneIds, graphTerminalIds),
     [entries, graphAgentIds, graphPaneIds, graphRiskIds, graphTerminalIds],
+  );
+  const graphEntries = useMemo(
+    () => preserveAuditJumpEntries(graphScopedEntries, entries, selectedEventId, traceFilter),
+    [entries, graphScopedEntries, selectedEventId, traceFilter],
   );
   const graphPanes = useMemo(() => {
     if (graphPaneIds.length === 0 && graphTerminalIds.length === 0) return panes;
@@ -141,6 +158,56 @@ export function AuditTimelinePanel({
   }, [graphPanes]);
   const resolveLivePane = (pane: TerminalPaneTarget): TerminalPaneTarget | undefined =>
     panesRef.current.find((candidate) => candidate.tabId === pane.tabId && candidate.paneId === pane.paneId);
+  const selectedEntry = useMemo(
+    () => (selectedEventId == null ? null : (graphEntries.find((entry) => entry.id === selectedEventId) ?? null)),
+    [graphEntries, selectedEventId],
+  );
+  const selectedPane = selectedEntry ? findAuditPane(selectedEntry, graphPanes) : undefined;
+  const selectedRecovery = selectedEntry ? deriveAuditRecoveryHint(selectedEntry) : null;
+  const selectedCanFocus = Boolean(selectedPane && onFocusPane);
+  const selectedCanRestart = Boolean(selectedPane && onRestartPane && selectedRecovery?.kind === "restart-pane");
+  const focusSelectedPane = () => {
+    if (!selectedEntry || !selectedPane || !onFocusPane) return;
+    const livePane = resolveLivePane(selectedPane);
+    if (!livePane) return;
+    onSelectEvent?.(selectedEntry, selectedPane);
+    void onFocusPane(livePane.tabId, livePane.paneId);
+    onDestinationOutcome?.({
+      label: "Audit pane focused",
+      detail: `${livePane.tabLabel}/${livePane.title || livePane.paneId}`,
+      tone: "success",
+      auditEventId: selectedEntry.id,
+      auditCorrelationId: getAuditCorrelationId(selectedEntry.metadata),
+      routeWidget: "audit-timeline",
+      routeLabel: "Audit",
+      routeDetail: selectedEntry.summary,
+    });
+  };
+  const restartSelectedPane = async () => {
+    if (!selectedEntry || !selectedPane || !onRestartPane) return;
+    const paneLabel = `${selectedPane.tabLabel}/${selectedPane.title || selectedPane.paneId}`;
+    const ok = await showConfirm({
+      title: "Restart terminal shell",
+      description: `Restart ${paneLabel}? The current shell process will be replaced in the same pane.`,
+      confirmLabel: "Restart",
+      tone: "default",
+    });
+    if (!ok) return;
+    const livePane = resolveLivePane(selectedPane);
+    if (!livePane) return;
+    onSelectEvent?.(selectedEntry, selectedPane);
+    await onRestartPane(livePane.tabId, livePane.paneId);
+    onDestinationOutcome?.({
+      label: "Audit recovery restarted pane",
+      detail: `${livePane.tabLabel}/${livePane.title || livePane.paneId}`,
+      tone: "success",
+      auditEventId: selectedEntry.id,
+      auditCorrelationId: getAuditCorrelationId(selectedEntry.metadata),
+      routeWidget: "audit-timeline",
+      routeLabel: "Audit",
+      routeDetail: selectedEntry.summary,
+    });
+  };
 
   return (
     <section
@@ -214,6 +281,33 @@ export function AuditTimelinePanel({
           </div>
         )}
 
+        {selectedEntry && selectedRecovery?.recoverable && (
+          <section className={styles.selectedRecovery} aria-label="Selected audit recovery">
+            <span className={styles.selectedRecoveryCopy}>
+              <span>{selectedRecovery.label}</span>
+              <strong>{selectedEntry.summary}</strong>
+              <span>{selectedRecovery.detail}</span>
+            </span>
+            <span className={styles.selectedRecoveryActions}>
+              {selectedCanFocus && (
+                <button type="button" className={styles.selectedRecoveryButton} onClick={focusSelectedPane}>
+                  Focus pane
+                </button>
+              )}
+              {selectedCanRestart && (
+                <button
+                  type="button"
+                  className={styles.selectedRecoveryButton}
+                  data-tone="restart"
+                  onClick={() => void restartSelectedPane()}
+                >
+                  Restart pane
+                </button>
+              )}
+            </span>
+          </section>
+        )}
+
         {visibleEntries.length === 0 ? (
           <EmptyState
             icon={<ClipboardList size={18} />}
@@ -232,6 +326,7 @@ export function AuditTimelinePanel({
                 onRestartPane={onRestartPane}
                 onSelectEvent={onSelectEvent}
                 onTraceFilter={setTraceFilter}
+                onDestinationOutcome={onDestinationOutcome}
                 resolveLivePane={resolveLivePane}
               />
             ))}
@@ -250,6 +345,7 @@ function AuditRow({
   onRestartPane,
   onSelectEvent,
   onTraceFilter,
+  onDestinationOutcome,
   resolveLivePane,
 }: {
   entry: AuditEventRecord;
@@ -259,6 +355,7 @@ function AuditRow({
   onRestartPane?: (tabId: string, paneId: string) => void | Promise<void>;
   onSelectEvent?: (entry: AuditEventRecord, pane?: TerminalPaneTarget) => void;
   onTraceFilter: (correlationId: string) => void;
+  onDestinationOutcome?: (outcome: AuditDestinationOutcome) => void;
   resolveLivePane: (pane: TerminalPaneTarget) => TerminalPaneTarget | undefined;
 }) {
   const Icon = CATEGORY_ICONS[entry.category as keyof typeof CATEGORY_ICONS] ?? ClipboardList;
@@ -275,6 +372,16 @@ function AuditRow({
     const livePane = resolveLivePane(pane);
     if (!livePane) return;
     void onFocusPane(livePane.tabId, livePane.paneId);
+    onDestinationOutcome?.({
+      label: "Audit pane focused",
+      detail: `${livePane.tabLabel}/${livePane.title || livePane.paneId}`,
+      tone: "success",
+      auditEventId: entry.id,
+      auditCorrelationId: correlationId,
+      routeWidget: "audit-timeline",
+      routeLabel: "Audit",
+      routeDetail: entry.summary,
+    });
   };
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (!onSelectEvent || (event.key !== "Enter" && event.key !== " ")) return;
@@ -294,6 +401,16 @@ function AuditRow({
     const livePane = resolveLivePane(pane);
     if (!livePane) return;
     await onRestartPane(livePane.tabId, livePane.paneId);
+    onDestinationOutcome?.({
+      label: "Audit recovery restarted pane",
+      detail: `${livePane.tabLabel}/${livePane.title || livePane.paneId}`,
+      tone: "success",
+      auditEventId: entry.id,
+      auditCorrelationId: correlationId,
+      routeWidget: "audit-timeline",
+      routeLabel: "Audit",
+      routeDetail: entry.summary,
+    });
   };
 
   return (
@@ -397,6 +514,22 @@ function filterAuditEntries(
     if (viewMode === "recover") return deriveAuditRecoveryHint(entry).recoverable;
     return true;
   });
+}
+
+function preserveAuditJumpEntries(
+  scopedEntries: AuditEventRecord[],
+  allEntries: AuditEventRecord[],
+  selectedEventId: number | null,
+  traceFilter: string | null,
+): AuditEventRecord[] {
+  if (selectedEventId == null && !traceFilter) return scopedEntries;
+  const scopedIds = new Set(scopedEntries.map((entry) => entry.id));
+  const jumpEntries = allEntries.filter((entry) => {
+    if (scopedIds.has(entry.id)) return false;
+    if (selectedEventId != null && entry.id === selectedEventId) return true;
+    return Boolean(traceFilter && getAuditCorrelationId(entry.metadata) === traceFilter);
+  });
+  return [...jumpEntries, ...scopedEntries];
 }
 
 function filterEntriesByGraph(

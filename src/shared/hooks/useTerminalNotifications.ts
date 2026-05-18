@@ -9,16 +9,20 @@ interface UseTerminalNotificationsOptions {
   onTabActivity: (tabId: string) => void;
 }
 
+const TERMINAL_BELL_NOTIFICATION_KEY = "aether:terminalBellNotifications";
+const MIN_NOTIFICATION_INTERVAL_MS = 30_000;
+
 /**
  * Listens for terminal:bell events and triggers:
  * 1. Tab activity badge (for non-active tabs)
- * 2. Windows notification (if app is not focused)
+ * 2. Optional Windows notification, only when explicitly enabled.
  *
  * Bell events are emitted by the Rust PTY layer when \x07 is detected.
  * Claude Code uses printf '\a' hooks to signal response completion.
  */
 export function useTerminalNotifications({ activeTabId, tabs, onTabActivity }: UseTerminalNotificationsOptions) {
   const lastBellTime = useRef<Record<string, number>>({});
+  const lastNotificationTime = useRef<Record<string, number>>({});
 
   const handleBell = useCallback(
     (terminalId: string) => {
@@ -35,8 +39,17 @@ export function useTerminalNotifications({ activeTabId, tabs, onTabActivity }: U
         }
       }
 
-      // Windows notification if window is not focused
-      if (!document.hasFocus()) {
+      // Native OS toasts are intentionally opt-in. AI CLIs and shell
+      // integrations can emit BEL frequently; surfacing every bell as a
+      // bottom-right PowerShell/Aether popup is noisy and feels broken.
+      if (!document.hasFocus() && terminalBellNotificationsEnabled()) {
+        if (
+          lastNotificationTime.current[terminalId] &&
+          now - lastNotificationTime.current[terminalId] < MIN_NOTIFICATION_INTERVAL_MS
+        ) {
+          return;
+        }
+        lastNotificationTime.current[terminalId] = now;
         sendWindowsNotification("Aether Terminal", "Agent has responded ✦");
       }
     },
@@ -74,6 +87,15 @@ export function useTerminalNotifications({ activeTabId, tabs, onTabActivity }: U
       unlisten?.();
     };
   }, [handleBell]);
+}
+
+function terminalBellNotificationsEnabled(): boolean {
+  try {
+    const value = window.localStorage.getItem(TERMINAL_BELL_NOTIFICATION_KEY);
+    return value === "1" || value === "true";
+  } catch {
+    return false;
+  }
 }
 
 /** Send a Windows toast notification via Tauri */

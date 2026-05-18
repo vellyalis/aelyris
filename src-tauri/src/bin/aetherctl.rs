@@ -1,6 +1,8 @@
 use std::env;
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 
+use aether_terminal_lib::db::{self, Database};
 use reqwest::Method;
 use serde_json::{json, Value};
 
@@ -40,6 +42,7 @@ async fn run() -> Result<(), String> {
             let value = request(Method::GET, "/sessions", None).await?;
             print_json(&value)
         }
+        "db-smoke" => db_smoke(),
         "mux" => {
             let value = request(Method::GET, "/mux/workspaces", None).await?;
             print_json(&value)
@@ -126,6 +129,56 @@ async fn run() -> Result<(), String> {
         "resize" => resize_session(&args[1..]).await,
         other => Err(format!("unknown command: {other}")),
     }
+}
+
+fn db_smoke() -> Result<(), String> {
+    let db_path = db::db_path();
+    let database = Database::open(&db_path)?;
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|err| err.to_string())?
+        .as_millis();
+    let storage_key = format!("aether:paneTree:post-resume-smoke-{nonce}");
+    let project_path = env::current_dir()
+        .map_err(|err| err.to_string())?
+        .to_string_lossy()
+        .to_string();
+    let layout = json!({
+        "layoutId": storage_key,
+        "schemaVersion": 1,
+        "root": {
+            "kind": "split",
+            "axis": "horizontal",
+            "ratio": 0.5,
+            "first": { "kind": "pane", "paneId": "post-resume-left" },
+            "second": { "kind": "pane", "paneId": "post-resume-right" }
+        },
+        "activePaneId": "post-resume-left",
+        "backendBindings": [
+            { "paneId": "post-resume-left", "terminalId": "probe-left" },
+            { "paneId": "post-resume-right", "terminalId": "probe-right" }
+        ]
+    });
+    let layout_json = serde_json::to_string(&layout).map_err(|err| err.to_string())?;
+    database.save_pane_tree_layout(&storage_key, &project_path, &layout_json)?;
+    let saved = database
+        .get_pane_tree_layout(&storage_key)?
+        .ok_or_else(|| "pane tree layout smoke row was not readable".to_string())?;
+    let sqlite_writable = saved.project_path == project_path;
+    let pane_state_preserved = saved.layout_json == layout_json;
+    database.delete_pane_tree_layout(&storage_key)?;
+    if !sqlite_writable || !pane_state_preserved {
+        return Err("pane tree layout smoke did not preserve the written state".to_string());
+    }
+    print_json(&json!({
+        "status": "pass",
+        "dbPath": db_path.display().to_string(),
+        "storageKey": storage_key,
+        "sqliteWritable": sqlite_writable,
+        "paneStatePreserved": pane_state_preserved,
+        "layoutBytes": layout_json.len(),
+        "updatedAt": saved.updated_at,
+    }))
 }
 
 async fn create_session(args: &[String]) -> Result<(), String> {

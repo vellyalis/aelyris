@@ -11,6 +11,7 @@ beforeEach(() => {
     localStorage.removeItem("aether:moodPreset");
     localStorage.removeItem("aether:moodMaterialOverrides");
     localStorage.removeItem("aether:wallpaperSettingsByMood");
+    localStorage.removeItem("aether:windowOpacity");
     localStorage.removeItem("aether:workspaceProfiles");
   } catch {
     /* ignore */
@@ -29,6 +30,7 @@ beforeEach(() => {
     openFiles: [],
     activeFile: null,
     moodPresetId: DEFAULT_MOOD_PRESET,
+    appWindowOpacity: 0.95,
     moodMaterialOverrides: {},
     wallpaperSettingsByMood: {
       "aether-sky": { imagePath: null, opacity: 0, positionX: 50, positionY: 50, scale: 100 },
@@ -102,6 +104,22 @@ describe("appStore — appearance customization", () => {
     expect(useAppStore.getState().moodMaterialOverrides["aether-pro"]?.panelColor).toBe("#050d16");
   });
 
+  it("allows low opacity material overrides to make mood surfaces meaningfully translucent", () => {
+    const { setMoodMaterialOverride } = useAppStore.getState();
+
+    setMoodMaterialOverride("aether-sakura", "backdropAlpha", 0.72);
+    setMoodMaterialOverride("aether-sakura", "panelAlpha", 0.18);
+    setMoodMaterialOverride("aether-sakura", "chromeAlpha", 0.16);
+    setMoodMaterialOverride("aether-sakura", "terminalAlpha", 0.08);
+
+    expect(useAppStore.getState().moodMaterialOverrides["aether-sakura"]).toMatchObject({
+      backdropAlpha: 0.72,
+      panelAlpha: 0.18,
+      chromeAlpha: 0.16,
+      terminalAlpha: 0.08,
+    });
+  });
+
   it("keeps wallpaper image controls isolated per mood", () => {
     const { setMoodPresetId, setWallpaperSettingsForMood } = useAppStore.getState();
 
@@ -129,6 +147,20 @@ describe("appStore — appearance customization", () => {
     expect(useAppStore.getState().wallpaperImagePath).toBe("C:/Users/owner/Pictures/pro.jpg");
     expect(useAppStore.getState().wallpaperOpacity).toBe(0.12);
     expect(useAppStore.getState().wallpaperSettingsByMood["aether-pro"].positionX).toBe(60);
+  });
+
+  it("persists global window opacity with readable clamp bounds", () => {
+    const { setAppWindowOpacity } = useAppStore.getState();
+
+    setAppWindowOpacity(0.42);
+    expect(useAppStore.getState().appWindowOpacity).toBe(0.42);
+    expect(localStorage.getItem("aether:windowOpacity")).toBe("0.42");
+
+    setAppWindowOpacity(0.1);
+    expect(useAppStore.getState().appWindowOpacity).toBe(0.35);
+
+    setAppWindowOpacity(2);
+    expect(useAppStore.getState().appWindowOpacity).toBe(1);
   });
 });
 
@@ -359,6 +391,23 @@ describe("appStore — theme overrides", () => {
     const raw = localStorage.getItem("aether:themeOverrides");
     expect(raw).toBeTruthy();
     expect(JSON.parse(raw ?? "{}")).toEqual({ "aether-dark": { sapphire: "#112233" } });
+  });
+
+  it("replaces theme overrides from config hydration and sanitizes them", () => {
+    const { replaceThemeOverrides } = useAppStore.getState();
+    replaceThemeOverrides({
+      "sakura-hub": {
+        sapphire: "#74c7ec",
+        red: "not-a-color",
+      },
+    });
+
+    expect(useAppStore.getState().themeOverrides).toEqual({
+      "sakura-hub": { sapphire: "#74c7ec" },
+    });
+    expect(JSON.parse(localStorage.getItem("aether:themeOverrides") ?? "{}")).toEqual({
+      "sakura-hub": { sapphire: "#74c7ec" },
+    });
   });
 
   it("sanitizes persisted overrides before applying them", () => {

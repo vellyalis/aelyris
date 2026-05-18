@@ -1,9 +1,11 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
+import { type EditorOpenMode, loadEditorOpenMode, saveEditorOpenMode } from "../../shared/lib/externalEditor";
 import { isTauriRuntime } from "../../shared/lib/tauriRuntime";
-import { type WallpaperSettings, useAppStore } from "../../shared/store/appStore";
+import { useAppStore, type WallpaperSettings } from "../../shared/store/appStore";
 import { toast } from "../../shared/store/toastStore";
+import type { AccentOverrides } from "../../shared/themes/catppuccin";
 import {
   MOOD_MATERIAL_DEFAULTS,
   MOOD_PRESETS,
@@ -52,10 +54,10 @@ const MATERIAL_CONTROLS: readonly {
   min: number;
   max: number;
 }[] = [
-  { label: "Backdrop", colorKey: "backdropColor", alphaKey: "backdropAlpha", min: 0, max: 0.3 },
-  { label: "Panels", colorKey: "panelColor", alphaKey: "panelAlpha", min: 0.6, max: 0.98 },
-  { label: "Status bars", colorKey: "chromeColor", alphaKey: "chromeAlpha", min: 0.6, max: 0.98 },
-  { label: "Terminal well", colorKey: "terminalColor", alphaKey: "terminalAlpha", min: 0.3, max: 0.72 },
+  { label: "Backdrop", colorKey: "backdropColor", alphaKey: "backdropAlpha", min: 0, max: 0.85 },
+  { label: "Panels", colorKey: "panelColor", alphaKey: "panelAlpha", min: 0.15, max: 1 },
+  { label: "Status bars", colorKey: "chromeColor", alphaKey: "chromeAlpha", min: 0.15, max: 1 },
+  { label: "Terminal well", colorKey: "terminalColor", alphaKey: "terminalAlpha", min: 0.05, max: 0.9 },
 ];
 
 function previewConfig(theme: string, moodPreset: string, shell: string, liveMode: boolean): LoadedConfig {
@@ -70,6 +72,7 @@ function previewConfig(theme: string, moodPreset: string, shell: string, liveMod
       ligatures: true,
       window_effect: "mica",
       opacity: 1,
+      theme_overrides: {},
       mood_material_overrides: {},
       wallpaper_settings_by_mood: {},
     },
@@ -100,6 +103,7 @@ interface LoadedConfig {
     ligatures: boolean;
     window_effect: string;
     opacity: number;
+    theme_overrides?: Record<string, AccentOverrides>;
     mood_material_overrides?: Partial<Record<MoodPresetId, MoodMaterialOverrides>>;
     wallpaper_settings_by_mood?: Partial<Record<MoodPresetId, Partial<WallpaperSettings>>>;
   };
@@ -133,12 +137,15 @@ export function Settings({ visible, onClose }: SettingsProps) {
   const moodMaterialOverrides = useAppStore((s) => s.moodMaterialOverrides);
   const setMoodMaterialOverride = useAppStore((s) => s.setMoodMaterialOverride);
   const resetMoodMaterialOverrides = useAppStore((s) => s.resetMoodMaterialOverrides);
+  const replaceThemeOverrides = useAppStore((s) => s.replaceThemeOverrides);
   const replaceMoodMaterialOverrides = useAppStore((s) => s.replaceMoodMaterialOverrides);
   const wallpaperSettingsByMood = useAppStore((s) => s.wallpaperSettingsByMood);
   const setWallpaperSettingsForMood = useAppStore((s) => s.setWallpaperSettingsForMood);
   const replaceWallpaperSettingsByMood = useAppStore((s) => s.replaceWallpaperSettingsByMood);
   const ghostDiffLiveMode = useAppStore((s) => s.ghostDiffLiveMode);
   const setGhostDiffLiveMode = useAppStore((s) => s.setGhostDiffLiveMode);
+  const storeWindowOpacity = useAppStore((s) => s.appWindowOpacity);
+  const setAppWindowOpacity = useAppStore((s) => s.setAppWindowOpacity);
   const [theme, setTheme] = useState(storeTheme);
   const [mood, setMood] = useState(storeMood);
   const [font, setFont] = useState("IBM Plex Mono");
@@ -149,6 +156,8 @@ export function Settings({ visible, onClose }: SettingsProps) {
   const [cursorStyle, setCursorStyle] = useState("bar");
   const [cursorBlink, setCursorBlink] = useState(true);
   const [liveMode, setLiveMode] = useState(ghostDiffLiveMode);
+  const [windowOpacity, setWindowOpacity] = useState(storeWindowOpacity);
+  const [editorOpenMode, setEditorOpenMode] = useState<EditorOpenMode>(() => loadEditorOpenMode());
   // Keep the full config snapshot so Save can round-trip fields the UI can't
   // edit (window state, ui_font_family, opacity, scrollback). Without this,
   // every Save click resets those fields to the Rust defaults.
@@ -171,6 +180,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
     // directly between sessions doesn't have their changes overwritten by
     // the previous mount's stale state when they click Save.
     if (!visible) return;
+    setEditorOpenMode(loadEditorOpenMode());
     // Reset the snapshot BEFORE the invoke fires so a rapid open/close/open
     // cycle (or a Save click before the load resolves) cannot round-trip
     // the previous mount's `loadedConfig`. Without this, the user could
@@ -183,7 +193,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
     userEditedRef.current = false;
     if (!isTauriRuntime()) {
       const current = useAppStore.getState();
-      const cfg = previewConfig(current.themeId, current.moodPresetId, defaultShell, current.ghostDiffLiveMode);
+      const cfg = previewConfig(current.themeId, current.moodPresetId, "powershell", current.ghostDiffLiveMode);
       setLoadedConfig(cfg);
       setTheme(cfg.appearance.theme);
       setMood(normalizeMoodPreset(cfg.appearance.mood_preset));
@@ -191,10 +201,13 @@ export function Settings({ visible, onClose }: SettingsProps) {
       setFontSize(cfg.appearance.font_size);
       setLineHeight(cfg.appearance.line_height);
       setLigatures(cfg.appearance.ligatures);
+      replaceThemeOverrides(cfg.appearance.theme_overrides ?? {});
       setDefaultShell(cfg.terminal.default_shell);
       setCursorStyle(cfg.terminal.cursor_style);
       setCursorBlink(cfg.terminal.cursor_blink);
       setLiveMode(cfg.ghost_diff?.live_mode ?? false);
+      setWindowOpacity(cfg.appearance.opacity);
+      setAppWindowOpacity(cfg.appearance.opacity);
       return;
     }
     let cancelled = false;
@@ -205,12 +218,9 @@ export function Settings({ visible, onClose }: SettingsProps) {
         if (userEditedRef.current) return;
         setTheme(cfg.appearance.theme);
         const persistedMood = normalizeMoodPreset(cfg.appearance.mood_preset ?? useAppStore.getState().moodPresetId);
-        if (cfg.appearance.mood_material_overrides) {
-          replaceMoodMaterialOverrides(cfg.appearance.mood_material_overrides);
-        }
-        if (cfg.appearance.wallpaper_settings_by_mood) {
-          replaceWallpaperSettingsByMood(cfg.appearance.wallpaper_settings_by_mood);
-        }
+        replaceThemeOverrides(cfg.appearance.theme_overrides ?? {});
+        replaceMoodMaterialOverrides(cfg.appearance.mood_material_overrides ?? {});
+        replaceWallpaperSettingsByMood(cfg.appearance.wallpaper_settings_by_mood ?? {});
         setMood(persistedMood);
         setMoodPresetId(persistedMood);
         setFont(cfg.appearance.terminal_font_family.split(",")[0].trim());
@@ -220,6 +230,8 @@ export function Settings({ visible, onClose }: SettingsProps) {
         setDefaultShell(cfg.terminal.default_shell);
         setCursorStyle(cfg.terminal.cursor_style);
         setCursorBlink(cfg.terminal.cursor_blink);
+        setWindowOpacity(cfg.appearance.opacity);
+        setAppWindowOpacity(cfg.appearance.opacity);
         // Rehydrate from disk so config.toml is the source of truth — this
         // corrects the localStorage bootstrap value if the user edited the
         // file directly.
@@ -237,7 +249,15 @@ export function Settings({ visible, onClose }: SettingsProps) {
     return () => {
       cancelled = true;
     };
-  }, [visible, setGhostDiffLiveMode, setMoodPresetId, replaceMoodMaterialOverrides, replaceWallpaperSettingsByMood]);
+  }, [
+    visible,
+    setGhostDiffLiveMode,
+    setMoodPresetId,
+    setAppWindowOpacity,
+    replaceThemeOverrides,
+    replaceMoodMaterialOverrides,
+    replaceWallpaperSettingsByMood,
+  ]);
 
   const markEdited = () => {
     userEditedRef.current = true;
@@ -317,6 +337,8 @@ export function Settings({ visible, onClose }: SettingsProps) {
       setThemeId(theme);
       setMoodPresetId(mood);
       setGhostDiffLiveMode(liveMode);
+      setAppWindowOpacity(windowOpacity);
+      saveEditorOpenMode(editorOpenMode);
       onClose();
       return;
     }
@@ -331,6 +353,8 @@ export function Settings({ visible, onClose }: SettingsProps) {
         font_size: fontSize,
         line_height: lineHeight,
         ligatures,
+        opacity: windowOpacity,
+        theme_overrides: latestStore.themeOverrides,
         mood_material_overrides: latestStore.moodMaterialOverrides,
         wallpaper_settings_by_mood: latestStore.wallpaperSettingsByMood,
       },
@@ -350,6 +374,8 @@ export function Settings({ visible, onClose }: SettingsProps) {
         setThemeId(theme);
         setMoodPresetId(mood);
         setGhostDiffLiveMode(liveMode);
+        setAppWindowOpacity(windowOpacity);
+        saveEditorOpenMode(editorOpenMode);
         onClose();
       })
       .catch((err) => {
@@ -445,12 +471,35 @@ export function Settings({ visible, onClose }: SettingsProps) {
                 </div>
               </div>
               <div className={styles.field}>
+                <label className={styles.label} htmlFor="settings-window-opacity">
+                  Window opacity
+                </label>
+                <p className={styles.materialHint}>Controls the global backdrop strength without dimming text.</p>
+                <div className={styles.materialRow}>
+                  <span className={styles.materialColorPreview} aria-hidden="true" />
+                  <input
+                    id="settings-window-opacity"
+                    className={styles.materialSlider}
+                    type="range"
+                    min={0.35}
+                    max={1}
+                    step={0.01}
+                    value={windowOpacity}
+                    onChange={(e) => {
+                      markEdited();
+                      const next = Number(e.target.value);
+                      setWindowOpacity(next);
+                      setAppWindowOpacity(next);
+                    }}
+                  />
+                  <span className={styles.materialValue}>{Math.round(windowOpacity * 100)}%</span>
+                </div>
+              </div>
+              <div className={styles.field}>
                 <div className={styles.materialHeader}>
                   <div>
                     <div className={styles.label}>Surface Material</div>
-                    <p className={styles.materialHint}>
-                      Customize colors and opacity for the selected mood preset.
-                    </p>
+                    <p className={styles.materialHint}>Customize colors and opacity for the selected mood preset.</p>
                   </div>
                   <button
                     type="button"
@@ -722,6 +771,25 @@ export function Settings({ visible, onClose }: SettingsProps) {
                   options={SHELLS.map((s) => ({ value: s.id, label: s.label }))}
                   ariaLabel="Default shell"
                 />
+              </div>
+              <div className={styles.field}>
+                <label className={styles.label} htmlFor="settings-editor-open-mode">
+                  Open Files With
+                </label>
+                <Select
+                  id="settings-editor-open-mode"
+                  value={editorOpenMode}
+                  onValueChange={(next) => {
+                    markEdited();
+                    setEditorOpenMode(next === "builtin" ? "builtin" : "vscode");
+                  }}
+                  options={[
+                    { value: "vscode", label: "VS Code" },
+                    { value: "builtin", label: "Built-in editor" },
+                  ]}
+                  ariaLabel="Open files with"
+                />
+                <p className={styles.hint}>File tree, search results, and terminal file links use this target.</p>
               </div>
               <div className={styles.field}>
                 <label className={styles.label} htmlFor="settings-cursor-style">

@@ -206,6 +206,7 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
             cols={dims.cols}
             rows={dims.rows}
             fontSize={FONT_SIZE}
+            preferAiInputAnchor
             onCanvasRef={(el) => (canvasElRef.current = el)}
             onInputRef={(el) => (canvasInputElRef.current = el)}
           />

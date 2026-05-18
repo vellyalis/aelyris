@@ -1,8 +1,9 @@
-import { Activity, Bot, GitCompare, type LucideIcon, Radio } from "lucide-react";
+import { Activity, Bot, ChevronDown, GitCompare, type LucideIcon, Radio } from "lucide-react";
 import { MotionConfig } from "motion/react";
 import {
   lazy,
   type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
   Suspense,
   useCallback,
   useEffect,
@@ -36,14 +37,20 @@ import type {
   PaneRoleCycleRequest,
 } from "./features/terminal/pane-tree/PaneTreeContainer";
 import { WorkspaceTabs } from "./features/workspace-tabs/WorkspaceTabs";
+import { getAuditCorrelationId } from "./shared/lib/auditRecovery";
+import { buildContextPack } from "./shared/lib/contextPack";
 import {
   clearEndedOperationalTerminal,
   type OperationalPaneSelection,
   reconcileOperationalPaneSelection,
 } from "./shared/lib/operationalPaneSelection";
 import { filterWorkspaceScopedEvents } from "./shared/lib/workspaceProfile";
-import { buildWorkstationGraph, filterWorkstationGraph } from "./shared/lib/workstationGraph";
-import type { AuditEventRecord } from "./shared/types/audit";
+import {
+  buildWorkstationGraph,
+  filterWorkstationGraph,
+  listWorkstationGraphChangedFiles,
+} from "./shared/lib/workstationGraph";
+import type { AuditEventRecord, AuditJournalEventRecord } from "./shared/types/audit";
 
 // Right-panel + secondary UIs: lazy-loaded so they do not block first paint.
 const KanbanBoard = lazy(() => import("./features/kanban/KanbanBoard").then((m) => ({ default: m.KanbanBoard })));
@@ -109,7 +116,7 @@ const WebInspector = lazy(() =>
 );
 
 import { HistorySearchDialog } from "./features/history/HistorySearchDialog";
-import { useAgentManager } from "./shared/hooks/useAgentManager";
+import { type StartAgentMeta, useAgentManager } from "./shared/hooks/useAgentManager";
 import { useAuditEvents } from "./shared/hooks/useAuditEvents";
 import { useGitStatus } from "./shared/hooks/useGitStatus";
 import { useInteractiveAgent } from "./shared/hooks/useInteractiveAgent";
@@ -121,7 +128,16 @@ import { useThemeApplier } from "./shared/hooks/useTheme";
 import { useWorktreeActions } from "./shared/hooks/useWorktreeActions";
 import { markFirstPaint } from "./shared/lib/bootMetrics";
 import { buildDecisionInbox, type DecisionWorkflowStatus } from "./shared/lib/decisionInbox";
+import {
+  EDITOR_OPEN_MODE_CHANGE_EVENT,
+  EDITOR_OPEN_MODE_STORAGE_KEY,
+  type EditorOpenMode,
+  loadEditorOpenMode,
+  openGitDiffInVSCode,
+  openInVSCode,
+} from "./shared/lib/externalEditor";
 import { formatFallbackError, reportInvokeFailure } from "./shared/lib/fallbackTelemetry";
+import { allowedToolsForGuardrailProfile, describeGuardrailProfile } from "./shared/lib/guardrailPolicy";
 import {
   deriveRightRailActions,
   deriveRightRailNowState,
@@ -129,9 +145,17 @@ import {
   type RightRailAction,
   type RightRailMode,
 } from "./shared/lib/rightRailAdvisor";
+import {
+  deriveRightRailWorkforceSummary,
+  WORKFORCE_GUARDRAIL_PROFILES,
+  type WorkforceGuardrailProfile,
+} from "./shared/lib/rightRailWorkforce";
 import { classifyCommand, formatCommandRiskSummary } from "./shared/lib/shellSafety";
-import { useAppStore } from "./shared/store/appStore";
+import { isTauriRuntime } from "./shared/lib/tauriRuntime";
+import { useAppStore, type WallpaperSettings } from "./shared/store/appStore";
 import { toast } from "./shared/store/toastStore";
+import type { AccentOverrides } from "./shared/themes/catppuccin";
+import { type MoodMaterialOverrides, type MoodPresetId, normalizeMoodPreset } from "./shared/themes/moods";
 import type { AgentSession } from "./shared/types/agent";
 import type { SearchHit } from "./shared/types/history";
 import { CollapsibleSection } from "./shared/ui/CollapsibleSection";
@@ -198,11 +222,428 @@ interface AppPaneLayoutRequest extends PaneLayoutRequest {
   tabId: string;
 }
 
+type RightRailActionResultTone = "success" | "warn" | "error";
+type RightRailGuardrailSelection = "Auto" | WorkforceGuardrailProfile;
+
+type BootstrapAppConfig = {
+  appearance: {
+    theme: string;
+    mood_preset?: string;
+    opacity?: number;
+    theme_overrides?: Record<string, AccentOverrides>;
+    mood_material_overrides?: Partial<Record<MoodPresetId, MoodMaterialOverrides>>;
+    wallpaper_settings_by_mood?: Partial<Record<MoodPresetId, Partial<WallpaperSettings>>>;
+  };
+  ghost_diff?: {
+    live_mode?: boolean;
+  };
+  workspace_profile?: {
+    global_defaults?: {
+      pane_layout?: {
+        right_rail_guardrail_profile?: RightRailGuardrailSelection;
+        right_rail_widgets?: Partial<Record<RightRailWidgetId, boolean>>;
+      };
+    };
+  };
+};
+
+interface RightRailActionResult {
+  id: string;
+  label: string;
+  detail: string;
+  tone: RightRailActionResultTone;
+  timestamp: number;
+  auditEventId: number | null;
+  auditCorrelationId: string | null;
+  auditKind: string | null;
+  auditTimestamp: string | null;
+  routeWidget: RightRailWidgetId | null;
+  routeLabel: string | null;
+  routeDetail: string | null;
+}
+
+interface RightRailRouteConfirmation {
+  widget: RightRailWidgetId;
+  title: string;
+  detail: string;
+  createdAt: number;
+}
+
+interface RightRailEdgeScoreItem {
+  id: "decision" | "evidence" | "recovery" | "live";
+  label: string;
+  score: number;
+  max: number;
+  status: "pass" | "watch" | "gap";
+  detail: string;
+  actionLabel: string;
+  routeMode: RightRailMode;
+  focusWidget: string;
+  routeTitle: string;
+  routeDetail: string;
+  promptTitle: string;
+  promptDetail: string;
+}
+
+interface RightRailEdgeScore {
+  score: number;
+  grade: "S" | "A" | "B" | "C" | "D";
+  tone: "strong" | "watch" | "gap";
+  label: string;
+  detail: string;
+  items: RightRailEdgeScoreItem[];
+}
+
+interface RightRailDestinationPrompt {
+  widget: string;
+  axisLabel: string;
+  title: string;
+  detail: string;
+  actionLabel: string;
+  item: RightRailEdgeScoreItem;
+  edgeScore: number;
+  edgeGrade: RightRailEdgeScore["grade"];
+  fromMode: RightRailMode;
+  createdAt: number;
+  reachedAt?: number;
+}
+
+interface RightRailEdgeScoreFeedbackEntry {
+  id: string;
+  axisId: string;
+  axisLabel: string;
+  actionLabel: string;
+  targetWidget: string;
+  score: number;
+  grade: RightRailEdgeScore["grade"];
+  previousScore: number | null;
+  delta: number;
+  trend: "baseline" | "improved" | "flat" | "regressed";
+  createdAt: number;
+}
+
+interface RightRailEdgeFeedbackAxisSummary {
+  axisId: string;
+  axisLabel: string;
+  count: number;
+  trend: RightRailEdgeScoreFeedbackEntry["trend"];
+}
+
+interface RightRailEdgeFeedbackStaleGroup {
+  axisId: string;
+  axisLabel: string;
+  count: number;
+  score: number;
+  grade: RightRailEdgeScore["grade"];
+  staleReason: string;
+}
+
+interface RightRailEdgeNextBestAction {
+  item: RightRailEdgeScoreItem;
+  reason: "repeated-axis" | "weakest-axis";
+}
+
+interface RightRailEdgeRecommendationOutcome {
+  status: "reached" | "replayed" | "stale";
+  label: string;
+  detail: string;
+}
+
+interface RightRailEdgeFeedbackResetNotice {
+  createdAt: number;
+  label: string;
+  detail: string;
+}
+
+const RIGHT_RAIL_ACTION_HISTORY_LIMIT = 5;
+const RIGHT_RAIL_EDGE_FEEDBACK_LIMIT = 4;
+const RIGHT_RAIL_EDGE_FEEDBACK_STORAGE_PREFIX = "aether:right-rail-edge-feedback:";
+const RIGHT_RAIL_EDGE_FEEDBACK_HISTORY_STATE_KEY = "aetherRightRailEdgeFeedback";
+const RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM = "edgeLoop";
+const RIGHT_RAIL_EDGE_FEEDBACK_LIST_ID = "right-panel-edge-feedback-list";
+const RIGHT_RAIL_EDGE_FEEDBACK_STALE_COUNT_ID = "right-panel-edge-feedback-stale-count-description";
+const RIGHT_RAIL_EDGE_FEEDBACK_AXIS_IDS: readonly RightRailEdgeScoreItem["id"][] = [
+  "decision",
+  "evidence",
+  "recovery",
+  "live",
+];
+const RIGHT_RAIL_EDGE_FEEDBACK_AXIS_LABELS: Record<RightRailEdgeScoreItem["id"], string> = {
+  decision: "Decision",
+  evidence: "Evidence",
+  recovery: "Recovery",
+  live: "Live",
+};
+const RIGHT_RAIL_EDGE_FEEDBACK_ACTION_LABELS = new Set([
+  "Open inbox",
+  "Inspect inbox",
+  "Open review",
+  "Open audit",
+  "Open risks",
+  "Open recovery",
+  "Watch live",
+  "Open processes",
+]);
+const RIGHT_RAIL_EDGE_FEEDBACK_TARGET_WIDGETS = new Set([
+  "decision-inbox",
+  "review-queue",
+  "audit-timeline",
+  "reliability",
+  "live-panes",
+  "processes",
+]);
+const RIGHT_RAIL_GUARDRAIL_OPTIONS: readonly RightRailGuardrailSelection[] = ["Auto", ...WORKFORCE_GUARDRAIL_PROFILES];
+const RIGHT_RAIL_GUARDRAIL_SELECTION_STORAGE_KEY = "aether:right-rail-guardrail-selection";
+const RIGHT_RAIL_GUARDRAIL_SYNC_EVENT = "aether:right-rail-guardrail-sync";
+const RIGHT_RAIL_WIDGET_STORAGE_PREFIX = "aether:right-rail-widget:";
+const RIGHT_RAIL_WIDGET_SYNC_EVENT = "aether:right-rail-widget-sync";
+
+type RightRailWidgetId = "workflow" | "toolkit" | "context" | "audit-timeline" | "run-graph" | "tool-ledger" | "logs";
+const RIGHT_RAIL_WIDGET_IDS: readonly RightRailWidgetId[] = [
+  "workflow",
+  "toolkit",
+  "context",
+  "audit-timeline",
+  "run-graph",
+  "tool-ledger",
+  "logs",
+];
+
+interface RightRailWidgetFrameProps {
+  widget: RightRailWidgetId;
+  title: string;
+  subtitle: string;
+  defaultOpen?: boolean;
+  forceOpen?: boolean;
+  focusConfirmation?: Pick<RightRailRouteConfirmation, "title" | "detail"> | null;
+  children: ReactNode;
+}
+
+function isRightRailGuardrailSelection(value: string | null): value is RightRailGuardrailSelection {
+  return value === "Auto" || WORKFORCE_GUARDRAIL_PROFILES.includes(value as WorkforceGuardrailProfile);
+}
+
+function loadRightRailGuardrailSelection(): RightRailGuardrailSelection {
+  if (typeof window === "undefined") return "Auto";
+  try {
+    const saved = window.localStorage.getItem(RIGHT_RAIL_GUARDRAIL_SELECTION_STORAGE_KEY);
+    return isRightRailGuardrailSelection(saved) ? saved : "Auto";
+  } catch {
+    return "Auto";
+  }
+}
+
+function saveRightRailGuardrailSelection(selection: RightRailGuardrailSelection): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(RIGHT_RAIL_GUARDRAIL_SELECTION_STORAGE_KEY, selection);
+  } catch {
+    /* localStorage may be unavailable in hardened webviews. */
+  }
+  void saveRightRailGuardrailSelectionToNativeConfig(selection);
+}
+
+function applyRightRailGuardrailSelection(selection: RightRailGuardrailSelection): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(RIGHT_RAIL_GUARDRAIL_SELECTION_STORAGE_KEY, selection);
+  } catch {
+    /* localStorage may be unavailable in hardened webviews. */
+  }
+  window.dispatchEvent(new CustomEvent(RIGHT_RAIL_GUARDRAIL_SYNC_EVENT, { detail: { selection } }));
+}
+
+function hydrateRightRailGuardrailSelectionFromConfig(selection: unknown): void {
+  if (typeof selection !== "string") return;
+  if (isRightRailGuardrailSelection(selection)) applyRightRailGuardrailSelection(selection);
+}
+
+async function saveRightRailGuardrailSelectionToNativeConfig(selection: RightRailGuardrailSelection): Promise<void> {
+  if (!isTauriRuntime()) return;
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    const config = await invoke<BootstrapAppConfig>("load_app_config");
+    const paneLayout = config.workspace_profile?.global_defaults?.pane_layout ?? {};
+    await invoke("save_app_config", {
+      config: {
+        ...config,
+        workspace_profile: {
+          ...(config.workspace_profile ?? {}),
+          global_defaults: {
+            ...(config.workspace_profile?.global_defaults ?? {}),
+            pane_layout: {
+              ...paneLayout,
+              right_rail_guardrail_profile: selection,
+            },
+          },
+        },
+      },
+    });
+  } catch (err) {
+    reportInvokeFailure({
+      source: "app",
+      operation: "save_right_rail_guardrail_config",
+      err,
+      severity: "warning",
+    });
+  }
+}
+
+function isRightRailWidgetId(value: string): value is RightRailWidgetId {
+  return RIGHT_RAIL_WIDGET_IDS.includes(value as RightRailWidgetId);
+}
+
+function writeRightRailWidgetOpenToStorage(widget: RightRailWidgetId, open: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(`${RIGHT_RAIL_WIDGET_STORAGE_PREFIX}${widget}`, open ? "1" : "0");
+  } catch {
+    /* localStorage may be unavailable in hardened webviews. */
+  }
+}
+
+function applyRightRailWidgetOpen(widget: RightRailWidgetId, open: boolean): void {
+  if (typeof window === "undefined") return;
+  writeRightRailWidgetOpenToStorage(widget, open);
+  window.dispatchEvent(new CustomEvent(RIGHT_RAIL_WIDGET_SYNC_EVENT, { detail: { widget, open } }));
+}
+
+function loadRightRailWidgetOpen(widget: RightRailWidgetId, defaultOpen: boolean): boolean {
+  if (typeof window === "undefined") return defaultOpen;
+  try {
+    const saved = window.localStorage.getItem(`${RIGHT_RAIL_WIDGET_STORAGE_PREFIX}${widget}`);
+    return saved == null ? defaultOpen : saved === "1";
+  } catch {
+    return defaultOpen;
+  }
+}
+
+function hydrateRightRailWidgetOpenFromConfig(
+  widgets: Partial<Record<RightRailWidgetId, boolean>> | null | undefined,
+): void {
+  if (!widgets || typeof window === "undefined") return;
+  for (const [widget, open] of Object.entries(widgets)) {
+    if (isRightRailWidgetId(widget) && typeof open === "boolean") {
+      applyRightRailWidgetOpen(widget, open);
+    }
+  }
+}
+
+async function saveRightRailWidgetOpenToNativeConfig(widget: RightRailWidgetId, open: boolean): Promise<void> {
+  if (!isTauriRuntime()) return;
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    const config = await invoke<BootstrapAppConfig>("load_app_config");
+    const paneLayout = config.workspace_profile?.global_defaults?.pane_layout ?? {};
+    const widgets = { ...(paneLayout.right_rail_widgets ?? {}), [widget]: open };
+    await invoke("save_app_config", {
+      config: {
+        ...config,
+        workspace_profile: {
+          ...(config.workspace_profile ?? {}),
+          global_defaults: {
+            ...(config.workspace_profile?.global_defaults ?? {}),
+            pane_layout: {
+              ...paneLayout,
+              right_rail_widgets: widgets,
+            },
+          },
+        },
+      },
+    });
+  } catch (err) {
+    reportInvokeFailure({
+      source: "app",
+      operation: "save_right_rail_widget_config",
+      err,
+      severity: "warning",
+    });
+  }
+}
+
+function saveRightRailWidgetOpen(widget: RightRailWidgetId, open: boolean): void {
+  if (typeof window === "undefined") return;
+  writeRightRailWidgetOpenToStorage(widget, open);
+  window.setTimeout(() => {
+    window.dispatchEvent(new CustomEvent(RIGHT_RAIL_WIDGET_SYNC_EVENT, { detail: { widget, open } }));
+  }, 0);
+  void saveRightRailWidgetOpenToNativeConfig(widget, open);
+}
+
+function RightRailWidgetFrame({
+  widget,
+  title,
+  subtitle,
+  defaultOpen = true,
+  forceOpen = false,
+  focusConfirmation = null,
+  children,
+}: RightRailWidgetFrameProps) {
+  const [open, setOpen] = useState(() => loadRightRailWidgetOpen(widget, defaultOpen));
+  const effectiveOpen = forceOpen || open;
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onSync = (event: Event) => {
+      const detail = (event as CustomEvent<{ widget?: string; open?: unknown }>).detail;
+      if (detail?.widget === widget && typeof detail.open === "boolean") {
+        setOpen(detail.open);
+      }
+    };
+    window.addEventListener(RIGHT_RAIL_WIDGET_SYNC_EVENT, onSync);
+    return () => window.removeEventListener(RIGHT_RAIL_WIDGET_SYNC_EVENT, onSync);
+  }, [widget]);
+  useEffect(() => {
+    if (!forceOpen) return;
+    setOpen(true);
+    saveRightRailWidgetOpen(widget, true);
+  }, [forceOpen, widget]);
+  const toggleOpen = useCallback(() => {
+    if (forceOpen) return;
+    setOpen((current) => {
+      const next = !current;
+      saveRightRailWidgetOpen(widget, next);
+      return next;
+    });
+  }, [forceOpen, widget]);
+
+  return (
+    <div className="bento-widget right-panel-widget-frame" data-widget={widget} data-open={effectiveOpen}>
+      <button
+        type="button"
+        className="right-panel-widget-frame-header"
+        onClick={toggleOpen}
+        aria-expanded={effectiveOpen}
+        aria-controls={`right-rail-widget-${widget}`}
+        title={`${title}: ${subtitle}`}
+      >
+        <ChevronDown className="right-panel-widget-frame-chevron" size={12} strokeWidth={2.1} aria-hidden="true" />
+        <span className="right-panel-widget-frame-copy">
+          <span className="right-panel-widget-frame-title">{title}</span>
+          <span className="right-panel-widget-frame-subtitle">{subtitle}</span>
+        </span>
+        {forceOpen && <span className="right-panel-widget-frame-pin">Focused</span>}
+      </button>
+      {effectiveOpen && (
+        <div id={`right-rail-widget-${widget}`} className="right-panel-widget-frame-body">
+          {focusConfirmation && (
+            <div className="right-panel-widget-focus-confirmation" role="status" aria-live="polite">
+              <span>{focusConfirmation.title}</span>
+              <strong>{focusConfirmation.detail}</strong>
+            </div>
+          )}
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface DevVisualQaState {
   enabled: boolean;
   attachFixture: boolean;
   diagnosticsEnabled: boolean;
   incidentFixtures: boolean;
+  negativePath: "missing-diff" | "stale-pane" | null;
   projectPath: string;
   railMode: RightRailMode;
   railScenario: "idle" | "running" | "blocked" | "review" | "conductor" | "unhealthy";
@@ -211,7 +652,7 @@ interface DevVisualQaState {
 
 function formatTerminalTarget(shell: ShellType, terminalId: string | null): string {
   const shellLabel = SHELL_LABELS[shell] ?? shell;
-  if (!terminalId) return `${shellLabel} · no active pane`;
+  if (!terminalId) return `${shellLabel} · starting`;
   return `${shellLabel} · ${terminalId.slice(0, 8)}`;
 }
 
@@ -222,6 +663,7 @@ function readDevVisualQaState(): DevVisualQaState {
       attachFixture: false,
       diagnosticsEnabled: false,
       incidentFixtures: false,
+      negativePath: null,
       projectPath: "",
       railMode: "observe",
       railScenario: "idle",
@@ -244,6 +686,7 @@ function readDevVisualQaState(): DevVisualQaState {
       attachFixture: false,
       diagnosticsEnabled: false,
       incidentFixtures: false,
+      negativePath: null,
       projectPath: "",
       railMode: "observe",
       railScenario: "idle",
@@ -252,6 +695,9 @@ function readDevVisualQaState(): DevVisualQaState {
   const attachFixture = params.get("attachFixture") === "1" || params.get("processAttach") === "1";
   const diagnosticsEnabled = params.get("diagnostics") === "1" || params.get("logs") === "1";
   const incidentFixtures = params.get("incidents") === "1" || params.get("auditRisk") === "1";
+  const requestedNegativePath = params.get("negativePath") ?? params.get("rightRailNegativePath");
+  const negativePath =
+    requestedNegativePath === "missing-diff" || requestedNegativePath === "stale-pane" ? requestedNegativePath : null;
   const projectPath = params.get("projectPath") || storedProject || "C:/Users/owner/Aether_Terminal";
   const requestedRail = params.get("rail");
   const requestedScenario = params.get("railState") ?? params.get("state") ?? params.get("scenario");
@@ -273,11 +719,59 @@ function readDevVisualQaState(): DevVisualQaState {
     attachFixture,
     diagnosticsEnabled,
     incidentFixtures,
+    negativePath,
     projectPath: projectPath.replace(/\\/g, "/"),
     railMode,
     railScenario,
     railScenarioExplicit,
   };
+}
+
+function createDevVisualQaNegativePathAction(negativePath: DevVisualQaState["negativePath"]): RightRailAction | null {
+  if (negativePath === "missing-diff") {
+    return {
+      id: "review-queue",
+      mode: "review",
+      tone: "warn",
+      state: "review-ready",
+      priority: 999,
+      label: "QA missing diff",
+      detail: "missing changed-file target",
+      why: "Release smoke needs a deterministic missing diff target.",
+      nextStep: "Confirm the rail reports a recoverable warning and writes outcome audit evidence.",
+      execution: {
+        status: "ready",
+        operation: "open-primary-diff",
+        label: "Open diff",
+        expectedResult: "The rail should warn when no changed-file target is available.",
+        auditEvent: "right_rail.qa_missing_diff.opened",
+        recoveryStep: "Refresh source control and reopen the review queue.",
+      },
+    };
+  }
+  if (negativePath === "stale-pane") {
+    return {
+      id: "track-selected",
+      mode: "observe",
+      tone: "warn",
+      state: "running",
+      priority: 999,
+      label: "QA stale pane",
+      detail: "missing operational pane target",
+      why: "Release smoke needs a deterministic stale pane target.",
+      nextStep: "Confirm the rail reports a recoverable warning and writes outcome audit evidence.",
+      targetPaneRole: "__qa_missing_pane__",
+      execution: {
+        status: "ready",
+        operation: "focus-pane",
+        label: "Focus pane",
+        expectedResult: "The rail should warn when the selected pane target is stale.",
+        auditEvent: "right_rail.qa_stale_pane.opened",
+        recoveryStep: "Open Health, refresh live panes, and choose an existing pane.",
+      },
+    };
+  }
+  return null;
 }
 
 function createDevVisualQaSessions(scenario: DevVisualQaState["railScenario"], projectPath: string): AgentSession[] {
@@ -332,8 +826,8 @@ function createDevVisualQaSessions(scenario: DevVisualQaState["railScenario"], p
         name: "Blocked implementer",
         status: "waiting",
         role: "implementer",
-        blockedReason: "Approval required for file-system write",
-        nextActor: "owner",
+        blockedReason: "Destructive file-system write requires explicit approval before deleting generated output.",
+        nextActor: "human",
       }),
     ];
   }
@@ -575,6 +1069,222 @@ const RIGHT_RAIL_ACTION_WIDGET: Partial<Record<RightRailAction["id"], string>> =
   "track-run": "processes",
 };
 
+async function appendRightRailActionAudit(
+  action: RightRailAction,
+  workspaceId: string,
+  previousMode: RightRailMode,
+): Promise<AuditJournalEventRecord | null> {
+  if (!workspaceId || !isTauriRuntime()) return null;
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<AuditJournalEventRecord>("append_audit_event", {
+      event: {
+        workspaceId,
+        threadId: null,
+        sessionId: action.targetSessionId ?? null,
+        paneId: null,
+        terminalId: null,
+        agentId: action.targetSessionId ?? null,
+        workflowId: null,
+        taskId: null,
+        correlationId: null,
+        kind: action.execution.auditEvent,
+        severity: action.execution.status === "blocked" ? "warn" : "info",
+        source: "right-rail",
+        confidence: 0.9,
+        payloadJson: {
+          actionId: action.id,
+          label: action.label,
+          operation: action.execution.operation,
+          fromMode: previousMode,
+          toMode: action.mode,
+          state: action.state,
+          tone: action.tone,
+          executionStatus: action.execution.status,
+          executionLabel: action.execution.label,
+          expectedResult: action.execution.expectedResult,
+          nextStep: action.nextStep,
+          targetFilePath: action.targetFilePath ?? null,
+          targetPaneRole: action.targetPaneRole ?? null,
+        },
+      },
+    });
+  } catch (err) {
+    reportInvokeFailure({
+      source: "app",
+      operation: "append_right_rail_action_audit",
+      err,
+      severity: "warning",
+    });
+    return null;
+  }
+}
+
+async function appendRightRailActionOutcomeAudit(
+  action: RightRailAction,
+  workspaceId: string,
+  previousMode: RightRailMode,
+  outcome: "blocked" | "failed",
+  detail: string,
+): Promise<AuditJournalEventRecord | null> {
+  if (!workspaceId || !isTauriRuntime()) return null;
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<AuditJournalEventRecord>("append_audit_event", {
+      event: {
+        workspaceId,
+        threadId: null,
+        sessionId: action.targetSessionId ?? null,
+        paneId: null,
+        terminalId: null,
+        agentId: action.targetSessionId ?? null,
+        workflowId: null,
+        taskId: null,
+        correlationId: null,
+        kind: `${action.execution.auditEvent}.${outcome}`,
+        severity: "warn",
+        source: "right-rail",
+        confidence: 0.92,
+        payloadJson: {
+          actionId: action.id,
+          label: action.label,
+          operation: action.execution.operation,
+          fromMode: previousMode,
+          toMode: action.mode,
+          outcome,
+          detail,
+          recoveryStep: action.execution.recoveryStep ?? null,
+          disabledReason: action.execution.disabledReason ?? null,
+          targetFilePath: action.targetFilePath ?? null,
+          targetPaneRole: action.targetPaneRole ?? null,
+        },
+      },
+    });
+  } catch (err) {
+    reportInvokeFailure({
+      source: "app",
+      operation: "append_right_rail_action_outcome_audit",
+      err,
+      severity: "warning",
+    });
+    return null;
+  }
+}
+
+async function appendRightRailEdgeScoreInteractionAudit({
+  item,
+  workspaceId,
+  fromMode,
+  score,
+  grade,
+  stage,
+}: {
+  item: RightRailEdgeScoreItem;
+  workspaceId: string;
+  fromMode: RightRailMode;
+  score: number;
+  grade: RightRailEdgeScore["grade"];
+  stage: "clicked" | "destination-reached";
+}): Promise<AuditJournalEventRecord | null> {
+  if (!workspaceId || !isTauriRuntime()) return null;
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<AuditJournalEventRecord>("append_audit_event", {
+      event: {
+        workspaceId,
+        threadId: null,
+        sessionId: null,
+        paneId: null,
+        terminalId: null,
+        agentId: null,
+        workflowId: null,
+        taskId: null,
+        correlationId: null,
+        kind: `right_rail.edge_score.${stage}`,
+        severity: item.status === "gap" ? "warn" : "info",
+        source: "right-rail",
+        confidence: 0.88,
+        payloadJson: {
+          axisId: item.id,
+          axisLabel: item.label,
+          axisStatus: item.status,
+          axisScore: item.score,
+          axisMax: item.max,
+          edgeScore: score,
+          edgeGrade: grade,
+          fromMode,
+          toMode: item.routeMode,
+          targetWidget: item.focusWidget,
+          actionLabel: item.actionLabel,
+          privacy: "no command text, prompt text, file path, or user input captured",
+        },
+      },
+    });
+  } catch (err) {
+    reportInvokeFailure({
+      source: "app",
+      operation: "append_right_rail_edge_score_interaction_audit",
+      err,
+      severity: "warning",
+    });
+    return null;
+  }
+}
+
+async function appendRightRailEdgeFeedbackStaleAudit({
+  entry,
+  workspaceId,
+  staleReason,
+}: {
+  entry: RightRailEdgeScoreFeedbackEntry;
+  workspaceId: string;
+  staleReason: string;
+}): Promise<AuditJournalEventRecord | null> {
+  if (!workspaceId || !isTauriRuntime()) return null;
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<AuditJournalEventRecord>("append_audit_event", {
+      event: {
+        workspaceId,
+        threadId: null,
+        sessionId: null,
+        paneId: null,
+        terminalId: null,
+        agentId: null,
+        workflowId: null,
+        taskId: null,
+        correlationId: null,
+        kind: "right_rail.edge_feedback.stale",
+        severity: "warn",
+        source: "right-rail",
+        confidence: 0.86,
+        payloadJson: {
+          axisId: entry.axisId,
+          axisLabel: entry.axisLabel,
+          score: entry.score,
+          grade: entry.grade,
+          staleReason,
+          privacy: "no command text, prompt text, file path, or user input captured",
+        },
+      },
+    });
+  } catch (err) {
+    reportInvokeFailure({
+      source: "app",
+      operation: "append_right_rail_edge_feedback_stale_audit",
+      err,
+      severity: "warning",
+    });
+    return null;
+  }
+}
+
+function formatRightRailRecoveryDetail(action: RightRailAction, detail: string): string {
+  const recovery = action.execution.recoveryStep;
+  if (!recovery || detail.includes(recovery)) return detail;
+  return `${detail} Recovery: ${recovery}`;
+}
+
 function getNextRightRailMode(current: RightRailMode, key: string): RightRailMode | null {
   const currentIndex = RIGHT_RAIL_MODES.findIndex((mode) => mode.id === current);
   if (currentIndex < 0) return null;
@@ -602,6 +1312,223 @@ function normalizeProjectPath(path?: string | null): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function rightRailWorkspaceStorageHash(value: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function rightRailEdgeFeedbackStorageKey(projectPath: string): string | null {
+  const normalized = normalizeProjectPath(projectPath);
+  if (!normalized) return null;
+  return `${RIGHT_RAIL_EDGE_FEEDBACK_STORAGE_PREFIX}${rightRailWorkspaceStorageHash(normalized)}`;
+}
+
+function isRightRailEdgeFeedbackAxisId(value: unknown): value is RightRailEdgeScoreItem["id"] {
+  return typeof value === "string" && RIGHT_RAIL_EDGE_FEEDBACK_AXIS_IDS.includes(value as RightRailEdgeScoreItem["id"]);
+}
+
+function isSafeRightRailEdgeFeedbackAxisId(value: unknown): value is string {
+  return typeof value === "string" && /^[a-z][a-z0-9_-]{0,31}$/.test(value);
+}
+
+function sanitizeRightRailEdgeFeedbackAxisLabel(axisId: string, value: unknown): string {
+  if (isRightRailEdgeFeedbackAxisId(axisId)) return RIGHT_RAIL_EDGE_FEEDBACK_AXIS_LABELS[axisId];
+  if (typeof value !== "string") return "Legacy axis";
+  const normalized = value
+    .replace(/[^\p{L}\p{N}\s_-]/gu, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, 32);
+  return normalized.length > 0 ? normalized : "Legacy axis";
+}
+
+function isRightRailEdgeFeedbackTrend(value: unknown): value is RightRailEdgeScoreFeedbackEntry["trend"] {
+  return value === "baseline" || value === "improved" || value === "flat" || value === "regressed";
+}
+
+function isRightRailEdgeFeedbackGrade(value: unknown): value is RightRailEdgeScore["grade"] {
+  return value === "S" || value === "A" || value === "B" || value === "C" || value === "D";
+}
+
+function sanitizeBoundedNumber(value: unknown, fallback: number, min: number, max: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+function sanitizeRightRailEdgeFeedbackEntry(value: unknown): RightRailEdgeScoreFeedbackEntry | null {
+  if (!isPlainRecord(value)) return null;
+  const rawAxisId =
+    typeof value.axisId === "string" ? value.axisId : typeof value.id === "string" ? value.id.split(":")[0] : null;
+  if (!isSafeRightRailEdgeFeedbackAxisId(rawAxisId)) return null;
+  const createdAt = sanitizeBoundedNumber(value.createdAt, Date.now(), 0, Number.MAX_SAFE_INTEGER);
+  const actionLabel =
+    typeof value.actionLabel === "string" && RIGHT_RAIL_EDGE_FEEDBACK_ACTION_LABELS.has(value.actionLabel)
+      ? value.actionLabel
+      : "Replay action";
+  const targetWidget =
+    typeof value.targetWidget === "string" && RIGHT_RAIL_EDGE_FEEDBACK_TARGET_WIDGETS.has(value.targetWidget)
+      ? value.targetWidget
+      : "decision-inbox";
+  return {
+    id: `${rawAxisId}:${createdAt}`,
+    axisId: rawAxisId,
+    axisLabel: sanitizeRightRailEdgeFeedbackAxisLabel(rawAxisId, value.axisLabel),
+    actionLabel,
+    targetWidget,
+    score: sanitizeBoundedNumber(value.score, 0, 0, 100),
+    grade: isRightRailEdgeFeedbackGrade(value.grade) ? value.grade : "D",
+    previousScore: value.previousScore == null ? null : sanitizeBoundedNumber(value.previousScore, 0, 0, 100),
+    delta: sanitizeBoundedNumber(value.delta, 0, -100, 100),
+    trend: isRightRailEdgeFeedbackTrend(value.trend) ? value.trend : "baseline",
+    createdAt,
+  };
+}
+
+function sanitizeRightRailEdgeFeedbackHistory(history: unknown): RightRailEdgeScoreFeedbackEntry[] {
+  if (!Array.isArray(history)) return [];
+  return history
+    .map((entry) => sanitizeRightRailEdgeFeedbackEntry(entry))
+    .filter((entry): entry is RightRailEdgeScoreFeedbackEntry => entry != null)
+    .slice(0, RIGHT_RAIL_EDGE_FEEDBACK_LIMIT);
+}
+
+function readRightRailEdgeFeedbackHistoryState(key: string): RightRailEdgeScoreFeedbackEntry[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const state: unknown = window.history.state;
+    if (!isPlainRecord(state)) return [];
+    const payload = state[RIGHT_RAIL_EDGE_FEEDBACK_HISTORY_STATE_KEY];
+    if (!isPlainRecord(payload) || payload.key !== key) return [];
+    return sanitizeRightRailEdgeFeedbackHistory(payload.history);
+  } catch {
+    return [];
+  }
+}
+
+function readRightRailEdgeFeedbackHistoryUrl(key: string): RightRailEdgeScoreFeedbackEntry[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const url = new URL(window.location.href);
+    const raw = url.searchParams.get(RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!isPlainRecord(parsed) || parsed.key !== key) return [];
+    return sanitizeRightRailEdgeFeedbackHistory(parsed.history);
+  } catch {
+    return [];
+  }
+}
+
+function writeRightRailEdgeFeedbackHistoryState(key: string, history: RightRailEdgeScoreFeedbackEntry[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    const state = isPlainRecord(window.history.state) ? window.history.state : {};
+    window.history.replaceState(
+      {
+        ...state,
+        [RIGHT_RAIL_EDGE_FEEDBACK_HISTORY_STATE_KEY]: {
+          key,
+          history,
+        },
+      },
+      "",
+      window.location.href,
+    );
+  } catch {
+    /* history.state can be unavailable in constrained browser harnesses */
+  }
+}
+
+function writeRightRailEdgeFeedbackHistoryUrl(key: string, history: RightRailEdgeScoreFeedbackEntry[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.set(RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM, JSON.stringify({ key, history }));
+    window.history.replaceState(window.history.state, "", url.toString());
+  } catch {
+    /* URL fallback is best-effort and still privacy-safe when unavailable */
+  }
+}
+
+function clearRightRailEdgeFeedbackHistory(projectPath: string): void {
+  const key = rightRailEdgeFeedbackStorageKey(projectPath);
+  if (!key || typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    /* localStorage can be unavailable in locked-down WebView contexts */
+  }
+  try {
+    const state = isPlainRecord(window.history.state) ? { ...window.history.state } : {};
+    delete state[RIGHT_RAIL_EDGE_FEEDBACK_HISTORY_STATE_KEY];
+    const url = new URL(window.location.href);
+    url.searchParams.delete(RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM);
+    window.history.replaceState(state, "", url.toString());
+  } catch {
+    /* reset remains best-effort when history or URL mutation is unavailable */
+  }
+}
+
+function loadRightRailEdgeFeedbackHistory(projectPath: string): RightRailEdgeScoreFeedbackEntry[] {
+  const key = rightRailEdgeFeedbackStorageKey(projectPath);
+  if (!key || typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) {
+      const stateHistory = readRightRailEdgeFeedbackHistoryState(key);
+      return stateHistory.length > 0 ? stateHistory : readRightRailEdgeFeedbackHistoryUrl(key);
+    }
+    const parsed: unknown = JSON.parse(raw);
+    return sanitizeRightRailEdgeFeedbackHistory(parsed);
+  } catch {
+    const stateHistory = readRightRailEdgeFeedbackHistoryState(key);
+    return stateHistory.length > 0 ? stateHistory : readRightRailEdgeFeedbackHistoryUrl(key);
+  }
+}
+
+function saveRightRailEdgeFeedbackHistory(projectPath: string, history: RightRailEdgeScoreFeedbackEntry[]): void {
+  const key = rightRailEdgeFeedbackStorageKey(projectPath);
+  if (!key || typeof window === "undefined") return;
+  const persisted = history
+    .slice(0, RIGHT_RAIL_EDGE_FEEDBACK_LIMIT)
+    .map((entry) => sanitizeRightRailEdgeFeedbackEntry(entry))
+    .filter((entry): entry is RightRailEdgeScoreFeedbackEntry => entry != null)
+    .map(
+      ({ id, axisId, axisLabel, actionLabel, targetWidget, score, grade, previousScore, delta, trend, createdAt }) => ({
+        id,
+        axisId,
+        axisLabel,
+        actionLabel,
+        targetWidget,
+        score,
+        grade,
+        previousScore,
+        delta,
+        trend,
+        createdAt,
+      }),
+    );
+  if (persisted.length === 0) {
+    clearRightRailEdgeFeedbackHistory(projectPath);
+    return;
+  }
+  writeRightRailEdgeFeedbackHistoryState(key, persisted);
+  writeRightRailEdgeFeedbackHistoryUrl(key, persisted);
+  try {
+    window.localStorage.setItem(key, JSON.stringify(persisted));
+  } catch {
+    /* localStorage can be unavailable in locked-down WebView contexts */
+  }
+}
+
 function sameOrNestedPath(left: string, right: string): boolean {
   return left === right || left.startsWith(`${right}/`) || right.startsWith(`${left}/`);
 }
@@ -613,6 +1540,362 @@ function sessionTabMatches(session: AgentSession, tabCwd?: string): boolean {
     .map((path) => normalizeProjectPath(path))
     .filter((path): path is string => path != null);
   return candidates.some((candidate) => sameOrNestedPath(candidate, normalizedTabCwd));
+}
+
+function resolveProjectFilePath(projectPath: string, path: string): string {
+  const trimmed = path.trim();
+  if (/^[a-z]:[\\/]/i.test(trimmed) || /^\\\\/.test(trimmed) || trimmed.startsWith("/")) return trimmed;
+  const root = projectPath.replace(/[\\/]+$/, "");
+  return `${root}\\${trimmed.replace(/^[/\\]+/, "").replace(/\//g, "\\")}`;
+}
+
+function copyTextToClipboard(text: string): Promise<void> {
+  if (typeof navigator === "undefined" || typeof navigator.clipboard?.writeText !== "function") {
+    return Promise.reject(new Error("Clipboard API is unavailable"));
+  }
+  return navigator.clipboard.writeText(text);
+}
+
+function createRightRailActionResult(
+  action: RightRailAction,
+  tone: RightRailActionResultTone,
+  detail: string,
+  auditRecord: AuditJournalEventRecord | null = null,
+): RightRailActionResult {
+  const timestamp = Date.now();
+  return {
+    id: `${action.id}:${timestamp}`,
+    label: action.execution.label,
+    detail,
+    tone,
+    timestamp,
+    auditEventId: auditRecord?.id ?? null,
+    auditCorrelationId: auditRecord?.correlationId ?? null,
+    auditKind: auditRecord?.kind ?? null,
+    auditTimestamp: auditRecord?.createdAt ?? null,
+    routeWidget: null,
+    routeLabel: null,
+    routeDetail: null,
+  };
+}
+
+function createRightRailDestinationResult({
+  label,
+  detail,
+  tone,
+  auditEventId = null,
+  auditCorrelationId = null,
+  routeWidget = null,
+  routeLabel = null,
+  routeDetail = null,
+}: {
+  label: string;
+  detail: string;
+  tone: RightRailActionResultTone;
+  auditEventId?: number | null;
+  auditCorrelationId?: string | null;
+  routeWidget?: RightRailWidgetId | null;
+  routeLabel?: string | null;
+  routeDetail?: string | null;
+}): RightRailActionResult {
+  const timestamp = Date.now();
+  return {
+    id: `destination:${label}:${timestamp}`,
+    label,
+    detail,
+    tone,
+    timestamp,
+    auditEventId,
+    auditCorrelationId,
+    auditKind: null,
+    auditTimestamp: null,
+    routeWidget,
+    routeLabel,
+    routeDetail,
+  };
+}
+
+function rightRailModeForOutcomeWidget(widget: RightRailWidgetId): RightRailMode {
+  return widget === "workflow" || widget === "toolkit" ? "command" : "observe";
+}
+
+function createRightRailEdgeScoreFeedbackEntry({
+  item,
+  score,
+  grade,
+  previous,
+}: {
+  item: RightRailEdgeScoreItem;
+  score: number;
+  grade: RightRailEdgeScore["grade"];
+  previous?: RightRailEdgeScoreFeedbackEntry;
+}): RightRailEdgeScoreFeedbackEntry {
+  const now = Date.now();
+  const previousScore = previous?.score ?? null;
+  const delta = previousScore == null ? 0 : score - previousScore;
+  const trend =
+    previousScore == null ? "baseline" : delta > 0 ? "improved" : delta < 0 ? "regressed" : ("flat" as const);
+  return {
+    id: `${item.id}:${now}`,
+    axisId: item.id,
+    axisLabel: item.label,
+    actionLabel: item.actionLabel,
+    targetWidget: item.focusWidget,
+    score,
+    grade,
+    previousScore,
+    delta,
+    trend,
+    createdAt: now,
+  };
+}
+
+function deriveRightRailEdgeFeedbackAxisSummary(
+  history: RightRailEdgeScoreFeedbackEntry[],
+): RightRailEdgeFeedbackAxisSummary | null {
+  if (history.length === 0) return null;
+  const counts = new Map<
+    string,
+    { axisLabel: string; count: number; latestTrend: RightRailEdgeScoreFeedbackEntry["trend"] }
+  >();
+  for (const entry of history) {
+    const current = counts.get(entry.axisId);
+    counts.set(entry.axisId, {
+      axisLabel: current?.axisLabel ?? entry.axisLabel,
+      count: (current?.count ?? 0) + 1,
+      latestTrend: current?.latestTrend ?? entry.trend,
+    });
+  }
+  const [axisId, summary] = [...counts.entries()].sort((left, right) => right[1].count - left[1].count)[0] ?? [];
+  if (!axisId || !summary) return null;
+  return { axisId, axisLabel: summary.axisLabel, count: summary.count, trend: summary.latestTrend };
+}
+
+function deriveRightRailEdgeNextBestAction(
+  score: RightRailEdgeScore,
+  summary: RightRailEdgeFeedbackAxisSummary | null,
+): RightRailEdgeNextBestAction | null {
+  const repeatedAxis = summary ? score.items.find((item) => item.id === summary.axisId) : null;
+  if (repeatedAxis) return { item: repeatedAxis, reason: "repeated-axis" };
+  const weakestAxis = [...score.items].sort((left, right) => left.score / left.max - right.score / right.max)[0];
+  return weakestAxis ? { item: weakestAxis, reason: "weakest-axis" } : null;
+}
+
+function formatRightRailEdgeFeedbackStaleReason(entry: RightRailEdgeScoreFeedbackEntry): string {
+  return `Stale axis: ${entry.axisLabel} is no longer in the current score model.`;
+}
+
+function deriveRightRailEdgeFeedbackStaleEntries(
+  history: RightRailEdgeScoreFeedbackEntry[],
+  score: RightRailEdgeScore,
+): Array<{ entry: RightRailEdgeScoreFeedbackEntry; staleReason: string }> {
+  return history
+    .filter((entry) => !score.items.some((item) => item.id === entry.axisId || item.label === entry.axisLabel))
+    .map((entry) => ({ entry, staleReason: formatRightRailEdgeFeedbackStaleReason(entry) }));
+}
+
+function deriveRightRailEdgeFeedbackStaleGroups(
+  entries: Array<{ entry: RightRailEdgeScoreFeedbackEntry; staleReason: string }>,
+): RightRailEdgeFeedbackStaleGroup[] {
+  const groups = new Map<string, RightRailEdgeFeedbackStaleGroup>();
+  for (const { entry, staleReason } of entries) {
+    const current = groups.get(entry.axisId);
+    groups.set(entry.axisId, {
+      axisId: entry.axisId,
+      axisLabel: current?.axisLabel ?? entry.axisLabel,
+      count: (current?.count ?? 0) + 1,
+      score: current?.score ?? entry.score,
+      grade: current?.grade ?? entry.grade,
+      staleReason: current?.staleReason ?? staleReason,
+    });
+  }
+  return [...groups.values()].filter((group) => group.count > 1);
+}
+
+function deriveRightRailEdgeRecommendationOutcome({
+  nextAction,
+  prompt,
+  latestFeedback,
+}: {
+  nextAction: RightRailEdgeNextBestAction | null;
+  prompt: RightRailDestinationPrompt | null;
+  latestFeedback?: RightRailEdgeScoreFeedbackEntry;
+}): RightRailEdgeRecommendationOutcome | null {
+  if (!nextAction || !prompt || !latestFeedback) return null;
+  if (prompt.axisLabel !== nextAction.item.label) {
+    return {
+      status: "stale",
+      label: "Recommendation changed",
+      detail: `${prompt.axisLabel} was last used; ${nextAction.item.label} is now recommended.`,
+    };
+  }
+  if (prompt.reachedAt != null) {
+    return {
+      status: "reached",
+      label: "Destination reached",
+      detail: `${prompt.actionLabel} opened ${prompt.widget}.`,
+    };
+  }
+  return {
+    status: "replayed",
+    label: "Action replayed",
+    detail: `${latestFeedback.axisLabel} routed toward ${latestFeedback.targetWidget}.`,
+  };
+}
+
+function RightRailDestinationPromptCard({ prompt }: { prompt: RightRailDestinationPrompt }) {
+  return (
+    <section className="right-panel-destination-prompt" aria-label={`${prompt.axisLabel} remediation prompt`}>
+      <span className="right-panel-destination-prompt-kicker">{prompt.axisLabel} gap</span>
+      <strong>{prompt.title}</strong>
+      <span>{prompt.detail}</span>
+      <small>{prompt.actionLabel}</small>
+    </section>
+  );
+}
+
+function edgeScoreStatus(score: number, max: number): RightRailEdgeScoreItem["status"] {
+  const ratio = score / max;
+  if (ratio >= 0.8) return "pass";
+  if (ratio >= 0.55) return "watch";
+  return "gap";
+}
+
+function deriveRightRailEdgeScore({
+  pendingDecisionCount,
+  liveAgentCount,
+  changedFilesCount,
+  auditEventCount,
+  graphRiskCount,
+  actionCount,
+  recoverableActionCount,
+}: {
+  pendingDecisionCount: number;
+  liveAgentCount: number;
+  changedFilesCount: number;
+  auditEventCount: number;
+  graphRiskCount: number;
+  actionCount: number;
+  recoverableActionCount: number;
+}): RightRailEdgeScore {
+  const evidenceSignalCount = changedFilesCount + auditEventCount + graphRiskCount;
+  const evidenceRoute =
+    changedFilesCount > 0
+      ? {
+          actionLabel: "Open review",
+          routeMode: "review" as const,
+          focusWidget: "review-queue",
+          routeTitle: "Opened review evidence",
+          promptTitle: "Close the evidence gap",
+          promptDetail: "Open the highest-priority diff, verify ownership, then collect review evidence.",
+        }
+      : auditEventCount > 0
+        ? {
+            actionLabel: "Open audit",
+            routeMode: "observe" as const,
+            focusWidget: "audit-timeline",
+            routeTitle: "Opened audit evidence",
+            promptTitle: "Close the evidence gap",
+            promptDetail: "Select the latest audit event and trace it to the pane, workflow, or risk that produced it.",
+          }
+        : {
+            actionLabel: "Open risks",
+            routeMode: "observe" as const,
+            focusWidget: "reliability",
+            routeTitle: "Opened reliability evidence",
+            promptTitle: "Create missing evidence",
+            promptDetail:
+              "Run a focused validation or recovery check so this workspace has proof instead of an empty score.",
+          };
+  const items: RightRailEdgeScoreItem[] = [
+    {
+      id: "decision",
+      label: "Decision",
+      score: pendingDecisionCount > 0 ? 19 : 24,
+      max: 25,
+      status: edgeScoreStatus(pendingDecisionCount > 0 ? 19 : 24, 25),
+      detail:
+        pendingDecisionCount > 0
+          ? `${pendingDecisionCount} owner gate${pendingDecisionCount === 1 ? "" : "s"} surfaced`
+          : "No blocking owner gate",
+      actionLabel: pendingDecisionCount > 0 ? "Open inbox" : "Inspect inbox",
+      routeMode: "command",
+      focusWidget: "decision-inbox",
+      routeTitle: "Opened decision inbox",
+      routeDetail:
+        pendingDecisionCount > 0
+          ? `${pendingDecisionCount} owner gate${pendingDecisionCount === 1 ? "" : "s"} need attention`
+          : "Decision Inbox is clear",
+      promptTitle: pendingDecisionCount > 0 ? "Resolve the blocking decision" : "Decision path is clear",
+      promptDetail:
+        pendingDecisionCount > 0
+          ? "Open the suggested inbox item, inspect its evidence, then approve, reject, or route it to the owning workflow."
+          : "No owner gate is blocking progress. Keep this clear by routing new workflow gates through the inbox.",
+    },
+    {
+      id: "evidence",
+      label: "Evidence",
+      score: evidenceSignalCount >= 3 ? 25 : evidenceSignalCount >= 1 ? 18 : 8,
+      max: 25,
+      status: edgeScoreStatus(evidenceSignalCount >= 3 ? 25 : evidenceSignalCount >= 1 ? 18 : 8, 25),
+      detail: `${changedFilesCount} files · ${auditEventCount} audits · ${graphRiskCount} risks`,
+      actionLabel: evidenceRoute.actionLabel,
+      routeMode: evidenceRoute.routeMode,
+      focusWidget: evidenceRoute.focusWidget,
+      routeTitle: evidenceRoute.routeTitle,
+      routeDetail: `${changedFilesCount} changed files, ${auditEventCount} audit events, ${graphRiskCount} risk nodes`,
+      promptTitle: evidenceRoute.promptTitle,
+      promptDetail: evidenceRoute.promptDetail,
+    },
+    {
+      id: "recovery",
+      label: "Recovery",
+      score: recoverableActionCount >= 3 ? 25 : recoverableActionCount >= 1 ? 19 : 7,
+      max: 25,
+      status: edgeScoreStatus(recoverableActionCount >= 3 ? 25 : recoverableActionCount >= 1 ? 19 : 7, 25),
+      detail: `${recoverableActionCount} guided action${recoverableActionCount === 1 ? "" : "s"}`,
+      actionLabel: "Open recovery",
+      routeMode: "observe",
+      focusWidget: "reliability",
+      routeTitle: "Opened recovery evidence",
+      routeDetail: `${recoverableActionCount} guided recovery action${recoverableActionCount === 1 ? "" : "s"}`,
+      promptTitle: recoverableActionCount > 0 ? "Use the recovery path" : "Add a recovery path",
+      promptDetail:
+        recoverableActionCount > 0
+          ? "Open the reliability incident, focus the affected pane, then restart or trace the failure from the same card."
+          : "Add at least one guided recovery action so failures do not leave users stranded.",
+    },
+    {
+      id: "live",
+      label: "Live",
+      score: liveAgentCount > 0 ? 22 : actionCount > 0 ? 15 : 6,
+      max: 25,
+      status: edgeScoreStatus(liveAgentCount > 0 ? 22 : actionCount > 0 ? 15 : 6, 25),
+      detail:
+        liveAgentCount > 0 ? `${liveAgentCount} live run${liveAgentCount === 1 ? "" : "s"}` : "Ready, no live run",
+      actionLabel: liveAgentCount > 0 ? "Watch live" : "Open processes",
+      routeMode: "observe",
+      focusWidget: liveAgentCount > 0 ? "live-panes" : "processes",
+      routeTitle: liveAgentCount > 0 ? "Opened live panes" : "Opened process health",
+      routeDetail: liveAgentCount > 0 ? `${liveAgentCount} live run${liveAgentCount === 1 ? "" : "s"}` : "No live run",
+      promptTitle: liveAgentCount > 0 ? "Verify the live run" : "Start a live run",
+      promptDetail:
+        liveAgentCount > 0
+          ? "Focus the active pane and confirm it is producing output, accepting input, and tied to the correct workspace."
+          : "Start a shell, workflow, or agent run so the command center can prove live orchestration.",
+    },
+  ];
+  const score = items.reduce((sum, item) => sum + item.score, 0);
+  const grade = score >= 90 ? "S" : score >= 80 ? "A" : score >= 70 ? "B" : score >= 60 ? "C" : "D";
+  const weakest = [...items].sort((left, right) => left.score / left.max - right.score / right.max)[0];
+  return {
+    score,
+    grade,
+    tone: score >= 85 ? "strong" : score >= 70 ? "watch" : "gap",
+    label: score >= 85 ? "Edge ready" : score >= 70 ? "Edge forming" : "Edge incomplete",
+    detail: weakest ? `Weakest: ${weakest.label} - ${weakest.detail}` : "No score inputs",
+    items,
+  };
 }
 
 export function App() {
@@ -658,7 +1941,50 @@ export function App() {
   const themeOverridesForActive = useAppStore((s) => s.themeOverrides[themeId]);
   const materialOverridesForMood = useAppStore((s) => s.moodMaterialOverrides[moodPresetId]);
   const wallpaperForMood = useAppStore((s) => s.wallpaperSettingsByMood[moodPresetId]);
-  useThemeApplier(themeId, themeOverridesForActive, moodPresetId, materialOverridesForMood, wallpaperForMood);
+  const appWindowOpacity = useAppStore((s) => s.appWindowOpacity);
+  useThemeApplier(
+    themeId,
+    themeOverridesForActive,
+    moodPresetId,
+    materialOverridesForMood,
+    wallpaperForMood,
+    appWindowOpacity,
+  );
+
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    let cancelled = false;
+    import("@tauri-apps/api/core")
+      .then(({ invoke }) => invoke<BootstrapAppConfig>("load_app_config"))
+      .then((cfg) => {
+        if (cancelled) return;
+        const store = useAppStore.getState();
+        store.setThemeId(cfg.appearance.theme);
+        store.setMoodPresetId(normalizeMoodPreset(cfg.appearance.mood_preset ?? store.moodPresetId));
+        store.replaceThemeOverrides(cfg.appearance.theme_overrides ?? {});
+        store.replaceMoodMaterialOverrides(cfg.appearance.mood_material_overrides ?? {});
+        store.replaceWallpaperSettingsByMood(cfg.appearance.wallpaper_settings_by_mood ?? {});
+        if (typeof cfg.appearance.opacity === "number") {
+          store.setAppWindowOpacity(cfg.appearance.opacity);
+        }
+        store.setGhostDiffLiveMode(cfg.ghost_diff?.live_mode ?? false);
+        hydrateRightRailGuardrailSelectionFromConfig(
+          cfg.workspace_profile?.global_defaults?.pane_layout?.right_rail_guardrail_profile,
+        );
+        hydrateRightRailWidgetOpenFromConfig(cfg.workspace_profile?.global_defaults?.pane_layout?.right_rail_widgets);
+      })
+      .catch((err) => {
+        reportInvokeFailure({
+          source: "app",
+          operation: "load_app_config_bootstrap",
+          err,
+          severity: "warning",
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Boot perf marker — fires after the first React commit + one frame, so the
   // number reflects when pixels actually land on screen rather than when JS ran.
@@ -669,20 +1995,155 @@ export function App() {
 
   const devVisualQa = useMemo(readDevVisualQaState, []);
 
+  const [editorOpenMode, setEditorOpenMode] = useState(loadEditorOpenMode);
   const [editorLine, setEditorLine] = useState<number | undefined>(undefined);
   const [openInDiff, setOpenInDiff] = useState(false);
   const [fileTreeKey, setFileTreeKey] = useState(0);
   const [quickOpenMode, setQuickOpenMode] = useState<"files" | "buffers" | null>(null);
   const [rightRailMode, setRightRailMode] = useState<RightRailMode>("command");
   const [rightRailFocusWidget, setRightRailFocusWidget] = useState<string | null>(null);
+  const [rightRailRouteConfirmation, setRightRailRouteConfirmation] = useState<RightRailRouteConfirmation | null>(null);
+  const [rightRailDestinationPrompt, setRightRailDestinationPrompt] = useState<RightRailDestinationPrompt | null>(null);
+  const [rightRailEdgeFeedbackHistory, setRightRailEdgeFeedbackHistory] = useState<RightRailEdgeScoreFeedbackEntry[]>(
+    [],
+  );
+  const [rightRailEdgeFeedbackStaleOnly, setRightRailEdgeFeedbackStaleOnly] = useState(false);
+  const [rightRailEdgeFeedbackResetNotice, setRightRailEdgeFeedbackResetNotice] =
+    useState<RightRailEdgeFeedbackResetNotice | null>(null);
+  const [rightRailActionResult, setRightRailActionResult] = useState<RightRailActionResult | null>(null);
+  const [rightRailActionHistory, setRightRailActionHistory] = useState<RightRailActionResult[]>([]);
+  const [rightRailGuardrailSelection, setRightRailGuardrailSelection] = useState<RightRailGuardrailSelection>(
+    loadRightRailGuardrailSelection,
+  );
   const [rightRailFixtureSelectedSessionId, setRightRailFixtureSelectedSessionId] = useState<string | null>(null);
   const [paneSwitcherVisible, setPaneSwitcherVisible] = useState(false);
   const rightRailPanelRef = useRef<HTMLDivElement | null>(null);
+  const rightRailActionResultTimerRef = useRef<number | null>(null);
+  const rightRailRouteConfirmationTimerRef = useRef<number | null>(null);
+  const rightRailEdgeFeedbackResetNoticeTimerRef = useRef<number | null>(null);
+  const rightRailDestinationReachedTelemetryRef = useRef<string | null>(null);
+  const rightRailEdgeScoreRef = useRef<Pick<RightRailEdgeScore, "score" | "grade">>({ score: 0, grade: "D" });
+  const rightRailEdgeFeedbackHydratedKeyRef = useRef<string | null>(null);
+  const rightRailEdgeFeedbackSkipSaveKeyRef = useRef<string | null>(null);
+  const rightRailEdgeFeedbackStaleTelemetryRef = useRef<Set<string>>(new Set());
+  const rightRailProjectPathRef = useRef("");
+  const rightRailGuardrailProfileRef = useRef<WorkforceGuardrailProfile>("Research");
+  const rightRailGuardrailInitialPersistRef = useRef(false);
 
+  useEffect(() => {
+    const onEditorModeChange = (event: Event) => {
+      const next = (event as CustomEvent<EditorOpenMode>).detail;
+      if (next === "vscode" || next === "builtin") {
+        setEditorOpenMode(next);
+      }
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === EDITOR_OPEN_MODE_STORAGE_KEY) {
+        setEditorOpenMode(loadEditorOpenMode());
+      }
+    };
+    window.addEventListener(EDITOR_OPEN_MODE_CHANGE_EVENT, onEditorModeChange);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(EDITOR_OPEN_MODE_CHANGE_EVENT, onEditorModeChange);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: this effect intentionally resets fixture selection when the visual-QA scenario changes.
   useEffect(() => {
     setRightRailFixtureSelectedSessionId(null);
   }, [devVisualQa.enabled, devVisualQa.railScenario]);
 
+  useEffect(() => {
+    return () => {
+      if (rightRailActionResultTimerRef.current != null) {
+        window.clearTimeout(rightRailActionResultTimerRef.current);
+      }
+      if (rightRailRouteConfirmationTimerRef.current != null) {
+        window.clearTimeout(rightRailRouteConfirmationTimerRef.current);
+      }
+      if (rightRailEdgeFeedbackResetNoticeTimerRef.current != null) {
+        window.clearTimeout(rightRailEdgeFeedbackResetNoticeTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const onSync = (event: Event) => {
+      const selection = (event as CustomEvent<{ selection?: unknown }>).detail?.selection;
+      if (typeof selection === "string" && isRightRailGuardrailSelection(selection)) {
+        setRightRailGuardrailSelection(selection);
+      }
+    };
+    window.addEventListener(RIGHT_RAIL_GUARDRAIL_SYNC_EVENT, onSync);
+    return () => window.removeEventListener(RIGHT_RAIL_GUARDRAIL_SYNC_EVENT, onSync);
+  }, []);
+
+  useEffect(() => {
+    if (!rightRailGuardrailInitialPersistRef.current) {
+      rightRailGuardrailInitialPersistRef.current = true;
+      if (rightRailGuardrailSelection === "Auto") return;
+    }
+    saveRightRailGuardrailSelection(rightRailGuardrailSelection);
+  }, [rightRailGuardrailSelection]);
+
+  const showRightRailActionResult = useCallback(
+    (
+      action: RightRailAction,
+      tone: RightRailActionResultTone,
+      detail: string,
+      auditRecord: AuditJournalEventRecord | null = null,
+    ) => {
+      if (rightRailActionResultTimerRef.current != null) {
+        window.clearTimeout(rightRailActionResultTimerRef.current);
+      }
+      const result = createRightRailActionResult(action, tone, detail, auditRecord);
+      setRightRailActionResult(result);
+      setRightRailActionHistory((history) => [result, ...history].slice(0, RIGHT_RAIL_ACTION_HISTORY_LIMIT));
+      rightRailActionResultTimerRef.current = window.setTimeout(() => {
+        setRightRailActionResult(null);
+        rightRailActionResultTimerRef.current = null;
+      }, 6_500);
+    },
+    [],
+  );
+  const showRightRailDestinationOutcome = useCallback(
+    (outcome: {
+      label: string;
+      detail: string;
+      tone: RightRailActionResultTone;
+      auditEventId?: number | null;
+      auditCorrelationId?: string | null;
+      routeWidget?: RightRailWidgetId | null;
+      routeLabel?: string | null;
+      routeDetail?: string | null;
+    }) => {
+      if (rightRailActionResultTimerRef.current != null) {
+        window.clearTimeout(rightRailActionResultTimerRef.current);
+      }
+      const result = createRightRailDestinationResult(outcome);
+      setRightRailActionResult(result);
+      setRightRailActionHistory((history) => [result, ...history].slice(0, RIGHT_RAIL_ACTION_HISTORY_LIMIT));
+      rightRailActionResultTimerRef.current = window.setTimeout(() => {
+        setRightRailActionResult(null);
+        rightRailActionResultTimerRef.current = null;
+      }, 6_500);
+    },
+    [],
+  );
+  const showRightRailRouteConfirmation = useCallback((confirmation: Omit<RightRailRouteConfirmation, "createdAt">) => {
+    if (rightRailRouteConfirmationTimerRef.current != null) {
+      window.clearTimeout(rightRailRouteConfirmationTimerRef.current);
+    }
+    setRightRailRouteConfirmation({ ...confirmation, createdAt: Date.now() });
+    rightRailRouteConfirmationTimerRef.current = window.setTimeout(() => {
+      setRightRailRouteConfirmation(null);
+      rightRailRouteConfirmationTimerRef.current = null;
+    }, 5_500);
+  }, []);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: rightRailMode retriggers focus after tab-panel content swaps while the target widget id stays the same.
   useEffect(() => {
     if (!rightRailFocusWidget) return;
     let cleanupTimer: number | undefined;
@@ -693,6 +2154,25 @@ export function App() {
       if (!widget) return;
       widget.scrollIntoView({ block: "nearest", behavior: "smooth" });
       widget.dataset.railFocus = "true";
+      if (rightRailDestinationPrompt?.widget === rightRailFocusWidget) {
+        const telemetryKey = `${rightRailDestinationPrompt.createdAt}:${rightRailFocusWidget}:destination-reached`;
+        if (rightRailDestinationReachedTelemetryRef.current !== telemetryKey) {
+          rightRailDestinationReachedTelemetryRef.current = telemetryKey;
+          void appendRightRailEdgeScoreInteractionAudit({
+            item: rightRailDestinationPrompt.item,
+            workspaceId: rightRailProjectPathRef.current,
+            fromMode: rightRailDestinationPrompt.fromMode,
+            score: rightRailDestinationPrompt.edgeScore,
+            grade: rightRailDestinationPrompt.edgeGrade,
+            stage: "destination-reached",
+          });
+          setRightRailDestinationPrompt((current) =>
+            current?.createdAt === rightRailDestinationPrompt.createdAt
+              ? { ...current, reachedAt: Date.now() }
+              : current,
+          );
+        }
+      }
       cleanupTimer = window.setTimeout(() => {
         delete widget.dataset.railFocus;
         setRightRailFocusWidget(null);
@@ -702,7 +2182,7 @@ export function App() {
       window.cancelAnimationFrame(raf);
       if (cleanupTimer) window.clearTimeout(cleanupTimer);
     };
-  }, [rightRailFocusWidget, rightRailMode]);
+  }, [rightRailDestinationPrompt, rightRailFocusWidget, rightRailMode]);
 
   // Map<tabId, focused-pane PTY id>. Each `<PaneTreeContainer>` reports
   // its tab's focused-pane PTY id through `onActiveTerminalChange`; the
@@ -794,6 +2274,7 @@ export function App() {
   const visualActivePtyId =
     activePtyId ??
     (devVisualQa.enabled && visualTerminalPaneTargets.length > 0 ? visualTerminalPaneTargets[0].terminalId : null);
+  const visualActiveTerminalTargetLabel = formatTerminalTarget(activeTab.shell, visualActivePtyId);
 
   useEffect(() => {
     const onPrefixCommand = (event: Event) => {
@@ -926,6 +2407,22 @@ export function App() {
   } = useInteractiveAgent();
 
   const projectPath = activeTab.cwd ?? rootProjectPath ?? "";
+  rightRailProjectPathRef.current = projectPath;
+  useEffect(() => {
+    const key = rightRailEdgeFeedbackStorageKey(projectPath);
+    rightRailEdgeFeedbackHydratedKeyRef.current = key;
+    rightRailEdgeFeedbackSkipSaveKeyRef.current = key;
+    setRightRailEdgeFeedbackHistory(loadRightRailEdgeFeedbackHistory(projectPath));
+  }, [projectPath]);
+  useEffect(() => {
+    const key = rightRailEdgeFeedbackStorageKey(projectPath);
+    if (!key || rightRailEdgeFeedbackHydratedKeyRef.current !== key) return;
+    if (rightRailEdgeFeedbackSkipSaveKeyRef.current === key) {
+      rightRailEdgeFeedbackSkipSaveKeyRef.current = null;
+      return;
+    }
+    saveRightRailEdgeFeedbackHistory(projectPath, rightRailEdgeFeedbackHistory);
+  }, [projectPath, rightRailEdgeFeedbackHistory]);
   const projectName = projectPath ? (projectPath.split("/").filter(Boolean).pop() ?? "Aether") : "Aether";
   const workspaceProfile = useMemo(
     () => resolveWorkspaceProfile(projectPath || rootProjectPath || "workspace", activeTabId),
@@ -935,7 +2432,143 @@ export function App() {
     () => filterWorkspaceScopedEvents(operationalAuditEvents, workspaceProfile),
     [operationalAuditEvents, workspaceProfile],
   );
-
+  const handleOpenRightRailActionAudit = useCallback(
+    (result: RightRailActionResult | null = rightRailActionResult) => {
+      if (!result?.auditEventId && !result?.auditCorrelationId) return;
+      const matchingEvent = scopedOperationalAuditEvents.find((event) => {
+        if (result.auditEventId != null && event.id === result.auditEventId) return true;
+        const correlationId = getAuditCorrelationId(event.metadata);
+        return Boolean(
+          result.auditKind &&
+            result.auditCorrelationId &&
+            event.action === result.auditKind &&
+            correlationId === result.auditCorrelationId,
+        );
+      });
+      const auditEventId = result.auditEventId ?? matchingEvent?.id ?? null;
+      const traceId = result.auditCorrelationId ?? getAuditCorrelationId(matchingEvent?.metadata) ?? null;
+      if (auditEventId != null) setSelectedAuditEventId(auditEventId);
+      setSelectedAuditTraceFilter(traceId);
+      showRightRailRouteConfirmation({
+        widget: "audit-timeline",
+        title: "Opened audit evidence",
+        detail: matchingEvent?.summary ?? result.routeDetail ?? result.detail,
+      });
+      setRightRailMode("observe");
+      setRightRailFocusWidget("audit-timeline");
+    },
+    [rightRailActionResult, scopedOperationalAuditEvents, showRightRailRouteConfirmation],
+  );
+  const handleOpenRightRailOutcomeSource = useCallback(
+    (result: RightRailActionResult) => {
+      if (result.auditEventId != null || result.auditCorrelationId) {
+        handleOpenRightRailActionAudit(result);
+        return;
+      }
+      if (!result.routeWidget) return;
+      showRightRailRouteConfirmation({
+        widget: result.routeWidget,
+        title: result.routeLabel ? `Opened ${result.routeLabel}` : "Opened outcome source",
+        detail: result.routeDetail ?? result.detail,
+      });
+      setRightRailMode(rightRailModeForOutcomeWidget(result.routeWidget));
+      setRightRailFocusWidget(result.routeWidget);
+    },
+    [handleOpenRightRailActionAudit, showRightRailRouteConfirmation],
+  );
+  const handleOpenDecisionWorkflow = useCallback(
+    (workflowId: string) => {
+      showRightRailRouteConfirmation({
+        widget: "workflow",
+        title: "Opened workflow gate",
+        detail: workflowId,
+      });
+      setRightRailMode("command");
+      setRightRailFocusWidget("workflow");
+    },
+    [showRightRailRouteConfirmation],
+  );
+  const handleOpenDecisionAudit = useCallback(
+    (auditEventId: number) => {
+      const event = scopedOperationalAuditEvents.find((candidate) => candidate.id === auditEventId);
+      const traceId = getAuditCorrelationId(event?.metadata);
+      showRightRailRouteConfirmation({
+        widget: "audit-timeline",
+        title: "Opened audit evidence",
+        detail: event?.summary ?? event?.action ?? `Audit event ${auditEventId}`,
+      });
+      setSelectedAuditEventId(auditEventId);
+      setSelectedAuditTraceFilter(traceId);
+      setRightRailMode("observe");
+      setRightRailFocusWidget("audit-timeline");
+    },
+    [scopedOperationalAuditEvents, showRightRailRouteConfirmation],
+  );
+  const handleOpenRightRailEdgeScoreItem = useCallback(
+    (item: RightRailEdgeScoreItem) => {
+      const edgeScoreAtClick = rightRailEdgeScoreRef.current;
+      setRightRailMode(item.routeMode);
+      setRightRailFocusWidget(item.focusWidget);
+      setRightRailEdgeFeedbackHistory((history) => {
+        const nextHistory = [
+          createRightRailEdgeScoreFeedbackEntry({
+            item,
+            score: edgeScoreAtClick.score,
+            grade: edgeScoreAtClick.grade,
+            previous: history[0],
+          }),
+          ...history,
+        ].slice(0, RIGHT_RAIL_EDGE_FEEDBACK_LIMIT);
+        saveRightRailEdgeFeedbackHistory(projectPath, nextHistory);
+        return nextHistory;
+      });
+      setRightRailDestinationPrompt({
+        widget: item.focusWidget,
+        axisLabel: item.label,
+        title: item.promptTitle,
+        detail: item.promptDetail,
+        actionLabel: item.actionLabel,
+        item,
+        edgeScore: edgeScoreAtClick.score,
+        edgeGrade: edgeScoreAtClick.grade,
+        fromMode: rightRailMode,
+        createdAt: Date.now(),
+      });
+      void appendRightRailEdgeScoreInteractionAudit({
+        item,
+        workspaceId: projectPath,
+        fromMode: rightRailMode,
+        score: edgeScoreAtClick.score,
+        grade: edgeScoreAtClick.grade,
+        stage: "clicked",
+      });
+      if (isRightRailWidgetId(item.focusWidget)) {
+        showRightRailRouteConfirmation({
+          widget: item.focusWidget,
+          title: item.routeTitle,
+          detail: item.routeDetail,
+        });
+      }
+    },
+    [projectPath, rightRailMode, showRightRailRouteConfirmation],
+  );
+  const handleClearRightRailEdgeFeedbackHistory = useCallback(() => {
+    clearRightRailEdgeFeedbackHistory(projectPath);
+    rightRailEdgeFeedbackSkipSaveKeyRef.current = null;
+    setRightRailEdgeFeedbackHistory([]);
+    setRightRailEdgeFeedbackResetNotice({
+      createdAt: Date.now(),
+      label: "Score loop cleared",
+      detail: "Workspace guidance was reset.",
+    });
+    if (rightRailEdgeFeedbackResetNoticeTimerRef.current != null) {
+      window.clearTimeout(rightRailEdgeFeedbackResetNoticeTimerRef.current);
+    }
+    rightRailEdgeFeedbackResetNoticeTimerRef.current = window.setTimeout(() => {
+      setRightRailEdgeFeedbackResetNotice(null);
+      rightRailEdgeFeedbackResetNoticeTimerRef.current = null;
+    }, 5_000);
+  }, [projectPath]);
   useEffect(() => {
     let active = true;
     if (!projectPath) {
@@ -991,10 +2624,7 @@ export function App() {
     [devVisualQa.projectPath, devVisualQa.railScenario, projectPath, rightRailUsesFixtures, sessions],
   );
   const rightRailChangedFiles = useMemo(
-    () =>
-      rightRailUsesFixtures
-        ? createDevVisualQaChangedFiles(devVisualQa.railScenario)
-        : changedFiles,
+    () => (rightRailUsesFixtures ? createDevVisualQaChangedFiles(devVisualQa.railScenario) : changedFiles),
     [changedFiles, devVisualQa.railScenario, rightRailUsesFixtures],
   );
   const rightRailSelectedFixtureSessionExists =
@@ -1047,8 +2677,17 @@ export function App() {
         changedFiles: rightRailChangedFiles,
         risks: rightRailAuditRisks,
       }),
-    [activeTabId, projectPath, rightRailAuditRisks, rightRailChangedFiles, rightRailSessions, visualTerminalPaneTargets],
+    [
+      activeTabId,
+      projectPath,
+      rightRailAuditRisks,
+      rightRailChangedFiles,
+      rightRailSessions,
+      visualTerminalPaneTargets,
+    ],
   );
+  const rightRailGraphChangedFiles = useMemo(() => listWorkstationGraphChangedFiles(rightRailGraph), [rightRailGraph]);
+  const rightRailPrimaryChangedFile = rightRailGraphChangedFiles[0] ?? rightRailChangedFiles[0] ?? null;
   const focusedRightRailGraph = useMemo(
     () =>
       filterWorkstationGraph(rightRailGraph, {
@@ -1058,7 +2697,12 @@ export function App() {
     [rightRailActiveSessionId, rightRailGraph, selectedOperationalPaneTarget?.paneId],
   );
   const decisionInbox = useMemo(
-    () => buildDecisionInbox({ sessions: rightRailSessions, auditEvents: scopedOperationalAuditEvents, workflows: workflowStatuses }),
+    () =>
+      buildDecisionInbox({
+        sessions: rightRailSessions,
+        auditEvents: scopedOperationalAuditEvents,
+        workflows: workflowStatuses,
+      }),
     [rightRailSessions, scopedOperationalAuditEvents, workflowStatuses],
   );
   const activeAgent = sessions.find((s) => s.id === activeSessionId);
@@ -1313,13 +2957,15 @@ export function App() {
   );
 
   const handleStartAgent = useCallback(
-    async (
-      prompt: string,
-      model?: string,
-      meta?: { role?: import("./shared/lib/orchestrator").OrchestraRoleId; handoffFrom?: string },
-    ) => {
+    async (prompt: string, model?: string, meta?: StartAgentMeta) => {
       try {
-        return await startAgent(prompt, projectPath, model, meta);
+        const guardrailProfile = meta?.guardrailProfile ?? rightRailGuardrailProfileRef.current;
+        const nextMeta: StartAgentMeta = {
+          ...meta,
+          guardrailProfile,
+          allowedTools: meta?.allowedTools ?? allowedToolsForGuardrailProfile(guardrailProfile),
+        };
+        return await startAgent(prompt, projectPath, model, nextMeta);
       } catch {
         return undefined;
       }
@@ -1328,19 +2974,49 @@ export function App() {
   );
 
   const handleFileSelect = useCallback(
-    (path: string) => {
+    (path: string, options: { line?: number } = {}) => {
       setOpenInDiff(false);
+      if (editorOpenMode === "vscode") {
+        void openInVSCode(path, { line: options.line }).catch((err) => {
+          reportInvokeFailure({
+            source: "editor",
+            operation: "open_in_vscode",
+            err,
+          });
+          if (options.line !== undefined) {
+            setEditorLine(options.line);
+          }
+          openFile(path);
+        });
+        return;
+      }
+      if (options.line !== undefined) {
+        setEditorLine(options.line);
+      }
       openFile(path);
     },
-    [openFile],
+    [editorOpenMode, openFile],
   );
 
   const handleOpenDiff = useCallback(
     (path: string) => {
+      if (editorOpenMode === "vscode") {
+        setOpenInDiff(false);
+        void openGitDiffInVSCode(projectPath, path).catch((err) => {
+          reportInvokeFailure({
+            source: "editor",
+            operation: "open_git_file_diff_in_vscode",
+            err,
+          });
+          setOpenInDiff(true);
+          openFile(path);
+        });
+        return;
+      }
       setOpenInDiff(true);
       openFile(path);
     },
-    [openFile],
+    [editorOpenMode, openFile, projectPath],
   );
 
   const unsavedFiles = useAppStore((s) => s.unsavedFiles);
@@ -1437,18 +3113,126 @@ export function App() {
   );
 
   const handleRightRailAction = useCallback(
-    (action: RightRailAction) => {
+    async (action: RightRailAction) => {
+      const auditRecord = await appendRightRailActionAudit(action, projectPath, rightRailMode);
+      const showRecoverableActionResult = async (
+        tone: Extract<RightRailActionResultTone, "warn" | "error">,
+        detail: string,
+        outcome: "blocked" | "failed" = tone === "warn" ? "blocked" : "failed",
+      ) => {
+        const recoveryDetail = formatRightRailRecoveryDetail(action, detail);
+        const outcomeRecord =
+          (await appendRightRailActionOutcomeAudit(action, projectPath, rightRailMode, outcome, recoveryDetail)) ??
+          auditRecord;
+        showRightRailActionResult(action, tone, recoveryDetail, outcomeRecord);
+      };
+      if (action.execution.status === "blocked") {
+        await showRecoverableActionResult(
+          "warn",
+          action.execution.disabledReason ?? action.execution.recoveryStep ?? "Action is blocked.",
+        );
+        return;
+      }
       setRightRailMode(action.mode);
       setRightRailFocusWidget(RIGHT_RAIL_ACTION_WIDGET[action.id] ?? null);
+      const pendingDecisionSessionId =
+        action.id === "resolve-approvals"
+          ? decisionInbox.pendingItems.find((item) => item.sessionId)?.sessionId
+          : undefined;
       if (action.targetSessionId) {
         handleSelectRightRailSession(action.targetSessionId);
+      } else if (pendingDecisionSessionId) {
+        handleSelectRightRailSession(pendingDecisionSessionId);
       }
       if (action.targetPaneRole) {
         const pane = visualTerminalPaneTargets.find((candidate) => candidate.role === action.targetPaneRole);
-        if (pane) selectOperationalPane(pane);
+        if (pane) {
+          selectOperationalPane(pane);
+        } else if (action.execution.operation === "focus-pane") {
+          await showRecoverableActionResult("warn", "Pane target changed before it could be focused.");
+          return;
+        }
       }
+
+      if (action.execution.operation === "open-primary-diff") {
+        const targetPath = action.targetFilePath ?? rightRailPrimaryChangedFile?.path;
+        if (!targetPath) {
+          await showRecoverableActionResult("warn", "No changed file is available for diff.");
+          toast.warning("No diff target", "Refresh source control and try the review action again.");
+          return;
+        }
+        const filePath = resolveProjectFilePath(projectPath, targetPath);
+        handleOpenDiff(filePath);
+        showRightRailActionResult(action, "success", `Opened diff for ${targetPath}`, auditRecord);
+        toast.success("Diff opened", targetPath);
+        return;
+      }
+
+      if (action.execution.operation === "copy-context-pack") {
+        const focusSession =
+          (action.targetSessionId
+            ? rightRailSessions.find((session) => session.id === action.targetSessionId)
+            : null) ??
+          rightRailSessions[0] ??
+          null;
+        const contextPack = buildContextPack({
+          workspace: {
+            name: projectName,
+            path: projectPath,
+            branch,
+          },
+          activeTask: focusSession
+            ? {
+                id: focusSession.id,
+                title: focusSession.name,
+                status: focusSession.status,
+                nextAction: action.nextStep,
+              }
+            : null,
+          sessions: rightRailSessions,
+          changedFiles: rightRailGraphChangedFiles.length > 0 ? rightRailGraphChangedFiles : rightRailChangedFiles,
+          panes: visualTerminalPaneTargets.map((pane) => ({
+            paneId: pane.paneId,
+            terminalId: pane.terminalId,
+            title: pane.title || pane.label,
+            role: pane.role,
+            status: pane.lifecycle,
+          })),
+          auditEvents: scopedOperationalAuditEvents,
+          workstationGraph: rightRailGraph,
+        });
+        try {
+          await copyTextToClipboard(contextPack.markdown);
+          showRightRailActionResult(action, "success", "Copied handoff context pack to clipboard.", auditRecord);
+          toast.success("Handoff copied", contextPack.threadSummary);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          await showRecoverableActionResult("error", message, "failed");
+          toast.error("Handoff copy failed", message);
+        }
+        return;
+      }
+
+      showRightRailActionResult(action, "success", action.execution.expectedResult, auditRecord);
     },
-    [handleSelectRightRailSession, selectOperationalPane, visualTerminalPaneTargets],
+    [
+      branch,
+      decisionInbox.pendingItems,
+      handleOpenDiff,
+      handleSelectRightRailSession,
+      projectName,
+      projectPath,
+      rightRailChangedFiles,
+      rightRailGraph,
+      rightRailGraphChangedFiles,
+      rightRailMode,
+      rightRailPrimaryChangedFile,
+      rightRailSessions,
+      scopedOperationalAuditEvents,
+      selectOperationalPane,
+      showRightRailActionResult,
+      visualTerminalPaneTargets,
+    ],
   );
 
   // ── Interactive agent session handlers ──
@@ -1736,6 +3520,135 @@ export function App() {
     </div>
   ));
 
+  const liveInteractiveSessionCount = interactiveSessions.filter((session) =>
+    isLiveInteractiveSessionStatus(session.status),
+  ).length;
+  const liveAgentCount =
+    rightRailSessions.filter((s) => s.status !== "idle" && s.status !== "done").length + liveInteractiveSessionCount;
+  const rightRailModeBadges: Record<RightRailMode, number> = {
+    command: decisionInbox.pendingCount > 0 ? decisionInbox.pendingCount : liveAgentCount,
+    review: rightRailChangedFiles.length,
+    observe: decisionInbox.pendingCount + liveAgentCount,
+  };
+  const rightRailAdvisorBaseInput = {
+    sessions: rightRailSessions,
+    interactiveSessionCount: liveInteractiveSessionCount,
+    changedFilesCount: rightRailChangedFiles.length,
+    contextWarnPct,
+    currentMode: rightRailMode,
+    pendingDecisionCount: decisionInbox.pendingCount,
+    workstationGraph: rightRailGraph,
+    selectedPane: selectedOperationalPaneTarget
+      ? {
+          role: selectedOperationalPaneTarget.role,
+          title: selectedOperationalPaneTarget.title,
+          label: selectedOperationalPaneTarget.label,
+        }
+      : null,
+  };
+  const rightRailWorkforce = deriveRightRailWorkforceSummary(rightRailAdvisorBaseInput);
+  const rightRailGuardrailProfile =
+    rightRailGuardrailSelection === "Auto" ? rightRailWorkforce.guardrailProfile : rightRailGuardrailSelection;
+  const rightRailGuardrailDescriptor = describeGuardrailProfile(rightRailGuardrailProfile);
+  const rightRailGuardrailDetail =
+    rightRailGuardrailSelection === "Auto"
+      ? rightRailWorkforce.guardrailDetail
+      : `Manual override: ${rightRailGuardrailDescriptor.detail}`;
+  rightRailGuardrailProfileRef.current = rightRailGuardrailProfile;
+  const rightRailAdvisorInput = {
+    ...rightRailAdvisorBaseInput,
+    guardrailProfile: rightRailGuardrailProfile,
+  };
+  const rightRailNegativePathAction = createDevVisualQaNegativePathAction(devVisualQa.negativePath);
+  const rightRailBaseActions = deriveRightRailActions(rightRailAdvisorInput);
+  const rightRailActions = rightRailNegativePathAction
+    ? [rightRailNegativePathAction, ...rightRailBaseActions]
+    : rightRailBaseActions;
+  const rightRailEdgeScore = deriveRightRailEdgeScore({
+    pendingDecisionCount: decisionInbox.pendingCount,
+    liveAgentCount,
+    changedFilesCount: rightRailChangedFiles.length,
+    auditEventCount: scopedOperationalAuditEvents.length,
+    graphRiskCount: rightRailGraph.nodeCountByKind.risk,
+    actionCount: rightRailActions.length,
+    recoverableActionCount: rightRailActions.filter(
+      (action) => action.execution.recoveryStep || action.execution.status === "guided",
+    ).length,
+  });
+  rightRailEdgeScoreRef.current = { score: rightRailEdgeScore.score, grade: rightRailEdgeScore.grade };
+  const rightRailNowState = deriveRightRailNowState(rightRailAdvisorInput);
+  const rightRailRecommendation = deriveRightRailRecommendation(rightRailAdvisorInput);
+  const rightRailRecommendedMode = rightRailRecommendation
+    ? RIGHT_RAIL_MODES.find((mode) => mode.id === rightRailRecommendation.mode)
+    : undefined;
+  const RightRailRecommendedIcon = rightRailRecommendedMode?.icon;
+  const activeRightRailMode = RIGHT_RAIL_MODES.find((mode) => mode.id === rightRailMode) ?? RIGHT_RAIL_MODES[0];
+  const rightRailDecisionFocus = {
+    tone: decisionInbox.pendingCount > 0 ? ("warn" as const) : ("quiet" as const),
+    label: decisionInbox.pendingCount > 0 ? "Needs your decision" : "No decisions waiting",
+    detail:
+      decisionInbox.pendingCount > 0
+        ? `${decisionInbox.pendingCount} human gate${decisionInbox.pendingCount === 1 ? "" : "s"} blocking forward motion`
+        : "Agents and workflows can continue without your input.",
+    actionLabel: decisionInbox.pendingCount > 0 ? "Open inbox" : "View decisions",
+  };
+  const renderRightRailDestinationPrompt = (widget: string) =>
+    rightRailDestinationPrompt?.widget === widget ? (
+      <RightRailDestinationPromptCard prompt={rightRailDestinationPrompt} />
+    ) : null;
+  const rightRailEdgeFeedbackStaleEntries = useMemo(
+    () => deriveRightRailEdgeFeedbackStaleEntries(rightRailEdgeFeedbackHistory, rightRailEdgeScore),
+    [rightRailEdgeFeedbackHistory, rightRailEdgeScore],
+  );
+  const rightRailEdgeFeedbackStaleIds = useMemo(
+    () => new Set(rightRailEdgeFeedbackStaleEntries.map(({ entry }) => entry.id)),
+    [rightRailEdgeFeedbackStaleEntries],
+  );
+  const rightRailEdgeFeedbackVisibleHistory = useMemo(
+    () =>
+      rightRailEdgeFeedbackStaleOnly
+        ? rightRailEdgeFeedbackHistory.filter((entry) => rightRailEdgeFeedbackStaleIds.has(entry.id))
+        : rightRailEdgeFeedbackHistory,
+    [rightRailEdgeFeedbackHistory, rightRailEdgeFeedbackStaleIds, rightRailEdgeFeedbackStaleOnly],
+  );
+  const rightRailEdgeFeedbackStaleGroups = useMemo(
+    () =>
+      rightRailEdgeFeedbackStaleOnly ? deriveRightRailEdgeFeedbackStaleGroups(rightRailEdgeFeedbackStaleEntries) : [],
+    [rightRailEdgeFeedbackStaleEntries, rightRailEdgeFeedbackStaleOnly],
+  );
+  const rightRailEdgeFeedbackStaleCount = rightRailEdgeFeedbackStaleEntries.length;
+  const rightRailEdgeFeedbackStaleCountLabel = `${rightRailEdgeFeedbackStaleCount} stale score loop ${
+    rightRailEdgeFeedbackStaleCount === 1 ? "entry" : "entries"
+  }`;
+  useEffect(() => {
+    if (!projectPath || rightRailEdgeFeedbackStaleEntries.length === 0) return;
+    for (const { entry, staleReason } of rightRailEdgeFeedbackStaleEntries) {
+      const telemetryKey = `${projectPath}:${entry.id}:${staleReason}`;
+      if (rightRailEdgeFeedbackStaleTelemetryRef.current.has(telemetryKey)) continue;
+      rightRailEdgeFeedbackStaleTelemetryRef.current.add(telemetryKey);
+      void appendRightRailEdgeFeedbackStaleAudit({
+        entry,
+        workspaceId: projectPath,
+        staleReason,
+      });
+    }
+  }, [projectPath, rightRailEdgeFeedbackStaleEntries]);
+  useEffect(() => {
+    if (rightRailEdgeFeedbackStaleEntries.length === 0 && rightRailEdgeFeedbackStaleOnly) {
+      setRightRailEdgeFeedbackStaleOnly(false);
+    }
+  }, [rightRailEdgeFeedbackStaleEntries.length, rightRailEdgeFeedbackStaleOnly]);
+  const rightRailEdgeFeedbackAxisSummary = deriveRightRailEdgeFeedbackAxisSummary(rightRailEdgeFeedbackHistory);
+  const rightRailEdgeNextBestAction = deriveRightRailEdgeNextBestAction(
+    rightRailEdgeScore,
+    rightRailEdgeFeedbackAxisSummary,
+  );
+  const rightRailEdgeRecommendationOutcome = deriveRightRailEdgeRecommendationOutcome({
+    nextAction: rightRailEdgeNextBestAction,
+    prompt: rightRailDestinationPrompt,
+    latestFeedback: rightRailEdgeFeedbackHistory[0],
+  });
+
   if (!rootProjectPath) {
     return (
       <TooltipProvider>
@@ -1759,40 +3672,6 @@ export function App() {
     );
   }
 
-  const liveInteractiveSessionCount = interactiveSessions.filter((session) =>
-    isLiveInteractiveSessionStatus(session.status),
-  ).length;
-  const liveAgentCount =
-    rightRailSessions.filter((s) => s.status !== "idle" && s.status !== "done").length + liveInteractiveSessionCount;
-  const rightRailModeBadges: Record<RightRailMode, number> = {
-    command: decisionInbox.pendingCount > 0 ? decisionInbox.pendingCount : liveAgentCount,
-    review: rightRailChangedFiles.length,
-    observe: decisionInbox.pendingCount + liveAgentCount,
-  };
-  const rightRailAdvisorInput = {
-    sessions: rightRailSessions,
-    interactiveSessionCount: liveInteractiveSessionCount,
-    changedFilesCount: rightRailChangedFiles.length,
-    contextWarnPct,
-    currentMode: rightRailMode,
-    pendingDecisionCount: decisionInbox.pendingCount,
-    workstationGraph: rightRailGraph,
-    selectedPane: selectedOperationalPaneTarget
-      ? {
-          role: selectedOperationalPaneTarget.role,
-          title: selectedOperationalPaneTarget.title,
-          label: selectedOperationalPaneTarget.label,
-        }
-      : null,
-  };
-  const rightRailActions = deriveRightRailActions(rightRailAdvisorInput);
-  const rightRailNowState = deriveRightRailNowState(rightRailAdvisorInput);
-  const rightRailRecommendation = deriveRightRailRecommendation(rightRailAdvisorInput);
-  const rightRailRecommendedMode = rightRailRecommendation
-    ? RIGHT_RAIL_MODES.find((mode) => mode.id === rightRailRecommendation.mode)
-    : undefined;
-  const RightRailRecommendedIcon = rightRailRecommendedMode?.icon;
-  const activeRightRailMode = RIGHT_RAIL_MODES.find((mode) => mode.id === rightRailMode) ?? RIGHT_RAIL_MODES[0];
   const terminalSurface = (
     <div className={appStyles.terminalContainer}>
       {terminalTabs}
@@ -1937,8 +3816,7 @@ export function App() {
                         rootPath={projectPath}
                         onClose={() => setSearchVisible(false)}
                         onResultClick={(file, line) => {
-                          handleFileSelect(file);
-                          setEditorLine(line);
+                          handleFileSelect(file, { line });
                         }}
                       />
                     </ErrorBoundary>
@@ -2088,6 +3966,26 @@ export function App() {
                     <span className={appStyles.rightRailPurposeText}>{activeRightRailMode.description}</span>
                   </div>
 
+                  <button
+                    type="button"
+                    className="right-panel-decision-focus"
+                    data-tone={rightRailDecisionFocus.tone}
+                    data-has-decision={decisionInbox.pendingCount > 0 ? "true" : "false"}
+                    onClick={() => {
+                      setRightRailMode("command");
+                      setRightRailFocusWidget("decision-inbox");
+                    }}
+                    aria-label={`Decision focus: ${rightRailDecisionFocus.label}. ${rightRailDecisionFocus.detail}`}
+                    title={`${rightRailDecisionFocus.label}: ${rightRailDecisionFocus.detail}`}
+                  >
+                    <span className="right-panel-decision-kicker">Decision</span>
+                    <span className="right-panel-decision-copy">
+                      <span className="right-panel-decision-label">{rightRailDecisionFocus.label}</span>
+                      <span className="right-panel-decision-detail">{rightRailDecisionFocus.detail}</span>
+                    </span>
+                    <span className="right-panel-decision-action">{rightRailDecisionFocus.actionLabel}</span>
+                  </button>
+
                   <section
                     className="right-panel-now"
                     data-tone={rightRailNowState.tone}
@@ -2097,6 +3995,266 @@ export function App() {
                     <span className="right-panel-now-kicker">Now</span>
                     <span className="right-panel-now-state">{rightRailNowState.label}</span>
                     <span className="right-panel-now-detail">{rightRailNowState.detail}</span>
+                  </section>
+
+                  <section
+                    className="right-panel-edge-score"
+                    data-tone={rightRailEdgeScore.tone}
+                    aria-label={`Command center edge score ${rightRailEdgeScore.score}`}
+                  >
+                    <div className="right-panel-edge-score-head">
+                      <span className="right-panel-edge-score-kicker">Edge score</span>
+                      <strong>{rightRailEdgeScore.score}</strong>
+                      <span>{rightRailEdgeScore.grade}</span>
+                    </div>
+                    <span className="right-panel-edge-score-label">{rightRailEdgeScore.label}</span>
+                    <span className="right-panel-edge-score-detail">{rightRailEdgeScore.detail}</span>
+                    <ul className="right-panel-edge-score-grid" aria-label="Command center score breakdown">
+                      {rightRailEdgeScore.items.map((item) => (
+                        <li key={item.id}>
+                          <button
+                            type="button"
+                            className="right-panel-edge-score-item"
+                            data-status={item.status}
+                            onClick={() => handleOpenRightRailEdgeScoreItem(item)}
+                            aria-label={`${item.label}: ${item.detail}. ${item.actionLabel}`}
+                            title={`${item.routeTitle}: ${item.routeDetail}`}
+                          >
+                            <strong>{item.label}</strong>
+                            <small>
+                              {item.score}/{item.max}
+                            </small>
+                            <span className="right-panel-edge-score-action">{item.actionLabel}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+
+                  {rightRailEdgeNextBestAction && (
+                    <button
+                      type="button"
+                      className="right-panel-edge-next-action"
+                      data-reason={rightRailEdgeNextBestAction.reason}
+                      onClick={() => handleOpenRightRailEdgeScoreItem(rightRailEdgeNextBestAction.item)}
+                      aria-label={`Next best Edge score action: ${rightRailEdgeNextBestAction.item.actionLabel} for ${rightRailEdgeNextBestAction.item.label}`}
+                      title={`${rightRailEdgeNextBestAction.item.routeTitle}: ${rightRailEdgeNextBestAction.item.routeDetail}`}
+                    >
+                      <span>Next best action</span>
+                      <strong>{rightRailEdgeNextBestAction.item.actionLabel}</strong>
+                      <small>
+                        {rightRailEdgeNextBestAction.reason === "repeated-axis" ? "Repeated axis" : "Weakest axis"}:{" "}
+                        {rightRailEdgeNextBestAction.item.label}
+                      </small>
+                      {rightRailEdgeRecommendationOutcome && (
+                        <em data-status={rightRailEdgeRecommendationOutcome.status}>
+                          {rightRailEdgeRecommendationOutcome.label} - {rightRailEdgeRecommendationOutcome.detail}
+                        </em>
+                      )}
+                    </button>
+                  )}
+
+                  {rightRailEdgeFeedbackHistory.length > 0 && (
+                    <section className="right-panel-edge-feedback" aria-label="Recent Edge score feedback">
+                      <div className="right-panel-edge-feedback-head">
+                        <span>Score loop</span>
+                        <span>{rightRailEdgeFeedbackHistory.length}</span>
+                        {rightRailEdgeFeedbackStaleCount > 0 && (
+                          <>
+                            <span className="right-panel-edge-feedback-stale-count" aria-hidden="true">
+                              Stale {rightRailEdgeFeedbackStaleCount}
+                            </span>
+                            <span id={RIGHT_RAIL_EDGE_FEEDBACK_STALE_COUNT_ID} className="sr-only">
+                              {rightRailEdgeFeedbackStaleCountLabel}
+                            </span>
+                          </>
+                        )}
+                        {rightRailEdgeFeedbackStaleCount > 0 && (
+                          <button
+                            type="button"
+                            className="right-panel-edge-feedback-filter"
+                            data-active={rightRailEdgeFeedbackStaleOnly ? "true" : "false"}
+                            onClick={() => setRightRailEdgeFeedbackStaleOnly((active) => !active)}
+                            aria-pressed={rightRailEdgeFeedbackStaleOnly}
+                            aria-controls={RIGHT_RAIL_EDGE_FEEDBACK_LIST_ID}
+                            aria-describedby={RIGHT_RAIL_EDGE_FEEDBACK_STALE_COUNT_ID}
+                            aria-label={
+                              rightRailEdgeFeedbackStaleOnly
+                                ? `Show all score loop entries; ${rightRailEdgeFeedbackStaleCountLabel}`
+                                : `Show only stale score loop entries; ${rightRailEdgeFeedbackStaleCountLabel}`
+                            }
+                          >
+                            {rightRailEdgeFeedbackStaleOnly ? "All" : "Stale only"}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="right-panel-edge-feedback-clear"
+                          onClick={handleClearRightRailEdgeFeedbackHistory}
+                          aria-controls={RIGHT_RAIL_EDGE_FEEDBACK_LIST_ID}
+                          aria-label="Clear workspace Edge score feedback history"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                      {rightRailEdgeFeedbackAxisSummary && (
+                        <div
+                          className="right-panel-edge-feedback-summary"
+                          data-axis-id={rightRailEdgeFeedbackAxisSummary.axisId}
+                          data-trend={rightRailEdgeFeedbackAxisSummary.trend}
+                        >
+                          <span>Repeated axis</span>
+                          <strong>{rightRailEdgeFeedbackAxisSummary.axisLabel}</strong>
+                          <small>
+                            {rightRailEdgeFeedbackAxisSummary.count} hit
+                            {rightRailEdgeFeedbackAxisSummary.count === 1 ? "" : "s"} -{" "}
+                            {rightRailEdgeFeedbackAxisSummary.trend}
+                          </small>
+                        </div>
+                      )}
+                      {rightRailEdgeFeedbackStaleOnly && rightRailEdgeFeedbackStaleGroups.length > 0 && (
+                        <section
+                          className="right-panel-edge-feedback-stale-groups"
+                          aria-label={`Grouped stale score feedback, ${rightRailEdgeFeedbackStaleGroups.length} repeated ${
+                            rightRailEdgeFeedbackStaleGroups.length === 1 ? "axis" : "axes"
+                          }`}
+                        >
+                          {rightRailEdgeFeedbackStaleGroups.map((group) => (
+                            <fieldset
+                              key={group.axisId}
+                              className="right-panel-edge-feedback-stale-group"
+                              data-axis-id={group.axisId}
+                            >
+                              <legend>Stale group</legend>
+                              <strong>{group.axisLabel}</strong>
+                              <small>
+                                {group.count} entries - {group.score} - {group.grade} - {group.staleReason}
+                              </small>
+                            </fieldset>
+                          ))}
+                        </section>
+                      )}
+                      <div id={RIGHT_RAIL_EDGE_FEEDBACK_LIST_ID} className="right-panel-edge-feedback-list">
+                        {rightRailEdgeFeedbackVisibleHistory.map((entry) => {
+                          const replayItem = rightRailEdgeScore.items.find(
+                            (item) => item.id === entry.axisId || item.label === entry.axisLabel,
+                          );
+                          const staleReason = replayItem ? null : formatRightRailEdgeFeedbackStaleReason(entry);
+                          return (
+                            <button
+                              key={entry.id}
+                              type="button"
+                              className="right-panel-edge-feedback-item"
+                              data-axis-id={entry.axisId}
+                              data-stale={staleReason ? "true" : "false"}
+                              data-trend={entry.trend}
+                              onClick={() => {
+                                if (replayItem) handleOpenRightRailEdgeScoreItem(replayItem);
+                              }}
+                              disabled={!replayItem}
+                              aria-label={`Replay ${entry.axisLabel} score action: ${entry.actionLabel}`}
+                            >
+                              <span className="right-panel-edge-feedback-axis">{entry.axisLabel}</span>
+                              <span className="right-panel-edge-feedback-score">
+                                {entry.score} · {entry.grade}
+                              </span>
+                              <span className="right-panel-edge-feedback-delta">
+                                {entry.trend === "baseline"
+                                  ? "Baseline"
+                                  : entry.delta > 0
+                                    ? `+${entry.delta}`
+                                    : `${entry.delta}`}
+                              </span>
+                              <span className="right-panel-edge-feedback-target">
+                                {entry.actionLabel} -&gt; {entry.targetWidget}
+                              </span>
+                              {staleReason && <span className="right-panel-edge-feedback-stale">{staleReason}</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  )}
+
+                  {rightRailEdgeFeedbackResetNotice && (
+                    <section className="right-panel-edge-feedback-reset" role="status" aria-live="polite">
+                      <strong>{rightRailEdgeFeedbackResetNotice.label}</strong>
+                      <span>{rightRailEdgeFeedbackResetNotice.detail}</span>
+                    </section>
+                  )}
+
+                  <section
+                    className="right-panel-workforce"
+                    data-tone={rightRailWorkforce.tone}
+                    aria-label={`Agent workforce: ${rightRailWorkforce.headline}`}
+                  >
+                    <div className="right-panel-workforce-head">
+                      <span className="right-panel-workforce-kicker">Agent workforce</span>
+                      <label className="right-panel-workforce-profile-control">
+                        <span className="sr-only">Guardrail profile</span>
+                        <select
+                          className="right-panel-workforce-profile"
+                          value={rightRailGuardrailSelection}
+                          onChange={(event) =>
+                            setRightRailGuardrailSelection(event.currentTarget.value as RightRailGuardrailSelection)
+                          }
+                          aria-label={`Guardrail profile, current ${
+                            rightRailGuardrailSelection === "Auto"
+                              ? `Auto ${rightRailGuardrailProfile}`
+                              : rightRailGuardrailProfile
+                          }`}
+                          title={`Guardrail: ${rightRailGuardrailDescriptor.label}`}
+                        >
+                          {RIGHT_RAIL_GUARDRAIL_OPTIONS.map((profile) => (
+                            <option key={profile} value={profile}>
+                              {profile === "Auto" ? `Auto: ${rightRailWorkforce.guardrailProfile}` : profile}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                    <div className="right-panel-workforce-main">
+                      <span className="right-panel-workforce-title">{rightRailWorkforce.headline}</span>
+                      <span className="right-panel-workforce-detail">{rightRailWorkforce.detail}</span>
+                    </div>
+                    <section className="right-panel-workforce-metrics" aria-label="Workforce metrics">
+                      <span>
+                        <strong>{rightRailWorkforce.liveCount}</strong>
+                        <small>Live</small>
+                      </span>
+                      <span>
+                        <strong>{rightRailWorkforce.blockedCount}</strong>
+                        <small>Blocked</small>
+                      </span>
+                      <span>
+                        <strong>{rightRailWorkforce.handoffCount}</strong>
+                        <small>Handoff</small>
+                      </span>
+                    </section>
+                    <span className="right-panel-workforce-guardrail">{rightRailGuardrailDetail}</span>
+                    <span className="right-panel-workforce-tools">
+                      Tools: {allowedToolsForGuardrailProfile(rightRailGuardrailProfile).join(", ")}
+                    </span>
+                    {rightRailWorkforce.topAgents.length > 0 && (
+                      <section className="right-panel-workforce-roster" aria-label="Top workforce agents">
+                        {rightRailWorkforce.topAgents.map((agent) => (
+                          <button
+                            key={agent.id}
+                            type="button"
+                            className="right-panel-workforce-agent"
+                            onClick={() => handleSelectRightRailSession(agent.id)}
+                            title={`${agent.name}: ${agent.next}`}
+                          >
+                            <span className="right-panel-workforce-agent-name">{agent.name}</span>
+                            <span className="right-panel-workforce-agent-role">{agent.role}</span>
+                            <span className="right-panel-workforce-agent-next">{agent.next}</span>
+                            <span className="right-panel-workforce-agent-meta">
+                              {agent.contextPct}% · {agent.filesChanged} files
+                            </span>
+                          </button>
+                        ))}
+                      </section>
+                    )}
                   </section>
 
                   {rightRailRecommendation && rightRailRecommendedMode && RightRailRecommendedIcon && (
@@ -2111,7 +4269,7 @@ export function App() {
                             action.label === rightRailRecommendation.label &&
                             action.detail === rightRailRecommendation.detail,
                         );
-                        if (matchingAction) handleRightRailAction(matchingAction);
+                        if (matchingAction) void handleRightRailAction(matchingAction);
                         else setRightRailMode(rightRailRecommendation.mode);
                       }}
                       title={`Switch to ${rightRailRecommendedMode.label}: ${rightRailRecommendation.detail}`}
@@ -2129,7 +4287,7 @@ export function App() {
                   )}
 
                   {rightRailActions.length > 0 && (
-                    <div className="right-panel-action-stack" aria-label="Ranked next actions">
+                    <section className="right-panel-action-stack" aria-label="Ranked next actions">
                       {rightRailActions.slice(0, 4).map((action) => {
                         const mode = RIGHT_RAIL_MODES.find((candidate) => candidate.id === action.mode);
                         const ActionIcon = mode?.icon ?? Activity;
@@ -2140,8 +4298,15 @@ export function App() {
                             className="right-panel-action"
                             data-tone={action.tone}
                             data-state={action.state}
-                            onClick={() => handleRightRailAction(action)}
-                            title={`${action.label}: ${action.detail}. ${action.nextStep}`}
+                            data-execution={action.execution.status}
+                            data-guardrail={action.execution.guardrailProfile}
+                            disabled={action.execution.status === "blocked"}
+                            onClick={() => void handleRightRailAction(action)}
+                            title={`${action.label}: ${action.detail}. ${action.nextStep} Expected: ${
+                              action.execution.expectedResult
+                            }${action.execution.guardrailDetail ? ` Guardrail: ${action.execution.guardrailDetail}` : ""}${
+                              action.execution.disabledReason ? ` Blocked: ${action.execution.disabledReason}` : ""
+                            }`}
                           >
                             <span className="right-panel-action-icon" aria-hidden="true">
                               <ActionIcon size={12} strokeWidth={1.8} />
@@ -2150,12 +4315,88 @@ export function App() {
                               <span className="right-panel-action-label">{action.label}</span>
                               <span className="right-panel-action-detail">{action.detail}</span>
                               <span className="right-panel-action-why">{action.nextStep}</span>
+                              <span className="right-panel-action-outcome">
+                                {action.execution.disabledReason ??
+                                  action.execution.guardrailDetail ??
+                                  action.execution.expectedResult}
+                              </span>
                             </span>
-                            <span className="right-panel-action-target">{mode?.label ?? action.mode}</span>
+                            <span className="right-panel-action-meta">
+                              <span className="right-panel-action-target">{mode?.label ?? action.mode}</span>
+                              <span className="right-panel-action-execution">{action.execution.label}</span>
+                              {action.execution.guardrailLabel && (
+                                <span className="right-panel-action-guardrail">{action.execution.guardrailLabel}</span>
+                              )}
+                            </span>
                           </button>
                         );
                       })}
-                    </div>
+                    </section>
+                  )}
+
+                  {rightRailActionResult && (
+                    <section
+                      className="right-panel-action-result"
+                      data-tone={rightRailActionResult.tone}
+                      role="status"
+                      aria-live="polite"
+                      aria-atomic="true"
+                    >
+                      <span className="right-panel-action-result-kicker">Last action</span>
+                      <span className="right-panel-action-result-label">{rightRailActionResult.label}</span>
+                      <span className="right-panel-action-result-detail">{rightRailActionResult.detail}</span>
+                      {(rightRailActionResult.auditEventId != null ||
+                        rightRailActionResult.auditCorrelationId ||
+                        rightRailActionResult.routeWidget) && (
+                        <button
+                          type="button"
+                          className="right-panel-action-result-audit"
+                          onClick={() => handleOpenRightRailOutcomeSource(rightRailActionResult)}
+                          aria-label={`Open source context for ${rightRailActionResult.label}`}
+                          title={
+                            rightRailActionResult.auditTimestamp
+                              ? `Open audit context from ${rightRailActionResult.auditTimestamp}`
+                              : (rightRailActionResult.routeDetail ?? "Open source context")
+                          }
+                        >
+                          {rightRailActionResult.routeLabel ?? "Audit"}
+                        </button>
+                      )}
+                    </section>
+                  )}
+
+                  {rightRailActionHistory.length > 0 && (
+                    <section className="right-panel-action-history" aria-label="Recent right rail action history">
+                      <div className="right-panel-action-history-header">
+                        <span>Recent actions</span>
+                        <span>{rightRailActionHistory.length}</span>
+                      </div>
+                      <div className="right-panel-action-history-list">
+                        {rightRailActionHistory.map((result) => (
+                          <div key={result.id} className="right-panel-action-history-item" data-tone={result.tone}>
+                            <span className="right-panel-action-history-copy">
+                              <span className="right-panel-action-history-label">{result.label}</span>
+                              <span className="right-panel-action-history-detail">{result.detail}</span>
+                            </span>
+                            {(result.auditEventId != null || result.auditCorrelationId || result.routeWidget) && (
+                              <button
+                                type="button"
+                                className="right-panel-action-history-audit"
+                                onClick={() => handleOpenRightRailOutcomeSource(result)}
+                                aria-label={`Open source context for ${result.label}`}
+                                title={
+                                  result.auditTimestamp
+                                    ? `Open audit context from ${result.auditTimestamp}`
+                                    : (result.routeDetail ?? "Open source context")
+                                }
+                              >
+                                {result.routeLabel ?? "Audit"}
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </section>
                   )}
 
                   <ErrorBoundary>
@@ -2182,12 +4423,15 @@ export function App() {
                         <ErrorBoundary>
                           <Suspense fallback={null}>
                             <div className="bento-widget" data-widget="decision-inbox">
+                              {renderRightRailDestinationPrompt("decision-inbox")}
                               <DecisionInboxPanel
                                 sessions={rightRailSessions}
                                 auditEvents={scopedOperationalAuditEvents}
                                 workflows={workflowStatuses}
                                 activeSessionId={rightRailActiveSessionId}
                                 onSelectSession={handleSelectRightRailSession}
+                                onOpenWorkflow={handleOpenDecisionWorkflow}
+                                onOpenAudit={handleOpenDecisionAudit}
                               />
                             </div>
                           </Suspense>
@@ -2215,31 +4459,53 @@ export function App() {
                         </ErrorBoundary>
                         <ErrorBoundary>
                           <Suspense fallback={null}>
-                            <div className="bento-widget" data-widget="workflow">
+                            <RightRailWidgetFrame
+                              widget="workflow"
+                              title="Workflows"
+                              subtitle="multi-step runs"
+                              defaultOpen={false}
+                              forceOpen={rightRailFocusWidget === "workflow"}
+                              focusConfirmation={
+                                rightRailRouteConfirmation?.widget === "workflow" ? rightRailRouteConfirmation : null
+                              }
+                            >
                               <WorkflowPanel
                                 projectPath={projectPath}
                                 sessions={rightRailSessions}
                                 onStartAgent={handleStartAgent}
+                                onDestinationOutcome={showRightRailDestinationOutcome}
                               />
-                            </div>
+                            </RightRailWidgetFrame>
                           </Suspense>
                         </ErrorBoundary>
                         <div className="right-panel-bottom-grid">
                           <ErrorBoundary>
                             <Suspense fallback={null}>
-                              <div className="bento-widget" data-widget="toolkit">
+                              <RightRailWidgetFrame
+                                widget="toolkit"
+                                title="Toolkit"
+                                subtitle="saved commands"
+                                defaultOpen
+                                forceOpen={rightRailFocusWidget === "toolkit"}
+                              >
                                 <ToolkitPanel
                                   projectName={projectName}
                                   onRunCommand={handleRunCommand}
-                                  activeTargetLabel={activeTerminalTarget.label}
+                                  activeTargetLabel={visualActiveTerminalTargetLabel}
                                   activeTargetReady={activeTerminalTarget.ready}
                                 />
-                              </div>
+                              </RightRailWidgetFrame>
                             </Suspense>
                           </ErrorBoundary>
                           <ErrorBoundary>
                             <Suspense fallback={null}>
-                              <div className="bento-widget" data-widget="context">
+                              <RightRailWidgetFrame
+                                widget="context"
+                                title="Context"
+                                subtitle="handoff state"
+                                defaultOpen={false}
+                                forceOpen={rightRailFocusWidget === "context"}
+                              >
                                 <ContextPanel
                                   sessions={rightRailSessions}
                                   activeSessionId={rightRailActiveSessionId}
@@ -2252,7 +4518,7 @@ export function App() {
                                   branch={branch}
                                   workstationGraph={focusedRightRailGraph}
                                 />
-                              </div>
+                              </RightRailWidgetFrame>
                             </Suspense>
                           </ErrorBoundary>
                         </div>
@@ -2264,6 +4530,7 @@ export function App() {
                         <ErrorBoundary>
                           <Suspense fallback={null}>
                             <div className="bento-widget" data-widget="review-queue">
+                              {renderRightRailDestinationPrompt("review-queue")}
                               <ReviewQueuePanel
                                 sessions={rightRailSessions}
                                 changedFiles={rightRailChangedFiles}
@@ -2310,7 +4577,13 @@ export function App() {
                         </ErrorBoundary>
                         <ErrorBoundary>
                           <Suspense fallback={null}>
-                            <div className="bento-widget" data-widget="context">
+                            <RightRailWidgetFrame
+                              widget="context"
+                              title="Context"
+                              subtitle="handoff state"
+                              defaultOpen={false}
+                              forceOpen={rightRailFocusWidget === "context"}
+                            >
                               <ContextPanel
                                 sessions={rightRailSessions}
                                 activeSessionId={rightRailActiveSessionId}
@@ -2324,7 +4597,7 @@ export function App() {
                                 density="compact"
                                 workstationGraph={focusedRightRailGraph}
                               />
-                            </div>
+                            </RightRailWidgetFrame>
                           </Suspense>
                         </ErrorBoundary>
                       </>
@@ -2335,6 +4608,7 @@ export function App() {
                         <ErrorBoundary>
                           <Suspense fallback={null}>
                             <div className="bento-widget" data-widget="processes">
+                              {renderRightRailDestinationPrompt("processes")}
                               <ProcessManagerPanel
                                 panes={visualTerminalPaneTargets}
                                 activeTerminalId={visualActivePtyId}
@@ -2367,6 +4641,7 @@ export function App() {
                         <ErrorBoundary>
                           <Suspense fallback={null}>
                             <div className="bento-widget" data-widget="live-panes">
+                              {renderRightRailDestinationPrompt("live-panes")}
                               <LivePanesPanel
                                 panes={visualTerminalPaneTargets}
                                 highlightedPaneId={selectedOperationalPane?.paneId ?? null}
@@ -2380,7 +4655,19 @@ export function App() {
                         </ErrorBoundary>
                         <ErrorBoundary>
                           <Suspense fallback={null}>
-                            <div className="bento-widget" data-widget="audit-timeline">
+                            <RightRailWidgetFrame
+                              widget="audit-timeline"
+                              title="Audit"
+                              subtitle="events and recovery"
+                              defaultOpen={false}
+                              forceOpen={rightRailFocusWidget === "audit-timeline"}
+                              focusConfirmation={
+                                rightRailRouteConfirmation?.widget === "audit-timeline"
+                                  ? rightRailRouteConfirmation
+                                  : null
+                              }
+                            >
+                              {renderRightRailDestinationPrompt("audit-timeline")}
                               <AuditTimelinePanel
                                 auditEvents={scopedOperationalAuditEvents}
                                 auditError={visualAuditEvents === undefined ? auditStream.error : null}
@@ -2393,13 +4680,20 @@ export function App() {
                                 onRestartPane={handlePaneRestart}
                                 onSelectEvent={handleSelectAuditEvent}
                                 onTraceFilterChange={setSelectedAuditTraceFilter}
+                                onDestinationOutcome={showRightRailDestinationOutcome}
                               />
-                            </div>
+                            </RightRailWidgetFrame>
                           </Suspense>
                         </ErrorBoundary>
                         <ErrorBoundary>
                           <Suspense fallback={null}>
-                            <div className="bento-widget" data-widget="context">
+                            <RightRailWidgetFrame
+                              widget="context"
+                              title="Context"
+                              subtitle="handoff state"
+                              defaultOpen={false}
+                              forceOpen={rightRailFocusWidget === "context"}
+                            >
                               <ContextPanel
                                 sessions={rightRailSessions}
                                 activeSessionId={rightRailActiveSessionId}
@@ -2413,31 +4707,42 @@ export function App() {
                                 density="compact"
                                 workstationGraph={focusedRightRailGraph}
                               />
-                            </div>
+                            </RightRailWidgetFrame>
                           </Suspense>
                         </ErrorBoundary>
                         <ErrorBoundary>
                           <Suspense fallback={null}>
-                            <div className="bento-widget" data-widget="run-graph">
+                            <RightRailWidgetFrame
+                              widget="run-graph"
+                              title="Run Graph"
+                              subtitle="roles and handoffs"
+                              defaultOpen={false}
+                              forceOpen={rightRailFocusWidget === "run-graph"}
+                            >
                               <RunGraphPanel
                                 sessions={rightRailSessions}
                                 activeSessionId={rightRailActiveSessionId}
                                 onSelectSession={handleSelectRightRailSession}
                                 workstationGraph={focusedRightRailGraph}
                               />
-                            </div>
+                            </RightRailWidgetFrame>
                           </Suspense>
                         </ErrorBoundary>
                         <ErrorBoundary>
                           <Suspense fallback={null}>
-                            <div className="bento-widget" data-widget="tool-ledger">
+                            <RightRailWidgetFrame
+                              widget="tool-ledger"
+                              title="Run Ledger"
+                              subtitle="tool activity"
+                              defaultOpen={false}
+                            >
                               <ToolLedgerPanel
                                 sessions={rightRailSessions}
                                 activeSessionId={rightRailActiveSessionId}
                                 onSelectSession={handleSelectRightRailSession}
                                 workstationGraph={focusedRightRailGraph}
                               />
-                            </div>
+                            </RightRailWidgetFrame>
                           </Suspense>
                         </ErrorBoundary>
                         <ErrorBoundary>
@@ -2464,6 +4769,7 @@ export function App() {
                         <ErrorBoundary>
                           <Suspense fallback={null}>
                             <div className="bento-widget" data-widget="reliability">
+                              {renderRightRailDestinationPrompt("reliability")}
                               <ReliabilityPanel
                                 sessions={rightRailSessions}
                                 panes={visualTerminalPaneTargets}
@@ -2482,9 +4788,14 @@ export function App() {
                         {devVisualQa.diagnosticsEnabled && (
                           <ErrorBoundary>
                             <Suspense fallback={null}>
-                              <div className="bento-widget" data-widget="logs">
+                              <RightRailWidgetFrame
+                                widget="logs"
+                                title="Logs"
+                                subtitle="diagnostics"
+                                defaultOpen={false}
+                              >
                                 <LogsPanel defaultCollapsed />
-                              </div>
+                              </RightRailWidgetFrame>
                             </Suspense>
                           </ErrorBoundary>
                         )}

@@ -13,18 +13,28 @@ import { extractSelection, lineRangeAt, type SelectionRange, wordRangeAt } from 
  *   - `copy()` to push the current selection to the clipboard
  *
  * Injectable `copyText` and `getSnapshot` keep the hook testable without a
- * DOM — default impls use `navigator.clipboard.writeText` and the caller's
- * latest snapshot via ref.
+ * DOM — default impls use native clipboard IPC with a browser fallback and
+ * the caller's latest snapshot via ref.
  */
 
 export type CopyTextFn = (text: string) => Promise<void> | void;
 
 const defaultCopyText: CopyTextFn = (text) => {
-  if (typeof navigator !== "undefined" && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
-    return navigator.clipboard.writeText(text).catch(() => {});
-  }
-  return undefined;
+  return writeClipboardText(text);
 };
+
+async function writeClipboardText(text: string): Promise<void> {
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("write_clipboard_text", { text });
+    return;
+  } catch {
+    /* Browser fallback below. */
+  }
+  if (typeof navigator !== "undefined" && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+    await navigator.clipboard.writeText(text).catch(() => {});
+  }
+}
 
 export interface UseTerminalSelectionArgs {
   element: HTMLElement | null;

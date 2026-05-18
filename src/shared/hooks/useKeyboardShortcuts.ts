@@ -129,12 +129,16 @@ export function useKeyboardShortcuts({
       } else if (e.ctrlKey && e.key === "`") {
         // Ctrl+` — focus the active terminal pane
         e.preventDefault();
-        // Find the visible native terminal IME textarea (inside active pane).
+        const activeNativeSurface = document.querySelector(
+          "[data-active='true'] [data-native-input-surface='true']",
+        ) as HTMLElement | null;
+        const nativeSurface = document.querySelector("[data-native-input-surface='true']") as HTMLElement | null;
+        // Fallback for non-Tauri/jsdom/emergency opt-out WebView IME input.
         const activePane = document.querySelector(
           "[data-active='true'] [data-testid='terminal-ime-textarea']",
         ) as HTMLTextAreaElement | null;
         const fallback = document.querySelector("[data-testid='terminal-ime-textarea']") as HTMLTextAreaElement | null;
-        (activePane ?? fallback)?.focus();
+        (activeNativeSurface ?? nativeSurface ?? activePane ?? fallback)?.focus();
       } else if (e.ctrlKey && !e.shiftKey && e.key === "w") {
         e.preventDefault();
         if (activeFile) handleCloseFile(activeFile);

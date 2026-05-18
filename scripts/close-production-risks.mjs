@@ -5,10 +5,10 @@
 // evidence, and host-only checks are marked "accepted" with an explicit
 // operational control instead of being misrepresented as fully automated.
 
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { spawnSync } from "node:child_process";
 import process from "node:process";
 
 const ROOT = resolve(process.env.AETHER_PRODUCTION_ROOT ?? process.cwd());
@@ -21,6 +21,7 @@ const IME_SMOKE = join(OUT_DIR, "verify-ime.json");
 const CHAOS_LIVE = join(LOG_DIR, "chaos-recovery", "p2-07-live-tauri-pty-ai-cli-chaos.json");
 const SLEEP_CHAOS = join(LOG_DIR, "chaos-recovery", "p2-07-sleep-resume-db-lock-chaos.json");
 const REAL_OS_SUSPEND = join(OUT_DIR, "real-os-suspend-resume.json");
+const REAL_OS_SUSPEND_DIAGNOSTIC = join(OUT_DIR, "real-os-suspend-resume.diagnostic.json");
 const RELEASE_DOCTOR = join(RELEASE_DIR, "p2-08-release-doctor.json");
 const MSI_EXTRACT = join(RELEASE_DIR, "p2-08-msi-admin-extract-production.json");
 const KEY_CUSTODY = join(RELEASE_DIR, "p2-08-key-custody.json");
@@ -243,9 +244,13 @@ function countFiles(dir) {
 
 function verifyChaosAcceptance() {
   const suspendVerification = run("node", ["scripts/verify-real-os-suspend-evidence.mjs"]);
+  if (suspendVerification.status !== 0) {
+    run("node", ["scripts/verify-real-os-suspend-evidence.mjs", "--diagnose"]);
+  }
   const liveChaos = existsSync(CHAOS_LIVE) ? readJson(CHAOS_LIVE) : null;
   const sleepChaos = existsSync(SLEEP_CHAOS) ? readJson(SLEEP_CHAOS) : null;
   const realOsSuspend = existsSync(REAL_OS_SUSPEND) ? readJson(REAL_OS_SUSPEND) : null;
+  const realOsSuspendDiagnostic = existsSync(REAL_OS_SUSPEND_DIAGNOSTIC) ? readJson(REAL_OS_SUSPEND_DIAGNOSTIC) : null;
   const realOsSuspendPass =
     realOsSuspend?.status === "pass" &&
     realOsSuspend?.checks?.appResponsive === true &&
@@ -271,9 +276,14 @@ function verifyChaosAcceptance() {
       realOsSuspend: {
         status: sleepChaos?.status === "pass" && realOsSuspendPass ? "mitigated" : "blocked",
         artifact: REAL_OS_SUSPEND,
+        diagnosticArtifact: REAL_OS_SUSPEND_DIAGNOSTIC,
         injectedChaosArtifact: SLEEP_CHAOS,
         observedStatus: sleepChaos?.status ?? "missing",
         manualObservedStatus: realOsSuspend?.status ?? "missing",
+        diagnosticStatus: realOsSuspendDiagnostic?.status ?? "missing",
+        missingFields: Array.isArray(realOsSuspendDiagnostic?.missingFields)
+          ? realOsSuspendDiagnostic.missingFields.slice(0, 8)
+          : [],
         verifierExitCode: suspendVerification.status,
         verifierStdout: suspendVerification.stdout?.slice(-1200) ?? "",
         verifierStderr: suspendVerification.stderr?.slice(-1200) ?? "",
@@ -292,7 +302,11 @@ function verifyChaosAcceptance() {
 function verifyReleaseDoctor() {
   assertPass("release doctor artifact exists", existsSync(RELEASE_DOCTOR), RELEASE_DOCTOR);
   const doctor = readJson(RELEASE_DOCTOR);
-  assertPass("release doctor status", ["pass", "pass_with_warnings"].includes(doctor.overallStatus ?? doctor.status), doctor.overallStatus ?? doctor.status);
+  assertPass(
+    "release doctor status",
+    ["pass", "pass_with_warnings"].includes(doctor.overallStatus ?? doctor.status),
+    doctor.overallStatus ?? doctor.status,
+  );
   return doctor;
 }
 
@@ -368,7 +382,8 @@ function main() {
   closureById.set("risk-p2-08-release-key-custody", {
     status: "mitigated",
     evidence: "production-release-key-custody",
-    reason: "Updater signing material is present, ignored by git, not tracked, and matched to a configured non-placeholder updater pubkey.",
+    reason:
+      "Updater signing material is present, ignored by git, not tracked, and matched to a configured non-placeholder updater pubkey.",
     validation: { artifact: KEY_CUSTODY },
   });
   closureById.set("risk-p2-08-msi-admin-extract-timeout", {
@@ -395,7 +410,12 @@ function main() {
     closedRiskCount: touched.length,
     closedRisks: touched,
     openRiskCount: stillOpen.length,
-    openRisks: stillOpen.map((risk) => ({ id: risk.id, status: risk.status, severity: risk.severity, title: risk.title })),
+    openRisks: stillOpen.map((risk) => ({
+      id: risk.id,
+      status: risk.status,
+      severity: risk.severity,
+      title: risk.title,
+    })),
     evidence,
   };
 

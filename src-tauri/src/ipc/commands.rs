@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 use std::io::BufRead;
 use std::path::{Component, Path, PathBuf};
+use std::process::Stdio;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::broadcast;
 
@@ -19,6 +21,8 @@ const PTY_OUTPUT_BATCH_INTERVAL: Duration = Duration::from_millis(16);
 const TERMINAL_JOURNAL_FLUSH_BYTES: usize = 32 * 1024;
 const TERMINAL_JOURNAL_FLUSH_INTERVAL: Duration = Duration::from_millis(500);
 const DB_WRITE_LATENCY_UNSET: u64 = u64::MAX;
+const ASCII_BEL: u8 = 0x07;
+const ASCII_ESC: u8 = 0x1b;
 
 static LAST_TERMINAL_JOURNAL_DB_WRITE_LATENCY_MS: AtomicU64 =
     AtomicU64::new(DB_WRITE_LATENCY_UNSET);
@@ -36,6 +40,36 @@ struct PtyOutputBatchPayload {
 enum TerminalAnalysisWork {
     Text(String),
     Stop,
+}
+
+fn contains_audible_bell(data: &[u8], in_osc: &mut bool) -> bool {
+    let mut audible = false;
+    let mut index = 0usize;
+    while index < data.len() {
+        let byte = data[index];
+        if *in_osc {
+            if byte == ASCII_BEL {
+                *in_osc = false;
+            } else if byte == ASCII_ESC && data.get(index + 1) == Some(&b'\\') {
+                *in_osc = false;
+                index += 1;
+            }
+            index += 1;
+            continue;
+        }
+
+        if byte == ASCII_ESC && data.get(index + 1) == Some(&b']') {
+            *in_osc = true;
+            index += 2;
+            continue;
+        }
+
+        if byte == ASCII_BEL {
+            audible = true;
+        }
+        index += 1;
+    }
+    audible
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1348,6 +1382,7 @@ fn wire_terminal_streaming(
         let lag_event_name = format!("term:lag-{}", terminal_id);
         let mut output_batch = Vec::<u8>::with_capacity(PTY_OUTPUT_BATCH_MAX_BYTES);
         let mut output_batch_chunks = 0usize;
+        let mut bell_filter_in_osc = false;
         let mut flush_tick = tokio::time::interval(PTY_OUTPUT_BATCH_INTERVAL);
         flush_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
@@ -1387,7 +1422,7 @@ fn wire_terminal_streaming(
                         let _ = app_handle.emit(&prompt_mark_event_name, mark);
                     }
 
-                    if data.contains(&0x07) {
+                    if contains_audible_bell(data, &mut bell_filter_in_osc) {
                         let _ = app_handle.emit(
                             "terminal:bell",
                             serde_json::json!({
@@ -1575,6 +1610,7 @@ async fn wire_sidecar_terminal_streaming(
         let lag_event_name = format!("term:lag-{}", terminal_id);
         let mut output_batch = Vec::<u8>::with_capacity(PTY_OUTPUT_BATCH_MAX_BYTES);
         let mut output_batch_chunks = 0usize;
+        let mut bell_filter_in_osc = false;
         let mut flush_tick = tokio::time::interval(PTY_OUTPUT_BATCH_INTERVAL);
         flush_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
@@ -1614,7 +1650,7 @@ async fn wire_sidecar_terminal_streaming(
                             let _ = app_handle.emit(&prompt_mark_event_name, mark);
                         }
 
-                        if data.contains(&0x07) {
+                        if contains_audible_bell(data, &mut bell_filter_in_osc) {
                             let _ = app_handle.emit(
                                 "terminal:bell",
                                 serde_json::json!({
@@ -1725,6 +1761,165 @@ pub async fn write_terminal(app: AppHandle, id: String, data: String) -> Result<
                 serde_json::json!({
                     "bytes": bytes.len(),
                     "containsEnter": bytes.contains(&b'\r'),
+                    "error": sanitize_audit_error(&err),
+                    "redacted": true,
+                }),
+            );
+            Err(err)
+        }
+    }
+}
+
+#[tauri::command]
+pub fn native_terminal_input_status(
+    host: State<'_, Arc<crate::term::NativeTerminalInputHost>>,
+) -> crate::term::NativeTerminalInputStatus {
+    host.status()
+}
+
+fn native_input_coord(value: f64) -> i32 {
+    if !value.is_finite() {
+        return 0;
+    }
+    value.round().clamp(0.0, i32::MAX as f64) as i32
+}
+
+#[tauri::command]
+pub async fn native_terminal_input_focus(
+    app: AppHandle,
+    terminal_id: String,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> Result<crate::term::NativeTerminalInputStatus, String> {
+    let host = app
+        .state::<Arc<crate::term::NativeTerminalInputHost>>()
+        .inner()
+        .clone();
+    let app_for_main = app.clone();
+    let (tx, rx) = mpsc::channel();
+    let rect = crate::term::NativeInputSurfaceRect {
+        x: native_input_coord(x),
+        y: native_input_coord(y),
+        width: native_input_coord(width).max(1),
+        height: native_input_coord(height).max(1),
+    };
+    app.run_on_main_thread(move || {
+        let result = (|| {
+            let window = app_for_main
+                .get_webview_window("main")
+                .ok_or_else(|| "No main window".to_string())?;
+            let hwnd = window.hwnd().map_err(|err| err.to_string())?;
+            host.focus_native_surface(hwnd.0 as isize, terminal_id, rect)
+        })();
+        let _ = tx.send(result);
+    })
+    .map_err(|err| format!("native input focus dispatch failed: {err}"))?;
+    rx.recv_timeout(Duration::from_secs(2))
+        .map_err(|err| format!("native input focus timed out: {err}"))?
+}
+
+#[tauri::command]
+pub async fn native_terminal_input_drain(
+    app: AppHandle,
+) -> Result<crate::term::NativeTerminalInputStatus, String> {
+    let host = app
+        .state::<Arc<crate::term::NativeTerminalInputHost>>()
+        .inner()
+        .clone();
+    let host_for_main = host.clone();
+    let (tx, rx) = mpsc::channel();
+    app.run_on_main_thread(move || {
+        let _ = tx.send(host_for_main.drain_native_surface_text());
+    })
+    .map_err(|err| format!("native input drain dispatch failed: {err}"))?;
+    let drained = rx
+        .recv_timeout(Duration::from_secs(2))
+        .map_err(|err| format!("native input drain timed out: {err}"))??;
+    let Some((terminal_id, text)) = drained else {
+        return Ok(host.status());
+    };
+    let bytes = text.into_bytes();
+    terminal_write_async(&app, &terminal_id, &bytes).await?;
+    capture_if_enter(&app, &terminal_id, &bytes);
+    Ok(host.record_commit(terminal_id, "native-edit-surface", bytes.len()))
+}
+
+/// Rust-owned terminal input commit path. The WebView can still own temporary
+/// IME preedit during the current migration, but the committed text is routed
+/// through this command so the native composition host can take over without
+/// changing PTY write, synchronized-input, audit, or snapshot semantics again.
+#[tauri::command]
+pub async fn native_terminal_input_commit(
+    app: AppHandle,
+    terminal_id: String,
+    data: String,
+    source: Option<String>,
+) -> Result<crate::term::NativeTerminalInputStatus, String> {
+    validate_keys_payload(&data)?;
+    let host = app
+        .state::<Arc<crate::term::NativeTerminalInputHost>>()
+        .inner()
+        .clone();
+    if data.is_empty() {
+        return Ok(host.activate_terminal(terminal_id));
+    }
+
+    let source = source.unwrap_or_else(|| "terminal-input".to_string());
+    let source = source
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | ':'))
+        .take(48)
+        .collect::<String>();
+    let source = if source.is_empty() {
+        "terminal-input".to_string()
+    } else {
+        source
+    };
+    let bytes = data.into_bytes();
+    let metadata = serde_json::json!({
+        "bytes": bytes.len(),
+        "containsEnter": bytes.contains(&b'\r'),
+        "source": source.clone(),
+        "redacted": true,
+    });
+
+    match terminal_write_async(&app, &terminal_id, &bytes).await {
+        Ok(()) => {
+            if bytes.contains(&b'\r') || bytes.len() >= 128 {
+                record_audit_event(
+                    &app,
+                    "terminal",
+                    if bytes.contains(&b'\r') {
+                        "native_input_submit"
+                    } else {
+                        "native_input_paste"
+                    },
+                    "info",
+                    Some("terminal"),
+                    Some(&terminal_id),
+                    "Native terminal input sent",
+                    metadata,
+                );
+            }
+            capture_if_enter(&app, &terminal_id, &bytes);
+            Ok(host.record_commit(terminal_id, source, bytes.len()))
+        }
+        Err(err) => {
+            host.record_error(&terminal_id, sanitize_audit_error(&err));
+            record_audit_event(
+                &app,
+                "terminal",
+                "native_input_failed",
+                "warn",
+                Some("terminal"),
+                Some(&terminal_id),
+                "Native terminal input failed",
+                serde_json::json!({
+                    "bytes": bytes.len(),
+                    "containsEnter": bytes.contains(&b'\r'),
+                    "source": source,
                     "error": sanitize_audit_error(&err),
                     "redacted": true,
                 }),
@@ -3299,6 +3494,16 @@ pub fn git_file_original(repo_path: String, file_path: String) -> Result<String,
     }
 }
 
+fn git_relative_path(repo_path: &str, file_path: &str) -> String {
+    let repo_norm = repo_path.replace('\\', "/");
+    let file_norm = file_path.replace('\\', "/");
+    file_norm
+        .strip_prefix(&repo_norm)
+        .unwrap_or(&file_norm)
+        .trim_start_matches('/')
+        .to_string()
+}
+
 /// Get unified diff for a specific file against HEAD.
 #[tauri::command]
 pub fn git_diff_file(repo_path: String, file_path: String) -> Result<String, String> {
@@ -3459,6 +3664,199 @@ pub fn read_file(path: String) -> Result<String, String> {
         return Err("File too large (>5MB)".to_string());
     }
     std::fs::read_to_string(p).map_err(|e| format!("Read error: {}", e))
+}
+
+fn vscode_open_args(
+    path: &str,
+    line: Option<u32>,
+    column: Option<u32>,
+) -> Result<Vec<String>, String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("Path is required".to_string());
+    }
+    validate_path(trimmed)?;
+
+    let line = line.filter(|value| *value > 0);
+    let column = column.filter(|value| *value > 0);
+    let Some(line) = line else {
+        return Ok(vec![trimmed.to_string()]);
+    };
+
+    let target = match column {
+        Some(column) => format!("{trimmed}:{line}:{column}"),
+        None => format!("{trimmed}:{line}"),
+    };
+    Ok(vec!["-g".to_string(), target])
+}
+
+fn vscode_diff_args(left_path: &str, right_path: &str) -> Result<Vec<String>, String> {
+    let left = left_path.trim();
+    let right = right_path.trim();
+    if left.is_empty() || right.is_empty() {
+        return Err("Both diff paths are required".to_string());
+    }
+    validate_path(left)?;
+    validate_path(right)?;
+    Ok(vec![
+        "--diff".to_string(),
+        left.to_string(),
+        right.to_string(),
+    ])
+}
+
+fn vscode_command_candidates() -> Vec<String> {
+    let mut candidates = Vec::new();
+
+    #[cfg(windows)]
+    {
+        candidates.push("code.cmd".to_string());
+        candidates.push("code.exe".to_string());
+        candidates.push("code".to_string());
+        for base in ["LOCALAPPDATA", "ProgramFiles", "ProgramFiles(x86)"] {
+            if let Ok(root) = std::env::var(base) {
+                candidates.push(
+                    PathBuf::from(root)
+                        .join("Microsoft VS Code")
+                        .join("bin")
+                        .join("code.cmd")
+                        .to_string_lossy()
+                        .to_string(),
+                );
+            }
+        }
+    }
+
+    #[cfg(not(windows))]
+    {
+        candidates.push("code".to_string());
+    }
+
+    candidates.sort();
+    candidates.dedup();
+    candidates
+}
+
+fn launch_vscode(args: &[String]) -> Result<(), String> {
+    let mut errors = Vec::new();
+
+    for candidate in vscode_command_candidates() {
+        let mut command = crate::process::hidden_command(&candidate);
+        command
+            .args(args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        match command.spawn() {
+            Ok(_) => return Ok(()),
+            Err(err) => errors.push(format!("{candidate}: {err}")),
+        }
+    }
+
+    Err(format!(
+        "Failed to launch VS Code. Install the `code` command or add VS Code to PATH. {}",
+        errors.join("; ")
+    ))
+}
+
+/// Open a file or directory in VS Code without flashing a foreground shell window.
+#[tauri::command]
+pub fn open_in_vscode(path: String, line: Option<u32>, column: Option<u32>) -> Result<(), String> {
+    let args = vscode_open_args(&path, line, column)?;
+    launch_vscode(&args)
+}
+
+/// Open two concrete paths in VS Code's native diff view.
+#[tauri::command]
+pub fn open_in_vscode_diff(left_path: String, right_path: String) -> Result<(), String> {
+    let args = vscode_diff_args(&left_path, &right_path)?;
+    launch_vscode(&args)
+}
+
+fn safe_temp_diff_name(relative: &str) -> String {
+    let sanitized: String = relative
+        .chars()
+        .map(|ch| match ch {
+            'a'..='z' | 'A'..='Z' | '0'..='9' | '.' | '-' | '_' => ch,
+            _ => '_',
+        })
+        .collect();
+    if sanitized.is_empty() {
+        "file".to_string()
+    } else {
+        sanitized
+    }
+}
+
+fn current_diff_stamp() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or(0)
+}
+
+/// Open a git working-tree file against HEAD in VS Code's native diff view.
+#[tauri::command]
+pub fn open_git_file_diff_in_vscode(repo_path: String, file_path: String) -> Result<(), String> {
+    let repo = PathBuf::from(repo_path.trim());
+    if repo.as_os_str().is_empty() {
+        return Err("Repo path is required".to_string());
+    }
+    let repo_str = repo.to_string_lossy().to_string();
+    validate_path(&repo_str)?;
+    if !repo.is_dir() {
+        return Err(format!("Not a directory: {}", repo.display()));
+    }
+
+    let raw_file = file_path.trim();
+    if raw_file.is_empty() {
+        return Err("File path is required".to_string());
+    }
+    let working_path = {
+        let candidate = PathBuf::from(raw_file);
+        if candidate.is_absolute() {
+            candidate
+        } else {
+            repo.join(candidate)
+        }
+    };
+    let working_str = working_path.to_string_lossy().to_string();
+    validate_path(&working_str)?;
+
+    let relative = git_relative_path(&repo_str, &working_str);
+    let output = crate::process::hidden_command("git")
+        .args(["show", &format!("HEAD:{}", relative)])
+        .current_dir(&repo)
+        .output()
+        .map_err(|e| format!("git show failed: {}", e))?;
+    let original = if output.status.success() {
+        String::from_utf8(output.stdout).map_err(|e| format!("UTF-8 error: {}", e))?
+    } else {
+        String::new()
+    };
+
+    let temp_dir = std::env::temp_dir().join("aether-vscode-diff");
+    std::fs::create_dir_all(&temp_dir)
+        .map_err(|e| format!("Create temp diff dir failed: {}", e))?;
+    let safe_name = safe_temp_diff_name(&relative);
+    let stamp = current_diff_stamp();
+    let left_path = temp_dir.join(format!("{stamp}-HEAD-{safe_name}"));
+    std::fs::write(&left_path, original)
+        .map_err(|e| format!("Write original temp file failed: {}", e))?;
+
+    let right_path = if working_path.exists() {
+        working_path
+    } else {
+        let deleted_path = temp_dir.join(format!("{stamp}-WORKTREE-DELETED-{safe_name}"));
+        std::fs::write(&deleted_path, "")
+            .map_err(|e| format!("Write deleted temp file failed: {}", e))?;
+        deleted_path
+    };
+
+    open_in_vscode_diff(
+        left_path.to_string_lossy().to_string(),
+        right_path.to_string_lossy().to_string(),
+    )
 }
 
 /// Write content to a file
@@ -3669,9 +4067,14 @@ pub fn start_agent(
     prompt: String,
     cwd: String,
     model: Option<String>,
+    allowed_tools: Option<Vec<String>>,
+    guardrail_profile: Option<String>,
 ) -> Result<String, String> {
     let agent_manager = app.state::<crate::agent::AgentManager>();
-    let id = agent_manager.start_session(&prompt, &cwd, model.as_deref(), None, None)?;
+    let id = agent_manager.start_session(&prompt, &cwd, model.as_deref(), allowed_tools, None)?;
+    if let Some(profile) = guardrail_profile.as_deref() {
+        log::debug!("started agent with guardrail profile: {}", profile);
+    }
 
     // Stream stdout to frontend via events
     let reader = agent_manager.take_stdout(&id)?;
@@ -3924,6 +4327,250 @@ pub fn save_temp_image(data: String) -> Result<String, String> {
     let path = tmp_dir.join(&name);
     std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
     Ok(path.to_string_lossy().to_string())
+}
+
+/// Save a bitmap image directly from the OS clipboard without routing image
+/// bytes through WebView's async Clipboard API.
+#[tauri::command]
+pub fn save_clipboard_image() -> Result<Option<String>, String> {
+    save_clipboard_image_impl()
+}
+
+#[tauri::command]
+pub fn read_clipboard_text() -> Result<String, String> {
+    read_clipboard_text_impl()
+}
+
+#[tauri::command]
+pub fn write_clipboard_text(text: String) -> Result<(), String> {
+    write_clipboard_text_impl(&text)
+}
+
+#[cfg(not(windows))]
+fn save_clipboard_image_impl() -> Result<Option<String>, String> {
+    Ok(None)
+}
+
+#[cfg(not(windows))]
+fn read_clipboard_text_impl() -> Result<String, String> {
+    Ok(String::new())
+}
+
+#[cfg(not(windows))]
+fn write_clipboard_text_impl(_text: &str) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(windows)]
+fn read_clipboard_text_impl() -> Result<String, String> {
+    use windows::Win32::Foundation::HGLOBAL;
+    use windows::Win32::System::DataExchange::{
+        CloseClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard,
+    };
+    use windows::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
+
+    const CF_UNICODETEXT: u32 = 13;
+
+    struct ClipboardGuard;
+    impl Drop for ClipboardGuard {
+        fn drop(&mut self) {
+            unsafe {
+                let _ = CloseClipboard();
+            }
+        }
+    }
+
+    unsafe {
+        OpenClipboard(None).map_err(|e| format!("OpenClipboard failed: {e}"))?;
+        let _guard = ClipboardGuard;
+        if IsClipboardFormatAvailable(CF_UNICODETEXT).is_err() {
+            return Ok(String::new());
+        }
+        let handle = GetClipboardData(CF_UNICODETEXT)
+            .map_err(|e| format!("GetClipboardData(CF_UNICODETEXT) failed: {e}"))?;
+        let global = HGLOBAL(handle.0);
+        let size = GlobalSize(global);
+        if size < 2 {
+            return Ok(String::new());
+        }
+        let ptr = GlobalLock(global);
+        if ptr.is_null() {
+            return Err("GlobalLock failed for clipboard text".into());
+        }
+        let words = std::slice::from_raw_parts(ptr.cast::<u16>(), size / 2);
+        let end = words
+            .iter()
+            .position(|word| *word == 0)
+            .unwrap_or(words.len());
+        let text = String::from_utf16_lossy(&words[..end]);
+        let _ = GlobalUnlock(global);
+        Ok(text)
+    }
+}
+
+#[cfg(windows)]
+fn write_clipboard_text_impl(text: &str) -> Result<(), String> {
+    use windows::Win32::Foundation::{GlobalFree, HANDLE};
+    use windows::Win32::System::DataExchange::{
+        CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData,
+    };
+    use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
+
+    const CF_UNICODETEXT: u32 = 13;
+
+    struct ClipboardGuard;
+    impl Drop for ClipboardGuard {
+        fn drop(&mut self) {
+            unsafe {
+                let _ = CloseClipboard();
+            }
+        }
+    }
+
+    let mut wide: Vec<u16> = text.encode_utf16().collect();
+    wide.push(0);
+    let byte_len = wide
+        .len()
+        .checked_mul(std::mem::size_of::<u16>())
+        .ok_or("clipboard text is too large")?;
+
+    unsafe {
+        OpenClipboard(None).map_err(|e| format!("OpenClipboard failed: {e}"))?;
+        let _guard = ClipboardGuard;
+        EmptyClipboard().map_err(|e| format!("EmptyClipboard failed: {e}"))?;
+        let global = GlobalAlloc(GMEM_MOVEABLE, byte_len)
+            .map_err(|e| format!("GlobalAlloc failed for clipboard text: {e}"))?;
+        let ptr = GlobalLock(global);
+        if ptr.is_null() {
+            let _ = GlobalFree(Some(global));
+            return Err("GlobalLock failed for clipboard text".into());
+        }
+        std::ptr::copy_nonoverlapping(wide.as_ptr().cast::<u8>(), ptr.cast::<u8>(), byte_len);
+        let _ = GlobalUnlock(global);
+        if let Err(err) = SetClipboardData(CF_UNICODETEXT, Some(HANDLE(global.0))) {
+            let _ = GlobalFree(Some(global));
+            return Err(format!("SetClipboardData(CF_UNICODETEXT) failed: {err}"));
+        }
+        Ok(())
+    }
+}
+
+#[cfg(windows)]
+fn save_clipboard_image_impl() -> Result<Option<String>, String> {
+    use windows::Win32::Foundation::HGLOBAL;
+    use windows::Win32::System::DataExchange::{
+        CloseClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard,
+    };
+    use windows::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
+
+    const CF_DIB: u32 = 8;
+    const CF_DIBV5: u32 = 17;
+
+    struct ClipboardGuard;
+    impl Drop for ClipboardGuard {
+        fn drop(&mut self) {
+            unsafe {
+                let _ = CloseClipboard();
+            }
+        }
+    }
+
+    unsafe {
+        OpenClipboard(None).map_err(|e| format!("OpenClipboard failed: {e}"))?;
+        let _guard = ClipboardGuard;
+
+        let format = if IsClipboardFormatAvailable(CF_DIBV5).is_ok() {
+            CF_DIBV5
+        } else if IsClipboardFormatAvailable(CF_DIB).is_ok() {
+            CF_DIB
+        } else {
+            return Ok(None);
+        };
+
+        let handle = GetClipboardData(format)
+            .map_err(|e| format!("GetClipboardData({format}) failed: {e}"))?;
+        let global = HGLOBAL(handle.0);
+        let size = GlobalSize(global);
+        if size == 0 {
+            return Err("clipboard image has no readable bytes".into());
+        }
+        let ptr = GlobalLock(global);
+        if ptr.is_null() {
+            return Err("GlobalLock failed for clipboard image".into());
+        }
+
+        let dib = std::slice::from_raw_parts(ptr.cast::<u8>(), size).to_vec();
+        let _ = GlobalUnlock(global);
+        let bmp = bmp_bytes_from_dib(&dib)?;
+
+        let tmp_dir = std::env::temp_dir().join("aether-chat-images");
+        std::fs::create_dir_all(&tmp_dir).map_err(|e| e.to_string())?;
+        let path = tmp_dir.join(format!("clipboard_{}.bmp", uuid::Uuid::new_v4()));
+        std::fs::write(&path, bmp).map_err(|e| e.to_string())?;
+        Ok(Some(path.to_string_lossy().to_string()))
+    }
+}
+
+fn bmp_bytes_from_dib(dib: &[u8]) -> Result<Vec<u8>, String> {
+    if dib.len() < 40 {
+        return Err("clipboard DIB is too small".into());
+    }
+    let pixel_offset = bmp_pixel_offset_from_dib(dib)?;
+    let file_size = 14usize
+        .checked_add(dib.len())
+        .ok_or("clipboard DIB is too large")?;
+    if file_size > u32::MAX as usize {
+        return Err("clipboard DIB is too large".into());
+    }
+
+    let mut out = Vec::with_capacity(file_size);
+    out.extend_from_slice(b"BM");
+    out.extend_from_slice(&(file_size as u32).to_le_bytes());
+    out.extend_from_slice(&[0, 0, 0, 0]);
+    out.extend_from_slice(&pixel_offset.to_le_bytes());
+    out.extend_from_slice(dib);
+    Ok(out)
+}
+
+fn bmp_pixel_offset_from_dib(dib: &[u8]) -> Result<u32, String> {
+    if dib.len() < 40 {
+        return Err("clipboard DIB is too small".into());
+    }
+    let header_size = u32::from_le_bytes([dib[0], dib[1], dib[2], dib[3]]) as usize;
+    if header_size < 40 || header_size > dib.len() {
+        return Err("clipboard DIB has an invalid header".into());
+    }
+
+    let bit_count = u16::from_le_bytes([dib[14], dib[15]]);
+    let compression = u32::from_le_bytes([dib[16], dib[17], dib[18], dib[19]]);
+    let colors_used = u32::from_le_bytes([dib[32], dib[33], dib[34], dib[35]]);
+    let palette_entries = if bit_count <= 8 {
+        if colors_used > 0 {
+            colors_used as usize
+        } else {
+            1usize << bit_count
+        }
+    } else {
+        0
+    };
+    let bitfield_mask_bytes = if header_size == 40 {
+        match compression {
+            3 => 12,
+            6 => 16,
+            _ => 0,
+        }
+    } else {
+        0
+    };
+    let offset = 14usize
+        .checked_add(header_size)
+        .and_then(|value| value.checked_add(palette_entries.saturating_mul(4)))
+        .and_then(|value| value.checked_add(bitfield_mask_bytes))
+        .ok_or("clipboard DIB offset overflow")?;
+    if offset > u32::MAX as usize {
+        return Err("clipboard DIB offset overflow".into());
+    }
+    Ok(offset as u32)
 }
 
 /// Stop a chat agent session
@@ -4525,6 +5172,7 @@ pub fn workflow_current_phase(
         max_cost: phase.agent.max_cost,
         target_pane: phase.target_pane,
         agent_role: phase.agent_role,
+        allowed_tools: phase.agent.allowed_tools,
         has_gate: phase.quality_gate.is_some(),
         gate_type: phase.quality_gate.map(|g| format!("{:?}", g.gate_type)),
     })
@@ -4538,6 +5186,7 @@ pub struct WorkflowPhaseInfo {
     pub max_cost: f64,
     pub target_pane: Option<String>,
     pub agent_role: Option<String>,
+    pub allowed_tools: Vec<String>,
     pub has_gate: bool,
     pub gate_type: Option<String>,
 }
@@ -5182,7 +5831,9 @@ pub fn set_ime_position(
     {
         use windows::Win32::Foundation::POINT;
         use windows::Win32::UI::Input::Ime::*;
-        use windows::Win32::UI::WindowsAndMessaging::{GetGUIThreadInfo, IsChild, GUITHREADINFO};
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetGUIThreadInfo, GetWindowThreadProcessId, IsChild, GUITHREADINFO,
+        };
 
         let window = app.get_webview_window("main").ok_or("No main window")?;
 
@@ -5196,7 +5847,8 @@ pub fn set_ime_position(
                 cbSize: std::mem::size_of::<GUITHREADINFO>() as u32,
                 ..Default::default()
             };
-            if GetGUIThreadInfo(0, &mut gui).is_ok() {
+            let ui_thread_id = GetWindowThreadProcessId(hwnd, None);
+            if GetGUIThreadInfo(ui_thread_id, &mut gui).is_ok() {
                 let focus = gui.hwndFocus;
                 if !focus.is_invalid() && (focus == hwnd || IsChild(hwnd, focus).as_bool()) {
                     focus
@@ -5307,6 +5959,94 @@ mod tests {
     }
 
     #[test]
+    fn vscode_open_args_rejects_empty_paths() {
+        assert!(vscode_open_args("   ", None, None).is_err());
+    }
+
+    #[test]
+    fn vscode_open_args_blocks_unsafe_paths() {
+        assert!(vscode_open_args("../../etc/passwd", None, None).is_err());
+        assert!(vscode_open_args("\\\\server\\share\\file.rs", None, None).is_err());
+    }
+
+    #[test]
+    fn vscode_open_args_plain_path_uses_no_goto_flag() {
+        assert_eq!(
+            vscode_open_args("C:/Users/owner/project/src/main.rs", None, None).unwrap(),
+            vec!["C:/Users/owner/project/src/main.rs".to_string()]
+        );
+    }
+
+    #[test]
+    fn vscode_open_args_line_and_column_use_goto_syntax() {
+        assert_eq!(
+            vscode_open_args("C:/Users/owner/project/src/main.rs", Some(12), Some(4)).unwrap(),
+            vec![
+                "-g".to_string(),
+                "C:/Users/owner/project/src/main.rs:12:4".to_string()
+            ]
+        );
+        assert_eq!(
+            vscode_open_args("C:/Users/owner/project/src/main.rs", Some(12), None).unwrap(),
+            vec![
+                "-g".to_string(),
+                "C:/Users/owner/project/src/main.rs:12".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn vscode_open_args_ignores_zero_line_and_column() {
+        assert_eq!(
+            vscode_open_args("C:/Users/owner/project/src/main.rs", Some(0), Some(0)).unwrap(),
+            vec!["C:/Users/owner/project/src/main.rs".to_string()]
+        );
+    }
+
+    #[test]
+    fn vscode_diff_args_uses_native_diff_flag() {
+        assert_eq!(
+            vscode_diff_args(
+                "C:/Users/owner/AppData/Local/Temp/aether-vscode-diff/HEAD-main.rs",
+                "C:/Users/owner/project/src/main.rs"
+            )
+            .unwrap(),
+            vec![
+                "--diff".to_string(),
+                "C:/Users/owner/AppData/Local/Temp/aether-vscode-diff/HEAD-main.rs".to_string(),
+                "C:/Users/owner/project/src/main.rs".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn vscode_diff_args_rejects_empty_paths() {
+        assert!(vscode_diff_args("", "C:/Users/owner/project/src/main.rs").is_err());
+        assert!(vscode_diff_args("C:/Users/owner/project/src/main.rs", " ").is_err());
+    }
+
+    #[test]
+    fn git_relative_path_accepts_absolute_or_relative_file_path() {
+        assert_eq!(
+            git_relative_path(
+                "C:/Users/owner/project",
+                "C:/Users/owner/project/src/main.rs"
+            ),
+            "src/main.rs"
+        );
+        assert_eq!(
+            git_relative_path("C:/Users/owner/project", "src/main.rs"),
+            "src/main.rs"
+        );
+    }
+
+    #[test]
+    fn safe_temp_diff_name_removes_path_separators() {
+        assert_eq!(safe_temp_diff_name("src/main.rs"), "src_main.rs");
+        assert_eq!(safe_temp_diff_name("馬/設定.toml"), "____toml");
+    }
+
+    #[test]
     fn normalize_cwd_allows_home_relative_and_unicode_dirs() {
         if let Some(home) = home_dir_for_cwd() {
             let canonical_home = std::fs::canonicalize(home).unwrap();
@@ -5379,6 +6119,64 @@ mod tests {
         assert_eq!(estimate_scrollback_memory_bytes(0, 120), 0);
         assert_eq!(estimate_scrollback_memory_bytes(100, 80), 128_000);
         assert_eq!(duration_ms_u64(Duration::from_millis(16)), 16);
+    }
+
+    #[test]
+    fn bell_filter_ignores_osc_terminators() {
+        let mut in_osc = false;
+        assert!(!contains_audible_bell(b"\x1b]133;A\x07", &mut in_osc));
+        assert!(!in_osc);
+
+        assert!(contains_audible_bell(b"ready\x07", &mut in_osc));
+        assert!(!in_osc);
+    }
+
+    #[test]
+    fn bell_filter_tracks_split_osc_chunks() {
+        let mut in_osc = false;
+        assert!(!contains_audible_bell(b"\x1b]133;D;0", &mut in_osc));
+        assert!(in_osc);
+        assert!(!contains_audible_bell(b"\x07prompt", &mut in_osc));
+        assert!(!in_osc);
+        assert!(contains_audible_bell(b"\x07", &mut in_osc));
+    }
+
+    #[test]
+    fn clipboard_dib_is_wrapped_as_bmp() {
+        let mut dib = Vec::new();
+        dib.extend_from_slice(&40u32.to_le_bytes());
+        dib.extend_from_slice(&1i32.to_le_bytes());
+        dib.extend_from_slice(&1i32.to_le_bytes());
+        dib.extend_from_slice(&1u16.to_le_bytes());
+        dib.extend_from_slice(&32u16.to_le_bytes());
+        dib.extend_from_slice(&0u32.to_le_bytes());
+        dib.extend_from_slice(&4u32.to_le_bytes());
+        dib.extend_from_slice(&0i32.to_le_bytes());
+        dib.extend_from_slice(&0i32.to_le_bytes());
+        dib.extend_from_slice(&0u32.to_le_bytes());
+        dib.extend_from_slice(&0u32.to_le_bytes());
+        dib.extend_from_slice(&[0, 0, 0, 255]);
+
+        let bmp = bmp_bytes_from_dib(&dib).expect("valid DIB");
+        assert_eq!(&bmp[0..2], b"BM");
+        assert_eq!(u32::from_le_bytes([bmp[2], bmp[3], bmp[4], bmp[5]]), 58);
+        assert_eq!(u32::from_le_bytes([bmp[10], bmp[11], bmp[12], bmp[13]]), 54);
+        assert_eq!(&bmp[14..], dib.as_slice());
+    }
+
+    #[test]
+    fn clipboard_dib_offset_accounts_for_palettes_and_bitfields() {
+        let mut indexed = vec![0; 40 + 8];
+        indexed[0..4].copy_from_slice(&40u32.to_le_bytes());
+        indexed[14..16].copy_from_slice(&8u16.to_le_bytes());
+        indexed[32..36].copy_from_slice(&2u32.to_le_bytes());
+        assert_eq!(bmp_pixel_offset_from_dib(&indexed).unwrap(), 62);
+
+        let mut bitfields = vec![0; 40 + 12 + 4];
+        bitfields[0..4].copy_from_slice(&40u32.to_le_bytes());
+        bitfields[14..16].copy_from_slice(&16u16.to_le_bytes());
+        bitfields[16..20].copy_from_slice(&3u32.to_le_bytes());
+        assert_eq!(bmp_pixel_offset_from_dib(&bitfields).unwrap(), 66);
     }
 
     #[test]

@@ -151,6 +151,54 @@
   gap: 1px;
 }
 
+.actionLine {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: start;
+  margin-top: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid rgba(142, 226, 241, 0.07);
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, rgba(142, 226, 241, 0.045), transparent 66%), rgba(0, 6, 14, 0.2);
+}
+
+.item[data-risk="critical"] .actionLine,
+.item[data-risk="high"] .actionLine {
+  border-color: rgba(244, 214, 146, 0.14);
+  background: linear-gradient(135deg, rgba(244, 214, 146, 0.08), transparent 66%), rgba(0, 6, 14, 0.22);
+}
+
+.item[data-risk="critical"] .actionLine {
+  border-color: rgba(243, 139, 168, 0.18);
+  background: linear-gradient(135deg, rgba(243, 139, 168, 0.09), transparent 66%), rgba(0, 6, 14, 0.24);
+}
+
+.actionLine span,
+.actionLine strong {
+  min-width: 0;
+}
+
+.actionLine span {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+}
+
+.actionLine strong {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .title,
 .context,
 .typeBadge,
@@ -244,30 +292,49 @@
   font-size: 9px;
 }
 
-.focusBtn {
+.routeBtn {
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
   gap: 3px;
-  width: 54px;
+  max-width: 96px;
+  min-width: 54px;
   height: 20px;
   margin-left: auto;
+  padding: 0 7px;
   border: 1px solid rgba(142, 226, 241, 0.12);
   border-radius: 999px;
   background: rgba(142, 226, 241, 0.06);
   color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: 9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   cursor: pointer;
 }
 
-.focusBtn:hover {
+.routeBtn svg {
+  flex-shrink: 0;
+}
+
+.routeBtn[data-route="workflow"] {
+  border-color: rgba(203, 166, 247, 0.16);
+  background: rgba(203, 166, 247, 0.075);
+}
+
+.routeBtn[data-route="audit"] {
+  border-color: rgba(244, 214, 146, 0.16);
+  background: rgba(244, 214, 146, 0.075);
+}
+
+.routeBtn:hover {
   border-color: rgba(142, 226, 241, 0.22);
   color: var(--text-primary);
 }
 
-.focusBtn:focus-visible {
+.routeBtn:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: -2px;
 }
@@ -277,6 +344,7 @@
     grid-template-columns: 22px minmax(0, 1fr);
   }
 
+  .actionLine,
   .typeBadge,
   .riskBadge {
     grid-column: 2;

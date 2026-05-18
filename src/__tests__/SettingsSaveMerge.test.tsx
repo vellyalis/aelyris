@@ -141,4 +141,29 @@ describe("Settings.tsx Save merge", () => {
     expect(src).toMatch(/!loadedConfig[\s\S]*?toast\.(warning|error|info)\(/);
     expect(src).not.toMatch(/load_app_config[\s\S]{0,200}\.catch\(\(\)\s*=>\s*\{\s*\}\)/);
   });
+
+  it("exposes and persists window opacity instead of leaving appearance.opacity as a dead setting", () => {
+    const src = getSrc();
+
+    expect(src).toContain("settings-window-opacity");
+    expect(src).toContain("const [windowOpacity, setWindowOpacity]");
+    expect(src).toMatch(/opacity:\s*windowOpacity/);
+    expect(src).toMatch(/setAppWindowOpacity\(cfg\.appearance\.opacity\)/);
+    expect(src).toMatch(/setAppWindowOpacity\(windowOpacity\)/);
+  });
+
+  it("treats loaded Tauri config as source of truth for empty material and wallpaper maps", () => {
+    const src = getSrc();
+
+    expect(src).toMatch(/replaceThemeOverrides\(cfg\.appearance\.theme_overrides\s*\?\?\s*\{\}\)/);
+    expect(src).toMatch(/replaceMoodMaterialOverrides\(cfg\.appearance\.mood_material_overrides\s*\?\?\s*\{\}\)/);
+    expect(src).toMatch(/replaceWallpaperSettingsByMood\(cfg\.appearance\.wallpaper_settings_by_mood\s*\?\?\s*\{\}\)/);
+  });
+
+  it("persists palette overrides through save_app_config instead of localStorage only", () => {
+    const src = getSrc();
+
+    expect(src).toMatch(/theme_overrides:\s*latestStore\.themeOverrides/);
+    expect(src).toContain("theme_overrides?: Record<string, AccentOverrides>");
+  });
 });

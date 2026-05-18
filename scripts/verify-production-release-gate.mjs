@@ -10,6 +10,7 @@ const reuseLive = args.has("--reuse-live") || process.env.AETHER_RELEASE_REUSE_L
 const reuseIme = args.has("--reuse-ime") || process.env.AETHER_RELEASE_REUSE_IME === "1";
 const freshLive = !reuseLive || args.has("--fresh-live") || process.env.AETHER_RELEASE_FRESH_LIVE === "1";
 const freshIme = !reuseIme || freshLive || args.has("--fresh-ime") || process.env.AETHER_RELEASE_FRESH_IME === "1";
+const sleepCycle = args.has("--sleep-cycle") || process.env.AETHER_RELEASE_SLEEP_CYCLE === "1";
 
 function format(command, commandArgs) {
   return [command, ...commandArgs].join(" ");
@@ -44,9 +45,18 @@ async function main() {
   await run(freshIme ? "Release gate with fresh Native IME evidence" : "Release gate", node, releaseGateArgs);
 
   if (freshLive) await run("Fresh live Tauri/WebView2 workstation smoke", pnpm, ["verify:production:live"]);
-  else console.log("\n[production-release] Fresh live smoke explicitly reused via --reuse-live/AETHER_RELEASE_REUSE_LIVE=1.");
+  else
+    console.log(
+      "\n[production-release] Fresh live smoke explicitly reused via --reuse-live/AETHER_RELEASE_REUSE_LIVE=1.",
+    );
   if (!freshIme) console.log("\n[production-release] Fresh Native IME CDP evidence explicitly reused via --reuse-ime.");
 
+  if (sleepCycle) {
+    await run("Guarded real OS sleep/resume cycle", pnpm, ["verify:production:suspend:cycle"]);
+  } else {
+    await run("Real OS sleep/resume diagnostic", pnpm, ["verify:production:suspend:diagnose"]);
+    await run("Real OS sleep/resume evidence", pnpm, ["verify:production:suspend"]);
+  }
   await run("Strict release doctor before risk closure", pnpm, [
     "verify:release:doctor",
     "--",

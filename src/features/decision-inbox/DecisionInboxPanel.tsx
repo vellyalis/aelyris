@@ -20,6 +20,8 @@ interface DecisionInboxPanelProps {
   workflows?: DecisionWorkflowStatus[];
   activeSessionId: string | null;
   onSelectSession: (id: string) => void;
+  onOpenWorkflow?: (id: string) => void;
+  onOpenAudit?: (id: number) => void;
 }
 
 const TYPE_LABELS: Record<HumanDecisionType, string> = {
@@ -55,6 +57,8 @@ export function DecisionInboxPanel({
   workflows = [],
   activeSessionId,
   onSelectSession,
+  onOpenWorkflow,
+  onOpenAudit,
 }: DecisionInboxPanelProps) {
   const inbox = useMemo<DecisionInboxSummary>(
     () => buildDecisionInbox({ sessions, auditEvents, workflows }),
@@ -66,7 +70,8 @@ export function DecisionInboxPanel({
   return (
     <section className={styles.panel} aria-label="Human decision inbox" data-empty={inbox.items.length === 0}>
       <PanelHeader
-        title="Decision Inbox"
+        title="Decisions"
+        subtitle="human gates"
         leadingIcon={<Inbox size={12} />}
         count={inbox.pendingCount > 0 ? inbox.pendingCount : undefined}
       />
@@ -74,8 +79,8 @@ export function DecisionInboxPanel({
       {inbox.items.length === 0 ? (
         <EmptyState
           icon={<ShieldQuestion size={18} />}
-          title="No approvals needed"
-          description="Agents and workflows can continue without waiting for you."
+          title="No human decisions"
+          description="Use Run to launch work, Changes to review diffs, or Health to recover live panes."
         />
       ) : (
         <div className={styles.body}>
@@ -94,6 +99,8 @@ export function DecisionInboxPanel({
                   item={item}
                   active={item.sessionId === activeSessionId}
                   onSelectSession={onSelectSession}
+                  onOpenWorkflow={onOpenWorkflow}
+                  onOpenAudit={onOpenAudit}
                 />
               ))}
             </section>
@@ -111,6 +118,8 @@ export function DecisionInboxPanel({
                   item={item}
                   active={item.sessionId === activeSessionId}
                   onSelectSession={onSelectSession}
+                  onOpenWorkflow={onOpenWorkflow}
+                  onOpenAudit={onOpenAudit}
                   compact
                 />
               ))}
@@ -127,14 +136,29 @@ function DecisionRow({
   active,
   compact = false,
   onSelectSession,
+  onOpenWorkflow,
+  onOpenAudit,
 }: {
   item: HumanDecisionItem;
   active: boolean;
   compact?: boolean;
   onSelectSession: (id: string) => void;
+  onOpenWorkflow?: (id: string) => void;
+  onOpenAudit?: (id: number) => void;
 }) {
   const canFocus = Boolean(item.sessionId);
+  const auditEventId = parseAuditEventId(item.id);
   const latestHistory = item.history[0];
+  const visibleEvidence = item.evidence.slice(0, compact ? 1 : 3);
+  const route =
+    item.sessionId && canFocus
+      ? { label: "Focus", route: "session" as const, hint: "Focus session" }
+      : item.workflowId && onOpenWorkflow
+        ? { label: "Open workflow", route: "workflow" as const, hint: "Workflow gate" }
+        : auditEventId != null && onOpenAudit
+          ? { label: "Open audit", route: "audit" as const, hint: "Audit trail" }
+          : null;
+  const handoffLabel = route?.hint ?? (item.workflowId ? "Workflow gate" : "Audit trail");
   const icon =
     item.status === "decided" ? (
       <CheckCircle2 size={12} />
@@ -151,6 +175,7 @@ function DecisionRow({
       data-risk={item.risk}
       data-active={active || undefined}
       data-compact={compact || undefined}
+      data-source={item.source}
     >
       <div className={styles.itemTop}>
         <span className={styles.icon} aria-hidden="true">
@@ -167,11 +192,14 @@ function DecisionRow({
       </div>
 
       {!compact && (
+        <div className={styles.actionLine}>
+          <span>Action</span>
+          <strong>{item.recommendedOption}</strong>
+        </div>
+      )}
+
+      {!compact && (
         <dl className={styles.details}>
-          <div>
-            <dt>Recommended</dt>
-            <dd>{item.recommendedOption}</dd>
-          </div>
           <div>
             <dt>Consequence</dt>
             <dd>{item.consequence}</dd>
@@ -180,33 +208,50 @@ function DecisionRow({
             <dt>Timeout</dt>
             <dd>{item.timeoutPolicy}</dd>
           </div>
+          <div>
+            <dt>Evidence</dt>
+            <dd>{visibleEvidence.length > 0 ? visibleEvidence.join(" / ") : "No evidence attached"}</dd>
+          </div>
         </dl>
       )}
 
       <div className={styles.footer}>
         <span>{formatAge(item.requestedAt)}</span>
         <span>{item.source}</span>
+        <span>{handoffLabel}</span>
         {latestHistory && <span>{latestHistory.action}</span>}
-        {item.evidence.slice(0, compact ? 1 : 3).map((entry) => (
+        {visibleEvidence.map((entry) => (
           <span key={entry} title={entry}>
             {entry}
           </span>
         ))}
-        {canFocus && (
+        {route && (
           <button
             type="button"
-            className={styles.focusBtn}
-            onClick={() => onSelectSession(item.sessionId ?? "")}
-            aria-label={`Focus ${item.title}`}
-            title={`Focus ${item.title}`}
+            className={styles.routeBtn}
+            data-route={route.route}
+            onClick={() => {
+              if (route.route === "session") onSelectSession(item.sessionId ?? "");
+              if (route.route === "workflow" && item.workflowId) onOpenWorkflow?.(item.workflowId);
+              if (route.route === "audit" && auditEventId != null) onOpenAudit?.(auditEventId);
+            }}
+            aria-label={`${route.label} ${item.title}`}
+            title={`${route.label} ${item.title}`}
           >
             <UserRoundCheck size={11} aria-hidden="true" />
-            Focus
+            {route.label}
           </button>
         )}
       </div>
     </article>
   );
+}
+
+function parseAuditEventId(id: string): number | null {
+  const match = id.match(/^audit:(\d+):/);
+  if (!match) return null;
+  const parsed = Number.parseInt(match[1], 10);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function Metric({ label, value }: { label: string; value: number }) {

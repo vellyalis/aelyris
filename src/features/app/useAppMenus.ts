@@ -318,7 +318,7 @@ export function useAppMenus(opts: UseAppMenusOptions) {
   const enableImeTrace = useMemo(() => {
     return () => {
       enableImeDiagnostics(window);
-      toast.success("IME diagnostics enabled", "Reproduce the input bug, then copy the trace");
+      toast.success("IME diagnostics enabled", "Trace recording is silent; reproduce the input bug, then copy the trace");
     };
   }, []);
 

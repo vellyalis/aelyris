@@ -17,8 +17,8 @@ describe("audit timeline integration", () => {
     const app = sourceFor(appSources, "App.tsx");
 
     expect(app).toContain('import("./features/context/AuditTimelinePanel")');
-    expect(app).toContain('data-widget="audit-timeline"');
-    expect(app.indexOf('data-widget="audit-timeline"')).toBeLessThan(app.indexOf('data-widget="logs"'));
+    expect(app).toContain('widget="audit-timeline"');
+    expect(app.indexOf('widget="audit-timeline"')).toBeLessThan(app.indexOf('widget="logs"'));
   });
 
   it("keeps audit timeline in its own module with scoped CSS", () => {

@@ -515,8 +515,8 @@ export function AgentInspector({
             {sortedSessions.length === 0 && interactiveSessions.length === 0 && !showPromptInput && (
               <EmptyState
                 preset="agents"
-                title="No active agents"
-                description="Start an agent to work in this project; its logs, files, cost, and review trail stay here."
+                title="No agent sessions"
+                description="Use + or Orchestra to start a run; logs, cost, files, and handoffs stay here."
               />
             )}
 
@@ -683,7 +683,7 @@ export function AgentInspector({
               <EmptyState
                 icon={<Activity size={20} />}
                 title="No activity yet"
-                description="Agent logs will appear here"
+                description="Start an agent or open Health to follow live panes."
               />
             )}
             {allActivity.length > 0 && filteredActivity.length === 0 && (
@@ -732,8 +732,8 @@ export function AgentInspector({
           {sessions.length === 0 ? (
             <EmptyState
               icon={<Layers size={20} />}
-              title="No sessions"
-              description="Start agents to see parallel view"
+              title="No parallel runs"
+              description="Start two or more agents to compare roles, context, and handoffs."
             />
           ) : (
             sessions.map((s) => {
@@ -838,8 +838,8 @@ export function AgentInspector({
           <div className={styles.cards}>
             <EmptyState
               icon={<GitCompare size={20} />}
-              title="No session selected"
-              description="Select an agent session to view its file changes"
+              title="No review target selected"
+              description="Select a session with changed files or open Changes from the rail."
             />
           </div>
         ))}

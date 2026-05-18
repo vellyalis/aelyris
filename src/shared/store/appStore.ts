@@ -11,19 +11,19 @@ import {
   type WorkspaceProfileState,
   type WorkspaceThreadRunState,
 } from "../lib/workspaceProfile";
-import { ACCENT_KEYS, isValidHex, normalizeHex, type AccentKey, type AccentOverrides } from "../themes/catppuccin";
+import { ACCENT_KEYS, type AccentKey, type AccentOverrides, isValidHex, normalizeHex } from "../themes/catppuccin";
 import {
   DEFAULT_MOOD_PRESET,
   MOOD_MATERIAL_DEFAULTS,
   MOOD_PRESETS,
-  type MoodPresetId,
   type MoodMaterialKey,
   type MoodMaterialOverrides,
-  type SakuraMaterialKey,
-  type SakuraMaterialOverrides,
+  type MoodPresetId,
+  normalizeMoodPreset,
   SAKURA_MATERIAL_ALPHA_KEYS,
   SAKURA_MATERIAL_COLOR_KEYS,
-  normalizeMoodPreset,
+  type SakuraMaterialKey,
+  type SakuraMaterialOverrides,
   sanitizeMaterialOverrides,
   sanitizeSakuraMaterialOverrides,
 } from "../themes/moods";
@@ -38,6 +38,7 @@ const MOOD_MATERIAL_OVERRIDES_KEY = "aether:moodMaterialOverrides";
 const WALLPAPER_IMAGE_KEY = "aether:wallpaperImagePath";
 const WALLPAPER_OPACITY_KEY = "aether:wallpaperOpacity";
 const WALLPAPER_SETTINGS_KEY = "aether:wallpaperSettingsByMood";
+const APP_WINDOW_OPACITY_KEY = "aether:windowOpacity";
 const WORKSPACE_PROFILES_KEY = "aether:workspaceProfiles";
 
 export interface WallpaperSettings {
@@ -66,6 +67,21 @@ function reportStorageFailure(operation: string, err: unknown, severity: "info" 
     },
     { throttleMs: 10_000 },
   );
+}
+
+function sanitizeAppWindowOpacity(value: unknown): number {
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numeric)) return 0.95;
+  return Number(Math.min(1, Math.max(0.35, numeric)).toFixed(2));
+}
+
+function loadAppWindowOpacity(): number {
+  try {
+    const raw = localStorage.getItem(APP_WINDOW_OPACITY_KEY);
+    return raw == null ? 0.95 : sanitizeAppWindowOpacity(raw);
+  } catch {
+    return 0.95;
+  }
 }
 
 export function sanitizeThemeOverrides(value: unknown): Record<string, AccentOverrides> {
@@ -229,9 +245,7 @@ function persistWallpaperSettingsByMood(state: Record<MoodPresetId, WallpaperSet
     const compact: Partial<Record<MoodPresetId, WallpaperSettings>> = {};
     for (const preset of MOOD_PRESETS) {
       const settings = normalizeWallpaperSettings(state[preset.id]);
-      const persistedSettings = settings.imagePath?.startsWith("blob:")
-        ? { ...settings, imagePath: null }
-        : settings;
+      const persistedSettings = settings.imagePath?.startsWith("blob:") ? { ...settings, imagePath: null } : settings;
       if (
         persistedSettings.imagePath ||
         persistedSettings.opacity !== DEFAULT_WALLPAPER_SETTINGS.opacity ||
@@ -266,6 +280,8 @@ interface AppState {
   setAccentOverride: (themeId: string, key: AccentKey, value: string | undefined) => void;
   /** Drop all overrides for the given theme. */
   resetThemeOverrides: (themeId: string) => void;
+  /** Replace every per-theme accent override from config/hydration. */
+  replaceThemeOverrides: (overrides: Record<string, AccentOverrides>) => void;
   /** User-tunable material tokens for each mood preset. */
   moodMaterialOverrides: Partial<Record<MoodPresetId, MoodMaterialOverrides>>;
   setMoodMaterialOverride: (mood: MoodPresetId, key: MoodMaterialKey, value: string | number | undefined) => void;
@@ -282,6 +298,8 @@ interface AppState {
   replaceWallpaperSettingsByMood: (settings: Partial<Record<MoodPresetId, Partial<WallpaperSettings>>>) => void;
   setWallpaperImagePath: (path: string | null) => void;
   setWallpaperOpacity: (opacity: number) => void;
+  appWindowOpacity: number;
+  setAppWindowOpacity: (opacity: number) => void;
 
   // Project
   rootProjectPath: string | null;
@@ -559,6 +577,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       persistThemeOverrides(nextAll);
       return { themeOverrides: nextAll };
     }),
+  replaceThemeOverrides: (overrides) =>
+    set(() => {
+      const nextAll = sanitizeThemeOverrides(overrides);
+      persistThemeOverrides(nextAll);
+      return { themeOverrides: nextAll };
+    }),
   moodMaterialOverrides: loadMoodMaterialOverrides(),
   setMoodMaterialOverride: (mood, key, value) =>
     set((s) => {
@@ -712,6 +736,16 @@ export const useAppStore = create<AppState>((set, get) => ({
       localStorage.setItem(WALLPAPER_OPACITY_KEY, String(next));
     } catch (err) {
       reportStorageFailure("persist_wallpaper_opacity", err);
+    }
+  },
+  appWindowOpacity: loadAppWindowOpacity(),
+  setAppWindowOpacity: (opacity) => {
+    const next = sanitizeAppWindowOpacity(opacity);
+    set({ appWindowOpacity: next });
+    try {
+      localStorage.setItem(APP_WINDOW_OPACITY_KEY, String(next));
+    } catch (err) {
+      reportStorageFailure("persist_window_opacity", err);
     }
   },
 

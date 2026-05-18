@@ -9,6 +9,7 @@ function ThemeProbe({
   moodPresetId,
   materialOverrides,
   wallpaper,
+  windowOpacity,
 }: {
   themeId: string;
   moodPresetId: MoodPresetId;
@@ -20,8 +21,9 @@ function ThemeProbe({
     positionY?: number;
     scale?: number;
   };
+  windowOpacity?: number;
 }) {
-  useThemeApplier(themeId, undefined, moodPresetId, materialOverrides, wallpaper);
+  useThemeApplier(themeId, undefined, moodPresetId, materialOverrides, wallpaper, windowOpacity);
   return null;
 }
 
@@ -147,6 +149,35 @@ describe("useThemeApplier", () => {
     expect(document.documentElement.style.getPropertyValue("--mood-left-panel-bg")).not.toContain("255, 250, 252");
   });
 
+  it("applies low opacity material overrides without snapping surfaces back to gray slabs", async () => {
+    render(
+      <ThemeProbe
+        themeId="sakura-hub"
+        moodPresetId="aether-sakura"
+        materialOverrides={{
+          backdropColor: "#fff8fb",
+          panelColor: "#fff0f6",
+          chromeColor: "#fff6fa",
+          terminalColor: "#5f1638",
+          backdropAlpha: 0.72,
+          panelAlpha: 0.18,
+          chromeAlpha: 0.16,
+          terminalAlpha: 0.08,
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(document.documentElement.style.getPropertyValue("--sakura-root-alpha").trim()).toBe("0.72");
+    });
+
+    const style = document.documentElement.style;
+    expect(style.getPropertyValue("--mood-left-panel-bg")).toContain("0.18");
+    expect(style.getPropertyValue("--statusbar-bg")).toContain("0.16");
+    expect(style.getPropertyValue("--terminal-canvas-bg")).toContain("0.08");
+    expect(style.getPropertyValue("--glass-dense")).not.toContain("0.72");
+  });
+
   it("applies wallpaper placement variables", async () => {
     render(
       <ThemeProbe
@@ -170,5 +201,15 @@ describe("useThemeApplier", () => {
     expect(style.getPropertyValue("--aether-wallpaper-position-x").trim()).toBe("20%");
     expect(style.getPropertyValue("--aether-wallpaper-position-y").trim()).toBe("75%");
     expect(style.getPropertyValue("--aether-wallpaper-size").trim()).toBe("135% auto");
+  });
+
+  it("applies global window opacity as backdrop strength variables without dimming text nodes", async () => {
+    render(<ThemeProbe themeId="sakura-hub" moodPresetId="aether-sakura" windowOpacity={0.62} />);
+
+    await waitFor(() => {
+      expect(document.documentElement.style.getPropertyValue("--aether-window-opacity").trim()).toBe("0.62");
+    });
+
+    expect(document.documentElement.style.getPropertyValue("--aether-window-veil-opacity").trim()).toBe("0.274");
   });
 });

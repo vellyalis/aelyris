@@ -374,6 +374,7 @@ export function ProcessManagerPanel({
     <section className={styles.panel} aria-label="Terminal process manager">
       <PanelHeader
         title="Processes"
+        subtitle="live shells"
         leadingIcon={<SquareActivity size={12} />}
         count={processes.length || undefined}
         actions={
@@ -500,7 +501,7 @@ export function ProcessManagerPanel({
           <EmptyState
             icon={<Terminal size={18} />}
             title="No terminal processes"
-            description="Open a terminal pane to manage its process here."
+            description="Open a shell from Run, then use Health to focus, restart, attach, or end it."
           />
         ) : (
           <div className={styles.list}>

@@ -212,6 +212,85 @@
   white-space: nowrap;
 }
 
+.selectedRecovery {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  align-items: center;
+  min-height: 38px;
+  padding: var(--space-2);
+  border: 1px solid rgba(244, 214, 146, 0.16);
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, rgba(244, 214, 146, 0.075), transparent 66%), rgba(0, 6, 14, 0.22);
+  box-shadow: var(--rim-top);
+}
+
+.selectedRecoveryCopy {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.selectedRecoveryCopy span,
+.selectedRecoveryCopy strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selectedRecoveryCopy span:first-child {
+  color: var(--gold);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+}
+
+.selectedRecoveryCopy strong {
+  color: var(--text-primary);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+}
+
+.selectedRecoveryCopy span:last-child {
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
+}
+
+.selectedRecoveryActions {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: var(--space-2);
+}
+
+.selectedRecoveryButton {
+  min-width: 58px;
+  height: 22px;
+  padding: 0 var(--space-2);
+  border: 1px solid rgba(244, 214, 146, 0.16);
+  border-radius: var(--radius-sm);
+  background: rgba(244, 214, 146, 0.075);
+  color: var(--gold);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: var(--weight-semibold);
+}
+
+.selectedRecoveryButton[data-tone="restart"] {
+  border-color: rgba(243, 139, 168, 0.18);
+  background: rgba(243, 139, 168, 0.08);
+  color: var(--ctp-red);
+}
+
+.selectedRecoveryButton:hover,
+.selectedRecoveryButton:focus-visible {
+  border-color: rgba(244, 214, 146, 0.32);
+  color: var(--text-primary);
+  outline: none;
+}
+
 .list {
   display: flex;
   min-width: 0;

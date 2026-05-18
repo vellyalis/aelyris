@@ -204,14 +204,14 @@ describe("TerminalCanvas", () => {
   it("hides the cursor when shape is 'hidden'", () => {
     const snap = snapshot([[cell("x")]], { shape: "hidden", visible: true });
     render(<TerminalCanvas terminalId="t1" cols={1} rows={1} snapshotOverride={snap} />);
-    const cursorFills = calls.filter((c) => c.op === "fillStyle" && (c.args[0] as string) === "#cba6f7");
+    const cursorFills = calls.filter((c) => c.op === "fillStyle" && (c.args[0] as string) === "#d7e0f4");
     expect(cursorFills).toHaveLength(0);
   });
 
   it("hides the cursor when the backend marks SHOW_CURSOR off", () => {
     const snap = snapshot([[cell("x")]], { shape: "block", visible: false });
     render(<TerminalCanvas terminalId="t1" cols={1} rows={1} snapshotOverride={snap} />);
-    const cursorFills = calls.filter((c) => c.op === "fillStyle" && (c.args[0] as string) === "#cba6f7");
+    const cursorFills = calls.filter((c) => c.op === "fillStyle" && (c.args[0] as string) === "#d7e0f4");
     expect(cursorFills).toHaveLength(0);
   });
 

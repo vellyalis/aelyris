@@ -9,6 +9,7 @@ import {
   serializeAgentTelemetrySnapshot,
 } from "../lib/agentTelemetryPersistence";
 import type { OrchestraRoleId } from "../lib/orchestrator";
+import type { WorkforceGuardrailProfile } from "../lib/rightRailWorkforce";
 import { isTauriRuntime } from "../lib/tauriRuntime";
 import { parseWatchdogDecision, watchdogDecisionToLog } from "../lib/watchdogDecision";
 import type { AgentLog, AgentSession, AgentStatus } from "../types/agent";
@@ -29,6 +30,13 @@ interface AgentTelemetrySnapshotRaw {
   snapshot_json: string;
   source: string;
   saved_at: string;
+}
+
+export interface StartAgentMeta {
+  role?: OrchestraRoleId;
+  handoffFrom?: string;
+  guardrailProfile?: WorkforceGuardrailProfile;
+  allowedTools?: string[];
 }
 
 const LIVE_AGENT_STATUSES = new Set<AgentStatus>(["idle", "thinking", "coding", "waiting", "generating"]);
@@ -351,9 +359,16 @@ export function useAgentManager() {
   }, [sessions, subscribeToSession]);
 
   const startAgent = useCallback(
-    async (prompt: string, cwd: string, model?: string, meta?: { role?: OrchestraRoleId; handoffFrom?: string }) => {
+    async (prompt: string, cwd: string, model?: string, meta?: StartAgentMeta) => {
       try {
-        const id = await invoke<string>("start_agent", { prompt, cwd, model: model ?? null });
+        const allowedTools = meta?.allowedTools && meta.allowedTools.length > 0 ? meta.allowedTools : null;
+        const id = await invoke<string>("start_agent", {
+          prompt,
+          cwd,
+          model: model ?? null,
+          allowedTools,
+          guardrailProfile: meta?.guardrailProfile ?? null,
+        });
         if (meta && (meta.role || meta.handoffFrom)) {
           roleMetaRef.current.set(id, meta);
         }

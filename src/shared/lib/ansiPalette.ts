@@ -22,7 +22,7 @@ import { ColorKind, decodeColor, type TerminalColor } from "../types/terminal";
 export const DEFAULT_FG = "#cdd6f4"; // Catppuccin Mocha text
 export const DEFAULT_BG = "rgba(3, 10, 22, 0.54)";
 export const CURSOR_TEXT_BG = "#06101c";
-export const CURSOR_COLOR = "#cba6f7"; // Catppuccin Mocha mauve
+export const CURSOR_COLOR = "#d7e0f4"; // Calm neutral cursor; avoids bright pink strobing.
 export const SELECTION_BG = "#585b70"; // Catppuccin Mocha surface2
 export const SEARCH_MATCH_BG = "#f9e2af"; // Catppuccin Mocha yellow
 export const SEARCH_ACTIVE_BG = "#fab387"; // Catppuccin Mocha peach

@@ -87,6 +87,7 @@ describe("Toolkit adaptive density", () => {
 
     expect(src).toContain("const [collapsed, setCollapsed] = useState(true)");
     expect(src).toContain("<PanelHeader");
+    expect(src).toContain('subtitle="saved commands"');
     expect(src).toContain("collapsible");
     expect(src).toContain("collapsed={collapsed}");
     expect(src).toContain("!collapsed &&");
@@ -121,5 +122,14 @@ describe("Toolkit adaptive density", () => {
     expect(`${gridRule}\n${actionRule}`).not.toContain("rgba(255, 255, 255, 0.14)");
     expect(gridRule).not.toContain("rgba(245, 199, 227");
     expect(`${gridRule}\n${actionRule}`).not.toContain("filter: blur(");
+  });
+
+  it("turns an empty toolkit into a clear create-or-import path", () => {
+    const src = getToolkitSrc();
+    const css = getToolkitCss();
+
+    expect(src).toContain("actions.length === 0");
+    expect(src).toContain("Create or import a command to run it against the selected pane.");
+    expect(css).toContain(".emptyHint");
   });
 });

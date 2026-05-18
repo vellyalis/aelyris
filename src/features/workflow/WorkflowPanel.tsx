@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { Check, CheckCircle, Clock, Loader, Play, Workflow, X, XCircle } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import type { StartAgentMeta } from "../../shared/hooks/useAgentManager";
 import { formatFallbackError, reportInvokeFailure } from "../../shared/lib/fallbackTelemetry";
 import type { OrchestraRoleId } from "../../shared/lib/orchestrator";
 import { isTauriRuntime } from "../../shared/lib/tauriRuntime";
@@ -78,6 +79,7 @@ interface WorkflowPhaseInfo {
   max_cost: number;
   target_pane: string | null;
   agent_role: string | null;
+  allowed_tools: string[];
   has_gate: boolean;
   gate_type: string | null;
 }
@@ -90,11 +92,17 @@ interface WorkflowPhaseDoneResult {
 interface WorkflowPanelProps {
   projectPath: string;
   sessions?: AgentSession[];
-  onStartAgent?: (
-    prompt: string,
-    model?: string,
-    meta?: { role?: OrchestraRoleId; handoffFrom?: string },
-  ) => Promise<string | undefined>;
+  onStartAgent?: (prompt: string, model?: string, meta?: StartAgentMeta) => Promise<string | undefined>;
+  onDestinationOutcome?: (outcome: WorkflowDestinationOutcome) => void;
+}
+
+interface WorkflowDestinationOutcome {
+  label: string;
+  detail: string;
+  tone: "success" | "warn" | "error";
+  routeWidget?: "workflow";
+  routeLabel?: string;
+  routeDetail?: string;
 }
 
 const STATUS_ICON: Record<string, React.ReactNode> = {
@@ -201,7 +209,7 @@ async function confirmWorkflowPaneTarget(target: string): Promise<boolean> {
   return true;
 }
 
-export function WorkflowPanel({ projectPath, sessions = [], onStartAgent }: WorkflowPanelProps) {
+export function WorkflowPanel({ projectPath, sessions = [], onStartAgent, onDestinationOutcome }: WorkflowPanelProps) {
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
   const [running, setRunning] = useState<WorkflowStatus[]>([]);
   const [expanded, setExpanded] = useState(false);
@@ -411,6 +419,7 @@ export function WorkflowPanel({ projectPath, sessions = [], onStartAgent }: Work
         if (!onStartAgent) return;
         const sessionId = await onStartAgent(phase.prompt, phase.model, {
           role: toOrchestraRoleId(phase.agent_role),
+          allowedTools: phase.allowed_tools.length > 0 ? phase.allowed_tools : undefined,
         });
         if (sessionId) {
           await invoke("workflow_set_agent", { workflowId, agentSessionId: sessionId });
@@ -512,41 +521,84 @@ export function WorkflowPanel({ projectPath, sessions = [], onStartAgent }: Work
         });
         if (done) {
           toast.success("Workflow completed", "All phases passed");
+          onDestinationOutcome?.({
+            label: "Workflow gate approved",
+            detail: `${workflowId} completed`,
+            tone: "success",
+            routeWidget: "workflow",
+            routeLabel: "Workflow",
+            routeDetail: workflowId,
+          });
         } else {
           toast.info("Phase approved", comment || "Advancing to next phase...");
+          onDestinationOutcome?.({
+            label: "Workflow gate approved",
+            detail: comment || `${workflowId} advanced`,
+            tone: "success",
+            routeWidget: "workflow",
+            routeLabel: "Workflow",
+            routeDetail: workflowId,
+          });
           await advancePhase(workflowId);
         }
       } catch (e) {
         toast.error("Gate approval failed", String(e));
+        onDestinationOutcome?.({
+          label: "Workflow gate approval failed",
+          detail: formatFallbackError(e),
+          tone: "error",
+          routeWidget: "workflow",
+          routeLabel: "Workflow",
+          routeDetail: workflowId,
+        });
       }
     },
-    [advancePhase],
+    [advancePhase, onDestinationOutcome],
   );
 
-  const handleReject = useCallback(async (workflowId: string) => {
-    // Confirm before rejecting — this stops the entire workflow
-    const confirmed = await showPrompt("Reject this phase?", {
-      placeholder: "Type 'reject' to confirm",
-      defaultValue: "",
-    });
-    if (confirmed !== "reject") return;
-
-    try {
-      await invoke("workflow_reject_gate_decision", { workflowId, comment: confirmed });
-      setRunning((prev) => prev.filter((wf) => wf.id !== workflowId));
-      toast.warning("Workflow rejected", "Workflow has been stopped");
-      invoke("workflow_remove", { workflowId }).catch((err) => {
-        reportInvokeFailure({
-          source: "workflow",
-          operation: "workflow_remove",
-          err,
-          severity: "info",
-        });
+  const handleReject = useCallback(
+    async (workflowId: string) => {
+      // Confirm before rejecting — this stops the entire workflow
+      const confirmed = await showPrompt("Reject this phase?", {
+        placeholder: "Type 'reject' to confirm",
+        defaultValue: "",
       });
-    } catch (e) {
-      toast.error("Gate rejection failed", String(e));
-    }
-  }, []);
+      if (confirmed !== "reject") return;
+
+      try {
+        await invoke("workflow_reject_gate_decision", { workflowId, comment: confirmed });
+        setRunning((prev) => prev.filter((wf) => wf.id !== workflowId));
+        toast.warning("Workflow rejected", "Workflow has been stopped");
+        onDestinationOutcome?.({
+          label: "Workflow gate rejected",
+          detail: workflowId,
+          tone: "warn",
+          routeWidget: "workflow",
+          routeLabel: "Workflow",
+          routeDetail: workflowId,
+        });
+        invoke("workflow_remove", { workflowId }).catch((err) => {
+          reportInvokeFailure({
+            source: "workflow",
+            operation: "workflow_remove",
+            err,
+            severity: "info",
+          });
+        });
+      } catch (e) {
+        toast.error("Gate rejection failed", String(e));
+        onDestinationOutcome?.({
+          label: "Workflow gate rejection failed",
+          detail: formatFallbackError(e),
+          tone: "error",
+          routeWidget: "workflow",
+          routeLabel: "Workflow",
+          routeDetail: workflowId,
+        });
+      }
+    },
+    [onDestinationOutcome],
+  );
 
   useEffect(() => {
     if (running.length > 0) setExpanded(true);
@@ -556,6 +608,7 @@ export function WorkflowPanel({ projectPath, sessions = [], onStartAgent }: Work
     <section className={styles.panel} aria-label="Workflow panel">
       <PanelHeader
         title="Workflows"
+        subtitle="multi-step runs"
         leadingIcon={<Workflow size={12} />}
         count={running.length > 0 ? running.length : undefined}
         collapsible
@@ -717,6 +770,35 @@ export function WorkflowPanel({ projectPath, sessions = [], onStartAgent }: Work
                             )}
                           </div>
                         )}
+                        {p.status === "waiting_gate" && (
+                          <section className={styles.gateDecisionPanel} aria-label={`Gate action for ${p.name}`}>
+                            <span className={styles.gateDecisionCopy}>
+                              <span className={styles.gateDecisionKicker}>Gate decision</span>
+                              <strong>{p.decision_request?.kind ?? "approval_required"}</strong>
+                              <span>
+                                {p.decision_request?.reason ??
+                                  p.blocked_reason ??
+                                  "Review this phase before continuing."}
+                              </span>
+                            </span>
+                            <span className={styles.gateDecisionActions}>
+                              <button
+                                type="button"
+                                className={styles.gateApproveAction}
+                                onClick={() => handleApprove(wf.id)}
+                              >
+                                Approve
+                              </button>
+                              <button
+                                type="button"
+                                className={styles.gateRejectAction}
+                                onClick={() => handleReject(wf.id)}
+                              >
+                                Reject
+                              </button>
+                            </span>
+                          </section>
+                        )}
                       </div>
                     );
                   })}
@@ -734,7 +816,7 @@ export function WorkflowPanel({ projectPath, sessions = [], onStartAgent }: Work
             </button>
           ))}
           {running.length === 0 && workflows.length === 0 && (
-            <p className={styles.emptyHint}>Run repeatable multi-step agent workflows with approval gates.</p>
+            <p className={styles.emptyHint}>Build a workflow or import recipes to run repeatable guarded work.</p>
           )}
           <button type="button" className={styles.templateBtn} onClick={() => setBuilderOpen(true)}>
             <Workflow size={10} />

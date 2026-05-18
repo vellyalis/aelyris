@@ -150,6 +150,7 @@ export function ContextPanel({
     >
       <PanelHeader
         title="Context"
+        subtitle="handoff state"
         leadingIcon={<Activity size={12} />}
         count={summary.liveSessionCount > 0 ? summary.liveSessionCount : undefined}
         actions={
@@ -163,7 +164,7 @@ export function ContextPanel({
       />
 
       {graphSessions.length === 0 ? (
-        <div className={styles.empty}>No agent telemetry yet.</div>
+        <div className={styles.empty}>Start an agent to capture context, handoff state, and changed files.</div>
       ) : (
         <div className={styles.body}>
           <fieldset className={styles.metricGrid} aria-label="Context summary">

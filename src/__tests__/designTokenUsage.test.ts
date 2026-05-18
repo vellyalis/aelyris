@@ -145,7 +145,7 @@ describe("design token usage", () => {
     const rootGlowRule = source.match(/#root::before\s*{[\s\S]*?}/)?.[0] ?? "";
 
     expect(appMainRule).toContain("background: transparent");
-    expect(rootGlowRule).toContain("opacity: var(--mood-root-glow-opacity)");
+    expect(rootGlowRule).toContain("opacity: calc(var(--mood-root-glow-opacity) * var(--aether-window-opacity))");
   });
 
   it("keeps localhost preview and native Tauri backplanes separated", () => {
@@ -206,6 +206,23 @@ describe("design token usage", () => {
     expect(bottomGridRule).toContain("align-items: start");
     expect(bottomGridRule).toContain("grid-template-columns: minmax(0, 1fr)");
     expect(contextRule).toContain("align-self: stretch");
+  });
+
+  it("keeps right-rail action results compact and ellipsized", () => {
+    const source = Object.entries(cssSources).find(([file]) => file.includes("styles/global.css"))?.[1] ?? "";
+    const resultRule = source.match(/\.right-panel-action-result\s*{[\s\S]*?}/)?.[0] ?? "";
+    const resultSharedRule =
+      source.match(/\.right-panel-action-result-label,\s*\n\.right-panel-action-result-detail\s*{[\s\S]*?}/)?.[0] ?? "";
+    const auditButtonRule = source.match(/\.right-panel-action-result-audit\s*{[\s\S]*?}/)?.[0] ?? "";
+
+    expect(resultRule).toContain("min-width: 0");
+    expect(resultRule).toContain("grid-template-columns: auto minmax(0, 1fr) auto");
+    expect(resultSharedRule).toContain("overflow: hidden");
+    expect(resultSharedRule).toContain("text-overflow: ellipsis");
+    expect(resultSharedRule).toContain("white-space: nowrap");
+    expect(source).toContain("grid-column: 1 / 3");
+    expect(auditButtonRule).toContain("grid-column: 3");
+    expect(auditButtonRule).toContain("min-width: 44px");
   });
 
   it("keeps review-mode surfaces from forcing the right rail wider", () => {
@@ -307,7 +324,8 @@ describe("design token usage", () => {
     const ledgerMedia = ledger.match(/@container \(max-width: 330px\)\s*{[\s\S]*?}/)?.[0] ?? "";
 
     expect(rightPanelRule).toContain("overflow-y: hidden");
-    expect(rightPanelContentRule).toContain("overflow: hidden");
+    expect(rightPanelContentRule).toContain("overflow-x: hidden");
+    expect(rightPanelContentRule).toContain("overflow-y: auto");
     expect(rightModeSwitchRule).toContain("grid-auto-rows: 26px");
     expect(rightModeTabRule).toContain("display: grid");
     expect(rightModeTabRule).toContain("grid-template-columns: 12px minmax(0, 1fr)");
@@ -330,8 +348,7 @@ describe("design token usage", () => {
     expect(stackRule).toContain("min-width: 0");
     expect(stackRule).toContain("display: flex");
     expect(stackRule).toContain("flex-direction: column");
-    expect(stackRule).toContain("overflow-y: auto");
-    expect(stackRule).toContain("scrollbar-gutter: stable");
+    expect(stackRule).toContain("overflow: visible");
     expect(stackRule).not.toContain("both-edges");
     expect(stackRule).not.toContain("display: grid");
     expect(widgetRule).toContain("flex: 0 0 auto");
@@ -880,6 +897,29 @@ describe("design token usage", () => {
     expect(panelRule).toContain("var(--dialog-surface-blur)");
     expect(panelRule).toContain("var(--shadow-dialog)");
     expect(panelRule).not.toContain("rgba(4, 13, 23, 0.76)");
+  });
+
+  it("keeps Sakura right-rail decision surfaces theme-aware", () => {
+    const global = Object.entries(cssSources).find(([file]) => file.includes("styles/global.css"))?.[1] ?? "";
+    const sakuraDecisionSurface =
+      global.match(
+        /:root\[data-mood="aether-sakura"\] \.right-panel-now,[\s\S]*?\.right-panel-action-history\s*{[\s\S]*?}/,
+      )?.[0] ?? "";
+    const sakuraDecisionWarn =
+      global.match(
+        /:root\[data-mood="aether-sakura"\] \.right-panel-now\[data-tone="warn"\],[\s\S]*?\.right-panel-action\[data-tone="warn"\]\s*{[\s\S]*?}/,
+      )?.[0] ?? "";
+    const sakuraDecisionChip =
+      global.match(
+        /:root\[data-mood="aether-sakura"\] \.right-panel-now-state,[\s\S]*?\.right-panel-action-guardrail\s*{[\s\S]*?}/,
+      )?.[0] ?? "";
+
+    expect(sakuraDecisionSurface).toContain(".right-panel-decision-focus");
+    expect(sakuraDecisionSurface).toContain("rgba(255, 247, 251, 0.84)");
+    expect(sakuraDecisionWarn).toContain('.right-panel-decision-focus[data-tone="warn"]');
+    expect(sakuraDecisionChip).toContain(".right-panel-decision-kicker");
+    expect(sakuraDecisionChip).toContain(".right-panel-decision-action");
+    expect(global).toContain(':root[data-mood="aether-sakura"] .right-panel-decision-detail');
   });
 
   it("keeps shared chrome from drifting into prismatic AI styling", () => {

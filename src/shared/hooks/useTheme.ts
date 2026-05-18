@@ -52,6 +52,7 @@ export function useThemeApplier(
   moodPresetId: MoodPresetId = DEFAULT_MOOD_PRESET,
   materialOverrides?: MoodMaterialOverrides,
   wallpaper?: { imagePath?: string | null; opacity?: number; positionX?: number; positionY?: number; scale?: number },
+  windowOpacity = 0.95,
 ) {
   const mood = normalizeMoodPreset(moodPresetId);
 
@@ -82,6 +83,9 @@ export function useThemeApplier(
     }
     const opacity = typeof wallpaper?.opacity === "number" && Number.isFinite(wallpaper.opacity) ? wallpaper.opacity : 0;
     root.style.setProperty("--aether-wallpaper-opacity", String(Math.min(0.85, Math.max(0, opacity))));
+    const appOpacity = Number.isFinite(windowOpacity) ? Math.min(1, Math.max(0.35, windowOpacity)) : 0.95;
+    root.style.setProperty("--aether-window-opacity", String(Number(appOpacity.toFixed(2))));
+    root.style.setProperty("--aether-window-veil-opacity", String(Number(((1 - appOpacity) * 0.72).toFixed(3))));
     const positionX =
       typeof wallpaper?.positionX === "number" && Number.isFinite(wallpaper.positionX) ? wallpaper.positionX : 50;
     const positionY =
@@ -112,6 +116,7 @@ export function useThemeApplier(
     wallpaper?.positionX,
     wallpaper?.positionY,
     wallpaper?.scale,
+    windowOpacity,
   ]);
 }
 

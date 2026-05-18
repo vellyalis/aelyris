@@ -6,7 +6,8 @@ import {
   IME_DIAGNOSTIC_EVENT,
   TERMINAL_PREFIX_COMMAND_EVENT,
 } from "../features/terminal/hooks/useCanvasIME";
-import { findAiCliInputAnchor, TerminalCanvas } from "../features/terminal/TerminalCanvas";
+import { findAiCliInputAnchor, hasAiCliScreenSignature, TerminalCanvas } from "../features/terminal/TerminalCanvas";
+import { TERMINAL_PASTE_GUARD_EVENT } from "../shared/lib/terminalInput";
 import { CellAttr, type CellSnapshot, type GridSnapshot } from "../shared/types/terminal";
 
 const invokeMock = vi.fn((_cmd: string, _args?: Record<string, unknown>): Promise<unknown> => Promise.resolve());
@@ -155,8 +156,11 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
     vi.useRealTimers();
     cleanup();
     localStorage.removeItem("aether:debug:ime");
+    localStorage.removeItem("aether:debug:imeOverlay");
     delete window.__AETHER_IME_DEBUG__;
+    delete window.__AETHER_IME_DEBUG_OVERLAY__;
     delete window.__AETHER_IME_EVENTS__;
+    delete window.__AETHER_NATIVE_INPUT_SURFACE__;
     vi.restoreAllMocks();
   });
 
@@ -443,6 +447,77 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
     expect(pasteEvent.defaultPrevented).toBe(true);
   });
 
+  it("blocks destructive paste on the native input surface before it reaches the PTY", () => {
+    window.__AETHER_NATIVE_INPUT_SURFACE__ = true;
+    const writeBytes = vi.fn();
+    const guardEvents: CustomEvent[] = [];
+    window.addEventListener(TERMINAL_PASTE_GUARD_EVENT, (event) => guardEvents.push(event as CustomEvent));
+    const { getByTestId } = render(
+      <TerminalCanvas terminalId="t1" cols={4} rows={2} snapshotOverride={null} writeBytes={writeBytes} />,
+    );
+    const surface = canvasContainer(getByTestId("terminal-canvas") as HTMLCanvasElement);
+    const clipboardData = {
+      getData: (type: string) =>
+        type === "text" || type === "text/plain" ? "git reset --hard HEAD\nRemove-Item -Recurse -Force C:/Temp" : "",
+    } as unknown as DataTransfer;
+    const pasteEvent = new Event("paste", {
+      bubbles: true,
+      cancelable: true,
+    }) as ClipboardEvent;
+    Object.defineProperty(pasteEvent, "clipboardData", {
+      value: clipboardData,
+    });
+
+    act(() => {
+      surface.dispatchEvent(pasteEvent);
+    });
+
+    expect(pasteEvent.defaultPrevented).toBe(true);
+    expect(writeBytes).not.toHaveBeenCalled();
+    expect(guardEvents[0]?.detail.action).toBe("blocked");
+    expect(guardEvents[0]?.detail.terminalId).toBe("t1");
+  });
+
+  it("pastes native clipboard text on Ctrl+V instead of sending literal ^V", async () => {
+    invokeMock.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "read_clipboard_text") return Promise.resolve("git status\n");
+      if (cmd === "mux_process_keymap_event") {
+        return Promise.resolve({ kind: "cancelled", table: "prefix", command: null });
+      }
+      return Promise.resolve(args);
+    });
+    const writeBytes = vi.fn();
+    const { textarea } = renderCanvas(writeBytes);
+
+    const event = dispatchKey(textarea, { key: "v", ctrlKey: true });
+
+    expect(event.defaultPrevented).toBe(true);
+    await waitFor(() => expect(writeBytes).toHaveBeenCalledWith("t1", "git status\r"));
+    expect(writeBytes).not.toHaveBeenCalledWith("t1", "\x16");
+  });
+
+  it("pastes native clipboard text from the terminal context menu when nothing is selected", async () => {
+    invokeMock.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "read_clipboard_text") return Promise.resolve("pwd\n");
+      if (cmd === "mux_process_keymap_event") {
+        return Promise.resolve({ kind: "cancelled", table: "prefix", command: null });
+      }
+      return Promise.resolve(args);
+    });
+    const writeBytes = vi.fn();
+    const { canvas } = renderCanvas(writeBytes);
+
+    const event = new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      button: 2,
+    });
+    canvas.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    await waitFor(() => expect(writeBytes).toHaveBeenCalledWith("t1", "pwd\r"));
+  });
+
   it("lets paste take over while Japanese composition is active and ignores trailing compositionend", async () => {
     const writeBytes = vi.fn();
     const { queryByText, textarea } = renderCanvas(writeBytes);
@@ -593,6 +668,28 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
     expect(textarea.style.width).toBe("32px");
   });
 
+  it("locks the IME anchor while an AI CLI status repaint moves the terminal cursor", () => {
+    const first = snapshotFromRows(["> ", "gpt-5.5 high", ""], { row: 0, col: 2 }, 24);
+    const second = snapshotFromRows(["Working...", "> ", "gpt-5.5 high"], { row: 1, col: 2 }, 24);
+    const { container, queryByText, rerender } = render(
+      <TerminalCanvas terminalId="t1" cols={24} rows={3} fontSize={14} snapshotOverride={first} />,
+    );
+    const textarea = container.querySelector("[data-testid='terminal-ime-textarea']") as HTMLTextAreaElement;
+
+    fireEvent.compositionStart(textarea);
+    fireEvent.compositionUpdate(textarea, { data: "あ" });
+
+    const overlay = queryByText("あ") as HTMLElement;
+    expect(overlay).not.toBeNull();
+    expect(overlay.style.top).toBe("0px");
+    expect(textarea.style.top).toBe("0px");
+
+    rerender(<TerminalCanvas terminalId="t1" cols={24} rows={3} fontSize={14} snapshotOverride={second} />);
+
+    expect(overlay.style.top).toBe("0px");
+    expect(textarea.style.top).toBe("0px");
+  });
+
   it("does not anchor IME to a hidden terminal cursor", () => {
     const hiddenCursor = snapshotWithCursor(1, 3);
     hiddenCursor.cursor.visible = false;
@@ -731,13 +828,21 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
     });
     expect(JSON.stringify(events)).not.toContain("あ");
     expect(window.__AETHER_IME_EVENTS__).toHaveLength(4);
+    expect(screen.queryByTestId("terminal-input-diagnostics")).toBeNull();
     expect(debugSpy).toHaveBeenCalled();
+  });
+
+  it("does not flash the diagnostics overlay when only trace recording is enabled", () => {
+    localStorage.setItem("aether:debug:ime", "1");
+    renderCanvas(vi.fn());
+
+    expect(screen.queryByTestId("terminal-input-diagnostics")).toBeNull();
   });
 
   it("shows the opt-in input diagnostics overlay without exposing raw typed text", () => {
     const debugSpy = vi.spyOn(console, "debug").mockImplementation(() => {});
     const writeBytes = vi.fn();
-    enableImeDiagnostics(window);
+    enableImeDiagnostics(window, { showOverlay: true });
     const { textarea } = renderCanvas(writeBytes);
 
     fireEvent.compositionStart(textarea);
@@ -945,9 +1050,9 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
     const imeCalls = invokeMock.mock.calls.filter(([cmd]) => cmd === "set_ime_position");
     expect(imeCalls.length).toBeGreaterThan(0);
     const args = imeCalls.at(-1)?.[1] as { x: number; y: number; candidateX: number; candidateY: number };
-    expect(args.x).toBe(16);
+    expect(args.x).toBe(48);
     expect(args.y).toBe(90);
-    expect(args.candidateX).toBe(16);
+    expect(args.candidateX).toBe(48);
     expect(args.candidateY).toBe(90);
   });
 
@@ -1035,6 +1140,55 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
     expect(args.candidateY).toBe(54);
   });
 
+  it("moves the native IME candidate to the end of live preedit text without moving the hidden textarea", async () => {
+    const snapshot: GridSnapshot = {
+      cols: 80,
+      rows: 4,
+      cells: [
+        rowFromText("Codex", 80),
+        rowFromText("╭─────────────────────────────────────────────────────────────────────────────╮", 80),
+        rowFromTerminalText("│ ❯ 日本語入力                                                              │", 80),
+        rowFromText("╰─────────────────────────────────────────────────────────────────────────────╯", 80),
+      ],
+      cursor: {
+        row: 3,
+        col: 79,
+        shape: "block",
+        blinking: false,
+        visible: true,
+      },
+    };
+    const { container } = render(
+      <TerminalCanvas
+        terminalId="t1"
+        cols={80}
+        rows={4}
+        fontSize={14}
+        snapshotOverride={snapshot}
+        preferAiInputAnchor
+      />,
+    );
+    const textarea = container.querySelector("[data-testid='terminal-ime-textarea']") as HTMLTextAreaElement;
+
+    textarea.focus();
+    fireEvent.compositionStart(textarea);
+    fireEvent.compositionUpdate(textarea, { data: "ああ" });
+
+    expect(textarea.style.left).toBe("112px");
+    expect(textarea.style.top).toBe("36px");
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "set_ime_position",
+        expect.objectContaining({
+          x: 144,
+          y: 54,
+          candidateX: 144,
+          candidateY: 54,
+        }),
+      );
+    });
+  });
+
   it("uses the real AI CLI cursor when Codex or Claude keeps it on the input row", () => {
     const snapshot: GridSnapshot = {
       cols: 80,
@@ -1108,6 +1262,39 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
     textarea.focus();
     fireEvent.compositionStart(textarea);
 
+    expect(textarea.style.left).toBe("112px");
+    expect(textarea.style.top).toBe("36px");
+    expect(textarea.dataset.imeAnchorMode).toBe("ai-cli-input");
+  });
+
+  it("auto-anchors Codex and Claude IME from the screen signature when active detection misses the session", () => {
+    const snapshot: GridSnapshot = {
+      cols: 80,
+      rows: 5,
+      cells: [
+        rowFromText("Claude Code", 80),
+        rowFromText("╭─────────────────────────────────────────────────────────────────────────────╮", 80),
+        rowFromTerminalText("│ ❯ あああああ                                                              │", 80),
+        rowFromText("╰─────────────────────────────────────────────────────────────────────────────╯", 80),
+        rowFromText("tokens: 12k                                  ", 80),
+      ],
+      cursor: {
+        row: 4,
+        col: 79,
+        shape: "block",
+        blinking: false,
+        visible: true,
+      },
+    };
+    const { container } = render(
+      <TerminalCanvas terminalId="t1" cols={80} rows={5} fontSize={14} snapshotOverride={snapshot} />,
+    );
+    const textarea = container.querySelector("[data-testid='terminal-ime-textarea']") as HTMLTextAreaElement;
+
+    textarea.focus();
+    fireEvent.compositionStart(textarea);
+
+    expect(hasAiCliScreenSignature(snapshot)).toBe(true);
     expect(textarea.style.left).toBe("112px");
     expect(textarea.style.top).toBe("36px");
     expect(textarea.dataset.imeAnchorMode).toBe("ai-cli-input");

@@ -9,6 +9,7 @@ import { useHistorySearch } from "../../shared/hooks/useHistorySearch";
 import { useSnapshots } from "../../shared/hooks/useSnapshots";
 import { useTerminalSnapshot } from "../../shared/hooks/useTerminalSnapshot";
 import { decodeBase64ToBytes } from "../../shared/lib/decodeBase64";
+import { openInVSCode } from "../../shared/lib/externalEditor";
 import { formatFallbackError, reportInvokeFailure } from "../../shared/lib/fallbackTelemetry";
 import { isTauriRuntime } from "../../shared/lib/tauriRuntime";
 import { useAppStore } from "../../shared/store/appStore";
@@ -18,11 +19,14 @@ import { type ActiveSnapshotOverlay, TimelineBar } from "../timeline/TimelineBar
 import { useAICliDetection } from "./hooks/useAICliDetection";
 import {
   IME_DIAGNOSTIC_EVENT,
+  IME_DIAGNOSTIC_OVERLAY_STORAGE_KEY,
   IME_DIAGNOSTIC_STORAGE_KEY,
   IME_DIAGNOSTIC_TOGGLE_EVENT,
   type ImeDiagnosticDetail,
   type ImeDiagnosticWritePath,
   imeDiagnosticsEnabled,
+  imeDiagnosticsOverlayEnabled,
+  setImeDiagnosticsOverlayVisible,
 } from "./hooks/useCanvasIME";
 import { useInputMirror } from "./hooks/useInputMirror";
 import { IMEInputBar, type IMEInputBarHandle } from "./IMEInputBar";
@@ -318,6 +322,13 @@ export function NativeTerminalArea({
     void invoke<void>("dismiss_ghost_layer", { layerId }).catch(() => {});
   }, []);
 
+  const hideInputDiagnosticsOverlay = useCallback(() => {
+    if (typeof window !== "undefined") {
+      setImeDiagnosticsOverlayVisible(window, false);
+    }
+    setInputDiagnosticsEnabled(false);
+  }, []);
+
   // Terminal id change: dismiss the outstanding backend layer, then let
   // the state effect below clear local state when the new id lands. The
   // cleanup fires before the next effect, so the order is
@@ -423,8 +434,8 @@ export function NativeTerminalArea({
   }, [snapshotOverlay, dismissSnapshotOverlay]);
 
   // ── Hyperlink click routing (Tier 🟡 #4) ──
-  // file:// URLs that resolve inside this pane's cwd open in the built-in
-  // editor; everything else falls through to the OS opener. Adapters are
+  // file:// URLs that resolve inside this pane's cwd open in the preferred
+  // external editor; everything else falls through to the OS opener. Adapters are
   // captured into refs so the resolved `onOpenUrl` keeps a stable
   // identity across re-renders — TerminalCanvas's mousedown listener
   // would otherwise re-bind on every paint.
@@ -433,7 +444,18 @@ export function NativeTerminalArea({
   const openExternalRef = useRef<((url: string) => Promise<void> | void) | undefined>(openExternal);
   openExternalRef.current = openExternal;
   const onOpenUrl = useCallback(async (url: string) => {
-    const editor = openInEditorRef.current ?? ((p: string) => useAppStore.getState().openFile(p));
+    const editor =
+      openInEditorRef.current ??
+      ((p: string) => {
+        void openInVSCode(p).catch((err) => {
+          reportInvokeFailure({
+            source: "terminal",
+            operation: "open_in_vscode",
+            err,
+          });
+          useAppStore.getState().openFile(p);
+        });
+      });
     const external = openExternalRef.current ?? ((u: string) => tauriOpenUrl(u));
     await openTerminalUrlWith(url, { cwd: cwdRef.current ?? null }, { openInEditor: editor, openExternal: external });
   }, []);
@@ -445,7 +467,7 @@ export function NativeTerminalArea({
   const aiCli = useAICliDetection();
   const imeBarRef = useRef<IMEInputBarHandle>(null);
   const [inputDiagnosticsEnabled, setInputDiagnosticsEnabled] = useState(() =>
-    typeof window !== "undefined" ? imeDiagnosticsEnabled(window) : false,
+    typeof window !== "undefined" ? imeDiagnosticsEnabled(window) && imeDiagnosticsOverlayEnabled(window) : false,
   );
   const [lastImeDiagnostic, setLastImeDiagnostic] = useState<ImeDiagnosticDetail | null>(null);
   const [inputWritePath, setInputWritePath] = useState<InputWritePath>("idle");
@@ -461,10 +483,15 @@ export function NativeTerminalArea({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const refreshEnabled = () => setInputDiagnosticsEnabled(imeDiagnosticsEnabled(window));
+    const refreshEnabled = () =>
+      setInputDiagnosticsEnabled(imeDiagnosticsEnabled(window) && imeDiagnosticsOverlayEnabled(window));
     const onImeDiagnostic = (event: Event) => {
       const detail = (event as CustomEvent<ImeDiagnosticDetail>).detail;
       if (!detail) return;
+      if (!imeDiagnosticsEnabled(window) || !imeDiagnosticsOverlayEnabled(window)) {
+        setInputDiagnosticsEnabled(false);
+        return;
+      }
       setInputDiagnosticsEnabled(true);
       setLastImeDiagnostic(detail);
       if (detail.writePath) {
@@ -478,7 +505,9 @@ export function NativeTerminalArea({
       }
     };
     const onStorage = (event: StorageEvent) => {
-      if (event.key === IME_DIAGNOSTIC_STORAGE_KEY) refreshEnabled();
+      if (event.key === IME_DIAGNOSTIC_STORAGE_KEY || event.key === IME_DIAGNOSTIC_OVERLAY_STORAGE_KEY) {
+        refreshEnabled();
+      }
     };
 
     refreshEnabled();
@@ -1204,7 +1233,16 @@ export function NativeTerminalArea({
               >
                 <div className={styles.inputDiagnosticsHeader}>
                   <span>Input diagnostics</span>
-                  <span>{aiCli.active ? "AI CLI" : shell}</span>
+                  <span className={styles.inputDiagnosticsScope}>{aiCli.active ? "AI CLI" : shell}</span>
+                  <button
+                    type="button"
+                    className={styles.writeErrorDismiss}
+                    onClick={hideInputDiagnosticsOverlay}
+                    aria-label="Hide input diagnostics"
+                    title="Hide diagnostics"
+                  >
+                    <X size={12} aria-hidden="true" />
+                  </button>
                 </div>
                 <dl className={styles.inputDiagnosticsGrid}>
                   <dt>Active pane</dt>

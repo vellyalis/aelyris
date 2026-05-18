@@ -8,12 +8,14 @@ pub mod diff;
 pub mod engine;
 pub mod images;
 pub mod native;
+pub mod native_input;
 pub mod prompt_marks;
 pub mod snapshot;
 
 pub use diff::{diff_snapshots, DiffTracker, GridDiff, RowDiff};
 pub use engine::{TermEngine, TermEngineError};
 pub use native::NativeTerminalRegistry;
+pub use native_input::{NativeInputSurfaceRect, NativeTerminalInputHost, NativeTerminalInputStatus};
 pub use prompt_marks::{PromptMark, PromptMarkKind};
 pub use snapshot::{
     attr, CellSnapshot, CursorShapeSnapshot, CursorSnapshot, GridSnapshot, HistorySearchMatch,

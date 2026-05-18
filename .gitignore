@@ -8,6 +8,7 @@ dist/
 artifacts/
 src-tauri/target/
 src-tauri/target-*/
+src-tauri/pty-server/target/
 src-tauri/binaries/
 
 # Environment

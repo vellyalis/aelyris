@@ -168,6 +168,10 @@ pub struct PaneLayoutPolicyConfig {
     pub right_panel_width: u16,
     #[serde(default = "default_right_rail_mode")]
     pub right_rail_mode: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub right_rail_guardrail_profile: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub right_rail_widgets: BTreeMap<String, bool>,
 }
 
 impl Default for PaneLayoutPolicyConfig {
@@ -178,6 +182,8 @@ impl Default for PaneLayoutPolicyConfig {
             sidebar_width: default_sidebar_width(),
             right_panel_width: default_right_panel_width(),
             right_rail_mode: default_right_rail_mode(),
+            right_rail_guardrail_profile: None,
+            right_rail_widgets: BTreeMap::new(),
         }
     }
 }
@@ -340,6 +346,8 @@ pub struct AppearanceConfig {
     #[serde(default = "default_opacity")]
     pub opacity: f32,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub theme_overrides: BTreeMap<String, BTreeMap<String, String>>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub mood_material_overrides: BTreeMap<String, MoodMaterialOverrideConfig>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub wallpaper_settings_by_mood: BTreeMap<String, WallpaperConfig>,
@@ -370,6 +378,7 @@ impl Default for AppConfig {
                 ligatures: true,
                 window_effect: default_window_effect(),
                 opacity: default_opacity(),
+                theme_overrides: BTreeMap::new(),
                 mood_material_overrides: BTreeMap::new(),
                 wallpaper_settings_by_mood: BTreeMap::new(),
             },
@@ -541,6 +550,13 @@ cursor_blink = true
     #[test]
     fn appearance_material_and_wallpaper_customization_round_trips() {
         let mut cfg = AppConfig::default();
+        cfg.appearance.theme_overrides.insert(
+            "sakura-hub".to_string(),
+            BTreeMap::from([
+                ("sapphire".to_string(), "#74c7ec".to_string()),
+                ("red".to_string(), "#f38ba8".to_string()),
+            ]),
+        );
         cfg.appearance.mood_material_overrides.insert(
             "aether-sakura".to_string(),
             MoodMaterialOverrideConfig {
@@ -577,10 +593,20 @@ cursor_blink = true
             .wallpaper_settings_by_mood
             .get("aether-sakura")
             .expect("wallpaper settings");
+        let palette = back
+            .appearance
+            .theme_overrides
+            .get("sakura-hub")
+            .expect("theme overrides");
 
+        assert_eq!(palette.get("sapphire").map(String::as_str), Some("#74c7ec"));
+        assert_eq!(palette.get("red").map(String::as_str), Some("#f38ba8"));
         assert_eq!(material.panel_color.as_deref(), Some("#fff2f7"));
         assert_eq!(material.terminal_alpha, Some(0.58));
-        assert_eq!(wallpaper.image_path.as_deref(), Some("C:\\Images\\sakura.jpg"));
+        assert_eq!(
+            wallpaper.image_path.as_deref(),
+            Some("C:\\Images\\sakura.jpg")
+        );
         assert_eq!(wallpaper.scale, Some(135.0));
     }
 
@@ -605,6 +631,8 @@ cursor_blink = true
         assert!(profile.notification_policy.true_decision_only);
         assert_eq!(profile.visual_density, "balanced");
         assert_eq!(profile.pane_layout.right_rail_mode, "command");
+        assert!(profile.pane_layout.right_rail_guardrail_profile.is_none());
+        assert!(profile.pane_layout.right_rail_widgets.is_empty());
         assert!(profile.command_risk_policy.block_unsafe_paths);
         assert!(profile.context_pack_policy.redact_secrets);
     }
@@ -661,6 +689,44 @@ cursor_blink = true
                 .active_roadmap_id
                 .as_deref(),
             Some("P2-03"),
+        );
+    }
+
+    #[test]
+    fn pane_layout_right_rail_widgets_round_trip() {
+        let mut cfg = AppConfig::default();
+        cfg.workspace_profile
+            .global_defaults
+            .pane_layout
+            .right_rail_guardrail_profile = Some("Builder".to_string());
+        cfg.workspace_profile
+            .global_defaults
+            .pane_layout
+            .right_rail_widgets
+            .insert("workflow".to_string(), false);
+        cfg.workspace_profile
+            .global_defaults
+            .pane_layout
+            .right_rail_widgets
+            .insert("toolkit".to_string(), true);
+
+        let serialized = toml::to_string(&cfg).expect("serialize");
+        let back: AppConfig = toml::from_str(&serialized).expect("deserialize");
+        let widgets = &back
+            .workspace_profile
+            .global_defaults
+            .pane_layout
+            .right_rail_widgets;
+
+        assert_eq!(widgets.get("workflow"), Some(&false));
+        assert_eq!(widgets.get("toolkit"), Some(&true));
+        assert_eq!(
+            back.workspace_profile
+                .global_defaults
+                .pane_layout
+                .right_rail_guardrail_profile
+                .as_deref(),
+            Some("Builder"),
         );
     }
 }

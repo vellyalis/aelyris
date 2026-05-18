@@ -145,10 +145,10 @@ export const SAKURA_MATERIAL_ALPHA_KEYS: readonly SakuraMaterialAlphaKey[] = [
 ] as const;
 
 const SAKURA_ALPHA_RANGES: Record<SakuraMaterialAlphaKey, { min: number; max: number }> = {
-  backdropAlpha: { min: 0, max: 0.3 },
-  panelAlpha: { min: 0.6, max: 0.98 },
-  chromeAlpha: { min: 0.6, max: 0.98 },
-  terminalAlpha: { min: 0.3, max: 0.72 },
+  backdropAlpha: { min: 0, max: 0.85 },
+  panelAlpha: { min: 0.15, max: 1 },
+  chromeAlpha: { min: 0.15, max: 1 },
+  terminalAlpha: { min: 0.05, max: 0.9 },
 };
 
 const SAKURA_MATERIAL_CSS_KEYS = [
@@ -191,6 +191,10 @@ const SAKURA_MATERIAL_CSS_KEYS = [
 
 function clampNumber(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function clampAlpha(value: number, min = 0, max = 1): number {
+  return Number(clampNumber(value, min, max).toFixed(2));
 }
 
 export function sanitizeMaterialOverrides(
@@ -259,9 +263,10 @@ export function isMoodMaterialLight(
   const chrome = clean.chromeColor ?? defaults.chromeColor;
   const panelAlpha = clean.panelAlpha ?? defaults.panelAlpha;
   const chromeAlpha = clean.chromeAlpha ?? defaults.chromeAlpha;
+  if (panelAlpha < 0.5 && chromeAlpha < 0.5) return false;
   const weightedLuminance =
-    relativeLuminance(panel) * Math.max(0.45, panelAlpha) +
-    relativeLuminance(chrome) * Math.max(0.35, chromeAlpha);
+    relativeLuminance(panel) * panelAlpha +
+    relativeLuminance(chrome) * chromeAlpha;
   return weightedLuminance >= 0.78;
 }
 
@@ -280,14 +285,14 @@ export function materialOverridesToCSS(
   const panelAlpha = clean.panelAlpha ?? defaults.panelAlpha;
   const chromeAlpha = clean.chromeAlpha ?? defaults.chromeAlpha;
   const terminalAlpha = clean.terminalAlpha ?? defaults.terminalAlpha;
-  const panelSoftAlpha = Number(Math.max(0.62, panelAlpha - 0.08).toFixed(2));
-  const panelStrongAlpha = Number(Math.min(0.98, panelAlpha + 0.04).toFixed(2));
+  const panelSoftAlpha = clampAlpha(panelAlpha - 0.08, 0.08, 0.98);
+  const panelStrongAlpha = clampAlpha(panelAlpha + 0.04, 0.12, 1);
   const backdropRgb = rgbString(backdrop);
   const chromeRgb = rgbString(chrome);
   const panelRgb = rgbString(panel);
   const terminalRgb = rgbString(terminal);
-  const softLight = `rgba(${backdropRgb}, ${Math.min(0.46, Math.max(0.08, panelAlpha - 0.42))})`;
-  const softAccent = `rgba(${chromeRgb}, ${Math.min(0.14, Math.max(0.04, chromeAlpha - 0.74))})`;
+  const softLight = `rgba(${backdropRgb}, ${clampAlpha(panelAlpha - 0.42, 0.03, 0.46)})`;
+  const softAccent = `rgba(${chromeRgb}, ${clampAlpha(chromeAlpha - 0.74, 0.02, 0.14)})`;
   const usesLightChrome = relativeLuminance(panel) > 0.48 && panelAlpha >= 0.5;
   const textPrimary = usesLightChrome ? "#24121b" : "rgba(246, 251, 255, 0.93)";
   const textSecondary = usesLightChrome ? "rgba(47, 22, 33, 0.9)" : "rgba(219, 238, 255, 0.72)";
@@ -301,8 +306,8 @@ export function materialOverridesToCSS(
     "--text-muted": textMuted,
     "--chrome-frame-bg": `linear-gradient(180deg, ${softLight}, transparent 72%), linear-gradient(90deg, ${softAccent}, transparent 34%, transparent 66%, rgba(${panelRgb}, 0.06)), ${rgba(chrome, chromeAlpha)}`,
     "--statusbar-bg": rgba(chrome, chromeAlpha),
-    "--dialog-surface": `linear-gradient(180deg, ${softLight}, transparent 32%), linear-gradient(145deg, rgba(${panelRgb}, 0.1), transparent 50%), ${rgba(backdrop, Math.min(0.96, panelAlpha))}`,
-    "--settings-control-bg": rgba(backdrop, Math.min(0.96, panelAlpha - 0.04)),
+    "--dialog-surface": `linear-gradient(180deg, ${softLight}, transparent 32%), linear-gradient(145deg, rgba(${panelRgb}, 0.1), transparent 50%), ${rgba(backdrop, clampAlpha(panelAlpha, 0.08, 0.96))}`,
+    "--settings-control-bg": rgba(backdrop, clampAlpha(panelAlpha - 0.04, 0.06, 0.96)),
     "--settings-card-bg": rgba(panel, panelSoftAlpha),
     "--settings-card-bg-hover": rgba(panel, panelAlpha),
     "--settings-card-bg-active": rgba(panel, panelStrongAlpha),
@@ -314,12 +319,12 @@ export function materialOverridesToCSS(
     "--toolkit-bottom-bg": `linear-gradient(90deg, ${softAccent}, transparent 52%, rgba(${panelRgb}, 0.07)), ${rgba(panel, panelSoftAlpha)}`,
     "--toolkit-bottom-btn-bg": rgba(backdrop, panelAlpha),
     "--glass-clear": rgba(backdrop, Math.min(0.18, backdropAlpha + 0.02)),
-    "--glass-ground": rgba(panel, Math.max(0.56, panelAlpha - 0.3)),
-    "--glass-frame": rgba(panel, Math.max(0.56, panelAlpha - 0.32)),
-    "--glass-standard": rgba(panel, Math.max(0.64, panelAlpha - 0.18)),
-    "--glass-dense": rgba(panel, Math.max(0.72, panelAlpha - 0.1)),
-    "--glass-thick": rgba(panel, Math.max(0.8, panelAlpha - 0.04)),
-    "--glass-solid": rgba(backdrop, Math.max(0.86, panelAlpha)),
+    "--glass-ground": rgba(panel, clampAlpha(panelAlpha - 0.3, 0.08, 0.86)),
+    "--glass-frame": rgba(panel, clampAlpha(panelAlpha - 0.32, 0.08, 0.86)),
+    "--glass-standard": rgba(panel, clampAlpha(panelAlpha - 0.18, 0.12, 0.9)),
+    "--glass-dense": rgba(panel, clampAlpha(panelAlpha - 0.1, 0.18, 0.94)),
+    "--glass-thick": rgba(panel, clampAlpha(panelAlpha - 0.04, 0.24, 0.98)),
+    "--glass-solid": rgba(backdrop, clampAlpha(panelAlpha, 0.32, 1)),
     "--mood-root-glow": `linear-gradient(125deg, rgba(${panelRgb}, ${Math.min(0.16, backdropAlpha + 0.03)}), transparent 35%), linear-gradient(300deg, rgba(${chromeRgb}, ${Math.min(0.08, backdropAlpha)}), transparent 42%), linear-gradient(180deg, rgba(${backdropRgb}, ${backdropAlpha}), rgba(${panelRgb}, ${Math.max(0.02, backdropAlpha / 2)}))`,
     "--mood-left-panel-bg": `linear-gradient(180deg, ${softLight}, transparent 30%), linear-gradient(135deg, rgba(${panelRgb}, 0.14), rgba(${backdropRgb}, 0.16)), ${rgba(panel, panelAlpha)}`,
     "--mood-center-panel-bg": `radial-gradient(ellipse at 50% 0%, rgba(${chromeRgb}, 0.05), transparent 44%), linear-gradient(180deg, rgba(${backdropRgb}, ${Math.min(0.12, backdropAlpha + 0.02)}), rgba(${panelRgb}, ${Math.min(0.08, backdropAlpha)})), ${rgba(backdrop, backdropAlpha)}`,
@@ -328,7 +333,7 @@ export function materialOverridesToCSS(
     "--mood-sessions-widget-bg": `linear-gradient(160deg, ${softLight}, rgba(${backdropRgb}, 0.14)), rgba(${panelRgb}, ${panelSoftAlpha})`,
     "--mood-workflow-widget-bg": `linear-gradient(180deg, ${softLight}, rgba(${backdropRgb}, 0.14)), rgba(${panelRgb}, ${panelSoftAlpha})`,
     "--mood-toolkit-widget-bg": `linear-gradient(150deg, ${softLight}, rgba(${backdropRgb}, 0.14)), rgba(${panelRgb}, ${panelSoftAlpha})`,
-    "--mood-logs-widget-bg": `linear-gradient(180deg, ${softLight}, rgba(${backdropRgb}, 0.12)), rgba(${panelRgb}, ${Math.max(0.72, panelSoftAlpha - 0.04)})`,
+    "--mood-logs-widget-bg": `linear-gradient(180deg, ${softLight}, rgba(${backdropRgb}, 0.12)), rgba(${panelRgb}, ${clampAlpha(panelSoftAlpha - 0.04, 0.12, 0.95)})`,
     "--terminal-canvas-bg": `rgba(${terminalRgb}, ${terminalAlpha})`,
     "--terminal-well-bg": `radial-gradient(ellipse at 44% -18%, rgba(${panelRgb}, 0.18), transparent 46%), radial-gradient(ellipse at 78% 18%, rgba(${chromeRgb}, 0.1), transparent 38%), linear-gradient(180deg, rgba(${terminalRgb}, ${Math.min(0.68, terminalAlpha + 0.06)}), rgba(${terminalRgb}, ${Math.min(0.72, terminalAlpha + 0.08)}))`,
     "--terminal-chrome-bg": `rgba(${terminalRgb}, ${Math.min(0.7, terminalAlpha + 0.04)})`,

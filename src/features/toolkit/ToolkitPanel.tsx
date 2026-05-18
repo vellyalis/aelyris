@@ -286,6 +286,7 @@ export function ToolkitPanel({
     <section className={styles.toolkit} aria-label="Toolkit">
       <PanelHeader
         title="Toolkit"
+        subtitle="saved commands"
         leadingIcon={<Wrench size={12} />}
         count={actions.length}
         collapsible
@@ -352,61 +353,65 @@ export function ToolkitPanel({
 
       {!collapsed && (
         <>
-          <div className={styles.grid}>
-            {actions.map((a) => {
-              const priority = a.id === primaryActionId ? "primary" : "orbit";
-              return (
-                <button
-                  type="button"
-                  key={a.id}
-                  className={styles.action}
-                  data-priority={priority}
-                  data-tone={actionTone(a)}
-                  onClick={async () => {
-                    let command = a.command;
-                    // Prompt for placeholders like {message}
-                    const placeholders = command.match(/\{(\w+)\}/g);
-                    if (placeholders) {
-                      for (const ph of [...new Set(placeholders)]) {
-                        const name = ph.slice(1, -1);
-                        const value = await showPrompt(`Enter ${name}`, { placeholder: `${name}...` });
-                        if (!value) return;
-                        command = command.split(ph).join(value.replace(/"/g, '\\"'));
+          {actions.length === 0 ? (
+            <div className={styles.emptyHint}>Create or import a command to run it against the selected pane.</div>
+          ) : (
+            <div className={styles.grid}>
+              {actions.map((a) => {
+                const priority = a.id === primaryActionId ? "primary" : "orbit";
+                return (
+                  <button
+                    type="button"
+                    key={a.id}
+                    className={styles.action}
+                    data-priority={priority}
+                    data-tone={actionTone(a)}
+                    onClick={async () => {
+                      let command = a.command;
+                      // Prompt for placeholders like {message}
+                      const placeholders = command.match(/\{(\w+)\}/g);
+                      if (placeholders) {
+                        for (const ph of [...new Set(placeholders)]) {
+                          const name = ph.slice(1, -1);
+                          const value = await showPrompt(`Enter ${name}`, { placeholder: `${name}...` });
+                          if (!value) return;
+                          command = command.split(ph).join(value.replace(/"/g, '\\"'));
+                        }
                       }
-                    }
-                    const warning = detectDangerousCommand(command);
-                    if (warning) {
-                      // Previously this was a text prompt with `defaultValue: "yes"` —
-                      // a single-character typo would execute an `rm -rf`-class
-                      // command. Use an explicit confirm with a danger-tone button
-                      // and Cancel pre-focused.
-                      const ok = await showConfirm({
-                        title: "Run dangerous command?",
-                        description: `${warning}\n\nCommand:\n${command}`,
-                        confirmLabel: "Run anyway",
-                        cancelLabel: "Cancel",
-                        tone: "danger",
-                      });
-                      if (!ok) return;
-                    }
-                    await onRunCommand?.(command);
-                  }}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    handleEdit(a);
-                  }}
-                  title={`${a.command}\nTarget: ${activeTargetLabel}`}
-                >
-                  <span className={styles.actionIcon}>{ICON_MAP[a.id] ?? null}</span>
-                  <span className={styles.actionBody}>
-                    <span className={styles.actionLabel}>{a.label}</span>
-                    <span className={styles.actionCommand}>{a.command}</span>
-                  </span>
-                  <span className={styles.badge} style={{ background: a.badge }} />
-                </button>
-              );
-            })}
-          </div>
+                      const warning = detectDangerousCommand(command);
+                      if (warning) {
+                        // Previously this was a text prompt with `defaultValue: "yes"` —
+                        // a single-character typo would execute an `rm -rf`-class
+                        // command. Use an explicit confirm with a danger-tone button
+                        // and Cancel pre-focused.
+                        const ok = await showConfirm({
+                          title: "Run dangerous command?",
+                          description: `${warning}\n\nCommand:\n${command}`,
+                          confirmLabel: "Run anyway",
+                          cancelLabel: "Cancel",
+                          tone: "danger",
+                        });
+                        if (!ok) return;
+                      }
+                      await onRunCommand?.(command);
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      handleEdit(a);
+                    }}
+                    title={`${a.command}\nTarget: ${activeTargetLabel}`}
+                  >
+                    <span className={styles.actionIcon}>{ICON_MAP[a.id] ?? null}</span>
+                    <span className={styles.actionBody}>
+                      <span className={styles.actionLabel}>{a.label}</span>
+                      <span className={styles.actionCommand}>{a.command}</span>
+                    </span>
+                    <span className={styles.badge} style={{ background: a.badge }} />
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <div className={styles.bottomActions}>
             <button type="button" className={styles.bottomBtn} onClick={handleAdd}>
               <Plus size={11} aria-hidden="true" />

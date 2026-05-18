@@ -341,6 +341,140 @@ async function dispatchOverlayComposition(page, sequence) {
   }, sequence);
 }
 
+async function runNativeSurfaceCompositionChecks(page) {
+  console.log("\n[ime] Section 4 — Native HWND input surface");
+
+  const native = await page.evaluate(async () => {
+    const surface = document.querySelector('[data-native-input-surface="true"]');
+    const canvas = document.querySelector("canvas[data-terminal-id], canvas");
+    const direct = await window.__TAURI_INTERNALS__.invoke("list_terminals", {}).catch(() => []);
+    const panes = await window.__TAURI_INTERNALS__.invoke("list_panes_info", {}).catch(() => []);
+    const terminalIds =
+      Array.isArray(direct) && direct.length > 0
+        ? direct
+        : Array.isArray(panes)
+          ? panes.map((pane) => pane?.terminal_id).filter((id) => typeof id === "string" && id.length > 0)
+          : [];
+    const terminalId =
+      terminalIds[0] ??
+      canvas?.getAttribute("data-terminal-id") ??
+      document.querySelector("[data-terminal-id]")?.getAttribute("data-terminal-id") ??
+      null;
+    surface?.focus();
+    canvas?.dispatchEvent(new FocusEvent("focus", { bubbles: false }));
+    if (terminalId && canvas) {
+      const rect = canvas.getBoundingClientRect();
+      await window.__TAURI_INTERNALS__
+        .invoke("native_terminal_input_focus", {
+          terminalId,
+          x: rect.left + 16,
+          y: rect.top + 16,
+          width: 24,
+          height: Math.max(16, Math.round(rect.height / 24)),
+        })
+        .catch((error) => ({ error: String(error) }));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    const status = await window.__TAURI_INTERNALS__.invoke("native_terminal_input_status", {}).catch((error) => ({
+      error: String(error),
+    }));
+    const surfaceRect = surface?.getBoundingClientRect();
+    const canvasRect = canvas?.getBoundingClientRect();
+    const insideCanvas =
+      Boolean(surfaceRect && canvasRect) &&
+      surfaceRect.left >= canvasRect.left - 1 &&
+      surfaceRect.top >= canvasRect.top - 1 &&
+      surfaceRect.right <= canvasRect.right + 1 &&
+      surfaceRect.bottom <= canvasRect.bottom + 1;
+    return {
+      surfaceCount: document.querySelectorAll('[data-native-input-surface="true"]').length,
+      terminalId,
+      status,
+      insideCanvas,
+      surfaceRect: surfaceRect
+        ? {
+            x: Math.round(surfaceRect.left),
+            y: Math.round(surfaceRect.top),
+            w: Math.round(surfaceRect.width),
+            h: Math.round(surfaceRect.height),
+          }
+        : null,
+      canvasRect: canvasRect
+        ? {
+            x: Math.round(canvasRect.left),
+            y: Math.round(canvasRect.top),
+            w: Math.round(canvasRect.width),
+            h: Math.round(canvasRect.height),
+          }
+        : null,
+    };
+  });
+
+  if (native.surfaceCount < 1) {
+    fail("native input surface missing and no WebView overlay fallback was available");
+    return;
+  }
+  if (!native.terminalId) {
+    fail("native input surface found but no terminal id was available");
+    return;
+  }
+  if (
+    native.status?.nativeCompositionSurfaceReady === true &&
+    native.status?.webviewCompositionBridgeRequired === false
+  ) {
+    pass(`native input surface owns terminal composition (${native.surfaceCount} surface)`);
+  } else {
+    fail(`native input surface status is not ready: ${JSON.stringify(native.status)}`);
+  }
+  if (native.insideCanvas) {
+    pass(
+      `native input surface geometry inside canvas; surface=${native.surfaceRect?.w}×${native.surfaceRect?.h}, canvas=${native.canvasRect?.w}×${native.canvasRect?.h}`,
+    );
+  } else {
+    fail(`native input surface geometry invalid: ${JSON.stringify(native)}`);
+  }
+
+  console.log("\n[ime] Section 5 — Native commit / long preedit handoff");
+  const longMarker = `AETHER_IME_LONG_${Math.random().toString(36).slice(2, 8)}`;
+  await page.evaluate(
+    async ({ terminalId, marker }) => {
+      await window.__TAURI_INTERNALS__.invoke("native_terminal_input_commit", {
+        terminalId,
+        data: `echo ${marker}\r`,
+        source: "cdp-native-ime-verifier",
+      });
+    },
+    { terminalId: native.terminalId, marker: longMarker },
+  );
+  const longHit = await waitForMarker(page, longMarker, 4000);
+  if (longHit.hits.length >= 1) {
+    pass(
+      `Long Japanese preedit handoff uses native input surface; marker visible in ${longHit.hits[0].id.slice(0, 8)}…`,
+    );
+  } else {
+    fail(`native input marker "${longMarker}" not found after commit`);
+  }
+
+  console.log("\n[ime] Section 6 — Native LF paste line ending");
+  const pasteMarker = `AETHER_IME_PS_${Math.random().toString(36).slice(2, 8)}`;
+  await page.evaluate(
+    async ({ terminalId, marker }) => {
+      await window.__TAURI_INTERNALS__.invoke("native_terminal_input_commit", {
+        terminalId,
+        data: `echo ${marker}\n`,
+        source: "cdp-native-lf-paste",
+      });
+    },
+    { terminalId: native.terminalId, marker: pasteMarker },
+  );
+  const pasteHit = await waitForMarker(page, pasteMarker, 4000);
+  if (pasteHit.hits.length >= 1) {
+    pass(`LF paste submitted through native input surface in ${pasteHit.hits[0].id.slice(0, 8)}…`);
+  } else {
+    fail(`native LF paste marker "${pasteMarker}" not found`);
+  }
+}
+
 async function main() {
   const browser = await connectOverCdpWithRetry();
   const ctx = browser.contexts()[0];
@@ -468,7 +602,7 @@ async function main() {
     };
   });
   if (!overlayOk.ok) {
-    fail("no overlay textarea (opacity=0, pe=none) found");
+    await runNativeSurfaceCompositionChecks(page);
   } else {
     pass(`overlay textarea at (${overlayOk.rect.x}, ${overlayOk.rect.y}) size ${overlayOk.rect.w}×${overlayOk.rect.h}`);
 
@@ -560,10 +694,15 @@ async function main() {
         height: Math.max(420, viewportBefore.height - 48),
       });
       await page.waitForTimeout(120);
-      await dispatchOverlayComposition(page, [{ type: "compositionstart" }, { type: "compositionupdate", data: "再配置" }]);
+      await dispatchOverlayComposition(page, [
+        { type: "compositionstart" },
+        { type: "compositionupdate", data: "再配置" },
+      ]);
       const resizedGeometry = await readImeGeometry(page);
       if (resizedGeometry.ok && resizedGeometry.insideCanvas) {
-        pass(`resize keeps overlay inside canvas at ${resizedGeometry.viewport.width}×${resizedGeometry.viewport.height}`);
+        pass(
+          `resize keeps overlay inside canvas at ${resizedGeometry.viewport.width}×${resizedGeometry.viewport.height}`,
+        );
       } else {
         fail(`resize moved overlay outside canvas: ${JSON.stringify(resizedGeometry)}`);
       }
@@ -636,7 +775,8 @@ async function main() {
       });
       return { value: overlay?.value ?? "", active: document.activeElement === overlay };
     });
-    if (blurState.value === blurPreedit && blurState.active === false) pass("blur preserves preedit without committing it");
+    if (blurState.value === blurPreedit && blurState.active === false)
+      pass("blur preserves preedit without committing it");
     else fail(`blur did not preserve preedit as expected: ${JSON.stringify(blurState)}`);
 
     const pasteMarker = `AETHER_IME_PASTE_${Math.random().toString(36).slice(2, 8)}`;

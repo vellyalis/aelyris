@@ -16,6 +16,7 @@ import {
   MOOD_PRESETS,
   MOOD_SURFACE_CSS_KEYS,
   materialOverridesToCSS,
+  isMoodMaterialLight,
   MOOD_MATERIAL_DEFAULTS,
   moodPresetToCSS,
   normalizeMoodPreset,
@@ -310,8 +311,8 @@ describe("themes/moods — preset metadata", () => {
 
     expect(sanitized).toEqual({
       panelColor: "#fffafc",
-      terminalAlpha: 0.72,
-      chromeAlpha: 0.6,
+      terminalAlpha: 0.9,
+      chromeAlpha: 0.4,
     });
 
     const vars = sakuraMaterialOverridesToCSS({ panelColor: "#fffafc", panelAlpha: 0.94, terminalAlpha: 0.48 });
@@ -329,6 +330,17 @@ describe("themes/moods — preset metadata", () => {
     expect(vars["--text-primary"]).toBe("#24121b");
     expect(contrastRatio(vars["--text-primary"], "#fff1f8")).toBeGreaterThanOrEqual(10);
     expect(vars["--toolkit-tile-text"]).toBe("#24121b");
+  });
+
+  it("does not switch low-opacity pale material to light text mode", () => {
+    expect(
+      isMoodMaterialLight("aether-sky", {
+        panelColor: "#fff1f8",
+        chromeColor: "#ffeef7",
+        panelAlpha: 0.18,
+        chromeAlpha: 0.16,
+      }),
+    ).toBe(false);
   });
 
   it("keeps mood root textures clear instead of synthetic scanlines", () => {

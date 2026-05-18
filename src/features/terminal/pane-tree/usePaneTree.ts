@@ -40,6 +40,14 @@ export function usePaneTree({ initialShell, initialCwd, initialTree, initialActi
     [initialShell, initialCwd],
   );
 
+  const splitWithContext = useCallback(
+    (targetId: string, direction: SplitDirection, shell: ShellType, cwd?: string) => {
+      setTree((prev) => splitPane(prev, targetId, direction, shell, cwd));
+      setMaximizedPaneId(null);
+    },
+    [],
+  );
+
   const splitWithExistingTerminal = useCallback(
     (targetId: string, direction: SplitDirection, terminalId: string, shell: ShellType, cwd?: string) => {
       const newLeaf = createLeafWithId(terminalId, shell, cwd);
@@ -142,6 +150,15 @@ export function usePaneTree({ initialShell, initialCwd, initialTree, initialActi
     setTerminalIds((prev) => new Map(prev).set(paneId, terminalId));
   }, []);
 
+  const unregisterTerminal = useCallback((paneId: string) => {
+    setTerminalIds((prev) => {
+      if (!prev.has(paneId)) return prev;
+      const next = new Map(prev);
+      next.delete(paneId);
+      return next;
+    });
+  }, []);
+
   const replaceTree = useCallback((nextTree: PaneNode, nextActivePaneId: string | null) => {
     setTerminalIds((prev) => {
       for (const ptyId of prev.values()) {
@@ -186,6 +203,7 @@ export function usePaneTree({ initialShell, initialCwd, initialTree, initialActi
     maximizedPaneId,
     terminalIds,
     split,
+    splitWithContext,
     splitWithExistingTerminal,
     close,
     closeAllPtys,
@@ -199,6 +217,7 @@ export function usePaneTree({ initialShell, initialCwd, initialTree, initialActi
     setPaneRole,
     cyclePaneRole,
     registerTerminal,
+    unregisterTerminal,
     replaceTree,
     navigate,
   };

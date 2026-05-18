@@ -115,6 +115,70 @@ describe("TerminalCanvas — selection + copy (Task 9)", () => {
     expect(copyText).toHaveBeenCalledWith("hello");
   });
 
+  it("copies a selected range on Ctrl+C instead of sending an interrupt", async () => {
+    const grid = gridFromRows(["hello world"]);
+    const copyText = vi.fn().mockResolvedValue(undefined);
+    const writeBytes = vi.fn();
+
+    const { getByTestId } = render(
+      <TerminalCanvas
+        terminalId="t1"
+        cols={11}
+        rows={1}
+        fontSize={14}
+        snapshotOverride={grid}
+        copyText={copyText}
+        writeBytes={writeBytes}
+      />,
+    );
+    const canvas = getByTestId("terminal-canvas") as HTMLCanvasElement;
+    const textarea = getByTestId("terminal-ime-textarea") as HTMLTextAreaElement;
+
+    await act(async () => {
+      downUpDrag(canvas, { x: 0, y: 0 }, { x: 4 * 8 + 1, y: 0 });
+    });
+    await act(async () => {
+      textarea.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          key: "c",
+          ctrlKey: true,
+        }),
+      );
+    });
+    await Promise.resolve();
+
+    expect(copyText).toHaveBeenCalledWith("hello");
+    expect(writeBytes).not.toHaveBeenCalledWith("t1", "\x03");
+  });
+
+  it("copies a selected range from the terminal context menu", async () => {
+    const grid = gridFromRows(["hello world"]);
+    const copyText = vi.fn().mockResolvedValue(undefined);
+
+    const { getByTestId } = render(
+      <TerminalCanvas terminalId="t1" cols={11} rows={1} fontSize={14} snapshotOverride={grid} copyText={copyText} />,
+    );
+    const canvas = getByTestId("terminal-canvas") as HTMLCanvasElement;
+
+    await act(async () => {
+      downUpDrag(canvas, { x: 0, y: 0 }, { x: 4 * 8 + 1, y: 0 });
+    });
+    const event = new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      button: 2,
+    });
+    await act(async () => {
+      canvas.dispatchEvent(event);
+    });
+    await Promise.resolve();
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(copyText).toHaveBeenCalledWith("hello");
+  });
+
   it("clears the selection when the user types a printable key", async () => {
     const grid = gridFromRows(["hello"]);
     const copyText = vi.fn();

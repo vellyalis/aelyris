@@ -28,6 +28,7 @@ describe("pane switcher keyboard shortcut", () => {
     expect(terminalFocus).toBeGreaterThan(-1);
     expect(paneSwitcher).toBeLessThan(terminalFocus);
     expect(src).toContain("openPaneSwitcher?.();");
+    expect(src).toContain("[data-native-input-surface='true']");
     expect(src).toContain("[data-testid='terminal-ime-textarea']");
     expect(src).not.toContain("xterm-helper-textarea");
   });

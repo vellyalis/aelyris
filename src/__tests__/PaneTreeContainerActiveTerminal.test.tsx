@@ -185,6 +185,39 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     });
   });
 
+  it("drops stale crashed PTY bindings before starting a replacement shell", async () => {
+    const onRegistryChange = vi.fn();
+    render(<PaneTreeContainer shell="powershell" onPaneRegistryChange={onRegistryChange} />);
+    let c = captured as unknown as CapturedProps;
+    const initialPaneId = firstLeafId(c.tree);
+
+    act(() => {
+      c.onTerminalReady(initialPaneId, "pty-crashed");
+      c.onPaneLifecycleChange?.(initialPaneId, "crashed");
+    });
+
+    await waitFor(() => {
+      c = captured as unknown as CapturedProps;
+      expect(c.terminalIds.get(initialPaneId)).toBe("pty-crashed");
+    });
+
+    act(() => {
+      c.onPaneLifecycleChange?.(initialPaneId, "starting");
+    });
+
+    await waitFor(() => {
+      c = captured as unknown as CapturedProps;
+      expect(c.terminalIds.has(initialPaneId)).toBe(false);
+      expect(onRegistryChange).toHaveBeenLastCalledWith([
+        expect.objectContaining({
+          paneId: initialPaneId,
+          terminalId: null,
+          lifecycle: "starting",
+        }),
+      ]);
+    });
+  });
+
   it("focuses the mux-created split pane instead of leaving focus ambiguous", async () => {
     const onChange = vi.fn();
     render(<PaneTreeContainer shell="powershell" onActiveTerminalChange={onChange} />);
@@ -214,7 +247,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
       if (command === "mux_split_pane") return Promise.reject(new Error("mux graph is stale"));
       return Promise.resolve(undefined);
     });
-    render(<PaneTreeContainer shell="powershell" />);
+    render(<PaneTreeContainer shell="powershell" cwd="C:/projects/current" />);
     let c = captured as unknown as CapturedProps;
     const firstId = firstLeafId(c.tree);
     act(() => {
@@ -227,6 +260,10 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
       c = captured as unknown as CapturedProps;
       expect(leafIds(c.tree)).toHaveLength(2);
     });
+    expect(leafIds(c.tree).map((id) => findLeaf(c.tree, id)?.cwd)).toEqual([
+      "C:/projects/current",
+      "C:/projects/current",
+    ]);
     expect(invokeMock).toHaveBeenCalledWith(
       "mux_split_pane",
       expect.objectContaining({ workspaceId: "pty-A", targetPaneId: "pty-A" }),
@@ -275,6 +312,48 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
       "mux_split_pane",
       expect.objectContaining({ workspaceId: "pty-A", targetPaneId: "pty-A" }),
     );
+  });
+
+  it("preserves the target pane cwd when mux split falls back to local recovery", async () => {
+    localStorage.setItem(
+      "aether:paneTree:tab-test",
+      JSON.stringify({
+        version: 1,
+        tree: {
+          type: "terminal",
+          id: "pane-target",
+          shell: "powershell",
+          cwd: "D:/work/specific-project",
+        },
+        activePaneId: "pane-target",
+      }),
+    );
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "get_pane_tree_layout") return Promise.resolve(null);
+      if (command === "list_terminals") return Promise.resolve([]);
+      if (command === "mux_split_pane") return Promise.reject(new Error("mux unavailable"));
+      return Promise.resolve(undefined);
+    });
+    render(<PaneTreeContainer shell="powershell" cwd="C:/fallback-root" layoutStorageKey="aether:paneTree:tab-test" />);
+    let c = captured as unknown as CapturedProps;
+    await waitFor(() => {
+      c = captured as unknown as CapturedProps;
+      expect(c.suspendTerminalMounts).toBe(false);
+    });
+    act(() => {
+      c.onTerminalReady("pane-target", "pty-target");
+    });
+
+    c = await splitAndFlush(c, "pane-target", "right");
+
+    await waitFor(() => {
+      c = captured as unknown as CapturedProps;
+      expect(leafIds(c.tree)).toHaveLength(2);
+    });
+    expect(leafIds(c.tree).map((id) => findLeaf(c.tree, id)?.cwd)).toEqual([
+      "D:/work/specific-project",
+      "D:/work/specific-project",
+    ]);
   });
 
   it("does not ignore split requests before the initial pane has registered a PTY id", async () => {
@@ -1310,9 +1389,10 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
 
     await waitFor(() => {
       expect(onRegistryChange).toHaveBeenLastCalledWith([
-        expect.objectContaining({ paneId: "pane-restored", terminalId: "pty-restored", lifecycle: "exited" }),
+        expect.objectContaining({ paneId: "pane-restored", terminalId: null, lifecycle: "exited" }),
       ]);
     });
+    expect((captured as unknown as CapturedProps).terminalIds.has("pane-restored")).toBe(false);
   });
 
   it("revalidates pane truth on reconnect and surfaces newly orphaned backend PTYs", async () => {

@@ -280,7 +280,7 @@ describe("deriveRightRailActions", () => {
     });
 
     expect(actions).toEqual([
-      {
+      expect.objectContaining({
         id: "ready-command",
         mode: "command",
         tone: "command",
@@ -290,11 +290,17 @@ describe("deriveRightRailActions", () => {
         detail: "Launch agents, workflows, or tools",
         why: "No active work or review pressure is detected.",
         nextStep: "Start a workflow, launch an agent, or run a saved tool.",
-      },
+        execution: expect.objectContaining({
+          status: "ready",
+          label: "Start",
+          expectedResult: expect.stringContaining("Toolkit opens"),
+          auditEvent: "right_rail.ready_command.opened",
+        }),
+      }),
     ]);
   });
 
-  it("explains why each ranked action exists and what to do next", () => {
+  it("explains why each ranked action exists, what to do next, and what execution should achieve", () => {
     const actions = deriveRightRailActions({
       sessions: [session("blocked", { status: "waiting", blockedReason: "needs approval" })],
       interactiveSessionCount: 0,
@@ -308,7 +314,137 @@ describe("deriveRightRailActions", () => {
     for (const action of actions) {
       expect(action.why.length).toBeGreaterThan(12);
       expect(action.nextStep.length).toBeGreaterThan(12);
+      expect(["ready", "guided", "blocked"]).toContain(action.execution.status);
+      expect(["focus-widget", "focus-session", "focus-pane", "open-primary-diff", "copy-context-pack"]).toContain(
+        action.execution.operation,
+      );
+      expect(action.execution.label.length).toBeGreaterThan(2);
+      expect(action.execution.expectedResult.length).toBeGreaterThan(24);
+      expect(action.execution.auditEvent).toMatch(/^right_rail\./);
+      expect(action.execution.recoveryStep?.length ?? 0).toBeGreaterThan(20);
     }
+  });
+
+  it("marks review and handoff actions as safe direct operations", () => {
+    const actions = deriveRightRailActions({
+      sessions: [session("long", { name: "Long Runner", tokensUsed: 190_000 })],
+      interactiveSessionCount: 0,
+      changedFilesCount: 0,
+      contextWarnPct: 85,
+      currentMode: "command",
+      workstationGraph: buildWorkstationGraph({
+        workspaceId: "C:/repo",
+        changedFiles: [{ path: "src/App.tsx", status: "modified" }],
+      }),
+    });
+
+    expect(actions.find((action) => action.id === "handoff-context")).toMatchObject({
+      execution: expect.objectContaining({
+        status: "ready",
+        operation: "copy-context-pack",
+        label: "Copy handoff",
+      }),
+    });
+    expect(actions.find((action) => action.id === "review-queue")).toMatchObject({
+      targetFilePath: "src/App.tsx",
+      execution: expect.objectContaining({
+        status: "ready",
+        operation: "open-primary-diff",
+      }),
+    });
+  });
+
+  it("keeps graph-only risks actionable even when no live owner session is bound", () => {
+    const actions = deriveRightRailActions({
+      sessions: [session("done", { status: "done" }), session("errorless", { status: "idle" })],
+      interactiveSessionCount: 0,
+      changedFilesCount: 0,
+      contextWarnPct: 85,
+      currentMode: "command",
+      workstationGraph: buildWorkstationGraph({
+        workspaceId: "C:/repo",
+        blockers: [{ id: "b1", title: "approval", kind: "approval", status: "open", agentId: "missing" }],
+      }),
+    });
+
+    const risk = actions.find((action) => action.id === "inspect-risk");
+    expect(risk).toMatchObject({
+      execution: expect.objectContaining({
+        status: "guided",
+        expectedResult: expect.stringContaining("Reliability evidence"),
+      }),
+    });
+  });
+
+  it("annotates conservative approval and risk actions with explicit human gates", () => {
+    const actions = deriveRightRailActions({
+      sessions: [session("blocked", { status: "waiting", blockedReason: "needs approval" })],
+      interactiveSessionCount: 0,
+      changedFilesCount: 0,
+      contextWarnPct: 85,
+      currentMode: "command",
+      pendingDecisionCount: 1,
+      guardrailProfile: "Conservative",
+      workstationGraph: buildWorkstationGraph({
+        workspaceId: "C:/repo",
+        risks: [{ id: "r1", title: "missing proof", status: "open", agentId: "blocked" }],
+      }),
+    });
+
+    expect(actions.find((action) => action.id === "resolve-approvals")).toMatchObject({
+      execution: expect.objectContaining({
+        guardrailProfile: "Conservative",
+        guardrailLabel: "Human gate",
+        guardrailDetail: expect.stringContaining("owner decisions"),
+      }),
+    });
+    expect(actions.find((action) => action.id === "inspect-risk")).toMatchObject({
+      execution: expect.objectContaining({
+        guardrailProfile: "Conservative",
+        guardrailLabel: "Risk gate",
+      }),
+    });
+  });
+
+  it("marks release review work as evidence gated", () => {
+    const actions = deriveRightRailActions({
+      sessions: [session("review", { filesChanged: 2 })],
+      interactiveSessionCount: 0,
+      changedFilesCount: 2,
+      contextWarnPct: 85,
+      currentMode: "command",
+      guardrailProfile: "Release",
+    });
+
+    expect(actions.find((action) => action.id === "review-queue")).toMatchObject({
+      execution: expect.objectContaining({
+        status: "ready",
+        guardrailProfile: "Release",
+        guardrailLabel: "Release gate",
+        guardrailDetail: expect.stringContaining("diff evidence"),
+      }),
+    });
+  });
+
+  it("downgrades idle launch from direct execution to guided selection in research mode", () => {
+    const actions = deriveRightRailActions({
+      sessions: [],
+      interactiveSessionCount: 0,
+      changedFilesCount: 0,
+      contextWarnPct: 85,
+      currentMode: "observe",
+      guardrailProfile: "Research",
+    });
+
+    expect(actions[0]).toMatchObject({
+      id: "ready-command",
+      execution: expect.objectContaining({
+        status: "guided",
+        label: "Choose tool",
+        guardrailProfile: "Research",
+        guardrailLabel: "Explore first",
+      }),
+    });
   });
 });
 

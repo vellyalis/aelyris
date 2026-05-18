@@ -29,6 +29,7 @@ function renderBar(
     disabled: props.disabled,
     pickAttachmentFiles: props.pickAttachmentFiles,
     saveClipboardImage: props.saveClipboardImage,
+    readNativeClipboardImage: props.readNativeClipboardImage,
   };
   const utils = render(
     <IMEInputBar ref={props.ref} onSubmit={onSubmit} onRequestCanvasFocus={onRequestCanvasFocus} {...rest} />,
@@ -338,6 +339,20 @@ describe("IMEInputBar", () => {
       expect(saveClipboardImage).toHaveBeenCalledWith(expect.stringContaining("data:image/png"));
       expect(textarea.value).toBe('"C:\\Temp\\aether-chat-images\\clip.png"');
     });
+  });
+
+  it("uses native clipboard image IPC for the explicit clipboard button", async () => {
+    const readNativeClipboardImage = vi.fn().mockResolvedValue("C:\\Temp\\aether-chat-images\\native.bmp");
+    const saveClipboardImage = vi.fn();
+    const { textarea, getByLabelText } = renderBar({ readNativeClipboardImage, saveClipboardImage });
+
+    fireEvent.click(getByLabelText("クリップボード画像を追加"));
+
+    await waitFor(() => {
+      expect(readNativeClipboardImage).toHaveBeenCalledTimes(1);
+      expect(textarea.value).toBe('"C:\\Temp\\aether-chat-images\\native.bmp"');
+    });
+    expect(saveClipboardImage).not.toHaveBeenCalled();
   });
 
   it("ignores repeated clipboard image paste while a save is already in flight", async () => {

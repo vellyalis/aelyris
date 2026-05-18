@@ -131,6 +131,7 @@ export function LivePanesPanel({
     <section className={styles.panel} aria-label="Live terminal panes" data-empty={paneViews.length === 0}>
       <PanelHeader
         title="Live Panes"
+        subtitle="focus/recover"
         leadingIcon={<Terminal size={12} />}
         count={livePaneViews.length || undefined}
         actions={
@@ -149,7 +150,7 @@ export function LivePanesPanel({
           <EmptyState
             icon={<Terminal size={18} />}
             title={ready ? "No live panes" : "Loading panes"}
-            description="Named panes and workstation roles appear here."
+            description="Split a terminal or start a shell to focus, attach, and broadcast by role."
           />
         ) : (
           <div className={styles.list}>

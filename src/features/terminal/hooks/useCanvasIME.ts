@@ -36,7 +36,38 @@ const MAX_IME_DIAGNOSTIC_EVENTS = 80;
 export const IME_DIAGNOSTIC_EVENT = "aether:ime-diagnostic";
 export const IME_DIAGNOSTIC_TOGGLE_EVENT = "aether:ime-diagnostic-toggle";
 export const IME_DIAGNOSTIC_STORAGE_KEY = "aether:debug:ime";
+export const IME_DIAGNOSTIC_OVERLAY_STORAGE_KEY = "aether:debug:imeOverlay";
+export const NATIVE_INPUT_SURFACE_STORAGE_KEY = "aether:terminal:nativeInputSurface";
+export const NATIVE_INPUT_SURFACE_DEFAULT_ENABLED = true;
 export const TERMINAL_PREFIX_COMMAND_EVENT = "aether:terminal-prefix-command";
+export const TERMINAL_CLIPBOARD_PASTE_EVENT = "aether:terminal-clipboard-paste";
+
+function isTerminalPasteShortcut(e: KeyboardEvent): boolean {
+  const key = e.key.toLowerCase();
+  return (e.ctrlKey && key === "v") || (e.shiftKey && e.key === "Insert");
+}
+
+async function readClipboardText(): Promise<string> {
+  try {
+    return await invoke<string>("read_clipboard_text");
+  } catch (err) {
+    reportInvokeFailure({
+      source: "terminal",
+      operation: "read_clipboard_text",
+      err,
+      severity: "warning",
+      userVisible: false,
+    });
+  }
+  try {
+    if (typeof navigator !== "undefined" && typeof navigator.clipboard?.readText === "function") {
+      return await navigator.clipboard.readText();
+    }
+  } catch {
+    /* Browser clipboard can fail when WebView focus or permission is stale. */
+  }
+  return "";
+}
 
 export type ImeDiagnosticPhase =
   | "keydown"
@@ -97,10 +128,14 @@ export interface ImeDiagnosticDetail {
 declare global {
   interface Window {
     __AETHER_IME_DEBUG__?: boolean;
+    __AETHER_IME_DEBUG_OVERLAY__?: boolean;
     __AETHER_IME_EVENTS__?: ImeDiagnosticDetail[];
     __AETHER_ENABLE_IME_DEBUG__?: () => void;
     __AETHER_DISABLE_IME_DEBUG__?: () => void;
     __AETHER_COPY_IME_EVENTS__?: () => Promise<boolean>;
+    __AETHER_SHOW_IME_DEBUG_OVERLAY__?: () => void;
+    __AETHER_HIDE_IME_DEBUG_OVERLAY__?: () => void;
+    __AETHER_NATIVE_INPUT_SURFACE__?: boolean;
   }
 }
 
@@ -122,20 +157,69 @@ export function imeDiagnosticsEnabled(win: Window | null | undefined = typeof wi
   }
 }
 
-export function enableImeDiagnostics(win: Window = window) {
+export function imeDiagnosticsOverlayEnabled(
+  win: Window | null | undefined = typeof window !== "undefined" ? window : null,
+) {
+  if (!win) return false;
+  if (win.__AETHER_IME_DEBUG_OVERLAY__ === true) return true;
+  try {
+    const value = win.localStorage.getItem(IME_DIAGNOSTIC_OVERLAY_STORAGE_KEY);
+    return value === "1" || value === "true";
+  } catch {
+    return false;
+  }
+}
+
+export function nativeTerminalInputSurfaceEnabled(
+  win: Window | null | undefined = typeof window !== "undefined" ? window : null,
+) {
+  if (!win) return false;
+  if (win.__AETHER_NATIVE_INPUT_SURFACE__ === true) return true;
+  if (win.__AETHER_NATIVE_INPUT_SURFACE__ === false) return false;
+  try {
+    const value = win.localStorage.getItem(NATIVE_INPUT_SURFACE_STORAGE_KEY);
+    if (value === "1" || value === "true") return true;
+    if (value === "0" || value === "false") return false;
+  } catch {
+    /* localStorage can be unavailable in tests or hardened WebViews. */
+  }
+  const tauriRuntime = (win as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+  return NATIVE_INPUT_SURFACE_DEFAULT_ENABLED && tauriRuntime !== undefined;
+}
+
+export function setImeDiagnosticsOverlayVisible(win: Window = window, visible: boolean) {
+  win.__AETHER_IME_DEBUG_OVERLAY__ = visible;
+  try {
+    if (visible) {
+      win.localStorage.setItem(IME_DIAGNOSTIC_OVERLAY_STORAGE_KEY, "1");
+    } else {
+      win.localStorage.removeItem(IME_DIAGNOSTIC_OVERLAY_STORAGE_KEY);
+    }
+  } catch {
+    /* localStorage can be unavailable in tests or hardened WebViews. */
+  }
+  win.dispatchEvent(new CustomEvent(IME_DIAGNOSTIC_TOGGLE_EVENT, { detail: { enabled: imeDiagnosticsEnabled(win) } }));
+}
+
+export function enableImeDiagnostics(win: Window = window, options?: { showOverlay?: boolean }) {
   win.__AETHER_IME_DEBUG__ = true;
   try {
     win.localStorage.setItem(IME_DIAGNOSTIC_STORAGE_KEY, "1");
   } catch {
     /* localStorage can be unavailable in tests or hardened WebViews. */
   }
+  if (options?.showOverlay) {
+    setImeDiagnosticsOverlayVisible(win, true);
+  }
   win.dispatchEvent(new CustomEvent(IME_DIAGNOSTIC_TOGGLE_EVENT, { detail: { enabled: true } }));
 }
 
 export function disableImeDiagnostics(win: Window = window) {
   win.__AETHER_IME_DEBUG__ = false;
+  win.__AETHER_IME_DEBUG_OVERLAY__ = false;
   try {
     win.localStorage.removeItem(IME_DIAGNOSTIC_STORAGE_KEY);
+    win.localStorage.removeItem(IME_DIAGNOSTIC_OVERLAY_STORAGE_KEY);
   } catch {
     /* localStorage can be unavailable in tests or hardened WebViews. */
   }
@@ -158,6 +242,8 @@ export function installImeDiagnosticHelpers(win: Window = window) {
   win.__AETHER_ENABLE_IME_DEBUG__ = () => enableImeDiagnostics(win);
   win.__AETHER_DISABLE_IME_DEBUG__ = () => disableImeDiagnostics(win);
   win.__AETHER_COPY_IME_EVENTS__ = () => copyImeDiagnostics(win);
+  win.__AETHER_SHOW_IME_DEBUG_OVERLAY__ = () => setImeDiagnosticsOverlayVisible(win, true);
+  win.__AETHER_HIDE_IME_DEBUG_OVERLAY__ = () => setImeDiagnosticsOverlayVisible(win, false);
 }
 
 function imeDataLength(value: string | null | undefined): number | null {
@@ -227,10 +313,10 @@ function recordImeDiagnostic(
 }
 
 const defaultWriteBytes: WriteBytesFn = (id, data) => {
-  invoke("write_terminal", { id, data }).catch((err) => {
+  invoke("native_terminal_input_commit", { terminalId: id, data, source: "webview-ime-bridge" }).catch((err) => {
     reportInvokeFailure({
       source: "terminal-ime",
-      operation: "write_terminal",
+      operation: "native_terminal_input_commit",
       err,
       severity: "error",
     });
@@ -350,6 +436,7 @@ export interface UseCanvasIMEArgs {
   textarea: HTMLTextAreaElement | null;
   writeBytes?: WriteBytesFn;
   onCompositionTextChange?: (text: string) => void;
+  onCompositionActiveChange?: (active: boolean) => void;
 }
 
 interface MuxKeymapResponse {
@@ -363,6 +450,7 @@ export function useCanvasIME({
   textarea,
   writeBytes = defaultWriteBytes,
   onCompositionTextChange,
+  onCompositionActiveChange,
 }: UseCanvasIMEArgs) {
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -380,6 +468,8 @@ export function useCanvasIME({
   writeBytesRef.current = writeBytes;
   const onCompositionTextChangeRef = useRef(onCompositionTextChange);
   onCompositionTextChangeRef.current = onCompositionTextChange;
+  const onCompositionActiveChangeRef = useRef(onCompositionActiveChange);
+  onCompositionActiveChangeRef.current = onCompositionActiveChange;
 
   // Track composition state across listeners via refs so handlers stay
   // stable under React's re-renders.
@@ -430,6 +520,7 @@ export function useCanvasIME({
       pendingCompositionRef.current = "";
       textarea.value = "";
       onCompositionTextChangeRef.current?.("");
+      onCompositionActiveChangeRef.current?.(false);
     };
 
     const resetComposition = () => {
@@ -438,8 +529,81 @@ export function useCanvasIME({
     };
 
     const updateCompositionText = (text: string) => {
+      onCompositionActiveChangeRef.current?.(true);
       pendingCompositionRef.current = text;
       onCompositionTextChangeRef.current?.(text);
+    };
+
+    const pasteTextToTerminal = (text: string, reason: "clipboard-shortcut" | "context-menu-paste") => {
+      if (!text) {
+        recordImeDiagnostic(textarea, terminalId, false, {
+          phase: "paste",
+          sentLength: 0,
+          normalizedLineBreaks: 0,
+          pasteGuardAction: "blocked",
+          writePath: "ignored",
+          ignored: true,
+          dropped: false,
+          reason: "empty-or-non-text-paste-ignored",
+        });
+        return;
+      }
+      const hadComposition =
+        composingRef.current ||
+        pendingCompositionRef.current.length > 0 ||
+        pendingCompositionCommitTimerRef.current !== null;
+      resetComposition();
+      const pasteGuard = classifyTerminalPasteInput(text);
+      if (pasteGuard.shouldBlock) {
+        dispatchPasteGuardEvent(textarea, terminalId, pasteGuard, "blocked");
+        recordImeDiagnostic(textarea, terminalId, false, {
+          phase: "paste",
+          sentLength: 0,
+          normalizedLineBreaks: pasteGuard.lineEndingCount,
+          riskSeverity: pasteGuard.risk.severity,
+          riskClasses: pasteGuard.risk.classes,
+          pasteGuardAction: "blocked",
+          writePath: "ignored",
+          ignored: true,
+          dropped: true,
+          reason: "paste-risk-blocked",
+        });
+        return;
+      }
+      if (pasteGuard.shouldConfirm && !confirmPasteGuard(textarea, pasteGuard)) {
+        dispatchPasteGuardEvent(textarea, terminalId, pasteGuard, "cancelled");
+        recordImeDiagnostic(textarea, terminalId, false, {
+          phase: "paste",
+          sentLength: 0,
+          normalizedLineBreaks: pasteGuard.lineEndingCount,
+          riskSeverity: pasteGuard.risk.severity,
+          riskClasses: pasteGuard.risk.classes,
+          pasteGuardAction: "cancelled",
+          writePath: "ignored",
+          ignored: true,
+          dropped: true,
+          reason: "paste-risk-cancelled",
+        });
+        return;
+      }
+      const normalizedText = normalizeTerminalPasteInput(text);
+      const normalizedLineBreaks = countTerminalPasteLineEndings(text);
+      writeBytesRef.current(terminalId, normalizedText);
+      dispatchPasteGuardEvent(textarea, terminalId, pasteGuard, pasteGuard.shouldConfirm ? "confirmed" : "allowed");
+      recordImeDiagnostic(textarea, terminalId, false, {
+        phase: "paste",
+        sentLength: normalizedText.length,
+        normalizedLineBreaks,
+        riskSeverity: pasteGuard.risk.severity,
+        riskClasses: pasteGuard.risk.classes,
+        pasteGuardAction: pasteGuard.shouldConfirm ? "confirmed" : "allowed",
+        writePath: "paste",
+        reason: hadComposition ? "paste-cancelled-composition" : reason,
+      });
+    };
+
+    const pasteClipboardTextToTerminal = (reason: "clipboard-shortcut" | "context-menu-paste") => {
+      void readClipboardText().then((text) => pasteTextToTerminal(text, reason));
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
@@ -455,6 +619,13 @@ export function useCanvasIME({
           dropped: true,
           reason: "ime-composition-key",
         });
+        return;
+      }
+
+      if (isTerminalPasteShortcut(e)) {
+        e.preventDefault();
+        e.stopPropagation();
+        pasteClipboardTextToTerminal("clipboard-shortcut");
         return;
       }
 
@@ -628,6 +799,7 @@ export function useCanvasIME({
       pendingCompositionRef.current = "";
       clearSkipNextCommittedInput();
       onCompositionTextChangeRef.current?.("");
+      onCompositionActiveChangeRef.current?.(true);
       recordImeDiagnostic(textarea, terminalId, composingRef.current, {
         phase: "compositionstart",
         writePath: "ime-composition",
@@ -712,7 +884,21 @@ export function useCanvasIME({
 
     const onPaste = (e: ClipboardEvent) => {
       const text = e.clipboardData?.getData("text") ?? e.clipboardData?.getData("text/plain");
-      if (!text) return;
+      if (!text) {
+        e.preventDefault();
+        e.stopPropagation();
+        recordImeDiagnostic(textarea, terminalId, false, {
+          phase: "paste",
+          sentLength: 0,
+          normalizedLineBreaks: 0,
+          pasteGuardAction: "blocked",
+          writePath: "ignored",
+          ignored: true,
+          dropped: false,
+          reason: "empty-or-non-text-paste-ignored",
+        });
+        return;
+      }
       e.preventDefault();
       e.stopPropagation();
       const hadComposition =
@@ -769,6 +955,10 @@ export function useCanvasIME({
       });
     };
 
+    const onClipboardPasteRequest = () => {
+      pasteClipboardTextToTerminal("context-menu-paste");
+    };
+
     const onBlur = () => {
       recordImeDiagnostic(textarea, terminalId, composingRef.current, {
         phase: "blur",
@@ -795,6 +985,7 @@ export function useCanvasIME({
     textarea.addEventListener("compositionupdate", onCompositionUpdate);
     textarea.addEventListener("compositionend", onCompositionEnd);
     textarea.addEventListener("paste", onPaste);
+    textarea.addEventListener(TERMINAL_CLIPBOARD_PASTE_EVENT, onClipboardPasteRequest);
     textarea.addEventListener("blur", onBlur);
 
     return () => {
@@ -806,16 +997,25 @@ export function useCanvasIME({
       textarea.removeEventListener("compositionupdate", onCompositionUpdate);
       textarea.removeEventListener("compositionend", onCompositionEnd);
       textarea.removeEventListener("paste", onPaste);
+      textarea.removeEventListener(TERMINAL_CLIPBOARD_PASTE_EVENT, onClipboardPasteRequest);
       textarea.removeEventListener("blur", onBlur);
     };
   }, [terminalId, textarea]);
 }
 
 export interface UseImePositionArgs {
-  /** Textarea element (position source). */
+  /** Terminal id used by the native input surface. */
+  terminalId?: string | null;
+  /** Fallback WebView textarea element. Null when the native HWND surface is active. */
   textarea: HTMLTextAreaElement | null;
+  /** Focus owner for the native HWND surface. */
+  focusElement?: HTMLElement | null;
+  /** Whether the native HWND input surface is the active/default input path. */
+  nativeInputSurface?: boolean;
   /** Row/col in terminal grid. */
   cursor: { row: number; col: number } | null;
+  /** Additional cells occupied by live IME preedit text after the terminal cursor. */
+  compositionCellOffset?: number;
   /** Visible terminal grid dimensions. */
   cols: number;
   rows: number;
@@ -877,11 +1077,7 @@ export function imeCandidateAnchorY(screenY: number, viewportHeight: number): nu
   return Math.min(safeScreenY, guardedBottom);
 }
 
-export function imeCandidateAnchorYForViewport(
-  screenY: number,
-  viewportTop: number,
-  viewportHeight: number,
-): number {
+export function imeCandidateAnchorYForViewport(screenY: number, viewportTop: number, viewportHeight: number): number {
   const safeViewportTop = Number.isFinite(viewportTop) ? viewportTop : 0;
   const safeViewportHeight = Number.isFinite(viewportHeight) ? Math.max(0, viewportHeight) : 0;
   const safeScreenY = Number.isFinite(screenY) ? Math.max(0, screenY) : 0;
@@ -906,6 +1102,16 @@ export function imeTextareaCaretInset(caretX: number, anchorX: number, canvasWid
 function rememberImeCandidateAnchor(textarea: HTMLTextAreaElement, candidateX: number, candidateY: number) {
   textarea.dataset.imeCandidateX = `${Math.round(candidateX)}`;
   textarea.dataset.imeCandidateY = `${Math.round(candidateY)}`;
+}
+
+function imeCompositionCellSpan(text: string | null | undefined): number {
+  if (!text) return 0;
+  let cells = 0;
+  for (const ch of text) {
+    const code = ch.codePointAt(0) ?? 0;
+    cells += code > 0x7f ? 2 : 1;
+  }
+  return cells;
 }
 
 function currentImeViewport(): { left: number; top: number; width: number; height: number } {
@@ -937,9 +1143,24 @@ function currentImeViewport(): { left: number; top: number; width: number; heigh
  * element. When focus moves elsewhere we stop emitting and the OS reverts
  * to the focused element's natural position on the next composition.
  */
-export function useImePosition({ textarea, cursor, cols, rows, cellWidth, cellHeight, canvas }: UseImePositionArgs) {
+export function useImePosition({
+  terminalId,
+  textarea,
+  focusElement,
+  nativeInputSurface = nativeTerminalInputSurfaceEnabled(),
+  cursor,
+  compositionCellOffset = 0,
+  cols,
+  rows,
+  cellWidth,
+  cellHeight,
+  canvas,
+}: UseImePositionArgs) {
   const cursorRow = cursor?.row ?? null;
   const cursorCol = cursor?.col ?? null;
+  const safeCompositionCellOffset = Number.isFinite(compositionCellOffset)
+    ? Math.max(0, Math.trunc(compositionCellOffset))
+    : 0;
   /* Push the canvas-cursor IMM position through the IPC. Codex review
    * (round 4) caught that the previous "fire on cursor move only" loop
    * left stale IMM coordinates when the user pinged-pinged between the
@@ -948,41 +1169,97 @@ export function useImePosition({ textarea, cursor, cols, rows, cellWidth, cellHe
    * canvas composition because we never re-emitted. Centralising the
    * push lets us reuse it from the focus / compositionstart hooks
    * below. */
-  const pushImePosition = useCallback(() => {
-    if (!textarea || !cursor || !canvas) return;
-    if (typeof document === "undefined" || document.activeElement !== textarea) return;
-    const safeCursor = clampTerminalCursor(cursor, cols, rows);
-    const rect = canvas.getBoundingClientRect();
-    const canvasWidth = cols * cellWidth;
-    const caretX = safeCursor.col * cellWidth;
-    const caretY = safeCursor.row * cellHeight + cellHeight;
-    const viewport = currentImeViewport();
-    const candidateX = imeCandidateAnchorXForViewport(
-      caretX,
-      rect.left,
-      canvasWidth,
-      viewport.left,
-      viewport.width,
-    );
-    const screenX = rect.left + caretX;
-    const screenY = rect.top + caretY;
-    const candidateScreenX = rect.left + candidateX;
-    const candidateScreenY = imeCandidateAnchorYForViewport(screenY, viewport.top, viewport.height);
-    rememberImeCandidateAnchor(textarea, candidateScreenX, candidateScreenY);
-    invoke("set_ime_position", {
-      x: Math.min(screenX, candidateScreenX),
-      y: candidateScreenY,
-      candidateX: candidateScreenX,
-      candidateY: candidateScreenY,
-    }).catch((err) => {
-      reportInvokeFailure({
-        source: "terminal-ime",
-        operation: "set_ime_position",
-        err,
-        severity: "warning",
+  const pushImePosition = useCallback(
+    (compositionCellOffsetOverride?: number) => {
+      if (!cursor || !canvas) return;
+      const activeElement = typeof document === "undefined" ? null : document.activeElement;
+      if (typeof document !== "undefined") {
+        const ownsFallbackFocus = textarea !== null && activeElement === textarea;
+        const ownsNativeFocus =
+          nativeInputSurface &&
+          (activeElement === focusElement || activeElement === canvas || activeElement === canvas.parentElement);
+        if (!ownsFallbackFocus && !ownsNativeFocus) return;
+      }
+      const safeCursor = clampTerminalCursor(cursor, cols, rows);
+      const rect = canvas.getBoundingClientRect();
+      const canvasWidth = cols * cellWidth;
+      const liveCompositionCellOffset =
+        typeof compositionCellOffsetOverride === "number" && Number.isFinite(compositionCellOffsetOverride)
+          ? Math.max(0, Math.trunc(compositionCellOffsetOverride))
+          : safeCompositionCellOffset;
+      const compositionAwareCol = Math.min(Math.max(0, cols - 1), safeCursor.col + liveCompositionCellOffset);
+      const caretX = compositionAwareCol * cellWidth;
+      const caretY = safeCursor.row * cellHeight + cellHeight;
+      const viewport = currentImeViewport();
+      const candidateX = imeCandidateAnchorXForViewport(caretX, rect.left, canvasWidth, viewport.left, viewport.width);
+      const screenX = rect.left + caretX;
+      const screenY = rect.top + caretY;
+      const candidateScreenX = rect.left + candidateX;
+      const candidateScreenY = imeCandidateAnchorYForViewport(screenY, viewport.top, viewport.height);
+      if (textarea) {
+        rememberImeCandidateAnchor(textarea, candidateScreenX, candidateScreenY);
+        invoke("set_ime_position", {
+          x: Math.min(screenX, candidateScreenX),
+          y: candidateScreenY,
+          candidateX: candidateScreenX,
+          candidateY: candidateScreenY,
+        }).catch((err) => {
+          reportInvokeFailure({
+            source: "terminal-ime",
+            operation: "set_ime_position",
+            err,
+            severity: "warning",
+          });
+        });
+      }
+      if (terminalId && nativeInputSurface) {
+        invoke("native_terminal_input_focus", {
+          terminalId,
+          x: rect.left + caretX,
+          y: rect.top + safeCursor.row * cellHeight,
+          width: Math.max(cellWidth * 2, IME_ANCHOR_MIN_WIDTH_PX),
+          height: cellHeight,
+        }).catch((err) => {
+          reportInvokeFailure({
+            source: "terminal-ime",
+            operation: "native_terminal_input_focus",
+            err,
+            severity: "warning",
+          });
+        });
+      }
+    },
+    [
+      terminalId,
+      textarea,
+      focusElement,
+      nativeInputSurface,
+      cursor,
+      cols,
+      rows,
+      canvas,
+      cellWidth,
+      cellHeight,
+      safeCompositionCellOffset,
+    ],
+  );
+
+  useEffect(() => {
+    if (!terminalId || !nativeInputSurface) return;
+    const drain = () => {
+      invoke("native_terminal_input_drain").catch((err) => {
+        reportInvokeFailure({
+          source: "terminal-ime",
+          operation: "native_terminal_input_drain",
+          err,
+          severity: "warning",
+          userVisible: false,
+        });
       });
-    });
-  }, [textarea, cursor, cols, rows, canvas, cellWidth, cellHeight]);
+    };
+    const id = window.setInterval(drain, 32);
+    return () => window.clearInterval(id);
+  }, [terminalId, nativeInputSurface]);
 
   // Mirror the cursor position to the textarea's CSS box (so the
   // browser-native IME path has a sensible default anchor) and steer
@@ -1011,42 +1288,54 @@ export function useImePosition({ textarea, cursor, cols, rows, cellWidth, cellHe
   // first canvas composition after a focus return would still open the
   // candidate window at the previous input's coordinates.
   useEffect(() => {
-    if (!textarea) return;
-    const reanchor = () => {
-      pushImePosition();
-      window.requestAnimationFrame(pushImePosition);
+    const fallbackTextarea = textarea;
+    const target = nativeInputSurface ? (focusElement ?? canvas) : textarea;
+    if (!target) return;
+    const reanchor = (compositionCellOffsetOverride?: number) => {
+      pushImePosition(compositionCellOffsetOverride);
+      window.requestAnimationFrame(() => pushImePosition(compositionCellOffsetOverride));
+    };
+    const reanchorDefault = () => reanchor();
+    const reanchorComposition = (event: Event) => {
+      if (!fallbackTextarea) return;
+      const compositionEvent = event as CompositionEvent;
+      reanchor(imeCompositionCellSpan(compositionEvent.data || fallbackTextarea.value));
     };
     const reanchorWhileComposing = (event: Event) => {
+      if (!fallbackTextarea) return;
       const inputEvent = event as InputEvent;
-      if (inputEvent.isComposing) reanchor();
+      if (inputEvent.isComposing) reanchor(imeCompositionCellSpan(inputEvent.data || fallbackTextarea.value));
     };
-    textarea.addEventListener("focus", reanchor);
-    textarea.addEventListener("compositionstart", reanchor);
-    textarea.addEventListener("compositionupdate", reanchor);
-    textarea.addEventListener("input", reanchorWhileComposing);
-    window.addEventListener("resize", reanchor);
-    window.addEventListener("scroll", reanchor, true);
-    window.visualViewport?.addEventListener("resize", reanchor);
-    window.visualViewport?.addEventListener("scroll", reanchor);
+    target.addEventListener("focus", reanchorDefault);
+    if (fallbackTextarea) {
+      fallbackTextarea.addEventListener("compositionstart", reanchorDefault);
+      fallbackTextarea.addEventListener("compositionupdate", reanchorComposition);
+      fallbackTextarea.addEventListener("input", reanchorWhileComposing);
+    }
+    window.addEventListener("resize", reanchorDefault);
+    window.addEventListener("scroll", reanchorDefault, true);
+    window.visualViewport?.addEventListener("resize", reanchorDefault);
+    window.visualViewport?.addEventListener("scroll", reanchorDefault);
     const ResizeObserverCtor = window.ResizeObserver;
-    const resizeObserver = ResizeObserverCtor
-      ? new ResizeObserverCtor(() => reanchor())
-      : null;
+    const resizeObserver = ResizeObserverCtor ? new ResizeObserverCtor(() => reanchor()) : null;
     if (resizeObserver) {
       if (canvas) resizeObserver.observe(canvas);
       if (canvas?.parentElement) resizeObserver.observe(canvas.parentElement);
-      if (textarea.parentElement) resizeObserver.observe(textarea.parentElement);
+      if (fallbackTextarea?.parentElement) resizeObserver.observe(fallbackTextarea.parentElement);
+      if (focusElement) resizeObserver.observe(focusElement);
     }
     return () => {
-      textarea.removeEventListener("focus", reanchor);
-      textarea.removeEventListener("compositionstart", reanchor);
-      textarea.removeEventListener("compositionupdate", reanchor);
-      textarea.removeEventListener("input", reanchorWhileComposing);
-      window.removeEventListener("resize", reanchor);
-      window.removeEventListener("scroll", reanchor, true);
-      window.visualViewport?.removeEventListener("resize", reanchor);
-      window.visualViewport?.removeEventListener("scroll", reanchor);
+      target.removeEventListener("focus", reanchorDefault);
+      if (fallbackTextarea) {
+        fallbackTextarea.removeEventListener("compositionstart", reanchorDefault);
+        fallbackTextarea.removeEventListener("compositionupdate", reanchorComposition);
+        fallbackTextarea.removeEventListener("input", reanchorWhileComposing);
+      }
+      window.removeEventListener("resize", reanchorDefault);
+      window.removeEventListener("scroll", reanchorDefault, true);
+      window.visualViewport?.removeEventListener("resize", reanchorDefault);
+      window.visualViewport?.removeEventListener("scroll", reanchorDefault);
       resizeObserver?.disconnect();
     };
-  }, [textarea, canvas, pushImePosition]);
+  }, [textarea, focusElement, canvas, nativeInputSurface, pushImePosition]);
 }

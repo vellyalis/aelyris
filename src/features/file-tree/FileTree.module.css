@@ -34,10 +34,10 @@
   padding: var(--space-3) var(--space-5);
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
-  color: var(--text-secondary);
+  color: var(--text-primary);
   text-transform: none;
   letter-spacing: 0;
-  opacity: 0.78;
+  opacity: 1;
 }
 .rootName {
   overflow: hidden;
@@ -72,7 +72,7 @@
   padding: var(--space-1) var(--space-4);
   border: none;
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   font-size: var(--text-base);
   font-family: var(--font-ui);
   cursor: pointer;
@@ -125,16 +125,16 @@
   transition: color var(--duration-fast);
 }
 .fileChanged {
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 .fileChanged[data-status="added"] {
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 .fileChanged[data-status="deleted"] {
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 .fileChanged[data-status="untracked"] {
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 /* Pip glyph/color owned by shared GitStatusPip; keep the row-level layout
    hook here so the dot docks to the right edge. */

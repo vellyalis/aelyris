@@ -12,6 +12,7 @@ import {
   copyImeDiagnostics,
   disableImeDiagnostics,
   enableImeDiagnostics,
+  IME_DIAGNOSTIC_EVENT,
   IME_DIAGNOSTIC_STORAGE_KEY,
   imeCandidateAnchorX,
   imeCandidateAnchorXForViewport,
@@ -211,6 +212,36 @@ describe("useImePosition", () => {
     );
     expect(textarea.dataset.imeCandidateX).toBe("700");
     expect(textarea.dataset.imeCandidateY).toBe("270");
+  });
+
+  it("uses compositionupdate text immediately when positioning the native IME candidate", () => {
+    invokeMock.mockClear();
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1400 });
+    const { textarea } = renderImePositionHarness({
+      cursor: { row: 1, col: 10 },
+      cols: 80,
+      rows: 24,
+      cellWidth: 10,
+      cellHeight: 18,
+      canvasRect: { left: 20, top: 40, width: 800, height: 432 },
+    });
+
+    act(() => {
+      textarea.focus();
+      textarea.dispatchEvent(new CompositionEvent("compositionupdate", { bubbles: true, data: "ああ" }));
+    });
+
+    expect(invokeMock).toHaveBeenCalledWith(
+      "set_ime_position",
+      expect.objectContaining({
+        x: 160,
+        y: 76,
+        candidateX: 160,
+        candidateY: 76,
+      }),
+    );
+    expect(textarea.dataset.imeCandidateX).toBe("160");
+    expect(textarea.dataset.imeCandidateY).toBe("76");
   });
 
   it("keeps IME candidate coordinates inside the visible viewport for right-side panes", () => {
@@ -845,6 +876,33 @@ describe("useCanvasIME composition lifecycle", () => {
     }
   });
 
+  it("swallows empty or non-text paste before it can reach an AI CLI", () => {
+    const writeBytes = vi.fn() as WriteBytesFn;
+    renderImeHarness({ writeBytes });
+    const textarea = screen.getByTestId("ime-target") as HTMLTextAreaElement;
+    const diagnostics: Array<Record<string, unknown>> = [];
+    const onDiagnostic = (event: Event) => {
+      diagnostics.push((event as CustomEvent).detail as Record<string, unknown>);
+    };
+    window.__AETHER_IME_DEBUG__ = true;
+    window.addEventListener(IME_DIAGNOSTIC_EVENT, onDiagnostic);
+
+    try {
+      const event = dispatchPaste(textarea, "");
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(writeBytes).not.toHaveBeenCalled();
+      expect(diagnostics.at(-1)).toMatchObject({
+        phase: "paste",
+        writePath: "ignored",
+        reason: "empty-or-non-text-paste-ignored",
+      });
+    } finally {
+      window.__AETHER_IME_DEBUG__ = false;
+      window.removeEventListener(IME_DIAGNOSTIC_EVENT, onDiagnostic);
+    }
+  });
+
   it("blocks destructive terminal paste before writing to the PTY", () => {
     const writeBytes = vi.fn() as WriteBytesFn;
     renderImeHarness({ writeBytes });
@@ -1038,8 +1096,8 @@ function dispatchKeyDown(
 }
 
 function dispatchPaste(target: HTMLTextAreaElement, text: string) {
+  const event = new Event("paste", { bubbles: true, cancelable: true });
   act(() => {
-    const event = new Event("paste", { bubbles: true, cancelable: true });
     Object.defineProperty(event, "clipboardData", {
       configurable: true,
       value: {
@@ -1048,4 +1106,5 @@ function dispatchPaste(target: HTMLTextAreaElement, text: string) {
     });
     target.dispatchEvent(event);
   });
+  return event;
 }

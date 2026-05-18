@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ShellType } from "../../../App";
 import type { PaneSwitcherEntry } from "./operations";
 import { collectLeafIds, collectLeaves, collectPaneSwitcherEntries, countLeaves, findLeaf } from "./operations";
@@ -158,7 +158,7 @@ export function PaneTreeContainer({
     maximizedPaneId,
     terminalIds,
     setActivePaneId,
-    split,
+    splitWithContext,
     splitWithExistingTerminal,
     close,
     closeAllPtys,
@@ -172,6 +172,7 @@ export function PaneTreeContainer({
     setPaneRole,
     cyclePaneRole,
     registerTerminal,
+    unregisterTerminal,
     replaceTree,
   } = usePaneTree({
     initialShell: shell,
@@ -183,9 +184,7 @@ export function PaneTreeContainer({
     initialSnapshot?.backendBindings,
   );
   const workspaceTerminalIdRef = useRef<string | null>(
-    initialSnapshot?.muxWorkspaceId ??
-      Object.values(initialSnapshot?.backendBindings ?? {})[0]?.terminalId ??
-      null,
+    initialSnapshot?.muxWorkspaceId ?? Object.values(initialSnapshot?.backendBindings ?? {})[0]?.terminalId ?? null,
   );
   const pendingBackendSnapshotRef = useRef<PendingBackendPaneTreeSnapshot | null>(null);
   const backendSaveSequenceRef = useRef(0);
@@ -220,7 +219,9 @@ export function PaneTreeContainer({
     };
 
     const load = async () => {
-      const backendSnapshot = hasFastSnapshot ? null : await loadPaneTreeSnapshotFromBackend(layoutStorageKey, shell, cwd);
+      const backendSnapshot = hasFastSnapshot
+        ? null
+        : await loadPaneTreeSnapshotFromBackend(layoutStorageKey, shell, cwd);
       const seedSnapshot = initialSnapshot ?? backendSnapshot;
       let muxSnapshot: PaneTreeSnapshot | null = null;
       for (const workspaceId of muxWorkspaceIdCandidates(seedSnapshot, layoutStorageKey)) {
@@ -265,6 +266,7 @@ export function PaneTreeContainer({
         if (cancelled) return;
         if (backendPanes.length === 0) {
           setOrphanedBackendPanes([]);
+          const endedPaneIds = Array.from(terminalIds.keys());
           setPaneLifecycleStates((prev) => {
             if (terminalIds.size === 0) return prev;
             let changed = false;
@@ -277,6 +279,7 @@ export function PaneTreeContainer({
             }
             return changed ? next : prev;
           });
+          endedPaneIds.forEach(unregisterTerminal);
           setBackendReconciled(true);
           return;
         }
@@ -299,6 +302,10 @@ export function PaneTreeContainer({
         for (const attached of reconciliation.attached) {
           registerTerminal(attached.paneId, attached.terminalId);
         }
+        const endedPaneIds = restoredPaneIds.filter((paneId) => {
+          const terminalId = terminalIds.get(paneId);
+          return Boolean(terminalId && !backendTerminalIds.has(terminalId));
+        });
         setPaneLifecycleStates((prev) => {
           let changed = false;
           const next = new Map(prev);
@@ -313,7 +320,9 @@ export function PaneTreeContainer({
               : attachedPaneIds.has(paneId)
                 ? "live"
                 : "detached";
-            if (current && current !== "layout-only" && current !== "detached" && current !== "live") continue;
+            if (current && current !== "layout-only" && current !== "detached" && current !== "live") {
+              continue;
+            }
             if (current !== lifecycle) {
               next.set(paneId, lifecycle);
               changed = true;
@@ -321,6 +330,7 @@ export function PaneTreeContainer({
           }
           return changed ? next : prev;
         });
+        endedPaneIds.forEach(unregisterTerminal);
         setOrphanedBackendPanes(reconciliation.orphaned);
         setBackendReconciled(true);
       })
@@ -330,7 +340,16 @@ export function PaneTreeContainer({
     return () => {
       cancelled = true;
     };
-  }, [backendRefreshNonce, layoutHydrated, layoutStorageKey, registerTerminal, switcherWindowLabel, terminalIds, tree]);
+  }, [
+    backendRefreshNonce,
+    layoutHydrated,
+    layoutStorageKey,
+    registerTerminal,
+    switcherWindowLabel,
+    terminalIds,
+    tree,
+    unregisterTerminal,
+  ]);
 
   useEffect(() => {
     if (!layoutStorageKey || !layoutHydrated) return;
@@ -498,7 +517,7 @@ export function PaneTreeContainer({
           hasTargetTerminalId: Boolean(targetTerminalId),
           hasWorkspaceId: Boolean(workspaceId),
         });
-        split(targetId, direction);
+        splitWithContext(targetId, direction, targetLeaf.shell, targetLeaf.cwd ?? cwd);
         return;
       }
 
@@ -542,15 +561,15 @@ export function PaneTreeContainer({
               })
               .catch((retryErr) => {
                 console.warn("mux split failed after live workspace retry", retryErr);
-                split(targetId, direction);
-            });
+                splitWithContext(targetId, direction, targetLeaf.shell, targetLeaf.cwd ?? cwd);
+              });
             return;
           }
           console.warn("mux split failed", err);
-          split(targetId, direction);
+          splitWithContext(targetId, direction, targetLeaf.shell, targetLeaf.cwd ?? cwd);
         });
     },
-    [cwd, firstLiveTerminalId, split, splitWithExistingTerminal, terminalIds, tree],
+    [cwd, firstLiveTerminalId, splitWithContext, splitWithExistingTerminal, terminalIds, tree],
   );
 
   const closeViaMux = useCallback(
@@ -859,6 +878,13 @@ export function PaneTreeContainer({
       onSetPaneRole={setPaneRole}
       onTerminalReady={registerTerminal}
       onPaneLifecycleChange={(paneId, lifecycle) => {
+        const previousLifecycle = paneLifecycleStates.get(paneId);
+        const restartingEndedPane =
+          (lifecycle === "starting" || lifecycle === "restarting") &&
+          (previousLifecycle === "detached" || previousLifecycle === "exited" || previousLifecycle === "crashed");
+        if (lifecycle === "exited" || lifecycle === "detached" || restartingEndedPane) {
+          unregisterTerminal(paneId);
+        }
         setPaneLifecycleStates((prev) => {
           if (prev.get(paneId) === lifecycle) return prev;
           const next = new Map(prev);
