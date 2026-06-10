@@ -158,7 +158,7 @@ describe("DecisionInboxPanel", () => {
 
     expect(screen.getByText("No human decisions")).toBeTruthy();
     expect(
-      screen.getByText("Use Run to launch work, Changes to review diffs, or Health to recover live panes."),
+      screen.getByText("Use Run to launch work, Git to review diffs, or Health to recover live panes."),
     ).toBeTruthy();
     expect(screen.queryByText("External dependency probe scheduled")).toBeNull();
     expect(screen.queryByText("Agent approved")).toBeNull();

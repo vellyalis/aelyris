@@ -1,7 +1,8 @@
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { lastCommandEnd, type PromptMark, usePromptMarks } from "../shared/hooks/usePromptMarks";
+import type { PromptMark } from "../shared/hooks/usePromptMarks";
+import { FALLBACK_TELEMETRY_EVENT, type FallbackTelemetryDetail } from "../shared/lib/fallbackTelemetry";
 
 // Tauri core/event API mocks. Each test configures what `invoke` returns
 // and what `listen` does with its handler; we capture the handler so we
@@ -16,17 +17,39 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: (...args: unknown[]) => listenMock(...args),
 }));
 
+type PromptMarksModule = typeof import("../shared/hooks/usePromptMarks");
+
+let lastCommandEnd: PromptMarksModule["lastCommandEnd"];
+let usePromptMarks: PromptMarksModule["usePromptMarks"];
+
 function mark(sequence: number, kind: PromptMark["kind"], exitCode: number | null = null): PromptMark {
   return { kind, screenLine: 0, exitCode, sequence, historySize: 0 };
 }
 
+function collectFallbackEvents() {
+  const events: FallbackTelemetryDetail[] = [];
+  const listener = (event: Event) => {
+    events.push((event as CustomEvent<FallbackTelemetryDetail>).detail);
+  };
+  window.addEventListener(FALLBACK_TELEMETRY_EVENT, listener);
+  return {
+    events,
+    cleanup: () => window.removeEventListener(FALLBACK_TELEMETRY_EVENT, listener),
+  };
+}
+
 describe("usePromptMarks", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.resetModules();
     invokeMock.mockReset();
     listenMock.mockReset();
+    const module = await import("../shared/hooks/usePromptMarks");
+    lastCommandEnd = module.lastCommandEnd;
+    usePromptMarks = module.usePromptMarks;
   });
   afterEach(() => {
-    vi.restoreAllMocks();
+    cleanup();
+    vi.clearAllMocks();
   });
 
   it("returns an empty list when terminalId is null", async () => {
@@ -112,14 +135,53 @@ describe("usePromptMarks", () => {
     expect(result.current).toEqual([]);
   });
 
-  it("tolerates a backend error gracefully (returns empty, no crash)", async () => {
+  it("reports a backend seed error instead of silently losing command evidence anchors", async () => {
     invokeMock.mockRejectedValueOnce(new Error("no such terminal"));
     listenMock.mockResolvedValue(() => {});
+    const telemetry = collectFallbackEvents();
 
-    const { result } = renderHook(() => usePromptMarks("t-1"));
-    // Effect settles without throwing.
-    await waitFor(() => expect(invokeMock).toHaveBeenCalled());
-    expect(result.current).toEqual([]);
+    try {
+      const { result } = renderHook(() => usePromptMarks("t-1"));
+      // Effect settles without throwing.
+      await waitFor(() => expect(invokeMock).toHaveBeenCalled());
+      expect(result.current).toEqual([]);
+      expect(telemetry.events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            source: "prompt-marks",
+            operation: "term_prompt_marks",
+            userVisible: true,
+          }),
+        ]),
+      );
+    } finally {
+      telemetry.cleanup();
+    }
+  });
+
+  it("reports listener setup failures before command evidence can go stale", async () => {
+    listenMock.mockRejectedValueOnce(new Error("event bus unavailable"));
+    const telemetry = collectFallbackEvents();
+
+    try {
+      const { result } = renderHook(() => usePromptMarks("t-1"));
+
+      await waitFor(() => {
+        expect(telemetry.events).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              source: "prompt-marks",
+              operation: "prompt_marks_listen",
+              userVisible: true,
+            }),
+          ]),
+        );
+      });
+      expect(invokeMock).not.toHaveBeenCalled();
+      expect(result.current).toEqual([]);
+    } finally {
+      telemetry.cleanup();
+    }
   });
 
   it("captures marks emitted during the seed window (listener-before-seed)", async () => {

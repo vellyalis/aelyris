@@ -1,3 +1,4 @@
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { useCallback } from "react";
 import { toast } from "../store/toastStore";
 import type { AgentSession, WorktreeInfo } from "../types/agent";
@@ -20,7 +21,7 @@ export function useWorktreeActions({
   const createWorktree = useCallback(
     async (_sessionId: string, branchName: string): Promise<WorktreeInfo | null> => {
       try {
-        const { invoke } = await import("@tauri-apps/api/core");
+        const { invoke } = await Promise.resolve({ invoke: tauriInvoke });
         const wt = await invoke<{
           name: string;
           path: string;
@@ -48,7 +49,7 @@ export function useWorktreeActions({
       const session = sessions.find((s) => s.id === sessionId);
       if (!session?.worktree) return;
       try {
-        const { invoke } = await import("@tauri-apps/api/core");
+        const { invoke } = await Promise.resolve({ invoke: tauriInvoke });
         await invoke("remove_worktree", {
           repoPath: projectPath,
           worktreeName: session.worktree.name,

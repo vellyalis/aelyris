@@ -23,6 +23,7 @@
 //
 // Optional env:
 //   AETHER_IME_CDP=http://127.0.0.1:9222
+//   AETHER_IME_URL=http://localhost:1420/
 //   AETHER_IME_PROJECT=C:/Users/owner/Aether_Terminal
 //   AETHER_IME_OUT=.codex-auto/production-smoke/verify-ime.json
 
@@ -32,6 +33,8 @@ import process from "node:process";
 import { chromium } from "@playwright/test";
 
 const CDP = process.env.AETHER_IME_CDP ?? "http://127.0.0.1:9222";
+const APP_URL = process.env.AETHER_IME_URL ?? "http://localhost:1420/";
+const APP_ORIGIN = new URL(APP_URL).origin;
 const PROJECT_PATH = process.env.AETHER_IME_PROJECT ?? process.cwd().replaceAll("\\", "/");
 const OUT = process.env.AETHER_IME_OUT ?? ".codex-auto/production-smoke/verify-ime.json";
 const report = {
@@ -53,9 +56,39 @@ function writeArtifact() {
   return path;
 }
 
+function environmentBlockedReason() {
+  const text = `${report.error ?? ""}\n${report.stack ?? ""}\n${report.failures.join("\n")}`;
+  if (/Cannot attach to WebView2 CDP|ECONNREFUSED|CDP endpoint did not respond|connectOverCDP/i.test(text)) {
+    return "webview2-cdp-unavailable";
+  }
+  if (/spawn\s+EPERM|operation not permitted/i.test(text)) return "browser-spawn-blocked";
+  return null;
+}
+
+function writeEnvironmentBlockedArtifact() {
+  report.completedAt = new Date().toISOString();
+  const path = resolve(`${OUT}.environment-blocked.json`);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(
+    path,
+    `${JSON.stringify(
+      {
+        ...report,
+        status: "environment-blocked",
+        environmentBlockedReason: environmentBlockedReason(),
+        preservesPrimaryArtifact: true,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  return path;
+}
+
 function isAetherPage(page) {
   const url = page.url();
   return (
+    url.startsWith(APP_ORIGIN) ||
     url.includes("localhost:1420") ||
     url.includes("127.0.0.1:1420") ||
     url.startsWith("tauri://localhost") ||
@@ -101,6 +134,18 @@ async function connectOverCdpWithRetry() {
   throw new Error(
     `Cannot attach to WebView2 CDP at ${CDP} within ${timeoutMs}ms. Start Aether with "AETHER_API_TOKEN=dev pnpm.cmd tauri:dev" first.\n${lastError?.message ?? "CDP endpoint did not respond"}`,
   );
+}
+
+function targetImeUrl() {
+  const url = new URL(APP_URL);
+  url.searchParams.set("aetherVisualQa", "1");
+  url.searchParams.set("projectPath", PROJECT_PATH);
+  url.searchParams.set("rail", "command");
+  url.searchParams.set("v", "verify-ime-clean");
+  url.searchParams.delete("state");
+  url.searchParams.delete("edgeLoop");
+  url.searchParams.delete("aetherDashboardStateUrl");
+  return url.toString();
 }
 
 async function ensureLiveTerminalSurface(page) {
@@ -231,6 +276,10 @@ async function readImeGeometry(page) {
         left: overlay.style.left,
         top: overlay.style.top,
         width: overlay.style.width,
+        writingMode: getComputedStyle(overlay).writingMode,
+        textOrientation: getComputedStyle(overlay).textOrientation,
+        wordBreak: getComputedStyle(overlay).wordBreak,
+        webkitTextFillColor: getComputedStyle(overlay).webkitTextFillColor,
       },
       overlayRect: {
         x: Math.round(overlayRect.left),
@@ -369,8 +418,9 @@ async function runNativeSurfaceCompositionChecks(page) {
           terminalId,
           x: rect.left + 16,
           y: rect.top + 16,
-          width: 24,
+          width: Math.max(320, rect.width - 16),
           height: Math.max(16, Math.round(rect.height / 24)),
+          caretInset: 16,
         })
         .catch((error) => ({ error: String(error) }));
     }
@@ -426,12 +476,12 @@ async function runNativeSurfaceCompositionChecks(page) {
   } else {
     fail(`native input surface status is not ready: ${JSON.stringify(native.status)}`);
   }
-  if (native.insideCanvas) {
+  if (native.insideCanvas && (native.surfaceRect?.w ?? 0) >= 320) {
     pass(
       `native input surface geometry inside canvas; surface=${native.surfaceRect?.w}×${native.surfaceRect?.h}, canvas=${native.canvasRect?.w}×${native.canvasRect?.h}`,
     );
   } else {
-    fail(`native input surface geometry invalid: ${JSON.stringify(native)}`);
+    fail(`native input surface geometry invalid or too narrow for Japanese IME: ${JSON.stringify(native)}`);
   }
 
   console.log("\n[ime] Section 5 — Native commit / long preedit handoff");
@@ -486,16 +536,16 @@ async function main() {
       )}`,
     );
   }
-  console.log(`[ime] attached to ${page.url()}`);
-
   await page.evaluate(
     ([project]) => {
       localStorage.setItem("aether:lastProject", project);
       localStorage.setItem("aether:onboarding-done", "1");
+      localStorage.removeItem("aether:dashboardStateUrl");
     },
     [PROJECT_PATH],
   );
-  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.goto(targetImeUrl(), { waitUntil: "domcontentloaded" });
+  console.log(`[ime] attached to ${page.url()}`);
   await page.waitForTimeout(2500);
   await ensureLiveTerminalSurface(page);
   await page
@@ -679,12 +729,17 @@ async function main() {
     console.log("\n[ime] Section 5 — Geometry / DPI / resize");
 
     const geometry = await readImeGeometry(page);
-    if (geometry.ok && geometry.insideCanvas) {
+    const overlayHorizontal =
+      geometry.ok &&
+      geometry.style?.writingMode === "horizontal-tb" &&
+      geometry.style?.textOrientation === "mixed" &&
+      geometry.style?.wordBreak === "keep-all";
+    if (geometry.ok && geometry.insideCanvas && overlayHorizontal) {
       pass(
         `overlay geometry inside canvas; dpr=${geometry.dpr}, overlays=${geometry.overlayCount}, canvases=${geometry.canvasCount}, left=${geometry.style.left}, width=${geometry.style.width}`,
       );
     } else {
-      fail(`overlay geometry invalid: ${JSON.stringify(geometry)}`);
+      fail(`overlay geometry/style invalid for horizontal Japanese preedit: ${JSON.stringify(geometry)}`);
     }
 
     const viewportBefore = geometry.viewport;
@@ -838,7 +893,8 @@ async function main() {
     }
   }
 
-  await browser.close();
+  if (typeof browser.disconnect === "function") browser.disconnect();
+  else await browser.close();
   report.status = process.exitCode ? "failed" : "pass";
   const artifact = writeArtifact();
   console.log("\n[ime] done.");
@@ -849,7 +905,7 @@ main().catch((e) => {
   report.status = "failed";
   report.error = e?.message ?? String(e);
   report.stack = e?.stack ?? null;
-  const artifact = writeArtifact();
+  const artifact = environmentBlockedReason() ? writeEnvironmentBlockedArtifact() : writeArtifact();
   console.error("[ime] fatal:", e);
   console.error(`[ime] artifact: ${artifact}`);
   process.exit(1);

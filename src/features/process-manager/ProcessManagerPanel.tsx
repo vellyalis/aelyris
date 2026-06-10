@@ -1,3 +1,4 @@
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { MousePointer2, PlugZap, Power, RotateCcw, SquareActivity, Terminal, X } from "lucide-react";
 import type { ChangeEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -197,7 +198,7 @@ export function ProcessManagerPanel({
       setError(null);
       setFailedPaneMessages((prev) => mapWithoutKey(prev, liveProcess.key));
       try {
-        const call = invoke ?? (await import("@tauri-apps/api/core")).invoke;
+        const call = invoke ?? (await Promise.resolve({ invoke: tauriInvoke })).invoke;
         await call("close_terminal", { id: liveProcess.terminalId });
         setEndedPaneKeys((prev) => new Set(prev).add(liveProcess.key));
         onProcessEnded?.(liveProcess.terminalId);

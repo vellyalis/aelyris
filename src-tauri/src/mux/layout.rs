@@ -22,6 +22,7 @@ impl SplitAxis {
 #[serde(rename_all = "camelCase", tag = "kind")]
 pub enum LayoutNode {
     Pane {
+        #[serde(rename = "paneId", alias = "pane_id")]
         pane_id: String,
     },
     Split {

@@ -26,7 +26,7 @@ const HELP_CONTENT: Record<HelpSection, { title: string; items: string[] }> = {
     items: [
       "Project-first Windows terminal for shipping code with AI agents beside the shell.",
       "Run PowerShell/CMD/Git Bash/WSL panes, edit files, review diffs, and launch agents from one project window.",
-      "Use the right panel as a work rail: Run starts agents/tools, Changes reviews outputs and git state, Health watches live panes and failures.",
+      "Use the right panel as a work rail: Run starts agents/tools, Git reviews outputs and source state, Health watches live panes and failures.",
       "Aether is useful when shell work, file edits, agent output, and release checks must stay tied to the same project context.",
     ],
   },
@@ -63,7 +63,7 @@ const HELP_CONTENT: Record<HelpSection, { title: string; items: string[] }> = {
     items: [
       "Ctrl+Shift+A: Start a headless agent session with a prompt.",
       "Run tab (right panel): Start agents, workflows, and project tool commands.",
-      "Changes tab (right panel): Review files changed by agents and prepare commits.",
+      "Git tab (right panel): Review files changed by agents and prepare commits.",
       "Health tab (right panel): View running sessions, logs, reliability signals, and costs.",
       "Interactive mode: Ctrl+Enter in the prompt input to start a PTY-based interactive session.",
       "Context gauge: Shows token usage percentage per session.",

@@ -139,7 +139,7 @@ async function seedQaStorage(page) {
 }
 
 async function listOutcomeEvents(page, testCase) {
-  return await page.evaluate(
+  const rows = await page.evaluate(
     async ({ workspaceId, kind }) => {
       const w = window;
       return await w.__TAURI_INTERNALS__.invoke("list_audit_events", {
@@ -148,12 +148,13 @@ async function listOutcomeEvents(page, testCase) {
           kind,
           source: "right-rail",
           severity: "warn",
-          limit: 10,
+          limit: 200,
         },
       });
     },
     { workspaceId: PROJECT_PATH, kind: testCase.expectedKind },
   );
+  return [...rows].sort((left, right) => Number(left.sequence ?? 0) - Number(right.sequence ?? 0));
 }
 
 async function runNegativeCase(page, testCase) {
@@ -207,7 +208,7 @@ async function runNegativeCase(page, testCase) {
           kind,
           source: "right-rail",
           severity: "warn",
-          limit: 10,
+          limit: 200,
         },
       });
       return rows.some((entry) => Number(entry.sequence ?? 0) > before);
@@ -276,7 +277,10 @@ async function main() {
     report.errors.push(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   } finally {
-    if (browser) await browser.close().catch(() => {});
+    if (browser) {
+      if (typeof browser.disconnect === "function") browser.disconnect();
+      else await browser.close().catch(() => {});
+    }
     const artifact = writeArtifact();
     if (report.ok) {
       console.log(`right rail negative-path smoke passed: ${artifact}`);

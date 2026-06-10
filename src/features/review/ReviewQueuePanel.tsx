@@ -9,7 +9,12 @@ import {
   type ReviewRisk,
   type ReviewValidationState,
 } from "../../shared/lib/reviewQueue";
-import { listWorkstationGraphChangedFiles, type WorkstationGraph } from "../../shared/lib/workstationGraph";
+import {
+  type FileProvenanceTrace,
+  listWorkstationGraphChangedFiles,
+  traceFileProvenance,
+  type WorkstationGraph,
+} from "../../shared/lib/workstationGraph";
 import type { AgentSession } from "../../shared/types/agent";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { PanelHeader } from "../../shared/ui/PanelHeader";
@@ -21,6 +26,7 @@ interface ReviewQueuePanelProps {
   activeSessionId: string | null;
   onSelectSession: (id: string) => void;
   onOpenDiff: (path: string) => void;
+  onOpenCommandEvidence?: (command: FileProvenanceTrace["commands"][number]) => void;
   onStartAgent?: (prompt: string, model?: string, meta?: { role?: OrchestraRoleId; handoffFrom?: string }) => void;
   workstationGraph?: WorkstationGraph;
 }
@@ -79,15 +85,24 @@ export function ReviewQueuePanel({
   activeSessionId,
   onSelectSession,
   onOpenDiff,
+  onOpenCommandEvidence,
   onStartAgent,
   workstationGraph,
 }: ReviewQueuePanelProps) {
   const graphChangedFiles = useMemo(() => listWorkstationGraphChangedFiles(workstationGraph), [workstationGraph]);
   const queueChangedFiles = useMemo(
-    () => (workstationGraph ? graphChangedFiles : mergeChangedFiles(changedFiles, graphChangedFiles)),
-    [changedFiles, graphChangedFiles, workstationGraph],
+    () => mergeChangedFiles(changedFiles, graphChangedFiles),
+    [changedFiles, graphChangedFiles],
   );
   const queue = useMemo(() => buildReviewQueue(sessions, queueChangedFiles), [sessions, queueChangedFiles]);
+  const provenanceByPath = useMemo(() => {
+    const traces = new Map<string, FileProvenanceTrace>();
+    if (!workstationGraph) return traces;
+    for (const item of queue.items) {
+      traces.set(item.path, traceFileProvenance(workstationGraph, item.path));
+    }
+    return traces;
+  }, [queue.items, workstationGraph]);
   const visibleItems = queue.items.slice(0, 6);
   const canStartReviewer = queue.items.length > 0 && onStartAgent;
 
@@ -96,7 +111,7 @@ export function ReviewQueuePanel({
       className={styles.panel}
       aria-label="AI review queue"
       data-empty={queue.items.length === 0}
-      data-graph-source={workstationGraph ? "workstation-graph" : "git-status"}
+      data-graph-source={workstationGraph ? "workstation-graph+git-status" : "git-status"}
     >
       <PanelHeader
         title="Review Queue"
@@ -142,6 +157,7 @@ export function ReviewQueuePanel({
           <div className={styles.list}>
             {visibleItems.map((item) => {
               const active = item.sessions.some((session) => session.id === activeSessionId);
+              const provenance = provenanceByPath.get(item.path);
               return (
                 <div key={item.path} className={styles.item} data-risk={item.risk} data-active={active || undefined}>
                   <div className={styles.itemTop}>
@@ -200,6 +216,60 @@ export function ReviewQueuePanel({
                         ))}
                       </span>
                     )}
+                    {provenance?.hasEvidence && (
+                      <fieldset className={styles.provenanceLine} aria-label={`Provenance for ${item.path}`}>
+                        <legend className={styles.provenanceKicker}>Trace</legend>
+                        {provenance.owners.slice(0, 2).map((owner) => (
+                          <button
+                            key={owner.id}
+                            type="button"
+                            className={styles.provenanceChip}
+                            onClick={() => onSelectSession(owner.id)}
+                            title={`Select owner ${owner.name}`}
+                            aria-label={`Select owner ${owner.name}`}
+                          >
+                            {owner.name}
+                          </button>
+                        ))}
+                        {provenance.tools.slice(0, 2).map((tool) => (
+                          <span key={tool.id} className={styles.provenanceChip} title={`Tool: ${tool.label}`}>
+                            {tool.label}
+                          </span>
+                        ))}
+                        {provenance.commands.slice(0, 2).map((command) => (
+                          <CommandEvidenceChip
+                            key={command.id}
+                            command={command}
+                            onOpenCommandEvidence={onOpenCommandEvidence}
+                          />
+                        ))}
+                        {provenance.tests.slice(0, 2).map((test) => (
+                          <span
+                            key={test.id}
+                            className={styles.provenanceChip}
+                            data-status={test.status}
+                            title={`Validation: ${test.label} (${test.status ?? "unknown"})`}
+                          >
+                            {test.label}
+                          </span>
+                        ))}
+                        {provenance.risks.slice(0, 2).map((risk) => (
+                          <span
+                            key={risk.id}
+                            className={styles.provenanceChip}
+                            data-status={risk.severity ?? risk.status}
+                            title={`Risk: ${risk.label} (${risk.status ?? "unknown"})`}
+                          >
+                            {risk.label}
+                          </span>
+                        ))}
+                        {provenance.worktrees.slice(0, 1).map((worktree) => (
+                          <span key={worktree} className={styles.provenanceChip} title={`Worktree: ${worktree}`}>
+                            {worktree.split("/").filter(Boolean).pop() ?? worktree}
+                          </span>
+                        ))}
+                      </fieldset>
+                    )}
                   </div>
                 </div>
               );
@@ -233,5 +303,40 @@ function Metric({ label, value }: { label: string; value: number }) {
       <span className={styles.metricValue}>{value}</span>
       <span className={styles.metricLabel}>{label}</span>
     </div>
+  );
+}
+
+function CommandEvidenceChip({
+  command,
+  onOpenCommandEvidence,
+}: {
+  command: FileProvenanceTrace["commands"][number];
+  onOpenCommandEvidence?: (command: FileProvenanceTrace["commands"][number]) => void;
+}) {
+  const label =
+    command.validationKind && command.validationKind !== "unknown"
+      ? `${command.validationKind}: ${command.label}`
+      : command.label;
+  const title = `Command: ${command.command} (${command.status ?? "unknown"}${
+    command.exitCode == null ? "" : `, exit ${command.exitCode}`
+  })`;
+  if (onOpenCommandEvidence && command.terminalId) {
+    return (
+      <button
+        type="button"
+        className={styles.provenanceChip}
+        data-status={command.status}
+        onClick={() => onOpenCommandEvidence(command)}
+        title={`${title}. Open terminal evidence.`}
+        aria-label={`Open terminal evidence for ${command.label}`}
+      >
+        {label}
+      </button>
+    );
+  }
+  return (
+    <span className={styles.provenanceChip} data-status={command.status} title={title}>
+      {label}
+    </span>
   );
 }

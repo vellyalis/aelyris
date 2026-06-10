@@ -131,10 +131,11 @@
   font-weight: var(--weight-semibold);
 }
 .commitBtn:hover:not(:disabled) {
-  opacity: 0.85;
+  background: color-mix(in srgb, var(--ctp-green) 86%, #fff 14%);
 }
 .commitBtn:disabled {
-  opacity: 0.4;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--ctp-green) 28%, transparent);
   cursor: default;
 }
 .pushBtn {
@@ -143,10 +144,11 @@
   padding-inline: 0;
 }
 .pushBtn:hover:not(:disabled) {
-  opacity: 0.85;
+  background: color-mix(in srgb, var(--ctp-blue) 86%, #fff 14%);
 }
 .pushBtn:disabled {
-  opacity: 0.4;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--ctp-blue) 28%, transparent);
   cursor: default;
 }
 

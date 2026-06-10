@@ -94,8 +94,7 @@
 .totalCost {
   font-size: var(--text-xs);
   font-family: var(--font-mono);
-  color: var(--ctp-green);
-  opacity: 0.7;
+  color: color-mix(in srgb, var(--ctp-green) 72%, var(--text-secondary));
 }
 .iconBtn {
   background: none;
@@ -306,10 +305,9 @@
 }
 .cardPct {
   font-size: var(--text-md);
-  color: var(--gold);
+  color: color-mix(in srgb, var(--gold) 74%, var(--text-secondary));
   font-family: var(--font-mono);
   font-weight: var(--weight-medium);
-  opacity: 0.58;
 }
 .permBadge {
   display: inline-flex;
@@ -398,18 +396,17 @@
   font-family: var(--font-mono);
   max-height: 0;
   padding: 0;
-  opacity: 0;
+  visibility: hidden;
   overflow: hidden;
   transition:
     max-height var(--duration-fast) var(--ease-silk),
-    opacity var(--duration-fast) var(--ease-silk),
     padding var(--duration-fast) var(--ease-silk);
 }
 .inspector:hover .navHint,
 .inspector:focus-within .navHint {
   max-height: 28px;
   padding: var(--space-4) 0 var(--space-2);
-  opacity: 1;
+  visibility: visible;
 }
 .empty {
   padding: var(--space-12);
@@ -560,12 +557,17 @@
   font-family: var(--font-mono);
 }
 .cardIcons {
+  display: inline-flex;
+  align-items: center;
   font-size: var(--text-xs);
-  opacity: 0;
-  transition: opacity var(--duration-fast) var(--ease-apple);
+  color: color-mix(in srgb, var(--text-muted) 72%, var(--text-secondary));
+  visibility: hidden;
+  transition: color var(--duration-fast) var(--ease-apple);
 }
-.card:hover .cardIcons {
-  opacity: 0.5;
+.card:hover .cardIcons,
+.card:focus-within .cardIcons {
+  color: color-mix(in srgb, var(--text-muted) 90%, var(--text-secondary));
+  visibility: visible;
 }
 .cardAge {
   font-size: var(--text-xs);
@@ -577,16 +579,15 @@
   align-items: center;
   gap: var(--space-1); /* 2px */
   font-size: var(--text-xs);
-  color: var(--text-muted);
-  opacity: 0.7;
+  color: color-mix(in srgb, var(--text-muted) 84%, var(--text-secondary));
 }
 
 .card:not(:hover):not(:focus-within) .cardPct {
-  opacity: 0.5;
+  color: color-mix(in srgb, var(--gold) 46%, var(--text-muted));
 }
 
 .card:not(:hover):not(:focus-within) .cardFiles {
-  opacity: 0.46;
+  color: color-mix(in srgb, var(--text-muted) 68%, var(--text-secondary));
 }
 
 /* Overflow icon for secondary session metadata (permission mode + detected
@@ -601,8 +602,7 @@
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--text-muted);
-  opacity: 0.7;
+  color: color-mix(in srgb, var(--text-muted) 80%, var(--text-secondary));
   cursor: help;
   border-radius: var(--radius-sm);
   transition:
@@ -618,7 +618,7 @@
   outline-offset: -2px;
 }
 .card:not(:hover):not(:focus-within) .moreInfo {
-  opacity: 0.24;
+  visibility: hidden;
   max-width: 0;
   overflow: hidden;
   margin-left: calc(-1 * var(--space-3));
@@ -711,7 +711,7 @@
   cursor: pointer;
 }
 .worktreeBtn:hover {
-  opacity: 0.85;
+  background: color-mix(in srgb, var(--ctp-green) 85%, #fff 15%);
 }
 
 /* ─── Prompt input ─── */
@@ -1098,7 +1098,8 @@
   color: var(--text-primary);
 }
 .ctxItem[data-disabled] {
-  opacity: 0.35;
+  color: var(--text-muted);
+  background: transparent;
   cursor: default;
 }
 .ctxDivider {
@@ -1123,9 +1124,7 @@
 :global(:root[data-mood="aether-sakura"]) .modelSelect,
 :global(:root[data-mood="aether-sakura"]) .promptField {
   border-color: color-mix(in srgb, var(--accent) 18%, transparent);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.28), transparent 62%),
-    rgba(255, 246, 250, 0.76);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.28), transparent 62%), rgba(255, 246, 250, 0.76);
   color: var(--text-primary);
   box-shadow:
     var(--rim-top),
@@ -1135,8 +1134,7 @@
 :global(:root[data-mood="aether-sakura"]) .cardActive,
 :global(:root[data-mood="aether-sakura"]) .cardSelected {
   background:
-    linear-gradient(90deg, var(--session-subtle, rgba(189, 63, 104, 0.12)), transparent 68%),
-    rgba(255, 241, 248, 0.9);
+    linear-gradient(90deg, var(--session-subtle, rgba(189, 63, 104, 0.12)), transparent 68%), rgba(255, 241, 248, 0.9);
   box-shadow:
     var(--rim-top),
     inset 0 0 0 1px color-mix(in srgb, var(--session-accent, var(--accent)) 28%, transparent),
@@ -1144,7 +1142,6 @@
 }
 
 :global(:root[data-mood="aether-sakura"]) .cardMeta,
-:global(:root[data-mood="aether-sakura"]) .cardPreviewText,
 :global(:root[data-mood="aether-sakura"]) .sessionActivityMeta,
 :global(:root[data-mood="aether-sakura"]) .activitySearch::placeholder,
 :global(:root[data-mood="aether-sakura"]) .cardFiles,
@@ -1159,9 +1156,7 @@
 }
 
 :global(:root[data-mood="aether-sakura"]) .ctxMenu {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.36), transparent 34%),
-    rgba(255, 244, 250, 0.94);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.36), transparent 34%), rgba(255, 244, 250, 0.94);
   border-color: color-mix(in srgb, var(--accent) 24%, transparent);
   box-shadow:
     var(--rim-top),
@@ -1219,6 +1214,11 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
   word-break: break-all;
+}
+
+:global(:root[data-mood="aether-sakura"]) .cardPreviewText {
+  color: rgba(74, 34, 49, 0.82);
+  opacity: 1;
 }
 
 /* ─── Parallel View ─── */

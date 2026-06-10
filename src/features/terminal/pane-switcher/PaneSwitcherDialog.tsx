@@ -1,4 +1,5 @@
 import * as Dialog from "@radix-ui/react-dialog";
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { Command } from "cmdk";
 import { MonitorUp, MousePointer2, Pencil, RotateCcw, Send, Tag, Terminal, X } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
@@ -158,7 +159,7 @@ export function PaneSwitcherDialog({
         return;
       }
       try {
-        const call = invoke ?? (await import("@tauri-apps/api/core")).invoke;
+        const call = invoke ?? (await Promise.resolve({ invoke: tauriInvoke })).invoke;
         await call("send_keys", { terminalId: liveChoice.pane.terminalId, data: normalizeCommandInput(text) });
         toast.success("Sent to pane", liveChoice.pty);
         onClose();

@@ -1,7 +1,14 @@
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const invokeMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: invokeMock,
+}));
+
+import { writeClipboardText } from "../features/terminal/hooks/useTerminalSelection";
 import { TerminalCanvas } from "../features/terminal/TerminalCanvas";
+import { FALLBACK_TELEMETRY_EVENT, type FallbackTelemetryDetail } from "../shared/lib/fallbackTelemetry";
 import { type CellSnapshot, ColorKind, type GridSnapshot } from "../shared/types/terminal";
 
 function installCanvasMock() {
@@ -76,7 +83,11 @@ function downUpDrag(el: HTMLElement, from: { x: number; y: number }, to: { x: nu
 }
 
 describe("TerminalCanvas — selection + copy (Task 9)", () => {
-  beforeEach(installCanvasMock);
+  beforeEach(() => {
+    installCanvasMock();
+    invokeMock.mockReset();
+    invokeMock.mockResolvedValue(undefined);
+  });
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
@@ -242,5 +253,122 @@ describe("TerminalCanvas — selection + copy (Task 9)", () => {
       );
     });
     expect(copyText).not.toHaveBeenCalled();
+  });
+});
+
+describe("terminal selection clipboard writes", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    invokeMock.mockReset();
+  });
+
+  function collectFallbackEvents(): FallbackTelemetryDetail[] {
+    const events: FallbackTelemetryDetail[] = [];
+    window.addEventListener(FALLBACK_TELEMETRY_EVENT, (event) => {
+      events.push((event as CustomEvent<FallbackTelemetryDetail>).detail);
+    });
+    return events;
+  }
+
+  it("uses native clipboard IPC first", async () => {
+    invokeMock.mockResolvedValueOnce(undefined);
+
+    await writeClipboardText("hello");
+
+    expect(invokeMock).toHaveBeenCalledWith("write_clipboard_text", { text: "hello" });
+  });
+
+  it("uses a visible browser fallback when native clipboard write fails", async () => {
+    const events = collectFallbackEvents();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(window.navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    invokeMock.mockRejectedValueOnce(new Error("native clipboard denied"));
+
+    await writeClipboardText("fallback copy");
+
+    expect(writeText).toHaveBeenCalledWith("fallback copy");
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "terminal-selection",
+          operation: "write_clipboard_text",
+          severity: "warning",
+          userVisible: true,
+        }),
+        expect.objectContaining({
+          source: "terminal-selection",
+          operation: "write_clipboard_text_browser_fallback",
+          severity: "warning",
+          userVisible: true,
+          boundary: "webview-fallback",
+          nativeBoundaryEscaped: true,
+        }),
+      ]),
+    );
+  });
+
+  it("lets command-center copy surfaces share the native-first clipboard path with their own telemetry source", async () => {
+    const events = collectFallbackEvents();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(window.navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    invokeMock.mockRejectedValueOnce(new Error("native clipboard busy"));
+
+    await writeClipboardText("handoff context", {
+      source: "right-rail.clipboard",
+      fallbackMessage: "Native clipboard write failed; using browser clipboard fallback for right rail copy.",
+      userVisible: true,
+    });
+
+    expect(writeText).toHaveBeenCalledWith("handoff context");
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "right-rail.clipboard",
+          operation: "write_clipboard_text",
+          severity: "warning",
+          userVisible: true,
+        }),
+        expect.objectContaining({
+          source: "right-rail.clipboard",
+          operation: "write_clipboard_text_browser_fallback",
+          message: "Native clipboard write failed; using browser clipboard fallback for right rail copy.",
+          severity: "warning",
+          userVisible: true,
+          boundary: "webview-fallback",
+          nativeBoundaryEscaped: true,
+        }),
+      ]),
+    );
+  });
+
+  it("surfaces browser clipboard fallback failure instead of swallowing copy loss", async () => {
+    const events = collectFallbackEvents();
+    const writeText = vi.fn().mockRejectedValue(new Error("browser clipboard denied"));
+    Object.defineProperty(window.navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    invokeMock.mockRejectedValueOnce(new Error("native clipboard unavailable"));
+
+    await expect(writeClipboardText("lost copy")).rejects.toThrow("browser clipboard denied");
+
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "terminal-selection",
+          operation: "browser_write_clipboard_text",
+          severity: "error",
+          userVisible: true,
+          boundary: "webview-fallback",
+          nativeBoundaryEscaped: true,
+        }),
+      ]),
+    );
   });
 });

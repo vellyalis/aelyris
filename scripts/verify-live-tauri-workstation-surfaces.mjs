@@ -668,7 +668,7 @@ async function smokeRails(page) {
       bodyTextSample: document.body.innerText.slice(0, 500),
     };
   });
-  const expectedLabels = ["Run", "Changes", "Health"];
+  const expectedLabels = ["Run", "Git", "Health"];
   if (
     chrome.tabs.length !== 3 ||
     !expectedLabels.every((label) => chrome.tabs.some((tab) => tab.label.startsWith(label)))
@@ -1098,7 +1098,10 @@ async function main() {
     console.error(`[production-smoke] ${report.error}`);
     process.exit(report.status === "external_dependency" ? 2 : 1);
   } finally {
-    if (browser) await browser.close().catch(() => {});
+    if (browser) {
+      if (typeof browser.disconnect === "function") browser.disconnect();
+      else await browser.close().catch(() => {});
+    }
     if (dashboardServer) await new Promise((resolveClose) => dashboardServer.close(resolveClose)).catch(() => {});
   }
 }

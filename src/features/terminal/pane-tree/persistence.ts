@@ -1,4 +1,7 @@
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import type { ShellType } from "../../../App";
+import { formatFallbackError, reportFallback } from "../../../shared/lib/fallbackTelemetry";
+import { isTauriRuntime } from "../../../shared/lib/tauriRuntime";
 import { collectLeafIds, createLeaf, createLeafWithId } from "./operations";
 import {
   PANE_ATTACH_STATES,
@@ -18,6 +21,16 @@ const VALID_SHELLS: ShellType[] = ["powershell", "cmd", "gitbash", "wsl"];
 const MAX_DEPTH = 16;
 const CONTROL_CHAR_RANGE = "\\u0000-\\u001f\\u007f";
 const CONTROL_CHARS_REGEX = new RegExp(`[${CONTROL_CHAR_RANGE}]`, "g");
+
+function reportPaneTreePersistenceFailure(operation: string, err: unknown, severity: "info" | "warning" = "warning") {
+  reportFallback({
+    source: "pane-tree-persistence",
+    operation,
+    severity,
+    message: formatFallbackError(err),
+    userVisible: true,
+  });
+}
 
 export interface PaneTreeSnapshot {
   version: typeof SNAPSHOT_VERSION;
@@ -73,7 +86,7 @@ interface MuxTabRecord {
 }
 
 type MuxLayoutNode =
-  | { kind: "pane"; paneId: string }
+  | { kind: "pane"; paneId?: string; pane_id?: string }
   | { kind: "split"; axis: "horizontal" | "vertical"; ratio: number; first: MuxLayoutNode; second: MuxLayoutNode };
 
 interface MuxPaneRecord {
@@ -109,15 +122,25 @@ export function loadPaneTreeSnapshot(
     const parsed = JSON.parse(raw) as unknown;
     const snapshot = sanitizeSnapshot(parsed, fallbackShell, fallbackCwd);
     if (!snapshot) {
-      localStorage.removeItem(key);
+      reportPaneTreePersistenceFailure(
+        "local_snapshot_invalid",
+        `Pane tree snapshot ${key} failed validation`,
+        "warning",
+      );
+      try {
+        localStorage.removeItem(key);
+      } catch (err) {
+        reportPaneTreePersistenceFailure("local_remove_invalid_snapshot", err, "warning");
+      }
       return null;
     }
     return snapshot;
-  } catch {
+  } catch (err) {
+    reportPaneTreePersistenceFailure("local_load_snapshot", err, "warning");
     try {
       localStorage.removeItem(key);
-    } catch {
-      /* ignore */
+    } catch (removeErr) {
+      reportPaneTreePersistenceFailure("local_remove_after_load_failure", removeErr, "warning");
     }
     return null;
   }
@@ -126,18 +149,25 @@ export function loadPaneTreeSnapshot(
 export function savePaneTreeSnapshot(key: string, snapshot: Omit<PaneTreeSnapshot, "version">): void {
   try {
     const safe = normalizeSnapshot(snapshot);
-    if (!safe) return;
+    if (!safe) {
+      reportPaneTreePersistenceFailure(
+        "local_save_invalid_snapshot",
+        `Pane tree snapshot ${key} failed validation`,
+        "warning",
+      );
+      return;
+    }
     localStorage.setItem(key, JSON.stringify(safe));
-  } catch {
-    /* ignore */
+  } catch (err) {
+    reportPaneTreePersistenceFailure("local_save_snapshot", err, "warning");
   }
 }
 
 export function deletePaneTreeSnapshot(key: string): void {
   try {
     localStorage.removeItem(key);
-  } catch {
-    /* ignore */
+  } catch (err) {
+    reportPaneTreePersistenceFailure("local_delete_snapshot", err, "warning");
   }
 }
 
@@ -146,12 +176,21 @@ export async function loadPaneTreeSnapshotFromBackend(
   fallbackShell: ShellType,
   fallbackCwd?: string,
 ): Promise<PaneTreeSnapshot | null> {
+  if (!isTauriRuntime()) return null;
   try {
-    const { invoke } = await import("@tauri-apps/api/core");
+    const { invoke } = await Promise.resolve({ invoke: tauriInvoke });
     const record = await invoke<BackendPaneTreeLayoutRecord | null>("get_pane_tree_layout", { storageKey: key });
     if (!record?.layoutJson) return null;
-    return sanitizeSnapshot(JSON.parse(record.layoutJson), fallbackShell, fallbackCwd);
-  } catch {
+    const snapshot = sanitizeSnapshot(JSON.parse(record.layoutJson), fallbackShell, fallbackCwd);
+    if (!snapshot)
+      reportPaneTreePersistenceFailure(
+        "backend_snapshot_invalid",
+        `Backend pane tree snapshot ${key} failed validation`,
+        "warning",
+      );
+    return snapshot;
+  } catch (err) {
+    reportPaneTreePersistenceFailure("backend_load_snapshot", err, "warning");
     return null;
   }
 }
@@ -161,11 +200,21 @@ export async function loadPaneTreeSnapshotFromMux(
   fallbackShell: ShellType,
   fallbackCwd?: string,
 ): Promise<PaneTreeSnapshot | null> {
+  if (!isTauriRuntime()) return null;
   try {
-    const { invoke } = await import("@tauri-apps/api/core");
+    const { invoke } = await Promise.resolve({ invoke: tauriInvoke });
     const graph = await invoke<MuxGraphSnapshot | null>("mux_get_workspace", { workspaceId });
-    return graph ? paneTreeSnapshotFromMuxGraph(graph, fallbackShell, fallbackCwd) : null;
-  } catch {
+    const snapshot = graph ? paneTreeSnapshotFromMuxGraph(graph, fallbackShell, fallbackCwd) : null;
+    if (graph && !snapshot) {
+      reportPaneTreePersistenceFailure(
+        "mux_snapshot_invalid",
+        `Mux workspace snapshot ${workspaceId} failed validation`,
+        "warning",
+      );
+    }
+    return snapshot;
+  } catch (err) {
+    reportPaneTreePersistenceFailure("mux_load_snapshot", err, "warning");
     return null;
   }
 }
@@ -205,7 +254,9 @@ export function paneTreeSnapshotFromMuxGraph(
   if (!tree) return null;
 
   const leafIds = new Set(collectLeafIds(tree));
-  const activePaneId = leafIds.has(tab.layout?.activePaneId) ? tab.layout.activePaneId : collectLeafIds(tree)[0] ?? null;
+  const activePaneId = leafIds.has(tab.layout?.activePaneId)
+    ? tab.layout.activePaneId
+    : (collectLeafIds(tree)[0] ?? null);
   const backendBindings: Record<string, PaneBackendBindingFingerprint> = {};
   const paneIntents: Record<string, PaneSessionIntent> = {};
   for (const paneId of leafIds) {
@@ -219,14 +270,23 @@ export function paneTreeSnapshotFromMuxGraph(
       terminalId,
       ...(sanitizeProcessId(pane.pty?.processId) ? { processId: sanitizeProcessId(pane.pty?.processId) } : {}),
       ...(sanitizeBoundedString(pane.cwd, 2048) ? { cwd: sanitizeBoundedString(pane.cwd, 2048) } : {}),
-      ...(sanitizeBoundedString(pane.project?.branch, 256) ? { branch: sanitizeBoundedString(pane.project?.branch, 256) } : {}),
+      ...(sanitizeBoundedString(pane.project?.branch, 256)
+        ? { branch: sanitizeBoundedString(pane.project?.branch, 256) }
+        : {}),
       ...(sanitizeTitle(pane.title) ? { name: sanitizeTitle(pane.title) } : {}),
       ...(sanitizeRole(pane.role) ? { role: sanitizeRole(pane.role) } : {}),
       sessionId: graph.activeWorkspaceId,
       layoutId: tab.id,
       lifecycle,
       attachState: lifecycle === "live" ? "attached" : lifecycle === "detached" ? "detached" : "ended",
-      health: lifecycle === "live" ? "healthy" : lifecycle === "exited" ? "exited" : lifecycle === "crashed" ? "crashed" : "unknown",
+      health:
+        lifecycle === "live"
+          ? "healthy"
+          : lifecycle === "exited"
+            ? "exited"
+            : lifecycle === "crashed"
+              ? "crashed"
+              : "unknown",
     };
   }
 
@@ -248,27 +308,38 @@ export async function savePaneTreeSnapshotToBackend(
   snapshot: Omit<PaneTreeSnapshot, "version">,
   projectPath = "",
 ): Promise<boolean> {
+  if (!isTauriRuntime()) return false;
   try {
     const safe = normalizeSnapshot(snapshot);
-    if (!safe) return false;
-    const { invoke } = await import("@tauri-apps/api/core");
+    if (!safe) {
+      reportPaneTreePersistenceFailure(
+        "backend_save_invalid_snapshot",
+        `Pane tree snapshot ${key} failed validation`,
+        "warning",
+      );
+      return false;
+    }
+    const { invoke } = await Promise.resolve({ invoke: tauriInvoke });
     await invoke("save_pane_tree_layout", {
       storageKey: key,
       projectPath,
       layoutJson: JSON.stringify(safe),
     });
     return true;
-  } catch {
+  } catch (err) {
+    reportPaneTreePersistenceFailure("backend_save_snapshot", err, "warning");
     return false;
   }
 }
 
 export async function deletePaneTreeSnapshotFromBackend(key: string): Promise<boolean> {
+  if (!isTauriRuntime()) return false;
   try {
-    const { invoke } = await import("@tauri-apps/api/core");
+    const { invoke } = await Promise.resolve({ invoke: tauriInvoke });
     await invoke("delete_pane_tree_layout", { storageKey: key });
     return true;
-  } catch {
+  } catch (err) {
+    reportPaneTreePersistenceFailure("backend_delete_snapshot", err, "warning");
     return false;
   }
 }
@@ -320,14 +391,19 @@ function muxLayoutNodeToPaneNode(
 ): PaneNode | null {
   if (!node) return null;
   if (node.kind === "pane") {
-    const paneId = sanitizePaneId(node.paneId, seenIds);
+    const paneId = sanitizePaneId(node.paneId ?? node.pane_id, seenIds);
     if (!paneId) return null;
     const pane = panes[paneId];
     if (!pane) return null;
-    return createLeafWithId(paneId, sanitizeShell(pane.shell, fallbackShell), sanitizeBoundedString(pane.cwd, 2048) ?? fallbackCwd, {
-      title: sanitizeTitle(pane.title),
-      role: sanitizeRole(pane.role),
-    });
+    return createLeafWithId(
+      paneId,
+      sanitizeShell(pane.shell, fallbackShell),
+      sanitizeBoundedString(pane.cwd, 2048) ?? fallbackCwd,
+      {
+        title: sanitizeTitle(pane.title),
+        role: sanitizeRole(pane.role),
+      },
+    );
   }
   if (node.kind === "split") {
     const first = muxLayoutNodeToPaneNode(node.first, panes, fallbackShell, fallbackCwd, seenIds, `${path}-a`);

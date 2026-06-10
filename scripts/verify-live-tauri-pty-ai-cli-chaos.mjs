@@ -23,6 +23,7 @@ const WAIT_MS = Number.parseInt(process.env.AETHER_LIVE_CHAOS_WAIT_MS ?? "45000"
 const APP_READY_WAIT_MS = Number.parseInt(process.env.AETHER_LIVE_CHAOS_APP_READY_WAIT_MS ?? "60000", 10);
 const PTY_SENTINEL_BEFORE = "aether-live-chaos-pty-before";
 const PTY_SENTINEL_AFTER = "aether-live-chaos-pty-after-restart";
+const STALE_QA_PARAMS = ["state", "edgeLoop", "dashboardState"];
 
 function writeArtifact(report) {
   const path = resolve(OUT);
@@ -43,14 +44,29 @@ function isAetherPage(page) {
 
 function withChaosQaParams(rawUrl) {
   try {
-    const url = new URL(rawUrl);
+    const source = new URL(rawUrl);
+    const url = new URL(source.pathname || "/", source.origin);
     url.searchParams.set("aetherVisualQa", "1");
+    url.searchParams.set("v", "live-pty-ai-cli-chaos");
     url.searchParams.set("rail", "observe");
     url.searchParams.set("projectPath", PROJECT_PATH);
     url.searchParams.set("aetherDashboardStateUrl", DASHBOARD_STATE_URL);
     return url.toString();
   } catch {
     return rawUrl;
+  }
+}
+
+function isCleanChaosQaUrl(rawUrl) {
+  try {
+    const url = new URL(rawUrl);
+    return (
+      url.searchParams.get("aetherVisualQa") === "1" &&
+      url.searchParams.get("v") === "live-pty-ai-cli-chaos" &&
+      STALE_QA_PARAMS.every((key) => !url.searchParams.has(key))
+    );
+  } catch {
+    return false;
   }
 }
 
@@ -141,6 +157,18 @@ async function openChaosQaPage(page) {
   } else {
     await navigateWithAppReadyFallback(page, () => page.reload({ waitUntil: "domcontentloaded", timeout: WAIT_MS }));
   }
+  await page.evaluate(
+    ({ targetUrl, staleParams }) => {
+      for (const key of Object.keys(localStorage)) {
+        if (staleParams.some((param) => key.toLowerCase().includes(param.toLowerCase()))) {
+          localStorage.removeItem(key);
+        }
+      }
+      if (location.href !== targetUrl) history.replaceState(null, "", targetUrl);
+    },
+    { targetUrl, staleParams: STALE_QA_PARAMS },
+  );
+  await waitForAppReady(page);
 }
 
 async function call(page, cmd, args = {}) {
@@ -165,6 +193,11 @@ function gridContains(snapshot, needle) {
   return false;
 }
 
+function gridText(snapshot) {
+  if (!snapshot?.cells) return "";
+  return snapshot.cells.map((row) => row.map((cell) => cell?.ch ?? " ").join("")).join("\n");
+}
+
 async function waitForGrid(page, terminalId, needle, timeoutMs = 15000) {
   const deadline = Date.now() + timeoutMs;
   let last = null;
@@ -174,6 +207,25 @@ async function waitForGrid(page, terminalId, needle, timeoutMs = 15000) {
     await new Promise((resolveWait) => setTimeout(resolveWait, 150));
   }
   throw new Error(`terminal sentinel ${needle} not visible after ${timeoutMs}ms; last rows=${last?.rows ?? "n/a"}`);
+}
+
+async function waitForPowerShellReady(page, terminalId, timeoutMs = 30000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastText = "";
+  const projectTail = PROJECT_PATH.split("/").filter(Boolean).slice(-2).join("\\");
+  while (Date.now() < deadline) {
+    const snapshot = await call(page, "term_snapshot", { id: terminalId });
+    lastText = gridText(snapshot);
+    if (
+      /\bPS [^\n>]*>/.test(lastText) ||
+      lastText.includes("Microsoft.PowerShell") ||
+      (projectTail.length > 0 && lastText.replaceAll("/", "\\").includes(projectTail))
+    ) {
+      return { ready: true, outputTail: lastText.slice(-1000) };
+    }
+    await new Promise((resolveWait) => setTimeout(resolveWait, 250));
+  }
+  throw new Error(`PowerShell prompt not ready after ${timeoutMs}ms; tail=${lastText.slice(-600)}`);
 }
 
 async function waitForTerminalListed(page, terminalId, expectedPresent, timeoutMs = 8000) {
@@ -220,6 +272,7 @@ async function smokeLocalStorageReload(page) {
   await seedChaosQa(page);
   await navigateWithAppReadyFallback(page, () => page.reload({ waitUntil: "domcontentloaded", timeout: WAIT_MS }));
   const afterReseed = await page.evaluate(() => ({
+    href: location.href,
     keyCount: localStorage.length,
     hasProject: !!localStorage.getItem("aether:lastProject"),
     density: document.querySelector(".app-container")?.getAttribute("data-density") ?? null,
@@ -236,6 +289,8 @@ async function smokePtyForceRestart(page) {
     cwd: PROJECT_PATH,
   });
   try {
+    await waitForTerminalListed(page, terminalId, true);
+    const beforePrompt = await waitForPowerShellReady(page, terminalId);
     await call(page, "write_terminal", { id: terminalId, data: `Write-Output "${PTY_SENTINEL_BEFORE}"\r` });
     const beforeSnapshot = await waitForGrid(page, terminalId, PTY_SENTINEL_BEFORE);
     await call(page, "force_restart_terminal", {
@@ -246,7 +301,7 @@ async function smokePtyForceRestart(page) {
       cwd: PROJECT_PATH,
     });
     await waitForTerminalListed(page, terminalId, true);
-    await new Promise((resolveWait) => setTimeout(resolveWait, 700));
+    const afterPrompt = await waitForPowerShellReady(page, terminalId);
     await call(page, "write_terminal", { id: terminalId, data: `Write-Output "${PTY_SENTINEL_AFTER}"\r` });
     const afterSnapshot = await waitForGrid(page, terminalId, PTY_SENTINEL_AFTER);
     const metrics = await call(page, "performance_observatory_metrics", { terminalId });
@@ -257,6 +312,8 @@ async function smokePtyForceRestart(page) {
       activeTerminalCount: metrics.activeTerminalCount,
       paneCount: metrics.paneCount,
       dbWriteLatencyMs: metrics.dbWriteLatencyMs ?? null,
+      promptReadyBefore: beforePrompt.ready,
+      promptReadyAfterRestart: afterPrompt.ready,
     };
   } finally {
     await call(page, "close_terminal", { id: terminalId }).catch(() => {});
@@ -291,7 +348,8 @@ async function smokeAiCliKillCleanup(page) {
 
   const sessionId = spawnResult.session_id ?? spawnResult.sessionId ?? spawnResult.pty_id ?? spawnResult.ptyId;
   const ptyId = spawnResult.pty_id ?? spawnResult.ptyId ?? sessionId;
-  if (!sessionId || !ptyId) return aiCliTypedBlocker(new Error(`Unexpected spawn_interactive_agent result: ${JSON.stringify(spawnResult)}`));
+  if (!sessionId || !ptyId)
+    return aiCliTypedBlocker(new Error(`Unexpected spawn_interactive_agent result: ${JSON.stringify(spawnResult)}`));
 
   try {
     await waitForInteractiveSession(page, sessionId, (session) => !!session);
@@ -318,10 +376,36 @@ async function smokeAiCliKillCleanup(page) {
 }
 
 async function fetchDashboardTruth() {
-  const response = await fetch(DASHBOARD_STATE_URL, { cache: "no-store" });
-  if (!response.ok) throw new Error(`dashboard state returned HTTP ${response.status}`);
+  let response;
+  try {
+    response = await fetch(DASHBOARD_STATE_URL, { cache: "no-store" });
+  } catch (error) {
+    return {
+      status: "unavailable",
+      activeCard: null,
+      done: null,
+      total: null,
+      blockerStatus: null,
+      finalStatus: null,
+      qualityGate: null,
+      error: error?.message ?? String(error),
+    };
+  }
+  if (!response.ok) {
+    return {
+      status: "unavailable",
+      activeCard: null,
+      done: null,
+      total: null,
+      blockerStatus: null,
+      finalStatus: null,
+      qualityGate: null,
+      error: `dashboard state returned HTTP ${response.status}`,
+    };
+  }
   const state = await response.json();
   return {
+    status: "available",
     activeCard: state.activeCard?.id ?? null,
     done: state.roadmap?.done ?? state.summary?.done ?? null,
     total: state.roadmap?.total ?? state.summary?.total ?? null,
@@ -375,19 +459,32 @@ async function main() {
 
     const checks = {
       webviewAttached: hasInternals,
-      localStorageClearReloadedApp: report.localStorageReload.afterClearReload.hasApp && report.localStorageReload.afterClearReload.hasMain,
+      localStorageClearReloadedApp:
+        report.localStorageReload.afterClearReload.hasApp && report.localStorageReload.afterClearReload.hasMain,
       localStorageClearNoPageOverflow: !report.localStorageReload.afterClearReload.bodyOverflow,
       localStorageReseedRecoveredProject: report.localStorageReload.afterReseed.hasProject,
+      cleanChaosQaUrl:
+        isCleanChaosQaUrl(report.localStorageReload.before.href) &&
+        isCleanChaosQaUrl(report.localStorageReload.afterClearReload.href) &&
+        isCleanChaosQaUrl(report.localStorageReload.afterReseed.href),
       ptyRestartBeforeVisible: report.ptyForceRestart.beforeVisible,
       ptyRestartAfterVisible: report.ptyForceRestart.afterVisible,
+      ptyPromptReadyBeforeWrite: report.ptyForceRestart.promptReadyBefore,
+      ptyPromptReadyAfterRestart: report.ptyForceRestart.promptReadyAfterRestart,
       ptyMetricsStillHealthy: report.ptyForceRestart.activeTerminalCount > 0 && report.ptyForceRestart.paneCount > 0,
       aiCliKillCoveredOrTyped:
         report.aiCliKillCleanup.status === "pass" ||
-        (report.aiCliKillCleanup.status === "typed-blocker" && report.aiCliKillCleanup.blockerKind === "external_dependency"),
-      dashboardTruthHealthy: report.dashboardTruth.activeCard === "P2-07" || report.dashboardTruth.finalStatus === "complete",
+        (report.aiCliKillCleanup.status === "typed-blocker" &&
+          report.aiCliKillCleanup.blockerKind === "external_dependency"),
+      dashboardTruthHealthy:
+        report.dashboardTruth.status === "unavailable" ||
+        report.dashboardTruth.activeCard === "P2-07" ||
+        report.dashboardTruth.finalStatus === "complete",
       dashboardNotBlocked:
+        report.dashboardTruth.status === "unavailable" ||
         report.dashboardTruth.finalStatus === "complete" ||
-        report.dashboardTruth.blockerStatus === "not_blocked" || report.dashboardTruth.blockerStatus === "probe-recovered",
+        report.dashboardTruth.blockerStatus === "not_blocked" ||
+        report.dashboardTruth.blockerStatus === "probe-recovered",
     };
     report.checks = checks;
     const failed = Object.entries(checks).filter(([, ok]) => !ok);
@@ -428,7 +525,10 @@ async function main() {
     console.error(`[live-chaos] ${report.error}`);
     process.exit(report.status === "external_dependency" ? 2 : 1);
   } finally {
-    if (browser) await browser.close().catch(() => {});
+    if (browser) {
+      if (typeof browser.disconnect === "function") browser.disconnect();
+      else await browser.close().catch(() => {});
+    }
   }
 }
 

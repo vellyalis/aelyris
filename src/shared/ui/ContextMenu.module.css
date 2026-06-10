@@ -54,7 +54,8 @@
 }
 
 .item[data-disabled] {
-  opacity: 0.35;
+  color: var(--text-muted);
+  background: transparent;
   cursor: default;
 }
 

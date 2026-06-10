@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { formatFallbackError, reportFallback } from "../lib/fallbackTelemetry";
+import { type FallbackTelemetryDetail, formatFallbackError, reportFallback } from "../lib/fallbackTelemetry";
 import {
   buildWorkspaceProfile,
   createWorkspaceProfileState,
@@ -39,7 +39,18 @@ const WALLPAPER_IMAGE_KEY = "aether:wallpaperImagePath";
 const WALLPAPER_OPACITY_KEY = "aether:wallpaperOpacity";
 const WALLPAPER_SETTINGS_KEY = "aether:wallpaperSettingsByMood";
 const APP_WINDOW_OPACITY_KEY = "aether:windowOpacity";
+const TERMINAL_FONT_FAMILY_KEY = "aether:terminalFontFamily";
+const TERMINAL_FONT_SIZE_KEY = "aether:terminalFontSize";
+const TERMINAL_TEXT_CLARITY_KEY = "aether:terminalTextClarity";
+const TERMINAL_SURFACE_OPACITY_KEY = "aether:terminalSurfaceOpacity";
 const WORKSPACE_PROFILES_KEY = "aether:workspaceProfiles";
+const MAX_FALLBACK_TELEMETRY_EVENTS = 30;
+const DEFAULT_TERMINAL_FONT_FAMILY =
+  "Cascadia Code, Cascadia Mono, Cascadia Next JP, BIZ UDGothic, Yu Gothic UI, Meiryo, Noto Sans Mono CJK JP, IBM Plex Mono, monospace";
+const DEFAULT_TERMINAL_FONT_SIZE = 14;
+export type TerminalTextClarity = "glass" | "balanced" | "solid";
+const DEFAULT_TERMINAL_TEXT_CLARITY: TerminalTextClarity = "solid";
+const DEFAULT_TERMINAL_SURFACE_OPACITY = 0.82;
 
 export interface WallpaperSettings {
   imagePath: string | null;
@@ -64,6 +75,7 @@ function reportStorageFailure(operation: string, err: unknown, severity: "info" 
       operation,
       severity,
       message: formatFallbackError(err),
+      userVisible: true,
     },
     { throttleMs: 10_000 },
   );
@@ -79,8 +91,67 @@ function loadAppWindowOpacity(): number {
   try {
     const raw = localStorage.getItem(APP_WINDOW_OPACITY_KEY);
     return raw == null ? 0.95 : sanitizeAppWindowOpacity(raw);
-  } catch {
+  } catch (err) {
+    reportStorageFailure("load_window_opacity", err, "info");
     return 0.95;
+  }
+}
+
+function sanitizeTerminalFontFamily(value: unknown): string {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  return trimmed.length > 0 ? trimmed : DEFAULT_TERMINAL_FONT_FAMILY;
+}
+
+function sanitizeTerminalFontSize(value: unknown): number {
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numeric)) return DEFAULT_TERMINAL_FONT_SIZE;
+  return Math.min(28, Math.max(10, Math.round(numeric)));
+}
+
+export function sanitizeTerminalTextClarity(value: unknown): TerminalTextClarity {
+  return value === "glass" || value === "solid" || value === "balanced" ? value : DEFAULT_TERMINAL_TEXT_CLARITY;
+}
+
+export function sanitizeTerminalSurfaceOpacity(value: unknown): number {
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numeric)) return DEFAULT_TERMINAL_SURFACE_OPACITY;
+  return Number(Math.min(1, Math.max(0.42, numeric)).toFixed(2));
+}
+
+function loadTerminalFontFamily(): string {
+  try {
+    return sanitizeTerminalFontFamily(localStorage.getItem(TERMINAL_FONT_FAMILY_KEY));
+  } catch (err) {
+    reportStorageFailure("load_terminal_font_family", err, "info");
+    return DEFAULT_TERMINAL_FONT_FAMILY;
+  }
+}
+
+function loadTerminalFontSize(): number {
+  try {
+    return sanitizeTerminalFontSize(localStorage.getItem(TERMINAL_FONT_SIZE_KEY));
+  } catch (err) {
+    reportStorageFailure("load_terminal_font_size", err, "info");
+    return DEFAULT_TERMINAL_FONT_SIZE;
+  }
+}
+
+function loadTerminalTextClarity(): TerminalTextClarity {
+  try {
+    return sanitizeTerminalTextClarity(localStorage.getItem(TERMINAL_TEXT_CLARITY_KEY));
+  } catch (err) {
+    reportStorageFailure("load_terminal_text_clarity", err, "info");
+    return DEFAULT_TERMINAL_TEXT_CLARITY;
+  }
+}
+
+function loadTerminalSurfaceOpacity(): number {
+  try {
+    const raw = localStorage.getItem(TERMINAL_SURFACE_OPACITY_KEY);
+    return raw == null ? DEFAULT_TERMINAL_SURFACE_OPACITY : sanitizeTerminalSurfaceOpacity(raw);
+  } catch (err) {
+    reportStorageFailure("load_terminal_surface_opacity", err, "info");
+    return DEFAULT_TERMINAL_SURFACE_OPACITY;
   }
 }
 
@@ -300,6 +371,16 @@ interface AppState {
   setWallpaperOpacity: (opacity: number) => void;
   appWindowOpacity: number;
   setAppWindowOpacity: (opacity: number) => void;
+  terminalFontFamily: string;
+  terminalFontSize: number;
+  terminalTextClarity: TerminalTextClarity;
+  terminalSurfaceOpacity: number;
+  setTerminalAppearance: (appearance: {
+    fontFamily?: string;
+    fontSize?: number;
+    textClarity?: TerminalTextClarity;
+    surfaceOpacity?: number;
+  }) => void;
 
   // Project
   rootProjectPath: string | null;
@@ -381,6 +462,11 @@ interface AppState {
   markUnsaved: (path: string) => void;
   markSaved: (path: string) => void;
   hasUnsavedChanges: () => boolean;
+
+  // Runtime fallback telemetry
+  fallbackTelemetryEvents: FallbackTelemetryDetail[];
+  recordFallbackTelemetry: (event: FallbackTelemetryDetail) => void;
+  clearFallbackTelemetry: () => void;
 
   // Ghost Diff Overlay (Phase 3C-1d)
   /** When true, inline ghost paint shows layers that are still in progress. */
@@ -468,6 +554,14 @@ function loadKanbanTasks(): KanbanTask[] {
     .filter((task): task is KanbanTask => task != null);
 }
 
+function persistKanbanTasks(tasks: KanbanTask[]): void {
+  try {
+    localStorage.setItem("aether:kanban", JSON.stringify(tasks));
+  } catch (err) {
+    reportStorageFailure("persist_kanban_tasks", err);
+  }
+}
+
 function loadOpenFiles(): string[] {
   const parsed = readStorageJson("aether:openFiles", []);
   if (!Array.isArray(parsed)) return [];
@@ -520,7 +614,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   themeId: (() => {
     try {
       return localStorage.getItem("aether:theme") ?? "aether-dark";
-    } catch {
+    } catch (err) {
+      reportStorageFailure("load_theme", err, "info");
       return "aether-dark";
     }
   })(),
@@ -535,7 +630,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   moodPresetId: (() => {
     try {
       return normalizeMoodPreset(localStorage.getItem(MOOD_PRESET_KEY));
-    } catch {
+    } catch (err) {
+      reportStorageFailure("load_mood_preset", err, "info");
       return DEFAULT_MOOD_PRESET;
     }
   })(),
@@ -664,8 +760,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   wallpaperImagePath: (() => {
     try {
       const value = localStorage.getItem(WALLPAPER_IMAGE_KEY);
-      return value && value.trim() ? value : null;
-    } catch {
+      return value?.trim() ? value : null;
+    } catch (err) {
+      reportStorageFailure("load_wallpaper_image", err, "info");
       return null;
     }
   })(),
@@ -673,7 +770,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const value = Number(localStorage.getItem(WALLPAPER_OPACITY_KEY));
       return Number.isFinite(value) ? Math.min(0.85, Math.max(0, value)) : 0;
-    } catch {
+    } catch (err) {
+      reportStorageFailure("load_wallpaper_opacity", err, "info");
       return 0;
     }
   })(),
@@ -748,12 +846,44 @@ export const useAppStore = create<AppState>((set, get) => ({
       reportStorageFailure("persist_window_opacity", err);
     }
   },
+  terminalFontFamily: loadTerminalFontFamily(),
+  terminalFontSize: loadTerminalFontSize(),
+  terminalTextClarity: loadTerminalTextClarity(),
+  terminalSurfaceOpacity: loadTerminalSurfaceOpacity(),
+  setTerminalAppearance: ({ fontFamily, fontSize, textClarity, surfaceOpacity }) => {
+    const patch: Partial<
+      Pick<AppState, "terminalFontFamily" | "terminalFontSize" | "terminalTextClarity" | "terminalSurfaceOpacity">
+    > = {};
+    if (fontFamily !== undefined) patch.terminalFontFamily = sanitizeTerminalFontFamily(fontFamily);
+    if (fontSize !== undefined) patch.terminalFontSize = sanitizeTerminalFontSize(fontSize);
+    if (textClarity !== undefined) patch.terminalTextClarity = sanitizeTerminalTextClarity(textClarity);
+    if (surfaceOpacity !== undefined) patch.terminalSurfaceOpacity = sanitizeTerminalSurfaceOpacity(surfaceOpacity);
+    if (Object.keys(patch).length === 0) return;
+    set(patch);
+    try {
+      if (patch.terminalFontFamily !== undefined) {
+        localStorage.setItem(TERMINAL_FONT_FAMILY_KEY, patch.terminalFontFamily);
+      }
+      if (patch.terminalFontSize !== undefined) {
+        localStorage.setItem(TERMINAL_FONT_SIZE_KEY, String(patch.terminalFontSize));
+      }
+      if (patch.terminalTextClarity !== undefined) {
+        localStorage.setItem(TERMINAL_TEXT_CLARITY_KEY, patch.terminalTextClarity);
+      }
+      if (patch.terminalSurfaceOpacity !== undefined) {
+        localStorage.setItem(TERMINAL_SURFACE_OPACITY_KEY, String(patch.terminalSurfaceOpacity));
+      }
+    } catch (err) {
+      reportStorageFailure("persist_terminal_appearance", err);
+    }
+  },
 
   // Project
   rootProjectPath: (() => {
     try {
       return localStorage.getItem("aether:lastProject");
-    } catch {
+    } catch (err) {
+      reportStorageFailure("load_last_project", err, "info");
       return null;
     }
   })(),
@@ -773,7 +903,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   sidebarCollapsed: (() => {
     try {
       return localStorage.getItem("aether:sidebarCollapsed") === "1";
-    } catch {
+    } catch (err) {
+      reportStorageFailure("load_sidebar_collapsed", err, "info");
       return false;
     }
   })(),
@@ -794,8 +925,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (Number.isFinite(parsed) && parsed >= 200 && parsed <= 480) {
         return parsed;
       }
-    } catch {
-      /* ignore */
+    } catch (err) {
+      reportStorageFailure("load_sidebar_width", err, "info");
     }
     return 240;
   })(),
@@ -804,8 +935,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       const clamped = Math.max(200, Math.min(480, Math.round(v)));
       try {
         localStorage.setItem("aether:sidebarWidth", String(clamped));
-      } catch {
-        /* ignore */
+      } catch (err) {
+        reportStorageFailure("persist_sidebar_width", err, "warning");
       }
       return { sidebarWidth: clamped };
     }),
@@ -816,8 +947,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (Number.isFinite(parsed) && parsed >= 260 && parsed <= 480) {
         return parsed;
       }
-    } catch {
-      /* ignore */
+    } catch (err) {
+      reportStorageFailure("load_right_panel_width", err, "info");
     }
     return 320;
   })(),
@@ -826,8 +957,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       const clamped = Math.max(260, Math.min(480, Math.round(v)));
       try {
         localStorage.setItem("aether:rightPanelWidth", String(clamped));
-      } catch {
-        /* ignore */
+      } catch (err) {
+        reportStorageFailure("persist_right_panel_width", err, "warning");
       }
       return { rightPanelWidth: clamped };
     }),
@@ -854,7 +985,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectedModel: (() => {
     try {
       return localStorage.getItem("aether:selectedModel") ?? "claude-sonnet";
-    } catch {
+    } catch (err) {
+      reportStorageFailure("load_selected_model", err, "info");
       return "claude-sonnet";
     }
   })(),
@@ -862,7 +994,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ selectedModel: modelId });
     try {
       localStorage.setItem("aether:selectedModel", modelId);
-    } catch {}
+    } catch (err) {
+      reportStorageFailure("persist_selected_model", err);
+    }
   },
 
   // Budget
@@ -872,7 +1006,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       const budget = { ...s.agentBudget, spent: s.agentBudget.spent + cost };
       try {
         localStorage.setItem("aether:budget", JSON.stringify(budget));
-      } catch {}
+      } catch (err) {
+        reportStorageFailure("persist_agent_budget_spent", err);
+      }
       return { agentBudget: budget };
     }),
   setAgentBudgetLimit: (limit: number) =>
@@ -880,14 +1016,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       const budget = { ...s.agentBudget, limit };
       try {
         localStorage.setItem("aether:budget", JSON.stringify(budget));
-      } catch {}
+      } catch (err) {
+        reportStorageFailure("persist_agent_budget_limit", err);
+      }
       return { agentBudget: budget };
     }),
   perSessionCostCap: (() => {
     try {
       const v = Number(localStorage.getItem("aether:perSessionCostCap") ?? "2");
       return Number.isFinite(v) && v > 0 ? v : 2;
-    } catch {
+    } catch (err) {
+      reportStorageFailure("load_per_session_cost_cap", err, "info");
       return 2;
     }
   })(),
@@ -895,13 +1034,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ perSessionCostCap: cap });
     try {
       localStorage.setItem("aether:perSessionCostCap", String(cap));
-    } catch {}
+    } catch (err) {
+      reportStorageFailure("persist_per_session_cost_cap", err);
+    }
   },
   contextWarnPct: (() => {
     try {
       const v = Number(localStorage.getItem("aether:contextWarnPct") ?? "85");
       return Number.isFinite(v) && v > 0 && v <= 100 ? v : 85;
-    } catch {
+    } catch (err) {
+      reportStorageFailure("load_context_warn_pct", err, "info");
       return 85;
     }
   })(),
@@ -909,7 +1051,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ contextWarnPct: pct });
     try {
       localStorage.setItem("aether:contextWarnPct", String(pct));
-    } catch {}
+    } catch (err) {
+      reportStorageFailure("persist_context_warn_pct", err);
+    }
   },
 
   // Kanban
@@ -926,33 +1070,25 @@ export const useAppStore = create<AppState>((set, get) => ({
         updatedAt: Date.now(),
       };
       const tasks = [...s.kanbanTasks, task];
-      try {
-        localStorage.setItem("aether:kanban", JSON.stringify(tasks));
-      } catch {}
+      persistKanbanTasks(tasks);
       return { kanbanTasks: tasks };
     }),
   moveKanbanTask: (taskId, toColumn) =>
     set((s) => {
       const tasks = s.kanbanTasks.map((t) => (t.id === taskId ? { ...t, column: toColumn, updatedAt: Date.now() } : t));
-      try {
-        localStorage.setItem("aether:kanban", JSON.stringify(tasks));
-      } catch {}
+      persistKanbanTasks(tasks);
       return { kanbanTasks: tasks };
     }),
   deleteKanbanTask: (taskId) =>
     set((s) => {
       const tasks = s.kanbanTasks.filter((t) => t.id !== taskId);
-      try {
-        localStorage.setItem("aether:kanban", JSON.stringify(tasks));
-      } catch {}
+      persistKanbanTasks(tasks);
       return { kanbanTasks: tasks };
     }),
   updateKanbanTask: (taskId, updates) =>
     set((s) => {
       const tasks = s.kanbanTasks.map((t) => (t.id === taskId ? { ...t, ...updates, updatedAt: Date.now() } : t));
-      try {
-        localStorage.setItem("aether:kanban", JSON.stringify(tasks));
-      } catch {}
+      persistKanbanTasks(tasks);
       return { kanbanTasks: tasks };
     }),
   setActiveTaskId: (taskId) => set({ activeTaskId: taskId }),
@@ -962,32 +1098,22 @@ export const useAppStore = create<AppState>((set, get) => ({
   activeFile: (() => {
     try {
       return localStorage.getItem("aether:activeFile") ?? null;
-    } catch {
+    } catch (err) {
+      reportStorageFailure("load_active_file", err, "info");
       return null;
     }
   })(),
   openFile: (path) =>
     set((s) => {
       const files = s.openFiles.includes(path) ? s.openFiles : [...s.openFiles, path];
-      try {
-        localStorage.setItem("aether:openFiles", JSON.stringify(files));
-      } catch {}
-      try {
-        localStorage.setItem("aether:activeFile", path);
-      } catch {}
+      persistEditorFiles(files, path);
       return { openFiles: files, activeFile: path };
     }),
   closeFile: (path) =>
     set((s) => {
       const files = s.openFiles.filter((f) => f !== path);
       const active = s.activeFile === path ? (files.length > 0 ? files[files.length - 1] : null) : s.activeFile;
-      try {
-        localStorage.setItem("aether:openFiles", JSON.stringify(files));
-      } catch {}
-      try {
-        if (active) localStorage.setItem("aether:activeFile", active);
-        else localStorage.removeItem("aether:activeFile");
-      } catch {}
+      persistEditorFiles(files, active);
       return { openFiles: files, activeFile: active };
     }),
   setActiveFile: (path) => {
@@ -995,14 +1121,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       if (path) localStorage.setItem("aether:activeFile", path);
       else localStorage.removeItem("aether:activeFile");
-    } catch {}
+    } catch (err) {
+      reportStorageFailure("persist_active_file", err);
+    }
   },
   clearFiles: () => {
     set({ openFiles: [], activeFile: null, unsavedFiles: new Set() });
     try {
       localStorage.removeItem("aether:openFiles");
       localStorage.removeItem("aether:activeFile");
-    } catch {}
+    } catch (err) {
+      reportStorageFailure("clear_editor_files", err);
+    }
   },
   replaceOpenPath: (oldPath, newPath) =>
     set((s) => {
@@ -1050,6 +1180,30 @@ export const useAppStore = create<AppState>((set, get) => ({
     }),
   hasUnsavedChanges: () => get().unsavedFiles.size > 0,
 
+  fallbackTelemetryEvents: [],
+  recordFallbackTelemetry: (event) =>
+    set((s) => {
+      const timestamp = Number.isFinite(event.timestamp) ? event.timestamp : Date.now();
+      const normalized: FallbackTelemetryDetail = {
+        ...event,
+        timestamp,
+        source: event.source || "unknown",
+        operation: event.operation || "unknown",
+        severity: event.severity ?? "warning",
+        message: event.message || "Fallback path used",
+      };
+      const key = `${normalized.source}:${normalized.operation}:${normalized.message}`;
+      const withoutDuplicate = s.fallbackTelemetryEvents.filter(
+        (item) => `${item.source}:${item.operation}:${item.message}` !== key,
+      );
+      return {
+        fallbackTelemetryEvents: [normalized, ...withoutDuplicate]
+          .sort((left, right) => right.timestamp - left.timestamp)
+          .slice(0, MAX_FALLBACK_TELEMETRY_EVENTS),
+      };
+    }),
+  clearFallbackTelemetry: () => set({ fallbackTelemetryEvents: [] }),
+
   // Ghost Diff Overlay (Phase 3C-1d) — bootstrap from localStorage for
   // first paint; Settings load_app_config then rehydrates from config.toml.
   ghostDiffLiveMode: (() => {
@@ -1063,7 +1217,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ ghostDiffLiveMode: v });
     try {
       localStorage.setItem("aether:ghostDiffLiveMode", v ? "1" : "0");
-    } catch {}
+    } catch (err) {
+      reportStorageFailure("persist_ghost_diff_live_mode", err, "info");
+    }
   },
 
   workspaceProfiles: loadWorkspaceProfiles(),

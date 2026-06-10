@@ -142,11 +142,76 @@ async fn daemon_contract_exposes_versioned_capabilities() {
         .await
         .unwrap();
     assert_eq!(body["processKind"], "embedded-api");
+    assert_eq!(body["contractSchemaVersion"], 1);
     assert_eq!(body["protocolVersion"], api::DAEMON_PROTOCOL_VERSION);
+    assert_eq!(
+        body["muxGraphVersion"],
+        aether_terminal_lib::mux::graph::MUX_GRAPH_VERSION
+    );
+    assert_eq!(body["transport"], "loopback-http-websocket");
+    assert_eq!(body["authPolicy"], "bearer-token-or-disabled-test-mode");
+    assert_eq!(
+        body["clientDetachPolicy"],
+        "detach-keeps-live-pty-while-daemon-running"
+    );
+    assert_eq!(
+        body["restartRestorePolicy"],
+        "snapshot-restores-graph-as-restore-pending-with-durable-scrollback"
+    );
+    assert_eq!(
+        body["attachPolicy"],
+        "reattach-respawns-only-missing-or-restore-pending-pty-bindings"
+    );
+    assert_eq!(
+        body["shutdownPolicy"],
+        "explicit-workspace-close-terminates-owned-child-ptys"
+    );
     assert_eq!(body["maxSessions"], 7);
     assert_eq!(body["activeSessions"], 0);
     assert_eq!(body["muxSnapshotEnabled"], true);
     assert_eq!(body["durableScrollbackEnabled"], true);
+    assert_eq!(
+        body["terminalCorePolicy"]["nativeInputOwner"],
+        "rust-native-input-host"
+    );
+    assert_eq!(
+        body["terminalCorePolicy"]["rendererTruthSource"],
+        "rust-term-engine-render-pipeline"
+    );
+    assert_eq!(
+        body["terminalCorePolicy"]["renderFrameSchema"],
+        "aether.native.render-frame.v1"
+    );
+    assert_eq!(
+        body["terminalCorePolicy"]["renderDiffSchema"],
+        "aether.native.render-diff.v1"
+    );
+    assert_eq!(
+        body["terminalCorePolicy"]["renderCommitSchema"],
+        "aether.native.render-commit.v1"
+    );
+    assert_eq!(
+        body["terminalCorePolicy"]["renderPipelineBoundary"],
+        "rust-native-render-pipeline"
+    );
+    assert_eq!(
+        body["terminalCorePolicy"]["webviewTerminalRendererPolicy"],
+        "fallback-contained-not-source-of-truth"
+    );
+    assert_eq!(
+        body["terminalCorePolicy"]["reactTerminalRendererPolicy"],
+        "control-plane-only-not-terminal-core"
+    );
+    assert_eq!(body["terminalCorePolicy"]["muxTruthSource"], "daemon-api");
+    assert_eq!(
+        body["terminalCorePolicy"]["fallbackVisibilityPolicy"],
+        "release-blocking-telemetry"
+    );
+    assert!(body["capabilities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|value| value == "command-session"));
     assert!(body["capabilities"]
         .as_array()
         .unwrap()
@@ -167,6 +232,16 @@ async fn daemon_contract_exposes_versioned_capabilities() {
         .unwrap()
         .iter()
         .any(|value| value == "mux-synchronized-panes"));
+    assert!(body["capabilities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|value| value == "terminal-core-policy"));
+    assert!(body["capabilities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|value| value == "native-render-pipeline-contract"));
 
     let health: serde_json::Value = client()
         .get(format!("{}/health", base))
@@ -177,7 +252,31 @@ async fn daemon_contract_exposes_versioned_capabilities() {
         .await
         .unwrap();
     assert_eq!(health["protocol_version"], api::DAEMON_PROTOCOL_VERSION);
-    assert!(health["version"].as_str().unwrap().len() > 0);
+    assert!(!health["version"].as_str().unwrap().is_empty());
+
+    shutdown_server(&state, join).await;
+}
+
+#[tokio::test]
+async fn command_session_rejects_path_like_programs() {
+    let (base, state, join) = spawn_server(AuthConfig::with_token("command-secret")).await;
+
+    let res = client()
+        .post(format!("{}/commands", base))
+        .header(AUTHORIZATION, "Bearer command-secret")
+        .json(&json!({
+            "program": "C:\\\\Windows\\\\System32\\\\cmd.exe",
+            "args": ["/C", "echo should-not-run"],
+            "cols": 80,
+            "rows": 24
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(body["code"], "bad_request");
 
     shutdown_server(&state, join).await;
 }
@@ -966,6 +1065,55 @@ async fn mux_snapshot_store_persists_and_restores_api_graphs() {
         .map(|tab| tab.panes.len())
         .sum();
     assert_eq!(pane_count, 2);
+
+    let exported: serde_json::Value = c
+        .get(format!("{}/mux/workspaces/{}/export", base, id))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(exported["schema"], "aether.mux.v1");
+    assert_eq!(exported["graph"]["activeWorkspaceId"], id);
+
+    let duplicate_import = c
+        .post(format!("{}/mux/workspaces/import", base))
+        .json(&exported)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(duplicate_import.status(), StatusCode::CONFLICT);
+
+    let imported: serde_json::Value = c
+        .post(format!("{}/mux/workspaces/import?replace=true", base))
+        .json(&exported)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(imported["activeWorkspaceId"], id);
+    let imported_panes = imported["workspaces"][&id]["windows"]
+        .as_object()
+        .unwrap()
+        .values()
+        .flat_map(|window| window["tabs"].as_object().unwrap().values())
+        .flat_map(|tab| tab["panes"].as_object().unwrap().values())
+        .collect::<Vec<_>>();
+    assert_eq!(imported_panes.len(), 2);
+    assert!(imported_panes.iter().all(|pane| {
+        pane["lifecycle"] == "detached"
+            && pane["pty"]["terminalId"]
+                .as_str()
+                .is_some_and(|terminal_id| terminal_id.starts_with("restore-pending:"))
+            && pane["pty"]["processId"].is_null()
+    }));
+    assert!(
+        state.pty.list_info().is_empty(),
+        "replace import should close stale live PTYs before exposing restore-pending panes"
+    );
 
     let restored_state =
         ApiState::new(PtyManager::new(), AuthConfig::disabled()).with_mux_snapshot_dir(temp.path());

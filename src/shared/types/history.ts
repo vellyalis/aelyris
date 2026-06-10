@@ -13,6 +13,15 @@ export interface HistoryEntry {
   executed_at: string;
 }
 
+export interface CommandHistoryRecord {
+  id: number;
+  terminal_id: string;
+  command: string;
+  cwd: string;
+  exit_code: number | null;
+  executed_at: string;
+}
+
 export interface SearchFilters {
   since?: string;
   until?: string;

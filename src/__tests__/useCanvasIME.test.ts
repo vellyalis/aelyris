@@ -1,6 +1,6 @@
 import { act, render, screen } from "@testing-library/react";
 import { createElement, useState } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const invokeMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 
@@ -8,29 +8,54 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: invokeMock,
 }));
 
-import {
-  copyImeDiagnostics,
-  disableImeDiagnostics,
-  enableImeDiagnostics,
-  IME_DIAGNOSTIC_EVENT,
-  IME_DIAGNOSTIC_STORAGE_KEY,
-  imeCandidateAnchorX,
-  imeCandidateAnchorXForViewport,
-  imeCandidateAnchorY,
-  imeCandidateAnchorYForViewport,
-  imeDiagnosticsEnabled,
-  imeTextareaAnchorWidth,
-  imeTextareaCaretInset,
-  installImeDiagnosticHelpers,
-  isSpecialKeyEvent,
-  useCanvasIME,
-  useImePosition,
-  type WriteBytesFn,
-} from "../features/terminal/hooks/useCanvasIME";
+import type { WriteBytesFn } from "../features/terminal/hooks/useCanvasIME";
 import { FALLBACK_TELEMETRY_EVENT, type FallbackTelemetryDetail } from "../shared/lib/fallbackTelemetry";
 import { TERMINAL_PASTE_GUARD_EVENT } from "../shared/lib/terminalInput";
 
-function ev(overrides: Partial<Parameters<typeof isSpecialKeyEvent>[0]> = {}): Parameters<typeof isSpecialKeyEvent>[0] {
+type CanvasImeModule = typeof import("../features/terminal/hooks/useCanvasIME");
+type SpecialKeyEvent = Parameters<CanvasImeModule["isSpecialKeyEvent"]>[0];
+
+let copyImeDiagnostics: CanvasImeModule["copyImeDiagnostics"];
+let disableImeDiagnostics: CanvasImeModule["disableImeDiagnostics"];
+let enableImeDiagnostics: CanvasImeModule["enableImeDiagnostics"];
+let IME_DIAGNOSTIC_EVENT: CanvasImeModule["IME_DIAGNOSTIC_EVENT"];
+let IME_DIAGNOSTIC_STORAGE_KEY: CanvasImeModule["IME_DIAGNOSTIC_STORAGE_KEY"];
+let imeCandidateAnchorX: CanvasImeModule["imeCandidateAnchorX"];
+let imeCandidateAnchorXForViewport: CanvasImeModule["imeCandidateAnchorXForViewport"];
+let imeCandidateAnchorY: CanvasImeModule["imeCandidateAnchorY"];
+let imeCandidateAnchorYForViewport: CanvasImeModule["imeCandidateAnchorYForViewport"];
+let imeDiagnosticsEnabled: CanvasImeModule["imeDiagnosticsEnabled"];
+let imeTextareaAnchorWidth: CanvasImeModule["imeTextareaAnchorWidth"];
+let imeTextareaCaretInset: CanvasImeModule["imeTextareaCaretInset"];
+let installImeDiagnosticHelpers: CanvasImeModule["installImeDiagnosticHelpers"];
+let isSpecialKeyEvent: CanvasImeModule["isSpecialKeyEvent"];
+let useCanvasIME: CanvasImeModule["useCanvasIME"];
+let useImePosition: CanvasImeModule["useImePosition"];
+
+beforeEach(async () => {
+  vi.resetModules();
+  invokeMock.mockReset();
+  invokeMock.mockResolvedValue(undefined);
+  const module = await import("../features/terminal/hooks/useCanvasIME");
+  copyImeDiagnostics = module.copyImeDiagnostics;
+  disableImeDiagnostics = module.disableImeDiagnostics;
+  enableImeDiagnostics = module.enableImeDiagnostics;
+  IME_DIAGNOSTIC_EVENT = module.IME_DIAGNOSTIC_EVENT;
+  IME_DIAGNOSTIC_STORAGE_KEY = module.IME_DIAGNOSTIC_STORAGE_KEY;
+  imeCandidateAnchorX = module.imeCandidateAnchorX;
+  imeCandidateAnchorXForViewport = module.imeCandidateAnchorXForViewport;
+  imeCandidateAnchorY = module.imeCandidateAnchorY;
+  imeCandidateAnchorYForViewport = module.imeCandidateAnchorYForViewport;
+  imeDiagnosticsEnabled = module.imeDiagnosticsEnabled;
+  imeTextareaAnchorWidth = module.imeTextareaAnchorWidth;
+  imeTextareaCaretInset = module.imeTextareaCaretInset;
+  installImeDiagnosticHelpers = module.installImeDiagnosticHelpers;
+  isSpecialKeyEvent = module.isSpecialKeyEvent;
+  useCanvasIME = module.useCanvasIME;
+  useImePosition = module.useImePosition;
+});
+
+function ev(overrides: Partial<SpecialKeyEvent> = {}): SpecialKeyEvent {
   return {
     key: "a",
     ctrlKey: false,
@@ -275,6 +300,37 @@ describe("useImePosition", () => {
     expect(textarea.dataset.imeCandidateX).toBe("640");
   });
 
+  it("positions the native input HWND as a wide transparent runway instead of a one-cell IME strip", () => {
+    invokeMock.mockClear();
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1400 });
+    const { nativeFocusTarget } = renderImePositionHarness({
+      cursor: { row: 2, col: 78 },
+      cols: 80,
+      rows: 24,
+      cellWidth: 10,
+      cellHeight: 18,
+      canvasRect: { left: 40, top: 80, width: 800, height: 432 },
+      nativeInputSurface: true,
+    });
+
+    act(() => {
+      nativeFocusTarget.focus();
+      nativeFocusTarget.dispatchEvent(new FocusEvent("focus", { bubbles: false }));
+    });
+
+    expect(invokeMock).toHaveBeenCalledWith(
+      "native_terminal_input_focus",
+      expect.objectContaining({
+        terminalId: "term-1",
+        x: 400,
+        y: 116,
+        width: 440,
+        height: 18,
+        caretInset: 420,
+      }),
+    );
+  });
+
   it("re-anchors the native IME candidate when pane layout resize moves the canvas", () => {
     invokeMock.mockClear();
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 1400 });
@@ -413,7 +469,11 @@ describe("IME diagnostic helpers", () => {
     ];
 
     await expect(copyImeDiagnostics(window)).resolves.toBe(true);
-    expect(writeText).toHaveBeenCalledWith(expect.stringContaining('"terminalId": "term-1"'));
+    expect(invokeMock).toHaveBeenCalledWith(
+      "write_clipboard_text",
+      expect.objectContaining({ text: expect.stringContaining('"terminalId": "term-1"') }),
+    );
+    expect(writeText).not.toHaveBeenCalled();
 
     await expect(window.__AETHER_COPY_IME_EVENTS__?.()).resolves.toBe(true);
     window.__AETHER_DISABLE_IME_DEBUG__?.();
@@ -967,14 +1027,27 @@ interface ImePositionHarnessProps {
   cellWidth: number;
   cellHeight: number;
   canvasRect: { left: number; top: number; width: number; height: number };
+  nativeInputSurface?: boolean;
 }
 
-function ImePositionHarness({ cursor, cols, rows, cellWidth, cellHeight, canvasRect }: ImePositionHarnessProps) {
+function ImePositionHarness({
+  cursor,
+  cols,
+  rows,
+  cellWidth,
+  cellHeight,
+  canvasRect,
+  nativeInputSurface = false,
+}: ImePositionHarnessProps) {
   const [textarea, setTextarea] = useState<HTMLTextAreaElement | null>(null);
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
+  const [focusElement, setFocusElement] = useState<HTMLDivElement | null>(null);
 
   useImePosition({
+    terminalId: "term-1",
     textarea,
+    focusElement,
+    nativeInputSurface,
     cursor,
     cols,
     rows,
@@ -1009,15 +1082,22 @@ function ImePositionHarness({ cursor, cols, rows, cellWidth, cellHeight, canvasR
       "data-testid": "ime-position-target",
       ref: setTextarea,
     }),
+    createElement("div", {
+      "data-testid": "ime-native-focus-target",
+      ref: setFocusElement,
+      tabIndex: 0,
+    }),
   );
 }
 
 function renderImePositionHarness(props: ImePositionHarnessProps) {
   const utils = render(createElement(ImePositionHarness, props));
   const textarea = screen.getByTestId("ime-position-target") as HTMLTextAreaElement;
+  const nativeFocusTarget = screen.getByTestId("ime-native-focus-target") as HTMLDivElement;
   return {
     ...utils,
     textarea,
+    nativeFocusTarget,
     rerenderPosition: (nextProps: ImePositionHarnessProps) => {
       utils.rerender(createElement(ImePositionHarness, nextProps));
     },

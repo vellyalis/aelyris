@@ -16,6 +16,7 @@ import { chromium } from "@playwright/test";
 const APP_URL = process.env.AETHER_RIGHT_RAIL_EDGE_URL ?? "http://localhost:1420/";
 const PROJECT_PATH = (process.env.AETHER_TAURI_PROJECT ?? process.cwd()).replaceAll("\\", "/");
 const OUT = process.env.AETHER_RIGHT_RAIL_EDGE_OUT ?? ".codex-auto/production-smoke/right-rail-edge-feedback.json";
+const SCREENSHOT = process.env.AETHER_RIGHT_RAIL_EDGE_SCREENSHOT ?? ".codex-auto/visual/right-rail-next-action-qa.png";
 const WAIT_MS = Number.parseInt(process.env.AETHER_RIGHT_RAIL_EDGE_WAIT_MS ?? "30000", 10);
 const EDGE_STORAGE_PREFIX = "aether:right-rail-edge-feedback:";
 
@@ -168,6 +169,39 @@ async function readRailMetrics(page) {
   });
 }
 
+async function readWorkflowState(page, mode) {
+  await page.locator(`.right-panel-mode-tab[data-right-rail-mode="${mode}"]`).click({ timeout: WAIT_MS });
+  await page.waitForFunction(
+    (expectedMode) => document.querySelector(".right-panel-stack")?.getAttribute("data-mode") === expectedMode,
+    mode,
+    { timeout: WAIT_MS },
+  );
+  return await page.evaluate(() => {
+    const stack = document.querySelector(".right-panel-stack");
+    const runLoop = document.querySelector(".right-panel-run-loop");
+    const actionButtons = Array.from(document.querySelectorAll(".right-panel-action"));
+    const widgets = Array.from(document.querySelectorAll(".right-panel-stack [data-widget]"));
+    const widgetIds = widgets
+      .map((widget) => widget.getAttribute("data-widget"))
+      .filter((widget) => typeof widget === "string" && widget.length > 0);
+    const duplicateWidgets = widgetIds.filter((widget, index) => widgetIds.indexOf(widget) !== index);
+    const toolkit = document.querySelector('.right-panel-stack [data-widget="toolkit"]');
+    const toolkitCompactText = (toolkit?.textContent ?? "").replace(/\s+/g, "");
+    return {
+      mode: stack?.getAttribute("data-mode") ?? null,
+      runLoopActionId: runLoop?.getAttribute("data-action-id") ?? null,
+      runLoopActionMode: runLoop?.getAttribute("data-action-mode") ?? null,
+      runLoopTarget: runLoop?.getAttribute("data-target") ?? null,
+      actionModes: actionButtons.map((button) => button.getAttribute("data-mode")),
+      firstActionMode: actionButtons[0]?.getAttribute("data-mode") ?? null,
+      widgetIds,
+      duplicateWidgets: Array.from(new Set(duplicateWidgets)),
+      toolkitCompactText,
+      toolkitHasRepeatedTitle: toolkitCompactText.includes("ToolkitsavedcommandsToolkitsavedcommands"),
+    };
+  });
+}
+
 async function readFeedbackState(page) {
   return await page.evaluate(() => {
     const section = document.querySelector(".right-panel-edge-feedback");
@@ -236,6 +270,51 @@ async function main() {
       throw new Error(`Unexpected Score loop state before filter: ${JSON.stringify(beforeFilter)}`);
     }
 
+    const commandWorkflow = await readWorkflowState(page, "command");
+    const reviewWorkflow = await readWorkflowState(page, "review");
+    const observeWorkflow = await readWorkflowState(page, "observe");
+    report.checks.workflowLinkage = {
+      command: commandWorkflow,
+      review: reviewWorkflow,
+      observe: observeWorkflow,
+    };
+    if (
+      commandWorkflow.mode !== "command" ||
+      commandWorkflow.runLoopActionMode !== "command" ||
+      commandWorkflow.firstActionMode !== "command" ||
+      commandWorkflow.duplicateWidgets.length > 0 ||
+      commandWorkflow.toolkitHasRepeatedTitle
+    ) {
+      throw new Error(`Command rail workflow is ambiguous: ${JSON.stringify(commandWorkflow)}`);
+    }
+    if (
+      reviewWorkflow.mode !== "review" ||
+      reviewWorkflow.runLoopActionMode !== "review" ||
+      reviewWorkflow.firstActionMode !== "review" ||
+      reviewWorkflow.duplicateWidgets.length > 0
+    ) {
+      throw new Error(`Review rail workflow is not review-scoped: ${JSON.stringify(reviewWorkflow)}`);
+    }
+    if (
+      observeWorkflow.mode !== "observe" ||
+      observeWorkflow.runLoopActionMode !== "observe" ||
+      observeWorkflow.firstActionMode !== "observe" ||
+      observeWorkflow.duplicateWidgets.length > 0
+    ) {
+      throw new Error(`Health rail workflow is not observe-scoped: ${JSON.stringify(observeWorkflow)}`);
+    }
+    await page.locator('.right-panel-mode-tab[data-right-rail-mode="command"]').click({ timeout: WAIT_MS });
+    await page.waitForFunction(
+      () => document.querySelector(".right-panel-stack")?.getAttribute("data-mode") === "command",
+      null,
+      { timeout: WAIT_MS },
+    );
+
+    const screenshotPath = resolve(SCREENSHOT);
+    mkdirSync(dirname(screenshotPath), { recursive: true });
+    await page.screenshot({ path: screenshotPath, fullPage: false });
+    report.checks.screenshot = screenshotPath;
+
     await page.locator(".right-panel-edge-feedback-filter").click({ timeout: WAIT_MS });
     await page.waitForFunction(
       () => document.querySelector(".right-panel-edge-feedback-filter")?.getAttribute("data-active") === "true",
@@ -289,7 +368,10 @@ async function main() {
     report.errors.push(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   } finally {
-    if (browser) await browser.close().catch(() => {});
+    if (browser) {
+      if (typeof browser.disconnect === "function") browser.disconnect();
+      else await browser.close().catch(() => {});
+    }
     const artifact = writeArtifact();
     if (report.ok) {
       console.log(`right rail edge feedback smoke passed: ${artifact}`);

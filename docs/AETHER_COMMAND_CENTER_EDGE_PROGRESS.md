@@ -3,6 +3,452 @@
 Date: 2026-05-15
 Scope: Sequential execution toward the command-center edge plan.
 
+## Current Canonical State - 2026-06-01
+
+- `pnpm verify:quality-score` currently reports `99/100`, grade `S`, `331/335`, `releaseCandidateReady=false`.
+- `pnpm verify:final-goal-audit` is currently `blocked-by-external-gates`: `implementationFixableCount=0`, `policyBlockedCount=0`, and `externalBlockedCount=1`.
+- The live AI CLI post-launch chaos score is no longer blocked by WebView2 CDP: `.codex-auto/chaos-recovery/native-ai-cli-post-launch-chaos.json` proves native sidecar AI CLI spawn, input, kill cleanup, same-id PTY restart, prompt readiness, and no session residue, while the stale URL truth contract remains covered by the right-rail verifier.
+- The strict right-rail Goal Track DOM proof can also report environment-blocked when WebView2 CDP at `http://127.0.0.1:9222` is not reachable, but the current gate preserves the primary artifact and accepts the fresh `.environment-blocked.json` source contract as `environment-blocked-current-contract`.
+- The safe proof registry has `26/26` registered artifacts green when `rightRailGoalTrackTauri` reports either `pass-current-contract` or `environment-blocked-current-contract`, including `goal-external-gate-readiness`, `real-os-sleep-operator-handoff`, `goal-operator-finish`, optional git handoff artifacts, `glass-legibility-contract`, `right-rail-information-density-contract`, and `goal-anti-stall-contract`.
+- Long external operator gates now persist `.codex-auto/quality/goal-operator-progress.json` with `lastHeartbeatAt`, `nextHeartbeatAt`, active step, and next action, so a resumed run can distinguish an actual stall from a sleep/token gate wait.
+- `pnpm verify:goal:finalize` excludes git finalization by default; set `AETHER_GOAL_FINALIZE_INCLUDE_GIT=1` only when commit/merge readiness is intentionally in scope.
+- Git finalization is an optional handoff gate, not required for product/safe/finalize evidence: `.codex-auto/quality/git-finalization-readiness.json` records the exact commit/merge runbook when `.git/index.lock` or `.git/objects` permission errors block staging.
+- `real-os-soak` is host-blocked, not passed: the native sleep command returned `SetSuspendState returned false; GetLastError=50`, while native sleep/postcheck preflights and the no-real-sleep-claim postcheck writer pass.
+- `authenticated-ai-cli-prompt-smoke` is now proved through explicit consent; `authenticated-ai-cli-consent-packet` records the required `AETHER_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` plus `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini` boundary for any future token-spending prompt run.
+- Until a capable/user-initiated Windows sleep cycle emits real power events, final audit state must remain `blocked-by-external-gates`, never `complete`.
+
+## Superseded Canonical State - 2026-05-22
+
+- `pnpm verify:quality-score` reports `97/100`, grade `S`, `321/331`, `releaseCandidateReady=false`.
+- `.codex-auto/quality/final-goal-audit.json` reports `ok=true`, `evidenceComplete=true`, and `status=blocked-by-explicit-consent`.
+- `.codex-auto/quality/final-goal-safe-summary.json` reports `ok=true`, `proofArtifactPassCount=24/24`, and no implementation-fixable blocker.
+- The only remaining blocker is `authenticated-ai-cli-prompt-smoke`, because the final authenticated AI CLI prompt smoke may spend tokens.
+- The opt-in artifact is `authenticated-ai-cli-consent-packet`; that final smoke requires `AETHER_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` plus `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini`.
+
+### Phase 2.48 - Native winit/wgpu Font Atlas Proof
+
+Status: done
+
+Implemented:
+
+- `aether-native winit-wgpu-proof` now renders terminal glyphs through a native GPU font atlas instead of the earlier cell-quad proxy.
+- Added `fontdue` rasterization from Windows terminal fonts and uploads the atlas to a `wgpu` `R8Unorm` texture.
+- Split the winit/wgpu renderer into dirty/cursor rectangle and glyph sampling pipelines while keeping the same daemon-backed `NativeRenderFrame` and `frameSha256`.
+- The native proof now reports `glyphMode=font-atlas`, `fontAtlas=true`, `fontAtlasGlyphs`, `fontAtlasFontPath`, and check `native-winit-wgpu-font-atlas-proof`.
+
+Validation:
+
+- `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- `cargo check --manifest-path src-tauri\pty-server\Cargo.toml`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- `pnpm verify:terminal:native-client`
+- `pnpm verify:terminal:native-hwnd-paste`
+- `pnpm verify:terminal:native-input`
+- `pnpm verify:terminal:native-boundary`
+- `pnpm verify:full-native:audit`
+
+Result:
+
+- `.codex-auto/quality/native-client-spike.json` records the native font-atlas proof and no React/WebView usage for the winit/wgpu renderer.
+- `.codex-auto/production-smoke/native-hwnd-paste-live.json` and `.codex-auto/production-smoke/native-terminal-input-host.json` were refreshed after the font-atlas changes; live `WM_PASTE` and native input bridge checks pass.
+- `.codex-auto/quality/native-boundary-contract.json` remains `14/14` passing.
+- `.codex-auto/quality/full-native-rust-gap-audit.json` reports `60/100`, `68/114`, `status=in-progress`.
+
+Residual:
+
+- This clears the proof-level font-atlas renderer gap, but the native shell is still not a full-native daily driver. Remaining blockers are native IME dogfood, native settings/customization, native Command Center/right rail, native accessibility, native visual QA, and React/WebView compatibility-only demotion.
+
+### Phase 2.49 - Native IME State/Anchor Proof
+
+Status: done
+
+Implemented:
+
+- Added `aether-native ime-proof`.
+- The proof keeps IME preedit/commit state in the native Rust client boundary and uses `NativeRenderFrame` cursor metrics for the preedit anchor rectangle.
+- The commit path writes Japanese text into the Rust terminal engine and proves the committed text is visible in the resulting render frame.
+- The proof is deliberately labelled `mode=state-machine-proof` and `realOsImeDogfood=false`, so it does not overclaim live Windows/Japanese IME dogfood.
+- The native-client verifier now requires `native-ime-state-machine-proof`, `native-ime-preedit-anchor-proof`, and `native-ime-commit-render-frame-proof`.
+
+Validation:
+
+- `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- `pnpm verify:terminal:native-client`
+- `pnpm verify:terminal:native-boundary`
+- `pnpm verify:full-native:audit`
+
+Result:
+
+- `.codex-auto/quality/native-client-spike.json` records `nativeIme.operation=ime-proof`, `schema=aether.native.ime-proof.v1`, `nativePreeditOverlay=true`, `nativeCommitPath=true`, `webviewUsed=false`, and `reactUsed=false`.
+- `.codex-auto/quality/native-boundary-contract.json` remains `14/14` passing.
+- `.codex-auto/quality/full-native-rust-gap-audit.json` reports `61/100`, `70/114`, `status=in-progress`.
+
+Residual:
+
+- Live OS IME dogfood is still open. The next step is to process real `winit`/Win32 IME events inside `aether-native` and run Codex/Claude/Gemini prompt-row IME checks there.
+
+### Phase 2.50 - Native Settings Config Proof
+
+Status: done
+
+Implemented:
+
+- Added `aether-native settings-proof`.
+- Added `AETHER_CONFIG_HOME` support to the Rust config loader so proof runs can use an isolated config directory and avoid mutating the user's real `~/.aether/config.toml`.
+- The proof writes and reloads theme, mood, window opacity, palette overrides, material overrides, wallpaper image path, wallpaper opacity, wallpaper position, and wallpaper scale through the real Rust `load_config` / `save_config` path.
+- The proof saves a second generation and reloads it to verify settings changes can be observed without React/WebView, recording `hotReloadProof.changedWithoutReact=true`.
+- The native-client verifier now requires `native-settings-config-roundtrip-proof`, `native-settings-hot-reload-proof`, `native-settings-wallpaper-customization-proof`, and `native-settings-material-customization-proof`.
+
+Validation:
+
+- `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- `cargo test --manifest-path src-tauri\Cargo.toml config::settings:: -- --nocapture`
+- `pnpm verify:terminal:native-client`
+- `pnpm verify:terminal:native-boundary`
+- `pnpm verify:full-native:audit`
+
+Result:
+
+- `.codex-auto/quality/native-client-spike.json` records `nativeSettings.operation=settings-proof`, `schema=aether.native.settings-proof.v1`, `webviewUsed=false`, `reactUsed=false`, `theme=sakura-hub`, `mood=aether-sakura`, material overrides, and wallpaper customization.
+- `.codex-auto/quality/native-boundary-contract.json` remains `14/14` passing.
+- `.codex-auto/quality/full-native-rust-gap-audit.json` reports `63/100`, `72/114`, `status=in-progress`.
+
+Residual:
+
+- The Rust config proof is complete, but a native settings window/dialog is still open. React settings UI remains compatibility until `aether-native` can edit these settings interactively.
+
+### Phase 2.51 - Native Command Center Data Proof
+
+Status: partial
+
+Implemented:
+
+- Added `aether-native command-center-proof`.
+- The proof reads the full-native audit, native boundary contract, native client proof, command recovery contract, and AI CLI launch planner artifacts from the Rust native client boundary.
+- It emits a native Command Center data contract with `nativeCommandCenter=true`, `mode=data-contract-proof`, `rightRailDataOwnedByRust=true`, `webviewUsed=false`, `reactUsed=false`, and `nextProof=native-command-center-window-ui`.
+- It maps open full-native blockers into actionable native operations, including native IME dogfood, native settings UI, native Command Center UI, native accessibility, native visual QA, React/WebView compatibility demotion, and native proof refresh.
+- The native-client, native-boundary, and full-native audit verifiers now track this proof as `native-command-center-data-proof` separately from the still-open native Command Center UI.
+
+Validation:
+
+- `node --check scripts\verify-native-client-spike.mjs`
+- `node --check scripts\verify-native-boundary-contract.mjs`
+- `node --check scripts\verify-full-native-rust-gap-audit.mjs`
+- `cargo fmt --manifest-path src-tauri\Cargo.toml`
+- `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- Manual PowerShell sidecar launch plus `src-tauri\target\debug\aether-native.exe command-center-proof`
+
+Result:
+
+- Manual proof output reports `schema=aether.native.command-center-proof.v1`, `actionable=true`, `rightRailDataOwnedByRust=true`, `readyEvidenceCount=5`, and native actions for all currently open full-native blockers.
+- The proof remains honest: it does not claim native UI completion and points to `native-command-center-window-ui` as the next proof.
+
+Residual:
+
+- `pnpm verify:terminal:native-client` is currently blocked in this Codex sandbox by Node child-process `EPERM` for `cargo`, `powershell.exe`, and the sidecar exe. The manual PowerShell execution path proves the sidecar and native command, but the aggregate native-client artifact cannot be refreshed from Node until that spawn restriction is gone.
+- Native Command Center/right-rail UI is still open. This phase moves the data/action contract to Rust; the next phase must render and operate it in the native shell.
+
+### Phase 2.52 - Native Command Center Window Proof
+
+Status: done
+
+Implemented:
+
+- Added `aether-native command-center-window-proof`.
+- The proof reuses the Rust-owned Command Center data contract and renders it into a native Win32 layered window without React/WebView.
+- The window proof draws Command Center header text, evidence rows, action rows, and records action hit-target rectangles with keyboard indices.
+- The proof is deliberately honest: it reports `rightRailUiStatus=native-command-center-window-ui-proof` and `nextProof=native-command-center-input-and-scroll`, so it does not claim scroll/input parity yet.
+- The native-client verifier, native-boundary contract, and full-native audit now score this as `native-command-center-window-proof`, distinct from the remaining full right-rail item.
+
+Validation:
+
+- `node --check scripts\verify-native-client-spike.mjs`
+- `node --check scripts\verify-native-boundary-contract.mjs`
+- `node --check scripts\verify-full-native-rust-gap-audit.mjs`
+- `cargo fmt --manifest-path src-tauri\Cargo.toml`
+- `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- Manual PowerShell sidecar run that executed the native-client proof sequence and refreshed `.codex-auto/quality/native-client-spike.json`
+- `pnpm verify:terminal:native-boundary`
+- `pnpm verify:full-native:audit`
+
+Result:
+
+- `.codex-auto/quality/native-command-center-window-proof.json` records `operation=command-center-window-proof`, `window.schema=aether.native.command-center-window-proof.v1`, `nativeRightRailWindow=true`, `actionRowsRendered>=4`, `evidenceRowsRendered>=3`, and `nonBlank=true`.
+- `.codex-auto/quality/native-boundary-contract.json` reports `14/14` passing.
+- `.codex-auto/quality/full-native-rust-gap-audit.json` reports `67/100`, `76/114`, `status=in-progress`.
+
+Residual:
+
+- Native Command Center still needs actual input/scroll handling and React right-rail demotion before the main `native-command-center` item can close.
+- Node child-process `EPERM` remains a sandbox-specific verifier limitation; PowerShell direct execution was used to refresh the aggregate proof artifact this time.
+
+### Phase 2.53 - Native Command Center Input And Scroll Model Proof
+
+Status: done
+
+Implemented:
+
+- Added `aether-native command-center-input-scroll-proof`.
+- The proof builds on the Rust-owned Command Center data contract and verifies a native input/scroll model without React/WebView.
+- It records bounded keyboard selection through ArrowDown, PageDown, End, Home, and Enter transitions.
+- It records visible action-window state, scroll offset guardrails, selected action dispatch, and verifies dispatch does not require React or WebView.
+- The proof stays honest by recording `readyForReactDemotion=false` and `nextProof=react-right-rail-compatibility-demotion`.
+- The native-client verifier, native-boundary contract, and full-native audit now score this proof separately from final React right-rail demotion.
+
+Validation:
+
+- `node --check scripts\verify-native-client-spike.mjs`
+- `node --check scripts\verify-native-boundary-contract.mjs`
+- `node --check scripts\verify-full-native-rust-gap-audit.mjs`
+- `cargo fmt --manifest-path src-tauri\Cargo.toml`
+- `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- Manual PowerShell sidecar run of `src-tauri\target\debug\aether-native.exe command-center-input-scroll-proof`
+- `pnpm verify:terminal:native-boundary`
+- `pnpm verify:full-native:audit`
+
+Result:
+
+- `.codex-auto/quality/native-command-center-input-scroll-proof.json` records `nativeCommandCenterInput=true`, `nativeCommandCenterScroll=true`, `keyboardNavigation=true`, `scrollModel=true`, `actionDispatchPlan=true`, and no React/WebView dispatch dependency.
+- `.codex-auto/quality/native-boundary-contract.json` reports `14/14` passing.
+- `.codex-auto/quality/full-native-rust-gap-audit.json` reports `68/100`, `78/114`, `status=in-progress`.
+
+Residual:
+
+- The remaining Command Center/right-rail blocker is now live native input wiring plus React right-rail compatibility demotion, not the data/window/input model itself.
+
+### Phase 2.45 - Native RenderFrame Contract
+
+Status: done
+
+Implemented:
+
+- Added `src-tauri/src/term/render_frame.rs` as the renderer-neutral Rust contract between `GridSnapshot` and native drawing.
+- `NativeRenderFrame` now converts Rust terminal cells into positioned native cells with:
+  - schema `aether.native.render-frame.v1`;
+  - cell metrics and frame pixel bounds;
+  - row/column cell rectangles;
+  - cursor and image overlay metadata;
+  - nonblank/paintable/styled/hyperlink counters;
+  - stable `frameSha256`;
+  - explicit `webviewUsed=false` and `reactUsed=false`.
+- `aether-native grid-render-proof` now builds this RenderFrame first, emits `renderFrame`, and proves the Win32/GDI renderer consumes the same `frameSha256`.
+- `scripts/verify-native-client-spike.mjs`, `scripts/verify-native-boundary-contract.mjs`, and `scripts/score-release-quality.mjs` now require the native render-frame contract, not just ad hoc grid summary fields.
+- `verify-native-client-spike` now builds `aether-native` once and invokes the compiled binary directly, avoiding repeated `cargo run` timeouts during native boundary verification.
+
+Validation:
+
+- `cargo fmt --manifest-path src-tauri\Cargo.toml`
+- `cargo test --manifest-path src-tauri\Cargo.toml --lib term::render_frame -- --nocapture`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- `pnpm exec biome check scripts\verify-native-client-spike.mjs scripts\verify-native-boundary-contract.mjs scripts\score-release-quality.mjs --formatter-enabled=false`
+- `pnpm verify:terminal:native-client`
+- `pnpm verify:terminal:native-boundary`
+
+Result:
+
+- `.codex-auto/quality/native-client-spike.json` records `nativeGridRender.renderFrame.schema=aether.native.render-frame.v1`, `rendererBoundary=rust-native-render-frame`, `frameSha256` length 64, `nonBlankCells=216`, and matching `renderer.renderFrameSha256`.
+- `.codex-auto/quality/native-boundary-contract.json` reports `14/14` native boundary checks passing.
+
+Residual:
+
+- The RenderFrame contract is the bridge to the real renderer, not the final renderer itself. Remaining native-shell work is still `winit`/`wgpu` drawing, native IME dogfood in the native client, native glass/theme rendering, and native visual regression.
+- The only non-cleared final blocker remains explicit token-spend consent for the authenticated AI CLI prompt smoke.
+
+### Phase 2.44 - Aether Native TermEngine Grid Render Proof
+
+Status: done
+
+Implemented:
+
+- Added `aether-native grid-render-proof [--session id] [--expect text] [--cols n] [--rows n] [--lines n] [--alpha n]`.
+- The proof reads daemon session capture from the same sidecar/mux API, feeds it into Rust `TermEngine`, and renders the resulting terminal cell grid through a Win32/GDI memory-compatible device context.
+- The proof records:
+  - source session id;
+  - expected marker match;
+  - requested grid size;
+  - nonblank terminal cell count;
+  - occupied row count;
+  - cursor row/column/shape;
+  - renderer identity `native-gdi-grid-proof`;
+  - non-background pixel samples;
+  - explicit `webviewUsed=false` and `reactUsed=false`.
+- The proof also keeps the layered Win32 native window proof green, so the native grid renderer is tied to the same no-WebView process/window boundary.
+- `pnpm verify:terminal:native-client` now proves:
+  - daemon attach/list/send/capture/detach/attach;
+  - no-WebView layered Win32 native window creation;
+  - daemon capture rendered as nonblank native GDI text;
+  - daemon capture parsed into a Rust terminal grid and rendered as nonblank native GDI grid cells.
+- `pnpm verify:terminal:native-boundary` now treats the TermEngine grid proof as part of the native client boundary.
+
+Validation:
+
+- `cargo fmt --manifest-path src-tauri\Cargo.toml`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- `pnpm exec biome check scripts\verify-native-client-spike.mjs scripts\verify-native-boundary-contract.mjs scripts\score-release-quality.mjs --formatter-enabled=false`
+- `pnpm verify:terminal:native-client`
+- `pnpm verify:terminal:native-boundary`
+- `pnpm verify:final-goal-audit`
+- `pnpm verify:quality-score`
+
+Result:
+
+- `.codex-auto/quality/native-client-spike.json` records `nativeGridRender.operation=grid-render-proof`, the same daemon instance, `expectedFound=true`, grid `100x24`, `nonBlankCells=216`, renderer `native-gdi-grid-proof`, `nativeCellGrid=true`, `nonBackgroundSamples=354`, `webviewUsed=false`, and `reactUsed=false`.
+- `.codex-auto/quality/native-boundary-contract.json` reports `14/14` native boundary checks passing.
+- `.codex-auto/quality/release-quality-score.json` reports `97/100`, grade `S`, `315/325`, `releaseCandidateReady=false`.
+
+Residual:
+
+- This is still not the final GPU terminal renderer. It proves Rust terminal-grid ownership and native no-WebView cell rendering first; the remaining renderer work is `winit`/`wgpu` terminal grid drawing, native IME dogfood inside the native client, native glass/theme rendering, and native visual regression.
+- The only non-cleared final blocker remains explicit token-spend consent for the authenticated AI CLI prompt smoke.
+
+### Phase 2.42 - Aether Native Win32 Window Proof
+
+Status: done
+
+Implemented:
+
+- Added `aether-native window-proof [--duration-ms n] [--alpha n] [--show]`.
+- The proof creates a native Win32 top-level window in the `aether-native` process without React or WebView.
+- The proof applies `WS_EX_LAYERED` alpha transparency and records:
+  - HWND;
+  - class/title;
+  - requested alpha;
+  - no-activate behavior;
+  - process identity and executable path;
+  - explicit `webviewUsed=false` and `reactUsed=false`.
+- The native window proof still connects to the same daemon instance so native shell work remains a client of the Rust mux boundary.
+- `pnpm verify:terminal:native-client` now proves both:
+  - daemon attach/list/send/capture/detach/attach;
+  - no-WebView layered Win32 native window creation.
+- `pnpm verify:terminal:native-boundary` now treats the native window proof as part of the native client boundary.
+
+Validation:
+
+- `cargo fmt --manifest-path src-tauri\Cargo.toml`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- `pnpm exec biome check scripts\verify-native-client-spike.mjs scripts\verify-native-boundary-contract.mjs scripts\score-release-quality.mjs --formatter-enabled=false`
+- `pnpm verify:terminal:native-client`
+- `pnpm verify:terminal:native-boundary`
+
+Residual:
+
+- This is still not a native GPU terminal renderer. It proves the native process/window/compositor entry point and daemon boundary before `winit`/`wgpu`, terminal drawing, IME dogfood, and native visual regression are added.
+- The only non-cleared final blocker remains explicit token-spend consent for the authenticated AI CLI prompt smoke.
+
+### Phase 2.43 - Aether Native Text Render Proof
+
+Status: done
+
+Implemented:
+
+- Added `aether-native render-proof [--session id] [--expect text] [--lines n] [--alpha n]`.
+- The proof reads a daemon session capture through the same sidecar/mux API used by `capture`.
+- The captured text is rendered through a Win32/GDI memory-compatible device context, not React, WebView, canvas, or xterm.
+- The proof records:
+  - source session id;
+  - capture text bytes/chars/hash;
+  - expected marker match;
+  - renderer identity `native-gdi-text-proof`;
+  - text draw call count;
+  - sampled pixel count;
+  - non-background pixel count;
+  - explicit `webviewUsed=false` and `reactUsed=false`.
+- The proof also keeps the layered Win32 native window proof green so native rendering is tied to the native process/window boundary.
+- `pnpm verify:terminal:native-client` now proves:
+  - daemon attach/list/send/capture/detach/attach;
+  - no-WebView layered Win32 native window creation;
+  - daemon capture rendered as nonblank native GDI text.
+- `pnpm verify:terminal:native-boundary` now treats the native text render proof as part of the native client boundary.
+
+Validation:
+
+- `cargo fmt --manifest-path src-tauri\Cargo.toml`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- `pnpm exec biome check scripts\verify-native-client-spike.mjs scripts\verify-native-boundary-contract.mjs scripts\score-release-quality.mjs --formatter-enabled=false`
+- `pnpm verify:terminal:native-client`
+- `pnpm verify:terminal:native-boundary`
+
+Residual:
+
+- This is still not the final GPU terminal renderer. It proves native text rendering and daemon capture ownership first; the remaining renderer work is `winit`/`wgpu` terminal grid drawing, native IME dogfood inside the native client, native glass/theme rendering, and native visual regression.
+- The only non-cleared final blocker remains explicit token-spend consent for the authenticated AI CLI prompt smoke.
+
+### Phase 2.41 - Aether Native Client Attach Spike
+
+Status: done
+
+Implemented:
+
+- Added the `aether-native` Rust binary as the first no-WebView native client boundary.
+- The client exposes a machine-readable `contract` that states:
+  - `webviewUsed=false`;
+  - `reactUsed=false`;
+  - mux truth comes from the daemon API;
+  - GPU terminal rendering and native window IME remain explicit next-step blockers, not hidden claims.
+- Added native client operations for daemon-backed `list`, `graph`, `attach`, `detach`, `send`, and `capture`.
+- Added `pnpm verify:terminal:native-client`, which starts the PTY sidecar, creates a real shell session, and proves `aether-native` can:
+  - attach to the same daemon instance;
+  - read mux workspaces;
+  - send input and capture output;
+  - detach and attach through the Rust mux graph.
+- Added the native client proof to `pnpm verify:terminal:native-boundary` and the release quality score contract.
+
+Validation:
+
+- `cargo fmt --manifest-path src-tauri\Cargo.toml`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aetherctl`
+- `pnpm exec biome check scripts\verify-native-client-spike.mjs scripts\verify-native-boundary-contract.mjs scripts\score-release-quality.mjs --formatter-enabled=false`
+- `pnpm verify:terminal:native-client`
+- `pnpm verify:terminal:native-boundary`
+- `pnpm verify:quality-score`
+- `pnpm verify:final-goal-audit`
+- `pnpm verify:goal:docs`
+
+Residual:
+
+- This is not yet the full native GPU terminal window. It proves the correct daemon/client boundary first, so the upcoming `winit`/`wgpu`/IME window work does not create a parallel terminal truth.
+- The only non-cleared final blocker remains explicit token-spend consent for the authenticated AI CLI prompt smoke.
+
+### Phase 2.40 - Aetherctl Mux Export/Import Parity
+
+Status: done
+
+Implemented:
+
+- Added versioned mux snapshot export to the daemon API through `GET /mux/workspaces/:id/export`.
+- Added guarded mux snapshot import through `POST /mux/workspaces/import?replace=true|false`.
+- Import always routes through Rust restore policy so imported panes become detached `restore-pending:<paneId>` bindings with no trusted external process id.
+- Existing live workspaces are protected by a conflict response unless `replace=true` is explicit.
+- Replace import closes stale live PTYs owned by the replaced graph before exposing the imported restore-pending graph.
+- Added `aetherctl mux-export <workspace> [--out path]` and `aetherctl mux-import <snapshot-path|-> [--replace]`.
+- Extended live mux restore verification with:
+  - `aetherctl-mux-export-parity`;
+  - `aetherctl-mux-import-parity`;
+  - `mux-import-restore-pending`;
+  - `mux-import-replace-closes-live-pty`.
+
+Validation:
+
+- `cargo fmt --manifest-path src-tauri\Cargo.toml`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aetherctl`
+- `cargo test --manifest-path src-tauri\Cargo.toml mux_snapshot_store_persists_and_restores_api_graphs --test test_api_3d1`
+- `pnpm verify:mux-live`
+- `pnpm verify:terminal:native-boundary`
+- `pnpm verify:quality-score`
+
+Residual:
+
+- The only non-cleared final blocker remains explicit token-spend consent for the authenticated AI CLI prompt smoke.
+
 ## Phase 1 - Rail Clarity Pass
 
 Goal: make the right rail understandable and action-oriented before deeper topology/workflow work.
@@ -1094,6 +1540,7 @@ Validation:
 - `pnpm exec biome check --write scripts\score-release-quality.mjs src\__tests__\AppSilentBugs.test.ts`
 - `pnpm vitest run src\__tests__\AppSilentBugs.test.ts --reporter=dot`
 - `pnpm verify:quality-score`
+- `pnpm verify:right-rail-command-evidence`
 
 Current Score Snapshot:
 
@@ -1990,3 +2437,2393 @@ Validation:
 Residual:
 
 - The native HWND surface is now the Tauri default. The remaining release blocker moves to live dogfood evidence: Codex/Claude/Gemini Japanese input must be proven on the native surface before the old WebView fallback can be deleted rather than merely disabled by default.
+
+### Phase 1.84 - Rail Truth Hygiene And Action Evidence
+
+Status: done
+
+Implemented:
+
+- Visual QA mode now requires an explicit development URL flag. A stale `localStorage` value can no longer silently replace normal project tabs with the visual-QA workspace.
+- The generic `state` URL alias is treated as deprecated QA input. When it is used, the right rail shows a Truth source notice explaining that the visible state is fixture data and runtime truth is unchanged.
+- URL/history `edgeLoop` feedback is now read only for explicit visual-QA requests. Normal runtime loads use project-scoped storage only, so stale debug URLs cannot poison the product state.
+- The right rail exposes a compact Truth source notice for simulated rail state, deprecated `state` aliases, and URL replay evidence.
+- Ranked right-rail actions now carry a required `target` object and required execution `evidence`, and the audit payload records both.
+- Action cards now show human-readable targets such as session names, files, panes, or widgets instead of falling back to internal IDs.
+- The right-rail layout smoke now measures the real scroll container, `.right-panel-content`, while keeping stack width checks.
+- Fresh visual evidence was regenerated at `.codex-auto/visual/right-rail-next-action-qa.png`.
+
+Validation:
+
+- `pnpm exec biome check src\App.tsx src\styles\global.css src\shared\hooks\useTabManager.ts src\shared\lib\rightRailAdvisor.ts src\__tests__\AppSilentBugs.test.ts src\__tests__\useTabManager.test.ts src\__tests__\rightRailAdvisor.test.ts e2e\visual-qa-layout.spec.ts`
+- `pnpm vitest run src\__tests__\AppSilentBugs.test.ts src\__tests__\useTabManager.test.ts src\__tests__\rightRailAdvisor.test.ts src\__tests__\useAgentManagerTelemetry.test.tsx --reporter=dot`
+- `pnpm exec tsc --noEmit`
+- `pnpm exec playwright test e2e/visual-qa-layout.spec.ts --project=frontend --grep "right rail" --retries=0`
+- `pnpm verify:right-rail-edge`
+- `pnpm verify:quality-score`
+
+Residual:
+
+- Full `pnpm test -- --reporter=dot` ran 1514/1515 tests green and hit one `useAgentManagerTelemetry` failure during the combined run; the same file passed immediately in isolation. Treat this as an existing suite flake to harden, not as a right-rail regression.
+- Next edge pass should move from action evidence to provenance: changed files should link directly to command block, pane, session, worktree, validation output, and final report.
+
+### Phase 1.85 - Review Queue File Provenance
+
+Status: done
+
+Implemented:
+
+- Added `traceFileProvenance()` to the workstation graph layer.
+- File provenance now resolves owner agent, tool, validation tests, risks, blockers, and worktree/workspace scope from graph edges.
+- Agent graph nodes now carry workspace/worktree metadata so review and handoff surfaces can explain where a change came from.
+- Review Queue items now render a compact Trace line for graph-backed files.
+- Trace owner chips select the owning session, keeping provenance actionable instead of decorative.
+
+Validation:
+
+- `pnpm exec biome check src\shared\lib\workstationGraph.ts src\features\review\ReviewQueuePanel.tsx src\features\review\ReviewQueuePanel.module.css src\__tests__\workstationGraph.test.ts src\__tests__\ReviewQueuePanel.test.tsx`
+- `pnpm vitest run src\__tests__\workstationGraph.test.ts src\__tests__\ReviewQueuePanel.test.tsx --reporter=dot`
+- `pnpm exec tsc --noEmit`
+- `pnpm exec playwright test e2e/visual-qa-layout.spec.ts --project=frontend --grep "review rail" --retries=0`
+- `pnpm verify:quality-score`
+
+Residual:
+
+- Provenance is now visible for graph-backed files, but command-block evidence is still not first-class. Next pass should add command/cwd/exit/output-range records and connect them to changed files and validation state.
+
+### Phase 1.86 - Command Block Provenance
+
+Status: done
+
+Implemented:
+
+- Added first-class `command_block` nodes to the workstation graph.
+- Command blocks carry command text, cwd, shell, exit code, derived status, validation kind, pane/terminal/process links, and optional output preview metadata.
+- Added `ran` edges from agents, panes, terminals, and processes to command blocks.
+- Validation commands such as test, lint, typecheck, build, format, smoke, and verify now attach to file nodes as graph evidence.
+- `traceFileProvenance()` now returns command evidence alongside owners, tools, tests, risks, blockers, and worktrees.
+- Review Queue Trace chips now show command evidence such as `test: pnpm test -- src/App.tsx`, including pass/fail status and exit code in the tooltip.
+
+Validation:
+
+- `pnpm exec biome check src\shared\lib\workstationGraph.ts src\features\review\ReviewQueuePanel.tsx src\features\review\ReviewQueuePanel.module.css src\__tests__\workstationGraph.test.ts src\__tests__\ReviewQueuePanel.test.tsx`
+- `pnpm vitest run src\__tests__\workstationGraph.test.ts src\__tests__\ReviewQueuePanel.test.tsx --reporter=dot`
+- `pnpm exec tsc --noEmit`
+- `pnpm exec playwright test e2e/visual-qa-layout.spec.ts --project=frontend --grep "review rail" --retries=0`
+- `pnpm verify:quality-score`
+- Browser evidence: `.codex-auto/visual/right-rail-review-command-provenance.png`
+
+Residual:
+
+- Command evidence is now graph-addressable, but live terminal command segmentation still needs to feed real command blocks automatically from the Rust PTY/mux layer rather than relying on supplied graph inputs.
+- Output-range anchors are represented only as metadata-ready shape so far; the terminal renderer still needs native block anchors that can jump back to exact scrollback rows.
+
+### Phase 1.87 - Real History Command Blocks
+
+Status: done
+
+Implemented:
+
+- Added `CommandHistoryRecord` frontend typing for the existing `search_command_history` IPC response.
+- Added `commandHistoryRecordsToCommandBlocks()` to convert recent persisted command history into workstation graph command blocks.
+- Validation-like history entries now link to current changed files, while file-specific non-validation commands only link when the command mentions the file path or basename.
+- Right rail graph construction now feeds recent real command history into `buildWorkstationGraph()` outside visual QA fixture mode.
+- Rust now updates the newest open command history row when OSC 133 `CommandEnd` marks carry an exit code.
+- Main terminal and interactive-agent terminal prompt-mark loops both persist exit-code evidence before emitting the prompt-mark event.
+
+Validation:
+
+- `pnpm exec biome check src\App.tsx src\shared\lib\commandHistoryGraph.ts src\shared\types\history.ts src\__tests__\commandHistoryGraph.test.ts`
+- `pnpm vitest run src\__tests__\commandHistoryGraph.test.ts src\__tests__\workstationGraph.test.ts src\__tests__\ReviewQueuePanel.test.tsx --reporter=dot`
+- `pnpm exec tsc --noEmit`
+- `cargo check --manifest-path src-tauri\Cargo.toml`
+- `cargo test --manifest-path src-tauri\Cargo.toml test_update_latest_command_exit_code`
+- `pnpm exec playwright test e2e/visual-qa-layout.spec.ts --project=frontend --grep "review rail" --retries=0`
+- `pnpm verify:quality-score`
+- Browser evidence: `.codex-auto/visual/right-rail-review-history-command-blocks.png`
+
+Residual:
+
+- Real history is now converted into graph command blocks, but command start/output range still depends on shell history plus OSC 133 marks being correlated indirectly.
+- Next pass should add a native command block journal keyed by terminal id, command history id, prompt-mark sequence, and scrollback range so Review Queue can jump to exact terminal evidence.
+
+### Phase 1.88 - Native Command Block Journal
+
+Status: done
+
+Implemented:
+
+- Added a Rust `CommandBlockJournal` managed state.
+- `save_command_history` now returns the inserted command history id and records a native command block immediately.
+- Native command block records link terminal id, command history id, command text, cwd, status, exit code, prompt-mark sequences, screen lines, and history-size anchors.
+- The main terminal stream and interactive-agent terminal stream both feed every OSC 133 prompt mark into the native journal.
+- Added `term_command_blocks` IPC to expose recent native command blocks for a terminal.
+- Frontend graph construction now fetches native command blocks from active terminal panes and merges them with persisted command history evidence.
+- Workstation graph command block metadata now preserves prompt-mark and scrollback anchors for later jump-to-evidence behavior.
+
+Validation:
+
+- `pnpm exec biome check src\App.tsx src\shared\lib\commandHistoryGraph.ts src\shared\lib\workstationGraph.ts src\shared\types\history.ts src\__tests__\commandHistoryGraph.test.ts src\__tests__\workstationGraph.test.ts`
+- `pnpm vitest run src\__tests__\commandHistoryGraph.test.ts src\__tests__\workstationGraph.test.ts src\__tests__\ReviewQueuePanel.test.tsx --reporter=dot`
+- `pnpm exec tsc --noEmit`
+- `cargo check --manifest-path src-tauri\Cargo.toml`
+- `cargo test --manifest-path src-tauri\Cargo.toml command_blocks`
+- `cargo test --manifest-path src-tauri\Cargo.toml test_update_latest_command_exit_code`
+- `pnpm exec playwright test e2e/visual-qa-layout.spec.ts --project=frontend --grep "review rail" --retries=0`
+- `pnpm verify:quality-score`
+- Browser evidence: `.codex-auto/visual/right-rail-review-native-command-journal.png`
+
+Residual:
+
+- Native command blocks now have scrollback anchors, but Review Queue chips still only show text/status. The next pass should add an explicit "open terminal evidence" action from a command chip to the anchored scrollback row.
+
+### Phase 1.89 - Command Evidence Jump Action
+
+Status: done
+
+Implemented:
+
+- Added a shared terminal command evidence event contract.
+- Workstation graph command provenance now exposes terminal id, prompt-mark sequences, screen lines, and history-size anchors to UI surfaces.
+- Review Queue command Trace chips become actionable buttons when terminal evidence is available.
+- Clicking a command evidence chip selects the source terminal pane and dispatches the prompt-mark/scrollback anchor to `TerminalCanvas`.
+- `TerminalCanvas` listens for command evidence events and scrolls to the matching prompt mark when available, falling back to the history-size anchor.
+- The right rail shows a route confirmation so the user understands that the terminal evidence was opened.
+
+Validation:
+
+- `pnpm exec biome check src\App.tsx src\features\terminal\TerminalCanvas.tsx src\features\review\ReviewQueuePanel.tsx src\shared\lib\terminalEvidence.ts src\shared\lib\workstationGraph.ts src\__tests__\ReviewQueuePanel.test.tsx`
+- `pnpm vitest run src\__tests__\commandHistoryGraph.test.ts src\__tests__\workstationGraph.test.ts src\__tests__\ReviewQueuePanel.test.tsx --reporter=dot`
+- `pnpm exec tsc --noEmit`
+- `pnpm exec playwright test e2e/visual-qa-layout.spec.ts --project=frontend --grep "review rail" --retries=0`
+- `pnpm verify:quality-score`
+- Browser evidence: `.codex-auto/visual/right-rail-review-command-evidence-jump.png`
+
+Residual:
+
+- Visual QA fixtures do not yet include a terminal-backed command chip, so browser evidence proves review-rail layout stability while unit tests prove the actionable chip path.
+- Next pass should add fixture-level native command evidence so visual QA can exercise the click-to-terminal path without requiring a live shell session.
+
+### Phase 1.90 - Fixture Command Evidence QA
+
+Status: done
+
+Implemented:
+
+- Visual QA review fixtures now include a terminal-backed command block for `pnpm exec tsc --noEmit`.
+- The fixture command block carries terminal id, agent ownership, file links, validation kind, prompt-mark sequences, history-size anchors, and screen-line anchors.
+- Review rail fixture graph filtering now preserves command-to-file provenance edges for agent-focused views without expanding unrelated workspace/thread fanout.
+- Added an E2E guard that scopes to `Provenance for src/App.tsx`, verifies the terminal evidence action, clicks it, and asserts the emitted terminal evidence target.
+- Captured fresh browser evidence at `.codex-auto/visual/right-rail-review-fixture-command-evidence.png`.
+
+Validation:
+
+- `pnpm exec biome check e2e\visual-qa-layout.spec.ts src\App.tsx src\shared\lib\workstationGraph.ts src\features\review\ReviewQueuePanel.tsx src\features\terminal\TerminalCanvas.tsx src\shared\lib\commandHistoryGraph.ts src\shared\lib\terminalEvidence.ts`
+- `pnpm exec tsc --noEmit`
+- `pnpm vitest run src\__tests__\commandHistoryGraph.test.ts src\__tests__\workstationGraph.test.ts src\__tests__\ReviewQueuePanel.test.tsx --reporter=dot`
+- `cargo check --manifest-path src-tauri\Cargo.toml`
+- `cargo test --manifest-path src-tauri\Cargo.toml command_blocks`
+- `cargo test --manifest-path src-tauri\Cargo.toml test_update_latest_command_exit_code`
+- `pnpm exec playwright test e2e/visual-qa-layout.spec.ts --project=frontend --grep "command evidence" --retries=0`
+- `pnpm exec playwright test e2e/visual-qa-layout.spec.ts --project=frontend --grep "review rail" --retries=0`
+- `pnpm verify:quality-score`
+- Browser check: `Provenance for src/App.tsx` exposes exactly one visible `Open terminal evidence for pnpm exec tsc --noEmit` action.
+
+Residual:
+
+- Fixture-level click-to-evidence is now covered, but the remaining confidence gap is live dogfood evidence: real Codex/Claude/Gemini terminal sessions must prove that native command block anchors jump to the correct scrollback row after actual shell output, pane switching, and session recovery.
+- The quality score currently rewards right-rail smoke and action clarity, but it does not yet fail release when command evidence jump coverage or fresh evidence screenshots are missing. Next pass should add those guardrails to the release score.
+
+### Phase 1.91 - Command Evidence Release Gate
+
+Status: done
+
+Implemented:
+
+- Added a dedicated `command-evidence` category to `pnpm verify:quality-score`.
+- The release score now requires the terminal evidence event contract, runtime path, review rail action wiring, terminal scrollback jump handling, fixture E2E coverage, and a fresh browser screenshot.
+- Static regression coverage now checks that the quality score script keeps the command evidence gate wired.
+- The score temporarily dropped to `94/124` with blockers for incomplete runtime detection and stale screenshot checks; both were corrected against the actual implementation surface.
+
+Validation:
+
+- `pnpm exec biome check scripts\score-release-quality.mjs src\__tests__\AppSilentBugs.test.ts`
+- `pnpm vitest run src\__tests__\AppSilentBugs.test.ts --reporter=dot`
+- `pnpm verify:quality-score`
+
+Result:
+
+- `pnpm verify:quality-score` now reports `100/124`, grade `S`, `legacy release-ready state`.
+
+Residual:
+
+- The gate proves fixture/E2E/browser evidence freshness. The remaining edge gap is still live dogfood proof for real AI CLI sessions and recovered panes, especially after pane switches, session restore, and long scrollback output.
+
+### Phase 1.92 - Repeatable Command Evidence Smoke
+
+Status: done
+
+Implemented:
+
+- Added `scripts/verify-right-rail-command-evidence.mjs`, a repeatable browser smoke for review-rail command evidence.
+- Added `pnpm verify:right-rail-command-evidence`.
+- The smoke opens the review visual-QA fixture, scopes to `Provenance for src/App.tsx`, clicks `Open terminal evidence for pnpm exec tsc --noEmit`, verifies the emitted `qa-review-shell` terminal target, records console/page errors, captures the browser screenshot, and writes `.codex-auto/production-smoke/right-rail-command-evidence.json`.
+- Added the command evidence smoke to `pnpm verify:right-rail` so the right-rail suite now covers Edge feedback plus command evidence on localhost.
+- Upgraded `pnpm verify:quality-score` to require the fresh command evidence JSON artifact in addition to source wiring, E2E coverage, and screenshot freshness.
+
+Validation:
+
+- `pnpm exec biome check scripts\verify-right-rail-command-evidence.mjs scripts\verify-right-rail-suite.mjs scripts\score-release-quality.mjs package.json src\__tests__\AppSilentBugs.test.ts`
+- `node --check scripts\verify-right-rail-command-evidence.mjs`
+- `pnpm verify:right-rail-command-evidence`
+- `pnpm verify:right-rail`
+- `pnpm vitest run src\__tests__\AppSilentBugs.test.ts --reporter=dot`
+- `pnpm verify:quality-score`
+
+Result:
+
+- `.codex-auto/production-smoke/right-rail-command-evidence.json` reports the emitted terminal target as `qa-review-shell`.
+- `pnpm verify:quality-score` reports `100/124`, grade `S`, `legacy release-ready state`.
+
+Residual:
+
+- The smoke is still fixture-backed. The next confidence gap is a live terminal dogfood recorder that proves command evidence on real shell output from Codex/Claude/Gemini panes and after restore/reconnect.
+
+### Phase 1.93 - Native CDP And Clean IME Evidence
+
+Status: done
+
+Implemented:
+
+- Started the Tauri dev app with WebView2 remote debugging on `127.0.0.1:9222` and reran the strict right-rail suite without skipped CDP checks.
+- Verified the native/WebView2 right rail suite in strict mode, including decisions, preferences, negative path, audit jump, Edge feedback, and command evidence.
+- Reran native input host verification and live IME verification against the native app.
+- Hardened `scripts/verify-ime.mjs` so it navigates to a clean visual-QA URL before testing. The smoke now deletes stale `state`, `edgeLoop`, and dashboard-state URL parameters instead of accepting whatever URL was already open.
+- Added static regression coverage so the IME smoke cannot silently return to stale visual-QA URLs.
+
+Validation:
+
+- `pnpm verify:right-rail:strict`
+- `pnpm verify:right-rail-command-evidence`
+- `pnpm verify:terminal:native-input`
+- `pnpm verify:ime`
+- `pnpm exec biome check scripts\verify-ime.mjs src\__tests__\AppSilentBugs.test.ts`
+- `node --check scripts\verify-ime.mjs`
+- `pnpm vitest run src\__tests__\AppSilentBugs.test.ts --reporter=dot`
+- `pnpm verify:quality-score`
+
+Result:
+
+- `pnpm verify:ime` now attaches to `http://localhost:1420/?aetherVisualQa=1&projectPath=C%3A%2FUsers%2Fowner%2FAether_Terminal&rail=command&v=verify-ime-clean`.
+- `pnpm verify:quality-score` reports `100/124`, grade `S`, `legacy release-ready state`.
+
+Residual:
+
+- Native CDP and IME evidence are now clean for the current running app. Remaining confidence work should focus on real command-block evidence after long output, pane restore/reconnect, and multiple AI CLI panes.
+
+### Phase 1.94 - Live Command Evidence And Stale Sidecar Guard
+
+Status: done
+
+Implemented:
+
+- Added `scripts/verify-live-command-evidence.mjs`, a live WebView2/CDP smoke that spawns a fresh PowerShell terminal, submits a real command, waits for terminal output, and verifies `term_command_blocks` reports a `passed` native command block with exit code and scrollback anchor.
+- Added `pnpm verify:terminal:command-evidence`.
+- Added a `live-command-evidence` category to `pnpm verify:quality-score`, raising the scored surface to `132` max points and making live command-block evidence a release gate.
+- Hardened `save_command_history` and the write-side IPC paths so full submitted payloads (`command + Enter`) prepare a command block before PTY write, while reusing an already-open matching block to avoid duplicate history rows.
+- Added command-block dedupe support in `CommandBlockJournal` and pane cwd lookup in `PaneRegistry`.
+- Bumped the daemon protocol to `2` and made the app terminate a stale matching PTY sidecar when protocol/version no longer matches. This prevents dev/release sessions from silently keeping an older sidecar that lacks current PowerShell shell-integration behavior.
+- Rebuilt the dev PTY sidecar at `src-tauri\target\debug\aether-pty-server.exe` so spawned PowerShell sessions now include Aether OSC 133 shell integration.
+- Fixed CDP smoke scripts to use `browser.disconnect()` instead of `browser.close()` so one smoke no longer closes the Tauri WebView before the rest of the strict suite runs.
+
+Validation:
+
+- `cargo build --manifest-path src-tauri\pty-server\Cargo.toml --target-dir src-tauri\target`
+- `cargo test --manifest-path src-tauri\Cargo.toml command_blocks --lib`
+- `cargo test --manifest-path src-tauri\Cargo.toml submitted_input_command_history_text_requires_enter --lib`
+- `cargo test --manifest-path src-tauri\Cargo.toml powershell_startup_args_skip_profile_and_keep_prediction_guard --lib`
+- `pnpm verify:terminal:command-evidence`
+- `pnpm verify:right-rail-command-evidence`
+- `pnpm verify:right-rail:strict`
+- `pnpm verify:terminal:native-input`
+- `pnpm verify:ime`
+- `pnpm verify:quality-score`
+- `pnpm exec tsc --noEmit`
+- `pnpm exec biome check scripts\verify-live-command-evidence.mjs scripts\verify-right-rail-command-evidence.mjs scripts\verify-right-rail-edge-feedback.mjs scripts\verify-right-rail-decisions.mjs scripts\verify-right-rail-negative-path.mjs scripts\verify-right-rail-audit-jump.mjs scripts\verify-right-rail-preferences.mjs scripts\verify-ime.mjs src\features\terminal\NativeTerminalArea.tsx src\features\terminal\TerminalCanvas.tsx src\__tests__\NativeTerminalArea.test.tsx src\__tests__\AppSilentBugs.test.ts`
+- `pnpm vitest run src\__tests__\NativeTerminalArea.test.tsx src\__tests__\AppSilentBugs.test.ts --reporter=dot`
+- `cargo check --manifest-path src-tauri\Cargo.toml --lib`
+
+Result:
+
+- `.codex-auto/production-smoke/live-command-evidence.json` reports a real PowerShell command block with `status=passed`, `exitCode=0`, and prompt/scrollback anchors.
+- `pnpm verify:quality-score` reports `100/132`, grade `S`, `legacy release-ready state`.
+
+Residual:
+
+- Live command evidence now covers a fresh PowerShell pane. The next product-confidence gap is multi-pane/recovered-session evidence: verify the same command-block anchors after pane split/close/reopen, daemon restore, and long scrollback output across AI CLI panes.
+
+### Phase 1.95 - Multi-Pane Long-Scrollback Command Evidence
+
+Status: done
+
+Implemented:
+
+- Added `scripts/verify-multipane-command-evidence.mjs`, a live WebView2/CDP smoke for command evidence across a base PowerShell pane and a mux-split PowerShell pane.
+- Added `pnpm verify:terminal:multipane-command-evidence`.
+- The smoke creates a base terminal, splits it through `mux_split_pane`, submits long-output commands to both panes, verifies each pane produces a `passed` command block with exit code `0`, verifies the first marker survives in `term_history_rows`, closes the split pane through `mux_close_pane`, and verifies the base pane evidence remains anchored after split close.
+- Hardened the smoke against early CDP attachment where the only exposed page is `about:blank`; the script now reuses that tab and navigates it to a clean visual-QA URL.
+- Added a `multipane-command-evidence` category to `pnpm verify:quality-score`, raising the scored surface to `140` max points.
+- Added static regression coverage so the package script, mux split/close smoke, scrollback row check, command-block check, and score category stay wired.
+
+Validation:
+
+- `node --check scripts\verify-multipane-command-evidence.mjs`
+- `pnpm exec biome check scripts\verify-multipane-command-evidence.mjs scripts\score-release-quality.mjs package.json src\__tests__\AppSilentBugs.test.ts`
+- `pnpm vitest run src\__tests__\AppSilentBugs.test.ts --reporter=dot`
+- `pnpm verify:terminal:multipane-command-evidence`
+- `pnpm verify:terminal:command-evidence`
+- `pnpm verify:quality-score`
+
+Result:
+
+- `.codex-auto/production-smoke/multipane-command-evidence.json` reports `ok=true`.
+- Base pane command block: `passed`, scrollback history size `85`.
+- Split pane command block: `passed`, scrollback history size `85`.
+- `pnpm verify:quality-score` reports `100/140`, grade `S`, `legacy release-ready state`.
+
+Residual:
+
+- Multi-pane long-scrollback evidence is covered for live PowerShell and mux split/close. The remaining confidence gap is recovered-session evidence: prove command-block anchors survive daemon/app reconnect or restore, then extend the same evidence path to AI CLI panes where prompt framing can differ from plain PowerShell.
+
+### Phase 1.96 - Recovered Command Evidence Persistence
+
+Status: done
+
+Implemented:
+
+- Added durable `terminal_command_blocks` SQLite storage for native command-block evidence.
+- Command blocks are now persisted when a submitted command is recorded and again as OSC 133 prompt marks attach command/output/end anchors.
+- `term_command_blocks` now falls back to the durable DB copy when the in-memory `CommandBlockJournal` is empty after reconnect.
+- Added `term_persisted_command_blocks` as a diagnostics/recovery validation IPC that bypasses memory and proves the persisted evidence copy exists.
+- Added Tauri startup adoption for long-lived PTY sidecar sessions. Existing sidecar terminals are registered back into the pane registry, native renderer, output buffer, prompt-mark stream, and mux surface after a WebView/Tauri reconnect.
+- Added `scripts/verify-recovered-command-evidence.mjs`, a live WebView2/CDP smoke that spawns PowerShell, submits a real command, verifies live and persisted anchored command blocks, reloads the WebView, and verifies the same command evidence remains visible after reconnect.
+- Added `pnpm verify:terminal:recovered-command-evidence`.
+- Added a `recovered-command-evidence` category to `pnpm verify:quality-score`, raising the scored surface to `148` max points.
+
+Validation:
+
+- `node --check scripts\verify-recovered-command-evidence.mjs`
+- `pnpm exec biome check scripts\verify-recovered-command-evidence.mjs scripts\score-release-quality.mjs package.json src\__tests__\AppSilentBugs.test.ts`
+- `pnpm vitest run src\__tests__\AppSilentBugs.test.ts --reporter=dot`
+- `cargo test --manifest-path src-tauri\Cargo.toml test_command_block_evidence_persists_for_reconnect -- --nocapture`
+- `pnpm verify:terminal:recovered-command-evidence`
+- `pnpm verify:terminal:command-evidence`
+- `pnpm verify:terminal:multipane-command-evidence`
+- `pnpm verify:quality-score`
+- `pnpm exec tsc --noEmit`
+
+Result:
+
+- `.codex-auto/production-smoke/recovered-command-evidence.json` reports `ok=true`.
+- `pnpm verify:quality-score` reports `100/148`, grade `S`, `legacy release-ready state`.
+
+Residual:
+
+- Recovered WebView reconnect evidence is now covered for PowerShell and persisted command-block anchors. The next confidence gap is harder: full app-process restart with an already-running sidecar mux graph, plus Codex/Claude/Gemini CLI prompt framing under native input and clipboard paths.
+
+### Phase 1.97 - Process Restart Sidecar Adoption Evidence
+
+Status: done
+
+Implemented:
+
+- Added `scripts/verify-process-reconnect-command-evidence.mjs`, a live WebView2/CDP smoke for true Aether process restart over a long-lived PTY sidecar.
+- Added `pnpm verify:terminal:process-reconnect-command-evidence`.
+- The smoke attaches to a running Tauri dev app, spawns a base PowerShell pane, creates a mux split pane, submits commands in both panes, verifies live and persisted command-block evidence, stops the current `Aether.exe` process without killing the sidecar, verifies the sidecar still lists both terminal ids, starts the debug `Aether.exe` again, verifies the restarted app adopts both terminal ids, then submits fresh commands through both recovered terminals and verifies live plus persisted command evidence again.
+- The smoke now reads the hardened sidecar token file instead of assuming `dev`, matching the real app/sidecar authentication boundary.
+- Added a `process-reconnect-command-evidence` category to `pnpm verify:quality-score`, raising the scored surface to `156` max points.
+- Added static regression coverage so the package script, sidecar retention check, restarted-app adoption check, persisted command-block check, and score category stay wired.
+
+Validation:
+
+- `node --check scripts\verify-process-reconnect-command-evidence.mjs`
+- `pnpm exec biome check scripts\verify-process-reconnect-command-evidence.mjs scripts\score-release-quality.mjs package.json src\__tests__\AppSilentBugs.test.ts`
+- `pnpm vitest run src\__tests__\AppSilentBugs.test.ts --reporter=dot`
+- `pnpm verify:terminal:process-reconnect-command-evidence`
+- `pnpm verify:quality-score`
+
+Result:
+
+- `.codex-auto/production-smoke/process-reconnect-command-evidence.json` reports `ok=true`.
+- The smoke verified `sidecarRetainedTerminal=true`, `sidecarRetainedSplitTerminal=true`, `terminalAdoptedAfterRestart=true`, and `splitTerminalAdoptedAfterRestart=true`.
+- `pnpm verify:quality-score` reports `100/156`, grade `S`, `legacy release-ready state`.
+
+Residual:
+
+- Process restart evidence is now covered for base and split PowerShell panes. The remaining terminal-edge risks are AI CLI specific: Codex/Claude/Gemini prompt framing, Japanese IME composition under those CLIs, and image/text clipboard paths.
+
+### Phase 1.98 - Interactive AI CLI Sidecar Boundary and Reconnect Race Hardening
+
+Status: done
+
+Implemented:
+
+- Added authenticated sidecar command-session support via `POST /commands`, with bounded executable-name, argument, environment, cwd, and session-limit validation.
+- Added `PtySidecarClient::spawn_command` so non-shell processes can run on the long-lived sidecar stream instead of the in-process PTY path.
+- Moved `spawn_interactive_agent` to an async sidecar-first path. Codex/Claude/Gemini interactive sessions now spawn, stream, and close through the same sidecar/native-renderer boundary as normal panes; native in-process PTY is only a visible fallback when sidecar is unavailable.
+- Added `backend` provenance to interactive spawn results, plus static regression tests that guard sidecar spawn, sidecar output subscription, and sidecar close-before-native-fallback.
+- Added `backend` provenance to live interactive session metadata and the interactive session card so `sidecar`, `native fallback`, or unknown backend state is visible instead of hidden.
+- Fixed command evidence false positives:
+  - command history cwd is normalized so frontend `C:/...` and backend `C:\...` saves dedupe instead of producing fallback-looking duplicate blocks.
+  - initial PowerShell prompt `CommandEnd(sequence=0)` no longer closes a pending command before any actual command start/output.
+  - after app-process reconnect, command blocks can still close when the current prompt's `CommandStart` happened before the new Aether process attached, as long as the observed `CommandEnd` is post-output rather than the initial prompt sentinel.
+- Hardened live smoke scripts against real async races:
+  - multipane long-output verification now waits for scrollback growth.
+  - final snapshot reads are accepted when the marker appears exactly at the timeout edge.
+  - process-reconnect smoke can restart Vite when killing the initial Aether process also tears down the dev server.
+  - fresh split panes wait for shell readiness before input, while restored sidecar panes rely on adoption plus command-end evidence because their previous prompt screen is not replayed.
+- Added `interactive-ai-cli-sidecar-boundary` to `pnpm verify:quality-score`, raising the scored surface to `164` max points.
+
+Validation:
+
+- `cargo test --manifest-path src-tauri\Cargo.toml command_session_rejects_path_like_programs -- --nocapture`
+- `cargo test --manifest-path src-tauri\Cargo.toml daemon_contract_exposes_versioned_capabilities -- --nocapture`
+- `cargo test --manifest-path src-tauri\Cargo.toml command_end_before_command_start_does_not_close_pending_command -- --nocapture`
+- `cargo test --manifest-path src-tauri\Cargo.toml command_end_without_seen_start_can_close_after_reconnect_output -- --nocapture`
+- `cargo test --manifest-path src-tauri\Cargo.toml command_history_cwd_normalizes_windows_and_url_separators -- --nocapture`
+- `cargo build --manifest-path src-tauri\Cargo.toml --bin Aether`
+- `pnpm vitest run src\__tests__\interactiveCommandsWorktreeFailure.test.ts src\__tests__\AppSilentBugs.test.ts --reporter=dot`
+- `pnpm exec tsc --noEmit`
+- `pnpm exec biome check scripts\verify-process-reconnect-command-evidence.mjs scripts\verify-multipane-command-evidence.mjs scripts\score-release-quality.mjs src\__tests__\interactiveCommandsWorktreeFailure.test.ts src\shared\types\interactiveAgent.ts`
+- `pnpm verify:terminal:command-evidence`
+- `pnpm verify:terminal:multipane-command-evidence`
+- `pnpm verify:terminal:recovered-command-evidence`
+- `pnpm verify:terminal:process-reconnect-command-evidence`
+- `pnpm verify:quality-score`
+
+Result:
+
+- `.codex-auto/production-smoke/live-command-evidence.json`, `multipane-command-evidence.json`, `recovered-command-evidence.json`, and `process-reconnect-command-evidence.json` all report `ok=true`.
+- `pnpm verify:quality-score` reports `164/164`, grade `S`, `legacy release-ready state`, blockers `[]`.
+
+Residual:
+
+- This phase proves the AI CLI launch/control boundary is sidecar-first and closes the command evidence races found by the smoke loop. The remaining high-value terminal-edge work is direct live AI CLI behavioral evidence: Codex/Claude/Gemini-specific Japanese IME composition, text/image clipboard, prompt framing, and long-running session telemetry under the new sidecar command path.
+
+### Phase 1.99 - AI CLI Boundary Runtime Proof and Fallback Visibility
+
+Status: done
+
+Implemented:
+
+- Added `scripts/verify-interactive-ai-cli-boundary.mjs`, a deterministic sidecar smoke that creates local Codex, Claude, and Gemini CLI shims without spending real model tokens.
+- The smoke starts the PTY sidecar, verifies `command-session` in the daemon contract, rejects unauthenticated `/commands`, rejects path-like unsafe programs, and then spawns all three CLI shims through `POST /commands`.
+- Each shim proves the sidecar command-session boundary by receiving stream-ticket output, showing ready text in capture, accepting PTY input, emitting a done marker, and closing cleanly.
+- Added `pnpm verify:terminal:ai-cli-boundary`.
+- Upgraded `interactive-ai-cli-sidecar-boundary` scoring so static code signals alone no longer earn full credit; the fresh runtime artifact is now required.
+- Added right-rail advisor visibility for AI CLI terminal provenance:
+  - healthy interactive CLI sessions expose a `Verify CLI path` observe action;
+  - native PTY fallback escalates to `Fix CLI fallback` as an unhealthy right-rail action instead of silently blending into normal running state.
+- Passed the interactive backend provenance from live sessions into the right-rail advisor.
+- Updated right-rail edge smoke to refresh `.codex-auto/visual/right-rail-next-action-qa.png` so the freshness gate follows advisor changes.
+
+Validation:
+
+- `cargo build --manifest-path src-tauri\pty-server\Cargo.toml --release`
+- `pnpm verify:terminal:ai-cli-boundary`
+- `pnpm vitest run src\__tests__\rightRailAdvisor.test.ts --reporter=dot`
+- `pnpm exec tsc --noEmit`
+- `pnpm exec biome check scripts\verify-interactive-ai-cli-boundary.mjs scripts\score-release-quality.mjs src\shared\lib\rightRailAdvisor.ts src\__tests__\rightRailAdvisor.test.ts src\App.tsx`
+- `pnpm verify:right-rail-command-evidence`
+- `pnpm verify:right-rail-edge`
+- `pnpm verify:quality-score`
+
+Result:
+
+- `.codex-auto/production-smoke/interactive-ai-cli-boundary.json` reports `ok=true` with Codex, Claude, and Gemini shim entries all showing `streamReceivedMarker=true`, `inputRoundtrip=true`, `doneVisible=true`, and `closed=true`.
+- `pnpm verify:quality-score` reports `164/164`, grade `S`, `legacy release-ready state`, blockers `[]`.
+
+Residual:
+
+- Deterministic CLI shims now prove the sidecar/native command-session plumbing, but they are not a substitute for real authenticated Codex/Claude/Gemini CLI behavior. The remaining edge evidence should cover real CLI prompt framing, Japanese IME composition position, text/image clipboard, and multi-hour telemetry under actual CLI binaries.
+
+### Phase 2.00 - Real AI CLI Binary Probe and Windows Launcher Hygiene
+
+Status: done
+
+Implemented:
+
+- Added `scripts/verify-real-ai-cli-binary-probe.mjs`, a real-binary sidecar probe that runs `codex --version`, `claude --version`, and `gemini --version` inside a PTY sidecar without sending prompts or spending model tokens.
+- Added `pnpm verify:terminal:real-ai-cli`.
+- The probe records PATH discovery, selected launcher, PTY id, command-session capability, command-not-found classification, output sample, and per-CLI pass/fail status in `.codex-auto/production-smoke/real-ai-cli-binary-probe.json`.
+- The first strict run caught a real Windows launcher issue: `claude.cmd --version` failed while `claude.exe --version` worked.
+- Fixed Rust AI CLI launcher resolution in `platform_cli_program`:
+  - PATH directory order is now respected first;
+  - within each PATH directory, `.exe` is preferred over `.cmd`, then `.bat`;
+  - this prevents a broken npm shim from masking a healthy native CLI binary earlier on PATH.
+- Added a Windows regression test for PATH-order and exe-before-cmd behavior.
+- Added `real-ai-cli-binary-probe` to `pnpm verify:quality-score`, raising the scored surface to `170` max points.
+
+Validation:
+
+- `pnpm verify:terminal:real-ai-cli`
+- `cargo test --manifest-path src-tauri\Cargo.toml windows_cli_resolution_respects_path_order_and_prefers_exe_within_directory -- --nocapture`
+- `pnpm exec biome check scripts\verify-real-ai-cli-binary-probe.mjs scripts\score-release-quality.mjs package.json`
+- `pnpm verify:quality-score`
+
+Result:
+
+- `.codex-auto/production-smoke/real-ai-cli-binary-probe.json` reports `ok=true`, `status=pass`, and `passCount=3`.
+- Real versions observed through sidecar PTY:
+  - Codex: `codex-cli 0.130.0`
+  - Claude: `2.1.142 (Claude Code)`
+  - Gemini: `0.42.0`
+- `pnpm verify:quality-score` reports `170/170`, grade `S`, `legacy release-ready state`, blockers `[]`.
+
+Residual:
+
+- Real CLI binaries are now proven launchable through the sidecar PTY, but this is still non-interactive version-output evidence. The next edge gap is authenticated interactive behavior: prompt framing, Japanese IME candidate placement, text/image clipboard, pane split/reconnect, and long-running telemetry while real Codex/Claude/Gemini sessions are active.
+
+### Phase 2.01 - AI CLI Launch Planner and Right Rail Launch Gate
+
+Status: done
+
+Implemented:
+
+- Added `src/shared/lib/aiCliLaunchPlanner.ts`, a pure launch-planning contract that turns real CLI probe evidence and live interactive-session provenance into a provider/backend/role launch decision.
+- The planner now refuses false confidence:
+  - fresh Codex/Claude/Gemini real-binary sidecar evidence produces `ready`;
+  - stale or partial proof becomes `degraded`;
+  - native fallback, missing command-session capability, or pending human gates become `blocked`;
+  - missing probe evidence is never treated as release-grade launch confidence.
+- Added `plan-cli-launch` as a first-class right-rail action.
+  - Ready plans open Toolkit with `Plan AI launch`.
+  - Blocked plans route to Health with `Fix launch gate` instead of hiding sidecar/native fallback risk.
+- Wired the App shell to derive the launch plan from current interactive sessions, selected pane role, changed-file pressure, and decision gates.
+- Added `ai-cli-launch-planner` to `pnpm verify:quality-score`, raising the scored surface to `176` max points.
+
+Validation:
+
+- `pnpm vitest run src\__tests__\aiCliLaunchPlanner.test.ts src\__tests__\rightRailAdvisor.test.ts --reporter=dot`
+- `pnpm exec tsc --noEmit`
+- `pnpm exec biome check src\shared\lib\aiCliLaunchPlanner.ts src\shared\lib\rightRailAdvisor.ts src\__tests__\aiCliLaunchPlanner.test.ts src\__tests__\rightRailAdvisor.test.ts src\App.tsx scripts\score-release-quality.mjs`
+- `pnpm verify:right-rail-command-evidence`
+- `pnpm verify:right-rail-edge`
+- `pnpm verify:terminal:real-ai-cli`
+- `pnpm verify:quality-score`
+
+Result:
+
+- Launch Planner unit coverage passes, including fresh proof, broken preferred launcher, native fallback block, and missing-probe degraded paths.
+- Fresh right-rail browser evidence was regenerated after the advisor changes.
+- `pnpm verify:quality-score` reports `176/176`, grade `S`, `legacy release-ready state`, blockers `[]`.
+
+Residual:
+
+- The launch planner now makes the launch decision explicit, but real authenticated interactive behavior is still the next hard edge: prompt framing, Japanese IME candidate placement, text/image clipboard, pane split/reconnect, and long-running telemetry while real Codex/Claude/Gemini sessions are active.
+
+### Phase 2.02 - Launch Contract Trace and Audit Payload
+
+Status: done
+
+Implemented:
+
+- Extended `AiCliLaunchPlan` with a deterministic `AiCliLaunchTrace` contract:
+  - schema version and kind;
+  - recommended provider, role, backend, launcher, and observed version;
+  - provider matrix for Codex/Claude/Gemini;
+  - checks, warnings, guardrail text, and expected artifacts.
+- Added `auditPayload` support to right-rail actions.
+- `plan-cli-launch` now carries `aiCliLaunchTrace` into the right-rail audit event payload, so the run trace can reconstruct why a launch was considered ready, degraded, or blocked.
+- Hardened the quality score gate so `ai-cli-launch-planner` requires the trace contract, right-rail audit payload wiring, and unit coverage for selected launcher/provenance.
+
+Validation:
+
+- `pnpm vitest run src\__tests__\aiCliLaunchPlanner.test.ts src\__tests__\rightRailAdvisor.test.ts --reporter=dot`
+- `pnpm exec tsc --noEmit`
+- `pnpm exec biome check src\shared\lib\aiCliLaunchPlanner.ts src\shared\lib\rightRailAdvisor.ts src\__tests__\aiCliLaunchPlanner.test.ts src\__tests__\rightRailAdvisor.test.ts src\App.tsx scripts\score-release-quality.mjs`
+- `pnpm verify:right-rail-command-evidence`
+- `pnpm verify:right-rail-edge`
+
+Result:
+
+- Launch Planner traces now include the selected launcher (`codex.cmd`, `claude.exe`, or `gemini.cmd`) and provider matrix instead of only UI copy.
+- Right-rail action tests assert that `plan-cli-launch` carries `aiCliLaunchTrace` into the audit payload.
+
+Residual:
+
+- Launch decisions are now reconstructable from the right-rail audit payload. The remaining product edge is still actual real-session proof after launch: authenticated CLI prompt framing, Japanese IME candidate placement, text/image clipboard, split/reconnect, and long-running telemetry while the real CLIs are active.
+
+### Phase 2.03 - Right Rail Audit Payload Contract
+
+Status: done
+
+Implemented:
+
+- Added `buildRightRailActionAuditPayload` to `rightRailAdvisor.ts`.
+- Moved right-rail audit payload assembly out of `App.tsx` and into a pure, testable contract.
+- Added unit coverage proving `plan-cli-launch` preserves `aiCliLaunchTrace` inside the audit payload with provider, launcher, version, mode transition, operation, and execution status.
+- Hardened the quality score gate so Launch Planner credit now requires:
+  - `AiCliLaunchTrace`;
+  - right-rail `aiCliLaunchTrace` propagation;
+  - pure audit payload builder;
+  - App using the builder instead of reassembling payload fields inline.
+
+Validation:
+
+- `pnpm vitest run src\__tests__\aiCliLaunchPlanner.test.ts src\__tests__\rightRailAdvisor.test.ts --reporter=dot`
+- `pnpm exec tsc --noEmit`
+- `pnpm exec biome check src\shared\lib\aiCliLaunchPlanner.ts src\shared\lib\rightRailAdvisor.ts src\__tests__\aiCliLaunchPlanner.test.ts src\__tests__\rightRailAdvisor.test.ts src\App.tsx scripts\score-release-quality.mjs`
+- `pnpm verify:right-rail-command-evidence`
+- `pnpm verify:right-rail-edge`
+
+Result:
+
+- Right-rail launch planning is now both actionable and audit-stable: the displayed action, the selected target, and the launch trace share one tested payload contract.
+
+Residual:
+
+- The launch/audit side is stronger, but the next proof still needs live authenticated CLI behavior under real terminal stress: IME candidate geometry, text/image clipboard, split/reconnect, and long-running session health while Codex/Claude/Gemini are actually active.
+
+### Phase 2.04 - Real Probe Launch Planner Runtime Smoke
+
+Status: done
+
+Implemented:
+
+- Added `scripts/verify-ai-cli-launch-planner.mjs`.
+- Added `pnpm verify:terminal:ai-cli-launch-planner`.
+- The smoke transpiles the real `src/shared/lib/aiCliLaunchPlanner.ts` source, imports `deriveAiCliLaunchPlan`, and feeds it the current `.codex-auto/production-smoke/real-ai-cli-binary-probe.json`.
+- The generated artifact proves:
+  - planner source loaded;
+  - real CLI probe is a fresh 3-provider pass;
+  - the plan is `ready` on `sidecar-command-session`;
+  - `AiCliLaunchTrace` is complete;
+  - provider matrix includes ready Claude, Codex, and Gemini entries with launchers and versions.
+- Upgraded `ai-cli-launch-planner` in `pnpm verify:quality-score` from 6 to 8 points and made the fresh runtime smoke artifact a release gate.
+
+Validation:
+
+- `pnpm verify:terminal:ai-cli-launch-planner`
+- `pnpm exec biome check scripts\verify-ai-cli-launch-planner.mjs scripts\score-release-quality.mjs package.json`
+- `pnpm vitest run src\__tests__\aiCliLaunchPlanner.test.ts src\__tests__\rightRailAdvisor.test.ts --reporter=dot`
+- `pnpm verify:quality-score`
+
+Result:
+
+- `.codex-auto/production-smoke/ai-cli-launch-planner.json` reports `ok=true`.
+- Runtime trace selected `claude.exe` with version `2.1.142 (Claude Code)`.
+- Provider matrix:
+  - Claude: `claude.exe`, `2.1.142 (Claude Code)`;
+  - Codex: `codex.cmd`, `codex-cli 0.130.0`;
+  - Gemini: `gemini.cmd`, `0.42.0`.
+- `pnpm verify:quality-score` reports `178/178`, grade `S`, `legacy release-ready state`, blockers `[]`.
+
+Residual:
+
+- Launch Planner is now proven from real CLI binary evidence, but this still stops before sending an authenticated interactive prompt. The remaining hard proof is real-session behavior after launch: IME candidate placement, text/image clipboard, pane split/reconnect, prompt framing, and long-running telemetry while Codex/Claude/Gemini are active.
+
+### Phase 2.05 - Launch Planner Terminal Preflight Gates
+
+Status: done
+
+Implemented:
+
+- Extended `AiCliLaunchPlan` with terminal preflight evidence and `preflightChecks`.
+- Added four release-grade preflight gates before a Launch Planner run can be treated as ready when `requirePreflight` is enabled:
+  - native Japanese IME host and candidate geometry;
+  - native text clipboard/paste path;
+  - process restart reconnect for base and split panes;
+  - Codex/Claude/Gemini interactive input roundtrip through `sidecar-command-session`.
+- `deriveAiCliLaunchPlan()` now blocks a launch plan when required preflight proof is missing, even if real CLI binaries are installed and version probes pass.
+- `scripts/verify-ai-cli-launch-planner.mjs` now consumes the real native-input, IME, process-reconnect, and interactive-AI-CLI-boundary artifacts in addition to the real binary probe.
+- Hardened `pnpm verify:quality-score` so the AI CLI Launch Planner category requires the preflight trace, exact artifact provenance, and all four ready checks.
+
+Validation:
+
+- `pnpm vitest run src\__tests__\aiCliLaunchPlanner.test.ts src\__tests__\rightRailAdvisor.test.ts --reporter=dot`
+- `pnpm exec biome check src\shared\lib\aiCliLaunchPlanner.ts src\__tests__\aiCliLaunchPlanner.test.ts scripts\verify-ai-cli-launch-planner.mjs scripts\score-release-quality.mjs package.json`
+- `node --check scripts\verify-ai-cli-launch-planner.mjs`
+- `node --check scripts\score-release-quality.mjs`
+- `pnpm exec tsc --noEmit --pretty false`
+- `pnpm verify:terminal:ai-cli-launch-planner`
+- `pnpm verify:quality-score`
+
+Result:
+
+- `.codex-auto/production-smoke/ai-cli-launch-planner.json` reports `ok=true` and `preflightReady=true`.
+- Runtime launch trace now includes ready preflight checks for `native-ime`, `clipboard-text`, `process-reconnect`, and `interactive-cli-boundary`.
+- `pnpm verify:quality-score` reports `180/180`, grade `S`, `legacy release-ready state`, blockers `[]`.
+
+Residual:
+
+- This closes the false-ready gap before launch, but it is still a preflight/provenance gate. The next edge proof should cover real authenticated prompts after launch: prompt framing, Japanese IME candidate placement during actual Codex/Claude sessions, image clipboard behavior, and longer-running telemetry while real paid CLI sessions are active.
+
+### Phase 2.06 - Pre-Prompt Launch Contract Gate
+
+Status: done
+
+Implemented:
+
+- Added `AiCliLaunchPromptContract` and `promptContractChecks` to the Launch Planner trace.
+- Added a required prompt contract gate for audited launches:
+  - objective;
+  - context summary;
+  - expected output;
+  - done criteria;
+  - guardrails.
+- `deriveAiCliLaunchPlan()` now blocks required prompt execution when the contract is incomplete, even when all real CLI binary and terminal preflight evidence is ready.
+- `scripts/verify-ai-cli-launch-planner.mjs` now feeds a deterministic pre-prompt contract into the runtime smoke and fails if the prompt contract checks are not all ready.
+- Hardened `pnpm verify:quality-score` so Launch Planner credit requires source, unit coverage, runtime trace, terminal preflight, and pre-prompt contract proof.
+
+Validation:
+
+- `pnpm exec biome check src\shared\lib\aiCliLaunchPlanner.ts src\__tests__\aiCliLaunchPlanner.test.ts scripts\verify-ai-cli-launch-planner.mjs scripts\score-release-quality.mjs package.json`
+- `pnpm vitest run src\__tests__\aiCliLaunchPlanner.test.ts src\__tests__\rightRailAdvisor.test.ts --reporter=dot`
+- `node --check scripts\verify-ai-cli-launch-planner.mjs`
+- `node --check scripts\score-release-quality.mjs`
+- `pnpm exec tsc --noEmit --pretty false`
+- `pnpm verify:terminal:ai-cli-launch-planner`
+- `pnpm verify:quality-score`
+
+Result:
+
+- Launch Planner unit coverage now passes `33` tests across the planner and right-rail advisor.
+- `.codex-auto/production-smoke/ai-cli-launch-planner.json` reports ready `promptContractChecks`.
+- `pnpm verify:quality-score` reports `182/182`, grade `S`, `legacy release-ready state`, blockers `[]`.
+
+Residual:
+
+- This prevents blind prompt sending from being called release-grade. The remaining hard edge is still real authenticated post-launch evidence: actual Codex/Claude/Gemini prompt framing, Japanese IME candidate behavior inside real sessions, image clipboard behavior, cancellation/retry, and longer-running telemetry.
+
+### Phase 2.07 - Right Rail Audit Contract Test Drift Repair
+
+Status: done
+
+Implemented:
+
+- Ran the broader `AppSilentBugs` static contract suite after the Launch Planner hardening.
+- Found a stale assertion that still expected right-rail audit evidence assembly to live inline in `App.tsx`.
+- Updated the contract test to match the current architecture:
+  - `App.tsx` must call `buildRightRailActionAuditPayload(action, previousMode)`;
+  - `rightRailAdvisor.ts` must preserve `evidence: action.execution.evidence`;
+  - `rightRailAdvisor.ts` must preserve `target: action.target`.
+- This keeps the test guarding the actual product boundary instead of a deleted implementation detail.
+
+Validation:
+
+- `pnpm exec biome check src\__tests__\AppSilentBugs.test.ts src\shared\lib\aiCliLaunchPlanner.ts src\__tests__\aiCliLaunchPlanner.test.ts scripts\verify-ai-cli-launch-planner.mjs scripts\score-release-quality.mjs`
+- `pnpm vitest run src\__tests__\AppSilentBugs.test.ts src\__tests__\aiCliLaunchPlanner.test.ts src\__tests__\rightRailAdvisor.test.ts --reporter=dot`
+- `pnpm exec tsc --noEmit --pretty false`
+- `pnpm verify:terminal:ai-cli-launch-planner`
+- `pnpm verify:quality-score`
+
+Result:
+
+- The broadened focused suite reports `51` passing tests across App static contracts, Launch Planner, and right-rail advisor.
+- `pnpm verify:quality-score` remains `182/182`, grade `S`, `legacy release-ready state`, blockers `[]`.
+
+Residual:
+
+- This repairs a stale test boundary. It does not replace the remaining post-launch real-session soak for authenticated AI CLI behavior.
+
+### Phase 2.08 - Live AI CLI Post-Launch Chaos Gate
+
+Status: done
+
+Implemented:
+
+- Added `pnpm verify:terminal:ai-cli-post-launch-chaos` for the existing live Tauri/WebView2 PTY and AI CLI chaos smoke.
+- Added a `live-ai-cli-post-launch-chaos` category to `pnpm verify:quality-score`.
+- The score now requires fresh post-launch chaos evidence after the current app, sidecar, interactive command, and launch-planner sources:
+  - Tauri/WebView2 runtime attached;
+  - local storage clear/reload recovers the app;
+  - PTY force restart remains visible and healthy;
+  - AI CLI interactive session spawn/kill cleanup passes;
+  - no interactive session remains after cleanup.
+- The previous `.codex-auto/chaos-recovery/p2-07-live-tauri-pty-ai-cli-chaos.json` artifact is no longer accepted as current proof because it predates the latest app and launch-planner changes.
+
+Validation:
+
+- `pnpm exec biome check scripts\score-release-quality.mjs src\__tests__\AppSilentBugs.test.ts package.json`
+- `node --check scripts\score-release-quality.mjs`
+- `node --check scripts\verify-live-tauri-pty-ai-cli-chaos.mjs`
+- `pnpm vitest run src\__tests__\AppSilentBugs.test.ts --reporter=dot`
+- `pnpm exec tsc --noEmit --pretty false`
+- `pnpm vitest run src\__tests__\AppSilentBugs.test.ts src\__tests__\aiCliLaunchPlanner.test.ts src\__tests__\rightRailAdvisor.test.ts --reporter=dot`
+- `pnpm verify:terminal:ai-cli-launch-planner`
+- `pnpm verify:quality-score`
+
+Result:
+
+- The focused suite now reports `52` passing tests across App static contracts, Launch Planner, and right-rail advisor.
+- `pnpm verify:quality-score` now reports `182/192`, grade `A`, `releaseCandidateReady=false`.
+- The remaining blocker is explicit: `live AI CLI post-launch chaos artifact is missing, stale, or not passing`.
+
+Residual:
+
+- A fresh native Tauri/WebView2 run with CDP must execute `pnpm verify:terminal:ai-cli-post-launch-chaos` before this score can return to release-candidate ready.
+- This gate still proves spawn/kill/recovery behavior, not a paid prompt response. The next stricter layer should add an opt-in, cost-aware authenticated prompt-framing smoke that records provider, prompt contract, cancellation/retry, IME geometry, clipboard behavior, and cleanup without hiding token spend.
+
+### Phase 2.09 - Fresh Post-Launch Chaos Pass and Dev Sidecar Hygiene
+
+Status: done
+
+Implemented:
+
+- Re-ran the live Tauri/WebView2 post-launch chaos gate against a fresh dev runtime.
+- The first fresh run exposed a real dev-environment regression: AI CLI session spawn failed with `PTY server command spawn failed: 404 Not Found`.
+- Root cause: `tauri:dev` launched the stale sibling `src-tauri/target/debug/aether-pty-server.exe`, which did not expose the current `/commands` route.
+- Added `scripts/build-pty-sidecar-dev.mjs` to build `src-tauri/pty-server/Cargo.toml` and copy the debug sidecar next to `target/debug/Aether.exe`.
+- Updated `pnpm tauri:dev` to prepare the dev PTY sidecar before launching Tauri, preventing stale sidecar APIs from silently breaking interactive AI CLI launch.
+- Decoupled the live chaos smoke from the old longrun dashboard URL. Dashboard state is now recorded when available, but an unavailable historical dashboard no longer invalidates the live Aether runtime chaos proof.
+
+Validation:
+
+- `pnpm exec biome check scripts\build-pty-sidecar-dev.mjs package.json src\__tests__\AppSilentBugs.test.ts scripts\verify-live-tauri-pty-ai-cli-chaos.mjs`
+- `node --check scripts\build-pty-sidecar-dev.mjs`
+- `node --check scripts\verify-live-tauri-pty-ai-cli-chaos.mjs`
+- `pnpm vitest run src\__tests__\AppSilentBugs.test.ts --reporter=dot`
+- `node scripts\build-pty-sidecar-dev.mjs`
+- `pnpm tauri:dev` with WebView2 CDP on `127.0.0.1:9222`
+- `pnpm verify:terminal:ai-cli-post-launch-chaos`
+- `pnpm verify:quality-score`
+- `pnpm vitest run src\__tests__\AppSilentBugs.test.ts src\__tests__\aiCliLaunchPlanner.test.ts src\__tests__\rightRailAdvisor.test.ts --reporter=dot`
+
+Result:
+
+- `.codex-auto/chaos-recovery/p2-07-live-tauri-pty-ai-cli-chaos.json` now reports `status=pass`.
+- The chaos artifact proves:
+  - Tauri/WebView2 attached through CDP;
+  - localStorage clear/reload recovered the app;
+  - PTY force restart stayed visible and healthy;
+  - AI CLI interactive session spawned;
+  - close/cleanup marked the session done and left `remainingSessionsAfterCleanup=0`.
+- `pnpm verify:quality-score` reports `192/192`, grade `S`, `legacy release-ready state`, blockers `[]`.
+
+Residual:
+
+- The post-launch chaos gate now proves AI CLI spawn/kill/recovery, but it deliberately avoids spending model tokens. The next stricter confidence layer remains an opt-in authenticated prompt-framing smoke with explicit cost consent and evidence for IME geometry, clipboard behavior, cancellation/retry, and cleanup under a real prompt.
+
+### Phase 2.10 - Opt-In Authenticated Prompt Smoke Gate
+
+Status: done
+
+Implemented:
+
+- Added `scripts/verify-authenticated-ai-cli-prompt-smoke.mjs`.
+- Added `pnpm verify:terminal:authenticated-ai-cli-prompt`.
+- The verifier refuses to launch a real AI CLI prompt unless `AETHER_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` is set.
+- Without consent it writes `.codex-auto/production-smoke/authenticated-ai-cli-prompt-smoke.json` with `status=requires_opt_in`, `wouldSpendTokens=true`, and the required env var.
+- With consent it is prepared to:
+  - attach to the live Tauri/WebView2 runtime through CDP;
+  - call `spawn_interactive_agent` with an explicit prompt contract marker;
+  - require sidecar backend;
+  - wait for the expected prompt marker in the terminal grid;
+  - stop the interactive session and verify cleanup.
+- Added `authenticated-ai-cli-prompt-smoke` to `pnpm verify:quality-score`, raising the scored surface to `202` max points.
+- Added static coverage so the script cannot regress into silent token spend or disappear from package scripts.
+
+Validation:
+
+- `pnpm exec biome check scripts\verify-authenticated-ai-cli-prompt-smoke.mjs scripts\score-release-quality.mjs src\__tests__\AppSilentBugs.test.ts package.json`
+- `node --check scripts\verify-authenticated-ai-cli-prompt-smoke.mjs`
+- `node --check scripts\score-release-quality.mjs`
+- `pnpm vitest run src\__tests__\AppSilentBugs.test.ts --reporter=dot`
+- `pnpm verify:terminal:authenticated-ai-cli-prompt` without consent, expecting exit code `2`
+- `pnpm verify:quality-score`
+- `pnpm vitest run src\__tests__\AppSilentBugs.test.ts src\__tests__\aiCliLaunchPlanner.test.ts src\__tests__\rightRailAdvisor.test.ts --reporter=dot`
+- `pnpm exec tsc --noEmit --pretty false`
+
+Result:
+
+- The no-consent run did not send a prompt and wrote `status=requires_opt_in`.
+- `pnpm verify:quality-score` now reports `192/202`, grade `A`, `releaseCandidateReady=false`.
+- The explicit blocker is `authenticated AI CLI prompt smoke requires explicit token-spend consent`.
+
+Residual:
+
+- Clearing this blocker requires an explicit token-spend opt-in run. Until then, Aether should not claim full post-launch authenticated prompt confidence, even though non-token-spending launch, sidecar, recovery, IME, reconnect, and command evidence gates are green.
+
+### Phase 2.11 - Auth Prompt Consent Readiness and Blocker Precision
+
+Status: done
+
+Implemented:
+
+- Tightened the opt-in authenticated prompt smoke artifact for the no-consent path.
+- The no-consent artifact now records `tokenSpendingExecutionBlocked=true`, `safeNoPromptSent=true`, `consentPacketReady=true`, and `runtimeReadiness=not_checked_without_token_spend_consent`.
+- Added a structured `nextCommand` payload to the artifact so the eventual token-spending run has an explicit command and env contract.
+- Refined `pnpm verify:quality-score` so `status=requires_opt_in` is not treated like a failed sidecar, marker, or cleanup run.
+- The release score now reports exactly one blocker for this gate before consent: `authenticated AI CLI prompt smoke requires explicit token-spend consent`.
+
+Validation:
+
+- `pnpm exec biome check scripts\verify-authenticated-ai-cli-prompt-smoke.mjs scripts\score-release-quality.mjs src\__tests__\AppSilentBugs.test.ts package.json`
+- `node --check scripts\verify-authenticated-ai-cli-prompt-smoke.mjs`
+- `node --check scripts\score-release-quality.mjs`
+- `pnpm vitest run src\__tests__\AppSilentBugs.test.ts --reporter=dot`
+- `pnpm exec tsc --noEmit --pretty false`
+- `pnpm verify:terminal:authenticated-ai-cli-prompt` without consent, expecting exit code `2`
+- `pnpm verify:quality-score`
+
+Result:
+
+- `.codex-auto/production-smoke/authenticated-ai-cli-prompt-smoke.json` proves no prompt was sent without explicit token-spend consent.
+- `.codex-auto/quality/release-quality-score.json` reports `192/202`, grade `A`, `releaseCandidateReady=false`.
+- The only quality blocker is the intentionally unrun authenticated prompt smoke that requires explicit token-spend consent.
+
+Residual:
+
+- The remaining confidence gap is not a known implementation failure; it is an intentionally blocked token-spending production smoke. Once explicitly authorized, run the authenticated prompt smoke and refresh the score.
+
+### Phase 2.12 - No-Token Auth Prompt Preflight
+
+Status: done
+
+Implemented:
+
+- Extended the no-consent authenticated prompt smoke to read existing non-token artifacts before declaring the opt-in packet ready.
+- The no-consent artifact now checks the selected provider against:
+  - real AI CLI binary probe;
+  - sidecar command-session boundary;
+  - native input host;
+  - live IME smoke;
+  - live post-launch AI CLI chaos and cleanup.
+- Added `nonTokenPreflightReady` and a `nonTokenPreflight` evidence block with artifact paths, freshness, ages, and parse errors.
+- The artifact no longer implies live prompt readiness without proof. It reports `preflight_artifacts_green_without_prompt` only when the prerequisite non-token evidence is fresh and passing.
+- Updated the release score so an opt-in blocker can still surface a second blocker if the no-token preflight artifacts become stale or incomplete.
+
+Validation:
+
+- `pnpm exec biome check scripts\verify-authenticated-ai-cli-prompt-smoke.mjs scripts\score-release-quality.mjs src\__tests__\AppSilentBugs.test.ts package.json`
+- `node --check scripts\verify-authenticated-ai-cli-prompt-smoke.mjs`
+- `node --check scripts\score-release-quality.mjs`
+- `pnpm vitest run src\__tests__\AppSilentBugs.test.ts --reporter=dot`
+- `pnpm vitest run src\__tests__\AppSilentBugs.test.ts src\__tests__\aiCliLaunchPlanner.test.ts src\__tests__\rightRailAdvisor.test.ts --reporter=dot`
+- `pnpm exec tsc --noEmit --pretty false`
+- `pnpm verify:terminal:authenticated-ai-cli-prompt` without consent, expecting exit code `2`
+- `pnpm verify:quality-score`
+
+Result:
+
+- The current no-consent artifact reports `nonTokenPreflightReady=true` and `runtimeReadiness=preflight_artifacts_green_without_prompt`.
+- `pnpm verify:quality-score` remains `192/202`, grade `A`, `releaseCandidateReady=false`.
+- The only current blocker remains explicit token-spend consent for the authenticated prompt smoke.
+
+Residual:
+
+- The next confidence layer still requires deliberate token-spend authorization, because only a real authenticated prompt can prove end-to-end marker output under a live provider response.
+
+### Phase 2.13 - Launch-Time Context Pack Contract
+
+Status: done
+
+Implemented:
+
+- Upgraded the AI CLI Launch Planner context requirement from a plain text summary into a machine-readable context pack contract.
+- Added `AiCliLaunchContextPackContract` and `AiCliLaunchContextPackTrace`.
+- Prompt contract validation now blocks launch when a context summary exists but the machine-readable pack is missing.
+- The launch trace now records context pack identity, source, summary, generation time, include count, exclusion count, changed-file count, and redaction count.
+- The planner expected artifacts now require `machine-readable context pack trace with inclusion, exclusion, redaction, and changed-file counts`.
+- `scripts/verify-ai-cli-launch-planner.mjs` now supplies and verifies a non-token context pack contract.
+- `pnpm verify:quality-score` now fails the launch planner gate if the runtime smoke does not prove `contextPackReady=true`.
+
+Validation:
+
+- `pnpm exec biome check src\shared\lib\aiCliLaunchPlanner.ts src\__tests__\aiCliLaunchPlanner.test.ts scripts\verify-ai-cli-launch-planner.mjs scripts\score-release-quality.mjs`
+- `node --check scripts\verify-ai-cli-launch-planner.mjs`
+- `node --check scripts\score-release-quality.mjs`
+- `pnpm vitest run src\__tests__\aiCliLaunchPlanner.test.ts --reporter=dot`
+- `pnpm exec tsc --noEmit --pretty false`
+- `pnpm verify:terminal:ai-cli-launch-planner`
+- `pnpm vitest run src\__tests__\AppSilentBugs.test.ts src\__tests__\aiCliLaunchPlanner.test.ts src\__tests__\rightRailAdvisor.test.ts --reporter=dot`
+
+Result:
+
+- `.codex-auto/production-smoke/ai-cli-launch-planner.json` now reports `contextPackReady=true`.
+- The launch trace includes `launch-planner-smoke-context` with include/exclude/redaction/changed-file counts.
+
+Residual:
+
+- Context packs are now launch-plan truth, but the actual token-spending authenticated prompt smoke remains intentionally blocked until explicit consent.
+
+### Phase 2.14 - Live Chaos Prompt-Ready Guard and Clean QA URL
+
+Status: done
+
+Implemented:
+
+- Reran `pnpm verify:quality-score` after the Launch Planner context-pack change and correctly caught the post-launch chaos artifact as stale.
+- The first rerun exposed a real flake: `spawn_terminal` could accept a write before PowerShell was ready, causing the sentinel to disappear.
+- Added `waitForPowerShellReady()` to the live chaos smoke before both the initial write and the post-restart write.
+- The rerun then exposed a dev runtime crash with `STATUS_HEAP_CORRUPTION`; the smoke was still carrying a stale `edgeLoop` URL parameter from the browser state.
+- Hardened `withChaosQaParams()` to delete `state`, `edgeLoop`, and `dashboardState`, and to set `v=live-pty-ai-cli-chaos`.
+- Restarted the dev runtime cleanly with `AETHER_API_TOKEN=dev`, reran the smoke, and confirmed fresh pass.
+
+Validation:
+
+- `pnpm exec biome check scripts\verify-live-tauri-pty-ai-cli-chaos.mjs`
+- `node --check scripts\verify-live-tauri-pty-ai-cli-chaos.mjs`
+- `pnpm verify:terminal:ai-cli-post-launch-chaos`
+- `pnpm verify:terminal:authenticated-ai-cli-prompt` without consent, expecting exit code `2`
+- `pnpm verify:quality-score`
+- `pnpm vitest run src\__tests__\AppSilentBugs.test.ts src\__tests__\aiCliLaunchPlanner.test.ts src\__tests__\rightRailAdvisor.test.ts --reporter=dot`
+
+Result:
+
+- `.codex-auto/chaos-recovery/p2-07-live-tauri-pty-ai-cli-chaos.json` reports `status=pass`.
+- The artifact now proves PowerShell readiness before write, readiness again after force restart, AI CLI spawn/kill cleanup, and `remainingSessionsAfterCleanup=0`.
+- `.codex-auto/quality/release-quality-score.json` reports `192/202`, grade `A`, `releaseCandidateReady=false`.
+- The only current blocker is explicit token-spend consent for the authenticated prompt smoke.
+
+Residual:
+
+- The heap-corruption crash did not reproduce after removing stale QA URL state and starting the dev runtime cleanly with the intended token. Keep this smoke as the regression guard; any future `STATUS_HEAP_CORRUPTION` during pane/terminal chaos should be treated as P0.
+
+### Phase 2.15 - Chaos Artifact Contract For Stale URL And Prompt Readiness
+
+Status: done
+
+Implemented:
+
+- Promoted the live chaos smoke's stale-state cleanup from an implementation detail to a scored artifact contract.
+- `scripts/verify-live-tauri-pty-ai-cli-chaos.mjs` now builds the chaos URL from the page origin/path instead of preserving existing query parameters.
+- The smoke explicitly treats `state`, `edgeLoop`, and `dashboardState` as stale QA parameters.
+- The smoke now records and checks `cleanChaosQaUrl=true`.
+- The smoke now records and checks `ptyPromptReadyBeforeWrite=true` and `ptyPromptReadyAfterRestart=true`.
+- `scripts/score-release-quality.mjs` now fails `live-ai-cli-post-launch-chaos` when:
+  - the artifact URL still contains stale QA state;
+  - the smoke does not prove shell readiness before terminal writes;
+  - the smoke does not prove shell readiness again after force restart.
+- Added static regression coverage in `AppSilentBugs.test.ts` for the clean URL and prompt-readiness contract.
+
+Validation:
+
+- `pnpm exec biome check scripts\verify-live-tauri-pty-ai-cli-chaos.mjs scripts\score-release-quality.mjs src\__tests__\AppSilentBugs.test.ts`
+- `node --check scripts\verify-live-tauri-pty-ai-cli-chaos.mjs`
+- `node --check scripts\score-release-quality.mjs`
+- `pnpm verify:quality-score` before rerun, confirming stale/old artifact correctly failed the new contract
+- `pnpm verify:terminal:ai-cli-post-launch-chaos`
+- `pnpm verify:terminal:authenticated-ai-cli-prompt` without consent, expecting exit code `2`
+- `pnpm verify:quality-score`
+- `pnpm vitest run src\__tests__\AppSilentBugs.test.ts src\__tests__\aiCliLaunchPlanner.test.ts src\__tests__\rightRailAdvisor.test.ts --reporter=dot`
+- `pnpm exec tsc --noEmit --pretty false`
+
+Result:
+
+- `.codex-auto/chaos-recovery/p2-07-live-tauri-pty-ai-cli-chaos.json` now reports:
+  - `cleanChaosQaUrl=true`;
+  - `ptyPromptReadyBeforeWrite=true`;
+  - `ptyPromptReadyAfterRestart=true`;
+  - `status=pass`;
+  - AI CLI cleanup pass with `remainingSessionsAfterCleanup=0`.
+- `.codex-auto/quality/release-quality-score.json` reports `192/202`, grade `A`, `releaseCandidateReady=false`.
+- The only current blocker remains explicit token-spend consent for the authenticated prompt smoke.
+
+Residual:
+
+- This closes the non-token stale URL / terminal readiness regression path. The authenticated prompt smoke remains intentionally blocked until the user explicitly authorizes token spend.
+
+### Phase 2.16 - Theme Customization Release Gate
+
+Status: done
+
+Implemented:
+
+- Promoted per-preset material and wallpaper customization from UI/test coverage into the release quality score.
+- Added a scored `theme-customization-guard` contract covering:
+  - centralized material defaults for every mood preset;
+  - Sakura material sanitization and mood light/dark classification;
+  - explicit clearing of stale mood CSS tokens during preset switches;
+  - per-mood material and wallpaper store persistence;
+  - Settings controls for image picker, opacity, scale, and placement;
+  - save/load wiring for window opacity, palette overrides, material overrides, and wallpaper settings;
+  - Rust config round-trip coverage for `mood_material_overrides` and `wallpaper_settings_by_mood`;
+  - regression tests for Sakura bleed, white-peach rails, low-opacity material, wallpaper placement, and preset contrast.
+- Added static regression coverage so the quality score cannot silently drop the customization gate.
+
+Validation:
+
+- `pnpm exec biome check scripts\score-release-quality.mjs src\__tests__\AppSilentBugs.test.ts`
+- `node --check scripts\score-release-quality.mjs`
+- `pnpm vitest run src\__tests__\AppSilentBugs.test.ts src\__tests__\themePalette.test.ts src\__tests__\useThemeApplier.test.tsx src\__tests__\SettingsSaveMerge.test.tsx src\__tests__\designTokenUsage.test.ts src\__tests__\appStore.test.ts --reporter=dot`
+- `pnpm exec tsc --noEmit --pretty false`
+- `pnpm verify:quality-score`
+
+Result:
+
+- `theme-customization-guard` reports `12/12 customization contracts pass`.
+- `.codex-auto/quality/release-quality-score.json` reports `204/214`, grade `A`, `releaseCandidateReady=false`.
+- The only current blocker remains explicit token-spend consent for the authenticated prompt smoke.
+
+Residual:
+
+- This phase guards preset isolation and customization regressions without requiring a slow distribution rebuild.
+- The next non-token hardening target is to keep expanding runtime evidence around native terminal interactions and right-rail decision usefulness; the authenticated prompt smoke remains blocked by explicit consent.
+
+### Phase 2.17 - Right Rail Run-Loop Phase Labels
+
+Status: done
+
+Implemented:
+
+- Added a visible command-center run-loop phase chip to every ranked right-rail action.
+- The action stack now labels next actions as `Plan`, `Run`, `Observe`, `Route`, `Review`, `Preserve`, or `Recover`.
+- This makes the rail's purpose clearer: the user can see whether a recommendation is about launch planning, running work, observing health, routing decisions, reviewing changes, preserving context, or recovering a blocked session.
+- Added static regression coverage for the phase map and Sakura-aware phase chip styling.
+
+Validation:
+
+- `pnpm vitest run src\__tests__\AppSilentBugs.test.ts src\__tests__\rightRailAdvisor.test.ts --reporter=dot`
+- `pnpm exec biome check src\App.tsx src\styles\global.css src\__tests__\AppSilentBugs.test.ts`
+- `pnpm exec tsc --noEmit --pretty false`
+- `pnpm verify:terminal:command-evidence`
+- `pnpm verify:terminal:ai-cli-post-launch-chaos`
+- `pnpm verify:right-rail-command-evidence`
+- `pnpm verify:quality-score`
+
+Result:
+
+- The first quality-score run after the App change correctly failed stale App-dependent evidence. This was expected and proved the gate is strict.
+- Refreshed command evidence, right-rail command evidence, and live AI CLI chaos artifacts.
+- `.codex-auto/quality/release-quality-score.json` is back to `204/214`, grade `A`, `releaseCandidateReady=false`.
+- The only current blocker remains explicit token-spend consent for the authenticated prompt smoke.
+
+Residual:
+
+- Right-rail phase labeling improves comprehension, but the bigger product edge still needs more real end-to-end scenarios: agent run -> changed file -> provenance -> review -> final report -> handoff/recovery.
+
+### Phase 2.18 - Non-Token Command Center Scenario Gate
+
+Status: done
+
+Implemented:
+
+- Added `src/__tests__/commandCenterScenario.test.ts`.
+- Added `scripts/verify-command-center-scenario.mjs`.
+- Added `pnpm verify:command-center-scenario`.
+- Added a scored `command-center-scenario` release-quality category.
+- The scenario proves, without spending AI tokens:
+  - sidecar-backed AI CLI launch planning with preflight and prompt-contract proof;
+  - Command Center loop coverage across `Plan`, `Run`, `Observe`, `Route`, `Review`, `Preserve`, and `Recover`;
+  - right-rail actions for launch planning, ready command, live tracking, CLI boundary, parallel run, topology, review queue, provenance trace, final report collection, handoff context, blocked recovery, approvals, and risk inspection;
+  - workstation graph provenance from changed file to owner, worktree, terminal command block, prompt/scrollback anchors, and validation;
+  - final report plus context-pack handoff readiness;
+  - recovery actions with audit events and recovery steps;
+  - complete right-rail audit payloads for every action.
+
+Validation:
+
+- `pnpm exec biome check scripts\score-release-quality.mjs scripts\verify-command-center-scenario.mjs src\__tests__\commandCenterScenario.test.ts src\__tests__\AppSilentBugs.test.ts package.json`
+- `node --check scripts\score-release-quality.mjs`
+- `node --check scripts\verify-command-center-scenario.mjs`
+- `pnpm verify:command-center-scenario`
+- `pnpm vitest run src\__tests__\AppSilentBugs.test.ts src\__tests__\commandCenterScenario.test.ts src\__tests__\rightRailAdvisor.test.ts src\__tests__\workstationGraph.test.ts src\__tests__\contextPack.test.ts src\__tests__\aiCliLaunchPlanner.test.ts --reporter=dot`
+- `pnpm exec tsc --noEmit --pretty false`
+- `pnpm verify:quality-score`
+
+Result:
+
+- `.codex-auto/production-smoke/command-center-scenario.json` reports `ok=true`.
+- `command-center-scenario` reports `12/12`.
+- `.codex-auto/quality/release-quality-score.json` reports `216/226`, grade `A`, `releaseCandidateReady=false`.
+- The only current blocker remains explicit token-spend consent for the authenticated prompt smoke.
+
+Residual:
+
+- This proves the Command Center loop deterministically without spending tokens. The next stricter layer is live dogfood proof that a real authenticated Codex/Claude/Gemini prompt can complete, emit a final report, preserve context, and clean up through the same evidence path after explicit token-spend consent.
+
+### Phase 2.19 - Right Rail Final Goal Track
+
+Status: done
+
+Implemented:
+
+- Added `src/shared/lib/rightRailGoalTrack.ts`.
+- Added a right-rail `Final goal` card that surfaces:
+  - total goal progress percentage;
+  - milestone state for Terminal core, Command Center, Customization, and Release proof;
+  - remaining blockers, including the explicit authenticated AI CLI prompt-smoke consent gate;
+  - terminal fallback, human decision gates, and graph risk nodes as visible release blockers.
+- Added Sakura-aware and state-aware styling for the goal track so the current goal and remaining work stay readable inside the right rail.
+- Added `right-rail-goal-track` to the release quality score so this cannot regress into an invisible roadmap again.
+
+Validation:
+
+- `pnpm vitest run src\__tests__\rightRailGoalTrack.test.ts --reporter=dot`
+- `pnpm vitest run src\__tests__\AppSilentBugs.test.ts src\__tests__\rightRailGoalTrack.test.ts --reporter=dot`
+- `pnpm exec biome check src\App.tsx src\styles\global.css src\shared\lib\rightRailGoalTrack.ts src\__tests__\rightRailGoalTrack.test.ts src\__tests__\AppSilentBugs.test.ts scripts\score-release-quality.mjs`
+- `node --check scripts\score-release-quality.mjs`
+- `pnpm exec tsc --noEmit --pretty false`
+- `pnpm verify:quality-score`
+
+Result:
+
+- The right rail now answers "what is the goal, what is done, and what remains" directly in the product surface.
+- `right-rail-goal-track` reports `10/10 goal-track contracts pass`.
+- `.codex-auto/production-smoke/right-rail-command-evidence.json` proves the `Final goal` card is visible with the `Release proof` milestone and authenticated prompt-smoke blocker.
+- `.codex-auto/quality/release-quality-score.json` reports `226/236`, grade `A`, `releaseCandidateReady=false`.
+- The only expected blocker remains explicit token-spend consent for the authenticated prompt smoke.
+
+Residual:
+
+- This improves roadmap visibility and release accountability. It does not replace the remaining live authenticated AI prompt proof, which still needs explicit consent before token-spending validation can run.
+
+### Phase 2.20 - Release Quality Backed Goal Track
+
+Status: done
+
+Implemented:
+
+- Added `src/shared/lib/releaseQuality.ts`.
+- The right rail `Final goal` track no longer relies on a hardcoded authenticated prompt blocker.
+- In Tauri runtime, `App.tsx` reads `.codex-auto/quality/release-quality-score.json` through the existing `read_file` command and derives:
+  - terminal-core readiness;
+  - Command Center scenario readiness;
+  - customization readiness;
+  - release blockers;
+  - authenticated prompt-smoke consent state.
+- Added parser tests proving:
+  - the prompt-smoke blocker stays visible while consent is missing;
+  - the blocker clears when the authenticated prompt-smoke score is actually proven;
+  - missing score evidence becomes an explicit unavailable-proof blocker instead of silent success.
+- Upgraded the `right-rail-goal-track` quality gate so App wiring, parser coverage, and browser-visible goal evidence are all required.
+
+Validation:
+
+- `pnpm vitest run src\__tests__\releaseQuality.test.ts src\__tests__\rightRailGoalTrack.test.ts src\__tests__\AppSilentBugs.test.ts --reporter=dot`
+- `node --check scripts\score-release-quality.mjs`
+- `pnpm exec tsc --noEmit --pretty false`
+- `pnpm verify:right-rail-command-evidence`
+- `pnpm verify:terminal:ai-cli-post-launch-chaos`
+- `pnpm verify:quality-score`
+
+Result:
+
+- `right-rail-goal-track` reports `13/13 goal-track contracts pass`.
+- `.codex-auto/quality/release-quality-score.json` reports `229/239`, grade `A`, `releaseCandidateReady=false`.
+- The only blocker remains explicit token-spend consent for the authenticated prompt smoke.
+
+Residual:
+
+- The goal track now follows release-quality evidence in Tauri runtime. Browser-only visual QA still uses the conservative prompt-smoke blocker because it cannot read local release artifacts directly.
+
+### Phase 2.21 - Release Quality Freshness and Source Proof
+
+Status: done
+
+Implemented:
+
+- Extended `src/shared/lib/releaseQuality.ts` so release-quality evidence now carries a freshness status: `fresh`, `stale`, or `unavailable`.
+- Stale or missing `.codex-auto/quality/release-quality-score.json` evidence now becomes an explicit release blocker instead of letting the right rail appear green from old data.
+- Extended `src/shared/lib/rightRailGoalTrack.ts` and the right-rail `Final goal` card so the product shows the score source, grade, score age state, and evidence detail directly in the UI.
+- Added Sakura-aware styling for the quality evidence source row so the proof remains readable in the right rail.
+- Hardened `scripts/verify-right-rail-command-evidence.mjs` and `scripts/score-release-quality.mjs` so the browser smoke and release-quality score both require the visible source/freshness contract.
+- Added tests proving stale evidence and unavailable evidence cannot silently pass.
+
+Validation:
+
+- `pnpm exec biome check --write src\App.tsx src\styles\global.css src\shared\lib\releaseQuality.ts src\shared\lib\rightRailGoalTrack.ts src\__tests__\releaseQuality.test.ts src\__tests__\rightRailGoalTrack.test.ts src\__tests__\AppSilentBugs.test.ts scripts\score-release-quality.mjs scripts\verify-right-rail-command-evidence.mjs`
+- `pnpm vitest run src\__tests__\releaseQuality.test.ts src\__tests__\rightRailGoalTrack.test.ts src\__tests__\AppSilentBugs.test.ts --reporter=dot`
+- `node --check scripts\score-release-quality.mjs`
+- `node --check scripts\verify-right-rail-command-evidence.mjs`
+- `pnpm exec tsc --noEmit --pretty false`
+- `pnpm verify:right-rail-command-evidence`
+- `pnpm verify:terminal:ai-cli-post-launch-chaos`
+- `pnpm verify:quality-score`
+
+Result:
+
+- The first score pass correctly detected stale browser and chaos evidence, dropping to `211/240`, grade `B`, before artifacts were refreshed.
+- Refreshed non-token runtime evidence restored the score to `230/240`, grade `A`, `releaseCandidateReady=false`.
+- `right-rail-goal-track` now reports `14/14 goal-track contracts pass`.
+- The dev runtime used for validation was stopped and ports `1420` and `9222` had no remaining listeners afterward.
+- The only current blocker remains explicit token-spend consent for the authenticated AI CLI prompt smoke.
+
+Residual:
+
+- This closes the stale-score blind spot for the goal track. The remaining release blocker is still the authenticated prompt smoke, which requires explicit consent because it spends real AI CLI tokens.
+
+### Phase 2.22 - Authenticated Prompt Consent Packet Proof
+
+Status: done
+
+Implemented:
+
+- Added `src/shared/lib/authenticatedPromptConsent.ts`.
+- The right rail `Final goal` track now renders an authenticated prompt consent packet with:
+  - provider;
+  - command;
+  - required consent environment variable;
+  - non-token preflight readiness;
+  - safe-no-prompt-sent proof.
+- Missing or incomplete consent packet evidence is now an explicit release blocker instead of a hidden assumption.
+- Added `scripts/verify-right-rail-goal-track-tauri.mjs` and `pnpm verify:right-rail-goal-track-tauri`.
+- The Tauri smoke verifies the actual WebView can read local release-quality evidence and authenticated-prompt consent evidence, proving:
+  - `Quality proof fresh`;
+  - `Consent packet ready`;
+  - the remaining blocker still names the authenticated AI CLI prompt smoke.
+- Extended the release-quality score so the right-rail final goal track requires the consent packet parser, UI, browser fallback smoke, and Tauri local-proof smoke.
+
+Validation:
+
+- `pnpm exec biome check --write src\App.tsx src\styles\global.css src\shared\lib\authenticatedPromptConsent.ts src\shared\lib\rightRailGoalTrack.ts src\__tests__\authenticatedPromptConsent.test.ts src\__tests__\rightRailGoalTrack.test.ts src\__tests__\AppSilentBugs.test.ts scripts\score-release-quality.mjs scripts\verify-right-rail-command-evidence.mjs`
+- `pnpm exec biome check --write package.json src\__tests__\AppSilentBugs.test.ts scripts\score-release-quality.mjs scripts\verify-right-rail-goal-track-tauri.mjs`
+- `pnpm vitest run src\__tests__\authenticatedPromptConsent.test.ts src\__tests__\rightRailGoalTrack.test.ts src\__tests__\AppSilentBugs.test.ts --reporter=dot`
+- `node --check scripts\score-release-quality.mjs`
+- `node --check scripts\verify-right-rail-command-evidence.mjs`
+- `node --check scripts\verify-right-rail-goal-track-tauri.mjs`
+- `pnpm exec tsc --noEmit --pretty false`
+- `pnpm verify:right-rail-command-evidence`
+- `pnpm verify:terminal:ai-cli-post-launch-chaos`
+- `pnpm verify:terminal:authenticated-ai-cli-prompt` without consent, expecting the verifier to stop before sending a prompt and write `requires_opt_in`
+- `pnpm verify:right-rail-goal-track-tauri`
+- `pnpm verify:quality-score`
+
+Result:
+
+- `.codex-auto/production-smoke/authenticated-ai-cli-prompt-smoke.json` reports `status=requires_opt_in`, `safeNoPromptSent=true`, `consentPacketReady=true`, and `nonTokenPreflightReady=true`.
+- `.codex-auto/production-smoke/right-rail-goal-track-tauri.json` reports `ok=true`.
+- `right-rail-goal-track` reports `18/18 goal-track contracts pass`.
+- `.codex-auto/quality/release-quality-score.json` reports `234/244`, grade `A`, `releaseCandidateReady=false`.
+- The dev runtime used for validation was stopped and ports `1420` and `9222` had no remaining listeners afterward.
+- The only current blocker remains explicit token-spend consent for the authenticated AI CLI prompt smoke.
+
+Residual:
+
+- The product now proves the final token-spending gate is ready and safely blocked before consent. The remaining unproven release item is the actual authenticated prompt marker/cleanup proof, which still requires explicit token-spend consent.
+
+### Phase 2.23 - Goal Track Risk Evidence Labels
+
+Status: done
+
+Implemented:
+
+- Extended `src/shared/lib/rightRailGoalTrack.ts` with `RightRailGoalRiskSummary`.
+- The right rail `Final goal` track no longer shows only a generic risk count. When graph risks or blockers are open, it now includes the first visible risk/blocker labels and a hidden-count suffix.
+- `App.tsx` now derives risk summaries from the workstation graph and renders a compact `Goal risk evidence` list inside the goal track.
+- Added Sakura-aware styling for the goal risk evidence list.
+- Hardened browser and Tauri goal-track smokes so they fail if risk blockers are listed without visible risk evidence labels.
+- Hardened the Tauri smoke wait loop so it waits for local quality evidence and consent packet evidence to hydrate instead of racing against `read_file`.
+
+Validation:
+
+- `pnpm exec biome check --write src\App.tsx src\styles\global.css src\shared\lib\rightRailGoalTrack.ts src\__tests__\rightRailGoalTrack.test.ts src\__tests__\AppSilentBugs.test.ts scripts\score-release-quality.mjs scripts\verify-right-rail-command-evidence.mjs scripts\verify-right-rail-goal-track-tauri.mjs`
+- `pnpm vitest run src\__tests__\rightRailGoalTrack.test.ts src\__tests__\AppSilentBugs.test.ts --reporter=dot`
+- `node --check scripts\score-release-quality.mjs`
+- `node --check scripts\verify-right-rail-command-evidence.mjs`
+- `node --check scripts\verify-right-rail-goal-track-tauri.mjs`
+- `pnpm exec tsc --noEmit --pretty false`
+- `pnpm verify:right-rail-command-evidence`
+- `pnpm verify:terminal:ai-cli-post-launch-chaos`
+- `pnpm verify:terminal:authenticated-ai-cli-prompt` without consent, expecting `requires_opt_in`
+- `pnpm verify:right-rail-goal-track-tauri`
+- `pnpm verify:quality-score`
+
+Result:
+
+- `.codex-auto/production-smoke/right-rail-goal-track-tauri.json` reports `ok=true`.
+- Tauri goal-track evidence now shows `Quality proof fresh`, `Consent packet ready`, and visible risk labels such as `right rail.qa missing diff.opened.blocked from right-rail`.
+- `right-rail-goal-track` remains `18/18 goal-track contracts pass`.
+- `.codex-auto/quality/release-quality-score.json` reports `234/244`, grade `A`, `releaseCandidateReady=false`.
+- The dev runtime used for validation was stopped and ports `1420` and `9222` had no remaining listeners afterward.
+- The only release-quality blocker remains explicit token-spend consent for the authenticated AI CLI prompt smoke.
+
+Residual:
+
+- Risk labels are now visible, but the underlying graph still contains QA audit risk nodes during visual QA runs. That is acceptable as a visible state; the next refinement would separate release-blocking risks from QA fixture risks in the graph model if the product should avoid treating fixture warnings as operational risk.
+
+### Phase 2.24 - QA Fixture Risk Separation
+
+Status: done
+
+Implemented:
+
+- Split Goal Track risks into release-blocking evidence and QA fixture evidence.
+- `src/shared/lib/rightRailGoalTrack.ts` now keeps `riskEvidence` and `qaRiskEvidence` separate, so visual QA fixture warnings remain visible without lowering release confidence.
+- `App.tsx` now identifies right-rail QA fixture risk labels/ids/status and excludes them from release-blocking graph risk summaries.
+- The right rail renders release risks with `data-source="release"` and QA fixture risks with `data-source="qa-fixture"`.
+- Browser and Tauri smoke scripts now fail if QA fixture risks leak back into release blockers.
+- Release-quality scoring now checks source-level and artifact-level contracts for QA fixture separation.
+- Release-quality blocker input is normalized so the authenticated AI CLI prompt consent blocker appears as one Goal Track action instead of duplicate score/UI rows.
+- Browser, Tauri, and release-quality score contracts now fail if duplicate authenticated prompt blockers return.
+
+Validation:
+
+- `pnpm exec biome check --write src\App.tsx src\styles\global.css src\shared\lib\rightRailGoalTrack.ts src\__tests__\rightRailGoalTrack.test.ts src\__tests__\AppSilentBugs.test.ts scripts\score-release-quality.mjs scripts\verify-right-rail-command-evidence.mjs scripts\verify-right-rail-goal-track-tauri.mjs`
+- `pnpm vitest run src\__tests__\rightRailGoalTrack.test.ts src\__tests__\AppSilentBugs.test.ts --reporter=dot`
+- `pnpm vitest run src\__tests__\rightRailGoalTrack.test.ts --reporter=dot`
+- `node --check scripts\score-release-quality.mjs`
+- `node --check scripts\verify-right-rail-command-evidence.mjs`
+- `node --check scripts\verify-right-rail-goal-track-tauri.mjs`
+- `pnpm exec tsc --noEmit --pretty false`
+- `pnpm verify:right-rail-command-evidence`
+- `pnpm verify:terminal:ai-cli-post-launch-chaos`
+- `pnpm verify:terminal:authenticated-ai-cli-prompt` without consent, expecting `requires_opt_in`
+- `pnpm verify:right-rail-goal-track-tauri`
+- `pnpm verify:quality-score`
+
+Result:
+
+- `.codex-auto/production-smoke/right-rail-goal-track-tauri.json` reports `ok=true`, `Quality proof fresh`, and `Consent packet ready`.
+- Tauri Goal Track evidence reports no release risk labels and keeps QA fixture entries under `qaRiskEvidence`.
+- The Goal Track remaining list no longer contains stale right-rail QA fixture blockers or duplicate authenticated prompt consent blockers.
+- `right-rail-goal-track` reports `18/18 goal-track contracts pass`.
+- `.codex-auto/quality/release-quality-score.json` reports `234/244`, grade `A`, `releaseCandidateReady=false`.
+- The dev runtime used for validation was stopped and ports `1420` and `9222` had no remaining listeners afterward.
+
+Residual:
+
+- The only release-quality blocker remains explicit token-spend consent for the authenticated AI CLI prompt smoke. This is intentionally not auto-run without user approval because it would send a real authenticated prompt to an AI CLI provider.
+
+### Phase 2.25 - Right Rail Scale And Action Coverage Contract
+
+Status: done
+
+Implemented:
+
+- Added `src/__tests__/rightRailScaleContract.test.tsx`.
+- Added `scripts/verify-right-rail-scale-contract.mjs` and `pnpm verify:right-rail-scale`.
+- Extended `scripts/score-release-quality.mjs` with a `right-rail-scale-contract` category.
+- The new contract proves the right rail is not just a decorative dashboard:
+  - at least 12 real product states are covered by ranked top actions;
+  - 15 distinct top actions are currently proven;
+  - 20 live sessions collapse into a bounded action stack of 5 or fewer actions;
+  - a 500-file review queue renders only the actionable first 6 rows and keeps the rest summarized.
+
+Validation:
+
+- `pnpm exec biome check --write package.json scripts\score-release-quality.mjs scripts\verify-right-rail-scale-contract.mjs src\__tests__\rightRailScaleContract.test.tsx`
+- `node --check scripts\verify-right-rail-scale-contract.mjs`
+- `node --check scripts\score-release-quality.mjs`
+- `pnpm verify:right-rail-scale`
+- `pnpm exec tsc --noEmit --pretty false`
+- `pnpm verify:quality-score`
+
+Result:
+
+- `.codex-auto/performance/right-rail-scale-contract.json` reports `ok=true`.
+- Action-state coverage reports `15` covered states and `15` distinct top actions.
+- 20-session action derivation produced `3` ranked actions in less than the `120ms` contract.
+- 500-file review queue render kept `6` visible rows, `494` summarized rows, and stayed under the `2500ms` contract.
+- `.codex-auto/quality/release-quality-score.json` now reports `246/256`, grade `A`, `releaseCandidateReady=false`.
+
+Residual:
+
+- The scale contract strengthens the 200-point edge evidence, but it does not replace the remaining authenticated AI CLI prompt smoke. That blocker still requires explicit token-spend consent.
+
+### Phase 2.26 - Command Recovery And No-Silent-Fallback Contract
+
+Status: done
+
+Implemented:
+
+- Added `src/shared/lib/commandRecovery.ts`.
+- Added `src/__tests__/commandRecoveryContract.test.ts`.
+- Added `scripts/verify-command-recovery-contract.mjs` and `pnpm verify:command-recovery`.
+- Extended `scripts/score-release-quality.mjs` with `command-recovery-contract`.
+- The recovery contract turns a failed terminal command block into:
+  - failed-command detection;
+  - a same-pane/same-cwd retry plan;
+  - a handoff prompt that preserves command, cwd, exit code, files, owner, and recovery hint;
+  - right-rail recovery actions such as approvals, blocked-run recovery, risk inspection, provenance trace, and review queue;
+  - audit payloads enriched with failed command id, exit code, correlation id, retry command, affected files, and recovery kind;
+  - explicit `fallback-visible`, `stale-state-visible`, `manual-confirmation-required`, and `no-silent-retry` guards.
+- Denied tool recovery is routed through `review-denial` instead of being silently retried.
+
+Validation:
+
+- `pnpm exec biome check --write package.json src\shared\lib\commandRecovery.ts src\__tests__\commandRecoveryContract.test.ts scripts\verify-command-recovery-contract.mjs scripts\score-release-quality.mjs`
+- `node --check scripts\verify-command-recovery-contract.mjs`
+- `node --check scripts\score-release-quality.mjs`
+- `pnpm exec vitest run src\__tests__\commandRecoveryContract.test.ts --reporter=dot`
+- `pnpm verify:command-recovery`
+- `pnpm exec tsc --noEmit --pretty false`
+- `pnpm verify:quality-score`
+
+Result:
+
+- `.codex-auto/production-smoke/command-recovery-contract.json` reports `ok=true`.
+- Failed command recovery reports all checks green: failed command detected, recovery hint ready, retry ready, handoff ready, audit payloads ready, and no silent fallback.
+- Recovery actions include `resolve-approvals`, `recover-attention`, `inspect-risk`, `trace-provenance`, and `review-queue`.
+- Guard proof includes `fallback-visible` and `stale-state-visible`.
+- Denied tool recovery reports `review-denial` with no silent retry.
+- `.codex-auto/quality/release-quality-score.json` now reports `256/266`, grade `A`, `releaseCandidateReady=false`.
+
+Residual:
+
+- The recovery loop now proves failed-command recovery and no-silent-fallback behavior at the contract level. The remaining release-quality blocker is still explicit token-spend consent for the authenticated AI CLI prompt smoke.
+
+### Phase 2.27 - Native Terminal Boundary Contract
+
+Status: done
+
+Implemented:
+
+- Added `scripts/verify-native-boundary-contract.mjs` and `pnpm verify:terminal:native-boundary`.
+- Extended `scripts/score-release-quality.mjs` with `native-boundary-contract`.
+- Upgraded `src/features/terminal/pane-tree/PaneTreeContainer.tsx` so mux split/close/layout/swap/sync/zoom fallback paths emit fallback telemetry instead of staying console-only.
+- The contract now proves:
+  - no xterm dependency is shipped as the terminal core;
+  - Rust owns terminal input commits through `native_terminal_input_commit`;
+  - the WebView IME bridge is conditional while Tauri defaults to the native input surface;
+  - terminal clipboard and paste are native-first and paste-guarded;
+  - AI CLI sessions enter through the authenticated sidecar command-session boundary;
+  - pane topology restores from Rust mux snapshots and all core pane operations route through mux IPC;
+  - mux local recovery, fallback, and stale state are visible to telemetry and release gates;
+  - the AI CLI launch planner refuses blind prompt-pasting until native input, clipboard, reconnect, and command-session preflight is ready.
+
+Validation:
+
+- `pnpm verify:terminal:native-input`
+- `pnpm verify:terminal:ai-cli-boundary`
+- `pnpm verify:terminal:ai-cli-launch-planner`
+- `pnpm verify:terminal:native-boundary`
+- `pnpm exec biome check --write package.json scripts\verify-native-boundary-contract.mjs scripts\score-release-quality.mjs src\features\terminal\pane-tree\PaneTreeContainer.tsx`
+- `node --check scripts\verify-native-boundary-contract.mjs`
+- `node --check scripts\score-release-quality.mjs`
+- `pnpm exec tsc --noEmit --pretty false`
+- `pnpm verify:quality-score`
+
+Result:
+
+- `.codex-auto/quality/native-boundary-contract.json` reports `ok=true`, `status=pass`, and `11/11` checks passing.
+- `.codex-auto/quality/release-quality-score.json` now reports `266/276`, grade `A`, `releaseCandidateReady=false`.
+
+Residual:
+
+- The Rust/native/sidecar/fallback boundary is now guarded by a release-score category. The remaining release-quality blocker is still explicit token-spend consent for the authenticated AI CLI prompt smoke; it is intentionally not auto-run without approval because it sends a real authenticated prompt to an AI CLI provider.
+
+### Phase 2.28 - Final Goal Evidence Audit
+
+Status: done
+
+Implemented:
+
+- Added `scripts/verify-final-goal-audit.mjs` and `pnpm verify:final-goal-audit`.
+- Extended `scripts/score-release-quality.mjs` with `final-goal-evidence-map`.
+- The final-goal audit maps the active objective to concrete evidence buckets:
+  - Rust native terminal core;
+  - Rust mux and daemon boundary;
+  - right rail Command Center edge;
+  - fallback and stale state visibility;
+  - provenance, recovery, context packs, and final reports;
+  - AI CLI launch planner and prompt contract;
+  - customization and visual preset isolation;
+  - release and operations proof.
+- The audit intentionally does not mark the goal complete while the authenticated AI CLI prompt smoke still requires explicit token-spend consent.
+
+Validation:
+
+- `pnpm exec biome check --write package.json scripts\verify-final-goal-audit.mjs scripts\score-release-quality.mjs`
+- `node --check scripts\verify-final-goal-audit.mjs`
+- `node --check scripts\score-release-quality.mjs`
+- `pnpm verify:quality-score`
+- `pnpm verify:final-goal-audit`
+- `pnpm exec tsc --noEmit --pretty false`
+- `git diff --check`
+
+Result:
+
+- `.codex-auto/quality/final-goal-audit.json` reports `ok=true`, `evidenceComplete=true`, `goalComplete=false`, and `status=blocked-by-explicit-consent`.
+- The audit proves all eight non-token final-goal requirements.
+- `.codex-auto/quality/release-quality-score.json` now reports `274/284`, grade `A`, `releaseCandidateReady=false`.
+
+Residual:
+
+- The only unresolved blocker remains `authenticated AI CLI prompt smoke requires explicit token-spend consent`. This is a real product/release blocker, not a missing implementation gate, and remains intentionally opt-in.
+
+### Phase 2.29 - Goal Track Freshness And Self-Audit Guard
+
+Status: done
+
+Implemented:
+
+- Tightened `scripts/verify-right-rail-goal-track-tauri.mjs` so the live Tauri/WebView2 Goal Track must render the exact current release-quality score detail, not merely any fresh-looking label.
+- Updated `scripts/score-release-quality.mjs` so the right-rail Goal Track score refuses stale Tauri artifacts after verifier or scorer changes.
+- Updated `src/shared/lib/rightRailGoalTrack.ts` so self-referential audit blockers such as `right-rail-goal-track` and `final-goal-evidence-map` do not hide the user-actionable authenticated prompt consent blocker.
+- Added regression coverage in `src/__tests__/rightRailGoalTrack.test.ts` for stale-audit refresh states.
+- Changed the Tauri Goal Track verifier to avoid closing the WebView2 browser after CDP attach. The script now writes the artifact and exits its own process, preventing the verifier from crashing the app while still avoiding a hung CDP event loop.
+
+Validation:
+
+- `pnpm exec biome check --write scripts\verify-right-rail-goal-track-tauri.mjs scripts\score-release-quality.mjs src\shared\lib\rightRailGoalTrack.ts src\__tests__\rightRailGoalTrack.test.ts`
+- `node --check scripts\verify-right-rail-goal-track-tauri.mjs`
+- `node --check scripts\score-release-quality.mjs`
+- `pnpm exec vitest run src\__tests__\rightRailGoalTrack.test.ts --reporter=dot`
+- `pnpm verify:right-rail-goal-track-tauri`
+- `pnpm verify:quality-score`
+- `pnpm verify:final-goal-audit`
+- `pnpm exec tsc --noEmit --pretty false`
+
+Result:
+
+- `.codex-auto/production-smoke/right-rail-goal-track-tauri.json` reports `ok=true` and proves the live Goal Track renders `96% A · 274/284`.
+- The live Goal Track remaining list shows only `Authenticated AI CLI prompt smoke still requires explicit token consent`.
+- `.codex-auto/quality/release-quality-score.json` reports `274/284`, grade `A`, with `right-rail-goal-track` at `18/18`.
+- `.codex-auto/quality/final-goal-audit.json` reports `ok=true`, `evidenceComplete=true`, and `status=blocked-by-explicit-consent`.
+
+Residual:
+
+- The only unresolved blocker remains `authenticated AI CLI prompt smoke requires explicit token-spend consent`.
+
+### Phase 2.30 - Authenticated Prompt Preflight Hard Gate
+
+Status: done
+
+Implemented:
+
+- Tightened `scripts/verify-authenticated-ai-cli-prompt-smoke.mjs` so the non-token preflight is evaluated before both non-consent and consented runs.
+- A consented run now refuses to send a real AI CLI prompt when the real CLI binary, command-session boundary, native input host, IME proof, or post-launch chaos artifacts are stale or incomplete.
+- A blocked consented run writes `status=preflight_blocked`, keeps `safeNoPromptSent=true`, and exits before token-spending execution.
+- A passing consented run must now prove `nonTokenPreflightReady=true` and `preflightReadyBeforePrompt=true`.
+- Tightened `scripts/score-release-quality.mjs` so an authenticated prompt pass is not accepted unless the green preflight was proven immediately before prompt execution.
+- Added regression coverage in `src/__tests__/authenticatedPromptConsent.test.ts` for the consented-but-preflight-blocked state.
+
+Validation:
+
+- `pnpm exec biome check --write scripts\verify-authenticated-ai-cli-prompt-smoke.mjs scripts\score-release-quality.mjs src\__tests__\authenticatedPromptConsent.test.ts`
+- `node --check scripts\verify-authenticated-ai-cli-prompt-smoke.mjs`
+- `node --check scripts\score-release-quality.mjs`
+- `pnpm exec vitest run src\__tests__\authenticatedPromptConsent.test.ts --reporter=dot`
+- `pnpm verify:terminal:authenticated-ai-cli-prompt` without consent, expected exit code `2`
+- `pnpm verify:right-rail-goal-track-tauri`
+- `pnpm verify:final-goal-audit`
+- `pnpm verify:quality-score`
+
+Result:
+
+- `.codex-auto/production-smoke/authenticated-ai-cli-prompt-smoke.json` reports `status=requires_opt_in`, `safeNoPromptSent=true`, `tokenSpendingExecutionBlocked=true`, and `nonTokenPreflight.ready=true`.
+- `.codex-auto/quality/release-quality-score.json` reports `274/284`, grade `A`, with the only blocker still isolated to explicit token-spend consent.
+- `.codex-auto/quality/final-goal-audit.json` reports `ok=true`, `evidenceComplete=true`, and `status=blocked-by-explicit-consent`.
+
+Residual:
+
+- The final 10 points still require explicitly approved real authenticated AI CLI prompt execution.
+
+### Phase 2.31 - Authenticated Prompt Guard Release Score
+
+Status: done
+
+Implemented:
+
+- Added `authenticated-ai-cli-preflight-gate` to `scripts/score-release-quality.mjs`.
+- The score now independently verifies that:
+  - the authenticated prompt verifier exposes `preflight_blocked`;
+  - consented execution cannot reach prompt send without `noTokenPreflight.ready`;
+  - blocked consented execution exits before token-spending work;
+  - both `preflightReadyBeforePrompt=false` and `preflightReadyBeforePrompt=true` paths are represented;
+  - the consent parser tests cover the consented-but-preflight-blocked state;
+  - the latest opt-in artifact proves `tokenSpendingExecutionBlocked=true`, `safeNoPromptSent=true`, and green non-token preflight.
+- This turns the previous code-level hardening into a release-score gate rather than a best-effort implementation detail.
+
+Validation:
+
+- `pnpm exec biome check --write scripts\score-release-quality.mjs`
+- `node --check scripts\score-release-quality.mjs`
+- `pnpm verify:quality-score`
+- `pnpm verify:right-rail-goal-track-tauri`
+- `pnpm verify:final-goal-audit`
+- `pnpm exec tsc --noEmit --pretty false`
+- `pnpm exec vitest run src\__tests__\authenticatedPromptConsent.test.ts src\__tests__\AppSilentBugs.test.ts --reporter=dot`
+- `git diff --check`
+
+Result:
+
+- `.codex-auto/quality/release-quality-score.json` reports `282/292`, grade `S`.
+- `authenticated-ai-cli-preflight-gate` reports `8/8`.
+- `.codex-auto/quality/final-goal-audit.json` reports `ok=true`, `evidenceComplete=true`, `status=blocked-by-explicit-consent`.
+
+Residual:
+
+- The only remaining release blocker is still the real authenticated AI CLI prompt smoke, which requires explicit token-spend consent.
+
+### Phase 2.32 - Final Goal Audit Requires Auth Preflight Gate
+
+Status: done
+
+Implemented:
+
+- Tightened `scripts/verify-final-goal-audit.mjs` so the final-goal audit now requires `authenticated-ai-cli-preflight-gate` as part of:
+  - `ai-cli-launch-planner`;
+  - `release-operations-proof`.
+- The final audit evidence for AI CLI launch planning now includes the authenticated prompt artifact alongside the launch planner and release score.
+- The release operations proof now explicitly requires authenticated prompt preflight safety, not only release artifacts, risk register, and real OS soak.
+- Tightened `scripts/score-release-quality.mjs` so `final-goal-evidence-map` requires the final-goal verifier source to mention `authenticated-ai-cli-preflight-gate`.
+
+Validation:
+
+- `pnpm exec biome check --write scripts\verify-final-goal-audit.mjs scripts\score-release-quality.mjs`
+- `node --check scripts\verify-final-goal-audit.mjs`
+- `node --check scripts\score-release-quality.mjs`
+- `pnpm verify:right-rail-goal-track-tauri`
+- `pnpm verify:quality-score`
+- `pnpm verify:final-goal-audit`
+- `git diff --check`
+
+Result:
+
+- `.codex-auto/production-smoke/right-rail-goal-track-tauri.json` reports `ok=true` and proves the live Goal Track renders `97% S · 282/292`.
+- `.codex-auto/quality/release-quality-score.json` reports `282/292`, grade `S`.
+- `.codex-auto/quality/final-goal-audit.json` reports `ok=true`, `evidenceComplete=true`, and `status=blocked-by-explicit-consent`.
+
+Residual:
+
+- The only remaining blocker is still explicit token-spend consent for the real authenticated AI CLI prompt smoke.
+
+### Phase 2.39 - Aetherctl Daemon And Scrollback Parity
+
+Status: done
+
+Implemented:
+
+- Added `aetherctl search` with the alias `aetherctl scrollback-search` so daemon-owned scrollback can be queried from the CLI without depending on the React/WebView surface.
+- Added URL-safe query construction and parser coverage for `--lines`, `--limit`, and `--case-sensitive`.
+- Extended the live mux restore verifier so it now proves both `aetherctl daemon` contract parity and `aetherctl search` scrollback parity against the running daemon.
+- Tightened the native boundary and release quality source contracts so daemon parity, scrollback search parity, and restart/restore policy coverage stay required evidence.
+- Refreshed the right-rail Goal Track mutual proof with a strict non-bootstrap `pnpm verify:goal:safe` pass after live Tauri DOM verification.
+
+Validation:
+
+- `cargo fmt --manifest-path src-tauri\Cargo.toml`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aetherctl`
+- `pnpm verify:mux-live`
+- `pnpm verify:terminal:native-boundary`
+- `pnpm verify:terminal:real-ai-cli`
+- `pnpm verify:terminal:ai-cli-boundary`
+- `pnpm verify:terminal:ai-cli-launch-planner`
+- `pnpm verify:terminal:authenticated-ai-cli-provider-guard`
+- `pnpm verify:terminal:authenticated-ai-cli-preflight-matrix`
+- `pnpm verify:terminal:authenticated-ai-cli-consent-packet`
+- `pnpm verify:terminal:multipane-command-evidence`
+- `pnpm verify:terminal:ai-cli-post-launch-chaos`
+- `pnpm verify:right-rail-goal-track-tauri`
+- `pnpm verify:tauri-runtime-hygiene`
+- `pnpm verify:quality-score`
+- `pnpm verify:final-goal-audit`
+- `pnpm verify:goal:safe`
+
+Result:
+
+- `.codex-auto/quality/final-goal-safe-summary.json` reports `ok=true`, `bootstrapRightRailSemanticProof=false`, `proofArtifactPassCount=24/24`, and `provedRequirementCount=8/8`.
+- `.codex-auto/quality/release-quality-score.json` reports `96% A · 321/335`, `releaseCandidateReady=false`.
+- `.codex-auto/quality/final-goal-audit.json` reports `implementationFixableCount=0`, `policyBlockedCount=1`, `externalBlockedCount=1`, and `status=blocked-by-external-gates`.
+- `.codex-auto/production-smoke/right-rail-goal-track-tauri.json` reports `ok=true` with the current score, final audit, safe gate, consent packet, and remaining blocker visible in the live Tauri Goal Track.
+
+Residual:
+
+- The only remaining blocker is still explicit token-spend consent for the real authenticated AI CLI prompt smoke.
+
+### Phase 2.38 - Startup Chrome Stability And Helper Log Hygiene
+
+Status: done
+
+Implemented:
+
+- Moved Windows AppUserModelID setup to the start of `run()` before Tauri creates the window.
+- Made direct HWND/DWM chrome mutation opt-in through `AETHER_EXPERIMENTAL_DWM_CHROME=1`; default startup now relies on Tauri `windowEffects` for stability.
+- Silenced `taskkill`, `icacls`, and `attrib` helper stdout/stderr in the PTY sidecar path so token-file ACL hardening cannot leak localized/garbled helper output into dev/runtime logs.
+- Extended `scripts/verify-tauri-runtime-hygiene.mjs` with `noHelperOutputLeaks` and active-log-run tracking, while still preserving previous crash evidence.
+- Tightened release scoring and static regression coverage so direct DWM chrome cannot become an unconditional startup path again.
+
+Validation:
+
+- `cargo check --manifest-path src-tauri\Cargo.toml`
+- `pnpm exec biome check scripts\verify-tauri-runtime-hygiene.mjs scripts\score-release-quality.mjs src\__tests__\AppSilentBugs.test.ts --formatter-enabled=false`
+- `pnpm exec vitest run src\__tests__\AppSilentBugs.test.ts --reporter=dot`
+- `pnpm verify:terminal:native-input`
+- `pnpm verify:terminal:ai-cli-boundary`
+- `pnpm verify:terminal:native-boundary`
+- `pnpm verify:terminal:multipane-command-evidence`
+- `pnpm verify:terminal:recovered-command-evidence`
+- `pnpm verify:terminal:ai-cli-post-launch-chaos`
+- `pnpm verify:terminal:process-reconnect-command-evidence`
+- `pnpm verify:right-rail-goal-track-tauri`
+- `pnpm verify:tauri-runtime-hygiene`
+- `pnpm verify:terminal:authenticated-ai-cli-prompt` without consent, expecting exit code `2`
+- `pnpm verify:terminal:authenticated-ai-cli-provider-guard`
+- `pnpm verify:terminal:authenticated-ai-cli-preflight-matrix`
+- `pnpm verify:terminal:ai-cli-launch-planner`
+- `pnpm verify:quality-score`
+- `pnpm verify:final-goal-audit`
+- `git diff --check`
+
+Result:
+
+- `.codex-auto/quality/tauri-runtime-hygiene.json` reports `noCrashMarkers=true`, `noHelperOutputLeaks=true`, closed dev/CDP ports, no workspace processes, and no stale pid files.
+- `.codex-auto/quality/release-quality-score.json` reports `97% S · 298/308`.
+- `.codex-auto/quality/final-goal-audit.json` reports `ok=true`, `evidenceComplete=true`, and `status=blocked-by-explicit-consent`.
+
+Residual:
+
+- The only remaining blocker is still explicit token-spend consent for the real authenticated AI CLI prompt smoke.
+
+### Phase 2.37 - Authenticated Prompt Output Privacy
+
+Status: done
+
+Implemented:
+
+- Hardened `scripts/verify-authenticated-ai-cli-prompt-smoke.mjs` so consented real AI CLI prompt verification no longer persists raw terminal output.
+- Replaced `outputTail` with `outputEvidence`: privacy marker, character count, SHA-256 hash, and marker-presence boolean.
+- Tightened `scripts/score-release-quality.mjs` so authenticated prompt scoring requires redacted output evidence and source-level proof that raw terminal output is not persisted.
+- Added regression coverage in `src/__tests__/AppSilentBugs.test.ts`.
+
+Validation:
+
+- `node --check scripts\verify-authenticated-ai-cli-prompt-smoke.mjs`
+- `node --check scripts\score-release-quality.mjs`
+- `pnpm exec vitest run src\__tests__\AppSilentBugs.test.ts --reporter=dot`
+
+Residual:
+
+- The only remaining blocker is still explicit token-spend consent for the real authenticated AI CLI prompt smoke.
+
+### Phase 2.35 - Authenticated AI CLI Provider Preflight Matrix
+
+Status: done
+
+Implemented:
+
+- Added `scripts/verify-authenticated-ai-cli-preflight-matrix.mjs`.
+- Added `pnpm verify:terminal:authenticated-ai-cli-preflight-matrix`.
+- The matrix proves no-token readiness for `codex`, `claude`, and `gemini` before any token-spending prompt is allowed:
+  - real CLI binary launch evidence;
+  - sidecar command-session boundary;
+  - launch planner provider readiness;
+  - native input host;
+  - IME long Japanese preedit and LF paste checks;
+  - post-launch chaos cleanup;
+  - authenticated prompt consent artifact with `tokenSpendingExecutionBlocked=true` and `safeNoPromptSent=true`.
+- Added `authenticated-ai-cli-preflight-matrix` to release quality scoring.
+- Added the matrix artifact to final-goal `ai-cli-launch-planner` proof.
+
+Validation:
+
+- `pnpm verify:terminal:authenticated-ai-cli-preflight-matrix`
+- `pnpm verify:right-rail-goal-track-tauri`
+- `pnpm verify:tauri-runtime-hygiene`
+- `pnpm verify:quality-score`
+- `pnpm verify:final-goal-audit`
+- `pnpm exec vitest run src\__tests__\AppSilentBugs.test.ts --reporter=dot`
+- `pnpm exec biome check ... --formatter-enabled=false`
+
+Result:
+
+- `.codex-auto/production-smoke/authenticated-ai-cli-preflight-matrix.json` reports `ok=true`, `allProvidersReady=true`, `tokenSpendingExecutionBlocked=true`, and `noPromptSent=true`.
+- `.codex-auto/production-smoke/right-rail-goal-track-tauri.json` reports `ok=true` and live Goal Track detail `97% S · 298/308`.
+- `.codex-auto/quality/release-quality-score.json` reports `298/308`, grade `S`.
+- `.codex-auto/quality/final-goal-audit.json` reports `ok=true`, `evidenceComplete=true`, and `status=blocked-by-explicit-consent`.
+
+Residual:
+
+- The only remaining blocker is still explicit token-spend consent for the real authenticated AI CLI prompt smoke.
+
+### Phase 2.34 - Tauri Runtime Hygiene Gate
+
+Status: done
+
+Implemented:
+
+- Added `scripts/verify-tauri-runtime-hygiene.mjs` and `pnpm verify:tauri-runtime-hygiene`.
+- The verifier now fails if the latest Tauri verification logs contain crash markers such as `STATUS_ACCESS_VIOLATION`, `STATUS_HEAP_CORRUPTION`, `0xc0000005`, or `0xc0000374`.
+- The verifier also requires dev ports `1420` / `9222` to be closed, no workspace `Aether` / `aether-pty-server` processes to remain, and no stale dev pid file.
+- Changed high-risk CDP verifiers to detach from WebView2 with `browser.disconnect()` rather than closing the attached host browser:
+  - `verify-right-rail-goal-track-tauri.mjs`
+  - `verify-live-tauri-pty-ai-cli-chaos.mjs`
+  - `verify-live-tauri-workstation-surfaces.mjs`
+  - `verify-performance-observatory.mjs`
+  - `verify-tauri-dpi-settings.mjs`
+- Added `tauri-runtime-hygiene` to release quality scoring and final-goal release operations proof.
+
+Validation:
+
+- `pnpm verify:terminal:ai-cli-post-launch-chaos`
+- `pnpm verify:right-rail-goal-track-tauri`
+- `pnpm verify:tauri-runtime-hygiene`
+- `pnpm verify:quality-score`
+- `pnpm verify:final-goal-audit`
+- `pnpm exec tsc --noEmit --pretty false`
+- `pnpm exec vitest run src\__tests__\authenticatedPromptConsent.test.ts src\__tests__\AppSilentBugs.test.ts --reporter=dot`
+- `pnpm exec biome check ... --formatter-enabled=false`
+- `git diff --check`
+
+Result:
+
+- `.codex-auto/quality/tauri-runtime-hygiene.json` reports `ok=true`, `noCrashMarkers=true`, `portsClosed=true`, `workspaceProcessesClear=true`, and `noStalePidFiles=true`.
+- `.codex-auto/production-smoke/right-rail-goal-track-tauri.json` reports `ok=true` and live Goal Track detail `97% S · 290/300`.
+- `.codex-auto/quality/release-quality-score.json` reports `290/300`, grade `S`.
+- `.codex-auto/quality/final-goal-audit.json` reports `ok=true`, `evidenceComplete=true`, and `status=blocked-by-explicit-consent`.
+
+Residual:
+
+- The only remaining blocker is still explicit token-spend consent for the real authenticated AI CLI prompt smoke.
+
+### Phase 2.36 - Authenticated Prompt Explicit Provider Guard
+
+Status: done
+
+Implemented:
+
+- Hardened `scripts/verify-authenticated-ai-cli-prompt-smoke.mjs` so token-spending execution now requires an explicit supported provider.
+- A consented run with no `AETHER_AUTH_PROMPT_PROVIDER` now writes `status=provider_required`, keeps `safeNoPromptSent=true`, and exits before CDP attach, session spawn, or prompt send.
+- A consented run with an unsupported provider now writes `status=unsupported_provider` and also exits before token-spending work.
+- Added `scripts/verify-authenticated-ai-cli-provider-guard.mjs` and `pnpm verify:terminal:authenticated-ai-cli-provider-guard` to prove the missing-provider path is blocked.
+- Tightened `authenticated-ai-cli-preflight-gate` scoring so the provider-required guard artifact must be fresh and prove `tokenBlocked`, `noPromptSent`, and `noSessionSpawned`.
+
+Validation:
+
+- `pnpm verify:terminal:authenticated-ai-cli-provider-guard`
+- `pnpm verify:terminal:authenticated-ai-cli-prompt` without consent, expecting exit code `2`
+- `pnpm verify:terminal:authenticated-ai-cli-preflight-matrix`
+- `pnpm verify:right-rail-goal-track-tauri`
+- `pnpm verify:tauri-runtime-hygiene`
+- `pnpm verify:quality-score`
+- `pnpm verify:final-goal-audit`
+- `pnpm exec vitest run src\__tests__\authenticatedPromptConsent.test.ts src\__tests__\AppSilentBugs.test.ts --reporter=dot`
+- `pnpm exec tsc --noEmit --pretty false`
+- `git diff --check`
+
+Result:
+
+- `.codex-auto/production-smoke/authenticated-ai-cli-provider-required-smoke.json` reports `status=provider_required`, `guardVerifier.ok=true`, `tokenBlocked=true`, `noPromptSent=true`, and `noSessionSpawned=true`.
+- `.codex-auto/production-smoke/authenticated-ai-cli-preflight-matrix.json` reports all providers ready.
+- `.codex-auto/production-smoke/right-rail-goal-track-tauri.json` reports live Goal Track detail `97% S · 298/308` with `codex`, `claude`, and `gemini` all ready.
+- `.codex-auto/quality/release-quality-score.json` reports `97% S · 298/308`.
+- `.codex-auto/quality/final-goal-audit.json` reports `ok=true`, `evidenceComplete=true`, and `status=blocked-by-explicit-consent`.
+
+Residual:
+
+- The only remaining blocker is still explicit token-spend consent for the real authenticated AI CLI prompt smoke.
+
+### Phase 2.33 - Authenticated Prompt Cleanup And CDP Detach Proof
+
+Status: done
+
+Implemented:
+
+- Hardened `scripts/verify-authenticated-ai-cli-prompt-smoke.mjs` so consented prompt execution captures a session baseline before spawn.
+- Success cleanup now requires structured proof: stop attempted, list checked, spawned session absent, no new unexpected sessions, and no stop/list errors.
+- Failure cleanup now attempts `stop_interactive_agent` and records `cleanupAfterFailure` instead of only setting `cleanupAttempted`.
+- CDP shutdown now detaches from the attached WebView2 browser by default and only closes the host when `AETHER_AUTH_PROMPT_CLOSE_BROWSER=1`.
+- Tightened `scripts/score-release-quality.mjs` so authenticated prompt scoring requires fresh embedded non-token preflight artifacts and structured cleanup proof.
+- Updated final-goal audit logic so it can reach `complete` after the authenticated prompt blocker is cleared, while still preserving the current `blocked-by-explicit-consent` release state.
+
+Validation:
+
+- `pnpm verify:terminal:authenticated-ai-cli-prompt` without consent, expected exit `2`
+- `pnpm verify:right-rail-goal-track-tauri`
+- `pnpm verify:quality-score`
+- `pnpm verify:final-goal-audit`
+- `pnpm exec tsc --noEmit --pretty false`
+- `pnpm exec vitest run src\__tests__\authenticatedPromptConsent.test.ts src\__tests__\AppSilentBugs.test.ts --reporter=dot`
+- `node --check scripts\verify-authenticated-ai-cli-prompt-smoke.mjs`
+- `node --check scripts\score-release-quality.mjs`
+- `node --check scripts\verify-final-goal-audit.mjs`
+- `git diff --check`
+
+Result:
+
+- `.codex-auto/production-smoke/right-rail-goal-track-tauri.json` reports `ok=true` and live Goal Track detail `97% S · 282/292`.
+- `.codex-auto/quality/release-quality-score.json` reports `282/292`, grade `S`.
+- `.codex-auto/quality/final-goal-audit.json` reports `ok=true`, `evidenceComplete=true`, and `status=blocked-by-explicit-consent`.
+- Verification Tauri/Vite/CDP ports were closed after the run.
+
+Residual:
+
+- The only remaining blocker is still explicit token-spend consent for the real authenticated AI CLI prompt smoke.
+## 2026-05-22 Final Evidence Refresh
+
+- Current release score evidence: `96/100`, `321/335`.
+- `releaseCandidateReady=false`; final-goal audit status is `blocked-by-external-gates` until real sleep/resume evidence and consented `authenticated-ai-cli-prompt-smoke` are both proven.
+- Authenticated prompt execution remains gated by `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini` and explicit consent; the safe proof registry is `24/24`.
+
+## 2026-05-24 Release Evidence Refresh
+
+- Current hybrid release score evidence: `96/100`, `321/335`, `releaseCandidateReady=false`.
+- Final-goal audit status is `blocked-by-external-gates` for the current Tauri/React plus Rust-core product boundary until real sleep/resume evidence and consented `authenticated-ai-cli-prompt-smoke` both pass.
+- Full-native Rust is now tracked separately by `pnpm verify:full-native:audit` and `docs/FULL_NATIVE_RUST_FINAL_GOAL.md`.
+
+## 2026-05-24 Full-Native Phase 2 Progress
+
+- Added `aether-native present-loop-proof`.
+- The native client proof now verifies a native Win32 window present loop that consumes the same daemon-backed `NativeRenderFrame`, presents multiple nonblank frames, and records `webviewUsed=false` / `reactUsed=false`.
+- Added `aether-native gpu-render-proof`.
+- The native client proof now verifies `wgpu` adapter/device creation, WGSL shader compilation, offscreen render pipeline execution, one draw submission, and `NativeRenderFrame` hash parity with `webviewUsed=false` / `reactUsed=false`.
+- Refreshed live `native-hwnd-paste-live` evidence through WebView2 CDP and re-ran native input and native boundary gates.
+- `pnpm verify:terminal:native-client` passes with `native-gpu-render-proof` and `native-gpu-render-frame-contract`.
+- `pnpm verify:terminal:native-boundary` reports `14/14` passing.
+- `pnpm verify:full-native:audit` reports `54/100`, `62/114`, `in-progress`.
+- Remaining full-native blockers are visible `winit/wgpu` terminal surface, native IME dogfood, native settings/customization, native Command Center/right rail, accessibility, native visual QA, and React/WebView compatibility-only demotion.
+
+## 2026-05-24 Full-Native Phase 2 Progress 2
+
+- Added `aether-native winit-wgpu-proof`.
+- Added a Windows native `winit` window connected to a `wgpu` swapchain.
+- The native client proof now verifies `native-winit-wgpu-surface-proof` and `native-winit-wgpu-frame-contract`: same daemon session, same `NativeRenderFrame` hash, GPU-backed surface configuration, multiple presented frames, and no React/WebView.
+- `pnpm verify:terminal:native-client` passes with the winit/wgpu surface proof.
+- `pnpm verify:terminal:native-boundary` remains `14/14` passing.
+- `pnpm verify:full-native:audit` reports `58/100`, `66/114`, `in-progress`.
+- Remaining full-native blockers are dirty-rect winit/wgpu terminal glyph rendering, native IME dogfood, native settings/customization, native Command Center/right rail, accessibility, native visual QA, and React/WebView compatibility-only demotion.
+
+## 2026-05-24 Full-Native Phase 2 Progress 3
+
+- Extended `aether-native winit-wgpu-proof` from surface-only proof to a dirty-rect terminal cell proof.
+- The winit/wgpu renderer now consumes `NativeRenderFrame` cell rects, cursor position, and `NativeRenderFrameDiff` dirty rects as GPU instance data.
+- The proof reports `glyphMode=cell-quad-proof`, `terminalGlyphQuads`, `cursorQuads`, `dirtyRectDogfood=true`, `dirtyRectsRendered`, `dirtyCells`, and `dirtyRows`.
+- `pnpm verify:terminal:native-client` passes with `native-winit-wgpu-dirty-rect-cell-proof` and `native-winit-wgpu-cursor-cell-proof`.
+- `pnpm verify:terminal:native-boundary` remains `14/14` passing.
+- `pnpm verify:full-native:audit` reports `59/100`, `67/114`, `in-progress`.
+- Remaining full-native blockers are font-atlas winit/wgpu terminal glyph rendering, native IME dogfood, native settings/customization, native Command Center/right rail, accessibility, native visual QA, and React/WebView compatibility-only demotion.
+
+## 2026-05-25 Full-Native Mode Shell Progress
+
+- Added `aether-native mode-shell-proof`.
+- The new native shell contract makes the Clauge-style information architecture explicit in Rust: left mode rail, central work surface, and right contextual inspector.
+- The contract exposes 8 fixed modes: Terminal, Agents, Workspace, Review, Git, Context, History, and Settings.
+- Each mode now has a stable shortcut, Rust contract id, center surface id, inspector kind, primary action, and selected entity route.
+- The contextual inspector is backed by the Rust Command Center contract and its counts are verified against the backing evidence/actions/blockers.
+- The verifier now rejects loose mode-shell claims: mode ids and `Alt+1` through `Alt+8` shortcuts must match exactly, all mode routes must be Rust-owned, and shell/rail/inspector/Command Center layers must report no React/WebView usage.
+- Added standalone evidence at `.codex-auto/quality/native-mode-shell-proof.json`.
+- Validation passed: `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
+- Current full-native audit: `70/100`, `80/114`, `in-progress`.
+- Remaining product-edge blockers: live native OS IME dogfood, native settings UI, rendered native mode rail/right inspector demotion from React, accessibility, native visual QA, and making React/WebView compatibility-only.
+
+## 2026-05-25 Full-Native Mode Rail Window Progress
+
+- Added `aether-native mode-rail-window-proof`.
+- The native client now renders the 8-mode rail into a Win32 layered window using Rust-owned mode shell data.
+- The proof exposes rendered rows, exact hit targets, selected/focused mode, keyboard transitions, nonblank pixel evidence, and `readyForReactDemotion=false`.
+- The verifier now rejects rail proofs that skip any mode, lose `Alt+1` through `Alt+8`, omit hit targets, miss keyboard evidence, render blank pixels, or require React/WebView.
+- Added standalone evidence at `.codex-auto/quality/native-mode-rail-window-proof.json`.
+- Validation passed: `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
+- Current full-native audit: `71/100`, `82/116`, `in-progress`.
+- Remaining product-edge blockers: live native OS IME dogfood, native settings UI, native inspector/right-rail React demotion, native accessibility, native visual QA, and React/WebView compatibility-only promotion.
+
+## 2026-05-25 Full-Native Inspector Window Progress
+
+- Added `aether-native inspector-window-proof`.
+- The native client now renders the Command Center-backed contextual inspector into a Win32 layered window using Rust-owned mode shell and Command Center data.
+- The proof exposes evidence rows, action rows, action hit targets, keyboard selection, scroll state, enter dispatch metadata, nonblank pixel evidence, and explicit no React/WebView dispatch guardrails.
+- The verifier now rejects inspector proofs that do not match Command Center evidence/action counts, miss action targets, omit keyboard/scroll evidence, render blank pixels, or require React/WebView to dispatch the selected action.
+- Added standalone evidence at `.codex-auto/quality/native-inspector-window-proof.json`.
+- Validation passed: `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
+- Current full-native audit: `71/100`, `84/118`, `in-progress`.
+- Remaining product-edge blockers: live native OS IME dogfood, native settings UI, actual native Command Center/right-rail React demotion, native accessibility, native visual QA, and React/WebView compatibility-only promotion.
+
+## 2026-05-25 Full-Native Right-Rail Demotion Readiness
+
+- Added `aether-native right-rail-demotion-proof`.
+- The proof connects the already-proven native Command Center, mode shell, mode rail, and contextual inspector into a single readiness contract for demoting the React right rail.
+- The proof records the native replacement map, verifies every prerequisite is complete, and still reports the current React right-rail sources as present.
+- This keeps the claim honest: the native product path is ready for the demotion work, but React/WebView has not been reduced to compatibility-only yet.
+- Added standalone evidence at `.codex-auto/quality/native-right-rail-demotion-proof.json`.
+- The verifiers now require `native-right-rail-demotion-contract-proof`, `native-right-rail-replacement-map-proof`, and `native-right-rail-demotion-honesty-proof`.
+- Validation passed: `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`, `node --check scripts\verify-native-client-spike.mjs`, `node --check scripts\verify-native-boundary-contract.mjs`, `node --check scripts\verify-full-native-rust-gap-audit.mjs`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
+- Current full-native audit: `72/100`, `86/120`, `in-progress`.
+- Remaining product-edge blockers: live native OS IME dogfood, native settings UI, actual React right-rail compatibility demotion, native accessibility/UIA, native visual QA, and making `aether-native` the primary daily-driver shell.
+
+## 2026-05-25 Full-Native Native Settings Window Progress
+
+- Added `aether-native settings-window-proof`.
+- The native client now renders settings customization into a Win32 layered native window using Rust-owned config data.
+- The proof covers theme, mood, window opacity, wallpaper image path, wallpaper opacity, wallpaper position, wallpaper scale, panel/terminal material controls, palette controls, hit targets, keyboard navigation, hot-reload binding, and nonblank pixel evidence.
+- The verifier now rejects settings UI claims that omit controls, hot reload, wallpaper controls, keyboard navigation, nonblank rendering, or no-React/no-WebView ownership.
+- Added standalone evidence at `.codex-auto/quality/native-settings-window-proof.json`.
+- Validation passed: `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`, `node --check scripts\verify-native-client-spike.mjs`, `node --check scripts\verify-native-boundary-contract.mjs`, `node --check scripts\verify-full-native-rust-gap-audit.mjs`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
+- Current full-native audit: `77/100`, `92/120`, `in-progress`.
+- Remaining product-edge blockers: live native OS IME dogfood, actual React right-rail compatibility demotion, native accessibility/UIA, native visual QA, and making `aether-native` the primary daily-driver shell.
+
+## 2026-05-25 Native HWND IME Dogfood Progress
+
+- Added `aether-native ime-dogfood-proof`.
+- The proof dogfoods the Rust native input HWND rather than the WebView IME bridge: a native parent HWND is created, the native input child HWND is focused, `WM_IME_STARTCOMPOSITION` is observed, Japanese committed text is drained through `NativeTerminalInputHost`, and Codex/Claude/Gemini prompt rows are rendered through `NativeRenderFrame`.
+- The verifier now requires `native-ime-hwnd-dogfood-proof`, `native-ime-ai-cli-prompt-row-proof`, and `native-ime-dogfood-honesty-proof`.
+- Added standalone evidence at `.codex-auto/quality/native-ime-hwnd-dogfood-proof.json`.
+- This intentionally does not close real OS IME dogfood yet. The remaining IME work is an installed Japanese IME/TSF composition/candidate session, not synthetic `WM_CHAR` commit through the native HWND.
+- Validation passed: `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`, `node --check scripts\verify-native-client-spike.mjs`, `node --check scripts\verify-native-boundary-contract.mjs`, `node --check scripts\verify-full-native-rust-gap-audit.mjs`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
+- Current full-native audit: `78/100`, `94/120`, `in-progress`.
+- Remaining product-edge blockers: real OS IME/TSF dogfood, actual React right-rail compatibility demotion, native accessibility/UIA, native visual QA, and making `aether-native` the primary daily-driver shell.
+
+## 2026-05-25 Native Accessibility Tree Progress
+
+- Added `aether-native accessibility-proof`.
+- The proof builds a native semantic tree from Rust-owned mode shell, Command Center, inspector, and settings contracts.
+- It verifies accessible names, roles, focus order, keyboard traversal, action guardrails, and no React/WebView dependency.
+- The proof deliberately does not claim screen-reader completion: `screenReaderProviderReady=false` and `nextProof=native-uia-provider-dogfood`.
+- Added standalone evidence at `.codex-auto/quality/native-accessibility-proof.json`.
+- Validation passed: `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`, `node --check scripts\verify-native-client-spike.mjs`, `node --check scripts\verify-native-boundary-contract.mjs`, `node --check scripts\verify-full-native-rust-gap-audit.mjs`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
+- Current full-native audit: `80/100`, `96/120`, `in-progress`.
+- Remaining product-edge blockers: real OS IME/TSF dogfood, actual React right-rail compatibility demotion, UIA/accesskit provider dogfood, native visual QA, and making `aether-native` the primary daily-driver shell.
+
+## 2026-05-25 Native Visual QA Harness Progress
+
+- Added `aether-native visual-qa-proof`.
+- The native client now has a WebView/CDP-free visual QA harness that aggregates native renderer/window proofs and adds direct Win32 pixel sampling.
+- The proof verifies required native surfaces, nonblank rendering, contrast, resize probe coverage, and focus coverage through the native accessibility proof.
+- The pixel probe uses a Win32 compatible bitmap and `GetPixel` for desktop and compact scenarios.
+- The proof deliberately leaves real Windows sleep/resume open: `sleepResumeDogfood=false` and `nextProof=native-sleep-resume-visual-dogfood`.
+- Added standalone evidence at `.codex-auto/quality/native-visual-qa-proof.json`.
+- Validation passed: `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`, `node --check scripts\verify-native-client-spike.mjs`, `node --check scripts\verify-native-boundary-contract.mjs`, `node --check scripts\verify-full-native-rust-gap-audit.mjs`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
+- Current full-native audit: `82/100`, `98/120`, `in-progress`.
+- Remaining product-edge blockers: real OS IME/TSF dogfood, actual React right-rail compatibility demotion, UIA/accesskit provider dogfood, real Windows sleep/resume visual dogfood, and making `aether-native` the primary daily-driver shell.
+
+## 2026-05-25 React Right-Rail Compatibility Demotion
+
+- Marked the existing React right-rail modules as explicit compatibility clients instead of product truth: `AgentInspector`, `LivePanesPanel`, `rightRailGoalTrack`, and `rightRailAdvisor`.
+- Updated `aether-native right-rail-demotion-proof` so Rust verifies every compatibility client has the expected contract marker and reports `reactCompatibilityOnly=true`.
+- The proof now reports `compatibilityStatus=react-right-rail-compatibility-only`, `reactDemotionComplete=true`, `reactOwnsProductTruth=false`, and `webviewDispatchRequired=false`.
+- The native-client, native-boundary, and full-native audit verifiers now reject unmarked React right-rail sources.
+- Refreshed `.codex-auto/quality/native-client-spike.json`, `.codex-auto/quality/native-boundary-contract.json`, `.codex-auto/quality/native-right-rail-demotion-proof.json`, and `.codex-auto/quality/full-native-rust-gap-audit.json`.
+- Validation passed: `pnpm exec tsc --noEmit`, `node --check scripts\verify-native-client-spike.mjs`, `node --check scripts\verify-native-boundary-contract.mjs`, `node --check scripts\verify-full-native-rust-gap-audit.mjs`, `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
+- Current full-native audit: `83/100`, `100/120`, `in-progress`.
+- Remaining product-edge blockers: real OS IME/TSF dogfood, UIA/accesskit provider dogfood, real Windows sleep/resume visual dogfood, and making `aether-native` the primary daily-driver shell.
+
+## 2026-05-25 Native UIA Provider Dogfood
+
+- Added `aether-native uia-provider-proof`.
+- The proof creates native Win32 controls for the accessibility dogfood path and validates them through Windows UIAutomation, with no React/WebView involvement.
+- The proof verifies `ElementFromHandle`, readable UIA names, descendant enumeration, ControlType reporting, and `InvokePattern` execution for a native action button.
+- Added standalone evidence at `.codex-auto/quality/native-uia-provider-proof.json`.
+- The proof records `manualNarratorDogfood=false`; it proves UIA provider readiness and programmatic invocation, not a human/manual screen-reader pass.
+- The native-client, native-boundary, and full-native audit verifiers now require the UIA provider proof.
+- Validation passed: `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
+- Current full-native audit: `85/100`, `102/120`, `in-progress`.
+- Remaining product-edge blockers: real OS IME/TSF dogfood, real Windows sleep/resume visual dogfood, and making `aether-native` the primary daily-driver shell.
+
+## 2026-05-25 Native OS IME Dogfood
+
+- Added `aether-native ime-os-dogfood-proof`.
+- The native path now proves Japanese preedit/result handling through Win32 Imm32 APIs and the Rust `NativeTerminalInputHost`, not WebView/xterm fallback.
+- The proof covers `ImmSetCompositionStringW(GCS_COMPSTR)`, `ImmNotifyIME` completion, native input-host drain, one committed PTY write, and Codex/Claude/Gemini prompt-row visibility through `NativeRenderFrame`.
+- Added standalone evidence at `.codex-auto/quality/native-ime-os-dogfood-proof.json`.
+- The verifier now requires `native-ime-os-composition-proof`, `native-ime-os-result-commit-proof`, and `native-ime-os-ai-cli-prompt-proof`.
+- Honesty boundary: manual Japanese candidate-window dogfood and TSF candidate UI sweep are still follow-up hardening gates; the current proof closes automated OS IME preedit/result routing.
+- Validation passed: `node --check scripts\verify-native-client-spike.mjs`, `node --check scripts\verify-native-boundary-contract.mjs`, `node --check scripts\verify-full-native-rust-gap-audit.mjs`, `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
+- Current full-native audit: `90/100`, `108/120`, `A`, `in-progress`.
+- Remaining product-edge blockers: real Windows sleep/resume visual dogfood and making `aether-native` the primary daily-driver shell.
+
+## 2026-05-25 Native Sleep/Resume Recovery Probe
+
+- Added a native sleep/resume recovery probe to `aether-native visual-qa-proof`.
+- The probe uses a native Win32 message loop and `WM_POWERBROADCAST` suspend/resume messages to verify that the native shell has a redraw/focus/surface-reconfigure recovery path ready.
+- The visual QA proof now records `aether.native.sleep-resume-recovery-probe.v1`, pre/post resume nonblank visual probes, and `native-sleep-resume-recovery-probe-proof`.
+- The proof intentionally records `realWindowsSleepResumeDogfood=false`; it does not claim the final Windows sleep/resume gate because it does not put the machine to sleep.
+- Command Center action generation was hardened so the right rail still exposes recovery/refresh actions when the remaining blocker list becomes short.
+- Right-rail demotion readiness was hardened to use standalone native inspector evidence if a previous partial native-client run overwrote the aggregate artifact.
+- Refreshed `.codex-auto/quality/native-client-spike.json`, `.codex-auto/quality/native-boundary-contract.json`, `.codex-auto/quality/native-visual-qa-proof.json`, and `.codex-auto/quality/full-native-rust-gap-audit.json`.
+- Validation passed: `node --check scripts\verify-native-client-spike.mjs`, `node --check scripts\verify-native-boundary-contract.mjs`, `node --check scripts\verify-full-native-rust-gap-audit.mjs`, `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
+- Current full-native audit: `90/100`, `108/120`, `A`, `in-progress`.
+- Remaining product-edge blockers: real Windows sleep/resume visual dogfood and making `aether-native` the primary daily-driver shell.
+
+## 2026-05-25 Primary Native Shell Promotion
+
+- Added `aether-native primary-shell-proof`.
+- The proof makes `aether-native` the primary product-truth surface for the native migration and demotes the existing React/WebView shell to compatibility-only.
+- It aggregates native prerequisites across renderer, input/IME, settings, Command Center/right rail, UIA/accessibility, visual QA harness, native-client, and native-boundary artifacts.
+- It renders a single native Win32 primary shell proof window with mode rail, terminal surface, Command Center actions, promotion gates, action hit targets, and nonblank pixel evidence.
+- The proof records `nativePrimaryShellPromotion=true`, `primarySurface=aether-native`, `productTruthOwner=rust-native-shell`, `reactWebViewCompatibilityOnly=true`, `reactOwnsProductTruth=false`, `webviewOwnsTerminal=false`, and `promotionReady=true`.
+- The proof does not claim final full-native readiness: `readyForFullNativeClaim=false` remains until real Windows sleep/resume visual dogfood is complete.
+- Added standalone evidence at `.codex-auto/quality/native-primary-shell-proof.json`.
+- Refreshed `.codex-auto/quality/native-client-spike.json`, `.codex-auto/quality/native-boundary-contract.json`, and `.codex-auto/quality/full-native-rust-gap-audit.json`.
+- Validation passed: `node --check scripts\verify-native-client-spike.mjs`, `node --check scripts\verify-native-boundary-contract.mjs`, `node --check scripts\verify-full-native-rust-gap-audit.mjs`, `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
+- Current full-native audit: `98/100`, `118/120`, `A`, `in-progress`.
+- Remaining product-edge blocker: real Windows sleep/resume visual dogfood.
+
+## 2026-05-25 Native Sleep/Resume Final Gate Hardening
+
+- Hardened `scripts/verify-real-os-suspend-evidence.mjs` for the full-native target.
+- The suspend/resume verifier now accepts `AETHER_APP_EXE` and `AETHER_APP_PROCESS_NAME`, allowing the final run to target `aether-native.exe` rather than only `Aether.exe`.
+- The full-native audit now refuses to close the final sleep/resume blocker with stale or legacy Tauri evidence.
+- Required final evidence now includes `aether-native` executable/process identity, real Windows suspend/resume power events, post-resume app/API/terminal/SQLite/pane-state checks, and a resume timestamp newer than `.codex-auto/quality/native-primary-shell-proof.json`.
+- Validation passed: `node --check scripts\verify-real-os-suspend-evidence.mjs`, `node --check scripts\verify-full-native-rust-gap-audit.mjs`, `pnpm verify:production:suspend:diagnose`, `pnpm verify:production:suspend`, and `pnpm verify:full-native:audit`.
+- Current full-native audit: `98/100`, `118/120`, `A`, `in-progress`.
+- Remaining product-edge blocker: real Windows sleep/resume visual dogfood against the current native primary shell.
+
+## 2026-05-26 Native Primary Sleep/Resume Harness
+
+- Extended the real OS suspend/resume harness with native primary-shell targeting.
+- `--native-primary` now makes the evidence target `aether-native.exe` and the `aether-native` process identity instead of the legacy Tauri release shell.
+- `--launch-native-primary` starts a visible long-held `aether-native primary-shell-proof` process before arming the suspend window, then records the exact launch/probe result in the evidence session.
+- The evidence flow now writes `suspendTarget`, `nativePrimaryLaunch`, native `processName`, and `targetKind` metadata so the final audit can tell whether the proof was collected against the actual Rust primary shell.
+- Added dedicated package scripts for the native run: `verify:production:suspend:native-begin`, `native-resume`, `native-postcheck`, `native-diagnose`, and guarded `native-cycle`.
+- Validation passed: `node --check scripts\verify-real-os-suspend-evidence.mjs`, `pnpm verify:production:suspend:native-diagnose`, `pnpm verify:production:suspend:diagnose`, and `pnpm verify:full-native:audit`.
+- Current full-native audit: `98/100`, `118/120`, `A`, `in-progress`.
+- Current full-native audit remains gated until a real Windows sleep/resume cycle is captured against the current native primary shell.
+
+## 2026-05-26 Native Verifier Hardening And Preflight
+
+- Repaired the native-client verifier so it no longer depends on PowerShell sidecar launch, mandatory cargo rebuilds, or spawnSync native execution in the Windows sandbox.
+- The verifier now prefers the bundled PTY sidecar, can start it directly with hidden windows, skips rebuild when the debug `aether-native.exe` already exists, and captures `aether-native` JSON output through temporary files instead of pipe-backed spawnSync.
+- Fixed the primary-shell proof self-reference: component proofs can satisfy the native-client prerequisite while the aggregate verifier is still assembling its final artifact.
+- Added the `open-native-sleep-resume-preflight` Command Center action so the native right rail remains actionable even when the full-native blocker list is down to one item.
+- Added native sleep/resume preflight evidence at `.codex-auto/production-smoke/real-os-suspend-native-preflight.json`.
+- Current preflight result: `ready-except-host-event-log-access`; native primary target, native binary, short-lived native primary-shell launch, isolated sidecar, and API reachability are green. The remaining preflight miss is Windows System event log access from this sandbox (`spawnSync powershell.exe EPERM`).
+- Validation passed: `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, `pnpm verify:production:suspend:native-preflight`, `pnpm verify:production:suspend:native-diagnose`, and `pnpm verify:full-native:audit`.
+- Current full-native audit: `98/100`, `118/120`, `A`, `in-progress`.
+- Remaining product-edge blocker: real Windows sleep/resume visual dogfood against the current native primary shell, run from a session with System event-log access.
+
+## 2026-05-26 Native Power Event Proof
+
+- Added a Rust-native Windows event-log proof for the final sleep/resume gate.
+- `aether-native power-events-proof --start-epoch n --end-epoch n` now reads the System log through Windows Event Log APIs without PowerShell and emits `aether.native.power-events-proof.v1`.
+- The proof filters by provider as well as event id, preventing unrelated `id=1` or `id=107` records from being counted as resume evidence.
+- `verify-real-os-suspend-evidence.mjs` now uses the native event proof in `--native-primary` mode for diagnostics, preflight, and final validation.
+- Native preflight now reports `ready-for-real-sleep`; event-log access is green with `nativeWindowsEventLog=true` and `powershellUsed=false`.
+- Native process liveness for the launched proof window now uses Node PID liveness instead of PowerShell process enumeration, removing another sandbox-specific false negative.
+- Validation passed: direct `aether-native power-events-proof`, `pnpm verify:production:suspend:native-preflight`, `pnpm verify:production:suspend:native-diagnose`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
+- Current full-native audit: `98/100`, `118/120`, `A`, `in-progress`.
+- Remaining product-edge blocker: real Windows sleep/resume visual dogfood against freshly armed native evidence.
+
+## 2026-05-26 Guarded Native Sleep And Primary Shell Gate Repair
+
+- Added `aether-native sleep-now` as the Rust-native guarded sleep command for the final real Windows sleep/resume path.
+- The command is intentionally fail-closed: it refuses to call the Windows power API unless `AETHER_ALLOW_OS_SLEEP=1` or `--i-understand-this-sleeps-windows` is present.
+- Updated `verify-real-os-suspend-evidence.mjs` so native-primary guarded cycles use the Rust command instead of PowerShell.
+- Fixed stale-artifact pressure in `aether-native primary-shell-proof`: the proof now merges persisted native-client checks with the current verifier run's checks, so primary-shell promotion is evaluated from the proof run that is actually in progress.
+- Revalidated the native IME OS dogfood path after the regression report. Full native-client verification again passes IME OS composition/result/prompt-row checks.
+- Current full-native audit: `98/100`, `118/120`, `S`, `in-progress`.
+- Remaining product-edge blocker: run the explicitly opted-in real Windows sleep/resume cycle and post-resume native visual QA.
+
+## 2026-05-26 Strict Native Sleep Evidence Contract
+
+- Hardened the final native sleep/resume gate so it cannot be satisfied by stale `Aether.exe` evidence, PowerShell event-log evidence, or a native binary hash refresh alone.
+- Native-primary evidence must now prove the target kind, native-primary launch request, successful native launch with PID, post-resume `aether-native` process identity, API health, terminal roundtrip, SQLite/pane-layout preservation, and native Windows event-log source.
+- `verify-full-native-rust-gap-audit.mjs` now requires `validation.windowsPowerEvents.source=aether-native-power-events-proof`, `nativeWindowsEventLog=true`, and `powershellUsed=false` before awarding the final `native-visual-qa` sleep/resume points.
+- Refreshed the sleep/resume evidence file to the current native executable identity without claiming completion. Diagnostic remains incomplete until the real opted-in sleep/resume cycle runs.
+- Current full-native audit: `98/100`, `118/120`, `S`, `in-progress`.
+- Remaining product-edge blocker: real Windows sleep/resume visual dogfood against the launched `aether-native` primary shell.
+
+## 2026-05-26 Post-Resume Native Visual Proof Gate
+
+- Extended native sleep/resume postcheck to run native visual proof after resume.
+- Postcheck now records `validation.postResumeProbes.nativeVisual` from `aether-native visual-qa-proof` and `aether-native primary-shell-proof`.
+- The final audit now requires post-resume pixel/contrast/resize/focus coverage and primary-shell nonblank/interactive evidence before it can award the final native visual QA sleep/resume points.
+- This closes a blind spot where process/API/terminal/DB recovery could pass while native rendering quality after resume remained unproven.
+- Current full-native audit: `98/100`, `118/120`, `S`, `in-progress`.
+- Remaining product-edge blocker: opted-in real Windows sleep/resume plus native postcheck on the resumed system.
+
+## 2026-05-26 Native Command Center Sleep/Resume Runbook
+
+- Added a final-gate runbook to the Rust-native Command Center action model.
+- The native actions now cover preflight, begin/arm, guarded host sleep cycle, resume timestamp capture, post-resume checks, and the final full-native audit.
+- The host sleep action is explicitly marked with `requiresExplicitOptIn=true` and `explicitOptInEnv=AETHER_ALLOW_OS_SLEEP=1`.
+- The native-client verifier now requires `native-command-center-sleep-resume-runbook-proof`.
+- The full-native audit now requires this runbook before accepting the Command Center data/action proof, keeping the final gate discoverable from the Rust native product surface.
+- Current full-native audit: `98/100`, `118/120`, `S`, `in-progress`.
+- Remaining product-edge blocker: opted-in real Windows sleep/resume and resumed native visual proof.
+
+## 2026-05-26 Native Postcheck Preflight And IME Worker Hardening
+
+- Added `verify:production:suspend:native-postcheck-preflight` as a dry run for the final post-resume checks.
+- The dry run starts an isolated sidecar, launches the native primary shell proof, and verifies post-resume process identity, API health, terminal roundtrip, DB/pane-layout persistence, and native visual proof readiness without claiming a real Windows sleep event.
+- Native-primary terminal roundtrip now uses direct sidecar HTTP in the preflight path, so `aetherctl` spawn restrictions do not mask product readiness.
+- Added `aether-native db-smoke-proof` for isolated SQLite/pane-layout proof. This keeps preflight and final postcheck evidence out of the user's real config/database.
+- Repaired the IME OS dogfood verifier crash by running the Imm32 worker with file-backed stdio and `CREATE_BREAKAWAY_FROM_JOB`. The proof still verifies Win32 Imm32 preedit/result handling, native input-host drain, and Codex/Claude/Gemini prompt-row visibility without WebView or React.
+- Validation passed: `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, `pnpm verify:production:suspend:native-preflight`, `pnpm verify:production:suspend:native-postcheck-preflight`, and `pnpm verify:full-native:audit`.
+- Current full-native audit: `98/100`, `118/120`, `S`, `in-progress`.
+- Remaining product-edge blocker: real opted-in Windows sleep/resume, then native postcheck on the resumed system.
+
+## 2026-05-26 Native Postcheck Writer Smoke
+
+- Fixed the final native postcheck writer so it uses the collected probe object for app/API/terminal/DB readiness checks.
+- Added isolated suspend evidence path overrides so postcheck writer behavior can be tested without touching the real sleep/resume artifact.
+- Added `verify:production:suspend:native-postcheck-write-smoke` to exercise the real native postcheck write path into `.codex-auto/production-smoke/postcheck-write-smoke`.
+- Validation passed: `pnpm verify:production:suspend:native-postcheck-write-smoke`, `pnpm verify:production:suspend:native-preflight`, `pnpm verify:production:suspend:native-postcheck-preflight`, and `pnpm verify:full-native:audit`.
+- Current full-native audit: `98/100`, `118/120`, `S`, `in-progress`.
+- Remaining product-edge blocker: real opted-in Windows sleep/resume, then native postcheck on the resumed system.
+
+## 2026-05-26 Native Postcheck Smoke Artifact And Parallel Isolation
+
+- Promoted the native postcheck writer smoke from a command-only check to a first-class artifact at `.codex-auto/production-smoke/postcheck-write-smoke/real-os-suspend-native-postcheck-write-smoke.json`.
+- The artifact records isolated evidence/diagnostic writes, native-primary launch, isolated sidecar readiness, API health, terminal roundtrip, DB/pane layout, native visual proof, and `noRealSleepClaim=true`.
+- Isolated sidecar runs now use per-run mux and scrollback directories, so native preflight and postcheck preflight can run in parallel without interfering with terminal roundtrip capture.
+- The full-native audit now exposes `nativePostcheckWriteSmoke` in `currentTruth` so this final writer path stays visible in the release audit.
+- Validation passed: parallel `pnpm verify:production:suspend:native-preflight` plus `pnpm verify:production:suspend:native-postcheck-preflight`, `pnpm verify:production:suspend:native-postcheck-write-smoke`, and `pnpm verify:full-native:audit`.
+- Current full-native audit: `98/100`, `118/120`, `S`, `in-progress`.
+- Remaining product-edge blocker: real opted-in Windows sleep/resume, then native postcheck on the resumed system.
+
+## 2026-05-26 Native Sleep Guard Proof
+
+- Added a Command Center-visible proof that the native sleep action is fail-closed before a real host-power test is attempted.
+- The new `verify-native-sleep-guard` runbook action is owned by the Rust-native Command Center model, requires no React/WebView surface, and points to `pnpm verify:production:suspend:native-sleep-guard`.
+- The verifier runs `aether-native sleep-now` without `AETHER_ALLOW_OS_SLEEP=1` and proves that it refuses quickly, does not emit success JSON, does not claim a real sleep attempt, and does not fall back to PowerShell.
+- Evidence is stored at `.codex-auto/production-smoke/native-sleep-guard-refusal.json`, and the full-native audit now reports it under `currentTruth.nativeSleepGuard`.
+- Validation passed: `pnpm verify:production:suspend:native-sleep-guard`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
+- Current full-native audit: `98/100`, `118/120`, `S`, `in-progress`.
+- Remaining product-edge blocker: real opted-in Windows sleep/resume, then native postcheck on the resumed system.
+
+## 2026-05-26 Native Paste Guard Proof And Visual QA Artifact Split
+
+- Added `aether-native paste-guard-proof` as a Rust-native no-WebView/no-CDP proof for terminal paste safety.
+- The proof dogfoods a real native input HWND with Windows clipboard `CF_UNICODETEXT` and `WM_PASTE`, proving allowed single-line paste normalization plus destructive and multiline paste blocking before PTY write.
+- The native input verifier now accepts this fresh Rust artifact as behavioral HWND paste evidence, eliminating the old requirement that a CDP browser smoke be current.
+- Split native present-loop and winit/wgpu proof outputs into standalone quality artifacts so the native visual QA harness reads completed surface evidence instead of the in-progress native-client report.
+- Validation passed: `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-input`, `pnpm verify:terminal:native-boundary`, `pnpm verify:production:suspend:native-sleep-guard`, and `pnpm verify:full-native:audit`.
+- Current full-native audit: `98/100`, `118/120`, `S`, `in-progress`.
+- Remaining product-edge blocker: real opted-in Windows sleep/resume, then native postcheck on the resumed system.
+
+## 2026-05-26 Native-First Hybrid Goal Baseline
+
+- Retargeted the release goal from strict full-native Rust to native-first hybrid.
+- Added `docs/NATIVE_FIRST_HYBRID_PRODUCT_GOAL.md` as the release-goal source of truth.
+- Strict full-native remains as a stretch audit in `docs/FULL_NATIVE_RUST_FINAL_GOAL.md`, not the release definition.
+- Added `pnpm verify:native-first:audit`.
+- The native-first audit passes at `100/100`, grade `S`, with `nativeFirstHybridReady=true`.
+- The audit explicitly allows React/Tauri for non-hot-path, contract-backed UI while requiring Rust/native ownership of terminal truth, IME, clipboard, paste guard, PTY/mux/session, pane lifecycle, AI CLI launch, recovery, performance, and visual/accessibility gates.
+- Real Windows sleep/resume remains opt-in host dogfood and strict full-native stretch evidence, not a reason to keep the revised native-first release goal blocked.
+
+## 2026-05-28 Final Goal Evidence Refresh
+
+- Current release score evidence before the self-referential final-goal map is `90/100`, `303/335`, `releaseCandidateReady=false`.
+- Current score after the fresh final-goal evidence map is `96/100`, `321/335`; auditStatus=`blocked-by-external-gates`.
+- The terminal render-fidelity gate is green, and browser/Codex preview now uses the production `TerminalCanvas` path instead of a clean DOM-text surrogate.
+- Remaining external gate is real Windows sleep/resume support; remaining policy gate is explicit token-spend consent for authenticated AI CLI prompt smoke.
+- Authenticated prompt execution remains gated by `authenticated-ai-cli-prompt-smoke`, `authenticated-ai-cli-consent-packet`, and `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini`; safe proof registry is `24/24`.
+
+## 2026-05-31 Final Goal Evidence Refresh
+
+- Current release score evidence before the self-referential final-goal map is `93/100`, `313/335`, `releaseCandidateReady=false`.
+- Projected score after the fresh final-goal evidence map remains `96/100`, `321/335`; auditStatus=`blocked-by-external-gates`.
+- Terminal text clarity is now guarded by the production canvas path plus a Sharp-mode no-backdrop-blur terminal shell path.
+- Remaining external gate is real Windows sleep/resume support; remaining policy gate is explicit token-spend consent for `authenticated-ai-cli-prompt-smoke`.
+- Authenticated prompt execution remains gated by `authenticated-ai-cli-prompt-smoke`, `authenticated-ai-cli-consent-packet`, and `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini`; safe proof registry is `24/24`.
+
+## 2026-05-31 Chunked OSC Safe Refresh Guard
+
+- Added `pnpm verify:terminal:chunked-osc-live:safe` so the strict chunked OSC inline-image verifier no longer strands goal refresh when WebView2/CDP or child-process launch is unavailable.
+- The safe wrapper preserves `.codex-auto/production-smoke/chunked-osc-live.json`, writes `.codex-auto/production-smoke/chunked-osc-live.environment-blocked.json`, and requires the last live primary artifact to remain source-fresh before refresh accepts an environment-blocked replay.
+- `pnpm verify:goal:refresh-safe` now includes `chunked-osc-live`, records visible progress, keeps `tokenSpendingPromptExecuted=false` and `realOsSleepInvoked=false`, and accepts only the controlled environment-blocked proof.
+- Anti-stall proof now requires the chunked OSC safe wrapper, so this specific CDP/spawn failure cannot silently regress back into an unhandled stack.
+- Validation passed: `node --check scripts\verify-chunked-osc-live-safe.mjs`, `pnpm verify:terminal:chunked-osc-live:safe` produced the expected environment-blocked artifact, `pnpm verify:goal:refresh-safe`, `pnpm verify:release:hygiene`, and `pnpm verify:goal:safe` remains `24/24`.
+
+## 2026-05-31 Operator Finish Heartbeat Guard
+
+- `pnpm verify:goal:operator-finish` now streams long external-gate steps instead of hiding them behind a silent `spawnSync` wait.
+- Token prompt smoke, real user sleep/wake, post-operator refresh, and final safe reruns emit `[goal-operator] start`, `[goal-operator] waiting`, and pass/fail markers with a default `AETHER_GOAL_OPERATOR_HEARTBEAT_MS=30000`.
+- Readiness-only mode still sends no prompt, invokes no OS sleep, and can replay the same-day external gate readiness artifact when sandbox child-process launch is blocked.
+- Anti-stall proof now requires `operatorFinishStreamsLongExternalSteps`, so the external-gate handoff cannot regress to a long silent wait without failing `pnpm verify:goal:anti-stall`.
+
+## 2026-05-31 Finalize Evidence Gate
+
+- Added `pnpm verify:goal:finalize` as the ordered, no-token/no-sleep evidence finalizer for the self-referential final audit/score/docs/matrix/safe chain.
+- The sequence is fixed as release hygiene -> anti-stall -> quality score -> final audit -> quality score -> docs -> final audit -> quality score -> completion matrix -> operator finish readiness -> final safe, with `AETHER_GOAL_FINALIZE_SKIP_OPERATOR=1` for the nested post-operator path.
+- `pnpm verify:goal:operator-finish` now calls the finalize gate after a real external gate run instead of relying on a loose refresh/safe pair.
+- Anti-stall proof now requires `goalFinalizeClosesSelfReferenceLoop`, so the known `93` transient score caused by running score/docs out of order cannot become the documented finish path.
+
+## 2026-05-31 External Gate Handshake Closure
+
+- Tightened `pnpm verify:goal:external-gates` so the external-gate handoff has a fixed before/after sequence instead of the older loose refresh runbook.
+- The after-gate sequence is now `pnpm verify:goal:operator-finish` -> `pnpm verify:goal:finalize` -> `pnpm verify:goal:safe`, keeping token/sleep operations explicit while closing score/audit/docs/matrix ordering automatically.
+- `pnpm verify:goal:safe` now rejects an external-gate readiness artifact unless it contains the finalize closure, and `pnpm verify:goal:anti-stall` requires the same runbook terms.
+- `pnpm verify:goal:finalize` now treats the goal docs and external-gate readiness source as freshness inputs, preventing stale docs/runbook artifacts from satisfying the finalizer after a handoff edit.
+- This prevents a resumed operator run from getting stranded between an external gate and the final self-referential evidence refresh.
+
+## 2026-05-31 Final Score/Audit Race Lock
+
+- Added a shared `.codex-auto/quality/final-goal-evidence.lock` guard for `pnpm verify:quality-score` and `pnpm verify:final-goal-audit`.
+- The lock prevents `score-release-quality` from reading `final-goal-audit.json` while `verify-final-goal-audit` has removed and is rewriting it, which previously could create a transient `93/100` score and strand the goal chain.
+- Lock ownership records pid, argv, cwd, and start time; stale locks are cleared only after `AETHER_FINAL_GOAL_LOCK_STALE_MS` so interrupted verifier runs can recover without manual cleanup.
+- Anti-stall proof now requires both score and audit scripts to use the shared lock before the self-referential final-goal evidence map can count as safe.
+- The finalizer now refreshes `quality-score` immediately after anti-stall before the first final audit, so a source change to the anti-stall/score/audit verifier set cannot make audit consume stale score evidence.

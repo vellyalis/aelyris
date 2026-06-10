@@ -2,6 +2,7 @@ import { renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { type Invoke, useImageMetrics } from "../shared/hooks/useImageMetrics";
+import { FALLBACK_TELEMETRY_EVENT, type FallbackTelemetryDetail } from "../shared/lib/fallbackTelemetry";
 import type { ImageMetrics } from "../shared/types/terminal";
 
 function ipcSequence(responses: Array<ImageMetrics | null>): Invoke {
@@ -57,13 +58,32 @@ describe("useImageMetrics", () => {
     expect(result.current).toBeNull();
   });
 
-  it("treats an IPC throw as no metrics rather than crashing", async () => {
+  it("treats an IPC throw as no metrics and emits fallback telemetry", async () => {
     const invoke = vi.fn(async () => {
       throw new Error("registry mutex poisoned");
     }) as unknown as Invoke;
+    const events: FallbackTelemetryDetail[] = [];
+    const listener = (event: Event) => {
+      events.push((event as CustomEvent<FallbackTelemetryDetail>).detail);
+    };
+    window.addEventListener(FALLBACK_TELEMETRY_EVENT, listener);
     const { result } = renderHook(() => useImageMetrics("t-1", { invoke, pollIntervalMs: 10_000 }));
-    await waitFor(() => expect(invoke).toHaveBeenCalled());
-    expect(result.current).toBeNull();
+    try {
+      await waitFor(() => expect(invoke).toHaveBeenCalled());
+      await waitFor(() => expect(events.length).toBeGreaterThan(0));
+      expect(result.current).toBeNull();
+      expect(events[0]).toEqual(
+        expect.objectContaining({
+          source: "terminal.images",
+          operation: "term_image_metrics",
+          severity: "warning",
+          userVisible: true,
+        }),
+      );
+      expect(events[0]?.message).toContain("registry mutex poisoned");
+    } finally {
+      window.removeEventListener(FALLBACK_TELEMETRY_EVENT, listener);
+    }
   });
 
   it("re-fetches when the active terminal id changes", async () => {

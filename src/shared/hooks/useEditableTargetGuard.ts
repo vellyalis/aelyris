@@ -9,14 +9,17 @@
  */
 export function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
-  const tag = target.tagName;
-  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
-  if (target.isContentEditable) return true;
-  // Also guard against being inside a Monaco editor / xterm canvas — their
-  // focus lives on inner elements so walking up a few levels is prudent.
+  // Also guard against being inside Monaco or the native terminal input
+  // surface. Those focus targets often live on inner elements, so walking up a
+  // few levels keeps app chrome shortcuts from stealing text input.
   let el: HTMLElement | null = target;
   for (let depth = 0; depth < 4 && el; depth += 1) {
-    if (el.classList.contains("monaco-editor") || el.classList.contains("xterm-screen")) return true;
+    const tag = el.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+    if (el.isContentEditable) return true;
+    if (el.classList.contains("monaco-editor")) return true;
+    if (el.getAttribute("role") === "textbox" || el.getAttribute("role") === "searchbox") return true;
+    if (el.getAttribute("data-native-input-surface") === "true") return true;
     el = el.parentElement;
   }
   return false;

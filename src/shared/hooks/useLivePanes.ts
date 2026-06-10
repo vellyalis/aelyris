@@ -1,5 +1,7 @@
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 
+import { formatFallbackError, reportInvokeFailure } from "../lib/fallbackTelemetry";
 import { isTauriRuntime } from "../lib/tauriRuntime";
 import type { PaneEntry } from "../types/pane";
 import type { Invoke } from "./useLogStream";
@@ -19,7 +21,7 @@ interface LivePanesState {
 }
 
 const defaultInvoke: Invoke = async (cmd, args) => {
-  const { invoke } = await import("@tauri-apps/api/core");
+  const { invoke } = await Promise.resolve({ invoke: tauriInvoke });
   return invoke(cmd, args) as Promise<never>;
 };
 
@@ -51,9 +53,19 @@ export function useLivePanes({
 
     const load = async () => {
       try {
+        let terminalTruthError: string | null = null;
         const [payload, activePayload] = await Promise.all([
           invoke<unknown>("list_panes_info"),
-          invoke<unknown>("list_terminals").catch(() => []),
+          invoke<unknown>("list_terminals").catch((err) => {
+            terminalTruthError = formatFallbackError(err);
+            reportInvokeFailure({
+              source: "live-panes",
+              operation: "list_terminals",
+              err,
+              userVisible: true,
+            });
+            return [];
+          }),
         ]);
         if (!cancelled) {
           const activeTerminalIds = parseTerminalIds(activePayload);
@@ -61,7 +73,7 @@ export function useLivePanes({
           setState({
             panes: normalizePanes(panes),
             activeTerminalIds,
-            error: null,
+            error: terminalTruthError ? `Live terminal truth unavailable: ${terminalTruthError}` : null,
             ready: true,
             backendAvailable: true,
           });

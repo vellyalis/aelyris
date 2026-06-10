@@ -1,3 +1,4 @@
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { type Invoke, useImageMetrics } from "../../shared/hooks/useImageMetrics";
@@ -14,7 +15,7 @@ import {
 const DEFAULT_POLL_INTERVAL_MS = 1_000;
 
 const defaultInvoke: Invoke = async (cmd, args) => {
-  const { invoke } = await import("@tauri-apps/api/core");
+  const { invoke } = await Promise.resolve({ invoke: tauriInvoke });
   return invoke(cmd, args) as Promise<never>;
 };
 

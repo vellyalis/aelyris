@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FileChangeTracker, parseFileChange } from "../shared/lib/agentFileChanges";
+import { FileChangeTracker, parseFileChange, parseFileChangeEvent } from "../shared/lib/agentFileChanges";
 
 describe("parseFileChange", () => {
   it("detects Write tool use in Claude format", () => {
@@ -64,10 +64,22 @@ describe("parseFileChange", () => {
 
   it("returns null for plain text", () => {
     expect(parseFileChange("just some text")).toBeNull();
+    expect(parseFileChangeEvent("just some text")).toEqual({ kind: "none" });
   });
 
   it("returns null for empty line", () => {
     expect(parseFileChange("")).toBeNull();
+    expect(parseFileChangeEvent("")).toEqual({ kind: "none" });
+  });
+
+  it("surfaces malformed structured agent output as auditable parser_error", () => {
+    const event = parseFileChangeEvent('{"type":"tool_use","name":"Write","input":');
+
+    expect(event.kind).toBe("parser_error");
+    if (event.kind !== "parser_error") return;
+    expect(event.error.visibilityPolicy).toBe("malformed-agent-structured-output-is-auditable");
+    expect(event.error.linePreview).toContain('"tool_use"');
+    expect(event.error.error.length).toBeGreaterThan(0);
   });
 });
 
@@ -132,5 +144,17 @@ describe("FileChangeTracker", () => {
     const tracker = new FileChangeTracker();
     const result = tracker.addLine("plain text");
     expect(result).toBeNull();
+  });
+
+  it("keeps parser errors separate from normal text so provenance degradation is visible", () => {
+    const tracker = new FileChangeTracker();
+    expect(tracker.addLine("plain text")).toBeNull();
+    expect(tracker.addLine('{"type":"tool_use","name":"Edit","input":')).toBeNull();
+
+    expect(tracker.changeCount).toBe(0);
+    expect(tracker.parserErrorCount).toBe(1);
+    expect(tracker.getParserErrors()[0]).toMatchObject({
+      visibilityPolicy: "malformed-agent-structured-output-is-auditable",
+    });
   });
 });

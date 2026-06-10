@@ -3,11 +3,9 @@ import { describe, expect, it } from "vitest";
 /**
  * Regression guards for WorkflowPanel.tsx silent bugs.
  *
- * Bug 1 (HIGH): the listen() registration was inside a dynamic
- * `import("@tauri-apps/api/event").then(...)` chain. Both the import and
- * the listen() promise resolved asynchronously, so unmount cleanup could
- * fire before `unlisten = u` was assigned — leaking a Tauri event listener
- * for a component that no longer exists.
+ * Bug 1 (HIGH): the listen() registration resolves asynchronously, so
+ * unmount cleanup can fire before `unlisten = u` is assigned — leaking a
+ * Tauri event listener for a component that no longer exists.
  *
  * Bug 2 (HIGH): handleExportYaml called `setBuilderOpen(false)` no matter
  * what — even when the disk write threw. The user lost the YAML they had
@@ -33,13 +31,13 @@ describe("WorkflowPanel listener race", () => {
   it("listen() promise checks the active flag both before listen and after subscribe", () => {
     const src = getSrc();
 
-    // Find the dynamic import block. The fix re-checks `active` in two
-    // places: just inside the import .then() (before subscribing) and
-    // just inside the listen .then() (before assigning the unlisten ref).
+    // Find the async listen subscription block. The fix re-checks `active`
+    // in two places: before subscribing and before assigning the unlisten ref.
     expect(src).toContain("isTauriRuntime()");
-    const importBlock = src.match(/import\(\s*"@tauri-apps\/api\/event"\s*\)([\s\S]*?)\.catch\(/);
-    expect(importBlock).not.toBeNull();
-    const body = importBlock?.[1] ?? "";
+    expect(src).toContain('import { listen as tauriListen } from "@tauri-apps/api/event"');
+    const listenBlock = src.match(/Promise\.resolve\(\{\s*listen:\s*tauriListen\s*\}\)([\s\S]*?)\.catch\(/);
+    expect(listenBlock).not.toBeNull();
+    const body = listenBlock?.[1] ?? "";
 
     // Two separate `if (!active)` guards — one before listen subscribes,
     // one inside the resolution that assigns unlisten.

@@ -40,7 +40,8 @@
 }
 
 .root:disabled {
-  opacity: var(--state-disabled-opacity);
+  background: color-mix(in srgb, var(--white-10) 58%, transparent);
+  border-color: color-mix(in srgb, var(--white-15) 62%, transparent);
   cursor: not-allowed;
 }
 
@@ -54,6 +55,11 @@
   transition: transform var(--duration-fast) var(--ease-out, cubic-bezier(0.4, 0, 0.2, 1));
   transform: translate(1px, 1px);
   will-change: transform;
+}
+
+.root:disabled .thumb {
+  background: var(--text-muted);
+  box-shadow: none;
 }
 
 .root[data-state="checked"] .thumb {

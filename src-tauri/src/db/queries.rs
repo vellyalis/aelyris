@@ -172,6 +172,64 @@ pub struct AuditJournalCompactResult {
     pub snapshot: AuditJournalSnapshotRecord,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceItemRecord {
+    pub id: String,
+    pub workspace_id: String,
+    pub item_type: String,
+    pub title: String,
+    pub body: String,
+    pub status: String,
+    pub owner: Option<String>,
+    pub source: String,
+    pub metadata_json: serde_json::Value,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModePreservationSnapshotRecord {
+    pub id: String,
+    pub workspace_id: String,
+    pub active_mode: String,
+    pub snapshot_json: serde_json::Value,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentIdentityRecord {
+    pub session_id: String,
+    pub workspace_id: String,
+    pub provider: String,
+    pub purpose: String,
+    pub worktree_path: Option<String>,
+    pub context_usage_json: serde_json::Value,
+    pub auth_state: String,
+    pub install_state: String,
+    pub binary_source: String,
+    pub profile_source: String,
+    pub usage_limits_json: serde_json::Value,
+    pub guardrail_profile: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistorySearchEntryRecord {
+    pub id: String,
+    pub workspace_id: String,
+    pub entry_type: String,
+    pub entity_id: String,
+    pub title: String,
+    pub body: String,
+    pub provenance_id: String,
+    pub created_at: String,
+}
+
 const MAX_PANE_LAYOUT_KEY_BYTES: usize = 256;
 const MAX_PANE_LAYOUT_JSON_BYTES: usize = 256 * 1024;
 const MAX_AGENT_TELEMETRY_JSON_BYTES: usize = 512 * 1024;
@@ -179,6 +237,7 @@ const MAX_TERMINAL_OUTPUT_JOURNAL_TEXT_BYTES: usize = 256 * 1024;
 const MAX_TERMINAL_OUTPUT_JOURNAL_ROWS_PER_TERMINAL: usize = 2_000;
 const MAX_AUDIT_JOURNAL_PAYLOAD_BYTES: usize = 256 * 1024;
 const MAX_AUDIT_JOURNAL_ID_BYTES: usize = 256;
+const MAX_UPPER_COMPAT_TEXT_BYTES: usize = 128 * 1024;
 
 impl Database {
     /// Open (or create) the database at the given path and run migrations
@@ -680,14 +739,14 @@ impl Database {
     // --- Command History ---
 
     /// Save a command to history
-    pub fn save_command(&self, terminal_id: &str, command: &str, cwd: &str) -> Result<(), String> {
+    pub fn save_command(&self, terminal_id: &str, command: &str, cwd: &str) -> Result<i64, String> {
         self.conn
             .execute(
                 "INSERT INTO command_history (terminal_id, command, cwd) VALUES (?1, ?2, ?3)",
                 params![terminal_id, command, cwd],
             )
             .map_err(|e| format!("Save command: {}", e))?;
-        Ok(())
+        Ok(self.conn.last_insert_rowid())
     }
 
     /// Return the id of the most recent command_history row that matches the
@@ -711,6 +770,136 @@ impl Database {
                 rusqlite::Error::QueryReturnedNoRows => Ok(None),
                 _ => Err(format!("last_command_id_for: {e}")),
             })
+    }
+
+    /// Attach the latest OSC 133 command-end exit code to the newest
+    /// still-open command history row for this terminal.
+    pub fn update_latest_command_exit_code(
+        &self,
+        terminal_id: &str,
+        exit_code: i32,
+    ) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE command_history
+                 SET exit_code = ?2
+                 WHERE id = (
+                   SELECT id FROM command_history
+                   WHERE terminal_id = ?1 AND exit_code IS NULL
+                   ORDER BY id DESC LIMIT 1
+                 )",
+                params![terminal_id, exit_code],
+            )
+            .map_err(|e| format!("Update command exit code: {}", e))?;
+        Ok(changed > 0)
+    }
+
+    /// Persist the native command-block evidence record that links command
+    /// history to OSC 133 prompt marks and scrollback anchors. This is
+    /// intentionally idempotent: prompt marks arrive incrementally, so the
+    /// same block is upserted as it moves from running -> passed/failed.
+    pub fn save_command_block(
+        &self,
+        block: &crate::term::CommandBlockRecord,
+    ) -> Result<(), String> {
+        self.conn
+            .execute(
+                "INSERT INTO terminal_command_blocks (
+                   id, terminal_id, command_history_id, command, cwd, status, exit_code,
+                   command_sequence, output_sequence, end_sequence,
+                   command_history_size, output_history_size, end_history_size,
+                   command_screen_line, output_screen_line, end_screen_line, updated_at
+                 ) VALUES (
+                   ?1, ?2, ?3, ?4, ?5, ?6, ?7,
+                   ?8, ?9, ?10,
+                   ?11, ?12, ?13,
+                   ?14, ?15, ?16, datetime('now')
+                 )
+                 ON CONFLICT(terminal_id, command_history_id) DO UPDATE SET
+                   id = excluded.id,
+                   command = excluded.command,
+                   cwd = excluded.cwd,
+                   status = excluded.status,
+                   exit_code = excluded.exit_code,
+                   command_sequence = excluded.command_sequence,
+                   output_sequence = excluded.output_sequence,
+                   end_sequence = excluded.end_sequence,
+                   command_history_size = excluded.command_history_size,
+                   output_history_size = excluded.output_history_size,
+                   end_history_size = excluded.end_history_size,
+                   command_screen_line = excluded.command_screen_line,
+                   output_screen_line = excluded.output_screen_line,
+                   end_screen_line = excluded.end_screen_line,
+                   updated_at = datetime('now')",
+                params![
+                    block.id,
+                    block.terminal_id,
+                    block.command_history_id,
+                    block.command,
+                    block.cwd,
+                    block.status,
+                    block.exit_code,
+                    opt_u64_to_i64(block.command_sequence)?,
+                    opt_u64_to_i64(block.output_sequence)?,
+                    opt_u64_to_i64(block.end_sequence)?,
+                    block.command_history_size.map(i64::from),
+                    block.output_history_size.map(i64::from),
+                    block.end_history_size.map(i64::from),
+                    block.command_screen_line.map(i64::from),
+                    block.output_screen_line.map(i64::from),
+                    block.end_screen_line.map(i64::from),
+                ],
+            )
+            .map_err(|e| format!("Save command block: {}", e))?;
+        Ok(())
+    }
+
+    /// Return the most recent durable command-block evidence for a terminal.
+    /// Used as the recovery path after a Tauri/WebView process reconnects to
+    /// the long-lived PTY sidecar.
+    pub fn recent_command_blocks(
+        &self,
+        terminal_id: &str,
+        limit: usize,
+    ) -> Result<Vec<crate::term::CommandBlockRecord>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, terminal_id, command_history_id, command, cwd, status, exit_code,
+                        command_sequence, output_sequence, end_sequence,
+                        command_history_size, output_history_size, end_history_size,
+                        command_screen_line, output_screen_line, end_screen_line
+                 FROM terminal_command_blocks
+                 WHERE terminal_id = ?1
+                 ORDER BY command_history_id DESC
+                 LIMIT ?2",
+            )
+            .map_err(|e| format!("Prepare recent command blocks: {}", e))?;
+        let rows = stmt
+            .query_map(params![terminal_id, limit as i64], |row| {
+                Ok(crate::term::CommandBlockRecord {
+                    id: row.get(0)?,
+                    terminal_id: row.get(1)?,
+                    command_history_id: row.get(2)?,
+                    command: row.get(3)?,
+                    cwd: row.get(4)?,
+                    status: row.get(5)?,
+                    exit_code: row.get(6)?,
+                    command_sequence: opt_i64_to_u64(row.get(7)?),
+                    output_sequence: opt_i64_to_u64(row.get(8)?),
+                    end_sequence: opt_i64_to_u64(row.get(9)?),
+                    command_history_size: opt_i64_to_u32(row.get(10)?),
+                    output_history_size: opt_i64_to_u32(row.get(11)?),
+                    end_history_size: opt_i64_to_u32(row.get(12)?),
+                    command_screen_line: opt_i64_to_u16(row.get(13)?),
+                    output_screen_line: opt_i64_to_u16(row.get(14)?),
+                    end_screen_line: opt_i64_to_u16(row.get(15)?),
+                })
+            })
+            .map_err(|e| format!("Query recent command blocks: {}", e))?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Collect recent command blocks: {}", e))
     }
 
     /// Search command history by substring match
@@ -1328,6 +1517,272 @@ impl Database {
             )
             .map_err(|e| format!("Read audit snapshot: {}", e))
     }
+
+    pub fn upsert_workspace_item(
+        &self,
+        item: &WorkspaceItemRecord,
+    ) -> Result<WorkspaceItemRecord, String> {
+        validate_audit_journal_id("workspace_id", &item.workspace_id)?;
+        validate_audit_atom("item_type", &item.item_type)?;
+        validate_audit_atom("status", &item.status)?;
+        validate_upper_compat_text("title", &item.title, false)?;
+        validate_upper_compat_text("body", &item.body, true)?;
+        let metadata = canonical_json(&item.metadata_json)?;
+        self.conn
+            .execute(
+                "INSERT INTO workspace_items
+                    (id, workspace_id, item_type, title, body, status, owner, source, metadata_json)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                 ON CONFLICT(id) DO UPDATE SET
+                    workspace_id = excluded.workspace_id,
+                    item_type = excluded.item_type,
+                    title = excluded.title,
+                    body = excluded.body,
+                    status = excluded.status,
+                    owner = excluded.owner,
+                    source = excluded.source,
+                    metadata_json = excluded.metadata_json,
+                    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+                params![
+                    item.id,
+                    item.workspace_id,
+                    item.item_type,
+                    item.title,
+                    item.body,
+                    item.status,
+                    item.owner.as_deref(),
+                    item.source,
+                    metadata
+                ],
+            )
+            .map_err(|e| format!("Upsert workspace item: {}", e))?;
+        self.get_workspace_item(&item.id)
+    }
+
+    pub fn get_workspace_item(&self, id: &str) -> Result<WorkspaceItemRecord, String> {
+        self.conn
+            .query_row(
+                "SELECT id, workspace_id, item_type, title, body, status, owner, source,
+                        metadata_json, created_at, updated_at
+                 FROM workspace_items
+                 WHERE id = ?1",
+                params![id],
+                workspace_item_row,
+            )
+            .map_err(|e| format!("Get workspace item: {}", e))
+    }
+
+    pub fn list_workspace_items(
+        &self,
+        workspace_id: &str,
+        limit: usize,
+    ) -> Result<Vec<WorkspaceItemRecord>, String> {
+        validate_audit_journal_id("workspace_id", workspace_id)?;
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, workspace_id, item_type, title, body, status, owner, source,
+                        metadata_json, created_at, updated_at
+                 FROM workspace_items
+                 WHERE workspace_id = ?1
+                 ORDER BY updated_at DESC, id DESC
+                 LIMIT ?2",
+            )
+            .map_err(|e| format!("Prepare workspace items: {}", e))?;
+        let rows = stmt
+            .query_map(
+                params![workspace_id, clamp_limit(limit, 200) as i64],
+                workspace_item_row,
+            )
+            .map_err(|e| format!("Query workspace items: {}", e))?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Collect workspace items: {}", e))
+    }
+
+    pub fn save_mode_preservation_snapshot(
+        &self,
+        snapshot: &ModePreservationSnapshotRecord,
+    ) -> Result<ModePreservationSnapshotRecord, String> {
+        validate_audit_journal_id("workspace_id", &snapshot.workspace_id)?;
+        validate_audit_atom("active_mode", &snapshot.active_mode)?;
+        validate_upper_compat_json("snapshot_json", &snapshot.snapshot_json)?;
+        let snapshot_json = canonical_json(&snapshot.snapshot_json)?;
+        self.conn
+            .execute(
+                "INSERT INTO mode_preservation_snapshots
+                    (id, workspace_id, active_mode, snapshot_json)
+                 VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(id) DO UPDATE SET
+                    workspace_id = excluded.workspace_id,
+                    active_mode = excluded.active_mode,
+                    snapshot_json = excluded.snapshot_json,
+                    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+                params![
+                    snapshot.id,
+                    snapshot.workspace_id,
+                    snapshot.active_mode,
+                    snapshot_json
+                ],
+            )
+            .map_err(|e| format!("Save mode preservation snapshot: {}", e))?;
+        self.get_mode_preservation_snapshot(&snapshot.id)
+    }
+
+    pub fn get_mode_preservation_snapshot(
+        &self,
+        id: &str,
+    ) -> Result<ModePreservationSnapshotRecord, String> {
+        self.conn
+            .query_row(
+                "SELECT id, workspace_id, active_mode, snapshot_json, created_at, updated_at
+                 FROM mode_preservation_snapshots
+                 WHERE id = ?1",
+                params![id],
+                mode_preservation_snapshot_row,
+            )
+            .map_err(|e| format!("Get mode preservation snapshot: {}", e))
+    }
+
+    pub fn upsert_agent_identity(
+        &self,
+        record: &AgentIdentityRecord,
+    ) -> Result<AgentIdentityRecord, String> {
+        validate_audit_journal_id("workspace_id", &record.workspace_id)?;
+        validate_audit_atom("provider", &record.provider)?;
+        validate_audit_atom("auth_state", &record.auth_state)?;
+        validate_audit_atom("install_state", &record.install_state)?;
+        validate_audit_atom("guardrail_profile", &record.guardrail_profile)?;
+        validate_upper_compat_json("context_usage_json", &record.context_usage_json)?;
+        validate_upper_compat_json("usage_limits_json", &record.usage_limits_json)?;
+        let context_usage_json = canonical_json(&record.context_usage_json)?;
+        let usage_limits_json = canonical_json(&record.usage_limits_json)?;
+        self.conn
+            .execute(
+                "INSERT INTO agent_identity_records
+                    (session_id, workspace_id, provider, purpose, worktree_path,
+                     context_usage_json, auth_state, install_state, binary_source,
+                     profile_source, usage_limits_json, guardrail_profile)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+                 ON CONFLICT(session_id) DO UPDATE SET
+                    workspace_id = excluded.workspace_id,
+                    provider = excluded.provider,
+                    purpose = excluded.purpose,
+                    worktree_path = excluded.worktree_path,
+                    context_usage_json = excluded.context_usage_json,
+                    auth_state = excluded.auth_state,
+                    install_state = excluded.install_state,
+                    binary_source = excluded.binary_source,
+                    profile_source = excluded.profile_source,
+                    usage_limits_json = excluded.usage_limits_json,
+                    guardrail_profile = excluded.guardrail_profile,
+                    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+                params![
+                    record.session_id,
+                    record.workspace_id,
+                    record.provider,
+                    record.purpose,
+                    record.worktree_path.as_deref(),
+                    context_usage_json,
+                    record.auth_state,
+                    record.install_state,
+                    record.binary_source,
+                    record.profile_source,
+                    usage_limits_json,
+                    record.guardrail_profile
+                ],
+            )
+            .map_err(|e| format!("Upsert agent identity: {}", e))?;
+        self.get_agent_identity(&record.session_id)
+    }
+
+    pub fn get_agent_identity(&self, session_id: &str) -> Result<AgentIdentityRecord, String> {
+        self.conn
+            .query_row(
+                "SELECT session_id, workspace_id, provider, purpose, worktree_path,
+                        context_usage_json, auth_state, install_state, binary_source,
+                        profile_source, usage_limits_json, guardrail_profile, updated_at
+                 FROM agent_identity_records
+                 WHERE session_id = ?1",
+                params![session_id],
+                agent_identity_row,
+            )
+            .map_err(|e| format!("Get agent identity: {}", e))
+    }
+
+    pub fn upsert_history_search_entry(
+        &self,
+        entry: &HistorySearchEntryRecord,
+    ) -> Result<HistorySearchEntryRecord, String> {
+        validate_audit_journal_id("workspace_id", &entry.workspace_id)?;
+        validate_audit_atom("entry_type", &entry.entry_type)?;
+        validate_upper_compat_text("title", &entry.title, false)?;
+        validate_upper_compat_text("body", &entry.body, true)?;
+        self.conn
+            .execute(
+                "INSERT INTO history_search_entries
+                    (id, workspace_id, entry_type, entity_id, title, body, provenance_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                 ON CONFLICT(id) DO UPDATE SET
+                    workspace_id = excluded.workspace_id,
+                    entry_type = excluded.entry_type,
+                    entity_id = excluded.entity_id,
+                    title = excluded.title,
+                    body = excluded.body,
+                    provenance_id = excluded.provenance_id",
+                params![
+                    entry.id,
+                    entry.workspace_id,
+                    entry.entry_type,
+                    entry.entity_id,
+                    entry.title,
+                    entry.body,
+                    entry.provenance_id
+                ],
+            )
+            .map_err(|e| format!("Upsert history search entry: {}", e))?;
+        self.get_history_search_entry(&entry.id)
+    }
+
+    pub fn get_history_search_entry(&self, id: &str) -> Result<HistorySearchEntryRecord, String> {
+        self.conn
+            .query_row(
+                "SELECT id, workspace_id, entry_type, entity_id, title, body, provenance_id, created_at
+                 FROM history_search_entries
+                 WHERE id = ?1",
+                params![id],
+                history_search_entry_row,
+            )
+            .map_err(|e| format!("Get history search entry: {}", e))
+    }
+
+    pub fn search_workspace_history(
+        &self,
+        workspace_id: &str,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<HistorySearchEntryRecord>, String> {
+        validate_audit_journal_id("workspace_id", workspace_id)?;
+        let pattern = format!("%{}%", query.replace('%', "\\%").replace('_', "\\_"));
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, workspace_id, entry_type, entity_id, title, body, provenance_id, created_at
+                 FROM history_search_entries
+                 WHERE workspace_id = ?1
+                   AND (title LIKE ?2 ESCAPE '\\' OR body LIKE ?2 ESCAPE '\\')
+                 ORDER BY created_at DESC, id DESC
+                 LIMIT ?3",
+            )
+            .map_err(|e| format!("Prepare history search: {}", e))?;
+        let rows = stmt
+            .query_map(
+                params![workspace_id, pattern, clamp_limit(limit, 200) as i64],
+                history_search_entry_row,
+            )
+            .map_err(|e| format!("Query history search: {}", e))?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Collect history search: {}", e))
+    }
 }
 
 fn audit_journal_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AuditJournalEventRecord> {
@@ -1368,6 +1823,74 @@ fn audit_snapshot_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AuditJournalS
         snapshot_json,
         created_at: row.get(5)?,
     })
+}
+
+fn workspace_item_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<WorkspaceItemRecord> {
+    let metadata_text: String = row.get(8)?;
+    Ok(WorkspaceItemRecord {
+        id: row.get(0)?,
+        workspace_id: row.get(1)?,
+        item_type: row.get(2)?,
+        title: row.get(3)?,
+        body: row.get(4)?,
+        status: row.get(5)?,
+        owner: row.get(6)?,
+        source: row.get(7)?,
+        metadata_json: parse_json_or_object(&metadata_text),
+        created_at: row.get(9)?,
+        updated_at: row.get(10)?,
+    })
+}
+
+fn mode_preservation_snapshot_row(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<ModePreservationSnapshotRecord> {
+    let snapshot_text: String = row.get(3)?;
+    Ok(ModePreservationSnapshotRecord {
+        id: row.get(0)?,
+        workspace_id: row.get(1)?,
+        active_mode: row.get(2)?,
+        snapshot_json: parse_json_or_object(&snapshot_text),
+        created_at: row.get(4)?,
+        updated_at: row.get(5)?,
+    })
+}
+
+fn agent_identity_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AgentIdentityRecord> {
+    let context_usage_text: String = row.get(5)?;
+    let usage_limits_text: String = row.get(10)?;
+    Ok(AgentIdentityRecord {
+        session_id: row.get(0)?,
+        workspace_id: row.get(1)?,
+        provider: row.get(2)?,
+        purpose: row.get(3)?,
+        worktree_path: row.get(4)?,
+        context_usage_json: parse_json_or_object(&context_usage_text),
+        auth_state: row.get(6)?,
+        install_state: row.get(7)?,
+        binary_source: row.get(8)?,
+        profile_source: row.get(9)?,
+        usage_limits_json: parse_json_or_object(&usage_limits_text),
+        guardrail_profile: row.get(11)?,
+        updated_at: row.get(12)?,
+    })
+}
+
+fn history_search_entry_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<HistorySearchEntryRecord> {
+    Ok(HistorySearchEntryRecord {
+        id: row.get(0)?,
+        workspace_id: row.get(1)?,
+        entry_type: row.get(2)?,
+        entity_id: row.get(3)?,
+        title: row.get(4)?,
+        body: row.get(5)?,
+        provenance_id: row.get(6)?,
+        created_at: row.get(7)?,
+    })
+}
+
+fn parse_json_or_object(text: &str) -> serde_json::Value {
+    serde_json::from_str(text).unwrap_or_else(|_| serde_json::json!({ "parseError": true }))
 }
 
 fn empty_audit_journal_filter() -> AuditJournalFilter {
@@ -1654,6 +2177,47 @@ fn validate_pane_layout_key(storage_key: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn validate_upper_compat_text(field: &str, value: &str, allow_empty: bool) -> Result<(), String> {
+    if !allow_empty && value.trim().is_empty() {
+        return Err(format!("Upper compatibility {} is required", field));
+    }
+    if value
+        .chars()
+        .any(|c| c.is_control() && c != '\n' && c != '\r' && c != '\t')
+    {
+        return Err(format!(
+            "Upper compatibility {} contains unsupported control characters",
+            field
+        ));
+    }
+    if value.len() > MAX_UPPER_COMPAT_TEXT_BYTES {
+        return Err(format!("Upper compatibility {} is too large", field));
+    }
+    Ok(())
+}
+
+fn validate_upper_compat_json(field: &str, value: &serde_json::Value) -> Result<(), String> {
+    if !value.is_object() {
+        return Err(format!(
+            "Upper compatibility {} must be a JSON object",
+            field
+        ));
+    }
+    let text = canonical_json(value)?;
+    if text.len() > MAX_UPPER_COMPAT_TEXT_BYTES {
+        return Err(format!("Upper compatibility {} is too large", field));
+    }
+    Ok(())
+}
+
+fn clamp_limit(limit: usize, max: usize) -> usize {
+    if limit == 0 {
+        1
+    } else {
+        limit.min(max)
+    }
+}
+
 fn validate_audit_atom(field: &str, value: &str) -> Result<(), String> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
@@ -1767,6 +2331,27 @@ fn validate_pane_layout_json(layout_json: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn opt_u64_to_i64(value: Option<u64>) -> Result<Option<i64>, String> {
+    value
+        .map(|value| {
+            i64::try_from(value)
+                .map_err(|_| format!("command-block anchor {value} exceeds SQLite i64 range"))
+        })
+        .transpose()
+}
+
+fn opt_i64_to_u64(value: Option<i64>) -> Option<u64> {
+    value.and_then(|value| u64::try_from(value).ok())
+}
+
+fn opt_i64_to_u32(value: Option<i64>) -> Option<u32> {
+    value.and_then(|value| u32::try_from(value).ok())
+}
+
+fn opt_i64_to_u16(value: Option<i64>) -> Option<u16> {
+    value.and_then(|value| u16::try_from(value).ok())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1816,6 +2401,73 @@ mod tests {
     }
 
     #[test]
+    fn test_update_latest_command_exit_code() {
+        let db = Database::open_memory().unwrap();
+        db.save_command("t1", "first", "/a").unwrap();
+        db.save_command("t1", "second", "/a").unwrap();
+
+        assert!(db.update_latest_command_exit_code("t1", 7).unwrap());
+        let results = db.search_commands("", 10).unwrap();
+        let second = results
+            .iter()
+            .find(|record| record.command == "second")
+            .unwrap();
+        let first = results
+            .iter()
+            .find(|record| record.command == "first")
+            .unwrap();
+        assert_eq!(second.exit_code, Some(7));
+        assert_eq!(first.exit_code, None);
+
+        assert!(db.update_latest_command_exit_code("t1", 0).unwrap());
+        let results = db.search_commands("", 10).unwrap();
+        let first = results
+            .iter()
+            .find(|record| record.command == "first")
+            .unwrap();
+        assert_eq!(first.exit_code, Some(0));
+        assert!(!db.update_latest_command_exit_code("missing", 1).unwrap());
+    }
+
+    #[test]
+    fn test_command_block_evidence_persists_for_reconnect() {
+        let db = Database::open_memory().unwrap();
+        let command_id = db
+            .save_command("term-1", "echo stable", "/project")
+            .unwrap();
+        let mut block = crate::term::CommandBlockRecord {
+            id: format!("history-{command_id}"),
+            terminal_id: "term-1".to_string(),
+            command_history_id: command_id,
+            command: "echo stable".to_string(),
+            cwd: "/project".to_string(),
+            status: "running".to_string(),
+            exit_code: None,
+            command_sequence: Some(10),
+            output_sequence: Some(11),
+            end_sequence: None,
+            command_history_size: Some(2),
+            output_history_size: Some(3),
+            end_history_size: None,
+            command_screen_line: Some(4),
+            output_screen_line: Some(5),
+            end_screen_line: None,
+        };
+
+        db.save_command_block(&block).unwrap();
+        block.status = "passed".to_string();
+        block.exit_code = Some(0);
+        block.end_sequence = Some(12);
+        block.end_history_size = Some(6);
+        block.end_screen_line = Some(7);
+        db.save_command_block(&block).unwrap();
+
+        let recovered = db.recent_command_blocks("term-1", 10).unwrap();
+        assert_eq!(recovered, vec![block]);
+        assert!(db.recent_command_blocks("missing", 10).unwrap().is_empty());
+    }
+
+    #[test]
     fn test_audit_events_round_trip_metadata() {
         let db = Database::open_memory().unwrap();
         db.save_audit_event(
@@ -1843,6 +2495,99 @@ mod tests {
             events[0].metadata["correlationId"],
             "terminal:terminal:term-1"
         );
+    }
+
+    #[test]
+    fn test_upper_compat_gate_records_round_trip() {
+        let db = Database::open_memory().unwrap();
+        let workspace = "workspace-upper-compat";
+
+        let workspace_item = db
+            .upsert_workspace_item(&WorkspaceItemRecord {
+                id: "item-context-pack".to_string(),
+                workspace_id: workspace.to_string(),
+                item_type: "context-pack".to_string(),
+                title: "Ship-ready context pack".to_string(),
+                body: "Tasks, handoff notes, reviews, and command evidence stay queryable in Rust."
+                    .to_string(),
+                status: "ready".to_string(),
+                owner: Some("rust-core".to_string()),
+                source: "rust".to_string(),
+                metadata_json: serde_json::json!({
+                    "schema": "aether.workspace.data.v1",
+                    "modes": ["terminal", "review", "agents"]
+                }),
+                created_at: String::new(),
+                updated_at: String::new(),
+            })
+            .unwrap();
+        assert_eq!(
+            workspace_item.metadata_json["schema"],
+            "aether.workspace.data.v1"
+        );
+        assert_eq!(db.list_workspace_items(workspace, 10).unwrap().len(), 1);
+
+        let mode = db
+            .save_mode_preservation_snapshot(&ModePreservationSnapshotRecord {
+                id: "mode-snapshot-1".to_string(),
+                workspace_id: workspace.to_string(),
+                active_mode: "terminal".to_string(),
+                snapshot_json: serde_json::json!({
+                    "schema": "aether.mode-preservation.v1",
+                    "activePaneId": "pane-1",
+                    "selectedRail": "observe",
+                    "restoredModes": ["terminal", "agents", "review", "context"]
+                }),
+                created_at: String::new(),
+                updated_at: String::new(),
+            })
+            .unwrap();
+        assert_eq!(mode.snapshot_json["activePaneId"], "pane-1");
+
+        let identity = db
+            .upsert_agent_identity(&AgentIdentityRecord {
+                session_id: "agent-session-1".to_string(),
+                workspace_id: workspace.to_string(),
+                provider: "codex".to_string(),
+                purpose: "implementation".to_string(),
+                worktree_path: Some("C:/repo".to_string()),
+                context_usage_json: serde_json::json!({
+                    "schema": "aether.agent-identity.v1",
+                    "windowTokens": 128000,
+                    "usedTokens": 42000
+                }),
+                auth_state: "ready".to_string(),
+                install_state: "ready".to_string(),
+                binary_source: "path".to_string(),
+                profile_source: "workspace".to_string(),
+                usage_limits_json: serde_json::json!({ "dailyBudget": "known" }),
+                guardrail_profile: "manual".to_string(),
+                updated_at: String::new(),
+            })
+            .unwrap();
+        assert_eq!(identity.provider, "codex");
+        assert_eq!(
+            identity.context_usage_json["schema"],
+            "aether.agent-identity.v1"
+        );
+
+        db.upsert_history_search_entry(&HistorySearchEntryRecord {
+            id: "history-review-1".to_string(),
+            workspace_id: workspace.to_string(),
+            entry_type: "review".to_string(),
+            entity_id: "review-1".to_string(),
+            title: "IME and pane split review".to_string(),
+            body: "Japanese IME, paste, pane split, and recovery evidence are searchable."
+                .to_string(),
+            provenance_id: "audit-1".to_string(),
+            created_at: String::new(),
+        })
+        .unwrap();
+        let history = db
+            .search_workspace_history(workspace, "pane split", 10)
+            .unwrap();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].entry_type, "review");
     }
 
     #[test]

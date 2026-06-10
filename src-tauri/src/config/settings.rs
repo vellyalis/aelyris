@@ -337,6 +337,10 @@ pub struct AppearanceConfig {
     pub terminal_font_family: String,
     #[serde(default = "default_font_size")]
     pub font_size: u32,
+    #[serde(default = "default_terminal_text_clarity")]
+    pub terminal_text_clarity: String,
+    #[serde(default = "default_terminal_surface_opacity")]
+    pub terminal_surface_opacity: f32,
     #[serde(default = "default_line_height")]
     pub line_height: f32,
     #[serde(default = "default_true")]
@@ -374,6 +378,8 @@ impl Default for AppConfig {
                 ui_font_family: default_ui_font(),
                 terminal_font_family: default_terminal_font(),
                 font_size: default_font_size(),
+                terminal_text_clarity: default_terminal_text_clarity(),
+                terminal_surface_opacity: default_terminal_surface_opacity(),
                 line_height: default_line_height(),
                 ligatures: true,
                 window_effect: default_window_effect(),
@@ -396,6 +402,9 @@ impl Default for AppConfig {
 }
 
 fn config_path() -> std::path::PathBuf {
+    if let Ok(path) = std::env::var("AETHER_CONFIG_HOME") {
+        return std::path::PathBuf::from(path).join("config.toml");
+    }
     let home = std::env::var("USERPROFILE")
         .or_else(|_| std::env::var("HOME"))
         .unwrap_or_else(|_| ".".to_string());
@@ -439,6 +448,12 @@ fn default_terminal_font() -> String {
 }
 fn default_font_size() -> u32 {
     14
+}
+fn default_terminal_text_clarity() -> String {
+    "solid".to_string()
+}
+fn default_terminal_surface_opacity() -> f32 {
+    0.82
 }
 fn default_line_height() -> f32 {
     1.4
@@ -520,6 +535,7 @@ theme = "aether-dark"
 ui_font_family = "Inter"
 terminal_font_family = "Cascadia Code"
 font_size = 14
+terminal_text_clarity = "solid"
 line_height = 1.4
 ligatures = true
 window_effect = "mica"
@@ -534,6 +550,7 @@ cursor_blink = true
         let cfg: AppConfig = toml::from_str(legacy).expect("parse legacy config");
         assert!(!cfg.ghost_diff.live_mode);
         assert_eq!(cfg.appearance.mood_preset, "aether-sky");
+        assert_eq!(cfg.appearance.terminal_surface_opacity, 0.82);
     }
 
     #[test]
@@ -550,6 +567,8 @@ cursor_blink = true
     #[test]
     fn appearance_material_and_wallpaper_customization_round_trips() {
         let mut cfg = AppConfig::default();
+        cfg.appearance.terminal_text_clarity = "solid".to_string();
+        cfg.appearance.terminal_surface_opacity = 0.74;
         cfg.appearance.theme_overrides.insert(
             "sakura-hub".to_string(),
             BTreeMap::from([
@@ -603,6 +622,8 @@ cursor_blink = true
         assert_eq!(palette.get("red").map(String::as_str), Some("#f38ba8"));
         assert_eq!(material.panel_color.as_deref(), Some("#fff2f7"));
         assert_eq!(material.terminal_alpha, Some(0.58));
+        assert_eq!(back.appearance.terminal_text_clarity, "solid");
+        assert_eq!(back.appearance.terminal_surface_opacity, 0.74);
         assert_eq!(
             wallpaper.image_path.as_deref(),
             Some("C:\\Images\\sakura.jpg")

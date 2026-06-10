@@ -23,6 +23,8 @@ const TERMINAL_JOURNAL_FLUSH_INTERVAL: Duration = Duration::from_millis(500);
 const DB_WRITE_LATENCY_UNSET: u64 = u64::MAX;
 const ASCII_BEL: u8 = 0x07;
 const ASCII_ESC: u8 = 0x1b;
+const SIDECAR_RECONNECT_DEFAULT_COLS: u16 = 120;
+const SIDECAR_RECONNECT_DEFAULT_ROWS: u16 = 30;
 
 static LAST_TERMINAL_JOURNAL_DB_WRITE_LATENCY_MS: AtomicU64 =
     AtomicU64::new(DB_WRITE_LATENCY_UNSET);
@@ -70,6 +72,47 @@ fn contains_audible_bell(data: &[u8], in_osc: &mut bool) -> bool {
         index += 1;
     }
     audible
+}
+
+fn persist_prompt_mark_exit_code(
+    app: &AppHandle,
+    terminal_id: &str,
+    mark: &crate::term::PromptMark,
+) {
+    if let Some(journal) = app.try_state::<Arc<crate::term::CommandBlockJournal>>() {
+        if let Some(record) = journal.record_prompt_mark(terminal_id, *mark) {
+            persist_command_block(app, &record);
+        }
+    }
+    if mark.kind != crate::term::PromptMarkKind::CommandEnd {
+        return;
+    }
+    let Some(exit_code) = mark.exit_code else {
+        return;
+    };
+    let Some(db) = app.try_state::<crate::db::ManagedDb>() else {
+        return;
+    };
+    if let Err(err) = db.with(|d| {
+        d.update_latest_command_exit_code(terminal_id, exit_code)
+            .map(|_| ())
+    }) {
+        log::warn!("command history exit-code update failed terminal={terminal_id}: {err}");
+    }
+}
+
+fn persist_command_block(app: &AppHandle, record: &crate::term::CommandBlockRecord) {
+    let Some(db) = app.try_state::<crate::db::ManagedDb>() else {
+        return;
+    };
+    if let Err(err) = db.with(|d| d.save_command_block(record)) {
+        log::warn!(
+            "command block evidence persist failed terminal={} history_id={}: {}",
+            record.terminal_id,
+            record.command_history_id,
+            err
+        );
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1419,6 +1462,7 @@ fn wire_terminal_streaming(
                         let _ = app_handle.emit(&diff_event_name, diff);
                     }
                     for mark in advance_result.new_marks {
+                        persist_prompt_mark_exit_code(&app_handle, &terminal_id, &mark);
                         let _ = app_handle.emit(&prompt_mark_event_name, mark);
                     }
 
@@ -1647,6 +1691,7 @@ async fn wire_sidecar_terminal_streaming(
                             let _ = app_handle.emit(&diff_event_name, diff);
                         }
                         for mark in advance_result.new_marks {
+                            persist_prompt_mark_exit_code(&app_handle, &terminal_id, &mark);
                             let _ = app_handle.emit(&prompt_mark_event_name, mark);
                         }
 
@@ -1713,6 +1758,65 @@ async fn wire_sidecar_terminal_streaming(
     Ok(())
 }
 
+/// Reattach long-lived sidecar PTYs that survived a Tauri/WebView process
+/// restart. Without this bridge, `list_terminals` can see daemon sessions but
+/// the native renderer, prompt-mark parser, output buffer, and command
+/// evidence surfaces stay detached until a brand-new shell is spawned.
+pub(crate) async fn adopt_sidecar_terminals(
+    app: &AppHandle,
+    sidecar: crate::pty_sidecar::PtySidecarClient,
+) -> Result<usize, String> {
+    let infos = sidecar.list_info().await?;
+    let mut adopted = 0usize;
+    for info in infos {
+        let shell_name = format!("{:?}", info.shell_type).to_lowercase();
+        let cwd = if info.cwd.trim().is_empty() {
+            ".".to_string()
+        } else {
+            info.cwd.clone()
+        };
+        app.state::<crate::pty::PaneRegistry>()
+            .ensure_registered(&info.id, &shell_name, &cwd);
+        sync_mux_terminal_spawn(
+            app,
+            &info.id,
+            &shell_name,
+            &cwd,
+            SIDECAR_RECONNECT_DEFAULT_COLS,
+            SIDECAR_RECONNECT_DEFAULT_ROWS,
+        );
+        wire_sidecar_terminal_streaming(
+            app,
+            sidecar.clone(),
+            &info.id,
+            SIDECAR_RECONNECT_DEFAULT_COLS,
+            SIDECAR_RECONNECT_DEFAULT_ROWS,
+            Some(&cwd),
+            &shell_name,
+        )
+        .await?;
+        adopted = adopted.saturating_add(1);
+    }
+    if adopted > 0 {
+        record_audit_event(
+            app,
+            "terminal",
+            "sidecar_adopt",
+            "info",
+            Some("terminal"),
+            None,
+            "Sidecar terminals adopted after reconnect",
+            serde_json::json!({
+                "count": adopted,
+                "cols": SIDECAR_RECONNECT_DEFAULT_COLS,
+                "rows": SIDECAR_RECONNECT_DEFAULT_ROWS,
+                "backend": "sidecar",
+            }),
+        );
+    }
+    Ok(adopted)
+}
+
 /// Write input to a terminal. On Enter (`\r` in the input payload) we also
 /// capture a `TerminalSnapshot` into the session-scoped ring buffer — this is
 /// the time-travel capture point (Phase 3C-3a). The snapshot reflects the
@@ -1721,6 +1825,7 @@ async fn wire_sidecar_terminal_streaming(
 #[tauri::command]
 pub async fn write_terminal(app: AppHandle, id: String, data: String) -> Result<(), String> {
     validate_keys_payload(&data)?;
+    save_submitted_command_history(&app, &id, &data);
     let bytes = data.into_bytes();
     let metadata = serde_json::json!({
         "bytes": bytes.len(),
@@ -1777,6 +1882,13 @@ pub fn native_terminal_input_status(
     host.status()
 }
 
+#[tauri::command]
+pub fn native_terminal_input_preedit(
+    host: State<'_, Arc<crate::term::NativeTerminalInputHost>>,
+) -> crate::term::NativeTerminalPreedit {
+    host.preedit()
+}
+
 fn native_input_coord(value: f64) -> i32 {
     if !value.is_finite() {
         return 0;
@@ -1792,6 +1904,7 @@ pub async fn native_terminal_input_focus(
     y: f64,
     width: f64,
     height: f64,
+    caret_inset: Option<f64>,
 ) -> Result<crate::term::NativeTerminalInputStatus, String> {
     let host = app
         .state::<Arc<crate::term::NativeTerminalInputHost>>()
@@ -1804,6 +1917,7 @@ pub async fn native_terminal_input_focus(
         y: native_input_coord(y),
         width: native_input_coord(width).max(1),
         height: native_input_coord(height).max(1),
+        caret_inset: native_input_coord(caret_inset.unwrap_or(0.0)),
     };
     app.run_on_main_thread(move || {
         let result = (|| {
@@ -1840,10 +1954,37 @@ pub async fn native_terminal_input_drain(
     let Some((terminal_id, text)) = drained else {
         return Ok(host.status());
     };
-    let bytes = text.into_bytes();
-    terminal_write_async(&app, &terminal_id, &bytes).await?;
-    capture_if_enter(&app, &terminal_id, &bytes);
-    Ok(host.record_commit(terminal_id, "native-edit-surface", bytes.len()))
+    commit_native_terminal_input(
+        &app,
+        host,
+        terminal_id,
+        text,
+        "native-input-surface".to_string(),
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn native_terminal_input_paste(
+    app: AppHandle,
+    terminal_id: String,
+) -> Result<crate::term::NativeTerminalInputStatus, String> {
+    let host = app
+        .state::<Arc<crate::term::NativeTerminalInputHost>>()
+        .inner()
+        .clone();
+    let staged = host.stage_native_clipboard_paste(terminal_id)?;
+    let Some((terminal_id, text)) = staged else {
+        return Ok(host.status());
+    };
+    commit_native_terminal_input(
+        &app,
+        host,
+        terminal_id,
+        text,
+        "native-clipboard-paste".to_string(),
+    )
+    .await
 }
 
 /// Rust-owned terminal input commit path. The WebView can still own temporary
@@ -1857,7 +1998,6 @@ pub async fn native_terminal_input_commit(
     data: String,
     source: Option<String>,
 ) -> Result<crate::term::NativeTerminalInputStatus, String> {
-    validate_keys_payload(&data)?;
     let host = app
         .state::<Arc<crate::term::NativeTerminalInputHost>>()
         .inner()
@@ -1866,17 +2006,50 @@ pub async fn native_terminal_input_commit(
         return Ok(host.activate_terminal(terminal_id));
     }
 
+    let source = sanitize_native_input_source(source);
+    commit_native_terminal_input(&app, host, terminal_id, data, source).await
+}
+
+fn sanitize_native_input_source(source: Option<String>) -> String {
     let source = source.unwrap_or_else(|| "terminal-input".to_string());
     let source = source
         .chars()
         .filter(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | ':'))
         .take(48)
         .collect::<String>();
-    let source = if source.is_empty() {
+    if source.is_empty() {
         "terminal-input".to_string()
     } else {
         source
-    };
+    }
+}
+
+async fn commit_native_terminal_input(
+    app: &AppHandle,
+    host: Arc<crate::term::NativeTerminalInputHost>,
+    terminal_id: String,
+    data: String,
+    source: String,
+) -> Result<crate::term::NativeTerminalInputStatus, String> {
+    if let Err(err) = validate_keys_payload(&data) {
+        host.record_error(&terminal_id, sanitize_audit_error(&err));
+        record_audit_event(
+            app,
+            "terminal",
+            "native_input_rejected",
+            "warn",
+            Some("terminal"),
+            Some(&terminal_id),
+            "Native terminal input rejected",
+            serde_json::json!({
+                "source": source,
+                "error": sanitize_audit_error(&err),
+                "redacted": true,
+            }),
+        );
+        return Err(err);
+    }
+    save_submitted_command_history(app, &terminal_id, &data);
     let bytes = data.into_bytes();
     let metadata = serde_json::json!({
         "bytes": bytes.len(),
@@ -1885,11 +2058,11 @@ pub async fn native_terminal_input_commit(
         "redacted": true,
     });
 
-    match terminal_write_async(&app, &terminal_id, &bytes).await {
+    match terminal_write_async(app, &terminal_id, &bytes).await {
         Ok(()) => {
             if bytes.contains(&b'\r') || bytes.len() >= 128 {
                 record_audit_event(
-                    &app,
+                    app,
                     "terminal",
                     if bytes.contains(&b'\r') {
                         "native_input_submit"
@@ -1903,13 +2076,13 @@ pub async fn native_terminal_input_commit(
                     metadata,
                 );
             }
-            capture_if_enter(&app, &terminal_id, &bytes);
+            capture_if_enter(app, &terminal_id, &bytes);
             Ok(host.record_commit(terminal_id, source, bytes.len()))
         }
         Err(err) => {
             host.record_error(&terminal_id, sanitize_audit_error(&err));
             record_audit_event(
-                &app,
+                app,
                 "terminal",
                 "native_input_failed",
                 "warn",
@@ -2227,6 +2400,9 @@ pub fn mux_process_keymap_event(
 }
 
 #[tauri::command]
+// Parameter list mirrors the frontend IPC payload; bundling into a struct
+// would change the invoke contract for no behavioral gain.
+#[allow(clippy::too_many_arguments)]
 pub async fn mux_split_pane(
     app: AppHandle,
     workspace_id: String,
@@ -2951,6 +3127,41 @@ pub fn term_snapshot(app: AppHandle, id: String) -> Option<crate::term::GridSnap
 #[tauri::command]
 pub fn term_prompt_marks(app: AppHandle, id: String) -> Vec<crate::term::PromptMark> {
     app.state::<Arc<NativeTerminalRegistry>>().prompt_marks(&id)
+}
+
+/// Recent native command block journal records for a terminal.
+/// These link saved command history rows to OSC 133 prompt marks and
+/// scrollback anchors so review surfaces can jump to terminal evidence.
+#[tauri::command]
+pub fn term_command_blocks(
+    app: AppHandle,
+    id: String,
+    limit: usize,
+) -> Vec<crate::term::CommandBlockRecord> {
+    let live = app
+        .state::<Arc<crate::term::CommandBlockJournal>>()
+        .recent(&id, limit);
+    if !live.is_empty() {
+        return live;
+    }
+    app.try_state::<crate::db::ManagedDb>()
+        .and_then(|db| db.with(|d| d.recent_command_blocks(&id, limit)).ok())
+        .unwrap_or_default()
+}
+
+/// Durable command-block evidence for diagnostics and reconnect validation.
+/// Unlike `term_command_blocks`, this deliberately bypasses the live in-memory
+/// journal so smoke tests can prove the recovery copy exists before a process
+/// restart forces the fallback path.
+#[tauri::command]
+pub fn term_persisted_command_blocks(
+    app: AppHandle,
+    id: String,
+    limit: usize,
+) -> Vec<crate::term::CommandBlockRecord> {
+    app.try_state::<crate::db::ManagedDb>()
+        .and_then(|db| db.with(|d| d.recent_command_blocks(&id, limit)).ok())
+        .unwrap_or_default()
 }
 
 /// Number of scrollback rows currently retained above the visible screen.
@@ -4694,12 +4905,44 @@ fn validate_keys_payload(data: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn command_history_text_from_submitted_input(data: &str) -> Option<String> {
+    if !data.contains('\r') && !data.contains('\n') {
+        return None;
+    }
+    let normalized = data.replace("\r\n", "\n").replace('\r', "\n");
+    let command = normalized.trim_end_matches('\n');
+    if command.trim().is_empty() {
+        return None;
+    }
+    Some(command.to_string())
+}
+
+fn terminal_registry_cwd(app: &AppHandle, terminal_id: &str) -> String {
+    app.try_state::<crate::pty::PaneRegistry>()
+        .and_then(|registry| registry.get(terminal_id))
+        .map(|entry| entry.cwd)
+        .filter(|cwd| !cwd.trim().is_empty())
+        .map(|cwd| normalize_command_history_cwd(&cwd))
+        .unwrap_or_else(|| ".".to_string())
+}
+
+fn save_submitted_command_history(app: &AppHandle, terminal_id: &str, data: &str) {
+    let Some(command) = command_history_text_from_submitted_input(data) else {
+        return;
+    };
+    let cwd = terminal_registry_cwd(app, terminal_id);
+    if let Err(err) = save_command_history(app.clone(), terminal_id.to_string(), command, cwd) {
+        log::warn!("submitted command history save failed terminal={terminal_id}: {err}");
+    }
+}
+
 /// Send keystrokes to a specific terminal pane. Mirrors `write_terminal`'s
 /// snapshot hook so Orchestra agents that drive a pane through this IPC
 /// also appear on the time-travel timeline.
 #[tauri::command]
 pub async fn send_keys(app: AppHandle, terminal_id: String, data: String) -> Result<(), String> {
     validate_keys_payload(&data)?;
+    save_submitted_command_history(&app, &terminal_id, &data);
     let bytes = data.as_bytes();
     match terminal_write_async(&app, &terminal_id, bytes).await {
         Ok(()) => {
@@ -5597,32 +5840,51 @@ pub fn save_command_history(
     terminal_id: String,
     command: String,
     cwd: String,
-) -> Result<(), String> {
+) -> Result<i64, String> {
+    let cwd = normalize_command_history_cwd(&cwd);
+    if let Some(journal) = app.try_state::<Arc<crate::term::CommandBlockJournal>>() {
+        if let Some(existing_id) = journal.open_command_history_id(&terminal_id, &command, &cwd) {
+            return Ok(existing_id);
+        }
+    }
     let db = app.state::<crate::db::ManagedDb>();
-    db.with(|d| d.save_command(&terminal_id, &command, &cwd))?;
+    let command_id = db.with(|d| d.save_command(&terminal_id, &command, &cwd))?;
+    if let Some(journal) = app.try_state::<Arc<crate::term::CommandBlockJournal>>() {
+        if let Some(record) = journal.record_command(&terminal_id, command_id, &command, &cwd) {
+            persist_command_block(&app, &record);
+        }
+    }
     if let Some(engine) = app.try_state::<Arc<Mutex<crate::suggest::SuggestEngine>>>() {
         if let Ok(mut guard) = engine.inner().lock() {
             guard.record(&command);
         }
     }
-    // Semantic index. We need the new row id — re-read the latest row for
-    // this (terminal_id, command) pair. `save_command` does not return it.
+    // Semantic index. Keep this best-effort and off the PTY hot path.
     if let Some(store) = app.try_state::<crate::ManagedHistoryStore>() {
-        let last_id = db.with(|d| d.last_command_id_for(&terminal_id, &command))?;
-        if let Some(id) = last_id {
-            let store = store.inner().clone();
-            let cmd = command.clone();
-            std::thread::Builder::new()
-                .name("history-index".into())
-                .spawn(move || {
-                    if let Err(e) = store.index_command(id, &cmd) {
-                        log::warn!("history index failed (id {id}): {e}");
-                    }
-                })
-                .ok();
-        }
+        let store = store.inner().clone();
+        let cmd = command.clone();
+        std::thread::Builder::new()
+            .name("history-index".into())
+            .spawn(move || {
+                if let Err(e) = store.index_command(command_id, &cmd) {
+                    log::warn!("history index failed (id {command_id}): {e}");
+                }
+            })
+            .ok();
     }
-    Ok(())
+    Ok(command_id)
+}
+
+fn normalize_command_history_cwd(cwd: &str) -> String {
+    let normalized = cwd.trim().replace('\\', "/");
+    let normalized = normalized.trim_end_matches('/');
+    if normalized.is_empty() {
+        ".".to_string()
+    } else if normalized.len() == 2 && normalized.ends_with(':') {
+        format!("{normalized}/")
+    } else {
+        normalized.to_string()
+    }
 }
 
 /// Search command history
@@ -5829,7 +6091,7 @@ pub fn set_ime_position(
 ) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        use windows::Win32::Foundation::POINT;
+        use windows::Win32::Foundation::{HWND, POINT};
         use windows::Win32::UI::Input::Ime::*;
         use windows::Win32::UI::WindowsAndMessaging::{
             GetGUIThreadInfo, GetWindowThreadProcessId, IsChild, GUITHREADINFO,
@@ -5837,7 +6099,8 @@ pub fn set_ime_position(
 
         let window = app.get_webview_window("main").ok_or("No main window")?;
 
-        let hwnd = window.hwnd().map_err(|e| e.to_string())?;
+        let hwnd_raw = window.hwnd().map_err(|e| e.to_string())?;
+        let hwnd = HWND(hwnd_raw.0 as *mut _);
         // IMM positions are relative to the window that currently owns input
         // focus. WebView2 keeps the real text focus on a child HWND, so using
         // the top-level Tauri window can shift the candidate popup under DPI
@@ -6026,6 +6289,22 @@ mod tests {
     }
 
     #[test]
+    fn native_input_source_is_sanitized_for_audit_metadata() {
+        assert_eq!(
+            sanitize_native_input_source(Some("native edit/surface!@# with spaces".to_string())),
+            "nativeeditsurfacewithspaces"
+        );
+        assert_eq!(
+            sanitize_native_input_source(Some("native-edit:surface_01".to_string())),
+            "native-edit:surface_01"
+        );
+        assert_eq!(
+            sanitize_native_input_source(Some("!!!".to_string())),
+            "terminal-input"
+        );
+    }
+
+    #[test]
     fn git_relative_path_accepts_absolute_or_relative_file_path() {
         assert_eq!(
             git_relative_path(
@@ -6041,9 +6320,10 @@ mod tests {
     }
 
     #[test]
-    fn safe_temp_diff_name_removes_path_separators() {
+    fn safe_temp_diff_name_removes_path_separators_and_preserves_extension() {
         assert_eq!(safe_temp_diff_name("src/main.rs"), "src_main.rs");
-        assert_eq!(safe_temp_diff_name("馬/設定.toml"), "____toml");
+        assert_eq!(safe_temp_diff_name("馬/設定.toml"), "____.toml");
+        assert_eq!(safe_temp_diff_name("..\\evil.ps1"), ".._evil.ps1");
     }
 
     #[test]
@@ -6119,6 +6399,38 @@ mod tests {
         assert_eq!(estimate_scrollback_memory_bytes(0, 120), 0);
         assert_eq!(estimate_scrollback_memory_bytes(100, 80), 128_000);
         assert_eq!(duration_ms_u64(Duration::from_millis(16)), 16);
+    }
+
+    #[test]
+    fn submitted_input_command_history_text_requires_enter() {
+        assert_eq!(
+            command_history_text_from_submitted_input("echo hi\r"),
+            Some("echo hi".to_string())
+        );
+        assert_eq!(
+            command_history_text_from_submitted_input("echo hi\r\n"),
+            Some("echo hi".to_string())
+        );
+        assert_eq!(
+            command_history_text_from_submitted_input("echo one\n echo two\n"),
+            Some("echo one\n echo two".to_string())
+        );
+        assert_eq!(command_history_text_from_submitted_input("echo hi"), None);
+        assert_eq!(command_history_text_from_submitted_input("\r"), None);
+    }
+
+    #[test]
+    fn command_history_cwd_normalizes_windows_and_url_separators() {
+        assert_eq!(
+            normalize_command_history_cwd(r"C:\Users\owner\Aether_Terminal\"),
+            "C:/Users/owner/Aether_Terminal"
+        );
+        assert_eq!(
+            normalize_command_history_cwd("C:/Users/owner/Aether_Terminal"),
+            "C:/Users/owner/Aether_Terminal"
+        );
+        assert_eq!(normalize_command_history_cwd("C:/"), "C:/");
+        assert_eq!(normalize_command_history_cwd("   "), ".");
     }
 
     #[test]

@@ -9,7 +9,7 @@
 //! Sprint 3 — first wave. Companion of:
 //!   - `e2e/image-flows.spec.ts` (Tauri-attached version of the same).
 //!   - `e2e/chunked-osc-flows.spec.ts` (full E2E coverage).
-//!   - `scripts/diag-chunked-osc.mjs` (live PTY round-trip).
+//!   - `scripts/verify-chunked-osc-live.mjs` (live PTY round-trip).
 //!
 //! Skipped silently when the corresponding shell isn't on PATH.
 

@@ -34,9 +34,9 @@
   box-sizing: border-box;
   isolation: isolate;
   contain: layout paint;
-  --terminal-ui-primary: rgba(255, 248, 252, 0.94);
-  --terminal-ui-secondary: rgba(255, 228, 237, 0.84);
-  --terminal-ui-muted: rgba(255, 218, 230, 0.68);
+  --terminal-ui-primary: #fff8fc;
+  --terminal-ui-secondary: #e9dde4;
+  --terminal-ui-muted: #c8bac2;
   --text-primary: var(--terminal-ui-primary);
   --text-secondary: var(--terminal-ui-secondary);
   --text-muted: var(--terminal-ui-muted);
@@ -46,13 +46,34 @@
   background:
     radial-gradient(ellipse at 48% -12%, color-mix(in srgb, var(--accent) 5%, transparent), transparent 42%),
     radial-gradient(ellipse at 50% 115%, color-mix(in srgb, var(--gold) 4%, transparent), transparent 46%),
-    linear-gradient(180deg, var(--terminal-chrome-bg), var(--terminal-chrome-bg-focus)), var(--terminal-well-bg);
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--terminal-chrome-bg) calc(var(--terminal-surface-opacity, 0.82) * 100%), transparent),
+      color-mix(
+        in srgb,
+        var(--terminal-chrome-bg-focus) calc(var(--terminal-surface-opacity, 0.82) * 100%),
+        transparent
+      )
+    ),
+    var(--terminal-well-bg);
   backdrop-filter: var(--terminal-shell-filter);
   -webkit-backdrop-filter: var(--terminal-shell-filter);
   box-shadow: var(--terminal-shell-depth);
   transition:
     box-shadow var(--duration-normal) var(--ease-silk),
     transform var(--duration-fast) var(--ease-silk);
+}
+
+.terminalMount[data-terminal-text-clarity="solid"] {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 2%, transparent), transparent 26%),
+    color-mix(
+      in srgb,
+      var(--terminal-raster-bg) calc(var(--terminal-surface-opacity, 0.82) * 96%),
+      transparent
+    );
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .terminalMount::before,
@@ -84,12 +105,23 @@
   opacity: 0.1;
 }
 
+.terminalMount[data-terminal-text-clarity="solid"]::before {
+  opacity: 0.04;
+}
+
 .terminalMount::after {
   box-shadow:
     inset 0 0 0 1px color-mix(in srgb, var(--terminal-rim-warm) 20%, transparent),
     inset 0 1px 0 color-mix(in srgb, var(--accent) 4%, transparent),
     inset 0 18px 48px color-mix(in srgb, var(--terminal-canvas-bg) 8%, transparent),
     inset 0 -18px 48px color-mix(in srgb, var(--terminal-canvas-bg) 10%, transparent);
+}
+
+.terminalMount[data-terminal-text-clarity="solid"]::after {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--terminal-rim-warm) 18%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--accent) 3%, transparent),
+    inset 0 -12px 32px color-mix(in srgb, var(--terminal-canvas-bg) 6%, transparent);
 }
 
 .terminalMount[data-active="true"] {
@@ -120,7 +152,11 @@
   flex: 1;
   min-height: 0;
   color: var(--text-secondary);
-  background: color-mix(in srgb, var(--terminal-canvas-bg) 86%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--terminal-canvas-bg) calc(var(--terminal-surface-opacity, 0.82) * 86%),
+    transparent
+  );
   border: 1px solid color-mix(in srgb, var(--terminal-rim-warm) 22%, transparent);
 }
 

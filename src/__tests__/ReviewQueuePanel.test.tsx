@@ -137,13 +137,15 @@ describe("ReviewQueuePanel", () => {
       />,
     );
 
-    expect(screen.getByLabelText("AI review queue").getAttribute("data-graph-source")).toBe("workstation-graph");
+    expect(screen.getByLabelText("AI review queue").getAttribute("data-graph-source")).toBe(
+      "workstation-graph+git-status",
+    );
     expect(screen.getByText("Cargo.toml")).toBeTruthy();
     fireEvent.click(screen.getByText("Cargo.toml"));
     expect(onOpenDiff).toHaveBeenCalledWith("src-tauri/Cargo.toml");
   });
 
-  it("uses graph files as the authoritative queue when a focused graph is supplied", () => {
+  it("keeps git status files in the queue when a focused graph is supplied", () => {
     const onOpenDiff = vi.fn();
     const sessions = [
       session("agent-a", {
@@ -167,8 +169,75 @@ describe("ReviewQueuePanel", () => {
     );
 
     expect(screen.getByText("focused.ts")).toBeTruthy();
-    expect(screen.queryByText("global.ts")).toBeNull();
+    expect(screen.getByText("global.ts")).toBeTruthy();
     fireEvent.click(screen.getByText("focused.ts"));
     expect(onOpenDiff).toHaveBeenCalledWith("src/focused.ts");
+  });
+
+  it("shows file provenance from the workstation graph and keeps owner selection actionable", () => {
+    const onSelectSession = vi.fn();
+    const onOpenCommandEvidence = vi.fn();
+    const sessions = [
+      session("agent-a", {
+        name: "Builder",
+        role: "implementer",
+        worktree: {
+          name: "feature-a",
+          path: "C:/repo/.aether/worktrees/feature-a",
+          branch: "feature/a",
+          is_main: false,
+          head_sha: "abc123",
+          status: "Modified",
+        },
+        changedFileDetails: [{ path: "src/App.tsx", action: "edit", toolName: "Edit", timestamp: 1 }],
+        logs: [{ timestamp: 2, type: "tool_use", content: 'Edit({"file_path":"src/App.tsx"})' }],
+      }),
+    ];
+    const workstationGraph = buildWorkstationGraph({
+      workspaceId: "C:/repo",
+      sessions,
+      commandBlocks: [
+        {
+          id: "cmd-test",
+          command: "pnpm test -- src/App.tsx",
+          cwd: "C:/repo",
+          exitCode: 0,
+          agentId: "agent-a",
+          paneId: "pane-a",
+          terminalId: "pty-a",
+          filePaths: ["src/App.tsx"],
+        },
+      ],
+      tests: [{ id: "app-test", name: "App tests", status: "pass", filePath: "src/App.tsx" }],
+      risks: [{ id: "app-risk", title: "App risk", status: "open", severity: "high", filePath: "src/App.tsx" }],
+    });
+
+    render(
+      <ReviewQueuePanel
+        activeSessionId={null}
+        changedFiles={[]}
+        sessions={sessions}
+        onOpenDiff={vi.fn()}
+        onSelectSession={onSelectSession}
+        onOpenCommandEvidence={onOpenCommandEvidence}
+        workstationGraph={workstationGraph}
+      />,
+    );
+
+    expect(screen.getByLabelText("Provenance for src/App.tsx")).toBeTruthy();
+    expect(screen.getByText("Trace")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Select owner Builder" })).toBeTruthy();
+    expect(screen.getByText("Edit")).toBeTruthy();
+    expect(screen.getByText("test: pnpm test -- src/App.tsx")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Open terminal evidence for pnpm test -- src/App.tsx" }));
+    expect(onOpenCommandEvidence).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "pnpm test -- src/App.tsx", terminalId: "pty-a" }),
+    );
+    expect(screen.getByText("App tests")).toBeTruthy();
+    expect(screen.getByText("App risk")).toBeTruthy();
+    expect(screen.getByText("feature-a")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Select owner Builder" }));
+    expect(onSelectSession).toHaveBeenCalledWith("agent-a");
   });
 });

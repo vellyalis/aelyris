@@ -2,7 +2,7 @@
 //
 // Pair with `performance.mark("app:boot")` at the top of main.tsx.
 // Call `markFirstPaint()` after the first React commit.
-// Additional feature-level marks (xterm mount, editor open, etc.) can be
+// Additional feature-level marks (terminal mount, editor open, etc.) can be
 // recorded via `markBoot(name)` and surfaced with `logBootMetrics()`.
 
 const BOOT_MARK = "app:boot";

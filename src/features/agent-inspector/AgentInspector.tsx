@@ -14,7 +14,9 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { collectActivity, filterActivity, LOG_TYPES, type LogType } from "../../shared/lib/activityFilter";
 import { type BudgetThresholds, countOverBudget, getBudgetWarning } from "../../shared/lib/budgetStatus";
+import { reportInvokeFailure } from "../../shared/lib/fallbackTelemetry";
 import { buildHandoffPrompt } from "../../shared/lib/handoffPrompt";
+import { writeClipboardText } from "../../shared/lib/nativeClipboard";
 import { buildOrchestraPrompts, detectFileConflicts, type OrchestraRoleId } from "../../shared/lib/orchestrator";
 import { useAppStore } from "../../shared/store/appStore";
 import {
@@ -41,6 +43,17 @@ import { ConductorView } from "./ConductorView";
 import { InlineResultPanel } from "./InlineResultPanel";
 import { InteractiveSessionCard } from "./InteractiveSessionCard";
 import { SessionCard } from "./SessionCard";
+
+export const RIGHT_RAIL_COMPATIBILITY_CLIENT = {
+  schema: "aether.react.right-rail-compatibility-client.v1",
+  surface: "agent-inspector-right-rail",
+  primarySurface: "aether-native",
+  compatibilityRole: "legacy-tauri-react-client",
+  productTruthOwner: "rust-native-command-center",
+  nativeContract: "aether.native.right-rail-demotion-proof.v1",
+  reactOwnsProductTruth: false,
+  webviewDispatchRequired: false,
+} as const;
 
 interface AgentInspectorProps {
   sessions: AgentSession[];
@@ -297,7 +310,19 @@ export function AgentInspector({
 
   const handleCopySessionInfo = useCallback((session: AgentSession) => {
     const info = `Session: ${session.name}\nModel: ${session.model}\nStatus: ${STATUS_LABELS[session.status]}\nCost: $${session.cost.toFixed(2)}\nTokens: ${session.tokensUsed}`;
-    navigator.clipboard.writeText(info).catch(() => {});
+    void writeClipboardText(info, {
+      source: "agent-inspector.clipboard",
+      fallbackMessage: "Native clipboard write failed; using browser clipboard fallback for session info.",
+      userVisible: true,
+    }).catch((err) => {
+      reportInvokeFailure({
+        source: "agent-inspector.clipboard",
+        operation: "copy_session_info",
+        err,
+        severity: "error",
+        userVisible: true,
+      });
+    });
   }, []);
 
   const handleOrchestra = useCallback(async () => {
@@ -839,7 +864,7 @@ export function AgentInspector({
             <EmptyState
               icon={<GitCompare size={20} />}
               title="No review target selected"
-              description="Select a session with changed files or open Changes from the rail."
+              description="Select a session with changed files or open Git from the rail."
             />
           </div>
         ))}

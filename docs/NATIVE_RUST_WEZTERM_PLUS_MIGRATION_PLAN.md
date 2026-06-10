@@ -1,7 +1,21 @@
 # Native Rust / WezTerm-Plus Migration Plan
 
 Date: 2026-05-12
-Updated: 2026-05-13
+Updated: 2026-06-01
+
+## Current Canonical State - 2026-06-01
+
+- `pnpm verify:quality-score` currently reports `99/100`, grade `S`, `331/335`, `releaseCandidateReady=false`.
+- `pnpm verify:final-goal-audit` is currently `blocked-by-external-gates`: `implementationFixableCount=0`, `policyBlockedCount=0`, and `externalBlockedCount=1`.
+- The live AI CLI post-launch chaos score is no longer blocked by WebView2 CDP: `.codex-auto/chaos-recovery/native-ai-cli-post-launch-chaos.json` proves native sidecar AI CLI spawn, input, kill cleanup, same-id PTY restart, prompt readiness, and no session residue, while the stale URL truth contract remains covered by the right-rail verifier.
+- The strict right-rail Goal Track DOM proof can also report environment-blocked when WebView2 CDP at `http://127.0.0.1:9222` is not reachable, but the current gate preserves the primary artifact and accepts the fresh `.environment-blocked.json` source contract as `environment-blocked-current-contract`.
+- The safe proof registry has `26/26` registered artifacts green when `rightRailGoalTrackTauri` reports either `pass-current-contract` or `environment-blocked-current-contract`, including `goal-external-gate-readiness`, `real-os-sleep-operator-handoff`, `goal-operator-finish`, optional git handoff artifacts, `glass-legibility-contract`, `right-rail-information-density-contract`, and `goal-anti-stall-contract`.
+- Long external operator gates now persist `.codex-auto/quality/goal-operator-progress.json` with `lastHeartbeatAt`, `nextHeartbeatAt`, active step, and next action, so a resumed run can distinguish an actual stall from a sleep/token gate wait.
+- `pnpm verify:goal:finalize` excludes git finalization by default; set `AETHER_GOAL_FINALIZE_INCLUDE_GIT=1` only when commit/merge readiness is intentionally in scope.
+- Git finalization is an optional handoff gate, not required for product/safe/finalize evidence: `.codex-auto/quality/git-finalization-readiness.json` records the exact commit/merge runbook when `.git/index.lock` or `.git/objects` permission errors block staging.
+- `real-os-soak` is host-blocked, not passed: the native sleep command returned `SetSuspendState returned false; GetLastError=50`, while native sleep/postcheck preflights and the no-real-sleep-claim postcheck writer pass.
+- `authenticated-ai-cli-prompt-smoke` is now proved through explicit consent; `authenticated-ai-cli-consent-packet` records the required `AETHER_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` plus `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini` boundary for any future token-spending prompt run.
+- Until a capable/user-initiated Windows sleep cycle emits real power events, final audit state must remain `blocked-by-external-gates`, never `complete`.
 
 ## Position
 
@@ -128,6 +142,187 @@ The correct goal is feature parity plus better latency, not source-level parity.
 
 ## Migration Phases
 
+### 2026-05-22 Current-State Audit
+
+The 2026-05-13 ordering is still correct, but the baseline has moved.
+
+Current verified state:
+
+- The terminal/core implementation is no longer blocked by an implementation-fixable release issue. `pnpm verify:quality-score` reports `96/100`, grade `A`, `321/335`, `releaseCandidateReady=false`; `pnpm verify:goal:safe` reports `blocked-by-external-gates` with `24/24` proof artifacts passing and `0` implementation-fixable blockers, including the objective-level `goal-completion-matrix`, current supply-chain audit proof, `goal-external-gate-readiness`, optional git handoff artifacts, `glass-legibility-contract`, and `goal-anti-stall-contract`. The current state is `blocked-by-external-gates` because real OS sleep/resume is host-blocked and `authenticated-ai-cli-prompt-smoke` may spend tokens and requires explicit opt-in. `authenticated-ai-cli-consent-packet` is green and requires both `AETHER_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` and `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini` before that prompt smoke is run.
+- `pnpm verify:release:production`, strict release doctor, signed updater artifacts, and `latest.json` remain release-chain evidence, but they do not override the current authenticated prompt consent gate.
+- xterm.js is no longer the terminal dependency. `package.json` has no `@xterm` dependency, terminal parsing/grid state is Rust-owned through `alacritty_terminal`, and the UI renders Rust terminal snapshots through the current Canvas/WebView shell.
+- PTY lifecycle, sidecar control, mux inspection, `aetherctl`, durable scrollback capture/search, mux performance, and real OS sleep/resume evidence are release-gated.
+- The native Windows input path has advanced from "IME placement helpers" to a Tauri-default native HWND input surface scaffold. The WebView textarea remains only as a non-Tauri/emergency fallback and test compatibility path; it is not the desired long-term product boundary.
+- The Rust mux now covers split, close, resize, move, swap, even, tiled, rotate, break, join, zoom, broadcast, synchronized panes, detach, attach, scrollback search, and prefix/keymap dispatch.
+- `aether-native` now exists as a no-WebView Rust client spike that attaches to the same daemon instance and proves list, send, capture, detach, and attach through the mux API.
+- `aether-native window-proof` now creates a layered Win32 native window in the `aether-native` process and records HWND, alpha, no-activate behavior, executable identity, and `webviewUsed=false` / `reactUsed=false`.
+- `aether-native render-proof` now reads a daemon session capture and renders the captured terminal text through Win32/GDI into a native memory DC, recording draw calls and non-background pixel samples. This still does not claim native GPU terminal rendering yet; it locks the native process/window/text-render/daemon boundary before the compositor work.
+- `aether-native grid-render-proof` now reads daemon capture, feeds it into Rust `TermEngine`, and renders a 100x24 terminal cell grid through native Win32/GDI with nonblank cell and pixel evidence. This proves terminal-grid ownership beyond raw text drawing while still keeping `winit`/`wgpu` and native IME dogfood as explicit next steps.
+- `NativeRenderFrame` now exists as a renderer-neutral Rust contract (`aether.native.render-frame.v1`) between `GridSnapshot` and native drawing. The live native proof emits a stable frame hash and proves the Win32/GDI renderer consumed the same frame, so the next `winit`/`wgpu` renderer can replace GDI without inventing a new terminal truth.
+- Right-rail smoke and action-clarity gates pass, but the product opportunity is still underdeveloped: the rail is not yet the unmistakable reason to choose Aether over tmux plus AI CLIs.
+
+Corrections to the old plan:
+
+- Phase 1 is no longer "build the Rust core from scratch." The new Phase 1 is "make the current Rust core the only terminal truth and remove remaining compatibility shadows."
+- Phase 2 should not begin by recreating the entire app UI. It should start with a native attaching terminal client that proves the daemon/API boundary, renderer-neutral native frame contract, native text/grid rendering, native text input, GPU terminal rendering, transparency, and process identity.
+- Phase 3 should not carry Monaco forward as a parity requirement. The default product direction is VSCode/external editor for full editing, while Aether keeps review, diff, provenance, command center, and terminal-native context.
+- The full-native shell is now primarily a UI/compositor/accessibility problem, not a PTY/mux correctness problem.
+
+### Revised 2026-05-19 Native Path
+
+#### Phase 1A: Delete Remaining Terminal Compatibility Shadows
+
+Duration: 1-2 weeks.
+
+Goal: make the current Tauri shell honest: terminal truth is Rust-owned, with no silent WebView fallback changing semantics.
+
+Deliverables:
+
+- Gate that fails if the normal Tauri terminal path mounts the legacy WebView IME textarea as input owner.
+- Native input dogfood matrix for PowerShell, cmd, Codex CLI, Claude Code CLI, Gemini CLI, split panes, DPI changes, and resize.
+- Clipboard and paste guard verification on the native input surface, including empty image paste, multiline paste, destructive command paste, and Japanese text.
+- A fallback registry that records every use of emergency fallback paths in telemetry and release evidence.
+- Console-flash regression gate for pane split/new shell/open folder/close pane.
+
+Exit criteria:
+
+- Native input is the measured default for Tauri.
+- Any fallback use is visible, counted, and treated as a release-risk signal.
+- The user cannot trigger a normal terminal action that briefly foregrounds `cmd.exe` or PowerShell.
+
+#### Phase 1B: Daemon-First Product Boundary
+
+Duration: 2-4 weeks.
+
+Goal: make Aether behave like a real mux product where the UI is only a client.
+
+Deliverables:
+
+- Background mux daemon lifecycle that outlives the UI shell by policy, not just by sidecar accident.
+- Named sessions, window groups, and attach permissions.
+- `aetherctl` parity for list/create/attach/detach/split/join/swap/move/layout/send/capture/search/export/import.
+- Daemon restart and UI crash tests that prove live/detached/dead state is never lied about.
+- Config reload for keymaps, startup layout, shell profiles, and theme terminal tokens.
+
+Exit criteria:
+
+- Closing the UI can leave selected sessions running.
+- A fresh UI or CLI can attach to the same session graph.
+- React/Tauri owns presentation only; it does not invent terminal topology.
+
+#### Phase 2A: Native Terminal Client Spike
+
+Duration: 3-6 weeks.
+
+Goal: prove the full-native path without rebuilding the entire workspace shell.
+
+Likely stack:
+
+- `winit` for windowing.
+- `wgpu` for terminal and glass/compositor rendering.
+- `cosmic-text` or equivalent for shaping, fallback fonts, emoji, and IME-aware text metrics.
+- Existing `alacritty_terminal` model and mux daemon/API as the data source.
+- Windows DWM integration for Mica/Acrylic/transparent window treatment.
+
+Deliverables:
+
+- `aether-native` crate that attaches to the current mux daemon.
+- One native transparent window with tab/pane terminal rendering.
+- Japanese IME and clipboard path entirely outside WebView.
+- Image-background, opacity, cover/contain/position, and Sakura/glass token prototype.
+- Task Manager/process identity proof: visible as Aether-native/Aether, not generic WebView.
+
+Exit criteria:
+
+- Native client can operate one real project session for an hour without WebView.
+- Split/attach/input/resize latency beats the current Tauri shell.
+- The client can be thrown away without changing mux/core APIs.
+
+#### Phase 2B: Native Glass Design System
+
+Duration: 4-8 weeks.
+
+Goal: make "React-like transparency and UI" a native design system instead of a visual approximation.
+
+Deliverables:
+
+- Native design tokens for color, alpha, blur, radius, typography, density, and semantic states.
+- Theme editor model that covers preset colors, opacity, image background path/picker, scale, position, repeat, and per-surface material.
+- Native controls for buttons, segmented tabs, menus, dialogs, tooltips, scrollbars, list rows, graph nodes, and cards.
+- Contrast engine that checks text against composited material/background state.
+- Visual regression harness that can compare native screenshots across themes and DPI.
+
+Exit criteria:
+
+- Sakura and every preset can be tuned without gray, muddy, or low-contrast surfaces.
+- Native UI supports the same customization classes that users expect from WezTerm-style configuration plus Aether's visual presets.
+
+#### Phase 3: Command Center Native Workspace
+
+Duration: 8-16 weeks.
+
+Goal: move only the pieces that make Aether differentiated, not generic editor bulk.
+
+Deliverables:
+
+- Native right rail command center.
+- Native file tree, review queue, run graph, decision inbox, context packs, and workflow run trace.
+- External editor first: VSCode open/diff is the default; built-in editor is optional or removed from the native shell.
+- Workflow/agent/provenance surfaces bound to the mux graph.
+- Accessibility and keyboard navigation equivalent to or better than the Tauri shell.
+
+Exit criteria:
+
+- A developer can run parallel AI/dev sessions, review changes, recover failures, and ship without the WebView shell.
+- The native shell is chosen because it is faster, clearer, and more controllable, not merely because it is native.
+
+#### Phase 4: WezTerm-Plus / Aether Edge
+
+Duration: 4-8 weeks.
+
+Goal: exceed terminal parity through local-first project/AI control.
+
+Deliverables:
+
+- Remote/domain architecture spike using the same `PtyEndpoint` abstraction.
+- Hot-reload config for mux, keymap, theme, shell profile, background image, rail policy, and guardrails.
+- Run trace export/import.
+- Project memory/context-pack hooks.
+- Recovery playbooks for stuck agent, failed command, denied tool, high context, broken worktree, and release gate failure.
+
+Exit criteria:
+
+- Aether can honestly be pitched as "tmux/WezTerm-grade terminal control plus project-aware AI command center."
+
+### Edge Upgrades Added By This Audit
+
+These are the highest-leverage ways to turn the product from "good terminal workspace" into a differentiated product:
+
+1. Native terminal cockpit:
+   - show shell/profile, cwd, branch, role, sync mode, risk state, and owner directly in the pane header;
+   - make split/move/swap/join/broadcast/sync discoverable without reading shortcut docs;
+   - keep every action backed by Rust mux state.
+
+2. Provenance-first review:
+   - every changed file links to pane, agent, worktree, command block, workflow, and final report;
+   - review queue becomes the "why did this change?" surface, not just a file list.
+
+3. Recovery command center:
+   - failed commands, stuck agents, denied tools, high context, missing binaries, and slow spawns become ranked actions;
+   - recovery attempts are stored in the audit trail.
+
+4. Context packs and local memory:
+   - reusable packs of files, terminal blocks, docs, prior reports, rules, and exclusions;
+   - visible token/context budget before launching an agent.
+
+5. Native visual customization:
+   - per-surface opacity and material;
+   - background image picker, scale, position, repeat, dim/blur;
+   - contrast-aware theme editor so Sakura/glass presets cannot regress into muddy gray.
+
+6. Native attach client:
+   - prove the full-native direction with a small terminal-first client before rewriting settings, file tree, workflows, or review UI.
+
 ### 2026-05-13 Plan Correction
 
 The full-native plan still stands, but the ordering should be stricter:
@@ -135,6 +330,7 @@ The full-native plan still stands, but the ordering should be stricter:
 - Phase 1 is no longer just "build Rust core." A first slice is already in place: typed mux graph, mux HTTP API, `aetherctl`, live detach/attach, durable scrollback capture, and a mux performance gate.
 - The immediate blocker before a native shell spike is now UI ownership: React must stop inventing pane topology that Rust cannot see. Split/close operations should flow through Rust mux first, and the UI should attach to returned pane ids.
 - Native-shell work should start as an attaching client, not as a parallel terminal implementation. If it cannot drive the same mux daemon/API, it is premature.
+- The first attaching client, Win32 window proof, and daemon-capture native text render proof are now in place through `aether-native` and `pnpm verify:terminal:native-client`; the next native step is the actual `winit`/`wgpu` terminal renderer plus native IME dogfood, not another parallel API client.
 - The daemon boundary is now more valuable than a direct rewrite. Full-native Rust should replace the WebView shell only after the sidecar/daemon contract proves session survival, layout replay, keymaps, scrollback, and IME behavior.
 - Time estimate is unchanged for full product parity, but risk has shifted: terminal core parity is moving down, native UI/editor/accessibility parity remains the expensive part.
 
@@ -234,8 +430,27 @@ Trying to rewrite everything directly is likely slower than the phased path.
 
 ## Immediate Next Work
 
-1. Stop adding UI-only terminal behavior in React unless it is temporary.
-2. Move mux/session/keymap/layout/scrollback contracts fully into Rust.
-3. Add a native-shell spike crate that attaches to the same Rust core.
-4. Convert the right rail into an action-oriented command center, not a passive dashboard.
-5. Maintain Tauri as the shipping UI until native shell wins on measurable latency and feature parity.
+1. Delete or hard-gate remaining terminal compatibility shadows, especially normal-path WebView textarea ownership.
+2. Make daemon-first session survival and `aetherctl` parity the next Rust-core product boundary.
+3. Add the `aether-native` terminal client spike only as an attaching client to the current mux daemon/API.
+4. Convert the right rail into an action-oriented command center with provenance, recovery, context packs, and ranked next actions.
+5. Keep Tauri/React as the shipping UI until the native client beats it on latency, IME, customization, accessibility, and daily workflow parity.
+## 2026-05-22 Final Evidence Refresh
+
+- Current release score evidence: `96/100`, `321/335`.
+- `releaseCandidateReady=false`; final-goal audit status is `blocked-by-external-gates` until real sleep/resume evidence and consented `authenticated-ai-cli-prompt-smoke` are both proven.
+- Authenticated prompt execution remains gated by `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini` and explicit consent; the safe proof registry is `24/24`.
+
+## 2026-05-24 Release Evidence Refresh
+
+- Current hybrid release score evidence: `96/100`, `321/335`, `releaseCandidateReady=false`.
+- Final-goal audit status is `blocked-by-external-gates` for the current Rust-core/Tauri product boundary until real sleep/resume evidence and consented `authenticated-ai-cli-prompt-smoke` both pass.
+- The full-native Rust target is intentionally stricter and is now tracked by `docs/FULL_NATIVE_RUST_FINAL_GOAL.md` plus `pnpm verify:full-native:audit`.
+
+## 2026-05-31 Final Goal Evidence Refresh
+
+- Current release score evidence before the self-referential final-goal map is `93/100`, `313/335`, `releaseCandidateReady=false`.
+- Projected score after the fresh final-goal evidence map remains `96/100`, `321/335`; auditStatus=`blocked-by-external-gates`.
+- Native-first hybrid is the release target; full-native Rust remains a stricter migration track after the current Rust-core/Tauri shell is externally unblocked.
+- Remaining external gate is real Windows sleep/resume support; remaining policy gate is explicit token-spend consent for `authenticated-ai-cli-prompt-smoke`.
+- Authenticated prompt execution remains gated by `authenticated-ai-cli-prompt-smoke`, `authenticated-ai-cli-consent-packet`, and `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini`; safe proof registry is `24/24`.

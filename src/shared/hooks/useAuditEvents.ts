@@ -1,3 +1,5 @@
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { listen as tauriListen } from "@tauri-apps/api/event";
 import { useEffect, useRef, useState } from "react";
 
 import { isTauriRuntime } from "../lib/tauriRuntime";
@@ -5,7 +7,7 @@ import type { AuditEventFilters, AuditEventRecord, AuditJournalEventRecord, Audi
 import type { Invoke } from "./useLogStream";
 
 const defaultInvoke: Invoke = async (cmd, args) => {
-  const { invoke } = await import("@tauri-apps/api/core");
+  const { invoke } = await Promise.resolve({ invoke: tauriInvoke });
   return invoke(cmd, args) as Promise<never>;
 };
 
@@ -13,7 +15,7 @@ type AuditEventBusPayload = AuditEventRecord | AuditJournalEventRecord;
 type AuditEventBusListener = <T>(event: string, handler: (event: { payload: T }) => void) => Promise<() => void>;
 
 const defaultListen: AuditEventBusListener = async (event, handler) => {
-  const { listen } = await import("@tauri-apps/api/event");
+  const { listen } = await Promise.resolve({ listen: tauriListen });
   return listen(event, handler);
 };
 

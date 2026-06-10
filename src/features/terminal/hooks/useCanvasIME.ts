@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef } from "react";
-import { reportInvokeFailure } from "../../../shared/lib/fallbackTelemetry";
+import { reportFallback, reportInvokeFailure } from "../../../shared/lib/fallbackTelemetry";
+import { writeClipboardText } from "../../../shared/lib/nativeClipboard";
 import {
   classifyTerminalPasteInput,
   countTerminalPasteLineEndings,
@@ -31,6 +32,7 @@ import { keyEventToBytes } from "../keymap";
 export type WriteBytesFn = (id: string, data: string) => void;
 
 const FALLBACK_COMPOSITION_COMMIT_DELAY_MS = 32;
+const NATIVE_PREEDIT_POLL_MS = 32;
 const MAX_IME_DIAGNOSTIC_EVENTS = 80;
 
 export const IME_DIAGNOSTIC_EVENT = "aether:ime-diagnostic";
@@ -48,24 +50,53 @@ function isTerminalPasteShortcut(e: KeyboardEvent): boolean {
 }
 
 async function readClipboardText(): Promise<string> {
+  let nativeError: unknown = null;
   try {
     return await invoke<string>("read_clipboard_text");
   } catch (err) {
+    nativeError = err;
     reportInvokeFailure({
-      source: "terminal",
+      source: "terminal.clipboard",
       operation: "read_clipboard_text",
       err,
       severity: "warning",
-      userVisible: false,
+      userVisible: true,
+      boundary: "native",
     });
   }
   try {
     if (typeof navigator !== "undefined" && typeof navigator.clipboard?.readText === "function") {
+      reportFallback({
+        source: "terminal.clipboard",
+        operation: "read_clipboard_text_browser_fallback",
+        severity: "warning",
+        message: "Native clipboard read failed; using browser clipboard fallback.",
+        userVisible: true,
+        boundary: "webview-fallback",
+        nativeBoundaryEscaped: true,
+      });
       return await navigator.clipboard.readText();
     }
-  } catch {
-    /* Browser clipboard can fail when WebView focus or permission is stale. */
+  } catch (err) {
+    reportInvokeFailure({
+      source: "terminal.clipboard",
+      operation: "browser_read_clipboard_text",
+      err,
+      severity: "error",
+      userVisible: true,
+      boundary: "webview-fallback",
+      nativeBoundaryEscaped: true,
+    });
   }
+  const message = nativeError instanceof Error ? nativeError.message : "No clipboard read path available";
+  reportFallback({
+    source: "terminal.clipboard",
+    operation: "read_clipboard_text_unavailable",
+    severity: "error",
+    message,
+    userVisible: true,
+    boundary: "unavailable",
+  });
   return "";
 }
 
@@ -231,7 +262,11 @@ export async function copyImeDiagnostics(win: Window = window): Promise<boolean>
   if (events.length === 0) return false;
   const payload = JSON.stringify(events, null, 2);
   try {
-    await win.navigator.clipboard.writeText(payload);
+    await writeClipboardText(payload, {
+      source: "terminal.ime-diagnostics",
+      fallbackMessage: "Native clipboard write failed; using browser clipboard fallback for IME diagnostics.",
+      userVisible: true,
+    });
     return true;
   } catch {
     return false;
@@ -445,6 +480,12 @@ interface MuxKeymapResponse {
   command?: string | null;
 }
 
+interface NativeTerminalPreedit {
+  terminalId: string | null;
+  active: boolean;
+  text: string;
+}
+
 export function useCanvasIME({
   terminalId,
   textarea,
@@ -488,6 +529,54 @@ export function useCanvasIME({
   // non-composing input. Do not immediately commit stale interim preedit
   // text in that case; give the browser one macrotask to deliver final input.
   const pendingCompositionCommitTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (textarea || !terminalId || !nativeTerminalInputSurfaceEnabled()) return;
+    let cancelled = false;
+    const clearNativePreedit = () => {
+      onCompositionTextChangeRef.current?.("");
+      onCompositionActiveChangeRef.current?.(false);
+    };
+    // One request at a time: a slow backend must not pile up queued IPC
+    // calls behind the fixed polling cadence.
+    let inFlight = false;
+    const syncNativePreedit = () => {
+      if (inFlight) return;
+      inFlight = true;
+      invoke<NativeTerminalPreedit>("native_terminal_input_preedit")
+        .then((preedit) => {
+          if (cancelled) return;
+          const ownsTerminal = preedit?.terminalId === terminalId;
+          if (!ownsTerminal || !preedit.active) {
+            clearNativePreedit();
+            return;
+          }
+          onCompositionActiveChangeRef.current?.(true);
+          onCompositionTextChangeRef.current?.(preedit.text ?? "");
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          clearNativePreedit();
+          reportInvokeFailure({
+            source: "terminal-ime",
+            operation: "native_terminal_input_preedit",
+            err,
+            severity: "warning",
+            userVisible: false,
+          });
+        })
+        .finally(() => {
+          inFlight = false;
+        });
+    };
+    syncNativePreedit();
+    const id = window.setInterval(syncNativePreedit, NATIVE_PREEDIT_POLL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+      clearNativePreedit();
+    };
+  }, [textarea, terminalId]);
 
   useEffect(() => {
     if (!textarea || !terminalId) return;
@@ -1192,6 +1281,8 @@ export function useImePosition({
       const caretY = safeCursor.row * cellHeight + cellHeight;
       const viewport = currentImeViewport();
       const candidateX = imeCandidateAnchorXForViewport(caretX, rect.left, canvasWidth, viewport.left, viewport.width);
+      const nativeAnchorWidth = imeTextareaAnchorWidth(candidateX, canvasWidth);
+      const nativeCaretInset = imeTextareaCaretInset(caretX, candidateX, canvasWidth);
       const screenX = rect.left + caretX;
       const screenY = rect.top + caretY;
       const candidateScreenX = rect.left + candidateX;
@@ -1215,10 +1306,11 @@ export function useImePosition({
       if (terminalId && nativeInputSurface) {
         invoke("native_terminal_input_focus", {
           terminalId,
-          x: rect.left + caretX,
+          x: rect.left + candidateX,
           y: rect.top + safeCursor.row * cellHeight,
-          width: Math.max(cellWidth * 2, IME_ANCHOR_MIN_WIDTH_PX),
+          width: nativeAnchorWidth,
           height: cellHeight,
+          caretInset: nativeCaretInset,
         }).catch((err) => {
           reportInvokeFailure({
             source: "terminal-ime",

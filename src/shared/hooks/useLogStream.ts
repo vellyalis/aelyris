@@ -1,3 +1,4 @@
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 
 import type { LogEntry } from "../types/logs";
@@ -10,7 +11,7 @@ import type { LogEntry } from "../types/logs";
 export type Invoke = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
 
 const defaultInvoke: Invoke = async (cmd, args) => {
-  const { invoke } = await import("@tauri-apps/api/core");
+  const { invoke } = await Promise.resolve({ invoke: tauriInvoke });
   return invoke(cmd, args) as Promise<never>;
 };
 

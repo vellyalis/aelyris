@@ -165,4 +165,18 @@ describe("useTabManager", () => {
     ]);
     expect(result.current.activeTabId).toBe("tab-visual-qa");
   });
+
+  it("does not let stored visual QA state override normal tab restore", () => {
+    localStorage.setItem("aether:visualQa", "1");
+    localStorage.setItem("aether:visualQaProject", "C:/work/Aether_Terminal");
+    localStorage.setItem(
+      "aether:tabs",
+      JSON.stringify([{ id: "saved-1", label: "Saved", shell: "cmd", cwd: "C:/work/Saved" }]),
+    );
+
+    const { result } = renderHook(() => useTabManager("powershell"));
+
+    expect(result.current.tabs).toEqual([{ id: "saved-1", label: "Saved", shell: "cmd", cwd: "C:/work/Saved" }]);
+    expect(result.current.activeTabId).toBe("saved-1");
+  });
 });

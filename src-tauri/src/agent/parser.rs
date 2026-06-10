@@ -47,6 +47,10 @@ impl StreamEvent {
     pub fn is_tool_use(&self) -> bool {
         self.is_assistant() && self.subtype.as_deref() == Some("tool_use")
     }
+
+    pub fn is_parser_error(&self) -> bool {
+        self.event_type == "parser_error"
+    }
 }
 
 /// Line-based streaming parser for Claude Code stream-json output.
@@ -63,10 +67,10 @@ impl StreamParser {
         }
     }
 
-    /// Feed a chunk of data from stdout, returns all successfully parsed events.
+    /// Feed a chunk of data from stdout, returning parsed events plus visible parser errors.
     ///
     /// Incomplete lines are buffered until the next call.
-    /// Malformed JSON lines are silently skipped.
+    /// Malformed JSON lines are emitted as `parser_error` events so stream corruption is auditable.
     pub fn feed(&mut self, chunk: &str) -> Vec<StreamEvent> {
         self.buffer.push_str(chunk);
 
@@ -91,9 +95,7 @@ impl StreamParser {
 
             match serde_json::from_str::<StreamEvent>(trimmed) {
                 Ok(event) => events.push(event),
-                Err(_) => {
-                    // Malformed JSON, skip
-                }
+                Err(err) => events.push(parse_error_event(trimmed, err.to_string())),
             }
         }
 
@@ -114,8 +116,29 @@ impl StreamParser {
 
         match serde_json::from_str::<StreamEvent>(last.trim()) {
             Ok(event) => vec![event],
-            Err(_) => Vec::new(),
+            Err(err) => vec![parse_error_event(last.trim(), err.to_string())],
         }
+    }
+}
+
+fn parse_error_event(line: &str, error: String) -> StreamEvent {
+    let preview: String = line.chars().take(240).collect();
+    StreamEvent {
+        event_type: "parser_error".to_string(),
+        subtype: Some("malformed_json".to_string()),
+        session_id: None,
+        model: None,
+        content: Some(preview),
+        tool_name: None,
+        tool_input: Some(serde_json::json!({
+            "error": error,
+            "lineLength": line.chars().count(),
+            "previewTruncated": line.chars().count() > 240,
+            "visibilityPolicy": "malformed-stream-json-is-auditable",
+        })),
+        cost_usd: None,
+        total_tokens: None,
+        duration_ms: None,
     }
 }
 
@@ -171,7 +194,7 @@ mod tests {
     }
 
     #[test]
-    fn test_malformed_json_skipped() {
+    fn test_malformed_json_emits_visible_parse_error() {
         let mut parser = StreamParser::new();
         let input = concat!(
             "this is not json\n",
@@ -179,8 +202,11 @@ mod tests {
             "{broken json}\n",
         );
         let events = parser.feed(input);
-        assert_eq!(events.len(), 1);
-        assert_eq!(events[0].content.as_deref(), Some("ok"));
+        assert_eq!(events.len(), 3);
+        assert!(events[0].is_parser_error());
+        assert_eq!(events[0].subtype.as_deref(), Some("malformed_json"));
+        assert_eq!(events[1].content.as_deref(), Some("ok"));
+        assert!(events[2].is_parser_error());
     }
 
     #[test]
@@ -211,5 +237,22 @@ mod tests {
         let events = parser.flush();
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].cost_usd, Some(0.05));
+    }
+
+    #[test]
+    fn test_flush_malformed_json_emits_visible_parse_error() {
+        let mut parser = StreamParser::new();
+        parser.feed("{broken json");
+        let events = parser.flush();
+        assert_eq!(events.len(), 1);
+        assert!(events[0].is_parser_error());
+        assert_eq!(events[0].subtype.as_deref(), Some("malformed_json"));
+        assert_eq!(
+            events[0]
+                .tool_input
+                .as_ref()
+                .and_then(|value| value["visibilityPolicy"].as_str()),
+            Some("malformed-stream-json-is-auditable"),
+        );
     }
 }

@@ -1,4 +1,6 @@
+import { listen as tauriListen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef } from "react";
+import { formatFallbackError, reportFallback } from "../lib/fallbackTelemetry";
 
 interface UseTerminalNotificationsOptions {
   /** Currently visible tab's terminal IDs (bells from these are ignored) */
@@ -62,7 +64,7 @@ export function useTerminalNotifications({ activeTabId, tabs, onTabActivity }: U
 
     const setup = async () => {
       try {
-        const { listen } = await import("@tauri-apps/api/event");
+        const { listen } = await Promise.resolve({ listen: tauriListen });
         const handle = await listen<{ terminal_id: string }>("terminal:bell", (event) => {
           if (cancelled) return;
           handleBell(event.payload.terminal_id);
@@ -76,8 +78,17 @@ export function useTerminalNotifications({ activeTabId, tabs, onTabActivity }: U
           return;
         }
         unlisten = handle;
-      } catch {
-        /* not in Tauri */
+      } catch (err) {
+        reportFallback(
+          {
+            source: "terminal.notifications",
+            operation: "listen_terminal_bell",
+            severity: "info",
+            message: `Tauri terminal bell listener unavailable: ${formatFallbackError(err)}`,
+            userVisible: false,
+          },
+          { throttleMs: 60_000 },
+        );
       }
     };
     void setup();
@@ -111,7 +122,16 @@ async function sendWindowsNotification(title: string, body: string) {
     if (permitted) {
       sendNotification({ title, body });
     }
-  } catch {
-    // notification plugin not available — silent fallback
+  } catch (err) {
+    reportFallback(
+      {
+        source: "terminal.notifications",
+        operation: "send_windows_notification",
+        severity: "warning",
+        message: `Windows notification unavailable: ${formatFallbackError(err)}`,
+        userVisible: true,
+      },
+      { throttleMs: MIN_NOTIFICATION_INTERVAL_MS },
+    );
   }
 }

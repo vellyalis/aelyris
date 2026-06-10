@@ -29,7 +29,7 @@ import { type Browser, chromium, expect, type Page, test } from "@playwright/tes
  *   The original test 2 fed a Kitty APC escape (`\x1b_G…\x1b\\`) directly
  *   through `[Console]::Out.Write` and asserted the round-trip. ConPTY on
  *   Win11 25H2 silently strips APC sequences (verified via
- *   `scripts/diag-image-escape.mjs`), so that path was unreachable on the
+ *   the old Kitty-APC diagnostic), so that path was unreachable on the
  *   dogfood machine and the test was `test.fixme`'d.
  *
  *   `docs/ROADMAP_POST_0_2_4.md` Tier 🔴 #1 + Spike 2 introduced a chunked
@@ -175,10 +175,7 @@ test.describe("Inline image round-trip via Tauri CDP", () => {
   /** Poll a predicate against fresh snapshots until it succeeds or the
    *  timeout elapses. Mirrors the helper in `pty-flows.spec.ts` but
    *  specialised on `images` so the failure message is actionable. */
-  const waitForImages = async (
-    id: string,
-    timeoutMs: number = SNAPSHOT_TIMEOUT_MS,
-  ): Promise<GridSnapshot> => {
+  const waitForImages = async (id: string, timeoutMs: number = SNAPSHOT_TIMEOUT_MS): Promise<GridSnapshot> => {
     const deadline = Date.now() + timeoutMs;
     let last: GridSnapshot | null = null;
     while (Date.now() < deadline) {
@@ -239,10 +236,11 @@ test.describe("Inline image round-trip via Tauri CDP", () => {
       });
 
       const snap = await waitForImages(tid);
-      expect(snap.images).toBeDefined();
-      expect(snap.images!.length).toBeGreaterThan(0);
+      const images = snap.images ?? [];
+      expect(images.length).toBeGreaterThan(0);
 
-      const ref = snap.images![0]!;
+      const ref = images[0];
+      if (!ref) throw new Error("expected an inline image reference");
       // Engine ImageId is u64 starting at 0 — accept any non-negative integer.
       expect(Number.isInteger(ref.id)).toBe(true);
       expect(ref.id).toBeGreaterThanOrEqual(0);
@@ -257,18 +255,18 @@ test.describe("Inline image round-trip via Tauri CDP", () => {
         id: tid,
         imageId: ref.id,
       });
-      expect(data).not.toBeNull();
-      expect(data!.format).toBe("png");
-      expect(data!.dataBase64.length).toBeGreaterThan(0);
-      expect(data!.widthPx).toBeGreaterThan(0);
-      expect(data!.heightPx).toBeGreaterThan(0);
+      if (!data) throw new Error(`expected image data for image id ${ref.id}`);
+      expect(data.format).toBe("png");
+      expect(data.dataBase64.length).toBeGreaterThan(0);
+      expect(data.widthPx).toBeGreaterThan(0);
+      expect(data.heightPx).toBeGreaterThan(0);
 
       // Round-trip integrity: the bytes coming back must still be a PNG.
       // We don't byte-compare against the fixture because the engine
       // re-emits whatever the decoder normalised — for PNG passthrough
       // that's the same bytes, but checking the `\x89PNG` signature is
       // a stable contract that survives any future re-encode.
-      const decoded = Buffer.from(data!.dataBase64, "base64");
+      const decoded = Buffer.from(data.dataBase64, "base64");
       expect(decoded.subarray(0, 4)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
     } finally {
       await closeTerminal(tid);

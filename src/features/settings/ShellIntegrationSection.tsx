@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
 
+import { writeClipboardText } from "../../shared/lib/nativeClipboard";
 import { isTauriRuntime } from "../../shared/lib/tauriRuntime";
 import styles from "./Settings.module.css";
 
@@ -45,7 +46,7 @@ interface ShellIntegrationSectionProps {
     profilePath: string;
     sourceLine: string;
   }>;
-  /** Override for tests — defaults to navigator.clipboard.writeText. */
+  /** Override for tests — defaults to native clipboard IPC with WebView fallback telemetry. */
   copyToClipboard?: (text: string) => Promise<void>;
 }
 
@@ -75,12 +76,12 @@ function defaultInstall(shell: ShellIntegrationStatus["shell"]) {
   }));
 }
 
-async function defaultCopy(text: string): Promise<void> {
-  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
-    return;
-  }
-  throw new Error("clipboard API unavailable");
+function defaultCopy(text: string): Promise<void> {
+  return writeClipboardText(text, {
+    source: "settings.shell-integration",
+    fallbackMessage: "Native clipboard write failed; using browser clipboard fallback for shell integration.",
+    userVisible: true,
+  });
 }
 
 type FeedbackKind = "ok" | "err";

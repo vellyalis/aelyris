@@ -76,6 +76,30 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
         CREATE INDEX IF NOT EXISTS idx_command_history_command
             ON command_history(command);
 
+        CREATE TABLE IF NOT EXISTS terminal_command_blocks (
+            id                   TEXT NOT NULL,
+            terminal_id          TEXT NOT NULL,
+            command_history_id   INTEGER NOT NULL,
+            command              TEXT NOT NULL,
+            cwd                  TEXT NOT NULL DEFAULT '.',
+            status               TEXT NOT NULL DEFAULT 'running',
+            exit_code            INTEGER,
+            command_sequence     INTEGER,
+            output_sequence      INTEGER,
+            end_sequence         INTEGER,
+            command_history_size INTEGER,
+            output_history_size  INTEGER,
+            end_history_size     INTEGER,
+            command_screen_line  INTEGER,
+            output_screen_line   INTEGER,
+            end_screen_line      INTEGER,
+            updated_at           TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (terminal_id, command_history_id),
+            FOREIGN KEY(command_history_id) REFERENCES command_history(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_terminal_command_blocks_terminal_updated
+            ON terminal_command_blocks(terminal_id, updated_at DESC, command_history_id DESC);
+
         CREATE TABLE IF NOT EXISTS activity_log (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             timestamp   TEXT NOT NULL DEFAULT (datetime('now')),
@@ -202,6 +226,68 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
         );
         CREATE INDEX IF NOT EXISTS idx_command_embeddings_indexed_at
             ON command_embeddings(indexed_at DESC);
+
+        CREATE TABLE IF NOT EXISTS workspace_items (
+            id           TEXT PRIMARY KEY,
+            workspace_id TEXT NOT NULL,
+            item_type    TEXT NOT NULL,
+            title        TEXT NOT NULL,
+            body         TEXT NOT NULL DEFAULT '',
+            status       TEXT NOT NULL DEFAULT 'open',
+            owner        TEXT,
+            source       TEXT NOT NULL DEFAULT 'rust',
+            metadata_json TEXT NOT NULL DEFAULT '{}',
+            created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+            updated_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_workspace_items_workspace
+            ON workspace_items(workspace_id, item_type, updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_workspace_items_status
+            ON workspace_items(workspace_id, status, updated_at DESC);
+
+        CREATE TABLE IF NOT EXISTS mode_preservation_snapshots (
+            id            TEXT PRIMARY KEY,
+            workspace_id  TEXT NOT NULL,
+            active_mode   TEXT NOT NULL,
+            snapshot_json TEXT NOT NULL,
+            created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+            updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_mode_preservation_workspace
+            ON mode_preservation_snapshots(workspace_id, updated_at DESC);
+
+        CREATE TABLE IF NOT EXISTS agent_identity_records (
+            session_id      TEXT PRIMARY KEY,
+            workspace_id    TEXT NOT NULL,
+            provider        TEXT NOT NULL,
+            purpose         TEXT NOT NULL,
+            worktree_path   TEXT,
+            context_usage_json TEXT NOT NULL DEFAULT '{}',
+            auth_state      TEXT NOT NULL DEFAULT 'unknown',
+            install_state   TEXT NOT NULL DEFAULT 'unknown',
+            binary_source   TEXT NOT NULL DEFAULT 'path',
+            profile_source  TEXT NOT NULL DEFAULT 'workspace',
+            usage_limits_json TEXT NOT NULL DEFAULT '{}',
+            guardrail_profile TEXT NOT NULL DEFAULT 'manual',
+            updated_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_agent_identity_workspace
+            ON agent_identity_records(workspace_id, updated_at DESC);
+
+        CREATE TABLE IF NOT EXISTS history_search_entries (
+            id            TEXT PRIMARY KEY,
+            workspace_id  TEXT NOT NULL,
+            entry_type    TEXT NOT NULL,
+            entity_id     TEXT NOT NULL,
+            title         TEXT NOT NULL,
+            body          TEXT NOT NULL DEFAULT '',
+            provenance_id TEXT NOT NULL,
+            created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_history_search_workspace
+            ON history_search_entries(workspace_id, entry_type, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_history_search_text
+            ON history_search_entries(title, body);
         ",
     )?;
 

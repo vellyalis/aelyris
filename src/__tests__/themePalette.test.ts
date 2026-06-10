@@ -13,11 +13,11 @@ import {
 } from "../shared/themes/catppuccin";
 import {
   DEFAULT_MOOD_PRESET,
+  isMoodMaterialLight,
+  MOOD_MATERIAL_DEFAULTS,
   MOOD_PRESETS,
   MOOD_SURFACE_CSS_KEYS,
   materialOverridesToCSS,
-  isMoodMaterialLight,
-  MOOD_MATERIAL_DEFAULTS,
   moodPresetToCSS,
   normalizeMoodPreset,
   sakuraMaterialOverridesToCSS,
@@ -199,14 +199,14 @@ describe("themes/moods — preset metadata", () => {
     }
   });
 
-  it("keeps mood glass presets readable against bright native backdrops", () => {
+  it("keeps mood glass presets translucent while preserving pane hierarchy", () => {
     const darkRanges = {
       "--glass-clear": 0.02,
-      "--glass-ground": [0.68, 0.78],
-      "--glass-frame": [0.64, 0.74],
-      "--glass-standard": [0.72, 0.82],
-      "--glass-dense": [0.76, 0.86],
-      "--glass-thick": [0.8, 0.9],
+      "--glass-ground": [0.32, 0.42],
+      "--glass-frame": [0.26, 0.36],
+      "--glass-standard": [0.34, 0.44],
+      "--glass-dense": [0.42, 0.52],
+      "--glass-thick": [0.48, 0.58],
     } as const;
     const lightCeilings = {
       "--glass-clear": 0.4,
@@ -266,9 +266,9 @@ describe("themes/moods — preset metadata", () => {
   it("keeps Aether Pro graphite deep instead of cloudy grey", () => {
     const vars = moodPresetToCSS("aether-pro");
 
-    expect(vars["--chrome-frame-bg"]).toContain("rgba(2, 8, 16, 0.62)");
-    expect(vars["--mood-left-panel-bg"]).toContain("rgba(4, 13, 23, 0.58)");
-    expect(vars["--mood-right-panel-bg"]).toContain("rgba(4, 13, 23, 0.66)");
+    expect(vars["--chrome-frame-bg"]).toContain("rgba(2, 8, 16, 0.42)");
+    expect(vars["--mood-left-panel-bg"]).toContain("rgba(4, 13, 23, 0.42)");
+    expect(vars["--mood-right-panel-bg"]).toContain("rgba(4, 13, 23, 0.48)");
     expect(vars["--mood-left-panel-bg"]).not.toContain("238, 246, 250");
     expect(vars["--mood-right-panel-bg"]).not.toContain("var(--glass-dense)");
   });
@@ -380,15 +380,12 @@ describe("themes/moods — preset metadata", () => {
     }
   });
 
-  it("keeps muted metadata readable enough for compact chrome", () => {
+  it("keeps chrome text tokens solid instead of opacity-dimming glyphs", () => {
     for (const preset of MOOD_PRESETS) {
       const vars = moodPresetToCSS(preset.id);
-      const muted = vars["--text-muted"];
-      if (preset.id === "aether-sakura") {
-        expect(rgbaAlpha(muted), preset.id).toBeGreaterThanOrEqual(0.72);
-      } else {
-        expect(rgbaAlpha(muted), preset.id).toBeGreaterThanOrEqual(0.56);
-      }
+      expect(vars["--text-primary"], `${preset.id} primary`).toMatch(/^#[0-9a-f]{6}$/i);
+      expect(vars["--text-secondary"], `${preset.id} secondary`).toMatch(/^#[0-9a-f]{6}$/i);
+      expect(vars["--text-muted"], `${preset.id} muted`).toMatch(/^#[0-9a-f]{6}$/i);
     }
   });
 
@@ -479,11 +476,7 @@ function resolveTokenColor(vars: Record<string, string>, raw: string): { rgb: [n
     return { rgb: hexToRgb(normalizeHex(match[0])) };
   }
   return {
-    rgb: [
-      Math.round(Number(match[1])),
-      Math.round(Number(match[2])),
-      Math.round(Number(match[3])),
-    ],
+    rgb: [Math.round(Number(match[1])), Math.round(Number(match[2])), Math.round(Number(match[3]))],
   };
 }
 

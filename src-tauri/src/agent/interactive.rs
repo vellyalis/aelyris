@@ -15,11 +15,8 @@ pub fn platform_cli_program(name: &str) -> String {
             return name.to_string();
         }
 
-        for ext in ["cmd", "exe", "bat"] {
-            let candidate = format!("{name}.{ext}");
-            if command_exists_on_path(&candidate) {
-                return candidate;
-            }
+        if let Some(candidate) = resolve_windows_cli_program(name) {
+            return candidate;
         }
     }
 
@@ -33,15 +30,33 @@ fn has_windows_executable_extension(name: &str) -> bool {
 }
 
 #[cfg(windows)]
-fn command_exists_on_path(command: &str) -> bool {
-    let command_path = std::path::Path::new(command);
+fn resolve_windows_cli_program(name: &str) -> Option<String> {
+    let command_path = std::path::Path::new(name);
     if command_path.components().count() > 1 {
-        return command_path.is_file();
+        return command_path.is_file().then(|| name.to_string());
     }
 
-    std::env::var_os("PATH")
-        .map(|path| std::env::split_paths(&path).any(|dir| dir.join(command).is_file()))
-        .unwrap_or(false)
+    let path = std::env::var_os("PATH")?;
+    resolve_windows_cli_program_on_path(name, &path)
+}
+
+#[cfg(windows)]
+fn resolve_windows_cli_program_on_path(name: &str, path: &std::ffi::OsStr) -> Option<String> {
+    for dir in std::env::split_paths(path) {
+        // Respect PATH directory order first. Inside a directory, prefer a
+        // native executable over npm's .cmd shim when both exist; broken npm
+        // wrappers should not mask a healthy CLI binary earlier on PATH.
+        for ext in ["exe", "cmd", "bat"] {
+            let candidate = format!("{name}.{ext}");
+            if dir.join(&candidate).is_file() {
+                return Some(candidate);
+            }
+        }
+        if dir.join(name).is_file() {
+            return Some(name.to_string());
+        }
+    }
+    None
 }
 
 /// Which AI CLI is backing this session
@@ -120,6 +135,7 @@ impl AgentCli {
 pub struct InteractiveSessionInfo {
     pub id: String,
     pub pty_id: String,
+    pub backend: String,
     pub cli: AgentCli,
     pub status: String,
     pub model: String,
@@ -185,35 +201,36 @@ impl InteractiveSessionManager {
 
     /// Update session status (e.g. "thinking", "coding", "idle", "done")
     pub fn update_status(&self, id: &str, status: &str) -> Result<(), String> {
-        if let Some(session) = self.lock_sessions()?.get_mut(id) {
-            if session.status != status {
-                log::debug!(
-                    "interactive session id={} status {} -> {}",
-                    id,
-                    session.status,
-                    status,
-                );
-            }
-            session.status = status.to_string();
+        let mut sessions = self.lock_sessions()?;
+        let session = sessions
+            .get_mut(id)
+            .ok_or_else(|| format!("Interactive session not found for status update: {id}"))?;
+        if session.status != status {
+            log::debug!(
+                "interactive session id={} status {} -> {}",
+                id,
+                session.status,
+                status,
+            );
         }
+        session.status = status.to_string();
         Ok(())
     }
 
     /// Update cost and token usage
     pub fn update_usage(&self, id: &str, cost: f64, tokens: u64) -> Result<(), String> {
-        if let Some(session) = self.lock_sessions()?.get_mut(id) {
-            session.cost = cost;
-            session.tokens_used = tokens;
-        }
+        let mut sessions = self.lock_sessions()?;
+        let session = sessions
+            .get_mut(id)
+            .ok_or_else(|| format!("Interactive session not found for usage update: {id}"))?;
+        session.cost = cost;
+        session.tokens_used = tokens;
         Ok(())
     }
 
     /// List all sessions
-    pub fn list(&self) -> Vec<InteractiveSessionInfo> {
-        self.sessions
-            .lock()
-            .map(|s| s.values().cloned().collect())
-            .unwrap_or_default()
+    pub fn list(&self) -> Result<Vec<InteractiveSessionInfo>, String> {
+        Ok(self.lock_sessions()?.values().cloned().collect())
     }
 
     fn lock_sessions(
@@ -233,6 +250,7 @@ mod tests {
         InteractiveSessionInfo {
             id: id.to_string(),
             pty_id: format!("pty-{}", id),
+            backend: "sidecar".to_string(),
             cli,
             status: "idle".to_string(),
             model: "sonnet".to_string(),
@@ -252,7 +270,7 @@ mod tests {
         let mgr = InteractiveSessionManager::new();
         mgr.register(make_session("s1", AgentCli::Claude)).unwrap();
         mgr.register(make_session("s2", AgentCli::Gemini)).unwrap();
-        assert_eq!(mgr.list().len(), 2);
+        assert_eq!(mgr.list().unwrap().len(), 2);
     }
 
     #[test]
@@ -276,7 +294,7 @@ mod tests {
 
         let removed = mgr.unregister("s1").unwrap();
         assert!(removed.is_some());
-        assert_eq!(mgr.list().len(), 0);
+        assert_eq!(mgr.list().unwrap().len(), 0);
     }
 
     #[test]
@@ -311,6 +329,44 @@ mod tests {
         assert!(args.is_empty());
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn windows_cli_resolution_respects_path_order_and_prefers_exe_within_directory() {
+        // Inject the PATH value instead of mutating process env: set_var here
+        // races with parallel tests that resolve programs via the real PATH.
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("aether-cli-resolution-{stamp}"));
+        let first = root.join("first");
+        let second = root.join("second");
+        let third = root.join("third");
+        std::fs::create_dir_all(&first).unwrap();
+        std::fs::create_dir_all(&second).unwrap();
+        std::fs::create_dir_all(&third).unwrap();
+
+        let name = format!("aether_cli_resolution_{stamp}");
+        std::fs::write(first.join(format!("{name}.cmd")), "").unwrap();
+        std::fs::write(second.join(format!("{name}.exe")), "").unwrap();
+        std::fs::write(third.join(format!("{name}.cmd")), "").unwrap();
+        std::fs::write(third.join(format!("{name}.exe")), "").unwrap();
+
+        let first_then_second = std::env::join_paths([first.as_path(), second.as_path()]).unwrap();
+        assert_eq!(
+            resolve_windows_cli_program_on_path(&name, &first_then_second),
+            Some(format!("{name}.cmd"))
+        );
+
+        let third_then_first = std::env::join_paths([third.as_path(), first.as_path()]).unwrap();
+        assert_eq!(
+            resolve_windows_cli_program_on_path(&name, &third_then_first),
+            Some(format!("{name}.exe"))
+        );
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
     #[test]
     fn program_and_args_custom() {
         let cli = AgentCli::Custom("my-agent".to_string());
@@ -320,11 +376,12 @@ mod tests {
     }
 
     #[test]
-    fn update_nonexistent_session_is_noop() {
+    fn update_nonexistent_session_is_visible_error() {
         let mgr = InteractiveSessionManager::new();
-        // Should not error, just no-op
-        mgr.update_status("nonexistent", "coding").unwrap();
-        mgr.update_usage("nonexistent", 1.0, 100).unwrap();
+        let status_error = mgr.update_status("nonexistent", "coding").unwrap_err();
+        let usage_error = mgr.update_usage("nonexistent", 1.0, 100).unwrap_err();
+        assert!(status_error.contains("Interactive session not found for status update"));
+        assert!(usage_error.contains("Interactive session not found for usage update"));
         assert!(mgr.get("nonexistent").unwrap().is_none());
     }
 
@@ -357,6 +414,6 @@ mod tests {
             h.join().unwrap();
         }
 
-        assert_eq!(mgr.list().len(), 10);
+        assert_eq!(mgr.list().unwrap().len(), 10);
     }
 }

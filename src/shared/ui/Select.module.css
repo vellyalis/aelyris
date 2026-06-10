@@ -36,7 +36,9 @@
 }
 
 .trigger[data-disabled] {
-  opacity: var(--state-disabled-opacity);
+  border-color: rgba(124, 214, 235, 0.026);
+  background: rgba(3, 8, 14, 0.14);
+  color: var(--text-muted);
   cursor: not-allowed;
 }
 
@@ -110,7 +112,8 @@
 }
 
 .item[data-disabled] {
-  opacity: var(--state-disabled-opacity);
+  color: var(--text-muted);
+  background: transparent;
   cursor: not-allowed;
 }
 

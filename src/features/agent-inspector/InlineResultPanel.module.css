@@ -118,7 +118,8 @@
   color: var(--text-primary);
 }
 .navBtn:disabled {
-  opacity: 0.3;
+  color: var(--text-muted);
+  background: transparent;
   cursor: default;
 }
 

@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useEffect, useState } from "react";
+import { formatFallbackError, reportFallback } from "../lib/fallbackTelemetry";
 
 export type PromptMarkKind = "promptStart" | "commandStart" | "outputStart" | "commandEnd";
 
@@ -16,6 +17,19 @@ export interface PromptMark {
    * jump-to-prompt navigation (see `useScrollback.scrollToMark`).
    */
   historySize: number;
+}
+
+function reportPromptMarkFailure(operation: string, err: unknown) {
+  reportFallback(
+    {
+      source: "prompt-marks",
+      operation,
+      severity: "warning",
+      message: formatFallbackError(err),
+      userVisible: true,
+    },
+    { throttleMs: 5_000 },
+  );
 }
 
 /**
@@ -66,12 +80,21 @@ export function usePromptMarks(terminalId: string | null): PromptMark[] {
           if (cancelled) return;
           setMarks((prev) => mergeMark(prev, event.payload));
         });
-        if (cancelled) {
+      } catch (err) {
+        reportPromptMarkFailure("prompt_marks_listen", err);
+        return;
+      }
+      if (cancelled) {
+        try {
           unlisten();
-          unlisten = null;
-          return;
+        } catch (err) {
+          reportPromptMarkFailure("prompt_marks_unlisten_after_cancel", err);
         }
+        unlisten = null;
+        return;
+      }
 
+      try {
         // Step 2: invoke after the listener is armed. The seed may already
         // overlap with marks the listener has just delivered; mergeMark
         // dedups by sequence so a doubled-up mark collapses to one entry.
@@ -80,14 +103,18 @@ export function usePromptMarks(terminalId: string | null): PromptMark[] {
         if (Array.isArray(seed) && seed.length > 0) {
           setMarks((prev) => seed.reduce(mergeMark, prev));
         }
-      } catch {
-        // Backend unreachable (e.g. vitest jsdom) — stay empty.
+      } catch (err) {
+        reportPromptMarkFailure("term_prompt_marks", err);
       }
     })();
 
     return () => {
       cancelled = true;
-      unlisten?.();
+      try {
+        unlisten?.();
+      } catch (err) {
+        reportPromptMarkFailure("prompt_marks_unlisten", err);
+      }
     };
   }, [terminalId]);
 

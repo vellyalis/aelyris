@@ -1,6 +1,7 @@
 export const FALLBACK_TELEMETRY_EVENT = "aether:fallback-telemetry";
 
 export type FallbackSeverity = "info" | "warning" | "error";
+export type FallbackBoundary = "native" | "webview-fallback" | "local-fallback" | "unavailable";
 
 export interface FallbackTelemetryDetail {
   source: string;
@@ -9,6 +10,8 @@ export interface FallbackTelemetryDetail {
   message: string;
   timestamp: number;
   userVisible?: boolean;
+  boundary?: FallbackBoundary;
+  nativeBoundaryEscaped?: boolean;
 }
 
 const lastReportedAt = new Map<string, number>();
@@ -48,6 +51,8 @@ export function reportInvokeFailure(args: {
   err: unknown;
   severity?: FallbackSeverity;
   userVisible?: boolean;
+  boundary?: FallbackBoundary;
+  nativeBoundaryEscaped?: boolean;
 }): FallbackTelemetryDetail {
   return reportFallback({
     source: args.source,
@@ -55,5 +60,7 @@ export function reportInvokeFailure(args: {
     severity: args.severity ?? "warning",
     message: formatFallbackError(args.err),
     userVisible: args.userVisible,
+    boundary: args.boundary,
+    nativeBoundaryEscaped: args.nativeBoundaryEscaped,
   });
 }

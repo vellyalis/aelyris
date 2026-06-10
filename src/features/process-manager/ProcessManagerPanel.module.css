@@ -62,8 +62,10 @@
 }
 
 .headerKillBtn:disabled {
+  color: var(--text-muted);
+  background: rgba(243, 139, 168, 0.035);
+  border-color: rgba(243, 139, 168, 0.08);
   cursor: default;
-  opacity: 0.42;
 }
 
 .metric {
@@ -372,13 +374,17 @@
 }
 
 .killBtn:disabled {
+  color: var(--text-muted);
+  background: rgba(243, 139, 168, 0.028);
+  border-color: rgba(243, 139, 168, 0.07);
   cursor: default;
-  opacity: 0.38;
 }
 
 .actionBtn:disabled {
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--bg-surface) 58%, transparent);
+  border-color: color-mix(in srgb, var(--border) 60%, transparent);
   cursor: default;
-  opacity: 0.38;
 }
 
 .empty {
@@ -487,8 +493,10 @@
 }
 
 .contextBtn:disabled {
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--bg-surface) 56%, transparent);
+  border-color: color-mix(in srgb, var(--border) 60%, transparent);
   cursor: default;
-  opacity: 0.4;
 }
 
 .recovery {

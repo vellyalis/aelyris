@@ -116,9 +116,7 @@
 
 :global(:root[data-mood="aether-sakura"]) .metric,
 :global(:root[data-mood="aether-sakura"]) .signal {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.3), transparent 60%),
-    rgba(255, 246, 250, 0.8);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.3), transparent 60%), rgba(255, 246, 250, 0.8);
   box-shadow:
     var(--rim-top),
     inset 0 0 0 1px rgba(130, 49, 73, 0.07);

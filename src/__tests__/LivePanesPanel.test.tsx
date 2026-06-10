@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TerminalPaneTarget } from "../App";
 import { LivePanesPanel } from "../features/context/LivePanesPanel";
 import type { Invoke } from "../shared/hooks/useLogStream";
+import { FALLBACK_TELEMETRY_EVENT, type FallbackTelemetryDetail } from "../shared/lib/fallbackTelemetry";
 import { useConfirmStore } from "../shared/ui/ConfirmDialog";
 import { usePromptStore } from "../shared/ui/PromptDialog";
 
@@ -22,6 +23,18 @@ function pane(overrides: Partial<TerminalPaneTarget> = {}): TerminalPaneTarget {
     title: "PowerShell",
     role: undefined,
     ...overrides,
+  };
+}
+
+function collectFallbackEvents() {
+  const events: FallbackTelemetryDetail[] = [];
+  const listener = (event: Event) => {
+    events.push((event as CustomEvent<FallbackTelemetryDetail>).detail);
+  };
+  window.addEventListener(FALLBACK_TELEMETRY_EVENT, listener);
+  return {
+    events,
+    cleanup: () => window.removeEventListener(FALLBACK_TELEMETRY_EVENT, listener),
   };
 }
 
@@ -158,6 +171,43 @@ describe("LivePanesPanel", () => {
 
     expect(await screen.findByText("pty-shel")).toBeTruthy();
     expect(screen.getByText("pty-shel").closest("article")?.getAttribute("data-state")).toBe("live");
+  });
+
+  it("reports live terminal truth failures instead of silently dropping active panes", async () => {
+    const invoke = vi.fn(async (cmd: string) => {
+      if (cmd === "list_panes_info") {
+        return [
+          {
+            terminal_id: "pty-build",
+            name: "Build",
+            role: "build",
+            shell_type: "powershell",
+            cwd: "C:\\repo",
+          },
+        ];
+      }
+      if (cmd === "list_terminals") throw new Error("daemon unavailable");
+      return undefined;
+    }) as Invoke;
+    const telemetry = collectFallbackEvents();
+
+    try {
+      render(<LivePanesPanel invoke={invoke} pollMs={60_000} />);
+
+      expect(await screen.findByText("Build")).toBeTruthy();
+      expect(await screen.findByText("Live terminal truth unavailable: daemon unavailable")).toBeTruthy();
+      expect(telemetry.events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            source: "live-panes",
+            operation: "list_terminals",
+            userVisible: true,
+          }),
+        ]),
+      );
+    } finally {
+      telemetry.cleanup();
+    }
   });
 
   it("keeps the last valid pane list when a later poll returns malformed payload", async () => {

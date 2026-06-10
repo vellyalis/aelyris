@@ -1,5 +1,7 @@
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { formatFallbackError, reportFallback } from "../lib/fallbackTelemetry";
 import type { ImageRef } from "../types/terminal";
 
 /**
@@ -10,7 +12,7 @@ import type { ImageRef } from "../types/terminal";
 export type Invoke = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
 
 const defaultInvoke: Invoke = async (cmd, args) => {
-  const { invoke } = await import("@tauri-apps/api/core");
+  const { invoke } = await Promise.resolve({ invoke: tauriInvoke });
   return invoke(cmd, args) as Promise<never>;
 };
 
@@ -42,7 +44,7 @@ export interface UseTerminalImagesOptions {
  * reporting them (image scrolled into history, or the engine evicted
  * it past the 50 MiB cap). Sprint 3's paint pass treats a missing
  * `id` in the map as "not yet ready / not retrievable" and skips it
- * silently — the same graceful degradation as the backend's
+ * after emitting fallback telemetry — the same graceful degradation as the backend's
  * `term_image_data -> None` path.
  */
 export function useTerminalImages(
@@ -139,6 +141,16 @@ export function useTerminalImages(
       // jsdom or any environment without ImageBitmap support — paint
       // pass will run the cell-only fallback. Don't even fetch IPC,
       // there's nothing to do with the bytes.
+      reportFallback(
+        {
+          source: "terminal.images",
+          operation: "create_image_bitmap_unavailable",
+          severity: "warning",
+          message: `ImageBitmap unavailable; ${stableImages.length} terminal image(s) will be skipped for ${terminalId}.`,
+          userVisible: true,
+        },
+        { throttleMs: 60_000 },
+      );
       return;
     }
 
@@ -183,11 +195,23 @@ export function useTerminalImages(
           });
           inflight.current.delete(ref.id);
         })
-        .catch(() => {
+        .catch((err) => {
           // Same rule as the .then path: only this cycle owns the
           // inflight slot until cleanup clears it. Once cancelled, leave
           // inflight alone so the next cycle's marker is preserved.
-          if (!cancelled) inflight.current.delete(ref.id);
+          if (!cancelled) {
+            inflight.current.delete(ref.id);
+            reportFallback(
+              {
+                source: "terminal.images",
+                operation: "term_image_data",
+                severity: "warning",
+                message: `Terminal image ${ref.id} unavailable for ${terminalId}: ${formatFallbackError(err)}`,
+                userVisible: true,
+              },
+              { throttleMs: 30_000 },
+            );
+          }
         });
     }
 

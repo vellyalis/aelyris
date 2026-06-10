@@ -1,10 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { parseFileChange } from "../lib/agentFileChanges";
+import { parseFileChangeEvent } from "../lib/agentFileChanges";
 import {
+  createAgentTelemetryRecoverySession,
   loadAgentTelemetrySnapshot,
-  parseAgentTelemetrySnapshot,
+  parseAgentTelemetrySnapshotResult,
   saveAgentTelemetrySnapshot,
   serializeAgentTelemetrySnapshot,
 } from "../lib/agentTelemetryPersistence";
@@ -178,7 +179,10 @@ export function useAgentManager() {
     void invoke<AgentTelemetrySnapshotRaw[]>("list_agent_telemetry_snapshots", { limit: 1 })
       .then((snapshots) => {
         if (cancelled || !Array.isArray(snapshots) || snapshots.length === 0) return;
-        const restored = parseAgentTelemetrySnapshot(snapshots[0]?.snapshot_json ?? null);
+        const restoredResult = parseAgentTelemetrySnapshotResult(snapshots[0]?.snapshot_json ?? null);
+        const restored = restoredResult.error
+          ? [createAgentTelemetryRecoverySession(restoredResult.error, "backend")]
+          : restoredResult.sessions;
         if (restored.length === 0) return;
         setSessions((prev) => mergeRestoredTelemetry(prev, restored));
       })
@@ -275,16 +279,21 @@ export function useAgentManager() {
           content = line.slice(0, 300);
         }
 
-        const log: AgentLog = { timestamp: Date.now(), type: logType, content };
-
         // Track file changes with detail
-        const fileChange = parseFileChange(line);
+        const fileChangeEvent = parseFileChangeEvent(line);
+        if (fileChangeEvent.kind === "parser_error") {
+          logType = "error";
+          content = `Malformed agent structured output: ${fileChangeEvent.error.error}`;
+        }
+
+        const log: AgentLog = { timestamp: Date.now(), type: logType, content };
 
         setSessions((prev) =>
           prev.map((s) => {
             if (s.id !== id) return s;
             const updated = { ...s, logs: appendBoundedLog(s.logs, log) };
-            if (fileChange) {
+            if (fileChangeEvent.kind === "change") {
+              const fileChange = fileChangeEvent.change;
               updated.filesChanged = (s.filesChanged ?? 0) + 1;
               updated.changedFileDetails = appendBoundedFileDetail(s.changedFileDetails ?? [], {
                 path: fileChange.path,

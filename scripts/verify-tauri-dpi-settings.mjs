@@ -340,7 +340,10 @@ async function main() {
     console.error(`[tauri-smoke] ${report.error}`);
     process.exit(report.status === "external_dependency" ? 2 : 1);
   } finally {
-    if (browser) await browser.close().catch(() => {});
+    if (browser) {
+      if (typeof browser.disconnect === "function") browser.disconnect();
+      else await browser.close().catch(() => {});
+    }
   }
 }
 

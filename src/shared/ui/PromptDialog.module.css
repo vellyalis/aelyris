@@ -96,7 +96,7 @@
 
 .submitBtn {
   background: var(--gold);
-  border: none;
+  border: 1px solid transparent;
   border-radius: var(--radius);
   color: var(--text-on-accent);
   font-size: var(--text-base);
@@ -104,12 +104,18 @@
   font-family: var(--font-ui);
   padding: var(--space-2) var(--space-6);
   cursor: pointer;
-  transition: opacity var(--duration-fast);
+  transition:
+    background var(--duration-fast),
+    border-color var(--duration-fast),
+    box-shadow var(--duration-fast);
 }
 .submitBtn:hover {
-  opacity: 0.9;
+  background: color-mix(in srgb, var(--gold) 92%, #fff 8%);
+  box-shadow: 0 4px 12px rgba(200, 160, 80, 0.12);
 }
 .submitBtn:disabled {
-  opacity: var(--state-disabled-opacity);
+  background: color-mix(in srgb, var(--gold) 28%, var(--glass-dense));
+  border-color: rgba(216, 183, 102, 0.14);
+  color: var(--text-secondary);
   cursor: default;
 }

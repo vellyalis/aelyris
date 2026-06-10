@@ -1,3 +1,4 @@
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { MousePointer2, PlugZap, RadioTower, Send, Terminal } from "lucide-react";
 import { type ChangeEvent, type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 
@@ -12,6 +13,17 @@ import { EmptyState } from "../../shared/ui/EmptyState";
 import { PanelHeader } from "../../shared/ui/PanelHeader";
 import { showPrompt } from "../../shared/ui/PromptDialog";
 import styles from "./LivePanesPanel.module.css";
+
+export const RIGHT_RAIL_COMPATIBILITY_CLIENT = {
+  schema: "aether.react.right-rail-compatibility-client.v1",
+  surface: "live-panes-right-rail",
+  primarySurface: "aether-native",
+  compatibilityRole: "legacy-tauri-react-client",
+  productTruthOwner: "rust-native-command-center",
+  nativeContract: "aether.native.right-rail-demotion-proof.v1",
+  reactOwnsProductTruth: false,
+  webviewDispatchRequired: false,
+} as const;
 
 interface LivePanesPanelProps {
   enabled?: boolean;
@@ -404,7 +416,7 @@ async function sendToPane(
   if (!text?.trim()) return;
   const data = normalizeCommandInput(text);
   try {
-    const call = invoke ?? (await import("@tauri-apps/api/core")).invoke;
+    const call = invoke ?? (await Promise.resolve({ invoke: tauriInvoke })).invoke;
     const livePane = resolveLivePane(pane);
     if (!livePane) {
       toast.error("Send target changed", "The pane was removed before input could be sent.");
@@ -495,7 +507,7 @@ async function sendToRole(role: string, invoke?: Invoke, countLiveRoleTargets: (
     return;
   }
   try {
-    const call = invoke ?? (await import("@tauri-apps/api/core")).invoke;
+    const call = invoke ?? (await Promise.resolve({ invoke: tauriInvoke })).invoke;
     const count = await call<number>("send_keys_by_role", { role, data: normalizeCommandInput(text) });
     toast.success("Broadcast sent", `${count} pane${count === 1 ? "" : "s"}`);
   } catch (error) {

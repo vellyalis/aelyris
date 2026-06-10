@@ -1,3 +1,4 @@
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import {
   Bot,
   ClipboardList,
@@ -118,7 +119,7 @@ export function useAppMenus(opts: UseAppMenusOptions) {
         return;
       }
       try {
-        const { invoke } = await import("@tauri-apps/api/core");
+        const { invoke } = await Promise.resolve({ invoke: tauriInvoke });
         type BranchInfo = { name: string; isHead: boolean; isRemote: boolean };
         const branches = await invoke<BranchInfo[]>("list_branches", { repoPath: projectPath });
         const current = branches.find((b) => b.isHead)?.name ?? "(unknown)";
@@ -151,7 +152,7 @@ export function useAppMenus(opts: UseAppMenusOptions) {
   const sendToPaneTarget = useMemo(() => {
     return async () => {
       try {
-        const { invoke } = await import("@tauri-apps/api/core");
+        const { invoke } = await Promise.resolve({ invoke: tauriInvoke });
         type PaneInfo = { name: string; role: string; shell_type: string; cwd: string };
         let panes: PaneInfo[] = [];
         try {
@@ -199,7 +200,7 @@ export function useAppMenus(opts: UseAppMenusOptions) {
           placeholder: "command or text",
         });
         if (!text?.trim()) return;
-        const { invoke } = await import("@tauri-apps/api/core");
+        const { invoke } = await Promise.resolve({ invoke: tauriInvoke });
         let panes: unknown[];
         try {
           panes = await invoke<unknown[]>("list_panes_info");
@@ -318,7 +319,10 @@ export function useAppMenus(opts: UseAppMenusOptions) {
   const enableImeTrace = useMemo(() => {
     return () => {
       enableImeDiagnostics(window);
-      toast.success("IME diagnostics enabled", "Trace recording is silent; reproduce the input bug, then copy the trace");
+      toast.success(
+        "IME diagnostics enabled",
+        "Trace recording is silent; reproduce the input bug, then copy the trace",
+      );
     };
   }, []);
 
@@ -706,7 +710,7 @@ export function useAppMenus(opts: UseAppMenusOptions) {
             action: async () => {
               const name = await showPrompt("New File", { placeholder: "file name..." });
               if (name && projectPath) {
-                const { invoke } = await import("@tauri-apps/api/core");
+                const { invoke } = await Promise.resolve({ invoke: tauriInvoke });
                 const path = `${projectPath}/${name}`;
                 try {
                   await invoke("create_file", { path });

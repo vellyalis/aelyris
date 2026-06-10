@@ -18,7 +18,13 @@ const terminalCanvasSource = rawSource(
     eager: true,
   }) as Record<string, string>,
 );
-
+const paneTreeRendererSource = rawSource(
+  import.meta.glob("../features/terminal/pane-tree/PaneTreeRenderer.tsx", {
+    query: "?raw",
+    import: "default",
+    eager: true,
+  }) as Record<string, string>,
+);
 // jsdom's HTMLCanvasElement.getContext returns null by default — stub a
 // minimal 2D context so the component can exercise its paint logic.
 type CallLog = Array<{ op: string; args: unknown[] }>;
@@ -36,6 +42,9 @@ function installCanvasMock(): CallLog {
       calls.push({ op: "fillText", args });
     }),
     measureText: vi.fn(() => ({ width: 8 }) as TextMetrics),
+    setTransform: vi.fn((...args) => {
+      calls.push({ op: "setTransform", args });
+    }),
     set fillStyle(value: string) {
       calls.push({ op: "fillStyle", args: [value] });
     },
@@ -104,6 +113,82 @@ describe("TerminalCanvas", () => {
     expect(canvas.width).toBe(10 * Math.round(14 * 0.6));
     expect(canvas.height).toBe(3 * Math.round(14 * 1.25));
     expect(canvas.getAttribute("data-terminal-id")).toBe("t1");
+    expect(canvas.parentElement?.getAttribute("data-terminal-text-clarity")).toBe("solid");
+  });
+
+  it("renders the backing store at device-pixel ratio without CSS bitmap scaling", () => {
+    const originalDpr = Object.getOwnPropertyDescriptor(window, "devicePixelRatio");
+    Object.defineProperty(window, "devicePixelRatio", {
+      configurable: true,
+      value: 1.5,
+    });
+
+    try {
+      const { getByTestId } = render(
+        <TerminalCanvas terminalId="t1" cols={10} rows={3} fontSize={14} snapshotOverride={null} />,
+      );
+      const canvas = getByTestId("terminal-canvas") as HTMLCanvasElement;
+
+      expect(canvas.width).toBe(10 * 8 * 1.5);
+      expect(canvas.height).toBe(3 * Math.round(14 * 1.25) * 1.5);
+      expect(canvas.style.width).toBe("80px");
+      expect(canvas.style.height).toBe("54px");
+      expect(canvas.style.imageRendering).not.toBe("pixelated");
+      expect(calls).toEqual(expect.arrayContaining([{ op: "setTransform", args: [1.5, 0, 0, 1.5, 0, 0] }]));
+      expect(calls).toEqual(expect.arrayContaining([{ op: "textBaseline", args: ["top"] }]));
+    } finally {
+      if (originalDpr) {
+        Object.defineProperty(window, "devicePixelRatio", originalDpr);
+      } else {
+        Reflect.deleteProperty(window, "devicePixelRatio");
+      }
+    }
+  });
+
+  it("aligns fractional-DPR CSS size to the integer backing store", () => {
+    const originalDpr = Object.getOwnPropertyDescriptor(window, "devicePixelRatio");
+    Object.defineProperty(window, "devicePixelRatio", {
+      configurable: true,
+      value: 1.25,
+    });
+
+    try {
+      const { getByTestId } = render(
+        <TerminalCanvas terminalId="t1" cols={1} rows={1} fontSize={14} snapshotOverride={null} />,
+      );
+      const canvas = getByTestId("terminal-canvas") as HTMLCanvasElement;
+      const cssHeight = Number.parseFloat(canvas.style.height);
+
+      expect(canvas.height).toBe(Math.ceil(Math.round(14 * 1.25) * 1.25));
+      expect(cssHeight * 1.25).toBeCloseTo(canvas.height, 5);
+    } finally {
+      if (originalDpr) {
+        Object.defineProperty(window, "devicePixelRatio", originalDpr);
+      } else {
+        Reflect.deleteProperty(window, "devicePixelRatio");
+      }
+    }
+  });
+
+  it("keeps live terminal text above decorative viewport overlays", () => {
+    expect(terminalCanvasSource).toContain("styles.terminalCanvasSurface");
+    expect(terminalCanvasSource).not.toContain('imageRendering: "pixelated"');
+    expect(terminalCanvasSource).toContain("canvasGeometryChanged");
+    expect(terminalCanvasSource).toContain("devicePixelRatio: canvasDevicePixelRatio");
+    expect(terminalCanvasSource).toContain("configureTerminalCanvasText(ctx)");
+    expect(terminalCanvasSource).toContain("snapCanvasTextCoord");
+    expect(terminalCanvasSource).toContain("canvasCssSize");
+    expect(terminalCanvasSource).toContain("useTerminalRasterBackground");
+    expect(terminalCanvasSource).toContain("TERMINAL_RASTER_BG_FALLBACK");
+    expect(terminalCanvasSource).toContain('textCtx.textRendering = "auto"');
+  });
+
+  it("snaps pane mounts to the physical pixel grid before compositing the terminal canvas", () => {
+    expect(paneTreeRendererSource).toContain("snapTerminalCssPixel");
+    expect(paneTreeRendererSource).toContain("snapPaneRectToDevicePixels");
+    expect(paneTreeRendererSource).toContain("rect.right - rootRect.left");
+    expect(paneTreeRendererSource).toContain("rect.bottom - rootRect.top");
+    expect(paneTreeRendererSource).not.toContain("Math.round(r.left - rootRect.left)");
   });
 
   it("keeps the jump-to-live affordance tokenized instead of inline-styled", () => {
@@ -113,7 +198,7 @@ describe("TerminalCanvas", () => {
     expect(terminalCanvasSource).not.toContain('color: "#c8a050"');
   });
 
-  it("clears rows without repainting a default-background slab", () => {
+  it("clears rows then paints an in-canvas raster backing before glyphs", () => {
     const first = snapshot([[cell("a"), cell(" ")]], { shape: "hidden" });
     const { rerender } = render(
       <TerminalCanvas terminalId="t1" cols={2} rows={1} fontSize={10} snapshotOverride={first} />,
@@ -132,12 +217,21 @@ describe("TerminalCanvas", () => {
         (c.args[2] as number) === 16 &&
         (c.args[3] as number) === Math.round(10 * 1.25),
     );
-    const defaultBackgroundFills = repaintCalls.filter(
-      (c) => c.op === "fillStyle" && (c.args[0] as string) === "rgba(3, 10, 22, 0.54)",
+    const rowRasterFillIndex = repaintCalls.findIndex(
+      (c) =>
+        c.op === "fillRect" &&
+        (c.args[0] as number) === 0 &&
+        (c.args[1] as number) === 0 &&
+        (c.args[2] as number) === 16 &&
+        (c.args[3] as number) === Math.round(10 * 1.25),
+    );
+    const rasterBackgroundFills = repaintCalls.filter(
+      (c) => c.op === "fillStyle" && (c.args[0] as string) === "rgba(3, 10, 22, 1)",
     );
 
     expect(rowClearIndex).toBeGreaterThanOrEqual(0);
-    expect(defaultBackgroundFills).toHaveLength(0);
+    expect(rowRasterFillIndex).toBeGreaterThan(rowClearIndex);
+    expect(rasterBackgroundFills.length).toBeGreaterThan(0);
   });
 
   it("paints cell characters via fillText when a snapshot is provided", () => {
@@ -250,6 +344,27 @@ describe("TerminalCanvas", () => {
     expect(chars).not.toContain(" ");
   });
 
+  it("does not horizontally clamp ordinary ASCII glyphs", () => {
+    const snap = snapshot([[cell("W"), cell("i")]], { shape: "hidden" });
+    render(<TerminalCanvas terminalId="t1" cols={2} rows={1} fontSize={10} snapshotOverride={snap} />);
+
+    const asciiCalls = calls.filter((c) => c.op === "fillText" && ["W", "i"].includes(c.args[0] as string));
+    expect(asciiCalls).toHaveLength(2);
+    expect(asciiCalls.every((c) => c.args.length === 3)).toBe(true);
+  });
+
+  it("keeps CJK glyphs clamped to their two-cell terminal slot", () => {
+    const snap = snapshot(
+      [[cell("漢", { attrs: CellAttr.WIDE_CHAR }), cell(" ", { attrs: CellAttr.WIDE_CHAR_SPACER })]],
+      { shape: "hidden" },
+    );
+    render(<TerminalCanvas terminalId="t1" cols={2} rows={1} fontSize={10} snapshotOverride={snap} />);
+
+    const wideCall = calls.find((c) => c.op === "fillText" && c.args[0] === "漢");
+    expect(wideCall?.args).toHaveLength(4);
+    expect(wideCall?.args[3]).toBe(16);
+  });
+
   it("draws an underline for UNDERLINE cells", () => {
     const snap = snapshot([[cell("U", { attrs: CellAttr.UNDERLINE })]], { shape: "hidden" });
     render(<TerminalCanvas terminalId="t1" cols={1} rows={1} fontSize={10} snapshotOverride={snap} />);
@@ -268,11 +383,20 @@ describe("TerminalCanvas", () => {
     expect(under).toBeDefined();
   });
 
-  it("applies DIM via globalAlpha=0.6", () => {
+  it("applies DIM via clarity-aware globalAlpha", () => {
     const snap = snapshot([[cell("d", { attrs: CellAttr.DIM })]], { shape: "hidden" });
     render(<TerminalCanvas terminalId="t1" cols={1} rows={1} snapshotOverride={snap} />);
     const alphas = calls.filter((c) => c.op === "globalAlpha").map((c) => c.args[0] as number);
-    expect(alphas).toContain(0.6);
+    expect(alphas).toContain(0.78);
+  });
+
+  it("boosts low-contrast text in solid clarity mode", () => {
+    const snap = snapshot([[cell("x", { fg: rgb(8, 10, 12) })]], { shape: "hidden" });
+    render(<TerminalCanvas terminalId="t1" cols={1} rows={1} snapshotOverride={snap} textClarity="solid" />);
+
+    const fillStyles = calls.filter((c) => c.op === "fillStyle").map((c) => c.args[0] as string);
+    expect(fillStyles).not.toContain("#080a0c");
+    expect(fillStyles.some((style) => style.startsWith("rgb(") && style !== "rgb(8, 10, 12)")).toBe(true);
   });
 
   it("skips fillText when HIDDEN is set", () => {

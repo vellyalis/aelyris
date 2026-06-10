@@ -2,9 +2,26 @@ import type { AgentFinalReportInfo, AgentLog, AgentSession, FileChangeDetail } f
 
 export const AGENT_TELEMETRY_STORAGE_KEY = "aether:agentTelemetry:v1";
 
+type AgentLogMetadata = NonNullable<AgentLog["metadata"]>;
+
 const MAX_SESSIONS = 40;
 const MAX_LOGS_PER_SESSION = 120;
 const MAX_FILE_DETAILS_PER_SESSION = 160;
+const CORRUPT_TELEMETRY_VISIBILITY_POLICY = "corrupt-agent-telemetry-is-auditable";
+
+export interface AgentTelemetrySnapshotParseError {
+  kind: "invalid-json" | "invalid-shape";
+  message: string;
+  rawPreview: string;
+  timestamp: number;
+  visibilityPolicy: typeof CORRUPT_TELEMETRY_VISIBILITY_POLICY;
+}
+
+export interface AgentTelemetrySnapshotParseResult {
+  sessions: AgentSession[];
+  error: AgentTelemetrySnapshotParseError | null;
+  droppedSessionCount: number;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -23,6 +40,24 @@ function sanitizeStringArray(value: unknown, limit: number): string[] | undefine
   return value.filter((item): item is string => typeof item === "string" && item.length > 0).slice(-limit);
 }
 
+function sanitizeRiskClasses(value: unknown): AgentLogMetadata["riskClasses"] {
+  const allowed = new Set([
+    "read-only",
+    "build/test",
+    "file mutation",
+    "git mutation",
+    "package install",
+    "network",
+    "process kill",
+    "delete",
+    "permission",
+    "secret-bearing",
+    "destructive",
+    "unknown",
+  ]);
+  return sanitizeStringArray(value, 12)?.filter((item) => allowed.has(item)) as AgentLogMetadata["riskClasses"];
+}
+
 function sanitizeFinalReport(value: unknown): AgentFinalReportInfo | undefined {
   if (!isRecord(value)) return undefined;
   const status = value.status;
@@ -36,6 +71,32 @@ function sanitizeFinalReport(value: unknown): AgentFinalReportInfo | undefined {
   };
 }
 
+function sanitizeLogMetadata(value: unknown): AgentLog["metadata"] | undefined {
+  if (!isRecord(value)) return undefined;
+  const event =
+    value.event === "watchdog_decision" || value.event === "agent_telemetry_corrupt_snapshot" ? value.event : undefined;
+  const decision =
+    value.decision === "approved" || value.decision === "denied" || value.decision === "manual"
+      ? value.decision
+      : undefined;
+  const metadata: AgentLog["metadata"] = {
+    event,
+    toolName: typeof value.toolName === "string" ? value.toolName.slice(0, 120) : undefined,
+    decision,
+    rule: typeof value.rule === "string" ? value.rule.slice(0, 240) : undefined,
+    approvalReplayKey: typeof value.approvalReplayKey === "string" ? value.approvalReplayKey.slice(0, 240) : undefined,
+    riskClasses: sanitizeRiskClasses(value.riskClasses),
+    riskSeverity:
+      value.riskSeverity === "allow" || value.riskSeverity === "review" || value.riskSeverity === "deny"
+        ? value.riskSeverity
+        : undefined,
+    source: typeof value.source === "string" ? value.source.slice(0, 80) : undefined,
+    visibilityPolicy: typeof value.visibilityPolicy === "string" ? value.visibilityPolicy.slice(0, 120) : undefined,
+    rawPreview: typeof value.rawPreview === "string" ? value.rawPreview.slice(0, 240) : undefined,
+  };
+  return Object.values(metadata).some((item) => item !== undefined) ? metadata : undefined;
+}
+
 function sanitizeLog(value: unknown): AgentLog | null {
   if (!isRecord(value)) return null;
   const type = value.type;
@@ -46,7 +107,7 @@ function sanitizeLog(value: unknown): AgentLog | null {
     timestamp: isFiniteNumber(value.timestamp) ? value.timestamp : Date.now(),
     type,
     content: typeof value.content === "string" ? value.content.slice(0, 300) : "",
-    metadata: isRecord(value.metadata) ? (value.metadata as AgentLog["metadata"]) : undefined,
+    metadata: sanitizeLogMetadata(value.metadata),
   };
 }
 
@@ -134,19 +195,85 @@ export function serializeAgentTelemetrySnapshot(sessions: readonly AgentSession[
   return JSON.stringify(payload);
 }
 
-export function parseAgentTelemetrySnapshot(raw: string | null): AgentSession[] {
-  if (!raw) return [];
+function telemetryParseError(
+  kind: AgentTelemetrySnapshotParseError["kind"],
+  message: string,
+  raw: string,
+): AgentTelemetrySnapshotParseError {
+  return {
+    kind,
+    message,
+    rawPreview: raw.slice(0, 240),
+    timestamp: Date.now(),
+    visibilityPolicy: CORRUPT_TELEMETRY_VISIBILITY_POLICY,
+  };
+}
+
+export function createAgentTelemetryRecoverySession(
+  error: AgentTelemetrySnapshotParseError,
+  source: string,
+): AgentSession {
+  return {
+    id: `agent-telemetry-recovery-${source}-${error.timestamp}`,
+    name: "Telemetry recovery",
+    status: "error",
+    model: "telemetry",
+    prompt: `Recover ${source} agent telemetry snapshot`,
+    startedAt: error.timestamp,
+    logs: [
+      {
+        timestamp: error.timestamp,
+        type: "error",
+        content: `Agent telemetry snapshot could not be restored from ${source}: ${error.message}`,
+        metadata: {
+          event: "agent_telemetry_corrupt_snapshot",
+          source,
+          visibilityPolicy: error.visibilityPolicy,
+          rawPreview: error.rawPreview,
+        },
+      },
+    ],
+    cost: 0,
+    tokensUsed: 0,
+    closeState: "collectable",
+    blockedReason: "Agent telemetry snapshot is corrupt; provenance was not silently discarded.",
+    nextActor: "user",
+  };
+}
+
+export function parseAgentTelemetrySnapshotResult(raw: string | null): AgentTelemetrySnapshotParseResult {
+  if (!raw) return { sessions: [], error: null, droppedSessionCount: 0 };
   try {
     const parsed = JSON.parse(raw);
-    if (!isRecord(parsed) || !Array.isArray(parsed.sessions)) return [];
-    return parsed.sessions.map(sanitizeSession).filter((session): session is AgentSession => session != null);
-  } catch {
-    return [];
+    if (!isRecord(parsed) || !Array.isArray(parsed.sessions)) {
+      return {
+        sessions: [],
+        error: telemetryParseError("invalid-shape", "snapshot payload is missing a sessions array", raw),
+        droppedSessionCount: 0,
+      };
+    }
+    const sessions = parsed.sessions.map(sanitizeSession).filter((session): session is AgentSession => session != null);
+    return {
+      sessions,
+      error: null,
+      droppedSessionCount: parsed.sessions.length - sessions.length,
+    };
+  } catch (error) {
+    return {
+      sessions: [],
+      error: telemetryParseError("invalid-json", error instanceof Error ? error.message : String(error), raw),
+      droppedSessionCount: 0,
+    };
   }
 }
 
+export function parseAgentTelemetrySnapshot(raw: string | null): AgentSession[] {
+  return parseAgentTelemetrySnapshotResult(raw).sessions;
+}
+
 export function loadAgentTelemetrySnapshot(storage: Storage = window.localStorage): AgentSession[] {
-  return parseAgentTelemetrySnapshot(storage.getItem(AGENT_TELEMETRY_STORAGE_KEY));
+  const result = parseAgentTelemetrySnapshotResult(storage.getItem(AGENT_TELEMETRY_STORAGE_KEY));
+  return result.error ? [createAgentTelemetryRecoverySession(result.error, "localStorage")] : result.sessions;
 }
 
 export function saveAgentTelemetrySnapshot(

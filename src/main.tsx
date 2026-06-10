@@ -2,6 +2,7 @@
 // Paired with "app:first-paint" in App.tsx; dumped via logBootMetrics().
 performance.mark("app:boot");
 
+import { listen as tauriListen } from "@tauri-apps/api/event";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import "@fontsource/ibm-plex-sans/300.css";
@@ -38,7 +39,7 @@ void (async () => {
     return;
   }
   try {
-    const { listen } = await import("@tauri-apps/api/event");
+    const { listen } = await Promise.resolve({ listen: tauriListen });
     setAetherHost("tauri");
     await listen<boolean>("aether:window-focused", (event) => {
       document.body.setAttribute("data-window-focused", event.payload ? "true" : "false");

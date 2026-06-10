@@ -1,5 +1,5 @@
 import { mkdirSync } from "node:fs";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 const railModes = ["command", "review", "observe"] as const;
 const matrixWidths = [584, 960, 1440, 1920] as const;
@@ -45,6 +45,7 @@ async function openVisualQaApp(
     diagnostics?: boolean;
     incidents?: boolean;
     attachFixture?: boolean;
+    railState?: "idle" | "review" | "blocked" | "unhealthy" | "conductor";
   } = {},
 ) {
   const params = new URLSearchParams({
@@ -55,6 +56,7 @@ async function openVisualQaApp(
   if (options.diagnostics) params.set("diagnostics", "1");
   if (options.incidents) params.set("incidents", "1");
   if (options.attachFixture) params.set("attachFixture", "1");
+  if (options.railState) params.set("railState", options.railState);
 
   await page.goto(`/?${params.toString()}`, { waitUntil: "domcontentloaded" });
   await seedVisualQaStorage(page, options.density ?? "balanced");
@@ -75,7 +77,8 @@ async function readSurfaceLayout(page: Page, selector: string) {
         if (childBox.width <= 2 || childBox.height <= 2) return false;
         if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") return false;
         if (child.closest(".sr-only")) return false;
-        const clipsOverflow = ["hidden", "clip"].includes(style.overflowX) || ["hidden", "clip"].includes(style.overflow);
+        const clipsOverflow =
+          ["hidden", "clip"].includes(style.overflowX) || ["hidden", "clip"].includes(style.overflow);
         if (clipsOverflow && style.textOverflow === "ellipsis") return false;
         return child.scrollWidth - child.clientWidth > 2;
       })
@@ -111,6 +114,7 @@ function expectSurfaceInsideViewport(layout: Awaited<ReturnType<typeof readSurfa
 async function readRightRailLayout(page: Page) {
   return page.evaluate(() => {
     const rightPanel = document.querySelector<HTMLElement>(".right-panel");
+    const rightPanelContent = document.querySelector<HTMLElement>(".right-panel-content");
     const rightStack = document.querySelector<HTMLElement>(".right-panel-stack");
     const centerPanel = document.querySelector<HTMLElement>(".center-panel");
     const widgets = [...document.querySelectorAll<HTMLElement>(".right-panel .bento-widget")];
@@ -125,9 +129,13 @@ async function readRightRailLayout(page: Page) {
       stackScrollWidth: rightStack?.scrollWidth ?? 0,
       stackLeft: rightStack?.getBoundingClientRect().left ?? 0,
       stackRight: rightStack?.getBoundingClientRect().right ?? 0,
-      stackClientHeight: rightStack?.clientHeight ?? 0,
-      stackScrollHeight: rightStack?.scrollHeight ?? 0,
-      stackScrollbarGutter: rightStack ? window.getComputedStyle(rightStack).scrollbarGutter : "",
+      stackClientHeight: rightPanelContent?.clientHeight ?? rightStack?.clientHeight ?? 0,
+      stackScrollHeight: rightPanelContent?.scrollHeight ?? rightStack?.scrollHeight ?? 0,
+      stackScrollbarGutter: rightPanelContent
+        ? window.getComputedStyle(rightPanelContent).scrollbarGutter
+        : rightStack
+          ? window.getComputedStyle(rightStack).scrollbarGutter
+          : "",
       overflowingWidgets,
     };
   });
@@ -415,6 +423,40 @@ test.describe("Visual QA layout guard", () => {
     expect(Math.max(...widths) - Math.min(...widths)).toBeLessThanOrEqual(1);
   });
 
+  test("exposes command evidence actions in the review rail fixture", async ({ page }) => {
+    await page.setViewportSize({ width: 960, height: 800 });
+    await openVisualQaApp(page, { rail: "review", density: "balanced", railState: "review" });
+    await expect(page.locator('[data-widget="review-queue"]')).toBeVisible({ timeout: 10_000 });
+
+    const provenance = page.getByRole("group", { name: "Provenance for src/App.tsx" });
+    const evidenceButton = provenance.getByRole("button", {
+      name: "Open terminal evidence for pnpm exec tsc --noEmit",
+    });
+    await expect(evidenceButton).toBeVisible({ timeout: 10_000 });
+    await page.evaluate(() => {
+      (window as Window & { __aetherCommandEvidenceEvents?: unknown[] }).__aetherCommandEvidenceEvents = [];
+      window.addEventListener(
+        "aether:terminal-command-evidence",
+        (event) => {
+          (window as Window & { __aetherCommandEvidenceEvents?: unknown[] }).__aetherCommandEvidenceEvents?.push(
+            (event as CustomEvent).detail,
+          );
+        },
+        { once: true },
+      );
+    });
+    await evidenceButton.click();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (window as Window & { __aetherCommandEvidenceEvents?: Array<{ terminalId?: string }> })
+              .__aetherCommandEvidenceEvents?.[0]?.terminalId,
+        ),
+      )
+      .toBe("qa-review-shell");
+  });
+
   test("supports keyboard traversal across right rail tabs and command dialogs", async ({ page }) => {
     await page.setViewportSize({ width: 960, height: 800 });
     await openVisualQaApp(page, { rail: "command", density: "balanced" });
@@ -589,53 +631,53 @@ test.describe("Visual QA layout guard", () => {
     }) => {
       test.setTimeout(60_000);
 
-        await page.setViewportSize({ width, height: width >= 1440 ? 900 : 800 });
-        await openVisualQaApp(page, { rail: "observe", density: width === 584 ? "dense" : "balanced" });
+      await page.setViewportSize({ width, height: width >= 1440 ? 900 : 800 });
+      await openVisualQaApp(page, { rail: "observe", density: width === 584 ? "dense" : "balanced" });
 
-        await page.keyboard.press("Control+Shift+P");
-        await expect(page.getByRole("dialog").getByLabel("Command palette")).toBeVisible({ timeout: 10_000 });
-        expectSurfaceInsideViewport(await readSurfaceLayout(page, '[role="dialog"]'));
-        await page.keyboard.press("Escape");
-        await expect(page.getByRole("dialog")).toHaveCount(0);
+      await page.keyboard.press("Control+Shift+P");
+      await expect(page.getByRole("dialog").getByLabel("Command palette")).toBeVisible({ timeout: 10_000 });
+      expectSurfaceInsideViewport(await readSurfaceLayout(page, '[role="dialog"]'));
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("dialog")).toHaveCount(0);
 
-        await page.keyboard.press("Control+,");
-        await expect(page.getByRole("dialog").getByRole("heading", { name: "Settings" })).toBeVisible({
-          timeout: 10_000,
-        });
-        expectSurfaceInsideViewport(await readSurfaceLayout(page, '[role="dialog"]'));
-        await page.getByRole("button", { name: "Close settings" }).click();
-        await expect(page.getByRole("dialog")).toHaveCount(0);
-
-        await page.keyboard.press("Control+Shift+`");
-        await expect(page.getByRole("dialog").getByRole("heading", { name: "Switch Terminal Pane" })).toBeVisible({
-          timeout: 10_000,
-        });
-        expectSurfaceInsideViewport(await readSurfaceLayout(page, '[role="dialog"]'));
-
-        await page
-          .getByRole("button", { name: /^Send command to / })
-          .first()
-          .click();
-        await expect(page.getByRole("dialog").getByRole("heading", { name: /^Send to / })).toBeVisible({
-          timeout: 10_000,
-        });
-        expectSurfaceInsideViewport(await readSurfaceLayout(page, '[role="dialog"]:not([aria-hidden="true"])'));
-
-        await page.keyboard.press("Escape");
-        await expect(page.getByRole("dialog").getByRole("heading", { name: "Switch Terminal Pane" })).toBeVisible({
-          timeout: 10_000,
-        });
-
-        await page
-          .getByRole("button", { name: /^Close / })
-          .first()
-          .click();
-        await expect(page.getByRole("dialog").getByRole("heading", { name: "Close terminal pane" })).toBeVisible({
-          timeout: 10_000,
-        });
-        expectSurfaceInsideViewport(await readSurfaceLayout(page, '[role="dialog"]:not([aria-hidden="true"])'));
-        await page.keyboard.press("Escape");
+      await page.keyboard.press("Control+,");
+      await expect(page.getByRole("dialog").getByRole("heading", { name: "Settings" })).toBeVisible({
+        timeout: 10_000,
       });
+      expectSurfaceInsideViewport(await readSurfaceLayout(page, '[role="dialog"]'));
+      await page.getByRole("button", { name: "Close settings" }).click();
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+
+      await page.keyboard.press("Control+Shift+`");
+      await expect(page.getByRole("dialog").getByRole("heading", { name: "Switch Terminal Pane" })).toBeVisible({
+        timeout: 10_000,
+      });
+      expectSurfaceInsideViewport(await readSurfaceLayout(page, '[role="dialog"]'));
+
+      await page
+        .getByRole("button", { name: /^Send command to / })
+        .first()
+        .click();
+      await expect(page.getByRole("dialog").getByRole("heading", { name: /^Send to / })).toBeVisible({
+        timeout: 10_000,
+      });
+      expectSurfaceInsideViewport(await readSurfaceLayout(page, '[role="dialog"]:not([aria-hidden="true"])'));
+
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("dialog").getByRole("heading", { name: "Switch Terminal Pane" })).toBeVisible({
+        timeout: 10_000,
+      });
+
+      await page
+        .getByRole("button", { name: /^Close / })
+        .first()
+        .click();
+      await expect(page.getByRole("dialog").getByRole("heading", { name: "Close terminal pane" })).toBeVisible({
+        timeout: 10_000,
+      });
+      expectSurfaceInsideViewport(await readSurfaceLayout(page, '[role="dialog"]:not([aria-hidden="true"])'));
+      await page.keyboard.press("Escape");
+    });
   }
 
   test("keeps settings compact in narrow and desktop viewports", async ({ page }) => {
@@ -691,47 +733,47 @@ test.describe("Visual QA layout guard", () => {
     test(`covers canonical dashboard kanban and gantt at ${width}px`, async ({ page }) => {
       test.setTimeout(45_000);
 
-        await page.setViewportSize({ width, height: width >= 1440 ? 900 : 800 });
-        await page.goto("http://127.0.0.1:48371/");
-        await expect(page.getByRole("heading", { name: "Wizard Roadmap Kanban" })).toBeVisible({ timeout: 10_000 });
-        await expect(page.getByRole("heading", { name: "Gantt Timeline" })).toBeVisible({ timeout: 10_000 });
+      await page.setViewportSize({ width, height: width >= 1440 ? 900 : 800 });
+      await page.goto("http://127.0.0.1:48371/");
+      await expect(page.getByRole("heading", { name: "Wizard Roadmap Kanban" })).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByRole("heading", { name: "Gantt Timeline" })).toBeVisible({ timeout: 10_000 });
 
-        const layout = await page.evaluate(() => {
-          const kanban = document.querySelector<HTMLElement>(".kanban");
-          const gantt = document.querySelector<HTMLElement>(".gantt");
-          const overflowingSections = [...document.querySelectorAll<HTMLElement>("section, table, pre")]
-            .filter((element) => {
-              if (element.closest(".kanban, .gantt")) return false;
-              const box = element.getBoundingClientRect();
-              const style = window.getComputedStyle(element);
-              if (box.width <= 2 || box.height <= 2) return false;
-              if (style.display === "none" || style.visibility === "hidden") return false;
-              return box.left < -1 || box.right > window.innerWidth + 1;
-            })
-            .map((element) => ({
-              tag: element.tagName.toLowerCase(),
-              className: String(element.className),
-              text: element.textContent?.trim().replace(/\s+/g, " ").slice(0, 80) ?? "",
-            }));
+      const layout = await page.evaluate(() => {
+        const kanban = document.querySelector<HTMLElement>(".kanban");
+        const gantt = document.querySelector<HTMLElement>(".gantt");
+        const overflowingSections = [...document.querySelectorAll<HTMLElement>("section, table, pre")]
+          .filter((element) => {
+            if (element.closest(".kanban, .gantt")) return false;
+            const box = element.getBoundingClientRect();
+            const style = window.getComputedStyle(element);
+            if (box.width <= 2 || box.height <= 2) return false;
+            if (style.display === "none" || style.visibility === "hidden") return false;
+            return box.left < -1 || box.right > window.innerWidth + 1;
+          })
+          .map((element) => ({
+            tag: element.tagName.toLowerCase(),
+            className: String(element.className),
+            text: element.textContent?.trim().replace(/\s+/g, " ").slice(0, 80) ?? "",
+          }));
 
-          return {
-            documentClientWidth: document.documentElement.clientWidth,
-            documentScrollWidth: document.documentElement.scrollWidth,
-            kanbanClientWidth: kanban?.clientWidth ?? 0,
-            kanbanScrollWidth: kanban?.scrollWidth ?? 0,
-            kanbanGutter: kanban ? window.getComputedStyle(kanban).scrollbarGutter : "",
-            ganttClientWidth: gantt?.clientWidth ?? 0,
-            ganttScrollWidth: gantt?.scrollWidth ?? 0,
-            ganttGutter: gantt ? window.getComputedStyle(gantt).scrollbarGutter : "",
-            overflowingSections,
-          };
-        });
-
-        expect(layout.documentScrollWidth).toBeLessThanOrEqual(layout.documentClientWidth + 1);
-        expect(layout.overflowingSections).toEqual([]);
-        expect(layout.kanbanScrollWidth).toBeGreaterThanOrEqual(layout.kanbanClientWidth);
-        expect(layout.ganttScrollWidth).toBeGreaterThanOrEqual(layout.ganttClientWidth);
+        return {
+          documentClientWidth: document.documentElement.clientWidth,
+          documentScrollWidth: document.documentElement.scrollWidth,
+          kanbanClientWidth: kanban?.clientWidth ?? 0,
+          kanbanScrollWidth: kanban?.scrollWidth ?? 0,
+          kanbanGutter: kanban ? window.getComputedStyle(kanban).scrollbarGutter : "",
+          ganttClientWidth: gantt?.clientWidth ?? 0,
+          ganttScrollWidth: gantt?.scrollWidth ?? 0,
+          ganttGutter: gantt ? window.getComputedStyle(gantt).scrollbarGutter : "",
+          overflowingSections,
+        };
       });
+
+      expect(layout.documentScrollWidth).toBeLessThanOrEqual(layout.documentClientWidth + 1);
+      expect(layout.overflowingSections).toEqual([]);
+      expect(layout.kanbanScrollWidth).toBeGreaterThanOrEqual(layout.kanbanClientWidth);
+      expect(layout.ganttScrollWidth).toBeGreaterThanOrEqual(layout.ganttClientWidth);
+    });
   }
 
   test("captures representative P2-05 visual QA screenshots", async ({ page }) => {

@@ -1,5 +1,18 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { FALLBACK_TELEMETRY_EVENT, type FallbackTelemetryDetail } from "../shared/lib/fallbackTelemetry";
 import { dedupePrepend, loadRecentCommands, MAX_RECENT, recordRecentCommand } from "../shared/lib/recentCommands";
+
+function collectFallbackEvents() {
+  const events: FallbackTelemetryDetail[] = [];
+  const listener = (event: Event) => {
+    events.push((event as CustomEvent<FallbackTelemetryDetail>).detail);
+  };
+  window.addEventListener(FALLBACK_TELEMETRY_EVENT, listener);
+  return {
+    events,
+    cleanup: () => window.removeEventListener(FALLBACK_TELEMETRY_EVENT, listener),
+  };
+}
 
 describe("dedupePrepend", () => {
   it("moves an existing id to the front", () => {
@@ -38,6 +51,28 @@ describe("recentCommands localStorage", () => {
     const next = recordRecentCommand("start-agent");
     expect(next).toEqual(["start-agent"]);
     expect(loadRecentCommands()).toEqual(["start-agent"]);
+  });
+
+  it("reports persistence failures instead of silently dropping recent commands", () => {
+    const telemetry = collectFallbackEvents();
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("quota exceeded");
+    });
+
+    try {
+      const next = recordRecentCommand("start-agent");
+      expect(next).toEqual(["start-agent"]);
+      expect(telemetry.events).toContainEqual(
+        expect.objectContaining({
+          source: "recent-commands",
+          operation: "persist_recent_commands",
+          userVisible: true,
+        }),
+      );
+    } finally {
+      setItem.mockRestore();
+      telemetry.cleanup();
+    }
   });
 
   it("keeps most-recent-first ordering", () => {

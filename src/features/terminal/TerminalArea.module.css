@@ -13,11 +13,21 @@
   color: var(--terminal-ui-primary, var(--text-primary));
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--accent) 2%, transparent), transparent 22%),
-    color-mix(in srgb, var(--terminal-chrome-bg) 20%, transparent);
+    color-mix(in srgb, var(--terminal-chrome-bg) calc(var(--terminal-surface-opacity, 0.82) * 20%), transparent);
   border: 0;
   box-shadow:
     inset 0 1px 0 rgba(178, 236, 246, 0.012),
     inset 0 0 0 1px rgba(96, 184, 215, 0.01);
+}
+
+.terminalArea[data-terminal-text-clarity="solid"] {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 1.6%, transparent), transparent 24%),
+    color-mix(
+      in srgb,
+      var(--terminal-raster-bg) calc(var(--terminal-surface-opacity, 0.82) * 94%),
+      transparent
+    );
 }
 
 .terminalArea::before,
@@ -73,6 +83,14 @@
     var(--terminal-viewport-shadow);
 }
 
+.terminalViewport[data-terminal-text-clarity="solid"] {
+  background: color-mix(
+    in srgb,
+    var(--terminal-raster-bg) calc(var(--terminal-surface-opacity, 0.82) * 98%),
+    transparent
+  );
+}
+
 .terminalViewport::before {
   content: "";
   position: absolute;
@@ -80,6 +98,10 @@
   z-index: 2;
   pointer-events: none;
   background: var(--terminal-viewport-occlusion);
+}
+
+.terminalViewport[data-terminal-text-clarity="solid"]::before {
+  opacity: 0.36;
 }
 
 .terminalViewport::after {
@@ -97,6 +119,17 @@
     color-mix(in srgb, var(--terminal-canvas-bg) 12%, transparent)
   );
   opacity: 0.9;
+}
+
+.terminalViewport[data-terminal-text-clarity="solid"]::after {
+  opacity: 0.22;
+}
+
+.terminalCanvasSurface {
+  position: relative;
+  z-index: 4;
+  text-rendering: auto;
+  -webkit-font-smoothing: subpixel-antialiased;
 }
 
 .terminalStarting {
@@ -340,44 +373,6 @@
   white-space: nowrap;
 }
 
-.previewPrompt {
-  position: relative;
-  z-index: 4;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-3);
-  color: var(--text-primary);
-  font-family: var(--font-mono);
-  font-size: var(--text-lg);
-  line-height: 1.5;
-}
-
-.previewUser {
-  color: var(--text-primary);
-}
-
-.previewPath {
-  color: var(--ctp-blue);
-}
-
-.previewGit {
-  color: var(--ctp-green);
-}
-
-.previewCommand {
-  color: var(--text-secondary);
-}
-
-.previewCursor {
-  display: inline-block;
-  width: 8px;
-  height: 18px;
-  background: var(--text-primary);
-  box-shadow: 0 0 12px rgba(145, 224, 240, 0.24);
-  transform: translateY(3px);
-}
-
 .searchBar {
   display: flex;
   align-items: center;
@@ -519,10 +514,16 @@
   border-color: var(--gold);
 }
 
-/* Disabled (during respawn) — match the rest of the app's "in-flight"
- * affordance: dim text + cursor signal. Without this the button looks
- * fully clickable while it's actually frozen. */
+/* Disabled (during respawn) — keep glyphs fully painted and make only the
+ * material/border state recede, matching the app-wide glass opacity rule. */
 .exitBannerBtn:disabled {
-  opacity: 0.55;
+  color: var(--text-secondary);
+  background: rgba(3, 8, 14, 0.14);
+  border-color: rgba(124, 214, 235, 0.026);
   cursor: progress;
+}
+
+.exitBannerBtn:disabled:hover {
+  background: rgba(3, 8, 14, 0.14);
+  border-color: rgba(124, 214, 235, 0.026);
 }

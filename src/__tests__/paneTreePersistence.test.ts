@@ -1,14 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PaneNode } from "../features/terminal/pane-tree";
-import {
-  deletePaneTreeSnapshotFromBackend,
-  loadPaneTreeSnapshot,
-  loadPaneTreeSnapshotFromBackend,
-  muxWorkspaceIdCandidates,
-  paneTreeSnapshotFromMuxGraph,
-  savePaneTreeSnapshot,
-  savePaneTreeSnapshotToBackend,
-} from "../features/terminal/pane-tree/persistence";
+import { FALLBACK_TELEMETRY_EVENT, type FallbackTelemetryDetail } from "../shared/lib/fallbackTelemetry";
 
 const KEY = "aether:paneTree:test-tab";
 const invokeMock = vi.hoisted(() => vi.fn());
@@ -17,9 +9,40 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: invokeMock,
 }));
 
-beforeEach(() => {
+type PanePersistenceModule = typeof import("../features/terminal/pane-tree/persistence");
+
+let deletePaneTreeSnapshotFromBackend: PanePersistenceModule["deletePaneTreeSnapshotFromBackend"];
+let loadPaneTreeSnapshot: PanePersistenceModule["loadPaneTreeSnapshot"];
+let loadPaneTreeSnapshotFromBackend: PanePersistenceModule["loadPaneTreeSnapshotFromBackend"];
+let muxWorkspaceIdCandidates: PanePersistenceModule["muxWorkspaceIdCandidates"];
+let paneTreeSnapshotFromMuxGraph: PanePersistenceModule["paneTreeSnapshotFromMuxGraph"];
+let savePaneTreeSnapshot: PanePersistenceModule["savePaneTreeSnapshot"];
+let savePaneTreeSnapshotToBackend: PanePersistenceModule["savePaneTreeSnapshotToBackend"];
+
+function collectFallbackEvents() {
+  const events: FallbackTelemetryDetail[] = [];
+  const listener = (event: Event) => {
+    events.push((event as CustomEvent<FallbackTelemetryDetail>).detail);
+  };
+  window.addEventListener(FALLBACK_TELEMETRY_EVENT, listener);
+  return {
+    events,
+    cleanup: () => window.removeEventListener(FALLBACK_TELEMETRY_EVENT, listener),
+  };
+}
+
+beforeEach(async () => {
+  vi.resetModules();
   localStorage.clear();
   invokeMock.mockReset();
+  const module = await import("../features/terminal/pane-tree/persistence");
+  deletePaneTreeSnapshotFromBackend = module.deletePaneTreeSnapshotFromBackend;
+  loadPaneTreeSnapshot = module.loadPaneTreeSnapshot;
+  loadPaneTreeSnapshotFromBackend = module.loadPaneTreeSnapshotFromBackend;
+  muxWorkspaceIdCandidates = module.muxWorkspaceIdCandidates;
+  paneTreeSnapshotFromMuxGraph = module.paneTreeSnapshotFromMuxGraph;
+  savePaneTreeSnapshot = module.savePaneTreeSnapshot;
+  savePaneTreeSnapshotToBackend = module.savePaneTreeSnapshotToBackend;
 });
 
 describe("pane tree persistence", () => {
@@ -171,6 +194,27 @@ describe("pane tree persistence", () => {
     expect(localStorage.getItem(KEY)).toBeNull();
   });
 
+  it("reports local pane tree load failures instead of silently losing restore state", () => {
+    const telemetry = collectFallbackEvents();
+    try {
+      localStorage.setItem(`${KEY}:broken-json`, "{");
+
+      expect(loadPaneTreeSnapshot(`${KEY}:broken-json`, "powershell")).toBeNull();
+
+      expect(telemetry.events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            source: "pane-tree-persistence",
+            operation: "local_load_snapshot",
+            userVisible: true,
+          }),
+        ]),
+      );
+    } finally {
+      telemetry.cleanup();
+    }
+  });
+
   it("clears stale active pane references", () => {
     localStorage.setItem(
       KEY,
@@ -221,7 +265,7 @@ describe("pane tree persistence", () => {
                       kind: "split",
                       axis: "horizontal",
                       ratio: 0.42,
-                      first: { kind: "pane", paneId: "pty-a" },
+                      first: { kind: "pane", pane_id: "pty-a" },
                       second: { kind: "pane", paneId: "pty-b" },
                     },
                   },
@@ -344,5 +388,33 @@ describe("pane tree persistence", () => {
 
     await expect(deletePaneTreeSnapshotFromBackend(KEY)).resolves.toBe(true);
     expect(invokeMock).toHaveBeenLastCalledWith("delete_pane_tree_layout", { storageKey: KEY });
+  });
+
+  it("reports backend pane tree persistence failures instead of silently disabling restore proof", async () => {
+    const tree: PaneNode = {
+      type: "terminal",
+      id: "pane-main",
+      shell: "powershell",
+      role: "work",
+    };
+    invokeMock.mockRejectedValue(new Error("sqlite locked"));
+    const telemetry = collectFallbackEvents();
+    try {
+      await expect(
+        savePaneTreeSnapshotToBackend(`${KEY}:backend-fail`, { tree, activePaneId: "pane-main" }, "C:/repo"),
+      ).resolves.toBe(false);
+
+      expect(telemetry.events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            source: "pane-tree-persistence",
+            operation: "backend_save_snapshot",
+            userVisible: true,
+          }),
+        ]),
+      );
+    } finally {
+      telemetry.cleanup();
+    }
   });
 });

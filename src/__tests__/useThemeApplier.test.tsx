@@ -1,7 +1,8 @@
 import { render, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useThemeApplier } from "../shared/hooks/useTheme";
 import { DEFAULT_BG } from "../shared/lib/ansiPalette";
+import { FALLBACK_TELEMETRY_EVENT, type FallbackTelemetryDetail } from "../shared/lib/fallbackTelemetry";
 import type { MoodMaterialOverrides, MoodPresetId } from "../shared/themes/moods";
 
 function ThemeProbe({
@@ -10,6 +11,7 @@ function ThemeProbe({
   materialOverrides,
   wallpaper,
   windowOpacity,
+  terminalSurfaceOpacity,
 }: {
   themeId: string;
   moodPresetId: MoodPresetId;
@@ -22,9 +24,22 @@ function ThemeProbe({
     scale?: number;
   };
   windowOpacity?: number;
+  terminalSurfaceOpacity?: number;
 }) {
-  useThemeApplier(themeId, undefined, moodPresetId, materialOverrides, wallpaper, windowOpacity);
+  useThemeApplier(themeId, undefined, moodPresetId, materialOverrides, wallpaper, windowOpacity, terminalSurfaceOpacity);
   return null;
+}
+
+function collectFallbackEvents() {
+  const events: FallbackTelemetryDetail[] = [];
+  const listener = (event: Event) => {
+    events.push((event as CustomEvent<FallbackTelemetryDetail>).detail);
+  };
+  window.addEventListener(FALLBACK_TELEMETRY_EVENT, listener);
+  return {
+    events,
+    cleanup: () => window.removeEventListener(FALLBACK_TELEMETRY_EVENT, listener),
+  };
 }
 
 describe("useThemeApplier", () => {
@@ -33,6 +48,10 @@ describe("useThemeApplier", () => {
     document.documentElement.removeAttribute("data-theme");
     document.documentElement.removeAttribute("data-mood");
     document.documentElement.removeAttribute("style");
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("applies mood variables after palette variables and persists both ids", async () => {
@@ -139,9 +158,7 @@ describe("useThemeApplier", () => {
     expect(document.documentElement.style.getPropertyValue("--mood-left-panel-bg")).toContain("0.94");
     expect(document.documentElement.style.getPropertyValue("--terminal-canvas-bg")).toContain("0.48");
 
-    rerender(
-      <ThemeProbe themeId="sakura-hub" moodPresetId="aether-pro" />,
-    );
+    rerender(<ThemeProbe themeId="sakura-hub" moodPresetId="aether-pro" />);
 
     await waitFor(() => {
       expect(document.documentElement.dataset.mood).toBe("aether-pro");
@@ -211,5 +228,59 @@ describe("useThemeApplier", () => {
     });
 
     expect(document.documentElement.style.getPropertyValue("--aether-window-veil-opacity").trim()).toBe("0.274");
+    expect(document.documentElement.style.opacity).toBe("");
+  });
+
+  it("applies terminal surface opacity as material strength without dimming text nodes", async () => {
+    render(<ThemeProbe themeId="aether-dark" moodPresetId="aether-sky" terminalSurfaceOpacity={0.58} />);
+
+    await waitFor(() => {
+      expect(document.documentElement.style.getPropertyValue("--terminal-surface-opacity").trim()).toBe("0.58");
+    });
+
+    expect(document.documentElement.style.opacity).toBe("");
+  });
+
+  it("keeps dark mood glyph colors solid while pane material stays translucent", async () => {
+    render(<ThemeProbe themeId="aether-dark" moodPresetId="aether-sky" />);
+
+    await waitFor(() => {
+      expect(document.documentElement.dataset.mood).toBe("aether-sky");
+    });
+
+    const style = document.documentElement.style;
+    expect(style.getPropertyValue("--text-primary").trim()).toBe("#f6fbff");
+    expect(style.getPropertyValue("--text-secondary").trim()).toBe("#cfe4f3");
+    expect(style.getPropertyValue("--text-muted").trim()).toBe("#9fb8cb");
+    expect(style.getPropertyValue("--glass-standard").trim()).toContain("0.34");
+    expect(style.getPropertyValue("--glass-dense").trim()).toContain("0.42");
+  });
+
+  it("reports theme preference persistence failures instead of silently losing customization", async () => {
+    const telemetry = collectFallbackEvents();
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("storage locked");
+    });
+
+    try {
+      render(<ThemeProbe themeId="sakura-hub" moodPresetId="aether-sakura" windowOpacity={0.72} />);
+
+      await waitFor(() => {
+        expect(document.documentElement.dataset.theme).toBe("sakura-hub");
+        expect(document.documentElement.dataset.mood).toBe("aether-sakura");
+      });
+      expect(document.documentElement.style.getPropertyValue("--aether-window-opacity").trim()).toBe("0.72");
+      expect(telemetry.events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            source: "theme-customization",
+            operation: "persist_theme_preferences",
+            userVisible: true,
+          }),
+        ]),
+      );
+    } finally {
+      telemetry.cleanup();
+    }
   });
 });

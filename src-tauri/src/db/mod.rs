@@ -2,10 +2,11 @@ pub mod migrations;
 pub mod queries;
 
 pub use queries::{
-    AgentSessionRecord, AgentTelemetrySnapshotRecord, AuditEventRecord, AuditJournalAppend,
-    AuditJournalCompactResult, AuditJournalEventRecord, AuditJournalFilter,
-    AuditJournalSnapshotRecord, CommandRecord, Database, PaneTreeLayoutRecord,
-    TerminalOutputJournalRow,
+    AgentIdentityRecord, AgentSessionRecord, AgentTelemetrySnapshotRecord, AuditEventRecord,
+    AuditJournalAppend, AuditJournalCompactResult, AuditJournalEventRecord, AuditJournalFilter,
+    AuditJournalSnapshotRecord, CommandRecord, Database, HistorySearchEntryRecord,
+    ModePreservationSnapshotRecord, PaneTreeLayoutRecord, TerminalOutputJournalRow,
+    WorkspaceItemRecord,
 };
 
 use std::path::PathBuf;

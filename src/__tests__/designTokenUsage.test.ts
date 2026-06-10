@@ -167,8 +167,8 @@ describe("design token usage", () => {
     const source = entry?.[1] ?? "";
     const inactiveRule = source.match(/body\[data-window-focused="false"\]\s*{[\s\S]*?}/)?.[0] ?? "";
 
-    expect(inactiveRule).toContain("--glass-thick: rgba(5, 15, 26, 0.62)");
-    expect(inactiveRule).toContain("--glass-ground: rgba(2, 7, 13, 0.46)");
+    expect(inactiveRule).toContain("--glass-thick: rgba(5, 15, 26, 0.54)");
+    expect(inactiveRule).toContain("--glass-ground: rgba(2, 7, 13, 0.38)");
     expect(inactiveRule).not.toContain("0.8");
     expect(inactiveRule).not.toContain("0.9");
   });
@@ -476,12 +476,12 @@ describe("design token usage", () => {
     }
   });
 
-  it("keeps panel filtering clear instead of milky", () => {
+  it("keeps panel filtering glassy without using opaque slabs", () => {
     const entry = Object.entries(cssSources).find(([file]) => file.includes("styles/global.css"));
     expect(entry).toBeDefined();
     const source = entry?.[1] ?? "";
 
-    expect(source).toContain("--material-panel-filter: blur(1px) saturate(1.05) brightness(0.72) contrast(1.08)");
+    expect(source).toContain("--material-panel-filter: blur(16px) saturate(1.14) brightness(0.78) contrast(1.08)");
     expect(source).toContain("linear-gradient(145deg, rgba(0, 126, 190, 0.042), transparent 48%)");
     expect(source).toContain("backdrop-filter: var(--material-panel-filter)");
     expect(source).not.toContain("--material-panel-filter: blur(20px)");
@@ -765,10 +765,10 @@ describe("design token usage", () => {
     expect(tabWrapRule).toContain("flex: 0 1 clamp(112px, 12vw, 190px)");
     expect(branchRule).toContain("display: inline-flex");
     expect(branchRule).toContain("width: 72px");
-    expect(branchRule).toContain("transition: opacity");
+    expect(branchRule).toContain("transition: color");
     expect(branchRule).toContain("background: transparent");
     expect(branchRule).toContain("box-shadow: none");
-    expect(branchRule).toContain("opacity: 0.42");
+    expect(branchRule).not.toContain("opacity:");
     expect(branchRule).not.toContain("border-radius: var(--radius-pill)");
     expect(activeBranchRule).not.toContain("max-width");
     expect(activeRule).not.toContain("linear-gradient");
@@ -869,17 +869,17 @@ describe("design token usage", () => {
     expect(collapsible).not.toContain("rgba(255, 255, 255, 0.012)");
   });
 
-  it("keeps the everyday workspace closer to the settings dialog water tone", () => {
+  it("keeps the everyday workspace in a translucent native glass tone", () => {
     const global = Object.entries(cssSources).find(([file]) => file.includes("styles/global.css"))?.[1] ?? "";
     const tauriRootRule = global.match(/html\[data-aether-host="tauri"\] #root\s*{[\s\S]*?}/)?.[0] ?? "";
     const leftPanelBg = global.match(/--mood-left-panel-bg:\s*[\s\S]*?;/)?.[0] ?? "";
     const rightPanelBg = global.match(/--mood-right-panel-bg:\s*[\s\S]*?;/)?.[0] ?? "";
     const bentoCardRule = global.match(/\.bento-card\s*{[\s\S]*?}/)?.[0] ?? "";
 
-    expect(tauriRootRule).toContain("rgba(0, 8, 18, 0.68)");
-    expect(tauriRootRule).toContain("rgba(0, 8, 18, 0.58)");
-    expect(leftPanelBg).toContain("rgba(4, 13, 23, 0.56)");
-    expect(rightPanelBg).toContain("rgba(4, 13, 23, 0.64)");
+    expect(tauriRootRule).toContain("rgba(0, 8, 18, 0.42)");
+    expect(tauriRootRule).toContain("rgba(0, 8, 18, 0.28)");
+    expect(leftPanelBg).toContain("rgba(4, 13, 23, 0.4)");
+    expect(rightPanelBg).toContain("rgba(4, 13, 23, 0.46)");
     expect(global).toContain("--row-hover: rgba(6, 18, 30, 0.24)");
     expect(bentoCardRule).toContain("rgba(0, 126, 190, 0.026)");
     expect(bentoCardRule).toContain("backdrop-filter: var(--material-panel-filter)");

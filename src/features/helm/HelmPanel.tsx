@@ -1,5 +1,6 @@
 import { Circle, CircleCheck, Plus, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { reportInvokeFailure } from "../../shared/lib/fallbackTelemetry";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { PanelHeader } from "../../shared/ui/PanelHeader";
 import styles from "./HelmPanel.module.css";
@@ -12,15 +13,40 @@ interface Task {
 
 function loadTasks(): Task[] {
   try {
-    return JSON.parse(localStorage.getItem("aether:helm:tasks") ?? "[]");
-  } catch {
+    const parsed = JSON.parse(localStorage.getItem("aether:helm:tasks") ?? "[]") as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+      .map((item) => {
+        const id = typeof item.id === "string" && item.id.trim() ? item.id : null;
+        const label = typeof item.label === "string" && item.label.trim() ? item.label : null;
+        if (!id || !label) return null;
+        return { id, label, done: item.done === true };
+      })
+      .filter((task): task is Task => task != null)
+      .slice(0, 200);
+  } catch (err) {
+    reportInvokeFailure({
+      source: "helm-tasks",
+      operation: "load_helm_tasks",
+      err,
+      severity: "info",
+      userVisible: true,
+    });
     return [];
   }
 }
 function saveTasks(tasks: Task[]) {
   try {
     localStorage.setItem("aether:helm:tasks", JSON.stringify(tasks));
-  } catch {}
+  } catch (err) {
+    reportInvokeFailure({
+      source: "helm-tasks",
+      operation: "persist_helm_tasks",
+      err,
+      userVisible: true,
+    });
+  }
 }
 
 export function HelmPanel() {

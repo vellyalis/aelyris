@@ -72,7 +72,7 @@ export interface AgentLog {
   type: "text" | "tool_use" | "tool_result" | "error" | "system";
   content: string;
   metadata?: {
-    event?: "watchdog_decision";
+    event?: "watchdog_decision" | "agent_telemetry_corrupt_snapshot";
     toolName?: string;
     decision?: "approved" | "denied" | "manual";
     rule?: string;
@@ -80,6 +80,9 @@ export interface AgentLog {
     approvalReplayRecord?: import("../lib/watchdogDecision").ApprovalReplayRecord;
     riskClasses?: import("../lib/shellSafety").CommandRiskClass[];
     riskSeverity?: import("../lib/shellSafety").CommandRiskSeverity;
+    source?: string;
+    visibilityPolicy?: string;
+    rawPreview?: string;
   };
 }
 

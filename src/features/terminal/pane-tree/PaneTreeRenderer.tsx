@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAppStore } from "../../../shared/store/appStore";
 import { SplitPane } from "../../../shared/ui/SplitPane";
 import { TERMINAL_PREFIX_COMMAND_EVENT } from "../hooks/useCanvasIME";
 import { NativeTerminalArea } from "../NativeTerminalArea";
 import { TerminalInfoBar } from "../TerminalInfoBar";
+import { snapTerminalCssPixel } from "../terminalMetrics";
 import type { PaneRestartRequest } from "./PaneTreeContainer";
 import styles from "./PaneTreeRenderer.module.css";
 import type { PaneLifecycleState, PaneNode, PaneRole, SplitDirection } from "./types";
@@ -96,6 +98,7 @@ export function PaneTreeRenderer({
   canClose,
 }: PaneTreeRendererProps) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const terminalTextClarity = useAppStore((s) => s.terminalTextClarity);
 
   // Accumulate all leaves ever seen (never remove — React handles unmount via key removal)
   const leavesRef = useRef(new Map<string, LeafInfo>());
@@ -145,15 +148,7 @@ export function PaneTreeRenderer({
     const next = new Map<string, DOMRect>();
     for (const [id, el] of slotEls.current) {
       const r = el.getBoundingClientRect();
-      next.set(
-        id,
-        new DOMRect(
-          Math.round(r.left - rootRect.left),
-          Math.round(r.top - rootRect.top),
-          Math.round(r.width),
-          Math.round(r.height),
-        ),
-      );
+      next.set(id, snapPaneRectToDevicePixels(r, rootRect));
     }
     setSlotRects((prev) => (rectsEqual(prev, next) ? prev : next));
   }, []);
@@ -363,6 +358,7 @@ export function PaneTreeRenderer({
             className={styles.terminalMount}
             data-active={isActive ? "true" : undefined}
             data-maximized={isMaximized ? "true" : undefined}
+            data-terminal-text-clarity={terminalTextClarity}
             style={
               rect && isVisible
                 ? {
@@ -459,6 +455,14 @@ function collectLeaves(tree: PaneNode): LeafInfo[] {
     return [{ id: tree.id, shell: tree.shell, cwd: tree.cwd, title: tree.title, role: tree.role }];
   }
   return [...collectLeaves(tree.first), ...collectLeaves(tree.second)];
+}
+
+function snapPaneRectToDevicePixels(rect: DOMRect, rootRect: DOMRect): DOMRect {
+  const left = snapTerminalCssPixel(rect.left - rootRect.left);
+  const top = snapTerminalCssPixel(rect.top - rootRect.top);
+  const right = snapTerminalCssPixel(rect.right - rootRect.left);
+  const bottom = snapTerminalCssPixel(rect.bottom - rootRect.top);
+  return new DOMRect(left, top, Math.max(0, right - left), Math.max(0, bottom - top));
 }
 
 function nextPaneId(leaves: readonly LeafInfo[], paneId: string, delta: 1 | -1): string {

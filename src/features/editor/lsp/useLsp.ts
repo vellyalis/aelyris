@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { reportInvokeFailure } from "../../../shared/lib/fallbackTelemetry";
 import type { JsonRpcResponse } from "./types";
 import { createRequest, type LspLanguage, monacoToLspLanguage } from "./types";
 
@@ -20,6 +21,16 @@ function rustDebugLanguage(language: LspLanguage): string {
     case "go":
       return "Go";
   }
+}
+
+function reportLspFailure(operation: string, err: unknown) {
+  reportInvokeFailure({
+    source: "lsp",
+    operation,
+    err,
+    severity: "warning",
+    userVisible: true,
+  });
 }
 
 /**
@@ -45,7 +56,9 @@ export function useLsp({ projectPath, monacoLanguage }: UseLspOptions) {
       try {
         await invoke("lsp_start", { language, rootPath: projectPath });
         if (aborted) {
-          invoke("lsp_stop", { language, rootPath: projectPath }).catch(() => {});
+          invoke("lsp_stop", { language, rootPath: projectPath }).catch((err) =>
+            reportLspFailure("lsp_stop_after_abort", err),
+          );
           return;
         }
 
@@ -70,7 +83,9 @@ export function useLsp({ projectPath, monacoLanguage }: UseLspOptions) {
               setIsInitialized(true);
               // Send initialized notification
               const notif = JSON.stringify({ jsonrpc: "2.0", method: "initialized", params: {} });
-              invoke("lsp_request", { language, rootPath: projectPath, jsonRpc: notif }).catch(() => {});
+              invoke("lsp_request", { language, rootPath: projectPath, jsonRpc: notif }).catch((err) =>
+                reportLspFailure("lsp_initialized_notification", err),
+              );
             }
           } catch {
             /* ignore parse errors */
@@ -94,8 +109,8 @@ export function useLsp({ projectPath, monacoLanguage }: UseLspOptions) {
           },
         });
         await invoke("lsp_request", { language, rootPath: projectPath, jsonRpc: JSON.stringify(initReq) });
-      } catch {
-        // Server not installed — silently degrade
+      } catch (err) {
+        reportLspFailure("lsp_start_or_initialize", err);
       }
     };
     setup();
@@ -103,7 +118,7 @@ export function useLsp({ projectPath, monacoLanguage }: UseLspOptions) {
     return () => {
       aborted = true;
       unlisten?.();
-      invoke("lsp_stop", { language, rootPath: projectPath }).catch(() => {});
+      invoke("lsp_stop", { language, rootPath: projectPath }).catch((err) => reportLspFailure("lsp_stop_cleanup", err));
       initialized.current = false;
       setIsInitialized(false);
       pendingCallbacks.current.clear();
@@ -125,7 +140,8 @@ export function useLsp({ projectPath, monacoLanguage }: UseLspOptions) {
           clearTimeout(timeout);
           resolve(resp);
         });
-        invoke("lsp_request", { language, rootPath: projectPath, jsonRpc: JSON.stringify(req) }).catch(() => {
+        invoke("lsp_request", { language, rootPath: projectPath, jsonRpc: JSON.stringify(req) }).catch((err) => {
+          reportLspFailure("lsp_request", err);
           clearTimeout(timeout);
           pendingCallbacks.current.delete(req.id);
           resolve(null);
@@ -144,7 +160,9 @@ export function useLsp({ projectPath, monacoLanguage }: UseLspOptions) {
         method: "textDocument/didOpen",
         params: { textDocument: { uri, languageId, version: 1, text: content } },
       });
-      invoke("lsp_request", { language, rootPath: projectPath, jsonRpc: notif }).catch(() => {});
+      invoke("lsp_request", { language, rootPath: projectPath, jsonRpc: notif }).catch((err) =>
+        reportLspFailure("lsp_notify_open", err),
+      );
     },
     [language, projectPath],
   );
@@ -161,7 +179,9 @@ export function useLsp({ projectPath, monacoLanguage }: UseLspOptions) {
           contentChanges: [{ text: content }],
         },
       });
-      invoke("lsp_request", { language, rootPath: projectPath, jsonRpc: notif }).catch(() => {});
+      invoke("lsp_request", { language, rootPath: projectPath, jsonRpc: notif }).catch((err) =>
+        reportLspFailure("lsp_notify_change", err),
+      );
     },
     [language, projectPath],
   );

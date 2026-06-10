@@ -2,7 +2,21 @@
 
 Date: 2026-05-14
 Owner: Aether Terminal
-Status: Target plan for the next product-grade edge pass
+Status: Updated 2026-06-01 after no-git finalize handoff and documentation freshness audit
+
+## Current Canonical State - 2026-06-01
+
+- `pnpm verify:quality-score` currently reports `99/100`, grade `S`, `331/335`, `releaseCandidateReady=false`.
+- `pnpm verify:final-goal-audit` is currently `blocked-by-external-gates`: `implementationFixableCount=0`, `policyBlockedCount=0`, and `externalBlockedCount=1`.
+- The live AI CLI post-launch chaos score is no longer blocked by WebView2 CDP: `.codex-auto/chaos-recovery/native-ai-cli-post-launch-chaos.json` proves native sidecar AI CLI spawn, input, kill cleanup, same-id PTY restart, prompt readiness, and no session residue, while the stale URL truth contract remains covered by the right-rail verifier.
+- The strict right-rail Goal Track DOM proof can also report environment-blocked when WebView2 CDP at `http://127.0.0.1:9222` is not reachable, but the current gate preserves the primary artifact and accepts the fresh `.environment-blocked.json` source contract as `environment-blocked-current-contract`.
+- The safe proof registry has `26/26` registered artifacts green when `rightRailGoalTrackTauri` reports either `pass-current-contract` or `environment-blocked-current-contract`, including `goal-external-gate-readiness`, `real-os-sleep-operator-handoff`, `goal-operator-finish`, optional git handoff artifacts, `glass-legibility-contract`, `right-rail-information-density-contract`, and `goal-anti-stall-contract`.
+- Long external operator gates now persist `.codex-auto/quality/goal-operator-progress.json` with `lastHeartbeatAt`, `nextHeartbeatAt`, active step, and next action, so a resumed run can distinguish an actual stall from a sleep/token gate wait.
+- `pnpm verify:goal:finalize` excludes git finalization by default; set `AETHER_GOAL_FINALIZE_INCLUDE_GIT=1` only when commit/merge readiness is intentionally in scope.
+- Git finalization is an optional handoff gate, not required for product/safe/finalize evidence: `.codex-auto/quality/git-finalization-readiness.json` records the exact commit/merge runbook when `.git/index.lock` or `.git/objects` permission errors block staging.
+- `real-os-soak` is host-blocked, not passed: the native sleep command returned `SetSuspendState returned false; GetLastError=50`, while native sleep/postcheck preflights and the no-real-sleep-claim postcheck writer pass.
+- `authenticated-ai-cli-prompt-smoke` is now proved through explicit consent; `authenticated-ai-cli-consent-packet` records the required `AETHER_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` plus `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini` boundary for any future token-spending prompt run.
+- Until a capable/user-initiated Windows sleep cycle emits real power events, final audit state must remain `blocked-by-external-gates`, never `complete`.
 
 ## Position
 
@@ -89,16 +103,71 @@ Already useful:
   - Context / pulse / ledger / audit surfaces.
 - Project-first app shell with file tree, tasks, editor, terminal panes, workflows, source control, and settings.
 
-Weaknesses:
+### 2026-05-22 State Audit
 
-- The right rail still reads as a dashboard, not an action surface.
-- Users can see widgets without understanding why they matter.
-- Session/agent/worktree ownership is present but not always visually dominant.
-- Workflows, toolkit, context, review, and health are separated into sections instead of one guided run loop.
-- PraisonAI-style memory/RAG/approval/trace concepts are not first-class enough.
-- Warp-style agent permissions, task lists, and Active AI recommendations are only partially represented.
-- cmux-style workspace/pane/surface hierarchy is not expressed clearly in the UI.
-- The rail does not yet prove that Aether is better than running tmux plus AI CLIs manually.
+Implementation-fixable release blockers are currently closed, but the final release claim remains consent-gated:
+
+- `pnpm verify:release:production` passes.
+- `pnpm verify:quality-score` reports `96/100`, grade `A`, `321/335`, `releaseCandidateReady=false`.
+- `pnpm verify:goal:safe` reports `blocked-by-external-gates` with `24/24` proof artifacts passing, including the objective-level `goal-completion-matrix`, current supply-chain audit proof, `goal-external-gate-readiness`, optional git handoff artifacts, `glass-legibility-contract`, and `goal-anti-stall-contract`.
+- The remaining blockers are host real sleep/resume evidence and `authenticated-ai-cli-prompt-smoke`, because the final authenticated AI CLI prompt smoke may spend tokens.
+- The opt-in packet is `authenticated-ai-cli-consent-packet`; running that final smoke requires both `AETHER_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` and `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini`.
+- Strict release doctor, signed updater artifacts, `latest.json`, supply-chain audit, Native IME, live WebView2 smoke, mux restore/performance, and scrollback pass; real OS sleep/resume remains host-blocked until a capable/user-initiated sleep cycle emits power events.
+- Risk register scoring reports `0 open, 0 accepted release`.
+
+Terminal-core blockers have also moved:
+
+- xterm.js is no longer the terminal product dependency.
+- Rust owns PTY lifecycle, terminal parsing/grid state, mux graph, keymap dispatch, scrollback capture/search, and native Tauri input ownership.
+- Remaining terminal work is no longer "make panes work"; it is daemon policy, native renderer/client, config reload, fallback deletion, and provenance/recovery product loops.
+
+The right rail has moved from a passive product-edge gap to a guarded Command Center baseline, but it should still be treated as the highest-leverage product surface. It is no longer a release blocker: the current Goal Track proof shows the score, final audit, safe gate, consent packet, requirement proofs, and the one remaining explicit-consent blocker in the live Tauri UI.
+
+### 2026-05-25 Clauge-Inspired Adjustment
+
+Clauge is useful as an information-architecture reference: explicit modes, purpose-pinned agents, context/worktree/approval visibility, and one-keystroke switching. Aether should adopt that clarity without becoming a generic super-app.
+
+The Command Center/right rail should evolve into a contextual Inspector inside a native mode shell:
+
+- left mode rail: Terminal, Agents, Workspace, Review, Git, Context, History, Settings;
+- center: native terminal/workspace surface;
+- right: Inspector for the selected pane/session/agent/task/file/risk/evidence item;
+- Command Center data remains Rust-owned and feeds the Inspector;
+- React right rail becomes compatibility once native mode shell and inspector proofs pass.
+
+The detailed plan is `docs/CLAUGE_INSPIRED_NATIVE_MODE_SHELL_PLAN_2026-05-25.md`.
+
+The next edge pass should not spend its first energy on more passive telemetry. It should make Aether answer:
+
+- Which run owns this project state?
+- What changed, and why?
+- What action is safest next?
+- Which pane/agent/worktree should I focus, stop, retry, review, or preserve?
+- What context would a follow-up agent receive?
+
+Closed edge weaknesses:
+
+- The right rail now exposes ranked actions with reasons, next steps, target widgets, scale coverage, and a final-goal track.
+- Stale URL/debug replay state is labeled under Visual QA and cannot make normal runtime truth look blocked.
+- Provenance, recovery, context-pack, launch-planner, consent-packet, and command-evidence contracts are now linked to score and final-goal evidence.
+- Runtime fallback and stale-state paths are routed into visible reliability/recovery evidence instead of staying silent.
+
+Remaining stretch risks:
+
+- First-minute product explanation still needs to make the Command Center loop obvious without relying on documentation.
+- Session/agent/worktree ownership should become more visually dominant in every repeated rail card.
+- Workflows, toolkit, context, review, and health should continue converging into one guided run loop rather than adjacent sections.
+- PraisonAI-style memory/RAG/approval/trace concepts are proven as contracts, but still need deeper everyday UX polish.
+- Warp-style permissions, task lists, and Active AI recommendations are present as signals but should become more action-oriented.
+- cmux-style workspace/pane/surface hierarchy is functional, but the hierarchy should be clearer at a glance.
+
+Resolved or reduced weaknesses from the 2026-05-21 audit:
+
+- The old URL/state problem is covered by the stale URL truth contract and live Tauri evidence.
+- Ranked actions and Goal Track proof reduced the "dashboard only" risk.
+- Provenance, recovery, final report, context-pack, and launch-planner artifacts now form an auditable trace in the final-goal evidence map.
+- Context/memory is now represented in launch planning and command-center scenario proof, though the user-facing launch UX still needs refinement.
+- Sakura/glass/background-image customization moved from ad hoc CSS tuning into guarded theme customization contracts.
 
 ## Product Bet
 
@@ -347,6 +416,25 @@ Exit criteria:
 - A new user can explain the rail without docs.
 - Empty states say what to do next, not what the feature is in abstract.
 - No rail section is visible only to show zeroes.
+- Stale URL/debug state cannot visually overrule current release/run truth.
+- The top action always includes a target and a reason.
+
+### Milestone 1.5: Stale-State And Truth Hygiene
+
+Goal: prevent old URL parameters, stale edge-loop history, or cached rail state from making a green product look blocked.
+
+Tasks:
+
+- Add a rail truth banner/state reducer that separates URL-requested scenario state from authoritative runtime state.
+- Mark visual QA/debug scenario state as simulated when `aetherVisualQa=1` or stale `edgeLoop` history is present.
+- Add "current evidence" links to quality score, release doctor, live smoke, and risk closure artifacts when in diagnostic mode.
+- Add tests for stale `state=blocked` URL, stale edge history, fresh `releaseCandidateReady=false` consent-gated truth, and real blocked runtime state.
+
+Exit criteria:
+
+- A stale URL cannot make the normal product appear blocked.
+- Diagnostic/simulated states are clearly labeled and do not poison stored app state.
+- Release-ready state has a visible proof path.
 
 ### Milestone 2: Conductor Becomes The Run Topology
 
@@ -380,6 +468,23 @@ Exit criteria:
 
 - Every agent-created change has an owner.
 - Every owner can be navigated to from review surfaces.
+- Every review item can answer: command/session/agent/worktree/test evidence/final report.
+
+### Milestone 3.5: Command Block To Review Trace
+
+Goal: connect terminal output to changed files and review state.
+
+Tasks:
+
+- Promote command blocks from terminal history into trace records with cwd, shell, command, exit code, output range, owner pane, and changed-file impact.
+- Link failed command blocks to Recovery actions.
+- Link successful test/lint/build command blocks to Review Queue readiness.
+- Add "Show why" on changed files that opens the owning command/agent/worktree trace.
+
+Exit criteria:
+
+- A user can inspect why a changed file exists without reading raw logs.
+- Review Queue can distinguish untested, failed-tested, and passed-tested changes using trace evidence.
 
 ### Milestone 4: Workflow/Agent Graph Upgrade
 
@@ -415,6 +520,22 @@ Exit criteria:
 - Agents can start with named context packs.
 - The user can audit included and excluded context.
 
+### Milestone 5.5: Launch Planner
+
+Goal: make starting an agent safer and more useful than typing into an AI CLI manually.
+
+Tasks:
+
+- Add a launch planner that chooses role, model/provider, worktree, shell, context pack, approval policy, budget, and expected artifacts.
+- Show what will be sent, what is excluded, what files are in scope, and which terminal pane will own the run.
+- Offer templates: implement, test, review, research, hotfix, release-check, docs.
+- Persist launch decisions into the run trace.
+
+Exit criteria:
+
+- A user can launch a high-quality agent run without prompt-pasting.
+- The run trace can reconstruct context, policy, and expected output.
+
 ### Milestone 6: Active Recovery
 
 Goal: make the system feel alive when things break.
@@ -449,6 +570,29 @@ Exit criteria:
 - No critical contrast failure.
 - Rail updates stay responsive under 20+ sessions and 500+ changed files.
 
+### Milestone 8: Native Customization And Shell Boundary
+
+Goal: make the native Rust path improve the product instead of becoming a rewrite detour.
+
+Tasks:
+
+- Define shared theme/customization schema for Tauri shell and future native shell:
+  - colors;
+  - per-surface opacity;
+  - background image path/picker;
+  - scale/position/repeat;
+  - dim/blur;
+  - contrast constraints.
+- Add native-shell compatibility constraints to every new rail/terminal feature: no new mux truth only in React.
+- Add a small `aether-native` terminal client milestone to prove transparent window, native terminal rendering, native input, and daemon attach.
+- Keep Monaco/editor outside the critical native path; default to VSCode/external editor for full editing.
+
+Exit criteria:
+
+- New customization features can be implemented once and consumed by both shells.
+- The native spike attaches to the same session graph instead of creating a parallel terminal.
+- Full-native work advances Aether's edge: lower latency, cleaner identity, better IME/clipboard, and stronger customization.
+
 ## Scoring Target
 
 | Area | Current Target | Required For "Edge" |
@@ -466,14 +610,16 @@ The first true S-grade claim should wait until Milestones 1-3 are implemented an
 
 ## Immediate Next Implementation Slice
 
-Start with Milestone 1 and part of Milestone 2:
+Start with Milestone 1, Milestone 1.5, and the first part of Milestone 3:
 
-1. Rename/clarify right rail copy and remove "Mission Control" framing.
-2. Add a `rightRailActionEngine` that returns ranked next actions.
-3. Replace passive zero-metric panels with state-aware empty/action states.
-4. Promote Conductor when parallel sessions exist.
-5. Add tests for rail action ranking.
-6. Add a visual QA scenario for each rail state.
+1. Remove remaining "Mission Control" framing and clarify visible rail concepts.
+2. Add stale-state hygiene so old `state=blocked` / `edgeLoop` visual QA URLs cannot look like current product truth.
+3. Extend the ranked action engine so each action has target, reason, disabled reason, and evidence link.
+4. Replace passive zero-metric panels with state-aware empty/action states.
+5. Start the provenance model by linking changed files to pane/session/agent/worktree where evidence exists.
+6. Promote Conductor when parallel sessions exist.
+7. Add tests for rail action ranking, stale-state truth, and changed-file provenance.
+8. Add visual QA scenarios for idle, running, blocked, review-ready, unhealthy, and stale-debug-state.
 
 This is the highest leverage slice because it changes the product from "feature collection" to "work command center" without requiring a full native rewrite.
 
@@ -484,3 +630,30 @@ This is the highest leverage slice because it changes the product from "feature 
 - cmux Concepts: https://cmux.com/docs/concepts
 - cmux Getting Started: https://cmux.com/docs/getting-started
 - WezTerm: https://wezterm.org/
+## 2026-05-22 Final Evidence Refresh
+
+- Current release score evidence: `96/100`, `321/335`.
+- `releaseCandidateReady=false`; final-goal audit status is `blocked-by-external-gates` until real sleep/resume evidence and consented `authenticated-ai-cli-prompt-smoke` are both proven.
+- Authenticated prompt execution remains gated by `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini` and explicit consent; the safe proof registry is `24/24`.
+
+## 2026-05-24 Release Evidence Refresh
+
+- Current hybrid release score evidence: `96/100`, `321/335`, `releaseCandidateReady=false`.
+- Final-goal audit status is `blocked-by-external-gates` for the current Tauri/React plus Rust-core product boundary until real sleep/resume evidence and consented `authenticated-ai-cli-prompt-smoke` both pass.
+- The release goal is now native-first hybrid; see `docs/NATIVE_FIRST_HYBRID_PRODUCT_GOAL.md`.
+- The older full-native Rust plan remains as a strict stretch audit in `docs/FULL_NATIVE_RUST_FINAL_GOAL.md`.
+
+## 2026-05-28 Final Goal Evidence Refresh
+
+- Current release score evidence before the self-referential final-goal map is `90/100`, `303/335`, `releaseCandidateReady=false`.
+- Current score after the fresh final-goal evidence map is `96/100`, `321/335`; auditStatus=`blocked-by-external-gates`.
+- Remaining external gate is real Windows sleep/resume support; remaining policy gate is explicit token-spend consent for authenticated AI CLI prompt smoke.
+- Authenticated prompt execution remains gated by `authenticated-ai-cli-prompt-smoke`, `authenticated-ai-cli-consent-packet`, and `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini`; safe proof registry is `24/24`.
+
+## 2026-05-31 Final Goal Evidence Refresh
+
+- Current release score evidence before the self-referential final-goal map is `93/100`, `313/335`, `releaseCandidateReady=false`.
+- Projected score after the fresh final-goal evidence map remains `96/100`, `321/335`; auditStatus=`blocked-by-external-gates`.
+- The terminal render-fidelity gate is green, including the Sharp text path that avoids terminal-shell backdrop blur for canvas glyph clarity.
+- Remaining external gate is real Windows sleep/resume support; remaining policy gate is explicit token-spend consent for `authenticated-ai-cli-prompt-smoke`.
+- Authenticated prompt execution remains gated by `authenticated-ai-cli-prompt-smoke`, `authenticated-ai-cli-consent-packet`, and `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini`; safe proof registry is `24/24`.

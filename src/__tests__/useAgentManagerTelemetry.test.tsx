@@ -435,6 +435,51 @@ describe("useAgentManager telemetry hydration", () => {
     });
   });
 
+  it("keeps malformed structured output visible instead of silently losing provenance", async () => {
+    const listeners = new Map<string, (event: { payload: string | unknown[] }) => void>();
+
+    tauriMocks.listen.mockImplementation(
+      (eventName: string, callback: (event: { payload: string | unknown[] }) => void) => {
+        listeners.set(eventName, callback);
+        return Promise.resolve(vi.fn());
+      },
+    );
+    tauriMocks.invoke.mockImplementation((command: string) => {
+      if (command !== "list_agents") return Promise.resolve(null);
+      return Promise.resolve([
+        {
+          id: "agent-malformed",
+          status: "coding",
+          model: "claude-sonnet",
+          prompt: "resume malformed replay",
+          cwd: "C:/Users/owner/Aether_Terminal",
+        },
+      ]);
+    });
+
+    const { result } = renderHook(() => useAgentManager());
+
+    await waitFor(() => {
+      expect(listeners.has("agent-output-agent-malformed")).toBe(true);
+    });
+
+    act(() => {
+      listeners.get("agent-output-agent-malformed")?.({
+        payload: '{"type":"tool_use","name":"Edit","input":',
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.sessions[0]?.logs).toEqual([
+        expect.objectContaining({
+          type: "error",
+          content: expect.stringContaining("Malformed agent structured output"),
+        }),
+      ]);
+    });
+    expect(result.current.sessions[0]?.filesChanged ?? 0).toBe(0);
+  });
+
   it("persists replayed output, watchdog, and exit telemetry in event order", async () => {
     const listeners = new Map<string, (event: { payload: string | unknown[] }) => void>();
     const backendSnapshots: string[] = [];

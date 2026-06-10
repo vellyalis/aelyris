@@ -25,15 +25,13 @@ function createTab(shell: ShellType, cwd?: string): Tab {
 function readVisualQaProjectPath(): string | null {
   if (!import.meta.env.DEV || typeof window === "undefined") return null;
   const params = new URLSearchParams(window.location.search);
-  let storedEnabled = false;
   let storedProject: string | null = null;
   try {
-    storedEnabled = window.localStorage.getItem("aether:visualQa") === "1";
     storedProject = window.localStorage.getItem("aether:visualQaProject");
   } catch {
     /* storage may be unavailable in private/test contexts */
   }
-  const enabled = params.get("aetherVisualQa") === "1" || params.get("visualQa") === "1" || storedEnabled;
+  const enabled = params.get("aetherVisualQa") === "1" || params.get("visualQa") === "1";
   if (!enabled) return null;
   return (params.get("projectPath") || storedProject || "C:/Users/owner/Aether_Terminal").replace(/\\/g, "/");
 }

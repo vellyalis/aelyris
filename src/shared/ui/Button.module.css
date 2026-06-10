@@ -21,7 +21,7 @@
 /* Primary — quiet 18K gold, not a prismatic SaaS CTA. */
 .primary {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), transparent 42%), var(--gold-surface);
-  color: rgba(13, 13, 13, 0.9);
+  color: #0d0d0d;
   font-weight: var(--weight-semibold);
   position: relative;
   overflow: hidden;
@@ -96,19 +96,33 @@
 
 /* Disabled */
 .btn:disabled {
-  opacity: 0.35;
+  color: var(--text-muted);
   cursor: default;
   pointer-events: none;
+  box-shadow: none;
+}
+.primary:disabled {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 42%),
+    color-mix(in srgb, var(--gold-surface) 34%, var(--glass-dense));
+  color: #5f574e;
+}
+.secondary:disabled,
+.ghost:disabled {
+  background: rgba(3, 8, 14, 0.14);
+  border-color: rgba(124, 214, 235, 0.026);
+}
+.danger:disabled {
+  background: rgba(243, 139, 168, 0.045);
+  border-color: rgba(243, 139, 168, 0.18);
+  color: var(--ctp-red);
 }
 
-/* Loading — set aria-busy="true" to dim the label and overlay a subtle
- * shimmer sweep. Reuses the global `shimmer` keyframe in global.css. */
+/* Loading — keep glyphs fully painted and let the material layer carry motion. */
 .btn[aria-busy="true"] {
+  color: var(--text-secondary);
   cursor: progress;
   pointer-events: none;
-}
-.btn[aria-busy="true"] > * {
-  opacity: 0.6;
 }
 .btn[aria-busy="true"]::after {
   content: "";

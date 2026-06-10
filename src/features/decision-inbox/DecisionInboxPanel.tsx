@@ -80,7 +80,7 @@ export function DecisionInboxPanel({
         <EmptyState
           icon={<ShieldQuestion size={18} />}
           title="No human decisions"
-          description="Use Run to launch work, Changes to review diffs, or Health to recover live panes."
+          description="Use Run to launch work, Git to review diffs, or Health to recover live panes."
         />
       ) : (
         <div className={styles.body}>

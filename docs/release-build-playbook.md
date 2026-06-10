@@ -10,6 +10,11 @@ Do not rerun P2-08 release validation unless source or distribution artifacts ha
 
 Use this path before handing a build to a tester on the same Windows machine.
 
+`pnpm.cmd build` is intentionally Windows spawn-safe: the script sets
+`AETHER_VITE_NO_ESBUILD_SPAWN=1`, loads `scripts/vite-windows-net-use-shim.cjs`,
+and runs Vite with `--configLoader native` so endpoint-protected hosts do not
+stall on esbuild or `net use` process creation before the bundle is produced.
+
 1. Run `pnpm.cmd verify:release:preflight`.
 2. Run `pnpm.cmd tauri:build:dist` when source changes need a fresh bundle.
 3. Run `pnpm.cmd verify:dist`.
@@ -46,6 +51,18 @@ Use this path before calling a build public-release ready.
 3. If the host cannot safely perform a fresh live smoke, run `pnpm.cmd verify:release:production` and attach the latest passing `.codex-auto/production-smoke/*.json` evidence to the release record.
 4. Confirm `.codex-auto/release-doctor/supply-chain-audit.json` reports zero known npm and Rust vulnerabilities.
 5. Review any accepted low-risk controls in the Release Doctor `Known Risks` section before publishing.
+
+### Real Windows Sleep/Resume Gate
+
+Use the user-initiated sleep cycle when `SetSuspendState` is rejected by the host, such as on S0 Modern Standby machines that report `GetLastError=50`.
+
+1. Run `pnpm verify:production:suspend:native-preflight` (`pnpm.cmd` is fine from direct Windows shells).
+2. Run `pnpm verify:production:suspend:native-user-cycle`.
+3. While the verifier is waiting, put Windows to sleep manually from Start menu, lid close, or the power button.
+4. Wake the machine and let the verifier continue through native resume, post-resume probes, and Windows System power-event validation.
+5. Close the evidence loop with `pnpm verify:goal:operator-finish`, `pnpm verify:goal:finalize`, and `pnpm verify:goal:safe`.
+
+The user-initiated cycle never calls the Windows sleep API itself. It only arms evidence, waits for real suspend/resume power events, runs native postcheck probes, and refuses to mark the gate passed if the event pair is missing.
 
 ## Install Smoke
 
@@ -92,6 +109,10 @@ The uninstall smoke is also manual because it removes installed software.
 
 Keep at least one previous NSIS or MSI artifact in `src-tauri/target/release/bundle` until the new release is accepted.
 
+First-release rollback escrow:
+
+When there is no previous public installer, do not fabricate a fake previous artifact. Keep the current signed installer, MSI, `.sig` files, `latest.json`, Release Doctor report, and quality score artifact together as the rollback escrow. If the first public build fails before acceptance, disable the updater endpoint, uninstall the current version, and reinstall only from the current signed installer after the failed artifact is quarantined for investigation.
+
 Rollback path:
 
 1. Uninstall the current version.
@@ -103,6 +124,36 @@ Rollback path:
 
 Before declaring a release candidate, check the Release Doctor crash-log section.
 Review any `.dmp` or `.crash` files and inspect recent non-empty `.err.log` files under `.codex-auto/logs`.
+
+## Final Goal Handoff
+
+Before commit/merge handoff, run `pnpm verify:goal:git-finalization`. It checks `.git/index.lock`, `.git/objects`, and `git add -A --dry-run` readiness without staging, committing, merging, pushing, mutating ACLs, or deleting lock files. The readiness artifact also records a non-destructive handoff block with the current source branch, target branch, commit message, worktree status summary, and exact post-repair commands. Use that handoff only after ACL repair and after rerunning `pnpm verify:goal:git-finalization`.
+
+When the Node verifier can only report `spawn EPERM`, run the direct shell companion:
+
+```powershell
+pnpm.cmd verify:goal:git-finalization:shell
+```
+
+It writes `.codex-auto/quality/git-finalization-shell-diagnostics.json` with the current user, group, ACL, `icacls`, index-lock, and direct `git add -A --dry-run` evidence. The shell diagnostic is also non-destructive: it does not stage, commit, merge, push, mutate ACLs, delete lock files, or persist Git metadata changes; Git may attempt a transient index lock during dry-run.
+
+If that verifier reports `.git/index.lock` or `.git/objects` `EPERM`, inspect the metadata ACL before retrying Git. On Windows, Deny ACEs override owner/Admin allow entries and can block staging even when the worktree files are writable:
+
+```powershell
+whoami /user
+whoami /groups
+Get-Acl .git, .git\index, .git\objects | Format-List Path, Owner, AccessToString
+icacls .git
+icacls .git\index
+icacls .git\objects
+git add -A --dry-run
+```
+
+Compare the `whoami` SID/group output against the Deny SIDs before deciding what to remove. If `git add -A --dry-run` still reports `index.lock` `Permission denied` after SID review, run finalization from a non-sandbox owner/admin shell or repair the repository metadata ACL there. Remove only the reviewed Deny ACEs on `.git` metadata from an owner/admin PowerShell, then rerun `pnpm verify:goal:git-finalization` before `git add -A`. The verifier artifact includes this ACL diagnostic runbook so the handoff does not collapse into a generic permission error.
+
+Run `pnpm verify:goal:operator-finish` first for the final external gates. Without exact opt-in environment variables it only writes a no-token/no-sleep handoff artifact.
+
+After either external gate, close the evidence loop with `pnpm verify:goal:operator-finish`, `pnpm verify:goal:finalize`, and `pnpm verify:goal:safe`.
 
 ## Release Notes
 

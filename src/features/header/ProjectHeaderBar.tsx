@@ -1,5 +1,6 @@
 import { PanelLeft, PanelLeftClose, RefreshCw, Settings } from "lucide-react";
 import { useAttenuatedPulse } from "../../shared/hooks/useAttenuatedPulse";
+import { reportInvokeFailure } from "../../shared/lib/fallbackTelemetry";
 import { useAppStore } from "../../shared/store/appStore";
 import { type Menu, MenuBar } from "../menubar/MenuBar";
 import styles from "./ProjectHeaderBar.module.css";
@@ -31,6 +32,15 @@ const STATUS_META: Record<string, { color: string; label: string }> = {
   done: { color: "var(--ctp-blue)", label: "Complete" },
 };
 
+function reportWindowChromeFailure(operation: string, err: unknown): void {
+  reportInvokeFailure({
+    source: "window-chrome",
+    operation,
+    err,
+    userVisible: true,
+  });
+}
+
 export function ProjectHeaderBar({
   projectName,
   branch,
@@ -47,14 +57,18 @@ export function ProjectHeaderBar({
     try {
       const { getCurrentWindow } = await import("@tauri-apps/api/window");
       getCurrentWindow().minimize();
-    } catch {}
+    } catch (err) {
+      reportWindowChromeFailure("minimize_window", err);
+    }
   };
   const handleMaximize = async () => {
     try {
       const { getCurrentWindow } = await import("@tauri-apps/api/window");
       const win = getCurrentWindow();
       (await win.isMaximized()) ? win.unmaximize() : win.maximize();
-    } catch {}
+    } catch (err) {
+      reportWindowChromeFailure("toggle_maximize_window", err);
+    }
   };
   const handleClose = async () => {
     /* Close path. Two failure modes have to be covered while NOT
@@ -88,10 +102,12 @@ export function ProjectHeaderBar({
       void getCurrentWindow()
         .close()
         .catch((err) => {
+          reportWindowChromeFailure("close_window", err);
           // eslint-disable-next-line no-console
           console.error("[ProjectHeaderBar] window.close() rejected", err);
         });
     } catch (err) {
+      reportWindowChromeFailure("import_window_api_for_close", err);
       // eslint-disable-next-line no-console
       console.error("[ProjectHeaderBar] failed to import @tauri-apps/api/window", err);
     }
@@ -115,6 +131,7 @@ export function ProjectHeaderBar({
       const { exit } = await import("@tauri-apps/plugin-process");
       await exit(0);
     } catch (err) {
+      reportWindowChromeFailure("hard_stop_window", err);
       // eslint-disable-next-line no-console
       console.error("[ProjectHeaderBar] process.exit(0) also failed", err);
     }

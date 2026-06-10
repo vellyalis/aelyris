@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { writeClipboardText } from "../../../shared/lib/nativeClipboard";
 import type { GridSnapshot } from "../../../shared/types/terminal";
 import { pixelToCell } from "../keymap";
 import { extractSelection, lineRangeAt, type SelectionRange, wordRangeAt } from "../selection";
@@ -23,18 +24,7 @@ const defaultCopyText: CopyTextFn = (text) => {
   return writeClipboardText(text);
 };
 
-async function writeClipboardText(text: string): Promise<void> {
-  try {
-    const { invoke } = await import("@tauri-apps/api/core");
-    await invoke("write_clipboard_text", { text });
-    return;
-  } catch {
-    /* Browser fallback below. */
-  }
-  if (typeof navigator !== "undefined" && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
-    await navigator.clipboard.writeText(text).catch(() => {});
-  }
-}
+export { writeClipboardText };
 
 export interface UseTerminalSelectionArgs {
   element: HTMLElement | null;

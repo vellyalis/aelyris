@@ -9,6 +9,7 @@ import {
   listWorkstationGraphRiskIds,
   listWorkstationGraphTerminalIds,
   traceAgentImpact,
+  traceFileProvenance,
 } from "../shared/lib/workstationGraph";
 import type { AgentSession } from "../shared/types/agent";
 
@@ -260,6 +261,86 @@ describe("buildWorkstationGraph", () => {
       notifications: ["notification:notification-a"],
       finalReports: ["final_report:report-a"],
       contextPacks: ["context_pack:pack-a"],
+    });
+  });
+
+  it("returns file provenance with owner, tool, validation, risk, and worktree evidence", () => {
+    const graph = buildWorkstationGraph({
+      workspaceId: "C:/repo",
+      sessions: [
+        session("agent-a", {
+          name: "Builder",
+          role: "implementer",
+          workspaceScope: "C:/repo",
+          worktree: {
+            name: "feature-a",
+            path: "C:/repo/.aether/worktrees/feature-a",
+            branch: "feature/a",
+            is_main: false,
+            head_sha: "abc123",
+            status: "Modified",
+          },
+          changedFileDetails: [{ path: "src/App.tsx", action: "edit", toolName: "Edit", timestamp: 2_000 }],
+          logs: [{ timestamp: 2_100, type: "tool_use", content: 'Edit({"file_path":"src/App.tsx"})' }],
+        }),
+      ],
+      tests: [{ id: "app-test", name: "App tests", status: "pass", filePath: "src/App.tsx" }],
+      risks: [{ id: "app-risk", title: "App risk", status: "open", severity: "high", filePath: "src/App.tsx" }],
+    });
+
+    expect(traceFileProvenance(graph, ".\\src\\App.tsx")).toMatchObject({
+      path: "src/App.tsx",
+      owners: [{ id: "agent-a", name: "Builder", role: "implementer", status: "coding" }],
+      tools: [expect.objectContaining({ label: "Edit" })],
+      tests: [{ id: "test:app-test", label: "App tests", status: "pass" }],
+      risks: [{ id: "risk:app-risk", label: "App risk", status: "open", severity: "high" }],
+      worktrees: ["C:/repo/.aether/worktrees/feature-a"],
+      hasEvidence: true,
+    });
+  });
+
+  it("links terminal command blocks to changed files as review provenance", () => {
+    const graph = buildWorkstationGraph({
+      workspaceId: "C:/repo",
+      panes: [{ paneId: "pane-a", terminalId: "pty-a", processId: 42, title: "PowerShell" }],
+      changedFiles: [{ path: "src/App.tsx", status: "modified" }],
+      sessions: [session("agent-a", { name: "Builder", role: "implementer" })],
+      commandBlocks: [
+        {
+          id: "cmd-test",
+          command: "pnpm test -- src/App.tsx",
+          cwd: "C:/repo",
+          exitCode: 0,
+          agentId: "agent-a",
+          paneId: "pane-a",
+          terminalId: "pty-a",
+          processId: 42,
+          filePaths: ["src/App.tsx"],
+        },
+        {
+          id: "cmd-lint",
+          command: "pnpm exec biome check src/App.tsx",
+          cwd: "C:/repo",
+          exitCode: 1,
+          agentId: "agent-a",
+          paneId: "pane-a",
+          terminalId: "pty-a",
+          filePaths: [".\\src\\App.tsx"],
+        },
+      ],
+    });
+
+    expect(graph.nodeCountByKind.command_block).toBe(2);
+    expect(graph.edgeCountByKind.ran).toBeGreaterThanOrEqual(4);
+    expect(graph.edgeCountByKind.tested).toBe(2);
+    expect(graph.integrity.danglingEdgeCount).toBe(0);
+    expect(traceFileProvenance(graph, "src/App.tsx")).toMatchObject({
+      commands: [
+        expect.objectContaining({ label: "pnpm exec biome check src/App.tsx", status: "failed", exitCode: 1 }),
+        expect.objectContaining({ label: "pnpm test -- src/App.tsx", status: "passed", exitCode: 0 }),
+      ],
+      owners: [{ id: "agent-a", name: "Builder", role: "implementer", status: "coding" }],
+      hasEvidence: true,
     });
   });
 

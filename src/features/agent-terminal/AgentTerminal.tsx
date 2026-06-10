@@ -2,11 +2,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatFallbackError, reportInvokeFailure } from "../../shared/lib/fallbackTelemetry";
+import { useAppStore } from "../../shared/store/appStore";
 import { type AgentStatus, STATUS_COLORS, STATUS_LABELS } from "../../shared/types/agent";
 import { type AgentCliType, getCliColor, getCliLabel } from "../../shared/types/interactiveAgent";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
 import { IMEInputBar, type IMEInputBarHandle } from "../terminal/IMEInputBar";
 import { TerminalCanvas } from "../terminal/TerminalCanvas";
+import { useTerminalCellMetrics } from "../terminal/terminalMetrics";
 import styles from "./AgentTerminal.module.css";
 
 interface AgentTerminalProps {
@@ -20,9 +22,6 @@ interface AgentTerminalProps {
   accentColor?: string;
 }
 
-const FONT_SIZE = 14;
-const CELL_W = Math.round(FONT_SIZE * 0.6);
-const CELL_H = Math.round(FONT_SIZE * 1.25);
 const MIN_COLS = 20;
 const MIN_ROWS = 5;
 
@@ -52,6 +51,10 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
   const imeBarRef = useRef<IMEInputBarHandle>(null);
   const canvasElRef = useRef<HTMLCanvasElement | null>(null);
   const canvasInputElRef = useRef<HTMLTextAreaElement | null>(null);
+  const terminalFontFamily = useAppStore((s) => s.terminalFontFamily);
+  const terminalFontSize = useAppStore((s) => s.terminalFontSize);
+  const terminalTextClarity = useAppStore((s) => s.terminalTextClarity);
+  const cellMetrics = useTerminalCellMetrics(terminalFontSize, terminalFontFamily);
 
   // Measure container → cols/rows, trailing-edge debounced so a continuous
   // resize drag doesn't thrash the backend with resize_terminal calls.
@@ -64,8 +67,8 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
       const h = el.clientHeight;
       if (w <= 0 || h <= 0) return null;
       return {
-        cols: Math.max(MIN_COLS, Math.floor(w / CELL_W)),
-        rows: Math.max(MIN_ROWS, Math.floor(h / CELL_H)),
+        cols: Math.max(MIN_COLS, Math.floor(w / cellMetrics.width)),
+        rows: Math.max(MIN_ROWS, Math.floor(h / cellMetrics.height)),
       };
     };
     const apply = () => {
@@ -85,7 +88,7 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
       if (pending !== null) window.clearTimeout(pending);
       ro.disconnect();
     };
-  }, []);
+  }, [cellMetrics.height, cellMetrics.width]);
 
   // Forward every dims change to the backend PTY + native engine.
   useEffect(() => {
@@ -205,7 +208,9 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
             terminalId={ptyId}
             cols={dims.cols}
             rows={dims.rows}
-            fontSize={FONT_SIZE}
+            fontSize={terminalFontSize}
+            fontFamily={terminalFontFamily}
+            textClarity={terminalTextClarity}
             preferAiInputAnchor
             onCanvasRef={(el) => (canvasElRef.current = el)}
             onInputRef={(el) => (canvasInputElRef.current = el)}

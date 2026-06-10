@@ -1,7 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useSnapshots } from "../shared/hooks/useSnapshots";
 import type { SnapshotCapturedEvent, SnapshotSummary } from "../shared/types/snapshot";
 
 type InvokeFn = (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
@@ -12,6 +11,7 @@ const invokeMock = vi.fn() as unknown as InvokeFn & {
 };
 const listeners: Record<string, ListenHandler<unknown>> = {};
 const unlistenMock = vi.fn();
+let useSnapshots: typeof import("../shared/hooks/useSnapshots").useSnapshots;
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: Record<string, unknown>) => (invokeMock as unknown as InvokeFn)(cmd, args),
@@ -36,10 +36,12 @@ function makeSummary(partial: Partial<SnapshotSummary> & { id: string }): Snapsh
 }
 
 describe("useSnapshots", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.resetModules();
     (invokeMock as unknown as ReturnType<typeof vi.fn>).mockReset();
     unlistenMock.mockReset();
     for (const k of Object.keys(listeners)) delete listeners[k];
+    useSnapshots = (await import("../shared/hooks/useSnapshots")).useSnapshots;
   });
 
   afterEach(() => {

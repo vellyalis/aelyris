@@ -1,3 +1,4 @@
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SearchFilters, SearchHit } from "../types/history";
 
@@ -49,7 +50,7 @@ export function useSemanticHistory(
       setLoading(true);
       setError(null);
       try {
-        const { invoke } = await import("@tauri-apps/api/core");
+        const { invoke } = await Promise.resolve({ invoke: tauriInvoke });
         const result = await invoke<SearchHit[]>("semantic_search_history", {
           query: trimmed,
           limit,

@@ -8,6 +8,7 @@ use crate::agent::output_monitor;
 use crate::agent::{AgentCli, InteractiveSessionInfo, InteractiveSessionManager};
 use crate::ghostdiff::{self, LayerRegistry, LayerTint, WatcherPool};
 use crate::pty::PtyManager;
+use crate::pty_sidecar::PtySidecarState;
 use crate::term::NativeTerminalRegistry;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -15,12 +16,40 @@ pub struct SpawnResult {
     pub session_id: String,
     pub pty_id: String,
     pub worktree_path: Option<String>,
+    pub backend: String,
+}
+
+fn persist_prompt_mark_exit_code(
+    app: &AppHandle,
+    terminal_id: &str,
+    mark: &crate::term::PromptMark,
+) {
+    if let Some(journal) = app.try_state::<Arc<crate::term::CommandBlockJournal>>() {
+        journal.record_prompt_mark(terminal_id, *mark);
+    }
+    if mark.kind != crate::term::PromptMarkKind::CommandEnd {
+        return;
+    }
+    let Some(exit_code) = mark.exit_code else {
+        return;
+    };
+    let Some(db) = app.try_state::<crate::db::ManagedDb>() else {
+        return;
+    };
+    if let Err(err) = db.with(|d| {
+        d.update_latest_command_exit_code(terminal_id, exit_code)
+            .map(|_| ())
+    }) {
+        log::warn!(
+            "interactive command history exit-code update failed terminal={terminal_id}: {err}"
+        );
+    }
 }
 
 /// Spawn an interactive AI agent in a PTY terminal.
 /// Works with any CLI: claude, gemini, codex, or custom.
 #[tauri::command]
-pub fn spawn_interactive_agent(
+pub async fn spawn_interactive_agent(
     app: AppHandle,
     cwd: String,
     model: Option<String>,
@@ -94,10 +123,41 @@ pub fn spawn_interactive_agent(
     env.insert("AETHER_AGENT_CLI".to_string(), format!("{:?}", cli));
     env.insert("AETHER_AGENT_MODEL".to_string(), model_str.to_string());
 
-    // Spawn via PtyManager (reuses existing PTY infrastructure)
-    let pty_manager = app.state::<PtyManager>();
-    let pty_id =
-        pty_manager.spawn_command(&program, &args, cols, rows, Some(&resolved_cwd), Some(env))?;
+    // Spawn through the long-lived sidecar when available. AI CLI sessions
+    // exercise the same IME / clipboard / reconnect boundary as normal panes,
+    // so keeping them on the daemon path is part of the product contract.
+    let sidecar_client = app
+        .try_state::<PtySidecarState>()
+        .and_then(|state| state.client());
+    let (pty_id, output_rx, backend) = if let Some(client) = sidecar_client {
+        let pty_id = client
+            .spawn_command(&program, &args, cols, rows, Some(&resolved_cwd), Some(&env))
+            .await?;
+        let output_rx = match client.subscribe_output(&pty_id).await {
+            Ok(rx) => rx,
+            Err(err) => {
+                let _ = client.close(&pty_id).await;
+                return Err(err);
+            }
+        };
+        (pty_id, output_rx, "sidecar".to_string())
+    } else {
+        log::warn!(
+            "interactive agent {} is using native in-process PTY fallback; sidecar unavailable",
+            program
+        );
+        let pty_manager = app.state::<PtyManager>();
+        let pty_id = pty_manager.spawn_command(
+            &program,
+            &args,
+            cols,
+            rows,
+            Some(&resolved_cwd),
+            Some(env),
+        )?;
+        let output_rx = pty_manager.subscribe_output(&pty_id)?;
+        (pty_id, output_rx, "native".to_string())
+    };
 
     // Register interactive session
     let session_id = pty_id.clone(); // session ID = pty ID for simplicity
@@ -109,6 +169,7 @@ pub fn spawn_interactive_agent(
     let info = InteractiveSessionInfo {
         id: session_id.clone(),
         pty_id: pty_id.clone(),
+        backend: backend.clone(),
         cli: cli.clone(),
         status: if initial_prompt.is_some() {
             "thinking".to_string()
@@ -190,7 +251,6 @@ pub fn spawn_interactive_agent(
     // Subscribes to the PtyManager broadcast so this monitor can coexist
     // with the external API on the same session without stealing bytes
     // from each other (3D-1 v2c).
-    let rx = pty_manager.subscribe_output(&pty_id)?;
     let app_handle = app.clone();
     let sid = session_id.clone();
     let monitor_cli = cli.clone();
@@ -199,7 +259,7 @@ pub fn spawn_interactive_agent(
 
     tauri::async_runtime::spawn(async move {
         run_output_monitor(
-            rx,
+            output_rx,
             &sid,
             &monitor_cli,
             &app_handle,
@@ -223,13 +283,13 @@ pub fn spawn_interactive_agent(
         session_id,
         pty_id,
         worktree_path,
+        backend,
     })
 }
 
 /// Stop an interactive agent session
 #[tauri::command]
-pub fn stop_interactive_agent(app: AppHandle, id: String) -> Result<(), String> {
-    let pty_manager = app.state::<PtyManager>();
+pub async fn stop_interactive_agent(app: AppHandle, id: String) -> Result<(), String> {
     let session_mgr = app.state::<InteractiveSessionManager>();
 
     // Retrieve session info to get pty_id (currently session_id == pty_id)
@@ -243,7 +303,7 @@ pub fn stop_interactive_agent(app: AppHandle, id: String) -> Result<(), String> 
     let _ = session_mgr.update_status(&id, "done");
 
     // Close PTY (kills the process, output monitor thread will exit on read EOF)
-    let _ = pty_manager.close(&pty_id);
+    close_interactive_pty(&app, &pty_id).await;
 
     // Tear down native engine session for this PTY.
     app.state::<Arc<NativeTerminalRegistry>>().remove(&pty_id);
@@ -268,7 +328,7 @@ pub fn stop_interactive_agent(app: AppHandle, id: String) -> Result<(), String> 
 
 /// End session AND remove its worktree (unified lifecycle)
 #[tauri::command]
-pub fn end_session_and_remove_worktree(app: AppHandle, id: String) -> Result<(), String> {
+pub async fn end_session_and_remove_worktree(app: AppHandle, id: String) -> Result<(), String> {
     let session_mgr = app.state::<InteractiveSessionManager>();
 
     // Get session info before removing
@@ -276,12 +336,11 @@ pub fn end_session_and_remove_worktree(app: AppHandle, id: String) -> Result<(),
     session_mgr.update_status(&id, "done")?;
 
     // Close PTY (use pty_id from session info)
-    let pty_manager = app.state::<PtyManager>();
     let pty_id = info
         .as_ref()
         .map(|s| s.pty_id.clone())
         .unwrap_or_else(|| id.clone());
-    let _ = pty_manager.close(&pty_id);
+    close_interactive_pty(&app, &pty_id).await;
 
     // Tear down native engine session for this PTY.
     app.state::<Arc<NativeTerminalRegistry>>().remove(&pty_id);
@@ -319,16 +378,44 @@ pub fn end_session_and_remove_worktree(app: AppHandle, id: String) -> Result<(),
 
 /// List all interactive sessions
 #[tauri::command]
-pub fn list_interactive_agents(app: AppHandle) -> Vec<InteractiveSessionInfo> {
+pub fn list_interactive_agents(app: AppHandle) -> Result<Vec<InteractiveSessionInfo>, String> {
     let session_mgr = app.state::<InteractiveSessionManager>();
     session_mgr.list()
 }
 
 // --- Internal helpers ---
 
+async fn close_interactive_pty(app: &AppHandle, pty_id: &str) {
+    if let Some(client) = app
+        .try_state::<PtySidecarState>()
+        .and_then(|state| state.client())
+    {
+        match client.close(pty_id).await {
+            Ok(()) => return,
+            Err(err) => {
+                log::warn!(
+                    "interactive agent sidecar close failed for {}: {}; trying native fallback",
+                    pty_id,
+                    err
+                );
+            }
+        }
+    }
+
+    let pty_manager = app.state::<PtyManager>();
+    let _ = pty_manager.close(pty_id);
+}
+
 fn emit_interactive_sessions(app: &AppHandle, mgr: &InteractiveSessionManager) {
-    let sessions = mgr.list();
-    let _ = app.emit("interactive-sessions-updated", &sessions);
+    match mgr.list() {
+        Ok(sessions) => {
+            let _ = app.emit("interactive-sessions-updated", &sessions);
+        }
+        Err(err) => {
+            log::error!("interactive sessions list failed: {}", err);
+            let _ = app.emit("interactive-sessions-error", &err);
+        }
+    }
 }
 
 /// Reads PTY output from the broadcast channel, applies CLI parser, emits
@@ -363,6 +450,7 @@ async fn run_output_monitor(
                     let _ = app.emit(&format!("term:diff-{}", session_id), diff);
                 }
                 for mark in advance_result.new_marks {
+                    persist_prompt_mark_exit_code(app, session_id, &mark);
                     let _ = app.emit(&format!("term:prompt-mark-{}", session_id), mark);
                 }
 
@@ -383,9 +471,18 @@ async fn run_output_monitor(
                             output_monitor::DetectedStatus::Unknown => "unknown",
                         };
                         if status_str != last_status {
-                            let _ = session_mgr.update_status(session_id, status_str);
-                            last_status = status_str.to_string();
-                            changed = true;
+                            match session_mgr.update_status(session_id, status_str) {
+                                Ok(()) => {
+                                    last_status = status_str.to_string();
+                                    changed = true;
+                                }
+                                Err(err) => {
+                                    log::warn!(
+                                        "interactive session status update skipped: {}",
+                                        err
+                                    );
+                                }
+                            }
                         }
                     }
 
@@ -393,8 +490,12 @@ async fn run_output_monitor(
                         if let Ok(Some(current)) = session_mgr.get(session_id) {
                             let cost = result.usage.cost.unwrap_or(current.cost);
                             let tokens = result.usage.tokens.unwrap_or(current.tokens_used);
-                            let _ = session_mgr.update_usage(session_id, cost, tokens);
-                            changed = true;
+                            match session_mgr.update_usage(session_id, cost, tokens) {
+                                Ok(()) => changed = true,
+                                Err(err) => {
+                                    log::warn!("interactive session usage update skipped: {}", err);
+                                }
+                            }
                         }
                     }
 
@@ -422,7 +523,9 @@ async fn run_output_monitor(
     flush_alive.store(false, Ordering::Release);
 
     // Process exited — update status
-    let _ = session_mgr.update_status(session_id, "done");
+    if let Err(err) = session_mgr.update_status(session_id, "done") {
+        log::warn!("interactive session final status update skipped: {}", err);
+    }
     emit_interactive_sessions(app, &session_mgr);
 
     // Emit exit event

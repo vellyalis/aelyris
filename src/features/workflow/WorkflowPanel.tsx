@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen as tauriListen } from "@tauri-apps/api/event";
 import { Check, CheckCircle, Clock, Loader, Play, Workflow, X, XCircle } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { StartAgentMeta } from "../../shared/hooks/useAgentManager";
@@ -322,7 +323,7 @@ export function WorkflowPanel({ projectPath, sessions = [], onStartAgent, onDest
     // resolved by the time we unmount, otherwise the listener leaks.
     let unlisten: (() => void) | null = null;
     if (isTauriRuntime()) {
-      import("@tauri-apps/api/event")
+      Promise.resolve({ listen: tauriListen })
         .then(({ listen }) => {
           if (!active) return Promise.resolve(null);
           return listen<WorkflowStatus[]>("workflow-updated", (e) => {

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PaneAttachRequest, PaneRestartRequest } from "../features/terminal/pane-tree/PaneTreeContainer";
 import { PaneTreeContainer } from "../features/terminal/pane-tree/PaneTreeContainer";
 import type { PaneLifecycleState, PaneNode, SplitDirection } from "../features/terminal/pane-tree/types";
+import { FALLBACK_TELEMETRY_EVENT, type FallbackTelemetryDetail } from "../shared/lib/fallbackTelemetry";
 
 const invokeMock = vi.hoisted(() => vi.fn());
 
@@ -70,6 +71,18 @@ function differentLeafId(ids: string[], current: string): string {
   const id = ids.find((candidate) => candidate !== current);
   if (!id) throw new Error("expected a different pane id");
   return id;
+}
+
+function collectFallbackEvents() {
+  const events: FallbackTelemetryDetail[] = [];
+  const listener = (event: Event) => {
+    events.push((event as CustomEvent<FallbackTelemetryDetail>).detail);
+  };
+  window.addEventListener(FALLBACK_TELEMETRY_EVENT, listener);
+  return {
+    events,
+    cleanup: () => window.removeEventListener(FALLBACK_TELEMETRY_EVENT, listener),
+  };
 }
 
 function findLeaf(node: PaneNode, paneId: string): Extract<PaneNode, { type: "terminal" }> | null {
@@ -482,6 +495,57 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     expect(invokeMock).toHaveBeenCalledWith("close_terminal", { id: "pty-B" });
   });
 
+  it("reports backend terminal close failures instead of silently orphaning panes", async () => {
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "get_pane_tree_layout") return Promise.resolve(null);
+      if (command === "list_terminals") return Promise.resolve([]);
+      if (command === "mux_split_pane") return Promise.resolve(`pty-mux-${++muxSplitCounter}`);
+      if (command === "mux_close_pane") return Promise.reject(new Error("mux close graph is stale"));
+      if (command === "close_terminal") return Promise.reject(new Error("backend terminal refused close"));
+      return Promise.resolve(undefined);
+    });
+    const telemetry = collectFallbackEvents();
+    try {
+      render(<PaneTreeContainer shell="powershell" />);
+      let c = captured as unknown as CapturedProps;
+      const firstId = firstLeafId(c.tree);
+      act(() => {
+        c.onTerminalReady(firstId, "pty-A");
+      });
+      c = await splitAndFlush(c, firstId, "right");
+      const otherId = differentLeafId(leafIds(c.tree), firstId);
+      act(() => {
+        c.onTerminalReady(otherId, "pty-B");
+      });
+
+      await act(async () => {
+        (captured as unknown as CapturedProps).onClose(otherId);
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      await waitFor(() =>
+        expect(
+          telemetry.events.some((event) => event.source === "pane-tree" && event.operation === "close_terminal"),
+        ).toBe(true),
+      );
+      expect(telemetry.events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            source: "pane-tree",
+            operation: "close_terminal",
+            severity: "error",
+            message: "backend terminal refused close",
+            userVisible: true,
+          }),
+        ]),
+      );
+    } finally {
+      telemetry.cleanup();
+    }
+  });
+
   it("rebinds stale saved mux workspace ids to the live terminal workspace before local close recovery", async () => {
     localStorage.setItem(
       "aether:paneTree:tab-test",
@@ -854,6 +918,74 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
         role: "work",
       });
     });
+  });
+
+  it("reports pane metadata sync failures instead of leaving stale backend routing silent", async () => {
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "get_pane_tree_layout") return Promise.resolve(null);
+      if (command === "list_terminals") return Promise.resolve([]);
+      if (command === "rename_pane") return Promise.reject(new Error("rename failed"));
+      if (command === "set_pane_role") return Promise.reject(new Error("role failed"));
+      return Promise.resolve(undefined);
+    });
+    const telemetry = collectFallbackEvents();
+    try {
+      render(<PaneTreeContainer shell="powershell" layoutStorageKey="aether:paneTree:tab-test" />);
+
+      const c = captured as unknown as CapturedProps;
+      const paneId = firstLeafId(c.tree);
+      act(() => {
+        c.onTerminalReady(paneId, "pty-route-failing");
+        c.onRenamePane(paneId, "frontend");
+        c.onCyclePaneRole(paneId);
+      });
+
+      await waitFor(() => {
+        expect(telemetry.events).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              source: "pane-metadata",
+              operation: "rename_pane",
+              userVisible: true,
+            }),
+            expect.objectContaining({
+              source: "pane-metadata",
+              operation: "set_pane_role",
+              userVisible: true,
+            }),
+          ]),
+        );
+      });
+    } finally {
+      telemetry.cleanup();
+    }
+  });
+
+  it("reports backend terminal truth failures before marking restored panes exited", async () => {
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "get_pane_tree_layout") return Promise.resolve(null);
+      if (command === "list_panes_info") return Promise.resolve([]);
+      if (command === "list_terminals") return Promise.reject(new Error("terminal registry unavailable"));
+      return Promise.resolve(undefined);
+    });
+    const telemetry = collectFallbackEvents();
+    try {
+      render(<PaneTreeContainer shell="powershell" layoutStorageKey="aether:paneTree:tab-test" />);
+
+      await waitFor(() => {
+        expect(telemetry.events).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              source: "pane-metadata",
+              operation: "list_terminals_after_empty_panes",
+              userVisible: true,
+            }),
+          ]),
+        );
+      });
+    } finally {
+      telemetry.cleanup();
+    }
   });
 
   it("applies a role-cycle request only once for a request sequence", async () => {

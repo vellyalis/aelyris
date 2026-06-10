@@ -15,6 +15,10 @@ path = "src/main.rs"
 name = "aetherctl"
 path = "src/bin/aetherctl.rs"
 
+[[bin]]
+name = "aether-native"
+path = "src/bin/aether_native.rs"
+
 [lib]
 name = "aether_terminal_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
@@ -46,8 +50,14 @@ tokio = { version = "1", features = ["full"] }
 # PTY (terminal backend)
 portable-pty = "0.8"
 
-# Terminal state engine (Phase 2 — replaces xterm.js parsing/grid)
+# Terminal state engine (Phase 2 native parsing/grid)
 alacritty_terminal = "0.26"
+# Full-native renderer proof path. Keep the first proof headless/offscreen and
+# Windows-focused; the later daily-driver shell will add a visible winit surface.
+wgpu = { version = "28.0.0", default-features = false, features = ["std", "dx12", "wgsl"] }
+pollster = "0.4"
+winit = { version = "0.30.13", default-features = false, features = ["rwh_06"] }
+fontdue = "0.9"
 
 # Git operations
 git2 = "0.20"
@@ -88,16 +98,18 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 serde_yaml = "0.9"
 
 # File system watching
-notify = { version = "7", features = ["macos_kqueue"] }
-notify-debouncer-mini = "0.5"
+notify = { version = "8.2.0", features = ["macos_kqueue"] }
+notify-debouncer-mini = "0.7.0"
 
 # Phase 3D-1 spike: HTTP/WebSocket external PTY API
-axum = { version = "0.7", features = ["ws"] }
+# Keep Axum aligned with the current tokio-tungstenite/tungstenite stack so
+# Windows runtime dependency audits do not retain stale WebSocket advisories.
+axum = { version = "0.8.9", features = ["ws"] }
 futures-util = "0.3"
 reqwest = { version = "0.12", default-features = false, features = ["json"] }
-tokio-tungstenite = "0.24"
+tokio-tungstenite = "0.29"
 # Phase 3D-1 v2a: CORS middleware
-tower-http = { version = "0.5", features = ["cors"] }
+tower-http = { version = "0.6.8", features = ["cors"] }
 # Phase 3D-1 v2b: audited constant-time byte equality for token / ticket
 # comparisons. Replaces the hand-rolled implementation in api/mod.rs.
 subtle = "2"
@@ -107,11 +119,12 @@ subtle = "2"
 # transitively via tauri/notify; pinning explicitly so the decode path
 # is auditable on its own.
 base64 = "0.22"
+bytemuck = { version = "1", features = ["derive"] }
 
 # Window effects: Mica/Acrylic via tauri.conf.json windowEffects (no external crate needed)
 
 [target.'cfg(windows)'.dependencies.windows]
-version = "0.61"
+version = "0.62"
 features = [
     "Win32_Foundation",
     "Win32_UI_WindowsAndMessaging",
@@ -119,11 +132,17 @@ features = [
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_Input_Ime",
     "Win32_UI_Controls",
+    "Win32_UI_Accessibility",
     "Win32_Graphics_Gdi",
     "Win32_Graphics_Dwm",
+    "Win32_System_Com",
     "Win32_System_DataExchange",
+    "Win32_System_EventLog",
     "Win32_System_LibraryLoader",
     "Win32_System_Memory",
+    "Win32_System_Ole",
+    "Win32_System_Power",
+    "Win32_System_Variant",
 ]
 
 [dev-dependencies]

@@ -1,5 +1,8 @@
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { useCallback, useState } from "react";
 import type { ShellType } from "../../../App";
+import { reportInvokeFailure } from "../../../shared/lib/fallbackTelemetry";
+import { isTauriRuntime } from "../../../shared/lib/tauriRuntime";
 import {
   collectLeafIds,
   countLeaves,
@@ -24,6 +27,21 @@ interface UsePaneTreeOptions {
   initialCwd?: string;
   initialTree?: PaneNode;
   initialActivePaneId?: string | null;
+}
+
+function closeBackendTerminal(terminalId: string, operation = "close_terminal") {
+  if (!isTauriRuntime()) return;
+  Promise.resolve({ invoke: tauriInvoke })
+    .then(({ invoke }) => invoke("close_terminal", { id: terminalId }))
+    .catch((err) => {
+      reportInvokeFailure({
+        source: "pane-tree",
+        operation,
+        err,
+        severity: "error",
+        userVisible: true,
+      });
+    });
 }
 
 export function usePaneTree({ initialShell, initialCwd, initialTree, initialActivePaneId }: UsePaneTreeOptions) {
@@ -84,9 +102,7 @@ export function usePaneTree({ initialShell, initialCwd, initialTree, initialActi
         if (!shouldClosePty) return prev;
         const ptyId = prev.get(targetId);
         if (ptyId && closeBackend) {
-          import("@tauri-apps/api/core").then(({ invoke }) => {
-            invoke("close_terminal", { id: ptyId }).catch(() => {});
-          });
+          closeBackendTerminal(ptyId);
         }
         const next = new Map(prev);
         next.delete(targetId);
@@ -162,9 +178,7 @@ export function usePaneTree({ initialShell, initialCwd, initialTree, initialActi
   const replaceTree = useCallback((nextTree: PaneNode, nextActivePaneId: string | null) => {
     setTerminalIds((prev) => {
       for (const ptyId of prev.values()) {
-        import("@tauri-apps/api/core").then(({ invoke }) => {
-          invoke("close_terminal", { id: ptyId }).catch(() => {});
-        });
+        closeBackendTerminal(ptyId, "replace_tree_close_terminal");
       }
       return new Map();
     });
@@ -177,9 +191,7 @@ export function usePaneTree({ initialShell, initialCwd, initialTree, initialActi
   const closeAllPtys = useCallback(() => {
     setTerminalIds((prev) => {
       for (const ptyId of prev.values()) {
-        import("@tauri-apps/api/core").then(({ invoke }) => {
-          invoke("close_terminal", { id: ptyId }).catch(() => {});
-        });
+        closeBackendTerminal(ptyId, "close_all_terminals_close_terminal");
       }
       return new Map();
     });

@@ -1,6 +1,8 @@
 import { Activity, AlertTriangle, Braces, FileText, GitBranch, GitCompare, Layers, Radio, Route } from "lucide-react";
 import { useMemo } from "react";
 import { buildContextPack } from "../../shared/lib/contextPack";
+import { reportInvokeFailure } from "../../shared/lib/fallbackTelemetry";
+import { writeClipboardText } from "../../shared/lib/nativeClipboard";
 import type { GitChangedFile } from "../../shared/lib/reviewQueue";
 import {
   listWorkstationGraphAgentIds,
@@ -314,6 +316,17 @@ function confidenceLabel(confidence: TelemetryConfidence): string {
 }
 
 function copyText(text: string): void {
-  if (typeof navigator === "undefined" || typeof navigator.clipboard?.writeText !== "function") return;
-  void navigator.clipboard.writeText(text).catch(() => undefined);
+  void writeClipboardText(text, {
+    source: "context-panel.clipboard",
+    fallbackMessage: "Native clipboard write failed; using browser clipboard fallback for context pack.",
+    userVisible: true,
+  }).catch((err) => {
+    reportInvokeFailure({
+      source: "context-panel.clipboard",
+      operation: "copy_context_pack",
+      err,
+      severity: "error",
+      userVisible: true,
+    });
+  });
 }

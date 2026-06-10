@@ -25,6 +25,8 @@ export function InteractiveSessionCard({
   const sColor = getSessionColor(is.id);
   const cliColor = getCliColor(is.cli);
   const maxTokens = getMaxTokens(is.model);
+  const backendLabel =
+    is.backend === "sidecar" ? "sidecar" : is.backend === "native" ? "native fallback" : "backend unknown";
   const pct =
     is.status === "done"
       ? 100
@@ -82,6 +84,9 @@ export function InteractiveSessionCard({
                   {STATUS_LABELS[is.status as AgentStatus] ?? is.status}
                 </span>
                 {pct > 0 && pct < 100 && <span className={styles.cardPct}>{pct}%</span>}
+                <span className={styles.cardPct} title={`PTY backend: ${backendLabel}`}>
+                  {backendLabel}
+                </span>
                 <span className={styles.cardAge}>{formatAge(is.started_at * 1000)}</span>
               </div>
             </div>

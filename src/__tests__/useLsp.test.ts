@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useLsp } from "../features/editor/lsp/useLsp";
+import { FALLBACK_TELEMETRY_EVENT, type FallbackTelemetryDetail } from "../shared/lib/fallbackTelemetry";
 
 type InvokeArgs = { language?: string; rootPath?: string; jsonRpc?: string };
 type Listener = (event: { payload: { server: string; message: string } }) => void;
@@ -26,6 +27,18 @@ function emitLsp(server: string, message: unknown) {
       message: JSON.stringify(message),
     },
   });
+}
+
+function collectFallbackEvents() {
+  const events: FallbackTelemetryDetail[] = [];
+  const listener = (event: Event) => {
+    events.push((event as CustomEvent<FallbackTelemetryDetail>).detail);
+  };
+  window.addEventListener(FALLBACK_TELEMETRY_EVENT, listener);
+  return {
+    events,
+    cleanup: () => window.removeEventListener(FALLBACK_TELEMETRY_EVENT, listener),
+  };
 }
 
 describe("useLsp", () => {
@@ -98,5 +111,76 @@ describe("useLsp", () => {
       });
     });
     expect(result.current.isInitialized).toBe(true);
+  });
+
+  it("reports LSP startup failures instead of silently degrading", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "lsp_start") return Promise.reject(new Error("typescript server missing"));
+      return Promise.resolve();
+    });
+    const telemetry = collectFallbackEvents();
+    try {
+      renderHook(() => useLsp({ projectPath: "C:\\repo", monacoLanguage: "typescript" }));
+
+      await waitFor(() => {
+        expect(telemetry.events).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              source: "lsp",
+              operation: "lsp_start_or_initialize",
+              userVisible: true,
+            }),
+          ]),
+        );
+      });
+    } finally {
+      telemetry.cleanup();
+    }
+  });
+
+  it("reports failed LSP notifications so editor integration loss is visible", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "lsp_start" || cmd === "lsp_stop") return Promise.resolve();
+      if (cmd === "lsp_request") return Promise.resolve();
+      return Promise.reject(new Error(`unexpected ${cmd}`));
+    });
+    const { result } = renderHook(() => useLsp({ projectPath: "C:\\repo", monacoLanguage: "typescript" }));
+    await waitFor(() => expect(listeners["lsp:response"]).toBeDefined());
+
+    await act(async () => {
+      emitLsp("TypeScript:C:\\repo", {
+        jsonrpc: "2.0",
+        id: 1,
+        result: { capabilities: {} },
+      });
+    });
+    expect(result.current.isInitialized).toBe(true);
+
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "lsp_request") return Promise.reject(new Error("request pipe closed"));
+      if (cmd === "lsp_stop") return Promise.resolve();
+      return Promise.resolve();
+    });
+    const telemetry = collectFallbackEvents();
+    try {
+      await act(async () => {
+        result.current.notifyOpen("file:///C:/repo/a.ts", "typescript", "const a = 1;");
+        await Promise.resolve();
+      });
+
+      await waitFor(() => {
+        expect(telemetry.events).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              source: "lsp",
+              operation: "lsp_notify_open",
+              userVisible: true,
+            }),
+          ]),
+        );
+      });
+    } finally {
+      telemetry.cleanup();
+    }
   });
 });

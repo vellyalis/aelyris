@@ -14,7 +14,7 @@ import {
   Upload,
   Wrench,
 } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { detectDangerousCommand } from "../../shared/lib/shellSafety";
 import { showConfirm } from "../../shared/ui/ConfirmDialog";
 import { PanelHeader } from "../../shared/ui/PanelHeader";
@@ -45,6 +45,7 @@ interface ToolkitPanelProps {
   onRunCommand?: (command: string) => void | Promise<void>;
   activeTargetLabel?: string;
   activeTargetReady?: boolean;
+  forceExpanded?: boolean;
 }
 
 const DEFAULT_ACTIONS: ToolkitAction[] = [
@@ -62,6 +63,9 @@ const DEFAULT_ACTIONS: ToolkitAction[] = [
   { id: "git-log", label: "Git Log", badge: "var(--text-secondary)", command: "git log --oneline -15" },
   { id: "npm-test", label: "Run Tests", badge: "var(--ctp-red)", command: "npm test" },
 ];
+
+const TOOLKIT_PRIORITY_ACTION_IDS = ["open-vscode", "git-status", "git-log", "commit-push", "create-pr"] as const;
+const TOOLKIT_PRIORITY_ACTION_ID_SET = new Set<string>(TOOLKIT_PRIORITY_ACTION_IDS);
 
 function actionTone(action: ToolkitAction): "git" | "runtime" | "test" | "workspace" | "custom" {
   if (["create-pr", "commit-push", "git-status", "git-log", "worktree"].includes(action.id)) return "git";
@@ -133,6 +137,7 @@ export function ToolkitPanel({
   onRunCommand,
   activeTargetLabel = "No target",
   activeTargetReady = false,
+  forceExpanded = false,
 }: ToolkitPanelProps) {
   const [actions, setActions] = useState<ToolkitAction[]>(() => loadActions(projectName));
   const [collapsed, setCollapsed] = useState(true);
@@ -144,6 +149,11 @@ export function ToolkitPanel({
   const [importParsed, setImportParsed] = useState<ToolkitAction[] | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const primaryActionId = actions.find((action) => action.id === "dev-server")?.id ?? actions[0]?.id;
+  const priorityActions = actions.filter((action) => TOOLKIT_PRIORITY_ACTION_ID_SET.has(action.id));
+
+  useEffect(() => {
+    if (forceExpanded) setCollapsed(false);
+  }, [forceExpanded]);
 
   const handleEdit = useCallback((action: ToolkitAction) => {
     setEditingId(action.id);
@@ -182,6 +192,34 @@ export function ToolkitPanel({
     saveActions(projectName, updated);
     setEditingId(null);
   }, [editingId, actions, projectName]);
+
+  const runAction = useCallback(
+    async (action: ToolkitAction) => {
+      let command = action.command;
+      const placeholders = command.match(/\{(\w+)\}/g);
+      if (placeholders) {
+        for (const ph of [...new Set(placeholders)]) {
+          const name = ph.slice(1, -1);
+          const value = await showPrompt(`Enter ${name}`, { placeholder: `${name}...` });
+          if (!value) return;
+          command = command.split(ph).join(value.replace(/"/g, '\\"'));
+        }
+      }
+      const warning = detectDangerousCommand(command);
+      if (warning) {
+        const ok = await showConfirm({
+          title: "Run dangerous command?",
+          description: `${warning}\n\nCommand:\n${command}`,
+          confirmLabel: "Run anyway",
+          cancelLabel: "Cancel",
+          tone: "danger",
+        });
+        if (!ok) return;
+      }
+      await onRunCommand?.(command);
+    },
+    [onRunCommand],
+  );
 
   const parseImportText = useCallback((text: string) => {
     setImportText(text);
@@ -356,61 +394,66 @@ export function ToolkitPanel({
           {actions.length === 0 ? (
             <div className={styles.emptyHint}>Create or import a command to run it against the selected pane.</div>
           ) : (
-            <div className={styles.grid}>
-              {actions.map((a) => {
-                const priority = a.id === primaryActionId ? "primary" : "orbit";
-                return (
-                  <button
-                    type="button"
-                    key={a.id}
-                    className={styles.action}
-                    data-priority={priority}
-                    data-tone={actionTone(a)}
-                    onClick={async () => {
-                      let command = a.command;
-                      // Prompt for placeholders like {message}
-                      const placeholders = command.match(/\{(\w+)\}/g);
-                      if (placeholders) {
-                        for (const ph of [...new Set(placeholders)]) {
-                          const name = ph.slice(1, -1);
-                          const value = await showPrompt(`Enter ${name}`, { placeholder: `${name}...` });
-                          if (!value) return;
-                          command = command.split(ph).join(value.replace(/"/g, '\\"'));
-                        }
-                      }
-                      const warning = detectDangerousCommand(command);
-                      if (warning) {
-                        // Previously this was a text prompt with `defaultValue: "yes"` —
-                        // a single-character typo would execute an `rm -rf`-class
-                        // command. Use an explicit confirm with a danger-tone button
-                        // and Cancel pre-focused.
-                        const ok = await showConfirm({
-                          title: "Run dangerous command?",
-                          description: `${warning}\n\nCommand:\n${command}`,
-                          confirmLabel: "Run anyway",
-                          cancelLabel: "Cancel",
-                          tone: "danger",
-                        });
-                        if (!ok) return;
-                      }
-                      await onRunCommand?.(command);
-                    }}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      handleEdit(a);
-                    }}
-                    title={`${a.command}\nTarget: ${activeTargetLabel}`}
-                  >
-                    <span className={styles.actionIcon}>{ICON_MAP[a.id] ?? null}</span>
-                    <span className={styles.actionBody}>
-                      <span className={styles.actionLabel}>{a.label}</span>
-                      <span className={styles.actionCommand}>{a.command}</span>
-                    </span>
-                    <span className={styles.badge} style={{ background: a.badge }} />
-                  </button>
-                );
-              })}
-            </div>
+            <>
+              {priorityActions.length > 0 && (
+                <section
+                  className={styles.priorityDock}
+                  data-toolkit-role="git-vscode"
+                  aria-label="Git and VS Code tools"
+                >
+                  <div className={styles.priorityDockHeader}>
+                    <span>Git + VS Code</span>
+                    <small>{priorityActions.length}</small>
+                  </div>
+                  <div className={styles.priorityActions}>
+                    {priorityActions.map((action) => (
+                      <button
+                        type="button"
+                        key={action.id}
+                        className={styles.priorityAction}
+                        data-tone={actionTone(action)}
+                        onClick={() => void runAction(action)}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          handleEdit(action);
+                        }}
+                        title={`${action.command}\nTarget: ${activeTargetLabel}`}
+                      >
+                        <span className={styles.priorityActionIcon}>{ICON_MAP[action.id] ?? null}</span>
+                        <span>{action.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              )}
+              <div className={styles.grid}>
+                {actions.map((a) => {
+                  const priority = a.id === primaryActionId ? "primary" : "orbit";
+                  return (
+                    <button
+                      type="button"
+                      key={a.id}
+                      className={styles.action}
+                      data-priority={priority}
+                      data-tone={actionTone(a)}
+                      onClick={() => void runAction(a)}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        handleEdit(a);
+                      }}
+                      title={`${a.command}\nTarget: ${activeTargetLabel}`}
+                    >
+                      <span className={styles.actionIcon}>{ICON_MAP[a.id] ?? null}</span>
+                      <span className={styles.actionBody}>
+                        <span className={styles.actionLabel}>{a.label}</span>
+                        <span className={styles.actionCommand}>{a.command}</span>
+                      </span>
+                      <span className={styles.badge} style={{ background: a.badge }} />
+                    </button>
+                  );
+                })}
+              </div>
+            </>
           )}
           <div className={styles.bottomActions}>
             <button type="button" className={styles.bottomBtn} onClick={handleAdd}>

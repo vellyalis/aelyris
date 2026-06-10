@@ -1,4 +1,5 @@
 use std::env;
+use std::io::Read;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -54,6 +55,8 @@ async fn run() -> Result<(), String> {
             let value = request(Method::GET, &format!("/mux/workspaces/{id}"), None).await?;
             print_json(&value)
         }
+        "mux-export" => mux_export(&args[1..]).await,
+        "mux-import" => mux_import(&args[1..]).await,
         "mux-split" => mux_split(&args[1..]).await,
         "mux-close-pane" => {
             let workspace_id = args
@@ -119,6 +122,7 @@ async fn run() -> Result<(), String> {
         "create" => create_session(&args[1..]).await,
         "send" => send_input(&args[1..]).await,
         "capture" => capture_output(&args[1..]).await,
+        "search" | "scrollback-search" => search_output(&args[1..]).await,
         "close" => {
             let id = args
                 .get(1)
@@ -222,6 +226,57 @@ async fn resize_session(args: &[String]) -> Result<(), String> {
         Method::POST,
         &format!("/sessions/{id}/resize"),
         Some(json!({ "cols": cols, "rows": rows })),
+    )
+    .await?;
+    print_json(&value)
+}
+
+async fn mux_export(args: &[String]) -> Result<(), String> {
+    let workspace_id = args
+        .first()
+        .ok_or_else(|| "mux-export requires a workspace id".to_string())?;
+    let value = request(
+        Method::GET,
+        &format!("/mux/workspaces/{workspace_id}/export"),
+        None,
+    )
+    .await?;
+    if let Some(path) = option_value(args, "--out") {
+        let text = serde_json::to_string_pretty(&value).map_err(|err| err.to_string())?;
+        let output_path = PathBuf::from(path);
+        std::fs::write(&output_path, format!("{text}\n"))
+            .map_err(|err| format!("failed to write export file: {err}"))?;
+        return print_json(&json!({
+            "status": "exported",
+            "workspaceId": workspace_id,
+            "path": output_path.display().to_string(),
+            "bytes": text.len() + 1,
+        }));
+    }
+    print_json(&value)
+}
+
+async fn mux_import(args: &[String]) -> Result<(), String> {
+    let source = args
+        .first()
+        .ok_or_else(|| "mux-import requires a snapshot path or '-'".to_string())?;
+    let replace = args.iter().any(|arg| arg == "--replace");
+    let text = if source == "-" {
+        let mut text = String::new();
+        std::io::stdin()
+            .read_to_string(&mut text)
+            .map_err(|err| format!("failed to read stdin: {err}"))?;
+        text
+    } else {
+        std::fs::read_to_string(source)
+            .map_err(|err| format!("failed to read snapshot file: {err}"))?
+    };
+    let body: Value =
+        serde_json::from_str(&text).map_err(|err| format!("snapshot JSON invalid: {err}"))?;
+    let value = request(
+        Method::POST,
+        &format!("/mux/workspaces/import?replace={replace}"),
+        Some(body),
     )
     .await?;
     print_json(&value)
@@ -509,6 +564,34 @@ async fn capture_output(args: &[String]) -> Result<(), String> {
     print_json(&value)
 }
 
+async fn search_output(args: &[String]) -> Result<(), String> {
+    let id = args
+        .first()
+        .ok_or_else(|| "search requires a session id".to_string())?;
+    let lines = option_value(args, "--lines")
+        .as_deref()
+        .unwrap_or("200")
+        .parse::<usize>()
+        .map_err(|_| "--lines must be a positive integer".to_string())?;
+    let limit = option_value(args, "--limit")
+        .as_deref()
+        .unwrap_or("200")
+        .parse::<usize>()
+        .map_err(|_| "--limit must be a positive integer".to_string())?;
+    let case_sensitive = args.iter().any(|arg| arg == "--case-sensitive");
+    let query = search_query(args)?;
+    let value = request(
+        Method::GET,
+        &format!(
+            "/sessions/{id}/search?query={}&lines={lines}&limit={limit}&caseSensitive={case_sensitive}",
+            query_component(&query)
+        ),
+        None,
+    )
+    .await?;
+    print_json(&value)
+}
+
 async fn request(method: Method, path: &str, body: Option<Value>) -> Result<Value, String> {
     let base = api_base_url();
     let token = api_token();
@@ -590,6 +673,52 @@ fn option_value(args: &[String], name: &str) -> Option<String> {
         .map(|window| window[1].clone())
 }
 
+fn search_query(args: &[String]) -> Result<String, String> {
+    if args.len() < 2 {
+        return Err("search requires query text".to_string());
+    }
+    let mut values = Vec::new();
+    let mut index = 1;
+    while index < args.len() {
+        let arg = args[index].as_str();
+        match arg {
+            "--case-sensitive" => {
+                index += 1;
+            }
+            "--lines" | "--limit" => {
+                if index + 1 >= args.len() {
+                    return Err(format!("{arg} requires a value"));
+                }
+                index += 2;
+            }
+            _ if arg.starts_with("--") => {
+                return Err(format!("unknown search option: {arg}"));
+            }
+            _ => {
+                values.push(arg);
+                index += 1;
+            }
+        }
+    }
+    if values.is_empty() {
+        Err("search requires query text".to_string())
+    } else {
+        Ok(values.join(" "))
+    }
+}
+
+fn query_component(value: &str) -> String {
+    let mut encoded = String::new();
+    for byte in value.as_bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(*byte, b'-' | b'_' | b'.' | b'~') {
+            encoded.push(*byte as char);
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    encoded
+}
+
 fn normalize_axis(axis: &str) -> Result<&'static str, String> {
     match axis.to_ascii_lowercase().as_str() {
         "h" | "horizontal" => Ok("horizontal"),
@@ -606,6 +735,44 @@ fn print_json(value: &Value) -> Result<(), String> {
 
 fn print_help() {
     println!(
-        "aetherctl commands:\n  health\n  daemon\n  sessions\n  mux\n  mux-graph <id>\n  mux-split <workspace> <target-pane> [--axis horizontal|vertical] [--shell cmd|powershell|gitbash|wsl] [--cwd path] [--title name] [--cols n] [--rows n]\n  mux-close-pane <workspace> <pane>\n  mux-swap <workspace> <first-pane> <second-pane>\n  mux-move <workspace> <source-pane> <target-pane> [--axis horizontal|vertical]\n  mux-break-pane <workspace> <pane>\n  mux-join-pane <workspace> <source-pane> <target-pane> [--axis horizontal|vertical]\n  mux-sync-panes <workspace> --on|--off\n  mux-broadcast <workspace> <text...> [--enter]\n  mux-zoom <workspace> <pane>\n  mux-unzoom <workspace> <pane>\n  mux-even <workspace> [--axis horizontal|vertical]\n  mux-rotate <workspace> [--direction next|previous]\n  mux-tiled <workspace>\n  mux-detach <workspace>\n  mux-attach <workspace>\n  create [--shell cmd|powershell|gitbash|wsl] [--cwd path] [--cols n] [--rows n]\n  resize <id> --cols n --rows n\n  send <id> <text...> [--enter]\n  capture <id> [--lines n] [--raw]\n  close <id>\n\nEnvironment:\n  AETHER_API_URL    overrides API URL; otherwise sidecar token file selects http://127.0.0.1:9334, falling back to http://127.0.0.1:9333\n  AETHER_API_TOKEN  overrides bearer token; otherwise reads the Aether sidecar token file"
+        "aetherctl commands:\n  health\n  daemon\n  sessions\n  mux\n  mux-graph <id>\n  mux-export <workspace> [--out path]\n  mux-import <snapshot-path|-> [--replace]\n  mux-split <workspace> <target-pane> [--axis horizontal|vertical] [--shell cmd|powershell|gitbash|wsl] [--cwd path] [--title name] [--cols n] [--rows n]\n  mux-close-pane <workspace> <pane>\n  mux-swap <workspace> <first-pane> <second-pane>\n  mux-move <workspace> <source-pane> <target-pane> [--axis horizontal|vertical]\n  mux-break-pane <workspace> <pane>\n  mux-join-pane <workspace> <source-pane> <target-pane> [--axis horizontal|vertical]\n  mux-sync-panes <workspace> --on|--off\n  mux-broadcast <workspace> <text...> [--enter]\n  mux-zoom <workspace> <pane>\n  mux-unzoom <workspace> <pane>\n  mux-even <workspace> [--axis horizontal|vertical]\n  mux-rotate <workspace> [--direction next|previous]\n  mux-tiled <workspace>\n  mux-detach <workspace>\n  mux-attach <workspace>\n  create [--shell cmd|powershell|gitbash|wsl] [--cwd path] [--cols n] [--rows n]\n  resize <id> --cols n --rows n\n  send <id> <text...> [--enter]\n  capture <id> [--lines n] [--raw]\n  search <id> <query...> [--lines n] [--limit n] [--case-sensitive]\n  close <id>\n\nEnvironment:\n  AETHER_API_URL    overrides API URL; otherwise sidecar token file selects http://127.0.0.1:9334, falling back to http://127.0.0.1:9333\n  AETHER_API_TOKEN  overrides bearer token; otherwise reads the Aether sidecar token file"
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn strings(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| value.to_string()).collect()
+    }
+
+    #[test]
+    fn query_component_encodes_spaces_symbols_and_unicode() {
+        assert_eq!(query_component("hello world"), "hello%20world");
+        assert_eq!(query_component("a+b&c"), "a%2Bb%26c");
+        assert_eq!(query_component("日本語"), "%E6%97%A5%E6%9C%AC%E8%AA%9E");
+    }
+
+    #[test]
+    fn search_query_ignores_supported_options_and_preserves_terms() {
+        let args = strings(&[
+            "pane-1",
+            "aether",
+            "marker",
+            "--lines",
+            "500",
+            "--limit",
+            "3",
+            "--case-sensitive",
+        ]);
+        assert_eq!(search_query(&args).unwrap(), "aether marker");
+    }
+
+    #[test]
+    fn search_query_rejects_missing_values_and_unknown_options() {
+        assert!(search_query(&strings(&["pane-1"])).is_err());
+        assert!(search_query(&strings(&["pane-1", "--lines"])).is_err());
+        assert!(search_query(&strings(&["pane-1", "--unknown", "needle"])).is_err());
+    }
 }

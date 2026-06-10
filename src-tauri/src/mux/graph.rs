@@ -529,9 +529,19 @@ mod tests {
         graph.validate().unwrap();
 
         let encoded = serde_json::to_string(&graph).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&encoded).unwrap();
+        let root = &value["workspaces"]["workspace-a"]["windows"]["window-a"]["tabs"]["tab-a"]
+            ["layout"]["root"];
+        assert_eq!(root["paneId"], "pane-a");
+        assert!(root.get("pane_id").is_none());
+
         let decoded: MuxGraph = serde_json::from_str(&encoded).unwrap();
         assert_eq!(decoded, graph);
         decoded.validate().unwrap();
+
+        let legacy_encoded = encoded.replace("\"paneId\"", "\"pane_id\"");
+        let legacy_decoded: MuxGraph = serde_json::from_str(&legacy_encoded).unwrap();
+        assert_eq!(legacy_decoded, graph);
     }
 
     #[test]

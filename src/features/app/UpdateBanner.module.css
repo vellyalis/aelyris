@@ -43,7 +43,9 @@
 }
 
 .btn:disabled {
-  opacity: 0.5;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--bg-surface) 68%, transparent);
+  border-color: color-mix(in srgb, var(--border) 70%, transparent);
   cursor: default;
 }
 
@@ -57,5 +59,11 @@
 .btnPrimary:hover:not(:disabled),
 .btnPrimary:focus-visible {
   border-color: var(--gold);
-  opacity: 0.9;
+  background: color-mix(in srgb, var(--gold) 90%, #fff 10%);
+}
+
+.btnPrimary:disabled {
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--gold) 32%, transparent);
+  border-color: color-mix(in srgb, var(--gold) 24%, transparent);
 }

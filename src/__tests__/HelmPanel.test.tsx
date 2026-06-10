@@ -1,6 +1,19 @@
 import { fireEvent, render } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { HelmPanel } from "../features/helm/HelmPanel";
+import { FALLBACK_TELEMETRY_EVENT, type FallbackTelemetryDetail } from "../shared/lib/fallbackTelemetry";
+
+function collectFallbackEvents() {
+  const events: FallbackTelemetryDetail[] = [];
+  const listener = (event: Event) => {
+    events.push((event as CustomEvent<FallbackTelemetryDetail>).detail);
+  };
+  window.addEventListener(FALLBACK_TELEMETRY_EVENT, listener);
+  return {
+    events,
+    cleanup: () => window.removeEventListener(FALLBACK_TELEMETRY_EVENT, listener),
+  };
+}
 
 beforeEach(() => {
   localStorage.clear();
@@ -57,6 +70,20 @@ describe("HelmPanel", () => {
     expect(after.getAttribute("aria-checked")).toBe("true");
   });
 
+  it("drops malformed persisted tasks instead of crashing the rail", () => {
+    localStorage.setItem("aether:helm:tasks", JSON.stringify({ id: "not-an-array" }));
+    const { container } = render(<HelmPanel />);
+    expect(container.textContent).toContain("No tasks");
+
+    localStorage.setItem(
+      "aether:helm:tasks",
+      JSON.stringify([{ id: "t-1", label: "Valid", done: true }, { id: 2, label: "Invalid" }, null]),
+    );
+    const second = render(<HelmPanel />);
+    expect(second.container.textContent).toContain("Valid");
+    expect(second.container.textContent).toContain("1/1");
+  });
+
   it("deletes task on delete-button click", () => {
     localStorage.setItem("aether:helm:tasks", JSON.stringify([{ id: "t-1", label: "Delete me", done: false }]));
     const { container } = render(<HelmPanel />);
@@ -82,6 +109,33 @@ describe("HelmPanel", () => {
     expect(saved.length).toBe(1);
     expect(saved[0].label).toBe("Saved task");
     expect(saved[0].done).toBe(false);
+  });
+
+  it("reports task persistence failures instead of silently losing Helm tasks", () => {
+    const telemetry = collectFallbackEvents();
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("quota exceeded");
+    });
+
+    try {
+      const { container } = render(<HelmPanel />);
+      fireEvent.click(requiredElement(container.querySelector("button"), "add task button"));
+      const input = requiredElement(container.querySelector("input"), "task input");
+      fireEvent.change(input, { target: { value: "Unsaved task" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+
+      expect(container.textContent).toContain("Unsaved task");
+      expect(telemetry.events).toContainEqual(
+        expect.objectContaining({
+          source: "helm-tasks",
+          operation: "persist_helm_tasks",
+          userVisible: true,
+        }),
+      );
+    } finally {
+      setItem.mockRestore();
+      telemetry.cleanup();
+    }
   });
 
   it("cancels adding on Escape", () => {

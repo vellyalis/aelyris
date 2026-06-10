@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { openUrl as tauriOpenUrl } from "@tauri-apps/plugin-opener";
 import { ChevronDown } from "lucide-react";
 import { type ClipboardEvent as ReactClipboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -16,12 +17,9 @@ import {
   SEARCH_MATCH_BG,
   SELECTION_BG,
 } from "../../shared/lib/ansiPalette";
-import {
-  classifyTerminalPasteInput,
-  normalizeTerminalPasteInput,
-  TERMINAL_PASTE_GUARD_EVENT,
-  type TerminalPasteGuard,
-} from "../../shared/lib/terminalInput";
+import { formatFallbackError, reportFallback } from "../../shared/lib/fallbackTelemetry";
+import { TERMINAL_COMMAND_EVIDENCE_EVENT, type TerminalCommandEvidenceDetail } from "../../shared/lib/terminalEvidence";
+import type { TerminalTextClarity } from "../../shared/store/appStore";
 import {
   CellAttr,
   type CellSnapshot,
@@ -87,6 +85,7 @@ export interface TerminalCanvasProps {
   rows: number;
   fontSize?: number;
   fontFamily?: string;
+  textClarity?: TerminalTextClarity;
   className?: string;
   /** Overrides the live snapshot hook — used by tests to inject fixtures. */
   snapshotOverride?: GridSnapshot | null;
@@ -164,8 +163,213 @@ const AI_PROMPT_MARKERS = new Set([">", "❯", "›", "»", "λ", "→"]);
 const AI_INPUT_RIGHT_FRAME_CHARS = new Set(["│", "┃", "║", "▌", "▐", "╎", "┆", "┊", "┋", "╏", "┤", "╮", "╯"]);
 const AI_INPUT_MIN_ROW_RATIO = 0.35;
 const IME_COMPOSITION_OVERLAY_MAX_CELLS = 34;
+const MAX_CANVAS_DEVICE_PIXEL_RATIO = 4;
+const TERMINAL_RASTER_BG_CSS_VAR = "--terminal-raster-bg";
+const TERMINAL_CANVAS_BG_CSS_VAR = "--terminal-canvas-bg";
+const TERMINAL_RASTER_BG_FALLBACK = "rgba(3, 10, 22, 0.92)";
+const TERMINAL_CONTRAST_FALLBACK_BG = { r: 3, g: 10, b: 22 };
 const AI_CLI_SCREEN_SIGNATURE =
   /\b(?:Claude Code|Codex(?: CLI)?|Gemini CLI)\b|(?:\?|\/help)\s+for shortcuts|\b(?:tokens?|MCP servers?|directory|model)\b/i;
+
+function currentCanvasDevicePixelRatio(): number {
+  if (typeof window === "undefined") return 1;
+  const ratio = Number(window.devicePixelRatio);
+  if (!Number.isFinite(ratio) || ratio <= 0) return 1;
+  return Math.min(MAX_CANVAS_DEVICE_PIXEL_RATIO, Math.max(1, ratio));
+}
+
+function snapCanvasTextCoord(value: number, devicePixelRatio: number): number {
+  if (!Number.isFinite(value)) return value;
+  if (!Number.isFinite(devicePixelRatio) || devicePixelRatio <= 0) return value;
+  return Math.round(value * devicePixelRatio) / devicePixelRatio;
+}
+
+function canvasBitmapSize(cssSize: number, devicePixelRatio: number): number {
+  if (!Number.isFinite(cssSize) || cssSize <= 0) return 1;
+  if (!Number.isFinite(devicePixelRatio) || devicePixelRatio <= 0) return Math.ceil(cssSize);
+  return Math.max(1, Math.ceil(cssSize * devicePixelRatio));
+}
+
+function canvasCssSize(bitmapSize: number, devicePixelRatio: number): number {
+  if (!Number.isFinite(bitmapSize) || bitmapSize <= 0) return 1;
+  if (!Number.isFinite(devicePixelRatio) || devicePixelRatio <= 0) return bitmapSize;
+  return bitmapSize / devicePixelRatio;
+}
+
+function configureTerminalCanvasText(ctx: CanvasRenderingContext2D) {
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  const textCtx = ctx as CanvasRenderingContext2D & {
+    fontKerning?: string;
+    letterSpacing?: string;
+    textRendering?: string;
+    wordSpacing?: string;
+  };
+  textCtx.fontKerning = "none";
+  textCtx.letterSpacing = "0px";
+  textCtx.wordSpacing = "0px";
+  // `geometricPrecision` makes canvas text mathematically consistent, but
+  // on Windows WebView2 it often trades away glyph hinting and makes small
+  // terminal text look grey/fuzzy. Let the engine pick the native text path.
+  textCtx.textRendering = "auto";
+}
+
+function forceOpaqueCssColor(color: string): string {
+  const rgba = color.match(/^rgba\((.*),\s*(0|0?\.\d+|1(?:\.0+)?)\s*\)$/i);
+  if (rgba) return `rgba(${rgba[1]}, 1)`;
+  // Also normalize hex / rgb() / loosely formatted rgba() values; formats
+  // parseCssRgbColor cannot resolve (color-mix, oklch, ...) pass through.
+  const parsed = parseCssRgbColor(color);
+  if (parsed) return rgbToCanvasCss(parsed);
+  return color;
+}
+
+type RgbColor = { r: number; g: number; b: number };
+type RgbaColor = RgbColor & { a: number };
+
+function parseCssRgbColor(color: string): RgbaColor | null {
+  const text = color.trim();
+  const hex = text.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (hex) {
+    const value = hex[1];
+    if (value.length === 3) {
+      return {
+        r: Number.parseInt(value[0] + value[0], 16),
+        g: Number.parseInt(value[1] + value[1], 16),
+        b: Number.parseInt(value[2] + value[2], 16),
+        a: 1,
+      };
+    }
+    return {
+      r: Number.parseInt(value.slice(0, 2), 16),
+      g: Number.parseInt(value.slice(2, 4), 16),
+      b: Number.parseInt(value.slice(4, 6), 16),
+      a: 1,
+    };
+  }
+
+  const rgba = text.match(/^rgba?\(([^)]+)\)$/i);
+  if (!rgba) return null;
+  const parts = rgba[1].split(",").map((part) => part.trim());
+  if (parts.length < 3) return null;
+  const [r, g, b] = parts.slice(0, 3).map((part) => Number.parseFloat(part));
+  const a = parts[3] == null ? 1 : Number.parseFloat(parts[3]);
+  if (![r, g, b, a].every(Number.isFinite)) return null;
+  return {
+    r: Math.min(255, Math.max(0, r)),
+    g: Math.min(255, Math.max(0, g)),
+    b: Math.min(255, Math.max(0, b)),
+    a: Math.min(1, Math.max(0, a)),
+  };
+}
+
+function compositeOverFallback(color: RgbaColor, fallback: RgbColor = TERMINAL_CONTRAST_FALLBACK_BG): RgbColor {
+  if (color.a >= 1) return color;
+  const inverseAlpha = 1 - color.a;
+  return {
+    r: color.r * color.a + fallback.r * inverseAlpha,
+    g: color.g * color.a + fallback.g * inverseAlpha,
+    b: color.b * color.a + fallback.b * inverseAlpha,
+  };
+}
+
+function linearizeChannel(channel: number): number {
+  const value = channel / 255;
+  return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+}
+
+function relativeLuminance({ r, g, b }: RgbColor): number {
+  return 0.2126 * linearizeChannel(r) + 0.7152 * linearizeChannel(g) + 0.0722 * linearizeChannel(b);
+}
+
+function contrastRatio(a: RgbColor, b: RgbColor): number {
+  const light = Math.max(relativeLuminance(a), relativeLuminance(b));
+  const dark = Math.min(relativeLuminance(a), relativeLuminance(b));
+  return (light + 0.05) / (dark + 0.05);
+}
+
+function rgbToCanvasCss({ r, g, b }: RgbColor): string {
+  return `rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)})`;
+}
+
+function mixRgbColor(source: RgbColor, target: RgbColor, amount: number): RgbColor {
+  const keep = 1 - amount;
+  return {
+    r: source.r * keep + target.r * amount,
+    g: source.g * keep + target.g * amount,
+    b: source.b * keep + target.b * amount,
+  };
+}
+
+function minimumTerminalContrastRatio(textClarity: TerminalTextClarity): number {
+  if (textClarity === "solid") return 7;
+  if (textClarity === "balanced") return 5.5;
+  return 0;
+}
+
+function dimAlphaForTextClarity(textClarity: TerminalTextClarity): number {
+  if (textClarity === "solid") return 0.78;
+  if (textClarity === "balanced") return 0.68;
+  return 0.6;
+}
+
+function enhanceTerminalTextColor(color: string, background: string, textClarity: TerminalTextClarity): string {
+  const minimumContrast = minimumTerminalContrastRatio(textClarity);
+  if (minimumContrast <= 0) return color;
+
+  const fg = parseCssRgbColor(color);
+  const bg = parseCssRgbColor(background);
+  if (!fg || !bg) return color;
+
+  const fgRgb = compositeOverFallback(fg);
+  const bgRgb = compositeOverFallback(bg);
+  if (contrastRatio(fgRgb, bgRgb) >= minimumContrast) return color;
+
+  const target = relativeLuminance(bgRgb) > 0.5 ? { r: 0, g: 0, b: 0 } : { r: 255, g: 255, b: 255 };
+  const step = textClarity === "solid" ? 0.08 : 0.12;
+  for (let amount = step; amount <= 0.92; amount += step) {
+    const candidate = mixRgbColor(fgRgb, target, amount);
+    if (contrastRatio(candidate, bgRgb) >= minimumContrast) {
+      return rgbToCanvasCss(candidate);
+    }
+  }
+
+  return rgbToCanvasCss(mixRgbColor(fgRgb, target, 0.92));
+}
+
+function readTerminalRasterBackground(element: Element | null, textClarity: TerminalTextClarity): string {
+  if (typeof window === "undefined" || typeof document === "undefined") return TERMINAL_RASTER_BG_FALLBACK;
+  const source = element ?? document.documentElement;
+  const style = window.getComputedStyle(source);
+  const rasterBg = style.getPropertyValue(TERMINAL_RASTER_BG_CSS_VAR).trim();
+  const canvasBg = style.getPropertyValue(TERMINAL_CANVAS_BG_CSS_VAR).trim();
+  if (textClarity === "glass") return canvasBg || rasterBg || TERMINAL_RASTER_BG_FALLBACK;
+  const base = rasterBg || canvasBg || TERMINAL_RASTER_BG_FALLBACK;
+  return textClarity === "solid" ? forceOpaqueCssColor(base) : base;
+}
+
+function useTerminalRasterBackground(element: Element | null, textClarity: TerminalTextClarity): string {
+  const [rasterBackground, setRasterBackground] = useState(() => readTerminalRasterBackground(element, textClarity));
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+    const refresh = () => setRasterBackground(readTerminalRasterBackground(element, textClarity));
+    refresh();
+
+    const observer = typeof MutationObserver !== "undefined" ? new MutationObserver(refresh) : null;
+    observer?.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["style", "data-mood", "data-theme", "class"],
+    });
+    window.addEventListener("storage", refresh);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("storage", refresh);
+    };
+  }, [element, textClarity]);
+
+  return rasterBackground;
+}
 
 function rowToTextMap(row: readonly CellSnapshot[]): RowTextMap {
   const startCols: number[] = [];
@@ -229,6 +433,11 @@ function terminalCellSpan(text: string): number {
   return cells;
 }
 
+function shouldClampGlyphToCell(cell: CellSnapshot, ch: string): boolean {
+  const code = ch.codePointAt(0) ?? 0;
+  return hasAttr(cell, CellAttr.WIDE_CHAR) || code > 0x7f;
+}
+
 function diagnosticCompositionState(detail: ImeDiagnosticDetail | null): string {
   if (!detail) return "idle";
   if (detail.composing) return "composing";
@@ -253,53 +462,6 @@ function diagnosticCandidateRect(detail: ImeDiagnosticDetail | null, textarea: H
   const y = detail?.candidateTop ?? textarea?.dataset.imeCandidateY ?? null;
   if (!x || !y) return "unset";
   return `${x}, ${y}`;
-}
-
-function dispatchNativePasteGuardEvent(
-  surface: HTMLElement,
-  terminalId: string,
-  guard: TerminalPasteGuard,
-  action: ImeDiagnosticDetail["pasteGuardAction"],
-): void {
-  const win = surface.ownerDocument.defaultView ?? (typeof window !== "undefined" ? window : null);
-  win?.dispatchEvent(
-    new CustomEvent(TERMINAL_PASTE_GUARD_EVENT, {
-      detail: {
-        terminalId,
-        action,
-        shouldBlock: guard.shouldBlock,
-        shouldConfirm: guard.shouldConfirm,
-        reason: guard.reason,
-        risk: {
-          classes: guard.risk.classes,
-          severity: guard.risk.severity,
-          requiresApproval: guard.risk.requiresApproval,
-          allowExecution: guard.risk.allowExecution,
-          lineCount: guard.risk.lineCount,
-          multiline: guard.risk.multiline,
-          preview: guard.risk.preview,
-          redacted: guard.risk.redactedCommand !== guard.risk.command,
-        },
-      },
-    }),
-  );
-}
-
-function confirmNativePasteGuard(surface: HTMLElement, guard: TerminalPasteGuard): boolean {
-  if (!guard.shouldConfirm) return true;
-  const win = surface.ownerDocument.defaultView ?? (typeof window !== "undefined" ? window : null);
-  if (typeof win?.confirm !== "function") return false;
-  return win.confirm(
-    [
-      "Paste this command into the terminal?",
-      `Risk: ${guard.risk.severity}`,
-      `Classes: ${guard.risk.classes.join(", ")}`,
-      guard.reason,
-      guard.risk.preview,
-    ]
-      .filter(Boolean)
-      .join("\n"),
-  );
 }
 
 function isVisibleCursor(cursor: CursorSnapshot | null | undefined): cursor is CursorSnapshot {
@@ -405,6 +567,7 @@ export function TerminalCanvas({
   cols,
   rows,
   fontSize = 14,
+  textClarity = "solid",
   /* IBM Plex Mono carries no CJK glyphs, so without an explicit
    * Japanese / Chinese / Korean monospace fallback the browser
    * substitutes a system proportional font (Yu Gothic / Meiryo on
@@ -447,6 +610,13 @@ export function TerminalCanvas({
   const prevCursorRef = useRef<{ row: number; col: number } | null>(null);
   const prevCursorOnRef = useRef<boolean>(true);
   const prevGhostRef = useRef<string>("");
+  const prevCanvasGeometryRef = useRef<{
+    cellWidth: number;
+    cellHeight: number;
+    canvasWidth: number;
+    canvasHeight: number;
+    devicePixelRatio: number;
+  } | null>(null);
   const renderPerfRef = useRef({ lastPaintAt: 0, droppedRenderFrames: 0 });
   const [hoveredLink, setHoveredLink] = useState<LinkSpan | null>(null);
   const [compositionText, setCompositionText] = useState("");
@@ -455,6 +625,7 @@ export function TerminalCanvas({
   const [diagnosticsVisible, setDiagnosticsVisible] = useState(() =>
     typeof window !== "undefined" ? imeDiagnosticsEnabled(window) && imeDiagnosticsOverlayEnabled(window) : false,
   );
+  const [canvasDevicePixelRatio, setCanvasDevicePixelRatio] = useState(currentCanvasDevicePixelRatio);
   const [latestImeDiagnostic, setLatestImeDiagnostic] = useState<ImeDiagnosticDetail | null>(null);
   const [droppedKeyCount, setDroppedKeyCount] = useState(0);
   const [diagnosticPaneActive, setDiagnosticPaneActive] = useState(false);
@@ -554,6 +725,34 @@ export function TerminalCanvas({
   const scrolledUp = scrollback.scrollOffset > 0;
   const promptMarks = usePromptMarks(scrollbackTerminalId);
 
+  // `scrollback` is a fresh object every render; route it through a ref so
+  // this global listener is not torn down and re-added on every frame.
+  const commandEvidenceContextRef = useRef({ promptMarks, scrollback });
+  useEffect(() => {
+    commandEvidenceContextRef.current = { promptMarks, scrollback };
+  });
+
+  useEffect(() => {
+    const handleCommandEvidence = (event: Event) => {
+      const detail = (event as CustomEvent<TerminalCommandEvidenceDetail>).detail;
+      if (!detail || detail.terminalId !== terminalId) return;
+      const ctx = commandEvidenceContextRef.current;
+      const mark =
+        detail.sequence == null
+          ? null
+          : (ctx.promptMarks.find((candidate) => candidate.sequence === detail.sequence) ?? null);
+      if (mark) {
+        ctx.scrollback.scrollToMark(mark);
+        return;
+      }
+      if (detail.historySize != null) {
+        ctx.scrollback.scrollToOffset(Math.max(0, ctx.scrollback.historySize - detail.historySize));
+      }
+    };
+    window.addEventListener(TERMINAL_COMMAND_EVIDENCE_EVENT, handleCommandEvidence);
+    return () => window.removeEventListener(TERMINAL_COMMAND_EVIDENCE_EVENT, handleCommandEvidence);
+  }, [terminalId]);
+
   // Re-export a stable-identity nav bundle so the parent can drive
   // scrollback navigation from global keybindings without entangling its
   // state with this component's lifecycle.
@@ -590,17 +789,39 @@ export function TerminalCanvas({
   const [cursorOn, setCursorOn] = useState(true);
 
   const cellMetrics = useTerminalCellMetrics(fontSize, fontFamily);
+  const rasterBackground = useTerminalRasterBackground(canvasEl, textClarity);
 
   const canvasWidth = cols * cellMetrics.width;
   const canvasHeight = rows * cellMetrics.height;
-  /* `<canvas width=…>` is the bitmap backing-store size and must be
-   * an integer; CSS layout can stay fractional. With `cellMetrics.
-   * width` now being the measured `Mw`-advance (e.g. 8.4 at
-   * fontSize=14), `canvasWidth` is fractional, so we ceil to make
-   * sure the rightmost column doesn't get clipped a fraction of a
-   * pixel short. */
-  const canvasBitmapWidth = Math.ceil(canvasWidth);
-  const canvasBitmapHeight = Math.ceil(canvasHeight);
+  /* Keep the canvas element's CSS size exactly equal to its integer
+   * backing-store size divided by DPR. Otherwise WebView2 rescales the
+   * whole bitmap after we paint it, which is the classic "terminal text
+   * looks soft even though the font is fine" failure mode. */
+  const canvasBitmapWidth = canvasBitmapSize(canvasWidth, canvasDevicePixelRatio);
+  const canvasBitmapHeight = canvasBitmapSize(canvasHeight, canvasDevicePixelRatio);
+  const canvasCssWidth = canvasCssSize(canvasBitmapWidth, canvasDevicePixelRatio);
+  const canvasCssHeight = canvasCssSize(canvasBitmapHeight, canvasDevicePixelRatio);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const syncPixelRatio = () => {
+      const next = currentCanvasDevicePixelRatio();
+      setCanvasDevicePixelRatio((prev) => (Math.abs(prev - next) < 0.001 ? prev : next));
+    };
+
+    const mediaQuery = window.matchMedia?.(`(resolution: ${canvasDevicePixelRatio}dppx)`);
+    window.addEventListener("resize", syncPixelRatio);
+    window.visualViewport?.addEventListener("resize", syncPixelRatio);
+    mediaQuery?.addEventListener?.("change", syncPixelRatio);
+    syncPixelRatio();
+
+    return () => {
+      window.removeEventListener("resize", syncPixelRatio);
+      window.visualViewport?.removeEventListener("resize", syncPixelRatio);
+      mediaQuery?.removeEventListener?.("change", syncPixelRatio);
+    };
+  }, [canvasDevicePixelRatio]);
 
   const {
     selection,
@@ -774,9 +995,21 @@ export function TerminalCanvas({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    ctx.setTransform?.(canvasDevicePixelRatio, 0, 0, canvasDevicePixelRatio, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    configureTerminalCanvasText(ctx);
+
     if (!snapshot) {
-      ctx.clearRect?.(0, 0, canvas.width, canvas.height);
+      ctx.clearRect?.(0, 0, canvasWidth, canvasHeight);
       prevSnapshotRef.current = null;
+      prevCanvasGeometryRef.current = {
+        cellWidth: cellMetrics.width,
+        cellHeight: cellMetrics.height,
+        canvasWidth,
+        canvasHeight,
+        devicePixelRatio: canvasDevicePixelRatio,
+      };
       return;
     }
 
@@ -784,6 +1017,14 @@ export function TerminalCanvas({
       typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
     const prev = prevSnapshotRef.current;
     const dimsChanged = !prev || prev.cols !== snapshot.cols || prev.rows !== snapshot.rows;
+    const prevGeometry = prevCanvasGeometryRef.current;
+    const canvasGeometryChanged =
+      !prevGeometry ||
+      prevGeometry.cellWidth !== cellMetrics.width ||
+      prevGeometry.cellHeight !== cellMetrics.height ||
+      prevGeometry.canvasWidth !== canvasWidth ||
+      prevGeometry.canvasHeight !== canvasHeight ||
+      prevGeometry.devicePixelRatio !== canvasDevicePixelRatio;
     const prevSel = prevSelectionRef.current;
     const selectionChanged = prevSel !== selection;
     const matchesKey = buildMatchesKey(searchMatches, activeSearchMatch, scrollback.scrollOffset);
@@ -807,8 +1048,8 @@ export function TerminalCanvas({
 
     ctx.textBaseline = "top";
 
-    if (dimsChanged) {
-      ctx.clearRect?.(0, 0, canvas.width, canvas.height);
+    if (dimsChanged || canvasGeometryChanged) {
+      ctx.clearRect?.(0, 0, canvasWidth, canvasHeight);
     }
 
     const affectedBySearch = buildRowMask(searchMatches, activeSearchMatch, snapshot.rows, scrollback.scrollOffset);
@@ -834,6 +1075,7 @@ export function TerminalCanvas({
       // exactly what we want (the whole viewport must repaint).
       if (
         !dimsChanged &&
+        !canvasGeometryChanged &&
         !selDirtyRow &&
         !matchDirtyRow &&
         !hoverDirtyRow &&
@@ -843,7 +1085,17 @@ export function TerminalCanvas({
       ) {
         continue;
       }
-      paintRow(ctx, rowCells, row, cellMetrics, fontSize, fontFamily);
+      paintRow(
+        ctx,
+        rowCells,
+        row,
+        cellMetrics,
+        fontSize,
+        fontFamily,
+        canvasDevicePixelRatio,
+        rasterBackground,
+        textClarity,
+      );
       // Search bands paint over both live and history rows — viewportRowOf
       // does the routing so a history match becomes visible the moment the
       // user scrolls its row into view.
@@ -859,14 +1111,14 @@ export function TerminalCanvas({
     // Ghost suggestion band — paint BEFORE the cursor so the cursor block
     // (if block-shape) covers its first glyph just like on a real shell.
     if (!scrolledUp && ghost && !hasPrintableAfterCursor(snapshot)) {
-      paintGhostSuggestion(ctx, snapshot, ghost, cellMetrics, fontSize, fontFamily);
+      paintGhostSuggestion(ctx, snapshot, ghost, cellMetrics, fontSize, fontFamily, canvasDevicePixelRatio);
     }
 
     // Cursor only makes sense on the live view — suppress it when
     // scrolled up so users don't mistake scrollback content for the
     // active prompt line.
     if (!scrolledUp && snapshot.cursor.visible && cursorOn) {
-      paintCursor(ctx, snapshot, cellMetrics);
+      paintCursor(ctx, snapshot, cellMetrics, canvasDevicePixelRatio);
     }
 
     // Inline image overlays last so they sit on top of cell glyphs
@@ -909,6 +1161,13 @@ export function TerminalCanvas({
     prevCursorRef.current = { row: cursor.row, col: cursor.col };
     prevCursorOnRef.current = cursorOn;
     prevGhostRef.current = ghost;
+    prevCanvasGeometryRef.current = {
+      cellWidth: cellMetrics.width,
+      cellHeight: cellMetrics.height,
+      canvasWidth,
+      canvasHeight,
+      devicePixelRatio: canvasDevicePixelRatio,
+    };
   }, [
     snapshot,
     cellMetrics,
@@ -926,6 +1185,11 @@ export function TerminalCanvas({
     scrollback.compositeCells,
     terminalId,
     scrollback.historySize,
+    canvasDevicePixelRatio,
+    rasterBackground,
+    canvasWidth,
+    canvasHeight,
+    textClarity,
   ]);
 
   useEffect(() => {
@@ -935,17 +1199,60 @@ export function TerminalCanvas({
     setCursorOn(true);
   }, []);
 
+  const focusInputSurface = useCallback(() => {
+    if (useNativeInputSurface) {
+      if (inputSurfaceEl) {
+        inputSurfaceEl.focus();
+      } else {
+        reportFallback(
+          {
+            source: "terminal.input",
+            operation: "focus_native_surface_unavailable",
+            severity: "warning",
+            message: "TerminalCanvas could not focus the native input surface because it was not mounted.",
+            userVisible: true,
+          },
+          { throttleMs: 30_000 },
+        );
+      }
+      return;
+    }
+    if (textareaEl) {
+      textareaEl.focus();
+      reportFallback(
+        {
+          source: "terminal.input",
+          operation: "focus_webview_ime_fallback",
+          severity: "warning",
+          message: "TerminalCanvas focused the WebView IME fallback because native input surface is disabled.",
+          userVisible: true,
+        },
+        { throttleMs: 30_000 },
+      );
+      return;
+    }
+    reportFallback(
+      {
+        source: "terminal.input",
+        operation: "focus_terminal_unavailable",
+        severity: "warning",
+        message: "TerminalCanvas could not find any terminal input surface to focus.",
+        userVisible: true,
+      },
+      { throttleMs: 30_000 },
+    );
+  }, [useNativeInputSurface, inputSurfaceEl, textareaEl]);
+
   // Auto-focus the active terminal input owner the first time the terminal is
   // mounted so the user can type immediately without first clicking. Only
   // fires once per mount; subsequent renders do not steal focus.
   const autoFocusedRef = useRef(false);
   useEffect(() => {
     if (autoFocusedRef.current) return;
-    const focusTarget = useNativeInputSurface ? inputSurfaceEl : textareaEl;
-    if (!focusTarget) return;
+    if (useNativeInputSurface ? !inputSurfaceEl : !textareaEl) return;
     autoFocusedRef.current = true;
-    focusTarget.focus();
-  }, [useNativeInputSurface, inputSurfaceEl, textareaEl]);
+    focusInputSurface();
+  }, [useNativeInputSurface, inputSurfaceEl, textareaEl, focusInputSurface]);
 
   // Keep the hidden textarea parked at the cursor position and tell Windows
   // where to anchor the IME candidate window.
@@ -964,37 +1271,27 @@ export function TerminalCanvas({
       ? "ai-cli-real-cursor"
       : "terminal-cursor";
 
-  const focusInputSurface = useCallback(() => {
-    if (useNativeInputSurface) {
-      inputSurfaceEl?.focus();
-      return;
-    }
-    textareaEl?.focus();
-  }, [useNativeInputSurface, inputSurfaceEl, textareaEl]);
-
   const handleNativeInputSurfacePaste = useCallback(
     (event: ReactClipboardEvent<HTMLDivElement>) => {
       if (!useNativeInputSurface) return;
-      const surface = event.currentTarget;
-      const text = event.clipboardData.getData("text/plain") || event.clipboardData.getData("text");
       event.preventDefault();
       event.stopPropagation();
-      if (!text) return;
-
-      const guard = classifyTerminalPasteInput(text);
-      if (guard.shouldBlock) {
-        dispatchNativePasteGuardEvent(surface, terminalId, guard, "blocked");
-        return;
-      }
-      if (guard.shouldConfirm && !confirmNativePasteGuard(surface, guard)) {
-        dispatchNativePasteGuardEvent(surface, terminalId, guard, "cancelled");
-        return;
-      }
-
-      writeBytes?.(terminalId, normalizeTerminalPasteInput(text));
-      dispatchNativePasteGuardEvent(surface, terminalId, guard, guard.shouldConfirm ? "confirmed" : "allowed");
+      focusInputSurface();
+      void invoke("native_terminal_input_paste", { terminalId }).catch((err) => {
+        reportFallback(
+          {
+            source: "terminal.native-input",
+            operation: "native_terminal_input_paste",
+            severity: "error",
+            message: formatFallbackError(err),
+            boundary: "native",
+            userVisible: true,
+          },
+          { throttleMs: 5_000 },
+        );
+      });
     },
-    [terminalId, useNativeInputSurface, writeBytes],
+    [focusInputSurface, terminalId, useNativeInputSurface],
   );
 
   const compositionCursor = compositionLockedImeCursor
@@ -1028,6 +1325,7 @@ export function TerminalCanvas({
   const diagnosticCommit = diagnosticLastCommit(latestImeDiagnostic);
   const diagnosticCandidate = diagnosticCandidateRect(latestImeDiagnostic, textareaEl);
   const diagnosticAnchor = latestImeDiagnostic?.anchorMode ?? imeAnchorMode;
+  const surfaceClassName = [styles.terminalCanvasSurface, className].filter(Boolean).join(" ");
 
   useImePosition({
     terminalId,
@@ -1047,15 +1345,16 @@ export function TerminalCanvas({
     /* biome-ignore lint/a11y/useSemanticElements: The focus target is a canvas-backed terminal surface; Windows builds use a native HWND input owner and non-native/test builds keep a WebView fallback textarea. */
     <div
       ref={setInputSurfaceEl}
-      className={className}
+      className={surfaceClassName}
       role="textbox"
       aria-label="Terminal input surface"
       aria-multiline="true"
       data-native-input-surface={useNativeInputSurface ? "true" : "false"}
+      data-terminal-text-clarity={textClarity}
       style={{
         position: "relative",
-        width: `${canvasWidth}px`,
-        height: `${canvasHeight}px`,
+        width: `${canvasCssWidth}px`,
+        height: `${canvasCssHeight}px`,
         flex: "0 0 auto",
         outline: "none",
       }}
@@ -1084,10 +1383,10 @@ export function TerminalCanvas({
         onFocus={focusInputSurface}
         style={{
           display: "block",
-          width: `${canvasWidth}px`,
-          height: `${canvasHeight}px`,
-          background: "var(--terminal-canvas-bg, transparent)",
-          imageRendering: "pixelated",
+          width: `${canvasCssWidth}px`,
+          height: `${canvasCssHeight}px`,
+          background:
+            "color-mix(in srgb, var(--terminal-canvas-bg, transparent) calc(var(--terminal-surface-opacity, 0.82) * 100%), transparent)",
           outline: "none",
         }}
       />
@@ -1107,6 +1406,7 @@ export function TerminalCanvas({
             autoComplete="off"
             autoCorrect="off"
             spellCheck={false}
+            rows={1}
             wrap="off"
             style={{
               position: "absolute",
@@ -1139,7 +1439,11 @@ export function TerminalCanvas({
               margin: 0,
               overflow: "hidden",
               whiteSpace: "pre",
+              writingMode: "horizontal-tb",
+              textOrientation: "mixed",
+              wordBreak: "keep-all",
               overflowWrap: "normal",
+              WebkitTextFillColor: "transparent",
               // Caret would flash in the wrong position; hide it.
               caretColor: "transparent",
             }}
@@ -1246,14 +1550,21 @@ function paintRow(
   metrics: TerminalCellMetrics,
   fontSize: number,
   fontFamily: string,
+  devicePixelRatio: number,
+  rasterBackground: string,
+  textClarity: TerminalTextClarity,
 ) {
   const { width, height } = metrics;
   const y = row * height;
 
-  // Clear to transparent so the terminal inherits the water-dark viewport.
-  // Per-cell custom ANSI backgrounds are painted below.
+  // Clear stale glyph pixels, then paint an in-canvas raster backing before
+  // text. Drawing glyphs directly into a transparent bitmap makes WebView2
+  // composite antialiased edges against Acrylic/wallpaper twice, which is why
+  // terminal text looked softer than ordinary DOM preview text.
   ctx.globalAlpha = 1;
   ctx.clearRect?.(0, y, cells.length * width, height);
+  ctx.fillStyle = rasterBackground;
+  ctx.fillRect(0, y, cells.length * width, height);
 
   for (let col = 0; col < cells.length; col++) {
     const cell = cells[col];
@@ -1292,18 +1603,24 @@ function paintRow(
       continue;
     }
 
-    ctx.globalAlpha = dim ? 0.6 : 1;
+    const contrastBackground = hasCustomBg ? bgCss : rasterBackground;
+    const readableFgCss = enhanceTerminalTextColor(fgCss, contrastBackground, textClarity);
+    ctx.globalAlpha = dim ? dimAlphaForTextClarity(textClarity) : 1;
     ctx.font = buildFont(cell, fontSize, fontFamily);
-    ctx.fillStyle = fgCss;
-    /* `maxWidth` clamps glyph advance to the cell's logical width,
-     * so even when the browser substitutes a non-monospace CJK font
-     * the glyph compresses into 2 columns instead of bleeding into
-     * the neighbour cell. Without this the dogfood screenshot
-     * (2026-05-03) showed Japanese characters overlapping each other
-     * across an otherwise correctly-sized grid. */
-    ctx.fillText(ch, x, y + 1, cellW);
+    ctx.fillStyle = readableFgCss;
+    const glyphX = snapCanvasTextCoord(x, devicePixelRatio);
+    const glyphY = snapCanvasTextCoord(y + 1, devicePixelRatio);
+    /* Clamp only glyphs that can genuinely exceed their terminal cell
+     * (CJK/full-width/fallback glyphs). Passing maxWidth for every ASCII
+     * cell makes WebView2 horizontally resample ordinary monospace text,
+     * which reads softer than native terminal text. */
+    if (shouldClampGlyphToCell(cell, ch)) {
+      ctx.fillText(ch, glyphX, glyphY, cellW);
+    } else {
+      ctx.fillText(ch, glyphX, glyphY);
+    }
 
-    drawDecorations(ctx, cell, x, y, cellW, height, fgCss, dim);
+    drawDecorations(ctx, cell, x, y, cellW, height, readableFgCss, dim);
   }
   ctx.globalAlpha = 1;
 }
@@ -1476,6 +1793,7 @@ function paintGhostSuggestion(
   { width, height }: TerminalCellMetrics,
   fontSize: number,
   fontFamily: string,
+  devicePixelRatio: number,
 ) {
   const { row, col } = snapshot.cursor;
   const y = row * height;
@@ -1488,13 +1806,14 @@ function paintGhostSuggestion(
   ctx.font = `${fontSize}px ${fontFamily}`;
   ctx.textBaseline = "top";
   let x = col * width;
+  const glyphY = snapCanvasTextCoord(y + 1, devicePixelRatio);
   for (const ch of text) {
     // Stop drawing if we would overflow the row — shells wrap the echoed
     // acceptance on their own; we only hint inline.
     if (x >= snapshot.cols * width) break;
     /* `maxWidth` clamps a glyph to one cell so CJK fallback fonts
      * don't bleed into the neighbour ghost-text cell. */
-    ctx.fillText(ch, x, y + 1, width);
+    ctx.fillText(ch, snapCanvasTextCoord(x, devicePixelRatio), glyphY, width);
     x += width;
   }
   ctx.restore();
@@ -1534,7 +1853,12 @@ function paintImages(
   }
 }
 
-function paintCursor(ctx: CanvasRenderingContext2D, snapshot: GridSnapshot, { width, height }: TerminalCellMetrics) {
+function paintCursor(
+  ctx: CanvasRenderingContext2D,
+  snapshot: GridSnapshot,
+  { width, height }: TerminalCellMetrics,
+  devicePixelRatio: number,
+) {
   if (!isVisibleCursor(snapshot.cursor)) return;
   const { row, col, shape } = snapshot.cursor;
   const x = col * width;
@@ -1551,7 +1875,13 @@ function paintCursor(ctx: CanvasRenderingContext2D, snapshot: GridSnapshot, { wi
          * CJK char under the cursor still occupies its 2-column slot
          * without spilling. */
         const wide = hasAttr(cell, CellAttr.WIDE_CHAR);
-        ctx.fillText(cell.ch, x, y + 1, wide ? width * 2 : width);
+        const glyphX = snapCanvasTextCoord(x, devicePixelRatio);
+        const glyphY = snapCanvasTextCoord(y + 1, devicePixelRatio);
+        if (wide || shouldClampGlyphToCell(cell, cell.ch)) {
+          ctx.fillText(cell.ch, glyphX, glyphY, wide ? width * 2 : width);
+        } else {
+          ctx.fillText(cell.ch, glyphX, glyphY);
+        }
       }
       return;
     }

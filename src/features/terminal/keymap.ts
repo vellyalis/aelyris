@@ -121,7 +121,8 @@ function mapSpecialKey(ev: KeyEventLike): string | undefined {
   return undefined;
 }
 
-// xterm modifier encoding: 1 + shift(1) + alt(2) + ctrl(4).
+// CSI modifier encoding used by common terminal emulators:
+// 1 + shift(1) + alt(2) + ctrl(4).
 function csiModifier(ev: KeyEventLike): number {
   let m = 1;
   if (ev.shiftKey) m += 1;

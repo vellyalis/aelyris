@@ -6,7 +6,7 @@ import {
   IME_DIAGNOSTIC_STORAGE_KEY,
   type ImeDiagnosticDetail,
 } from "../features/terminal/hooks/useCanvasIME";
-import { NativeTerminalArea } from "../features/terminal/NativeTerminalArea";
+import { commandHistoryTextFromSubmittedInput, NativeTerminalArea } from "../features/terminal/NativeTerminalArea";
 import { useTerminalSnapshot } from "../shared/hooks/useTerminalSnapshot";
 
 vi.mock("../shared/hooks/useTerminalSnapshot", () => ({
@@ -93,6 +93,32 @@ function deferred<T = void>() {
 }
 
 describe("NativeTerminalArea", () => {
+  it("normalizes submitted input-bar commands for native command evidence", () => {
+    expect(commandHistoryTextFromSubmittedInput("echo hi\r")).toBe("echo hi");
+    expect(commandHistoryTextFromSubmittedInput("echo hi\n")).toBe("echo hi");
+    expect(commandHistoryTextFromSubmittedInput("echo one\necho two\r")).toBe("echo one\necho two");
+    expect(commandHistoryTextFromSubmittedInput("\r")).toBeNull();
+    expect(nativeTerminalAreaSource).toContain('operation: "save_command_history"');
+    expect(nativeTerminalAreaSource).toContain('source: "input-bar"');
+    expect(nativeTerminalAreaSource).toContain('source: "input-mirror"');
+    expect(nativeTerminalAreaSource).toContain("reportInvokeFailure");
+  });
+
+  it("reports stale overlay dismiss failures instead of swallowing ghost-layer leaks", () => {
+    expect(nativeTerminalAreaSource).toContain('source: "terminal.snapshot-overlay"');
+    expect(nativeTerminalAreaSource).toContain('operation: "dismiss_ghost_layer"');
+    expect(nativeTerminalAreaSource).toContain('operation: "ghost_diff_layer_removed_listener"');
+    expect(nativeTerminalAreaSource).toContain("userVisible: true");
+    expect(nativeTerminalAreaSource).not.toContain('invoke<void>("dismiss_ghost_layer", { layerId }).catch(() => {})');
+    expect(nativeTerminalAreaSource).not.toContain("/* listen unavailable */");
+  });
+
+  it("reports ghost suggestion backend failures instead of silently disabling suggestions", () => {
+    expect(nativeTerminalAreaSource).toContain('source: "terminal.input-mirror"');
+    expect(nativeTerminalAreaSource).toContain('operation: "suggest_next"');
+    expect(nativeTerminalAreaSource).not.toContain(".catch(() => {\n        if (!cancelled) setSuggestion(null);");
+  });
+
   beforeEach(() => {
     installCanvasMock();
     vi.mocked(useTerminalSnapshot).mockClear();
@@ -149,6 +175,14 @@ describe("NativeTerminalArea", () => {
       "const shouldSubscribeToLiveSnapshot = snapshotOverride === undefined && liveSnapshotOverride === undefined",
     );
     expect(terminalCanvasSource).toContain("useTerminalSnapshot(shouldSubscribeToLiveSnapshot ? terminalId : null)");
+  });
+
+  it("uses the production canvas renderer for browser visual preview", () => {
+    expect(nativeTerminalAreaSource).toContain("buildPreviewTerminalSnapshot");
+    expect(nativeTerminalAreaSource).toContain('data-renderer="canvas"');
+    expect(nativeTerminalAreaSource).toContain("snapshotOverride={previewSnapshot}");
+    expect(nativeTerminalAreaSource).toContain("terminalId={PREVIEW_TERMINAL_ID}");
+    expect(nativeTerminalAreaSource).not.toContain("styles.previewPrompt");
   });
 
   it("shows a startup state instead of a blank pane while the PTY starts", async () => {

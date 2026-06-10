@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { formatFallbackError, reportFallback, reportInvokeFailure } from "../lib/fallbackTelemetry";
+import { isTauriRuntime } from "../lib/tauriRuntime";
 import type {
   FileDelta,
   LayerIdPayload,
@@ -32,6 +34,15 @@ type BufferedEvent =
   | { kind: "updated"; payload: LayerUpdatedPayload }
   | { kind: "completed"; payload: LayerIdPayload }
   | { kind: "removed"; payload: LayerIdPayload };
+
+function reportGhostLayerFailure(operation: string, err: unknown) {
+  reportInvokeFailure({
+    source: "ghost-layers",
+    operation,
+    err,
+    userVisible: true,
+  });
+}
 
 function applyOne(state: RegistryState, ev: BufferedEvent): RegistryState {
   const next = new Map(state.byId);
@@ -116,6 +127,11 @@ export function useGhostLayers(): UseGhostLayersResult {
   const pendingRef = useRef<Map<number, BufferedEvent>>(new Map());
 
   useEffect(() => {
+    if (!isTauriRuntime()) {
+      setState({ byId: new Map(), seq: 0 });
+      pendingRef.current.clear();
+      return;
+    }
     let cancelled = false;
     const unlistens: UnlistenFn[] = [];
     pendingRef.current = new Map();
@@ -142,8 +158,8 @@ export function useGhostLayers(): UseGhostLayersResult {
             dispatch({ kind: "updated", payload: event.payload }),
           ),
         );
-      } catch {
-        /* listen unavailable */
+      } catch (err) {
+        reportGhostLayerFailure("listen_layer_updated", err);
       }
       try {
         unlistens.push(
@@ -151,8 +167,8 @@ export function useGhostLayers(): UseGhostLayersResult {
             dispatch({ kind: "completed", payload: event.payload }),
           ),
         );
-      } catch {
-        /* listen unavailable */
+      } catch (err) {
+        reportGhostLayerFailure("listen_layer_completed", err);
       }
       try {
         unlistens.push(
@@ -160,13 +176,17 @@ export function useGhostLayers(): UseGhostLayersResult {
             dispatch({ kind: "removed", payload: event.payload }),
           ),
         );
-      } catch {
-        /* listen unavailable */
+      } catch (err) {
+        reportGhostLayerFailure("listen_layer_removed", err);
       }
 
       if (cancelled) {
         unlistens.forEach((fn) => {
-          fn();
+          try {
+            fn();
+          } catch (err) {
+            reportGhostLayerFailure("unlisten_after_cancel", err);
+          }
         });
         unlistens.length = 0;
         return;
@@ -184,7 +204,8 @@ export function useGhostLayers(): UseGhostLayersResult {
           };
           return drainContiguous(seeded, pendingRef.current);
         });
-      } catch {
+      } catch (err) {
+        reportGhostLayerFailure("list_ghost_layers", err);
         // Backend not ready / invoke failed (e.g. vitest jsdom). The
         // pending buffer keeps growing harmlessly — bounded by the
         // lifetime of this hook instance. The component still renders
@@ -195,7 +216,11 @@ export function useGhostLayers(): UseGhostLayersResult {
     return () => {
       cancelled = true;
       unlistens.forEach((fn) => {
-        fn();
+        try {
+          fn();
+        } catch (err) {
+          reportGhostLayerFailure("unlisten", err);
+        }
       });
       pendingRef.current.clear();
     };
@@ -211,21 +236,33 @@ export function useGhostLayers(): UseGhostLayersResult {
   const activeCount = useMemo(() => layers.filter((l) => !l.isComplete).length, [layers]);
 
   const dismiss = useCallback(async (layerId: string) => {
+    if (!isTauriRuntime()) return;
     try {
       await invoke("dismiss_ghost_layer", { layerId });
-    } catch {
-      /* backend may have already removed it */
+    } catch (err) {
+      reportFallback(
+        {
+          source: "ghost-layers",
+          operation: "dismiss_ghost_layer",
+          severity: "info",
+          message: `Ghost layer dismiss could not confirm backend removal: ${formatFallbackError(err)}`,
+          userVisible: true,
+        },
+        { throttleMs: 5_000 },
+      );
     }
   }, []);
 
   const getFile = useCallback(async (layerId: string, filePath: string): Promise<FileDelta | null> => {
+    if (!isTauriRuntime()) return null;
     try {
       const res = await invoke<FileDelta | null>("get_ghost_layer_file", {
         layerId,
         filePath,
       });
       return res ?? null;
-    } catch {
+    } catch (err) {
+      reportGhostLayerFailure("get_ghost_layer_file", err);
       return null;
     }
   }, []);

@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { type CreateImageBitmap, type Invoke, useTerminalImages } from "../shared/hooks/useTerminalImages";
+import { FALLBACK_TELEMETRY_EVENT, type FallbackTelemetryDetail } from "../shared/lib/fallbackTelemetry";
 import type { ImageRef } from "../shared/types/terminal";
 
 // jsdom does not provide a constructible ImageData. The hook only
@@ -191,14 +192,69 @@ describe("useTerminalImages", () => {
     expect(result.current.size).toBe(0);
   });
 
-  it("treats an IPC throw as 'skip this image' rather than crashing", async () => {
+  it("treats an IPC throw as a visible image fallback rather than crashing", async () => {
     const factory = makeFactory({});
     const invoke = vi.fn(async () => {
       throw new Error("registry mutex poisoned");
     }) as unknown as Invoke;
+    const events: FallbackTelemetryDetail[] = [];
+    const listener = (event: Event) => {
+      events.push((event as CustomEvent<FallbackTelemetryDetail>).detail);
+    };
+    window.addEventListener(FALLBACK_TELEMETRY_EVENT, listener);
     const { result } = renderHook(() => useTerminalImages("t-1", [ref(5)], { invoke, createImageBitmap: factory }));
-    await waitFor(() => expect(invoke).toHaveBeenCalled());
-    expect(result.current.size).toBe(0);
+    try {
+      await waitFor(() => expect(invoke).toHaveBeenCalled());
+      await waitFor(() => expect(events.length).toBeGreaterThan(0));
+      expect(result.current.size).toBe(0);
+      expect(events[0]).toEqual(
+        expect.objectContaining({
+          source: "terminal.images",
+          operation: "term_image_data",
+          severity: "warning",
+          userVisible: true,
+        }),
+      );
+      expect(events[0]?.message).toContain("registry mutex poisoned");
+    } finally {
+      window.removeEventListener(FALLBACK_TELEMETRY_EVENT, listener);
+    }
+  });
+
+  it("emits fallback telemetry when ImageBitmap is unavailable", async () => {
+    const invoke = ipcReturning({
+      3: { format: "png", dataBase64: btoa("image"), widthPx: 1, heightPx: 1 },
+    });
+    const events: FallbackTelemetryDetail[] = [];
+    const listener = (event: Event) => {
+      events.push((event as CustomEvent<FallbackTelemetryDetail>).detail);
+    };
+    window.addEventListener(FALLBACK_TELEMETRY_EVENT, listener);
+    const previousFactory = globalThis.createImageBitmap;
+    try {
+      Object.defineProperty(globalThis, "createImageBitmap", {
+        configurable: true,
+        value: undefined,
+      });
+      const { result } = renderHook(() => useTerminalImages("t-no-bitmap", [ref(3)], { invoke }));
+      await waitFor(() => expect(events.length).toBeGreaterThan(0));
+      expect(result.current.size).toBe(0);
+      expect(invoke).not.toHaveBeenCalled();
+      expect(events[0]).toEqual(
+        expect.objectContaining({
+          source: "terminal.images",
+          operation: "create_image_bitmap_unavailable",
+          severity: "warning",
+          userVisible: true,
+        }),
+      );
+    } finally {
+      Object.defineProperty(globalThis, "createImageBitmap", {
+        configurable: true,
+        value: previousFactory,
+      });
+      window.removeEventListener(FALLBACK_TELEMETRY_EVENT, listener);
+    }
   });
 
   it("materialises an RGBA8 payload via ImageData", async () => {

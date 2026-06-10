@@ -73,7 +73,7 @@ export interface UseAICliDetection {
   readonly active: boolean;
   /** Feed a raw PTY output chunk (already UTF-8 decoded). */
   readonly feed: (text: string) => void;
-  /** Feed a raw user-input chunk (what xterm.onData delivers). */
+  /** Feed a raw user-input chunk from the active terminal input surface. */
   readonly feedInput: (data: string) => void;
   /** Force-reset the detector (e.g. PTY restart). */
   readonly reset: () => void;

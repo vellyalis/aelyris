@@ -1,7 +1,20 @@
 import type { AgentSession } from "../types/agent";
+import type { AiCliLaunchPlan } from "./aiCliLaunchPlanner";
+import type { FallbackTelemetryDetail } from "./fallbackTelemetry";
 import type { WorkforceGuardrailProfile } from "./rightRailWorkforce";
 import { listWorkstationGraphChangedFiles, type WorkstationGraph } from "./workstationGraph";
 import { buildWorkstationSummary } from "./workstationSummary";
+
+export const RIGHT_RAIL_COMPATIBILITY_CLIENT = {
+  schema: "aether.react.right-rail-compatibility-client.v1",
+  surface: "right-rail-advisor",
+  primarySurface: "aether-native",
+  compatibilityRole: "legacy-tauri-react-client",
+  productTruthOwner: "rust-native-command-center",
+  nativeContract: "aether.native.right-rail-demotion-proof.v1",
+  reactOwnsProductTruth: false,
+  webviewDispatchRequired: false,
+} as const;
 
 export type RightRailMode = "command" | "review" | "observe";
 
@@ -20,6 +33,8 @@ export type RightRailActionId =
   | "focused-review"
   | "collect-final-report"
   | "trace-provenance"
+  | "inspect-cli-boundary"
+  | "plan-cli-launch"
   | "review-queue"
   | "track-selected"
   | "parallel-run"
@@ -32,12 +47,24 @@ export interface RightRailAction extends RightRailRecommendation {
   id: RightRailActionId;
   priority: number;
   state: "blocked" | "review-ready" | "running" | "idle" | "unhealthy";
+  target: RightRailActionTarget;
   why: string;
   nextStep: string;
   execution: RightRailActionExecution;
   targetSessionId?: string;
   targetPaneRole?: string;
   targetFilePath?: string;
+  auditPayload?: Record<string, unknown>;
+}
+
+export interface RightRailActionTarget {
+  kind: "workspace" | "session" | "pane" | "file" | "widget";
+  label: string;
+  reason: string;
+  id?: string;
+  role?: string;
+  path?: string;
+  widget?: string;
 }
 
 export interface RightRailActionExecution {
@@ -45,6 +72,7 @@ export interface RightRailActionExecution {
   operation: "focus-widget" | "focus-session" | "focus-pane" | "open-primary-diff" | "copy-context-pack";
   label: string;
   expectedResult: string;
+  evidence: string;
   auditEvent: string;
   guardrailProfile?: WorkforceGuardrailProfile;
   guardrailLabel?: string;
@@ -53,8 +81,47 @@ export interface RightRailActionExecution {
   disabledReason?: string;
 }
 
-type RightRailActionDraft = Omit<RightRailAction, "execution"> & {
+export interface RightRailActionAuditPayload {
+  actionId: RightRailActionId;
+  label: string;
+  operation: RightRailActionExecution["operation"];
+  fromMode: RightRailMode;
+  toMode: RightRailMode;
+  state: RightRailAction["state"];
+  tone: RightRailRecommendation["tone"];
+  executionStatus: RightRailActionExecution["status"];
+  executionLabel: string;
+  expectedResult: string;
+  evidence: string;
+  nextStep: string;
+  target: RightRailActionTarget;
+  targetFilePath: string | null;
+  targetPaneRole: string | null;
+  [key: string]: unknown;
+}
+
+type RightRailActionDraft = Omit<RightRailAction, "execution" | "target"> & {
   execution?: Partial<RightRailActionExecution>;
+  target?: Partial<RightRailActionTarget>;
+};
+
+const ACTION_TARGET_WIDGETS: Record<RightRailActionId, string> = {
+  "handoff-context": "context",
+  "resolve-approvals": "decision-inbox",
+  "recover-attention": "sessions",
+  "inspect-risk": "reliability",
+  "focused-review": "review-queue",
+  "collect-final-report": "review-queue",
+  "trace-provenance": "run-graph",
+  "inspect-cli-boundary": "processes",
+  "plan-cli-launch": "toolkit",
+  "review-queue": "review-queue",
+  "track-selected": "live-panes",
+  "parallel-run": "sessions",
+  "open-conductor": "run-graph",
+  "inspect-context": "context",
+  "ready-command": "toolkit",
+  "track-run": "processes",
 };
 
 const ACTION_EXECUTION_CONTRACTS: Record<RightRailActionId, RightRailActionExecution> = {
@@ -63,6 +130,7 @@ const ACTION_EXECUTION_CONTRACTS: Record<RightRailActionId, RightRailActionExecu
     operation: "copy-context-pack",
     label: "Copy handoff",
     expectedResult: "Handoff pack is copied and Context opens before memory pressure gets worse.",
+    evidence: "Peak context pressure and the owning live session identify the handoff risk.",
     auditEvent: "right_rail.handoff_context.opened",
     recoveryStep: "If no context pack exists, create one from the Context panel.",
   },
@@ -71,6 +139,7 @@ const ACTION_EXECUTION_CONTRACTS: Record<RightRailActionId, RightRailActionExecu
     operation: "focus-session",
     label: "Open inbox",
     expectedResult: "Decision Inbox opens and the first pending owner session is selected when available.",
+    evidence: "Pending human-gate count from the Decision Inbox is greater than zero.",
     auditEvent: "right_rail.approvals.opened",
     recoveryStep: "If the inbox is empty, refresh workflow state and inspect the audit timeline.",
   },
@@ -79,6 +148,7 @@ const ACTION_EXECUTION_CONTRACTS: Record<RightRailActionId, RightRailActionExecu
     operation: "focus-session",
     label: "Inspect run",
     expectedResult: "Blocked or errored session is selected so retry, handoff, or stop is one action away.",
+    evidence: "At least one session is waiting or errored and no longer making progress.",
     auditEvent: "right_rail.blocked_run.opened",
     recoveryStep: "If the session disappeared, use Health to clean up stale process rows.",
   },
@@ -87,6 +157,7 @@ const ACTION_EXECUTION_CONTRACTS: Record<RightRailActionId, RightRailActionExecu
     operation: "focus-widget",
     label: "Open evidence",
     expectedResult: "Reliability evidence opens around the active blocker or release risk.",
+    evidence: "The workstation graph contains risk or blocker nodes.",
     auditEvent: "right_rail.risk.opened",
     recoveryStep: "If evidence is missing, run the focused validation before closing the risk.",
   },
@@ -95,6 +166,7 @@ const ACTION_EXECUTION_CONTRACTS: Record<RightRailActionId, RightRailActionExecu
     operation: "open-primary-diff",
     label: "Open diff",
     expectedResult: "The highest-priority changed file opens in diff mode from the selected review or test intent.",
+    evidence: "A review or test pane is selected while changed files are present.",
     auditEvent: "right_rail.focused_review.opened",
     recoveryStep: "If the pane no longer exists, choose the owner from the run graph.",
   },
@@ -103,6 +175,7 @@ const ACTION_EXECUTION_CONTRACTS: Record<RightRailActionId, RightRailActionExecu
     operation: "focus-session",
     label: "Collect",
     expectedResult: "Review surface opens on the completed run so evidence can be collected.",
+    evidence: "A final report is ready or a completed session is collectable.",
     auditEvent: "right_rail.final_report.opened",
     recoveryStep: "If the report is stale, reopen the owning session from the run graph.",
   },
@@ -111,14 +184,34 @@ const ACTION_EXECUTION_CONTRACTS: Record<RightRailActionId, RightRailActionExecu
     operation: "focus-widget",
     label: "Trace",
     expectedResult: "Run graph opens so changed files can be traced back to the owning session.",
+    evidence: "Workstation graph ownership edges connect sessions to changed files.",
     auditEvent: "right_rail.provenance.opened",
     recoveryStep: "If ownership is unknown, refresh git status and session telemetry.",
+  },
+  "inspect-cli-boundary": {
+    status: "guided",
+    operation: "focus-widget",
+    label: "Inspect CLI",
+    expectedResult: "Process health opens with interactive AI CLI sessions and backend provenance visible.",
+    evidence: "Interactive AI CLI sessions must stay on the sidecar command-session boundary.",
+    auditEvent: "right_rail.cli_boundary.opened",
+    recoveryStep: "If a session reports native fallback, restart it after PTY sidecar health is green.",
+  },
+  "plan-cli-launch": {
+    status: "guided",
+    operation: "focus-widget",
+    label: "Plan launch",
+    expectedResult: "Toolkit opens with provider, role, context, worktree, and backend proof ready to review.",
+    evidence: "Launch planner combines CLI probe evidence, sidecar provenance, live sessions, and guardrails.",
+    auditEvent: "right_rail.cli_launch_planner.opened",
+    recoveryStep: "If the plan is blocked, refresh CLI proof or clear the launcher gate before spending tokens.",
   },
   "review-queue": {
     status: "ready",
     operation: "open-primary-diff",
     label: "Open diff",
     expectedResult: "The highest-priority changed file opens in diff mode with the review queue focused.",
+    evidence: "Git status or graph-derived file nodes report unreviewed changes.",
     auditEvent: "right_rail.review_queue.opened",
     recoveryStep: "If the queue is empty, refresh source control and run graph inputs.",
   },
@@ -127,6 +220,7 @@ const ACTION_EXECUTION_CONTRACTS: Record<RightRailActionId, RightRailActionExecu
     operation: "focus-pane",
     label: "Focus pane",
     expectedResult: "The selected operational pane or log surface becomes the active target.",
+    evidence: "The selected pane role is tied to live execution or logs.",
     auditEvent: "right_rail.selected_pane.focused",
     recoveryStep: "If focus fails, open the pane switcher and choose a live pane.",
   },
@@ -135,6 +229,7 @@ const ACTION_EXECUTION_CONTRACTS: Record<RightRailActionId, RightRailActionExecu
     operation: "focus-session",
     label: "Compare runs",
     expectedResult: "Health opens on live sessions so roles, owners, and progress can be compared.",
+    evidence: "Multiple live sessions are active in the same workspace.",
     auditEvent: "right_rail.parallel_run.opened",
     recoveryStep: "If a row is stale, use the process manager cleanup actions.",
   },
@@ -143,6 +238,7 @@ const ACTION_EXECUTION_CONTRACTS: Record<RightRailActionId, RightRailActionExecu
     operation: "focus-widget",
     label: "Open graph",
     expectedResult: "Run graph opens with parent, child, handoff, and ownership edges visible.",
+    evidence: "Two or more traced runs have role or handoff metadata.",
     auditEvent: "right_rail.conductor.opened",
     recoveryStep: "If graph edges are missing, inspect session handoff metadata.",
   },
@@ -151,6 +247,7 @@ const ACTION_EXECUTION_CONTRACTS: Record<RightRailActionId, RightRailActionExecu
     operation: "focus-widget",
     label: "Inspect pack",
     expectedResult: "Context panel opens on the active run's reusable handoff material.",
+    evidence: "The workstation graph contains attached context-pack nodes.",
     auditEvent: "right_rail.context_pack.opened",
     recoveryStep: "If context is absent, generate a pack from the current run state.",
   },
@@ -159,6 +256,7 @@ const ACTION_EXECUTION_CONTRACTS: Record<RightRailActionId, RightRailActionExecu
     operation: "focus-widget",
     label: "Start",
     expectedResult: "Toolkit opens so a workflow, saved tool, or agent can be launched.",
+    evidence: "No live work, changed files, or pending decisions currently need attention.",
     auditEvent: "right_rail.ready_command.opened",
     recoveryStep: "If tools are unavailable, import or create a toolkit command.",
   },
@@ -167,10 +265,53 @@ const ACTION_EXECUTION_CONTRACTS: Record<RightRailActionId, RightRailActionExecu
     operation: "focus-session",
     label: "Watch",
     expectedResult: "Process health opens on the live run and recent terminal output.",
+    evidence: "At least one live session is active and should remain observable.",
     auditEvent: "right_rail.track_run.opened",
     recoveryStep: "If the process is gone, use recovery or detach cleanup in Health.",
   },
 };
+
+function deriveActionTarget(action: RightRailActionDraft): RightRailActionTarget {
+  const fallbackWidget = ACTION_TARGET_WIDGETS[action.id];
+  const fallback: RightRailActionTarget = action.targetFilePath
+    ? {
+        kind: "file",
+        label: action.targetFilePath,
+        path: action.targetFilePath,
+        widget: fallbackWidget,
+        reason: action.why,
+      }
+    : action.targetPaneRole
+      ? {
+          kind: "pane",
+          label: action.targetPaneRole,
+          role: action.targetPaneRole,
+          widget: fallbackWidget,
+          reason: action.why,
+        }
+      : action.targetSessionId
+        ? {
+            kind: "session",
+            label: action.targetSessionId,
+            id: action.targetSessionId,
+            widget: fallbackWidget,
+            reason: action.why,
+          }
+        : {
+            kind: fallbackWidget ? "widget" : "workspace",
+            label: fallbackWidget ?? "workspace",
+            widget: fallbackWidget,
+            reason: action.why,
+          };
+
+  return {
+    ...fallback,
+    ...action.target,
+    reason: action.target?.reason ?? fallback.reason,
+    label: action.target?.label ?? fallback.label,
+    kind: action.target?.kind ?? fallback.kind,
+  };
+}
 
 function applyGuardrailToExecution(
   action: RightRailActionDraft,
@@ -244,7 +385,7 @@ function withExecutionContract(
 ): RightRailAction {
   const base = ACTION_EXECUTION_CONTRACTS[action.id];
   const execution = applyGuardrailToExecution(action, { ...base, ...action.execution }, guardrailProfile);
-  return { ...action, execution };
+  return { ...action, target: deriveActionTarget(action), execution };
 }
 
 export interface RightRailNowState {
@@ -257,6 +398,8 @@ export interface RightRailNowState {
 interface RightRailAdvisorInput {
   sessions: AgentSession[];
   interactiveSessionCount: number;
+  interactiveNativeFallbackCount?: number;
+  recentFallbackEvents?: readonly FallbackTelemetryDetail[];
   changedFilesCount: number;
   contextWarnPct: number;
   currentMode: RightRailMode;
@@ -268,6 +411,7 @@ interface RightRailAdvisorInput {
     title?: string;
     label?: string;
   } | null;
+  aiCliLaunchPlan?: AiCliLaunchPlan | null;
 }
 
 function plural(value: number, singular: string, pluralLabel = `${singular}s`): string {
@@ -278,15 +422,42 @@ function sortActions(actions: RightRailAction[]): RightRailAction[] {
   return [...actions].sort((a, b) => b.priority - a.priority || a.label.localeCompare(b.label));
 }
 
+export function buildRightRailActionAuditPayload(
+  action: RightRailAction,
+  previousMode: RightRailMode,
+): RightRailActionAuditPayload {
+  return {
+    actionId: action.id,
+    label: action.label,
+    operation: action.execution.operation,
+    fromMode: previousMode,
+    toMode: action.mode,
+    state: action.state,
+    tone: action.tone,
+    executionStatus: action.execution.status,
+    executionLabel: action.execution.label,
+    expectedResult: action.execution.expectedResult,
+    evidence: action.execution.evidence,
+    nextStep: action.nextStep,
+    target: action.target,
+    targetFilePath: action.targetFilePath ?? null,
+    targetPaneRole: action.targetPaneRole ?? null,
+    ...action.auditPayload,
+  };
+}
+
 export function deriveRightRailActions({
   sessions,
   interactiveSessionCount,
+  interactiveNativeFallbackCount = 0,
+  recentFallbackEvents = [],
   changedFilesCount,
   contextWarnPct,
   pendingDecisionCount = 0,
   guardrailProfile,
   workstationGraph,
   selectedPane,
+  aiCliLaunchPlan,
 }: RightRailAdvisorInput): RightRailAction[] {
   const graphChangedFilesCount = workstationGraph?.nodeCountByKind.file ?? 0;
   const graphChangedFiles = listWorkstationGraphChangedFiles(workstationGraph);
@@ -294,6 +465,11 @@ export function deriveRightRailActions({
   const graphPaneCount = workstationGraph?.nodeCountByKind.pane ?? 0;
   const graphRiskCount =
     (workstationGraph?.nodeCountByKind.risk ?? 0) + (workstationGraph?.nodeCountByKind.blocker ?? 0);
+  const visibleFallbackEvents = recentFallbackEvents.filter(
+    (event) => event.userVisible !== false && (event.severity === "warning" || event.severity === "error"),
+  );
+  const visibleFallbackErrorCount = visibleFallbackEvents.filter((event) => event.severity === "error").length;
+  const runtimeFallbackRiskCount = visibleFallbackEvents.length;
   const graphContextPackCount = workstationGraph?.nodeCountByKind.context_pack ?? 0;
   const graphFinalReportCount = workstationGraph?.nodeCountByKind.final_report ?? 0;
   const graphOwnedChangeCount =
@@ -323,6 +499,7 @@ export function deriveRightRailActions({
         why: "Context pressure is the highest data-loss risk.",
         nextStep: "Create a handoff pack before the run loses working memory.",
         targetSessionId: summary.peakSession.id,
+        target: { kind: "session", label: summary.peakSession.name },
       }),
     );
   }
@@ -357,6 +534,7 @@ export function deriveRightRailActions({
         why: "A waiting or errored run is no longer making progress.",
         nextStep: "Inspect the session and choose retry, handoff, or stop.",
         targetSessionId: attentionSession?.id,
+        target: attentionSession ? { kind: "session", label: attentionSession.name } : undefined,
         execution: attentionSession
           ? undefined
           : {
@@ -368,20 +546,142 @@ export function deriveRightRailActions({
     );
   }
 
-  if (graphRiskCount > 0) {
+  if (graphRiskCount > 0 || runtimeFallbackRiskCount > 0) {
     const riskSession = sessions.find((session) => session.status === "waiting" || session.status === "error");
+    const detail =
+      graphRiskCount > 0 && runtimeFallbackRiskCount > 0
+        ? `${plural(graphRiskCount, "risk or blocker", "risks or blockers")} · ${plural(
+            runtimeFallbackRiskCount,
+            "runtime fallback",
+          )}`
+        : runtimeFallbackRiskCount > 0
+          ? plural(runtimeFallbackRiskCount, "runtime fallback")
+          : plural(graphRiskCount, "risk or blocker", "risks or blockers");
+    const latestFallback = visibleFallbackEvents[0];
+    const latestFallbackBoundary =
+      latestFallback?.nativeBoundaryEscaped && latestFallback.boundary ? ` (${latestFallback.boundary})` : "";
     actions.push(
       withContract({
         id: "inspect-risk",
         mode: "observe",
         tone: "warn",
-        state: "blocked",
-        priority: 92,
-        label: "Inspect blockers",
-        detail: plural(graphRiskCount, "risk or blocker", "risks or blockers"),
-        why: "Open risks can invalidate a release or merge decision.",
-        nextStep: "Open reliability evidence and close the blocker with proof.",
+        state: visibleFallbackErrorCount > 0 ? "unhealthy" : "blocked",
+        priority: runtimeFallbackRiskCount > 0 ? 96 : 92,
+        label: runtimeFallbackRiskCount > 0 ? "Inspect fallback" : "Inspect blockers",
+        detail,
+        why:
+          runtimeFallbackRiskCount > 0
+            ? "A runtime fallback path was used and must be treated as visible reliability evidence."
+            : "Open risks can invalidate a release or merge decision.",
+        nextStep:
+          runtimeFallbackRiskCount > 0
+            ? "Open reliability evidence, inspect the fallback source, and restore the native/sidecar path."
+            : "Open reliability evidence and close the blocker with proof.",
         targetSessionId: riskSession?.id,
+        target: riskSession ? { kind: "session", label: riskSession.name } : { kind: "widget", label: "reliability" },
+        auditPayload:
+          runtimeFallbackRiskCount > 0
+            ? {
+                fallbackTelemetryCount: runtimeFallbackRiskCount,
+                fallbackTelemetryErrors: visibleFallbackErrorCount,
+                fallbackTelemetryLatest: latestFallback
+                  ? {
+                      source: latestFallback.source,
+                      operation: latestFallback.operation,
+                      severity: latestFallback.severity,
+                      message: latestFallback.message,
+                      boundary: latestFallback.boundary,
+                      nativeBoundaryEscaped: latestFallback.nativeBoundaryEscaped,
+                    }
+                  : null,
+              }
+            : undefined,
+        execution:
+          runtimeFallbackRiskCount > 0
+            ? {
+                guardrailLabel: "Fallback visible",
+                guardrailDetail: "Runtime fallbacks are routed to Reliability instead of being silent UI behavior.",
+                evidence: latestFallback
+                  ? `${latestFallback.source}.${latestFallback.operation}${latestFallbackBoundary}: ${latestFallback.message}`
+                  : "Runtime fallback telemetry emitted by the app shell.",
+              }
+            : undefined,
+      }),
+    );
+  }
+
+  if (interactiveNativeFallbackCount > 0) {
+    actions.push(
+      withContract({
+        id: "inspect-cli-boundary",
+        mode: "observe",
+        tone: "warn",
+        state: "unhealthy",
+        priority: 94,
+        label: "Fix CLI fallback",
+        detail: plural(interactiveNativeFallbackCount, "native fallback"),
+        why: "An interactive AI CLI session is no longer on the daemon sidecar path.",
+        nextStep: "Open process health, verify sidecar state, then restart the affected CLI session.",
+        target: { kind: "widget", label: "processes" },
+        execution: {
+          status: "guided",
+          guardrailLabel: "Fallback visible",
+          guardrailDetail:
+            "Native fallback is allowed only as a visible recovery state, not as silent product behavior.",
+        },
+      }),
+    );
+  } else if (interactiveSessionCount > 0) {
+    actions.push(
+      withContract({
+        id: "inspect-cli-boundary",
+        mode: "observe",
+        tone: "observe",
+        state: "running",
+        priority: 49,
+        label: "Verify CLI path",
+        detail: plural(interactiveSessionCount, "sidecar CLI"),
+        why: "Interactive AI CLI sessions are part of the terminal trust boundary.",
+        nextStep: "Open process health and confirm sidecar provenance stays visible while the run continues.",
+        target: { kind: "widget", label: "processes" },
+      }),
+    );
+  }
+
+  if (aiCliLaunchPlan && summary.liveRunCount === 0 && summary.changedFilesCount === 0) {
+    const blocked = aiCliLaunchPlan.status === "blocked";
+    const degraded = aiCliLaunchPlan.status === "degraded" || aiCliLaunchPlan.status === "unknown";
+    actions.push(
+      withContract({
+        id: "plan-cli-launch",
+        mode: blocked ? "observe" : "command",
+        tone: blocked ? "warn" : degraded ? "warn" : "command",
+        state: blocked ? "unhealthy" : "idle",
+        priority: blocked ? 91 : degraded ? 16 : 18,
+        label: aiCliLaunchPlan.actionLabel,
+        detail: aiCliLaunchPlan.detail,
+        why: aiCliLaunchPlan.why,
+        nextStep: aiCliLaunchPlan.nextStep,
+        target: {
+          kind: "widget",
+          label: blocked ? "processes" : "toolkit",
+          widget: blocked ? "processes" : "toolkit",
+          reason: aiCliLaunchPlan.evidence,
+        },
+        execution: {
+          status: blocked ? "guided" : aiCliLaunchPlan.status === "ready" ? "ready" : "guided",
+          label: blocked ? "Open Health" : "Plan launch",
+          expectedResult: blocked
+            ? "Process health opens on the launcher gate that must be fixed before launch."
+            : "Toolkit opens with the AI CLI launch plan ready to review before prompt submission.",
+          evidence: aiCliLaunchPlan.evidence,
+          guardrailLabel: aiCliLaunchPlan.guardrailLabel,
+          guardrailDetail: aiCliLaunchPlan.guardrailDetail,
+          recoveryStep: aiCliLaunchPlan.warnings[0] ?? ACTION_EXECUTION_CONTRACTS["plan-cli-launch"].recoveryStep,
+        },
+        auditPayload: {
+          aiCliLaunchTrace: aiCliLaunchPlan.trace,
+        },
       }),
     );
   }
@@ -404,6 +704,9 @@ export function deriveRightRailActions({
           selectedRole === "test" ? "Run the focused validation path." : "Inspect the review queue and file ownership.",
         targetPaneRole: selectedRole,
         targetFilePath: primaryChangedFilePath,
+        target: primaryChangedFilePath
+          ? { kind: "file", label: primaryChangedFilePath }
+          : { kind: "pane", label: selectedName, role: selectedRole },
       }),
     );
   }
@@ -426,6 +729,9 @@ export function deriveRightRailActions({
         why: "A completed run has a result that should be collected before context is lost.",
         nextStep: "Open the report, verify evidence, and mark it collected.",
         targetSessionId: reportSession?.id,
+        target: reportSession
+          ? { kind: "session", label: reportSession.name }
+          : { kind: "widget", label: "review-queue" },
       }),
     );
   }
@@ -444,6 +750,7 @@ export function deriveRightRailActions({
         why: "Changed files need provenance before review or handoff.",
         nextStep: "Open the run graph and connect files to the responsible session.",
         targetSessionId: ownerSession?.id,
+        target: ownerSession ? { kind: "session", label: ownerSession.name } : { kind: "widget", label: "run-graph" },
       }),
     );
   }
@@ -482,6 +789,9 @@ export function deriveRightRailActions({
         why: "A live run already has handoff context available.",
         nextStep: "Review the context pack before assigning or resuming work.",
         targetSessionId: summary.liveSessions[0]?.id,
+        target: summary.liveSessions[0]
+          ? { kind: "session", label: summary.liveSessions[0].name }
+          : { kind: "widget", label: "context" },
       }),
     );
   }
@@ -499,6 +809,7 @@ export function deriveRightRailActions({
         why: "The selected operational surface is tied to live execution.",
         nextStep: "Open the live pane or logs and verify forward progress.",
         targetPaneRole: selectedRole,
+        target: { kind: "pane", label: selectedName, role: selectedRole },
         execution: selectedRole
           ? undefined
           : {
@@ -523,6 +834,9 @@ export function deriveRightRailActions({
         why: "Multiple live sessions need coordination to avoid drift.",
         nextStep: "Open topology and compare roles, owners, and outputs.",
         targetSessionId: summary.liveSessions[0]?.id,
+        target: summary.liveSessions[0]
+          ? { kind: "session", label: summary.liveSessions[0].name }
+          : { kind: "widget", label: "sessions" },
       }),
     );
   }
@@ -541,6 +855,7 @@ export function deriveRightRailActions({
         why: "Traced runs form a dependency graph, not isolated tasks.",
         nextStep: "Inspect parent/child handoffs and merge ownership.",
         targetSessionId: tracedSession?.id,
+        target: tracedSession ? { kind: "session", label: tracedSession.name } : { kind: "widget", label: "run-graph" },
       }),
     );
   }
@@ -558,6 +873,9 @@ export function deriveRightRailActions({
         why: "A live run is active and should stay observable.",
         nextStep: "Watch process health, panes, and recent output.",
         targetSessionId: summary.liveSessions[0]?.id,
+        target: summary.liveSessions[0]
+          ? { kind: "session", label: summary.liveSessions[0].name }
+          : { kind: "widget", label: "processes" },
       }),
     );
   }

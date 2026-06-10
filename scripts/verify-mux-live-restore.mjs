@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,6 +13,7 @@ const out =
   process.env.AETHER_MUX_LIVE_OUT ??
   join(root, ".codex-auto", "performance", "mux-live-restore-smoke.json");
 const token = process.env.AETHER_MUX_LIVE_TOKEN ?? "mux-live-restore-smoke-token";
+const cargoManifest = join(root, "src-tauri", "Cargo.toml");
 
 if (!existsSync(sidecar)) {
   throw new Error(`PTY sidecar not found: ${sidecar}\nRun "node scripts/build-pty-sidecar.mjs" first.`);
@@ -112,6 +113,38 @@ function killProcess(child) {
   }
 }
 
+function runAetherctl(base, args) {
+  const result = spawnSync(
+    "cargo",
+    ["run", "--quiet", "--manifest-path", cargoManifest, "--bin", "aetherctl", "--", ...args],
+    {
+      cwd: root,
+      env: {
+        ...process.env,
+        AETHER_API_URL: base,
+        AETHER_API_TOKEN: token,
+      },
+      encoding: "utf8",
+      shell: false,
+      timeout: 600_000,
+      windowsHide: true,
+    },
+  );
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    throw new Error(
+      `aetherctl ${args.join(" ")} failed with ${result.status}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+    );
+  }
+  try {
+    return JSON.parse(result.stdout);
+  } catch (error) {
+    throw new Error(`aetherctl ${args.join(" ")} returned invalid JSON: ${error.message}\n${result.stdout}`);
+  }
+}
+
 function activeTab(graph) {
   const workspace = graph.workspaces?.[graph.activeWorkspaceId];
   const window = workspace?.windows?.[workspace.activeWindowId];
@@ -160,6 +193,100 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function assertDaemonContract(contract, phase) {
+  const capabilities = Array.isArray(contract?.capabilities) ? contract.capabilities : [];
+  const requiredCapabilities = [
+    "mux-inspect",
+    "mux-pane-control",
+    "mux-layout-control",
+    "mux-layout-equalize",
+    "mux-layout-rotate",
+    "mux-pane-break-join",
+    "mux-pane-zoom",
+    "mux-broadcast-input",
+    "mux-synchronized-panes",
+    "mux-attach-detach",
+    "mux-live-attach-detach",
+    "mux-snapshot-restore-pending",
+    "mux-export-import",
+    "durable-scrollback",
+    "terminal-core-policy",
+    "native-input-boundary-contract",
+    "native-render-pipeline-contract",
+    "terminal-fallback-telemetry",
+  ];
+  const terminalCorePolicy = contract?.terminalCorePolicy ?? {};
+  assert(contract?.contractSchemaVersion === 1, `${phase} daemon contract schema version must be 1`);
+  assert(typeof contract?.instanceId === "string" && contract.instanceId.length > 0, `${phase} instance id missing`);
+  assert(typeof contract?.protocolVersion === "number" && contract.protocolVersion > 0, `${phase} protocol missing`);
+  assert(contract?.muxGraphVersion === 1, `${phase} mux graph version must be 1`);
+  assert(contract?.transport === "loopback-http-websocket", `${phase} transport policy changed`);
+  assert(contract?.authPolicy === "bearer-token-or-disabled-test-mode", `${phase} auth policy changed`);
+  assert(
+    contract?.clientDetachPolicy === "detach-keeps-live-pty-while-daemon-running",
+    `${phase} detach policy missing`,
+  );
+  assert(
+    contract?.restartRestorePolicy === "snapshot-restores-graph-as-restore-pending-with-durable-scrollback",
+    `${phase} restart restore policy missing`,
+  );
+  assert(
+    contract?.attachPolicy === "reattach-respawns-only-missing-or-restore-pending-pty-bindings",
+    `${phase} attach policy missing`,
+  );
+  assert(
+    contract?.shutdownPolicy === "explicit-workspace-close-terminates-owned-child-ptys",
+    `${phase} shutdown policy missing`,
+  );
+  assert(terminalCorePolicy.nativeInputOwner === "rust-native-input-host", `${phase} native input owner missing`);
+  assert(
+    terminalCorePolicy.inputBoundary === "tauri-native-surface-before-webview-fallback",
+    `${phase} native input boundary policy missing`,
+  );
+  assert(
+    terminalCorePolicy.rendererTruthSource === "rust-term-engine-render-pipeline",
+    `${phase} renderer truth source missing`,
+  );
+  assert(
+    terminalCorePolicy.renderFrameSchema === "aether.native.render-frame.v1",
+    `${phase} render frame schema missing`,
+  );
+  assert(
+    terminalCorePolicy.renderDiffSchema === "aether.native.render-diff.v1",
+    `${phase} render diff schema missing`,
+  );
+  assert(
+    terminalCorePolicy.renderCommitSchema === "aether.native.render-commit.v1",
+    `${phase} render commit schema missing`,
+  );
+  assert(
+    terminalCorePolicy.renderPipelineBoundary === "rust-native-render-pipeline",
+    `${phase} native render pipeline boundary missing`,
+  );
+  assert(terminalCorePolicy.nextRenderer === "winit-wgpu-present-loop", `${phase} next renderer policy missing`);
+  assert(
+    terminalCorePolicy.webviewTerminalRendererPolicy === "fallback-contained-not-source-of-truth",
+    `${phase} WebView renderer fallback policy missing`,
+  );
+  assert(
+    terminalCorePolicy.reactTerminalRendererPolicy === "control-plane-only-not-terminal-core",
+    `${phase} React terminal renderer policy missing`,
+  );
+  assert(terminalCorePolicy.muxTruthSource === "daemon-api", `${phase} mux truth source missing`);
+  assert(terminalCorePolicy.scrollbackTruthSource === "durable-scrollback", `${phase} scrollback truth source missing`);
+  assert(
+    terminalCorePolicy.fallbackVisibilityPolicy === "release-blocking-telemetry",
+    `${phase} fallback visibility policy missing`,
+  );
+  assert(
+    terminalCorePolicy.releaseBlockerPolicy === "native-boundary-contract-must-pass-before-release",
+    `${phase} terminal release-blocker policy missing`,
+  );
+  for (const capability of requiredCapabilities) {
+    assert(capabilities.includes(capability), `${phase} missing daemon capability ${capability}`);
+  }
+}
+
 async function waitForCapture(base, id, needle) {
   let text = "";
   for (let i = 0; i < 80; i += 1) {
@@ -169,6 +296,14 @@ async function waitForCapture(base, id, needle) {
     await sleep(100);
   }
   throw new Error(`capture did not contain ${needle}: ${text.slice(-500)}`);
+}
+
+async function sendMarkerAndWaitForCapture(base, id, marker) {
+  await request(base, `/sessions/${id}/input`, {
+    method: "POST",
+    body: JSON.stringify({ text: `echo ${marker}\r` }),
+  });
+  await waitForCapture(base, id, marker);
 }
 
 async function main() {
@@ -188,14 +323,32 @@ async function main() {
     errors: [],
     firstRunOutput: null,
     secondRunOutput: null,
+    firstContract: null,
+    secondContract: null,
+    aetherctlContract: null,
+    aetherctlSearch: null,
+    aetherctlExport: null,
+    aetherctlImport: null,
   };
   let first = null;
   let second = null;
 
   try {
     first = startSidecar(port, muxDir, scrollbackDir);
-    await waitForReady(base);
+    const firstContract = await waitForReady(base);
+    assertDaemonContract(firstContract, "first-run");
+    report.firstContract = firstContract;
     report.checks.push("daemon-ready");
+    report.checks.push("daemon-contract-policies-machine-readable");
+    report.checks.push("terminal-core-policy-machine-readable");
+    const aetherctlContract = runAetherctl(base, ["daemon"]);
+    assertDaemonContract(aetherctlContract, "aetherctl");
+    assert(
+      aetherctlContract.instanceId === firstContract.instanceId,
+      "aetherctl daemon contract should target the same live daemon instance",
+    );
+    report.aetherctlContract = aetherctlContract;
+    report.checks.push("aetherctl-daemon-contract-parity");
 
     const created = await request(base, "/sessions", {
       method: "POST",
@@ -289,6 +442,32 @@ async function main() {
     await waitForCapture(base, workspaceId, broadcastMarker);
     await waitForCapture(base, childId, broadcastMarker);
     report.checks.push("broadcast-input-reaches-all-live-panes");
+    const aetherctlSearch = runAetherctl(base, ["search", workspaceId, broadcastMarker, "--lines", "200", "--limit", "5"]);
+    assert(aetherctlSearch.query === broadcastMarker, "aetherctl search should echo the searched marker");
+    assert(
+      Array.isArray(aetherctlSearch.matches) &&
+        aetherctlSearch.matches.some((match) => String(match.text ?? "").includes(broadcastMarker)),
+      "aetherctl search should find the broadcast marker in durable scrollback",
+    );
+    report.aetherctlSearch = aetherctlSearch;
+    report.checks.push("aetherctl-scrollback-search-parity");
+
+    const aetherctlExport = runAetherctl(base, ["mux-export", workspaceId]);
+    assert(aetherctlExport.schema === "aether.mux.v1", "aetherctl mux-export should return a versioned snapshot");
+    assert(
+      aetherctlExport.graph?.activeWorkspaceId === workspaceId,
+      "aetherctl mux-export should export the requested workspace",
+    );
+    assert(
+      paneIds(aetherctlExport.graph).join("|") === [childId, workspaceId].sort().join("|"),
+      "aetherctl mux-export should preserve the active mux pane set",
+    );
+    report.aetherctlExport = {
+      schema: aetherctlExport.schema,
+      workspaceId: aetherctlExport.graph?.activeWorkspaceId,
+      paneCount: paneIds(aetherctlExport.graph).length,
+    };
+    report.checks.push("aetherctl-mux-export-parity");
 
     graph = await request(base, `/mux/workspaces/${workspaceId}/panes/${childId}/zoom`, {
       method: "POST",
@@ -319,7 +498,11 @@ async function main() {
     report.checks.push("daemon-stopped-for-restore");
 
     second = startSidecar(port, muxDir, scrollbackDir);
-    await waitForReady(base);
+    const secondContract = await waitForReady(base);
+    assertDaemonContract(secondContract, "second-run");
+    report.secondContract = secondContract;
+    report.checks.push("daemon-contract-stable-after-restart");
+    report.checks.push("terminal-core-policy-stable-after-restart");
     graph = await request(base, `/mux/workspaces/${workspaceId}`);
     assert(paneIds(graph).length === 2, "restored mux graph should keep two panes");
     assert(
@@ -342,10 +525,56 @@ async function main() {
     assert(new Set(attachedPtyIds).size === 2, "attach should not duplicate PTY ids");
     report.checks.push("attach-respawns-live-pty-without-duplicates");
 
+    const reattachedBaseMarker = `aether-reattached-base-${Date.now()}`;
+    const reattachedChildMarker = `aether-reattached-child-${Date.now()}`;
+    report.reattachedInputMarkers = {
+      [workspaceId]: reattachedBaseMarker,
+      [childId]: reattachedChildMarker,
+    };
+    await sendMarkerAndWaitForCapture(base, workspaceId, reattachedBaseMarker);
+    await sendMarkerAndWaitForCapture(base, childId, reattachedChildMarker);
+    report.checks.push("attach-reattached-panes-process-input");
+
     await request(base, `/mux/workspaces/${workspaceId}/panes/${childId}`, { method: "DELETE" });
     graph = await request(base, `/mux/workspaces/${workspaceId}`);
     assert(paneIds(graph).length === 1, "closing child pane should leave one pane");
     report.checks.push("close-pane-updates-mux-graph");
+
+    const exportPath = join(tempRoot, "mux-import-parity.json");
+    const exportToFile = runAetherctl(base, ["mux-export", workspaceId, "--out", exportPath]);
+    assert(exportToFile.status === "exported", "aetherctl mux-export --out should acknowledge the export");
+    assert(existsSync(exportPath), "aetherctl mux-export --out should create a snapshot file");
+    const exportedSnapshot = JSON.parse(readFileSync(exportPath, "utf8"));
+    assert(exportedSnapshot.schema === "aether.mux.v1", "exported snapshot file should be versioned");
+    assert(
+      exportedSnapshot.graph?.activeWorkspaceId === workspaceId,
+      "exported snapshot file should contain the requested workspace",
+    );
+
+    const importedGraph = runAetherctl(base, ["mux-import", exportPath, "--replace"]);
+    assert(importedGraph.activeWorkspaceId === workspaceId, "aetherctl mux-import should restore the same workspace id");
+    const importedPanes = allPaneRecords(importedGraph);
+    assert(importedPanes.length === 1, "aetherctl mux-import should restore the exported one-pane graph");
+    assert(
+      importedPanes.every(
+        (pane) => pane.lifecycle === "detached" && String(pane.pty?.terminalId ?? "").startsWith("restore-pending:"),
+      ),
+      "aetherctl mux-import should force imported panes into restore-pending detached state",
+    );
+    const sessionsAfterImport = await request(base, "/sessions");
+    assert(
+      Array.isArray(sessionsAfterImport) && !sessionsAfterImport.some((session) => session.id === workspaceId),
+      "replace import should close the replaced live PTY instead of leaving stale live sessions",
+    );
+    report.aetherctlImport = {
+      workspaceId: importedGraph.activeWorkspaceId,
+      paneCount: importedPanes.length,
+      restoredTerminalIds: importedPanes.map((pane) => pane.pty?.terminalId).sort(),
+      replacedLivePtyClosed: true,
+    };
+    report.checks.push("aetherctl-mux-import-parity");
+    report.checks.push("mux-import-restore-pending");
+    report.checks.push("mux-import-replace-closes-live-pty");
 
     await request(base, `/sessions/${workspaceId}`, { method: "DELETE" });
     const afterClose = await requestMaybe404(base, `/mux/workspaces/${workspaceId}`);

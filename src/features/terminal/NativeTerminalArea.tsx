@@ -15,6 +15,7 @@ import { isTauriRuntime } from "../../shared/lib/tauriRuntime";
 import { useAppStore } from "../../shared/store/appStore";
 import type { LayerIdPayload } from "../../shared/types/ghostdiff";
 import type { SnapshotSummary } from "../../shared/types/snapshot";
+import { CellAttr, type CellSnapshot, type GridSnapshot } from "../../shared/types/terminal";
 import { type ActiveSnapshotOverlay, TimelineBar } from "../timeline/TimelineBar";
 import { useAICliDetection } from "./hooks/useAICliDetection";
 import {
@@ -43,7 +44,7 @@ import {
 } from "./search";
 import styles from "./TerminalArea.module.css";
 import { TerminalCanvas, type TerminalNav } from "./TerminalCanvas";
-import { TERMINAL_FONT_FAMILY, TERMINAL_FONT_SIZE, useTerminalCellMetrics } from "./terminalMetrics";
+import { useTerminalCellMetrics } from "./terminalMetrics";
 
 interface NativeTerminalAreaProps {
   shell?: ShellType;
@@ -58,7 +59,7 @@ interface NativeTerminalAreaProps {
   spawnPty?: (args: { shell: string; cols: number; rows: number; cwd?: string }) => Promise<string>;
   /** Override for tests — defaults to `invoke("resize_terminal", ...)`. */
   resizePty?: (id: string, cols: number, rows: number) => Promise<void> | void;
-  /** Override for tests — defaults to `invoke("write_terminal", ...)`. */
+  /** Override for tests — defaults to Rust-owned native input commit routing. */
   writePty?: (id: string, data: string) => Promise<void> | void;
   /** Override for tests — defaults to Tauri `listen("pty-output-<id>")`. */
   subscribeOutput?: (terminalId: string, onBytes: (bytes: Uint8Array) => void) => Promise<UnlistenFn>;
@@ -143,6 +144,78 @@ function shellDisplayName(shell: ShellType): string {
   }
 }
 
+const PREVIEW_TERMINAL_ID = "browser-preview-terminal";
+const NAMED_FOREGROUND = 256;
+const NAMED_BACKGROUND = 257;
+
+function previewCell(ch = " ", attrs = 0): CellSnapshot {
+  return { ch, fg: NAMED_FOREGROUND, bg: NAMED_BACKGROUND, attrs };
+}
+
+function previewBlankRow(cols: number): CellSnapshot[] {
+  return Array.from({ length: cols }, () => previewCell());
+}
+
+function writePreviewLine(row: CellSnapshot[], line: string, attrs = 0) {
+  let col = 0;
+  for (const ch of Array.from(line)) {
+    if (col >= row.length) return;
+    row[col] = previewCell(ch, attrs);
+    col += 1;
+  }
+}
+
+function previewPath(cwd?: string): string {
+  if (!cwd) return "~/work/aether-terminal";
+  const normalized = cwd.replace(/\\/g, "/");
+  const homeMatch = normalized.match(/^[A-Z]:\/Users\/[^/]+\/(.+)$/i);
+  return homeMatch ? `~/${homeMatch[1]}` : normalized;
+}
+
+function previewPrompt(shell: ShellType, cwd?: string): string {
+  const path = previewPath(cwd);
+  switch (shell) {
+    case "powershell":
+      return `PS ${path}> git diff --stat`;
+    case "cmd":
+      return `${path}> git diff --stat`;
+    case "gitbash":
+    case "wsl":
+      return `aether:${path}$ git diff --stat`;
+  }
+}
+
+function buildPreviewTerminalSnapshot(dims: Dims, shell: ShellType, cwd?: string): GridSnapshot {
+  const cells = Array.from({ length: dims.rows }, () => previewBlankRow(dims.cols));
+  const lines = [
+    previewPrompt(shell, cwd),
+    " src/features/terminal/TerminalCanvas.tsx | 18 +++++++++++++-----",
+    " src/features/terminal/NativeTerminalArea.tsx | 24 +++++++++++++++++++++---",
+    " 2 files changed, 33 insertions(+), 9 deletions(-)",
+    "",
+    "Preview uses the production canvas renderer.",
+  ];
+
+  for (let row = 0; row < Math.min(lines.length, cells.length); row += 1) {
+    writePreviewLine(cells[row], lines[row], row === 0 ? CellAttr.BOLD : 0);
+  }
+
+  const cursorRow = Math.min(cells.length - 1, Math.max(0, lines.length + 1));
+  const cursorCol = Math.min(dims.cols - 1, 2);
+  return {
+    cols: dims.cols,
+    rows: dims.rows,
+    cells,
+    cursor: {
+      row: cursorRow,
+      col: cursorCol,
+      shape: "beam",
+      blinking: false,
+      visible: true,
+    },
+  };
+}
+
 function defaultSpawn(args: { shell: string; cols: number; rows: number; cwd?: string }): Promise<string> {
   return invoke<string>("spawn_terminal", {
     shell: args.shell,
@@ -157,7 +230,9 @@ function defaultResize(id: string, cols: number, rows: number): Promise<void> {
 }
 
 function defaultWrite(id: string, data: string): Promise<void> {
-  return invoke<void>("write_terminal", { id, data });
+  return invoke<void>("native_terminal_input_commit", { terminalId: id, data, source: "terminal-area" }).then(
+    () => undefined,
+  );
 }
 
 async function defaultSubscribeOutput(terminalId: string, onBytes: (bytes: Uint8Array) => void): Promise<UnlistenFn> {
@@ -221,6 +296,12 @@ function formatInputPayloadSummary(data: string): string {
   return `${data.length} char${data.length === 1 ? "" : "s"}${suffix}`;
 }
 
+export function commandHistoryTextFromSubmittedInput(data: string): string | null {
+  const normalized = data.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const command = normalized.replace(/\n+$/g, "");
+  return command.trim().length > 0 ? command : null;
+}
+
 function formatImeEventSummary(event: ImeDiagnosticDetail | null): string {
   if (!event) return "none";
   if (event.sentLength !== undefined) {
@@ -249,7 +330,7 @@ function shouldCountDroppedKey(event: ImeDiagnosticDetail): boolean {
  * sit outside the canvas:
  *   - `<IMEInputBar>` is docked at the bottom and always rendered. Japanese
  *     / Chinese / Korean input has nowhere to land on the native canvas
- *     (Phase 2 removed xterm.js and with it the composition helper), so a
+ *     (Phase 2 moved terminal input into the native core), so a
  *     dedicated text field is the only way to type multi-byte input at all.
  *     Ctrl+Shift+J moves focus into the bar.
  *   - Ctrl+F opens an inline search bar that drives TerminalCanvas's
@@ -276,7 +357,10 @@ export function NativeTerminalArea({
   openExternal,
 }: NativeTerminalAreaProps) {
   const previewMode = !isTauriRuntime();
-  const cellMetrics = useTerminalCellMetrics(TERMINAL_FONT_SIZE, TERMINAL_FONT_FAMILY);
+  const terminalFontFamily = useAppStore((s) => s.terminalFontFamily);
+  const terminalFontSize = useAppStore((s) => s.terminalFontSize);
+  const terminalTextClarity = useAppStore((s) => s.terminalTextClarity);
+  const cellMetrics = useTerminalCellMetrics(terminalFontSize, terminalFontFamily);
   const containerRef = useRef<HTMLDivElement>(null);
   const [canvasEl, setCanvasEl] = useState<HTMLCanvasElement | null>(null);
   // Phase B: the hidden IME textarea on the canvas is the real keyboard-
@@ -316,10 +400,18 @@ export function NativeTerminalArea({
     snapshotOverlayRef.current = snapshotOverlay;
   }, [snapshotOverlay]);
 
-  // Fire-and-forget dismiss — the registry dismiss is idempotent on the
-  // backend, so losing the response is fine.
+  // Fire-and-report dismiss — the backend call is idempotent, but failure
+  // leaves a real stale-overlay risk, so it must be visible to reliability.
   const dismissBackendLayer = useCallback((layerId: string) => {
-    void invoke<void>("dismiss_ghost_layer", { layerId }).catch(() => {});
+    void invoke<void>("dismiss_ghost_layer", { layerId }).catch((err) => {
+      reportInvokeFailure({
+        source: "terminal.snapshot-overlay",
+        operation: "dismiss_ghost_layer",
+        err,
+        severity: "warning",
+        userVisible: true,
+      });
+    });
   }, []);
 
   const hideInputDiagnosticsOverlay = useCallback(() => {
@@ -406,8 +498,14 @@ export function NativeTerminalArea({
           }
         });
         if (cancelled) unlisten?.();
-      } catch {
-        /* listen unavailable */
+      } catch (err) {
+        reportInvokeFailure({
+          source: "terminal.snapshot-overlay",
+          operation: "ghost_diff_layer_removed_listener",
+          err,
+          severity: "warning",
+          userVisible: true,
+        });
       }
     })();
     return () => {
@@ -1020,10 +1118,30 @@ export function NativeTerminalArea({
         setDroppedKeyCount((count) => count + 1);
         return;
       }
-      setInputWritePath("input-bar");
-      setLastInputCommit(formatInputPayloadSummary(text));
-      aiCli.feedInput(text);
-      writeToPty(terminalId, text);
+      const send = () => {
+        setInputWritePath("input-bar");
+        setLastInputCommit(formatInputPayloadSummary(text));
+        aiCli.feedInput(text);
+        writeToPty(terminalId, text);
+      };
+      const command = commandHistoryTextFromSubmittedInput(text);
+      // PTY write must never wait on history persistence: a slow or hung
+      // SQLite IPC would delay (or in the hung case, swallow) terminal input.
+      send();
+      if (!command) {
+        return;
+      }
+      void invoke<number>("save_command_history", {
+        terminalId,
+        command,
+        cwd: cwdRef.current ?? ".",
+      }).catch((err) => {
+        reportInvokeFailure({
+          source: "input-bar",
+          operation: "save_command_history",
+          err,
+        });
+      });
     },
     [aiCli.feedInput, terminalId, writeToPty],
   );
@@ -1066,7 +1184,15 @@ export function NativeTerminalArea({
         terminalId,
         command,
         cwd: cwdRef.current ?? ".",
-      }).catch(() => {});
+      }).catch((err) => {
+        reportInvokeFailure({
+          source: "input-mirror",
+          operation: "save_command_history",
+          err,
+          severity: "warning",
+          userVisible: true,
+        });
+      });
     },
     [terminalId],
   );
@@ -1098,8 +1224,15 @@ export function NativeTerminalArea({
         if (cancelled) return;
         setSuggestion(next ?? null);
       })
-      .catch(() => {
+      .catch((err) => {
         if (!cancelled) setSuggestion(null);
+        reportInvokeFailure({
+          source: "terminal.input-mirror",
+          operation: "suggest_next",
+          err,
+          severity: "warning",
+          userVisible: false,
+        });
       });
     return () => {
       cancelled = true;
@@ -1120,9 +1253,14 @@ export function NativeTerminalArea({
     spawnStatus === "failed"
       ? `Failed to start ${shellDisplayName(shell)}${spawnError ? `: ${spawnError}` : ""}`
       : `${dims ? "Starting" : "Preparing"} ${shellDisplayName(shell)}...`;
+  const previewSnapshot = useMemo(
+    () => (previewMode && dims ? buildPreviewTerminalSnapshot(dims, shell, cwd) : null),
+    [cwd, dims, previewMode, shell],
+  );
+  const writePreviewBytes = useCallback(async () => {}, []);
 
   return (
-    <div className={styles.terminalArea}>
+    <div className={styles.terminalArea} data-terminal-text-clarity={terminalTextClarity}>
       {searchVisible && (
         <div className={styles.searchBar}>
           <input
@@ -1213,18 +1351,31 @@ export function NativeTerminalArea({
         </div>
       )}
       <div ref={containerRef} className={styles.terminalContainer}>
-        {previewMode ? (
-          <div className={styles.terminalViewport} data-preview="true">
-            <div className={styles.previewPrompt}>
-              <span className={styles.previewUser}>aether</span>
-              <span className={styles.previewPath}>~/work/aether-terminal</span>
-              <span className={styles.previewGit}>on main</span>
-              <span className={styles.previewCommand}>git diff --stat</span>
-              <span className={styles.previewCursor} />
-            </div>
+        {previewMode && previewSnapshot && dims ? (
+          <div
+            className={styles.terminalViewport}
+            data-preview="true"
+            data-renderer="canvas"
+            data-terminal-text-clarity={terminalTextClarity}
+          >
+            <TerminalCanvas
+              terminalId={PREVIEW_TERMINAL_ID}
+              cols={dims.cols}
+              rows={dims.rows}
+              fontSize={terminalFontSize}
+              fontFamily={terminalFontFamily}
+              textClarity={terminalTextClarity}
+              snapshotOverride={previewSnapshot}
+              writeBytes={writePreviewBytes}
+              showInputDiagnosticsOverlay={false}
+              onCanvasRef={setCanvasEl}
+              onInputRef={setCanvasInputEl}
+              onRegisterNav={setNav}
+              onOpenUrl={onOpenUrl}
+            />
           </div>
         ) : terminalId && dims ? (
-          <div className={styles.terminalViewport}>
+          <div className={styles.terminalViewport} data-terminal-text-clarity={terminalTextClarity}>
             {inputDiagnosticsEnabled && (
               <div
                 className={styles.inputDiagnosticsOverlay}
@@ -1302,8 +1453,9 @@ export function NativeTerminalArea({
               terminalId={terminalId}
               cols={dims.cols}
               rows={dims.rows}
-              fontSize={TERMINAL_FONT_SIZE}
-              fontFamily={TERMINAL_FONT_FAMILY}
+              fontSize={terminalFontSize}
+              fontFamily={terminalFontFamily}
+              textClarity={terminalTextClarity}
               searchMatches={searchMatches}
               activeSearchMatch={activeSearchMatch}
               ghostSuggestion={snapshotOverlay ? null : mirrorEnabled ? suggestion : null}

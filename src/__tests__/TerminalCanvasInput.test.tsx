@@ -7,7 +7,7 @@ import {
   TERMINAL_PREFIX_COMMAND_EVENT,
 } from "../features/terminal/hooks/useCanvasIME";
 import { findAiCliInputAnchor, hasAiCliScreenSignature, TerminalCanvas } from "../features/terminal/TerminalCanvas";
-import { TERMINAL_PASTE_GUARD_EVENT } from "../shared/lib/terminalInput";
+import { FALLBACK_TELEMETRY_EVENT, type FallbackTelemetryDetail } from "../shared/lib/fallbackTelemetry";
 import { CellAttr, type CellSnapshot, type GridSnapshot } from "../shared/types/terminal";
 
 const invokeMock = vi.fn((_cmd: string, _args?: Record<string, unknown>): Promise<unknown> => Promise.resolve());
@@ -46,6 +46,33 @@ function renderCanvas(writeBytes?: (id: string, data: string) => void) {
   const canvas = utils.getByTestId("terminal-canvas") as HTMLCanvasElement;
   const textarea = utils.getByTestId("terminal-ime-textarea") as HTMLTextAreaElement;
   return { ...utils, canvas, textarea };
+}
+
+function listenForFallbackTelemetry() {
+  const events: FallbackTelemetryDetail[] = [];
+  const listener = (event: Event) => {
+    events.push((event as CustomEvent<FallbackTelemetryDetail>).detail);
+  };
+  window.addEventListener(FALLBACK_TELEMETRY_EVENT, listener);
+  return {
+    events,
+    cleanup: () => window.removeEventListener(FALLBACK_TELEMETRY_EVENT, listener),
+  };
+}
+
+function installNavigatorClipboard(clipboard: Partial<Clipboard>) {
+  const original = Object.getOwnPropertyDescriptor(window.navigator, "clipboard");
+  Object.defineProperty(window.navigator, "clipboard", {
+    configurable: true,
+    value: clipboard,
+  });
+  return () => {
+    if (original) {
+      Object.defineProperty(window.navigator, "clipboard", original);
+    } else {
+      Reflect.deleteProperty(window.navigator, "clipboard");
+    }
+  };
 }
 
 function canvasContainer(canvas: HTMLCanvasElement): HTMLElement {
@@ -162,6 +189,67 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
     delete window.__AETHER_IME_EVENTS__;
     delete window.__AETHER_NATIVE_INPUT_SURFACE__;
     vi.restoreAllMocks();
+  });
+
+  it("emits fallback telemetry when TerminalCanvas focuses the WebView IME fallback", async () => {
+    const telemetry = listenForFallbackTelemetry();
+    try {
+      renderCanvas(vi.fn());
+      await waitFor(() =>
+        expect(telemetry.events.some((event) => event.operation === "focus_webview_ime_fallback")).toBe(true),
+      );
+      expect(telemetry.events.find((event) => event.operation === "focus_webview_ime_fallback")).toEqual(
+        expect.objectContaining({
+          source: "terminal.input",
+          severity: "warning",
+          userVisible: true,
+        }),
+      );
+    } finally {
+      telemetry.cleanup();
+    }
+  });
+
+  it("does not report fallback telemetry when the native input surface owns focus", async () => {
+    window.__AETHER_NATIVE_INPUT_SURFACE__ = true;
+    const telemetry = listenForFallbackTelemetry();
+    try {
+      const { getByTestId } = render(
+        <TerminalCanvas terminalId="t1" cols={4} rows={2} snapshotOverride={null} writeBytes={vi.fn()} />,
+      );
+      const canvas = getByTestId("terminal-canvas") as HTMLCanvasElement;
+      const surface = canvasContainer(canvas);
+
+      await waitFor(() => expect(document.activeElement).toBe(surface));
+
+      expect(screen.queryByTestId("terminal-ime-textarea")).toBeNull();
+      expect(
+        telemetry.events.filter((event) => event.source === "terminal.input" && event.operation.startsWith("focus_")),
+      ).toEqual([]);
+    } finally {
+      telemetry.cleanup();
+    }
+  });
+
+  it("mirrors native IME preedit text in the terminal overlay while the native surface suppresses OS painting", async () => {
+    window.__AETHER_NATIVE_INPUT_SURFACE__ = true;
+    invokeMock.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "native_terminal_input_preedit") {
+        return Promise.resolve({ terminalId: "t1", active: true, text: "あああ" });
+      }
+      if (cmd === "mux_process_keymap_event") {
+        return Promise.resolve({ kind: "cancelled", table: "prefix", command: null });
+      }
+      return Promise.resolve(args);
+    });
+
+    const { queryByText } = render(
+      <TerminalCanvas terminalId="t1" cols={20} rows={2} snapshotOverride={snapshotWithCursor(0, 3)} />,
+    );
+
+    await waitFor(() => expect(queryByText("あああ")).not.toBeNull());
+    expect(screen.queryByTestId("terminal-ime-textarea")).toBeNull();
+    expect(invokeMock).toHaveBeenCalledWith("native_terminal_input_preedit", undefined);
   });
 
   it("forwards a printable keystroke via the textarea's input event", () => {
@@ -402,10 +490,19 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
     const canvas = utils.getByTestId("terminal-canvas") as HTMLCanvasElement;
     expect(textarea.value).toBe("");
     expect(textarea.getAttribute("wrap")).toBe("off");
+    expect(textarea.getAttribute("rows")).toBe("1");
     expect(parseFloat(textarea.style.width)).toBeGreaterThan(2);
     expect(parseFloat(textarea.style.left) + parseFloat(textarea.style.width)).toBeLessThanOrEqual(
       parseFloat(canvas.style.width),
     );
+    expect(textarea.style.writingMode).toBe("horizontal-tb");
+    expect(textarea.style.textOrientation).toBe("mixed");
+    expect(textarea.style.wordBreak).toBe("keep-all");
+    expect(textarea.style.overflow).toBe("hidden");
+    expect(textarea.style.whiteSpace).toBe("pre");
+    expect(parseFloat(textarea.style.height)).toBeGreaterThan(0);
+    expect(parseFloat(textarea.style.height)).toBeLessThan(40);
+    expect(textarea.style.webkitTextFillColor).toBe("transparent");
   });
 
   it("recovers when a non-composing input arrives after a missed compositionend", () => {
@@ -447,26 +544,18 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
     expect(pasteEvent.defaultPrevented).toBe(true);
   });
 
-  it("blocks destructive paste on the native input surface before it reaches the PTY", () => {
+  it("delegates native input surface paste to the Rust clipboard guard before PTY write", async () => {
     window.__AETHER_NATIVE_INPUT_SURFACE__ = true;
+    invokeMock.mockResolvedValueOnce({ nativePasteGuardLastAction: "blocked" });
     const writeBytes = vi.fn();
-    const guardEvents: CustomEvent[] = [];
-    window.addEventListener(TERMINAL_PASTE_GUARD_EVENT, (event) => guardEvents.push(event as CustomEvent));
     const { getByTestId } = render(
       <TerminalCanvas terminalId="t1" cols={4} rows={2} snapshotOverride={null} writeBytes={writeBytes} />,
     );
     const surface = canvasContainer(getByTestId("terminal-canvas") as HTMLCanvasElement);
-    const clipboardData = {
-      getData: (type: string) =>
-        type === "text" || type === "text/plain" ? "git reset --hard HEAD\nRemove-Item -Recurse -Force C:/Temp" : "",
-    } as unknown as DataTransfer;
     const pasteEvent = new Event("paste", {
       bubbles: true,
       cancelable: true,
     }) as ClipboardEvent;
-    Object.defineProperty(pasteEvent, "clipboardData", {
-      value: clipboardData,
-    });
 
     act(() => {
       surface.dispatchEvent(pasteEvent);
@@ -474,8 +563,7 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
 
     expect(pasteEvent.defaultPrevented).toBe(true);
     expect(writeBytes).not.toHaveBeenCalled();
-    expect(guardEvents[0]?.detail.action).toBe("blocked");
-    expect(guardEvents[0]?.detail.terminalId).toBe("t1");
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("native_terminal_input_paste", { terminalId: "t1" }));
   });
 
   it("pastes native clipboard text on Ctrl+V instead of sending literal ^V", async () => {
@@ -494,6 +582,96 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
     expect(event.defaultPrevented).toBe(true);
     await waitFor(() => expect(writeBytes).toHaveBeenCalledWith("t1", "git status\r"));
     expect(writeBytes).not.toHaveBeenCalledWith("t1", "\x16");
+  });
+
+  it("uses visible browser clipboard fallback when native paste reads fail", async () => {
+    const restoreClipboard = installNavigatorClipboard({
+      readText: vi.fn().mockResolvedValue("echo fallback\n") as Clipboard["readText"],
+    });
+    invokeMock.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "read_clipboard_text") return Promise.reject(new Error("native clipboard denied"));
+      if (cmd === "mux_process_keymap_event") {
+        return Promise.resolve({ kind: "cancelled", table: "prefix", command: null });
+      }
+      return Promise.resolve(args);
+    });
+    const telemetry = listenForFallbackTelemetry();
+    const writeBytes = vi.fn();
+    try {
+      const { textarea } = renderCanvas(writeBytes);
+
+      dispatchKey(textarea, { key: "v", ctrlKey: true });
+
+      await waitFor(() => expect(writeBytes).toHaveBeenCalledWith("t1", "echo fallback\r"));
+      expect(telemetry.events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            source: "terminal.clipboard",
+            operation: "read_clipboard_text",
+            severity: "warning",
+            userVisible: true,
+          }),
+          expect.objectContaining({
+            source: "terminal.clipboard",
+            operation: "read_clipboard_text_browser_fallback",
+            severity: "warning",
+            userVisible: true,
+            boundary: "webview-fallback",
+            nativeBoundaryEscaped: true,
+          }),
+        ]),
+      );
+    } finally {
+      telemetry.cleanup();
+      restoreClipboard();
+    }
+  });
+
+  it("surfaces clipboard paste loss when native and browser reads both fail", async () => {
+    const restoreClipboard = installNavigatorClipboard({
+      readText: vi.fn().mockRejectedValue(new Error("browser clipboard denied")) as Clipboard["readText"],
+    });
+    invokeMock.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "read_clipboard_text") return Promise.reject(new Error("native clipboard unavailable"));
+      if (cmd === "mux_process_keymap_event") {
+        return Promise.resolve({ kind: "cancelled", table: "prefix", command: null });
+      }
+      return Promise.resolve(args);
+    });
+    const telemetry = listenForFallbackTelemetry();
+    const writeBytes = vi.fn();
+    try {
+      const { textarea } = renderCanvas(writeBytes);
+
+      dispatchKey(textarea, { key: "v", ctrlKey: true });
+
+      await waitFor(() =>
+        expect(telemetry.events.some((event) => event.operation === "read_clipboard_text_unavailable")).toBe(true),
+      );
+      expect(writeBytes).not.toHaveBeenCalled();
+      expect(telemetry.events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            source: "terminal.clipboard",
+            operation: "browser_read_clipboard_text",
+            severity: "error",
+            userVisible: true,
+            boundary: "webview-fallback",
+            nativeBoundaryEscaped: true,
+          }),
+          expect.objectContaining({
+            source: "terminal.clipboard",
+            operation: "read_clipboard_text_unavailable",
+            severity: "error",
+            userVisible: true,
+            boundary: "unavailable",
+          }),
+        ]),
+      );
+    } finally {
+      telemetry.cleanup();
+      restoreClipboard();
+    }
   });
 
   it("pastes native clipboard text from the terminal context menu when nothing is selected", async () => {

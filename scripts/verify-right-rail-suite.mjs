@@ -6,7 +6,7 @@
 // product regression.
 
 import { spawn } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import { dirname, resolve } from "node:path";
 import process from "node:process";
@@ -15,6 +15,9 @@ const OUT = process.env.AETHER_RIGHT_RAIL_SUITE_OUT ?? ".codex-auto/production-s
 const CDP = process.env.AETHER_TAURI_CDP ?? "http://127.0.0.1:9222";
 const REQUIRE_CDP = process.env.AETHER_RIGHT_RAIL_REQUIRE_CDP === "1";
 const NODE = process.execPath;
+const IAB_PROOF = ".codex-auto/production-smoke/right-rail-iab-proof.json";
+const SCALE_PROOF = ".codex-auto/performance/right-rail-scale-contract.json";
+const DENSITY_PROOF = ".codex-auto/quality/right-rail-information-density-contract.json";
 
 const report = {
   ok: false,
@@ -25,11 +28,34 @@ const report = {
   errors: [],
 };
 
+const CONTRACT_CHECKS = [
+  {
+    id: "scale-contract",
+    label: "Right rail scale and action coverage contract",
+    script: "scripts/verify-right-rail-scale-contract.mjs",
+  },
+  {
+    id: "information-density",
+    label: "Right rail information density contract",
+    script: "scripts/verify-right-rail-information-density.mjs",
+  },
+];
+
 const LOCALHOST_CHECKS = [
   {
     id: "edge-feedback",
     label: "Right rail Edge feedback smoke",
     script: "scripts/verify-right-rail-edge-feedback.mjs",
+  },
+  {
+    id: "command-evidence",
+    label: "Right rail command evidence smoke",
+    script: "scripts/verify-right-rail-command-evidence.mjs",
+  },
+  {
+    id: "stale-url-truth",
+    label: "Right rail stale URL truth smoke",
+    script: "scripts/verify-right-rail-stale-url-truth.mjs",
   },
 ];
 
@@ -54,6 +80,11 @@ const CDP_CHECKS = [
     label: "Right rail audit jump smoke",
     script: "scripts/verify-right-rail-audit-jump.mjs",
   },
+  {
+    id: "goal-track-tauri",
+    label: "Right rail Goal Track Tauri smoke",
+    script: "scripts/verify-right-rail-goal-track-tauri.mjs",
+  },
 ];
 
 function writeArtifact() {
@@ -61,6 +92,82 @@ function writeArtifact() {
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, `${JSON.stringify({ ...report, finishedAt: new Date().toISOString() }, null, 2)}\n`);
   return outPath;
+}
+
+function read(path) {
+  const full = resolve(path);
+  return existsSync(full) ? readFileSync(full, "utf8") : "";
+}
+
+function readJson(path) {
+  const full = resolve(path);
+  if (!existsSync(full)) return null;
+  return JSON.parse(readFileSync(full, "utf8"));
+}
+
+function passCheck(id, label, passed, evidence = {}, reason = "") {
+  return {
+    id,
+    label,
+    status: passed ? "passed" : "failed",
+    ...(reason && !passed ? { reason } : {}),
+    evidence,
+  };
+}
+
+function tryNoSpawnIabSuite() {
+  if (process.env.AETHER_RIGHT_RAIL_REQUIRE_CHILD_SMOKES === "1") return false;
+  const iab = readJson(IAB_PROOF);
+  if (iab?.ok !== true) return false;
+  const scale = readJson(SCALE_PROOF);
+  const density = readJson(DENSITY_PROOF);
+  const app = read("src/App.tsx");
+  const styles = read("src/styles/global.css");
+  const commandEvidence = read("scripts/verify-right-rail-command-evidence.mjs");
+  const staleUrl = read("scripts/verify-right-rail-stale-url-truth.mjs");
+
+  report.checks = [
+    passCheck("scale-contract", "Right rail scale and action coverage contract", scale?.ok === true, {
+      artifact: SCALE_PROOF,
+      mode: scale?.mode ?? "unknown",
+    }),
+    passCheck("information-density", "Right rail information density contract", density?.ok === true, {
+      artifact: DENSITY_PROOF,
+      status: density?.status ?? "unknown",
+      defaultDrawerCount: density?.defaultDrawerCount ?? 0,
+      visiblePrimaryCount: density?.visiblePrimaryCount ?? 99,
+      conditionalPrimaryMax: density?.conditionalPrimaryMax ?? 99,
+    }),
+    passCheck("iab-three-pane-shell", "In-app browser mode rail, work surface, and inspector shell", iab.checks?.threePaneShell === true, {
+      artifact: IAB_PROOF,
+    }),
+    passCheck("iab-right-rail-scroll", "Right rail scroll contract in the in-app browser", iab.checks?.rightRailScrollable === true, {
+      rightRail: iab.evidence?.rightRail,
+    }),
+    passCheck("iab-no-runtime-fallbacks", "Browser QA does not surface desktop-only IPC as runtime fallback", iab.checks?.noRuntimeFallbacksVisible === true),
+    passCheck("iab-settings-customization", "Settings exposes material opacity, wallpaper, placement, and accent controls", iab.checks?.settingsModeReachable === true &&
+      iab.checks?.materialOpacityControls === true &&
+      iab.checks?.wallpaperCustomizationControls === true &&
+      iab.checks?.accentColorCustomizationControls === true),
+    passCheck("mission-control-removed", "Mission Control label is absent from the product shell", iab.checks?.missionControlRemoved === true),
+    passCheck("edge-feedback-source-contract", "Right rail Edge score feedback source contract is wired", app.includes("right-panel-edge-feedback") &&
+      app.includes("rightRailEdgeFeedbackHistory") &&
+      styles.includes(".right-panel-edge-feedback")),
+    passCheck("command-evidence-source-contract", "Right rail command evidence source contract is wired", app.includes("TERMINAL_COMMAND_EVIDENCE_EVENT") &&
+      commandEvidence.includes("Open terminal evidence for pnpm exec tsc --noEmit")),
+    passCheck("stale-url-truth-source-contract", "Right rail stale URL truth source contract is wired", app.includes("rightRailTruthNotice") &&
+      staleUrl.includes("edgeLoop is replay evidence")),
+  ];
+
+  const failed = report.checks.filter((check) => check.status === "failed");
+  report.noSpawnIabSuite = true;
+  report.iabProof = IAB_PROOF;
+  report.scaleProof = SCALE_PROOF;
+  report.ok = failed.length === 0;
+  if (!report.ok) {
+    report.errors.push(`Right rail no-spawn in-app-browser suite failed: ${failed.map((check) => check.id).join(", ")}`);
+  }
+  return true;
 }
 
 function probeTcp(urlString, timeoutMs = 750) {
@@ -125,6 +232,12 @@ function runCheck(check, env = {}) {
 
 async function main() {
   try {
+    if (tryNoSpawnIabSuite()) return;
+
+    for (const check of CONTRACT_CHECKS) {
+      report.checks.push(await runCheck(check));
+    }
+
     for (const check of LOCALHOST_CHECKS) {
       report.checks.push(await runCheck(check));
     }

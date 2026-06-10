@@ -1,4 +1,17 @@
-import { Activity, Bot, ChevronDown, GitCompare, type LucideIcon, Radio } from "lucide-react";
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import {
+  Activity,
+  Bot,
+  ChevronDown,
+  ClipboardCopy,
+  GitBranch,
+  GitCompare,
+  History,
+  type LucideIcon,
+  Radio,
+  Settings as SettingsIcon,
+  SquareTerminal,
+} from "lucide-react";
 import { MotionConfig } from "motion/react";
 import {
   lazy,
@@ -37,20 +50,35 @@ import type {
   PaneRoleCycleRequest,
 } from "./features/terminal/pane-tree/PaneTreeContainer";
 import { WorkspaceTabs } from "./features/workspace-tabs/WorkspaceTabs";
+import {
+  type AiCliLaunchPreflightEvidence,
+  type AiCliLaunchPromptContract,
+  type AiCliProbeEvidence,
+  deriveAiCliLaunchPlan,
+} from "./shared/lib/aiCliLaunchPlanner";
 import { getAuditCorrelationId } from "./shared/lib/auditRecovery";
+import {
+  commandHistoryRecordsToCommandBlocks,
+  type NativeCommandBlockRecord,
+  nativeCommandBlockRecordsToCommandBlocks,
+} from "./shared/lib/commandHistoryGraph";
 import { buildContextPack } from "./shared/lib/contextPack";
 import {
   clearEndedOperationalTerminal,
   type OperationalPaneSelection,
   reconcileOperationalPaneSelection,
 } from "./shared/lib/operationalPaneSelection";
+import { TERMINAL_COMMAND_EVIDENCE_EVENT } from "./shared/lib/terminalEvidence";
 import { filterWorkspaceScopedEvents } from "./shared/lib/workspaceProfile";
 import {
   buildWorkstationGraph,
+  type FileProvenanceTrace,
   filterWorkstationGraph,
   listWorkstationGraphChangedFiles,
+  type WorkstationGraphCommandBlock,
 } from "./shared/lib/workstationGraph";
 import type { AuditEventRecord, AuditJournalEventRecord } from "./shared/types/audit";
+import type { CommandHistoryRecord } from "./shared/types/history";
 
 // Right-panel + secondary UIs: lazy-loaded so they do not block first paint.
 const KanbanBoard = lazy(() => import("./features/kanban/KanbanBoard").then((m) => ({ default: m.KanbanBoard })));
@@ -115,7 +143,7 @@ const WebInspector = lazy(() =>
   import("./features/web-inspector/WebInspector").then((m) => ({ default: m.WebInspector })),
 );
 
-import { HistorySearchDialog } from "./features/history/HistorySearchDialog";
+import { HistorySearchDialog, showHistorySearch } from "./features/history/HistorySearchDialog";
 import { type StartAgentMeta, useAgentManager } from "./shared/hooks/useAgentManager";
 import { useAuditEvents } from "./shared/hooks/useAuditEvents";
 import { useGitStatus } from "./shared/hooks/useGitStatus";
@@ -126,6 +154,12 @@ import { useTaskAgentLink } from "./shared/hooks/useTaskAgentLink";
 import { useTerminalNotifications } from "./shared/hooks/useTerminalNotifications";
 import { useThemeApplier } from "./shared/hooks/useTheme";
 import { useWorktreeActions } from "./shared/hooks/useWorktreeActions";
+import {
+  type AuthenticatedPromptConsentPacket,
+  deriveAuthenticatedPromptConsentPacket,
+  parseAuthenticatedPromptConsentReport,
+  parseAuthenticatedPromptPreflightMatrixReport,
+} from "./shared/lib/authenticatedPromptConsent";
 import { markFirstPaint } from "./shared/lib/bootMetrics";
 import { buildDecisionInbox, type DecisionWorkflowStatus } from "./shared/lib/decisionInbox";
 import {
@@ -136,15 +170,37 @@ import {
   openGitDiffInVSCode,
   openInVSCode,
 } from "./shared/lib/externalEditor";
-import { formatFallbackError, reportInvokeFailure } from "./shared/lib/fallbackTelemetry";
-import { allowedToolsForGuardrailProfile, describeGuardrailProfile } from "./shared/lib/guardrailPolicy";
 import {
+  FALLBACK_TELEMETRY_EVENT,
+  type FallbackTelemetryDetail,
+  formatFallbackError,
+  reportInvokeFailure,
+} from "./shared/lib/fallbackTelemetry";
+import { allowedToolsForGuardrailProfile, describeGuardrailProfile } from "./shared/lib/guardrailPolicy";
+import { writeClipboardText as writeNativeClipboardText } from "./shared/lib/nativeClipboard";
+import {
+  deriveFinalGoalRequirementProofs,
+  deriveFinalGoalResidualRisk,
+  deriveFinalGoalSafeGate,
+  deriveReleaseQualityGoalInputs,
+  type FinalGoalRequirementProof,
+  type FinalGoalResidualRisk,
+  type FinalGoalSafeGate,
+  parseFinalGoalAuditReport,
+  parseFinalGoalSafeSummaryReport,
+  parseReleaseQualityReport,
+  type ReleaseQualityGoalInputs,
+} from "./shared/lib/releaseQuality";
+import type { GitChangedFile } from "./shared/lib/reviewQueue";
+import {
+  buildRightRailActionAuditPayload,
   deriveRightRailActions,
   deriveRightRailNowState,
   deriveRightRailRecommendation,
   type RightRailAction,
   type RightRailMode,
 } from "./shared/lib/rightRailAdvisor";
+import { deriveRightRailGoalTrack } from "./shared/lib/rightRailGoalTrack";
 import {
   deriveRightRailWorkforceSummary,
   WORKFORCE_GUARDRAIL_PROFILES,
@@ -230,6 +286,10 @@ type BootstrapAppConfig = {
     theme: string;
     mood_preset?: string;
     opacity?: number;
+    terminal_font_family?: string;
+    font_size?: number;
+    terminal_text_clarity?: "glass" | "balanced" | "solid";
+    terminal_surface_opacity?: number;
     theme_overrides?: Record<string, AccentOverrides>;
     mood_material_overrides?: Partial<Record<MoodPresetId, MoodMaterialOverrides>>;
     wallpaper_settings_by_mood?: Partial<Record<MoodPresetId, Partial<WallpaperSettings>>>;
@@ -260,6 +320,11 @@ interface RightRailActionResult {
   routeWidget: RightRailWidgetId | null;
   routeLabel: string | null;
   routeDetail: string | null;
+}
+
+interface RightRailAiCliLaunchEvidenceState {
+  evidence: AiCliProbeEvidence | null;
+  preflight: AiCliLaunchPreflightEvidence | null;
 }
 
 interface RightRailRouteConfirmation {
@@ -461,7 +526,7 @@ function hydrateRightRailGuardrailSelectionFromConfig(selection: unknown): void 
 async function saveRightRailGuardrailSelectionToNativeConfig(selection: RightRailGuardrailSelection): Promise<void> {
   if (!isTauriRuntime()) return;
   try {
-    const { invoke } = await import("@tauri-apps/api/core");
+    const { invoke } = await Promise.resolve({ invoke: tauriInvoke });
     const config = await invoke<BootstrapAppConfig>("load_app_config");
     const paneLayout = config.workspace_profile?.global_defaults?.pane_layout ?? {};
     await invoke("save_app_config", {
@@ -532,7 +597,7 @@ function hydrateRightRailWidgetOpenFromConfig(
 async function saveRightRailWidgetOpenToNativeConfig(widget: RightRailWidgetId, open: boolean): Promise<void> {
   if (!isTauriRuntime()) return;
   try {
-    const { invoke } = await import("@tauri-apps/api/core");
+    const { invoke } = await Promise.resolve({ invoke: tauriInvoke });
     const config = await invoke<BootstrapAppConfig>("load_app_config");
     const paneLayout = config.workspace_profile?.global_defaults?.pane_layout ?? {};
     const widgets = { ...(paneLayout.right_rail_widgets ?? {}), [widget]: open };
@@ -648,6 +713,9 @@ interface DevVisualQaState {
   railMode: RightRailMode;
   railScenario: "idle" | "running" | "blocked" | "review" | "conductor" | "unhealthy";
   railScenarioExplicit: boolean;
+  railScenarioParam: "railState" | "state" | "scenario" | null;
+  usesDeprecatedStateAlias: boolean;
+  hasUrlEdgeLoop: boolean;
 }
 
 function formatTerminalTarget(shell: ShellType, terminalId: string | null): string {
@@ -668,18 +736,19 @@ function readDevVisualQaState(): DevVisualQaState {
       railMode: "observe",
       railScenario: "idle",
       railScenarioExplicit: false,
+      railScenarioParam: null,
+      usesDeprecatedStateAlias: false,
+      hasUrlEdgeLoop: false,
     };
   }
   const params = new URLSearchParams(window.location.search);
-  let storedEnabled = false;
   let storedProject: string | null = null;
   try {
-    storedEnabled = window.localStorage.getItem("aether:visualQa") === "1";
     storedProject = window.localStorage.getItem("aether:visualQaProject");
   } catch {
     /* storage may be unavailable in private/test contexts */
   }
-  const enabled = params.get("aetherVisualQa") === "1" || params.get("visualQa") === "1" || storedEnabled;
+  const enabled = params.get("aetherVisualQa") === "1" || params.get("visualQa") === "1";
   if (!enabled)
     return {
       enabled: false,
@@ -691,6 +760,9 @@ function readDevVisualQaState(): DevVisualQaState {
       railMode: "observe",
       railScenario: "idle",
       railScenarioExplicit: false,
+      railScenarioParam: null,
+      usesDeprecatedStateAlias: false,
+      hasUrlEdgeLoop: false,
     };
   const attachFixture = params.get("attachFixture") === "1" || params.get("processAttach") === "1";
   const diagnosticsEnabled = params.get("diagnostics") === "1" || params.get("logs") === "1";
@@ -700,7 +772,21 @@ function readDevVisualQaState(): DevVisualQaState {
     requestedNegativePath === "missing-diff" || requestedNegativePath === "stale-pane" ? requestedNegativePath : null;
   const projectPath = params.get("projectPath") || storedProject || "C:/Users/owner/Aether_Terminal";
   const requestedRail = params.get("rail");
-  const requestedScenario = params.get("railState") ?? params.get("state") ?? params.get("scenario");
+  const requestedScenarioParam = params.has("railState")
+    ? "railState"
+    : params.has("state")
+      ? "state"
+      : params.has("scenario")
+        ? "scenario"
+        : null;
+  const requestedScenario =
+    requestedScenarioParam === "railState"
+      ? params.get("railState")
+      : requestedScenarioParam === "state"
+        ? params.get("state")
+        : requestedScenarioParam === "scenario"
+          ? params.get("scenario")
+          : null;
   const railScenarioExplicit = requestedScenario != null;
   const railScenario =
     requestedScenario === "running" ||
@@ -724,7 +810,30 @@ function readDevVisualQaState(): DevVisualQaState {
     railMode,
     railScenario,
     railScenarioExplicit,
+    railScenarioParam: requestedScenarioParam,
+    usesDeprecatedStateAlias: requestedScenarioParam === "state",
+    hasUrlEdgeLoop: params.has(RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM),
   };
+}
+
+function isExplicitDevVisualQaRequest(): boolean {
+  if (!import.meta.env.DEV || typeof window === "undefined") return false;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("aetherVisualQa") === "1" || params.get("visualQa") === "1";
+  } catch {
+    return false;
+  }
+}
+
+function shouldMirrorRightRailEdgeFeedbackHistoryUrl(): boolean {
+  if (!isExplicitDevVisualQaRequest()) return false;
+  try {
+    const url = new URL(window.location.href);
+    return url.searchParams.has(RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM);
+  } catch {
+    return false;
+  }
 }
 
 function createDevVisualQaNegativePathAction(negativePath: DevVisualQaState["negativePath"]): RightRailAction | null {
@@ -737,6 +846,12 @@ function createDevVisualQaNegativePathAction(negativePath: DevVisualQaState["neg
       priority: 999,
       label: "QA missing diff",
       detail: "missing changed-file target",
+      target: {
+        kind: "widget",
+        label: "review-queue",
+        widget: "review-queue",
+        reason: "Negative-path fixture intentionally omits a file target.",
+      },
       why: "Release smoke needs a deterministic missing diff target.",
       nextStep: "Confirm the rail reports a recoverable warning and writes outcome audit evidence.",
       execution: {
@@ -744,6 +859,7 @@ function createDevVisualQaNegativePathAction(negativePath: DevVisualQaState["neg
         operation: "open-primary-diff",
         label: "Open diff",
         expectedResult: "The rail should warn when no changed-file target is available.",
+        evidence: "QA URL requested a missing diff target fixture.",
         auditEvent: "right_rail.qa_missing_diff.opened",
         recoveryStep: "Refresh source control and reopen the review queue.",
       },
@@ -758,6 +874,13 @@ function createDevVisualQaNegativePathAction(negativePath: DevVisualQaState["neg
       priority: 999,
       label: "QA stale pane",
       detail: "missing operational pane target",
+      target: {
+        kind: "pane",
+        label: "__qa_missing_pane__",
+        role: "__qa_missing_pane__",
+        widget: "live-panes",
+        reason: "Negative-path fixture intentionally points at a stale pane role.",
+      },
       why: "Release smoke needs a deterministic stale pane target.",
       nextStep: "Confirm the rail reports a recoverable warning and writes outcome audit evidence.",
       targetPaneRole: "__qa_missing_pane__",
@@ -766,6 +889,7 @@ function createDevVisualQaNegativePathAction(negativePath: DevVisualQaState["neg
         operation: "focus-pane",
         label: "Focus pane",
         expectedResult: "The rail should warn when the selected pane target is stale.",
+        evidence: "QA URL requested a stale pane target fixture.",
         auditEvent: "right_rail.qa_stale_pane.opened",
         recoveryStep: "Open Health, refresh live panes, and choose an existing pane.",
       },
@@ -869,6 +993,37 @@ function createDevVisualQaChangedFiles(
     { path: "src/App.tsx", status: "modified" },
     { path: "src/shared/lib/rightRailAdvisor.ts", status: "modified" },
     { path: "src/styles/global.css", status: "modified" },
+  ];
+}
+
+function createDevVisualQaCommandBlocks(
+  scenario: DevVisualQaState["railScenario"],
+  projectPath: string,
+): WorkstationGraphCommandBlock[] {
+  if (scenario === "idle") return [];
+  const cwd = projectPath || "C:/Users/owner/Aether_Terminal";
+  const agentId = scenario === "review" ? "qa-review" : scenario === "blocked" ? "qa-blocked" : "qa-impl";
+  return [
+    {
+      id: "qa-command-typecheck",
+      command: "pnpm exec tsc --noEmit",
+      cwd,
+      status: "passed",
+      exitCode: 0,
+      terminalId: "qa-review-shell",
+      agentId,
+      filePaths: ["src/App.tsx", "src/shared/lib/rightRailAdvisor.ts"],
+      validationKind: "typecheck",
+      commandSequence: 101,
+      outputSequence: 102,
+      endSequence: 103,
+      commandHistorySize: 18,
+      outputHistorySize: 19,
+      endHistorySize: 21,
+      commandScreenLine: 4,
+      outputScreenLine: 5,
+      endScreenLine: 7,
+    },
   ];
 }
 
@@ -1038,9 +1193,9 @@ const RIGHT_RAIL_MODES: Array<{
   },
   {
     id: "review",
-    label: "Changes",
+    label: "Review",
     title: "Review agent output, source changes, and commits",
-    description: "Inspect changed files, agent output, and commit readiness.",
+    description: "Inspect changed files, review queues, provenance, and commit readiness.",
     icon: GitCompare,
   },
   {
@@ -1060,6 +1215,8 @@ const RIGHT_RAIL_ACTION_WIDGET: Partial<Record<RightRailAction["id"], string>> =
   "focused-review": "review-queue",
   "collect-final-report": "review-queue",
   "trace-provenance": "run-graph",
+  "inspect-cli-boundary": "processes",
+  "plan-cli-launch": "toolkit",
   "review-queue": "review-queue",
   "track-selected": "live-panes",
   "parallel-run": "sessions",
@@ -1069,6 +1226,198 @@ const RIGHT_RAIL_ACTION_WIDGET: Partial<Record<RightRailAction["id"], string>> =
   "track-run": "processes",
 };
 
+const RIGHT_RAIL_ACTION_PHASE: Record<RightRailAction["id"], string> = {
+  "handoff-context": "Preserve",
+  "resolve-approvals": "Route",
+  "recover-attention": "Recover",
+  "inspect-risk": "Observe",
+  "focused-review": "Review",
+  "collect-final-report": "Preserve",
+  "trace-provenance": "Review",
+  "inspect-cli-boundary": "Observe",
+  "plan-cli-launch": "Plan",
+  "review-queue": "Review",
+  "track-selected": "Observe",
+  "parallel-run": "Route",
+  "open-conductor": "Route",
+  "inspect-context": "Plan",
+  "ready-command": "Run",
+  "track-run": "Observe",
+};
+
+type ProductModeId = "terminal" | "agents" | "workspace" | "review" | "git" | "context" | "history" | "settings";
+
+const PRODUCT_MODE_RAIL: Array<{
+  id: ProductModeId;
+  label: string;
+  shortcut: string;
+  description: string;
+  icon: LucideIcon;
+}> = [
+  {
+    id: "terminal",
+    label: "Terminal",
+    shortcut: "Alt+1",
+    description: "Focus panes, mux state, shell sessions, and AI CLI input.",
+    icon: SquareTerminal,
+  },
+  {
+    id: "agents",
+    label: "Agents",
+    shortcut: "Alt+2",
+    description: "Run purpose-pinned agents, worktrees, approvals, and telemetry.",
+    icon: Bot,
+  },
+  {
+    id: "workspace",
+    label: "Workspace",
+    shortcut: "Alt+3",
+    description: "Open project tasks, workflows, notes, and shared context.",
+    icon: Activity,
+  },
+  {
+    id: "review",
+    label: "Review",
+    shortcut: "Alt+4",
+    description: "Inspect changed files, review queues, risks, and handoff evidence.",
+    icon: GitCompare,
+  },
+  {
+    id: "git",
+    label: "Git",
+    shortcut: "Alt+5",
+    description: "Route to branch, status, diffs, worktrees, commit, and push actions.",
+    icon: GitBranch,
+  },
+  {
+    id: "context",
+    label: "Context",
+    shortcut: "Alt+6",
+    description: "Inspect context packs, selected panes, files, audit trails, and handoffs.",
+    icon: ClipboardCopy,
+  },
+  {
+    id: "history",
+    label: "History",
+    shortcut: "Alt+7",
+    description: "Search command, session, and action history across the workspace.",
+    icon: History,
+  },
+  {
+    id: "settings",
+    label: "Settings",
+    shortcut: "Alt+8",
+    description: "Customize themes, materials, wallpaper, shell profiles, and editor behavior.",
+    icon: SettingsIcon,
+  },
+];
+
+const PRODUCT_MODE_ROUTES: Record<
+  ProductModeId,
+  {
+    rightRailMode?: RightRailMode;
+    focusWidget?: string | null;
+    expandSidebar?: boolean;
+    openHistory?: boolean;
+    openSettings?: boolean;
+  }
+> = {
+  terminal: { rightRailMode: "observe", focusWidget: "live-panes" },
+  agents: { rightRailMode: "command", focusWidget: "sessions" },
+  workspace: { rightRailMode: "command", focusWidget: "workflow", expandSidebar: true },
+  review: { rightRailMode: "review", focusWidget: "review-queue" },
+  git: { rightRailMode: "review", focusWidget: "scm" },
+  context: { rightRailMode: "observe", focusWidget: "context" },
+  history: { rightRailMode: "observe", focusWidget: "audit-timeline", openHistory: true },
+  settings: { openSettings: true },
+};
+
+const PRODUCT_MODE_INSPECTOR_SUMMARY: Record<
+  ProductModeId,
+  {
+    target: string;
+    owner: string;
+    proof: string;
+  }
+> = {
+  terminal: {
+    target: "Live panes / PTY health",
+    owner: "Rust PTY + mux core",
+    proof: "Native terminal boundary evidence",
+  },
+  agents: {
+    target: "Sessions / workflow gates",
+    owner: "Rust AI orchestration",
+    proof: "Context pack, guardrail, and audit trace",
+  },
+  workspace: {
+    target: "Files / tasks / workflows",
+    owner: "Project workspace state",
+    proof: "File tree, task, and workflow source",
+  },
+  review: {
+    target: "Review queue / changed files",
+    owner: "Git + provenance graph",
+    proof: "Risk, diff, and handoff evidence",
+  },
+  git: {
+    target: "SCM / branch / worktrees",
+    owner: "git2 + worktree core",
+    proof: "Branch, status, and commit readiness",
+  },
+  context: {
+    target: "Context pack / audit trail",
+    owner: "Rust-backed workspace evidence",
+    proof: "Selected pane, file, and session context",
+  },
+  history: {
+    target: "Command / session history",
+    owner: "SQLite history store",
+    proof: "Searchable command and action records",
+  },
+  settings: {
+    target: "Theme / material / shell settings",
+    owner: "Rust settings store",
+    proof: "Config roundtrip and UI control state",
+  },
+};
+
+function compactRightRailOwnerId(value: string | undefined): string {
+  if (!value) return "";
+  const trimmed = value.trim();
+  if (trimmed.length <= 10) return trimmed;
+  return `${trimmed.slice(0, 4)}-${trimmed.slice(-4)}`;
+}
+
+function formatRightRailPathOwner(path: string | undefined): string {
+  if (!path) return "";
+  const normalized = path.replace(/\\/g, "/");
+  return normalized.split("/").filter(Boolean).pop() ?? normalized;
+}
+
+function formatRightRailActionOwner(action: RightRailAction): string {
+  if (action.targetSessionId) return `Session ${compactRightRailOwnerId(action.targetSessionId)}`;
+  if (action.targetPaneRole) return `Pane ${action.targetPaneRole}`;
+  if (action.targetFilePath) return `File ${formatRightRailPathOwner(action.targetFilePath)}`;
+  if (action.target.role) return `Role ${action.target.role}`;
+  if (action.target.widget) return `Widget ${action.target.widget}`;
+  return `${action.target.kind} ${action.target.label}`;
+}
+
+function formatInspectorProof(evidence: string | undefined, fallback: string): string {
+  const normalized = evidence?.trim();
+  if (!normalized) return fallback;
+  const lower = normalized.toLowerCase();
+  if (
+    lower.includes("cannot read properties") ||
+    lower.includes("reading 'invoke'") ||
+    lower.includes("not available in this webview")
+  ) {
+    return fallback;
+  }
+  return normalized;
+}
+
 async function appendRightRailActionAudit(
   action: RightRailAction,
   workspaceId: string,
@@ -1076,7 +1425,7 @@ async function appendRightRailActionAudit(
 ): Promise<AuditJournalEventRecord | null> {
   if (!workspaceId || !isTauriRuntime()) return null;
   try {
-    const { invoke } = await import("@tauri-apps/api/core");
+    const { invoke } = await Promise.resolve({ invoke: tauriInvoke });
     return await invoke<AuditJournalEventRecord>("append_audit_event", {
       event: {
         workspaceId,
@@ -1092,21 +1441,7 @@ async function appendRightRailActionAudit(
         severity: action.execution.status === "blocked" ? "warn" : "info",
         source: "right-rail",
         confidence: 0.9,
-        payloadJson: {
-          actionId: action.id,
-          label: action.label,
-          operation: action.execution.operation,
-          fromMode: previousMode,
-          toMode: action.mode,
-          state: action.state,
-          tone: action.tone,
-          executionStatus: action.execution.status,
-          executionLabel: action.execution.label,
-          expectedResult: action.execution.expectedResult,
-          nextStep: action.nextStep,
-          targetFilePath: action.targetFilePath ?? null,
-          targetPaneRole: action.targetPaneRole ?? null,
-        },
+        payloadJson: buildRightRailActionAuditPayload(action, previousMode),
       },
     });
   } catch (err) {
@@ -1129,7 +1464,7 @@ async function appendRightRailActionOutcomeAudit(
 ): Promise<AuditJournalEventRecord | null> {
   if (!workspaceId || !isTauriRuntime()) return null;
   try {
-    const { invoke } = await import("@tauri-apps/api/core");
+    const { invoke } = await Promise.resolve({ invoke: tauriInvoke });
     return await invoke<AuditJournalEventRecord>("append_audit_event", {
       event: {
         workspaceId,
@@ -1188,7 +1523,7 @@ async function appendRightRailEdgeScoreInteractionAudit({
 }): Promise<AuditJournalEventRecord | null> {
   if (!workspaceId || !isTauriRuntime()) return null;
   try {
-    const { invoke } = await import("@tauri-apps/api/core");
+    const { invoke } = await Promise.resolve({ invoke: tauriInvoke });
     return await invoke<AuditJournalEventRecord>("append_audit_event", {
       event: {
         workspaceId,
@@ -1242,7 +1577,7 @@ async function appendRightRailEdgeFeedbackStaleAudit({
 }): Promise<AuditJournalEventRecord | null> {
   if (!workspaceId || !isTauriRuntime()) return null;
   try {
-    const { invoke } = await import("@tauri-apps/api/core");
+    const { invoke } = await Promise.resolve({ invoke: tauriInvoke });
     return await invoke<AuditJournalEventRecord>("append_audit_event", {
       event: {
         workspaceId,
@@ -1480,15 +1815,18 @@ function clearRightRailEdgeFeedbackHistory(projectPath: string): void {
 function loadRightRailEdgeFeedbackHistory(projectPath: string): RightRailEdgeScoreFeedbackEntry[] {
   const key = rightRailEdgeFeedbackStorageKey(projectPath);
   if (!key || typeof window === "undefined") return [];
+  const allowDebugUrlFallback = isExplicitDevVisualQaRequest();
   try {
     const raw = window.localStorage.getItem(key);
     if (!raw) {
+      if (!allowDebugUrlFallback) return [];
       const stateHistory = readRightRailEdgeFeedbackHistoryState(key);
       return stateHistory.length > 0 ? stateHistory : readRightRailEdgeFeedbackHistoryUrl(key);
     }
     const parsed: unknown = JSON.parse(raw);
     return sanitizeRightRailEdgeFeedbackHistory(parsed);
   } catch {
+    if (!allowDebugUrlFallback) return [];
     const stateHistory = readRightRailEdgeFeedbackHistoryState(key);
     return stateHistory.length > 0 ? stateHistory : readRightRailEdgeFeedbackHistoryUrl(key);
   }
@@ -1521,7 +1859,9 @@ function saveRightRailEdgeFeedbackHistory(projectPath: string, history: RightRai
     return;
   }
   writeRightRailEdgeFeedbackHistoryState(key, persisted);
-  writeRightRailEdgeFeedbackHistoryUrl(key, persisted);
+  if (shouldMirrorRightRailEdgeFeedbackHistoryUrl()) {
+    writeRightRailEdgeFeedbackHistoryUrl(key, persisted);
+  }
   try {
     window.localStorage.setItem(key, JSON.stringify(persisted));
   } catch {
@@ -1549,11 +1889,26 @@ function resolveProjectFilePath(projectPath: string, path: string): string {
   return `${root}\\${trimmed.replace(/^[/\\]+/, "").replace(/\//g, "\\")}`;
 }
 
-function copyTextToClipboard(text: string): Promise<void> {
-  if (typeof navigator === "undefined" || typeof navigator.clipboard?.writeText !== "function") {
-    return Promise.reject(new Error("Clipboard API is unavailable"));
+function parseJsonArtifact<T>(text: string): T | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  try {
+    return JSON.parse(trimmed) as T;
+  } catch {
+    return null;
   }
-  return navigator.clipboard.writeText(text);
+}
+
+function isRightRailQaFixtureRisk(value: string): boolean {
+  return /right[\s_.-]*rail[\s_.-]*qa|qa[\s_-]*(missing[\s_-]*diff|stale[\s_-]*pane)/i.test(value);
+}
+
+function copyTextToClipboard(text: string): Promise<void> {
+  return writeNativeClipboardText(text, {
+    source: "right-rail.clipboard",
+    fallbackMessage: "Native clipboard write failed; using browser clipboard fallback for right rail copy.",
+    userVisible: true,
+  });
 }
 
 function createRightRailActionResult(
@@ -1617,6 +1972,23 @@ function createRightRailDestinationResult({
 
 function rightRailModeForOutcomeWidget(widget: RightRailWidgetId): RightRailMode {
   return widget === "workflow" || widget === "toolkit" ? "command" : "observe";
+}
+
+function mergeRightRailChangedFiles(
+  base: readonly GitChangedFile[],
+  graphFiles: readonly GitChangedFile[],
+): GitChangedFile[] {
+  const byPath = new Map<string, GitChangedFile>();
+  for (const file of base) {
+    const normalized = file.path.replace(/\\/g, "/");
+    byPath.set(normalized.toLowerCase(), { ...file, path: normalized });
+  }
+  for (const file of graphFiles) {
+    const normalized = file.path.replace(/\\/g, "/");
+    const key = normalized.toLowerCase();
+    byPath.set(key, { ...file, ...byPath.get(key), path: normalized });
+  }
+  return [...byPath.values()];
 }
 
 function createRightRailEdgeScoreFeedbackEntry({
@@ -1942,6 +2314,9 @@ export function App() {
   const materialOverridesForMood = useAppStore((s) => s.moodMaterialOverrides[moodPresetId]);
   const wallpaperForMood = useAppStore((s) => s.wallpaperSettingsByMood[moodPresetId]);
   const appWindowOpacity = useAppStore((s) => s.appWindowOpacity);
+  const terminalSurfaceOpacity = useAppStore((s) => s.terminalSurfaceOpacity);
+  const fallbackTelemetryEvents = useAppStore((s) => s.fallbackTelemetryEvents);
+  const recordFallbackTelemetry = useAppStore((s) => s.recordFallbackTelemetry);
   useThemeApplier(
     themeId,
     themeOverridesForActive,
@@ -1949,12 +2324,24 @@ export function App() {
     materialOverridesForMood,
     wallpaperForMood,
     appWindowOpacity,
+    terminalSurfaceOpacity,
   );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onFallbackTelemetry = (event: Event) => {
+      const detail = (event as CustomEvent<FallbackTelemetryDetail>).detail;
+      if (!detail) return;
+      recordFallbackTelemetry(detail);
+    };
+    window.addEventListener(FALLBACK_TELEMETRY_EVENT, onFallbackTelemetry);
+    return () => window.removeEventListener(FALLBACK_TELEMETRY_EVENT, onFallbackTelemetry);
+  }, [recordFallbackTelemetry]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
     let cancelled = false;
-    import("@tauri-apps/api/core")
+    Promise.resolve({ invoke: tauriInvoke })
       .then(({ invoke }) => invoke<BootstrapAppConfig>("load_app_config"))
       .then((cfg) => {
         if (cancelled) return;
@@ -1967,6 +2354,12 @@ export function App() {
         if (typeof cfg.appearance.opacity === "number") {
           store.setAppWindowOpacity(cfg.appearance.opacity);
         }
+        store.setTerminalAppearance({
+          fontFamily: cfg.appearance.terminal_font_family,
+          fontSize: cfg.appearance.font_size,
+          textClarity: cfg.appearance.terminal_text_clarity,
+          surfaceOpacity: cfg.appearance.terminal_surface_opacity,
+        });
         store.setGhostDiffLiveMode(cfg.ghost_diff?.live_mode ?? false);
         hydrateRightRailGuardrailSelectionFromConfig(
           cfg.workspace_profile?.global_defaults?.pane_layout?.right_rail_guardrail_profile,
@@ -2000,6 +2393,7 @@ export function App() {
   const [openInDiff, setOpenInDiff] = useState(false);
   const [fileTreeKey, setFileTreeKey] = useState(0);
   const [quickOpenMode, setQuickOpenMode] = useState<"files" | "buffers" | null>(null);
+  const [productMode, setProductMode] = useState<ProductModeId>("terminal");
   const [rightRailMode, setRightRailMode] = useState<RightRailMode>("command");
   const [rightRailFocusWidget, setRightRailFocusWidget] = useState<string | null>(null);
   const [rightRailRouteConfirmation, setRightRailRouteConfirmation] = useState<RightRailRouteConfirmation | null>(null);
@@ -2010,6 +2404,18 @@ export function App() {
   const [rightRailEdgeFeedbackStaleOnly, setRightRailEdgeFeedbackStaleOnly] = useState(false);
   const [rightRailEdgeFeedbackResetNotice, setRightRailEdgeFeedbackResetNotice] =
     useState<RightRailEdgeFeedbackResetNotice | null>(null);
+  const [releaseQualityGoalInputs, setReleaseQualityGoalInputs] = useState<ReleaseQualityGoalInputs | null>(null);
+  const [finalGoalResidualRisk, setFinalGoalResidualRisk] = useState<FinalGoalResidualRisk | null>(null);
+  const [finalGoalRequirementProofs, setFinalGoalRequirementProofs] = useState<FinalGoalRequirementProof[]>([]);
+  const [finalGoalSafeGate, setFinalGoalSafeGate] = useState<FinalGoalSafeGate | null>(null);
+  const [authenticatedPromptConsentPacket, setAuthenticatedPromptConsentPacket] =
+    useState<AuthenticatedPromptConsentPacket>(() => deriveAuthenticatedPromptConsentPacket(null));
+  const [rightRailAiCliLaunchEvidence, setRightRailAiCliLaunchEvidence] = useState<RightRailAiCliLaunchEvidenceState>(
+    () => ({
+      evidence: null,
+      preflight: null,
+    }),
+  );
   const [rightRailActionResult, setRightRailActionResult] = useState<RightRailActionResult | null>(null);
   const [rightRailActionHistory, setRightRailActionHistory] = useState<RightRailActionResult[]>([]);
   const [rightRailGuardrailSelection, setRightRailGuardrailSelection] = useState<RightRailGuardrailSelection>(
@@ -2423,6 +2829,266 @@ export function App() {
     }
     saveRightRailEdgeFeedbackHistory(projectPath, rightRailEdgeFeedbackHistory);
   }, [projectPath, rightRailEdgeFeedbackHistory]);
+  useEffect(() => {
+    let active = true;
+    let interval: number | null = null;
+    if (!projectPath || !isTauriRuntime()) {
+      setReleaseQualityGoalInputs(null);
+      return () => {
+        active = false;
+      };
+    }
+
+    const releaseQualityPath = resolveProjectFilePath(projectPath, ".codex-auto/quality/release-quality-score.json");
+    const refresh = () => {
+      Promise.resolve({ invoke: tauriInvoke })
+        .then(({ invoke }) => invoke<string>("read_file", { path: releaseQualityPath }))
+        .then((text) => {
+          if (!active) return;
+          setReleaseQualityGoalInputs(deriveReleaseQualityGoalInputs(parseReleaseQualityReport(text)));
+        })
+        .catch((err) => {
+          if (!active) return;
+          setReleaseQualityGoalInputs(deriveReleaseQualityGoalInputs(null));
+          reportInvokeFailure({
+            source: "app",
+            operation: "read_release_quality_score",
+            err,
+            severity: "warning",
+          });
+        });
+    };
+
+    refresh();
+    interval = window.setInterval(refresh, 60_000);
+    return () => {
+      active = false;
+      if (interval != null) window.clearInterval(interval);
+    };
+  }, [projectPath]);
+  useEffect(() => {
+    let active = true;
+    let interval: number | null = null;
+    if (!projectPath || !isTauriRuntime()) {
+      setFinalGoalResidualRisk(null);
+      setFinalGoalRequirementProofs([]);
+      return () => {
+        active = false;
+      };
+    }
+
+    const finalGoalAuditPath = resolveProjectFilePath(projectPath, ".codex-auto/quality/final-goal-audit.json");
+    const refresh = () => {
+      Promise.resolve({ invoke: tauriInvoke })
+        .then(({ invoke }) => invoke<string>("read_file", { path: finalGoalAuditPath }))
+        .then((text) => {
+          if (!active) return;
+          const report = parseFinalGoalAuditReport(text);
+          setFinalGoalResidualRisk(deriveFinalGoalResidualRisk(report));
+          setFinalGoalRequirementProofs(deriveFinalGoalRequirementProofs(report));
+        })
+        .catch((err) => {
+          if (!active) return;
+          setFinalGoalResidualRisk(deriveFinalGoalResidualRisk(null));
+          setFinalGoalRequirementProofs(deriveFinalGoalRequirementProofs(null));
+          reportInvokeFailure({
+            source: "app",
+            operation: "read_final_goal_audit",
+            err,
+            severity: "warning",
+          });
+        });
+    };
+
+    refresh();
+    interval = window.setInterval(refresh, 60_000);
+    return () => {
+      active = false;
+      if (interval != null) window.clearInterval(interval);
+    };
+  }, [projectPath]);
+  useEffect(() => {
+    let active = true;
+    let interval: number | null = null;
+    if (!projectPath || !isTauriRuntime()) {
+      setFinalGoalSafeGate(null);
+      return () => {
+        active = false;
+      };
+    }
+
+    const finalGoalSafePath = resolveProjectFilePath(projectPath, ".codex-auto/quality/final-goal-safe-summary.json");
+    const refresh = () => {
+      Promise.resolve({ invoke: tauriInvoke })
+        .then(({ invoke }) => invoke<string>("read_file", { path: finalGoalSafePath }))
+        .then((text) => {
+          if (!active) return;
+          setFinalGoalSafeGate(deriveFinalGoalSafeGate(parseFinalGoalSafeSummaryReport(text)));
+        })
+        .catch((err) => {
+          if (!active) return;
+          setFinalGoalSafeGate(deriveFinalGoalSafeGate(null));
+          reportInvokeFailure({
+            source: "app",
+            operation: "read_final_goal_safe_gate",
+            err,
+            severity: "warning",
+          });
+        });
+    };
+
+    refresh();
+    interval = window.setInterval(refresh, 60_000);
+    return () => {
+      active = false;
+      if (interval != null) window.clearInterval(interval);
+    };
+  }, [projectPath]);
+  useEffect(() => {
+    let active = true;
+    let interval: number | null = null;
+    if (!projectPath || !isTauriRuntime()) {
+      setAuthenticatedPromptConsentPacket(deriveAuthenticatedPromptConsentPacket(null));
+      return () => {
+        active = false;
+      };
+    }
+
+    const consentPath = resolveProjectFilePath(
+      projectPath,
+      ".codex-auto/production-smoke/authenticated-ai-cli-prompt-smoke.json",
+    );
+    const matrixPath = resolveProjectFilePath(
+      projectPath,
+      ".codex-auto/production-smoke/authenticated-ai-cli-preflight-matrix.json",
+    );
+    const refresh = () => {
+      Promise.resolve({ invoke: tauriInvoke })
+        .then(({ invoke }) =>
+          Promise.allSettled([
+            invoke<string>("read_file", { path: consentPath }),
+            invoke<string>("read_file", { path: matrixPath }),
+          ]),
+        )
+        .then(([consentResult, matrixResult]) => {
+          if (!active) return;
+          const consentText = consentResult.status === "fulfilled" ? consentResult.value : "";
+          const matrixText = matrixResult.status === "fulfilled" ? matrixResult.value : "";
+          setAuthenticatedPromptConsentPacket(
+            deriveAuthenticatedPromptConsentPacket(
+              parseAuthenticatedPromptConsentReport(consentText),
+              parseAuthenticatedPromptPreflightMatrixReport(matrixText),
+            ),
+          );
+        })
+        .catch(() => {
+          if (!active) return;
+          setAuthenticatedPromptConsentPacket(deriveAuthenticatedPromptConsentPacket(null));
+        });
+    };
+
+    refresh();
+    interval = window.setInterval(refresh, 60_000);
+    return () => {
+      active = false;
+      if (interval != null) window.clearInterval(interval);
+    };
+  }, [projectPath]);
+  useEffect(() => {
+    let active = true;
+    let interval: number | null = null;
+    if (!projectPath || !isTauriRuntime()) {
+      setRightRailAiCliLaunchEvidence({ evidence: null, preflight: null });
+      return () => {
+        active = false;
+      };
+    }
+
+    const realProbePath = resolveProjectFilePath(
+      projectPath,
+      ".codex-auto/production-smoke/real-ai-cli-binary-probe.json",
+    );
+    const nativeInputPath = resolveProjectFilePath(
+      projectPath,
+      ".codex-auto/production-smoke/native-terminal-input-host.json",
+    );
+    const imePath = resolveProjectFilePath(projectPath, ".codex-auto/production-smoke/verify-ime.json");
+    const processReconnectPath = resolveProjectFilePath(
+      projectPath,
+      ".codex-auto/production-smoke/process-reconnect-command-evidence.json",
+    );
+    const interactiveBoundaryPath = resolveProjectFilePath(
+      projectPath,
+      ".codex-auto/production-smoke/interactive-ai-cli-boundary.json",
+    );
+
+    const refresh = () => {
+      Promise.resolve({ invoke: tauriInvoke })
+        .then(({ invoke }) =>
+          Promise.allSettled([
+            invoke<string>("read_file", { path: realProbePath }),
+            invoke<string>("read_file", { path: nativeInputPath }),
+            invoke<string>("read_file", { path: imePath }),
+            invoke<string>("read_file", { path: processReconnectPath }),
+            invoke<string>("read_file", { path: interactiveBoundaryPath }),
+          ]),
+        )
+        .then(([realProbeResult, nativeInputResult, imeResult, processReconnectResult, interactiveBoundaryResult]) => {
+          if (!active) return;
+          const evidence =
+            realProbeResult.status === "fulfilled"
+              ? parseJsonArtifact<AiCliProbeEvidence>(realProbeResult.value)
+              : null;
+          const nativeInputHost =
+            nativeInputResult.status === "fulfilled"
+              ? parseJsonArtifact<NonNullable<AiCliLaunchPreflightEvidence["nativeInputHost"]>>(nativeInputResult.value)
+              : null;
+          const ime =
+            imeResult.status === "fulfilled"
+              ? parseJsonArtifact<NonNullable<AiCliLaunchPreflightEvidence["ime"]>>(imeResult.value)
+              : null;
+          const processReconnect =
+            processReconnectResult.status === "fulfilled"
+              ? parseJsonArtifact<NonNullable<AiCliLaunchPreflightEvidence["processReconnect"]>>(
+                  processReconnectResult.value,
+                )
+              : null;
+          const interactiveBoundary =
+            interactiveBoundaryResult.status === "fulfilled"
+              ? parseJsonArtifact<NonNullable<AiCliLaunchPreflightEvidence["interactiveBoundary"]>>(
+                  interactiveBoundaryResult.value,
+                )
+              : null;
+          const preflight =
+            nativeInputHost || ime || processReconnect || interactiveBoundary
+              ? {
+                  nativeInputHost,
+                  ime,
+                  processReconnect,
+                  interactiveBoundary,
+                }
+              : null;
+          setRightRailAiCliLaunchEvidence({ evidence, preflight });
+        })
+        .catch((err) => {
+          if (!active) return;
+          setRightRailAiCliLaunchEvidence({ evidence: null, preflight: null });
+          reportInvokeFailure({
+            source: "app",
+            operation: "read_ai_cli_launch_evidence",
+            err,
+            severity: "warning",
+          });
+        });
+    };
+
+    refresh();
+    interval = window.setInterval(refresh, 60_000);
+    return () => {
+      active = false;
+      if (interval != null) window.clearInterval(interval);
+    };
+  }, [projectPath]);
   const projectName = projectPath ? (projectPath.split("/").filter(Boolean).pop() ?? "Aether") : "Aether";
   const workspaceProfile = useMemo(
     () => resolveWorkspaceProfile(projectPath || rootProjectPath || "workspace", activeTabId),
@@ -2571,7 +3237,7 @@ export function App() {
   }, [projectPath]);
   useEffect(() => {
     let active = true;
-    if (!projectPath) {
+    if (!projectPath || !isTauriRuntime()) {
       setWorkflowStatuses([]);
       return () => {
         active = false;
@@ -2579,7 +3245,7 @@ export function App() {
     }
 
     const refresh = () => {
-      import("@tauri-apps/api/core")
+      Promise.resolve({ invoke: tauriInvoke })
         .then(({ invoke }) => invoke<DecisionWorkflowStatus[]>("list_running_workflows", { projectPath }))
         .then((statuses) => {
           if (active) setWorkflowStatuses(statuses);
@@ -2626,6 +3292,113 @@ export function App() {
   const rightRailChangedFiles = useMemo(
     () => (rightRailUsesFixtures ? createDevVisualQaChangedFiles(devVisualQa.railScenario) : changedFiles),
     [changedFiles, devVisualQa.railScenario, rightRailUsesFixtures],
+  );
+  const rightRailFixtureCommandBlocks = useMemo(
+    () =>
+      rightRailUsesFixtures
+        ? createDevVisualQaCommandBlocks(devVisualQa.railScenario, devVisualQa.projectPath || projectPath)
+        : [],
+    [devVisualQa.projectPath, devVisualQa.railScenario, projectPath, rightRailUsesFixtures],
+  );
+  const [rightRailCommandBlocks, setRightRailCommandBlocks] = useState<WorkstationGraphCommandBlock[]>([]);
+  const rightRailTerminalIdsKey = useMemo(
+    () =>
+      [...new Set(visualTerminalPaneTargets.map((pane) => pane.terminalId).filter((id): id is string => Boolean(id)))]
+        .sort()
+        .join("|"),
+    [visualTerminalPaneTargets],
+  );
+  const [rightRailNativeCommandBlocks, setRightRailNativeCommandBlocks] = useState<WorkstationGraphCommandBlock[]>([]);
+  useEffect(() => {
+    let active = true;
+    if (!projectPath || rightRailUsesFixtures || !isTauriRuntime()) {
+      setRightRailCommandBlocks([]);
+      return () => {
+        active = false;
+      };
+    }
+
+    const refresh = () => {
+      Promise.resolve({ invoke: tauriInvoke })
+        .then(({ invoke }) =>
+          invoke<CommandHistoryRecord[]>("search_command_history", {
+            query: "",
+            limit: 24,
+          }),
+        )
+        .then((records) => {
+          if (!active) return;
+          setRightRailCommandBlocks(commandHistoryRecordsToCommandBlocks(records, rightRailChangedFiles, projectPath));
+        })
+        .catch((err) => {
+          if (!active) return;
+          setRightRailCommandBlocks([]);
+          reportInvokeFailure({
+            source: "app",
+            operation: "search_command_history",
+            err,
+            severity: "warning",
+          });
+        });
+    };
+
+    refresh();
+    const interval = window.setInterval(refresh, 15_000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [projectPath, rightRailChangedFiles, rightRailUsesFixtures]);
+  useEffect(() => {
+    let active = true;
+    const terminalIds = rightRailTerminalIdsKey ? rightRailTerminalIdsKey.split("|") : [];
+    if (!projectPath || rightRailUsesFixtures || terminalIds.length === 0 || !isTauriRuntime()) {
+      setRightRailNativeCommandBlocks([]);
+      return () => {
+        active = false;
+      };
+    }
+
+    const refresh = () => {
+      Promise.resolve({ invoke: tauriInvoke })
+        .then(({ invoke }) =>
+          Promise.all(
+            terminalIds.map((id) =>
+              invoke<NativeCommandBlockRecord[]>("term_command_blocks", {
+                id,
+                limit: 12,
+              }),
+            ),
+          ),
+        )
+        .then((recordsByTerminal) => {
+          if (!active) return;
+          setRightRailNativeCommandBlocks(
+            nativeCommandBlockRecordsToCommandBlocks(recordsByTerminal.flat(), rightRailChangedFiles, projectPath),
+          );
+        })
+        .catch((err) => {
+          if (!active) return;
+          setRightRailNativeCommandBlocks([]);
+          reportInvokeFailure({
+            source: "app",
+            operation: "term_command_blocks",
+            err,
+            severity: "warning",
+          });
+        });
+    };
+
+    refresh();
+    const interval = window.setInterval(refresh, 5_000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [projectPath, rightRailChangedFiles, rightRailTerminalIdsKey, rightRailUsesFixtures]);
+  const rightRailGraphCommandBlocks = useMemo(
+    () => [...rightRailFixtureCommandBlocks, ...rightRailCommandBlocks, ...rightRailNativeCommandBlocks],
+    [rightRailCommandBlocks, rightRailFixtureCommandBlocks, rightRailNativeCommandBlocks],
   );
   const rightRailSelectedFixtureSessionExists =
     rightRailFixtureSelectedSessionId != null &&
@@ -2675,6 +3448,7 @@ export function App() {
           status: pane.lifecycle,
         })),
         changedFiles: rightRailChangedFiles,
+        commandBlocks: rightRailGraphCommandBlocks,
         risks: rightRailAuditRisks,
       }),
     [
@@ -2682,12 +3456,78 @@ export function App() {
       projectPath,
       rightRailAuditRisks,
       rightRailChangedFiles,
+      rightRailGraphCommandBlocks,
       rightRailSessions,
       visualTerminalPaneTargets,
     ],
   );
   const rightRailGraphChangedFiles = useMemo(() => listWorkstationGraphChangedFiles(rightRailGraph), [rightRailGraph]);
-  const rightRailPrimaryChangedFile = rightRailGraphChangedFiles[0] ?? rightRailChangedFiles[0] ?? null;
+  const rightRailAllChangedFiles = useMemo(
+    () => mergeRightRailChangedFiles(rightRailChangedFiles, rightRailGraphChangedFiles),
+    [rightRailChangedFiles, rightRailGraphChangedFiles],
+  );
+  const rightRailGraphRiskNodes = useMemo(
+    () => rightRailGraph.nodes.filter((node) => node.kind === "risk" || node.kind === "blocker"),
+    [rightRailGraph],
+  );
+  const rightRailGraphReleaseRiskNodes = useMemo(
+    () =>
+      rightRailGraphRiskNodes.filter(
+        (node) => !isRightRailQaFixtureRisk(`${node.id} ${node.label} ${node.status ?? ""}`),
+      ),
+    [rightRailGraphRiskNodes],
+  );
+  const rightRailGraphQaRiskNodes = useMemo(
+    () =>
+      rightRailGraphRiskNodes.filter((node) =>
+        isRightRailQaFixtureRisk(`${node.id} ${node.label} ${node.status ?? ""}`),
+      ),
+    [rightRailGraphRiskNodes],
+  );
+  const rightRailGraphRiskSummaries = useMemo(
+    () =>
+      rightRailGraphReleaseRiskNodes.slice(0, 3).map((node) => ({
+        id: node.id,
+        label: node.label,
+        status: node.status,
+        severity: node.severity,
+        source: "release" as const,
+      })),
+    [rightRailGraphReleaseRiskNodes],
+  );
+  const rightRailRuntimeFallbackEvents = useMemo(
+    () =>
+      fallbackTelemetryEvents.filter(
+        (event) => event.userVisible !== false && (event.severity === "warning" || event.severity === "error"),
+      ),
+    [fallbackTelemetryEvents],
+  );
+  const rightRailRuntimeFallbackSummaries = useMemo(
+    () =>
+      rightRailRuntimeFallbackEvents.slice(0, 3).map((event) => {
+        const boundaryLabel = event.nativeBoundaryEscaped && event.boundary ? ` (${event.boundary})` : "";
+        return {
+          id: `runtime-fallback:${event.source}:${event.operation}:${Math.round(event.timestamp)}`,
+          label: `${event.source}.${event.operation}${boundaryLabel}`,
+          status: event.nativeBoundaryEscaped ? `${event.severity} · native boundary escaped` : event.severity,
+          severity: event.severity,
+          source: "runtime" as const,
+        };
+      }),
+    [rightRailRuntimeFallbackEvents],
+  );
+  const rightRailGraphQaRiskSummaries = useMemo(
+    () =>
+      rightRailGraphQaRiskNodes.slice(0, 3).map((node) => ({
+        id: node.id,
+        label: node.label,
+        status: node.status,
+        severity: node.severity,
+        source: "qa-fixture" as const,
+      })),
+    [rightRailGraphQaRiskNodes],
+  );
+  const rightRailPrimaryChangedFile = rightRailAllChangedFiles[0] ?? null;
   const focusedRightRailGraph = useMemo(
     () =>
       filterWorkstationGraph(rightRailGraph, {
@@ -2839,6 +3679,39 @@ export function App() {
       await handlePaneSwitch(tabId, paneId);
     },
     [handlePaneSwitch, selectOperationalPane, visualTerminalPaneTargets],
+  );
+
+  const handleOpenCommandEvidence = useCallback(
+    async (command: FileProvenanceTrace["commands"][number]) => {
+      const terminalId = command.terminalId;
+      if (!terminalId) return;
+      const target = visualTerminalPaneTargets.find((pane) => pane.terminalId === terminalId);
+      if (target) {
+        selectOperationalPane(target);
+        await handlePaneSwitch(target.tabId, target.paneId);
+      }
+      const sequence = command.endSequence ?? command.outputSequence ?? command.commandSequence ?? null;
+      const historySize = command.endHistorySize ?? command.outputHistorySize ?? command.commandHistorySize ?? null;
+      const screenLine = command.endScreenLine ?? command.outputScreenLine ?? command.commandScreenLine ?? null;
+      window.setTimeout(() => {
+        window.dispatchEvent(
+          new CustomEvent(TERMINAL_COMMAND_EVIDENCE_EVENT, {
+            detail: {
+              terminalId,
+              sequence,
+              historySize,
+              screenLine,
+            },
+          }),
+        );
+      }, 0);
+      showRightRailRouteConfirmation({
+        widget: "run-graph",
+        title: "Terminal evidence",
+        detail: `${command.label} opened in its source pane.`,
+      });
+    },
+    [handlePaneSwitch, selectOperationalPane, showRightRailRouteConfirmation, visualTerminalPaneTargets],
   );
 
   const focusAdjacentPane = useCallback(
@@ -3043,8 +3916,12 @@ export function App() {
         return false;
       }
       try {
-        const { invoke } = await import("@tauri-apps/api/core");
-        await invoke("write_terminal", { id: activeTerminalTarget.terminalId, data });
+        const { invoke } = await Promise.resolve({ invoke: tauriInvoke });
+        await invoke("native_terminal_input_commit", {
+          terminalId: activeTerminalTarget.terminalId,
+          data,
+          source: "command-center",
+        });
         return true;
       } catch (err) {
         toast.error("Terminal write failed", String(err));
@@ -3190,7 +4067,7 @@ export function App() {
               }
             : null,
           sessions: rightRailSessions,
-          changedFiles: rightRailGraphChangedFiles.length > 0 ? rightRailGraphChangedFiles : rightRailChangedFiles,
+          changedFiles: rightRailAllChangedFiles,
           panes: visualTerminalPaneTargets.map((pane) => ({
             paneId: pane.paneId,
             terminalId: pane.terminalId,
@@ -3222,9 +4099,8 @@ export function App() {
       handleSelectRightRailSession,
       projectName,
       projectPath,
-      rightRailChangedFiles,
+      rightRailAllChangedFiles,
       rightRailGraph,
-      rightRailGraphChangedFiles,
       rightRailMode,
       rightRailPrimaryChangedFile,
       rightRailSessions,
@@ -3290,7 +4166,8 @@ export function App() {
   // ── Session restore (DB bookkeeping + localStorage fallback) ──
 
   useEffect(() => {
-    import("@tauri-apps/api/core")
+    if (!isTauriRuntime()) return;
+    Promise.resolve({ invoke: tauriInvoke })
       .then(({ invoke }) => {
         invoke<{
           session: { id: string; name: string };
@@ -3321,6 +4198,7 @@ export function App() {
   // ── Window setup ──
 
   useEffect(() => {
+    if (!isTauriRuntime()) return;
     import("@tauri-apps/api/window")
       .then(({ getCurrentWindow }) => {
         const win = getCurrentWindow();
@@ -3431,6 +4309,7 @@ export function App() {
   useEffect(() => {
     const title = projectPath ? `${projectName} — Aether Terminal` : "Aether Terminal";
     document.title = title;
+    if (!isTauriRuntime()) return;
     import("@tauri-apps/api/window")
       .then(({ getCurrentWindow }) => {
         getCurrentWindow()
@@ -3482,6 +4361,35 @@ export function App() {
 
   // Active interactive session (if any)
   const activeInteractive = interactiveSessions.find((s) => s.id === interactiveSessionId);
+  const handleProductModeSelect = useCallback(
+    (mode: ProductModeId) => {
+      const route = PRODUCT_MODE_ROUTES[mode];
+      setProductMode(mode);
+      if (route.expandSidebar) setSidebarCollapsed(false);
+      if (route.rightRailMode) setRightRailMode(route.rightRailMode);
+      if (route.focusWidget !== undefined) setRightRailFocusWidget(route.focusWidget);
+      if (route.openHistory) showHistorySearch();
+      if (route.openSettings) setSettingsVisible(true);
+    },
+    [setSettingsVisible, setSidebarCollapsed],
+  );
+
+  useEffect(() => {
+    const onModeShortcut = (event: KeyboardEvent) => {
+      if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      const index = Number(event.key) - 1;
+      const mode = Number.isInteger(index) ? PRODUCT_MODE_RAIL[index] : undefined;
+      if (!mode) return;
+      event.preventDefault();
+      handleProductModeSelect(mode.id);
+      requestAnimationFrame(() => {
+        document.querySelector<HTMLButtonElement>(`[data-product-mode="${mode.id}"]`)?.focus();
+      });
+    };
+    window.addEventListener("keydown", onModeShortcut);
+    return () => window.removeEventListener("keydown", onModeShortcut);
+  }, [handleProductModeSelect]);
+
   const handleRightRailModeKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLButtonElement>) => {
       const nextMode = getNextRightRailMode(rightRailMode, event.key);
@@ -3523,17 +4431,121 @@ export function App() {
   const liveInteractiveSessionCount = interactiveSessions.filter((session) =>
     isLiveInteractiveSessionStatus(session.status),
   ).length;
+  const liveInteractiveNativeFallbackCount = interactiveSessions.filter(
+    (session) => isLiveInteractiveSessionStatus(session.status) && session.backend === "native",
+  ).length;
   const liveAgentCount =
     rightRailSessions.filter((s) => s.status !== "idle" && s.status !== "done").length + liveInteractiveSessionCount;
   const rightRailModeBadges: Record<RightRailMode, number> = {
     command: decisionInbox.pendingCount > 0 ? decisionInbox.pendingCount : liveAgentCount,
-    review: rightRailChangedFiles.length,
+    review: rightRailAllChangedFiles.length,
     observe: decisionInbox.pendingCount + liveAgentCount,
   };
+  const activeRightRailMode = RIGHT_RAIL_MODES.find((mode) => mode.id === rightRailMode) ?? RIGHT_RAIL_MODES[0];
+  const rightRailAiCliContextPack = useMemo(
+    () =>
+      buildContextPack({
+        workspace: {
+          name: projectName,
+          path: projectPath,
+          branch,
+        },
+        activeTask: {
+          id: "right-rail-ai-cli-launch",
+          title: "Auditable AI CLI launch",
+          status: rightRailMode,
+          nextAction: "Launch only through the sidecar command-session boundary with attached evidence.",
+        },
+        sessions: rightRailSessions,
+        changedFiles: rightRailAllChangedFiles,
+        panes: visualTerminalPaneTargets.map((pane) => ({
+          paneId: pane.paneId,
+          terminalId: pane.terminalId,
+          title: pane.title || pane.label,
+          role: pane.role,
+          status: pane.lifecycle,
+        })),
+        auditEvents: scopedOperationalAuditEvents,
+        workstationGraph: rightRailGraph,
+      }),
+    [
+      branch,
+      projectName,
+      projectPath,
+      rightRailAllChangedFiles,
+      rightRailGraph,
+      rightRailMode,
+      rightRailSessions,
+      scopedOperationalAuditEvents,
+      visualTerminalPaneTargets,
+    ],
+  );
+  const rightRailAiCliPromptContract = useMemo<AiCliLaunchPromptContract>(
+    () => ({
+      objective: `Launch an AI CLI worker for ${projectName} from the right rail with auditable provenance.`,
+      contextSummary: rightRailAiCliContextPack.threadSummary,
+      contextPack: {
+        id: "right-rail-ai-cli-launch-context",
+        title: `${projectName} AI CLI launch context`,
+        source: "context-panel",
+        generatedAt: rightRailAiCliContextPack.json.generatedAt,
+        summary: rightRailAiCliContextPack.threadSummary,
+        include: ["workspace identity", "changed files", "pane registry", "audit timeline", "workstation graph"],
+        exclude: ["raw terminal output", "secrets", "credentials", "token-spending prompt transcript"],
+        changedFiles: rightRailAiCliContextPack.json.changedFiles.map((file) => file.path),
+        redactionCount: rightRailAiCliContextPack.json.summary.redactionCount,
+      },
+      expectedOutput:
+        "A run trace that links provider, role, pane, file provenance, recovery actions, and final report.",
+      doneCriteria: [
+        "AI CLI launch uses the sidecar command-session boundary.",
+        "Context pack and guardrails are attached before the first prompt.",
+        "Output evidence links panes, changed files, recovery actions, and handoff context.",
+      ],
+      guardrails: [
+        "Do not execute token-spending prompt smoke without explicit consent.",
+        "Do not use native fallback for AI CLI sessions when sidecar command-session is available.",
+        "Do not persist raw terminal output as prompt evidence.",
+      ],
+      artifacts: [
+        ".codex-auto/production-smoke/real-ai-cli-binary-probe.json",
+        ".codex-auto/production-smoke/native-terminal-input-host.json",
+        ".codex-auto/production-smoke/process-reconnect-command-evidence.json",
+        ".codex-auto/production-smoke/interactive-ai-cli-boundary.json",
+      ],
+    }),
+    [projectName, rightRailAiCliContextPack],
+  );
+  const rightRailAiCliLaunchPlan = useMemo(
+    () =>
+      deriveAiCliLaunchPlan({
+        evidence: rightRailAiCliLaunchEvidence.evidence,
+        interactiveSessions,
+        preflight: rightRailAiCliLaunchEvidence.preflight,
+        preferredProvider: activeInteractive?.cli ?? "claude",
+        changedFilesCount: rightRailAllChangedFiles.length,
+        pendingDecisionCount: decisionInbox.pendingCount,
+        promptContract: rightRailAiCliPromptContract,
+        requirePreflight: true,
+        requirePromptContract: true,
+        selectedPaneRole: selectedOperationalPaneTarget?.role ?? null,
+      }),
+    [
+      activeInteractive?.cli,
+      decisionInbox.pendingCount,
+      interactiveSessions,
+      rightRailAiCliLaunchEvidence,
+      rightRailAiCliPromptContract,
+      rightRailAllChangedFiles.length,
+      selectedOperationalPaneTarget?.role,
+    ],
+  );
   const rightRailAdvisorBaseInput = {
     sessions: rightRailSessions,
     interactiveSessionCount: liveInteractiveSessionCount,
-    changedFilesCount: rightRailChangedFiles.length,
+    interactiveNativeFallbackCount: liveInteractiveNativeFallbackCount,
+    recentFallbackEvents: fallbackTelemetryEvents,
+    changedFilesCount: rightRailAllChangedFiles.length,
     contextWarnPct,
     currentMode: rightRailMode,
     pendingDecisionCount: decisionInbox.pendingCount,
@@ -3545,6 +4557,7 @@ export function App() {
           label: selectedOperationalPaneTarget.label,
         }
       : null,
+    aiCliLaunchPlan: rightRailAiCliLaunchPlan,
   };
   const rightRailWorkforce = deriveRightRailWorkforceSummary(rightRailAdvisorBaseInput);
   const rightRailGuardrailProfile =
@@ -3564,34 +4577,161 @@ export function App() {
   const rightRailActions = rightRailNegativePathAction
     ? [rightRailNegativePathAction, ...rightRailBaseActions]
     : rightRailBaseActions;
+  const rightRailModeActions = rightRailActions.filter((action) => action.mode === rightRailMode);
+  const rightRailVisibleActions = [
+    ...rightRailModeActions,
+    ...rightRailActions.filter((action) => action.mode !== rightRailMode),
+  ].slice(0, 3);
+  const rightRailPrimaryActions = rightRailVisibleActions.slice(0, 1);
+  const rightRailDeferredActionCount = Math.max(0, rightRailActions.length - rightRailPrimaryActions.length);
+  const rightRailPrimaryAction = rightRailModeActions[0] ?? rightRailActions[0] ?? null;
+  const rightRailRunLoopPhase = rightRailPrimaryAction ? RIGHT_RAIL_ACTION_PHASE[rightRailPrimaryAction.id] : "Run";
+  const rightRailRunLoopDetail = rightRailPrimaryAction?.nextStep ?? "Ready for command";
+  const rightRailRunLoopTarget = rightRailPrimaryAction?.target.label ?? activeRightRailMode.label;
+  const rightRailRunLoopEvidence = rightRailPrimaryAction?.execution.evidence ?? activeRightRailMode.description;
+  const rightRailRunLoopRecovery = rightRailPrimaryAction?.execution.recoveryStep ?? "No recovery step queued";
+  const rightRailRunLoopTraceItems = [
+    { id: "evidence", label: "Evidence", detail: rightRailRunLoopEvidence },
+    { id: "target", label: "Target", detail: rightRailRunLoopTarget },
+    { id: "recovery", label: "Recovery", detail: rightRailRunLoopRecovery },
+  ] as const;
+  const activeProductMode = PRODUCT_MODE_RAIL.find((mode) => mode.id === productMode) ?? PRODUCT_MODE_RAIL[0];
+  const activeProductModeRoute = PRODUCT_MODE_ROUTES[productMode];
+  const activeProductInspector = PRODUCT_MODE_INSPECTOR_SUMMARY[productMode];
+  const rightRailInspectorPrimaryAction =
+    rightRailPrimaryAction?.execution.label ??
+    (activeProductModeRoute.openSettings
+      ? "Open settings"
+      : activeProductModeRoute.openHistory
+        ? "Open history"
+        : activeRightRailMode.label);
+  const rightRailInspectorTarget =
+    activeProductModeRoute.focusWidget ?? rightRailPrimaryAction?.target.widget ?? activeProductInspector.target;
+  const rightRailInspectorProof = formatInspectorProof(
+    rightRailPrimaryAction?.execution.evidence,
+    activeProductInspector.proof ?? activeRightRailMode.description,
+  );
+  const rightRailInspectorProofState = rightRailPrimaryAction?.execution.status ?? "ready";
   const rightRailEdgeScore = deriveRightRailEdgeScore({
     pendingDecisionCount: decisionInbox.pendingCount,
     liveAgentCount,
-    changedFilesCount: rightRailChangedFiles.length,
+    changedFilesCount: rightRailAllChangedFiles.length,
     auditEventCount: scopedOperationalAuditEvents.length,
-    graphRiskCount: rightRailGraph.nodeCountByKind.risk,
+    graphRiskCount: rightRailGraph.nodeCountByKind.risk + rightRailRuntimeFallbackEvents.length,
     actionCount: rightRailActions.length,
     recoverableActionCount: rightRailActions.filter(
       (action) => action.execution.recoveryStep || action.execution.status === "guided",
     ).length,
   });
   rightRailEdgeScoreRef.current = { score: rightRailEdgeScore.score, grade: rightRailEdgeScore.grade };
+  const rightRailGoalTrack = deriveRightRailGoalTrack({
+    edgeScore: rightRailEdgeScore.score,
+    edgeGrade: rightRailEdgeScore.grade,
+    edgeItems: rightRailEdgeScore.items,
+    qualityEvidenceStatus: releaseQualityGoalInputs?.evidenceStatus,
+    qualityEvidenceLabel: releaseQualityGoalInputs?.evidenceLabel,
+    qualityEvidenceDetail: releaseQualityGoalInputs?.evidenceDetail,
+    qualityEvidenceLocalDate: releaseQualityGoalInputs?.localDate,
+    qualityEvidenceTimeZone: releaseQualityGoalInputs?.timeZone,
+    aiCliLaunchPlanStatus: rightRailAiCliLaunchPlan.status,
+    interactiveSessionCount: liveInteractiveSessionCount,
+    interactiveNativeFallbackCount: liveInteractiveNativeFallbackCount,
+    changedFilesCount: rightRailAllChangedFiles.length,
+    pendingDecisionCount: decisionInbox.pendingCount,
+    graphRiskCount: rightRailGraphReleaseRiskNodes.length,
+    graphRiskSummaries: rightRailGraphRiskSummaries,
+    runtimeFallbackCount: rightRailRuntimeFallbackEvents.length,
+    runtimeFallbackSummaries: rightRailRuntimeFallbackSummaries,
+    qaRiskCount: rightRailGraphQaRiskNodes.length,
+    qaRiskSummaries: rightRailGraphQaRiskSummaries,
+    terminalCoreReady: releaseQualityGoalInputs?.terminalCoreReady,
+    commandCenterScenarioReady: releaseQualityGoalInputs?.commandCenterScenarioReady,
+    themeCustomizationReady: releaseQualityGoalInputs?.themeCustomizationReady,
+    authenticatedPromptConsentRequired: releaseQualityGoalInputs?.authenticatedPromptConsentRequired ?? true,
+    authenticatedPromptConsentPacket,
+    releaseBlockers: releaseQualityGoalInputs?.releaseBlockers,
+    residualRisk: finalGoalResidualRisk,
+    safeGate: finalGoalSafeGate,
+    requirementProofs: finalGoalRequirementProofs,
+  });
+  const rightRailEssentialChecks = rightRailGoalTrack.safeGate
+    ? `${rightRailGoalTrack.safeGate.proofArtifactPassCount}/${rightRailGoalTrack.safeGate.proofArtifactCount}`
+    : `${rightRailGoalTrack.doneCount}/${rightRailGoalTrack.totalCount}`;
+  const rightRailEvidenceDrawerSummary = `${rightRailEdgeScore.score} ${rightRailEdgeScore.grade} · ${rightRailGoalTrack.percent}%`;
+  const rightRailQueueCount = rightRailDeferredActionCount + decisionInbox.pendingCount;
+  const rightRailGitSummary =
+    rightRailAllChangedFiles.length > 0
+      ? `${rightRailAllChangedFiles.length} changed file${rightRailAllChangedFiles.length === 1 ? "" : "s"}`
+      : "Clean working tree";
+  const rightRailVsCodeTargetPath = activeFile ?? rightRailPrimaryChangedFile?.path ?? projectPath;
+  const rightRailVsCodeAction = useCallback(() => {
+    if (rightRailPrimaryChangedFile) {
+      void openGitDiffInVSCode(projectPath, rightRailPrimaryChangedFile.path).catch((err) => {
+        reportInvokeFailure({
+          source: "editor",
+          operation: "open_git_file_diff_in_vscode",
+          err,
+        });
+        setOpenInDiff(true);
+        openFile(rightRailPrimaryChangedFile.path);
+      });
+      return;
+    }
+    if (!rightRailVsCodeTargetPath) return;
+    void openInVSCode(rightRailVsCodeTargetPath).catch((err) => {
+      reportInvokeFailure({
+        source: "editor",
+        operation: "open_in_vscode",
+        err,
+      });
+    });
+  }, [openFile, projectPath, rightRailPrimaryChangedFile, rightRailVsCodeTargetPath]);
   const rightRailNowState = deriveRightRailNowState(rightRailAdvisorInput);
+  const rightRailHealthDrawerSummary = `${rightRailNowState.label} · ${rightRailWorkforce.liveCount} live`;
+  const rightRailGoalTrackConsentProviders = rightRailGoalTrack.consentPacket
+    ? Array.from(
+        new Set(
+          (rightRailGoalTrack.consentPacket.providerReadiness ?? [])
+            .map((entry) => entry.provider)
+            .filter((provider) => provider.length > 0),
+        ),
+      )
+    : [];
+  const rightRailGoalTrackConsentProviderEnv = rightRailGoalTrack.consentPacket
+    ? `AETHER_AUTH_PROMPT_PROVIDER=${(
+        rightRailGoalTrackConsentProviders.length > 0
+          ? rightRailGoalTrackConsentProviders
+          : ["codex", "claude", "gemini"]
+      ).join("|")}`
+    : "";
   const rightRailRecommendation = deriveRightRailRecommendation(rightRailAdvisorInput);
   const rightRailRecommendedMode = rightRailRecommendation
     ? RIGHT_RAIL_MODES.find((mode) => mode.id === rightRailRecommendation.mode)
     : undefined;
   const RightRailRecommendedIcon = rightRailRecommendedMode?.icon;
-  const activeRightRailMode = RIGHT_RAIL_MODES.find((mode) => mode.id === rightRailMode) ?? RIGHT_RAIL_MODES[0];
+  const rightRailHasBlockingDecision = decisionInbox.pendingCount > 0;
   const rightRailDecisionFocus = {
-    tone: decisionInbox.pendingCount > 0 ? ("warn" as const) : ("quiet" as const),
-    label: decisionInbox.pendingCount > 0 ? "Needs your decision" : "No decisions waiting",
-    detail:
-      decisionInbox.pendingCount > 0
-        ? `${decisionInbox.pendingCount} human gate${decisionInbox.pendingCount === 1 ? "" : "s"} blocking forward motion`
-        : "Agents and workflows can continue without your input.",
-    actionLabel: decisionInbox.pendingCount > 0 ? "Open inbox" : "View decisions",
+    tone: rightRailHasBlockingDecision ? ("warn" as const) : ("quiet" as const),
+    label: rightRailHasBlockingDecision ? "Needs your decision" : "No decisions waiting",
+    detail: rightRailHasBlockingDecision
+      ? `${decisionInbox.pendingCount} human gate${decisionInbox.pendingCount === 1 ? "" : "s"} blocking forward motion`
+      : "Agents and workflows can continue without your input.",
+    actionLabel: rightRailHasBlockingDecision ? "Open inbox" : "View decisions",
   };
+  const rightRailTruthNotice = devVisualQa.enabled
+    ? {
+        label: "Visual QA simulation",
+        detail: [
+          devVisualQa.railScenarioExplicit
+            ? `${devVisualQa.railScenarioParam ?? "railState"}=${devVisualQa.railScenario} is fixture state; runtime truth is unchanged.`
+            : "Fixtures are active only for this development URL.",
+          devVisualQa.hasUrlEdgeLoop ? "edgeLoop is replay evidence, not current runtime state." : null,
+          devVisualQa.usesDeprecatedStateAlias ? "Use railState instead of the deprecated state alias." : null,
+        ]
+          .filter((part): part is string => part != null)
+          .join(" "),
+      }
+    : null;
   const renderRightRailDestinationPrompt = (widget: string) =>
     rightRailDestinationPrompt?.widget === widget ? (
       <RightRailDestinationPromptCard prompt={rightRailDestinationPrompt} />
@@ -3773,6 +4913,34 @@ export function App() {
             />
 
             <main className="app-main">
+              <nav className="mode-rail" aria-label="Aether mode rail" data-active-mode={productMode}>
+                <div className="mode-rail-brand" aria-hidden="true">
+                  A
+                </div>
+                <div className="mode-rail-list">
+                  {PRODUCT_MODE_RAIL.map((mode) => {
+                    const Icon = mode.icon;
+                    const active = productMode === mode.id;
+                    return (
+                      <button
+                        key={mode.id}
+                        type="button"
+                        className="mode-rail-button"
+                        data-active={active ? "true" : "false"}
+                        data-product-mode={mode.id}
+                        aria-pressed={active}
+                        aria-label={`${mode.label}. ${mode.description} ${mode.shortcut}`}
+                        title={`${mode.shortcut} - ${mode.description}`}
+                        onClick={() => handleProductModeSelect(mode.id)}
+                      >
+                        <Icon size={16} strokeWidth={1.9} aria-hidden="true" />
+                        <span className="mode-rail-label">{mode.label}</span>
+                        <span className="mode-rail-shortcut">{mode.shortcut.replace("Alt+", "")}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </nav>
               <nav
                 className={`left-panel${sidebarCollapsed ? " left-panel-collapsed" : ""}`}
                 aria-label="Project sidebar"
@@ -3876,7 +5044,7 @@ export function App() {
 
               <aside
                 className="right-panel"
-                aria-label="Agent inspector"
+                aria-label="Contextual inspector"
                 /* `flex-basis` (not `width`) is what flex layout reads as
                  * the preferred size. Setting only `width` left the
                  * computed width at the CSS default (320 px) on Chromium
@@ -3932,7 +5100,7 @@ export function App() {
                   }}
                 />
                 <div className="right-panel-content">
-                  <div className="right-panel-mode-switch" role="tablist" aria-label="Right rail mode">
+                  <div className="right-panel-mode-switch" role="tablist" aria-label="Inspector mode">
                     {RIGHT_RAIL_MODES.map((mode) => {
                       const Icon = mode.icon;
                       const badge = rightRailModeBadges[mode.id];
@@ -3962,74 +5130,702 @@ export function App() {
                     })}
                   </div>
                   <div id="right-rail-purpose" className={appStyles.rightRailPurpose}>
-                    <span className={appStyles.rightRailPurposeKicker}>Project tools</span>
+                    <span className={appStyles.rightRailPurposeKicker}>Command Center</span>
                     <span className={appStyles.rightRailPurposeText}>{activeRightRailMode.description}</span>
                   </div>
 
-                  <button
-                    type="button"
-                    className="right-panel-decision-focus"
-                    data-tone={rightRailDecisionFocus.tone}
-                    data-has-decision={decisionInbox.pendingCount > 0 ? "true" : "false"}
-                    onClick={() => {
-                      setRightRailMode("command");
-                      setRightRailFocusWidget("decision-inbox");
-                    }}
-                    aria-label={`Decision focus: ${rightRailDecisionFocus.label}. ${rightRailDecisionFocus.detail}`}
-                    title={`${rightRailDecisionFocus.label}: ${rightRailDecisionFocus.detail}`}
-                  >
-                    <span className="right-panel-decision-kicker">Decision</span>
-                    <span className="right-panel-decision-copy">
-                      <span className="right-panel-decision-label">{rightRailDecisionFocus.label}</span>
-                      <span className="right-panel-decision-detail">{rightRailDecisionFocus.detail}</span>
-                    </span>
-                    <span className="right-panel-decision-action">{rightRailDecisionFocus.actionLabel}</span>
-                  </button>
+                  <details className="right-panel-advanced-drawer">
+                    <summary>
+                      <span>Mode target</span>
+                      <small>{activeProductMode.label}</small>
+                    </summary>
+                    <section
+                      className="right-panel-inspector-hero"
+                      data-product-mode={productMode}
+                      data-proof-state={rightRailInspectorProofState}
+                      aria-label={`${activeProductMode.label} inspector summary`}
+                    >
+                      <div className="right-panel-inspector-hero-head">
+                        <span className="right-panel-inspector-kicker">Mode</span>
+                        <strong>{activeProductMode.label}</strong>
+                        <span>{activeProductMode.shortcut}</span>
+                      </div>
+                      <p className="right-panel-inspector-description">{activeProductMode.description}</p>
+                      <dl className="right-panel-inspector-grid" aria-label="Selected mode target and proof">
+                        <div data-kind="target">
+                          <dt>Target</dt>
+                          <dd>{activeProductInspector.target}</dd>
+                        </div>
+                        <div data-kind="owner">
+                          <dt>Owner</dt>
+                          <dd>{activeProductInspector.owner}</dd>
+                        </div>
+                        <div data-kind="action">
+                          <dt>Action</dt>
+                          <dd>{rightRailInspectorPrimaryAction}</dd>
+                        </div>
+                        <div data-kind="proof">
+                          <dt>Proof</dt>
+                          <dd>{rightRailInspectorProof}</dd>
+                        </div>
+                      </dl>
+                      <button
+                        type="button"
+                        className="right-panel-inspector-open"
+                        data-target={rightRailInspectorTarget}
+                        onClick={() => handleProductModeSelect(productMode)}
+                        aria-label={`Open ${activeProductMode.label} target ${rightRailInspectorTarget}`}
+                        title={`${activeProductMode.label}: ${rightRailInspectorTarget}`}
+                      >
+                        <span>Open target</span>
+                        <small>{rightRailInspectorTarget}</small>
+                      </button>
+                    </section>
+                  </details>
 
                   <section
-                    className="right-panel-now"
-                    data-tone={rightRailNowState.tone}
-                    data-state={rightRailNowState.state}
-                    aria-label={`Workspace state: ${rightRailNowState.label}`}
+                    className="right-panel-run-loop"
+                    data-phase={rightRailRunLoopPhase}
+                    data-mode={rightRailMode}
+                    data-action-id={rightRailPrimaryAction?.id ?? "none"}
+                    data-action-mode={rightRailPrimaryAction?.mode ?? "none"}
+                    data-operation={rightRailPrimaryAction?.execution.operation ?? "none"}
+                    data-target={rightRailRunLoopTarget}
+                    aria-label={`Command Center run loop: ${rightRailRunLoopPhase}`}
                   >
-                    <span className="right-panel-now-kicker">Now</span>
-                    <span className="right-panel-now-state">{rightRailNowState.label}</span>
-                    <span className="right-panel-now-detail">{rightRailNowState.detail}</span>
-                  </section>
-
-                  <section
-                    className="right-panel-edge-score"
-                    data-tone={rightRailEdgeScore.tone}
-                    aria-label={`Command center edge score ${rightRailEdgeScore.score}`}
-                  >
-                    <div className="right-panel-edge-score-head">
-                      <span className="right-panel-edge-score-kicker">Edge score</span>
-                      <strong>{rightRailEdgeScore.score}</strong>
-                      <span>{rightRailEdgeScore.grade}</span>
+                    <div className="right-panel-run-loop-main">
+                      <span className="right-panel-run-loop-kicker">Current Focus</span>
+                      <strong>{rightRailRunLoopPhase}</strong>
+                      <span>{rightRailRunLoopDetail}</span>
                     </div>
-                    <span className="right-panel-edge-score-label">{rightRailEdgeScore.label}</span>
-                    <span className="right-panel-edge-score-detail">{rightRailEdgeScore.detail}</span>
-                    <ul className="right-panel-edge-score-grid" aria-label="Command center score breakdown">
-                      {rightRailEdgeScore.items.map((item) => (
-                        <li key={item.id}>
-                          <button
-                            type="button"
-                            className="right-panel-edge-score-item"
-                            data-status={item.status}
-                            onClick={() => handleOpenRightRailEdgeScoreItem(item)}
-                            aria-label={`${item.label}: ${item.detail}. ${item.actionLabel}`}
-                            title={`${item.routeTitle}: ${item.routeDetail}`}
-                          >
-                            <strong>{item.label}</strong>
-                            <small>
-                              {item.score}/{item.max}
-                            </small>
-                            <span className="right-panel-edge-score-action">{item.actionLabel}</span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
+                    <details className="right-panel-run-loop-disclosure">
+                      <summary>
+                        <span>Trace</span>
+                        <small>{rightRailRunLoopTarget}</small>
+                      </summary>
+                      <dl className="right-panel-run-loop-trace" aria-label="Primary action trace">
+                        {rightRailRunLoopTraceItems.map((item) => (
+                          <div key={item.id} data-kind={item.id}>
+                            <dt>{item.label}</dt>
+                            <dd>{item.detail}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </details>
+                    <button
+                      type="button"
+                      className="right-panel-run-loop-action"
+                      data-execution={rightRailPrimaryAction?.execution.status ?? "ready"}
+                      disabled={rightRailPrimaryAction?.execution.status === "blocked"}
+                      onClick={() =>
+                        rightRailPrimaryAction
+                          ? void handleRightRailAction(rightRailPrimaryAction)
+                          : setRightRailMode(activeRightRailMode.id)
+                      }
+                      aria-label={`Run loop action: ${
+                        rightRailPrimaryAction?.execution.label ?? activeRightRailMode.label
+                      }. Target ${rightRailRunLoopTarget}`}
+                      title={`${rightRailRunLoopEvidence}. Target: ${rightRailRunLoopTarget}`}
+                    >
+                      <span>{rightRailPrimaryAction?.execution.label ?? activeRightRailMode.label}</span>
+                      <small>{rightRailRunLoopTarget}</small>
+                    </button>
                   </section>
+
+                  {rightRailHasBlockingDecision && (
+                    <button
+                      type="button"
+                      className="right-panel-decision-focus"
+                      data-tone={rightRailDecisionFocus.tone}
+                      data-has-decision={rightRailHasBlockingDecision ? "true" : "false"}
+                      onClick={() => {
+                        setRightRailMode("command");
+                        setRightRailFocusWidget("decision-inbox");
+                      }}
+                      aria-label={`Decision focus: ${rightRailDecisionFocus.label}. ${rightRailDecisionFocus.detail}`}
+                      title={`${rightRailDecisionFocus.label}: ${rightRailDecisionFocus.detail}`}
+                    >
+                      <span className="right-panel-decision-kicker">Decision</span>
+                      <span className="right-panel-decision-copy">
+                        <span className="right-panel-decision-label">{rightRailDecisionFocus.label}</span>
+                        <span className="right-panel-decision-detail">{rightRailDecisionFocus.detail}</span>
+                      </span>
+                      <span className="right-panel-decision-action">{rightRailDecisionFocus.actionLabel}</span>
+                    </button>
+                  )}
+
+                  {rightRailTruthNotice && (
+                    <section
+                      className="right-panel-truth-notice"
+                      data-source="visual-qa"
+                      aria-label={`${rightRailTruthNotice.label}: ${rightRailTruthNotice.detail}`}
+                    >
+                      <span className="right-panel-truth-notice-kicker">Truth source</span>
+                      <strong>{rightRailTruthNotice.label}</strong>
+                      <span>{rightRailTruthNotice.detail}</span>
+                    </section>
+                  )}
+
+                  <section className="right-panel-essential-grid" aria-label="Command center essentials">
+                    <button
+                      type="button"
+                      className="right-panel-essential-card"
+                      data-tone={rightRailAllChangedFiles.length > 0 ? "review" : "good"}
+                      onClick={() => {
+                        setRightRailMode("review");
+                        setRightRailFocusWidget("scm");
+                      }}
+                      aria-label={`Git status: ${rightRailGitSummary}`}
+                      title={`Git status: ${rightRailGitSummary}`}
+                    >
+                      <span>Git</span>
+                      <strong>
+                        {rightRailAllChangedFiles.length > 0 ? `${rightRailAllChangedFiles.length} changed` : "Clean"}
+                      </strong>
+                      <small>
+                        {rightRailPrimaryChangedFile
+                          ? rightRailPrimaryChangedFile.path.split("/").pop()
+                          : "No pending diff"}
+                      </small>
+                    </button>
+                    <button
+                      type="button"
+                      className="right-panel-essential-card"
+                      data-tone={rightRailVsCodeTargetPath ? "good" : "review"}
+                      onClick={rightRailVsCodeAction}
+                      aria-label={`VS Code target: ${rightRailVsCodeTargetPath || "no target"}`}
+                      title={`VS Code target: ${rightRailVsCodeTargetPath || "no target"}`}
+                    >
+                      <span>VS Code</span>
+                      <strong>{rightRailPrimaryChangedFile ? "Open diff" : "Open target"}</strong>
+                      <small>
+                        {rightRailVsCodeTargetPath
+                          ? (rightRailVsCodeTargetPath.split(/[\\/]/).pop() ?? rightRailVsCodeTargetPath)
+                          : "Select a file or project"}
+                      </small>
+                    </button>
+                    <button
+                      type="button"
+                      className="right-panel-essential-card"
+                      data-tone={rightRailNowState.tone}
+                      onClick={() => {
+                        setRightRailMode("observe");
+                        setRightRailFocusWidget("processes");
+                      }}
+                      aria-label={`Health snapshot: ${rightRailNowState.label}. ${rightRailNowState.detail}`}
+                      title={`${rightRailNowState.detail} · checks ${rightRailEssentialChecks}`}
+                    >
+                      <span>Health</span>
+                      <strong>{rightRailNowState.label}</strong>
+                      <small>
+                        {rightRailWorkforce.liveCount} live · checks {rightRailEssentialChecks}
+                      </small>
+                    </button>
+                  </section>
+
+                  <details className="right-panel-evidence-drawer">
+                    <summary>
+                      <span>Evidence</span>
+                      <small>{rightRailEvidenceDrawerSummary}</small>
+                    </summary>
+                    <section
+                      className="right-panel-edge-score"
+                      data-tone={rightRailEdgeScore.tone}
+                      aria-label={`Command center edge score ${rightRailEdgeScore.score}`}
+                    >
+                      <div className="right-panel-edge-score-head">
+                        <span className="right-panel-edge-score-kicker">Edge score</span>
+                        <strong>{rightRailEdgeScore.score}</strong>
+                        <span>{rightRailEdgeScore.grade}</span>
+                      </div>
+                      <span className="right-panel-edge-score-label">{rightRailEdgeScore.label}</span>
+                      <span className="right-panel-edge-score-detail">{rightRailEdgeScore.detail}</span>
+                      <details className="right-panel-edge-score-breakdown">
+                        <summary>
+                          <span>Breakdown</span>
+                          <small>{rightRailEdgeScore.items.length} axes</small>
+                        </summary>
+                        <ul className="right-panel-edge-score-grid" aria-label="Command center score breakdown">
+                          {rightRailEdgeScore.items.map((item) => (
+                            <li key={item.id}>
+                              <button
+                                type="button"
+                                className="right-panel-edge-score-item"
+                                data-status={item.status}
+                                onClick={() => handleOpenRightRailEdgeScoreItem(item)}
+                                aria-label={`${item.label}: ${item.detail}. ${item.actionLabel}`}
+                                title={`${item.routeTitle}: ${item.routeDetail}`}
+                              >
+                                <strong>{item.label}</strong>
+                                <small>
+                                  {item.score}/{item.max}
+                                </small>
+                                <span className="right-panel-edge-score-action">{item.actionLabel}</span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    </section>
+
+                    <section
+                      className="right-panel-goal-track"
+                      data-status={rightRailGoalTrack.status}
+                      aria-label={`Final goal track: ${rightRailGoalTrack.label}`}
+                    >
+                      <div className="right-panel-goal-track-head">
+                        <span className="right-panel-goal-track-kicker">Final goal</span>
+                        <strong>{rightRailGoalTrack.percent}%</strong>
+                        <span>{rightRailGoalTrack.confidenceLabel}</span>
+                      </div>
+                      <div
+                        className="right-panel-goal-track-bar"
+                        role="progressbar"
+                        aria-label="Final goal progress"
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={rightRailGoalTrack.percent}
+                      >
+                        <span style={{ width: `${rightRailGoalTrack.percent}%` }} />
+                      </div>
+                      <span
+                        className="right-panel-goal-track-source"
+                        data-status={rightRailGoalTrack.qualityEvidence.status}
+                        data-local-date={rightRailGoalTrack.qualityEvidence.localDate ?? ""}
+                        data-time-zone={rightRailGoalTrack.qualityEvidence.timeZone ?? ""}
+                        title={rightRailGoalTrack.qualityEvidence.detail}
+                      >
+                        <strong>{rightRailGoalTrack.qualityEvidence.label}</strong>
+                        <small>{rightRailGoalTrack.qualityEvidence.detail}</small>
+                      </span>
+                      {rightRailGoalTrack.residualRisk && (
+                        <div
+                          className="right-panel-goal-track-residual"
+                          data-state={rightRailGoalTrack.residualRisk.state}
+                          data-source={rightRailGoalTrack.residualRisk.source}
+                          data-implementation-fixable-count={rightRailGoalTrack.residualRisk.implementationFixableCount}
+                          data-policy-blocked-count={rightRailGoalTrack.residualRisk.policyBlockedCount}
+                          data-external-blocked-count={rightRailGoalTrack.residualRisk.externalBlockedCount ?? 0}
+                          title={`${rightRailGoalTrack.residualRisk.label}: ${rightRailGoalTrack.residualRisk.detail}`}
+                        >
+                          <strong>{rightRailGoalTrack.residualRisk.label}</strong>
+                          <small>{rightRailGoalTrack.residualRisk.detail}</small>
+                        </div>
+                      )}
+                      {rightRailGoalTrack.safeGate && (
+                        <div
+                          className="right-panel-goal-track-safe"
+                          data-status={rightRailGoalTrack.safeGate.status}
+                          data-source={rightRailGoalTrack.safeGate.source}
+                          data-proof-requirement-pass-count={rightRailGoalTrack.safeGate.proofRequirementPassCount}
+                          data-proof-requirement-count={rightRailGoalTrack.safeGate.proofRequirementCount}
+                          data-proof-artifact-pass-count={rightRailGoalTrack.safeGate.proofArtifactPassCount}
+                          data-proof-artifact-count={rightRailGoalTrack.safeGate.proofArtifactCount}
+                          data-consent-blocker-count={rightRailGoalTrack.safeGate.consentBlockerCount}
+                          data-non-consent-blocker-count={rightRailGoalTrack.safeGate.nonConsentBlockerCount}
+                          data-no-token-prompt-sent={rightRailGoalTrack.safeGate.noTokenPromptSent ? "true" : "false"}
+                          data-token-spending-prompt-executed={
+                            rightRailGoalTrack.safeGate.tokenSpendingPromptExecuted ? "true" : "false"
+                          }
+                          data-release-hygiene-clean={
+                            rightRailGoalTrack.safeGate.releaseHygieneClean ? "true" : "false"
+                          }
+                          data-supply-chain-audit-clean={
+                            rightRailGoalTrack.safeGate.supplyChainAuditClean ? "true" : "false"
+                          }
+                          data-terminal-chunked-osc-live-passed={
+                            rightRailGoalTrack.safeGate.terminalChunkedOscLivePassed ? "true" : "false"
+                          }
+                          data-native-terminal-input-host-passed={
+                            rightRailGoalTrack.safeGate.nativeTerminalInputHostPassed ? "true" : "false"
+                          }
+                          data-native-hwnd-paste-live-passed={
+                            rightRailGoalTrack.safeGate.nativeHwndPasteLivePassed ? "true" : "false"
+                          }
+                          data-semantic-freshness={rightRailGoalTrack.safeGate.semanticFreshness}
+                          data-cycle-boundary={rightRailGoalTrack.safeGate.cycleBoundary}
+                          data-local-date={rightRailGoalTrack.safeGate.localDate ?? ""}
+                          data-time-zone={rightRailGoalTrack.safeGate.timeZone ?? ""}
+                          title={`${rightRailGoalTrack.safeGate.label}: ${rightRailGoalTrack.safeGate.nextRequiredAction}`}
+                        >
+                          <strong>{rightRailGoalTrack.safeGate.label}</strong>
+                          <small>
+                            {rightRailGoalTrack.safeGate.detail}
+                            {rightRailGoalTrack.safeGate.localDate && rightRailGoalTrack.safeGate.timeZone
+                              ? ` · ${rightRailGoalTrack.safeGate.localDate} ${rightRailGoalTrack.safeGate.timeZone}`
+                              : ""}
+                          </small>
+                        </div>
+                      )}
+                      {rightRailGoalTrack.externalGateActions.length > 0 && (
+                        <fieldset
+                          className="right-panel-goal-track-external-actions"
+                          aria-label="External final goal gate actions"
+                        >
+                          <legend className="sr-only">Copy external gate commands</legend>
+                          {rightRailGoalTrack.externalGateActions.map((action) => (
+                            <button
+                              type="button"
+                              key={action.id}
+                              className="right-panel-goal-track-external-copy"
+                              data-external-gate-id={action.id}
+                              data-external-gate-command={action.command}
+                              data-external-gate-follow-up={action.followUpCommands.join(" && ")}
+                              data-external-gate-requires-user-action={action.requiresUserAction ? "true" : "false"}
+                              data-external-gate-requires-explicit-consent={
+                                action.requiresExplicitConsent ? "true" : "false"
+                              }
+                              data-external-gate-cost-class={action.costClass}
+                              title={`${action.manualAction}\n${action.powershellSnippet}`}
+                              onClick={async () => {
+                                try {
+                                  await copyTextToClipboard(action.powershellSnippet);
+                                  toast.success("External gate command copied", action.detail);
+                                } catch (err) {
+                                  toast.error(
+                                    "External gate command copy failed",
+                                    err instanceof Error ? err.message : String(err),
+                                  );
+                                }
+                              }}
+                            >
+                              <ClipboardCopy size={11} aria-hidden="true" />
+                              <span>{action.label}</span>
+                              <small>{action.detail}</small>
+                            </button>
+                          ))}
+                        </fieldset>
+                      )}
+                      {(rightRailGoalTrack.boundaryProofs.length > 0 ||
+                        rightRailGoalTrack.requirementProofs.length > 0) && (
+                        <details className="right-panel-goal-track-disclosure" data-kind="proofs">
+                          <summary>
+                            <span>Proofs</span>
+                            <small>
+                              {rightRailGoalTrack.boundaryProofs.length + rightRailGoalTrack.requirementProofs.length}{" "}
+                              items
+                            </small>
+                          </summary>
+                          {rightRailGoalTrack.boundaryProofs.length > 0 && (
+                            <ul className="right-panel-goal-track-boundaries" aria-label="Terminal boundary proofs">
+                              {rightRailGoalTrack.boundaryProofs.map((proof) => (
+                                <li
+                                  key={proof.id}
+                                  data-boundary-id={proof.id}
+                                  data-boundary-status={proof.status}
+                                  data-boundary-source={proof.source}
+                                  data-boundary-artifact={proof.artifactPath}
+                                  data-boundary-refresh-command={proof.refreshCommand}
+                                  data-boundary-cost-class={proof.costClass}
+                                  title={`${proof.label}: ${proof.detail} · ${proof.artifactPath} · ${proof.refreshCommand}`}
+                                >
+                                  <strong>{proof.label}</strong>
+                                  <small>{proof.status}</small>
+                                  <button
+                                    type="button"
+                                    className="right-panel-goal-track-boundary-copy"
+                                    aria-label={`Copy ${proof.label} boundary proof refresh command`}
+                                    title={proof.refreshCommand}
+                                    onClick={async () => {
+                                      try {
+                                        await copyTextToClipboard(proof.refreshCommand);
+                                        toast.success(
+                                          "Boundary proof command copied",
+                                          `${proof.label}: ${proof.refreshCommand}`,
+                                        );
+                                      } catch (err) {
+                                        toast.error(
+                                          "Boundary proof command copy failed",
+                                          err instanceof Error ? err.message : String(err),
+                                        );
+                                      }
+                                    }}
+                                  >
+                                    <ClipboardCopy size={10} aria-hidden="true" />
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                          {rightRailGoalTrack.requirementProofs.length > 0 && (
+                            <ul
+                              className="right-panel-goal-track-requirements"
+                              aria-label="Final goal requirement proofs"
+                            >
+                              {rightRailGoalTrack.requirementProofs.map((proof) => (
+                                <li
+                                  key={proof.id}
+                                  data-requirement-id={proof.id}
+                                  data-proof-status={proof.status}
+                                  data-evidence-count={proof.evidence.length}
+                                  title={`${proof.label}: ${proof.detail}`}
+                                >
+                                  <strong>{proof.label}</strong>
+                                  <small>
+                                    {proof.status} · {proof.evidence.length} evidence
+                                  </small>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </details>
+                      )}
+                      {rightRailGoalTrack.consentPacket && (
+                        <div
+                          className="right-panel-goal-track-consent"
+                          data-status={rightRailGoalTrack.consentPacket.status}
+                          data-provider-env={rightRailGoalTrackConsentProviderEnv}
+                          title={`${rightRailGoalTrack.consentPacket.command} · ${rightRailGoalTrack.consentPacket.requiredEnv} · ${rightRailGoalTrackConsentProviderEnv}`}
+                        >
+                          <strong>{rightRailGoalTrack.consentPacket.label}</strong>
+                          <small>{rightRailGoalTrack.consentPacket.detail}</small>
+                          <small>
+                            {rightRailGoalTrack.consentPacket.provider} · preflight{" "}
+                            {rightRailGoalTrack.consentPacket.preflightReady ? "green" : "blocked"} · prompt{" "}
+                            {rightRailGoalTrack.consentPacket.safeNoPromptSent ? "not sent" : "sent"}
+                          </small>
+                          <details className="right-panel-goal-track-disclosure" data-kind="prompt-command">
+                            <summary>
+                              <span>Command</span>
+                              <small>{rightRailGoalTrack.consentPacket.provider}</small>
+                            </summary>
+                            <dl
+                              className="right-panel-goal-track-consent-command"
+                              aria-label="Authenticated prompt consent command"
+                            >
+                              <div>
+                                <dt>Command</dt>
+                                <dd>{rightRailGoalTrack.consentPacket.command}</dd>
+                              </div>
+                              <div>
+                                <dt>Env</dt>
+                                <dd>{rightRailGoalTrack.consentPacket.requiredEnv || "env unavailable"}</dd>
+                              </div>
+                              <div>
+                                <dt>Tokens</dt>
+                                <dd>
+                                  {rightRailGoalTrack.consentPacket.wouldSpendTokens ? "explicit consent" : "no spend"}
+                                </dd>
+                              </div>
+                              <div>
+                                <dt>Provider</dt>
+                                <dd>{rightRailGoalTrackConsentProviderEnv || "provider env unavailable"}</dd>
+                              </div>
+                            </dl>
+                          </details>
+                          {rightRailGoalTrack.consentRunActions.length > 0 && (
+                            <fieldset className="right-panel-goal-track-consent-actions">
+                              <legend className="sr-only">Copy authenticated prompt smoke command by provider</legend>
+                              {rightRailGoalTrack.consentRunActions.map((action) => (
+                                <button
+                                  type="button"
+                                  key={action.provider}
+                                  className="right-panel-goal-track-consent-copy"
+                                  data-consent-run-provider={action.provider}
+                                  data-consent-run-command={action.command}
+                                  data-consent-run-provider-env={action.providerEnv}
+                                  data-consent-run-default-provider={action.defaultProvider}
+                                  data-consent-run-requires-explicit-consent={
+                                    action.requiresExplicitConsent ? "true" : "false"
+                                  }
+                                  title={action.powershellSnippet}
+                                  onClick={async () => {
+                                    try {
+                                      await copyTextToClipboard(action.powershellSnippet);
+                                      toast.success(
+                                        "Consent command copied",
+                                        `${action.provider} prompt smoke command copied; review token spend before running.`,
+                                      );
+                                    } catch (err) {
+                                      toast.error(
+                                        "Consent command copy failed",
+                                        err instanceof Error ? err.message : String(err),
+                                      );
+                                    }
+                                  }}
+                                >
+                                  <ClipboardCopy size={11} aria-hidden="true" />
+                                  <span>{action.label}</span>
+                                  <small>{action.detail}</small>
+                                </button>
+                              ))}
+                            </fieldset>
+                          )}
+                          {((rightRailGoalTrack.consentPacket.providerReadiness?.length ?? 0) > 0 ||
+                            rightRailGoalTrack.consentPacket.artifactFreshness ||
+                            rightRailGoalTrack.refreshActions.length > 0) && (
+                            <details className="right-panel-goal-track-disclosure" data-kind="prompt-proof">
+                              <summary>
+                                <span>Preflight</span>
+                                <small>
+                                  {rightRailGoalTrack.consentPacket.artifactFreshness
+                                    ? rightRailGoalTrack.consentPacket.artifactFreshness.label
+                                    : "providers"}
+                                </small>
+                              </summary>
+                              {(rightRailGoalTrack.consentPacket.providerReadiness?.length ?? 0) > 0 && (
+                                <ul
+                                  className="right-panel-goal-track-provider-matrix"
+                                  aria-label="Authenticated AI CLI provider preflight readiness"
+                                >
+                                  {rightRailGoalTrack.consentPacket.providerReadiness?.map((entry) => (
+                                    <li
+                                      key={entry.provider}
+                                      data-status={entry.status}
+                                      title={`${entry.command} · ${entry.requiredEnv || "env unavailable"}${
+                                        entry.failedChecks.length > 0
+                                          ? ` · failing: ${entry.failedChecks.join(", ")}`
+                                          : ""
+                                      }`}
+                                    >
+                                      {entry.provider}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                              {rightRailGoalTrack.consentPacket.artifactFreshness && (
+                                <div
+                                  className="right-panel-goal-track-freshness-radar"
+                                  data-status={rightRailGoalTrack.consentPacket.artifactFreshness.status}
+                                  data-fresh-count={rightRailGoalTrack.consentPacket.artifactFreshness.freshCount}
+                                  data-stale-count={rightRailGoalTrack.consentPacket.artifactFreshness.staleCount}
+                                  data-total-count={rightRailGoalTrack.consentPacket.artifactFreshness.totalCount}
+                                  data-next-refresh-id={
+                                    rightRailGoalTrack.consentPacket.artifactFreshness.nextRefresh?.id ?? ""
+                                  }
+                                  data-next-refresh-command={
+                                    rightRailGoalTrack.consentPacket.artifactFreshness.nextRefresh?.refreshCommand ?? ""
+                                  }
+                                  data-next-refresh-expires-at={
+                                    rightRailGoalTrack.consentPacket.artifactFreshness.nextRefresh?.expiresAt ?? ""
+                                  }
+                                  title={
+                                    rightRailGoalTrack.consentPacket.artifactFreshness.nextRefresh
+                                      ? `${rightRailGoalTrack.consentPacket.artifactFreshness.nextRefresh.path} · ${
+                                          rightRailGoalTrack.consentPacket.artifactFreshness.nextRefresh
+                                            .refreshReason || "refresh proof"
+                                        }`
+                                      : rightRailGoalTrack.consentPacket.artifactFreshness.detail
+                                  }
+                                >
+                                  <strong>{rightRailGoalTrack.consentPacket.artifactFreshness.label}</strong>
+                                  <small>{rightRailGoalTrack.consentPacket.artifactFreshness.detail}</small>
+                                </div>
+                              )}
+                              {rightRailGoalTrack.refreshActions.length > 0 && (
+                                <fieldset className="right-panel-goal-track-artifact-refresh">
+                                  <legend className="sr-only">Non-token proof refresh actions</legend>
+                                  {rightRailGoalTrack.refreshActions.map((action) => (
+                                    <button
+                                      type="button"
+                                      key={`${action.id}:${action.command}`}
+                                      className="right-panel-goal-track-artifact-refresh-action"
+                                      data-goal-refresh-id={action.id}
+                                      data-goal-refresh-command={action.command}
+                                      data-goal-refresh-path={action.path}
+                                      data-goal-refresh-cost-class={action.costClass}
+                                      data-goal-refresh-fresh={action.fresh ? "true" : "false"}
+                                      data-goal-refresh-requires-explicit-consent={
+                                        action.requiresExplicitConsent ? "true" : "false"
+                                      }
+                                      title={`${action.path} · ${action.reason} · ${action.command}`}
+                                      onClick={async () => {
+                                        try {
+                                          await copyTextToClipboard(action.command);
+                                          toast.success("Refresh command copied", `${action.id}: ${action.command}`);
+                                        } catch (err) {
+                                          toast.error(
+                                            "Refresh command copy failed",
+                                            err instanceof Error ? err.message : String(err),
+                                          );
+                                        }
+                                      }}
+                                    >
+                                      <ClipboardCopy size={11} aria-hidden="true" />
+                                      <span>{action.label}</span>
+                                      <small>{action.command}</small>
+                                    </button>
+                                  ))}
+                                </fieldset>
+                              )}
+                            </details>
+                          )}
+                        </div>
+                      )}
+                      <span className="right-panel-goal-track-detail">{rightRailGoalTrack.detail}</span>
+                      <details className="right-panel-goal-track-disclosure" data-kind="remaining">
+                        <summary>
+                          <span>Remaining</span>
+                          <small>
+                            {rightRailGoalTrack.remainingItems[0] ??
+                              `${rightRailGoalTrack.doneCount}/${rightRailGoalTrack.totalCount} milestones`}
+                          </small>
+                        </summary>
+                        {rightRailGoalTrack.riskEvidence.length > 0 && (
+                          <ul
+                            className="right-panel-goal-track-risks"
+                            data-source="release"
+                            aria-label="Goal risk evidence"
+                          >
+                            {rightRailGoalTrack.riskEvidence.map((risk) => (
+                              <li key={risk.id} title={`${risk.label} · ${risk.status ?? "unknown"}`}>
+                                <strong>{risk.label}</strong>
+                                <small>{risk.severity ?? risk.status ?? "risk"}</small>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        {rightRailGoalTrack.runtimeFallbackEvidence.length > 0 && (
+                          <ul
+                            className="right-panel-goal-track-risks"
+                            data-source="runtime-fallback"
+                            aria-label="Goal runtime fallback evidence"
+                          >
+                            {rightRailGoalTrack.runtimeFallbackEvidence.map((risk) => (
+                              <li key={risk.id} title={`${risk.label} · ${risk.status ?? "runtime fallback"}`}>
+                                <strong>{risk.label}</strong>
+                                <small>{risk.severity ?? risk.status ?? "fallback"}</small>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        {rightRailGoalTrack.qaRiskEvidence.length > 0 && (
+                          <ul
+                            className="right-panel-goal-track-risks"
+                            data-source="qa-fixture"
+                            aria-label="Goal QA fixture risk evidence"
+                          >
+                            {rightRailGoalTrack.qaRiskEvidence.map((risk) => (
+                              <li key={risk.id} title={`${risk.label} · ${risk.status ?? "qa fixture"}`}>
+                                <strong>{risk.label}</strong>
+                                <small>QA</small>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        <ul className="right-panel-goal-track-milestones" aria-label="Final goal milestones">
+                          {rightRailGoalTrack.milestones.map((milestone) => (
+                            <li
+                              key={milestone.id}
+                              className="right-panel-goal-track-milestone"
+                              data-status={milestone.status}
+                              title={`${milestone.label}: ${milestone.detail}. Evidence: ${milestone.evidence}. Remaining: ${milestone.remaining}`}
+                            >
+                              <strong>{milestone.label}</strong>
+                              <small>{milestone.status}</small>
+                            </li>
+                          ))}
+                        </ul>
+                        {rightRailGoalTrack.remainingItems.length > 0 && (
+                          <ul className="right-panel-goal-track-remaining" aria-label="Remaining goal blockers">
+                            {rightRailGoalTrack.remainingItems.slice(0, 3).map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </details>
+                    </section>
+                  </details>
 
                   {rightRailEdgeNextBestAction && (
                     <button
@@ -4054,284 +5850,335 @@ export function App() {
                     </button>
                   )}
 
-                  {rightRailEdgeFeedbackHistory.length > 0 && (
-                    <section className="right-panel-edge-feedback" aria-label="Recent Edge score feedback">
-                      <div className="right-panel-edge-feedback-head">
-                        <span>Score loop</span>
-                        <span>{rightRailEdgeFeedbackHistory.length}</span>
-                        {rightRailEdgeFeedbackStaleCount > 0 && (
-                          <>
-                            <span className="right-panel-edge-feedback-stale-count" aria-hidden="true">
-                              Stale {rightRailEdgeFeedbackStaleCount}
-                            </span>
-                            <span id={RIGHT_RAIL_EDGE_FEEDBACK_STALE_COUNT_ID} className="sr-only">
-                              {rightRailEdgeFeedbackStaleCountLabel}
-                            </span>
-                          </>
-                        )}
-                        {rightRailEdgeFeedbackStaleCount > 0 && (
+                  <details className="right-panel-health-drawer">
+                    <summary>
+                      <span>Health</span>
+                      <small>{rightRailHealthDrawerSummary}</small>
+                    </summary>
+
+                    <section
+                      className="right-panel-now"
+                      data-density="deferred"
+                      data-tone={rightRailNowState.tone}
+                      data-state={rightRailNowState.state}
+                      aria-label={`Workspace state: ${rightRailNowState.label}`}
+                    >
+                      <span className="right-panel-now-kicker">State</span>
+                      <span className="right-panel-now-state">{rightRailNowState.label}</span>
+                      <span className="right-panel-now-detail">{rightRailNowState.detail}</span>
+                    </section>
+
+                    {rightRailEdgeFeedbackHistory.length > 0 && (
+                      <section className="right-panel-edge-feedback" aria-label="Recent Edge score feedback">
+                        <div className="right-panel-edge-feedback-head">
+                          <span>Score loop</span>
+                          <span>{rightRailEdgeFeedbackHistory.length}</span>
+                          {rightRailEdgeFeedbackStaleCount > 0 && (
+                            <>
+                              <span className="right-panel-edge-feedback-stale-count" aria-hidden="true">
+                                Stale {rightRailEdgeFeedbackStaleCount}
+                              </span>
+                              <span id={RIGHT_RAIL_EDGE_FEEDBACK_STALE_COUNT_ID} className="sr-only">
+                                {rightRailEdgeFeedbackStaleCountLabel}
+                              </span>
+                            </>
+                          )}
+                          {rightRailEdgeFeedbackStaleCount > 0 && (
+                            <button
+                              type="button"
+                              className="right-panel-edge-feedback-filter"
+                              data-active={rightRailEdgeFeedbackStaleOnly ? "true" : "false"}
+                              onClick={() => setRightRailEdgeFeedbackStaleOnly((active) => !active)}
+                              aria-pressed={rightRailEdgeFeedbackStaleOnly}
+                              aria-controls={RIGHT_RAIL_EDGE_FEEDBACK_LIST_ID}
+                              aria-describedby={RIGHT_RAIL_EDGE_FEEDBACK_STALE_COUNT_ID}
+                              aria-label={
+                                rightRailEdgeFeedbackStaleOnly
+                                  ? `Show all score loop entries; ${rightRailEdgeFeedbackStaleCountLabel}`
+                                  : `Show only stale score loop entries; ${rightRailEdgeFeedbackStaleCountLabel}`
+                              }
+                            >
+                              {rightRailEdgeFeedbackStaleOnly ? "All" : "Stale only"}
+                            </button>
+                          )}
                           <button
                             type="button"
-                            className="right-panel-edge-feedback-filter"
-                            data-active={rightRailEdgeFeedbackStaleOnly ? "true" : "false"}
-                            onClick={() => setRightRailEdgeFeedbackStaleOnly((active) => !active)}
-                            aria-pressed={rightRailEdgeFeedbackStaleOnly}
+                            className="right-panel-edge-feedback-clear"
+                            onClick={handleClearRightRailEdgeFeedbackHistory}
                             aria-controls={RIGHT_RAIL_EDGE_FEEDBACK_LIST_ID}
-                            aria-describedby={RIGHT_RAIL_EDGE_FEEDBACK_STALE_COUNT_ID}
-                            aria-label={
-                              rightRailEdgeFeedbackStaleOnly
-                                ? `Show all score loop entries; ${rightRailEdgeFeedbackStaleCountLabel}`
-                                : `Show only stale score loop entries; ${rightRailEdgeFeedbackStaleCountLabel}`
-                            }
+                            aria-label="Clear workspace Edge score feedback history"
                           >
-                            {rightRailEdgeFeedbackStaleOnly ? "All" : "Stale only"}
+                            Clear
                           </button>
-                        )}
-                        <button
-                          type="button"
-                          className="right-panel-edge-feedback-clear"
-                          onClick={handleClearRightRailEdgeFeedbackHistory}
-                          aria-controls={RIGHT_RAIL_EDGE_FEEDBACK_LIST_ID}
-                          aria-label="Clear workspace Edge score feedback history"
-                        >
-                          Clear
-                        </button>
-                      </div>
-                      {rightRailEdgeFeedbackAxisSummary && (
-                        <div
-                          className="right-panel-edge-feedback-summary"
-                          data-axis-id={rightRailEdgeFeedbackAxisSummary.axisId}
-                          data-trend={rightRailEdgeFeedbackAxisSummary.trend}
-                        >
-                          <span>Repeated axis</span>
-                          <strong>{rightRailEdgeFeedbackAxisSummary.axisLabel}</strong>
-                          <small>
-                            {rightRailEdgeFeedbackAxisSummary.count} hit
-                            {rightRailEdgeFeedbackAxisSummary.count === 1 ? "" : "s"} -{" "}
-                            {rightRailEdgeFeedbackAxisSummary.trend}
-                          </small>
                         </div>
-                      )}
-                      {rightRailEdgeFeedbackStaleOnly && rightRailEdgeFeedbackStaleGroups.length > 0 && (
-                        <section
-                          className="right-panel-edge-feedback-stale-groups"
-                          aria-label={`Grouped stale score feedback, ${rightRailEdgeFeedbackStaleGroups.length} repeated ${
-                            rightRailEdgeFeedbackStaleGroups.length === 1 ? "axis" : "axes"
-                          }`}
-                        >
-                          {rightRailEdgeFeedbackStaleGroups.map((group) => (
-                            <fieldset
-                              key={group.axisId}
-                              className="right-panel-edge-feedback-stale-group"
-                              data-axis-id={group.axisId}
+                        {rightRailEdgeFeedbackAxisSummary && (
+                          <div
+                            className="right-panel-edge-feedback-summary"
+                            data-axis-id={rightRailEdgeFeedbackAxisSummary.axisId}
+                            data-trend={rightRailEdgeFeedbackAxisSummary.trend}
+                          >
+                            <span>Repeated axis</span>
+                            <strong>{rightRailEdgeFeedbackAxisSummary.axisLabel}</strong>
+                            <small>
+                              {rightRailEdgeFeedbackAxisSummary.count} hit
+                              {rightRailEdgeFeedbackAxisSummary.count === 1 ? "" : "s"} -{" "}
+                              {rightRailEdgeFeedbackAxisSummary.trend}
+                            </small>
+                          </div>
+                        )}
+                        {rightRailEdgeFeedbackStaleOnly && rightRailEdgeFeedbackStaleGroups.length > 0 && (
+                          <section
+                            className="right-panel-edge-feedback-stale-groups"
+                            aria-label={`Grouped stale score feedback, ${rightRailEdgeFeedbackStaleGroups.length} repeated ${
+                              rightRailEdgeFeedbackStaleGroups.length === 1 ? "axis" : "axes"
+                            }`}
+                          >
+                            {rightRailEdgeFeedbackStaleGroups.map((group) => (
+                              <fieldset
+                                key={group.axisId}
+                                className="right-panel-edge-feedback-stale-group"
+                                data-axis-id={group.axisId}
+                              >
+                                <legend>Stale group</legend>
+                                <strong>{group.axisLabel}</strong>
+                                <small>
+                                  {group.count} entries - {group.score} - {group.grade} - {group.staleReason}
+                                </small>
+                              </fieldset>
+                            ))}
+                          </section>
+                        )}
+                        <div id={RIGHT_RAIL_EDGE_FEEDBACK_LIST_ID} className="right-panel-edge-feedback-list">
+                          {rightRailEdgeFeedbackVisibleHistory.map((entry) => {
+                            const replayItem = rightRailEdgeScore.items.find(
+                              (item) => item.id === entry.axisId || item.label === entry.axisLabel,
+                            );
+                            const staleReason = replayItem ? null : formatRightRailEdgeFeedbackStaleReason(entry);
+                            return (
+                              <button
+                                key={entry.id}
+                                type="button"
+                                className="right-panel-edge-feedback-item"
+                                data-axis-id={entry.axisId}
+                                data-stale={staleReason ? "true" : "false"}
+                                data-trend={entry.trend}
+                                onClick={() => {
+                                  if (replayItem) handleOpenRightRailEdgeScoreItem(replayItem);
+                                }}
+                                disabled={!replayItem}
+                                aria-label={`Replay ${entry.axisLabel} score action: ${entry.actionLabel}`}
+                              >
+                                <span className="right-panel-edge-feedback-axis">{entry.axisLabel}</span>
+                                <span className="right-panel-edge-feedback-score">
+                                  {entry.score} · {entry.grade}
+                                </span>
+                                <span className="right-panel-edge-feedback-delta">
+                                  {entry.trend === "baseline"
+                                    ? "Baseline"
+                                    : entry.delta > 0
+                                      ? `+${entry.delta}`
+                                      : `${entry.delta}`}
+                                </span>
+                                <span className="right-panel-edge-feedback-target">
+                                  {entry.actionLabel} -&gt; {entry.targetWidget}
+                                </span>
+                                {staleReason && <span className="right-panel-edge-feedback-stale">{staleReason}</span>}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    )}
+
+                    {rightRailEdgeFeedbackResetNotice && (
+                      <section className="right-panel-edge-feedback-reset" role="status" aria-live="polite">
+                        <strong>{rightRailEdgeFeedbackResetNotice.label}</strong>
+                        <span>{rightRailEdgeFeedbackResetNotice.detail}</span>
+                      </section>
+                    )}
+
+                    <section
+                      className="right-panel-workforce"
+                      data-tone={rightRailWorkforce.tone}
+                      aria-label={`Agent workforce: ${rightRailWorkforce.headline}`}
+                    >
+                      <div className="right-panel-workforce-head">
+                        <span className="right-panel-workforce-kicker">Agent workforce</span>
+                        <label className="right-panel-workforce-profile-control">
+                          <span className="sr-only">Guardrail profile</span>
+                          <select
+                            className="right-panel-workforce-profile"
+                            value={rightRailGuardrailSelection}
+                            onChange={(event) =>
+                              setRightRailGuardrailSelection(event.currentTarget.value as RightRailGuardrailSelection)
+                            }
+                            aria-label={`Guardrail profile, current ${
+                              rightRailGuardrailSelection === "Auto"
+                                ? `Auto ${rightRailGuardrailProfile}`
+                                : rightRailGuardrailProfile
+                            }`}
+                            title={`Guardrail: ${rightRailGuardrailDescriptor.label}`}
+                          >
+                            {RIGHT_RAIL_GUARDRAIL_OPTIONS.map((profile) => (
+                              <option key={profile} value={profile}>
+                                {profile === "Auto" ? `Auto: ${rightRailWorkforce.guardrailProfile}` : profile}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                      <div className="right-panel-workforce-main">
+                        <span className="right-panel-workforce-title">{rightRailWorkforce.headline}</span>
+                        <span className="right-panel-workforce-detail">{rightRailWorkforce.detail}</span>
+                      </div>
+                      <section className="right-panel-workforce-metrics" aria-label="Workforce metrics">
+                        <span>
+                          <strong>{rightRailWorkforce.liveCount}</strong>
+                          <small>Live</small>
+                        </span>
+                        <span>
+                          <strong>{rightRailWorkforce.blockedCount}</strong>
+                          <small>Blocked</small>
+                        </span>
+                        <span>
+                          <strong>{rightRailWorkforce.handoffCount}</strong>
+                          <small>Handoff</small>
+                        </span>
+                      </section>
+                      <span className="right-panel-workforce-guardrail">{rightRailGuardrailDetail}</span>
+                      <span className="right-panel-workforce-tools">
+                        Tools: {allowedToolsForGuardrailProfile(rightRailGuardrailProfile).join(", ")}
+                      </span>
+                      {rightRailWorkforce.topAgents.length > 0 && (
+                        <section className="right-panel-workforce-roster" aria-label="Top workforce agents">
+                          {rightRailWorkforce.topAgents.map((agent) => (
+                            <button
+                              key={agent.id}
+                              type="button"
+                              className="right-panel-workforce-agent"
+                              onClick={() => handleSelectRightRailSession(agent.id)}
+                              title={`${agent.name}: ${agent.next}`}
                             >
-                              <legend>Stale group</legend>
-                              <strong>{group.axisLabel}</strong>
-                              <small>
-                                {group.count} entries - {group.score} - {group.grade} - {group.staleReason}
-                              </small>
-                            </fieldset>
+                              <span className="right-panel-workforce-agent-name">{agent.name}</span>
+                              <span className="right-panel-workforce-agent-role">{agent.role}</span>
+                              <span className="right-panel-workforce-agent-next">{agent.next}</span>
+                              <span className="right-panel-workforce-agent-meta">
+                                {agent.contextPct}% · {agent.filesChanged} files
+                              </span>
+                            </button>
                           ))}
                         </section>
                       )}
-                      <div id={RIGHT_RAIL_EDGE_FEEDBACK_LIST_ID} className="right-panel-edge-feedback-list">
-                        {rightRailEdgeFeedbackVisibleHistory.map((entry) => {
-                          const replayItem = rightRailEdgeScore.items.find(
-                            (item) => item.id === entry.axisId || item.label === entry.axisLabel,
-                          );
-                          const staleReason = replayItem ? null : formatRightRailEdgeFeedbackStaleReason(entry);
-                          return (
-                            <button
-                              key={entry.id}
-                              type="button"
-                              className="right-panel-edge-feedback-item"
-                              data-axis-id={entry.axisId}
-                              data-stale={staleReason ? "true" : "false"}
-                              data-trend={entry.trend}
-                              onClick={() => {
-                                if (replayItem) handleOpenRightRailEdgeScoreItem(replayItem);
-                              }}
-                              disabled={!replayItem}
-                              aria-label={`Replay ${entry.axisLabel} score action: ${entry.actionLabel}`}
-                            >
-                              <span className="right-panel-edge-feedback-axis">{entry.axisLabel}</span>
-                              <span className="right-panel-edge-feedback-score">
-                                {entry.score} · {entry.grade}
-                              </span>
-                              <span className="right-panel-edge-feedback-delta">
-                                {entry.trend === "baseline"
-                                  ? "Baseline"
-                                  : entry.delta > 0
-                                    ? `+${entry.delta}`
-                                    : `${entry.delta}`}
-                              </span>
-                              <span className="right-panel-edge-feedback-target">
-                                {entry.actionLabel} -&gt; {entry.targetWidget}
-                              </span>
-                              {staleReason && <span className="right-panel-edge-feedback-stale">{staleReason}</span>}
-                            </button>
-                          );
-                        })}
-                      </div>
                     </section>
-                  )}
 
-                  {rightRailEdgeFeedbackResetNotice && (
-                    <section className="right-panel-edge-feedback-reset" role="status" aria-live="polite">
-                      <strong>{rightRailEdgeFeedbackResetNotice.label}</strong>
-                      <span>{rightRailEdgeFeedbackResetNotice.detail}</span>
-                    </section>
-                  )}
+                    <ErrorBoundary>
+                      <Suspense fallback={null}>
+                        <WorkstationPulse
+                          sessions={rightRailSessions}
+                          changedFilesCount={rightRailAllChangedFiles.length}
+                          workstationGraph={focusedRightRailGraph}
+                        />
+                      </Suspense>
+                    </ErrorBoundary>
+                  </details>
 
-                  <section
-                    className="right-panel-workforce"
-                    data-tone={rightRailWorkforce.tone}
-                    aria-label={`Agent workforce: ${rightRailWorkforce.headline}`}
-                  >
-                    <div className="right-panel-workforce-head">
-                      <span className="right-panel-workforce-kicker">Agent workforce</span>
-                      <label className="right-panel-workforce-profile-control">
-                        <span className="sr-only">Guardrail profile</span>
-                        <select
-                          className="right-panel-workforce-profile"
-                          value={rightRailGuardrailSelection}
-                          onChange={(event) =>
-                            setRightRailGuardrailSelection(event.currentTarget.value as RightRailGuardrailSelection)
-                          }
-                          aria-label={`Guardrail profile, current ${
-                            rightRailGuardrailSelection === "Auto"
-                              ? `Auto ${rightRailGuardrailProfile}`
-                              : rightRailGuardrailProfile
-                          }`}
-                          title={`Guardrail: ${rightRailGuardrailDescriptor.label}`}
+                  {(rightRailRecommendation || rightRailVisibleActions.length > 0) && (
+                    <details className="right-panel-queue-drawer">
+                      <summary>
+                        <span>Queue</span>
+                        <small>{rightRailQueueCount} routes</small>
+                      </summary>
+                      {rightRailRecommendation && rightRailRecommendedMode && RightRailRecommendedIcon && (
+                        <button
+                          type="button"
+                          className="right-panel-advisor"
+                          data-tone={rightRailRecommendation.tone}
+                          onClick={() => {
+                            const matchingAction = rightRailActions.find(
+                              (action) =>
+                                action.mode === rightRailRecommendation.mode &&
+                                action.label === rightRailRecommendation.label &&
+                                action.detail === rightRailRecommendation.detail,
+                            );
+                            if (matchingAction) void handleRightRailAction(matchingAction);
+                            else setRightRailMode(rightRailRecommendation.mode);
+                          }}
+                          title={`Switch to ${rightRailRecommendedMode.label}: ${rightRailRecommendation.detail}`}
                         >
-                          {RIGHT_RAIL_GUARDRAIL_OPTIONS.map((profile) => (
-                            <option key={profile} value={profile}>
-                              {profile === "Auto" ? `Auto: ${rightRailWorkforce.guardrailProfile}` : profile}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    </div>
-                    <div className="right-panel-workforce-main">
-                      <span className="right-panel-workforce-title">{rightRailWorkforce.headline}</span>
-                      <span className="right-panel-workforce-detail">{rightRailWorkforce.detail}</span>
-                    </div>
-                    <section className="right-panel-workforce-metrics" aria-label="Workforce metrics">
-                      <span>
-                        <strong>{rightRailWorkforce.liveCount}</strong>
-                        <small>Live</small>
-                      </span>
-                      <span>
-                        <strong>{rightRailWorkforce.blockedCount}</strong>
-                        <small>Blocked</small>
-                      </span>
-                      <span>
-                        <strong>{rightRailWorkforce.handoffCount}</strong>
-                        <small>Handoff</small>
-                      </span>
-                    </section>
-                    <span className="right-panel-workforce-guardrail">{rightRailGuardrailDetail}</span>
-                    <span className="right-panel-workforce-tools">
-                      Tools: {allowedToolsForGuardrailProfile(rightRailGuardrailProfile).join(", ")}
-                    </span>
-                    {rightRailWorkforce.topAgents.length > 0 && (
-                      <section className="right-panel-workforce-roster" aria-label="Top workforce agents">
-                        {rightRailWorkforce.topAgents.map((agent) => (
-                          <button
-                            key={agent.id}
-                            type="button"
-                            className="right-panel-workforce-agent"
-                            onClick={() => handleSelectRightRailSession(agent.id)}
-                            title={`${agent.name}: ${agent.next}`}
-                          >
-                            <span className="right-panel-workforce-agent-name">{agent.name}</span>
-                            <span className="right-panel-workforce-agent-role">{agent.role}</span>
-                            <span className="right-panel-workforce-agent-next">{agent.next}</span>
-                            <span className="right-panel-workforce-agent-meta">
-                              {agent.contextPct}% · {agent.filesChanged} files
-                            </span>
-                          </button>
-                        ))}
-                      </section>
-                    )}
-                  </section>
+                          <span className="right-panel-advisor-kicker">Suggested</span>
+                          <span className="right-panel-advisor-icon" aria-hidden="true">
+                            <RightRailRecommendedIcon size={12} strokeWidth={1.8} />
+                          </span>
+                          <span className="right-panel-advisor-copy">
+                            <span className="right-panel-advisor-label">{rightRailRecommendation.label}</span>
+                            <span className="right-panel-advisor-detail">{rightRailRecommendation.detail}</span>
+                          </span>
+                          <span className="right-panel-advisor-target">{rightRailRecommendedMode.label}</span>
+                        </button>
+                      )}
 
-                  {rightRailRecommendation && rightRailRecommendedMode && RightRailRecommendedIcon && (
-                    <button
-                      type="button"
-                      className="right-panel-advisor"
-                      data-tone={rightRailRecommendation.tone}
-                      onClick={() => {
-                        const matchingAction = rightRailActions.find(
-                          (action) =>
-                            action.mode === rightRailRecommendation.mode &&
-                            action.label === rightRailRecommendation.label &&
-                            action.detail === rightRailRecommendation.detail,
-                        );
-                        if (matchingAction) void handleRightRailAction(matchingAction);
-                        else setRightRailMode(rightRailRecommendation.mode);
-                      }}
-                      title={`Switch to ${rightRailRecommendedMode.label}: ${rightRailRecommendation.detail}`}
-                    >
-                      <span className="right-panel-advisor-kicker">Suggested</span>
-                      <span className="right-panel-advisor-icon" aria-hidden="true">
-                        <RightRailRecommendedIcon size={12} strokeWidth={1.8} />
-                      </span>
-                      <span className="right-panel-advisor-copy">
-                        <span className="right-panel-advisor-label">{rightRailRecommendation.label}</span>
-                        <span className="right-panel-advisor-detail">{rightRailRecommendation.detail}</span>
-                      </span>
-                      <span className="right-panel-advisor-target">{rightRailRecommendedMode.label}</span>
-                    </button>
-                  )}
-
-                  {rightRailActions.length > 0 && (
-                    <section className="right-panel-action-stack" aria-label="Ranked next actions">
-                      {rightRailActions.slice(0, 4).map((action) => {
-                        const mode = RIGHT_RAIL_MODES.find((candidate) => candidate.id === action.mode);
-                        const ActionIcon = mode?.icon ?? Activity;
-                        return (
-                          <button
-                            key={action.id}
-                            type="button"
-                            className="right-panel-action"
-                            data-tone={action.tone}
-                            data-state={action.state}
-                            data-execution={action.execution.status}
-                            data-guardrail={action.execution.guardrailProfile}
-                            disabled={action.execution.status === "blocked"}
-                            onClick={() => void handleRightRailAction(action)}
-                            title={`${action.label}: ${action.detail}. ${action.nextStep} Expected: ${
-                              action.execution.expectedResult
-                            }${action.execution.guardrailDetail ? ` Guardrail: ${action.execution.guardrailDetail}` : ""}${
-                              action.execution.disabledReason ? ` Blocked: ${action.execution.disabledReason}` : ""
-                            }`}
-                          >
-                            <span className="right-panel-action-icon" aria-hidden="true">
-                              <ActionIcon size={12} strokeWidth={1.8} />
-                            </span>
-                            <span className="right-panel-action-copy">
-                              <span className="right-panel-action-label">{action.label}</span>
-                              <span className="right-panel-action-detail">{action.detail}</span>
-                              <span className="right-panel-action-why">{action.nextStep}</span>
-                              <span className="right-panel-action-outcome">
-                                {action.execution.disabledReason ??
-                                  action.execution.guardrailDetail ??
-                                  action.execution.expectedResult}
-                              </span>
-                            </span>
-                            <span className="right-panel-action-meta">
-                              <span className="right-panel-action-target">{mode?.label ?? action.mode}</span>
-                              <span className="right-panel-action-execution">{action.execution.label}</span>
-                              {action.execution.guardrailLabel && (
-                                <span className="right-panel-action-guardrail">{action.execution.guardrailLabel}</span>
-                              )}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </section>
+                      {rightRailVisibleActions.length > 0 && (
+                        <section className="right-panel-action-stack" aria-label="Ranked next actions">
+                          {rightRailVisibleActions.map((action) => {
+                            const mode = RIGHT_RAIL_MODES.find((candidate) => candidate.id === action.mode);
+                            const ActionIcon = mode?.icon ?? Activity;
+                            const actionOwnerLabel = formatRightRailActionOwner(action);
+                            return (
+                              <button
+                                key={action.id}
+                                type="button"
+                                className="right-panel-action"
+                                data-tone={action.tone}
+                                data-state={action.state}
+                                data-mode={action.mode}
+                                data-execution={action.execution.status}
+                                data-guardrail={action.execution.guardrailProfile}
+                                data-owner-kind={action.target.kind}
+                                data-owner-label={actionOwnerLabel}
+                                disabled={action.execution.status === "blocked"}
+                                onClick={() => void handleRightRailAction(action)}
+                                title={`${action.label}: ${action.detail}. ${action.nextStep} Expected: ${
+                                  action.execution.expectedResult
+                                } Evidence: ${action.execution.evidence}. Owner: ${actionOwnerLabel}. Target: ${
+                                  action.target.label
+                                }${
+                                  action.target.reason ? ` (${action.target.reason})` : ""
+                                }${action.execution.guardrailDetail ? ` Guardrail: ${action.execution.guardrailDetail}` : ""}${
+                                  action.execution.disabledReason ? ` Blocked: ${action.execution.disabledReason}` : ""
+                                }`}
+                              >
+                                <span className="right-panel-action-icon" aria-hidden="true">
+                                  <ActionIcon size={12} strokeWidth={1.8} />
+                                </span>
+                                <span className="right-panel-action-copy">
+                                  <span className="right-panel-action-label">{action.label}</span>
+                                  <span className="right-panel-action-detail">{action.detail}</span>
+                                  <span className="right-panel-action-why">{action.nextStep}</span>
+                                  <span className="right-panel-action-outcome">
+                                    {action.execution.disabledReason ??
+                                      action.execution.guardrailDetail ??
+                                      action.execution.evidence}
+                                  </span>
+                                </span>
+                                <span className="right-panel-action-meta">
+                                  <span className="right-panel-action-phase">{RIGHT_RAIL_ACTION_PHASE[action.id]}</span>
+                                  <span className="right-panel-action-owner" title={action.target.reason}>
+                                    {actionOwnerLabel}
+                                  </span>
+                                  <span className="right-panel-action-target">{action.target.label}</span>
+                                  <span className="right-panel-action-execution">{action.execution.label}</span>
+                                  {action.execution.guardrailLabel && (
+                                    <span className="right-panel-action-guardrail">
+                                      {action.execution.guardrailLabel}
+                                    </span>
+                                  )}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </section>
+                      )}
+                    </details>
                   )}
 
                   {rightRailActionResult && (
@@ -4398,16 +6245,6 @@ export function App() {
                       </div>
                     </section>
                   )}
-
-                  <ErrorBoundary>
-                    <Suspense fallback={null}>
-                      <WorkstationPulse
-                        sessions={rightRailSessions}
-                        changedFilesCount={rightRailChangedFiles.length}
-                        workstationGraph={focusedRightRailGraph}
-                      />
-                    </Suspense>
-                  </ErrorBoundary>
 
                   <div
                     id="right-rail-panel"
@@ -4481,20 +6318,20 @@ export function App() {
                         <div className="right-panel-bottom-grid">
                           <ErrorBoundary>
                             <Suspense fallback={null}>
-                              <RightRailWidgetFrame
-                                widget="toolkit"
-                                title="Toolkit"
-                                subtitle="saved commands"
-                                defaultOpen
-                                forceOpen={rightRailFocusWidget === "toolkit"}
+                              <div
+                                className="bento-widget"
+                                data-widget="toolkit"
+                                data-rail-focus={rightRailFocusWidget === "toolkit" ? "true" : undefined}
                               >
+                                {renderRightRailDestinationPrompt("toolkit")}
                                 <ToolkitPanel
                                   projectName={projectName}
                                   onRunCommand={handleRunCommand}
                                   activeTargetLabel={visualActiveTerminalTargetLabel}
                                   activeTargetReady={activeTerminalTarget.ready}
+                                  forceExpanded={rightRailFocusWidget === "toolkit"}
                                 />
-                              </RightRailWidgetFrame>
+                              </div>
                             </Suspense>
                           </ErrorBoundary>
                           <ErrorBoundary>
@@ -4509,8 +6346,8 @@ export function App() {
                                 <ContextPanel
                                   sessions={rightRailSessions}
                                   activeSessionId={rightRailActiveSessionId}
-                                  changedFilesCount={rightRailChangedFiles.length}
-                                  changedFiles={rightRailChangedFiles}
+                                  changedFilesCount={rightRailAllChangedFiles.length}
+                                  changedFiles={rightRailAllChangedFiles}
                                   panes={visualTerminalPaneTargets}
                                   auditEvents={scopedOperationalAuditEvents}
                                   projectName={projectName}
@@ -4533,10 +6370,11 @@ export function App() {
                               {renderRightRailDestinationPrompt("review-queue")}
                               <ReviewQueuePanel
                                 sessions={rightRailSessions}
-                                changedFiles={rightRailChangedFiles}
+                                changedFiles={rightRailAllChangedFiles}
                                 activeSessionId={rightRailActiveSessionId}
                                 onSelectSession={handleSelectRightRailSession}
                                 onOpenDiff={handleOpenDiff}
+                                onOpenCommandEvidence={handleOpenCommandEvidence}
                                 onStartAgent={handleStartAgent}
                                 workstationGraph={focusedRightRailGraph}
                               />
@@ -4587,8 +6425,8 @@ export function App() {
                               <ContextPanel
                                 sessions={rightRailSessions}
                                 activeSessionId={rightRailActiveSessionId}
-                                changedFilesCount={rightRailChangedFiles.length}
-                                changedFiles={rightRailChangedFiles}
+                                changedFilesCount={rightRailAllChangedFiles.length}
+                                changedFiles={rightRailAllChangedFiles}
                                 panes={visualTerminalPaneTargets}
                                 auditEvents={scopedOperationalAuditEvents}
                                 projectName={projectName}
@@ -4697,8 +6535,8 @@ export function App() {
                               <ContextPanel
                                 sessions={rightRailSessions}
                                 activeSessionId={rightRailActiveSessionId}
-                                changedFilesCount={rightRailChangedFiles.length}
-                                changedFiles={rightRailChangedFiles}
+                                changedFilesCount={rightRailAllChangedFiles.length}
+                                changedFiles={rightRailAllChangedFiles}
                                 panes={visualTerminalPaneTargets}
                                 auditEvents={scopedOperationalAuditEvents}
                                 projectName={projectName}
@@ -4773,7 +6611,7 @@ export function App() {
                               <ReliabilityPanel
                                 sessions={rightRailSessions}
                                 panes={visualTerminalPaneTargets}
-                                changedFilesCount={rightRailChangedFiles.length}
+                                changedFilesCount={rightRailAllChangedFiles.length}
                                 auditEvents={scopedOperationalAuditEvents}
                                 workstationGraph={focusedRightRailGraph}
                                 selectedEventId={selectedAuditEventId}

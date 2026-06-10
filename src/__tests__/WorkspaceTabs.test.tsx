@@ -55,7 +55,8 @@ describe("WorkspaceTabs close controls", () => {
     expect(tabWrapRule).toContain("width: clamp(112px, 12vw, 190px)");
     expect(branchRule).toContain("flex: 0 1 72px");
     expect(branchRule).toContain("width: 72px");
-    expect(branchRule).toContain("transition: opacity");
+    expect(branchRule).toContain("transition: color");
+    expect(branchRule).not.toContain("opacity:");
     expect(branchActiveRule).not.toContain("max-width");
   });
 

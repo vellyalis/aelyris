@@ -500,18 +500,28 @@ async function checkRollback(version) {
     ? await readText("docs/release-build-playbook.md")
     : "";
   const hasRollbackInstructions = /rollback/i.test(playbook) && /previous/i.test(playbook);
-  const status = previousArtifacts.length > 0 && hasRollbackInstructions ? "pass" : "warn";
+  const hasFirstReleaseEscrow =
+    /first[-\s]?release rollback escrow/i.test(playbook) &&
+    /no previous public installer/i.test(playbook) &&
+    /current signed installer/i.test(playbook) &&
+    /uninstall/i.test(playbook) &&
+    /disable the updater/i.test(playbook);
+  const rollbackReady = (previousArtifacts.length > 0 && hasRollbackInstructions) || hasFirstReleaseEscrow;
+  const status = rollbackReady ? "pass" : "warn";
   return section(
     "rollback-package",
     "Rollback Package",
     status,
-    status === "pass"
+    previousArtifacts.length > 0 && hasRollbackInstructions
       ? `${previousArtifacts.length} previous installer artifacts are available and rollback instructions are documented.`
+      : hasFirstReleaseEscrow
+        ? "First-release rollback escrow is documented for the no-previous-public-installer case."
       : "Rollback needs at least one previous installer artifact plus documented rollback instructions.",
     {
       currentVersion: version,
       previousArtifacts: previousArtifacts.slice(-12),
       hasRollbackInstructions,
+      hasFirstReleaseEscrow,
     },
   );
 }

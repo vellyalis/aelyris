@@ -98,7 +98,7 @@
 
 .confirmBtn {
   background: var(--gold);
-  border: none;
+  border: 1px solid transparent;
   border-radius: var(--radius);
   color: var(--text-on-accent);
   font-size: var(--text-base);
@@ -108,7 +108,8 @@
   cursor: pointer;
 }
 .confirmBtn:hover {
-  opacity: 0.9;
+  background: color-mix(in srgb, var(--gold) 92%, #fff 8%);
+  box-shadow: 0 4px 12px rgba(200, 160, 80, 0.12);
 }
 
 .confirmBtnDanger {
@@ -116,5 +117,5 @@
   color: var(--text-primary);
 }
 .confirmBtnDanger:hover {
-  opacity: 0.9;
+  background: color-mix(in srgb, var(--ctp-red) 88%, #fff 12%);
 }

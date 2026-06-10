@@ -180,7 +180,8 @@
   color: var(--text-primary);
 }
 .addBtn:disabled {
-  opacity: 0.3;
+  color: var(--text-muted);
+  background: transparent;
   cursor: default;
 }
 
@@ -214,9 +215,10 @@
   cursor: pointer;
 }
 .createBtn:hover {
-  opacity: 0.9;
+  background: color-mix(in srgb, var(--gold) 90%, #fff 10%);
 }
 .createBtn:disabled {
-  opacity: 0.4;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--gold) 30%, transparent);
   cursor: default;
 }

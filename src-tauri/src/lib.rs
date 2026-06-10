@@ -37,8 +37,26 @@ use watchdog::auto_repair::{AutoRepairManager, RepairPhase};
 /// swap embedders we update this alias + call site.
 pub type ManagedHistoryStore = std::sync::Arc<HistoryStore<HashingNgramEmbedder>>;
 
+#[cfg(windows)]
+fn apply_windows_app_identity() {
+    use windows::core::HSTRING;
+    use windows::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID;
+
+    // Apply before Tauri creates the WebView/window. This keeps taskbar and
+    // shell identity stable without mixing it into the HWND/DWM setup path.
+    let app_user_model_id = HSTRING::from("com.aether.terminal");
+    if let Err(e) = unsafe { SetCurrentProcessExplicitAppUserModelID(&app_user_model_id) } {
+        log::debug!("windows app identity: AppUserModelID not applied: {e}");
+    }
+}
+
+#[cfg(not(windows))]
+fn apply_windows_app_identity() {}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    apply_windows_app_identity();
+
     // Tier 🟡 #7: structured tracing pipeline. The same `LogRing`
     // returned here is registered as managed state so the
     // `logs_recent` / `logs_since` IPCs read from it directly.
@@ -73,6 +91,7 @@ pub fn run() {
         .manage(workflow::WorkflowExecutor::new())
         .manage(lsp::LspManager::new(lsp_tx))
         .manage(std::sync::Arc::new(term::NativeTerminalRegistry::new()))
+        .manage(std::sync::Arc::new(term::CommandBlockJournal::new()))
         .manage(std::sync::Arc::new(term::NativeTerminalInputHost::new()))
         .manage(std::sync::Arc::new(snapshot::SnapshotStore::new()))
         .manage(std::sync::Arc::new(std::sync::Mutex::new(AutoRepairManager::new())))
@@ -117,6 +136,7 @@ pub fn run() {
 
             let sidecar_state = app.state::<pty_sidecar::PtySidecarState>().inner().clone();
             let sidecar_fallback_pty: PtyManager = app.state::<PtyManager>().inner().clone();
+            let sidecar_adopt_app = app.handle().clone();
             tauri::async_runtime::spawn_blocking(move || {
                 let Some(client) = pty_sidecar::launch_or_connect() else {
                     return;
@@ -127,8 +147,22 @@ pub fn run() {
                     );
                     return;
                 }
-                match sidecar_state.set_client(client) {
-                    Ok(()) => log::info!("PTY sidecar connected in background"),
+                match sidecar_state.set_client(client.clone()) {
+                    Ok(()) => {
+                        log::info!("PTY sidecar connected in background");
+                        let app_handle = sidecar_adopt_app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            match ipc::adopt_sidecar_terminals(&app_handle, client).await {
+                                Ok(count) if count > 0 => {
+                                    log::info!("PTY sidecar adopted {count} existing terminal(s)")
+                                }
+                                Ok(_) => {}
+                                Err(err) => {
+                                    log::warn!("PTY sidecar terminal adoption failed: {err}")
+                                }
+                            }
+                        });
+                    }
                     Err(err) => log::warn!("PTY sidecar state update failed: {err}"),
                 }
             });
@@ -161,50 +195,25 @@ pub fn run() {
                     );
                 }
             }
-            // Window chrome on Windows: apply Acrylic (the *transient*
-            // backdrop) so the desktop wallpaper actually shows through
-            // — Mica is a wallpaper-tinted material that does NOT make
-            // the window translucent, it only samples wallpaper colour
-            // for a subtle tint. Aether wants the Apple-class "glass on
-            // top of the desktop" look, which on Windows is Acrylic via
-            // DWMSBT_TRANSIENTWINDOW.
-            //
-            // Order:
-            //   1. Acrylic (DWMSBT_TRANSIENTWINDOW) — the real "see
-            //      through to the desktop, blurred" effect.
-            //   2. If Acrylic is refused (rare, but the OS can disable
-            //      transparency effects globally) we fall back to Mica
-            //      (DWMSBT_MAINWINDOW) so at least the wallpaper-tint
-            //      lands. Mica is better than nothing.
-            //   3. Both are no-ops on Win10 (E_INVALIDARG, tolerated).
-            //
-            // Tauri v2's `set_effects` / `windowEffects` indirection has
-            // been observed to silently fail on Win11 25H2 — calling
-            // DwmSetWindowAttribute directly is what every Win11 app
-            // that actually shows translucency does.
+            // Window chrome on Windows is provided by tauri.conf.json
+            // `windowEffects` by default. Direct HWND/DWM mutation is kept
+            // behind an explicit dogfood flag because startup stability wins
+            // over experimental translucency tweaks in release builds.
             #[cfg(windows)]
             {
-                use windows::core::HSTRING;
                 use windows::Win32::Foundation::HWND;
                 use windows::Win32::Graphics::Dwm::{
                     DWMSBT_MAINWINDOW, DWMSBT_TRANSIENTWINDOW, DWMWA_SYSTEMBACKDROP_TYPE,
                     DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DwmSetWindowAttribute,
                 };
-                use windows::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID;
 
-                // Give dev and installed builds a real Windows app identity.
-                // WebView2 child processes will still exist (Tauri's renderer
-                // is WebView2 on Windows), but taskbar grouping, notifications,
-                // and shell surfaces should identify the top-level app as
-                // Aether Terminal instead of a generic webview host.
-                let app_user_model_id = HSTRING::from("com.aether.terminal");
-                if let Err(e) = unsafe {
-                    SetCurrentProcessExplicitAppUserModelID(&app_user_model_id)
-                } {
-                    log::debug!("windows app identity: AppUserModelID not applied: {e}");
-                }
-
-                if let Some(window) = app.get_webview_window("main") {
+                let direct_dwm_enabled =
+                    std::env::var("AETHER_EXPERIMENTAL_DWM_CHROME").as_deref() == Ok("1");
+                if !direct_dwm_enabled {
+                    log::info!(
+                        "window chrome: using Tauri windowEffects; direct DWM chrome disabled"
+                    );
+                } else if let Some(window) = app.get_webview_window("main") {
                     match window.hwnd() {
                         Ok(hwnd_raw) => {
                             let hwnd = HWND(hwnd_raw.0 as *mut _);
@@ -505,6 +514,8 @@ pub fn run() {
             ipc::native_terminal_input_commit,
             ipc::native_terminal_input_focus,
             ipc::native_terminal_input_drain,
+            ipc::native_terminal_input_paste,
+            ipc::native_terminal_input_preedit,
             ipc::native_terminal_input_status,
             ipc::resize_terminal,
             ipc::close_terminal,
@@ -522,6 +533,8 @@ pub fn run() {
             ipc::detect_shells,
             ipc::term_snapshot,
             ipc::term_prompt_marks,
+            ipc::term_command_blocks,
+            ipc::term_persisted_command_blocks,
             ipc::term_history_size,
             ipc::term_history_rows,
             ipc::term_search_history,

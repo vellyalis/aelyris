@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useGhostLayers } from "../shared/hooks/useGhostLayers";
+import { FALLBACK_TELEMETRY_EVENT, type FallbackTelemetryDetail } from "../shared/lib/fallbackTelemetry";
 import type { LayerIdPayload, LayerListSnapshot, LayerSummary, LayerUpdatedPayload } from "../shared/types/ghostdiff";
 
 type InvokeFn = (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
@@ -56,6 +57,18 @@ function updated(summary: LayerSummary, seq: number): LayerUpdatedPayload {
 
 function idPayload(layerId: string, seq: number): LayerIdPayload {
   return { seq, layerId };
+}
+
+function collectFallbackEvents() {
+  const events: FallbackTelemetryDetail[] = [];
+  const listener = (event: Event) => {
+    events.push((event as CustomEvent<FallbackTelemetryDetail>).detail);
+  };
+  window.addEventListener(FALLBACK_TELEMETRY_EVENT, listener);
+  return {
+    events,
+    cleanup: () => window.removeEventListener(FALLBACK_TELEMETRY_EVENT, listener),
+  };
 }
 
 describe("useGhostLayers", () => {
@@ -170,6 +183,70 @@ describe("useGhostLayers", () => {
     });
     const calls = (invokeMock as unknown as ReturnType<typeof vi.fn>).mock.calls;
     expect(calls.some((c) => c[0] === "dismiss_ghost_layer")).toBe(true);
+  });
+
+  it("reports snapshot failures instead of silently hiding ghost layer truth", async () => {
+    (invokeMock as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd) => {
+      if (cmd === "list_ghost_layers") return Promise.reject(new Error("ghost registry unavailable"));
+      return Promise.reject(new Error(`unexpected ${cmd}`));
+    });
+    const telemetry = collectFallbackEvents();
+
+    try {
+      const { result } = renderHook(() => useGhostLayers());
+
+      await waitFor(() => {
+        expect(telemetry.events).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              source: "ghost-layers",
+              operation: "list_ghost_layers",
+              userVisible: true,
+            }),
+          ]),
+        );
+      });
+      expect(result.current.layers).toEqual([]);
+    } finally {
+      telemetry.cleanup();
+    }
+  });
+
+  it("reports dismiss and file fetch failures while preserving a safe null result", async () => {
+    (invokeMock as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd) => {
+      if (cmd === "list_ghost_layers") return Promise.resolve(snap([], 0));
+      if (cmd === "dismiss_ghost_layer") return Promise.reject(new Error("already removed"));
+      if (cmd === "get_ghost_layer_file") return Promise.reject(new Error("file delta missing"));
+      return Promise.reject(new Error(`unexpected ${cmd}`));
+    });
+    const telemetry = collectFallbackEvents();
+
+    try {
+      const { result } = renderHook(() => useGhostLayers());
+      await waitFor(() => expect(result.current.layers).toHaveLength(0));
+
+      await act(async () => {
+        await result.current.dismiss("gone");
+      });
+      await expect(result.current.getFile("gone", "src/App.tsx")).resolves.toBeNull();
+
+      expect(telemetry.events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            source: "ghost-layers",
+            operation: "dismiss_ghost_layer",
+            userVisible: true,
+          }),
+          expect.objectContaining({
+            source: "ghost-layers",
+            operation: "get_ghost_layer_file",
+            userVisible: true,
+          }),
+        ]),
+      );
+    } finally {
+      telemetry.cleanup();
+    }
   });
 
   // ─── Race contract (round-7 listener-arming + seq filter) ──────────────

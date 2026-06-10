@@ -328,7 +328,10 @@ async function main() {
     if (page && spawnedTerminalId) {
       await call(page, "close_terminal", { id: spawnedTerminalId }).catch(() => {});
     }
-    if (browser) await browser.close().catch(() => {});
+    if (browser) {
+      if (typeof browser.disconnect === "function") browser.disconnect();
+      else await browser.close().catch(() => {});
+    }
   }
 }
 

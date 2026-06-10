@@ -1,6 +1,19 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { FALLBACK_TELEMETRY_EVENT, type FallbackTelemetryDetail } from "../shared/lib/fallbackTelemetry";
 import { sanitizeThemeOverrides, useAppStore } from "../shared/store/appStore";
 import { DEFAULT_MOOD_PRESET } from "../shared/themes/moods";
+
+function collectFallbackEvents() {
+  const events: FallbackTelemetryDetail[] = [];
+  const listener = (event: Event) => {
+    events.push((event as CustomEvent<FallbackTelemetryDetail>).detail);
+  };
+  window.addEventListener(FALLBACK_TELEMETRY_EVENT, listener);
+  return {
+    events,
+    cleanup: () => window.removeEventListener(FALLBACK_TELEMETRY_EVENT, listener),
+  };
+}
 
 // Reset store between tests
 beforeEach(() => {
@@ -29,6 +42,7 @@ beforeEach(() => {
     kanbanTasks: [],
     openFiles: [],
     activeFile: null,
+    fallbackTelemetryEvents: [],
     moodPresetId: DEFAULT_MOOD_PRESET,
     appWindowOpacity: 0.95,
     moodMaterialOverrides: {},
@@ -85,6 +99,61 @@ describe("appStore — UI visibility", () => {
     setSettingsVisible(true);
     expect(useAppStore.getState().paletteVisible).toBe(true);
     expect(useAppStore.getState().settingsVisible).toBe(true);
+  });
+});
+
+describe("appStore — fallback telemetry", () => {
+  it("keeps recent runtime fallback events visible and deduplicated", () => {
+    const { recordFallbackTelemetry } = useAppStore.getState();
+
+    recordFallbackTelemetry({
+      source: "terminal-selection",
+      operation: "write_clipboard_text",
+      severity: "warning",
+      message: "native clipboard denied",
+      userVisible: true,
+      timestamp: 10,
+    });
+    recordFallbackTelemetry({
+      source: "terminal-selection",
+      operation: "write_clipboard_text",
+      severity: "warning",
+      message: "native clipboard denied",
+      userVisible: true,
+      timestamp: 20,
+    });
+    recordFallbackTelemetry({
+      source: "terminal-ime",
+      operation: "set_ime_position",
+      severity: "error",
+      message: "IMM denied",
+      userVisible: true,
+      timestamp: 30,
+    });
+
+    expect(useAppStore.getState().fallbackTelemetryEvents).toEqual([
+      expect.objectContaining({ source: "terminal-ime", operation: "set_ime_position", timestamp: 30 }),
+      expect.objectContaining({ source: "terminal-selection", operation: "write_clipboard_text", timestamp: 20 }),
+    ]);
+  });
+
+  it("bounds fallback telemetry history so stale fallback noise cannot dominate the rail", () => {
+    const { recordFallbackTelemetry } = useAppStore.getState();
+    for (let index = 0; index < 35; index += 1) {
+      recordFallbackTelemetry({
+        source: "pane-mux",
+        operation: `local_recovery_${index}`,
+        severity: "warning",
+        message: `fallback ${index}`,
+        userVisible: true,
+        timestamp: index,
+      });
+    }
+
+    const events = useAppStore.getState().fallbackTelemetryEvents;
+    expect(events).toHaveLength(30);
+    expect(events[0].operation).toBe("local_recovery_34");
+    expect(events.at(-1)?.operation).toBe("local_recovery_5");
   });
 });
 
@@ -170,6 +239,45 @@ describe("appStore — model selection", () => {
     setSelectedModel("claude-opus");
     expect(useAppStore.getState().selectedModel).toBe("claude-opus");
   });
+
+  it("reports model and budget persistence failures instead of silently losing command-center policy", () => {
+    const telemetry = collectFallbackEvents();
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("quota exceeded");
+    });
+
+    try {
+      const { addAgentCost, setAgentBudgetLimit, setContextWarnPct, setPerSessionCostCap, setSelectedModel } =
+        useAppStore.getState();
+
+      setSelectedModel("gpt-5.5");
+      addAgentCost(1.25);
+      setAgentBudgetLimit(42);
+      setPerSessionCostCap(5);
+      setContextWarnPct(90);
+
+      expect(useAppStore.getState().selectedModel).toBe("gpt-5.5");
+      expect(useAppStore.getState().agentBudget).toMatchObject({ spent: 1.25, limit: 42 });
+      expect(useAppStore.getState().perSessionCostCap).toBe(5);
+      expect(useAppStore.getState().contextWarnPct).toBe(90);
+      expect(telemetry.events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ source: "app-store", operation: "persist_selected_model", userVisible: true }),
+          expect.objectContaining({ source: "app-store", operation: "persist_agent_budget_spent", userVisible: true }),
+          expect.objectContaining({ source: "app-store", operation: "persist_agent_budget_limit", userVisible: true }),
+          expect.objectContaining({
+            source: "app-store",
+            operation: "persist_per_session_cost_cap",
+            userVisible: true,
+          }),
+          expect.objectContaining({ source: "app-store", operation: "persist_context_warn_pct", userVisible: true }),
+        ]),
+      );
+    } finally {
+      setItem.mockRestore();
+      telemetry.cleanup();
+    }
+  });
 });
 
 describe("appStore — kanban", () => {
@@ -231,6 +339,33 @@ describe("appStore — kanban", () => {
     expect(updated[0].column).toBe("done");
     expect(updated[1].column).toBe("todo");
   });
+
+  it("reports Kanban persistence failures instead of silently losing task state", () => {
+    const telemetry = collectFallbackEvents();
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("quota exceeded");
+    });
+
+    try {
+      const { addKanbanTask, moveKanbanTask, updateKanbanTask } = useAppStore.getState();
+      addKanbanTask("Visible task");
+      const taskId = useAppStore.getState().kanbanTasks[0].id;
+      moveKanbanTask(taskId, "review");
+      updateKanbanTask(taskId, { title: "Still visible" });
+
+      expect(useAppStore.getState().kanbanTasks[0]).toMatchObject({ title: "Still visible", column: "review" });
+      expect(telemetry.events).toContainEqual(
+        expect.objectContaining({
+          source: "app-store",
+          operation: "persist_kanban_tasks",
+          userVisible: true,
+        }),
+      );
+    } finally {
+      setItem.mockRestore();
+      telemetry.cleanup();
+    }
+  });
 });
 
 describe("appStore — editor files", () => {
@@ -288,6 +423,31 @@ describe("appStore — editor files", () => {
     expect(useAppStore.getState().openFiles).toEqual([]);
     expect(useAppStore.getState().activeFile).toBeNull();
   });
+
+  it("reports editor persistence failures instead of silently losing open-file recovery", () => {
+    const telemetry = collectFallbackEvents();
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("quota exceeded");
+    });
+
+    try {
+      const { openFile, setActiveFile } = useAppStore.getState();
+      openFile("src/main.ts");
+      setActiveFile(null);
+
+      expect(useAppStore.getState().openFiles).toEqual(["src/main.ts"]);
+      expect(useAppStore.getState().activeFile).toBeNull();
+      expect(telemetry.events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ source: "app-store", operation: "persist_open_files", userVisible: true }),
+          expect.objectContaining({ source: "app-store", operation: "persist_active_file", userVisible: true }),
+        ]),
+      );
+    } finally {
+      setItem.mockRestore();
+      telemetry.cleanup();
+    }
+  });
 });
 
 describe("appStore — panel widths", () => {
@@ -339,6 +499,39 @@ describe("appStore — panel widths", () => {
     expect(useAppStore.getState().sidebarWidth).toBe(246);
     setRightPanelWidth(320.3);
     expect(useAppStore.getState().rightPanelWidth).toBe(320);
+  });
+
+  it("reports panel width persistence failures instead of silently losing layout preferences", () => {
+    const telemetry = collectFallbackEvents();
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("quota exceeded");
+    });
+
+    try {
+      const { setSidebarWidth, setRightPanelWidth } = useAppStore.getState();
+      setSidebarWidth(280);
+      setRightPanelWidth(400);
+
+      expect(useAppStore.getState().sidebarWidth).toBe(280);
+      expect(useAppStore.getState().rightPanelWidth).toBe(400);
+      expect(telemetry.events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            source: "app-store",
+            operation: "persist_sidebar_width",
+            userVisible: true,
+          }),
+          expect.objectContaining({
+            source: "app-store",
+            operation: "persist_right_panel_width",
+            userVisible: true,
+          }),
+        ]),
+      );
+    } finally {
+      setItem.mockRestore();
+      telemetry.cleanup();
+    }
   });
 });
 

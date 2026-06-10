@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import { type EditorOpenMode, loadEditorOpenMode, saveEditorOpenMode } from "../../shared/lib/externalEditor";
 import { isTauriRuntime } from "../../shared/lib/tauriRuntime";
-import { useAppStore, type WallpaperSettings } from "../../shared/store/appStore";
+import { type TerminalTextClarity, useAppStore, type WallpaperSettings } from "../../shared/store/appStore";
 import { toast } from "../../shared/store/toastStore";
 import type { AccentOverrides } from "../../shared/themes/catppuccin";
 import {
@@ -38,7 +38,59 @@ const THEMES = [
   { id: "dracula", label: "Dracula" },
 ];
 
-const FONTS = ["IBM Plex Mono", "Cascadia Code", "JetBrains Mono", "Fira Code", "Consolas"];
+const FONTS = [
+  "Cascadia Code",
+  "Cascadia Mono",
+  "Cascadia Next JP",
+  "BIZ UDGothic",
+  "Yu Gothic UI",
+  "Meiryo",
+  "IBM Plex Mono",
+  "JetBrains Mono",
+  "Fira Code",
+  "Consolas",
+];
+const TERMINAL_TEXT_CLARITY_OPTIONS: { value: TerminalTextClarity; label: string }[] = [
+  { value: "balanced", label: "Balanced" },
+  { value: "solid", label: "Sharp" },
+  { value: "glass", label: "Glass" },
+];
+const TERMINAL_FONT_FALLBACKS = [
+  "Cascadia Mono",
+  "Cascadia Next JP",
+  "BIZ UDGothic",
+  "Yu Gothic UI",
+  "Meiryo",
+  "Noto Sans Mono CJK JP",
+  "IBM Plex Mono",
+  "monospace",
+];
+
+function terminalPrimaryFont(fontFamily: string): string {
+  return (
+    fontFamily
+      .split(",")[0]
+      ?.trim()
+      .replace(/^['"]|['"]$/g, "") || "Cascadia Code"
+  );
+}
+
+function terminalFontStack(primaryFont: string): string {
+  const primary = terminalPrimaryFont(primaryFont);
+  if (!primaryFont.includes(",")) {
+    const stack = [primary, ...TERMINAL_FONT_FALLBACKS.filter((font) => font !== primary)];
+    return stack.join(", ");
+  }
+  const entries = primaryFont
+    .split(",")
+    .map((font) => font.trim())
+    .filter(Boolean);
+  const normalized = new Set(entries.map((font) => terminalPrimaryFont(font)));
+  for (const fallback of TERMINAL_FONT_FALLBACKS) {
+    if (!normalized.has(fallback)) entries.push(fallback);
+  }
+  return entries.join(", ");
+}
 
 const SHELLS = [
   { id: "powershell", label: "PowerShell" },
@@ -66,8 +118,10 @@ function previewConfig(theme: string, moodPreset: string, shell: string, liveMod
       theme,
       mood_preset: normalizeMoodPreset(moodPreset),
       ui_font_family: "IBM Plex Sans",
-      terminal_font_family: "IBM Plex Mono",
+      terminal_font_family: terminalFontStack("Cascadia Code"),
       font_size: 14,
+      terminal_text_clarity: "solid",
+      terminal_surface_opacity: 0.82,
       line_height: 1.4,
       ligatures: true,
       window_effect: "mica",
@@ -99,6 +153,8 @@ interface LoadedConfig {
     ui_font_family: string;
     terminal_font_family: string;
     font_size: number;
+    terminal_text_clarity?: TerminalTextClarity;
+    terminal_surface_opacity?: number;
     line_height: number;
     ligatures: boolean;
     window_effect: string;
@@ -146,10 +202,15 @@ export function Settings({ visible, onClose }: SettingsProps) {
   const setGhostDiffLiveMode = useAppStore((s) => s.setGhostDiffLiveMode);
   const storeWindowOpacity = useAppStore((s) => s.appWindowOpacity);
   const setAppWindowOpacity = useAppStore((s) => s.setAppWindowOpacity);
+  const setTerminalAppearance = useAppStore((s) => s.setTerminalAppearance);
+  const storeTerminalTextClarity = useAppStore((s) => s.terminalTextClarity);
+  const storeTerminalSurfaceOpacity = useAppStore((s) => s.terminalSurfaceOpacity);
   const [theme, setTheme] = useState(storeTheme);
   const [mood, setMood] = useState(storeMood);
-  const [font, setFont] = useState("IBM Plex Mono");
+  const [font, setFont] = useState("Cascadia Code");
   const [fontSize, setFontSize] = useState(14);
+  const [terminalTextClarity, setTerminalTextClarity] = useState<TerminalTextClarity>(storeTerminalTextClarity);
+  const [terminalSurfaceOpacity, setTerminalSurfaceOpacity] = useState(storeTerminalSurfaceOpacity);
   const [lineHeight, setLineHeight] = useState(1.4);
   const [ligatures, setLigatures] = useState(true);
   const [defaultShell, setDefaultShell] = useState("powershell");
@@ -197,8 +258,10 @@ export function Settings({ visible, onClose }: SettingsProps) {
       setLoadedConfig(cfg);
       setTheme(cfg.appearance.theme);
       setMood(normalizeMoodPreset(cfg.appearance.mood_preset));
-      setFont(cfg.appearance.terminal_font_family);
+      setFont(terminalPrimaryFont(cfg.appearance.terminal_font_family));
       setFontSize(cfg.appearance.font_size);
+      setTerminalTextClarity(cfg.appearance.terminal_text_clarity ?? "solid");
+      setTerminalSurfaceOpacity(cfg.appearance.terminal_surface_opacity ?? storeTerminalSurfaceOpacity);
       setLineHeight(cfg.appearance.line_height);
       setLigatures(cfg.appearance.ligatures);
       replaceThemeOverrides(cfg.appearance.theme_overrides ?? {});
@@ -208,6 +271,12 @@ export function Settings({ visible, onClose }: SettingsProps) {
       setLiveMode(cfg.ghost_diff?.live_mode ?? false);
       setWindowOpacity(cfg.appearance.opacity);
       setAppWindowOpacity(cfg.appearance.opacity);
+      setTerminalAppearance({
+        fontFamily: terminalFontStack(cfg.appearance.terminal_font_family),
+        fontSize: cfg.appearance.font_size,
+        textClarity: cfg.appearance.terminal_text_clarity ?? "solid",
+        surfaceOpacity: cfg.appearance.terminal_surface_opacity,
+      });
       return;
     }
     let cancelled = false;
@@ -223,8 +292,10 @@ export function Settings({ visible, onClose }: SettingsProps) {
         replaceWallpaperSettingsByMood(cfg.appearance.wallpaper_settings_by_mood ?? {});
         setMood(persistedMood);
         setMoodPresetId(persistedMood);
-        setFont(cfg.appearance.terminal_font_family.split(",")[0].trim());
+        setFont(terminalPrimaryFont(cfg.appearance.terminal_font_family));
         setFontSize(cfg.appearance.font_size);
+        setTerminalTextClarity(cfg.appearance.terminal_text_clarity ?? "solid");
+        setTerminalSurfaceOpacity(cfg.appearance.terminal_surface_opacity ?? storeTerminalSurfaceOpacity);
         setLineHeight(cfg.appearance.line_height);
         setLigatures(cfg.appearance.ligatures);
         setDefaultShell(cfg.terminal.default_shell);
@@ -232,6 +303,12 @@ export function Settings({ visible, onClose }: SettingsProps) {
         setCursorBlink(cfg.terminal.cursor_blink);
         setWindowOpacity(cfg.appearance.opacity);
         setAppWindowOpacity(cfg.appearance.opacity);
+        setTerminalAppearance({
+          fontFamily: terminalFontStack(cfg.appearance.terminal_font_family),
+          fontSize: cfg.appearance.font_size,
+          textClarity: cfg.appearance.terminal_text_clarity ?? "solid",
+          surfaceOpacity: cfg.appearance.terminal_surface_opacity,
+        });
         // Rehydrate from disk so config.toml is the source of truth — this
         // corrects the localStorage bootstrap value if the user edited the
         // file directly.
@@ -257,6 +334,8 @@ export function Settings({ visible, onClose }: SettingsProps) {
     replaceThemeOverrides,
     replaceMoodMaterialOverrides,
     replaceWallpaperSettingsByMood,
+    setTerminalAppearance,
+    storeTerminalSurfaceOpacity,
   ]);
 
   const markEdited = () => {
@@ -338,19 +417,29 @@ export function Settings({ visible, onClose }: SettingsProps) {
       setMoodPresetId(mood);
       setGhostDiffLiveMode(liveMode);
       setAppWindowOpacity(windowOpacity);
+      const terminalFontFamily = terminalFontStack(font);
+      setTerminalAppearance({
+        fontFamily: terminalFontFamily,
+        fontSize,
+        textClarity: terminalTextClarity,
+        surfaceOpacity: terminalSurfaceOpacity,
+      });
       saveEditorOpenMode(editorOpenMode);
       onClose();
       return;
     }
     const latestStore = useAppStore.getState();
+    const terminalFontFamily = terminalFontStack(font);
     const merged: LoadedConfig = {
       ...loadedConfig,
       appearance: {
         ...loadedConfig.appearance,
         theme,
         mood_preset: mood,
-        terminal_font_family: font,
+        terminal_font_family: terminalFontFamily,
         font_size: fontSize,
+        terminal_text_clarity: terminalTextClarity,
+        terminal_surface_opacity: terminalSurfaceOpacity,
         line_height: lineHeight,
         ligatures,
         opacity: windowOpacity,
@@ -375,6 +464,12 @@ export function Settings({ visible, onClose }: SettingsProps) {
         setMoodPresetId(mood);
         setGhostDiffLiveMode(liveMode);
         setAppWindowOpacity(windowOpacity);
+        setTerminalAppearance({
+          fontFamily: terminalFontFamily,
+          fontSize,
+          textClarity: terminalTextClarity,
+          surfaceOpacity: terminalSurfaceOpacity,
+        });
         saveEditorOpenMode(editorOpenMode);
         onClose();
       })
@@ -481,6 +576,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
                     id="settings-window-opacity"
                     className={styles.materialSlider}
                     type="range"
+                    aria-label="Window opacity"
                     min={0.35}
                     max={1}
                     step={0.01}
@@ -493,6 +589,32 @@ export function Settings({ visible, onClose }: SettingsProps) {
                     }}
                   />
                   <span className={styles.materialValue}>{Math.round(windowOpacity * 100)}%</span>
+                </div>
+              </div>
+              <div className={styles.field}>
+                <label className={styles.label} htmlFor="settings-terminal-surface-opacity">
+                  Terminal surface opacity
+                </label>
+                <p className={styles.materialHint}>Controls only the terminal glass/backing layers; glyphs stay solid.</p>
+                <div className={styles.materialRow}>
+                  <span className={styles.materialColorPreview} aria-hidden="true" />
+                  <input
+                    id="settings-terminal-surface-opacity"
+                    className={styles.materialSlider}
+                    type="range"
+                    aria-label="Terminal surface opacity"
+                    min={0.42}
+                    max={1}
+                    step={0.01}
+                    value={terminalSurfaceOpacity}
+                    onChange={(e) => {
+                      markEdited();
+                      const next = Number(e.target.value);
+                      setTerminalSurfaceOpacity(next);
+                      setTerminalAppearance({ surfaceOpacity: next });
+                    }}
+                  />
+                  <span className={styles.materialValue}>{Math.round(terminalSurfaceOpacity * 100)}%</span>
                 </div>
               </div>
               <div className={styles.field}>
@@ -535,6 +657,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
                           id={`settings-${control.alphaKey}`}
                           className={styles.materialSlider}
                           type="range"
+                          aria-label={`${control.label} opacity`}
                           min={control.min}
                           max={control.max}
                           step={0.01}
@@ -580,6 +703,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
                     ref={wallpaperFileInputRef}
                     className={styles.wallpaperFileInput}
                     type="file"
+                    aria-label="Choose background image file"
                     accept="image/png,image/jpeg,image/webp,image/bmp,image/gif"
                     tabIndex={-1}
                     onChange={(event) => {
@@ -613,6 +737,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
                       id="settings-wallpaper-opacity"
                       className={styles.materialSlider}
                       type="range"
+                      aria-label="Background image opacity"
                       min={0}
                       max={0.85}
                       step={0.01}
@@ -633,6 +758,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
                       id="settings-wallpaper-scale"
                       className={styles.materialSlider}
                       type="range"
+                      aria-label="Background image scale"
                       min={25}
                       max={300}
                       step={1}
@@ -653,6 +779,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
                       id="settings-wallpaper-position-x"
                       className={styles.materialSlider}
                       type="range"
+                      aria-label="Background image horizontal position"
                       min={0}
                       max={100}
                       step={1}
@@ -673,6 +800,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
                       id="settings-wallpaper-position-y"
                       className={styles.materialSlider}
                       type="range"
+                      aria-label="Background image vertical position"
                       min={0}
                       max={100}
                       step={1}
@@ -721,6 +849,22 @@ export function Settings({ visible, onClose }: SettingsProps) {
                       markEdited();
                       setFontSize(Number(e.target.value));
                     }}
+                  />
+                </div>
+                <div className={styles.field}>
+                  <label className={styles.label} htmlFor="settings-terminal-text-clarity">
+                    Text Clarity
+                  </label>
+                  <Select
+                    id="settings-terminal-text-clarity"
+                    value={terminalTextClarity}
+                    onValueChange={(next) => {
+                      markEdited();
+                      setTerminalTextClarity(next as TerminalTextClarity);
+                      setTerminalAppearance({ textClarity: next as TerminalTextClarity });
+                    }}
+                    options={TERMINAL_TEXT_CLARITY_OPTIONS}
+                    ariaLabel="Terminal text clarity"
                   />
                 </div>
                 <div className={styles.field}>

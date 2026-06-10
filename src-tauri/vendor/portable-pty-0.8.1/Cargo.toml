@@ -49,6 +49,7 @@ optional = true
 
 [dependencies.serial]
 version = "0.4"
+optional = true
 
 [dependencies.shell-words]
 version = "1.1"
@@ -61,6 +62,7 @@ version = "1.2"
 
 [features]
 default = []
+serial_support = ["serial"]
 serde_support = [
     "serde",
     "serde_derive",

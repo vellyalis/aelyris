@@ -332,6 +332,66 @@
   color: var(--text-primary);
 }
 
+.provenanceLine {
+  display: inline-flex;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  min-width: 0;
+  min-inline-size: 0;
+  max-width: 100%;
+  max-height: 34px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: clip;
+  gap: 3px;
+}
+
+.provenanceKicker,
+.provenanceChip {
+  min-width: 0;
+  max-width: 104px;
+  overflow: hidden;
+  padding: 1px 5px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.provenanceKicker {
+  background: rgba(244, 214, 146, 0.1);
+  color: var(--gold);
+  font-weight: var(--weight-semibold);
+}
+
+.provenanceChip {
+  border: 1px solid rgba(142, 226, 241, 0.1);
+  background: rgba(142, 226, 241, 0.055);
+  color: var(--text-secondary);
+}
+
+button.provenanceChip {
+  cursor: pointer;
+}
+
+.provenanceChip[data-status="pass"],
+.provenanceChip[data-status="passed"] {
+  color: var(--ctp-green);
+}
+
+.provenanceChip[data-status="running"] {
+  color: var(--gold);
+}
+
+.provenanceChip[data-status="fail"],
+.provenanceChip[data-status="failed"],
+.provenanceChip[data-status="high"],
+.provenanceChip[data-status="critical"] {
+  color: var(--ctp-red);
+}
+
 .more {
   color: var(--text-muted);
   font-family: var(--font-mono);

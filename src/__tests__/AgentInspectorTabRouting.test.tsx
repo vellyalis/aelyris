@@ -91,7 +91,7 @@ describe("AgentInspector tab routing", () => {
     expect(src).toContain('title="No parallel runs"');
     expect(src).toContain("Start two or more agents to compare roles, context, and handoffs.");
     expect(src).toContain('title="No review target selected"');
-    expect(src).toContain("open Changes from the rail");
+    expect(src).toContain("open Git from the rail");
   });
 
   it("hides contextual tabs until their data exists", () => {

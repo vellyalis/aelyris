@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
+import { deriveAiCliLaunchPlan } from "../shared/lib/aiCliLaunchPlanner";
 import {
+  buildRightRailActionAuditPayload,
   deriveRightRailActions,
   deriveRightRailNowState,
   deriveRightRailRecommendation,
 } from "../shared/lib/rightRailAdvisor";
 import { buildWorkstationGraph } from "../shared/lib/workstationGraph";
 import type { AgentSession } from "../shared/types/agent";
+import type { InteractiveSession } from "../shared/types/interactiveAgent";
 
 function session(id: string, overrides: Partial<AgentSession> = {}): AgentSession {
   return {
@@ -18,6 +21,64 @@ function session(id: string, overrides: Partial<AgentSession> = {}): AgentSessio
     logs: [],
     cost: 0,
     tokensUsed: 10_000,
+    ...overrides,
+  };
+}
+
+const LAUNCH_PLAN_NOW = Date.parse("2026-05-19T10:30:00.000Z");
+
+function realCliEvidence() {
+  return {
+    ok: true,
+    status: "pass",
+    finishedAt: "2026-05-19T10:26:48.565Z",
+    checks: {
+      commandSessionCapability: true,
+      clis: [
+        {
+          cli: "codex",
+          status: "pass",
+          discovery: { preferred: { name: "codex.cmd" } },
+          markerSeen: true,
+          commandNotFound: false,
+          versionLike: true,
+          outputSample: "codex-cli 0.130.0",
+        },
+        {
+          cli: "claude",
+          status: "pass",
+          discovery: { preferred: { name: "claude.exe" } },
+          markerSeen: true,
+          commandNotFound: false,
+          versionLike: true,
+          outputSample: "2.1.142 (Claude Code)",
+        },
+        {
+          cli: "gemini",
+          status: "pass",
+          discovery: { preferred: { name: "gemini.cmd" } },
+          markerSeen: true,
+          commandNotFound: false,
+          versionLike: true,
+          outputSample: "0.42.0",
+        },
+      ],
+    },
+  };
+}
+
+function interactiveSession(overrides: Partial<InteractiveSession> = {}): InteractiveSession {
+  return {
+    id: "pty-1",
+    pty_id: "pty-1",
+    backend: "sidecar",
+    cli: "claude",
+    status: "running",
+    model: "sonnet",
+    cwd: "C:/repo",
+    cost: 0,
+    tokens_used: 0,
+    started_at: 0,
     ...overrides,
   };
 }
@@ -270,6 +331,93 @@ describe("deriveRightRailActions", () => {
     });
   });
 
+  it("escalates interactive AI CLI native fallback as a visible terminal-boundary risk", () => {
+    const actions = deriveRightRailActions({
+      sessions: [session("agent")],
+      interactiveSessionCount: 1,
+      interactiveNativeFallbackCount: 1,
+      changedFilesCount: 0,
+      contextWarnPct: 85,
+      currentMode: "command",
+    });
+
+    expect(actions[0]).toMatchObject({
+      id: "inspect-cli-boundary",
+      label: "Fix CLI fallback",
+      detail: "1 native fallback",
+      state: "unhealthy",
+      target: expect.objectContaining({ kind: "widget", label: "processes" }),
+      execution: expect.objectContaining({
+        auditEvent: "right_rail.cli_boundary.opened",
+        guardrailLabel: "Fallback visible",
+      }),
+    });
+  });
+
+  it("escalates runtime fallback telemetry into Reliability instead of leaving it as an event-only warning", () => {
+    const actions = deriveRightRailActions({
+      sessions: [],
+      interactiveSessionCount: 0,
+      changedFilesCount: 0,
+      contextWarnPct: 85,
+      currentMode: "command",
+      recentFallbackEvents: [
+        {
+          source: "terminal-selection",
+          operation: "write_clipboard_text",
+          severity: "error",
+          message: "browser clipboard denied",
+          userVisible: true,
+          boundary: "webview-fallback",
+          nativeBoundaryEscaped: true,
+          timestamp: 100,
+        },
+      ],
+    });
+
+    expect(actions[0]).toMatchObject({
+      id: "inspect-risk",
+      label: "Inspect fallback",
+      detail: "1 runtime fallback",
+      state: "unhealthy",
+      target: expect.objectContaining({ kind: "widget", label: "reliability" }),
+      execution: expect.objectContaining({
+        guardrailLabel: "Fallback visible",
+        guardrailDetail: "Runtime fallbacks are routed to Reliability instead of being silent UI behavior.",
+        evidence: "terminal-selection.write_clipboard_text (webview-fallback): browser clipboard denied",
+      }),
+      auditPayload: expect.objectContaining({
+        fallbackTelemetryCount: 1,
+        fallbackTelemetryErrors: 1,
+        fallbackTelemetryLatest: expect.objectContaining({
+          boundary: "webview-fallback",
+          nativeBoundaryEscaped: true,
+        }),
+      }),
+    });
+  });
+
+  it("keeps healthy interactive AI CLI sidecar provenance available without outranking live work", () => {
+    const actions = deriveRightRailActions({
+      sessions: [],
+      interactiveSessionCount: 1,
+      changedFilesCount: 0,
+      contextWarnPct: 85,
+      currentMode: "command",
+    });
+
+    expect(actions.map((action) => action.id)).toEqual(["track-run", "inspect-cli-boundary"]);
+    expect(actions[1]).toMatchObject({
+      label: "Verify CLI path",
+      detail: "1 sidecar CLI",
+      state: "running",
+      execution: expect.objectContaining({
+        label: "Inspect CLI",
+        evidence: expect.stringContaining("sidecar command-session boundary"),
+      }),
+    });
+  });
+
   it("keeps idle rail actionable", () => {
     const actions = deriveRightRailActions({
       sessions: [],
@@ -300,6 +448,102 @@ describe("deriveRightRailActions", () => {
     ]);
   });
 
+  it("turns launch planner proof into a first-class command action before generic toolkit launch", () => {
+    const actions = deriveRightRailActions({
+      sessions: [],
+      interactiveSessionCount: 0,
+      changedFilesCount: 0,
+      contextWarnPct: 85,
+      currentMode: "observe",
+      aiCliLaunchPlan: deriveAiCliLaunchPlan({
+        evidence: realCliEvidence(),
+        preferredProvider: "codex",
+        currentTimeMs: LAUNCH_PLAN_NOW,
+      }),
+    });
+
+    expect(actions.map((action) => action.id)).toEqual(["plan-cli-launch", "ready-command"]);
+    expect(actions[0]).toMatchObject({
+      id: "plan-cli-launch",
+      label: "Plan AI launch",
+      detail: "3/3 CLIs proven · sidecar first",
+      target: expect.objectContaining({ kind: "widget", label: "toolkit" }),
+      execution: expect.objectContaining({
+        status: "ready",
+        label: "Plan launch",
+        auditEvent: "right_rail.cli_launch_planner.opened",
+        guardrailLabel: "Launch proof",
+      }),
+      auditPayload: expect.objectContaining({
+        aiCliLaunchTrace: expect.objectContaining({
+          kind: "ai-cli-launch-plan",
+          recommendedProvider: "codex",
+          selectedLauncher: "codex.cmd",
+        }),
+      }),
+    });
+  });
+
+  it("routes blocked launch planner state to health instead of hiding the launcher gate", () => {
+    const actions = deriveRightRailActions({
+      sessions: [],
+      interactiveSessionCount: 0,
+      changedFilesCount: 0,
+      contextWarnPct: 85,
+      currentMode: "command",
+      aiCliLaunchPlan: deriveAiCliLaunchPlan({
+        evidence: realCliEvidence(),
+        interactiveSessions: [interactiveSession({ backend: "native" })],
+        currentTimeMs: LAUNCH_PLAN_NOW,
+      }),
+    });
+
+    expect(actions[0]).toMatchObject({
+      id: "plan-cli-launch",
+      mode: "observe",
+      tone: "warn",
+      state: "unhealthy",
+      label: "Fix launch gate",
+      target: expect.objectContaining({ label: "processes", widget: "processes" }),
+      execution: expect.objectContaining({
+        status: "guided",
+        label: "Open Health",
+        recoveryStep: "Restart fallback sessions after the sidecar is healthy.",
+      }),
+    });
+  });
+
+  it("builds an audit payload that preserves launch planner trace provenance", () => {
+    const [action] = deriveRightRailActions({
+      sessions: [],
+      interactiveSessionCount: 0,
+      changedFilesCount: 0,
+      contextWarnPct: 85,
+      currentMode: "observe",
+      aiCliLaunchPlan: deriveAiCliLaunchPlan({
+        evidence: realCliEvidence(),
+        preferredProvider: "claude",
+        currentTimeMs: LAUNCH_PLAN_NOW,
+      }),
+    });
+
+    const payload = buildRightRailActionAuditPayload(action, "observe");
+
+    expect(payload).toMatchObject({
+      actionId: "plan-cli-launch",
+      fromMode: "observe",
+      toMode: "command",
+      operation: "focus-widget",
+      executionStatus: "ready",
+      aiCliLaunchTrace: expect.objectContaining({
+        kind: "ai-cli-launch-plan",
+        recommendedProvider: "claude",
+        selectedLauncher: "claude.exe",
+        selectedVersion: "2.1.142 (Claude Code)",
+      }),
+    });
+  });
+
   it("explains why each ranked action exists, what to do next, and what execution should achieve", () => {
     const actions = deriveRightRailActions({
       sessions: [session("blocked", { status: "waiting", blockedReason: "needs approval" })],
@@ -312,6 +556,9 @@ describe("deriveRightRailActions", () => {
 
     expect(actions.length).toBeGreaterThan(1);
     for (const action of actions) {
+      expect(["workspace", "session", "pane", "file", "widget"]).toContain(action.target.kind);
+      expect(action.target.label.length).toBeGreaterThan(2);
+      expect(action.target.reason.length).toBeGreaterThan(12);
       expect(action.why.length).toBeGreaterThan(12);
       expect(action.nextStep.length).toBeGreaterThan(12);
       expect(["ready", "guided", "blocked"]).toContain(action.execution.status);
@@ -320,6 +567,7 @@ describe("deriveRightRailActions", () => {
       );
       expect(action.execution.label.length).toBeGreaterThan(2);
       expect(action.execution.expectedResult.length).toBeGreaterThan(24);
+      expect(action.execution.evidence.length).toBeGreaterThan(24);
       expect(action.execution.auditEvent).toMatch(/^right_rail\./);
       expect(action.execution.recoveryStep?.length ?? 0).toBeGreaterThan(20);
     }
@@ -346,10 +594,16 @@ describe("deriveRightRailActions", () => {
       }),
     });
     expect(actions.find((action) => action.id === "review-queue")).toMatchObject({
+      target: expect.objectContaining({
+        kind: "file",
+        label: "src/App.tsx",
+        path: "src/App.tsx",
+      }),
       targetFilePath: "src/App.tsx",
       execution: expect.objectContaining({
         status: "ready",
         operation: "open-primary-diff",
+        evidence: expect.stringContaining("unreviewed changes"),
       }),
     });
   });

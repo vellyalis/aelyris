@@ -55,6 +55,7 @@ pub mod unix;
 #[cfg(windows)]
 pub mod win;
 
+#[cfg(feature = "serial_support")]
 pub mod serial;
 
 /// Represents the size of the visible display area in the pty

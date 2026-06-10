@@ -123,7 +123,9 @@ async function main() {
     const ctx = browser.contexts()[0];
     const pages = ctx?.pages() ?? [];
     report.pages = pages.map((page) => page.url());
-    const page = pages.find((candidate) => candidate.url().includes("localhost:1420") || candidate.url().includes("tauri"));
+    const page = pages.find(
+      (candidate) => candidate.url().includes("localhost:1420") || candidate.url().includes("tauri"),
+    );
     if (!page) throw new Error("No Tauri WebView page found over CDP");
     const quality = attachQualityCollectors(page);
 
@@ -154,9 +156,12 @@ async function main() {
       null,
       { timeout: WAIT_MS },
     );
-    await page.waitForSelector('[data-widget="audit-timeline"][data-rail-focus="true"], [data-widget="audit-timeline"]', {
-      timeout: WAIT_MS,
-    });
+    await page.waitForSelector(
+      '[data-widget="audit-timeline"][data-rail-focus="true"], [data-widget="audit-timeline"]',
+      {
+        timeout: WAIT_MS,
+      },
+    );
     await page.waitForSelector('[aria-label="Audit timeline"] article[data-selected="true"]', { timeout: WAIT_MS });
     report.checks.auditTimelineFocused = true;
     report.selectedAuditText = await page
@@ -174,7 +179,10 @@ async function main() {
     report.errors.push(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   } finally {
-    if (browser) await browser.close().catch(() => {});
+    if (browser) {
+      if (typeof browser.disconnect === "function") browser.disconnect();
+      else await browser.close().catch(() => {});
+    }
     const artifact = writeArtifact();
     if (report.ok) {
       console.log(`right rail audit jump smoke passed: ${artifact}`);

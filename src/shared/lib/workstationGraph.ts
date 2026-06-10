@@ -66,6 +66,7 @@ export type WorkstationGraphNodeKind =
   | "workflow"
   | "phase"
   | "tool"
+  | "command_block"
   | "file"
   | "test"
   | "blocker"
@@ -87,7 +88,8 @@ export type WorkstationGraphEdgeKind =
   | "reports_to"
   | "attached_to"
   | "derived_from"
-  | "used_tool";
+  | "used_tool"
+  | "ran";
 
 export interface WorkstationGraphNode {
   id: string;
@@ -126,6 +128,33 @@ export interface WorkstationGraphTest {
   agentId?: string;
 }
 
+export interface WorkstationGraphCommandBlock {
+  id: string;
+  command: string;
+  cwd: string;
+  status?: "passed" | "failed" | "running" | "unknown" | string;
+  exitCode?: number | null;
+  shell?: string;
+  startedAt?: number | string;
+  endedAt?: number | string;
+  paneId?: string | null;
+  terminalId?: string | null;
+  processId?: number | string | null;
+  agentId?: string | null;
+  filePaths?: readonly string[];
+  validationKind?: "test" | "lint" | "typecheck" | "build" | "format" | "smoke" | "unknown" | string;
+  outputPreview?: string;
+  commandSequence?: number | null;
+  outputSequence?: number | null;
+  endSequence?: number | null;
+  commandHistorySize?: number | null;
+  outputHistorySize?: number | null;
+  endHistorySize?: number | null;
+  commandScreenLine?: number | null;
+  outputScreenLine?: number | null;
+  endScreenLine?: number | null;
+}
+
 export interface WorkstationGraphRisk {
   id: string;
   title: string;
@@ -157,6 +186,7 @@ export interface WorkstationGraphInput {
   sessions?: readonly AgentSession[];
   panes?: readonly WorkstationGraphPane[];
   changedFiles?: readonly { path: string; status?: string }[];
+  commandBlocks?: readonly WorkstationGraphCommandBlock[];
   tests?: readonly WorkstationGraphTest[];
   risks?: readonly WorkstationGraphRisk[];
   blockers?: readonly WorkstationGraphBlocker[];
@@ -184,6 +214,37 @@ export interface AgentImpactTrace {
   notifications: string[];
   finalReports: string[];
   contextPacks: string[];
+}
+
+export interface FileProvenanceTrace {
+  path: string;
+  owners: Array<{ id: string; name: string; role?: string; status?: string }>;
+  tools: Array<{ id: string; label: string; status?: string }>;
+  commands: Array<{
+    id: string;
+    label: string;
+    command: string;
+    status?: string;
+    exitCode?: number | null;
+    cwd?: string;
+    shell?: string;
+    validationKind?: string;
+    terminalId?: string;
+    commandSequence?: number | null;
+    outputSequence?: number | null;
+    endSequence?: number | null;
+    commandHistorySize?: number | null;
+    outputHistorySize?: number | null;
+    endHistorySize?: number | null;
+    commandScreenLine?: number | null;
+    outputScreenLine?: number | null;
+    endScreenLine?: number | null;
+  }>;
+  tests: Array<{ id: string; label: string; status?: string }>;
+  risks: Array<{ id: string; label: string; status?: string; severity?: string }>;
+  blockers: Array<{ id: string; label: string; status?: string }>;
+  worktrees: string[];
+  hasEvidence: boolean;
 }
 
 export interface WorkstationGraphFilter {
@@ -453,7 +514,13 @@ export function buildWorkstationGraph(input: WorkstationGraphInput): Workstation
       label: session.name,
       status: session.status,
       role: session.role,
-      metadata: { model: session.model, tokensUsed: session.tokensUsed },
+      metadata: {
+        model: session.model,
+        tokensUsed: session.tokensUsed,
+        workspaceScope: session.workspaceScope,
+        worktreePath: session.worktree?.path,
+        worktreeBranch: session.worktree?.branch,
+      },
     });
     const parentSession = session.handoffFrom ? sessionsById.get(session.handoffFrom) : undefined;
     addEdge(edges, threadId ?? workspaceId, agentNodeId, "owns", {
@@ -500,6 +567,81 @@ export function buildWorkstationGraph(input: WorkstationGraphInput): Workstation
         addNode(nodes, { id: fileNodeId, kind: "file", label: fileName(filePath), path: filePath });
         addEdge(edges, toolNodeId, fileNodeId, parsed.isFileChange ? "changed" : "read");
       }
+    }
+  }
+
+  for (const command of input.commandBlocks ?? []) {
+    const commandNodeId = nodeId("command_block", command.id);
+    const status = commandBlockStatus(command);
+    const validationKind = inferValidationKind(command);
+    addNode(nodes, {
+      id: commandNodeId,
+      kind: "command_block",
+      label: commandLabel(command.command),
+      status,
+      metadata: {
+        command: command.command,
+        cwd: normalizePath(command.cwd),
+        shell: command.shell,
+        exitCode: command.exitCode,
+        startedAt: command.startedAt,
+        endedAt: command.endedAt,
+        paneId: command.paneId,
+        terminalId: command.terminalId,
+        processId: command.processId,
+        validationKind,
+        outputPreview: command.outputPreview,
+        commandSequence: command.commandSequence,
+        outputSequence: command.outputSequence,
+        endSequence: command.endSequence,
+        commandHistorySize: command.commandHistorySize,
+        outputHistorySize: command.outputHistorySize,
+        endHistorySize: command.endHistorySize,
+        commandScreenLine: command.commandScreenLine,
+        outputScreenLine: command.outputScreenLine,
+        endScreenLine: command.endScreenLine,
+      },
+    });
+
+    if (command.agentId && nodes.has(nodeId("agent", command.agentId))) {
+      addEdge(edges, nodeId("agent", command.agentId), commandNodeId, "ran", { command: command.command, status });
+    }
+    if (command.paneId) {
+      const paneNodeId = nodeId("pane", command.paneId);
+      if (!nodes.has(paneNodeId)) {
+        addNode(nodes, { id: paneNodeId, kind: "pane", label: command.paneId, metadata: { paneId: command.paneId } });
+        addEdge(edges, threadId ?? workspaceId, paneNodeId, "owns");
+      }
+      addEdge(edges, paneNodeId, commandNodeId, "ran", { command: command.command, status });
+    }
+    if (command.terminalId) {
+      const terminalNodeId = nodeId("terminal", command.terminalId);
+      if (!nodes.has(terminalNodeId))
+        addNode(nodes, { id: terminalNodeId, kind: "terminal", label: command.terminalId });
+      addEdge(edges, terminalNodeId, commandNodeId, "ran", { command: command.command, status });
+    }
+    if (command.processId != null) {
+      const processNodeId = nodeId("process", String(command.processId));
+      if (!nodes.has(processNodeId))
+        addNode(nodes, { id: processNodeId, kind: "process", label: String(command.processId) });
+      addEdge(edges, processNodeId, commandNodeId, "ran", { command: command.command, status });
+    }
+
+    for (const path of command.filePaths ?? []) {
+      const filePath = normalizePath(path);
+      const fileNodeId = nodeId("file", filePath);
+      addNode(nodes, {
+        id: fileNodeId,
+        kind: "file",
+        label: fileName(filePath),
+        path: filePath,
+        status: nodes.get(fileNodeId)?.status ?? "validated",
+      });
+      addEdge(edges, commandNodeId, fileNodeId, isValidationCommandBlock(command) ? "tested" : "read", {
+        validationKind,
+        exitCode: command.exitCode,
+        status,
+      });
     }
   }
 
@@ -556,11 +698,25 @@ export function filterWorkstationGraph(graph: WorkstationGraph, filter: Workstat
   if (filter.workflowId) seedIds.add(nodeId("workflow", filter.workflowId));
   if (seedIds.size === 0) return graph;
 
+  const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
   const selectedNodeIds = new Set(seedIds);
+  const expansionNodeIds = new Set<string>();
   const selectedEdges: WorkstationGraphEdge[] = [];
+  const selectedEdgeIds = new Set<string>();
   for (const edge of graph.edges) {
     if (!seedIds.has(edge.source) && !seedIds.has(edge.target)) continue;
     selectedEdges.push(edge);
+    selectedEdgeIds.add(edge.id);
+    selectedNodeIds.add(edge.source);
+    selectedNodeIds.add(edge.target);
+    addExpandable(edge.source);
+    addExpandable(edge.target);
+  }
+  for (const edge of graph.edges) {
+    if (selectedEdgeIds.has(edge.id)) continue;
+    if (!expansionNodeIds.has(edge.source) && !expansionNodeIds.has(edge.target)) continue;
+    selectedEdges.push(edge);
+    selectedEdgeIds.add(edge.id);
     selectedNodeIds.add(edge.source);
     selectedNodeIds.add(edge.target);
   }
@@ -568,6 +724,11 @@ export function filterWorkstationGraph(graph: WorkstationGraph, filter: Workstat
   const selectedNodes = graph.nodes.filter((node) => selectedNodeIds.has(node.id));
   if (selectedNodes.length === 0) return graph;
   return summarizeWorkstationGraph(selectedNodes, selectedEdges);
+
+  function addExpandable(id: string): void {
+    const kind = nodesById.get(id)?.kind;
+    if (kind && kind !== "workspace" && kind !== "thread") expansionNodeIds.add(id);
+  }
 }
 
 export function listWorkstationGraphChangedFiles(
@@ -647,6 +808,114 @@ export function traceAgentImpact(graph: WorkstationGraph, agentId: string): Agen
   }
 }
 
+export function traceFileProvenance(graph: WorkstationGraph, path: string): FileProvenanceTrace {
+  const normalizedPath = normalizePath(path);
+  const fileNodeId = nodeId("file", normalizedPath);
+  const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
+  const owners = new Map<string, { id: string; name: string; role?: string; status?: string }>();
+  const tools = new Map<string, { id: string; label: string; status?: string }>();
+  const commands = new Map<string, FileProvenanceTrace["commands"][number]>();
+  const tests = new Map<string, { id: string; label: string; status?: string }>();
+  const risks = new Map<string, { id: string; label: string; status?: string; severity?: string }>();
+  const blockers = new Map<string, { id: string; label: string; status?: string }>();
+  const worktrees = new Set<string>();
+
+  for (const edge of graph.edges) {
+    if (edge.target === fileNodeId) {
+      const source = nodesById.get(edge.source);
+      if (source?.kind === "agent") collectOwner(source);
+      if (source?.kind === "tool") {
+        tools.set(source.id, { id: source.id, label: source.label, status: source.status });
+        for (const ownerEdge of graph.edges) {
+          if (ownerEdge.target !== source.id) continue;
+          const owner = nodesById.get(ownerEdge.source);
+          if (owner?.kind === "agent") collectOwner(owner);
+        }
+      }
+      if (source?.kind === "command_block") {
+        collectCommand(source);
+        for (const ownerEdge of graph.edges) {
+          if (ownerEdge.target !== source.id) continue;
+          const owner = nodesById.get(ownerEdge.source);
+          if (owner?.kind === "agent") collectOwner(owner);
+        }
+      }
+    }
+
+    if (edge.source === fileNodeId) {
+      const target = nodesById.get(edge.target);
+      if (target?.kind === "test") tests.set(target.id, { id: target.id, label: target.label, status: target.status });
+      if (target?.kind === "command_block") collectCommand(target);
+      if (target?.kind === "risk") {
+        risks.set(target.id, {
+          id: target.id,
+          label: target.label,
+          status: target.status,
+          severity: target.severity,
+        });
+      }
+      if (target?.kind === "blocker") {
+        blockers.set(target.id, { id: target.id, label: target.label, status: target.status });
+      }
+    }
+  }
+
+  return {
+    path: normalizedPath,
+    owners: [...owners.values()].sort((a, b) => a.name.localeCompare(b.name)),
+    tools: [...tools.values()].sort((a, b) => a.label.localeCompare(b.label)),
+    commands: [...commands.values()].sort((a, b) => a.label.localeCompare(b.label)),
+    tests: [...tests.values()].sort((a, b) => a.label.localeCompare(b.label)),
+    risks: [...risks.values()].sort((a, b) => a.label.localeCompare(b.label)),
+    blockers: [...blockers.values()].sort((a, b) => a.label.localeCompare(b.label)),
+    worktrees: [...worktrees].sort(),
+    hasEvidence:
+      owners.size > 0 ||
+      tools.size > 0 ||
+      commands.size > 0 ||
+      tests.size > 0 ||
+      risks.size > 0 ||
+      blockers.size > 0 ||
+      worktrees.size > 0,
+  };
+
+  function collectCommand(node: WorkstationGraphNode): void {
+    const rawExitCode = node.metadata?.exitCode;
+    const exitCode = typeof rawExitCode === "number" || rawExitCode === null ? rawExitCode : undefined;
+    commands.set(node.id, {
+      id: node.id,
+      label: node.label,
+      command: readStringMetadata(node, "command") ?? node.label,
+      status: node.status,
+      exitCode,
+      cwd: readStringMetadata(node, "cwd") ?? undefined,
+      shell: readStringMetadata(node, "shell") ?? undefined,
+      validationKind: readStringMetadata(node, "validationKind") ?? undefined,
+      terminalId: readStringMetadata(node, "terminalId") ?? undefined,
+      commandSequence: readNumberMetadata(node, "commandSequence"),
+      outputSequence: readNumberMetadata(node, "outputSequence"),
+      endSequence: readNumberMetadata(node, "endSequence"),
+      commandHistorySize: readNumberMetadata(node, "commandHistorySize"),
+      outputHistorySize: readNumberMetadata(node, "outputHistorySize"),
+      endHistorySize: readNumberMetadata(node, "endHistorySize"),
+      commandScreenLine: readNumberMetadata(node, "commandScreenLine"),
+      outputScreenLine: readNumberMetadata(node, "outputScreenLine"),
+      endScreenLine: readNumberMetadata(node, "endScreenLine"),
+    });
+  }
+
+  function collectOwner(node: WorkstationGraphNode): void {
+    const id = node.id.startsWith("agent:") ? node.id.slice("agent:".length) : node.id;
+    owners.set(id, { id, name: node.label, role: node.role, status: node.status });
+    const worktreePath = readStringMetadata(node, "worktreePath");
+    const worktreeBranch = readStringMetadata(node, "worktreeBranch");
+    const workspaceScope = readStringMetadata(node, "workspaceScope");
+    if (worktreePath) worktrees.add(worktreePath);
+    else if (worktreeBranch) worktrees.add(worktreeBranch);
+    else if (workspaceScope) worktrees.add(workspaceScope);
+  }
+}
+
 function addArtifact(
   nodes: Map<string, WorkstationGraphNode>,
   edges: Map<string, WorkstationGraphEdge>,
@@ -664,6 +933,35 @@ function addArtifact(
   addEdge(edges, artifact.agentId ? nodeId("agent", artifact.agentId) : ownerId, artifactNodeId, "reports_to");
 }
 
+function commandBlockStatus(command: WorkstationGraphCommandBlock): string {
+  if (command.status) return command.status;
+  if (command.exitCode == null) return "unknown";
+  return command.exitCode === 0 ? "passed" : "failed";
+}
+
+function isValidationCommandBlock(command: WorkstationGraphCommandBlock): boolean {
+  return inferValidationKind(command) !== "unknown";
+}
+
+function inferValidationKind(command: WorkstationGraphCommandBlock): string {
+  if (command.validationKind && command.validationKind !== "unknown") return command.validationKind;
+  const value = command.command.toLowerCase();
+  if (/\b(vitest|jest|playwright|pytest|cargo test|cargo nextest|go test|pnpm test|npm test|yarn test)\b/.test(value)) {
+    return "test";
+  }
+  if (/\b(biome check|eslint|clippy|cargo clippy|npm run lint|pnpm lint|yarn lint)\b/.test(value)) return "lint";
+  if (/\b(tsc|typecheck|type-check|cargo check)\b/.test(value)) return "typecheck";
+  if (/\b(pnpm build|npm run build|yarn build|cargo build|tauri build)\b/.test(value)) return "build";
+  if (/\b(biome format|prettier|cargo fmt|rustfmt)\b/.test(value)) return "format";
+  if (/\b(smoke|verify|qa|playwright screenshot)\b/.test(value)) return "smoke";
+  return "unknown";
+}
+
+function commandLabel(command: string): string {
+  const compact = command.replace(/\s+/g, " ").trim();
+  return compact.length > 46 ? `${compact.slice(0, 43)}...` : compact || "command";
+}
+
 function summarizeWorkstationGraph(nodes: WorkstationGraphNode[], edges: WorkstationGraphEdge[]): WorkstationGraph {
   const nodeIds = new Set(nodes.map((node) => node.id));
   const nodeCountByKind = Object.fromEntries(
@@ -677,6 +975,7 @@ function summarizeWorkstationGraph(nodes: WorkstationGraphNode[], edges: Worksta
       "workflow",
       "phase",
       "tool",
+      "command_block",
       "file",
       "test",
       "blocker",
@@ -734,6 +1033,11 @@ function listWorkstationGraphNodeIds(
 function readStringMetadata(node: WorkstationGraphNode, key: string): string | null {
   const value = node.metadata?.[key];
   return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function readNumberMetadata(node: WorkstationGraphNode, key: string): number | null {
+  const value = node.metadata?.[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function normalizePath(path: string): string {

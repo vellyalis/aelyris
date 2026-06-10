@@ -146,17 +146,18 @@ async function main() {
 
     const order = await page.evaluate(() => {
       const decision = document.querySelector(".right-panel-decision-focus");
-      const now = document.querySelector(".right-panel-now");
+      const essentials = document.querySelector(".right-panel-essential-grid");
       const workforce = document.querySelector(".right-panel-workforce");
       const actions = document.querySelector(".right-panel-action-stack");
-      const nodes = [decision, now, workforce, actions].filter(Boolean);
+      const isBefore = (a, b) =>
+        Boolean(a && b && (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING));
       return {
-        decisionBeforeNow: decision && now ? nodes.indexOf(decision) < nodes.indexOf(now) : false,
-        decisionBeforeWorkforce: decision && workforce ? nodes.indexOf(decision) < nodes.indexOf(workforce) : false,
-        decisionBeforeActions: decision && actions ? nodes.indexOf(decision) < nodes.indexOf(actions) : false,
+        decisionBeforeEssentials: isBefore(decision, essentials),
+        decisionBeforeWorkforce: isBefore(decision, workforce),
+        decisionBeforeActions: isBefore(decision, actions),
       };
     });
-    if (!order.decisionBeforeNow || !order.decisionBeforeWorkforce || !order.decisionBeforeActions) {
+    if (!order.decisionBeforeEssentials || !order.decisionBeforeWorkforce || !order.decisionBeforeActions) {
       throw new Error(`Decision focus order regression: ${JSON.stringify(order)}`);
     }
     report.checks.decisionBeforeTelemetry = order;
@@ -203,7 +204,10 @@ async function main() {
     report.errors.push(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   } finally {
-    if (browser) await browser.close().catch(() => {});
+    if (browser) {
+      if (typeof browser.disconnect === "function") browser.disconnect();
+      else await browser.close().catch(() => {});
+    }
     const artifact = writeArtifact();
     if (report.ok) {
       console.log(`right rail decisions smoke passed: ${artifact}`);

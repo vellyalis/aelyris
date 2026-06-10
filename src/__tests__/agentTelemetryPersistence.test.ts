@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { parseAgentTelemetrySnapshot, serializeAgentTelemetrySnapshot } from "../shared/lib/agentTelemetryPersistence";
+import {
+  createAgentTelemetryRecoverySession,
+  loadAgentTelemetrySnapshot,
+  parseAgentTelemetrySnapshot,
+  parseAgentTelemetrySnapshotResult,
+  serializeAgentTelemetrySnapshot,
+} from "../shared/lib/agentTelemetryPersistence";
 import type { AgentSession } from "../shared/types/agent";
 
 function session(id: string, overrides: Partial<AgentSession> = {}): AgentSession {
@@ -67,8 +73,49 @@ describe("agent telemetry persistence", () => {
     });
   });
 
-  it("ignores corrupt snapshots and invalid session rows", () => {
-    expect(parseAgentTelemetrySnapshot("not-json")).toEqual([]);
+  it("surfaces corrupt snapshots as auditable recovery state and still drops invalid session rows", () => {
+    const corrupt = parseAgentTelemetrySnapshotResult("not-json");
+    expect(corrupt.sessions).toEqual([]);
+    expect(corrupt.error).toMatchObject({
+      kind: "invalid-json",
+      visibilityPolicy: "corrupt-agent-telemetry-is-auditable",
+      rawPreview: "not-json",
+    });
+
+    expect(corrupt.error).not.toBeNull();
+    const recovery = createAgentTelemetryRecoverySession(
+      corrupt.error ?? expect.fail("expected corrupt snapshot error"),
+      "test",
+    );
+    expect(recovery).toMatchObject({
+      status: "error",
+      name: "Telemetry recovery",
+      blockedReason: "Agent telemetry snapshot is corrupt; provenance was not silently discarded.",
+      logs: [
+        {
+          type: "error",
+          metadata: {
+            event: "agent_telemetry_corrupt_snapshot",
+            source: "test",
+            visibilityPolicy: "corrupt-agent-telemetry-is-auditable",
+          },
+        },
+      ],
+    });
+
+    const storage = {
+      getItem: () => "not-json",
+      setItem: () => undefined,
+      removeItem: () => undefined,
+      clear: () => undefined,
+      key: () => null,
+      length: 1,
+    } satisfies Storage;
+    expect(loadAgentTelemetrySnapshot(storage)[0]).toMatchObject({
+      status: "error",
+      blockedReason: "Agent telemetry snapshot is corrupt; provenance was not silently discarded.",
+    });
+
     expect(
       parseAgentTelemetrySnapshot(
         JSON.stringify({
@@ -79,6 +126,16 @@ describe("agent telemetry persistence", () => {
         }),
       ).map((item) => item.id),
     ).toEqual(["ok"]);
+  });
+
+  it("reports invalid snapshot shape instead of treating it as an empty healthy snapshot", () => {
+    const result = parseAgentTelemetrySnapshotResult(JSON.stringify({ rows: [] }));
+    expect(result.sessions).toEqual([]);
+    expect(result.error).toMatchObject({
+      kind: "invalid-shape",
+      message: "snapshot payload is missing a sessions array",
+      visibilityPolicy: "corrupt-agent-telemetry-is-auditable",
+    });
   });
 
   it("caps persisted logs and file details to bounded snapshots", () => {

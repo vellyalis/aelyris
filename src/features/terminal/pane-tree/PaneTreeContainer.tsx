@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ShellType } from "../../../App";
+import { reportFallback, reportInvokeFailure } from "../../../shared/lib/fallbackTelemetry";
+import { isTauriRuntime } from "../../../shared/lib/tauriRuntime";
 import type { PaneSwitcherEntry } from "./operations";
 import { collectLeafIds, collectLeaves, collectPaneSwitcherEntries, countLeaves, findLeaf } from "./operations";
 import { PaneTreeRenderer } from "./PaneTreeRenderer";
@@ -248,19 +250,42 @@ export function PaneTreeContainer({
       if (!layoutStorageKey) setBackendReconciled(true);
       return;
     }
+    if (!isTauriRuntime()) {
+      setBackendReconciled(true);
+      return;
+    }
     let cancelled = false;
     if (terminalIds.size === 0) setBackendReconciled(false);
-    import("@tauri-apps/api/core")
+    Promise.resolve({ invoke })
       .then(async ({ invoke }) => {
+        const listTerminalIds = async (operation: string): Promise<string[]> => {
+          try {
+            return parseTerminalIds(await invoke<unknown>("list_terminals"));
+          } catch (err) {
+            reportInvokeFailure({
+              source: "pane-metadata",
+              operation,
+              err,
+              userVisible: true,
+            });
+            return [];
+          }
+        };
         const backendPanes = await invoke<unknown>("list_panes_info")
           .then(parseBackendPaneInfo)
-          .catch(async () => {
-            const activeTerminalIds = await invoke<unknown>("list_terminals").catch(() => []);
-            return parseTerminalIds(activeTerminalIds).map((terminalId) => ({ terminal_id: terminalId }));
+          .catch(async (err) => {
+            reportInvokeFailure({
+              source: "pane-metadata",
+              operation: "list_panes_info",
+              err,
+              userVisible: true,
+            });
+            const activeTerminalIds = await listTerminalIds("list_terminals_after_list_panes_info_failed");
+            return activeTerminalIds.map((terminalId) => ({ terminal_id: terminalId }));
           });
         if (backendPanes.length > 0) return backendPanes;
-        const activeTerminalIds = await invoke<unknown>("list_terminals").catch(() => []);
-        return parseTerminalIds(activeTerminalIds).map((terminalId) => ({ terminal_id: terminalId }));
+        const activeTerminalIds = await listTerminalIds("list_terminals_after_empty_panes");
+        return activeTerminalIds.map((terminalId) => ({ terminal_id: terminalId }));
       })
       .then((backendPanes) => {
         if (cancelled) return;
@@ -511,6 +536,13 @@ export function PaneTreeContainer({
       const workspaceId = workspaceTerminalIdRef.current ?? firstLiveTerminalId ?? targetTerminalId;
       if (!targetLeaf) return;
       if (!targetTerminalId || !workspaceId) {
+        reportFallback({
+          source: "pane-mux",
+          operation: "mux_split_pane",
+          severity: "warning",
+          message: "mux split unavailable; local split recovery mounted a new pane",
+          userVisible: true,
+        });
         console.warn("mux split unavailable; applying local split recovery", {
           targetId,
           direction,
@@ -560,11 +592,25 @@ export function PaneTreeContainer({
                 attachMuxPane(terminalId, retryWorkspaceId);
               })
               .catch((retryErr) => {
+                reportInvokeFailure({
+                  source: "pane-mux",
+                  operation: "mux_split_pane",
+                  err: retryErr,
+                  severity: "error",
+                  userVisible: true,
+                });
                 console.warn("mux split failed after live workspace retry", retryErr);
                 splitWithContext(targetId, direction, targetLeaf.shell, targetLeaf.cwd ?? cwd);
               });
             return;
           }
+          reportInvokeFailure({
+            source: "pane-mux",
+            operation: "mux_split_pane",
+            err,
+            severity: "error",
+            userVisible: true,
+          });
           console.warn("mux split failed", err);
           splitWithContext(targetId, direction, targetLeaf.shell, targetLeaf.cwd ?? cwd);
         });
@@ -577,6 +623,13 @@ export function PaneTreeContainer({
       const terminalId = terminalIds.get(paneId);
       const workspaceId = workspaceTerminalIdRef.current ?? firstLiveTerminalId;
       if (!terminalId || !workspaceId) {
+        reportFallback({
+          source: "pane-mux",
+          operation: "mux_close_pane",
+          severity: "warning",
+          message: "mux close unavailable; closing local pane binding only",
+          userVisible: true,
+        });
         close(paneId);
         return;
       }
@@ -606,11 +659,25 @@ export function PaneTreeContainer({
                 detachMuxPane(retryWorkspaceId);
               })
               .catch((retryErr) => {
+                reportInvokeFailure({
+                  source: "pane-mux",
+                  operation: "mux_close_pane",
+                  err: retryErr,
+                  severity: "error",
+                  userVisible: true,
+                });
                 console.warn("mux pane close failed after live workspace retry", retryErr);
                 close(paneId);
               });
             return;
           }
+          reportInvokeFailure({
+            source: "pane-mux",
+            operation: "mux_close_pane",
+            err,
+            severity: "error",
+            userVisible: true,
+          });
           console.warn("mux pane close failed", err);
           close(paneId);
         });
@@ -667,12 +734,26 @@ export function PaneTreeContainer({
           enabled,
         }).catch((err) => {
           if (syncModeSequenceRef.current === sequence) setSynchronizedPanes(!enabled);
+          reportInvokeFailure({
+            source: "pane-mux",
+            operation: "mux_set_panes_synchronized",
+            err,
+            severity: "error",
+            userVisible: true,
+          });
           console.warn("mux synchronized panes failed", err);
         });
         return;
       }
 
       if (!workspaceId || terminalIds.size === 0) {
+        reportFallback({
+          source: "pane-mux",
+          operation: "mux_apply_layout",
+          severity: "warning",
+          message: "mux layout unavailable; applying local layout recovery",
+          userVisible: true,
+        });
         applyLocalLayoutCommand(command);
         return;
       }
@@ -688,12 +769,26 @@ export function PaneTreeContainer({
         const firstPaneId = terminalIds.get(activePaneId);
         const secondPaneId = targetPaneId ? terminalIds.get(targetPaneId) : undefined;
         if (!firstPaneId || !secondPaneId) {
+          reportFallback({
+            source: "pane-mux",
+            operation: "mux_swap_panes",
+            severity: "warning",
+            message: "mux swap skipped because pane PTY binding is missing",
+            userVisible: true,
+          });
           console.warn("mux swap skipped because pane PTY binding is missing", { activePaneId, targetPaneId });
           return;
         }
         invoke("mux_swap_panes", { workspaceId, firstPaneId, secondPaneId })
           .then(() => applyLocalLayoutCommand(command))
           .catch((err) => {
+            reportInvokeFailure({
+              source: "pane-mux",
+              operation: "mux_swap_panes",
+              err,
+              severity: "error",
+              userVisible: true,
+            });
             console.warn("mux swap failed", err);
           });
         return;
@@ -702,6 +797,13 @@ export function PaneTreeContainer({
       invoke("mux_apply_layout", { workspaceId, command })
         .then(() => applyLocalLayoutCommand(command))
         .catch((err) => {
+          reportInvokeFailure({
+            source: "pane-mux",
+            operation: "mux_apply_layout",
+            err,
+            severity: "error",
+            userVisible: true,
+          });
           console.warn("mux layout failed", err);
         });
     },
@@ -713,6 +815,13 @@ export function PaneTreeContainer({
       const workspaceId = workspaceTerminalIdRef.current ?? firstLiveTerminalId;
       const backendPaneId = terminalIds.get(paneId);
       if (!workspaceId || !backendPaneId) {
+        reportFallback({
+          source: "pane-mux",
+          operation: "mux_set_pane_zoom",
+          severity: "warning",
+          message: "mux zoom unavailable; toggling local maximize only",
+          userVisible: true,
+        });
         toggleMaximize(paneId);
         return;
       }
@@ -720,6 +829,13 @@ export function PaneTreeContainer({
       invoke("mux_set_pane_zoom", { workspaceId, paneId: backendPaneId, zoomed })
         .then(() => toggleMaximize(paneId))
         .catch((err) => {
+          reportInvokeFailure({
+            source: "pane-mux",
+            operation: "mux_set_pane_zoom",
+            err,
+            severity: "error",
+            userVisible: true,
+          });
           console.warn("mux pane zoom failed", err);
         });
     },
@@ -766,7 +882,7 @@ export function PaneTreeContainer({
     }
 
     let cancelled = false;
-    import("@tauri-apps/api/core")
+    Promise.resolve({ invoke })
       .then(({ invoke }) => invoke<unknown>("list_terminals"))
       .then((payload) => {
         if (cancelled) return;
@@ -829,9 +945,9 @@ export function PaneTreeContainer({
     for (const terminalId of syncedBackendRoles.current.keys()) {
       if (!liveTerminalIds.has(terminalId)) syncedBackendRoles.current.delete(terminalId);
     }
-    if (terminalIds.size === 0) return;
+    if (terminalIds.size === 0 || !isTauriRuntime()) return;
 
-    import("@tauri-apps/api/core")
+    Promise.resolve({ invoke })
       .then(({ invoke }) => {
         for (const [paneId, terminalId] of terminalIds) {
           const route = backendPaneRouting.get(paneId);
@@ -839,8 +955,15 @@ export function PaneTreeContainer({
           const lastName = renamedBackendNames.current.get(terminalId);
           if (lastName !== name && (name || lastName !== undefined)) {
             renamedBackendNames.current.set(terminalId, name);
-            invoke("rename_pane", { terminalId, name }).catch(() => {
+            invoke("rename_pane", { terminalId, name }).catch((err) => {
               renamedBackendNames.current.delete(terminalId);
+              reportInvokeFailure({
+                source: "pane-metadata",
+                operation: "rename_pane",
+                err,
+                severity: "warning",
+                userVisible: true,
+              });
             });
           }
 
@@ -848,13 +971,28 @@ export function PaneTreeContainer({
           const lastRole = syncedBackendRoles.current.get(terminalId);
           if (lastRole !== role && (role || lastRole !== undefined)) {
             syncedBackendRoles.current.set(terminalId, role);
-            invoke("set_pane_role", { terminalId, role }).catch(() => {
+            invoke("set_pane_role", { terminalId, role }).catch((err) => {
               syncedBackendRoles.current.delete(terminalId);
+              reportInvokeFailure({
+                source: "pane-metadata",
+                operation: "set_pane_role",
+                err,
+                severity: "warning",
+                userVisible: true,
+              });
             });
           }
         }
       })
-      .catch(() => {});
+      .catch((err) => {
+        reportInvokeFailure({
+          source: "pane-metadata",
+          operation: "load_tauri_core",
+          err,
+          severity: "warning",
+          userVisible: true,
+        });
+      });
   }, [backendPaneRouting, terminalIds]);
 
   const canClose = countLeaves(tree) > 1;

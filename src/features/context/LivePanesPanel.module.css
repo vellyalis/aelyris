@@ -184,8 +184,10 @@
 }
 
 .actionBtn:disabled {
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--bg-surface) 58%, transparent);
+  border-color: color-mix(in srgb, var(--border) 60%, transparent);
   cursor: progress;
-  opacity: 0.55;
 }
 
 .attachTarget {

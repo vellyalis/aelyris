@@ -1,6 +1,8 @@
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { useEffect } from "react";
 import type { ShellType } from "../../App";
 import { showHistorySearch } from "../../features/history/HistorySearchDialog";
+import { reportFallback } from "../lib/fallbackTelemetry";
 import { toast } from "../store/toastStore";
 import { showPrompt } from "../ui/PromptDialog";
 import { isEditableTarget } from "./useEditableTargetGuard";
@@ -62,7 +64,7 @@ export function useKeyboardShortcuts({
     const handler = (e: KeyboardEvent) => {
       // Bail out when the user is typing into an editable surface so
       // Ctrl+N/P/R/W don't steal keystrokes from Kanban task labels,
-      // Watchdog rule inputs, Monaco, xterm, etc. F1 + the chord
+      // Watchdog rule inputs, Monaco, native terminal input, etc. F1 + the chord
       // shortcuts (Ctrl+Shift+*) stay global — those are app chrome,
       // not text input.
       if (e.key === "F1") {
@@ -80,7 +82,7 @@ export function useKeyboardShortcuts({
           if (name && projectPath) {
             const path = `${projectPath}/${name}`;
             try {
-              const { invoke } = await import("@tauri-apps/api/core");
+              const { invoke } = await Promise.resolve({ invoke: tauriInvoke });
               await invoke("create_file", { path });
               handleFileSelect(path);
             } catch (error) {
@@ -138,7 +140,31 @@ export function useKeyboardShortcuts({
           "[data-active='true'] [data-testid='terminal-ime-textarea']",
         ) as HTMLTextAreaElement | null;
         const fallback = document.querySelector("[data-testid='terminal-ime-textarea']") as HTMLTextAreaElement | null;
-        (activeNativeSurface ?? nativeSurface ?? activePane ?? fallback)?.focus();
+        const target = activeNativeSurface ?? nativeSurface ?? activePane ?? fallback;
+        target?.focus();
+        if (target && (target === activePane || target === fallback)) {
+          reportFallback(
+            {
+              source: "terminal.input",
+              operation: "focus_webview_ime_fallback",
+              severity: "warning",
+              message: "Ctrl+` focused the WebView IME fallback because no native input surface was available.",
+              userVisible: true,
+            },
+            { throttleMs: 30_000 },
+          );
+        } else if (!target) {
+          reportFallback(
+            {
+              source: "terminal.input",
+              operation: "focus_terminal_unavailable",
+              severity: "warning",
+              message: "Ctrl+` could not find a terminal input surface to focus.",
+              userVisible: true,
+            },
+            { throttleMs: 30_000 },
+          );
+        }
       } else if (e.ctrlKey && !e.shiftKey && e.key === "w") {
         e.preventDefault();
         if (activeFile) handleCloseFile(activeFile);

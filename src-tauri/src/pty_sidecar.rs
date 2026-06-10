@@ -114,6 +114,18 @@ struct CreateSessionBody<'a> {
 }
 
 #[derive(Serialize)]
+struct CreateCommandSessionBody<'a> {
+    program: &'a str,
+    args: &'a [String],
+    cols: u16,
+    rows: u16,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cwd: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    env: Option<&'a HashMap<String, String>>,
+}
+
+#[derive(Serialize)]
 struct ResizeBody {
     cols: u16,
     rows: u16,
@@ -240,6 +252,31 @@ impl PtySidecarClient {
         Ok(())
     }
 
+    pub async fn spawn_command(
+        &self,
+        program: &str,
+        args: &[String],
+        cols: u16,
+        rows: u16,
+        cwd: Option<&str>,
+        env: Option<&HashMap<String, String>>,
+    ) -> Result<String, String> {
+        let body = CreateCommandSessionBody {
+            program,
+            args,
+            cols,
+            rows,
+            cwd,
+            env,
+        };
+        let created = self.post_create_command_session(&body).await?;
+        if let Err(err) = self.ensure_stream(&created.id).await {
+            let _ = self.close(&created.id).await;
+            return Err(err);
+        }
+        Ok(created.id)
+    }
+
     async fn post_create_session(
         &self,
         body: &CreateSessionBody<'_>,
@@ -274,6 +311,43 @@ impl PtySidecarClient {
             return Err(format!("PTY server {label} failed: {status}: {detail}"));
         }
         Err(format!("PTY server {label} failed: retry budget exhausted"))
+    }
+
+    async fn post_create_command_session(
+        &self,
+        body: &CreateCommandSessionBody<'_>,
+    ) -> Result<CreateSessionResponse, String> {
+        const MAX_CREATE_ATTEMPTS: u64 = 5;
+        for attempt in 1..=MAX_CREATE_ATTEMPTS {
+            let res = self
+                .http
+                .post(format!("{}/commands", self.base_url))
+                .bearer_auth(&self.token)
+                .json(body)
+                .send()
+                .await
+                .map_err(|err| format!("PTY server command spawn request failed: {err}"))?;
+            if res.status().is_success() {
+                return res
+                    .json::<CreateSessionResponse>()
+                    .await
+                    .map_err(|err| format!("PTY server command spawn response invalid: {err}"));
+            }
+            let status = res.status();
+            if status == reqwest::StatusCode::TOO_MANY_REQUESTS && attempt < MAX_CREATE_ATTEMPTS {
+                tokio::time::sleep(Duration::from_millis(300 * attempt)).await;
+                continue;
+            }
+            let detail = res.text().await.unwrap_or_default();
+            let detail = detail.trim();
+            if detail.is_empty() {
+                return Err(format!("PTY server command spawn failed: {status}"));
+            }
+            return Err(format!(
+                "PTY server command spawn failed: {status}: {detail}"
+            ));
+        }
+        Err("PTY server command spawn failed: retry budget exhausted".to_string())
     }
 
     pub async fn write(&self, id: &str, data: &[u8]) -> Result<(), String> {
@@ -314,6 +388,9 @@ impl PtySidecarClient {
         }
     }
 
+    // Parameter list mirrors the sidecar HTTP split-pane request body;
+    // bundling into a struct would just duplicate SplitMuxPaneBody.
+    #[allow(clippy::too_many_arguments)]
     pub async fn mux_split_pane(
         &self,
         workspace_id: &str,
@@ -714,10 +791,10 @@ impl PtySidecarClient {
             while let Some(msg) = ws_read.next().await {
                 match msg {
                     Ok(Message::Binary(bytes)) => {
-                        let _ = output_tx.send(bytes);
+                        let _ = output_tx.send(bytes.to_vec());
                     }
                     Ok(Message::Text(text)) => {
-                        let _ = output_tx.send(text.into_bytes());
+                        let _ = output_tx.send(text.to_string().into_bytes());
                     }
                     Ok(Message::Close(_)) | Err(_) => break,
                     Ok(_) => {}
@@ -730,8 +807,11 @@ impl PtySidecarClient {
 
         tauri::async_runtime::spawn(async move {
             while let Some(bytes) = input_rx.recv().await {
-                match tokio::time::timeout(WS_WRITE_TIMEOUT, ws_write.send(Message::Binary(bytes)))
-                    .await
+                match tokio::time::timeout(
+                    WS_WRITE_TIMEOUT,
+                    ws_write.send(Message::Binary(bytes.into())),
+                )
+                .await
                 {
                     Ok(Ok(())) => {}
                     Ok(Err(_)) | Err(_) => {
@@ -825,24 +905,6 @@ fn probe_expected_sidecar(client: &PtySidecarClient) -> bool {
                 );
                 return false;
             }
-            if health.protocol_version != crate::api::DAEMON_PROTOCOL_VERSION {
-                log::warn!(
-                    "PTY sidecar probe rejected protocol {} on 127.0.0.1:{}; expected {}",
-                    health.protocol_version,
-                    SIDE_CAR_PORT,
-                    crate::api::DAEMON_PROTOCOL_VERSION
-                );
-                return false;
-            }
-            if health.version != env!("CARGO_PKG_VERSION") {
-                log::warn!(
-                    "PTY sidecar probe rejected version {} on 127.0.0.1:{}; expected {}",
-                    health.version,
-                    SIDE_CAR_PORT,
-                    env!("CARGO_PKG_VERSION")
-                );
-                return false;
-            }
             if health.pid == 0 || health.instance_id.trim().is_empty() {
                 log::warn!(
                     "PTY sidecar probe rejected invalid identity pid={} instance_id={:?}",
@@ -859,6 +921,26 @@ fn probe_expected_sidecar(client: &PtySidecarClient) -> bool {
                     health.exe,
                     expected
                 );
+                return false;
+            }
+            if health.protocol_version != crate::api::DAEMON_PROTOCOL_VERSION {
+                log::warn!(
+                    "PTY sidecar probe rejected protocol {} on 127.0.0.1:{}; expected {}",
+                    health.protocol_version,
+                    SIDE_CAR_PORT,
+                    crate::api::DAEMON_PROTOCOL_VERSION
+                );
+                terminate_stale_expected_sidecar(&health, &expected, "protocol");
+                return false;
+            }
+            if health.version != env!("CARGO_PKG_VERSION") {
+                log::warn!(
+                    "PTY sidecar probe rejected version {} on 127.0.0.1:{}; expected {}",
+                    health.version,
+                    SIDE_CAR_PORT,
+                    env!("CARGO_PKG_VERSION")
+                );
+                terminate_stale_expected_sidecar(&health, &expected, "version");
                 return false;
             }
             true
@@ -892,6 +974,45 @@ fn same_canonical_path(actual: &str, expected: &std::path::Path) -> bool {
     };
     actual == expected
 }
+
+fn terminate_stale_expected_sidecar(
+    health: &HealthResponse,
+    expected: &std::path::Path,
+    reason: &str,
+) {
+    if health.pid == 0 {
+        return;
+    }
+    if !same_file_name(&health.exe, expected) || !same_canonical_path(&health.exe, expected) {
+        return;
+    }
+    log::warn!(
+        "terminating stale PTY sidecar pid={} reason={} exe={:?}",
+        health.pid,
+        reason,
+        health.exe
+    );
+    terminate_process_tree(health.pid);
+}
+
+#[cfg(windows)]
+fn terminate_process_tree(pid: u32) {
+    let pid = pid.to_string();
+    if let Err(err) = crate::process::hidden_command("taskkill")
+        .arg("/PID")
+        .arg(&pid)
+        .arg("/T")
+        .arg("/F")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+    {
+        log::warn!("failed to terminate stale PTY sidecar pid={pid}: {err}");
+    }
+}
+
+#[cfg(not(windows))]
+fn terminate_process_tree(_pid: u32) {}
 
 fn spawn_server_process(token: &str) -> Result<(), String> {
     let exe = current_server_exe()?;
@@ -1003,6 +1124,8 @@ fn harden_token_file_windows(path: &std::path::Path) -> Result<(), String> {
         .arg("*S-1-5-18:F")
         .arg("/grant:r")
         .arg("*S-1-5-32-544:F")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .status()
         .map_err(|err| format!("failed to run icacls for token file: {err}"))?;
     if !status.success() {
@@ -1012,6 +1135,8 @@ fn harden_token_file_windows(path: &std::path::Path) -> Result<(), String> {
     let _ = crate::process::hidden_command("attrib")
         .arg("+H")
         .arg(path)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .status();
     Ok(())
 }

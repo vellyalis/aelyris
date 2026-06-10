@@ -30,6 +30,8 @@ describe("pane switcher keyboard shortcut", () => {
     expect(src).toContain("openPaneSwitcher?.();");
     expect(src).toContain("[data-native-input-surface='true']");
     expect(src).toContain("[data-testid='terminal-ime-textarea']");
+    expect(src).toContain('operation: "focus_webview_ime_fallback"');
+    expect(src).toContain('operation: "focus_terminal_unavailable"');
     expect(src).not.toContain("xterm-helper-textarea");
   });
 

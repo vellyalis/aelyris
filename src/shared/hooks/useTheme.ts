@@ -1,13 +1,14 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useEffect } from "react";
+import { formatFallbackError, reportFallback } from "../lib/fallbackTelemetry";
 import { type AccentOverrides, applyAccentOverrides, getPalette, isLightTheme, themeToCSS } from "../themes/catppuccin";
 import {
   DEFAULT_MOOD_PRESET,
-  MOOD_MATERIAL_DEFAULTS,
-  MOOD_CSS_KEYS,
-  type MoodPresetId,
-  type MoodMaterialOverrides,
   isMoodMaterialLight,
+  MOOD_CSS_KEYS,
+  MOOD_MATERIAL_DEFAULTS,
+  type MoodMaterialOverrides,
+  type MoodPresetId,
   materialOverridesToCSS,
   moodPresetToCSS,
   normalizeMoodPreset,
@@ -15,6 +16,19 @@ import {
 
 const STORAGE_KEY = "aether:theme";
 const MOOD_STORAGE_KEY = "aether:moodPreset";
+
+function reportThemeCustomizationFailure(operation: string, err: unknown) {
+  reportFallback(
+    {
+      source: "theme-customization",
+      operation,
+      severity: "warning",
+      message: formatFallbackError(err),
+      userVisible: true,
+    },
+    { throttleMs: 5_000 },
+  );
+}
 
 function resolveWallpaperImageUrl(imagePath: string): string {
   try {
@@ -53,6 +67,7 @@ export function useThemeApplier(
   materialOverrides?: MoodMaterialOverrides,
   wallpaper?: { imagePath?: string | null; opacity?: number; positionX?: number; positionY?: number; scale?: number },
   windowOpacity = 0.95,
+  terminalSurfaceOpacity = 0.82,
 ) {
   const mood = normalizeMoodPreset(moodPresetId);
 
@@ -81,11 +96,16 @@ export function useThemeApplier(
     } else {
       root.style.setProperty("--aether-wallpaper-image", "none");
     }
-    const opacity = typeof wallpaper?.opacity === "number" && Number.isFinite(wallpaper.opacity) ? wallpaper.opacity : 0;
+    const opacity =
+      typeof wallpaper?.opacity === "number" && Number.isFinite(wallpaper.opacity) ? wallpaper.opacity : 0;
     root.style.setProperty("--aether-wallpaper-opacity", String(Math.min(0.85, Math.max(0, opacity))));
     const appOpacity = Number.isFinite(windowOpacity) ? Math.min(1, Math.max(0.35, windowOpacity)) : 0.95;
     root.style.setProperty("--aether-window-opacity", String(Number(appOpacity.toFixed(2))));
     root.style.setProperty("--aether-window-veil-opacity", String(Number(((1 - appOpacity) * 0.72).toFixed(3))));
+    const terminalOpacity = Number.isFinite(terminalSurfaceOpacity)
+      ? Math.min(1, Math.max(0.42, terminalSurfaceOpacity))
+      : 0.82;
+    root.style.setProperty("--terminal-surface-opacity", String(Number(terminalOpacity.toFixed(2))));
     const positionX =
       typeof wallpaper?.positionX === "number" && Number.isFinite(wallpaper.positionX) ? wallpaper.positionX : 50;
     const positionY =
@@ -105,7 +125,9 @@ export function useThemeApplier(
     try {
       localStorage.setItem(STORAGE_KEY, themeId);
       localStorage.setItem(MOOD_STORAGE_KEY, mood);
-    } catch {}
+    } catch (err) {
+      reportThemeCustomizationFailure("persist_theme_preferences", err);
+    }
   }, [
     themeId,
     overrides,
@@ -117,6 +139,7 @@ export function useThemeApplier(
     wallpaper?.positionY,
     wallpaper?.scale,
     windowOpacity,
+    terminalSurfaceOpacity,
   ]);
 }
 

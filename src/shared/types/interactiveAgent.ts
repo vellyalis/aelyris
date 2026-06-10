@@ -5,6 +5,7 @@ export type AgentCliType = "claude" | "gemini" | "codex" | string;
 export interface InteractiveSession {
   id: string;
   pty_id: string;
+  backend?: "sidecar" | "native" | string;
   cli: AgentCliType;
   status: string;
   model: string;
@@ -23,6 +24,7 @@ export interface SpawnResult {
   session_id: string;
   pty_id: string;
   worktree_path?: string;
+  backend?: "sidecar" | "native" | string;
 }
 
 /** CLI display metadata */

@@ -193,6 +193,13 @@ impl PaneRegistry {
             .unwrap_or_default()
     }
 
+    pub fn get(&self, terminal_id: &str) -> Option<PaneEntry> {
+        self.entries
+            .lock()
+            .ok()
+            .and_then(|entries| entries.get(terminal_id).cloned())
+    }
+
     /// List pane metadata for currently active terminal IDs only.
     ///
     /// The registry preserves user labels and roles across some restart paths,

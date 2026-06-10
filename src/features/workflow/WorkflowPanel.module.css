@@ -63,8 +63,7 @@
   min-width: 0;
   font-size: var(--text-xs);
   font-family: var(--font-mono);
-  color: var(--ctp-green);
-  opacity: 0.7;
+  color: color-mix(in srgb, var(--ctp-green) 72%, var(--text-secondary));
   margin-left: auto;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -150,8 +149,7 @@
   color: var(--ctp-yellow);
 }
 .step_passed {
-  color: var(--ctp-green);
-  opacity: 0.7;
+  color: color-mix(in srgb, var(--ctp-green) 72%, var(--text-secondary));
 }
 .step_failed {
   color: var(--ctp-red);

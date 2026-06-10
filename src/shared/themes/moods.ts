@@ -63,9 +63,9 @@ export const MOOD_MATERIAL_DEFAULTS: Record<MoodPresetId, MoodMaterialDefaults> 
     chromeColor: "#020812",
     terminalColor: "#020814",
     backdropAlpha: 0.04,
-    panelAlpha: 0.68,
-    chromeAlpha: 0.72,
-    terminalAlpha: 0.58,
+    panelAlpha: 0.42,
+    chromeAlpha: 0.38,
+    terminalAlpha: 0.48,
   },
   "aether-moonwater": {
     backdropColor: "#00112a",
@@ -73,9 +73,9 @@ export const MOOD_MATERIAL_DEFAULTS: Record<MoodPresetId, MoodMaterialDefaults> 
     chromeColor: "#00102a",
     terminalColor: "#000612",
     backdropAlpha: 0.05,
-    panelAlpha: 0.66,
-    chromeAlpha: 0.72,
-    terminalAlpha: 0.6,
+    panelAlpha: 0.42,
+    chromeAlpha: 0.38,
+    terminalAlpha: 0.5,
   },
   "aether-dream": {
     backdropColor: "#120d20",
@@ -83,9 +83,9 @@ export const MOOD_MATERIAL_DEFAULTS: Record<MoodPresetId, MoodMaterialDefaults> 
     chromeColor: "#10091e",
     terminalColor: "#120e1d",
     backdropAlpha: 0.05,
-    panelAlpha: 0.68,
-    chromeAlpha: 0.72,
-    terminalAlpha: 0.56,
+    panelAlpha: 0.44,
+    chromeAlpha: 0.4,
+    terminalAlpha: 0.48,
   },
   "aether-cute": {
     backdropColor: "#071916",
@@ -93,9 +93,9 @@ export const MOOD_MATERIAL_DEFAULTS: Record<MoodPresetId, MoodMaterialDefaults> 
     chromeColor: "#031313",
     terminalColor: "#0a1a19",
     backdropAlpha: 0.05,
-    panelAlpha: 0.68,
-    chromeAlpha: 0.72,
-    terminalAlpha: 0.56,
+    panelAlpha: 0.44,
+    chromeAlpha: 0.4,
+    terminalAlpha: 0.48,
   },
   "aether-sakura": SAKURA_MATERIAL_DEFAULTS,
   "aether-obsidian": {
@@ -104,9 +104,9 @@ export const MOOD_MATERIAL_DEFAULTS: Record<MoodPresetId, MoodMaterialDefaults> 
     chromeColor: "#111017",
     terminalColor: "#0a0b12",
     backdropAlpha: 0.04,
-    panelAlpha: 0.72,
-    chromeAlpha: 0.74,
-    terminalAlpha: 0.62,
+    panelAlpha: 0.46,
+    chromeAlpha: 0.42,
+    terminalAlpha: 0.52,
   },
   "aether-pro": {
     backdropColor: "#040d17",
@@ -114,9 +114,9 @@ export const MOOD_MATERIAL_DEFAULTS: Record<MoodPresetId, MoodMaterialDefaults> 
     chromeColor: "#030a12",
     terminalColor: "#040d17",
     backdropAlpha: 0.04,
-    panelAlpha: 0.66,
-    chromeAlpha: 0.72,
-    terminalAlpha: 0.58,
+    panelAlpha: 0.42,
+    chromeAlpha: 0.38,
+    terminalAlpha: 0.48,
   },
 };
 
@@ -184,6 +184,7 @@ const SAKURA_MATERIAL_CSS_KEYS = [
   "--mood-toolkit-widget-bg",
   "--mood-logs-widget-bg",
   "--terminal-canvas-bg",
+  "--terminal-raster-bg",
   "--terminal-well-bg",
   "--terminal-chrome-bg",
   "--terminal-chrome-bg-focus",
@@ -253,10 +254,7 @@ function relativeLuminance(hex: string): number {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
-export function isMoodMaterialLight(
-  mood: MoodPresetId,
-  overrides?: MoodMaterialOverrides,
-): boolean {
+export function isMoodMaterialLight(mood: MoodPresetId, overrides?: MoodMaterialOverrides): boolean {
   const defaults = MOOD_MATERIAL_DEFAULTS[mood];
   const clean = sanitizeMaterialOverrides(overrides, defaults);
   const panel = clean.panelColor ?? defaults.panelColor;
@@ -264,9 +262,7 @@ export function isMoodMaterialLight(
   const panelAlpha = clean.panelAlpha ?? defaults.panelAlpha;
   const chromeAlpha = clean.chromeAlpha ?? defaults.chromeAlpha;
   if (panelAlpha < 0.5 && chromeAlpha < 0.5) return false;
-  const weightedLuminance =
-    relativeLuminance(panel) * panelAlpha +
-    relativeLuminance(chrome) * chromeAlpha;
+  const weightedLuminance = relativeLuminance(panel) * panelAlpha + relativeLuminance(chrome) * chromeAlpha;
   return weightedLuminance >= 0.78;
 }
 
@@ -294,9 +290,9 @@ export function materialOverridesToCSS(
   const softLight = `rgba(${backdropRgb}, ${clampAlpha(panelAlpha - 0.42, 0.03, 0.46)})`;
   const softAccent = `rgba(${chromeRgb}, ${clampAlpha(chromeAlpha - 0.74, 0.02, 0.14)})`;
   const usesLightChrome = relativeLuminance(panel) > 0.48 && panelAlpha >= 0.5;
-  const textPrimary = usesLightChrome ? "#24121b" : "rgba(246, 251, 255, 0.93)";
-  const textSecondary = usesLightChrome ? "rgba(47, 22, 33, 0.9)" : "rgba(219, 238, 255, 0.72)";
-  const textMuted = usesLightChrome ? "rgba(74, 34, 49, 0.78)" : "rgba(203, 224, 244, 0.62)";
+  const textPrimary = usesLightChrome ? "#24121b" : "#f6fbff";
+  const textSecondary = usesLightChrome ? "#3f2430" : "#cfe6f6";
+  const textMuted = usesLightChrome ? "#674353" : "#a7c0d3";
 
   return {
     "--sakura-root-rgb": backdropRgb,
@@ -335,6 +331,7 @@ export function materialOverridesToCSS(
     "--mood-toolkit-widget-bg": `linear-gradient(150deg, ${softLight}, rgba(${backdropRgb}, 0.14)), rgba(${panelRgb}, ${panelSoftAlpha})`,
     "--mood-logs-widget-bg": `linear-gradient(180deg, ${softLight}, rgba(${backdropRgb}, 0.12)), rgba(${panelRgb}, ${clampAlpha(panelSoftAlpha - 0.04, 0.12, 0.95)})`,
     "--terminal-canvas-bg": `rgba(${terminalRgb}, ${terminalAlpha})`,
+    "--terminal-raster-bg": `rgba(${terminalRgb}, ${clampAlpha(terminalAlpha + 0.34, 0.82, 0.96)})`,
     "--terminal-well-bg": `radial-gradient(ellipse at 44% -18%, rgba(${panelRgb}, 0.18), transparent 46%), radial-gradient(ellipse at 78% 18%, rgba(${chromeRgb}, 0.1), transparent 38%), linear-gradient(180deg, rgba(${terminalRgb}, ${Math.min(0.68, terminalAlpha + 0.06)}), rgba(${terminalRgb}, ${Math.min(0.72, terminalAlpha + 0.08)}))`,
     "--terminal-chrome-bg": `rgba(${terminalRgb}, ${Math.min(0.7, terminalAlpha + 0.04)})`,
     "--terminal-chrome-bg-focus": `rgba(${terminalRgb}, ${Math.min(0.78, terminalAlpha + 0.12)})`,
@@ -357,11 +354,11 @@ function applyReadableDarkGlassFloor(mood: MoodPresetId, vars: Record<string, st
   if (mood === "aether-sakura") return vars;
   return {
     ...vars,
-    "--glass-ground": withMinimumAlpha(vars["--glass-ground"], 0.68) ?? vars["--glass-ground"],
-    "--glass-frame": withMinimumAlpha(vars["--glass-frame"], 0.64) ?? vars["--glass-frame"],
-    "--glass-standard": withMinimumAlpha(vars["--glass-standard"], 0.72) ?? vars["--glass-standard"],
-    "--glass-dense": withMinimumAlpha(vars["--glass-dense"], 0.76) ?? vars["--glass-dense"],
-    "--glass-thick": withMinimumAlpha(vars["--glass-thick"], 0.8) ?? vars["--glass-thick"],
+    "--glass-ground": withMinimumAlpha(vars["--glass-ground"], 0.32) ?? vars["--glass-ground"],
+    "--glass-frame": withMinimumAlpha(vars["--glass-frame"], 0.26) ?? vars["--glass-frame"],
+    "--glass-standard": withMinimumAlpha(vars["--glass-standard"], 0.34) ?? vars["--glass-standard"],
+    "--glass-dense": withMinimumAlpha(vars["--glass-dense"], 0.42) ?? vars["--glass-dense"],
+    "--glass-thick": withMinimumAlpha(vars["--glass-thick"], 0.48) ?? vars["--glass-thick"],
   };
 }
 
@@ -421,39 +418,39 @@ function darkMoodSurfaces(tone: {
   text: string;
 }): MoodSurfaceCSS {
   return {
-    "--chrome-frame-bg": `linear-gradient(180deg, rgba(${tone.accent}, 0.026), transparent 72%), linear-gradient(90deg, rgba(${tone.accent}, 0.022), transparent 36%, transparent 66%, rgba(${tone.gold}, 0.012)), rgba(${tone.shell}, 0.62)`,
-    "--chrome-frame-filter": "blur(8px) saturate(1.04) brightness(0.76) contrast(1.12)",
+    "--chrome-frame-bg": `linear-gradient(180deg, rgba(${tone.accent}, 0.026), transparent 72%), linear-gradient(90deg, rgba(${tone.accent}, 0.022), transparent 36%, transparent 66%, rgba(${tone.gold}, 0.012)), rgba(${tone.shell}, 0.42)`,
+    "--chrome-frame-filter": "blur(14px) saturate(1.12) brightness(0.82) contrast(1.1)",
     "--chrome-frame-shadow": `inset 0 1px 0 rgba(${tone.text}, 0.08), inset 0 -1px 0 rgba(${tone.accent}, 0.08)`,
     "--chrome-control-hover-bg": `rgba(${tone.accent}, 0.095)`,
     "--chrome-control-hover-border": `rgba(${tone.accent}, 0.16)`,
     "--chrome-separator-bg": `linear-gradient(180deg, transparent, rgba(${tone.accent}, 0.18), transparent)`,
-    "--statusbar-bg": `rgba(${tone.shell}, 0.72)`,
-    "--statusbar-filter": "blur(1px) saturate(1.04) brightness(0.78) contrast(1.1)",
+    "--statusbar-bg": `rgba(${tone.shell}, 0.4)`,
+    "--statusbar-filter": "blur(14px) saturate(1.12) brightness(0.82) contrast(1.08)",
     "--statusbar-shadow": `inset 0 1px 0 rgba(${tone.text}, 0.055), inset 0 -1px 0 rgba(${tone.accent}, 0.07)`,
-    "--material-panel-filter": "blur(1px) saturate(1.04) brightness(0.82) contrast(1.12)",
-    "--terminal-shell-filter": "blur(1px) saturate(1.04) brightness(0.82) contrast(1.12)",
+    "--material-panel-filter": "blur(16px) saturate(1.14) brightness(0.8) contrast(1.08)",
+    "--terminal-shell-filter": "blur(16px) saturate(1.14) brightness(0.82) contrast(1.08)",
     "--material-panel-shadow": `var(--rim-top), inset 0 0 0 1px rgba(${tone.accent}, 0.055), 0 12px 30px rgba(0, 0, 0, 0.2)`,
     "--material-card-shadow": `var(--rim-top), 0 0 0 1px rgba(${tone.accent}, 0.05), 0 8px 20px rgba(0, 0, 0, 0.18)`,
-    "--popup-glass-bg": `linear-gradient(180deg, rgba(${tone.text}, 0.045), transparent 40%), linear-gradient(145deg, rgba(${tone.accent}, 0.04), transparent 52%), rgba(${tone.panelStrong}, 0.9)`,
+    "--popup-glass-bg": `linear-gradient(180deg, rgba(${tone.text}, 0.045), transparent 40%), linear-gradient(145deg, rgba(${tone.accent}, 0.04), transparent 52%), rgba(${tone.panelStrong}, 0.7)`,
     "--popup-glass-border": `rgba(${tone.accent}, 0.14)`,
     "--popup-glass-shadow": `var(--rim-top), inset 0 0 0 1px rgba(${tone.accent}, 0.055), 0 16px 38px rgba(0, 0, 0, 0.26)`,
     "--scrim-standard-bg": `linear-gradient(180deg, rgba(0, 0, 0, 0.34), rgba(${tone.shell}, 0.46)), rgba(${tone.shell}, 0.2)`,
     "--scrim-heavy-bg": `linear-gradient(180deg, rgba(0, 0, 0, 0.42), rgba(${tone.shell}, 0.58)), rgba(${tone.shell}, 0.28)`,
-    "--dialog-surface": `linear-gradient(180deg, rgba(${tone.text}, 0.045), transparent 32%), linear-gradient(145deg, rgba(${tone.accent}, 0.045), transparent 50%), rgba(${tone.panelStrong}, 0.92)`,
+    "--dialog-surface": `linear-gradient(180deg, rgba(${tone.text}, 0.045), transparent 32%), linear-gradient(145deg, rgba(${tone.accent}, 0.045), transparent 50%), rgba(${tone.panelStrong}, 0.78)`,
     "--dialog-surface-blur": "blur(20px)",
-    "--settings-control-bg": `rgba(${tone.panel}, 0.84)`,
-    "--settings-card-bg": `rgba(${tone.panel}, 0.66)`,
-    "--settings-card-bg-hover": `rgba(${tone.panelStrong}, 0.76)`,
-    "--settings-card-bg-active": `rgba(${tone.panelStrong}, 0.84)`,
-    "--toolkit-grid-bg": `linear-gradient(135deg, rgba(${tone.accent}, 0.075), transparent 38%, rgba(${tone.gold}, 0.04)), rgba(${tone.panel}, 0.42)`,
+    "--settings-control-bg": `rgba(${tone.panel}, 0.54)`,
+    "--settings-card-bg": `rgba(${tone.panel}, 0.44)`,
+    "--settings-card-bg-hover": `rgba(${tone.panelStrong}, 0.54)`,
+    "--settings-card-bg-active": `rgba(${tone.panelStrong}, 0.62)`,
+    "--toolkit-grid-bg": `linear-gradient(135deg, rgba(${tone.accent}, 0.075), transparent 38%, rgba(${tone.gold}, 0.04)), rgba(${tone.panel}, 0.32)`,
     "--toolkit-grid-shadow": `inset 0 1px 0 rgba(${tone.text}, 0.055), inset 0 -1px 0 rgba(${tone.accent}, 0.06)`,
-    "--toolkit-tile-bg": `linear-gradient(180deg, rgba(${tone.text}, 0.035), rgba(${tone.accent}, 0.022)), rgba(${tone.panel}, 0.56)`,
-    "--toolkit-tile-primary-bg": `linear-gradient(135deg, color-mix(in srgb, var(--tone, var(--gold)) 14%, transparent), transparent 46%), rgba(${tone.panelStrong}, 0.62)`,
-    "--toolkit-tile-hover-bg": `linear-gradient(180deg, color-mix(in srgb, var(--tone, var(--gold)) 12%, transparent), transparent 58%), rgba(${tone.panelStrong}, 0.72)`,
+    "--toolkit-tile-bg": `linear-gradient(180deg, rgba(${tone.text}, 0.035), rgba(${tone.accent}, 0.022)), rgba(${tone.panel}, 0.42)`,
+    "--toolkit-tile-primary-bg": `linear-gradient(135deg, color-mix(in srgb, var(--tone, var(--gold)) 14%, transparent), transparent 46%), rgba(${tone.panelStrong}, 0.48)`,
+    "--toolkit-tile-hover-bg": `linear-gradient(180deg, color-mix(in srgb, var(--tone, var(--gold)) 12%, transparent), transparent 58%), rgba(${tone.panelStrong}, 0.56)`,
     "--toolkit-tile-text": "var(--text-primary)",
-    "--toolkit-icon-bg": `linear-gradient(180deg, rgba(${tone.text}, 0.055), rgba(${tone.accent}, 0.035)), color-mix(in srgb, var(--tone, var(--accent)) 12%, rgba(${tone.panelStrong}, 0.72))`,
-    "--toolkit-bottom-bg": `linear-gradient(90deg, rgba(${tone.accent}, 0.07), transparent 52%, rgba(${tone.gold}, 0.045)), rgba(${tone.panel}, 0.48)`,
-    "--toolkit-bottom-btn-bg": `rgba(${tone.panelStrong}, 0.62)`,
+    "--toolkit-icon-bg": `linear-gradient(180deg, rgba(${tone.text}, 0.055), rgba(${tone.accent}, 0.035)), color-mix(in srgb, var(--tone, var(--accent)) 12%, rgba(${tone.panelStrong}, 0.52))`,
+    "--toolkit-bottom-bg": `linear-gradient(90deg, rgba(${tone.accent}, 0.07), transparent 52%, rgba(${tone.gold}, 0.045)), rgba(${tone.panel}, 0.34)`,
+    "--toolkit-bottom-btn-bg": `rgba(${tone.panelStrong}, 0.46)`,
   };
 }
 
@@ -582,9 +579,9 @@ const MOOD_CSS: Record<MoodPresetId, Record<string, string>> = {
     "--gold-dim": "rgba(240, 207, 122, 0.38)",
     "--gold-subtle": "rgba(240, 207, 122, 0.16)",
     "--gold-surface": "linear-gradient(180deg, #fff0b2 0%, #f6d982 36%, #d2a94f 100%)",
-    "--text-primary": "rgba(246, 251, 255, 0.93)",
-    "--text-secondary": "rgba(219, 238, 255, 0.62)",
-    "--text-muted": "rgba(203, 224, 244, 0.58)",
+    "--text-primary": "#f6fbff",
+    "--text-secondary": "#cfe4f3",
+    "--text-muted": "#9fb8cb",
     "--text-on-accent": "#07111d",
     "--row-hover": "rgba(118, 207, 245, 0.064)",
     "--row-hover-strong": "rgba(150, 222, 250, 0.1)",
@@ -655,9 +652,9 @@ const MOOD_CSS: Record<MoodPresetId, Record<string, string>> = {
     "--gold-dim": "rgba(245, 199, 227, 0.34)",
     "--gold-subtle": "rgba(245, 199, 227, 0.14)",
     "--gold-surface": "linear-gradient(180deg, #fff4fb 0%, #f5c7e3 42%, #9adfff 100%)",
-    "--text-primary": "rgba(246, 253, 255, 0.94)",
-    "--text-secondary": "rgba(211, 241, 252, 0.64)",
-    "--text-muted": "rgba(180, 218, 234, 0.58)",
+    "--text-primary": "#f6fdff",
+    "--text-secondary": "#c6e8f3",
+    "--text-muted": "#96b9c8",
     "--text-on-accent": "#03111f",
     "--row-hover": "rgba(82, 215, 255, 0.07)",
     "--row-hover-strong": "rgba(154, 226, 255, 0.12)",
@@ -728,9 +725,9 @@ const MOOD_CSS: Record<MoodPresetId, Record<string, string>> = {
     "--gold-dim": "rgba(255, 217, 150, 0.36)",
     "--gold-subtle": "rgba(255, 217, 150, 0.15)",
     "--gold-surface": "linear-gradient(180deg, #fff0c2 0%, #ffd996 42%, #d7a95c 100%)",
-    "--text-primary": "rgba(253, 248, 255, 0.92)",
-    "--text-secondary": "rgba(237, 225, 255, 0.6)",
-    "--text-muted": "rgba(222, 207, 245, 0.58)",
+    "--text-primary": "#fdf8ff",
+    "--text-secondary": "#dfd3f3",
+    "--text-muted": "#b8a8d0",
     "--text-on-accent": "#120d20",
     "--row-hover": "rgba(203, 182, 255, 0.08)",
     "--row-hover-strong": "rgba(231, 217, 255, 0.13)",
@@ -801,9 +798,9 @@ const MOOD_CSS: Record<MoodPresetId, Record<string, string>> = {
     "--gold-dim": "rgba(255, 209, 220, 0.36)",
     "--gold-subtle": "rgba(255, 209, 220, 0.15)",
     "--gold-surface": "linear-gradient(180deg, #fff0f5 0%, #ffd1dc 42%, #d99aaa 100%)",
-    "--text-primary": "rgba(246, 255, 253, 0.92)",
-    "--text-secondary": "rgba(221, 250, 245, 0.6)",
-    "--text-muted": "rgba(202, 234, 229, 0.58)",
+    "--text-primary": "#f6fffd",
+    "--text-secondary": "#cfeae5",
+    "--text-muted": "#a8c8c2",
     "--text-on-accent": "#071916",
     "--row-hover": "rgba(114, 240, 220, 0.08)",
     "--row-hover-strong": "rgba(188, 255, 244, 0.13)",
@@ -875,12 +872,13 @@ const MOOD_CSS: Record<MoodPresetId, Record<string, string>> = {
     "--gold-subtle": "rgba(189, 63, 104, 0.18)",
     "--gold-surface": "linear-gradient(180deg, #ffd6df 0%, #e88fa7 42%, #823149 100%)",
     "--text-primary": "#24121b",
-    "--text-secondary": "rgba(47, 22, 33, 0.9)",
-    "--text-muted": "rgba(74, 34, 49, 0.78)",
+    "--text-secondary": "#3f2430",
+    "--text-muted": "#674353",
     "--text-on-accent": "#fffaff",
     "--row-hover": "rgba(189, 63, 104, 0.13)",
     "--row-hover-strong": "rgba(189, 63, 104, 0.2)",
     "--terminal-canvas-bg": "rgba(83, 33, 56, 0.54)",
+    "--terminal-raster-bg": "rgba(83, 33, 56, 0.88)",
     "--terminal-well-bg":
       "radial-gradient(ellipse at 44% -18%, rgba(255, 198, 219, 0.18), transparent 46%), radial-gradient(ellipse at 78% 18%, rgba(252, 201, 185, 0.1), transparent 38%), linear-gradient(180deg, rgba(111, 43, 73, 0.4), rgba(54, 22, 42, 0.56))",
     "--terminal-chrome-bg": "rgba(78, 31, 54, 0.42)",
@@ -949,9 +947,9 @@ const MOOD_CSS: Record<MoodPresetId, Record<string, string>> = {
     "--gold-dim": "rgba(216, 183, 102, 0.42)",
     "--gold-subtle": "rgba(216, 183, 102, 0.18)",
     "--gold-surface": "linear-gradient(180deg, #f4df9a 0%, #dfc27c 24%, #d8b766 52%, #b78c3f 82%, #8f682f 100%)",
-    "--text-primary": "rgba(250, 246, 235, 0.9)",
-    "--text-secondary": "rgba(231, 226, 214, 0.58)",
-    "--text-muted": "rgba(220, 214, 204, 0.56)",
+    "--text-primary": "#faf6eb",
+    "--text-secondary": "#d7d2c6",
+    "--text-muted": "#aaa39a",
     "--text-on-accent": "#090b13",
     "--row-hover": "var(--white-6)",
     "--row-hover-strong": "var(--white-10)",
@@ -1022,9 +1020,9 @@ const MOOD_CSS: Record<MoodPresetId, Record<string, string>> = {
     "--gold-dim": "rgba(199, 179, 122, 0.34)",
     "--gold-subtle": "rgba(199, 179, 122, 0.14)",
     "--gold-surface": "linear-gradient(180deg, #e7dba7 0%, #c7b37a 45%, #9a844b 100%)",
-    "--text-primary": "rgba(241, 247, 250, 0.9)",
-    "--text-secondary": "rgba(218, 229, 235, 0.56)",
-    "--text-muted": "rgba(200, 213, 222, 0.56)",
+    "--text-primary": "#f1f7fa",
+    "--text-secondary": "#ced9df",
+    "--text-muted": "#a2b0b9",
     "--text-on-accent": "#080c10",
     "--row-hover": "rgba(155, 199, 223, 0.07)",
     "--row-hover-strong": "rgba(188, 220, 238, 0.11)",
@@ -1051,22 +1049,22 @@ const MOOD_CSS: Record<MoodPresetId, Record<string, string>> = {
     "--mood-window-rim":
       "inset 0 1px 0 rgba(238, 246, 250, 0.08), inset 0 0 0 1px rgba(203, 220, 232, 0.045), inset 0 -1px 0 rgba(199, 179, 122, 0.026)",
     "--mood-left-panel-bg":
-      "linear-gradient(180deg, rgba(124, 214, 235, 0.016), transparent 26%), linear-gradient(145deg, rgba(0, 126, 190, 0.034), transparent 48%), rgba(4, 13, 23, 0.58)",
+      "linear-gradient(180deg, rgba(124, 214, 235, 0.016), transparent 26%), linear-gradient(145deg, rgba(0, 126, 190, 0.034), transparent 48%), rgba(4, 13, 23, 0.42)",
     "--mood-center-panel-bg":
-      "radial-gradient(ellipse at 50% 0%, rgba(72, 185, 220, 0.024), transparent 42%), linear-gradient(180deg, rgba(4, 13, 23, 0.22), rgba(1, 6, 12, 0.2)), var(--aether-bg)",
+      "radial-gradient(ellipse at 50% 0%, rgba(72, 185, 220, 0.024), transparent 42%), linear-gradient(180deg, rgba(4, 13, 23, 0.14), rgba(1, 6, 12, 0.12)), var(--aether-bg)",
     "--mood-right-panel-bg":
-      "linear-gradient(180deg, rgba(124, 214, 235, 0.018), transparent 24%), linear-gradient(145deg, rgba(0, 126, 190, 0.042), transparent 48%), rgba(4, 13, 23, 0.66)",
-    "--mood-widget-bg": "linear-gradient(160deg, rgba(5, 18, 31, 0.32), rgba(2, 9, 17, 0.38)), rgba(4, 13, 23, 0.34)",
+      "linear-gradient(180deg, rgba(124, 214, 235, 0.018), transparent 24%), linear-gradient(145deg, rgba(0, 126, 190, 0.042), transparent 48%), rgba(4, 13, 23, 0.48)",
+    "--mood-widget-bg": "linear-gradient(160deg, rgba(5, 18, 31, 0.22), rgba(2, 9, 17, 0.28)), rgba(4, 13, 23, 0.26)",
     "--mood-widget-veil":
       "linear-gradient(180deg, rgba(238, 246, 250, 0.028), transparent 22%), linear-gradient(135deg, rgba(155, 199, 223, 0.022), transparent 42%), linear-gradient(315deg, rgba(199, 179, 122, 0.016), transparent 48%)",
     "--mood-sessions-widget-bg":
-      "linear-gradient(160deg, rgba(5, 18, 31, 0.34), rgba(2, 9, 17, 0.4)), rgba(4, 13, 23, 0.32)",
+      "linear-gradient(160deg, rgba(5, 18, 31, 0.24), rgba(2, 9, 17, 0.3)), rgba(4, 13, 23, 0.24)",
     "--mood-workflow-widget-bg":
-      "linear-gradient(180deg, rgba(5, 18, 31, 0.32), rgba(2, 9, 17, 0.38)), rgba(4, 13, 23, 0.3)",
+      "linear-gradient(180deg, rgba(5, 18, 31, 0.22), rgba(2, 9, 17, 0.28)), rgba(4, 13, 23, 0.22)",
     "--mood-toolkit-widget-bg":
-      "linear-gradient(150deg, rgba(5, 18, 31, 0.31), rgba(2, 9, 17, 0.38)), rgba(4, 13, 23, 0.3)",
+      "linear-gradient(150deg, rgba(5, 18, 31, 0.22), rgba(2, 9, 17, 0.28)), rgba(4, 13, 23, 0.22)",
     "--mood-logs-widget-bg":
-      "linear-gradient(180deg, rgba(5, 16, 28, 0.32), rgba(3, 10, 19, 0.38)), rgba(4, 13, 23, 0.36)",
+      "linear-gradient(180deg, rgba(5, 16, 28, 0.24), rgba(3, 10, 19, 0.3)), rgba(4, 13, 23, 0.28)",
     "--mood-selection-bg": "rgba(155, 199, 223, 0.22)",
   },
 };

@@ -133,19 +133,18 @@
   background: transparent;
   font-size: var(--text-2xs);
   font-family: var(--font-mono);
-  color: color-mix(in srgb, var(--gold) 42%, var(--text-muted));
+  color: color-mix(in srgb, var(--gold) 36%, var(--text-muted));
   box-shadow: none;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  opacity: 0.42;
-  transition: opacity var(--duration-fast) var(--ease-silk);
+  transition: color var(--duration-fast) var(--ease-silk);
 }
 
 .tabWrap:hover .branchBadge,
 .tabWrap[data-active] .branchBadge,
 .tabWrap:focus-within .branchBadge {
-  opacity: 0.68;
+  color: color-mix(in srgb, var(--gold) 62%, var(--text-secondary));
 }
 
 .tabClose {

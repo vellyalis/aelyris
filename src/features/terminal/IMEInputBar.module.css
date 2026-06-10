@@ -43,8 +43,8 @@
 }
 
 .bar.disabled {
-  opacity: 0.62;
   background: color-mix(in srgb, var(--terminal-chrome-bg) 70%, transparent);
+  border-color: rgba(124, 214, 235, 0.04);
 }
 
 .attachmentDock {
@@ -184,8 +184,10 @@
 }
 
 .toolButton:disabled {
+  color: var(--text-muted);
+  background: rgba(4, 11, 18, 0.08);
+  border-color: rgba(124, 214, 235, 0.025);
   cursor: not-allowed;
-  opacity: 0.42;
 }
 
 /* While IME composition is active we light the pill in gold so the

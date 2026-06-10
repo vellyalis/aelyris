@@ -1,5 +1,7 @@
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 
+import { formatFallbackError, reportFallback } from "../lib/fallbackTelemetry";
 import type { ImageMetrics } from "../types/terminal";
 
 /**
@@ -9,7 +11,7 @@ import type { ImageMetrics } from "../types/terminal";
 export type Invoke = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
 
 const defaultInvoke: Invoke = async (cmd, args) => {
-  const { invoke } = await import("@tauri-apps/api/core");
+  const { invoke } = await Promise.resolve({ invoke: tauriInvoke });
   return invoke(cmd, args) as Promise<never>;
 };
 
@@ -35,7 +37,7 @@ export interface UseImageMetricsOptions {
  * Returns `null` while:
  *   - `terminalId` is `null` (no active pane / shell still spawning),
  *   - the IPC reports `null` (terminal id unknown to the engine), OR
- *   - the IPC throws (transient — the next tick retries silently).
+ *   - the IPC throws (transient — the next tick retries after telemetry).
  *
  * The widget treats `null` as "hide the badge" — the same graceful
  * degradation as the snapshot's image-paint pass on a missing
@@ -80,8 +82,20 @@ export function useImageMetrics(terminalId: string | null, options: UseImageMetr
         });
         if (cancelled) return;
         setMetrics(result ?? null);
-      } catch {
-        if (!cancelled) setMetrics(null);
+      } catch (err) {
+        if (!cancelled) {
+          setMetrics(null);
+          reportFallback(
+            {
+              source: "terminal.images",
+              operation: "term_image_metrics",
+              severity: "warning",
+              message: `Image metrics unavailable for ${terminalId}: ${formatFallbackError(err)}`,
+              userVisible: true,
+            },
+            { throttleMs: 30_000 },
+          );
+        }
       } finally {
         inFlight = false;
       }

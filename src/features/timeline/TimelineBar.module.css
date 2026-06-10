@@ -37,7 +37,7 @@
 }
 
 .root[data-empty="true"] .label {
-  opacity: 0.86;
+  color: color-mix(in srgb, var(--terminal-ui-primary, var(--ctp-cyan)) 68%, var(--text-secondary));
 }
 
 .ticks {

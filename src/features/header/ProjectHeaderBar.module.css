@@ -65,18 +65,16 @@
 
 .branch {
   font-size: var(--text-xs);
-  color: var(--text-muted);
+  color: color-mix(in srgb, var(--text-muted) 88%, var(--text-secondary));
   font-family: var(--font-mono);
-  opacity: 0.74;
 }
 
 /* Muted so the project name keeps the eye-anchor — gold on gold against
    `.name` was competing for attention (audit 2026-04-24). */
 .changes {
   font-size: var(--text-xs);
-  color: var(--text-muted);
+  color: color-mix(in srgb, var(--text-muted) 76%, var(--text-secondary));
   font-family: var(--font-mono);
-  opacity: 0.62;
 }
 
 /* Status dot + label */

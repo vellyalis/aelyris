@@ -1,6 +1,21 @@
 # Rust Core WezTerm/tmux Wizard Goals
 
 Date: 2026-05-12
+Updated: 2026-06-01
+
+## Current Canonical State - 2026-06-01
+
+- `pnpm verify:quality-score` currently reports `99/100`, grade `S`, `331/335`, `releaseCandidateReady=false`.
+- `pnpm verify:final-goal-audit` is currently `blocked-by-external-gates`: `implementationFixableCount=0`, `policyBlockedCount=0`, and `externalBlockedCount=1`.
+- The live AI CLI post-launch chaos score is no longer blocked by WebView2 CDP: `.codex-auto/chaos-recovery/native-ai-cli-post-launch-chaos.json` proves native sidecar AI CLI spawn, input, kill cleanup, same-id PTY restart, prompt readiness, and no session residue, while the stale URL truth contract remains covered by the right-rail verifier.
+- The strict right-rail Goal Track DOM proof can also report environment-blocked when WebView2 CDP at `http://127.0.0.1:9222` is not reachable, but the current gate preserves the primary artifact and accepts the fresh `.environment-blocked.json` source contract as `environment-blocked-current-contract`.
+- The safe proof registry has `26/26` registered artifacts green when `rightRailGoalTrackTauri` reports either `pass-current-contract` or `environment-blocked-current-contract`, including `goal-external-gate-readiness`, `real-os-sleep-operator-handoff`, `goal-operator-finish`, optional git handoff artifacts, `glass-legibility-contract`, `right-rail-information-density-contract`, and `goal-anti-stall-contract`.
+- Long external operator gates now persist `.codex-auto/quality/goal-operator-progress.json` with `lastHeartbeatAt`, `nextHeartbeatAt`, active step, and next action, so a resumed run can distinguish an actual stall from a sleep/token gate wait.
+- `pnpm verify:goal:finalize` excludes git finalization by default; set `AETHER_GOAL_FINALIZE_INCLUDE_GIT=1` only when commit/merge readiness is intentionally in scope.
+- Git finalization is an optional handoff gate, not required for product/safe/finalize evidence: `.codex-auto/quality/git-finalization-readiness.json` records the exact commit/merge runbook when `.git/index.lock` or `.git/objects` permission errors block staging.
+- `real-os-soak` is host-blocked, not passed: the native sleep command returned `SetSuspendState returned false; GetLastError=50`, while native sleep/postcheck preflights and the no-real-sleep-claim postcheck writer pass.
+- `authenticated-ai-cli-prompt-smoke` is now proved through explicit consent; `authenticated-ai-cli-consent-packet` records the required `AETHER_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` plus `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini` boundary for any future token-spending prompt run.
+- Until a capable/user-initiated Windows sleep cycle emits real power events, final audit state must remain `blocked-by-external-gates`, never `complete`.
 
 ## Purpose
 
@@ -39,6 +54,41 @@ Known gaps:
 - Scrollback exists, but durable scrollback plus command-block replay is not yet the single recovery source for all UI clients.
 - CLI control is not yet complete enough to operate the mux without the UI.
 - Performance budgets exist as intent, but not as mandatory CI gates.
+
+### 2026-05-19 Baseline Correction
+
+The "Known gaps" list above is the original 2026-05-12 baseline. The current implementation has closed several of those gaps:
+
+- Prefix/keymap dispatch is Rust-owned through `mux_process_keymap_event`.
+- Layout operations now include split, close, move, swap, even, tiled, rotate, break, join, zoom, broadcast, and synchronized panes.
+- `aetherctl` and the mux HTTP API can operate and inspect sessions without the React UI for the core local workflow.
+- Durable scrollback capture and search are release-gated by `pnpm verify:scrollback-gates`.
+- Mux restore and performance are release-gated by `pnpm verify:mux-live` and `pnpm verify:mux-performance`.
+- Terminal parsing/grid state is Rust-owned through `alacritty_terminal` and `NativeTerminalRegistry`; xterm.js is not a product dependency.
+- Native terminal input has a Windows HWND-backed default surface in Tauri, with live IME evidence passing.
+- `aether-native` is now a Rust-native, no-WebView attaching client spike. `pnpm verify:terminal:native-client` proves it reaches the same daemon instance, creates a layered Win32 native window, renders daemon-captured terminal text through Win32/GDI with nonblank pixel evidence, feeds daemon capture into Rust `TermEngine`, materializes a renderer-neutral `NativeRenderFrame` with schema `aether.native.render-frame.v1`, renders a native 100x24 terminal grid with nonblank cell/pixel evidence, proves the renderer consumed the same frame hash, and can list, send, capture, detach, and attach through the mux API.
+- Production release evidence now passes for all implementation-fixable gates: `pnpm verify:release:production`, strict release doctor, supply-chain audit, mux restore/performance, scrollback, and quality score `96/100`, grade `A`, `321/335`, `releaseCandidateReady=false`.
+- `pnpm verify:goal:safe` reports `blocked-by-external-gates` with `24/24` proof artifacts passing and `0` implementation-fixable blockers, including the objective-level `goal-completion-matrix`, current supply-chain audit proof, `goal-external-gate-readiness`, optional git handoff artifacts, `glass-legibility-contract`, and `goal-anti-stall-contract`.
+- The current state is `blocked-by-external-gates` because real OS sleep/resume is host-blocked and `authenticated-ai-cli-prompt-smoke` may spend tokens. The opt-in artifact is `authenticated-ai-cli-consent-packet`, and the final smoke requires `AETHER_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` plus `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini`.
+
+Remaining Core Wizard gaps:
+
+- Background mux daemon policy: sessions can detach/attach through the current sidecar/API path, but the product still needs an explicit named daemon lifecycle, attach permissions, version negotiation, and UI-close policy.
+- True daemon-owned window groups: `Ctrl+B c` currently creates an app workspace tab; it is not yet a full tmux-style daemon window model independent of the React workspace tab model.
+- Normal-path fallback deletion: the Tauri default input path is native, but emergency/non-Tauri WebView textarea fallback code and tests still exist. That is acceptable for compatibility, but not for a "no fallback shadows" Wizard claim.
+- Native renderer/client: the first attaching client, native Win32 window proof, native GDI text render proof, TermEngine-backed native GDI grid proof, and renderer-neutral `NativeRenderFrame` contract exist, but the shipping shell still renders via React/WebView/Canvas 2D. Native-shell parity still requires the actual `winit`/`wgpu` terminal renderer, native IME path, native glass compositor, and visual regression harness.
+- Config reload: keymap/theme/shell-profile/config hot reload is not yet a complete Rust-owned contract.
+- Remote/domain abstraction: local mux is ready to be extended, but SSH/remote/domain panes are not implemented.
+- Command-block journal as product truth: scrollback/search, recovered command evidence, multipane command evidence, and failure recovery are proven. The remaining work is to make the journal the default visible spine for every review, workflow, and handoff path.
+- Right rail edge: smoke/action/scale/final-goal gates now pass, and provenance, recovery, context packs, launch planning, and workflow trace are represented in the Command Center contracts. The remaining work is UX dominance: making that loop obvious in the first minute without relying on documentation.
+
+Current grade assessment:
+
+- Core B: complete.
+- Core A: largely complete for local mux operations.
+- Core S: partial; local API/CLI/perf evidence exists, but config reload, native renderer, and client-agnostic daemon lifecycle remain.
+- Core S++: implementation evidence is green for provenance/recovery/context-pack/launch-planner loops, but the UX still needs to make that path the obvious daily default.
+- Core Wizard: not complete until the daemon survives as an explicit product boundary and the native client grows from an attaching proof into a real daily-driver terminal window.
 
 ## Core Data Model
 
@@ -909,3 +959,22 @@ Remaining before this can be called Core Wizard:
 
 - Run a fresh live WebView2/CDP smoke on the built app, not only script syntax and unit gates.
 - Extend `Ctrl+B c` from App-tab creation into true daemon-owned mux window groups if the product decides to model tmux windows separately from workspace tabs.
+## 2026-05-22 Final Evidence Refresh
+
+- Current release score evidence: `96/100`, `321/335`.
+- `releaseCandidateReady=false`; final-goal audit status is `blocked-by-external-gates` until real sleep/resume evidence and consented `authenticated-ai-cli-prompt-smoke` are both proven.
+- Authenticated prompt execution remains gated by `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini` and explicit consent; the safe proof registry is `24/24`.
+
+## 2026-05-24 Release Evidence Refresh
+
+- Current hybrid release score evidence: `96/100`, `321/335`, `releaseCandidateReady=false`.
+- Final-goal audit status is `blocked-by-external-gates` for the current Rust-core product boundary until real sleep/resume evidence and consented `authenticated-ai-cli-prompt-smoke` both pass.
+- Full-native Rust Wizard status is not yet complete; it is governed by `docs/FULL_NATIVE_RUST_FINAL_GOAL.md` and `pnpm verify:full-native:audit`.
+
+## 2026-05-31 Final Goal Evidence Refresh
+
+- Current release score evidence before the self-referential final-goal map is `93/100`, `313/335`, `releaseCandidateReady=false`.
+- Projected score after the fresh final-goal evidence map remains `96/100`, `321/335`; auditStatus=`blocked-by-external-gates`.
+- Rust-core terminal, mux restore, native IME/clipboard, AI CLI sidecar, right rail workflow, and runtime hygiene gates are green in the non-token/non-real-sleep scope.
+- Remaining external gate is real Windows sleep/resume support; remaining policy gate is explicit token-spend consent for `authenticated-ai-cli-prompt-smoke`.
+- Authenticated prompt execution remains gated by `authenticated-ai-cli-prompt-smoke`, `authenticated-ai-cli-consent-packet`, and `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini`; safe proof registry is `24/24`.

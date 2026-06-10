@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen as tauriListen } from "@tauri-apps/api/event";
 import {
   ArrowDown,
   ArrowRight,
@@ -93,7 +94,7 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
     // before `unlisten` is assigned, and the .then callback then stores
     // a handle on an unmounted component that nothing ever calls. Same
     // shape as the WorkflowPanel listener leak landed in round 2.
-    import("@tauri-apps/api/event")
+    Promise.resolve({ listen: tauriListen })
       .then(({ listen }) =>
         listen<{ root: string }>("fs:changed", (e) => {
           if (cancelled) return;

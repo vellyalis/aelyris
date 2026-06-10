@@ -102,8 +102,7 @@
     linear-gradient(45deg, var(--white-6) 25%, transparent 25%),
     linear-gradient(-45deg, var(--white-6) 25%, transparent 25%),
     linear-gradient(45deg, transparent 75%, var(--white-6) 75%),
-    linear-gradient(-45deg, transparent 75%, var(--white-6) 75%),
-    var(--aether-bg);
+    linear-gradient(-45deg, transparent 75%, var(--white-6) 75%), var(--aether-bg);
   background-position:
     0 0,
     0 10px,
