@@ -25,6 +25,9 @@ const ASCII_BEL: u8 = 0x07;
 const ASCII_ESC: u8 = 0x1b;
 const SIDECAR_RECONNECT_DEFAULT_COLS: u16 = 120;
 const SIDECAR_RECONNECT_DEFAULT_ROWS: u16 = 30;
+/// Scrollback lines requested from the sidecar daemon when re-adopting a
+/// session after an app restart. Bounded by the server's capture clamp.
+const SIDECAR_ADOPT_BACKFILL_LINES: usize = 2000;
 
 static LAST_TERMINAL_JOURNAL_DB_WRITE_LATENCY_MS: AtomicU64 =
     AtomicU64::new(DB_WRITE_LATENCY_UNSET);
@@ -769,10 +772,13 @@ pub async fn spawn_terminal(
             &app,
             sidecar,
             &id,
-            cols,
-            rows,
-            cwd.as_deref(),
-            &shell_name,
+            SidecarWireOptions {
+                cols,
+                rows,
+                cwd: cwd.as_deref(),
+                shell_name: &shell_name,
+                backfill_scrollback: false,
+            },
         )
         .await?;
         record_audit_event(
@@ -1000,10 +1006,13 @@ pub async fn respawn_terminal(
             &app,
             sidecar,
             &id,
-            cols,
-            rows,
-            cwd.as_deref(),
-            &shell_name,
+            SidecarWireOptions {
+                cols,
+                rows,
+                cwd: cwd.as_deref(),
+                shell_name: &shell_name,
+                backfill_scrollback: false,
+            },
         )
         .await?;
         record_audit_event(
@@ -1210,10 +1219,13 @@ pub async fn force_restart_terminal(
             &app,
             sidecar,
             &id,
-            cols,
-            rows,
-            cwd.as_deref(),
-            &shell_name,
+            SidecarWireOptions {
+                cols,
+                rows,
+                cwd: cwd.as_deref(),
+                shell_name: &shell_name,
+                backfill_scrollback: false,
+            },
         )
         .await?;
         record_audit_event(
@@ -1594,15 +1606,46 @@ fn wire_terminal_streaming(
     Ok(())
 }
 
+/// Normalize a daemon capture (`lines.join("\n")`, lines may keep a trailing
+/// `\r`) into text safe to replay through the terminal engine: every line
+/// break becomes `\r\n` so replayed lines start at column 0, and the final
+/// line (usually the live prompt) is left open without a trailing break.
+/// Only the line-ending `\r` is deduplicated; mid-line `\r` (progress-bar
+/// style cursor returns) is preserved verbatim and replays correctly.
+fn sidecar_backfill_text(captured: &str) -> String {
+    let mut out = String::with_capacity(captured.len() + 64);
+    for (index, line) in captured.split('\n').enumerate() {
+        if index > 0 {
+            out.push_str("\r\n");
+        }
+        out.push_str(line.strip_suffix('\r').unwrap_or(line));
+    }
+    out
+}
+
+struct SidecarWireOptions<'a> {
+    cols: u16,
+    rows: u16,
+    cwd: Option<&'a str>,
+    shell_name: &'a str,
+    /// Replay daemon-side scrollback into the renderer before live output.
+    /// Set only when adopting sessions that survived an app restart.
+    backfill_scrollback: bool,
+}
+
 async fn wire_sidecar_terminal_streaming(
     app: &AppHandle,
     sidecar: crate::pty_sidecar::PtySidecarClient,
     terminal_id: &str,
-    cols: u16,
-    rows: u16,
-    cwd: Option<&str>,
-    shell_name: &str,
+    options: SidecarWireOptions<'_>,
 ) -> Result<(), String> {
+    let SidecarWireOptions {
+        cols,
+        rows,
+        cwd,
+        shell_name,
+        backfill_scrollback,
+    } = options;
     let mut rx = sidecar.subscribe_output(terminal_id).await?;
     let terminal_generation = app
         .state::<TerminalGenerationRegistry>()
@@ -1614,6 +1657,34 @@ async fn wire_sidecar_terminal_streaming(
     let native_registry = app.state::<Arc<NativeTerminalRegistry>>().inner().clone();
     if let Err(e) = native_registry.create(terminal_id, cols, rows) {
         log::warn!("native engine create failed for {}: {}", terminal_id, e);
+    }
+
+    if backfill_scrollback {
+        // The session outlived an app restart inside the sidecar daemon;
+        // without replaying its scrollback the renderer starts blank. The
+        // live stream is already subscribed above, so bytes arriving during
+        // the capture round-trip are queued, not lost. The capture snapshot
+        // may overlap the queued live tail by a few bytes when output is
+        // actively streaming at adopt time; terminal state converges on the
+        // next prompt redraw, so the brief duplication is accepted instead
+        // of paying for a sequenced replay protocol. Replay feeds only the
+        // renderer and capture buffer — the AdvanceResult diff and marks are
+        // deliberately discarded so stale output cannot re-trigger
+        // analysis/auto-repair or re-persist prompt marks.
+        match sidecar
+            .capture(terminal_id, SIDECAR_ADOPT_BACKFILL_LINES)
+            .await
+        {
+            Ok(captured) if !captured.is_empty() => {
+                let text = sidecar_backfill_text(&captured);
+                buffer_registry.feed(terminal_id, &text);
+                let _ = native_registry.advance(terminal_id, text.as_bytes());
+            }
+            Ok(_) => {}
+            Err(err) => {
+                log::warn!("sidecar scrollback backfill failed for {terminal_id}: {err}");
+            }
+        }
     }
 
     let flush_alive = Arc::new(std::sync::atomic::AtomicBool::new(true));
@@ -1789,10 +1860,13 @@ pub(crate) async fn adopt_sidecar_terminals(
             app,
             sidecar.clone(),
             &info.id,
-            SIDECAR_RECONNECT_DEFAULT_COLS,
-            SIDECAR_RECONNECT_DEFAULT_ROWS,
-            Some(&cwd),
-            &shell_name,
+            SidecarWireOptions {
+                cols: SIDECAR_RECONNECT_DEFAULT_COLS,
+                rows: SIDECAR_RECONNECT_DEFAULT_ROWS,
+                cwd: Some(&cwd),
+                shell_name: &shell_name,
+                backfill_scrollback: true,
+            },
         )
         .await?;
         adopted = adopted.saturating_add(1);
@@ -2450,10 +2524,13 @@ pub async fn mux_split_pane(
             &app,
             sidecar.clone(),
             &pane_id,
-            cols,
-            rows,
-            cwd.as_deref(),
-            &shell_name,
+            SidecarWireOptions {
+                cols,
+                rows,
+                cwd: cwd.as_deref(),
+                shell_name: &shell_name,
+                backfill_scrollback: false,
+            },
         )
         .await
         {
@@ -6171,6 +6248,50 @@ pub fn set_ime_position(
 mod tests {
     use super::*;
     use crate::watchdog::{AutoApproveRule, WatchdogRules};
+
+    #[test]
+    fn sidecar_backfill_text_joins_lines_with_crlf() {
+        assert_eq!(
+            sidecar_backfill_text("first\nsecond\nprompt>"),
+            "first\r\nsecond\r\nprompt>"
+        );
+    }
+
+    #[test]
+    fn sidecar_backfill_text_does_not_double_line_ending_carriage_returns() {
+        // Daemon buffer lines split on `\n` keep a trailing `\r`; replay must
+        // not double it into `\r\r\n`.
+        assert_eq!(
+            sidecar_backfill_text("first\r\nsecond\r\nprompt>"),
+            "first\r\nsecond\r\nprompt>"
+        );
+    }
+
+    #[test]
+    fn sidecar_backfill_text_preserves_mid_line_carriage_returns() {
+        // Progress-bar style cursor returns inside a line must replay
+        // verbatim so the final overwrite wins, exactly as it rendered live.
+        assert_eq!(
+            sidecar_backfill_text("[##  ] 40%\r[####] 80%\ndone"),
+            "[##  ] 40%\r[####] 80%\r\ndone"
+        );
+    }
+
+    #[test]
+    fn sidecar_backfill_text_keeps_ansi_sequences() {
+        assert_eq!(
+            sidecar_backfill_text("\x1b[32mok\x1b[0m\ndone"),
+            "\x1b[32mok\x1b[0m\r\ndone"
+        );
+    }
+
+    #[test]
+    fn sidecar_backfill_text_handles_empty_and_open_prompt_line() {
+        assert!(sidecar_backfill_text("").is_empty());
+        // The final line is the live prompt: no trailing line break so the
+        // cursor stays on it after replay.
+        assert_eq!(sidecar_backfill_text("prompt>"), "prompt>");
+    }
 
     fn watchdog_with_rules(rules: Vec<(&str, bool)>) -> crate::watchdog::engine::WatchdogEngine {
         crate::watchdog::engine::WatchdogEngine::new(WatchdogRules {

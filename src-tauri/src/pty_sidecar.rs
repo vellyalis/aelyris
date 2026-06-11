@@ -93,6 +93,11 @@ struct StreamTicket {
 }
 
 #[derive(Debug, Deserialize)]
+struct CaptureResponse {
+    text: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct HealthResponse {
     process_kind: String,
     instance_id: String,
@@ -723,6 +728,27 @@ impl PtySidecarClient {
         res.json::<Vec<TerminalInfo>>()
             .await
             .map_err(|err| format!("PTY server list response invalid: {err}"))
+    }
+
+    /// Fetch the daemon-side scrollback tail for a session. Used to backfill
+    /// the native renderer when re-adopting sessions that survived an app
+    /// restart; `clean=false` keeps ANSI sequences so colors replay intact.
+    pub async fn capture(&self, id: &str, lines: usize) -> Result<String, String> {
+        let res = self
+            .http
+            .get(format!("{}/sessions/{}/capture", self.base_url, id))
+            .query(&[("lines", lines.to_string().as_str()), ("clean", "false")])
+            .bearer_auth(&self.token)
+            .send()
+            .await
+            .map_err(|err| format!("PTY server capture request failed: {err}"))?;
+        if !res.status().is_success() {
+            return Err(format!("PTY server capture failed: {}", res.status()));
+        }
+        res.json::<CaptureResponse>()
+            .await
+            .map(|body| body.text)
+            .map_err(|err| format!("PTY server capture response invalid: {err}"))
     }
 
     async fn health(&self) -> Result<HealthResponse, String> {
