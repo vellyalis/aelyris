@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { type AgentFleetSession, headlessToFleetSession } from "../shared/lib/agentFleet";
 import type { AgentSession } from "../shared/types/agent";
 
 // ReactFlow doesn't behave well in jsdom (resize observer / measureText). The
@@ -30,18 +31,19 @@ const cardSources = import.meta.glob("../features/agent-inspector/*SessionCard.t
 
 afterEach(() => cleanup());
 
-const baseSession = (id: string, overrides: Partial<AgentSession> = {}): AgentSession => ({
-  id,
-  name: `Session ${id}`,
-  status: "coding",
-  model: "claude-opus-4-7",
-  prompt: "do stuff",
-  startedAt: Date.now() - 60_000,
-  logs: [],
-  cost: 0.42,
-  tokensUsed: 1234,
-  ...overrides,
-});
+const baseSession = (id: string, overrides: Partial<AgentSession> = {}): AgentFleetSession =>
+  headlessToFleetSession({
+    id,
+    name: `Session ${id}`,
+    status: "coding",
+    model: "claude-opus-4-7",
+    prompt: "do stuff",
+    startedAt: Date.now() - 60_000,
+    logs: [],
+    cost: 0.42,
+    tokensUsed: 1234,
+    ...overrides,
+  });
 
 describe("AgentInspector tab routing", () => {
   it("keeps session cards valid when they contain nested controls", () => {

@@ -154,6 +154,7 @@ import { useTaskAgentLink } from "./shared/hooks/useTaskAgentLink";
 import { useTerminalNotifications } from "./shared/hooks/useTerminalNotifications";
 import { useThemeApplier } from "./shared/hooks/useTheme";
 import { useWorktreeActions } from "./shared/hooks/useWorktreeActions";
+import { type AgentFleetSession, headlessToFleetSession } from "./shared/lib/agentFleet";
 import {
   type AuthenticatedPromptConsentPacket,
   deriveAuthenticatedPromptConsentPacket,
@@ -179,14 +180,11 @@ import {
 import { allowedToolsForGuardrailProfile, describeGuardrailProfile } from "./shared/lib/guardrailPolicy";
 import { writeClipboardText as writeNativeClipboardText } from "./shared/lib/nativeClipboard";
 import {
-  buildOrchestraPrompts,
-  ORCHESTRA_ROLES,
-} from "./shared/lib/orchestrator";
-import {
   launchOrchestraPrompts,
-  routeOrchestraPrompts,
   type OrchestraRoutingDecision,
+  routeOrchestraPrompts,
 } from "./shared/lib/orchestraDispatch";
+import { buildOrchestraPrompts, ORCHESTRA_ROLES } from "./shared/lib/orchestrator";
 import {
   deriveFinalGoalRequirementProofs,
   deriveFinalGoalResidualRisk,
@@ -903,7 +901,10 @@ function createDevVisualQaNegativePathAction(negativePath: DevVisualQaState["neg
   return null;
 }
 
-function createDevVisualQaSessions(scenario: DevVisualQaState["railScenario"], projectPath: string): AgentSession[] {
+function createDevVisualQaSessions(
+  scenario: DevVisualQaState["railScenario"],
+  projectPath: string,
+): AgentFleetSession[] {
   const now = Date.now();
   const worktree = {
     name: "aether-command-center",
@@ -913,29 +914,30 @@ function createDevVisualQaSessions(scenario: DevVisualQaState["railScenario"], p
     head_sha: "qa12345",
     status: "Modified" as const,
   };
-  const base = (id: string, overrides: Partial<AgentSession> = {}): AgentSession => ({
-    id,
-    name: id,
-    status: "coding",
-    model: "claude-sonnet",
-    prompt: "Harden Aether Command Center",
-    startedAt: now - 120_000,
-    logs: [
-      { timestamp: now - 90_000, type: "tool_use", content: 'Edit({"file":"src/App.tsx"})' },
-      { timestamp: now - 30_000, type: "text", content: "Mapped right rail state into next actions." },
-    ],
-    cost: 0.42,
-    tokensUsed: 18_000,
-    branch: "feature/command-center",
-    filesChanged: 2,
-    changedFileDetails: [
-      { path: "src/App.tsx", action: "edit", toolName: "Edit", timestamp: now - 60_000 },
-      { path: "src/shared/lib/rightRailAdvisor.ts", action: "edit", toolName: "Edit", timestamp: now - 45_000 },
-    ],
-    worktree,
-    workspaceScope: projectPath,
-    ...overrides,
-  });
+  const base = (id: string, overrides: Partial<AgentSession> = {}): AgentFleetSession =>
+    headlessToFleetSession({
+      id,
+      name: id,
+      status: "coding",
+      model: "claude-sonnet",
+      prompt: "Harden Aether Command Center",
+      startedAt: now - 120_000,
+      logs: [
+        { timestamp: now - 90_000, type: "tool_use", content: 'Edit({"file":"src/App.tsx"})' },
+        { timestamp: now - 30_000, type: "text", content: "Mapped right rail state into next actions." },
+      ],
+      cost: 0.42,
+      tokensUsed: 18_000,
+      branch: "feature/command-center",
+      filesChanged: 2,
+      changedFileDetails: [
+        { path: "src/App.tsx", action: "edit", toolName: "Edit", timestamp: now - 60_000 },
+        { path: "src/shared/lib/rightRailAdvisor.ts", action: "edit", toolName: "Edit", timestamp: now - 45_000 },
+      ],
+      worktree,
+      workspaceScope: projectPath,
+      ...overrides,
+    });
 
   if (scenario === "idle") return [];
   if (scenario === "review") {
@@ -4790,11 +4792,7 @@ export function App() {
       (prompt) => tauriInvoke<OrchestraRoutingDecision>("route_agent", { prompt }),
       isTauriRuntime(),
     );
-    const launched = await launchOrchestraPrompts(
-      routedPrompts,
-      projectPath,
-      handleStartInteractiveSession,
-    );
+    const launched = await launchOrchestraPrompts(routedPrompts, projectPath, handleStartInteractiveSession);
     if (launched === 0) {
       toast.error("Orchestra dispatch failed", "No agent session could be started.");
       return;

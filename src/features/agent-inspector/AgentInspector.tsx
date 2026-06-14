@@ -57,7 +57,7 @@ export const RIGHT_RAIL_COMPATIBILITY_CLIENT = {
 } as const;
 
 interface AgentInspectorProps {
-  sessions: AgentSession[];
+  sessions: AgentFleetSession[];
   activeSessionId: string | null;
   onSelectSession: (id: string) => void;
   onStartAgent?: (prompt: string, model?: string, meta?: { role?: OrchestraRoleId; handoffFrom?: string }) => void;
@@ -203,7 +203,7 @@ export function AgentInspector({
   const sortedSessions = useMemo(
     () =>
       [...sessions]
-        .filter((s) => (s as AgentFleetSession).runtime !== "interactive")
+        .filter((s) => s.runtime !== "interactive")
         .sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]),
     [sessions],
   );
