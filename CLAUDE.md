@@ -93,5 +93,18 @@ aether-terminal/
 - Mica: Win11専用。Win10はAcrylicフォールバック
 - ConPTY: `PSEUDOCONSOLE_PASSTHROUGH_MODE` (0x8) はWin11 22H2+のみ
 
+## 開発方針（負債管理・変更容易性）
+コード変更時は常に「**既存仕様を壊さず・負債を減らし・今後変更しやすく**」を満たす。
+
+### 鉄則
+- **各段階で全ゲート緑を維持**: `pnpm exec tsc --noEmit` / `pnpm test`(vitest) / `cargo test` / `cargo clippy --all-targets -- -D warnings` / `cargo fmt`。純粋move・挙動不変を死守。挙動変化を伴う場合は実機 Tauri で視覚確認（vitest 緑だけでは UI 退行を見逃す）。
+- **単一の source of truth**: 状態・データの所有者を1つに。二重所有・二重実装・FE再合成を避け、所有 hook / backend を明確に。
+- **型で契約を表現**: `as` cast・`| string`・無検証 optional を避け、schema/型で不変条件を保証。Rust(snake_case)↔TS(camelCase) 契約はずれない形（理想は codegen）に。
+- **死コード・重複は即時解消**: 未配線インフラ（infra without wiring）を残さない。共通ロジックは1箇所に。1ファイル800行・1関数50行を超えたら分割。
+- **cargo test は pnpm test と並列実行しない**（link.exe がリソース競合で落ちる）。
+
+### 変更前後でチェックする13観点（負債を作らない・増やさない）
+重複 / 死コード / 責務の混在 / 所有範囲の曖昧さ / 過不足な抽象化 / 依存方向の乱れ / 型・schema・契約の曖昧さ / テスト不足や壊れやすいテスト / エラー・ログの不統一 / 設定・環境差分の複雑さ / 非同期・並行処理の危険 / パフォーマンスリスク / セキュリティ境界 / 命名・配置の分かりにくさ。
+
 ## Docs
 - 要件定義: `docs/requirements.md`
