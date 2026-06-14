@@ -47,15 +47,15 @@ describe("agent fleet projection", () => {
     expect(fleet.map((session) => session.id)).toEqual(["i1", "h1"]);
     expect(fleet[0]).toMatchObject({
       runtime: "interactive",
-      status: "waiting_approval",
-      uiStatus: "waiting",
+      status: "waiting",
+      runStatus: "waiting_approval",
       workspaceScope: "C:/repo-agent",
       ptyId: "pty-1",
     });
     expect(fleet[1]).toMatchObject({
       runtime: "headless",
       status: "thinking",
-      uiStatus: "thinking",
+      runStatus: "thinking",
       workspaceScope: "C:/repo",
     });
   });
@@ -82,8 +82,8 @@ describe("agent fleet projection", () => {
     expect(fleet[0]).toMatchObject({
       id: "u1",
       runtime: "interactive",
-      status: "waiting_approval",
-      uiStatus: "waiting",
+      status: "waiting",
+      runStatus: "waiting_approval",
       prompt: "",
       ptyId: "pty-1",
     });

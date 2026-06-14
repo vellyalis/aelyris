@@ -1,56 +1,34 @@
-import type {
-  AgentCloseState,
-  AgentFinalReportInfo,
-  AgentLog,
-  AgentSession,
-  AgentStatus,
-  FileChangeDetail,
-  WorktreeInfo,
-} from "../types/agent";
+import type { AgentSession, AgentStatus } from "../types/agent";
 import { normalizeAgentRunStatus, type AgentRunStatus } from "../types/agentStatus";
 import type { InteractiveSession } from "../types/interactiveAgent";
 
 export type AgentFleetRuntime = "headless" | "interactive";
 
-export interface AgentFleetSession {
-  id: string;
+/**
+ * Unified fleet session — the single source the cockpit UI projects from.
+ *
+ * Extends {@link AgentSession} so any rail panel that already consumes
+ * `AgentSession[]` accepts `AgentFleetSession[]` unchanged (structural
+ * compatibility, no projection layer needed). `runtime` plus the
+ * interactive-specific fields then let panels progressively distinguish
+ * headless from interactive runs.
+ *
+ * `AgentSession.status` carries the legacy UI status (`AgentStatus`); `runStatus`
+ * is the canonical run status (`AgentRunStatus`). Headless runs spread their
+ * `AgentSession` through verbatim; interactive/backend runs synthesize the
+ * `AgentSession` shape from their own DTO.
+ */
+export interface AgentFleetSession extends AgentSession {
   runtime: AgentFleetRuntime;
-  status: AgentRunStatus;
-  uiStatus: AgentStatus;
-  name: string;
-  model: string;
-  prompt: string;
+  runStatus: AgentRunStatus;
+  /** Working directory. Headless runs derive it from workspaceScope/worktree. */
   cwd: string;
-  workspaceScope?: string;
-  cost: number;
-  tokensUsed: number;
-  startedAt: number;
-  role?: AgentSession["role"];
-  handoffFrom?: string;
   backend?: string;
   cli?: string;
   ptyId?: string;
   worktreeBranch?: string;
   worktreePath?: string;
   repoPath?: string;
-  // Detail fields surfaced by the rail panels (DecisionInbox, RunGraph,
-  // ContextPanel, etc.). Present for headless runs; undefined/empty for
-  // interactive runs that do not carry structured telemetry yet. Added so the
-  // unified fleet can be the single source the UI projects from.
-  logs?: AgentLog[];
-  branch?: string;
-  filesChanged?: number;
-  changedFileDetails?: FileChangeDetail[];
-  watchdog?: string;
-  worktree?: WorktreeInfo;
-  permissionMode?: AgentSession["permissionMode"];
-  detectedPort?: number;
-  owner?: string;
-  writeSet?: string[];
-  finalReport?: AgentFinalReportInfo;
-  closeState?: AgentCloseState;
-  blockedReason?: string;
-  nextActor?: string;
 }
 
 export interface BackendAgentFleetSession {
@@ -91,82 +69,58 @@ function normalizeOrFallback(status: string): AgentRunStatus {
 }
 
 export function headlessToFleetSession(session: AgentSession): AgentFleetSession {
-  const status = normalizeOrFallback(session.status);
   return {
-    id: session.id,
+    ...session,
     runtime: "headless",
-    status,
-    uiStatus: agentRunStatusToLegacyStatus(status),
-    name: session.name,
-    model: session.model,
-    prompt: session.prompt,
+    runStatus: normalizeOrFallback(session.status),
     cwd: session.workspaceScope ?? session.worktree?.path ?? "",
-    workspaceScope: session.workspaceScope ?? session.worktree?.path,
-    cost: session.cost,
-    tokensUsed: session.tokensUsed,
-    startedAt: session.startedAt,
-    role: session.role,
-    handoffFrom: session.handoffFrom,
-    logs: session.logs,
-    branch: session.branch,
-    filesChanged: session.filesChanged,
-    changedFileDetails: session.changedFileDetails,
-    watchdog: session.watchdog,
-    worktree: session.worktree,
-    permissionMode: session.permissionMode,
-    detectedPort: session.detectedPort,
-    owner: session.owner,
-    writeSet: session.writeSet,
-    finalReport: session.finalReport,
-    closeState: session.closeState,
-    blockedReason: session.blockedReason,
-    nextActor: session.nextActor,
   };
 }
 
 export function interactiveToFleetSession(session: InteractiveSession): AgentFleetSession {
-  const status = normalizeOrFallback(session.status);
+  const runStatus = normalizeOrFallback(session.status);
   return {
     id: session.id,
-    runtime: "interactive",
-    status,
-    uiStatus: agentRunStatusToLegacyStatus(status),
     name: `${session.cli} interactive`,
+    status: agentRunStatusToLegacyStatus(runStatus),
     model: session.model,
     prompt: session.initial_prompt ?? "",
-    cwd: session.cwd,
-    workspaceScope: session.worktree_path ?? session.cwd,
+    startedAt: session.started_at,
+    // Interactive sessions carry no structured headless telemetry yet; expose an
+    // empty log array so log-rendering surfaces can map() without guards.
+    logs: [],
     cost: session.cost,
     tokensUsed: session.tokens_used,
-    startedAt: session.started_at,
+    workspaceScope: session.worktree_path ?? session.cwd,
+    runtime: "interactive",
+    runStatus,
+    cwd: session.cwd,
     backend: session.backend,
     cli: session.cli,
     ptyId: session.pty_id,
     worktreeBranch: session.worktree_branch,
     worktreePath: session.worktree_path,
     repoPath: session.repo_path,
-    // Interactive sessions have no structured headless telemetry yet; expose an
-    // empty log array so log-rendering surfaces can map() without guards.
-    logs: [],
   };
 }
 
 export function backendToFleetSession(session: BackendAgentFleetSession): AgentFleetSession {
-  const status = normalizeOrFallback(session.status);
+  const runStatus = normalizeOrFallback(session.status);
   const runtime: AgentFleetRuntime = session.run_mode === "interactive" ? "interactive" : "headless";
   return {
     id: session.id,
-    runtime,
-    status,
-    uiStatus: agentRunStatusToLegacyStatus(status),
     name: runtime === "interactive" ? `${session.cli ?? "agent"} interactive` : "Agent",
+    status: agentRunStatusToLegacyStatus(runStatus),
     model: session.model,
     prompt: session.prompt ?? "",
-    cwd: session.cwd,
-    workspaceScope: session.workspace_scope ?? session.worktree_path ?? session.cwd,
+    startedAt: session.started_at ?? 0,
+    logs: [],
     cost: session.cost,
     tokensUsed: session.tokens_used,
-    startedAt: session.started_at ?? 0,
+    workspaceScope: session.workspace_scope ?? session.worktree_path ?? session.cwd,
+    runtime,
+    runStatus,
+    cwd: session.cwd,
     backend: session.backend ?? undefined,
     cli: session.cli ?? undefined,
     ptyId: session.pty_id ?? undefined,
@@ -186,6 +140,8 @@ export function mergeAgentFleetSessions(
   ].sort((a, b) => b.startedAt - a.startedAt);
 }
 
-export function mapBackendAgentFleetSessions(sessions: BackendAgentFleetSession[]): AgentFleetSession[] {
+export function mapBackendAgentFleetSessions(
+  sessions: BackendAgentFleetSession[],
+): AgentFleetSession[] {
   return sessions.map(backendToFleetSession).sort((a, b) => b.startedAt - a.startedAt);
 }
