@@ -5,6 +5,7 @@ use std::process::Stdio;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::commands::*;
+use super::git_commands::git_relative_path;
 
 /// Read a file's contents
 #[tauri::command]
