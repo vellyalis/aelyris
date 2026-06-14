@@ -412,7 +412,10 @@ const tauriSettingsSource = readFileSync(join(ROOT, "src-tauri", "src", "config"
 const globalStylesSource = readFileSync(join(ROOT, "src", "styles", "global.css"), "utf8");
 const glassLegibilityContractPath = join(ROOT, ".codex-auto", "quality", "glass-legibility-contract.json");
 const glassLegibilityContract = readJson(glassLegibilityContractPath);
-const glassLegibilityContractSource = readFileSync(join(ROOT, "scripts", "verify-glass-legibility-contract.mjs"), "utf8");
+const glassLegibilityContractSource = readFileSync(
+  join(ROOT, "scripts", "verify-glass-legibility-contract.mjs"),
+  "utf8",
+);
 const goalAntiStallContractPath = join(ROOT, ".codex-auto", "quality", "goal-anti-stall-contract.json");
 const goalAntiStallContract = readJson(goalAntiStallContractPath);
 const goalAntiStallContractSource = readFileSync(join(ROOT, "scripts", "verify-goal-anti-stall-contract.mjs"), "utf8");
@@ -463,20 +466,33 @@ const newestDistArtifactMs = Math.max(
   mtimeMs(`${nsis}.sig`),
   mtimeMs(`${msi}.sig`),
 );
+const releaseDoctorCurrent = isoMs(releaseDoctor?.generatedAt) + 5_000 >= newestDistArtifactMs;
 const releaseDoctorFresh =
-  releaseDoctor?.overallStatus === "pass" && isoMs(releaseDoctor.generatedAt) + 5_000 >= newestDistArtifactMs;
+  releaseDoctor?.overallStatus === "pass" && releaseDoctorCurrent;
+const releaseDoctorWarnCurrent =
+  releaseDoctor?.overallStatus === "pass_with_warnings" && releaseDoctorCurrent;
 add(
   scores,
   "release-doctor",
   "Release doctor",
   releaseDoctorFresh
     ? 18
-    : releaseDoctor?.overallStatus === "pass" || releaseDoctor?.overallStatus === "pass_with_warnings"
+    : releaseDoctor?.overallStatus === "pass" || releaseDoctorWarnCurrent
       ? 14
       : 0,
   18,
-  releaseDoctorFresh ? "pass" : releaseDoctor?.overallStatus ? `${releaseDoctor.overallStatus} (stale)` : "missing",
-  releaseDoctorFresh ? [] : ["release doctor evidence is missing, failing, or older than current dist artifacts"],
+  releaseDoctorFresh
+    ? "pass"
+    : releaseDoctorWarnCurrent
+      ? "pass_with_warnings (signing/updater artifacts pending)"
+      : releaseDoctor?.overallStatus
+        ? `${releaseDoctor.overallStatus} (stale)`
+        : "missing",
+  releaseDoctorFresh
+    ? []
+    : releaseDoctorWarnCurrent
+      ? ["release doctor has signing/updater warnings; regenerate signatures/latest.json before release"]
+      : ["release doctor evidence is missing, failing, or older than current dist artifacts"],
 );
 
 const newestSupplyChainInputMs = Math.max(
@@ -767,7 +783,9 @@ const terminalCanvasFidelityTests =
   terminalCanvasTestSource.includes("renders the backing store at device-pixel ratio without CSS bitmap scaling") &&
   terminalCanvasTestSource.includes("aligns fractional-DPR CSS size to the integer backing store") &&
   terminalCanvasTestSource.includes("keeps live terminal text above decorative viewport overlays") &&
-  terminalCanvasTestSource.includes("snaps pane mounts to the physical pixel grid before compositing the terminal canvas") &&
+  terminalCanvasTestSource.includes(
+    "snaps pane mounts to the physical pixel grid before compositing the terminal canvas",
+  ) &&
   terminalCanvasTestSource.includes("does not horizontally clamp ordinary ASCII glyphs") &&
   terminalCanvasTestSource.includes("keeps CJK glyphs clamped to their two-cell terminal slot") &&
   terminalCanvasTestSource.includes("snapCanvasTextCoord") &&
@@ -1537,16 +1555,18 @@ const rightRailTestsCoverFallbackTelemetry =
   appSilentBugsTestSource.includes("terminal native focus path avoids fallback telemetry") &&
   appSilentBugsTestSource.includes("terminal paste clipboard read fallbacks emit telemetry");
 const rightRailTestsCoverRunLoopSummary =
-  appSource.includes(">Current Focus</span>") &&
+  appSource.includes(">Orchestra Command</span>") &&
   appSource.includes("rightRailPrimaryAction") &&
   appSource.includes("right-panel-run-loop") &&
+  appSource.includes("right-panel-orchestra-command") &&
   appSource.includes("data-phase={rightRailRunLoopPhase}") &&
   appSource.includes("handleRightRailAction(rightRailPrimaryAction)") &&
   globalStylesSource.includes(".right-panel-run-loop") &&
+  globalStylesSource.includes(".right-panel-orchestra-command") &&
   globalStylesSource.includes(".right-panel-run-loop-action") &&
   globalStylesSource.includes(':root[data-mood="aether-sakura"] .right-panel-run-loop') &&
-  appSilentBugsTestSource.includes(">Current Focus</span>") &&
-  appSilentBugsTestSource.includes('className="right-panel-run-loop"');
+  appSilentBugsTestSource.includes(">Orchestra Command</span>") &&
+  appSilentBugsTestSource.includes('className="right-panel-run-loop right-panel-orchestra-command"');
 const rightRailTestsCoverRunLoopTrace =
   appSource.includes("rightRailRunLoopTraceItems") &&
   appSource.includes("rightRailRunLoopRecovery") &&
@@ -1637,8 +1657,13 @@ const rightRailInformationDensityPass =
   rightRailInformationDensityFresh &&
   packageJsonSource.includes('"verify:right-rail-density"') &&
   rightRailSuiteSource.includes("information-density") &&
-  rightRailInformationDensityScriptSource.includes("default command center keeps the actionable spine") &&
-  rightRailInformationDensityScriptSource.includes("final-goal proof and edge-score evidence stay behind the Evidence drawer");
+  rightRailInformationDensityScriptSource.includes("default orchestra command keeps dispatch lanes") &&
+  rightRailInformationDensityScriptSource.includes(
+    "right rail exposes role lanes and a first-class Orchestra dispatch action",
+  ) &&
+  rightRailInformationDensityScriptSource.includes(
+    "final-goal proof and edge-score evidence stay behind the Evidence drawer",
+  );
 const rightRailPass =
   rightRailSourceHasExplanations &&
   rightRailTestsCoverExplanations &&
@@ -1656,7 +1681,7 @@ add(
   rightRailPass ? 8 : 0,
   8,
   rightRailPass
-    ? "ranked actions include why/nextStep, run-loop summary, trace spine, owner chips, essential-first density, and fresh visual QA evidence"
+    ? "ranked actions include why/nextStep, orchestra dispatch, trace spine, owner chips, orchestra-first density, and fresh visual QA evidence"
     : "missing or stale",
   rightRailPass
     ? []
@@ -1671,7 +1696,9 @@ add(
         ...(rightRailTestsCoverActionOwnership ? [] : ["right rail action owner coverage is missing"]),
         ...(rightRailInformationDensityPass
           ? []
-          : ["right rail information density contract is missing, stale, or leaves deferred evidence/health/queue content in the first view"]),
+          : [
+              "right rail information density contract is missing, stale, or leaves deferred evidence/health/queue content ahead of orchestration",
+            ]),
         ...(rightRailVisualEvidenceFresh ? [] : ["right rail visual QA evidence is missing or stale"]),
         ...(rightRailStaleUrlTruthPass
           ? []
@@ -1861,9 +1888,7 @@ add(
         ...(commandEvidenceBrowserContractPass || commandEvidenceNoSpawnSourcePass
           ? []
           : ["command evidence smoke artifact is missing, stale, or failing"]),
-        ...(commandEvidenceVisualOrEnvironmentPass
-          ? []
-          : ["command evidence browser screenshot is missing or stale"]),
+        ...(commandEvidenceVisualOrEnvironmentPass ? [] : ["command evidence browser screenshot is missing or stale"]),
       ],
 );
 
@@ -2373,9 +2398,9 @@ add(
     ? "fresh live Tauri/WebView2 AI CLI spawn, kill, cleanup, PTY restart, and rail reload chaos passed"
     : nativeFirstPostLaunchPass
       ? "native-first sidecar AI CLI spawn, kill, cleanup, same-id PTY restart, prompt readiness, and stale URL truth contracts passed"
-    : liveAiCliPostLaunchChaos
-      ? `${liveAiCliPostLaunchChaos.status ?? "unknown"} (stale or incomplete)`
-      : "missing",
+      : liveAiCliPostLaunchChaos
+        ? `${liveAiCliPostLaunchChaos.status ?? "unknown"} (stale or incomplete)`
+        : "missing",
   postLaunchChaosPass
     ? []
     : liveAiCliPostLaunchExternalDependency
@@ -2430,14 +2455,18 @@ add(
           nativeAiCliPostLaunchChecks.ptyRestartAfterVisible === true &&
           nativeAiCliPostLaunchChecks.ptyNoResidue === true
             ? []
-            : ["native-first AI CLI post-launch chaos did not prove same-id PTY restart, prompt readiness, and cleanup"]),
+            : [
+                "native-first AI CLI post-launch chaos did not prove same-id PTY restart, prompt readiness, and cleanup",
+              ]),
           ...(nativeAiCliPostLaunchChecks.aiCliAllProvidersCovered === true &&
           nativeAiCliPostLaunchChecks.aiCliReadyVisible === true &&
           nativeAiCliPostLaunchChecks.aiCliInputRoundtrip === true &&
           nativeAiCliPostLaunchChecks.aiCliKillCleanup === true &&
           nativeAiCliPostLaunchChecks.noSessionResidue === true
             ? []
-            : ["native-first AI CLI post-launch chaos did not prove all-provider spawn/input/kill cleanup with no residue"]),
+            : [
+                "native-first AI CLI post-launch chaos did not prove all-provider spawn/input/kill cleanup with no residue",
+              ]),
           ...(rightRailStaleUrlTruthPass
             ? []
             : ["right rail stale URL truth contract is missing, stale, or failing outside the live CDP shard"]),

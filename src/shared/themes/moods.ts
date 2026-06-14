@@ -4,6 +4,7 @@ import { isValidHex, normalizeHex } from "./catppuccin";
 export type MoodPresetId =
   | "aether-sky"
   | "aether-moonwater"
+  | "aether-crystal"
   | "aether-dream"
   | "aether-cute"
   | "aether-sakura"
@@ -21,6 +22,7 @@ export const DEFAULT_MOOD_PRESET: MoodPresetId = "aether-sky";
 export const MOOD_PRESETS: readonly MoodPreset[] = [
   { id: "aether-sky", label: "Aether Sky", tone: "Airy blue glass" },
   { id: "aether-moonwater", label: "Aether Moonwater", tone: "Moonlit cyan tide" },
+  { id: "aether-crystal", label: "Aether Crystal", tone: "Clear cinematic glass" },
   { id: "aether-dream", label: "Aether Dream", tone: "Soft lavender aurora" },
   { id: "aether-cute", label: "Aether Cute", tone: "Clear mint and rose" },
   { id: "aether-sakura", label: "Aether Sakura", tone: "Cherry blossom glass" },
@@ -76,6 +78,16 @@ export const MOOD_MATERIAL_DEFAULTS: Record<MoodPresetId, MoodMaterialDefaults> 
     panelAlpha: 0.42,
     chromeAlpha: 0.38,
     terminalAlpha: 0.5,
+  },
+  "aether-crystal": {
+    backdropColor: "#020914",
+    panelColor: "#041827",
+    chromeColor: "#03101d",
+    terminalColor: "#020814",
+    backdropAlpha: 0.03,
+    panelAlpha: 0.3,
+    chromeAlpha: 0.28,
+    terminalAlpha: 0.36,
   },
   "aether-dream": {
     backdropColor: "#120d20",
@@ -351,7 +363,7 @@ function withMinimumAlpha(value: string | undefined, minimum: number): string | 
 }
 
 function applyReadableDarkGlassFloor(mood: MoodPresetId, vars: Record<string, string>): Record<string, string> {
-  if (mood === "aether-sakura") return vars;
+  if (mood === "aether-sakura" || mood === "aether-crystal") return vars;
   return {
     ...vars,
     "--glass-ground": withMinimumAlpha(vars["--glass-ground"], 0.32) ?? vars["--glass-ground"],
@@ -454,6 +466,55 @@ function darkMoodSurfaces(tone: {
   };
 }
 
+function crystalMoodSurfaces(): MoodSurfaceCSS {
+  return {
+    "--chrome-frame-bg":
+      "linear-gradient(180deg, rgba(225, 247, 255, 0.052), transparent 70%), linear-gradient(90deg, rgba(139, 233, 255, 0.04), transparent 34%, transparent 66%, rgba(216, 247, 255, 0.025)), rgba(2, 10, 20, 0.24)",
+    "--chrome-frame-filter": "blur(22px) saturate(1.28) brightness(0.9) contrast(1.08)",
+    "--chrome-frame-shadow": "inset 0 1px 0 rgba(238, 252, 255, 0.11), inset 0 -1px 0 rgba(139, 233, 255, 0.08)",
+    "--chrome-control-hover-bg": "rgba(139, 233, 255, 0.1)",
+    "--chrome-control-hover-border": "rgba(139, 233, 255, 0.16)",
+    "--chrome-separator-bg": "linear-gradient(180deg, transparent, rgba(139, 233, 255, 0.18), transparent)",
+    "--statusbar-bg": "rgba(2, 10, 20, 0.24)",
+    "--statusbar-filter": "blur(22px) saturate(1.24) brightness(0.9) contrast(1.08)",
+    "--statusbar-shadow": "inset 0 1px 0 rgba(238, 252, 255, 0.075), inset 0 -1px 0 rgba(139, 233, 255, 0.06)",
+    "--material-panel-filter": "blur(24px) saturate(1.3) brightness(0.88) contrast(1.08)",
+    "--terminal-shell-filter": "blur(22px) saturate(1.24) brightness(0.86) contrast(1.08)",
+    "--material-panel-shadow":
+      "var(--rim-top), inset 0 0 0 1px rgba(139, 233, 255, 0.052), 0 16px 38px rgba(0, 0, 0, 0.16)",
+    "--material-card-shadow": "var(--rim-top), 0 0 0 1px rgba(139, 233, 255, 0.055), 0 10px 26px rgba(0, 0, 0, 0.14)",
+    "--popup-glass-bg":
+      "linear-gradient(180deg, rgba(238, 252, 255, 0.055), transparent 40%), linear-gradient(145deg, rgba(139, 233, 255, 0.045), transparent 52%), rgba(4, 18, 31, 0.5)",
+    "--popup-glass-border": "rgba(139, 233, 255, 0.14)",
+    "--popup-glass-shadow":
+      "var(--rim-top), inset 0 0 0 1px rgba(139, 233, 255, 0.06), 0 18px 42px rgba(0, 0, 0, 0.22)",
+    "--scrim-standard-bg": "linear-gradient(180deg, rgba(0, 0, 0, 0.3), rgba(2, 10, 20, 0.38)), rgba(2, 10, 20, 0.14)",
+    "--scrim-heavy-bg": "linear-gradient(180deg, rgba(0, 0, 0, 0.38), rgba(2, 10, 20, 0.5)), rgba(2, 10, 20, 0.22)",
+    "--dialog-surface":
+      "linear-gradient(180deg, rgba(238, 252, 255, 0.052), transparent 32%), linear-gradient(145deg, rgba(139, 233, 255, 0.05), transparent 50%), rgba(5, 22, 36, 0.54)",
+    "--dialog-surface-blur": "blur(26px)",
+    "--settings-control-bg": "rgba(4, 18, 31, 0.36)",
+    "--settings-card-bg": "rgba(4, 20, 34, 0.28)",
+    "--settings-card-bg-hover": "rgba(6, 28, 45, 0.38)",
+    "--settings-card-bg-active": "rgba(7, 34, 54, 0.46)",
+    "--toolkit-grid-bg":
+      "linear-gradient(135deg, rgba(139, 233, 255, 0.07), transparent 38%, rgba(216, 247, 255, 0.04)), rgba(4, 20, 34, 0.24)",
+    "--toolkit-grid-shadow": "inset 0 1px 0 rgba(238, 252, 255, 0.07), inset 0 -1px 0 rgba(139, 233, 255, 0.06)",
+    "--toolkit-tile-bg":
+      "linear-gradient(180deg, rgba(238, 252, 255, 0.04), rgba(139, 233, 255, 0.024)), rgba(4, 20, 34, 0.3)",
+    "--toolkit-tile-primary-bg":
+      "linear-gradient(135deg, color-mix(in srgb, var(--tone, var(--gold)) 14%, transparent), transparent 46%), rgba(7, 34, 54, 0.36)",
+    "--toolkit-tile-hover-bg":
+      "linear-gradient(180deg, color-mix(in srgb, var(--tone, var(--gold)) 12%, transparent), transparent 58%), rgba(7, 34, 54, 0.44)",
+    "--toolkit-tile-text": "var(--text-primary)",
+    "--toolkit-icon-bg":
+      "linear-gradient(180deg, rgba(238, 252, 255, 0.055), rgba(139, 233, 255, 0.036)), color-mix(in srgb, var(--tone, var(--accent)) 12%, rgba(7, 34, 54, 0.42))",
+    "--toolkit-bottom-bg":
+      "linear-gradient(90deg, rgba(139, 233, 255, 0.06), transparent 52%, rgba(216, 247, 255, 0.035)), rgba(4, 20, 34, 0.25)",
+    "--toolkit-bottom-btn-bg": "rgba(7, 34, 54, 0.34)",
+  };
+}
+
 const MOOD_SURFACE_CSS: Record<MoodPresetId, MoodSurfaceCSS> = {
   "aether-sky": darkMoodSurfaces({
     shell: "2, 8, 18",
@@ -471,6 +532,7 @@ const MOOD_SURFACE_CSS: Record<MoodPresetId, MoodSurfaceCSS> = {
     gold: "245, 199, 227",
     text: "246, 253, 255",
   }),
+  "aether-crystal": crystalMoodSurfaces(),
   "aether-dream": darkMoodSurfaces({
     shell: "10, 6, 20",
     panel: "34, 25, 50",
@@ -698,6 +760,79 @@ const MOOD_CSS: Record<MoodPresetId, Record<string, string>> = {
     "--mood-logs-widget-bg":
       "linear-gradient(180deg, rgba(1, 25, 50, 0.13), rgba(0, 10, 26, 0.16)), var(--glass-dense)",
     "--mood-selection-bg": "rgba(82, 215, 255, 0.28)",
+  },
+  "aether-crystal": {
+    "--aether-ink": "#06101a",
+    "--aether-obsidian": "#0b1724",
+    "--aether-graphite": "#12263a",
+    "--aether-smoke-mauve": "#1b3448",
+    "--aether-moon": "#effcff",
+    "--aether-champagne": "#d8f7ff",
+    "--glass-clear": "rgba(94, 206, 255, 0.012)",
+    "--glass-ground": "rgba(3, 15, 28, 0.18)",
+    "--glass-frame": "rgba(6, 28, 45, 0.14)",
+    "--glass-standard": "rgba(5, 24, 40, 0.22)",
+    "--glass-dense": "rgba(5, 24, 40, 0.28)",
+    "--glass-thick": "rgba(7, 34, 54, 0.34)",
+    "--glass-solid": "rgba(14, 28, 42, 0.72)",
+    "--aether-bg": "var(--glass-clear)",
+    "--aether-bg-sidebar": "var(--glass-standard)",
+    "--aether-bg-elevated": "var(--glass-dense)",
+    "--aether-bg-card": "var(--glass-thick)",
+    "--aether-bg-surface": "var(--glass-dense)",
+    "--aether-border": "rgba(158, 235, 255, 0.085)",
+    "--aether-border-strong": "rgba(210, 248, 255, 0.16)",
+    "--accent": "#8be9ff",
+    "--gold": "#d8f7ff",
+    "--gold-dim": "rgba(216, 247, 255, 0.36)",
+    "--gold-subtle": "rgba(216, 247, 255, 0.14)",
+    "--gold-surface": "linear-gradient(180deg, #ffffff 0%, #d8f7ff 42%, #8be9ff 100%)",
+    "--text-primary": "#f8fdff",
+    "--text-secondary": "#d7edf7",
+    "--text-muted": "#abc7d4",
+    "--text-on-accent": "#06101a",
+    "--row-hover": "rgba(139, 233, 255, 0.07)",
+    "--row-hover-strong": "rgba(205, 247, 255, 0.11)",
+    "--terminal-canvas-bg": DEFAULT_BG,
+    "--terminal-well-bg":
+      "radial-gradient(ellipse at 44% -18%, rgba(139, 233, 255, 0.052), transparent 46%), radial-gradient(ellipse at 78% 14%, rgba(216, 247, 255, 0.024), transparent 38%), linear-gradient(180deg, rgba(3, 14, 28, 0.28), rgba(0, 5, 15, 0.5))",
+    "--terminal-chrome-bg": "rgba(3, 14, 27, 0.22)",
+    "--terminal-chrome-bg-focus": "rgba(5, 24, 40, 0.36)",
+    "--terminal-rim-warm": "rgba(190, 244, 255, 0.088)",
+    "--terminal-border": "rgba(139, 233, 255, 0.07)",
+    "--terminal-shadow-inset":
+      "inset 0 1px 0 rgba(238, 252, 255, 0.04), inset 0 0 0 1px rgba(139, 233, 255, 0.05), inset 0 34px 74px rgba(0, 8, 22, 0.26), inset 0 -24px 58px rgba(0, 4, 13, 0.2)",
+    "--terminal-shell-shadow": "0 24px 72px rgba(0, 8, 20, 0.28), 0 0 44px rgba(139, 233, 255, 0.045)",
+    "--terminal-viewport-shadow":
+      "inset 0 0 0 1px rgba(139, 233, 255, 0.04), inset 0 26px 64px rgba(0, 7, 22, 0.24), inset 0 -20px 48px rgba(0, 4, 13, 0.18)",
+    "--terminal-viewport-occlusion":
+      "linear-gradient(180deg, rgba(1, 7, 18, 0.16), transparent 52px), linear-gradient(0deg, rgba(1, 7, 17, 0.12), transparent 42px), linear-gradient(90deg, rgba(139, 233, 255, 0.018), transparent 25%, transparent 74%, rgba(216, 247, 255, 0.012))",
+    "--terminal-watermark-opacity": "0.034",
+    "--terminal-watermark-filter": "drop-shadow(0 18px 54px rgba(139, 233, 255, 0.065))",
+    "--mood-root-glow":
+      "linear-gradient(122deg, rgba(139, 233, 255, 0.058), transparent 34%), linear-gradient(305deg, rgba(216, 247, 255, 0.026), transparent 42%), linear-gradient(180deg, rgba(2, 9, 20, 0.032), rgba(2, 9, 20, 0.11))",
+    "--mood-root-texture": "linear-gradient(90deg, transparent, rgba(216, 247, 255, 0.005) 50%, transparent)",
+    "--mood-root-texture-opacity": "0.02",
+    "--mood-window-rim":
+      "inset 0 1px 0 rgba(238, 252, 255, 0.07), inset 0 0 0 1px rgba(139, 233, 255, 0.052), inset 0 -1px 0 rgba(139, 233, 255, 0.035)",
+    "--mood-left-panel-bg":
+      "linear-gradient(180deg, rgba(216, 247, 255, 0.018), transparent 24%), linear-gradient(135deg, rgba(8, 42, 66, 0.052), rgba(2, 14, 28, 0.078)), rgba(5, 24, 40, 0.22)",
+    "--mood-center-panel-bg":
+      "radial-gradient(ellipse at 50% 0%, rgba(139, 233, 255, 0.03), transparent 44%), linear-gradient(180deg, rgba(2, 14, 30, 0.035), rgba(2, 9, 20, 0.025)), var(--aether-bg)",
+    "--mood-right-panel-bg":
+      "linear-gradient(180deg, rgba(216, 247, 255, 0.018), transparent 24%), linear-gradient(145deg, rgba(8, 42, 66, 0.052), rgba(2, 14, 28, 0.078)), rgba(5, 24, 40, 0.28)",
+    "--mood-widget-bg": "linear-gradient(160deg, rgba(8, 42, 66, 0.09), rgba(2, 16, 34, 0.11)), rgba(7, 34, 54, 0.32)",
+    "--mood-widget-veil":
+      "linear-gradient(180deg, rgba(216, 247, 255, 0.014), transparent 22%), linear-gradient(135deg, rgba(139, 233, 255, 0.02), transparent 44%), linear-gradient(315deg, rgba(216, 247, 255, 0.01), transparent 50%)",
+    "--mood-sessions-widget-bg":
+      "linear-gradient(160deg, rgba(8, 42, 66, 0.09), rgba(2, 16, 34, 0.11)), rgba(7, 34, 54, 0.31)",
+    "--mood-workflow-widget-bg":
+      "linear-gradient(180deg, rgba(8, 42, 66, 0.088), rgba(2, 16, 34, 0.108)), rgba(7, 34, 54, 0.31)",
+    "--mood-toolkit-widget-bg":
+      "linear-gradient(150deg, rgba(8, 42, 66, 0.086), rgba(2, 16, 34, 0.11)), rgba(7, 34, 54, 0.31)",
+    "--mood-logs-widget-bg":
+      "linear-gradient(180deg, rgba(8, 42, 66, 0.086), rgba(2, 12, 28, 0.105)), rgba(5, 24, 40, 0.31)",
+    "--mood-selection-bg": "rgba(139, 233, 255, 0.26)",
   },
   "aether-dream": {
     "--aether-ink": "#120d20",

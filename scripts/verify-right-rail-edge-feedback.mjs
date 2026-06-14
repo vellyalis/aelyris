@@ -147,11 +147,31 @@ async function seedQaStorage(page) {
   }, PROJECT_PATH);
 }
 
+async function openDeferredHealthDrawer(page) {
+  const drawer = page.locator(".right-panel-health-drawer").first();
+  await drawer.waitFor({ state: "attached", timeout: WAIT_MS });
+  const openedBefore = await drawer.evaluate((element) => element.hasAttribute("open"));
+  if (!openedBefore) {
+    await page.locator(".right-panel-health-drawer > summary").click({ timeout: WAIT_MS });
+  }
+  await page.waitForFunction(
+    () => document.querySelector(".right-panel-health-drawer")?.hasAttribute("open") === true,
+    null,
+    { timeout: WAIT_MS },
+  );
+  const state = await drawer.evaluate((element) => ({
+    open: element.hasAttribute("open"),
+    containsEdgeFeedback: Boolean(element.querySelector(".right-panel-edge-feedback")),
+  }));
+  return { openedBefore, ...state };
+}
+
 async function readRailMetrics(page) {
   return await page.evaluate(() => {
     const content = document.querySelector(".right-panel-content");
     const stack = document.querySelector(".right-panel-stack");
     if (!content || !stack) return { found: false };
+    content.scrollTop = 0;
     const before = content.scrollTop;
     content.scrollTop = Math.min(220, Math.max(0, content.scrollHeight - content.clientHeight));
     const after = content.scrollTop;
@@ -239,7 +259,11 @@ async function main() {
     });
     await seedQaStorage(page);
     await page.goto(targetQaUrl(), { waitUntil: "domcontentloaded", timeout: WAIT_MS });
-    await page.waitForSelector(".right-panel-edge-feedback", { timeout: WAIT_MS });
+    report.checks.deferredHealthDrawer = await openDeferredHealthDrawer(page);
+    if (!report.checks.deferredHealthDrawer.containsEdgeFeedback) {
+      throw new Error(`Score loop is not contained in the deferred Health drawer`);
+    }
+    await page.waitForSelector(".right-panel-edge-feedback", { state: "visible", timeout: WAIT_MS });
     await page.waitForFunction(
       () => document.querySelector(".right-panel-edge-feedback-stale-count")?.textContent?.includes("Stale 3"),
       null,

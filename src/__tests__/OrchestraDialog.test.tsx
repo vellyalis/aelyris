@@ -15,14 +15,18 @@ describe("OrchestraDialog", () => {
   });
 
   it("opens when show() is called and renders all 4 role options", async () => {
-    const { getAllByRole, findByPlaceholderText } = render(<OrchestraDialog />);
+    const { getAllByRole, findByLabelText, findByPlaceholderText, getByText } = render(<OrchestraDialog />);
     let resultPromise: Promise<unknown> | null = null;
     act(() => {
       resultPromise = showOrchestra();
     });
     await findByPlaceholderText("What should the team work on?");
+    await findByLabelText("Orchestra dispatch plan");
     const checkboxes = getAllByRole("checkbox");
     expect(checkboxes).toHaveLength(4);
+    expect(getByText("Parallel lanes")).toBeTruthy();
+    expect(getByText("3 lanes")).toBeTruthy();
+    expect(getByText("Conflict")).toBeTruthy();
     // Cancel to drain the promise.
     act(() => {
       useOrchestraStore.getState().close(null);

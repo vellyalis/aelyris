@@ -6,7 +6,7 @@ import { dirname, join, resolve } from "node:path";
 const ROOT = resolve(process.cwd());
 const OUT = join(ROOT, ".codex-auto", "quality", "tauri-runtime-hygiene.json");
 const LOG_DIR = join(ROOT, ".codex-auto");
-const DEV_SIDECAR_BUILD_SCRIPT = join(ROOT, "scripts", "build-pty-sidecar-dev.mjs");
+const DEV_SIDECAR_BUILD_SCRIPT = join(ROOT, "scripts", "build-pty-sidecar-dev.ps1");
 const WORKSPACE_PROCESS_SNAPSHOT_PATH = ".codex-auto/quality/workspace-process-snapshot.json";
 const WORKSPACE_PROCESS_SNAPSHOT_MAX_AGE_MS = 5 * 60 * 1000;
 const STATIC_LOG_RUNS = [
@@ -429,10 +429,10 @@ async function main() {
     noStalePidFiles: stalePidFiles.length === 0,
     devSidecarBuilderHandlesLockedExe:
       devSidecarBuildSource.includes("AETHER_DEV_SIDECAR_REPLACE_RETRIES") &&
-      devSidecarBuildSource.includes("stopProcessesUsingPath") &&
+      devSidecarBuildSource.includes("Stop-ProcessesUsingPath") &&
       devSidecarBuildSource.includes("Get-CimInstance Win32_Process") &&
-      devSidecarBuildSource.includes("isLockedExecutableError") &&
-      devSidecarBuildSource.includes("Dev PTY sidecar was locked"),
+      devSidecarBuildSource.includes("Replace-DevSidecarExecutable") &&
+      devSidecarBuildSource.includes("Stop-Process"),
     historicalIncidentsClassified: Array.isArray(historicalIncidentClosure.historicalIncidents),
     historicalIncidentsHaveCleanSuccessor: historicalIncidentClosure.closed === true,
   };
@@ -470,7 +470,7 @@ async function main() {
     workspaceProcesses,
     stalePidFiles,
     devSidecarBuild: {
-      path: "scripts/build-pty-sidecar-dev.mjs",
+      path: "scripts/build-pty-sidecar-dev.ps1",
       exists: existsSync(DEV_SIDECAR_BUILD_SCRIPT),
       lockedExeRetryConfigured: checks.devSidecarBuilderHandlesLockedExe,
     },

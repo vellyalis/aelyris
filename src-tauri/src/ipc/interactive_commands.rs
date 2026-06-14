@@ -65,18 +65,7 @@ pub async fn spawn_interactive_agent(
 
     // Validate branch_name if provided (prevent path traversal / shell injection)
     if let Some(ref branch) = branch_name {
-        if branch.is_empty() || branch.len() > 200 {
-            return Err("Branch name must be 1-200 characters".to_string());
-        }
-        if !branch
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '/' || c == '.')
-        {
-            return Err("Branch name contains invalid characters".to_string());
-        }
-        if branch.contains("..") || branch.starts_with('-') || branch.starts_with('.') {
-            return Err("Branch name contains unsafe patterns".to_string());
-        }
+        crate::git::validate_branch_name(branch)?;
     }
 
     // If branch_name is set, create a worktree and use it as cwd
@@ -410,6 +399,7 @@ fn emit_interactive_sessions(app: &AppHandle, mgr: &InteractiveSessionManager) {
     match mgr.list() {
         Ok(sessions) => {
             let _ = app.emit("interactive-sessions-updated", &sessions);
+            super::emit_agent_fleet(app);
         }
         Err(err) => {
             log::error!("interactive sessions list failed: {}", err);
@@ -461,15 +451,12 @@ async fn run_output_monitor(
 
                     let mut changed = false;
 
-                    if let Some(status) = result.status {
-                        let status_str = match status {
-                            output_monitor::DetectedStatus::Thinking => "thinking",
-                            output_monitor::DetectedStatus::Coding => "coding",
-                            output_monitor::DetectedStatus::Idle => "idle",
-                            output_monitor::DetectedStatus::Done => "done",
-                            output_monitor::DetectedStatus::WaitingPermission => "waiting",
-                            output_monitor::DetectedStatus::Unknown => "unknown",
-                        };
+                    if let Some(status) = result
+                        .status
+                        .as_ref()
+                        .and_then(output_monitor::DetectedStatus::to_agent_run_status)
+                    {
+                        let status_str = status.as_str();
                         if status_str != last_status {
                             match session_mgr.update_status(session_id, status_str) {
                                 Ok(()) => {

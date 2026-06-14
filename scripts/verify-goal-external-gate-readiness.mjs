@@ -15,6 +15,7 @@ const paths = {
   releaseScore: ".codex-auto/quality/release-quality-score.json",
   finalAudit: ".codex-auto/quality/final-goal-audit.json",
   completionMatrix: ".codex-auto/quality/goal-completion-matrix.json",
+  releaseSigningOperatorHandoff: ".codex-auto/quality/release-signing-operator-handoff.json",
   authenticatedPrompt: ".codex-auto/production-smoke/authenticated-ai-cli-prompt-smoke.json",
   authenticatedProviderGuard: ".codex-auto/production-smoke/authenticated-ai-cli-provider-required-smoke.json",
   authenticatedPreflightMatrix: ".codex-auto/production-smoke/authenticated-ai-cli-preflight-matrix.json",
@@ -96,6 +97,16 @@ function isFinalGoalEvidenceMapBlocker(item) {
   );
 }
 
+function isReleaseSigningOperatorBlocker(item) {
+  return /release[-\s]?doctor.*signing\/updater|signing\/updater warnings|signatures\/latest\.json|updater signatures|latest\.json/i.test(
+    String(item?.area ?? "") + " " + String(item?.blocker ?? item),
+  );
+}
+
+function isExternalOperatorBlocker(item) {
+  return isRealOsSleepBlocker(item) || isReleaseSigningOperatorBlocker(item);
+}
+
 function isTauriRuntimeHygieneBlocker(item) {
   return /tauri-runtime-hygiene|runtime hygiene|Tauri dev|CDP ports|workspace Aether|aether-pty-server/i.test(
     String(item?.area ?? "") + " " + String(item?.blocker ?? item),
@@ -162,7 +173,7 @@ function completionMatrixBootstrapBlockedByFinalEvidence(matrix) {
     matrix.checks?.finalSafeRightRailCurrentProof === true &&
     Array.isArray(matrix.externalBlockers) &&
     matrix.externalBlockers.length >= 1 &&
-    matrix.externalBlockers.every(isRealOsSleepBlocker) &&
+    matrix.externalBlockers.every(isExternalOperatorBlocker) &&
     Array.isArray(matrix.matrix) &&
     matrix.matrix.every((row) => {
       if (row?.status === "proved") return true;
@@ -224,6 +235,7 @@ const artifacts = Object.fromEntries(Object.entries(paths).map(([key, path]) => 
 const releaseScore = artifacts.releaseScore.data;
 const finalAudit = artifacts.finalAudit.data;
 const completionMatrix = artifacts.completionMatrix.data;
+const releaseSigningOperatorHandoff = artifacts.releaseSigningOperatorHandoff.data;
 const authenticatedPrompt = artifacts.authenticatedPrompt.data;
 const providerGuard = artifacts.authenticatedProviderGuard.data;
 const preflightMatrix = artifacts.authenticatedPreflightMatrix.data;
@@ -237,10 +249,15 @@ const tauriRuntimeHygiene = artifacts.tauriRuntimeHygiene.data;
 
 const blockers = Array.isArray(releaseScore?.blockers) ? releaseScore.blockers : [];
 const implementationBlockers = blockers.filter(
-  (item) => !isAuthenticatedPromptBlocker(item) && !isRealOsSleepBlocker(item) && !isFinalGoalEvidenceMapBlocker(item),
+  (item) =>
+    !isAuthenticatedPromptBlocker(item) &&
+    !isRealOsSleepBlocker(item) &&
+    !isFinalGoalEvidenceMapBlocker(item) &&
+    !isReleaseSigningOperatorBlocker(item),
 );
 const tokenBlockers = blockers.filter(isAuthenticatedPromptBlocker);
 const sleepBlockers = blockers.filter(isRealOsSleepBlocker);
+const signingBlockers = blockers.filter(isReleaseSigningOperatorBlocker);
 const promptChecks = authenticatedPrompt?.checks ?? {};
 const tokenGateReady =
   authenticatedPrompt?.wouldSpendTokens === true &&
@@ -280,6 +297,19 @@ const consentPacketPostConsentReady =
   consentPacket?.checks?.tokenPromptExecutedWithConsent === true &&
   consentPacket?.checks?.noTokenPromptSent === false;
 const consentPacketReady = consentPacketBaseReady && (consentPacketPreConsentReady || consentPacketPostConsentReady);
+const releaseSigningOperatorHandoffReady =
+  releaseSigningOperatorHandoff?.ok === true &&
+  ["ready-for-release-signing-operator", "release-signing-complete"].includes(releaseSigningOperatorHandoff?.status) &&
+  releaseSigningOperatorHandoff?.signingMaterialProvidedToThisRun === false &&
+  releaseSigningOperatorHandoff?.checks?.noSigningMaterialEnvPresent === true &&
+  releaseSigningOperatorHandoff?.checks?.localUnsignedDistReady === true &&
+  releaseSigningOperatorHandoff?.checks?.signingWarningClassified === true &&
+  releaseSigningOperatorHandoff?.checks?.updaterWarningClassified === true &&
+  releaseSigningOperatorHandoff?.runbook?.signingAndUpdater?.command === "pnpm tauri:build:dist" &&
+  Array.isArray(releaseSigningOperatorHandoff?.runbook?.verification) &&
+  releaseSigningOperatorHandoff.runbook.verification.includes("pnpm verify:goal:finalize") &&
+  releaseSigningOperatorHandoff.runbook.verification.includes("pnpm verify:goal:safe") &&
+  releaseSigningOperatorHandoff.runbook.verification.includes("pnpm verify:goal:closeout");
 
 const userSleepTimedOut =
   suspendEvidence?.validation?.userInitiatedSleepWait?.status === "timeout" &&
@@ -305,7 +335,8 @@ const realSleepOperatorHandoffReady =
   sleepOperatorHandoff?.runbook?.manualSleepCycle?.command === "pnpm verify:production:suspend:native-user-cycle" &&
   sleepOperatorHandoff?.runbook?.operatorFinish?.command === "pnpm verify:goal:operator-finish" &&
   Array.isArray(sleepOperatorHandoff?.runbook?.afterManualGate) &&
-  sleepOperatorHandoff.runbook.afterManualGate.includes("pnpm verify:goal:safe");
+  sleepOperatorHandoff.runbook.afterManualGate.includes("pnpm verify:goal:safe") &&
+  sleepOperatorHandoff.runbook.afterManualGate.includes("pnpm verify:goal:closeout");
 const realSleepGateHostBlocked =
   scoreEntry(releaseScore, "real-os-soak")?.points >= 10 &&
   suspendEvidence?.status !== "pass" &&
@@ -389,9 +420,25 @@ const completeExternalGatesProved =
 function artifactFreshForExternalGate(key, artifact) {
   if (!artifact.exists || artifact.parseError) return false;
   if (artifact.fresh) return true;
+  if (key === "releaseSigningOperatorHandoff" && releaseSigningOperatorHandoffReady) return true;
   if (key === "authenticatedPrompt" && providerGuardReady && consentPacketReady) return true;
   if (key === "authenticatedPrompt" && tokenGateComplete) return true;
-  if (key === "realOsSuspendEvidence" && realSleepGateReady) return true;
+  if (key === "realOsSuspendEvidence" && (realSleepGateReady || realSleepGateHostBlocked)) return true;
+  if (key === "realOsNativePreflight" && (realSleepGateReady || realSleepGateHostBlocked || realSleepGateComplete)) {
+    return nativeSleepPreflightReady;
+  }
+  if (
+    key === "realOsNativePostcheckPreflight" &&
+    (realSleepGateReady || realSleepGateHostBlocked || realSleepGateComplete)
+  ) {
+    return nativePostcheckReady;
+  }
+  if (
+    key === "realOsNativePostcheckWriteSmoke" &&
+    (realSleepGateReady || realSleepGateHostBlocked || realSleepGateComplete)
+  ) {
+    return postcheckWriteSmokeReady;
+  }
   if (key === "realOsSuspendEvidence" && realSleepGateComplete) return true;
   if (key === "realOsSleepOperatorHandoff" && realSleepOperatorHandoffReady) return true;
   if (key === "finalAudit" && finalAuditExternalGateShape) return true;
@@ -413,6 +460,7 @@ const checks = {
   providerGuardReady,
   preflightMatrixReady,
   consentPacketReady,
+  releaseSigningOperatorHandoffReady: signingBlockers.length === 0 || releaseSigningOperatorHandoffReady,
   realSleepGateReady: realSleepGateReady || realSleepGateComplete || realSleepGateHostBlocked,
   realSleepGateHostBlocked,
   realSleepOperatorHandoffReady,
@@ -452,6 +500,7 @@ const externalRunbook = {
     "pnpm verify:goal:operator-finish",
     "pnpm verify:goal:finalize",
     "pnpm verify:goal:safe",
+    "pnpm verify:goal:closeout",
   ],
   operatorFinish: {
     command: "pnpm verify:goal:operator-finish",
@@ -463,6 +512,10 @@ const externalRunbook = {
     command: "pnpm verify:goal:finalize",
     safety:
       "Runs the ordered score/audit/docs/matrix/safe finalizer without sending prompts or invoking OS sleep.",
+  },
+  closeoutSnapshot: {
+    command: "pnpm verify:goal:closeout",
+    safety: "Checks the final score, audit, safe, docs, matrix, and operator handoff artifacts agree.",
   },
 };
 
@@ -476,6 +529,7 @@ const readyForExternalGates =
   checks.providerGuardReady &&
   checks.preflightMatrixReady &&
   checks.consentPacketReady &&
+  checks.releaseSigningOperatorHandoffReady &&
   checks.realSleepGateReady &&
   (checks.noTokenPromptSent || checks.tokenPromptExecutedWithConsent) &&
   checks.noRealSleepClaimMade &&
@@ -487,6 +541,7 @@ const completeExternalGates =
   checks.providerGuardReady &&
   checks.preflightMatrixReady &&
   checks.consentPacketReady &&
+  checks.releaseSigningOperatorHandoffReady &&
   checks.sourceArtifactsFresh;
 const ok = readyForExternalGates || completeExternalGates;
 const report = {
@@ -518,6 +573,17 @@ const report = {
                 status: tokenGateReady && consentPacketReady ? "ready-for-explicit-consent" : "not-ready",
                 blocker:
                   tokenBlockers[0]?.blocker ?? "authenticated AI CLI prompt smoke requires explicit token-spend consent",
+              },
+            ]
+          : []),
+        ...(!releaseSigningOperatorHandoff?.releaseSigningComplete && signingBlockers.length > 0
+          ? [
+              {
+                id: "release-signing-updater",
+                status: releaseSigningOperatorHandoffReady ? "ready-for-signing-operator" : "not-ready",
+                blocker:
+                  signingBlockers[0]?.blocker ??
+                  "release signing/updater latest.json must be regenerated with operator signing material",
               },
             ]
           : []),

@@ -46,7 +46,7 @@ const checks = [
     pass:
       app.includes("const PRODUCT_MODE_RAIL") &&
       app.includes('className="mode-rail"') &&
-      app.includes('data-product-mode={mode.id}') &&
+      app.includes("data-product-mode={mode.id}") &&
       css.includes(".mode-rail") &&
       css.includes(".mode-rail-button"),
   },
@@ -62,7 +62,7 @@ const checks = [
       ["Alt+1", "Alt+2", "Alt+3", "Alt+4", "Alt+5", "Alt+6", "Alt+7", "Alt+8"].every((shortcut) =>
         app.includes(`shortcut: "${shortcut}"`),
       ) &&
-      app.includes("window.addEventListener(\"keydown\", onModeShortcut)") &&
+      app.includes('window.addEventListener("keydown", onModeShortcut)') &&
       app.includes("handleProductModeSelect(mode.id)"),
   },
   {
@@ -79,11 +79,11 @@ const checks = [
   },
   {
     id: "inspector-copy",
-    label: "Right rail is presented as a contextual inspector",
+    label: "Right rail is presented as an Orchestra contextual inspector",
     pass:
       app.includes('aria-label="Contextual inspector"') &&
       app.includes('aria-label="Inspector mode"') &&
-      app.includes(">Inspector</span>") &&
+      app.includes(">Orchestra Command</span>") &&
       !app.includes(">Project tools</span>") &&
       !app.includes("Mission Control"),
   },
@@ -96,7 +96,7 @@ const checks = [
       app.includes('className="right-panel-inspector-hero"') &&
       app.includes("rightRailInspectorPrimaryAction") &&
       app.includes("rightRailInspectorProof") &&
-      app.includes('data-proof-state={rightRailInspectorProofState}') &&
+      app.includes("data-proof-state={rightRailInspectorProofState}") &&
       app.includes('aria-label="Selected mode target and proof"') &&
       css.includes(".right-panel-inspector-hero") &&
       css.includes(".right-panel-inspector-grid") &&

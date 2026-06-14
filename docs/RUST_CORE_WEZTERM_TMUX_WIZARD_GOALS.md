@@ -1,21 +1,21 @@
 # Rust Core WezTerm/tmux Wizard Goals
 
 Date: 2026-05-12
-Updated: 2026-06-01
+Updated: 2026-06-13
 
-## Current Canonical State - 2026-06-01
+## Current Canonical State - 2026-06-13
 
-- `pnpm verify:quality-score` currently reports `99/100`, grade `S`, `331/335`, `releaseCandidateReady=false`.
-- `pnpm verify:final-goal-audit` is currently `blocked-by-external-gates`: `implementationFixableCount=0`, `policyBlockedCount=0`, and `externalBlockedCount=1`.
-- The live AI CLI post-launch chaos score is no longer blocked by WebView2 CDP: `.codex-auto/chaos-recovery/native-ai-cli-post-launch-chaos.json` proves native sidecar AI CLI spawn, input, kill cleanup, same-id PTY restart, prompt readiness, and no session residue, while the stale URL truth contract remains covered by the right-rail verifier.
-- The strict right-rail Goal Track DOM proof can also report environment-blocked when WebView2 CDP at `http://127.0.0.1:9222` is not reachable, but the current gate preserves the primary artifact and accepts the fresh `.environment-blocked.json` source contract as `environment-blocked-current-contract`.
-- The safe proof registry has `26/26` registered artifacts green when `rightRailGoalTrackTauri` reports either `pass-current-contract` or `environment-blocked-current-contract`, including `goal-external-gate-readiness`, `real-os-sleep-operator-handoff`, `goal-operator-finish`, optional git handoff artifacts, `glass-legibility-contract`, `right-rail-information-density-contract`, and `goal-anti-stall-contract`.
-- Long external operator gates now persist `.codex-auto/quality/goal-operator-progress.json` with `lastHeartbeatAt`, `nextHeartbeatAt`, active step, and next action, so a resumed run can distinguish an actual stall from a sleep/token gate wait.
+- `pnpm verify:quality-score` currently reports `92/100`, grade `A`, `309/335`, `releaseCandidateReady=false`; after the refreshed final-goal-evidence-map is counted the projected score is `95/100`, `317/335`.
+- `pnpm verify:final-goal-audit` is expected to remain `blocked-by-external-gates`: `implementationFixableCount=0`, with the remaining gates classified as explicit token consent, real OS sleep/host support, and release signing/updater operator work.
+- The right rail is now action-first rather than dashboard-first: ranked next action, focused queue/evidence drawers, owner/provenance chips, orchestra dispatch, toolkit/Git/VS Code entry points, and density guards are the current product contract.
+- Agent Team orchestration now plans parallel lanes for implement, verify, review, and risk work with changed-file scope, handoff prompts, conflict policy, and evidence targets so multiple AI CLI sessions can be run like an Aether-native mux layer instead of loose chat tabs.
+- The required safe proof registry has `27/27` artifacts green when `rightRailGoalTrackTauri` reports either `pass-current-contract` or `environment-blocked-current-contract`, including `goal-external-gate-readiness`, `real-os-sleep-operator-handoff`, `goal-operator-finish`, optional git handoff artifacts, `release-signing-operator-handoff`, `glass-legibility-contract`, `right-rail-information-density-contract`, `agent-team-orchestration-readiness`, and `goal-anti-stall-contract`.
+- Long external operator gates persist `.codex-auto/quality/goal-operator-progress.json` with `lastHeartbeatAt`, `nextHeartbeatAt`, active step, and next action, so a resumed run can distinguish an actual stall from a sleep/token/signing gate wait.
 - `pnpm verify:goal:finalize` excludes git finalization by default; set `AETHER_GOAL_FINALIZE_INCLUDE_GIT=1` only when commit/merge readiness is intentionally in scope.
 - Git finalization is an optional handoff gate, not required for product/safe/finalize evidence: `.codex-auto/quality/git-finalization-readiness.json` records the exact commit/merge runbook when `.git/index.lock` or `.git/objects` permission errors block staging.
 - `real-os-soak` is host-blocked, not passed: the native sleep command returned `SetSuspendState returned false; GetLastError=50`, while native sleep/postcheck preflights and the no-real-sleep-claim postcheck writer pass.
-- `authenticated-ai-cli-prompt-smoke` is now proved through explicit consent; `authenticated-ai-cli-consent-packet` records the required `AETHER_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` plus `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini` boundary for any future token-spending prompt run.
-- Until a capable/user-initiated Windows sleep cycle emits real power events, final audit state must remain `blocked-by-external-gates`, never `complete`.
+- `authenticated-ai-cli-prompt-smoke` is not run by default because it may spend tokens; `authenticated-ai-cli-consent-packet` records the required `AETHER_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` plus `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini` boundary for a future token-spending prompt run.
+- Release doctor is current but remains `pass_with_warnings` until updater signatures and `latest.json` are regenerated from release signing material.
 
 ## Purpose
 
@@ -68,7 +68,7 @@ The "Known gaps" list above is the original 2026-05-12 baseline. The current imp
 - Native terminal input has a Windows HWND-backed default surface in Tauri, with live IME evidence passing.
 - `aether-native` is now a Rust-native, no-WebView attaching client spike. `pnpm verify:terminal:native-client` proves it reaches the same daemon instance, creates a layered Win32 native window, renders daemon-captured terminal text through Win32/GDI with nonblank pixel evidence, feeds daemon capture into Rust `TermEngine`, materializes a renderer-neutral `NativeRenderFrame` with schema `aether.native.render-frame.v1`, renders a native 100x24 terminal grid with nonblank cell/pixel evidence, proves the renderer consumed the same frame hash, and can list, send, capture, detach, and attach through the mux API.
 - Production release evidence now passes for all implementation-fixable gates: `pnpm verify:release:production`, strict release doctor, supply-chain audit, mux restore/performance, scrollback, and quality score `96/100`, grade `A`, `321/335`, `releaseCandidateReady=false`.
-- `pnpm verify:goal:safe` reports `blocked-by-external-gates` with `24/24` proof artifacts passing and `0` implementation-fixable blockers, including the objective-level `goal-completion-matrix`, current supply-chain audit proof, `goal-external-gate-readiness`, optional git handoff artifacts, `glass-legibility-contract`, and `goal-anti-stall-contract`.
+- `pnpm verify:goal:safe` reports `blocked-by-external-gates` with `27/27` proof artifacts passing and `0` implementation-fixable blockers, including the objective-level `goal-completion-matrix`, current supply-chain audit proof, `goal-external-gate-readiness`, optional git handoff artifacts, `glass-legibility-contract`, `right-rail-information-density-contract`, `agent-team-orchestration-readiness`, `release-signing-operator-handoff`, and `goal-anti-stall-contract`.
 - The current state is `blocked-by-external-gates` because real OS sleep/resume is host-blocked and `authenticated-ai-cli-prompt-smoke` may spend tokens. The opt-in artifact is `authenticated-ai-cli-consent-packet`, and the final smoke requires `AETHER_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` plus `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini`.
 
 Remaining Core Wizard gaps:
@@ -963,7 +963,7 @@ Remaining before this can be called Core Wizard:
 
 - Current release score evidence: `96/100`, `321/335`.
 - `releaseCandidateReady=false`; final-goal audit status is `blocked-by-external-gates` until real sleep/resume evidence and consented `authenticated-ai-cli-prompt-smoke` are both proven.
-- Authenticated prompt execution remains gated by `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini` and explicit consent; the safe proof registry is `24/24`.
+- Authenticated prompt execution remains gated by `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini` and explicit consent; the safe proof registry is `27/27`.
 
 ## 2026-05-24 Release Evidence Refresh
 
@@ -977,4 +977,4 @@ Remaining before this can be called Core Wizard:
 - Projected score after the fresh final-goal evidence map remains `96/100`, `321/335`; auditStatus=`blocked-by-external-gates`.
 - Rust-core terminal, mux restore, native IME/clipboard, AI CLI sidecar, right rail workflow, and runtime hygiene gates are green in the non-token/non-real-sleep scope.
 - Remaining external gate is real Windows sleep/resume support; remaining policy gate is explicit token-spend consent for `authenticated-ai-cli-prompt-smoke`.
-- Authenticated prompt execution remains gated by `authenticated-ai-cli-prompt-smoke`, `authenticated-ai-cli-consent-packet`, and `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini`; safe proof registry is `24/24`.
+- Authenticated prompt execution remains gated by `authenticated-ai-cli-prompt-smoke`, `authenticated-ai-cli-consent-packet`, and `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini`; safe proof registry is `27/27`.

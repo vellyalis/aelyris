@@ -1,4 +1,5 @@
 use super::interactive::AgentCli;
+use super::status::AgentRunStatus;
 use regex::Regex;
 
 /// Detected state from terminal output
@@ -10,6 +11,19 @@ pub enum DetectedStatus {
     Done,
     WaitingPermission,
     Unknown,
+}
+
+impl DetectedStatus {
+    pub fn to_agent_run_status(&self) -> Option<AgentRunStatus> {
+        match self {
+            Self::Thinking => Some(AgentRunStatus::Thinking),
+            Self::Coding => Some(AgentRunStatus::Coding),
+            Self::Idle => Some(AgentRunStatus::Idle),
+            Self::Done => Some(AgentRunStatus::Done),
+            Self::WaitingPermission => Some(AgentRunStatus::WaitingApproval),
+            Self::Unknown => None,
+        }
+    }
 }
 
 /// Cost/token info extracted from output
@@ -236,6 +250,23 @@ mod tests {
         let _ = create_parser(&AgentCli::Gemini);
         let _ = create_parser(&AgentCli::Codex);
         let _ = create_parser(&AgentCli::Custom("my-agent".to_string()));
+    }
+
+    #[test]
+    fn detected_status_maps_to_canonical_status() {
+        assert_eq!(
+            DetectedStatus::Thinking.to_agent_run_status(),
+            Some(AgentRunStatus::Thinking)
+        );
+        assert_eq!(
+            DetectedStatus::Coding.to_agent_run_status(),
+            Some(AgentRunStatus::Coding)
+        );
+        assert_eq!(
+            DetectedStatus::WaitingPermission.to_agent_run_status(),
+            Some(AgentRunStatus::WaitingApproval)
+        );
+        assert_eq!(DetectedStatus::Unknown.to_agent_run_status(), None);
     }
 
     #[test]

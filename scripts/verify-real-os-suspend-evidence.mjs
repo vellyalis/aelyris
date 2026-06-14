@@ -1972,7 +1972,7 @@ async function writeNativePreflight() {
     nextSteps:
       missing.length === 0
         ? [
-            "Run pnpm verify:production:suspend:native-user-cycle, manually put Windows to sleep while the verifier waits, then close the loop with pnpm verify:goal:operator-finish, pnpm verify:goal:finalize, and pnpm verify:goal:safe.",
+            "Run pnpm verify:production:suspend:native-user-cycle, manually put Windows to sleep while the verifier waits, then close the loop with pnpm verify:goal:operator-finish, pnpm verify:goal:finalize, pnpm verify:goal:safe, and pnpm verify:goal:closeout.",
             "Alternatively run pnpm verify:production:suspend:native-begin, put Windows to sleep, then run native-resume and native-postcheck.",
           ]
         : onlyHostEventLogBlocked

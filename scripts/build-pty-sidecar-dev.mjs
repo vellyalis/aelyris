@@ -11,15 +11,36 @@ const DEV_SIDECAR_REPLACE_RETRY_DELAY_MS = Number.parseInt(
   10,
 );
 
-function run(command, args) {
+function spawnWithWindowsShellFallback(command, args, options) {
   const result = spawnSync(command, args, {
     cwd: root,
-    stdio: "inherit",
     shell: false,
     windowsHide: true,
+    ...options,
+  });
+  if (process.platform !== "win32" || result.status !== null || result.error?.code !== "EPERM") {
+    return result;
+  }
+  return spawnSync(command, args, {
+    cwd: root,
+    shell: true,
+    windowsHide: true,
+    ...options,
+  });
+}
+
+function failureDetail(result) {
+  if (result.error) return `${result.error.code ?? "error"}: ${result.error.message}`;
+  if (result.signal) return `signal ${result.signal}`;
+  return `exit code ${result.status}`;
+}
+
+function run(command, args) {
+  const result = spawnWithWindowsShellFallback(command, args, {
+    stdio: "inherit",
   });
   if (result.status !== 0) {
-    throw new Error(`${command} ${args.join(" ")} failed with exit code ${result.status}`);
+    throw new Error(`${command} ${args.join(" ")} failed with ${failureDetail(result)}`);
   }
 }
 

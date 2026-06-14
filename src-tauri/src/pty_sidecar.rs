@@ -370,11 +370,13 @@ impl PtySidecarClient {
             .get(id)
             .cloned()
             .ok_or_else(|| format!("PTY sidecar stream missing for {id}"))?;
-        stream
-            .input_tx
-            .send(data.to_vec())
-            .await
-            .map_err(|_| format!("PTY sidecar stream closed for {id}"))
+        // Bounded wait: a stalled WS writer must surface as an error instead
+        // of blocking the IPC caller for as long as the queue stays full.
+        match tokio::time::timeout(WS_WRITE_TIMEOUT, stream.input_tx.send(data.to_vec())).await {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(_)) => Err(format!("PTY sidecar stream closed for {id}")),
+            Err(_) => Err(format!("PTY sidecar input queue saturated for {id}")),
+        }
     }
 
     pub async fn resize(&self, id: &str, cols: u16, rows: u16) -> Result<(), String> {
@@ -751,6 +753,39 @@ impl PtySidecarClient {
             .map_err(|err| format!("PTY server capture response invalid: {err}"))
     }
 
+    /// Ask the daemon to close all sessions and exit (opt-in app setting).
+    /// Falls back to terminating the process tree for daemons that predate
+    /// the shutdown endpoint. The caller bridges this into the sync exit
+    /// handler (kept async here so the startup-probe `block_on` budget in
+    /// this file stays at one).
+    pub async fn shutdown_daemon(&self) {
+        let result = async {
+            let res = self
+                .http
+                .post(format!("{}/daemon/shutdown", self.base_url))
+                .bearer_auth(&self.token)
+                .send()
+                .await
+                .map_err(|err| format!("shutdown request failed: {err}"))?;
+            if res.status().is_success() {
+                return Ok(());
+            }
+            Err(format!("shutdown endpoint returned {}", res.status()))
+        }
+        .await;
+        match result {
+            Ok(()) => log::info!("PTY sidecar daemon shutdown requested"),
+            Err(reason) => {
+                log::warn!("PTY sidecar graceful shutdown unavailable ({reason}); terminating process tree");
+                if let Ok(health) = self.health().await {
+                    if health.pid != 0 {
+                        terminate_process_tree(health.pid);
+                    }
+                }
+            }
+        }
+    }
+
     async fn health(&self) -> Result<HealthResponse, String> {
         let res = self
             .http
@@ -788,17 +823,9 @@ impl PtySidecarClient {
             return Ok(());
         }
 
-        let ticket = self.issue_stream_ticket(id).await?;
-        let ws_url = format!(
-            "ws://127.0.0.1:{SIDE_CAR_PORT}/sessions/{}/stream?ticket={}",
-            id, ticket
-        );
-        let (socket, _) = tokio_tungstenite::connect_async(&ws_url)
-            .await
-            .map_err(|err| format!("PTY server stream connect failed: {err}"))?;
-        let (mut ws_write, mut ws_read) = socket.split();
+        let socket = self.connect_stream_socket(id).await?;
         let (output_tx, _) = broadcast::channel::<Vec<u8>>(1024);
-        let (input_tx, mut input_rx) = mpsc::channel::<Vec<u8>>(INPUT_QUEUE_CAPACITY);
+        let (input_tx, input_rx) = mpsc::channel::<Vec<u8>>(INPUT_QUEUE_CAPACITY);
 
         self.streams
             .lock()
@@ -811,43 +838,155 @@ impl PtySidecarClient {
                 },
             );
 
-        let read_id = id.to_string();
-        let read_streams = self.streams.clone();
+        // One supervisor task owns both directions for this terminal. The
+        // output broadcast and input queue outlive individual WS sockets, so
+        // a transient disconnect (write stall, TCP reset) is healed by
+        // reconnecting in place: UI subscribers keep their receiver and the
+        // session keeps streaming instead of being misreported as exited.
+        let client = self.clone();
+        let supervisor_id = id.to_string();
         tauri::async_runtime::spawn(async move {
-            while let Some(msg) = ws_read.next().await {
-                match msg {
-                    Ok(Message::Binary(bytes)) => {
-                        let _ = output_tx.send(bytes.to_vec());
-                    }
-                    Ok(Message::Text(text)) => {
-                        let _ = output_tx.send(text.to_string().into_bytes());
-                    }
-                    Ok(Message::Close(_)) | Err(_) => break,
-                    Ok(_) => {}
-                }
-            }
-            if let Ok(mut streams) = read_streams.lock() {
-                streams.remove(&read_id);
-            }
-        });
-
-        tauri::async_runtime::spawn(async move {
-            while let Some(bytes) = input_rx.recv().await {
-                match tokio::time::timeout(
-                    WS_WRITE_TIMEOUT,
-                    ws_write.send(Message::Binary(bytes.into())),
-                )
-                .await
-                {
-                    Ok(Ok(())) => {}
-                    Ok(Err(_)) | Err(_) => {
-                        break;
-                    }
-                }
-            }
+            client
+                .run_stream_supervisor(supervisor_id, socket, output_tx, input_rx)
+                .await;
         });
 
         Ok(())
+    }
+
+    async fn connect_stream_socket(
+        &self,
+        id: &str,
+    ) -> Result<
+        tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
+        String,
+    > {
+        let ticket = self.issue_stream_ticket(id).await?;
+        let ws_url = format!(
+            "ws://127.0.0.1:{SIDE_CAR_PORT}/sessions/{}/stream?ticket={}",
+            id, ticket
+        );
+        let (socket, _) = tokio_tungstenite::connect_async(&ws_url)
+            .await
+            .map_err(|err| format!("PTY server stream connect failed: {err}"))?;
+        Ok(socket)
+    }
+
+    async fn run_stream_supervisor(
+        &self,
+        id: String,
+        socket: tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
+        output_tx: broadcast::Sender<Vec<u8>>,
+        mut input_rx: mpsc::Receiver<Vec<u8>>,
+    ) {
+        let mut socket = Some(socket);
+        loop {
+            let current = match socket.take() {
+                Some(current) => current,
+                None => match self.reconnect_stream_socket(&id).await {
+                    Some(current) => {
+                        // Bytes emitted while disconnected are gone from this
+                        // live stream; say so instead of splicing silently.
+                        let _ = output_tx.send(
+                            b"\r\n\x1b[2m[stream reconnected; output may have gaps]\x1b[0m\r\n"
+                                .to_vec(),
+                        );
+                        current
+                    }
+                    None => break,
+                },
+            };
+            let (mut ws_write, mut ws_read) = current.split();
+            let input_closed = loop {
+                tokio::select! {
+                    msg = ws_read.next() => match msg {
+                        Some(Ok(Message::Binary(bytes))) => {
+                            let _ = output_tx.send(bytes.to_vec());
+                        }
+                        Some(Ok(Message::Text(text))) => {
+                            let _ = output_tx.send(text.to_string().into_bytes());
+                        }
+                        Some(Ok(Message::Close(_))) | Some(Err(_)) | None => break false,
+                        Some(Ok(_)) => {}
+                    },
+                    bytes = input_rx.recv() => match bytes {
+                        Some(bytes) => {
+                            match tokio::time::timeout(
+                                WS_WRITE_TIMEOUT,
+                                ws_write.send(Message::Binary(bytes.into())),
+                            )
+                            .await
+                            {
+                                Ok(Ok(())) => {}
+                                Ok(Err(_)) | Err(_) => break false,
+                            }
+                        }
+                        // All input senders dropped: the terminal was closed
+                        // locally; stop supervising.
+                        None => break true,
+                    },
+                }
+            };
+            if input_closed {
+                break;
+            }
+        }
+        if let Ok(mut streams) = self.streams.lock() {
+            streams.remove(&id);
+        }
+    }
+
+    /// Re-establish the WS stream for a session after a transient drop.
+    /// Retries with backoff while the daemon is reachable and still lists the
+    /// session; gives up (ending the stream like a real exit) once the
+    /// session is gone or the daemon stays unreachable.
+    async fn reconnect_stream_socket(
+        &self,
+        id: &str,
+    ) -> Option<
+        tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
+    > {
+        const MAX_DAEMON_UNREACHABLE_STRIKES: u32 = 10;
+        let mut unreachable_strikes = 0u32;
+        let mut delay = Duration::from_millis(500);
+        loop {
+            tokio::time::sleep(delay).await;
+            delay = (delay * 2).min(Duration::from_secs(5));
+            match self.list().await {
+                Ok(ids) => {
+                    unreachable_strikes = 0;
+                    if !ids.iter().any(|known| known == id) {
+                        log::info!("PTY sidecar session {id} ended while stream was down");
+                        return None;
+                    }
+                }
+                Err(err) => {
+                    unreachable_strikes += 1;
+                    if unreachable_strikes >= MAX_DAEMON_UNREACHABLE_STRIKES {
+                        log::warn!(
+                            "PTY sidecar unreachable while reconnecting stream {id}; giving up: {err}"
+                        );
+                        return None;
+                    }
+                    continue;
+                }
+            }
+            match self.connect_stream_socket(id).await {
+                Ok(socket) => {
+                    log::info!("PTY sidecar stream {id} reconnected");
+                    return Some(socket);
+                }
+                Err(err) => {
+                    log::debug!("PTY sidecar stream {id} reconnect attempt failed: {err}");
+                }
+            }
+        }
     }
 
     async fn issue_stream_ticket(&self, id: &str) -> Result<String, String> {
@@ -919,10 +1058,10 @@ fn probe_expected_sidecar(client: &PtySidecarClient) -> bool {
     };
     match tauri::async_runtime::block_on(async {
         let health = client.health().await?;
-        client.list().await?;
-        Ok::<_, String>(health)
+        let sessions = client.list().await?;
+        Ok::<_, String>((health, sessions))
     }) {
-        Ok(health) => {
+        Ok((health, sessions)) => {
             if health.process_kind != crate::api::PROCESS_KIND_SIDE_CAR {
                 log::warn!(
                     "PTY sidecar probe rejected process kind {} on 127.0.0.1:{}",
@@ -956,18 +1095,45 @@ fn probe_expected_sidecar(client: &PtySidecarClient) -> bool {
                     SIDE_CAR_PORT,
                     crate::api::DAEMON_PROTOCOL_VERSION
                 );
-                terminate_stale_expected_sidecar(&health, &expected, "protocol");
+                if sessions.is_empty() {
+                    terminate_stale_expected_sidecar(&health, &expected, "protocol");
+                } else {
+                    // Never kill a daemon that still hosts live sessions:
+                    // surviving agent work outranks backend selection. This
+                    // app run falls back to the native backend; the daemon
+                    // stays reachable for an app build that speaks its
+                    // protocol.
+                    log::warn!(
+                        "PTY sidecar protocol mismatch left running: {} live session(s) would be destroyed (pid={})",
+                        sessions.len(),
+                        health.pid
+                    );
+                }
                 return false;
             }
             if health.version != env!("CARGO_PKG_VERSION") {
-                log::warn!(
-                    "PTY sidecar probe rejected version {} on 127.0.0.1:{}; expected {}",
+                if sessions.is_empty() {
+                    // Session-free daemon from another build: refresh it so
+                    // the freshly spawned binary picks up fixes.
+                    log::info!(
+                        "refreshing session-free PTY sidecar {} -> {}",
+                        health.version,
+                        env!("CARGO_PKG_VERSION")
+                    );
+                    terminate_stale_expected_sidecar(&health, &expected, "version-refresh");
+                    return false;
+                }
+                // Same wire protocol, different app build: the daemon is
+                // compatible by definition of DAEMON_PROTOCOL_VERSION, and
+                // killing it would destroy sessions that survived an app
+                // update. Adopt it.
+                log::info!(
+                    "PTY sidecar version {} differs from app {} but speaks protocol {}; adopting ({} live session(s))",
                     health.version,
-                    SIDE_CAR_PORT,
-                    env!("CARGO_PKG_VERSION")
+                    env!("CARGO_PKG_VERSION"),
+                    health.protocol_version,
+                    sessions.len()
                 );
-                terminate_stale_expected_sidecar(&health, &expected, "version");
-                return false;
             }
             true
         }
@@ -1049,6 +1215,17 @@ fn spawn_server_process(token: &str) -> Result<(), String> {
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
+    // Give the daemon a durable scrollback store next to the token file.
+    // Without it the daemon only keeps an in-memory ring, capping how much
+    // history a re-adopted session can backfill after an app restart.
+    if std::env::var(crate::pty::PTY_SCROLLBACK_DIR_ENV).is_err() {
+        if let Some(dir) = token_path()?.parent() {
+            command.env(
+                crate::pty::PTY_SCROLLBACK_DIR_ENV,
+                dir.join("pty-scrollback"),
+            );
+        }
+    }
 
     command
         .spawn()

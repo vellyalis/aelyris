@@ -217,8 +217,16 @@ function hasWindowsInstallerTarget(targets) {
 
 async function checkTauriBuild(pkg, tauriConfig, tauriDistConfig) {
   const script = pkg.scripts?.["tauri:build:dist"];
+  const buildDistScript = await readText("scripts/build-dist-windows.ps1");
+  const buildScriptReady =
+    script === "node scripts/build-pty-sidecar.mjs && tauri build --config src-tauri/tauri.dist.conf.json --no-sign" ||
+    (script === "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-dist-windows.ps1" &&
+      buildDistScript.includes("scripts\\build-pty-sidecar.ps1") &&
+      buildDistScript.includes("--bundles\", \"nsis") &&
+      buildDistScript.includes("--bundles msi") &&
+      buildDistScript.includes("Invoke-WixIceFallback"));
   const buildReady =
-    script === "node scripts/build-pty-sidecar.mjs && tauri build --config src-tauri/tauri.dist.conf.json --no-sign" &&
+    buildScriptReady &&
     tauriConfig.bundle?.active === true &&
     hasWindowsInstallerTarget(tauriConfig.bundle?.targets) &&
     Array.isArray(tauriDistConfig.bundle?.externalBin) &&
@@ -237,6 +245,10 @@ async function checkTauriBuild(pkg, tauriConfig, tauriDistConfig) {
       targets: tauriConfig.bundle?.targets,
       externalBin: tauriDistConfig.bundle?.externalBin,
       distCreateUpdaterArtifacts: tauriDistConfig.bundle?.createUpdaterArtifacts ?? "inherits-base-config",
+      wrapperContract:
+        script === "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-dist-windows.ps1"
+          ? "sidecar+nsis+msi+wix-fallback"
+          : "direct-tauri",
     },
   );
 }

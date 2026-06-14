@@ -40,7 +40,18 @@ function expectedSafeProofArtifactCount() {
   const source = readText(FINAL_GOAL_SAFE_VERIFIER_PATH) ?? "";
   const match = source.match(/const proofArtifacts = \{([\s\S]*?)\n\};/);
   if (!match) return 0;
-  return (match[1].match(/^\s{2}[A-Za-z0-9]+:\s+artifactMeta\(/gm) ?? []).length;
+  const artifactKeys = match[1]
+    .split("\n")
+    .map((line) => line.match(/^\s{2}([A-Za-z0-9]+):\s+artifactMeta\(/)?.[1])
+    .filter(Boolean);
+  const optionalMatch = source.match(/const optionalProofArtifactKeys = new Set\(\[([^\]]*)\]\);/);
+  const optionalKeys = new Set(
+    (optionalMatch?.[1] ?? "")
+      .split(",")
+      .map((item) => item.trim().replace(/^["']|["']$/g, ""))
+      .filter(Boolean),
+  );
+  return artifactKeys.filter((key) => !optionalKeys.has(key)).length;
 }
 
 function docResult(path, score, audit, safeProofArtifactRegistryCount, today) {
@@ -91,7 +102,10 @@ function docResult(path, score, audit, safeProofArtifactRegistryCount, today) {
     noStaleLegacyScoreClaim: !/100\/116/.test(text ?? ""),
     noStaleReleaseReadyClaim:
       score?.releaseCandidateReady === true ? true : !/releaseCandidateReady=true/.test(text ?? ""),
-    noStaleSafeProofArtifactClaim: !/proofArtifactPassCount=11\/11|with `11\/11` proof artifacts/.test(text ?? ""),
+    noStaleSafeProofArtifactClaim:
+      !/proofArtifactPassCount=11\/11|with `11\/11` proof artifacts|proofArtifactPassCount=24\/24|with `24\/24` proof artifacts|safe proof registry is `24\/24`|safe proof registry is 24\/24|proofArtifactPassCount=26\/26|with `26\/26` proof artifacts|safe proof registry is `26\/26`|safe proof registry is 26\/26/.test(
+        text ?? "",
+      ),
     noStaleRightRailCurrentClaim: !staleRightRailCurrentClaims.some((pattern) => pattern.test(text ?? "")),
   };
   return {

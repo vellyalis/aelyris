@@ -11,6 +11,7 @@ import {
   Radio,
   Settings as SettingsIcon,
   SquareTerminal,
+  Users,
 } from "lucide-react";
 import { MotionConfig } from "motion/react";
 import {
@@ -144,10 +145,9 @@ const WebInspector = lazy(() =>
 );
 
 import { HistorySearchDialog, showHistorySearch } from "./features/history/HistorySearchDialog";
-import { type StartAgentMeta, useAgentManager } from "./shared/hooks/useAgentManager";
+import { type StartAgentMeta, useAgentFleet } from "./shared/hooks/useAgentFleet";
 import { useAuditEvents } from "./shared/hooks/useAuditEvents";
 import { useGitStatus } from "./shared/hooks/useGitStatus";
-import { useInteractiveAgent } from "./shared/hooks/useInteractiveAgent";
 import { useKeyboardShortcuts } from "./shared/hooks/useKeyboardShortcuts";
 import { useTabManager } from "./shared/hooks/useTabManager";
 import { useTaskAgentLink } from "./shared/hooks/useTaskAgentLink";
@@ -178,6 +178,11 @@ import {
 } from "./shared/lib/fallbackTelemetry";
 import { allowedToolsForGuardrailProfile, describeGuardrailProfile } from "./shared/lib/guardrailPolicy";
 import { writeClipboardText as writeNativeClipboardText } from "./shared/lib/nativeClipboard";
+import {
+  buildOrchestraPrompts,
+  normalizeOrchestraRoutedModel,
+  ORCHESTRA_ROLES,
+} from "./shared/lib/orchestrator";
 import {
   deriveFinalGoalRequirementProofs,
   deriveFinalGoalResidualRisk,
@@ -220,7 +225,7 @@ import { ErrorBoundary } from "./shared/ui/ErrorBoundary";
 import { HandoffDialog } from "./shared/ui/HandoffDialog";
 import { LazyDialog } from "./shared/ui/LazyDialog";
 import { OnboardingOverlay } from "./shared/ui/OnboardingOverlay";
-import { OrchestraDialog } from "./shared/ui/OrchestraDialog";
+import { OrchestraDialog, showOrchestra } from "./shared/ui/OrchestraDialog";
 import { PromptDialog } from "./shared/ui/PromptDialog";
 import { SplitPane } from "./shared/ui/SplitPane";
 import { ToastProvider } from "./shared/ui/Toast";
@@ -463,8 +468,19 @@ const RIGHT_RAIL_GUARDRAIL_SYNC_EVENT = "aether:right-rail-guardrail-sync";
 const RIGHT_RAIL_WIDGET_STORAGE_PREFIX = "aether:right-rail-widget:";
 const RIGHT_RAIL_WIDGET_SYNC_EVENT = "aether:right-rail-widget-sync";
 
-type RightRailWidgetId = "workflow" | "toolkit" | "context" | "audit-timeline" | "run-graph" | "tool-ledger" | "logs";
+type RightRailWidgetId =
+  | "decision-inbox"
+  | "sessions"
+  | "workflow"
+  | "toolkit"
+  | "context"
+  | "audit-timeline"
+  | "run-graph"
+  | "tool-ledger"
+  | "logs";
 const RIGHT_RAIL_WIDGET_IDS: readonly RightRailWidgetId[] = [
+  "decision-inbox",
+  "sessions",
   "workflow",
   "toolkit",
   "context",
@@ -2802,15 +2818,20 @@ export function App() {
     [closeTab, tabs],
   );
 
-  const { sessions, activeSessionId, setActiveSessionId, startAgent, stopAgent, renameSession } = useAgentManager();
   const {
-    sessions: interactiveSessions,
-    activeSessionId: interactiveSessionId,
-    selectSession: selectInteractiveSession,
-    startSession: startInteractiveSession,
-    stopSession: stopInteractiveSession,
+    sessions,
+    activeSessionId,
+    setActiveSessionId,
+    startAgent,
+    stopAgent,
+    renameSession,
+    interactiveSessions,
+    interactiveSessionId,
+    selectInteractiveSession,
+    startInteractiveSession,
+    stopInteractiveSession,
     endSessionAndRemoveWorktree,
-  } = useInteractiveAgent();
+  } = useAgentFleet();
 
   const projectPath = activeTab.cwd ?? rootProjectPath ?? "";
   rightRailProjectPathRef.current = projectPath;
@@ -4122,7 +4143,7 @@ export function App() {
 
   const handleStartInteractiveSession = useCallback(
     async (opts: { cwd: string; model?: string; initialPrompt?: string; branchName?: string }) => {
-      await startInteractiveSession({
+      return await startInteractiveSession({
         ...opts,
         cols: 120,
         rows: 30,
@@ -4657,35 +4678,49 @@ export function App() {
   const rightRailEssentialChecks = rightRailGoalTrack.safeGate
     ? `${rightRailGoalTrack.safeGate.proofArtifactPassCount}/${rightRailGoalTrack.safeGate.proofArtifactCount}`
     : `${rightRailGoalTrack.doneCount}/${rightRailGoalTrack.totalCount}`;
-  const rightRailEvidenceDrawerSummary = `${rightRailEdgeScore.score} ${rightRailEdgeScore.grade} · ${rightRailGoalTrack.percent}%`;
+  const rightRailEvidenceDrawerSummary = `${rightRailEdgeScore.score} ${rightRailEdgeScore.grade} · ${rightRailGoalTrack.percent}% · checks ${rightRailEssentialChecks}`;
   const rightRailQueueCount = rightRailDeferredActionCount + decisionInbox.pendingCount;
-  const rightRailGitSummary =
+  const rightRailToolkitSummary =
+    rightRailQueueCount > 0 ? `${rightRailQueueCount} queued` : activeTerminalTarget.ready ? "Ready" : "No pane";
+  const rightRailToolkitDetail = "Git, VS Code, worktrees";
+  const rightRailWorktreeScopedCount =
+    rightRailSessions.filter((session) => Boolean(session.worktree || session.workspaceScope)).length +
+    interactiveSessions.filter((session) => Boolean(session.worktree_branch || session.worktree_path)).length;
+  const rightRailOrchestraLanes = ORCHESTRA_ROLES.map((role) => {
+    const roleSessions = rightRailSessions.filter((session) => session.role === role.id);
+    const live = roleSessions.filter((session) => session.status !== "idle" && session.status !== "done").length;
+    const changed = roleSessions.reduce((total, session) => total + (session.changedFileDetails?.length ?? 0), 0);
+    return {
+      ...role,
+      live,
+      total: roleSessions.length,
+      changed,
+      state: live > 0 ? "running" : roleSessions.length > 0 ? "ready" : "empty",
+    };
+  });
+  const rightRailOrchestraHeadline =
+    liveAgentCount > 0 ? `${liveAgentCount} active worker${liveAgentCount === 1 ? "" : "s"}` : "Ready to dispatch";
+  const rightRailOrchestraDetail = `${visualTerminalPaneTargets.length} pane${
+    visualTerminalPaneTargets.length === 1 ? "" : "s"
+  } · ${rightRailWorktreeScopedCount} worktree${rightRailWorktreeScopedCount === 1 ? "" : "s"} · ${
+    rightRailAllChangedFiles.length
+  } file${rightRailAllChangedFiles.length === 1 ? "" : "s"}`;
+  const rightRailAgentsSummary =
+    liveAgentCount > 0
+      ? `${liveAgentCount} live`
+      : rightRailSessions.length > 0
+        ? `${rightRailSessions.length} parked`
+        : "No agents";
+  const rightRailAgentsDetail = `${rightRailWorktreeScopedCount} scoped · ${rightRailOrchestraLanes.filter((lane) => lane.total > 0).length}/${
+    rightRailOrchestraLanes.length
+  } roles`;
+  const rightRailReviewSummary =
     rightRailAllChangedFiles.length > 0
-      ? `${rightRailAllChangedFiles.length} changed file${rightRailAllChangedFiles.length === 1 ? "" : "s"}`
-      : "Clean working tree";
-  const rightRailVsCodeTargetPath = activeFile ?? rightRailPrimaryChangedFile?.path ?? projectPath;
-  const rightRailVsCodeAction = useCallback(() => {
-    if (rightRailPrimaryChangedFile) {
-      void openGitDiffInVSCode(projectPath, rightRailPrimaryChangedFile.path).catch((err) => {
-        reportInvokeFailure({
-          source: "editor",
-          operation: "open_git_file_diff_in_vscode",
-          err,
-        });
-        setOpenInDiff(true);
-        openFile(rightRailPrimaryChangedFile.path);
-      });
-      return;
-    }
-    if (!rightRailVsCodeTargetPath) return;
-    void openInVSCode(rightRailVsCodeTargetPath).catch((err) => {
-      reportInvokeFailure({
-        source: "editor",
-        operation: "open_in_vscode",
-        err,
-      });
-    });
-  }, [openFile, projectPath, rightRailPrimaryChangedFile, rightRailVsCodeTargetPath]);
+      ? `${rightRailAllChangedFiles.length} changed`
+      : rightRailSessions.some((session) => session.finalReport)
+        ? "Reports ready"
+        : "Clean";
+  const rightRailReviewDetail = "diffs, SCM, reports";
   const rightRailNowState = deriveRightRailNowState(rightRailAdvisorInput);
   const rightRailHealthDrawerSummary = `${rightRailNowState.label} · ${rightRailWorkforce.liveCount} live`;
   const rightRailGoalTrackConsentProviders = rightRailGoalTrack.consentPacket
@@ -4732,6 +4767,84 @@ export function App() {
           .join(" "),
       }
     : null;
+  const handleStartRightRailOrchestra = useCallback(async () => {
+    if (!projectPath) {
+      toast.error("No workspace", "Open a project before dispatching an agent team.");
+      return;
+    }
+    const defaultTask =
+      rightRailPrimaryAction?.nextStep ??
+      (rightRailAllChangedFiles.length > 0
+        ? `Finish and review ${rightRailAllChangedFiles.length} changed file${
+            rightRailAllChangedFiles.length === 1 ? "" : "s"
+          } in ${projectName}.`
+        : `Plan and implement the next parallel development task for ${projectName}.`);
+    const result = await showOrchestra({
+      defaultTask,
+      defaultRoles: ["implementer", "tester", "reviewer"],
+    });
+    if (!result || result.roles.length === 0) return;
+    const prompts = buildOrchestraPrompts({
+      task: result.task,
+      roles: result.roles,
+      projectPath,
+      changedFiles: rightRailAllChangedFiles.map((file) => file.path),
+      pendingDecisionCount: decisionInbox.pendingCount,
+      existingSessionCount: sessions.length + interactiveSessions.length,
+    });
+    const routedPrompts = await Promise.all(
+      prompts.map(async (prompt) => {
+        if (!isTauriRuntime()) return prompt;
+        try {
+          const decision = await tauriInvoke<{
+            recommended_model: string;
+            reasoning: string;
+            estimated_cost: number;
+            fallback_model: string;
+            task_type: string;
+            complexity: string;
+          }>("route_agent", { prompt: prompt.prompt });
+          return {
+            ...prompt,
+            model: normalizeOrchestraRoutedModel(decision.recommended_model, prompt.model),
+          };
+        } catch {
+          return prompt;
+        }
+      }),
+    );
+    const launches = await Promise.allSettled(
+      routedPrompts.map((prompt) =>
+        handleStartInteractiveSession({
+          cwd: projectPath,
+          model: prompt.model,
+          initialPrompt: prompt.prompt,
+          branchName: prompt.branchName,
+        }),
+      ),
+    );
+    const launched = launches.filter((launch) => launch.status === "fulfilled" && launch.value).length;
+    if (launched === 0) {
+      toast.error("Orchestra dispatch failed", "No agent session could be started.");
+      return;
+    }
+    setRightRailMode("command");
+    setRightRailFocusWidget("sessions");
+    toast.success(
+      "Orchestra dispatched",
+      `${launched} agent${launched === 1 ? "" : "s"} launched in role-scoped worktrees.`,
+    );
+  }, [
+    decisionInbox.pendingCount,
+    handleStartInteractiveSession,
+    interactiveSessions.length,
+    projectName,
+    projectPath,
+    rightRailAllChangedFiles,
+    rightRailAllChangedFiles.length,
+    rightRailPrimaryAction?.nextStep,
+    sessions.length,
+  ]);
   const renderRightRailDestinationPrompt = (widget: string) =>
     rightRailDestinationPrompt?.widget === widget ? (
       <RightRailDestinationPromptCard prompt={rightRailDestinationPrompt} />
@@ -5130,7 +5243,7 @@ export function App() {
                     })}
                   </div>
                   <div id="right-rail-purpose" className={appStyles.rightRailPurpose}>
-                    <span className={appStyles.rightRailPurposeKicker}>Command Center</span>
+                    <span className={appStyles.rightRailPurposeKicker}>Orchestra Command</span>
                     <span className={appStyles.rightRailPurposeText}>{activeRightRailMode.description}</span>
                   </div>
 
@@ -5184,23 +5297,78 @@ export function App() {
                   </details>
 
                   <section
-                    className="right-panel-run-loop"
+                    className="right-panel-run-loop right-panel-orchestra-command"
                     data-phase={rightRailRunLoopPhase}
                     data-mode={rightRailMode}
                     data-action-id={rightRailPrimaryAction?.id ?? "none"}
                     data-action-mode={rightRailPrimaryAction?.mode ?? "none"}
                     data-operation={rightRailPrimaryAction?.execution.operation ?? "none"}
                     data-target={rightRailRunLoopTarget}
-                    aria-label={`Command Center run loop: ${rightRailRunLoopPhase}`}
+                    data-orchestra-ready={projectPath ? "true" : "false"}
+                    aria-label={`Orchestra Command: ${rightRailOrchestraHeadline}`}
                   >
                     <div className="right-panel-run-loop-main">
-                      <span className="right-panel-run-loop-kicker">Current Focus</span>
-                      <strong>{rightRailRunLoopPhase}</strong>
-                      <span>{rightRailRunLoopDetail}</span>
+                      <span className="right-panel-run-loop-kicker">Orchestra Command</span>
+                      <strong>{rightRailOrchestraHeadline}</strong>
+                      <span>{rightRailOrchestraDetail}</span>
                     </div>
-                    <details className="right-panel-run-loop-disclosure">
+                    <ul className="right-panel-orchestra-lanes" aria-label="Role lanes">
+                      {rightRailOrchestraLanes.map((lane) => (
+                        <li
+                          key={lane.id}
+                          data-role={lane.id}
+                          data-state={lane.state}
+                          style={{ "--lane-color": lane.color } as React.CSSProperties}
+                          title={`${lane.label}: ${lane.live} live, ${lane.total} total, ${lane.changed} changed files`}
+                        >
+                          <span>{lane.icon}</span>
+                          <strong>{lane.label}</strong>
+                          <small>
+                            {lane.live > 0 ? `${lane.live} live` : lane.total > 0 ? `${lane.total} ready` : "open"}
+                          </small>
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="right-panel-orchestra-actions" role="toolbar" aria-label="Orchestra actions">
+                      <button
+                        type="button"
+                        className="right-panel-orchestra-primary"
+                        onClick={() => void handleStartRightRailOrchestra()}
+                        disabled={!projectPath}
+                        aria-label="Dispatch an Orchestra agent team"
+                        title="Launch role-scoped agents in parallel"
+                      >
+                        <Users size={12} strokeWidth={1.9} aria-hidden="true" />
+                        <span>Dispatch team</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="right-panel-orchestra-secondary"
+                        onClick={() => {
+                          setRightRailMode("command");
+                          setRightRailFocusWidget("sessions");
+                        }}
+                        aria-label="Open agent sessions"
+                        title="Open the detailed Agent Inspector"
+                      >
+                        Agents
+                      </button>
+                      <button
+                        type="button"
+                        className="right-panel-orchestra-secondary"
+                        onClick={() => {
+                          setRightRailMode("command");
+                          setRightRailFocusWidget("toolkit");
+                        }}
+                        aria-label="Open Git, VS Code, and worktree toolkit"
+                        title="Open Toolkit"
+                      >
+                        Toolkit
+                      </button>
+                    </div>
+                    <details className="right-panel-run-loop-disclosure" title={rightRailRunLoopDetail}>
                       <summary>
-                        <span>Trace</span>
+                        <span>Next route</span>
                         <small>{rightRailRunLoopTarget}</small>
                       </summary>
                       <dl className="right-panel-run-loop-trace" aria-label="Primary action trace">
@@ -5270,56 +5438,47 @@ export function App() {
                     <button
                       type="button"
                       className="right-panel-essential-card"
+                      data-tone={activeTerminalTarget.ready ? "good" : "review"}
+                      onClick={() => {
+                        setRightRailMode("command");
+                        setRightRailFocusWidget("toolkit");
+                      }}
+                      aria-label={`Toolkit status: ${rightRailToolkitSummary}. ${rightRailToolkitDetail}`}
+                      title={`Toolkit: ${rightRailToolkitDetail}`}
+                    >
+                      <span>Toolkit</span>
+                      <strong>{rightRailToolkitSummary}</strong>
+                      <small>{rightRailToolkitDetail}</small>
+                    </button>
+                    <button
+                      type="button"
+                      className="right-panel-essential-card"
+                      data-tone={liveAgentCount > 0 ? "running" : rightRailSessions.length > 0 ? "review" : "active"}
+                      onClick={() => {
+                        setRightRailMode("command");
+                        setRightRailFocusWidget("sessions");
+                      }}
+                      aria-label={`Agent lanes: ${rightRailAgentsSummary}. ${rightRailAgentsDetail}`}
+                      title={`Agents: ${rightRailAgentsDetail}`}
+                    >
+                      <span>Agents</span>
+                      <strong>{rightRailAgentsSummary}</strong>
+                      <small>{rightRailAgentsDetail}</small>
+                    </button>
+                    <button
+                      type="button"
+                      className="right-panel-essential-card"
                       data-tone={rightRailAllChangedFiles.length > 0 ? "review" : "good"}
                       onClick={() => {
                         setRightRailMode("review");
-                        setRightRailFocusWidget("scm");
+                        setRightRailFocusWidget("review-queue");
                       }}
-                      aria-label={`Git status: ${rightRailGitSummary}`}
-                      title={`Git status: ${rightRailGitSummary}`}
+                      aria-label={`Review lane: ${rightRailReviewSummary}. ${rightRailReviewDetail}`}
+                      title={`Review: ${rightRailReviewDetail}`}
                     >
-                      <span>Git</span>
-                      <strong>
-                        {rightRailAllChangedFiles.length > 0 ? `${rightRailAllChangedFiles.length} changed` : "Clean"}
-                      </strong>
-                      <small>
-                        {rightRailPrimaryChangedFile
-                          ? rightRailPrimaryChangedFile.path.split("/").pop()
-                          : "No pending diff"}
-                      </small>
-                    </button>
-                    <button
-                      type="button"
-                      className="right-panel-essential-card"
-                      data-tone={rightRailVsCodeTargetPath ? "good" : "review"}
-                      onClick={rightRailVsCodeAction}
-                      aria-label={`VS Code target: ${rightRailVsCodeTargetPath || "no target"}`}
-                      title={`VS Code target: ${rightRailVsCodeTargetPath || "no target"}`}
-                    >
-                      <span>VS Code</span>
-                      <strong>{rightRailPrimaryChangedFile ? "Open diff" : "Open target"}</strong>
-                      <small>
-                        {rightRailVsCodeTargetPath
-                          ? (rightRailVsCodeTargetPath.split(/[\\/]/).pop() ?? rightRailVsCodeTargetPath)
-                          : "Select a file or project"}
-                      </small>
-                    </button>
-                    <button
-                      type="button"
-                      className="right-panel-essential-card"
-                      data-tone={rightRailNowState.tone}
-                      onClick={() => {
-                        setRightRailMode("observe");
-                        setRightRailFocusWidget("processes");
-                      }}
-                      aria-label={`Health snapshot: ${rightRailNowState.label}. ${rightRailNowState.detail}`}
-                      title={`${rightRailNowState.detail} · checks ${rightRailEssentialChecks}`}
-                    >
-                      <span>Health</span>
-                      <strong>{rightRailNowState.label}</strong>
-                      <small>
-                        {rightRailWorkforce.liveCount} live · checks {rightRailEssentialChecks}
-                      </small>
+                      <span>Review</span>
+                      <strong>{rightRailReviewSummary}</strong>
+                      <small>{rightRailReviewDetail}</small>
                     </button>
                   </section>
 
@@ -6259,23 +6418,55 @@ export function App() {
                       <>
                         <ErrorBoundary>
                           <Suspense fallback={null}>
-                            <div className="bento-widget" data-widget="decision-inbox">
-                              {renderRightRailDestinationPrompt("decision-inbox")}
-                              <DecisionInboxPanel
-                                sessions={rightRailSessions}
-                                auditEvents={scopedOperationalAuditEvents}
-                                workflows={workflowStatuses}
-                                activeSessionId={rightRailActiveSessionId}
-                                onSelectSession={handleSelectRightRailSession}
-                                onOpenWorkflow={handleOpenDecisionWorkflow}
-                                onOpenAudit={handleOpenDecisionAudit}
+                            <div
+                              className="bento-widget"
+                              data-widget="toolkit"
+                              data-rail-focus={rightRailFocusWidget === "toolkit" ? "true" : undefined}
+                            >
+                              {renderRightRailDestinationPrompt("toolkit")}
+                              <ToolkitPanel
+                                projectName={projectName}
+                                onRunCommand={handleRunCommand}
+                                activeTargetLabel={visualActiveTerminalTargetLabel}
+                                activeTargetReady={activeTerminalTarget.ready}
+                                forceExpanded={rightRailFocusWidget === "toolkit"}
                               />
                             </div>
                           </Suspense>
                         </ErrorBoundary>
+                        {(rightRailHasBlockingDecision || rightRailFocusWidget === "decision-inbox") && (
+                          <ErrorBoundary>
+                            <Suspense fallback={null}>
+                              <RightRailWidgetFrame
+                                widget="decision-inbox"
+                                title="Decision Inbox"
+                                subtitle={`${decisionInbox.pendingCount} waiting`}
+                                defaultOpen={rightRailHasBlockingDecision}
+                                forceOpen={rightRailFocusWidget === "decision-inbox"}
+                              >
+                                {renderRightRailDestinationPrompt("decision-inbox")}
+                                <DecisionInboxPanel
+                                  sessions={rightRailSessions}
+                                  auditEvents={scopedOperationalAuditEvents}
+                                  workflows={workflowStatuses}
+                                  activeSessionId={rightRailActiveSessionId}
+                                  onSelectSession={handleSelectRightRailSession}
+                                  onOpenWorkflow={handleOpenDecisionWorkflow}
+                                  onOpenAudit={handleOpenDecisionAudit}
+                                />
+                              </RightRailWidgetFrame>
+                            </Suspense>
+                          </ErrorBoundary>
+                        )}
                         <ErrorBoundary>
                           <Suspense fallback={null}>
-                            <div className="bento-widget" data-widget="sessions" style={{ minHeight: 200 }}>
+                            <RightRailWidgetFrame
+                              widget="sessions"
+                              title="Agents"
+                              subtitle={`${rightRailAgentsSummary} · ${rightRailAgentsDetail}`}
+                              defaultOpen={false}
+                              forceOpen={rightRailFocusWidget === "sessions"}
+                            >
                               <AgentInspector
                                 sessions={rightRailSessions}
                                 activeSessionId={rightRailActiveSessionId}
@@ -6291,7 +6482,7 @@ export function App() {
                                 onEndSessionAndRemoveWorktree={endSessionAndRemoveWorktree}
                                 onStartInteractiveSession={handleStartInteractiveSession}
                               />
-                            </div>
+                            </RightRailWidgetFrame>
                           </Suspense>
                         </ErrorBoundary>
                         <ErrorBoundary>
@@ -6315,50 +6506,30 @@ export function App() {
                             </RightRailWidgetFrame>
                           </Suspense>
                         </ErrorBoundary>
-                        <div className="right-panel-bottom-grid">
-                          <ErrorBoundary>
-                            <Suspense fallback={null}>
-                              <div
-                                className="bento-widget"
-                                data-widget="toolkit"
-                                data-rail-focus={rightRailFocusWidget === "toolkit" ? "true" : undefined}
-                              >
-                                {renderRightRailDestinationPrompt("toolkit")}
-                                <ToolkitPanel
-                                  projectName={projectName}
-                                  onRunCommand={handleRunCommand}
-                                  activeTargetLabel={visualActiveTerminalTargetLabel}
-                                  activeTargetReady={activeTerminalTarget.ready}
-                                  forceExpanded={rightRailFocusWidget === "toolkit"}
-                                />
-                              </div>
-                            </Suspense>
-                          </ErrorBoundary>
-                          <ErrorBoundary>
-                            <Suspense fallback={null}>
-                              <RightRailWidgetFrame
-                                widget="context"
-                                title="Context"
-                                subtitle="handoff state"
-                                defaultOpen={false}
-                                forceOpen={rightRailFocusWidget === "context"}
-                              >
-                                <ContextPanel
-                                  sessions={rightRailSessions}
-                                  activeSessionId={rightRailActiveSessionId}
-                                  changedFilesCount={rightRailAllChangedFiles.length}
-                                  changedFiles={rightRailAllChangedFiles}
-                                  panes={visualTerminalPaneTargets}
-                                  auditEvents={scopedOperationalAuditEvents}
-                                  projectName={projectName}
-                                  projectPath={projectPath}
-                                  branch={branch}
-                                  workstationGraph={focusedRightRailGraph}
-                                />
-                              </RightRailWidgetFrame>
-                            </Suspense>
-                          </ErrorBoundary>
-                        </div>
+                        <ErrorBoundary>
+                          <Suspense fallback={null}>
+                            <RightRailWidgetFrame
+                              widget="context"
+                              title="Context"
+                              subtitle="handoff state"
+                              defaultOpen={false}
+                              forceOpen={rightRailFocusWidget === "context"}
+                            >
+                              <ContextPanel
+                                sessions={rightRailSessions}
+                                activeSessionId={rightRailActiveSessionId}
+                                changedFilesCount={rightRailAllChangedFiles.length}
+                                changedFiles={rightRailAllChangedFiles}
+                                panes={visualTerminalPaneTargets}
+                                auditEvents={scopedOperationalAuditEvents}
+                                projectName={projectName}
+                                projectPath={projectPath}
+                                branch={branch}
+                                workstationGraph={focusedRightRailGraph}
+                              />
+                            </RightRailWidgetFrame>
+                          </Suspense>
+                        </ErrorBoundary>
                       </>
                     )}
 

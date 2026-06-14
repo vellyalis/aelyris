@@ -1,8 +1,8 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { create } from "zustand";
 
-import { ORCHESTRA_ROLES, type OrchestraRoleId } from "../lib/orchestrator";
+import { buildOrchestraRunPlan, ORCHESTRA_ROLES, type OrchestraRoleId } from "../lib/orchestrator";
 import styles from "./OrchestraDialog.module.css";
 
 /** Result returned by `showOrchestra()`. */
@@ -80,7 +80,26 @@ export function OrchestraDialog() {
     close({ task: trimmed, roles });
   }, [task, selected, close]);
 
+  const selectedRoleIds = useMemo(
+    () => ORCHESTRA_ROLES.map((role) => role.id).filter((id) => selected.has(id)),
+    [selected],
+  );
+  const runPlan = useMemo(
+    () =>
+      buildOrchestraRunPlan({
+        task,
+        roles: selectedRoleIds,
+        projectPath: "current workspace",
+      }),
+    [task, selectedRoleIds],
+  );
   const canSubmit = task.trim().length > 0 && selected.size > 0;
+  const modeLabel =
+    runPlan.mode === "parallel-lanes"
+      ? "Parallel lanes"
+      : runPlan.mode === "review-first"
+        ? "Review first"
+        : "Single lane";
 
   return (
     <Dialog.Root
@@ -132,12 +151,37 @@ export function OrchestraDialog() {
                   </span>
                   <span className={styles.roleBody}>
                     <span className={styles.roleLabel}>{role.label}</span>
-                    <span className={styles.roleModel}>{role.model}</span>
+                    <span className={styles.roleModel}>
+                      {role.model} · {role.lane}
+                    </span>
                   </span>
                 </label>
               );
             })}
           </div>
+          <section className={styles.planPreview} aria-label="Orchestra dispatch plan">
+            <div className={styles.planTopline}>
+              <span>{modeLabel}</span>
+              <strong>{runPlan.laneCount} lanes</strong>
+            </div>
+            <div className={styles.planItems}>
+              <div className={styles.planItem}>
+                <span>Worktrees</span>
+                <strong>{selected.size > 1 ? "one owner per lane" : "current pane"}</strong>
+              </div>
+              <div className={styles.planItem}>
+                <span>Conflict</span>
+                <strong>{runPlan.conflictPolicy}</strong>
+              </div>
+              <div className={styles.planItem}>
+                <span>Evidence</span>
+                <strong>{runPlan.handoffContract.slice(0, 2).join(" · ")}</strong>
+              </div>
+            </div>
+            {runPlan.warnings.length > 0 ? (
+              <div className={styles.planWarnings}>{runPlan.warnings.slice(0, 2).join(" · ")}</div>
+            ) : null}
+          </section>
           <div className={styles.hint}>
             Ctrl+Enter to dispatch · Esc to cancel · Each role gets its own prompt template.
           </div>

@@ -329,15 +329,24 @@ export function AgentInspector({
     if (!onStartAgent || !rootProjectPath) return;
     const result = await showOrchestra();
     if (!result || result.roles.length === 0) return;
+    const changedFiles = Array.from(
+      new Set(sessions.flatMap((session) => session.changedFileDetails?.map((detail) => detail.path) ?? [])),
+    );
+    const pendingDecisionCount = sessions.filter(
+      (session) => session.status === "waiting" || Boolean(session.blockedReason),
+    ).length;
     const prompts = buildOrchestraPrompts({
       task: result.task,
       roles: result.roles,
       projectPath: rootProjectPath,
+      changedFiles,
+      pendingDecisionCount,
+      existingSessionCount: sessions.length + interactiveSessions.length,
     });
     for (const p of prompts) {
       onStartAgent(p.prompt, p.model, { role: p.roleId as OrchestraRoleId });
     }
-  }, [onStartAgent, rootProjectPath]);
+  }, [interactiveSessions.length, onStartAgent, rootProjectPath, sessions]);
 
   return (
     <section className={styles.inspector} aria-label="Agent sessions">
@@ -864,7 +873,7 @@ export function AgentInspector({
             <EmptyState
               icon={<GitCompare size={20} />}
               title="No review target selected"
-              description="Select a session with changed files or open Git from the rail."
+              description="Select a session with changed files or open Review from the rail."
             />
           </div>
         ))}

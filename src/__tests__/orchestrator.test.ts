@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildOrchestraPrompts, ORCHESTRA_ROLES } from "../shared/lib/orchestrator";
+import {
+  buildOrchestraBranchName,
+  buildOrchestraPrompts,
+  buildOrchestraRunPlan,
+  normalizeOrchestraRoutedModel,
+  ORCHESTRA_ROLES,
+} from "../shared/lib/orchestrator";
 
 describe("ORCHESTRA_ROLES", () => {
   it("has 4 predefined roles", () => {
@@ -11,6 +17,11 @@ describe("ORCHESTRA_ROLES", () => {
       expect(role.id).toBeTruthy();
       expect(role.label).toBeTruthy();
       expect(role.model).toBeTruthy();
+      expect(role.lane).toBeTruthy();
+      expect(role.mission).toContain(" ");
+      expect(role.handoff).toContain(" ");
+      expect(role.evidence).toContain(" ");
+      expect(role.conflictPolicy).toContain(" ");
       expect(role.promptTemplate).toContain("{task}");
     }
   });
@@ -32,8 +43,24 @@ describe("buildOrchestraPrompts", () => {
     expect(result).toHaveLength(2);
     expect(result[0].roleId).toBe("implementer");
     expect(result[0].prompt).toContain("Add user authentication");
+    expect(result[0].prompt).toContain("Aether Orchestra Contract:");
+    expect(result[0].prompt).toContain("Worktree branch:");
+    expect(result[0].branchName).toMatch(/^agent\/implementer\/add-user-authentication-\d+$/);
+    expect(result[0].prompt).toContain("Conflict policy:");
+    expect(result[0].prompt).toContain("Expected artifacts:");
     expect(result[0].model).toBe("sonnet");
     expect(result[1].roleId).toBe("tester");
+  });
+
+  it("builds branch names that match the Rust worktree validator contract", () => {
+    expect(
+      buildOrchestraBranchName({
+        task: "日本語 + Add auth: phase #1",
+        roleId: "tester",
+        index: 1,
+        existingSessionCount: 2,
+      }),
+    ).toBe("agent/tester/add-auth-phase-1-4");
   });
 
   it("skips unknown role IDs", () => {
@@ -71,5 +98,67 @@ describe("buildOrchestraPrompts", () => {
     });
     expect(result[0].prompt).toContain("Refactor the database layer");
     expect(result[0].prompt).not.toContain("{task}");
+  });
+});
+
+describe("normalizeOrchestraRoutedModel", () => {
+  it("normalizes Claude router model names for interactive CLI dispatch", () => {
+    expect(normalizeOrchestraRoutedModel("claude-sonnet", "haiku")).toBe("sonnet");
+    expect(normalizeOrchestraRoutedModel("claude-opus", "sonnet")).toBe("opus");
+    expect(normalizeOrchestraRoutedModel("gemini-2.5-pro", "sonnet")).toBe("gemini-2.5-pro");
+    expect(normalizeOrchestraRoutedModel("   ", "sonnet")).toBe("sonnet");
+  });
+});
+
+describe("buildOrchestraRunPlan", () => {
+  it("creates a parallel lane plan with handoff and evidence contracts", () => {
+    const plan = buildOrchestraRunPlan({
+      task: "Add command center queue",
+      roles: ["implementer", "tester", "reviewer"],
+      projectPath: "C:/repo",
+      changedFiles: ["src/App.tsx"],
+    });
+
+    expect(plan.mode).toBe("parallel-lanes");
+    expect(plan.laneCount).toBe(3);
+    expect(plan.dispatchOrder).toEqual(["implementer", "tester", "reviewer"]);
+    expect(plan.conflictPolicy).toContain("Review existing edits first");
+    expect(plan.worktreePolicy).toContain("one pane or worktree per role");
+    expect(plan.handoffContract).toContain("Commands run and result");
+    expect(plan.expectedArtifacts).toContain("per-lane handoff summary");
+    expect(plan.contextPack).toMatchObject({
+      changedFileCount: 1,
+      pendingDecisionCount: 0,
+    });
+  });
+
+  it("deduplicates unknown and repeated roles", () => {
+    const plan = buildOrchestraRunPlan({
+      task: "Review",
+      roles: ["reviewer", "reviewer", "missing"],
+      projectPath: "C:/repo",
+    });
+
+    expect(plan.selectedRoles).toHaveLength(1);
+    expect(plan.selectedRoles[0].roleId).toBe("reviewer");
+    expect(plan.mode).toBe("review-first");
+  });
+
+  it("warns before dispatching into active decision gates", () => {
+    const plan = buildOrchestraRunPlan({
+      task: "",
+      roles: [],
+      projectPath: "C:/repo",
+      pendingDecisionCount: 2,
+      existingSessionCount: 7,
+    });
+
+    expect(plan.mode).toBe("review-first");
+    expect(plan.warnings).toEqual([
+      "Select at least one known orchestra role before dispatch.",
+      "Add a concrete objective before launching agents.",
+      "Resolve pending decision gates before starting new write-heavy lanes.",
+      "Many sessions are already active; prefer review or handoff before spawning more agents.",
+    ]);
   });
 });

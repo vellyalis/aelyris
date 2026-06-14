@@ -135,6 +135,7 @@ function previewConfig(theme: string, moodPreset: string, shell: string, liveMod
       scrollback: 10000,
       cursor_style: "bar",
       cursor_blink: true,
+      shutdown_sidecar_on_exit: false,
     },
     ghost_diff: {
       live_mode: liveMode,
@@ -168,6 +169,7 @@ interface LoadedConfig {
     scrollback: number;
     cursor_style: string;
     cursor_blink: boolean;
+    shutdown_sidecar_on_exit?: boolean;
   };
   window?: {
     width: number;
@@ -216,6 +218,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
   const [defaultShell, setDefaultShell] = useState("powershell");
   const [cursorStyle, setCursorStyle] = useState("bar");
   const [cursorBlink, setCursorBlink] = useState(true);
+  const [shutdownSidecarOnExit, setShutdownSidecarOnExit] = useState(false);
   const [liveMode, setLiveMode] = useState(ghostDiffLiveMode);
   const [windowOpacity, setWindowOpacity] = useState(storeWindowOpacity);
   const [editorOpenMode, setEditorOpenMode] = useState<EditorOpenMode>(() => loadEditorOpenMode());
@@ -268,6 +271,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
       setDefaultShell(cfg.terminal.default_shell);
       setCursorStyle(cfg.terminal.cursor_style);
       setCursorBlink(cfg.terminal.cursor_blink);
+      setShutdownSidecarOnExit(cfg.terminal.shutdown_sidecar_on_exit ?? false);
       setLiveMode(cfg.ghost_diff?.live_mode ?? false);
       setWindowOpacity(cfg.appearance.opacity);
       setAppWindowOpacity(cfg.appearance.opacity);
@@ -301,6 +305,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
         setDefaultShell(cfg.terminal.default_shell);
         setCursorStyle(cfg.terminal.cursor_style);
         setCursorBlink(cfg.terminal.cursor_blink);
+        setShutdownSidecarOnExit(cfg.terminal.shutdown_sidecar_on_exit ?? false);
         setWindowOpacity(cfg.appearance.opacity);
         setAppWindowOpacity(cfg.appearance.opacity);
         setTerminalAppearance({
@@ -452,6 +457,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
         default_shell: defaultShell,
         cursor_style: cursorStyle,
         cursor_blink: cursorBlink,
+        shutdown_sidecar_on_exit: shutdownSidecarOnExit,
       },
       ghost_diff: {
         ...(loadedConfig.ghost_diff ?? {}),
@@ -595,7 +601,9 @@ export function Settings({ visible, onClose }: SettingsProps) {
                 <label className={styles.label} htmlFor="settings-terminal-surface-opacity">
                   Terminal surface opacity
                 </label>
-                <p className={styles.materialHint}>Controls only the terminal glass/backing layers; glyphs stay solid.</p>
+                <p className={styles.materialHint}>
+                  Controls only the terminal glass/backing layers; glyphs stay solid.
+                </p>
                 <div className={styles.materialRow}>
                   <span className={styles.materialColorPreview} aria-hidden="true" />
                   <input
@@ -964,6 +972,22 @@ export function Settings({ visible, onClose }: SettingsProps) {
                     setCursorBlink(next);
                   }}
                 />
+              </div>
+              <div className={styles.field}>
+                <Switch
+                  id="settings-shutdown-sidecar-on-exit"
+                  label="Close sessions on app exit"
+                  checked={shutdownSidecarOnExit}
+                  onCheckedChange={(next) => {
+                    markEdited();
+                    setShutdownSidecarOnExit(next);
+                  }}
+                />
+                <p className={styles.hint}>
+                  Off (default): terminal sessions keep running in the background daemon and reattach with their
+                  scrollback after an app restart or crash. On: quitting Aether also stops the daemon and every session
+                  it hosts.
+                </p>
               </div>
             </section>
 

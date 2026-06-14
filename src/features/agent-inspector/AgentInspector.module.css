@@ -260,13 +260,15 @@
 
 /* Active card */
 .cardActive {
+  --selection-accent: var(--session-accent, var(--gold));
   background:
-    linear-gradient(90deg, var(--session-subtle, rgba(200, 160, 80, 0.018)), transparent 64%), rgba(1, 7, 15, 0.12);
+    linear-gradient(90deg, var(--session-subtle, rgba(200, 160, 80, 0.035)), transparent 64%),
+    var(--surface-selected);
   /* Phase 1 H7: active shadow simplified — same 3-layer as hover
    * plus stronger session glow for selected emphasis. */
   box-shadow:
     var(--rim-top),
-    inset 0 0 0 1px color-mix(in srgb, var(--session-accent, var(--gold)) 22%, rgba(98, 190, 222, 0.016)),
+    var(--surface-selected-inset),
     0 2px 8px rgba(0, 0, 0, 0.12);
 }
 .cardActive::before {

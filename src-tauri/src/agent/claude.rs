@@ -16,6 +16,7 @@ pub struct AgentSessionInfo {
     pub cwd: String,
     pub cost: f64,
     pub tokens_used: u64,
+    pub started_at: u64,
 }
 
 struct AgentProcess {
@@ -101,6 +102,10 @@ impl AgentManager {
             cwd: cwd.to_string(),
             cost: 0.0,
             tokens_used: 0,
+            started_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
         };
 
         self.lock_sessions()?

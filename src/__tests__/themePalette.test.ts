@@ -153,6 +153,7 @@ describe("themes/moods — preset metadata", () => {
     expect(MOOD_PRESETS.map((preset) => preset.id)).toEqual([
       "aether-sky",
       "aether-moonwater",
+      "aether-crystal",
       "aether-dream",
       "aether-cute",
       "aether-sakura",
@@ -216,12 +217,30 @@ describe("themes/moods — preset metadata", () => {
       "--glass-dense": 0.82,
       "--glass-thick": 0.88,
     } as const;
+    const crystalRanges = {
+      "--glass-ground": [0.16, 0.24],
+      "--glass-frame": [0.12, 0.2],
+      "--glass-standard": [0.2, 0.28],
+      "--glass-dense": [0.26, 0.34],
+      "--glass-thick": [0.32, 0.4],
+    } as const;
 
     for (const preset of MOOD_PRESETS) {
       const vars = moodPresetToCSS(preset.id);
       if (preset.id === "aether-sakura") {
         for (const [key, ceiling] of Object.entries(lightCeilings)) {
           expect(rgbaAlpha(vars[key]), `${preset.id} ${key}`).toBeLessThanOrEqual(ceiling);
+        }
+        continue;
+      }
+      if (preset.id === "aether-crystal") {
+        expect(rgbaAlpha(vars["--glass-clear"]), `${preset.id} --glass-clear`).toBeLessThanOrEqual(
+          darkRanges["--glass-clear"],
+        );
+        for (const [key, [floor, ceiling]] of Object.entries(crystalRanges)) {
+          const alpha = rgbaAlpha(vars[key]);
+          expect(alpha, `${preset.id} ${key} floor`).toBeGreaterThanOrEqual(floor);
+          expect(alpha, `${preset.id} ${key} ceiling`).toBeLessThanOrEqual(ceiling);
         }
         continue;
       }
@@ -261,6 +280,21 @@ describe("themes/moods — preset metadata", () => {
     expect(vars["--mood-root-texture"]).not.toContain("repeating-linear-gradient");
     expect(Number(vars["--mood-root-texture-opacity"])).toBeLessThanOrEqual(0.03);
     expect(vars["--mood-root-glow"]).toContain("12, 113, 203");
+  });
+
+  it("defines Aether Crystal as a clearer glass preset without dimming glyphs", () => {
+    const vars = moodPresetToCSS("aether-crystal");
+
+    expect(normalizeMoodPreset("aether-crystal")).toBe("aether-crystal");
+    expect(vars["--accent"]).toBe("#8be9ff");
+    expect(vars["--gold"]).toBe("#d8f7ff");
+    expect(vars["--text-primary"]).toBe("#f8fdff");
+    expect(vars["--mood-left-panel-bg"]).toContain("rgba(5, 24, 40, 0.22)");
+    expect(vars["--mood-right-panel-bg"]).toContain("rgba(5, 24, 40, 0.28)");
+    expect(vars["--settings-card-bg"]).toContain("0.28");
+    expect(vars["--terminal-canvas-bg"]).toBe(DEFAULT_BG);
+    expect(rgbaAlpha(vars["--glass-standard"])).toBeLessThanOrEqual(0.28);
+    expect(Number(vars["--mood-root-texture-opacity"])).toBeLessThanOrEqual(0.03);
   });
 
   it("keeps Aether Pro graphite deep instead of cloudy grey", () => {

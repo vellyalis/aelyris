@@ -5,6 +5,7 @@
 //
 // Optional env:
 //   AETHER_TAURI_CDP=http://127.0.0.1:9222
+//   AETHER_LIVE_CHAOS_APP_URL=http://localhost:1420/
 //   AETHER_TAURI_PROJECT=C:/Users/owner/Aether_Terminal
 //   AETHER_DASHBOARD_STATE_URL=http://127.0.0.1:48371/state
 //   AETHER_LIVE_CHAOS_OUT=.codex-auto/chaos-recovery/p2-07-live-tauri-pty-ai-cli-chaos.json
@@ -16,6 +17,8 @@ import process from "node:process";
 import { chromium } from "@playwright/test";
 
 const CDP = process.env.AETHER_TAURI_CDP ?? process.env.AETHER_IME_CDP ?? "http://127.0.0.1:9222";
+const APP_URL = process.env.AETHER_LIVE_CHAOS_APP_URL ?? "http://localhost:1420/";
+const APP_ORIGIN = new URL(APP_URL).origin;
 const PROJECT_PATH = (process.env.AETHER_TAURI_PROJECT ?? process.cwd()).replaceAll("\\", "/");
 const DASHBOARD_STATE_URL = process.env.AETHER_DASHBOARD_STATE_URL ?? "http://127.0.0.1:48371/state";
 const OUT = process.env.AETHER_LIVE_CHAOS_OUT ?? ".codex-auto/chaos-recovery/p2-07-live-tauri-pty-ai-cli-chaos.json";
@@ -35,6 +38,7 @@ function writeArtifact(report) {
 function isAetherPage(page) {
   const url = page.url();
   return (
+    url.startsWith(APP_ORIGIN) ||
     url.includes("localhost:1420") ||
     url.includes("127.0.0.1:1420") ||
     url.startsWith("tauri://localhost") ||
@@ -423,6 +427,7 @@ async function main() {
     parentRoadmapId: "P2-07",
     reason: "blocker-decomposition",
     cdp: CDP,
+    appUrl: APP_URL,
     projectPath: PROJECT_PATH,
     dashboardStateUrl: DASHBOARD_STATE_URL,
     startedAt: new Date().toISOString(),

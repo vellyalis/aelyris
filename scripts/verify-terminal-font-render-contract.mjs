@@ -218,7 +218,7 @@ const checks = [
         '.terminalViewport[data-terminal-text-clarity="solid"]',
         "color-mix(in srgb, var(--terminal-raster-bg)",
       ]),
-    "Sharp text mode removes terminal-shell backdrop blur and uses an opaque raster surface so WebView2 does not soften glyphs through transparent compositing",
+    "Sharp text mode removes terminal-shell backdrop blur and routes raster material strength through terminal surface opacity without dimming glyphs",
   ),
   check(
     "rust-config-text-clarity",

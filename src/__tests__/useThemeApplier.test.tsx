@@ -26,7 +26,15 @@ function ThemeProbe({
   windowOpacity?: number;
   terminalSurfaceOpacity?: number;
 }) {
-  useThemeApplier(themeId, undefined, moodPresetId, materialOverrides, wallpaper, windowOpacity, terminalSurfaceOpacity);
+  useThemeApplier(
+    themeId,
+    undefined,
+    moodPresetId,
+    materialOverrides,
+    wallpaper,
+    windowOpacity,
+    terminalSurfaceOpacity,
+  );
   return null;
 }
 

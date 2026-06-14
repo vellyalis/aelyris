@@ -12,6 +12,7 @@ const sourcePaths = {
   suite: "scripts/verify-right-rail-suite.mjs",
   score: "scripts/score-release-quality.mjs",
   appSilentBugs: "src/__tests__/AppSilentBugs.test.ts",
+  toolkit: "src/features/toolkit/ToolkitPanel.tsx",
 };
 
 function read(path) {
@@ -57,11 +58,12 @@ const packageJson = read(sourcePaths.packageJson);
 const suite = read(sourcePaths.suite);
 const score = read(sourcePaths.score);
 const appSilentBugs = read(sourcePaths.appSilentBugs);
+const toolkit = read(sourcePaths.toolkit);
 
 const checks = [];
 const rightRailStart = app.indexOf('<div className="right-panel-content">');
 const advancedDrawer = app.indexOf('className="right-panel-advanced-drawer"', rightRailStart);
-const runLoop = app.indexOf('className="right-panel-run-loop"', rightRailStart);
+const orchestraCommand = app.indexOf('className="right-panel-run-loop right-panel-orchestra-command"', rightRailStart);
 const decisionFocusGate = app.indexOf("rightRailHasBlockingDecision && (", rightRailStart);
 const decisionFocus = app.indexOf('className="right-panel-decision-focus"', rightRailStart);
 const nowCard = app.indexOf('className="right-panel-now"', rightRailStart);
@@ -73,10 +75,20 @@ const goalTrack = app.indexOf('className="right-panel-goal-track"', rightRailSta
 const edgeScore = app.indexOf('className="right-panel-edge-score"', rightRailStart);
 const workforce = app.indexOf('className="right-panel-workforce"', rightRailStart);
 const advisor = app.indexOf('className="right-panel-advisor"', rightRailStart);
+const commandStack = app.indexOf('rightRailMode === "command"', rightRailStart);
+const commandToolkit = app.indexOf('data-widget="toolkit"', commandStack);
+const commandDecisionGate = app.indexOf(
+  '(rightRailHasBlockingDecision || rightRailFocusWidget === "decision-inbox") &&',
+  commandStack,
+);
+const commandDecisionFrame = app.indexOf('widget="decision-inbox"', commandStack);
+const commandSessionsFrame = app.indexOf('widget="sessions"', commandStack);
+const commandWorkflowFrame = app.indexOf('widget="workflow"', commandStack);
+const commandContextFrame = app.indexOf('widget="context"', commandStack);
 const decisionFocusIsConditional =
-  decisionFocusGate > runLoop && decisionFocus > decisionFocusGate && decisionFocus < essentialGrid;
+  decisionFocusGate > orchestraCommand && decisionFocus > decisionFocusGate && decisionFocus < essentialGrid;
 const visiblePrimaryCount =
-  [runLoop, essentialGrid].filter((index) => index > rightRailStart).length +
+  [orchestraCommand, essentialGrid].filter((index) => index > rightRailStart).length +
   (decisionFocus > rightRailStart && !decisionFocusIsConditional ? 1 : 0);
 const conditionalPrimaryMax = visiblePrimaryCount + (decisionFocusIsConditional ? 1 : 0);
 const defaultDrawers = [
@@ -86,33 +98,38 @@ const defaultDrawers = [
   "right-panel-queue-drawer",
 ];
 const collapsedDrawerCount = defaultDrawers.filter((className) => drawerCollapsedByDefault(app, className)).length;
-const essentialCardCount = countOccurrences(app.slice(essentialGrid, evidenceDrawer > essentialGrid ? evidenceDrawer : app.length), 'className="right-panel-essential-card"');
+const essentialCardCount = countOccurrences(
+  app.slice(essentialGrid, evidenceDrawer > essentialGrid ? evidenceDrawer : app.length),
+  'className="right-panel-essential-card"',
+);
 const drawerSummaryCount = defaultDrawers.filter((className) => styles.includes(`.${className} > summary`)).length;
 const essentialGridRule = ruleBody(styles, ".right-panel-essential-grid");
 const essentialCardRule = ruleBody(styles, ".right-panel-essential-card");
 
 add(
   checks,
-  "command-center-purpose",
-  app.includes(">Command Center</span>") && !app.includes(">Inspector</span>") && !app.includes("Mission Control"),
-  "default right rail names the task surface as Command Center without legacy Inspector/Mission Control copy",
+  "orchestra-command-purpose",
+  app.includes(">Orchestra Command</span>") &&
+    !app.includes(">Project tools</span>") &&
+    !app.includes("Mission Control"),
+  "default right rail names the task surface as Orchestra Command without legacy Project tools/Mission Control copy",
 );
 add(
   checks,
-  "essential-cards-first",
+  "orchestra-spine-first",
   rightRailStart >= 0 &&
     advancedDrawer > rightRailStart &&
-    runLoop > advancedDrawer &&
+    orchestraCommand > advancedDrawer &&
     decisionFocusIsConditional &&
-    essentialGrid > runLoop &&
+    essentialGrid > orchestraCommand &&
     evidenceDrawer > essentialGrid &&
     healthDrawer > evidenceDrawer &&
     queueDrawer > healthDrawer,
-  "default command center keeps the actionable spine before deferred evidence, health, and queue details",
+  "default orchestra command keeps dispatch lanes and action essentials before deferred evidence, health, and queue details",
   {
     rightRailStart,
     advancedDrawer,
-    runLoop,
+    orchestraCommand,
     decisionFocusGate,
     decisionFocus,
     essentialGrid,
@@ -132,16 +149,56 @@ add(
 );
 add(
   checks,
-  "git-vscode-health-essentials",
+  "toolkit-agents-review-essentials",
   essentialCardCount === 3 &&
-    app.includes("Git status:") &&
-    app.includes("VS Code target:") &&
-    app.includes("Health snapshot:") &&
-    app.includes('setRightRailFocusWidget("scm")') &&
-    app.includes("openGitDiffInVSCode(projectPath, rightRailPrimaryChangedFile.path)") &&
-    app.includes("openInVSCode(rightRailVsCodeTargetPath)"),
-  "default essentials are limited to Git, VS Code, and Health",
+    app.includes("Toolkit status:") &&
+    app.includes("Agent lanes:") &&
+    app.includes("Review lane:") &&
+    !app.includes("Evidence snapshot:") &&
+    !app.includes("Health snapshot:") &&
+    app.includes('setRightRailFocusWidget("toolkit")') &&
+    app.includes('setRightRailFocusWidget("sessions")') &&
+    app.includes('setRightRailFocusWidget("review-queue")') &&
+    toolkit.includes('data-toolkit-role="git-vscode"') &&
+    toolkit.includes('"open-vscode"') &&
+    toolkit.includes('"git-status"'),
+  "default essentials are limited to Toolkit, Agents, and Review while Git/VS Code/worktree actions live inside Toolkit",
   { essentialCardCount },
+);
+add(
+  checks,
+  "orchestra-dispatch-controls",
+  app.includes("handleStartRightRailOrchestra") &&
+    app.includes("showOrchestra({") &&
+    app.includes("buildOrchestraPrompts({") &&
+    app.includes('defaultRoles: ["implementer", "tester", "reviewer"]') &&
+    app.includes('className="right-panel-orchestra-lanes"') &&
+    app.includes('className="right-panel-orchestra-primary"') &&
+    styles.includes(".right-panel-orchestra-lanes") &&
+    styles.includes(".right-panel-orchestra-primary") &&
+    styles.includes(':root[data-mood="aether-sakura"] .right-panel-orchestra-command'),
+  "right rail exposes role lanes and a first-class Orchestra dispatch action without expanding telemetry",
+);
+add(
+  checks,
+  "command-stack-toolkit-first",
+  commandStack > rightRailStart &&
+    commandToolkit > commandStack &&
+    commandDecisionGate > commandToolkit &&
+    commandDecisionFrame > commandDecisionGate &&
+    commandSessionsFrame > commandDecisionFrame &&
+    commandWorkflowFrame > commandSessionsFrame &&
+    commandContextFrame > commandWorkflowFrame,
+  "Command mode defaults to Toolkit, then conditional decisions, then collapsed agents/workflow/context drawers",
+  {
+    commandStack,
+    commandToolkit,
+    commandDecisionGate,
+    commandDecisionFrame,
+    commandSessionsFrame,
+    commandWorkflowFrame,
+    commandContextFrame,
+  },
 );
 add(
   checks,
@@ -213,7 +270,7 @@ const failedChecks = checks.filter((check) => !check.ok);
 const generatedAt = new Date().toISOString();
 const sourceMtims = Object.fromEntries(Object.entries(sourcePaths).map(([key, path]) => [key, mtimeMs(path)]));
 const report = {
-  version: 1,
+  version: 2,
   generatedAt,
   localDate: currentLocalDate(),
   timeZone: LOCAL_TIME_ZONE,
@@ -222,7 +279,8 @@ const report = {
     failedChecks.length === 0
       ? "pass-current-right-rail-information-density-contract"
       : "failed-right-rail-information-density-contract",
-  essentialFirst: essentialGrid > runLoop && evidenceDrawer > essentialGrid,
+  essentialFirst: essentialGrid > orchestraCommand && evidenceDrawer > essentialGrid,
+  orchestraFirst: orchestraCommand > advancedDrawer && essentialGrid > orchestraCommand,
   defaultDrawerCount: collapsedDrawerCount,
   visiblePrimaryCount,
   conditionalPrimaryMax,

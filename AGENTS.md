@@ -2,6 +2,13 @@
 
 Windows向けプロジェクトファーストAIワークスペースターミナル。
 
+## 🎯 進行中の設計 — 実装着手はここから
+
+多エージェント並列開発コックピット化の設計が完了しています。実装を始める前に
+**[`docs/specs/CODEX_HANDOFF.md`](docs/specs/CODEX_HANDOFF.md)** を読むこと（マスタープラン）。
+Work Unit を1つ選び、その WU が指定する spec 節と対象ファイルだけを開いて実装する。
+共有契約は HANDOFF §3、壊してはいけないものは §6。背景は `docs/specs/README.md`。
+
 ## Tech Stack
 
 - **Framework**: Tauri v2 (Rust backend + React frontend)

@@ -26,6 +26,7 @@ fn test_agent_session_info_serialization_contract() {
         cwd: "C:/repo".to_string(),
         cost: 0.25,
         tokens_used: 42,
+        started_at: 123,
     };
 
     let value = serde_json::to_value(session).expect("serialize AgentSessionInfo");
@@ -37,6 +38,7 @@ fn test_agent_session_info_serialization_contract() {
     assert_eq!(value["cwd"], "C:/repo");
     assert_eq!(value["cost"], 0.25);
     assert_eq!(value["tokens_used"], 42);
+    assert_eq!(value["started_at"], 123);
 }
 
 // --- Mock agent spawn + parser integration ---

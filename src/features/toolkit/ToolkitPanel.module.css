@@ -149,8 +149,7 @@
   border: 0;
   border-radius: 0;
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--tone) 6%, transparent), transparent 70%),
-    rgba(1, 7, 15, 0.34);
+    linear-gradient(180deg, color-mix(in srgb, var(--tone) 6%, transparent), transparent 70%), rgba(1, 7, 15, 0.34);
   color: var(--text-secondary);
   cursor: pointer;
   font-family: var(--font-ui);
@@ -168,8 +167,7 @@
 
 .priorityAction:hover {
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--tone) 10%, transparent), transparent 64%),
-    rgba(0, 10, 22, 0.48);
+    linear-gradient(180deg, color-mix(in srgb, var(--tone) 10%, transparent), transparent 64%), rgba(0, 10, 22, 0.48);
   color: var(--text-primary);
 }
 

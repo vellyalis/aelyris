@@ -15,7 +15,9 @@ const sourcePaths = {
   gitFinalization: "scripts/verify-git-finalization-readiness.mjs",
   gitFinalizationShellDiagnostics: "scripts/verify-git-finalization-shell-diagnostics.ps1",
   goalFinalize: "scripts/verify-goal-finalize-evidence.mjs",
+  goalCloseout: "scripts/verify-goal-closeout-snapshot.mjs",
   externalGateReadiness: "scripts/verify-goal-external-gate-readiness.mjs",
+  releaseSigningOperatorHandoff: "scripts/verify-release-signing-operator-handoff.mjs",
   realOsSleepOperatorHandoff: "scripts/verify-real-os-sleep-operator-handoff.mjs",
   nativeAiCliChaos: "scripts/verify-native-ai-cli-post-launch-chaos.mjs",
   realOsSuspend: "scripts/verify-real-os-suspend-evidence.mjs",
@@ -72,7 +74,9 @@ const operatorFinish = readText(sourcePaths.operatorFinish);
 const gitFinalization = readText(sourcePaths.gitFinalization);
 const gitFinalizationShellDiagnostics = readText(sourcePaths.gitFinalizationShellDiagnostics);
 const goalFinalize = readText(sourcePaths.goalFinalize);
+const goalCloseout = readText(sourcePaths.goalCloseout);
 const externalGateReadiness = readText(sourcePaths.externalGateReadiness);
+const releaseSigningOperatorHandoff = readText(sourcePaths.releaseSigningOperatorHandoff);
 const realOsSleepOperatorHandoff = readText(sourcePaths.realOsSleepOperatorHandoff);
 const nativeAiCliChaos = readText(sourcePaths.nativeAiCliChaos);
 const realOsSuspend = readText(sourcePaths.realOsSuspend);
@@ -104,6 +108,7 @@ const requiredSafeFallbackSteps = [
   "authenticated-consent-packet",
   "glass-legibility",
   "right-rail-information-density",
+  "release-signing-operator-handoff",
   "real-os-sleep-operator-handoff",
   "tauri-runtime-hygiene",
   "production-build",
@@ -170,6 +175,7 @@ const checks = {
     "pnpm verify:goal:operator-finish",
     "pnpm verify:goal:finalize",
     "pnpm verify:goal:safe",
+    "pnpm verify:goal:closeout",
     "goal-finalize",
   ]),
   gitFinalizationReadinessIsSafeHandoff:
@@ -269,8 +275,9 @@ const checks = {
     "chunked-osc-live",
     "glass-legibility",
     "right-rail-information-density",
-    "real-os-sleep-operator-handoff",
-    "external-gate-readiness",
+      "real-os-sleep-operator-handoff",
+      "release-signing-operator-handoff",
+      "external-gate-readiness",
     "goal-documentation-freshness",
     "goal-completion-matrix",
     "right-rail-goal-track",
@@ -303,6 +310,7 @@ const checks = {
       "sourceCutoffMsForStep",
       "goal-documentation-freshness",
       "real-os-sleep-operator-handoff",
+      "release-signing-operator-handoff",
     ]),
   finalAuditScoreUseSharedArtifactLock:
     hasAll(finalGoalArtifactLock, [
@@ -332,6 +340,7 @@ const checks = {
     "ready-for-external-operator-gates",
     "tokenSpendingPromptExecuted",
     "realOsSleepInvoked",
+    "release-signing-updater",
     "explicit consent",
     "user-initiated Windows sleep",
     "beforeExternalGate",
@@ -339,8 +348,36 @@ const checks = {
     "finalizeClosure",
     "goal-operator-progress.json",
     "pnpm verify:goal:finalize",
+    "pnpm verify:goal:closeout",
     "pnpm verify:goal:sleep-handoff",
   ]),
+  goalCloseoutSnapshotClosesArtifactDrift:
+    packageJson.includes('"verify:goal:closeout": "node scripts/verify-goal-closeout-snapshot.mjs"') &&
+    hasAll(goalCloseout, [
+      "goal-closeout-snapshot.json",
+      "noArtifactOlderThanCloseoutSources",
+      "scoreIsExternalGateA",
+      "safeRequiredProofsGreen",
+      "finalizeAgreesWithSafe",
+      "externalGateReadinessIsSafeHandoff",
+      "Only external/operator gates remain",
+      "pnpm verify:goal:closeout",
+    ]),
+  releaseSigningOperatorHandoffPreventsRepeatStall:
+    packageJson.includes(
+      '"verify:goal:release-signing-handoff": "node scripts/verify-release-signing-operator-handoff.mjs"',
+    ) &&
+    hasAll(releaseSigningOperatorHandoff, [
+      "ready-for-release-signing-operator",
+      "noSecretMaterialPersisted",
+      "TAURI_SIGNING_PRIVATE_KEY",
+      "pnpm tauri:build:dist",
+      "pnpm verify:release:doctor",
+      "pnpm verify:quality-score",
+      "pnpm verify:goal:finalize",
+      "pnpm verify:goal:safe",
+      "pnpm verify:goal:closeout",
+    ]),
   realOsSleepOperatorHandoffPreventsRepeatStall:
     packageJson.includes('"verify:goal:sleep-handoff": "node scripts/verify-real-os-sleep-operator-handoff.mjs"') &&
     hasAll(realOsSleepOperatorHandoff, [
@@ -352,6 +389,7 @@ const checks = {
       "pnpm verify:goal:operator-finish",
       "pnpm verify:goal:finalize",
       "pnpm verify:goal:safe",
+      "pnpm verify:goal:closeout",
     ]),
   realSleepVerifierWaitsForUserCycle: hasAll(realOsSuspend, [
     "--user-sleep-cycle",
@@ -412,7 +450,7 @@ const report = {
   checks,
   failedChecks,
   contract:
-  "Goal work must keep bounded step timeouts, visible progress markers, persisted operator progress snapshots, EPERM artifact replay, no-token/no-sleep defaults, exact human opt-in gates, Windows spawn-safe build/test defaults, optional git handoff, and a closed operator refresh runbook.",
+  "Goal work must keep bounded step timeouts, visible progress markers, persisted operator progress snapshots, EPERM artifact replay, no-token/no-sleep defaults, exact human opt-in gates, Windows spawn-safe build/test defaults, optional git handoff, a closed operator refresh runbook, and a closeout snapshot that catches artifact drift.",
 };
 
 mkdirSync(dirname(OUT), { recursive: true });

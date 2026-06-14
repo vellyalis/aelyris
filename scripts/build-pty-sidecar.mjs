@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync, rmSync } from "node:fs";
+import { copyFileSync, mkdirSync, rmSync, utimesSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -6,29 +6,47 @@ import { spawnSync } from "node:child_process";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const tauriDir = join(root, "src-tauri");
 
-function run(command, args, options = {}) {
+function spawnWithWindowsShellFallback(command, args, options) {
   const result = spawnSync(command, args, {
     cwd: root,
-    stdio: "inherit",
     shell: false,
     windowsHide: true,
     ...options,
   });
+  if (process.platform !== "win32" || result.status !== null || result.error?.code !== "EPERM") {
+    return result;
+  }
+  return spawnSync(command, args, {
+    cwd: root,
+    shell: true,
+    windowsHide: true,
+    ...options,
+  });
+}
+
+function failureDetail(result) {
+  if (result.error) return `${result.error.code ?? "error"}: ${result.error.message}`;
+  if (result.signal) return `signal ${result.signal}`;
+  return `exit code ${result.status}`;
+}
+
+function run(command, args, options = {}) {
+  const result = spawnWithWindowsShellFallback(command, args, {
+    stdio: "inherit",
+    ...options,
+  });
   if (result.status !== 0) {
-    throw new Error(`${command} ${args.join(" ")} failed with exit code ${result.status}`);
+    throw new Error(`${command} ${args.join(" ")} failed with ${failureDetail(result)}`);
   }
 }
 
 function output(command, args, options = {}) {
-  const result = spawnSync(command, args, {
-    cwd: root,
+  const result = spawnWithWindowsShellFallback(command, args, {
     encoding: "utf8",
-    shell: false,
-    windowsHide: true,
     ...options,
   });
   if (result.status !== 0) {
-    throw new Error(`${command} ${args.join(" ")} failed with exit code ${result.status}`);
+    throw new Error(`${command} ${args.join(" ")} failed with ${failureDetail(result)}`);
   }
   return result.stdout;
 }
@@ -54,6 +72,9 @@ const builtCtl = join(tauriDir, "target", "release", `aetherctl${extension}`);
 const accidentalMainPackageBin = join(tauriDir, "target", "release", `aether-pty-server${extension}`);
 mkdirSync(dirname(bundled), { recursive: true });
 copyFileSync(built, bundled);
+const now = new Date();
+utimesSync(bundled, now, now);
+utimesSync(builtCtl, now, now);
 rmSync(accidentalMainPackageBin, { force: true });
 console.log(`Prepared PTY sidecar: ${bundled}`);
 console.log(`Prepared aetherctl: ${builtCtl}`);

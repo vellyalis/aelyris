@@ -6,6 +6,7 @@ import { chromium } from "@playwright/test";
 
 const CDP = process.env.AETHER_TAURI_CDP ?? "http://127.0.0.1:9222";
 const APP_URL = process.env.AETHER_TAURI_APP_URL ?? "http://localhost:1420/";
+const APP_ORIGIN = new URL(APP_URL).origin;
 const PROJECT_PATH = (process.env.AETHER_TAURI_PROJECT ?? process.cwd()).replaceAll("\\", "/");
 const OUT = process.env.AETHER_TAURI_GOAL_TRACK_OUT ?? ".codex-auto/production-smoke/right-rail-goal-track-tauri.json";
 const WAIT_MS = Number.parseInt(process.env.AETHER_TAURI_GOAL_TRACK_WAIT_MS ?? "90000", 10);
@@ -255,6 +256,7 @@ function targetUrl() {
 function isAetherPage(page) {
   const url = page.url();
   return (
+    url.startsWith(APP_ORIGIN) ||
     url.includes("localhost:1420") ||
     url.includes("127.0.0.1:1420") ||
     url.startsWith("tauri://localhost") ||

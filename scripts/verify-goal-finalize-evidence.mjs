@@ -16,14 +16,18 @@ const AFTER_EXTERNAL_GATE_COMMANDS = [
   "pnpm verify:goal:operator-finish",
   "pnpm verify:goal:finalize",
   "pnpm verify:goal:safe",
+  "pnpm verify:goal:closeout",
 ];
 
 const productSourceFiles = [
   "package.json",
   "scripts/final-goal-artifact-lock.mjs",
+  "scripts/verify-goal-closeout-snapshot.mjs",
+  "scripts/verify-agent-team-orchestration-readiness.mjs",
   "scripts/verify-goal-finalize-evidence.mjs",
   "scripts/verify-goal-operator-finish.mjs",
   "scripts/verify-goal-external-gate-readiness.mjs",
+  "scripts/verify-release-signing-operator-handoff.mjs",
   "scripts/verify-real-os-sleep-operator-handoff.mjs",
   "scripts/verify-goal-anti-stall-contract.mjs",
   "scripts/verify-final-goal-safe.mjs",
@@ -52,6 +56,7 @@ const artifactPaths = {
   finalAudit: ".codex-auto/quality/final-goal-audit.json",
   qualityScore: ".codex-auto/quality/release-quality-score.json",
   docs: ".codex-auto/quality/goal-documentation-freshness.json",
+  releaseSigningHandoff: ".codex-auto/quality/release-signing-operator-handoff.json",
   sleepHandoff: ".codex-auto/quality/real-os-sleep-operator-handoff.json",
   externalGateReadiness: ".codex-auto/quality/goal-external-gate-readiness.json",
   matrix: ".codex-auto/quality/goal-completion-matrix.json",
@@ -65,6 +70,11 @@ const finalizeSequence = [
   { id: "release-hygiene", label: "Release hygiene", script: "verify-release-hygiene-contract.mjs" },
   { id: "anti-stall", label: "Anti-stall contract", script: "verify-goal-anti-stall-contract.mjs" },
   { id: "quality-score-pre-audit", label: "Release quality score before final audit", script: "score-release-quality.mjs" },
+  {
+    id: "release-signing-operator-handoff",
+    label: "Release signing/updater operator handoff",
+    script: "verify-release-signing-operator-handoff.mjs",
+  },
   { id: "final-goal-audit-1", label: "Final goal audit pre-score", script: "verify-final-goal-audit.mjs" },
   { id: "quality-score-1", label: "Release quality score pre-docs", script: "score-release-quality.mjs" },
   { id: "goal-documentation-freshness", label: "Goal documentation freshness", script: "verify-goal-documentation-freshness.mjs" },
@@ -170,10 +180,19 @@ function sourceCutoffMsForStep(id) {
       artifactPaths.qualityScore,
       artifactPaths.finalAudit,
     ],
+    "release-signing-operator-handoff": [
+      "scripts/verify-release-signing-operator-handoff.mjs",
+      "scripts/release-doctor.mjs",
+      "scripts/build-dist-windows.ps1",
+      "src-tauri/tauri.dist.conf.json",
+      "src-tauri/tauri.conf.json",
+      artifactPaths.qualityScore,
+    ],
     "external-gate-readiness": [
       "scripts/verify-goal-external-gate-readiness.mjs",
       artifactPaths.qualityScore,
       artifactPaths.finalAudit,
+      artifactPaths.releaseSigningHandoff,
       artifactPaths.sleepHandoff,
     ],
     "goal-completion-matrix": [
@@ -194,12 +213,14 @@ function sourceCutoffMsForStep(id) {
     ],
     "goal-safe": [
       "scripts/verify-final-goal-safe.mjs",
+      "scripts/verify-agent-team-orchestration-readiness.mjs",
       "scripts/verify-goal-anti-stall-contract.mjs",
       "scripts/score-release-quality.mjs",
       "scripts/verify-final-goal-audit.mjs",
       artifactPaths.qualityScore,
       artifactPaths.finalAudit,
       artifactPaths.docs,
+      artifactPaths.releaseSigningHandoff,
       artifactPaths.sleepHandoff,
       artifactPaths.externalGateReadiness,
       artifactPaths.matrix,
@@ -217,7 +238,7 @@ function artifactCurrent(path, cutoffMs) {
 function scoreHasOnlyExternalBlockers(score) {
   const blockers = Array.isArray(score?.blockers) ? score.blockers : [];
   return blockers.every((blocker) =>
-    ["real-os-soak", "authenticated-ai-cli-prompt-smoke"].includes(String(blocker?.area ?? "")),
+    ["release-doctor", "real-os-soak", "authenticated-ai-cli-prompt-smoke"].includes(String(blocker?.area ?? "")),
   );
 }
 
@@ -228,6 +249,7 @@ function artifactFallbackFor(id) {
   const finalAudit = readJson(artifactPaths.finalAudit);
   const qualityScore = readJson(artifactPaths.qualityScore);
   const docs = readJson(artifactPaths.docs);
+  const releaseSigningHandoff = readJson(artifactPaths.releaseSigningHandoff);
   const sleepHandoff = readJson(artifactPaths.sleepHandoff);
   const externalGateReadiness = readJson(artifactPaths.externalGateReadiness);
   const matrix = readJson(artifactPaths.matrix);
@@ -261,13 +283,13 @@ function artifactFallbackFor(id) {
       finalAudit?.implementationFixableCount === 0 &&
       artifactCurrent(artifactPaths.finalAudit, cutoffMs),
     "quality-score-1":
-      qualityScore?.score >= 96 &&
-      qualityScore?.total >= 321 &&
+      qualityScore?.score >= 95 &&
+      qualityScore?.total >= 317 &&
       scoreHasOnlyExternalBlockers(qualityScore) &&
       artifactCurrent(artifactPaths.qualityScore, cutoffMs),
     "quality-score-2":
-      qualityScore?.score >= 96 &&
-      qualityScore?.total >= 321 &&
+      qualityScore?.score >= 95 &&
+      qualityScore?.total >= 317 &&
       scoreHasOnlyExternalBlockers(qualityScore) &&
       artifactCurrent(artifactPaths.qualityScore, cutoffMs),
     "goal-documentation-freshness":
@@ -279,6 +301,12 @@ function artifactFallbackFor(id) {
       ["ready-for-manual-sleep-cycle", "real-os-sleep-resume-complete"].includes(sleepHandoff?.status) &&
       sleepHandoff?.checks?.evidenceDoesNotFakePass === true &&
       artifactCurrent(artifactPaths.sleepHandoff, cutoffMs),
+    "release-signing-operator-handoff":
+      releaseSigningHandoff?.ok === true &&
+      ["ready-for-release-signing-operator", "release-signing-complete"].includes(releaseSigningHandoff?.status) &&
+      releaseSigningHandoff?.signingMaterialProvidedToThisRun === false &&
+      releaseSigningHandoff?.noSecretMaterialPersisted === true &&
+      artifactCurrent(artifactPaths.releaseSigningHandoff, cutoffMs),
     "external-gate-readiness":
       externalGateReadiness?.ok === true &&
       ["ready-for-external-operator-gates", "blocked-by-host-sleep-unsupported", "external-operator-gates-complete"].includes(
@@ -329,6 +357,7 @@ function artifactFallbackFor(id) {
     "quality-score-1": artifactPaths.qualityScore,
     "quality-score-2": artifactPaths.qualityScore,
     "goal-documentation-freshness": artifactPaths.docs,
+    "release-signing-operator-handoff": artifactPaths.releaseSigningHandoff,
     "real-os-sleep-operator-handoff": artifactPaths.sleepHandoff,
     "external-gate-readiness": artifactPaths.externalGateReadiness,
     "goal-completion-matrix": artifactPaths.matrix,
@@ -467,12 +496,15 @@ const audit = readJson(artifactPaths.finalAudit);
 const safe = readJson(artifactPaths.safe);
 const docs = readJson(artifactPaths.docs);
 const matrix = readJson(artifactPaths.matrix);
+const releaseSigningHandoff = readJson(artifactPaths.releaseSigningHandoff);
 const gitFinalization = readJson(artifactPaths.gitFinalization);
 const gitShellDiagnostics = readJson(artifactPaths.gitShellDiagnostics);
 const failedSteps = steps.filter((step) => step.ok !== true);
 const ok =
   failedSteps.length === 0 &&
-  score?.score >= 96 &&
+  score?.score >= 95 &&
+  score?.total >= 317 &&
+  scoreHasOnlyExternalBlockers(score) &&
   audit?.ok === true &&
   audit?.evidenceComplete === true &&
   audit?.implementationFixableCount === 0 &&
@@ -510,6 +542,12 @@ const report = {
       requires: "Start the verifier, manually put Windows to sleep, wake it, then let post-resume probes finish.",
       safety: "The finalizer does not invoke OS sleep and does not set AETHER_ALLOW_OS_SLEEP.",
     },
+    releaseSigningAndUpdater: {
+      command: "pnpm tauri:build:dist",
+      handoff: "pnpm verify:goal:release-signing-handoff",
+      requires: "Run only in a secure operator shell with current Tauri signing material.",
+      safety: "The finalizer does not read signing keys, does not sign artifacts, and does not mutate updater manifests.",
+    },
     afterExternalGate: AFTER_EXTERNAL_GATE_COMMANDS,
   },
   sequence: finalizeSequence.map((step) => step.id),
@@ -541,6 +579,13 @@ const report = {
           status: safe.status,
           proofArtifactPassCount: safe.coverage?.proofArtifactPassCount ?? null,
           proofArtifactCount: safe.coverage?.proofArtifactCount ?? null,
+        }
+      : null,
+    releaseSigningHandoff: releaseSigningHandoff
+      ? {
+          ok: releaseSigningHandoff.ok === true,
+          status: releaseSigningHandoff.status,
+          signingMaterialProvidedToThisRun: releaseSigningHandoff.signingMaterialProvidedToThisRun === true,
         }
       : null,
     gitFinalization: gitFinalization

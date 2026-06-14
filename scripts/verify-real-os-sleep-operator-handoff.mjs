@@ -26,7 +26,8 @@ const USER_CYCLE_COMMAND = "pnpm verify:production:suspend:native-user-cycle";
 const OPERATOR_FINISH_COMMAND = "pnpm verify:goal:operator-finish";
 const FINALIZE_COMMAND = "pnpm verify:goal:finalize";
 const SAFE_COMMAND = "pnpm verify:goal:safe";
-const AFTER_MANUAL_GATE_COMMANDS = [OPERATOR_FINISH_COMMAND, FINALIZE_COMMAND, SAFE_COMMAND];
+const CLOSEOUT_COMMAND = "pnpm verify:goal:closeout";
+const AFTER_MANUAL_GATE_COMMANDS = [OPERATOR_FINISH_COMMAND, FINALIZE_COMMAND, SAFE_COMMAND, CLOSEOUT_COMMAND];
 const SLEEP_PHRASE = "I_WILL_MANUALLY_SLEEP_WINDOWS_WHILE_VERIFIER_WAITS";
 
 function currentLocalDate() {
@@ -80,8 +81,18 @@ function isRealOsSleepBlocker(value) {
   );
 }
 
+function isAuthenticatedPromptBlocker(value) {
+  return /authenticated[-\s]?ai[-\s]?cli[-\s]?prompt|token-spend consent/i.test(String(value ?? ""));
+}
+
 function isFinalEvidenceMapBlocker(value) {
   return /final-goal-evidence-map|final goal audit/i.test(String(value ?? ""));
+}
+
+function isReleaseSigningOperatorBlocker(value) {
+  return /release[-\s]?doctor.*signing\/updater|signing\/updater warnings|signatures\/latest\.json|updater signatures|latest\.json/i.test(
+    String(value ?? ""),
+  );
 }
 
 function finalAuditBootstrapBlockedByThisVerifier(audit) {
@@ -170,7 +181,12 @@ const nativePostcheckWriteSmoke = artifacts.realOsNativePostcheckWriteSmoke.data
 const releaseBlockers = Array.isArray(releaseScore?.blockers) ? releaseScore.blockers : [];
 const implementationBlockers = releaseBlockers.filter((blocker) => {
   const text = `${blocker?.area ?? ""} ${blocker?.blocker ?? blocker}`;
-  return !isRealOsSleepBlocker(text) && !isFinalEvidenceMapBlocker(text);
+  return (
+    !isAuthenticatedPromptBlocker(text) &&
+    !isRealOsSleepBlocker(text) &&
+    !isFinalEvidenceMapBlocker(text) &&
+    !isReleaseSigningOperatorBlocker(text)
+  );
 });
 const realSleepScore = scoreEntry(releaseScore, "real-os-soak");
 const sleepAttempt = realOsSuspendEvidence?.validation?.sleepAttempt ?? {};
@@ -264,14 +280,15 @@ const checks = {
   runbookClosesLoop:
     packageJson.includes('"verify:goal:operator-finish"') &&
     packageJson.includes('"verify:goal:finalize"') &&
-    packageJson.includes('"verify:goal:safe"'),
+    packageJson.includes('"verify:goal:safe"') &&
+    packageJson.includes('"verify:goal:closeout"'),
   rightRailManualSleepActionClosesLoop:
     rightRailGoalTrackSource.includes(USER_CYCLE_COMMAND) &&
     rightRailGoalTrackSource.includes(
-      'const followUpCommands = ["pnpm verify:goal:operator-finish", "pnpm verify:goal:finalize", "pnpm verify:goal:safe"]',
+      'const followUpCommands = ["pnpm verify:goal:operator-finish", "pnpm verify:goal:finalize", "pnpm verify:goal:safe", "pnpm verify:goal:closeout"]',
     ) &&
     rightRailGoalTrackTestSource.includes(
-      'followUpCommands: ["pnpm verify:goal:operator-finish", "pnpm verify:goal:finalize", "pnpm verify:goal:safe"]',
+      'followUpCommands: ["pnpm verify:goal:operator-finish", "pnpm verify:goal:finalize", "pnpm verify:goal:safe", "pnpm verify:goal:closeout"]',
     ) &&
     rightRailGoalTrackTestSource.includes("# manually sleep and wake Windows while the verifier waits"),
   releasePlaybookClosesLoop:
@@ -279,7 +296,8 @@ const checks = {
     releaseBuildPlaybook.includes(USER_CYCLE_COMMAND) &&
     releaseBuildPlaybook.includes(OPERATOR_FINISH_COMMAND) &&
     releaseBuildPlaybook.includes(FINALIZE_COMMAND) &&
-    releaseBuildPlaybook.includes(SAFE_COMMAND),
+    releaseBuildPlaybook.includes(SAFE_COMMAND) &&
+    releaseBuildPlaybook.includes(CLOSEOUT_COMMAND),
 };
 
 const failedChecks = Object.entries(checks)

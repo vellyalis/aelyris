@@ -266,6 +266,51 @@ impl Database {
 
     // --- Session CRUD ---
 
+    /// Persist a pane's user-assigned name/role so sidecar sessions that
+    /// outlive an app restart can be re-adopted with their identity intact.
+    pub fn upsert_pane_metadata(
+        &self,
+        terminal_id: &str,
+        name: &str,
+        role: &str,
+    ) -> Result<(), String> {
+        self.conn
+            .execute(
+                "INSERT INTO pane_metadata (terminal_id, name, role, updated_at)
+                 VALUES (?1, ?2, ?3, datetime('now'))
+                 ON CONFLICT(terminal_id) DO UPDATE SET
+                     name = excluded.name,
+                     role = excluded.role,
+                     updated_at = excluded.updated_at",
+                params![terminal_id, name, role],
+            )
+            .map(|_| ())
+            .map_err(|e| format!("Upsert pane metadata: {}", e))
+    }
+
+    /// Returns `(name, role)` for a terminal id, if any was persisted.
+    pub fn get_pane_metadata(&self, terminal_id: &str) -> Result<Option<(String, String)>, String> {
+        use rusqlite::OptionalExtension;
+        self.conn
+            .query_row(
+                "SELECT name, role FROM pane_metadata WHERE terminal_id = ?1",
+                params![terminal_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(|e| format!("Get pane metadata: {}", e))
+    }
+
+    pub fn delete_pane_metadata(&self, terminal_id: &str) -> Result<(), String> {
+        self.conn
+            .execute(
+                "DELETE FROM pane_metadata WHERE terminal_id = ?1",
+                params![terminal_id],
+            )
+            .map(|_| ())
+            .map_err(|e| format!("Delete pane metadata: {}", e))
+    }
+
     pub fn create_session(&self, name: &str) -> Result<Session, String> {
         let id = Uuid::new_v4().to_string();
         self.conn

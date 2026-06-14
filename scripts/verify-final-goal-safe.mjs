@@ -18,7 +18,9 @@ const STEP_FALLBACK_ARTIFACTS = {
   "authenticated-consent-packet": [".codex-auto/production-smoke/authenticated-ai-cli-consent-packet.json"],
   "glass-legibility": [".codex-auto/quality/glass-legibility-contract.json"],
   "right-rail-information-density": [".codex-auto/quality/right-rail-information-density-contract.json"],
+  "agent-team-orchestration": [".codex-auto/quality/agent-team-orchestration-readiness.json"],
   "anti-stall-contract": [".codex-auto/quality/goal-anti-stall-contract.json"],
+  "release-signing-operator-handoff": [".codex-auto/quality/release-signing-operator-handoff.json"],
   "real-os-sleep-operator-handoff": [".codex-auto/quality/real-os-sleep-operator-handoff.json"],
   "external-gate-readiness": [".codex-auto/quality/goal-external-gate-readiness.json"],
   "tauri-runtime-hygiene": [".codex-auto/quality/tauri-runtime-hygiene.json"],
@@ -42,6 +44,7 @@ const RIGHT_RAIL_GOAL_TRACK_SOURCE_PATHS = [
   "scripts/verify-final-goal-safe.mjs",
   "scripts/verify-goal-completion-matrix.mjs",
   "scripts/verify-goal-external-gate-readiness.mjs",
+  "scripts/verify-release-signing-operator-handoff.mjs",
   "scripts/verify-real-os-sleep-operator-handoff.mjs",
   "scripts/verify-goal-operator-finish.mjs",
   "scripts/score-release-quality.mjs",
@@ -76,10 +79,13 @@ function currentLocalDate() {
 function releaseQualityScoreVerdict(data) {
   const blockers = Array.isArray(data?.blockers) ? data.blockers : [];
   const implementationBlockers = blockers.filter(
-    (item) => !isAuthenticatedPromptBlocker(item?.blocker ?? item) && !isHostSleepUnsupportedBlocker(item),
+    (item) =>
+      !isAuthenticatedPromptBlocker(item?.blocker ?? item) &&
+      !isHostSleepUnsupportedBlocker(item) &&
+      !isReleaseSigningOperatorBlocker(item),
   );
   const consentBlockers = blockers.filter((item) => isAuthenticatedPromptBlocker(item?.blocker ?? item));
-  const externalBlockers = blockers.filter((item) => isHostSleepUnsupportedBlocker(item));
+  const externalBlockers = blockers.filter((item) => isExternalOperatorBlocker(item));
   const consentGated =
     data?.releaseCandidateReady === false && consentBlockers.length === 1 && implementationBlockers.length === 0;
   const externalGated =
@@ -102,7 +108,8 @@ function releaseQualityScoreVerdict(data) {
         : consentGated
           ? "blocked-by-explicit-consent"
           : "blocked",
-    expectation: "S score when all gates are runnable; A+/external-gated is allowed only for host sleep plus token consent",
+    expectation:
+      "S score when all gates are runnable; A/external-gated is allowed only for signing/updater, host sleep, and token consent",
     reason: ok
       ? "release score proves all implementation requirements; releaseCandidateReady is false only while external host sleep or token consent gates remain"
       : "release score is below the expected threshold, has implementation blockers, or does not isolate consent/external gates",
@@ -349,10 +356,11 @@ function externalGateReadinessVerdict(data) {
   const sleepGate = remainingGates.find((entry) => entry?.id === "real-os-sleep-resume");
   const afterEitherGate = Array.isArray(data?.runbook?.afterEitherGate) ? data.runbook.afterEitherGate : [];
   const afterEitherGateClosesViaFinalizer =
-    afterEitherGate.length === 3 &&
+    afterEitherGate.length === 4 &&
     afterEitherGate[0] === "pnpm verify:goal:operator-finish" &&
     afterEitherGate[1] === "pnpm verify:goal:finalize" &&
-    afterEitherGate[2] === "pnpm verify:goal:safe";
+    afterEitherGate[2] === "pnpm verify:goal:safe" &&
+    afterEitherGate[3] === "pnpm verify:goal:closeout";
   const checks = data?.checks ?? {};
   const tokenStateReady =
     (data?.tokenSpendingPromptExecuted === false && checks.noTokenPromptSent === true) ||
@@ -382,6 +390,7 @@ function externalGateReadinessVerdict(data) {
     data?.runbook?.realSleepResume?.safety ===
       "This readiness verifier does not set AETHER_ALLOW_OS_SLEEP and does not invoke Windows sleep." &&
     data?.runbook?.finalizeClosure?.command === "pnpm verify:goal:finalize" &&
+    data?.runbook?.closeoutSnapshot?.command === "pnpm verify:goal:closeout" &&
     afterEitherGateClosesViaFinalizer &&
     ["codex", "claude", "gemini"].every((provider) =>
       data?.runbook?.tokenPromptSmoke?.some(
@@ -426,6 +435,35 @@ function externalGateReadinessVerdict(data) {
       : "external gate readiness is missing, stale, unsafe, or does not match the current final goal blockers",
     semanticFreshness: ok ? "current-external-gate-readiness-contract" : "stale-or-incomplete",
     cycleBoundary: "operator-gate-no-token-no-sleep-proof",
+  };
+}
+
+function releaseSigningOperatorHandoffVerdict(data) {
+  const verification = Array.isArray(data?.runbook?.verification) ? data.runbook.verification : [];
+  const ready =
+    data?.ok === true &&
+    ["ready-for-release-signing-operator", "release-signing-complete"].includes(data?.status) &&
+    data?.signingMaterialProvidedToThisRun === false &&
+    data?.noSecretMaterialPersisted === true &&
+    data?.checks?.noSigningMaterialEnvPresent === true &&
+    data?.checks?.localUnsignedDistReady === true &&
+    data?.checks?.signingWarningClassified === true &&
+    data?.checks?.updaterWarningClassified === true &&
+    data?.checks?.packageScriptsCloseLoop === true &&
+    data?.checks?.buildWrapperUsesDistConfig === true &&
+    data?.runbook?.signingAndUpdater?.command === "pnpm tauri:build:dist" &&
+    verification.includes("pnpm verify:release:doctor") &&
+    verification.includes("pnpm verify:quality-score") &&
+    verification.includes("pnpm verify:goal:finalize") &&
+    verification.includes("pnpm verify:goal:safe");
+  return {
+    ok: ready,
+    status: ready ? "pass-current-release-signing-operator-handoff" : (data?.status ?? "stale-or-incomplete"),
+    expectation:
+      "release signing handoff exposes the exact operator-only updater signing path without reading or persisting secrets",
+    reason: ready
+      ? "release signing/updater handoff is current, no-secret by default, and points to the release doctor plus final evidence loop"
+      : "release signing/updater handoff is missing, stale, unsafe, or not tied to the current release-doctor blocker",
   };
 }
 
@@ -825,6 +863,68 @@ function rightRailInformationDensityVerdict(data) {
     reason: ok
       ? "right rail information density contract is fresh and proves essential-first Command Center composition"
       : "right rail information density contract is missing, stale, incomplete, or lets deferred detail crowd the first view",
+  };
+}
+
+function agentTeamOrchestrationVerdict(data) {
+  const artifactPath = ".codex-auto/quality/agent-team-orchestration-readiness.json";
+  const sourceFresh =
+    mtimeMs(artifactPath) + 5_000 >=
+    Math.max(
+      mtimeMs("scripts/verify-agent-team-orchestration-readiness.mjs"),
+      mtimeMs("scripts/verify-final-goal-safe.mjs"),
+      mtimeMs("scripts/verify-right-rail-information-density.mjs"),
+      mtimeMs("scripts/verify-upper-compat-gates.mjs"),
+      mtimeMs("scripts/verify-mux-performance.mjs"),
+      mtimeMs("scripts/verify-mux-live-restore.mjs"),
+      mtimeMs("src/shared/lib/orchestrator.ts"),
+      mtimeMs("src/shared/ui/OrchestraDialog.tsx"),
+      mtimeMs("src/App.tsx"),
+      mtimeMs("src/features/toolkit/ToolkitPanel.tsx"),
+      mtimeMs("src/styles/global.css"),
+      mtimeMs("src/__tests__/orchestrator.test.ts"),
+      mtimeMs("src/__tests__/orchestraRoles.test.ts"),
+      mtimeMs("src/__tests__/OrchestraDialog.test.tsx"),
+      mtimeMs("package.json"),
+    );
+  const checks = data?.checks ?? [];
+  const checkIds = new Set(Array.isArray(checks) ? checks.filter((check) => check?.ok === true).map((check) => check.id) : []);
+  const requiredCheckIds = [
+    "role-lane-model-contract",
+    "parallel-run-plan-contract",
+    "role-prompt-handoff-contract",
+    "conflict-detection-contract",
+    "dialog-default-parallel-team",
+    "app-dispatches-agents-in-parallel",
+    "right-rail-orchestra-first-not-telemetry-first",
+    "git-vscode-toolkit-preserved",
+    "mux-daemon-performance-and-restore-current",
+    "native-workspace-agent-identity-boundary",
+    "tests-cover-orchestration-contract",
+    "safe-chain-wiring",
+    "no-token-no-sleep-contract",
+    "source-artifact-freshness",
+  ];
+  const ok =
+    data?.ok === true &&
+    data?.status === "pass-current-agent-team-orchestration-readiness" &&
+    sourceFresh &&
+    data?.sourceFresh === true &&
+    data?.tokenSpendingPromptExecuted === false &&
+    data?.realOsSleepInvoked === false &&
+    Array.isArray(data?.failedChecks) &&
+    data.failedChecks.length === 0 &&
+    requiredCheckIds.every((id) => checkIds.has(id)) &&
+    data?.agentTeamReadiness?.nativeWorkspaceIdentity === true &&
+    data?.agentTeamReadiness?.muxTruthSource === "daemon-api";
+  return {
+    ok,
+    status: ok ? "pass-current-agent-team-orchestration-readiness" : (data?.status ?? "stale-or-incomplete"),
+    expectation:
+      "Agent Team orchestration proves lane-scoped roles, parallel dispatch, conflict handoff, Git/VS Code toolkit, mux restore, and Rust workspace identity without token spend or OS sleep",
+    reason: ok
+      ? "agent team orchestration contract is fresh and proves the right rail can act as a parallel development conductor"
+      : "agent team orchestration contract is missing, stale, incomplete, or not wired into the safe gate",
   };
 }
 
@@ -1488,6 +1588,17 @@ function isHostSleepUnsupportedBlocker(value) {
   );
 }
 
+function isReleaseSigningOperatorBlocker(value) {
+  const text = `${value?.area ?? ""} ${value?.blocker ?? value ?? ""}`;
+  return /release[-\s]?doctor.*signing\/updater|signing\/updater warnings|signatures\/latest\.json|updater signatures|latest\.json/i.test(
+    text,
+  );
+}
+
+function isExternalOperatorBlocker(value) {
+  return isHostSleepUnsupportedBlocker(value) || isReleaseSigningOperatorBlocker(value);
+}
+
 const steps = [
   runStep(
     "authenticated-provider-guard",
@@ -1512,7 +1623,17 @@ const steps = [
     "Right rail essential-first information density contract",
     "verify-right-rail-information-density.mjs",
   ),
+  runStep(
+    "agent-team-orchestration",
+    "Agent Team orchestration readiness",
+    "verify-agent-team-orchestration-readiness.mjs",
+  ),
   runStep("anti-stall-contract", "Anti-stall and operator self-check contract", "verify-goal-anti-stall-contract.mjs"),
+  runStep(
+    "release-signing-operator-handoff",
+    "Release signing/updater operator handoff",
+    "verify-release-signing-operator-handoff.mjs",
+  ),
   runStep("tauri-runtime-hygiene", "Tauri runtime hygiene", "verify-tauri-runtime-hygiene.mjs"),
   runStep("release-hygiene-contract", "Release hygiene contract", "verify-release-hygiene-contract.mjs"),
   runStep("supply-chain-audit", "Supply-chain vulnerability audit", "verify-supply-chain.mjs"),
@@ -1546,9 +1667,12 @@ const productionBuildKnownWarnings = productionBuildStep?.knownBuildWarnings ?? 
 const productionBuildUnexpectedWarnings = productionBuildStep?.unexpectedBuildWarnings ?? [];
 const failedSteps = steps.filter((step) => !step.ok);
 const releaseBlockers = Array.isArray(score?.blockers) ? score.blockers : [];
-const externalBlockers = releaseBlockers.filter((item) => isHostSleepUnsupportedBlocker(item));
+const externalBlockers = releaseBlockers.filter((item) => isExternalOperatorBlocker(item));
 const nonConsentBlockers = releaseBlockers.filter(
-  (item) => !isAuthenticatedPromptBlocker(item?.blocker ?? item) && !isHostSleepUnsupportedBlocker(item),
+  (item) =>
+    !isAuthenticatedPromptBlocker(item?.blocker ?? item) &&
+    !isHostSleepUnsupportedBlocker(item) &&
+    !isReleaseSigningOperatorBlocker(item),
 );
 const implementationFixableCount = audit?.residualRiskRegister?.implementationFixableCount ?? null;
 const policyBlockedCount = audit?.residualRiskRegister?.policyBlockedCount ?? null;
@@ -1609,7 +1733,7 @@ const coreBlockedByExternalGates =
   (externalBlockedCount ?? 0) > 0 &&
   externalBlockers.length > 0 &&
   releaseBlockers.every(
-    (item) => isAuthenticatedPromptBlocker(item?.blocker ?? item) || isHostSleepUnsupportedBlocker(item),
+    (item) => isAuthenticatedPromptBlocker(item?.blocker ?? item) || isExternalOperatorBlocker(item),
   );
 
 function rightRailGoalTrackVerdict(data) {
@@ -1876,9 +2000,17 @@ const proofArtifacts = {
     ".codex-auto/quality/right-rail-information-density-contract.json",
     rightRailInformationDensityVerdict,
   ),
+  agentTeamOrchestration: artifactMeta(
+    ".codex-auto/quality/agent-team-orchestration-readiness.json",
+    agentTeamOrchestrationVerdict,
+  ),
   goalAntiStallContract: artifactMeta(
     ".codex-auto/quality/goal-anti-stall-contract.json",
     antiStallContractVerdict,
+  ),
+  releaseSigningOperatorHandoff: artifactMeta(
+    ".codex-auto/quality/release-signing-operator-handoff.json",
+    releaseSigningOperatorHandoffVerdict,
   ),
   realOsSleepOperatorHandoff: artifactMeta(
     ".codex-auto/quality/real-os-sleep-operator-handoff.json",
@@ -1979,7 +2111,9 @@ const report = {
     nativeHwndPasteLivePassed: proofArtifacts.nativeHwndPasteLive?.ok === true,
     nativeAiCliPostLaunchChaosPassed: proofArtifacts.nativeAiCliPostLaunchChaos?.ok === true,
     glassLegibilityContractPassed: proofArtifacts.glassLegibilityContract?.ok === true,
+    agentTeamOrchestrationPassed: proofArtifacts.agentTeamOrchestration?.ok === true,
     goalAntiStallContractPassed: proofArtifacts.goalAntiStallContract?.ok === true,
+    releaseSigningOperatorHandoffPassed: proofArtifacts.releaseSigningOperatorHandoff?.ok === true,
     realOsSleepOperatorHandoffPassed: proofArtifacts.realOsSleepOperatorHandoff?.ok === true,
     externalGateReadinessPassed: proofArtifacts.externalGateReadiness?.ok === true,
     operatorFinishHandoffPassed: proofArtifacts.goalOperatorFinish?.ok === true,

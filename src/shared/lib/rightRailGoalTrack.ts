@@ -447,7 +447,7 @@ function buildExternalGateActions(
     externalBlockers.some(isHostSleepExternalBlocker);
   if (!hostSleepBlocked) return [];
   const command = "pnpm verify:production:suspend:native-user-cycle";
-  const followUpCommands = ["pnpm verify:goal:operator-finish", "pnpm verify:goal:finalize", "pnpm verify:goal:safe"];
+  const followUpCommands = ["pnpm verify:goal:operator-finish", "pnpm verify:goal:finalize", "pnpm verify:goal:safe", "pnpm verify:goal:closeout"];
   const manualAction =
     "Leave the verifier running, put Windows to sleep manually, wake it, then let post-resume probes finish.";
   return [

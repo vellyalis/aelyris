@@ -95,6 +95,12 @@ function isLiveAiChaosExternalBlocker(blocker) {
   );
 }
 
+function isReleaseSigningOperatorBlocker(blocker) {
+  return /release-doctor.*signing\/updater|signing\/updater warnings|regenerate signatures\/latest\.json|updater signatures|latest\.json/i.test(
+    `${blocker?.area ?? ""} ${blocker?.blocker ?? blocker ?? ""}`,
+  );
+}
+
 function summarizeHistoricalIncidentClosure(closure) {
   if (!closure || typeof closure !== "object") return null;
   const incidents = Array.isArray(closure.historicalIncidents) ? closure.historicalIncidents : [];
@@ -144,6 +150,7 @@ const authenticatedPromptConsentPacketPath = ".codex-auto/production-smoke/authe
 const authenticatedPromptProviderGuardPath =
   ".codex-auto/production-smoke/authenticated-ai-cli-provider-required-smoke.json";
 const externalGateReadinessPath = ".codex-auto/quality/goal-external-gate-readiness.json";
+const releaseSigningOperatorHandoffPath = ".codex-auto/quality/release-signing-operator-handoff.json";
 const tauriRuntimeHygienePath = ".codex-auto/quality/tauri-runtime-hygiene.json";
 const productionBundleBudgetPath = ".codex-auto/quality/production-bundle-budget.json";
 const supplyChainAuditPath = ".codex-auto/release-doctor/supply-chain-audit.json";
@@ -244,6 +251,7 @@ const releaseScoreArtifactPaths = [
   authenticatedPromptConsentPacketPath,
   authenticatedPromptProviderGuardPath,
   externalGateReadinessPath,
+  releaseSigningOperatorHandoffPath,
   commandRecoveryPath,
   chunkedOscLivePath,
   nativeHwndPasteLivePath,
@@ -287,6 +295,7 @@ const authenticatedPromptMatrix = readJson(authenticatedPromptMatrixPath);
 const authenticatedPromptConsentPacket = readJson(authenticatedPromptConsentPacketPath);
 const authenticatedPromptProviderGuard = readJson(authenticatedPromptProviderGuardPath);
 const externalGateReadiness = readJson(externalGateReadinessPath);
+const releaseSigningOperatorHandoff = readJson(releaseSigningOperatorHandoffPath);
 const tauriRuntimeHygiene = readJson(tauriRuntimeHygienePath);
 const productionBundleBudget = readJson(productionBundleBudgetPath);
 const supplyChainAudit = readJson(supplyChainAuditPath);
@@ -399,10 +408,27 @@ const actionStateCoverage = scaleChecks.actionStateCoverage ?? scaleChecks.sourc
 const twentySessionStress = scaleChecks.twentySessionStress ?? scaleChecks.sourceTwentySessionStress ?? {};
 const reviewQueueScale = scaleChecks.reviewQueueScale ?? scaleChecks.sourceReviewQueueScale ?? {};
 const themeCustomizationScore = scoreById(releaseScore, "theme-customization-guard");
+const releaseDoctorScore = scoreById(releaseScore, "release-doctor");
 const releaseBlockers = Array.isArray(releaseScore?.blockers) ? releaseScore.blockers : [];
 const productBlockers = releaseBlockers.filter((item) => item?.area !== "final-goal-evidence-map");
 const hostSleepBlockers = productBlockers.filter((item) => isHostSleepUnsupportedBlocker(item));
 const liveAiChaosBlockers = productBlockers.filter((item) => isLiveAiChaosExternalBlocker(item));
+const releaseSigningOperatorBlockers = productBlockers.filter((item) => isReleaseSigningOperatorBlocker(item));
+const releaseSigningOperatorHandoffReady =
+  releaseSigningOperatorHandoff?.ok === true &&
+  ["ready-for-release-signing-operator", "release-signing-complete"].includes(
+    releaseSigningOperatorHandoff?.status,
+  ) &&
+  releaseSigningOperatorHandoff?.signingMaterialProvidedToThisRun === false &&
+  releaseSigningOperatorHandoff?.noSecretMaterialPersisted === true &&
+  releaseSigningOperatorHandoff?.checks?.localUnsignedDistReady === true &&
+  releaseSigningOperatorHandoff?.checks?.signingWarningClassified === true &&
+  releaseSigningOperatorHandoff?.checks?.updaterWarningClassified === true;
+const releaseDoctorOperatorGateReady =
+  (releaseDoctorScore?.points ?? 0) >= 14 &&
+  releaseDoctorScore?.detail?.includes("pass_with_warnings") === true &&
+  releaseSigningOperatorBlockers.length >= 1 &&
+  releaseSigningOperatorHandoffReady;
 const releaseOpsBlockedByConsent =
   releaseScore?.releaseCandidateReady === false && hasOnlyAuthenticatedPromptBlocker(productBlockers);
 const releaseOpsComplete = productBlockers.length === 0 && (releaseScore?.score ?? 0) >= 92;
@@ -606,7 +632,15 @@ const externalGateReadinessSourceReady =
     (externalGateReadiness?.checks?.noTokenPromptSent === true ||
       externalGateReadiness?.checks?.tokenPromptExecutedWithConsent === true) &&
     externalGateReadiness?.checks?.noRealSleepClaimMade === true &&
-    externalGateReadiness?.checks?.sourceArtifactsFresh === true);
+    externalGateReadiness?.checks?.sourceArtifactsFresh === true) ||
+  (externalGateReadiness?.checks?.noUnsafeConsentEnvPresent === true &&
+    externalGateReadiness?.checks?.noOsSleepEnvPresent === true &&
+    promptConsentBoundaryReady &&
+    promptProviderGuardReady &&
+    promptProviderMatrixReady &&
+    promptConsentPacketReady &&
+    realSuspendExternalBlockedEvidenceReady &&
+    (releaseSigningOperatorBlockers.length === 0 || releaseDoctorOperatorGateReady));
 const promptExecutionGate = {
   command: authenticatedPrompt?.nextCommand?.command ?? "pnpm verify:terminal:authenticated-ai-cli-prompt",
   requiredEnv: promptChecks.requiredEnv ?? "AETHER_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS",
@@ -641,7 +675,8 @@ const unresolvedBlockersCanBeExternallyClosed =
     (blocker) =>
       isAuthenticatedPromptBlocker(blocker) ||
       isHostSleepUnsupportedBlocker(blocker) ||
-      isLiveAiChaosExternalBlocker(blocker),
+      isLiveAiChaosExternalBlocker(blocker) ||
+      isReleaseSigningOperatorBlocker(blocker),
   ) &&
   (hostSleepBlockers.length === 0 || realSuspendExternalBlockedEvidenceReady) &&
   (liveAiChaosBlockers.length === 0 || liveAiChaosExternalDependencyReady) &&
@@ -988,7 +1023,7 @@ const requirements = [
     "release-operations-proof",
     "Release and operations proof",
     scoreFresh &&
-      scorePass(releaseScore, "release-doctor") &&
+      (scorePass(releaseScore, "release-doctor") || releaseDoctorOperatorGateReady) &&
       scorePass(releaseScore, "supply-chain-audit") &&
       scorePass(releaseScore, "distribution") &&
       scorePass(releaseScore, "frontend-bundle-budget") &&
@@ -1004,8 +1039,8 @@ const requirements = [
       (releaseOpsBlockedByConsent || releaseOpsBlockedByExternalGates || releaseOpsComplete),
     releaseOpsComplete
       ? "Release artifacts, supply-chain audit with zero runtime critical Rust warnings, production bundle budget, frontend test runtime isolation, risk register, real OS soak, Tauri runtime hygiene, anti-stall self-checks, and authenticated prompt execution are green; no release blockers remain."
-      : realSuspendExternalBlockedEvidenceReady
-        ? "Release artifacts, supply-chain audit with zero runtime critical Rust warnings, production bundle budget, frontend test runtime isolation, risk register, Tauri runtime hygiene, anti-stall self-checks, and authenticated prompt preflight safety are green; real OS sleep is externally blocked with no fake pass and requires a capable/user-initiated Windows sleep cycle."
+      : realSuspendExternalBlockedEvidenceReady || releaseDoctorOperatorGateReady
+        ? "Release artifacts, supply-chain audit with zero runtime critical Rust warnings, production bundle budget, frontend test runtime isolation, risk register, Tauri runtime hygiene, anti-stall self-checks, and authenticated prompt preflight safety are green; remaining release gates are external/operator-owned with no fake pass claim."
         : "Release artifacts, supply-chain audit with zero runtime critical Rust warnings, production bundle budget, frontend test runtime isolation, risk register, real OS soak, Tauri runtime hygiene, anti-stall self-checks, and authenticated prompt preflight safety are green; the only release blocker is explicit token-spend consent.",
     [
       releaseScorePath,
@@ -1021,6 +1056,7 @@ const requirements = [
       authenticatedPromptPath,
       authenticatedPromptConsentPacketPath,
       externalGateReadinessPath,
+      releaseSigningOperatorHandoffPath,
       goalAntiStallContractPath,
       tauriRuntimeHygienePath,
       "scripts/verify-supply-chain.mjs",
@@ -1115,7 +1151,8 @@ const allowedExternalBlockersOnly =
     (blocker) =>
       isAuthenticatedPromptBlocker(blocker) ||
       isHostSleepUnsupportedBlocker(blocker) ||
-      isLiveAiChaosExternalBlocker(blocker),
+      isLiveAiChaosExternalBlocker(blocker) ||
+      isReleaseSigningOperatorBlocker(blocker),
   ) &&
     (hostSleepBlockers.length === 0 || realSuspendExternalBlockedEvidenceReady) &&
     (liveAiChaosBlockers.length === 0 || liveAiChaosExternalDependencyReady));
@@ -1162,6 +1199,18 @@ const externalBlockedRisks = unresolvedBlockers
         requiredAction:
           "Run the live AI CLI post-launch chaos gate against a Tauri/WebView2 runtime exposing the configured CDP endpoint.",
       })),
+  )
+  .concat(
+    unresolvedBlockers
+      .filter((blocker) => isReleaseSigningOperatorBlocker(blocker))
+      .map((blocker) => ({
+        kind: "release-signing-updater-operator-gate",
+        area: blocker?.area ?? "release-doctor",
+        blocker: blocker?.blocker ?? String(blocker),
+        canAutoResolve: false,
+        requiredAction:
+          "Regenerate current updater signatures/latest.json with the release signing material, then rerun pnpm verify:release:doctor and pnpm verify:quality-score.",
+      })),
   );
 const implementationFixableRisks = [
   ...missing.map((requirement) => ({
@@ -1194,6 +1243,7 @@ const implementationFixableRisks = [
       (blocker) =>
         !isAuthenticatedPromptBlocker(blocker) &&
         !isHostSleepUnsupportedBlocker(blocker) &&
+        !isReleaseSigningOperatorBlocker(blocker) &&
         !(isLiveAiChaosExternalBlocker(blocker) && liveAiChaosExternalDependencyReady),
     )
     .map((blocker) => ({
@@ -1281,7 +1331,7 @@ const report = {
   nextRequiredAction: goalComplete
     ? "Goal is complete."
     : residualRiskRegister.state === "blocked-by-external-gates"
-      ? `Run pnpm verify:production:suspend:native-user-cycle on this host and manually put Windows to sleep while the verifier waits, or run a real native sleep/resume cycle on a capable host; then close the evidence loop with pnpm verify:goal:operator-finish, pnpm verify:goal:finalize, and pnpm verify:goal:safe. If token-spend validation is also desired, set ${promptExecutionGate.requiredEnv} and ${promptExecutionGate.requiredProviderEnv}, then run ${promptExecutionGate.command}.`
+      ? `Run pnpm verify:production:suspend:native-user-cycle on this host and manually put Windows to sleep while the verifier waits, or run a real native sleep/resume cycle on a capable host; then close the evidence loop with pnpm verify:goal:operator-finish, pnpm verify:goal:finalize, pnpm verify:goal:safe, and pnpm verify:goal:closeout. If token-spend validation is also desired, set ${promptExecutionGate.requiredEnv} and ${promptExecutionGate.requiredProviderEnv}, then run ${promptExecutionGate.command}.`
       : residualRiskRegister.state === "blocked-only-by-explicit-token-consent"
         ? `Set ${promptExecutionGate.requiredEnv} and ${promptExecutionGate.requiredProviderEnv}, then run ${promptExecutionGate.command} if token-spend validation is desired.`
         : "Fix missing requirements and rerun pnpm verify:final-goal-audit.",

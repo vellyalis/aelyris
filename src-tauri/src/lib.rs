@@ -2,6 +2,7 @@ pub mod agent;
 pub mod api;
 pub mod audit;
 pub mod config;
+pub mod control;
 pub mod db;
 pub mod ghostdiff;
 pub mod git;
@@ -139,6 +140,23 @@ pub fn run() {
             let sidecar_adopt_app = app.handle().clone();
             tauri::async_runtime::spawn_blocking(move || {
                 let Some(client) = pty_sidecar::launch_or_connect() else {
+                    // Surface the fallback: without this, a daemon that fails
+                    // to start (port squatted by a foreign process, token
+                    // mismatch after manual deletion, spawn failure) silently
+                    // downgrades every session to non-restart-surviving.
+                    ipc::record_audit_event(
+                        &sidecar_adopt_app,
+                        "terminal",
+                        "sidecar_unavailable",
+                        "warning",
+                        Some("terminal"),
+                        None,
+                        "PTY sidecar daemon unavailable; sessions will not survive app restarts",
+                        serde_json::json!({
+                            "backend": "native-fallback",
+                            "port": 9334,
+                        }),
+                    );
                     return;
                 };
                 if !sidecar_fallback_pty.list().is_empty() {
@@ -486,10 +504,13 @@ pub fn run() {
                     .state::<std::sync::Arc<std::sync::Mutex<mux::manager::MuxManager>>>()
                     .inner()
                     .clone();
-                let api_state =
-                    api::ApiState::new(pty, api::AuthConfig::from_env())
-                        .with_mux(mux_manager)
-                        .with_env_mux_store();
+                let agent_manager = app.state::<AgentManager>().inner().clone();
+                let ghost_layers = app.state::<std::sync::Arc<LayerRegistry>>().inner().clone();
+                let api_state = api::ApiState::new(pty, api::AuthConfig::from_env())
+                    .with_mux(mux_manager)
+                    .with_agent_manager(agent_manager)
+                    .with_ghost_layers(ghost_layers)
+                    .with_env_mux_store();
                 app.manage(api_state.clone());
                 let serve_state = api_state.clone();
                 tauri::async_runtime::spawn(async move {
@@ -580,7 +601,9 @@ pub fn run() {
             ipc::start_agent,
             ipc::stop_agent,
             ipc::list_agents,
+            ipc::list_agent_fleet,
             ipc::route_agent,
+            ipc::inspect_merge_worktree_branch,
             ipc::start_chat_agent,
             ipc::stop_chat_agent,
             ipc::save_temp_image,
@@ -705,14 +728,21 @@ pub fn run() {
                 }
                 // Explicit cleanup only applies to the fallback in-process PTY
                 // owner. When the sidecar is active, tmux-like sessions remain
-                // alive after the WebView/Tauri UI exits.
-                let sidecar_enabled = app
+                // alive after the WebView/Tauri UI exits — unless the user
+                // opted in to full shutdown via terminal.shutdown_sidecar_on_exit.
+                let sidecar_client = app
                     .try_state::<pty_sidecar::PtySidecarState>()
-                    .and_then(|state| state.client())
-                    .is_some();
-                if !sidecar_enabled {
-                    if let Some(pty) = app.try_state::<PtyManager>() {
-                    pty.close_all();
+                    .and_then(|state| state.client());
+                match sidecar_client {
+                    Some(client) => {
+                        if config::load_config().terminal.shutdown_sidecar_on_exit {
+                            tauri::async_runtime::block_on(client.shutdown_daemon());
+                        }
+                    }
+                    None => {
+                        if let Some(pty) = app.try_state::<PtyManager>() {
+                            pty.close_all();
+                        }
                     }
                 }
             }

@@ -3,25 +3,25 @@
 Date: 2026-05-15
 Scope: Sequential execution toward the command-center edge plan.
 
-## Current Canonical State - 2026-06-01
+## Current Canonical State - 2026-06-13
 
-- `pnpm verify:quality-score` currently reports `99/100`, grade `S`, `331/335`, `releaseCandidateReady=false`.
-- `pnpm verify:final-goal-audit` is currently `blocked-by-external-gates`: `implementationFixableCount=0`, `policyBlockedCount=0`, and `externalBlockedCount=1`.
-- The live AI CLI post-launch chaos score is no longer blocked by WebView2 CDP: `.codex-auto/chaos-recovery/native-ai-cli-post-launch-chaos.json` proves native sidecar AI CLI spawn, input, kill cleanup, same-id PTY restart, prompt readiness, and no session residue, while the stale URL truth contract remains covered by the right-rail verifier.
-- The strict right-rail Goal Track DOM proof can also report environment-blocked when WebView2 CDP at `http://127.0.0.1:9222` is not reachable, but the current gate preserves the primary artifact and accepts the fresh `.environment-blocked.json` source contract as `environment-blocked-current-contract`.
-- The safe proof registry has `26/26` registered artifacts green when `rightRailGoalTrackTauri` reports either `pass-current-contract` or `environment-blocked-current-contract`, including `goal-external-gate-readiness`, `real-os-sleep-operator-handoff`, `goal-operator-finish`, optional git handoff artifacts, `glass-legibility-contract`, `right-rail-information-density-contract`, and `goal-anti-stall-contract`.
-- Long external operator gates now persist `.codex-auto/quality/goal-operator-progress.json` with `lastHeartbeatAt`, `nextHeartbeatAt`, active step, and next action, so a resumed run can distinguish an actual stall from a sleep/token gate wait.
+- `pnpm verify:quality-score` currently reports `92/100`, grade `A`, `309/335`, `releaseCandidateReady=false`; after the refreshed final-goal-evidence-map is counted the projected score is `95/100`, `317/335`.
+- `pnpm verify:final-goal-audit` is expected to remain `blocked-by-external-gates`: `implementationFixableCount=0`, with the remaining gates classified as explicit token consent, real OS sleep/host support, and release signing/updater operator work.
+- The right rail is now action-first rather than dashboard-first: ranked next action, focused queue/evidence drawers, owner/provenance chips, orchestra dispatch, toolkit/Git/VS Code entry points, and density guards are the current product contract.
+- Agent Team orchestration now plans parallel lanes for implement, verify, review, and risk work with changed-file scope, handoff prompts, conflict policy, and evidence targets so multiple AI CLI sessions can be run like an Aether-native mux layer instead of loose chat tabs.
+- The required safe proof registry has `27/27` artifacts green when `rightRailGoalTrackTauri` reports either `pass-current-contract` or `environment-blocked-current-contract`, including `goal-external-gate-readiness`, `real-os-sleep-operator-handoff`, `goal-operator-finish`, optional git handoff artifacts, `release-signing-operator-handoff`, `glass-legibility-contract`, `right-rail-information-density-contract`, `agent-team-orchestration-readiness`, and `goal-anti-stall-contract`.
+- Long external operator gates persist `.codex-auto/quality/goal-operator-progress.json` with `lastHeartbeatAt`, `nextHeartbeatAt`, active step, and next action, so a resumed run can distinguish an actual stall from a sleep/token/signing gate wait.
 - `pnpm verify:goal:finalize` excludes git finalization by default; set `AETHER_GOAL_FINALIZE_INCLUDE_GIT=1` only when commit/merge readiness is intentionally in scope.
 - Git finalization is an optional handoff gate, not required for product/safe/finalize evidence: `.codex-auto/quality/git-finalization-readiness.json` records the exact commit/merge runbook when `.git/index.lock` or `.git/objects` permission errors block staging.
 - `real-os-soak` is host-blocked, not passed: the native sleep command returned `SetSuspendState returned false; GetLastError=50`, while native sleep/postcheck preflights and the no-real-sleep-claim postcheck writer pass.
-- `authenticated-ai-cli-prompt-smoke` is now proved through explicit consent; `authenticated-ai-cli-consent-packet` records the required `AETHER_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` plus `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini` boundary for any future token-spending prompt run.
-- Until a capable/user-initiated Windows sleep cycle emits real power events, final audit state must remain `blocked-by-external-gates`, never `complete`.
+- `authenticated-ai-cli-prompt-smoke` is not run by default because it may spend tokens; `authenticated-ai-cli-consent-packet` records the required `AETHER_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` plus `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini` boundary for a future token-spending prompt run.
+- Release doctor is current but remains `pass_with_warnings` until updater signatures and `latest.json` are regenerated from release signing material.
 
 ## Superseded Canonical State - 2026-05-22
 
 - `pnpm verify:quality-score` reports `97/100`, grade `S`, `321/331`, `releaseCandidateReady=false`.
 - `.codex-auto/quality/final-goal-audit.json` reports `ok=true`, `evidenceComplete=true`, and `status=blocked-by-explicit-consent`.
-- `.codex-auto/quality/final-goal-safe-summary.json` reports `ok=true`, `proofArtifactPassCount=24/24`, and no implementation-fixable blocker.
+- `.codex-auto/quality/final-goal-safe-summary.json` reports `ok=true`, `proofArtifactPassCount=27/27`, and no implementation-fixable blocker.
 - The only remaining blocker is `authenticated-ai-cli-prompt-smoke`, because the final authenticated AI CLI prompt smoke may spend tokens.
 - The opt-in artifact is `authenticated-ai-cli-consent-packet`; that final smoke requires `AETHER_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` plus `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini`.
 
@@ -4206,7 +4206,7 @@ Validation:
 
 Result:
 
-- `.codex-auto/quality/final-goal-safe-summary.json` reports `ok=true`, `bootstrapRightRailSemanticProof=false`, `proofArtifactPassCount=24/24`, and `provedRequirementCount=8/8`.
+- `.codex-auto/quality/final-goal-safe-summary.json` reports `ok=true`, `bootstrapRightRailSemanticProof=false`, `proofArtifactPassCount=27/27`, and `provedRequirementCount=8/8`.
 - `.codex-auto/quality/release-quality-score.json` reports `96% A · 321/335`, `releaseCandidateReady=false`.
 - `.codex-auto/quality/final-goal-audit.json` reports `implementationFixableCount=0`, `policyBlockedCount=1`, `externalBlockedCount=1`, and `status=blocked-by-external-gates`.
 - `.codex-auto/production-smoke/right-rail-goal-track-tauri.json` reports `ok=true` with the current score, final audit, safe gate, consent packet, and remaining blocker visible in the live Tauri Goal Track.
@@ -4437,7 +4437,7 @@ Residual:
 
 - Current release score evidence: `96/100`, `321/335`.
 - `releaseCandidateReady=false`; final-goal audit status is `blocked-by-external-gates` until real sleep/resume evidence and consented `authenticated-ai-cli-prompt-smoke` are both proven.
-- Authenticated prompt execution remains gated by `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini` and explicit consent; the safe proof registry is `24/24`.
+- Authenticated prompt execution remains gated by `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini` and explicit consent; the safe proof registry is `27/27`.
 
 ## 2026-05-24 Release Evidence Refresh
 
@@ -4780,7 +4780,7 @@ Residual:
 - Current score after the fresh final-goal evidence map is `96/100`, `321/335`; auditStatus=`blocked-by-external-gates`.
 - The terminal render-fidelity gate is green, and browser/Codex preview now uses the production `TerminalCanvas` path instead of a clean DOM-text surrogate.
 - Remaining external gate is real Windows sleep/resume support; remaining policy gate is explicit token-spend consent for authenticated AI CLI prompt smoke.
-- Authenticated prompt execution remains gated by `authenticated-ai-cli-prompt-smoke`, `authenticated-ai-cli-consent-packet`, and `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini`; safe proof registry is `24/24`.
+- Authenticated prompt execution remains gated by `authenticated-ai-cli-prompt-smoke`, `authenticated-ai-cli-consent-packet`, and `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini`; safe proof registry is `27/27`.
 
 ## 2026-05-31 Final Goal Evidence Refresh
 
@@ -4788,7 +4788,7 @@ Residual:
 - Projected score after the fresh final-goal evidence map remains `96/100`, `321/335`; auditStatus=`blocked-by-external-gates`.
 - Terminal text clarity is now guarded by the production canvas path plus a Sharp-mode no-backdrop-blur terminal shell path.
 - Remaining external gate is real Windows sleep/resume support; remaining policy gate is explicit token-spend consent for `authenticated-ai-cli-prompt-smoke`.
-- Authenticated prompt execution remains gated by `authenticated-ai-cli-prompt-smoke`, `authenticated-ai-cli-consent-packet`, and `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini`; safe proof registry is `24/24`.
+- Authenticated prompt execution remains gated by `authenticated-ai-cli-prompt-smoke`, `authenticated-ai-cli-consent-packet`, and `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini`; safe proof registry is `27/27`.
 
 ## 2026-05-31 Chunked OSC Safe Refresh Guard
 
@@ -4796,7 +4796,7 @@ Residual:
 - The safe wrapper preserves `.codex-auto/production-smoke/chunked-osc-live.json`, writes `.codex-auto/production-smoke/chunked-osc-live.environment-blocked.json`, and requires the last live primary artifact to remain source-fresh before refresh accepts an environment-blocked replay.
 - `pnpm verify:goal:refresh-safe` now includes `chunked-osc-live`, records visible progress, keeps `tokenSpendingPromptExecuted=false` and `realOsSleepInvoked=false`, and accepts only the controlled environment-blocked proof.
 - Anti-stall proof now requires the chunked OSC safe wrapper, so this specific CDP/spawn failure cannot silently regress back into an unhandled stack.
-- Validation passed: `node --check scripts\verify-chunked-osc-live-safe.mjs`, `pnpm verify:terminal:chunked-osc-live:safe` produced the expected environment-blocked artifact, `pnpm verify:goal:refresh-safe`, `pnpm verify:release:hygiene`, and `pnpm verify:goal:safe` remains `24/24`.
+- Validation passed: `node --check scripts\verify-chunked-osc-live-safe.mjs`, `pnpm verify:terminal:chunked-osc-live:safe` produced the expected environment-blocked artifact, `pnpm verify:goal:refresh-safe`, `pnpm verify:release:hygiene`, and `pnpm verify:goal:safe` remains `27/27`.
 
 ## 2026-05-31 Operator Finish Heartbeat Guard
 
@@ -4815,7 +4815,7 @@ Residual:
 ## 2026-05-31 External Gate Handshake Closure
 
 - Tightened `pnpm verify:goal:external-gates` so the external-gate handoff has a fixed before/after sequence instead of the older loose refresh runbook.
-- The after-gate sequence is now `pnpm verify:goal:operator-finish` -> `pnpm verify:goal:finalize` -> `pnpm verify:goal:safe`, keeping token/sleep operations explicit while closing score/audit/docs/matrix ordering automatically.
+- The after-gate sequence is now `pnpm verify:goal:operator-finish` -> `pnpm verify:goal:finalize` -> `pnpm verify:goal:safe` -> `pnpm verify:goal:closeout`, keeping token/sleep operations explicit while closing score/audit/docs/matrix ordering automatically.
 - `pnpm verify:goal:safe` now rejects an external-gate readiness artifact unless it contains the finalize closure, and `pnpm verify:goal:anti-stall` requires the same runbook terms.
 - `pnpm verify:goal:finalize` now treats the goal docs and external-gate readiness source as freshness inputs, preventing stale docs/runbook artifacts from satisfying the finalizer after a handoff edit.
 - This prevents a resumed operator run from getting stranded between an external gate and the final self-referential evidence refresh.

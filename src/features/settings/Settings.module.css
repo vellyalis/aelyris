@@ -206,6 +206,12 @@
   --mood-c: #06213a;
 }
 
+.moodCard[data-mood="aether-crystal"] {
+  --mood-a: #8be9ff;
+  --mood-b: #d8f7ff;
+  --mood-c: #081d2f;
+}
+
 .moodCard[data-mood="aether-dream"] {
   --mood-a: #c8b6ff;
   --mood-b: #ffd996;

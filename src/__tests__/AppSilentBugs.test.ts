@@ -692,14 +692,14 @@ describe("Release evidence gates", () => {
     );
     expect(packageJson).toContain('"verify:tauri-runtime-hygiene": "node scripts/verify-tauri-runtime-hygiene.mjs"');
     expect(packageJson).toContain(
-      '"tauri:dev": "node scripts/build-pty-sidecar-dev.mjs && tauri dev --config src-tauri/tauri.dev.conf.json"',
+      '"tauri:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-pty-sidecar-dev.ps1 && tauri dev --config src-tauri/tauri.dev.conf.json"',
     );
-    const devSidecarBuild = readFileSync(join(process.cwd(), "scripts/build-pty-sidecar-dev.mjs"), "utf8");
+    const devSidecarBuild = readFileSync(join(process.cwd(), "scripts/build-pty-sidecar-dev.ps1"), "utf8");
     expect(devSidecarBuild).toContain("src-tauri/pty-server/Cargo.toml");
     expect(devSidecarBuild).toContain("AETHER_DEV_SIDECAR_REPLACE_RETRIES");
-    expect(devSidecarBuild).toContain("stopProcessesUsingPath");
+    expect(devSidecarBuild).toContain("Stop-ProcessesUsingPath");
     expect(devSidecarBuild).toContain("Get-CimInstance Win32_Process");
-    expect(devSidecarBuild).toContain("isLockedExecutableError");
+    expect(devSidecarBuild).toContain("Replace-DevSidecarExecutable");
     expect(script).toContain("smokeAiCliKillCleanup");
     expect(script).toContain("spawn_interactive_agent");
     expect(script).toContain("aiCliKillCleanup");
@@ -1567,7 +1567,7 @@ describe("App right rail composition", () => {
     expect(src).toContain("rightRailInspectorProof");
     expect(src).toContain("data-proof-state={rightRailInspectorProofState}");
     expect(src).toContain('aria-label="Selected mode target and proof"');
-    expect(src).toContain(">Command Center</span>");
+    expect(src).toContain(">Orchestra Command</span>");
     expect(src).toContain('className="right-panel-advanced-drawer"');
     expect(src).not.toContain(">Project tools</span>");
     expect(src).not.toContain("Mission Control");
@@ -1586,7 +1586,7 @@ describe("App right rail composition", () => {
     expect(packageJson).toContain('"verify:clauge-ui-refresh"');
   });
 
-  it("keeps the right rail essential-first instead of front-loading telemetry detail", () => {
+  it("keeps the right rail orchestra-first instead of front-loading telemetry detail", () => {
     const src = getSrc();
     const styles = getStyles();
     const packageJson = readFileSync(join(process.cwd(), "package.json"), "utf8");
@@ -1597,12 +1597,15 @@ describe("App right rail composition", () => {
 
     expect(src).toContain('className="right-panel-essential-grid"');
     expect(src).toContain("rightRailEssentialChecks");
-    expect(src).toContain("rightRailGitSummary");
-    expect(src).toContain("rightRailVsCodeTargetPath");
-    expect(src).toContain("rightRailVsCodeAction");
-    expect(src).toContain("Git status:");
-    expect(src).toContain("VS Code target:");
-    expect(src).toContain("Health snapshot:");
+    expect(src).toContain("rightRailToolkitSummary");
+    expect(src).toContain("rightRailToolkitDetail");
+    expect(src).toContain("Toolkit status:");
+    expect(src).toContain("Agent lanes:");
+    expect(src).toContain("Review lane:");
+    expect(src).toContain("rightRailOrchestraLanes");
+    expect(src).toContain("handleStartRightRailOrchestra");
+    expect(src).toContain("showOrchestra({");
+    expect(src).toContain("buildOrchestraPrompts({");
     expect(src).toContain('className="right-panel-advanced-drawer"');
     expect(src).toContain('className="right-panel-evidence-drawer"');
     expect(src).toContain('className="right-panel-health-drawer"');
@@ -1623,11 +1626,12 @@ describe("App right rail composition", () => {
     expect(packageJson).toContain('"verify:right-rail-density"');
     expect(suite).toContain("information-density");
     expect(density).toContain("pass-current-right-rail-information-density-contract");
-    expect(density).toContain("default command center keeps the actionable spine");
+    expect(density).toContain("default orchestra command keeps dispatch lanes");
+    expect(density).toContain("right rail exposes role lanes and a first-class Orchestra dispatch action");
     expect(density).toContain("Decision focus is an urgent exception surface");
     expect(density).toContain("final-goal proof and edge-score evidence stay behind the Evidence drawer");
     expect(score).toContain("rightRailInformationDensityPass");
-    expect(score).toContain("essential-first density");
+    expect(score).toContain("orchestra-first density");
     expect(finalSafe).toContain("right-rail-information-density");
     expect(finalSafe).toContain("rightRailInformationDensityVerdict");
   });
@@ -1660,7 +1664,7 @@ describe("App right rail composition", () => {
     expect(src).toContain("Owner:");
     expect(src).toContain("const rightRailPrimaryAction = rightRailModeActions[0] ?? rightRailActions[0] ?? null");
     expect(src).toContain("const rightRailRunLoopPhase");
-    expect(src).toContain('className="right-panel-run-loop"');
+    expect(src).toContain('className="right-panel-run-loop right-panel-orchestra-command"');
     expect(src).toContain("data-phase={rightRailRunLoopPhase}");
     expect(src).toContain('data-action-id={rightRailPrimaryAction?.id ?? "none"}');
     expect(src).toContain('data-operation={rightRailPrimaryAction?.execution.operation ?? "none"}');
@@ -1671,7 +1675,7 @@ describe("App right rail composition", () => {
     expect(src).toContain('label: "Target"');
     expect(src).toContain('label: "Recovery"');
     expect(src).toContain("rightRailRunLoopRecovery");
-    expect(src).toContain(">Current Focus</span>");
+    expect(src).toContain(">Orchestra Command</span>");
     expect(src).toContain('className="right-panel-run-loop-action"');
     expect(src).toContain("handleRightRailAction(rightRailPrimaryAction)");
     expect(src).toContain('className="right-panel-action-phase"');
@@ -2098,7 +2102,7 @@ describe("App right rail composition", () => {
       'blockedReason: "Destructive file-system write requires explicit approval before deleting generated output."',
     );
     expect(src).toContain('nextActor: "human"');
-    expect(src).toContain('data-widget="decision-inbox"');
+    expect(src).toContain('widget="decision-inbox"');
     expect(src).toContain("<DecisionInboxPanel");
     expect(src).toContain("onOpenWorkflow={handleOpenDecisionWorkflow}");
     expect(src).toContain("onOpenAudit={handleOpenDecisionAudit}");
@@ -2271,8 +2275,8 @@ describe("App right rail composition", () => {
 
     const commandRail = src.slice(commandStart, reviewStart);
     const observeRail = src.slice(observeStart);
-    expect(commandRail).toContain('data-widget="decision-inbox"');
-    expect(commandRail).toContain('data-widget="sessions"');
+    expect(commandRail).toContain('widget="decision-inbox"');
+    expect(commandRail).toContain('widget="sessions"');
     expect(src.indexOf("{rightRailHasBlockingDecision && (")).toBeLessThan(
       src.indexOf('className="right-panel-decision-focus"'),
     );
@@ -2285,8 +2289,11 @@ describe("App right rail composition", () => {
     expect(src.indexOf('className="right-panel-decision-focus"')).toBeLessThan(
       src.indexOf('className="right-panel-action-stack"'),
     );
-    expect(commandRail.indexOf('data-widget="decision-inbox"')).toBeLessThan(commandRail.indexOf('widget="workflow"'));
-    expect(commandRail.indexOf('data-widget="sessions"')).toBeLessThan(commandRail.indexOf('widget="toolkit"'));
+    expect(commandRail.indexOf('data-widget="toolkit"')).toBeLessThan(commandRail.indexOf('widget="sessions"'));
+    expect(commandRail.indexOf('widget="sessions"')).toBeLessThan(commandRail.indexOf('widget="workflow"'));
+    expect(commandRail.indexOf('widget="decision-inbox"')).toBeGreaterThan(
+      commandRail.indexOf("rightRailHasBlockingDecision"),
+    );
     expect(observeRail.indexOf('data-widget="processes"')).toBeLessThan(observeRail.indexOf('widget="audit-timeline"'));
     expect(observeRail.indexOf('data-widget="live-panes"')).toBeLessThan(observeRail.indexOf('widget="run-graph"'));
   });
@@ -2299,12 +2306,12 @@ describe("App right rail composition", () => {
     expect(src).toContain("rightRailVisibleActions.slice(0, 1)");
     expect(src).toContain('className="right-panel-advanced-drawer"');
     expect(src).toContain('className="right-panel-essential-grid"');
-    expect(src).toContain("Git status:");
-    expect(src).toContain("VS Code target:");
-    expect(src).toContain("Health snapshot:");
-    expect(src).toContain('setRightRailFocusWidget("scm")');
-    expect(src).toContain("openGitDiffInVSCode(projectPath, rightRailPrimaryChangedFile.path)");
-    expect(src).toContain("openInVSCode(rightRailVsCodeTargetPath)");
+    expect(src).toContain("Toolkit status:");
+    expect(src).toContain("Agent lanes:");
+    expect(src).toContain("Review lane:");
+    expect(src).toContain('setRightRailFocusWidget("toolkit")');
+    expect(src).toContain('setRightRailFocusWidget("sessions")');
+    expect(src).toContain('setRightRailFocusWidget("review-queue")');
     expect(src).toContain('className="right-panel-evidence-drawer"');
     expect(src).toContain('className="right-panel-queue-drawer"');
     expect(src).toContain('className="right-panel-health-drawer"');

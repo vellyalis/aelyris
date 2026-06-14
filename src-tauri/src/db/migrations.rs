@@ -288,6 +288,17 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             ON history_search_entries(workspace_id, entry_type, created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_history_search_text
             ON history_search_entries(title, body);
+
+        -- User-assigned pane names/roles keyed by terminal id, so panes
+        -- re-adopted from the PTY sidecar daemon after an app restart keep
+        -- their identity (which agent ran where) instead of resetting to
+        -- bare shell names.
+        CREATE TABLE IF NOT EXISTS pane_metadata (
+            terminal_id TEXT PRIMARY KEY,
+            name        TEXT NOT NULL DEFAULT '',
+            role        TEXT NOT NULL DEFAULT '',
+            updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+        );
         ",
     )?;
 

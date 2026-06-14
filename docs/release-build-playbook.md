@@ -60,7 +60,7 @@ Use the user-initiated sleep cycle when `SetSuspendState` is rejected by the hos
 2. Run `pnpm verify:production:suspend:native-user-cycle`.
 3. While the verifier is waiting, put Windows to sleep manually from Start menu, lid close, or the power button.
 4. Wake the machine and let the verifier continue through native resume, post-resume probes, and Windows System power-event validation.
-5. Close the evidence loop with `pnpm verify:goal:operator-finish`, `pnpm verify:goal:finalize`, and `pnpm verify:goal:safe`.
+5. Close the evidence loop with `pnpm verify:goal:operator-finish`, `pnpm verify:goal:finalize`, `pnpm verify:goal:safe`, and `pnpm verify:goal:closeout`.
 
 The user-initiated cycle never calls the Windows sleep API itself. It only arms evidence, waits for real suspend/resume power events, runs native postcheck probes, and refuses to mark the gate passed if the event pair is missing.
 
@@ -153,7 +153,7 @@ Compare the `whoami` SID/group output against the Deny SIDs before deciding what
 
 Run `pnpm verify:goal:operator-finish` first for the final external gates. Without exact opt-in environment variables it only writes a no-token/no-sleep handoff artifact.
 
-After either external gate, close the evidence loop with `pnpm verify:goal:operator-finish`, `pnpm verify:goal:finalize`, and `pnpm verify:goal:safe`.
+After either external gate, close the evidence loop with `pnpm verify:goal:operator-finish`, `pnpm verify:goal:finalize`, `pnpm verify:goal:safe`, and `pnpm verify:goal:closeout`.
 
 ## Release Notes
 

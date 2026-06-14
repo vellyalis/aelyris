@@ -169,12 +169,18 @@ pub fn remove_worktree(
     Ok(())
 }
 
-/// Validate branch name: alphanumeric, hyphens, underscores, slashes, dots only. No ".." or absolute paths.
-fn validate_branch_name(name: &str) -> Result<(), String> {
-    if name.is_empty() {
-        return Err("Branch name cannot be empty".to_string());
+/// Validate branch name: ASCII alphanumeric, hyphens, underscores, slashes, dots only.
+/// Rejects path traversal, absolute-ish paths, unsafe prefixes, and overlong names.
+pub fn validate_branch_name(name: &str) -> Result<(), String> {
+    if name.is_empty() || name.len() > 200 {
+        return Err("Branch name must be 1-200 characters".to_string());
     }
-    if name.contains("..") || name.starts_with('/') || name.starts_with('\\') || name.contains(':')
+    if name.contains("..")
+        || name.starts_with('/')
+        || name.starts_with('\\')
+        || name.starts_with('-')
+        || name.starts_with('.')
+        || name.contains(':')
     {
         return Err(format!("Invalid branch name: {}", name));
     }
@@ -190,8 +196,6 @@ fn validate_branch_name(name: &str) -> Result<(), String> {
 /// Predict where `create_worktree(repo_path, branch_name)` will place the
 /// worktree — used by ghostdiff to register a layer before the worktree
 /// exists on disk, so the fs watcher can start as soon as it does.
-///
-/// Mirrors the formula in `create_worktree`; the two must stay in sync.
 pub fn predict_worktree_path(repo_path: &str, branch_name: &str) -> std::path::PathBuf {
     let repo = std::path::Path::new(repo_path);
     let parent = repo.parent().unwrap_or(repo);
@@ -286,4 +290,37 @@ pub fn list_branches(repo_path: &str) -> Result<Vec<BranchInfo>, String> {
         });
     }
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_branch_name;
+
+    #[test]
+    fn validates_safe_agent_branch_names() {
+        for name in [
+            "agent/implementer-add-login-form",
+            "task/123",
+            "feature/foo_bar.1",
+        ] {
+            assert!(validate_branch_name(name).is_ok(), "{name}");
+        }
+    }
+
+    #[test]
+    fn rejects_unsafe_branch_names() {
+        for name in [
+            "",
+            "-leading",
+            ".leading",
+            "/absolute",
+            "\\absolute",
+            "feature/../main",
+            "feature:main",
+            "feature/日本語",
+            &"a".repeat(201),
+        ] {
+            assert!(validate_branch_name(name).is_err(), "{name}");
+        }
+    }
 }

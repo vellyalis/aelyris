@@ -16,6 +16,16 @@ use tokio::sync::broadcast;
 /// are running at the same time.
 pub const DEFAULT_TIMEOUT_MS: u64 = 30_000;
 
+fn shell_ready(shell: &ShellType, output: &str) -> bool {
+    match shell {
+        ShellType::PowerShell => {
+            output.contains("\x1b]133;A") || output.contains("PS ") || output.contains("PowerShell")
+        }
+        ShellType::Cmd => output.contains(">"),
+        _ => !output.is_empty(),
+    }
+}
+
 /// Spawn a PTY, send input, collect output until timeout or expected string found.
 ///
 /// Returns the (terminal_id, accumulated_output).
@@ -35,25 +45,38 @@ pub fn spawn_and_exec(
         .subscribe_output(&id)
         .map_err(|e| format!("subscribe_output: {}", e))?;
 
-    // PowerShell can take longer than cmd.exe to reach an input-ready prompt,
-    // especially on cold CI/dev machines.
-    let startup_delay_ms = match shell {
-        ShellType::PowerShell => 3_000,
-        _ => 300,
-    };
-    std::thread::sleep(Duration::from_millis(startup_delay_ms));
-
-    if let Some(payload) = input {
-        manager.write(&id, payload.as_bytes())?;
-    }
-
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .map_err(|e| format!("tokio runtime: {}", e))?;
 
-    let output = rt.block_on(async {
+    let startup_output = rt.block_on(async {
         let mut acc = String::new();
+        let total = match shell {
+            ShellType::PowerShell => Duration::from_millis(15_000),
+            _ => Duration::from_millis(2_000),
+        };
+        let start = Instant::now();
+        loop {
+            if shell_ready(shell, &acc) || start.elapsed() >= total {
+                break;
+            }
+            let remaining = total.saturating_sub(start.elapsed());
+            match tokio::time::timeout(remaining.min(Duration::from_millis(500)), rx.recv()).await {
+                Ok(Ok(chunk)) => acc.push_str(&String::from_utf8_lossy(&chunk)),
+                Ok(Err(broadcast::error::RecvError::Lagged(_))) => continue,
+                Ok(Err(broadcast::error::RecvError::Closed)) | Err(_) => break,
+            }
+        }
+        acc
+    });
+
+    if let Some(payload) = input {
+        manager.write(&id, payload.as_bytes())?;
+    }
+
+    let output = rt.block_on(async {
+        let mut acc = startup_output;
         let start = Instant::now();
         let total = Duration::from_millis(timeout_ms);
         loop {

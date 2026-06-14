@@ -49,6 +49,7 @@ beforeEach(() => {
     wallpaperSettingsByMood: {
       "aether-sky": { imagePath: null, opacity: 0, positionX: 50, positionY: 50, scale: 100 },
       "aether-moonwater": { imagePath: null, opacity: 0, positionX: 50, positionY: 50, scale: 100 },
+      "aether-crystal": { imagePath: null, opacity: 0, positionX: 50, positionY: 50, scale: 100 },
       "aether-dream": { imagePath: null, opacity: 0, positionX: 50, positionY: 50, scale: 100 },
       "aether-cute": { imagePath: null, opacity: 0, positionX: 50, positionY: 50, scale: 100 },
       "aether-sakura": { imagePath: null, opacity: 0, positionX: 50, positionY: 50, scale: 100 },

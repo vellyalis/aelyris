@@ -668,7 +668,7 @@ async function smokeRails(page) {
       bodyTextSample: document.body.innerText.slice(0, 500),
     };
   });
-  const expectedLabels = ["Run", "Git", "Health"];
+  const expectedLabels = ["Run", "Review", "Health"];
   if (
     chrome.tabs.length !== 3 ||
     !expectedLabels.every((label) => chrome.tabs.some((tab) => tab.label.startsWith(label)))

@@ -479,6 +479,11 @@ const runbook = {
     script: "scripts/verify-final-goal-safe.mjs",
     safety: "Replays the ordered safe evidence chain and keeps token prompt and real sleep as explicit external gates.",
   },
+  closeoutSnapshot: {
+    command: "pnpm verify:goal:closeout",
+    script: "scripts/verify-goal-closeout-snapshot.mjs",
+    safety: "Verifies score/audit/safe/docs/matrix/operator artifacts agree after the final safe gate.",
+  },
   gitFinalization: {
     command: "pnpm verify:goal:git-finalization",
     shellDiagnostics: "pnpm verify:goal:git-finalization:shell",
@@ -492,6 +497,7 @@ const runbook = {
     "pnpm verify:goal:refresh-safe",
     "pnpm verify:goal:finalize",
     "pnpm verify:goal:safe",
+    "pnpm verify:goal:closeout",
   ],
 };
 

@@ -23,11 +23,7 @@
 .terminalArea[data-terminal-text-clarity="solid"] {
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--accent) 1.6%, transparent), transparent 24%),
-    color-mix(
-      in srgb,
-      var(--terminal-raster-bg) calc(var(--terminal-surface-opacity, 0.82) * 94%),
-      transparent
-    );
+    color-mix(in srgb, var(--terminal-raster-bg) calc(var(--terminal-surface-opacity, 0.82) * 94%), transparent);
 }
 
 .terminalArea::before,

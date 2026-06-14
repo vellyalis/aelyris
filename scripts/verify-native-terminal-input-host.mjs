@@ -204,8 +204,10 @@ const checks = [
     "surface-paste-guard-bounded-clipboard-retry",
     nativeInput.includes("CLIPBOARD_OPEN_RETRY_COUNT") &&
       nativeInput.includes("CLIPBOARD_OPEN_RETRY_DELAY_MS") &&
-      nativeInput.includes("for _ in 0..CLIPBOARD_OPEN_RETRY_COUNT") &&
-      nativeInput.includes("Duration::from_millis") &&
+      nativeInput.includes("read_native_clipboard_text_with_attempts(") &&
+      nativeInput.includes("CLIPBOARD_OPEN_RETRY_COUNT,\n            CLIPBOARD_OPEN_RETRY_DELAY_MS") &&
+      nativeInput.includes("for attempt in 0..attempts") &&
+      nativeInput.includes("std::thread::sleep(std::time::Duration::from_millis(delay_ms))") &&
       nativeInput.includes("CLIPBOARD_OPEN_RETRY_DELAY_MS") &&
       !nativeInput.includes("for _ in 0..12") &&
       !nativeInput.includes("from_millis(16)"),

@@ -34,6 +34,7 @@ const STEP_FALLBACK_ARTIFACTS = {
   "glass-legibility": [".codex-auto/quality/glass-legibility-contract.json"],
   "right-rail-information-density": [".codex-auto/quality/right-rail-information-density-contract.json"],
   "anti-stall-contract": [".codex-auto/quality/goal-anti-stall-contract.json"],
+  "release-signing-operator-handoff": [".codex-auto/quality/release-signing-operator-handoff.json"],
   "real-os-sleep-operator-handoff": [".codex-auto/quality/real-os-sleep-operator-handoff.json"],
   "external-gate-readiness": [".codex-auto/quality/goal-external-gate-readiness.json"],
   "quality-score-pre-audit": [".codex-auto/quality/release-quality-score.json"],
@@ -379,6 +380,11 @@ const steps = [
     "verify-right-rail-information-density.mjs",
   ),
   runNodeStep("anti-stall-contract", "Anti-stall and operator self-check contract", "verify-goal-anti-stall-contract.mjs"),
+  runNodeStep(
+    "release-signing-operator-handoff",
+    "Release signing/updater operator handoff",
+    "verify-release-signing-operator-handoff.mjs",
+  ),
   runNodeStep(
     "real-os-sleep-operator-handoff",
     "Real OS sleep operator handoff",

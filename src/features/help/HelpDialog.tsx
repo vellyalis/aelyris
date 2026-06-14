@@ -63,7 +63,7 @@ const HELP_CONTENT: Record<HelpSection, { title: string; items: string[] }> = {
     items: [
       "Ctrl+Shift+A: Start a headless agent session with a prompt.",
       "Run tab (right panel): Start agents, workflows, and project tool commands.",
-      "Git tab (right panel): Review files changed by agents and prepare commits.",
+      "Review tab (right panel): Review files changed by agents and prepare commits.",
       "Health tab (right panel): View running sessions, logs, reliability signals, and costs.",
       "Interactive mode: Ctrl+Enter in the prompt input to start a PTY-based interactive session.",
       "Context gauge: Shows token usage percentage per session.",

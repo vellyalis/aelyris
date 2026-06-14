@@ -10,6 +10,7 @@
 //   AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini
 //   AETHER_AUTH_PROMPT_TEXT="..."
 //   AETHER_TAURI_CDP=http://127.0.0.1:9222
+//   AETHER_AUTH_PROMPT_APP_URL=http://localhost:1420/
 
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -20,6 +21,8 @@ import { chromium } from "@playwright/test";
 
 const CONSENT_PHRASE = "I_UNDERSTAND_THIS_MAY_SPEND_TOKENS";
 const CDP = process.env.AETHER_TAURI_CDP ?? process.env.AETHER_IME_CDP ?? "http://127.0.0.1:9222";
+const APP_URL = process.env.AETHER_AUTH_PROMPT_APP_URL ?? "http://localhost:1420/";
+const APP_ORIGIN = new URL(APP_URL).origin;
 const PROJECT_PATH = (process.env.AETHER_TAURI_PROJECT ?? process.cwd()).replaceAll("\\", "/");
 const ROOT = resolve(process.cwd());
 const OUT = process.env.AETHER_AUTH_PROMPT_OUT ?? ".codex-auto/production-smoke/authenticated-ai-cli-prompt-smoke.json";
@@ -196,6 +199,7 @@ function buildNoTokenPreflight(provider) {
 function isAetherPage(page) {
   const url = page.url();
   return (
+    url.startsWith(APP_ORIGIN) ||
     url.includes("localhost:1420") ||
     url.includes("127.0.0.1:1420") ||
     url.startsWith("tauri://localhost") ||
@@ -322,6 +326,7 @@ function optInCommand() {
       AETHER_AUTH_PROMPT_CONSENT: CONSENT_PHRASE,
       AETHER_AUTH_PROMPT_PROVIDER: PROVIDER,
       AETHER_TAURI_CDP: CDP,
+      AETHER_AUTH_PROMPT_APP_URL: APP_URL,
     },
   };
 }
@@ -333,6 +338,7 @@ async function main() {
     status: "running",
     startedAt: new Date().toISOString(),
     cdp: CDP,
+    appUrl: APP_URL,
     projectPath: PROJECT_PATH,
     provider: PROVIDER,
     marker: MARKER,
