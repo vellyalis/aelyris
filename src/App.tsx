@@ -2809,6 +2809,7 @@ export function App() {
 
   const {
     sessions,
+    fleetSessions,
     activeSessionId,
     setActiveSessionId,
     startAgent,
@@ -3292,12 +3293,15 @@ export function App() {
 
   const { branch, changedFiles, refresh: refreshGitStatus } = useGitStatus(projectPath);
   const rightRailUsesFixtures = devVisualQa.enabled && devVisualQa.railScenarioExplicit;
+  // Single-source projection: the rail panels consume the unified fleet
+  // (headless + interactive) rather than only headless sessions. AgentFleetSession
+  // extends AgentSession so AgentSession[]-typed panels accept this unchanged.
   const rightRailSessions = useMemo(
     () =>
       rightRailUsesFixtures
         ? createDevVisualQaSessions(devVisualQa.railScenario, devVisualQa.projectPath || projectPath)
-        : sessions,
-    [devVisualQa.projectPath, devVisualQa.railScenario, projectPath, rightRailUsesFixtures, sessions],
+        : fleetSessions,
+    [devVisualQa.projectPath, devVisualQa.railScenario, projectPath, rightRailUsesFixtures, fleetSessions],
   );
   const rightRailChangedFiles = useMemo(
     () => (rightRailUsesFixtures ? createDevVisualQaChangedFiles(devVisualQa.railScenario) : changedFiles),
