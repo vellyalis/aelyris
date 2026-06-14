@@ -4147,6 +4147,24 @@ export function App() {
     [startInteractiveSession],
   );
 
+  // Shared wiring for the three AgentInspector rail instances (command / review
+  // / observe). Identical props, so define once and spread to avoid 13x3 drift.
+  const agentInspectorProps = {
+    sessions: rightRailSessions,
+    activeSessionId: rightRailActiveSessionId,
+    onSelectSession: handleSelectRightRailSession,
+    onStartAgent: handleStartAgent,
+    onStopAgent: stopAgent,
+    onCreateWorktree: createWorktree,
+    onRemoveWorktree: removeWorktree,
+    onRenameSession: renameSession,
+    interactiveSessions,
+    onFocusInteractiveSession: handleFocusInteractiveSession,
+    onStopInteractiveSession: stopInteractiveSession,
+    onEndSessionAndRemoveWorktree: endSessionAndRemoveWorktree,
+    onStartInteractiveSession: handleStartInteractiveSession,
+  };
+
   // ── Keyboard shortcuts (extracted hook) ──
 
   useKeyboardShortcuts({
@@ -6436,21 +6454,7 @@ export function App() {
                               defaultOpen={false}
                               forceOpen={rightRailFocusWidget === "sessions"}
                             >
-                              <AgentInspector
-                                sessions={rightRailSessions}
-                                activeSessionId={rightRailActiveSessionId}
-                                onSelectSession={handleSelectRightRailSession}
-                                onStartAgent={handleStartAgent}
-                                onStopAgent={stopAgent}
-                                onCreateWorktree={createWorktree}
-                                onRemoveWorktree={removeWorktree}
-                                onRenameSession={renameSession}
-                                interactiveSessions={interactiveSessions}
-                                onFocusInteractiveSession={handleFocusInteractiveSession}
-                                onStopInteractiveSession={stopInteractiveSession}
-                                onEndSessionAndRemoveWorktree={endSessionAndRemoveWorktree}
-                                onStartInteractiveSession={handleStartInteractiveSession}
-                              />
+                              <AgentInspector {...agentInspectorProps} />
                             </RightRailWidgetFrame>
                           </Suspense>
                         </ErrorBoundary>
@@ -6524,21 +6528,7 @@ export function App() {
                         <ErrorBoundary>
                           <Suspense fallback={null}>
                             <div className="bento-widget" data-widget="sessions" style={{ minHeight: 200 }}>
-                              <AgentInspector
-                                sessions={rightRailSessions}
-                                activeSessionId={rightRailActiveSessionId}
-                                onSelectSession={handleSelectRightRailSession}
-                                onStartAgent={handleStartAgent}
-                                onStopAgent={stopAgent}
-                                onCreateWorktree={createWorktree}
-                                onRemoveWorktree={removeWorktree}
-                                onRenameSession={renameSession}
-                                interactiveSessions={interactiveSessions}
-                                onFocusInteractiveSession={handleFocusInteractiveSession}
-                                onStopInteractiveSession={stopInteractiveSession}
-                                onEndSessionAndRemoveWorktree={endSessionAndRemoveWorktree}
-                                onStartInteractiveSession={handleStartInteractiveSession}
-                              />
+                              <AgentInspector {...agentInspectorProps} />
                             </div>
                           </Suspense>
                         </ErrorBoundary>
@@ -6726,21 +6716,7 @@ export function App() {
                         <ErrorBoundary>
                           <Suspense fallback={null}>
                             <div className="bento-widget" data-widget="sessions" style={{ minHeight: 200 }}>
-                              <AgentInspector
-                                sessions={rightRailSessions}
-                                activeSessionId={rightRailActiveSessionId}
-                                onSelectSession={handleSelectRightRailSession}
-                                onStartAgent={handleStartAgent}
-                                onStopAgent={stopAgent}
-                                onCreateWorktree={createWorktree}
-                                onRemoveWorktree={removeWorktree}
-                                onRenameSession={renameSession}
-                                interactiveSessions={interactiveSessions}
-                                onFocusInteractiveSession={handleFocusInteractiveSession}
-                                onStopInteractiveSession={stopInteractiveSession}
-                                onEndSessionAndRemoveWorktree={endSessionAndRemoveWorktree}
-                                onStartInteractiveSession={handleStartInteractiveSession}
-                              />
+                              <AgentInspector {...agentInspectorProps} />
                             </div>
                           </Suspense>
                         </ErrorBoundary>
