@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { type BudgetThresholds, getBudgetWarning } from "../../shared/lib/budgetStatus";
 import { getRole } from "../../shared/lib/orchestrator";
+import { formatRelativeAge } from "../../shared/lib/relativeTime";
 import { type AgentSession, getSessionColor, STATUS_COLORS, STATUS_LABELS } from "../../shared/types/agent";
 import { getMaxTokens } from "../../shared/types/model";
 import { PixelAvatar } from "../../shared/ui/PixelAvatar";
@@ -202,7 +203,7 @@ export function SessionCard({
                     {conflictCount}
                   </span>
                 )}
-                <span className={styles.cardAge}>{formatAge(s.startedAt)}</span>
+                <span className={styles.cardAge}>{formatRelativeAge(s.startedAt)}</span>
               </div>
             </div>
           </div>
@@ -304,15 +305,4 @@ export function SessionCard({
       </RadixContextMenu.Portal>
     </RadixContextMenu.Root>
   );
-}
-
-function formatAge(timestamp: number): string {
-  const diff = Date.now() - timestamp;
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
 }

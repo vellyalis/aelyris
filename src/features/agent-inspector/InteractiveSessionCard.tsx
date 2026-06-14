@@ -1,5 +1,6 @@
 import * as RadixContextMenu from "@radix-ui/react-context-menu";
 import { GitBranch, TerminalSquare, Zap } from "lucide-react";
+import { formatRelativeAge } from "../../shared/lib/relativeTime";
 import { type AgentStatus, getSessionColor, STATUS_COLORS, STATUS_LABELS } from "../../shared/types/agent";
 import type { InteractiveSession } from "../../shared/types/interactiveAgent";
 import { getCliColor, getCliLabel } from "../../shared/types/interactiveAgent";
@@ -87,7 +88,7 @@ export function InteractiveSessionCard({
                 <span className={styles.cardPct} title={`PTY backend: ${backendLabel}`}>
                   {backendLabel}
                 </span>
-                <span className={styles.cardAge}>{formatAge(is.started_at * 1000)}</span>
+                <span className={styles.cardAge}>{formatRelativeAge(is.started_at * 1000)}</span>
               </div>
             </div>
           </div>
@@ -136,15 +137,4 @@ export function InteractiveSessionCard({
       </RadixContextMenu.Portal>
     </RadixContextMenu.Root>
   );
-}
-
-function formatAge(timestamp: number): string {
-  const diff = Date.now() - timestamp;
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
 }
