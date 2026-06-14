@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::io::BufRead;
 use std::path::{Component, Path, PathBuf};
-use std::process::Stdio;
+
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
-use std::time::{SystemTime, UNIX_EPOCH};
+
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::broadcast;
 
@@ -15,6 +15,8 @@ use crate::snapshot::{SnapshotStore, SnapshotTrigger, TerminalSnapshot};
 use crate::term::NativeTerminalRegistry;
 use crate::watchdog::auto_repair::AutoRepairManager;
 use crate::watchdog::{pane_watcher, AutoRepairConfig, ErrorContext};
+
+use super::persistence_commands::{normalize_command_history_cwd, save_command_history};
 
 const PTY_OUTPUT_BATCH_MAX_BYTES: usize = 64 * 1024;
 const PTY_OUTPUT_BATCH_INTERVAL: Duration = Duration::from_millis(16);
@@ -104,7 +106,7 @@ fn persist_prompt_mark_exit_code(
     }
 }
 
-fn persist_command_block(app: &AppHandle, record: &crate::term::CommandBlockRecord) {
+pub(crate) fn persist_command_block(app: &AppHandle, record: &crate::term::CommandBlockRecord) {
     let Some(db) = app.try_state::<crate::db::ManagedDb>() else {
         return;
     };
@@ -119,7 +121,7 @@ fn persist_command_block(app: &AppHandle, record: &crate::term::CommandBlockReco
 }
 
 #[allow(clippy::too_many_arguments)]
-fn record_audit_event(
+pub(crate) fn record_audit_event(
     app: &AppHandle,
     category: &str,
     action: &str,
@@ -147,14 +149,14 @@ fn record_audit_event(
     }
 }
 
-fn sanitize_audit_error(err: &str) -> String {
+pub(crate) fn sanitize_audit_error(err: &str) -> String {
     err.replace(['\r', '\n', '\t'], " ")
         .chars()
         .take(240)
         .collect()
 }
 
-fn terminal_audit_metadata(
+pub(crate) fn terminal_audit_metadata(
     shell: &ShellType,
     cols: u16,
     rows: u16,
@@ -169,7 +171,7 @@ fn terminal_audit_metadata(
     })
 }
 
-fn parse_mux_axis(axis: &str) -> Result<crate::mux::layout::SplitAxis, String> {
+pub(crate) fn parse_mux_axis(axis: &str) -> Result<crate::mux::layout::SplitAxis, String> {
     match axis {
         "horizontal" => Ok(crate::mux::layout::SplitAxis::Horizontal),
         "vertical" => Ok(crate::mux::layout::SplitAxis::Vertical),
@@ -329,7 +331,7 @@ fn sync_mux_terminal_remove(app: &AppHandle, terminal_id: &str) {
     }
 }
 
-fn sync_mux_pane_name(app: &AppHandle, terminal_id: &str, name: &str) {
+pub(crate) fn sync_mux_pane_name(app: &AppHandle, terminal_id: &str, name: &str) {
     let Some(mux) = app.try_state::<Arc<Mutex<crate::mux::manager::MuxManager>>>() else {
         return;
     };
@@ -346,7 +348,7 @@ fn sync_mux_pane_name(app: &AppHandle, terminal_id: &str, name: &str) {
     }
 }
 
-fn sync_mux_pane_role(app: &AppHandle, terminal_id: &str, role: &str) {
+pub(crate) fn sync_mux_pane_role(app: &AppHandle, terminal_id: &str, role: &str) {
     let Some(mux) = app.try_state::<Arc<Mutex<crate::mux::manager::MuxManager>>>() else {
         return;
     };
@@ -420,6 +422,15 @@ impl OutputBufferRegistry {
                 .entry(id.to_string())
                 .or_insert_with(|| OutputBuffer::new(1000));
         }
+    }
+
+    /// Whether a terminal id is already wired into the UI registries. Used
+    /// as an idempotency guard so re-adoption never double-streams a session.
+    pub fn contains(&self, id: &str) -> bool {
+        self.buffers
+            .lock()
+            .map(|buffers| buffers.contains_key(id))
+            .unwrap_or(false)
     }
 
     pub fn feed(&self, id: &str, data: &str) {
@@ -556,7 +567,7 @@ pub struct MuxKeymapResponse {
 }
 
 /// Validate path is not dangerous (no traversal, no system dirs)
-fn validate_path(path: &str) -> Result<(), String> {
+pub(crate) fn validate_path(path: &str) -> Result<(), String> {
     let trimmed = path.trim();
     if trimmed.is_empty() {
         return Ok(());
@@ -606,7 +617,7 @@ fn validate_existing_directory_path(path: &str) -> Result<String, String> {
     Ok(canonical)
 }
 
-fn normalize_cwd(cwd: Option<String>) -> Result<Option<String>, String> {
+pub(crate) fn normalize_cwd(cwd: Option<String>) -> Result<Option<String>, String> {
     cwd.map(|dir| validate_existing_directory_path(&dir))
         .transpose()
 }
@@ -1364,7 +1375,7 @@ pub async fn force_restart_terminal(
 /// Called by both `spawn_terminal` and `respawn_terminal` so the two paths
 /// stay structurally identical — the only thing respawn skips is one-shot
 /// pane-registry registration.
-fn wire_terminal_streaming(
+pub(crate) fn wire_terminal_streaming(
     app: &AppHandle,
     terminal_id: &str,
     cols: u16,
@@ -1623,17 +1634,17 @@ fn sidecar_backfill_text(captured: &str) -> String {
     out
 }
 
-struct SidecarWireOptions<'a> {
-    cols: u16,
-    rows: u16,
-    cwd: Option<&'a str>,
-    shell_name: &'a str,
+pub(crate) struct SidecarWireOptions<'a> {
+    pub(crate) cols: u16,
+    pub(crate) rows: u16,
+    pub(crate) cwd: Option<&'a str>,
+    pub(crate) shell_name: &'a str,
     /// Replay daemon-side scrollback into the renderer before live output.
     /// Set only when adopting sessions that survived an app restart.
-    backfill_scrollback: bool,
+    pub(crate) backfill_scrollback: bool,
 }
 
-async fn wire_sidecar_terminal_streaming(
+pub(crate) async fn wire_sidecar_terminal_streaming(
     app: &AppHandle,
     sidecar: crate::pty_sidecar::PtySidecarClient,
     terminal_id: &str,
@@ -1840,6 +1851,16 @@ pub(crate) async fn adopt_sidecar_terminals(
     let infos = sidecar.list_info().await?;
     let mut adopted = 0usize;
     for info in infos {
+        // Idempotency guard: a session already wired (earlier adoption pass,
+        // or a spawn that raced this one) must not get a second stream pump
+        // and flush thread — that doubles every output byte in the UI.
+        if app.state::<OutputBufferRegistry>().contains(&info.id) {
+            log::info!(
+                "sidecar terminal {} already wired; skipping adoption",
+                info.id
+            );
+            continue;
+        }
         let shell_name = format!("{:?}", info.shell_type).to_lowercase();
         let cwd = if info.cwd.trim().is_empty() {
             ".".to_string()
@@ -1856,6 +1877,21 @@ pub(crate) async fn adopt_sidecar_terminals(
             SIDECAR_RECONNECT_DEFAULT_COLS,
             SIDECAR_RECONNECT_DEFAULT_ROWS,
         );
+        // Restore the pane's persisted identity (user/agent-assigned name and
+        // role) so a restart doesn't reduce every adopted pane to its shell
+        // name — in multi-agent use, which pane belonged to which agent is
+        // exactly the information the operator needs back.
+        if let Some(db) = app.try_state::<crate::db::ManagedDb>() {
+            if let Ok(Some((name, role))) = db.with(|d| d.get_pane_metadata(&info.id)) {
+                let registry = app.state::<crate::pty::PaneRegistry>();
+                if !name.is_empty() && registry.rename(&info.id, &name).is_ok() {
+                    sync_mux_pane_name(app, &info.id, &name);
+                }
+                if !role.is_empty() && registry.set_role(&info.id, &role).is_ok() {
+                    sync_mux_pane_role(app, &info.id, &role);
+                }
+            }
+        }
         wire_sidecar_terminal_streaming(
             app,
             sidecar.clone(),
@@ -2180,13 +2216,13 @@ async fn commit_native_terminal_input(
 /// contained an Enter (`\r`). Shared by every write-side IPC so Orchestra /
 /// Helm / `send_keys` / broadcast paths all feed the timeline, not just
 /// `write_terminal`.
-fn capture_if_enter(app: &AppHandle, terminal_id: &str, data: &[u8]) {
+pub(crate) fn capture_if_enter(app: &AppHandle, terminal_id: &str, data: &[u8]) {
     if data.contains(&b'\r') {
         capture_user_submit_snapshot(app, terminal_id);
     }
 }
 
-async fn terminal_write_async(
+pub(crate) async fn terminal_write_async(
     app: &AppHandle,
     terminal_id: &str,
     data: &[u8],
@@ -2219,7 +2255,7 @@ async fn terminal_write_async(
     .map_err(|err| format!("Terminal write task failed: {}", err))?
 }
 
-async fn terminal_ids_async(app: &AppHandle) -> Vec<String> {
+pub(crate) async fn terminal_ids_async(app: &AppHandle) -> Vec<String> {
     if let Some(sidecar) = app
         .try_state::<crate::pty_sidecar::PtySidecarState>()
         .and_then(|state| state.client())
@@ -2471,540 +2507,6 @@ pub fn mux_process_keymap_event(
         },
     };
     Ok(response)
-}
-
-#[tauri::command]
-// Parameter list mirrors the frontend IPC payload; bundling into a struct
-// would change the invoke contract for no behavioral gain.
-#[allow(clippy::too_many_arguments)]
-pub async fn mux_split_pane(
-    app: AppHandle,
-    workspace_id: String,
-    target_pane_id: String,
-    axis: String,
-    shell: ShellType,
-    cols: u16,
-    rows: u16,
-    cwd: Option<String>,
-    title: Option<String>,
-) -> Result<String, String> {
-    if cols == 0 || rows == 0 {
-        return Err("cols and rows must be > 0".to_string());
-    }
-    let split_axis = parse_mux_axis(&axis)?;
-    let cwd = match normalize_cwd(cwd) {
-        Ok(cwd) => cwd,
-        Err(err) => return Err(err),
-    };
-    if let Some(ref dir) = cwd {
-        validate_path(dir)?;
-    }
-
-    if let Some(sidecar) = app
-        .try_state::<crate::pty_sidecar::PtySidecarState>()
-        .and_then(|state| state.client())
-    {
-        let pane_id = sidecar
-            .mux_split_pane(
-                &workspace_id,
-                &target_pane_id,
-                &axis,
-                &shell,
-                cols,
-                rows,
-                cwd.as_deref(),
-                title.as_deref(),
-            )
-            .await?;
-        let shell_name = format!("{:?}", shell).to_lowercase();
-        let cwd_for_graph = cwd.as_deref().unwrap_or(".");
-        app.state::<crate::pty::PaneRegistry>()
-            .register(&pane_id, &shell_name, cwd_for_graph);
-        if let Err(err) = wire_sidecar_terminal_streaming(
-            &app,
-            sidecar.clone(),
-            &pane_id,
-            SidecarWireOptions {
-                cols,
-                rows,
-                cwd: cwd.as_deref(),
-                shell_name: &shell_name,
-                backfill_scrollback: false,
-            },
-        )
-        .await
-        {
-            cleanup_terminal_ui_registries(&app, &pane_id);
-            let _ = sidecar.mux_close_pane(&workspace_id, &pane_id).await;
-            return Err(err);
-        }
-        record_audit_event(
-            &app,
-            "terminal",
-            "mux_split",
-            "info",
-            Some("terminal"),
-            Some(&pane_id),
-            "Mux pane split",
-            terminal_audit_metadata(&shell, cols, rows, cwd.as_deref()),
-        );
-        return Ok(pane_id);
-    }
-
-    let pane_id = uuid::Uuid::new_v4().to_string();
-    let pty_manager = app.state::<PtyManager>().inner().clone();
-    let spawn_shell = shell.clone();
-    let spawn_cwd = cwd.clone();
-    let spawn_id = pane_id.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        pty_manager.spawn_with_id(&spawn_id, &spawn_shell, cols, rows, spawn_cwd.as_deref())
-    })
-    .await
-    .map_err(|err| format!("Mux split spawn task failed: {err}"))?
-    .map_err(|err| format!("Mux split spawn failed: {err}"))?;
-
-    let shell_name = format!("{:?}", shell).to_lowercase();
-    let cwd_for_graph = cwd.as_deref().unwrap_or(".");
-    let pane_title = title
-        .as_deref()
-        .map(str::trim)
-        .filter(|title| !title.is_empty())
-        .unwrap_or(&shell_name);
-    let mut pane =
-        crate::mux::graph::PaneRecord::new(&pane_id, pane_title, &shell_name, cwd_for_graph);
-    pane.lifecycle = crate::mux::graph::LifecycleState::Active;
-    pane.pty = Some(crate::mux::graph::PtyBinding {
-        terminal_id: pane_id.clone(),
-        process_id: None,
-        cols,
-        rows,
-    });
-
-    let split_result = app
-        .state::<Arc<Mutex<crate::mux::manager::MuxManager>>>()
-        .inner()
-        .lock()
-        .map_err(|_| "MuxManager lock poisoned".to_string())
-        .and_then(|mut mux| {
-            mux.split_active_pane(&workspace_id, &target_pane_id, pane, split_axis)
-                .map_err(|err| err.to_string())
-        });
-    if let Err(err) = split_result {
-        let _ = app.state::<PtyManager>().close(&pane_id);
-        return Err(err);
-    }
-
-    app.state::<crate::pty::PaneRegistry>()
-        .register(&pane_id, &shell_name, cwd_for_graph);
-    if let Err(err) =
-        wire_terminal_streaming(&app, &pane_id, cols, rows, cwd.as_deref(), &shell_name)
-    {
-        let _ = app.state::<PtyManager>().close(&pane_id);
-        if let Ok(mut mux) = app
-            .state::<Arc<Mutex<crate::mux::manager::MuxManager>>>()
-            .inner()
-            .lock()
-        {
-            let _ = mux.close_active_pane(&workspace_id, &pane_id);
-        }
-        app.state::<crate::pty::PaneRegistry>().remove(&pane_id);
-        return Err(err);
-    }
-
-    record_audit_event(
-        &app,
-        "terminal",
-        "mux_split",
-        "info",
-        Some("terminal"),
-        Some(&pane_id),
-        "Mux pane split",
-        terminal_audit_metadata(&shell, cols, rows, cwd.as_deref()),
-    );
-    Ok(pane_id)
-}
-
-fn cleanup_terminal_ui_registries(app: &AppHandle, terminal_id: &str) {
-    app.state::<TerminalGenerationRegistry>()
-        .next_generation(terminal_id);
-    app.state::<TerminalGenerationRegistry>()
-        .remove(terminal_id);
-    app.state::<OutputBufferRegistry>().remove(terminal_id);
-    app.state::<crate::pty::PaneRegistry>().remove(terminal_id);
-    app.state::<Arc<NativeTerminalRegistry>>()
-        .remove(terminal_id);
-    if let Some(store) = app.try_state::<Arc<SnapshotStore>>() {
-        store.inner().remove_session(terminal_id);
-    }
-}
-
-#[tauri::command]
-pub async fn mux_close_pane(
-    app: AppHandle,
-    workspace_id: String,
-    pane_id: String,
-) -> Result<(), String> {
-    if let Some(sidecar) = app
-        .try_state::<crate::pty_sidecar::PtySidecarState>()
-        .and_then(|state| state.client())
-    {
-        sidecar.mux_close_pane(&workspace_id, &pane_id).await?;
-        cleanup_terminal_ui_registries(&app, &pane_id);
-    } else {
-        let removed = app
-            .state::<Arc<Mutex<crate::mux::manager::MuxManager>>>()
-            .inner()
-            .lock()
-            .map_err(|_| "MuxManager lock poisoned".to_string())
-            .and_then(|mut mux| {
-                mux.close_active_pane(&workspace_id, &pane_id)
-                    .map_err(|err| err.to_string())
-            })?;
-        if let Some(pty) = removed.pty {
-            let pty_id = pty.terminal_id;
-            app.state::<TerminalGenerationRegistry>()
-                .next_generation(&pty_id);
-            let pty_manager = app.state::<PtyManager>().inner().clone();
-            let close_id = pty_id.clone();
-            let close_result =
-                tauri::async_runtime::spawn_blocking(move || pty_manager.close(&close_id))
-                    .await
-                    .map_err(|err| format!("Mux pane close task failed: {err}"))?;
-            match close_result {
-                Ok(()) | Err(PtyError::NotFound(_)) => {}
-                Err(err) => return Err(err.to_string()),
-            }
-            cleanup_terminal_ui_registries(&app, &pty_id);
-        }
-    }
-
-    record_audit_event(
-        &app,
-        "terminal",
-        "mux_close_pane",
-        "info",
-        Some("terminal"),
-        Some(&pane_id),
-        "Mux pane closed",
-        serde_json::json!({ "workspaceId": workspace_id, "redacted": true }),
-    );
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn mux_get_workspace(
-    app: AppHandle,
-    workspace_id: String,
-) -> Result<Option<crate::mux::graph::MuxGraph>, String> {
-    if let Some(sidecar) = app
-        .try_state::<crate::pty_sidecar::PtySidecarState>()
-        .and_then(|state| state.client())
-    {
-        return sidecar.mux_get_workspace(&workspace_id).await;
-    }
-    let graph = app
-        .state::<Arc<Mutex<crate::mux::manager::MuxManager>>>()
-        .inner()
-        .lock()
-        .map_err(|_| "MuxManager lock poisoned".to_string())?
-        .graph(&workspace_id)
-        .cloned();
-    Ok(graph)
-}
-
-#[tauri::command]
-pub async fn mux_swap_panes(
-    app: AppHandle,
-    workspace_id: String,
-    first_pane_id: String,
-    second_pane_id: String,
-) -> Result<(), String> {
-    if first_pane_id == second_pane_id {
-        return Ok(());
-    }
-    if let Some(sidecar) = app
-        .try_state::<crate::pty_sidecar::PtySidecarState>()
-        .and_then(|state| state.client())
-    {
-        sidecar
-            .mux_swap_panes(&workspace_id, &first_pane_id, &second_pane_id)
-            .await?;
-    } else {
-        app.state::<Arc<Mutex<crate::mux::manager::MuxManager>>>()
-            .inner()
-            .lock()
-            .map_err(|_| "MuxManager lock poisoned".to_string())
-            .and_then(|mut mux| {
-                mux.swap_active_panes(&workspace_id, &first_pane_id, &second_pane_id)
-                    .map_err(|err| err.to_string())
-            })?;
-    }
-    record_audit_event(
-        &app,
-        "terminal",
-        "mux_swap_panes",
-        "info",
-        Some("terminal"),
-        Some(&workspace_id),
-        "Mux panes swapped",
-        serde_json::json!({ "redacted": true }),
-    );
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn mux_break_pane(
-    app: AppHandle,
-    workspace_id: String,
-    pane_id: String,
-) -> Result<(), String> {
-    if let Some(sidecar) = app
-        .try_state::<crate::pty_sidecar::PtySidecarState>()
-        .and_then(|state| state.client())
-    {
-        sidecar.mux_break_pane(&workspace_id, &pane_id).await?;
-    } else {
-        app.state::<Arc<Mutex<crate::mux::manager::MuxManager>>>()
-            .inner()
-            .lock()
-            .map_err(|_| "MuxManager lock poisoned".to_string())
-            .and_then(|mut mux| {
-                mux.break_active_pane_to_new_tab(&workspace_id, &pane_id)
-                    .map(|_| ())
-                    .map_err(|err| err.to_string())
-            })?;
-    }
-    record_audit_event(
-        &app,
-        "terminal",
-        "mux_break_pane",
-        "info",
-        Some("terminal"),
-        Some(&pane_id),
-        "Mux pane broken into a new tab",
-        serde_json::json!({ "workspaceId": workspace_id, "redacted": true }),
-    );
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn mux_join_pane(
-    app: AppHandle,
-    workspace_id: String,
-    source_pane_id: String,
-    target_pane_id: String,
-    axis: String,
-) -> Result<(), String> {
-    let axis_enum = match axis.as_str() {
-        "horizontal" => crate::mux::layout::SplitAxis::Horizontal,
-        "vertical" => crate::mux::layout::SplitAxis::Vertical,
-        other => return Err(format!("unknown mux join axis: {other}")),
-    };
-    if let Some(sidecar) = app
-        .try_state::<crate::pty_sidecar::PtySidecarState>()
-        .and_then(|state| state.client())
-    {
-        sidecar
-            .mux_join_pane(&workspace_id, &source_pane_id, &target_pane_id, &axis)
-            .await?;
-    } else {
-        app.state::<Arc<Mutex<crate::mux::manager::MuxManager>>>()
-            .inner()
-            .lock()
-            .map_err(|_| "MuxManager lock poisoned".to_string())
-            .and_then(|mut mux| {
-                mux.join_pane_into_active_tab(
-                    &workspace_id,
-                    &source_pane_id,
-                    &target_pane_id,
-                    axis_enum,
-                )
-                .map_err(|err| err.to_string())
-            })?;
-    }
-    record_audit_event(
-        &app,
-        "terminal",
-        "mux_join_pane",
-        "info",
-        Some("terminal"),
-        Some(&workspace_id),
-        "Mux pane joined into the active tab",
-        serde_json::json!({ "sourcePaneId": source_pane_id, "targetPaneId": target_pane_id, "redacted": true }),
-    );
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn mux_set_panes_synchronized(
-    app: AppHandle,
-    workspace_id: String,
-    enabled: bool,
-) -> Result<(), String> {
-    if let Some(sidecar) = app
-        .try_state::<crate::pty_sidecar::PtySidecarState>()
-        .and_then(|state| state.client())
-    {
-        sidecar
-            .mux_set_panes_synchronized(&workspace_id, enabled)
-            .await?;
-    } else {
-        app.state::<Arc<Mutex<crate::mux::manager::MuxManager>>>()
-            .inner()
-            .lock()
-            .map_err(|_| "MuxManager lock poisoned".to_string())
-            .and_then(|mut mux| {
-                mux.set_active_tab_synchronized_panes(&workspace_id, enabled)
-                    .map_err(|err| err.to_string())
-            })?;
-    }
-    record_audit_event(
-        &app,
-        "terminal",
-        if enabled {
-            "mux_synchronize_panes_on"
-        } else {
-            "mux_synchronize_panes_off"
-        },
-        "info",
-        Some("terminal"),
-        Some(&workspace_id),
-        if enabled {
-            "Mux synchronized panes enabled"
-        } else {
-            "Mux synchronized panes disabled"
-        },
-        serde_json::json!({ "enabled": enabled, "redacted": true }),
-    );
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn mux_apply_layout(
-    app: AppHandle,
-    workspace_id: String,
-    command: String,
-) -> Result<(), String> {
-    let even_axis = match command.as_str() {
-        "equalize" | "tiled" | "rotate-next" | "rotate-previous" => None,
-        "even-horizontal" => Some((
-            "even",
-            "horizontal",
-            crate::mux::layout::SplitAxis::Horizontal,
-        )),
-        "even-vertical" => Some(("even", "vertical", crate::mux::layout::SplitAxis::Vertical)),
-        other => return Err(format!("unknown mux layout command: {other}")),
-    };
-
-    if let Some(sidecar) = app
-        .try_state::<crate::pty_sidecar::PtySidecarState>()
-        .and_then(|state| state.client())
-    {
-        match command.as_str() {
-            "equalize" => {
-                sidecar
-                    .mux_apply_layout(&workspace_id, "equalize", None)
-                    .await?
-            }
-            "tiled" => {
-                sidecar
-                    .mux_apply_layout(&workspace_id, "tiled", None)
-                    .await?
-            }
-            "rotate-next" | "rotate-previous" => {
-                sidecar
-                    .mux_apply_layout(&workspace_id, &command, None)
-                    .await?
-            }
-            _ => {
-                let (_, axis, _) = even_axis.expect("even axis checked above");
-                sidecar
-                    .mux_apply_layout(&workspace_id, "even", Some(axis))
-                    .await?;
-            }
-        }
-    } else {
-        app.state::<Arc<Mutex<crate::mux::manager::MuxManager>>>()
-            .inner()
-            .lock()
-            .map_err(|_| "MuxManager lock poisoned".to_string())
-            .and_then(|mut mux| match command.as_str() {
-                "equalize" => mux
-                    .equalize_active_tab(&workspace_id)
-                    .map_err(|err| err.to_string()),
-                "tiled" => mux
-                    .apply_tiled_to_active_tab(&workspace_id)
-                    .map_err(|err| err.to_string()),
-                "rotate-next" => mux
-                    .rotate_active_tab(&workspace_id, false)
-                    .map_err(|err| err.to_string()),
-                "rotate-previous" => mux
-                    .rotate_active_tab(&workspace_id, true)
-                    .map_err(|err| err.to_string()),
-                _ => {
-                    let (_, _, axis) = even_axis.expect("even axis checked above");
-                    mux.apply_even_to_active_tab(&workspace_id, axis)
-                        .map_err(|err| err.to_string())
-                }
-            })?;
-    }
-    record_audit_event(
-        &app,
-        "terminal",
-        "mux_apply_layout",
-        "info",
-        Some("terminal"),
-        Some(&workspace_id),
-        "Mux layout applied",
-        serde_json::json!({ "layoutCommand": command, "redacted": true }),
-    );
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn mux_set_pane_zoom(
-    app: AppHandle,
-    workspace_id: String,
-    pane_id: String,
-    zoomed: bool,
-) -> Result<(), String> {
-    if let Some(sidecar) = app
-        .try_state::<crate::pty_sidecar::PtySidecarState>()
-        .and_then(|state| state.client())
-    {
-        sidecar
-            .mux_set_pane_zoom(&workspace_id, &pane_id, zoomed)
-            .await?;
-    } else {
-        app.state::<Arc<Mutex<crate::mux::manager::MuxManager>>>()
-            .inner()
-            .lock()
-            .map_err(|_| "MuxManager lock poisoned".to_string())
-            .and_then(|mut mux| {
-                let target = if zoomed { Some(pane_id.clone()) } else { None };
-                mux.set_active_tab_zoom(&workspace_id, target)
-                    .map_err(|err| err.to_string())
-            })?;
-    }
-    record_audit_event(
-        &app,
-        "terminal",
-        if zoomed {
-            "mux_zoom_pane"
-        } else {
-            "mux_unzoom_pane"
-        },
-        "info",
-        Some("terminal"),
-        Some(&pane_id),
-        if zoomed {
-            "Mux pane zoomed"
-        } else {
-            "Mux pane restored"
-        },
-        serde_json::json!({ "workspaceId": workspace_id, "zoomed": zoomed, "redacted": true }),
-    );
-    Ok(())
 }
 
 /// Scan a fresh chunk of PTY text for the auto-repair pattern and, on a
@@ -3782,7 +3284,7 @@ pub fn git_file_original(repo_path: String, file_path: String) -> Result<String,
     }
 }
 
-fn git_relative_path(repo_path: &str, file_path: &str) -> String {
+pub(crate) fn git_relative_path(repo_path: &str, file_path: &str) -> String {
     let repo_norm = repo_path.replace('\\', "/");
     let file_norm = file_path.replace('\\', "/");
     file_norm
@@ -3937,267 +3439,6 @@ pub fn save_watchdog_rules(rules: crate::watchdog::WatchdogRules) -> Result<(), 
 #[tauri::command]
 pub fn create_watchdog(name: String, instructions: String) -> Result<(), String> {
     crate::watchdog::create_watchdog(&name, &instructions)
-}
-
-/// Read a file's contents
-#[tauri::command]
-pub fn read_file(path: String) -> Result<String, String> {
-    validate_path(&path)?;
-    let p = std::path::Path::new(&path);
-    if !p.is_file() {
-        return Err(format!("Not a file: {}", path));
-    }
-    let meta = std::fs::metadata(p).map_err(|e| format!("Metadata error: {}", e))?;
-    if meta.len() > 5 * 1024 * 1024 {
-        return Err("File too large (>5MB)".to_string());
-    }
-    std::fs::read_to_string(p).map_err(|e| format!("Read error: {}", e))
-}
-
-fn vscode_open_args(
-    path: &str,
-    line: Option<u32>,
-    column: Option<u32>,
-) -> Result<Vec<String>, String> {
-    let trimmed = path.trim();
-    if trimmed.is_empty() {
-        return Err("Path is required".to_string());
-    }
-    validate_path(trimmed)?;
-
-    let line = line.filter(|value| *value > 0);
-    let column = column.filter(|value| *value > 0);
-    let Some(line) = line else {
-        return Ok(vec![trimmed.to_string()]);
-    };
-
-    let target = match column {
-        Some(column) => format!("{trimmed}:{line}:{column}"),
-        None => format!("{trimmed}:{line}"),
-    };
-    Ok(vec!["-g".to_string(), target])
-}
-
-fn vscode_diff_args(left_path: &str, right_path: &str) -> Result<Vec<String>, String> {
-    let left = left_path.trim();
-    let right = right_path.trim();
-    if left.is_empty() || right.is_empty() {
-        return Err("Both diff paths are required".to_string());
-    }
-    validate_path(left)?;
-    validate_path(right)?;
-    Ok(vec![
-        "--diff".to_string(),
-        left.to_string(),
-        right.to_string(),
-    ])
-}
-
-fn vscode_command_candidates() -> Vec<String> {
-    let mut candidates = Vec::new();
-
-    #[cfg(windows)]
-    {
-        candidates.push("code.cmd".to_string());
-        candidates.push("code.exe".to_string());
-        candidates.push("code".to_string());
-        for base in ["LOCALAPPDATA", "ProgramFiles", "ProgramFiles(x86)"] {
-            if let Ok(root) = std::env::var(base) {
-                candidates.push(
-                    PathBuf::from(root)
-                        .join("Microsoft VS Code")
-                        .join("bin")
-                        .join("code.cmd")
-                        .to_string_lossy()
-                        .to_string(),
-                );
-            }
-        }
-    }
-
-    #[cfg(not(windows))]
-    {
-        candidates.push("code".to_string());
-    }
-
-    candidates.sort();
-    candidates.dedup();
-    candidates
-}
-
-fn launch_vscode(args: &[String]) -> Result<(), String> {
-    let mut errors = Vec::new();
-
-    for candidate in vscode_command_candidates() {
-        let mut command = crate::process::hidden_command(&candidate);
-        command
-            .args(args)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        match command.spawn() {
-            Ok(_) => return Ok(()),
-            Err(err) => errors.push(format!("{candidate}: {err}")),
-        }
-    }
-
-    Err(format!(
-        "Failed to launch VS Code. Install the `code` command or add VS Code to PATH. {}",
-        errors.join("; ")
-    ))
-}
-
-/// Open a file or directory in VS Code without flashing a foreground shell window.
-#[tauri::command]
-pub fn open_in_vscode(path: String, line: Option<u32>, column: Option<u32>) -> Result<(), String> {
-    let args = vscode_open_args(&path, line, column)?;
-    launch_vscode(&args)
-}
-
-/// Open two concrete paths in VS Code's native diff view.
-#[tauri::command]
-pub fn open_in_vscode_diff(left_path: String, right_path: String) -> Result<(), String> {
-    let args = vscode_diff_args(&left_path, &right_path)?;
-    launch_vscode(&args)
-}
-
-fn safe_temp_diff_name(relative: &str) -> String {
-    let sanitized: String = relative
-        .chars()
-        .map(|ch| match ch {
-            'a'..='z' | 'A'..='Z' | '0'..='9' | '.' | '-' | '_' => ch,
-            _ => '_',
-        })
-        .collect();
-    if sanitized.is_empty() {
-        "file".to_string()
-    } else {
-        sanitized
-    }
-}
-
-fn current_diff_stamp() -> u128 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis())
-        .unwrap_or(0)
-}
-
-/// Open a git working-tree file against HEAD in VS Code's native diff view.
-#[tauri::command]
-pub fn open_git_file_diff_in_vscode(repo_path: String, file_path: String) -> Result<(), String> {
-    let repo = PathBuf::from(repo_path.trim());
-    if repo.as_os_str().is_empty() {
-        return Err("Repo path is required".to_string());
-    }
-    let repo_str = repo.to_string_lossy().to_string();
-    validate_path(&repo_str)?;
-    if !repo.is_dir() {
-        return Err(format!("Not a directory: {}", repo.display()));
-    }
-
-    let raw_file = file_path.trim();
-    if raw_file.is_empty() {
-        return Err("File path is required".to_string());
-    }
-    let working_path = {
-        let candidate = PathBuf::from(raw_file);
-        if candidate.is_absolute() {
-            candidate
-        } else {
-            repo.join(candidate)
-        }
-    };
-    let working_str = working_path.to_string_lossy().to_string();
-    validate_path(&working_str)?;
-
-    let relative = git_relative_path(&repo_str, &working_str);
-    let output = crate::process::hidden_command("git")
-        .args(["show", &format!("HEAD:{}", relative)])
-        .current_dir(&repo)
-        .output()
-        .map_err(|e| format!("git show failed: {}", e))?;
-    let original = if output.status.success() {
-        String::from_utf8(output.stdout).map_err(|e| format!("UTF-8 error: {}", e))?
-    } else {
-        String::new()
-    };
-
-    let temp_dir = std::env::temp_dir().join("aether-vscode-diff");
-    std::fs::create_dir_all(&temp_dir)
-        .map_err(|e| format!("Create temp diff dir failed: {}", e))?;
-    let safe_name = safe_temp_diff_name(&relative);
-    let stamp = current_diff_stamp();
-    let left_path = temp_dir.join(format!("{stamp}-HEAD-{safe_name}"));
-    std::fs::write(&left_path, original)
-        .map_err(|e| format!("Write original temp file failed: {}", e))?;
-
-    let right_path = if working_path.exists() {
-        working_path
-    } else {
-        let deleted_path = temp_dir.join(format!("{stamp}-WORKTREE-DELETED-{safe_name}"));
-        std::fs::write(&deleted_path, "")
-            .map_err(|e| format!("Write deleted temp file failed: {}", e))?;
-        deleted_path
-    };
-
-    open_in_vscode_diff(
-        left_path.to_string_lossy().to_string(),
-        right_path.to_string_lossy().to_string(),
-    )
-}
-
-/// Write content to a file
-#[tauri::command]
-pub fn write_file(path: String, content: String) -> Result<(), String> {
-    validate_path(&path)?;
-    std::fs::write(&path, &content).map_err(|e| format!("Write error: {}", e))
-}
-
-/// Create a new file
-#[tauri::command]
-pub fn create_file(path: String, content: Option<String>) -> Result<(), String> {
-    validate_path(&path)?;
-    if std::path::Path::new(&path).exists() {
-        return Err(format!("File already exists: {}", path));
-    }
-    if let Some(parent) = std::path::Path::new(&path).parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("mkdir: {}", e))?;
-    }
-    std::fs::write(&path, content.unwrap_or_default()).map_err(|e| format!("Create: {}", e))
-}
-
-/// Rename a file or directory
-#[tauri::command]
-pub fn rename_path(old_path: String, new_path: String) -> Result<(), String> {
-    validate_path(&old_path)?;
-    validate_path(&new_path)?;
-    std::fs::rename(&old_path, &new_path).map_err(|e| format!("Rename: {}", e))
-}
-
-/// Delete a file or directory (protects .git and other critical dirs)
-#[tauri::command]
-pub fn delete_path(path: String) -> Result<(), String> {
-    validate_path(&path)?;
-    let p = std::path::Path::new(&path);
-    // Protect critical directories from accidental deletion
-    let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
-    let protected = [".git", ".hg", "node_modules", ".env"];
-    if p.is_dir() && protected.contains(&name) {
-        return Err(format!("Cannot delete protected directory: {}", name));
-    }
-    if p.is_dir() {
-        std::fs::remove_dir_all(p).map_err(|e| format!("Delete dir: {}", e))
-    } else {
-        std::fs::remove_file(p).map_err(|e| format!("Delete file: {}", e))
-    }
-}
-
-/// Create a new directory
-#[tauri::command]
-pub fn create_directory(path: String) -> Result<(), String> {
-    validate_path(&path)?;
-    std::fs::create_dir_all(&path).map_err(|e| format!("mkdir: {}", e))
 }
 
 /// Start a Claude Code agent session
@@ -4410,6 +3651,7 @@ pub fn start_agent(
         let emit_sessions = |mgr: &crate::agent::AgentManager, handle: &AppHandle| {
             let sessions = mgr.list_sessions();
             let _ = handle.emit(agent_sessions_updated_event(), &sessions);
+            emit_agent_fleet(handle);
         };
 
         // Notify frontend of initial session
@@ -4476,6 +3718,7 @@ pub fn stop_agent(app: AppHandle, id: String) -> Result<(), String> {
     // Push updated session list
     let sessions = agent_manager.list_sessions();
     let _ = app.emit(agent_sessions_updated_event(), &sessions);
+    emit_agent_fleet(&app);
     Ok(())
 }
 
@@ -4486,10 +3729,57 @@ pub fn list_agents(app: AppHandle) -> Vec<crate::agent::AgentSessionInfo> {
     agent_manager.list_sessions()
 }
 
+pub(crate) fn agent_fleet_snapshot(app: &AppHandle) -> Vec<crate::agent::AgentSession> {
+    let agent_manager = app.state::<crate::agent::AgentManager>();
+    let interactive_manager = app.state::<crate::agent::InteractiveSessionManager>();
+    let mut sessions: Vec<crate::agent::AgentSession> = agent_manager
+        .list_sessions()
+        .into_iter()
+        .map(crate::agent::AgentSession::from)
+        .collect();
+
+    if let Ok(interactive) = interactive_manager.list() {
+        sessions.extend(
+            interactive
+                .into_iter()
+                .map(crate::agent::AgentSession::from),
+        );
+    }
+
+    sessions.sort_by(|a, b| {
+        b.started_at
+            .unwrap_or_default()
+            .cmp(&a.started_at.unwrap_or_default())
+    });
+    sessions
+}
+
+pub(crate) fn emit_agent_fleet(app: &AppHandle) {
+    let sessions = agent_fleet_snapshot(app);
+    let _ = app.emit("agent-fleet-updated", &sessions);
+}
+
+/// List headless and interactive agents through the unified AgentSession contract.
+#[tauri::command]
+pub fn list_agent_fleet(app: AppHandle) -> Vec<crate::agent::AgentSession> {
+    agent_fleet_snapshot(&app)
+}
+
 /// Route a prompt to the best model
 #[tauri::command]
 pub fn route_agent(prompt: String, budget: Option<f64>) -> crate::agent::router::RoutingDecision {
     crate::agent::router::AgentRouter::route(&prompt, budget)
+}
+
+/// Inspect whether an agent branch is ready to merge into a target branch.
+/// This is read-only; it never checks out, fast-forwards, or writes to main.
+#[tauri::command]
+pub fn inspect_merge_worktree_branch(
+    repo_path: String,
+    source_branch: String,
+    target_branch: String,
+) -> Result<crate::git::MergeReadiness, String> {
+    crate::control::merge::inspect(&repo_path, &source_branch, &target_branch)
 }
 
 /// Start a chat agent session (supports --resume for multi-turn)
@@ -4889,90 +4179,11 @@ fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
     Ok(buf)
 }
 
-// --- Session management commands ---
-
-use crate::db::queries::{Pane, RestoredSession, Session};
-use crate::db::{self, Database};
-
-#[tauri::command]
-pub fn create_session(name: &str) -> Result<Session, String> {
-    let db = Database::open(&db::db_path())?;
-    db.create_session(name)
-}
-
-#[tauri::command]
-pub fn list_db_sessions() -> Result<Vec<Session>, String> {
-    let db = Database::open(&db::db_path())?;
-    db.list_sessions()
-}
-
-#[tauri::command]
-pub fn delete_session(id: &str) -> Result<(), String> {
-    let db = Database::open(&db::db_path())?;
-    db.delete_session(id)
-}
-
-#[tauri::command]
-pub fn restore_last_session() -> Result<Option<RestoredSession>, String> {
-    let db = Database::open(&db::db_path())?;
-    db.restore_last_session()
-}
-
-#[tauri::command]
-pub fn create_window(session_id: &str, title: &str) -> Result<crate::db::queries::Window, String> {
-    let db = Database::open(&db::db_path())?;
-    db.create_window(session_id, title)
-}
-
-#[tauri::command]
-pub fn create_pane(
-    window_id: &str,
-    shell_type: &str,
-    cwd: &str,
-    cols: u16,
-    rows: u16,
-) -> Result<Pane, String> {
-    let db = Database::open(&db::db_path())?;
-    db.create_pane(window_id, shell_type, cwd, cols, rows)
-}
-
-#[tauri::command]
-pub fn save_session_state(session_id: &str) -> Result<(), String> {
-    let db = Database::open(&db::db_path())?;
-    db.touch_session(session_id)
-}
-
-#[tauri::command]
-pub fn save_pane_tree_layout(
-    app: AppHandle,
-    storage_key: String,
-    project_path: String,
-    layout_json: String,
-) -> Result<(), String> {
-    let db = app.state::<crate::db::ManagedDb>();
-    db.with(|d| d.save_pane_tree_layout(&storage_key, &project_path, &layout_json))
-}
-
-#[tauri::command]
-pub fn get_pane_tree_layout(
-    app: AppHandle,
-    storage_key: String,
-) -> Result<Option<crate::db::PaneTreeLayoutRecord>, String> {
-    let db = app.state::<crate::db::ManagedDb>();
-    db.with(|d| d.get_pane_tree_layout(&storage_key))
-}
-
-#[tauri::command]
-pub fn delete_pane_tree_layout(app: AppHandle, storage_key: String) -> Result<(), String> {
-    let db = app.state::<crate::db::ManagedDb>();
-    db.with(|d| d.delete_pane_tree_layout(&storage_key))
-}
-
 // --- Workspace pane commands ---
 
 const MAX_KEYS_BYTES: usize = 1024 * 1024; // 1 MB
 
-fn validate_keys_payload(data: &str) -> Result<(), String> {
+pub(crate) fn validate_keys_payload(data: &str) -> Result<(), String> {
     if data.is_empty() {
         return Err("Input data is required".to_string());
     }
@@ -5003,7 +4214,7 @@ fn terminal_registry_cwd(app: &AppHandle, terminal_id: &str) -> String {
         .unwrap_or_else(|| ".".to_string())
 }
 
-fn save_submitted_command_history(app: &AppHandle, terminal_id: &str, data: &str) {
+pub(crate) fn save_submitted_command_history(app: &AppHandle, terminal_id: &str, data: &str) {
     let Some(command) = command_history_text_from_submitted_input(data) else {
         return;
     };
@@ -5011,375 +4222,6 @@ fn save_submitted_command_history(app: &AppHandle, terminal_id: &str, data: &str
     if let Err(err) = save_command_history(app.clone(), terminal_id.to_string(), command, cwd) {
         log::warn!("submitted command history save failed terminal={terminal_id}: {err}");
     }
-}
-
-/// Send keystrokes to a specific terminal pane. Mirrors `write_terminal`'s
-/// snapshot hook so Orchestra agents that drive a pane through this IPC
-/// also appear on the time-travel timeline.
-#[tauri::command]
-pub async fn send_keys(app: AppHandle, terminal_id: String, data: String) -> Result<(), String> {
-    validate_keys_payload(&data)?;
-    save_submitted_command_history(&app, &terminal_id, &data);
-    let bytes = data.as_bytes();
-    match terminal_write_async(&app, &terminal_id, bytes).await {
-        Ok(()) => {
-            record_audit_event(
-                &app,
-                "terminal",
-                "send_keys",
-                "info",
-                Some("terminal"),
-                Some(&terminal_id),
-                "Pane input sent",
-                serde_json::json!({
-                    "bytes": bytes.len(),
-                    "containsEnter": bytes.contains(&b'\r'),
-                    "redacted": true,
-                }),
-            );
-            capture_if_enter(&app, &terminal_id, bytes);
-            Ok(())
-        }
-        Err(err) => {
-            record_audit_event(
-                &app,
-                "terminal",
-                "send_keys_failed",
-                "warn",
-                Some("terminal"),
-                Some(&terminal_id),
-                "Pane input failed",
-                serde_json::json!({
-                    "bytes": bytes.len(),
-                    "containsEnter": bytes.contains(&b'\r'),
-                    "error": sanitize_audit_error(&err),
-                    "redacted": true,
-                }),
-            );
-            Err(err)
-        }
-    }
-}
-
-/// Capture recent output from a terminal pane
-#[tauri::command]
-pub fn capture_pane(
-    app: AppHandle,
-    terminal_id: String,
-    lines: Option<usize>,
-    strip_ansi_codes: Option<bool>,
-) -> Result<String, String> {
-    let registry = app.state::<OutputBufferRegistry>();
-    let n = lines.unwrap_or(50).min(1000);
-    let clean = strip_ansi_codes.unwrap_or(false);
-    registry.capture(&terminal_id, n, clean)
-}
-
-/// Extract command blocks from a terminal's output buffer
-#[tauri::command]
-pub fn command_blocks(
-    app: AppHandle,
-    terminal_id: String,
-) -> Result<Vec<crate::pty::buffer::CommandBlock>, String> {
-    let registry = app.state::<OutputBufferRegistry>();
-    registry.command_blocks(&terminal_id)
-}
-
-/// Send keystrokes to all active terminal panes (synchronize-panes). Each
-/// successfully written pane also gets its own snapshot captured when the
-/// payload ends a command, so the timeline stays consistent across panes.
-#[tauri::command]
-pub async fn broadcast_keys(app: AppHandle, data: String) -> Result<u32, String> {
-    validate_keys_payload(&data)?;
-    let ids = terminal_ids_async(&app).await;
-    if ids.is_empty() {
-        let err = "No active terminal panes".to_string();
-        record_audit_event(
-            &app,
-            "terminal",
-            "broadcast_keys_failed",
-            "warn",
-            Some("terminal_group"),
-            None,
-            "Broadcast input failed",
-            serde_json::json!({
-                "targets": 0,
-                "accepted": 0,
-                "bytes": data.len(),
-                "containsEnter": data.as_bytes().contains(&b'\r'),
-                "error": err,
-                "redacted": true,
-            }),
-        );
-        return Err(err);
-    }
-    let mut count: u32 = 0;
-    let mut last_error: Option<String> = None;
-    for id in &ids {
-        match terminal_write_async(&app, id, data.as_bytes()).await {
-            Ok(()) => {
-                count += 1;
-                capture_if_enter(&app, id, data.as_bytes());
-            }
-            Err(err) => last_error = Some(err),
-        }
-    }
-    record_audit_event(
-        &app,
-        "terminal",
-        if count > 0 {
-            "broadcast_keys"
-        } else {
-            "broadcast_keys_failed"
-        },
-        if count > 0 { "info" } else { "warn" },
-        Some("terminal_group"),
-        None,
-        if count > 0 {
-            "Broadcast input sent"
-        } else {
-            "Broadcast input failed"
-        },
-        serde_json::json!({
-            "targets": ids.len(),
-            "accepted": count,
-            "bytes": data.len(),
-            "containsEnter": data.as_bytes().contains(&b'\r'),
-            "error": last_error.as_deref().map(sanitize_audit_error),
-            "redacted": true,
-        }),
-    );
-    if count == 0 {
-        return Err(last_error.unwrap_or_else(|| "No pane accepted input".to_string()));
-    }
-    Ok(count)
-}
-
-/// Rename a terminal pane (for send-keys-by-name)
-#[tauri::command]
-pub fn rename_pane(app: AppHandle, terminal_id: String, name: String) -> Result<(), String> {
-    let registry = app.state::<crate::pty::PaneRegistry>();
-    registry.rename(&terminal_id, &name)?;
-    sync_mux_pane_name(&app, &terminal_id, &name);
-    Ok(())
-}
-
-/// Assign a role to a terminal pane for workstation routing.
-#[tauri::command]
-pub fn set_pane_role(app: AppHandle, terminal_id: String, role: String) -> Result<(), String> {
-    let registry = app.state::<crate::pty::PaneRegistry>();
-    registry.set_role(&terminal_id, &role)?;
-    sync_mux_pane_role(&app, &terminal_id, &role);
-    Ok(())
-}
-
-/// Send keystrokes to a pane by its user-assigned name. Same snapshot
-/// hook as `send_keys` so name-addressed writes appear on the timeline.
-#[tauri::command]
-pub async fn send_keys_by_name(app: AppHandle, name: String, data: String) -> Result<(), String> {
-    validate_keys_payload(&data)?;
-    let pane_registry = app.state::<crate::pty::PaneRegistry>();
-    let terminal_id = pane_registry
-        .find_by_name_unique(&name)?
-        .ok_or_else(|| format!("No pane named '{}'", name))?;
-    let bytes = data.as_bytes();
-    match terminal_write_async(&app, &terminal_id, bytes).await {
-        Ok(()) => {
-            record_audit_event(
-                &app,
-                "terminal",
-                "send_keys_by_name",
-                "info",
-                Some("terminal"),
-                Some(&terminal_id),
-                "Named pane input sent",
-                serde_json::json!({
-                    "targetName": name,
-                    "bytes": bytes.len(),
-                    "containsEnter": bytes.contains(&b'\r'),
-                    "redacted": true,
-                }),
-            );
-            capture_if_enter(&app, &terminal_id, bytes);
-            Ok(())
-        }
-        Err(err) => {
-            record_audit_event(
-                &app,
-                "terminal",
-                "send_keys_by_name_failed",
-                "warn",
-                Some("terminal"),
-                Some(&terminal_id),
-                "Named pane input failed",
-                serde_json::json!({
-                    "targetName": name,
-                    "bytes": bytes.len(),
-                    "containsEnter": bytes.contains(&b'\r'),
-                    "error": sanitize_audit_error(&err),
-                    "redacted": true,
-                }),
-            );
-            Err(err)
-        }
-    }
-}
-
-/// Send keystrokes to every pane assigned a role. Role sends are intentionally
-/// scoped broadcasts because several panes may share a workstation role.
-#[tauri::command]
-pub async fn send_keys_by_role(app: AppHandle, role: String, data: String) -> Result<u32, String> {
-    validate_keys_payload(&data)?;
-    let pane_registry = app.state::<crate::pty::PaneRegistry>();
-    let terminal_ids = pane_registry.find_by_role(&role);
-    if terminal_ids.is_empty() {
-        let err = format!("No pane with role '{}'", role);
-        record_audit_event(
-            &app,
-            "terminal",
-            "send_keys_failed",
-            "warn",
-            Some("terminal_group"),
-            None,
-            "Pane role input failed",
-            serde_json::json!({
-                "targetKind": "role",
-                "bytes": data.len(),
-                "containsEnter": data.as_bytes().contains(&b'\r'),
-                "error": sanitize_audit_error(&err),
-                "redacted": true,
-            }),
-        );
-        return Err(err);
-    }
-    write_to_terminals(&app, terminal_ids, data.as_bytes()).await
-}
-
-/// Send keystrokes to a pane target. Targets prefixed with `@` or `role:`
-/// resolve as roles; exact PTY ids resolve directly. Unprefixed labels may
-/// resolve by pane name or role, but a name/role collision is rejected so
-/// input is not silently sent to the wrong pane.
-#[tauri::command]
-pub async fn send_keys_by_target(
-    app: AppHandle,
-    target: String,
-    data: String,
-) -> Result<u32, String> {
-    validate_keys_payload(&data)?;
-    let trimmed = target.trim();
-    if trimmed.is_empty() {
-        return Err("Pane target is required".to_string());
-    }
-
-    let pane_registry = app.state::<crate::pty::PaneRegistry>();
-    let terminal_ids = match pane_registry.resolve_send_target(trimmed) {
-        Ok(ids) => ids,
-        Err(err) => {
-            record_audit_event(
-                &app,
-                "terminal",
-                "send_keys_failed",
-                "warn",
-                Some("terminal_group"),
-                None,
-                "Pane target input failed",
-                serde_json::json!({
-                    "targetKind": "target",
-                    "bytes": data.len(),
-                    "containsEnter": data.as_bytes().contains(&b'\r'),
-                    "error": sanitize_audit_error(&err),
-                    "redacted": true,
-                }),
-            );
-            return Err(err);
-        }
-    };
-
-    if terminal_ids.is_empty() {
-        let err = format!("No pane target '{}'", target);
-        record_audit_event(
-            &app,
-            "terminal",
-            "send_keys_failed",
-            "warn",
-            Some("terminal_group"),
-            None,
-            "Pane target input failed",
-            serde_json::json!({
-                "targetKind": "target",
-                "bytes": data.len(),
-                "containsEnter": data.as_bytes().contains(&b'\r'),
-                "error": sanitize_audit_error(&err),
-                "redacted": true,
-            }),
-        );
-        return Err(err);
-    }
-    write_to_terminals(&app, terminal_ids, data.as_bytes()).await
-}
-
-async fn write_to_terminals(
-    app: &AppHandle,
-    terminal_ids: Vec<String>,
-    data: &[u8],
-) -> Result<u32, String> {
-    let mut count: u32 = 0;
-    let mut last_error: Option<String> = None;
-    let target_count = terminal_ids.len();
-    for terminal_id in terminal_ids {
-        match terminal_write_async(app, &terminal_id, data).await {
-            Ok(()) => {
-                count += 1;
-                capture_if_enter(app, &terminal_id, data);
-            }
-            Err(err) => last_error = Some(err),
-        }
-    }
-    if count == 0 {
-        let err = last_error.unwrap_or_else(|| "No pane accepted input".to_string());
-        record_audit_event(
-            app,
-            "terminal",
-            "send_keys_failed",
-            "warn",
-            Some("terminal_group"),
-            None,
-            "Pane group input failed",
-            serde_json::json!({
-                "targets": target_count,
-                "bytes": data.len(),
-                "containsEnter": data.contains(&b'\r'),
-                "error": sanitize_audit_error(&err),
-                "redacted": true,
-            }),
-        );
-        return Err(err);
-    }
-    record_audit_event(
-        app,
-        "terminal",
-        "send_keys",
-        "info",
-        Some("terminal_group"),
-        None,
-        "Pane group input sent",
-        serde_json::json!({
-            "targets": target_count,
-            "accepted": count,
-            "bytes": data.len(),
-            "containsEnter": data.contains(&b'\r'),
-            "redacted": true,
-        }),
-    );
-    Ok(count)
-}
-
-/// List all registered panes with metadata
-#[tauri::command]
-pub async fn list_panes_info(app: AppHandle) -> Vec<crate::pty::registry::PaneEntry> {
-    let registry = app.state::<crate::pty::PaneRegistry>();
-    let active_terminal_ids = terminal_ids_async(&app).await;
-    registry.list_active(&active_terminal_ids)
 }
 
 /// Start watching a directory for file changes (100ms debounce → "fs:changed" event)
@@ -5428,643 +4270,6 @@ impl FsWatcherRegistry {
             watchers.remove(path); // WatcherHandle drop stops the watcher
         }
     }
-}
-
-// ── Workflow commands ──
-
-/// List available workflow definitions for a project
-#[tauri::command]
-pub fn list_workflows(project_path: String) -> Vec<crate::workflow::WorkflowSummary> {
-    crate::workflow::list_workflow_files(&project_path)
-}
-
-/// Start a workflow execution
-#[tauri::command]
-pub fn start_workflow(
-    app: AppHandle,
-    project_path: String,
-    workflow_path: String,
-    task_title: String,
-) -> Result<crate::workflow::WorkflowStatus, String> {
-    let workflow = crate::workflow::parse_workflow(&workflow_path)?;
-    let workflow_name = workflow.name.clone();
-    let phase_count = workflow.phases.len();
-    let executor = app.state::<crate::workflow::WorkflowExecutor>();
-    if let Err(err) = executor.restore_project(&project_path) {
-        log::warn!(
-            "failed to restore workflow runs before start for project={:?}: {}",
-            project_path,
-            err
-        );
-    }
-    let id = executor.start(workflow, &task_title, &project_path)?;
-    record_audit_event(
-        &app,
-        "workflow",
-        "start",
-        "info",
-        Some("workflow"),
-        Some(&id),
-        "Workflow started",
-        serde_json::json!({
-            "name": workflow_name,
-            "phases": phase_count,
-            "projectPath": project_path,
-            "workflowPath": workflow_path,
-            "taskTitle": task_title,
-        }),
-    );
-    executor.status(&id)
-}
-
-/// Get the current phase config for a workflow (so frontend can start the agent)
-#[tauri::command]
-pub fn workflow_current_phase(
-    app: AppHandle,
-    workflow_id: String,
-) -> Result<WorkflowPhaseInfo, String> {
-    let executor = app.state::<crate::workflow::WorkflowExecutor>();
-    let (phase, prompt) = executor.current_phase_config(&workflow_id)?;
-    Ok(WorkflowPhaseInfo {
-        name: phase.name,
-        model: phase.agent.model,
-        prompt,
-        max_cost: phase.agent.max_cost,
-        target_pane: phase.target_pane,
-        agent_role: phase.agent_role,
-        allowed_tools: phase.agent.allowed_tools,
-        has_gate: phase.quality_gate.is_some(),
-        gate_type: phase.quality_gate.map(|g| format!("{:?}", g.gate_type)),
-    })
-}
-
-#[derive(serde::Serialize)]
-pub struct WorkflowPhaseInfo {
-    pub name: String,
-    pub model: String,
-    pub prompt: String,
-    pub max_cost: f64,
-    pub target_pane: Option<String>,
-    pub agent_role: Option<String>,
-    pub allowed_tools: Vec<String>,
-    pub has_gate: bool,
-    pub gate_type: Option<String>,
-}
-
-/// Emit workflow status update event to frontend
-fn emit_workflow_update(app: &AppHandle, executor: &crate::workflow::WorkflowExecutor) {
-    let statuses = executor.list();
-    let _ = app.emit("workflow-updated", statuses);
-}
-
-/// Record that an agent was started for the current phase
-#[tauri::command]
-pub fn workflow_set_agent(
-    app: AppHandle,
-    workflow_id: String,
-    agent_session_id: String,
-) -> Result<(), String> {
-    let executor = app.state::<crate::workflow::WorkflowExecutor>();
-    executor.set_phase_agent(&workflow_id, &agent_session_id)?;
-    record_audit_event(
-        &app,
-        "workflow",
-        "set_agent",
-        "info",
-        Some("workflow"),
-        Some(&workflow_id),
-        "Workflow phase agent assigned",
-        serde_json::json!({
-            "agentSessionId": agent_session_id,
-        }),
-    );
-    emit_workflow_update(&app, &executor);
-    Ok(())
-}
-
-/// Mark current phase's agent as complete. Ungated phases auto-advance.
-#[tauri::command]
-pub fn workflow_phase_done(
-    app: AppHandle,
-    workflow_id: String,
-    cost: f64,
-) -> Result<WorkflowPhaseDoneResult, String> {
-    let executor = app.state::<crate::workflow::WorkflowExecutor>();
-    let outcome = executor.phase_agent_done(&workflow_id, cost)?;
-    record_audit_event(
-        &app,
-        "workflow",
-        "phase_done",
-        "info",
-        Some("workflow"),
-        Some(&workflow_id),
-        "Workflow phase completed",
-        serde_json::json!({
-            "cost": cost,
-            "done": outcome.done,
-            "waitingGate": outcome.waiting_gate,
-        }),
-    );
-    emit_workflow_update(&app, &executor);
-    Ok(WorkflowPhaseDoneResult {
-        done: outcome.done,
-        waiting_gate: outcome.waiting_gate,
-    })
-}
-
-#[derive(serde::Serialize)]
-pub struct WorkflowPhaseDoneResult {
-    pub done: bool,
-    pub waiting_gate: bool,
-}
-
-/// Approve the current quality gate → advance to next phase
-#[tauri::command]
-pub fn workflow_approve_gate(app: AppHandle, workflow_id: String) -> Result<bool, String> {
-    let executor = app.state::<crate::workflow::WorkflowExecutor>();
-    let done = executor.approve_gate(&workflow_id)?;
-    record_audit_event(
-        &app,
-        "workflow",
-        "approve_gate",
-        "info",
-        Some("workflow"),
-        Some(&workflow_id),
-        "Workflow gate approved",
-        serde_json::json!({
-            "done": done,
-        }),
-    );
-    emit_workflow_update(&app, &executor);
-    Ok(done)
-}
-
-/// Approve the current quality gate with comment/conditional metadata.
-#[tauri::command]
-pub fn workflow_approve_gate_decision(
-    app: AppHandle,
-    workflow_id: String,
-    comment: Option<String>,
-    conditional: Option<bool>,
-) -> Result<bool, String> {
-    let executor = app.state::<crate::workflow::WorkflowExecutor>();
-    let conditional = conditional.unwrap_or(false);
-    let comment = comment.unwrap_or_default();
-    let done = executor.approve_gate_with_decision(&workflow_id, &comment, conditional)?;
-    record_audit_event(
-        &app,
-        "workflow",
-        "approve_gate_decision",
-        "info",
-        Some("workflow"),
-        Some(&workflow_id),
-        "Workflow gate approved with decision metadata",
-        serde_json::json!({
-            "done": done,
-            "conditional": conditional,
-            "comment": comment,
-        }),
-    );
-    emit_workflow_update(&app, &executor);
-    Ok(done)
-}
-
-/// Reject the current quality gate → retry the phase
-#[tauri::command]
-pub fn workflow_reject_gate(app: AppHandle, workflow_id: String) -> Result<(), String> {
-    let executor = app.state::<crate::workflow::WorkflowExecutor>();
-    executor.reject_gate(&workflow_id)?;
-    record_audit_event(
-        &app,
-        "workflow",
-        "reject_gate",
-        "warn",
-        Some("workflow"),
-        Some(&workflow_id),
-        "Workflow gate rejected",
-        serde_json::json!({}),
-    );
-    emit_workflow_update(&app, &executor);
-    Ok(())
-}
-
-/// Reject the current quality gate with a preserved reviewer comment.
-#[tauri::command]
-pub fn workflow_reject_gate_decision(
-    app: AppHandle,
-    workflow_id: String,
-    comment: Option<String>,
-) -> Result<(), String> {
-    let executor = app.state::<crate::workflow::WorkflowExecutor>();
-    let comment = comment.unwrap_or_default();
-    executor.reject_gate_with_comment(&workflow_id, &comment)?;
-    record_audit_event(
-        &app,
-        "workflow",
-        "reject_gate_decision",
-        "warn",
-        Some("workflow"),
-        Some(&workflow_id),
-        "Workflow gate rejected with decision metadata",
-        serde_json::json!({
-            "comment": comment,
-        }),
-    );
-    emit_workflow_update(&app, &executor);
-    Ok(())
-}
-
-/// Resume a workflow from a named phase and preserve the reason.
-#[tauri::command]
-pub fn workflow_resume_from_phase(
-    app: AppHandle,
-    workflow_id: String,
-    phase_name: String,
-    reason: String,
-) -> Result<crate::workflow::WorkflowStatus, String> {
-    let executor = app.state::<crate::workflow::WorkflowExecutor>();
-    let status = executor.resume_from_phase(&workflow_id, &phase_name, &reason)?;
-    record_audit_event(
-        &app,
-        "workflow",
-        "resume_phase",
-        "info",
-        Some("workflow"),
-        Some(&workflow_id),
-        "Workflow resumed from phase",
-        serde_json::json!({
-            "phaseName": phase_name,
-            "reason": reason,
-        }),
-    );
-    emit_workflow_update(&app, &executor);
-    Ok(status)
-}
-
-/// Split the current oversized phase into narrower child phases.
-#[tauri::command]
-pub fn workflow_split_current_phase(
-    app: AppHandle,
-    workflow_id: String,
-    child_phase_names: Vec<String>,
-    reason: String,
-) -> Result<crate::workflow::WorkflowStatus, String> {
-    let executor = app.state::<crate::workflow::WorkflowExecutor>();
-    let status = executor.split_current_phase(&workflow_id, child_phase_names.clone(), &reason)?;
-    record_audit_event(
-        &app,
-        "workflow",
-        "split_phase",
-        "warn",
-        Some("workflow"),
-        Some(&workflow_id),
-        "Workflow phase split",
-        serde_json::json!({
-            "childPhaseNames": child_phase_names,
-            "reason": reason,
-        }),
-    );
-    emit_workflow_update(&app, &executor);
-    Ok(status)
-}
-
-/// Convert a blocker into an explicit decision request/gate.
-#[tauri::command]
-pub fn workflow_request_decision(
-    app: AppHandle,
-    workflow_id: String,
-    kind: String,
-    reason: String,
-    options: Vec<String>,
-    default_option: Option<String>,
-) -> Result<crate::workflow::WorkflowStatus, String> {
-    let executor = app.state::<crate::workflow::WorkflowExecutor>();
-    let status = executor.request_decision_for_current_phase(
-        &workflow_id,
-        &kind,
-        &reason,
-        options.clone(),
-        default_option.clone(),
-    )?;
-    record_audit_event(
-        &app,
-        "workflow",
-        "decision_requested",
-        "warn",
-        Some("workflow"),
-        Some(&workflow_id),
-        "Workflow blocker converted to decision request",
-        serde_json::json!({
-            "kind": kind,
-            "reason": reason,
-            "options": options,
-            "defaultOption": default_option,
-        }),
-    );
-    emit_workflow_update(&app, &executor);
-    Ok(status)
-}
-
-/// Append phase artifacts, commands, validation evidence, and final report.
-#[tauri::command]
-pub fn workflow_record_phase_evidence(
-    app: AppHandle,
-    workflow_id: String,
-    phase_name: Option<String>,
-    artifacts: Vec<crate::workflow::WorkflowArtifact>,
-    commands: Vec<crate::workflow::WorkflowCommandRecord>,
-    validation: Vec<crate::workflow::WorkflowValidationRecord>,
-    final_report: Option<String>,
-) -> Result<crate::workflow::WorkflowStatus, String> {
-    let executor = app.state::<crate::workflow::WorkflowExecutor>();
-    let status = executor.record_phase_evidence(
-        &workflow_id,
-        phase_name.as_deref(),
-        artifacts,
-        commands,
-        validation,
-        final_report,
-    )?;
-    record_audit_event(
-        &app,
-        "workflow",
-        "phase_evidence",
-        "info",
-        Some("workflow"),
-        Some(&workflow_id),
-        "Workflow phase evidence recorded",
-        serde_json::json!({
-            "phaseName": phase_name,
-        }),
-    );
-    emit_workflow_update(&app, &executor);
-    Ok(status)
-}
-
-/// Get workflow execution status
-#[tauri::command]
-pub fn workflow_status(
-    app: AppHandle,
-    workflow_id: String,
-) -> Result<crate::workflow::WorkflowStatus, String> {
-    let executor = app.state::<crate::workflow::WorkflowExecutor>();
-    executor.status(&workflow_id)
-}
-
-/// List all running workflows
-#[tauri::command]
-pub fn list_running_workflows(
-    app: AppHandle,
-    project_path: Option<String>,
-) -> Vec<crate::workflow::WorkflowStatus> {
-    let executor = app.state::<crate::workflow::WorkflowExecutor>();
-    if let Some(project_path) = project_path.as_deref() {
-        if let Err(err) = executor.restore_project(project_path) {
-            log::warn!(
-                "failed to restore workflow runs for project={:?}: {}",
-                project_path,
-                err
-            );
-        }
-    }
-    executor.list()
-}
-
-/// Remove a completed/cancelled workflow from the executor
-#[tauri::command]
-pub fn workflow_remove(app: AppHandle, workflow_id: String) {
-    let executor = app.state::<crate::workflow::WorkflowExecutor>();
-    executor.remove(&workflow_id);
-    record_audit_event(
-        &app,
-        "workflow",
-        "remove",
-        "info",
-        Some("workflow"),
-        Some(&workflow_id),
-        "Workflow removed",
-        serde_json::json!({}),
-    );
-}
-
-// ── Agent session persistence ──
-
-/// Save agent session to database for persistence across restarts
-#[tauri::command]
-pub fn save_agent_to_db(
-    app: AppHandle,
-    id: String,
-    model: String,
-    prompt: String,
-    status: String,
-    cost: f64,
-    tokens_used: u64,
-) -> Result<(), String> {
-    let db = app.state::<crate::db::ManagedDb>();
-    db.with(|d| d.save_agent_session(&id, &model, &prompt, &status, cost, tokens_used))
-}
-
-/// Update agent session in database
-#[tauri::command]
-pub fn update_agent_in_db(
-    app: AppHandle,
-    id: String,
-    status: String,
-    cost: f64,
-    tokens_used: u64,
-) -> Result<(), String> {
-    let db = app.state::<crate::db::ManagedDb>();
-    db.with(|d| d.update_agent_session(&id, &status, cost, tokens_used))
-}
-
-/// List recent agent sessions from database
-#[tauri::command]
-pub fn list_agent_history(
-    app: AppHandle,
-    limit: usize,
-) -> Result<Vec<crate::db::AgentSessionRecord>, String> {
-    let db = app.state::<crate::db::ManagedDb>();
-    db.with(|d| d.list_agent_sessions(limit))
-}
-
-#[tauri::command]
-pub fn save_agent_telemetry_snapshot(app: AppHandle, snapshot_json: String) -> Result<(), String> {
-    let db = app.state::<crate::db::ManagedDb>();
-    db.with(|d| d.save_agent_telemetry_snapshot(&snapshot_json))
-}
-
-#[tauri::command]
-pub fn list_agent_telemetry_snapshots(
-    app: AppHandle,
-    limit: usize,
-) -> Result<Vec<crate::db::AgentTelemetrySnapshotRecord>, String> {
-    let db = app.state::<crate::db::ManagedDb>();
-    db.with(|d| d.list_agent_telemetry_snapshots(limit))
-}
-
-// ── Command History ──
-
-/// Save a command to history (DB) and feed the in-memory SuggestEngine
-/// so fish-style autosuggest picks up the new command on the very next
-/// keystroke without waiting for a DB reseed.
-///
-/// Also kicks off a best-effort semantic-index insert on a detached thread
-/// (Phase 3B-2) — we deliberately avoid blocking the PTY reader on the
-/// embedding round-trip even though the default embedder is fast.
-#[tauri::command]
-pub fn save_command_history(
-    app: AppHandle,
-    terminal_id: String,
-    command: String,
-    cwd: String,
-) -> Result<i64, String> {
-    let cwd = normalize_command_history_cwd(&cwd);
-    if let Some(journal) = app.try_state::<Arc<crate::term::CommandBlockJournal>>() {
-        if let Some(existing_id) = journal.open_command_history_id(&terminal_id, &command, &cwd) {
-            return Ok(existing_id);
-        }
-    }
-    let db = app.state::<crate::db::ManagedDb>();
-    let command_id = db.with(|d| d.save_command(&terminal_id, &command, &cwd))?;
-    if let Some(journal) = app.try_state::<Arc<crate::term::CommandBlockJournal>>() {
-        if let Some(record) = journal.record_command(&terminal_id, command_id, &command, &cwd) {
-            persist_command_block(&app, &record);
-        }
-    }
-    if let Some(engine) = app.try_state::<Arc<Mutex<crate::suggest::SuggestEngine>>>() {
-        if let Ok(mut guard) = engine.inner().lock() {
-            guard.record(&command);
-        }
-    }
-    // Semantic index. Keep this best-effort and off the PTY hot path.
-    if let Some(store) = app.try_state::<crate::ManagedHistoryStore>() {
-        let store = store.inner().clone();
-        let cmd = command.clone();
-        std::thread::Builder::new()
-            .name("history-index".into())
-            .spawn(move || {
-                if let Err(e) = store.index_command(command_id, &cmd) {
-                    log::warn!("history index failed (id {command_id}): {e}");
-                }
-            })
-            .ok();
-    }
-    Ok(command_id)
-}
-
-fn normalize_command_history_cwd(cwd: &str) -> String {
-    let normalized = cwd.trim().replace('\\', "/");
-    let normalized = normalized.trim_end_matches('/');
-    if normalized.is_empty() {
-        ".".to_string()
-    } else if normalized.len() == 2 && normalized.ends_with(':') {
-        format!("{normalized}/")
-    } else {
-        normalized.to_string()
-    }
-}
-
-/// Search command history
-#[tauri::command]
-pub fn search_command_history(
-    app: AppHandle,
-    query: String,
-    limit: usize,
-) -> Result<Vec<crate::db::CommandRecord>, String> {
-    let db = app.state::<crate::db::ManagedDb>();
-    db.with(|d| d.search_commands(&query, limit))
-}
-
-/// Get recent unique commands
-#[tauri::command]
-pub fn recent_commands(app: AppHandle, limit: usize) -> Result<Vec<String>, String> {
-    let db = app.state::<crate::db::ManagedDb>();
-    db.with(|d| d.recent_commands(limit))
-}
-
-/// Read the latest operational audit events. This intentionally exposes
-/// metadata only after the write-side callers have redacted raw terminal
-/// input, so UI panels can inspect failures without leaking prompts.
-#[tauri::command]
-pub fn recent_audit_events(
-    app: AppHandle,
-    limit: usize,
-    category: Option<String>,
-    severity: Option<String>,
-    entity_id: Option<String>,
-) -> Result<Vec<crate::db::AuditEventRecord>, String> {
-    let db = app.state::<crate::db::ManagedDb>();
-    db.with(|d| {
-        d.query_audit_events(
-            limit,
-            category.as_deref(),
-            severity.as_deref(),
-            entity_id.as_deref(),
-        )
-    })
-}
-
-#[tauri::command]
-pub fn append_audit_event(
-    app: AppHandle,
-    event: crate::db::AuditJournalAppend,
-) -> Result<crate::db::AuditJournalEventRecord, String> {
-    crate::audit::append_audit_event_and_emit(&app, event)
-}
-
-#[tauri::command]
-pub fn append_audit_events(
-    app: AppHandle,
-    events: Vec<crate::db::AuditJournalAppend>,
-) -> Result<Vec<crate::db::AuditJournalEventRecord>, String> {
-    crate::audit::append_audit_events_and_emit(&app, events)
-}
-
-#[tauri::command]
-pub fn list_audit_events(
-    app: AppHandle,
-    filter: crate::db::AuditJournalFilter,
-) -> Result<Vec<crate::db::AuditJournalEventRecord>, String> {
-    let db = app.state::<crate::db::ManagedDb>();
-    db.with(|d| d.list_audit_journal_events(&filter))
-}
-
-#[tauri::command]
-pub fn get_audit_trace(
-    app: AppHandle,
-    correlation_id: String,
-    workspace_id: Option<String>,
-) -> Result<Vec<crate::db::AuditJournalEventRecord>, String> {
-    let db = app.state::<crate::db::ManagedDb>();
-    db.with(|d| d.get_audit_trace(&correlation_id, workspace_id.as_deref()))
-}
-
-#[tauri::command]
-pub fn get_latest_snapshot(
-    app: AppHandle,
-    workspace_id: String,
-) -> Result<crate::db::AuditJournalSnapshotRecord, String> {
-    let db = app.state::<crate::db::ManagedDb>();
-    db.with(|d| d.get_latest_audit_snapshot(&workspace_id))
-}
-
-#[tauri::command]
-pub fn rebuild_snapshot_from_events(
-    app: AppHandle,
-    workspace_id: String,
-) -> Result<crate::db::AuditJournalSnapshotRecord, String> {
-    let db = app.state::<crate::db::ManagedDb>();
-    db.with(|d| d.rebuild_audit_snapshot_from_events(&workspace_id))
-}
-
-#[tauri::command]
-pub fn compact_event_journal(
-    app: AppHandle,
-    workspace_id: String,
-    before_sequence: i64,
-) -> Result<crate::db::AuditJournalCompactResult, String> {
-    let db = app.state::<crate::db::ManagedDb>();
-    db.with(|d| d.compact_audit_event_journal(&workspace_id, before_sequence))
 }
 
 // ── LSP commands ──
@@ -6247,6 +4452,7 @@ pub fn set_ime_position(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ipc::fs_commands::{safe_temp_diff_name, vscode_diff_args, vscode_open_args};
     use crate::watchdog::{AutoApproveRule, WatchdogRules};
 
     #[test]
