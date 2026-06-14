@@ -88,4 +88,60 @@ describe("agent fleet projection", () => {
       ptyId: "pty-1",
     });
   });
+
+  it("preserves headless telemetry detail fields in the unified fleet", () => {
+    const headless: AgentSession = {
+      id: "h2",
+      name: "Detail",
+      status: "coding",
+      model: "sonnet",
+      prompt: "build",
+      startedAt: 5,
+      logs: [{ timestamp: 1, type: "text", content: "hello" }],
+      cost: 2,
+      tokensUsed: 100,
+      filesChanged: 3,
+      watchdog: "auto-approve",
+      finalReport: { status: "ready", title: "Done" },
+      closeState: "collectable",
+      blockedReason: "needs review",
+      nextActor: "human",
+      permissionMode: "edit",
+    };
+
+    const [fleet] = mergeAgentFleetSessions([headless], []);
+
+    expect(fleet).toMatchObject({
+      runtime: "headless",
+      logs: [{ timestamp: 1, type: "text", content: "hello" }],
+      filesChanged: 3,
+      watchdog: "auto-approve",
+      finalReport: { status: "ready", title: "Done" },
+      closeState: "collectable",
+      blockedReason: "needs review",
+      nextActor: "human",
+      permissionMode: "edit",
+    });
+  });
+
+  it("exposes an empty log array for interactive sessions so UIs can map safely", () => {
+    const interactive: InteractiveSession = {
+      id: "i2",
+      pty_id: "pty-2",
+      backend: "sidecar",
+      cli: "codex",
+      status: "coding",
+      model: "codex",
+      initial_prompt: "review",
+      cwd: "C:/repo",
+      cost: 0,
+      tokens_used: 0,
+      started_at: 1,
+    };
+
+    const [fleet] = mergeAgentFleetSessions([], [interactive]);
+
+    expect(fleet.runtime).toBe("interactive");
+    expect(fleet.logs).toEqual([]);
+  });
 });

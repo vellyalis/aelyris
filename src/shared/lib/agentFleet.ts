@@ -1,4 +1,12 @@
-import type { AgentSession, AgentStatus } from "../types/agent";
+import type {
+  AgentCloseState,
+  AgentFinalReportInfo,
+  AgentLog,
+  AgentSession,
+  AgentStatus,
+  FileChangeDetail,
+  WorktreeInfo,
+} from "../types/agent";
 import { normalizeAgentRunStatus, type AgentRunStatus } from "../types/agentStatus";
 import type { InteractiveSession } from "../types/interactiveAgent";
 
@@ -25,6 +33,24 @@ export interface AgentFleetSession {
   worktreeBranch?: string;
   worktreePath?: string;
   repoPath?: string;
+  // Detail fields surfaced by the rail panels (DecisionInbox, RunGraph,
+  // ContextPanel, etc.). Present for headless runs; undefined/empty for
+  // interactive runs that do not carry structured telemetry yet. Added so the
+  // unified fleet can be the single source the UI projects from.
+  logs?: AgentLog[];
+  branch?: string;
+  filesChanged?: number;
+  changedFileDetails?: FileChangeDetail[];
+  watchdog?: string;
+  worktree?: WorktreeInfo;
+  permissionMode?: AgentSession["permissionMode"];
+  detectedPort?: number;
+  owner?: string;
+  writeSet?: string[];
+  finalReport?: AgentFinalReportInfo;
+  closeState?: AgentCloseState;
+  blockedReason?: string;
+  nextActor?: string;
 }
 
 export interface BackendAgentFleetSession {
@@ -81,6 +107,20 @@ export function headlessToFleetSession(session: AgentSession): AgentFleetSession
     startedAt: session.startedAt,
     role: session.role,
     handoffFrom: session.handoffFrom,
+    logs: session.logs,
+    branch: session.branch,
+    filesChanged: session.filesChanged,
+    changedFileDetails: session.changedFileDetails,
+    watchdog: session.watchdog,
+    worktree: session.worktree,
+    permissionMode: session.permissionMode,
+    detectedPort: session.detectedPort,
+    owner: session.owner,
+    writeSet: session.writeSet,
+    finalReport: session.finalReport,
+    closeState: session.closeState,
+    blockedReason: session.blockedReason,
+    nextActor: session.nextActor,
   };
 }
 
@@ -105,6 +145,9 @@ export function interactiveToFleetSession(session: InteractiveSession): AgentFle
     worktreeBranch: session.worktree_branch,
     worktreePath: session.worktree_path,
     repoPath: session.repo_path,
+    // Interactive sessions have no structured headless telemetry yet; expose an
+    // empty log array so log-rendering surfaces can map() without guards.
+    logs: [],
   };
 }
 
