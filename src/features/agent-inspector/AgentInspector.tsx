@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { collectActivity, filterActivity, LOG_TYPES, type LogType } from "../../shared/lib/activityFilter";
+import type { AgentFleetSession } from "../../shared/lib/agentFleet";
 import { type BudgetThresholds, countOverBudget, getBudgetWarning } from "../../shared/lib/budgetStatus";
 import { reportInvokeFailure } from "../../shared/lib/fallbackTelemetry";
 import { buildHandoffPrompt } from "../../shared/lib/handoffPrompt";
@@ -195,8 +196,15 @@ export function AgentInspector({
     [activeSession],
   );
 
+  // SessionCard renders headless agents only; interactive runs render via
+  // InteractiveSessionCard above. `sessions` is now the unified fleet, so drop
+  // interactive runtimes here to avoid double-display. Fixture sessions carry no
+  // runtime field and are treated as headless.
   const sortedSessions = useMemo(
-    () => [...sessions].sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]),
+    () =>
+      [...sessions]
+        .filter((s) => (s as AgentFleetSession).runtime !== "interactive")
+        .sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]),
     [sessions],
   );
 
