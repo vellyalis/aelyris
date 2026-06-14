@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 const sources = import.meta.glob(
-  "../../src-tauri/src/{session/manager.rs,git/worktree.rs,workflow/executor.rs,db/migrations.rs,db/queries.rs,ipc/commands.rs,lib.rs}",
+  "../../src-tauri/src/{session/manager.rs,git/worktree.rs,workflow/executor.rs,db/migrations.rs,db/queries.rs,ipc/*.rs,lib.rs}",
   {
     query: "?raw",
     import: "default",
@@ -13,6 +13,17 @@ function sourceFor(suffix: string): string {
   const entry = Object.entries(sources).find(([path]) => path.endsWith(suffix));
   expect(entry).toBeDefined();
   return entry?.[1] ?? "";
+}
+
+// The IPC layer was split out of the commands.rs god-file into per-domain
+// modules (persistence_commands.rs, send_keys_commands.rs, etc.). These guard
+// checks care that the silent-bug protections exist *somewhere in the IPC
+// surface*, not in one specific file, so we scan all ipc/*.rs together.
+function ipcCombined(): string {
+  return Object.entries(sources)
+    .filter(([path]) => path.includes("/ipc/"))
+    .map(([, content]) => content)
+    .join("\n");
 }
 
 describe("backend silent state guards", () => {
@@ -57,7 +68,7 @@ describe("backend silent state guards", () => {
   it("persists redacted audit events for terminal and workflow operations", () => {
     const migrations = sourceFor("db/migrations.rs");
     const queries = sourceFor("db/queries.rs");
-    const commands = sourceFor("ipc/commands.rs");
+    const commands = ipcCombined();
     const lib = sourceFor("lib.rs");
 
     expect(migrations).toContain("CREATE TABLE IF NOT EXISTS audit_events");
@@ -77,7 +88,7 @@ describe("backend silent state guards", () => {
   it("persists frontend agent telemetry snapshots in the session database", () => {
     const migrations = sourceFor("db/migrations.rs");
     const queries = sourceFor("db/queries.rs");
-    const commands = sourceFor("ipc/commands.rs");
+    const commands = ipcCombined();
     const lib = sourceFor("lib.rs");
 
     expect(migrations).toContain("CREATE TABLE IF NOT EXISTS agent_telemetry_snapshots");
@@ -91,7 +102,7 @@ describe("backend silent state guards", () => {
   });
 
   it("rejects empty terminal key payloads before pane writes", () => {
-    const commands = sourceFor("ipc/commands.rs");
+    const commands = ipcCombined();
 
     expect(commands).toContain("fn validate_keys_payload");
     expect(commands).toContain('return Err("Input data is required".to_string())');
@@ -101,7 +112,7 @@ describe("backend silent state guards", () => {
   });
 
   it("suppresses waiter exit events before intentional terminal closes", () => {
-    const commands = sourceFor("ipc/commands.rs");
+    const commands = ipcCombined();
     const closeTerminal = commands.match(/pub (?:async )?fn close_terminal[\s\S]*?\n\}/)?.[0] ?? "";
 
     expect(closeTerminal).toContain("next_generation(&id)");
@@ -110,7 +121,7 @@ describe("backend silent state guards", () => {
   });
 
   it("treats terminal close as idempotent registry cleanup after natural exit", () => {
-    const commands = sourceFor("ipc/commands.rs");
+    const commands = ipcCombined();
     const closeTerminal = commands.match(/pub (?:async )?fn close_terminal[\s\S]*?\n\}/)?.[0] ?? "";
 
     expect(closeTerminal).toContain("Err(PtyError::NotFound(_)) => true");
@@ -122,7 +133,7 @@ describe("backend silent state guards", () => {
   });
 
   it("rejects successful zero-target pane broadcasts", () => {
-    const commands = sourceFor("ipc/commands.rs");
+    const commands = ipcCombined();
     const broadcastKeys = commands.match(/pub (?:async )?fn broadcast_keys[\s\S]*?\n\}/)?.[0] ?? "";
 
     expect(broadcastKeys).toContain("if ids.is_empty()");
@@ -133,7 +144,7 @@ describe("backend silent state guards", () => {
   });
 
   it("registers the read-only performance observatory IPC surface", () => {
-    const commands = sourceFor("ipc/commands.rs");
+    const commands = ipcCombined();
     const lib = sourceFor("lib.rs");
 
     expect(commands).toContain("pub struct PerformanceObservatoryMetrics");
