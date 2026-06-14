@@ -5,7 +5,7 @@ import { MonitorUp, MousePointer2, Pencil, RotateCcw, Send, Tag, Terminal, X } f
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 
-import type { TerminalPaneTarget } from "../../../App";
+import type { TerminalPaneTarget } from "../../../shared/types/terminalPane";
 import type { Invoke } from "../../../shared/hooks/useLogStream";
 import { normalizeCommandInput } from "../../../shared/lib/terminalInput";
 import { toast } from "../../../shared/store/toastStore";

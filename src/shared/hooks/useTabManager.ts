@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ShellType } from "../../App";
+import type { ShellType } from "../types/terminalPane";
 
 export interface Tab {
   id: string;

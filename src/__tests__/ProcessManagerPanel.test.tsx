@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { TerminalPaneTarget } from "../App";
+import type { TerminalPaneTarget } from "../shared/types/terminalPane";
 import { ProcessManagerPanel } from "../features/process-manager";
 import type { Invoke } from "../shared/hooks/useLogStream";
 import { useConfirmStore } from "../shared/ui/ConfirmDialog";

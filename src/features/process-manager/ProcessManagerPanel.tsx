@@ -3,7 +3,7 @@ import { MousePointer2, PlugZap, Power, RotateCcw, SquareActivity, Terminal, X }
 import type { ChangeEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { TerminalPaneTarget } from "../../App";
+import type { TerminalPaneTarget } from "../../shared/types/terminalPane";
 import type { Invoke } from "../../shared/hooks/useLogStream";
 import { toast } from "../../shared/store/toastStore";
 import { showConfirm } from "../../shared/ui/ConfirmDialog";

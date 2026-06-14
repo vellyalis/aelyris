@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { TerminalPaneTarget } from "../App";
+import type { TerminalPaneTarget } from "../shared/types/terminalPane";
 import { ReliabilityPanel } from "../features/context/ReliabilityPanel";
 import { buildWorkstationGraph } from "../shared/lib/workstationGraph";
 import type { AgentSession } from "../shared/types/agent";

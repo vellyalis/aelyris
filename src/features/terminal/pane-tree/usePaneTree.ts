@@ -1,6 +1,6 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { useCallback, useState } from "react";
-import type { ShellType } from "../../../App";
+import type { ShellType } from "../../../shared/types/terminalPane";
 import { reportInvokeFailure } from "../../../shared/lib/fallbackTelemetry";
 import { isTauriRuntime } from "../../../shared/lib/tauriRuntime";
 import {

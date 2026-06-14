@@ -9,6 +9,7 @@ const read = (relativePath) =>
   fs.readFileSync(path.join(root, relativePath), "utf8");
 
 const api = read("src-tauri/src/api/mod.rs");
+const apiMcp = read("src-tauri/src/api/mcp.rs");
 const lib = read("src-tauri/src/lib.rs");
 const controlMod = read("src-tauri/src/control/mod.rs");
 const merge = read("src-tauri/src/control/merge.rs");
@@ -34,24 +35,24 @@ const requiredTools = [
 const checks = [
   {
     id: "required-aether-tool-catalog",
-    ok: requiredTools.every((tool) => api.includes(`"${tool}"`)),
+    ok: requiredTools.every((tool) => apiMcp.includes(`"${tool}"`)),
     detail: "all aether.mcp.v1 orchestration tools are listed",
   },
   {
     id: "no-grant-or-merge-to-main-tools",
     ok:
-      !api.includes('"aether.grant_approval"') &&
-      !api.includes('"aether.merge_to_main"') &&
-      !api.includes('"grant_approval"') &&
-      !api.includes('"merge_to_main"'),
+      !apiMcp.includes('"aether.grant_approval"') &&
+      !apiMcp.includes('"aether.merge_to_main"') &&
+      !apiMcp.includes('"grant_approval"') &&
+      !apiMcp.includes('"merge_to_main"'),
     detail: "MCP catalog exposes request/observe only for gated operations",
   },
   {
     id: "request-approval-queues-pending",
     ok:
-      api.includes('"aether.request_approval"') &&
-      api.includes('kind: "permission_required".to_string()') &&
-      api.includes('status: "pending".to_string()'),
+      apiMcp.includes('"aether.request_approval"') &&
+      apiMcp.includes('kind: "permission_required".to_string()') &&
+      apiMcp.includes('status: "pending".to_string()'),
     detail: "approval requests create pending inbox items instead of grants",
   },
   {
@@ -60,8 +61,8 @@ const checks = [
       controlMod.includes("pub mod merge;") &&
       merge.includes("pub fn queue_request") &&
       merge.includes('status: "queued".to_string()') &&
-      api.includes('"aether.request_merge"') &&
-      api.includes("no merge was performed"),
+      apiMcp.includes('"aether.request_merge"') &&
+      apiMcp.includes("no merge was performed"),
     detail: "merge requests validate and queue without merging to main",
   },
   {
@@ -79,8 +80,8 @@ const checks = [
   {
     id: "pending-observe-only-contract",
     ok:
-      api.includes('"aether.list_pending_approvals"') &&
-      api.includes('"grantToolExposed": false'),
+      apiMcp.includes('"aether.list_pending_approvals"') &&
+      apiMcp.includes('"grantToolExposed": false'),
     detail: "pending approval polling explicitly reports no grant tool exposure",
   },
   {
@@ -88,6 +89,8 @@ const checks = [
     ok:
       api.includes("with_agent_manager") &&
       api.includes("with_ghost_layers") &&
+      api.includes("mod mcp;") &&
+      api.includes("mcp::tools_call") &&
       lib.includes(".with_agent_manager(agent_manager)") &&
       lib.includes(".with_ghost_layers(ghost_layers)"),
     detail: "in-process MCP surface reads the same Rust agent and GhostDiff state",

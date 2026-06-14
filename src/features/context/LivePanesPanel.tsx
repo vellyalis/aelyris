@@ -2,7 +2,7 @@ import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { MousePointer2, PlugZap, RadioTower, Send, Terminal } from "lucide-react";
 import { type ChangeEvent, type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 
-import type { TerminalPaneTarget } from "../../App";
+import type { TerminalPaneTarget } from "../../shared/types/terminalPane";
 import { useLivePanes } from "../../shared/hooks/useLivePanes";
 import type { Invoke } from "../../shared/hooks/useLogStream";
 import { normalizeCommandInput } from "../../shared/lib/terminalInput";

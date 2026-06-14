@@ -8,6 +8,7 @@ const LOCAL_TIME_ZONE = "Asia/Tokyo";
 const sourcePaths = {
   packageJson: "package.json",
   orchestrator: "src/shared/lib/orchestrator.ts",
+  orchestraDispatch: "src/shared/lib/orchestraDispatch.ts",
   orchestraDialog: "src/shared/ui/OrchestraDialog.tsx",
   app: "src/App.tsx",
   ipcCommands: "src-tauri/src/ipc/commands.rs",
@@ -91,6 +92,7 @@ function add(checks, id, ok, detail, evidence = {}) {
 
 const packageJson = read(sourcePaths.packageJson);
 const orchestrator = read(sourcePaths.orchestrator);
+const orchestraDispatch = read(sourcePaths.orchestraDispatch);
 const orchestraDialog = read(sourcePaths.orchestraDialog);
 const app = read(sourcePaths.app);
 const ipcCommands = read(sourcePaths.ipcCommands);
@@ -228,15 +230,9 @@ add(
     app.includes("changedFiles: rightRailAllChangedFiles.map((file) => file.path)") &&
     app.includes("pendingDecisionCount: decisionInbox.pendingCount") &&
     app.includes("existingSessionCount: sessions.length + interactiveSessions.length") &&
-    app.includes('tauriInvoke<{\n            recommended_model: string;') &&
-    app.includes('"route_agent", { prompt: prompt.prompt }') &&
-    app.includes("normalizeOrchestraRoutedModel(decision.recommended_model, prompt.model)") &&
-    app.includes("const routedPrompts = await Promise.all(") &&
-    app.includes("Promise.allSettled(") &&
-    app.includes("routedPrompts.map((prompt)") &&
-    app.includes("handleStartInteractiveSession({") &&
-    app.includes("initialPrompt: prompt.prompt") &&
-    app.includes("branchName: prompt.branchName") &&
+    app.includes("routeOrchestraPrompts(") &&
+    app.includes('"route_agent", { prompt }') &&
+    app.includes("launchOrchestraPrompts(") &&
     app.includes('setRightRailFocusWidget("sessions")'),
   "The right rail launches role-scoped interactive agents in isolated worktrees and routes the user to live sessions.",
 );
@@ -246,9 +242,14 @@ add(
   "router-ui-dispatch-contract",
   ipcCommands.includes("pub fn route_agent") &&
     orchestrator.includes("export function normalizeOrchestraRoutedModel") &&
+    orchestraDispatch.includes("export async function routeOrchestraPrompts") &&
+    orchestraDispatch.includes("normalizeOrchestraRoutedModel(decision.recommended_model, prompt.model)") &&
+    orchestraDispatch.includes("export async function launchOrchestraPrompts") &&
+    orchestraDispatch.includes("initialPrompt: prompt.prompt") &&
+    orchestraDispatch.includes("branchName: prompt.branchName") &&
     orchestratorTest.includes("normalizes Claude router model names for interactive CLI dispatch") &&
-    app.includes('"route_agent", { prompt: prompt.prompt }') &&
-    app.includes("catch {\n          return prompt;\n        }"),
+    app.includes('"route_agent", { prompt }') &&
+    orchestraDispatch.includes("catch {\n        return prompt;\n      }"),
   "Orchestra dispatch queries the Rust router before launch, normalizes Claude model names, and falls back to role defaults.",
 );
 

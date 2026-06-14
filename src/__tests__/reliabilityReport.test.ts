@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { TerminalPaneTarget } from "../App";
+import type { TerminalPaneTarget } from "../shared/types/terminalPane";
 import { buildReliabilityReport } from "../shared/lib/reliabilityReport";
 import type { AuditEventRecord } from "../shared/types/audit";
 

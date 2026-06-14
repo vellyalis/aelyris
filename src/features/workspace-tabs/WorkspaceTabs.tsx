@@ -1,7 +1,7 @@
 import * as Tabs from "@radix-ui/react-tabs";
 import { GitBranch, Plus, X } from "lucide-react";
 import { useCallback, useState } from "react";
-import type { ShellType } from "../../App";
+import type { ShellType } from "../../shared/types/terminalPane";
 import type { Tab } from "../../shared/hooks/useTabManager";
 import type { InteractiveSession } from "../../shared/types/interactiveAgent";
 import { getCliColor, getCliLabel } from "../../shared/types/interactiveAgent";

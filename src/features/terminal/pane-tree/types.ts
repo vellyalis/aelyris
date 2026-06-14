@@ -1,4 +1,4 @@
-import type { ShellType } from "../../../App";
+import type { ShellType } from "../../../shared/types/terminalPane";
 
 export const PANE_ROLES = ["work", "plan", "build", "test", "review", "agent", "logs"] as const;
 

@@ -19,7 +19,7 @@ import {
   Terminal as TerminalIcon,
 } from "lucide-react";
 import { useMemo } from "react";
-import type { ShellType, TerminalPaneTarget } from "../../App";
+import type { ShellType, TerminalPaneTarget } from "../../shared/types/terminalPane";
 import { formatFallbackError, reportInvokeFailure } from "../../shared/lib/fallbackTelemetry";
 import { formatOperationalPaneChoice, resolveOperationalPaneChoice } from "../../shared/lib/operationalPaneSelection";
 import { normalizeCommandInput } from "../../shared/lib/terminalInput";

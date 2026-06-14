@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ShellType } from "../../../App";
+import type { ShellType } from "../../../shared/types/terminalPane";
 import { reportFallback, reportInvokeFailure } from "../../../shared/lib/fallbackTelemetry";
 import { isTauriRuntime } from "../../../shared/lib/tauriRuntime";
 import type { PaneSwitcherEntry } from "./operations";

@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
 
-import type { TerminalPaneTarget } from "../../App";
+import type { TerminalPaneTarget } from "../../shared/types/terminalPane";
 import { useAuditEvents } from "../../shared/hooks/useAuditEvents";
 import { buildReliabilityReport, type Guardrail, type Incident } from "../../shared/lib/reliabilityReport";
 import {

@@ -4,7 +4,7 @@ import { openUrl as tauriOpenUrl } from "@tauri-apps/plugin-opener";
 import { ChevronDown, ChevronUp, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { ShellType } from "../../App";
+import type { ShellType } from "../../shared/types/terminalPane";
 import { useHistorySearch } from "../../shared/hooks/useHistorySearch";
 import { useSnapshots } from "../../shared/hooks/useSnapshots";
 import { useTerminalSnapshot } from "../../shared/hooks/useTerminalSnapshot";

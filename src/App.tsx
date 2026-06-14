@@ -180,9 +180,13 @@ import { allowedToolsForGuardrailProfile, describeGuardrailProfile } from "./sha
 import { writeClipboardText as writeNativeClipboardText } from "./shared/lib/nativeClipboard";
 import {
   buildOrchestraPrompts,
-  normalizeOrchestraRoutedModel,
   ORCHESTRA_ROLES,
 } from "./shared/lib/orchestrator";
+import {
+  launchOrchestraPrompts,
+  routeOrchestraPrompts,
+  type OrchestraRoutingDecision,
+} from "./shared/lib/orchestraDispatch";
 import {
   deriveFinalGoalRequirementProofs,
   deriveFinalGoalResidualRisk,
@@ -219,6 +223,7 @@ import type { AccentOverrides } from "./shared/themes/catppuccin";
 import { type MoodMaterialOverrides, type MoodPresetId, normalizeMoodPreset } from "./shared/themes/moods";
 import type { AgentSession } from "./shared/types/agent";
 import type { SearchHit } from "./shared/types/history";
+import { SHELL_LABELS, type ShellType, type TerminalPaneTarget } from "./shared/types/terminalPane";
 import { CollapsibleSection } from "./shared/ui/CollapsibleSection";
 import { ConfirmDialog, showConfirm } from "./shared/ui/ConfirmDialog";
 import { ErrorBoundary } from "./shared/ui/ErrorBoundary";
@@ -231,28 +236,12 @@ import { SplitPane } from "./shared/ui/SplitPane";
 import { ToastProvider } from "./shared/ui/Toast";
 import { TooltipProvider } from "./shared/ui/Tooltip";
 
-export type ShellType = "powershell" | "cmd" | "gitbash" | "wsl";
-
-const SHELL_LABELS: Record<ShellType, string> = {
-  powershell: "PowerShell",
-  cmd: "CMD",
-  gitbash: "Git Bash",
-  wsl: "WSL",
-};
-
 interface ActiveTerminalTarget {
   terminalId: string | null;
   tabId: string;
   shell: ShellType;
   label: string;
   ready: boolean;
-}
-
-export interface TerminalPaneTarget extends PaneSwitcherEntry {
-  tabId: string;
-  tabLabel: string;
-  tabShell: ShellType;
-  tabCwd?: string;
 }
 
 interface AppPaneFocusRequest extends PaneFocusRequest {
@@ -4792,38 +4781,16 @@ export function App() {
       pendingDecisionCount: decisionInbox.pendingCount,
       existingSessionCount: sessions.length + interactiveSessions.length,
     });
-    const routedPrompts = await Promise.all(
-      prompts.map(async (prompt) => {
-        if (!isTauriRuntime()) return prompt;
-        try {
-          const decision = await tauriInvoke<{
-            recommended_model: string;
-            reasoning: string;
-            estimated_cost: number;
-            fallback_model: string;
-            task_type: string;
-            complexity: string;
-          }>("route_agent", { prompt: prompt.prompt });
-          return {
-            ...prompt,
-            model: normalizeOrchestraRoutedModel(decision.recommended_model, prompt.model),
-          };
-        } catch {
-          return prompt;
-        }
-      }),
+    const routedPrompts = await routeOrchestraPrompts(
+      prompts,
+      (prompt) => tauriInvoke<OrchestraRoutingDecision>("route_agent", { prompt }),
+      isTauriRuntime(),
     );
-    const launches = await Promise.allSettled(
-      routedPrompts.map((prompt) =>
-        handleStartInteractiveSession({
-          cwd: projectPath,
-          model: prompt.model,
-          initialPrompt: prompt.prompt,
-          branchName: prompt.branchName,
-        }),
-      ),
+    const launched = await launchOrchestraPrompts(
+      routedPrompts,
+      projectPath,
+      handleStartInteractiveSession,
     );
-    const launched = launches.filter((launch) => launch.status === "fulfilled" && launch.value).length;
     if (launched === 0) {
       toast.error("Orchestra dispatch failed", "No agent session could be started.");
       return;

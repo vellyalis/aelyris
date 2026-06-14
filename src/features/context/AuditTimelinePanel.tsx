@@ -2,7 +2,7 @@ import { AlertTriangle, ClipboardList, MousePointer2, RotateCcw, Terminal, Workf
 import type { KeyboardEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { TerminalPaneTarget } from "../../App";
+import type { TerminalPaneTarget } from "../../shared/types/terminalPane";
 import { useAuditEvents } from "../../shared/hooks/useAuditEvents";
 import type { Invoke } from "../../shared/hooks/useLogStream";
 import {

@@ -1,4 +1,4 @@
-import type { TerminalPaneTarget } from "../../App";
+import type { TerminalPaneTarget } from "../types/terminalPane";
 import type { AgentSession } from "../types/agent";
 import type { AuditEventRecord } from "../types/audit";
 import { type AuditRecoveryHint, deriveAuditRecoveryHint, getAuditCorrelationId } from "./auditRecovery";

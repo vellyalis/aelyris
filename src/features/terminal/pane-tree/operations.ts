@@ -1,4 +1,4 @@
-import type { ShellType } from "../../../App";
+import type { ShellType } from "../../../shared/types/terminalPane";
 import type { PaneLifecycleState, PaneNode, PaneRegistryEntry, PaneRole, SplitDirection, TerminalLeaf } from "./types";
 import { PANE_ROLES, splitDirectionToTree } from "./types";
 

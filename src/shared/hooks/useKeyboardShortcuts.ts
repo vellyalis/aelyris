@@ -1,6 +1,6 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { useEffect } from "react";
-import type { ShellType } from "../../App";
+import type { ShellType } from "../types/terminalPane";
 import { showHistorySearch } from "../../features/history/HistorySearchDialog";
 import { reportFallback } from "../lib/fallbackTelemetry";
 import { toast } from "../store/toastStore";

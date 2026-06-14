@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { TerminalPaneTarget } from "../App";
+import type { TerminalPaneTarget } from "../shared/types/terminalPane";
 import { LivePanesPanel } from "../features/context/LivePanesPanel";
 import type { Invoke } from "../shared/hooks/useLogStream";
 import { FALLBACK_TELEMETRY_EVENT, type FallbackTelemetryDetail } from "../shared/lib/fallbackTelemetry";

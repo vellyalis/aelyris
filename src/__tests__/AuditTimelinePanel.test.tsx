@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { TerminalPaneTarget } from "../App";
+import type { TerminalPaneTarget } from "../shared/types/terminalPane";
 import { AuditTimelinePanel } from "../features/context/AuditTimelinePanel";
 import type { Invoke } from "../shared/hooks/useLogStream";
 import { buildWorkstationGraph } from "../shared/lib/workstationGraph";

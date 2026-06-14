@@ -1,5 +1,5 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
-import type { ShellType } from "../../../App";
+import type { ShellType } from "../../../shared/types/terminalPane";
 import { formatFallbackError, reportFallback } from "../../../shared/lib/fallbackTelemetry";
 import { isTauriRuntime } from "../../../shared/lib/tauriRuntime";
 import { collectLeafIds, createLeaf, createLeafWithId } from "./operations";
