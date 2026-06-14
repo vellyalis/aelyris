@@ -19,6 +19,7 @@ import { reportInvokeFailure } from "../../shared/lib/fallbackTelemetry";
 import { buildHandoffPrompt } from "../../shared/lib/handoffPrompt";
 import { writeClipboardText } from "../../shared/lib/nativeClipboard";
 import { buildOrchestraPrompts, detectFileConflicts, type OrchestraRoleId } from "../../shared/lib/orchestrator";
+import { computeTokenProgress } from "../../shared/lib/tokenProgress";
 import { useAppStore } from "../../shared/store/appStore";
 import {
   type AgentSession,
@@ -780,14 +781,7 @@ export function AgentInspector({
           ) : (
             sessions.map((s) => {
               const sColor = getSessionColor(s.id);
-              const pct =
-                s.status === "done"
-                  ? 100
-                  : s.status === "idle"
-                    ? 0
-                    : s.tokensUsed > 0
-                      ? Math.min(99, Math.round((s.tokensUsed / getMaxTokens(s.model)) * 100))
-                      : 2;
+              const pct = computeTokenProgress(s.status, s.tokensUsed, getMaxTokens(s.model));
               return (
                 /* biome-ignore lint/a11y/useSemanticElements: The pane is a selectable card with nested controls, so a button wrapper would create invalid interactive nesting. */
                 <div

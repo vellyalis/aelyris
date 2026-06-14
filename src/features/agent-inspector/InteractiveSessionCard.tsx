@@ -1,6 +1,7 @@
 import * as RadixContextMenu from "@radix-ui/react-context-menu";
 import { GitBranch, TerminalSquare, Zap } from "lucide-react";
 import { formatRelativeAge } from "../../shared/lib/relativeTime";
+import { computeTokenProgress } from "../../shared/lib/tokenProgress";
 import { type AgentStatus, getSessionColor, STATUS_COLORS, STATUS_LABELS } from "../../shared/types/agent";
 import type { InteractiveSession } from "../../shared/types/interactiveAgent";
 import { getCliColor, getCliLabel } from "../../shared/types/interactiveAgent";
@@ -28,14 +29,7 @@ export function InteractiveSessionCard({
   const maxTokens = getMaxTokens(is.model);
   const backendLabel =
     is.backend === "sidecar" ? "sidecar" : is.backend === "native" ? "native fallback" : "backend unknown";
-  const pct =
-    is.status === "done"
-      ? 100
-      : is.status === "idle"
-        ? 0
-        : is.tokens_used > 0
-          ? Math.min(95, Math.round((is.tokens_used / maxTokens) * 100))
-          : 2;
+  const pct = computeTokenProgress(is.status, is.tokens_used, maxTokens);
 
   return (
     <RadixContextMenu.Root>

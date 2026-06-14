@@ -13,6 +13,7 @@ import {
 import { type BudgetThresholds, getBudgetWarning } from "../../shared/lib/budgetStatus";
 import { getRole } from "../../shared/lib/orchestrator";
 import { formatRelativeAge } from "../../shared/lib/relativeTime";
+import { computeTokenProgress } from "../../shared/lib/tokenProgress";
 import { type AgentSession, getSessionColor, STATUS_COLORS, STATUS_LABELS } from "../../shared/types/agent";
 import { getMaxTokens } from "../../shared/types/model";
 import { PixelAvatar } from "../../shared/ui/PixelAvatar";
@@ -70,14 +71,7 @@ export function SessionCard({
 }: SessionCardProps) {
   const sColor = getSessionColor(s.id);
   const lastLog = s.logs.length > 0 ? s.logs[s.logs.length - 1] : null;
-  const pct =
-    s.status === "done"
-      ? 100
-      : s.status === "idle"
-        ? 0
-        : s.tokensUsed > 0
-          ? Math.min(99, Math.round((s.tokensUsed / getMaxTokens(s.model)) * 100))
-          : 2;
+  const pct = computeTokenProgress(s.status, s.tokensUsed, getMaxTokens(s.model));
   const warning = getBudgetWarning(s, budgetThresholds);
   const isLive = s.status !== "done" && s.status !== "idle";
   const role = getRole(s.role);
