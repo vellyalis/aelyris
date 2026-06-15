@@ -7,6 +7,8 @@
 //! Requirement 4. This is distinct from the UI kanban board
 //! (`src/shared/types/kanban.ts`), which is a presentation projection.
 
+pub mod graph;
 pub mod status;
 
+pub use graph::{Task, TaskGraph, TaskGraphError, TaskPriority};
 pub use status::{TaskStatus, TASK_STATUS_NAMES};
