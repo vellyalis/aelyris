@@ -18,6 +18,7 @@ mod send_keys_commands;
 mod shell_integration_commands;
 mod snapshot_commands;
 mod suggest_commands;
+mod task_commands;
 mod workflow_commands;
 
 pub use commands::*;
@@ -40,4 +41,5 @@ pub use send_keys_commands::*;
 pub use shell_integration_commands::*;
 pub use snapshot_commands::*;
 pub use suggest_commands::*;
+pub use task_commands::*;
 pub use workflow_commands::*;

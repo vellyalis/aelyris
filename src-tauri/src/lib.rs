@@ -106,6 +106,7 @@ pub fn run() {
         .manage(std::sync::Arc::new(std::sync::Mutex::new(SuggestEngine::new())))
         .manage(std::sync::Arc::new(LayerRegistry::new()))
         .manage(std::sync::Arc::new(WatcherPool::new()))
+        .manage(task::TaskManager::new())
         .setup(move |app| {
             let lsp_app = app.handle().clone();
             std::thread::Builder::new()
@@ -567,6 +568,10 @@ pub fn run() {
             ipc::term_image_data,
             ipc::term_image_metrics,
             ipc::performance_observatory_metrics,
+            ipc::task_create,
+            ipc::task_transition,
+            ipc::task_list,
+            ipc::task_recompute_ready,
             ipc::discover_projects,
             ipc::default_project_scan_dirs,
             ipc::list_branches,
