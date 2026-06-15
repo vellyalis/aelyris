@@ -9,9 +9,13 @@
 
 全 Phase の作業分解（Work Unit）・依存DAG・受け入れ基準・「壊すな」リスト・貼り付け用タスクの**マスタープラン**。各 WU は自己完結ブリーフ付きで cold start 可能。
 
+## 📐 要件の権威ソース: [AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md](./AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md)
+
+「何を作るか」の権威ソース。**2026-06-15 に AI Agent OS v1.0 のスーパーセットへ改訂(v2.0)**。Task Graph / Event Bus / Context Store / Cost Manager の4 subsystem を追加し、**マージ権限を Reviewer agent に付与**（全ゲート緑が前提・実装者≠Reviewer・人間は監視/override）。下記の個別 spec のうち merge invariant 記述は v2 と lockstep 更新が必要（要件doc末尾「Cross-spec reconciliation」参照）。
+
 ## 設計の北極星
 
-Aether を「AIが操作できるワークスペース」に。能力（worktree/agent/pane/diff/merge/approval）を**1つの能力レイヤー（Aether Control API）**に集約し、**2つの顔**が投影する: ① 人間の Cockpit UI（Tauri IPC）② オーケストレーターAI（Opus、`aether` MCP server）。`approval` と `merge-to-main` は**ゲート**（AIは要求のみ、付与は watchdog/人間）。
+Aether を「**単一指示で自律ビルドする** AIワークスペース」に。能力（worktree/agent/pane/diff/task/event/context/merge/approval）を**1つの能力レイヤー（Aether Control API）**に集約し、**2つの顔**が投影する: ① 人間の Cockpit UI（Tauri IPC）② オーケストレーターAI（Opus、`aether` MCP server）。**merge は Reviewer agent が全ゲート緑で実行**（人間は監視/override に後退）。危険シェル/FS操作の **tool-approval は別軸で watchdog ゲート維持**。
 
 ## 仕様一覧
 
