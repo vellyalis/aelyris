@@ -3419,12 +3419,17 @@ export function App() {
   const rightRailSelectedFixtureSessionExists =
     rightRailFixtureSelectedSessionId != null &&
     rightRailSessions.some((session) => session.id === rightRailFixtureSelectedSessionId);
+  // Unified active id: an interactive selection takes precedence (headless
+  // selection clears it, see handleSelectRightRailSession), otherwise fall back
+  // to the headless active. Lets the rail highlight interactive cards too
+  // (previously headless-only, so interactive selection never lit up).
+  const fleetActiveSessionId = interactiveSessionId || activeSessionId;
   const rightRailActiveSessionId =
     rightRailUsesFixtures && rightRailSessions.length > 0
       ? rightRailSelectedFixtureSessionExists
         ? rightRailFixtureSelectedSessionId
         : (rightRailSessions[0]?.id ?? null)
-      : activeSessionId;
+      : fleetActiveSessionId;
   const rightRailAuditRisks = useMemo(
     () =>
       scopedOperationalAuditEvents
@@ -4000,9 +4005,12 @@ export function App() {
         setRightRailFixtureSelectedSessionId(sessionId);
         return;
       }
+      // Selecting a headless session clears any interactive selection so the
+      // unified active id (interactiveSessionId || activeSessionId) reflects it.
+      if (interactiveSessionId) selectInteractiveSession("");
       handleSelectSession(sessionId);
     },
-    [handleSelectSession, rightRailUsesFixtures],
+    [handleSelectSession, interactiveSessionId, selectInteractiveSession, rightRailUsesFixtures],
   );
 
   const handleRightRailAction = useCallback(
