@@ -3122,6 +3122,15 @@ pub fn start_agent(
     guardrail_profile: Option<String>,
 ) -> Result<String, String> {
     let agent_manager = app.state::<crate::agent::AgentManager>();
+    // Cost gate (BR7): refuse a new agent when the live fleet is at the cap.
+    let interactive_count = app
+        .state::<crate::agent::InteractiveSessionManager>()
+        .list()
+        .map(|sessions| sessions.len())
+        .unwrap_or(0);
+    let active_agents = agent_manager.list_sessions().len() + interactive_count;
+    app.state::<crate::cost::CostManager>()
+        .guard_spawn(active_agents)?;
     let id = agent_manager.start_session(&prompt, &cwd, model.as_deref(), allowed_tools, None)?;
     if let Some(profile) = guardrail_profile.as_deref() {
         log::debug!("started agent with guardrail profile: {}", profile);

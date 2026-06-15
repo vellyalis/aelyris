@@ -34,6 +34,25 @@ impl CostManager {
         self.caps().can_spawn(usage)
     }
 
+    /// Spawn-path guard: block a new agent when the live fleet is at the agent
+    /// cap. Only the agent-count axis is enforced here (the spawn site has the
+    /// live count but not token/cost telemetry); budget halts are the loop's
+    /// job via `can_spawn` with full usage. Returns the block reason on refusal.
+    pub fn guard_spawn(&self, active_agents: usize) -> Result<(), String> {
+        let usage = CostUsage {
+            active_agents,
+            ..Default::default()
+        };
+        let decision = self.can_spawn(&usage);
+        if decision.allowed {
+            Ok(())
+        } else {
+            Err(decision
+                .reason
+                .unwrap_or_else(|| "cost cap reached".to_string()))
+        }
+    }
+
     pub fn over_budget(&self, usage: &CostUsage) -> Option<CostLimit> {
         self.caps().over_budget(usage)
     }
@@ -52,6 +71,13 @@ mod tests {
             ..CostCaps::default()
         });
         assert_eq!(mgr.caps().max_agents, Some(8));
+    }
+
+    #[test]
+    fn guard_spawn_blocks_at_cap_and_allows_under() {
+        let mgr = CostManager::new(); // max_agents = 4
+        assert!(mgr.guard_spawn(3).is_ok());
+        assert!(mgr.guard_spawn(4).unwrap_err().contains("4/4"));
     }
 
     #[test]

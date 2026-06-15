@@ -61,6 +61,20 @@ pub async fn spawn_interactive_agent(
     let model_str = model.as_deref().unwrap_or("sonnet");
     let cli = AgentCli::from_model(model_str);
     cli.validate()?;
+
+    // Cost gate (BR7): refuse a new agent when the live fleet is at the cap.
+    let active_agents = app
+        .state::<InteractiveSessionManager>()
+        .list()
+        .map(|sessions| sessions.len())
+        .unwrap_or(0)
+        + app
+            .state::<crate::agent::AgentManager>()
+            .list_sessions()
+            .len();
+    app.state::<crate::cost::CostManager>()
+        .guard_spawn(active_agents)?;
+
     let (program, mut args) = cli.program_and_args(Some(model_str));
 
     // Validate branch_name if provided (prevent path traversal / shell injection)
