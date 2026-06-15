@@ -60,6 +60,7 @@ import { canvasBitmapSize, canvasCssSize, currentCanvasDevicePixelRatio, snapCan
 import { pixelToCell } from "./keymap";
 import { type LinkSpan, linkAt, scanLinks } from "./links";
 import { shouldRepaintRow } from "./repaintDecision";
+import { buildMatchesKey, buildRowMask, hasPrintableAfterCursor, matchAnchor, rowsCoveredByLink } from "./terminalRowDirty";
 import type { AnyMatch } from "./search";
 import { viewportRowOf } from "./search";
 import { rowSelection, type SelectionRange } from "./selection";
@@ -1344,57 +1345,6 @@ function drawDecorations(
   if (strike) ctx.fillRect(x, y + Math.round(cellH / 2), cellW, 1);
 }
 
-function matchAnchor(m: AnyMatch): string {
-  return m.kind === "history"
-    ? `h:${m.historyIndex},${m.startCol},${m.endCol}`
-    : `l:${m.row},${m.startCol},${m.endCol}`;
-}
-
-function buildMatchesKey(
-  matches: readonly AnyMatch[] | undefined,
-  active: AnyMatch | null | undefined,
-  scrollOffset: number,
-): string {
-  // The scroll offset is part of the cache key because viewport rows
-  // shift as the user scrolls — a match that was painted on row 5 at
-  // offset 0 paints on row 6 once the offset advances by 1.
-  let s = `s:${scrollOffset};`;
-  if (matches) {
-    for (const m of matches) s += `${matchAnchor(m)};`;
-  }
-  if (active) s += `@${matchAnchor(active)}`;
-  return s;
-}
-
-function buildRowMask(
-  matches: readonly AnyMatch[] | undefined,
-  active: AnyMatch | null | undefined,
-  totalRows: number,
-  scrollOffset: number,
-): Set<number> {
-  const rows = new Set<number>();
-  if (matches) {
-    for (const m of matches) {
-      const vr = viewportRowOf(m, totalRows, scrollOffset);
-      if (vr !== null) rows.add(vr);
-    }
-  }
-  if (active) {
-    const vr = viewportRowOf(active, totalRows, scrollOffset);
-    if (vr !== null) rows.add(vr);
-  }
-  return rows;
-}
-
-function rowsCoveredByLink(...links: Array<LinkSpan | null | undefined>): Set<number> {
-  const rows = new Set<number>();
-  for (const link of links) {
-    if (!link) continue;
-    for (let r = link.startRow; r <= link.endRow; r++) rows.add(r);
-  }
-  return rows;
-}
-
 function paintSearchBands(
   ctx: CanvasRenderingContext2D,
   row: number,
@@ -1464,18 +1414,6 @@ function paintSelectionBand(
   ctx.fillStyle = SELECTION_BG;
   ctx.fillRect(x, y, w, height);
   ctx.restore();
-}
-
-/** Any printable glyph to the right of the cursor on its row? */
-function hasPrintableAfterCursor(snapshot: GridSnapshot): boolean {
-  const row = snapshot.cells[snapshot.cursor.row];
-  if (!row) return false;
-  for (let col = snapshot.cursor.col; col < row.length; col++) {
-    const cell = row[col];
-    if (!cell) continue;
-    if (cell.ch && cell.ch !== " " && cell.ch !== "\0") return true;
-  }
-  return false;
 }
 
 function paintGhostSuggestion(
