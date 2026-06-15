@@ -114,6 +114,8 @@ pub fn run() {
         .manage(context_store::ContextStoreManager::new())
         .manage(event_bus::EventBus::new())
         .manage(cost::CostManager::new())
+        .manage(failure_policy::FailurePolicy::new())
+        .manage(std::sync::Mutex::new(file_ownership::FileOwnership::new()))
         .setup(move |app| {
             let lsp_app = app.handle().clone();
             std::thread::Builder::new()
@@ -589,6 +591,11 @@ pub fn run() {
             ipc::cost_caps,
             ipc::cost_set_caps,
             ipc::cost_can_spawn,
+            ipc::failure_decide,
+            ipc::ownership_assign,
+            ipc::ownership_owner_of,
+            ipc::ownership_claims,
+            ipc::ownership_conflicts,
             ipc::discover_projects,
             ipc::default_project_scan_dirs,
             ipc::list_branches,
