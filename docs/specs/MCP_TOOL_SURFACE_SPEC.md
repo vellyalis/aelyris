@@ -1,5 +1,18 @@
 # Aether MCP Tool Surface Spec (`aether.mcp.v1`)
 
+> ⚠️ **v2.0 merge-model update (2026-06-15) — read first.** The authoritative
+> requirements ([AETHER_COCKPIT_REQUIREMENTS](./AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md),
+> v2.0) now specify **full autonomy with no human gate in the critical path**: the
+> **Reviewer agent merges to `main` automatically** once all quality gates are green,
+> and the **watchdog auto-decides** tool-approval (auto-approve / auto-deny, keeping
+> only an auto-deny floor for catastrophic/irreversible ops) instead of routing to a
+> human Decision Inbox. The §3.5 / §4 "GATED / never returns done / human clicks
+> grant / never auto-merges main" content describes the **superseded v1 gate model**
+> — treat it as historical on the *merge* and *human-grant* axes; `request_merge` may
+> resolve to `done` after the Reviewer's all-green verdict, and the grant path's
+> human step is replaced by the watchdog auto-decision. These mechanics are rewritten
+> during Batch E/G. Automated, non-blocking compensating controls remain.
+
 Status: Draft / binding design alignment
 Audience: backend (Rust) + orchestration engineering
 Scope: the **AI-facing** projection of the Aether Control API.

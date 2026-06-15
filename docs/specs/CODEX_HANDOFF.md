@@ -1,5 +1,18 @@
 # Aether Cockpit — Codex Implementation Handoff
 
+> ⚠️ **v2.0 merge-model update (2026-06-15) — read first.** The authoritative
+> requirements ([AETHER_COCKPIT_REQUIREMENTS](./AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md),
+> v2.0) now specify **full autonomy with no human gate in the critical path**: the
+> **Reviewer agent merges to `main` automatically** once all quality gates are green,
+> and the **watchdog auto-decides** tool-approval (auto-approve / auto-deny, keeping
+> only an auto-deny floor for catastrophic/irreversible ops) instead of routing to a
+> human Decision Inbox. The "GATED / human grants / never self-merge / human clicks
+> grant" language below describes the **superseded v1 gate model** — treat it as
+> historical on the *merge* and *human-grant* axes; these mechanics are rewritten to
+> the auto model during Batch E/G. Automated, non-blocking compensating controls
+> remain: reviewer ≠ implementer, all-green gates, Cost Manager caps, human post-hoc
+> override/rollback.
+
 Status: **Ready for implementation.** Design complete; no source code written yet.
 Branch context: authored on `codex/release-hardening-quality-gates` (working tree dirty with unrelated WIP — see §7).
 Implementer: **Codex** (GPT-5.x). Orchestration/integration owner: human + Opus.

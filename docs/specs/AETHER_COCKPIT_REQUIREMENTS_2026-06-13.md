@@ -30,8 +30,10 @@ names, and **reverses one load-bearing invariant** (user decision, 2026-06-15):
   **3–4 by default** (not "variable/10") with a configurable ceiling; comms stays
   **star-topology** as the v1 transport but now carries a **typed event taxonomy**
   (the Event Bus is the controller's typed broadcast, not peer-to-peer).
-- **UNCHANGED**: the watchdog **tool-approval** gate for dangerous shell/FS ops is
-  a separate axis from merge and is retained.
+- **UNCHANGED (but non-blocking)**: the watchdog still governs dangerous shell/FS
+  ops, but **auto-decides** (auto-approve / auto-deny) so it never pauses the
+  loop; it is a separate axis from merge and keeps only an auto-deny floor for
+  catastrophic/irreversible ops.
 
 ## Goal
 
@@ -46,6 +48,14 @@ The human Cockpit UI and the Orchestrator AI consume the **same backend
 capability layer** (Aether Control API); they are two faces over one set of
 domain functions, never separate ad hoc command paths. The product target is a
 native-first hybrid terminal running 3–4 coding agents in parallel by default.
+
+**Autonomy model (full auto).** The loop runs end-to-end with **no human gate in
+its critical path** — including merge-to-`main`. The human is a **monitor with
+optional, non-blocking post-hoc override/rollback**, never a required step.
+Every safety control is **automated and non-blocking**: all-green quality gates
+before merge, reviewer ≠ implementer (separation of duties), Cost Manager caps
+(runaway/cost ceiling), and a watchdog **auto-deny floor** for
+catastrophic/irreversible operations. The loop never pauses to ask a human.
 
 ## Design Principles
 
@@ -69,8 +79,12 @@ native-first hybrid terminal running 3–4 coding agents in parallel by default.
    - Tauri IPC (Face 1, human Cockpit) and `aether.mcp.v1` (Face 2, orchestrator
      AI) are thin adapters over the same domain functions.
    - Worktree, agent, pane, diff, task, event, and context operations are free
-     for the orchestrator. **Tool-approval** for dangerous shell/FS operations
-     stays gated through the watchdog policy engine (separate from merge).
+     for the orchestrator. Dangerous shell/FS operations are governed by the
+     **watchdog policy engine, which auto-decides (auto-approve / auto-deny)** so
+     the loop never waits on a human; it keeps an **auto-deny floor** for
+     catastrophic/irreversible ops (e.g. force-push to `main`, `rm -rf` outside a
+     worktree, secret exfiltration). This is an automated guardrail, not a human
+     gate.
 
 2. **Agent Runtime Unification.**
    - Define `AgentRunStatus` once in Rust: `spawning`, `thinking`, `coding`,
@@ -134,11 +148,12 @@ native-first hybrid terminal running 3–4 coding agents in parallel by default.
      performs the merge** — *not* the implementer (separation of duties).
    - Merge queue remains the defining integration capability and is serialized
      per target branch to avoid conflicts.
-   - **Compensating controls** (because v2 removes the mandatory human merge
-     gate): merge only on all-green gates; reviewer ≠ implementer; Cost Manager
-     caps bound the loop; the human can observe and **override/rollback** every
-     merge from the Cockpit; the watchdog tool-approval gate for dangerous ops is
-     retained.
+   - **Compensating controls** (automated, non-blocking — they replace the human
+     merge gate without pausing the loop): merge only on all-green gates;
+     reviewer ≠ implementer; Cost Manager caps bound the loop; the watchdog
+     auto-decides dangerous ops (auto-approve / auto-deny) without waiting on a
+     human; and the human may **observe and override/rollback** any merge from
+     the Cockpit **post-hoc** (never a required step).
 
 10. **Cockpit UI.**
     - Right rail is an orchestrator state view, not a telemetry dump.
@@ -216,10 +231,15 @@ artifact is produced with the human supervising by exception. Production release
 readiness still requires external/operator gates on the appropriate host and
 explicit user consent where paid AI tokens are consumed.
 
-## Cross-spec reconciliation (must update in lockstep)
+## Cross-spec reconciliation
 
-The v2 merge decision contradicts statements still present in the sibling specs.
-These must be updated so the package is internally consistent:
+The v2 full-autonomy merge decision contradicts the human-gate language still
+present in the sibling specs. As of 2026-06-15 each sibling spec carries a
+**v2.0 merge-model banner** at its top that defers to this doc on the *merge*
+and *human-grant* axes, so the package is internally consistent today. The
+**detailed mechanics** (gate-flow diagrams, GATED tables, worked examples) are
+rewritten to the auto model during **Batch E/G implementation** — the lines
+below pinpoint what each rewrite must change:
 
 - **CODEX_HANDOFF.md §1 (North star) + §3 (Shared contract)** — "`merge-to-main`
   is GATED … never expose a merge tool" → reframe: merge is performed by the
