@@ -56,6 +56,7 @@ import {
   shouldClampGlyphToCell,
   terminalCellSpan,
 } from "./aiInputAnchor";
+import { canvasBitmapSize, canvasCssSize, currentCanvasDevicePixelRatio, snapCanvasTextCoord } from "./terminalCanvasGeometry";
 import { pixelToCell } from "./keymap";
 import { type LinkSpan, linkAt, scanLinks } from "./links";
 import { shouldRepaintRow } from "./repaintDecision";
@@ -156,35 +157,9 @@ export interface TerminalNav {
 }
 
 const IME_COMPOSITION_OVERLAY_MAX_CELLS = 34;
-const MAX_CANVAS_DEVICE_PIXEL_RATIO = 4;
 const TERMINAL_RASTER_BG_CSS_VAR = "--terminal-raster-bg";
 const TERMINAL_CANVAS_BG_CSS_VAR = "--terminal-canvas-bg";
 const TERMINAL_RASTER_BG_FALLBACK = "rgba(3, 10, 22, 0.92)";
-
-function currentCanvasDevicePixelRatio(): number {
-  if (typeof window === "undefined") return 1;
-  const ratio = Number(window.devicePixelRatio);
-  if (!Number.isFinite(ratio) || ratio <= 0) return 1;
-  return Math.min(MAX_CANVAS_DEVICE_PIXEL_RATIO, Math.max(1, ratio));
-}
-
-function snapCanvasTextCoord(value: number, devicePixelRatio: number): number {
-  if (!Number.isFinite(value)) return value;
-  if (!Number.isFinite(devicePixelRatio) || devicePixelRatio <= 0) return value;
-  return Math.round(value * devicePixelRatio) / devicePixelRatio;
-}
-
-function canvasBitmapSize(cssSize: number, devicePixelRatio: number): number {
-  if (!Number.isFinite(cssSize) || cssSize <= 0) return 1;
-  if (!Number.isFinite(devicePixelRatio) || devicePixelRatio <= 0) return Math.ceil(cssSize);
-  return Math.max(1, Math.ceil(cssSize * devicePixelRatio));
-}
-
-function canvasCssSize(bitmapSize: number, devicePixelRatio: number): number {
-  if (!Number.isFinite(bitmapSize) || bitmapSize <= 0) return 1;
-  if (!Number.isFinite(devicePixelRatio) || devicePixelRatio <= 0) return bitmapSize;
-  return bitmapSize / devicePixelRatio;
-}
 
 function configureTerminalCanvasText(ctx: CanvasRenderingContext2D) {
   ctx.textAlign = "left";
