@@ -8,6 +8,8 @@
 //! scheduling decision (what to dispatch next, and whether to continue) so it
 //! is unit-testable with 100% confidence.
 
+pub mod autonomy;
+
 use serde::{Deserialize, Serialize};
 
 use crate::cost::{CostCaps, CostUsage};
