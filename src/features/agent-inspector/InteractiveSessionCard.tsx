@@ -2,7 +2,7 @@ import * as RadixContextMenu from "@radix-ui/react-context-menu";
 import { GitBranch, TerminalSquare, Zap } from "lucide-react";
 import { formatRelativeAge } from "../../shared/lib/relativeTime";
 import { computeTokenProgress } from "../../shared/lib/tokenProgress";
-import { type AgentStatus, getSessionColor, STATUS_COLORS, STATUS_LABELS } from "../../shared/types/agent";
+import { getSessionColor, isAgentStatus, STATUS_COLORS, STATUS_LABELS } from "../../shared/types/agent";
 import type { InteractiveSession } from "../../shared/types/interactiveAgent";
 import { getCliColor, getCliLabel } from "../../shared/types/interactiveAgent";
 import { getMaxTokens } from "../../shared/types/model";
@@ -30,6 +30,7 @@ export function InteractiveSessionCard({
   const backendLabel =
     is.backend === "sidecar" ? "sidecar" : is.backend === "native" ? "native fallback" : "backend unknown";
   const pct = computeTokenProgress(is.status, is.tokens_used, maxTokens);
+  const knownStatus = isAgentStatus(is.status) ? is.status : null;
 
   return (
     <RadixContextMenu.Root>
@@ -71,12 +72,12 @@ export function InteractiveSessionCard({
                 )}
               </div>
               <div className={styles.cardStatusRow}>
-                <StatusIcon status={is.status as AgentStatus} size={10} />
+                {knownStatus && <StatusIcon status={knownStatus} size={10} />}
                 <span
                   className={styles.cardStatusLabel}
-                  style={{ color: STATUS_COLORS[is.status as AgentStatus] ?? "#cdd6f4" }}
+                  style={{ color: knownStatus ? STATUS_COLORS[knownStatus] : "#cdd6f4" }}
                 >
-                  {STATUS_LABELS[is.status as AgentStatus] ?? is.status}
+                  {knownStatus ? STATUS_LABELS[knownStatus] : is.status}
                 </span>
                 {pct > 0 && pct < 100 && <span className={styles.cardPct}>{pct}%</span>}
                 <span className={styles.cardPct} title={`PTY backend: ${backendLabel}`}>

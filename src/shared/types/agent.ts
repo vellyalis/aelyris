@@ -108,6 +108,15 @@ export const STATUS_LABELS: Record<AgentStatus, string> = {
   generating: "Generating",
 };
 
+/**
+ * Narrow a free-form backend status string (e.g. an interactive session's
+ * `status`, typed as `string` because Rust emits it untyped) to a known
+ * AgentStatus. STATUS_LABELS is the single source of valid keys.
+ */
+export function isAgentStatus(value: string): value is AgentStatus {
+  return value in STATUS_LABELS;
+}
+
 // Scape-inspired session-specific colors for parallel identification
 const SESSION_PALETTE = [
   {
