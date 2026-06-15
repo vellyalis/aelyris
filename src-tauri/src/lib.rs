@@ -6,6 +6,7 @@ pub mod context_store;
 pub mod control;
 pub mod cost;
 pub mod db;
+pub mod event_bus;
 pub mod ghostdiff;
 pub mod git;
 pub mod history;
