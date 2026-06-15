@@ -610,6 +610,12 @@ export function TerminalCanvas({
   const prevCursorRef = useRef<{ row: number; col: number } | null>(null);
   const prevCursorOnRef = useRef<boolean>(true);
   const prevGhostRef = useRef<string>("");
+  // Tracks whether the previous paint rendered the composite scrollback grid
+  // (scrolledUp) vs the live grid. The diff loop stores the *live* snapshot in
+  // prevSnapshotRef even when it painted composite cells, so without this flag
+  // a scroll-to-live frame on an unchanged snapshot would ref-match every row
+  // and skip repaint — leaving stale scrollback pixels on screen.
+  const prevScrolledUpRef = useRef<boolean>(false);
   const prevCanvasGeometryRef = useRef<{
     cellWidth: number;
     cellHeight: number;
@@ -1025,6 +1031,11 @@ export function TerminalCanvas({
       prevGeometry.canvasWidth !== canvasWidth ||
       prevGeometry.canvasHeight !== canvasHeight ||
       prevGeometry.devicePixelRatio !== canvasDevicePixelRatio;
+    // Switching between the live grid and the composite scrollback grid must
+    // force every row to repaint: the cells painted last frame came from a
+    // different source than prevSnapshotRef records, so ref-equality skips
+    // would otherwise leave the wrong grid on the canvas.
+    const viewModeChanged = prevScrolledUpRef.current !== scrolledUp;
     const prevSel = prevSelectionRef.current;
     const selectionChanged = prevSel !== selection;
     const matchesKey = buildMatchesKey(searchMatches, activeSearchMatch, scrollback.scrollOffset);
@@ -1076,6 +1087,7 @@ export function TerminalCanvas({
       if (
         !dimsChanged &&
         !canvasGeometryChanged &&
+        !viewModeChanged &&
         !selDirtyRow &&
         !matchDirtyRow &&
         !hoverDirtyRow &&
@@ -1161,6 +1173,7 @@ export function TerminalCanvas({
     prevCursorRef.current = { row: cursor.row, col: cursor.col };
     prevCursorOnRef.current = cursorOn;
     prevGhostRef.current = ghost;
+    prevScrolledUpRef.current = scrolledUp;
     prevCanvasGeometryRef.current = {
       cellWidth: cellMetrics.width,
       cellHeight: cellMetrics.height,
