@@ -6,7 +6,8 @@ import {
   IME_DIAGNOSTIC_EVENT,
   TERMINAL_PREFIX_COMMAND_EVENT,
 } from "../features/terminal/hooks/useCanvasIME";
-import { findAiCliInputAnchor, hasAiCliScreenSignature, TerminalCanvas } from "../features/terminal/TerminalCanvas";
+import { findAiCliInputAnchor, hasAiCliScreenSignature } from "../features/terminal/aiInputAnchor";
+import { TerminalCanvas } from "../features/terminal/TerminalCanvas";
 import { FALLBACK_TELEMETRY_EVENT, type FallbackTelemetryDetail } from "../shared/lib/fallbackTelemetry";
 import { CellAttr, type CellSnapshot, type GridSnapshot } from "../shared/types/terminal";
 
