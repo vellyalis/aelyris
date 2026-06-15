@@ -2,6 +2,7 @@ pub mod agent;
 pub mod api;
 pub mod audit;
 pub mod config;
+pub mod context_store;
 pub mod control;
 pub mod cost;
 pub mod db;
