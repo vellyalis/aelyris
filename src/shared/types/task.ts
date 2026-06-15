@@ -20,6 +20,10 @@ export interface Task {
   estimate?: number | null;
   dependencies: string[];
   outputs: string[];
+  /** Branch the task's work lives on (set when dispatched to a worktree). */
+  source_branch?: string | null;
+  /** Branch the task merges into once reviewed (usually `main`). */
+  target_branch?: string | null;
 }
 
 export type { TaskPriority };

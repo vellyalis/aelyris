@@ -38,6 +38,12 @@ pub struct Task {
     /// Artifacts produced by the task (file paths, branch names, ...).
     #[serde(default)]
     pub outputs: Vec<String>,
+    /// Branch the task's work lives on (set when dispatched to a worktree).
+    #[serde(default)]
+    pub source_branch: Option<String>,
+    /// Branch the task merges into once reviewed (usually `main`).
+    #[serde(default)]
+    pub target_branch: Option<String>,
 }
 
 impl Task {
@@ -53,11 +59,20 @@ impl Task {
             estimate: None,
             dependencies: Vec::new(),
             outputs: Vec::new(),
+            source_branch: None,
+            target_branch: None,
         }
     }
 
     pub fn with_dependencies(mut self, deps: impl IntoIterator<Item = String>) -> Self {
         self.dependencies = deps.into_iter().collect();
+        self
+    }
+
+    /// Bind the task to its worktree branch and the branch it merges into.
+    pub fn with_branches(mut self, source: impl Into<String>, target: impl Into<String>) -> Self {
+        self.source_branch = Some(source.into());
+        self.target_branch = Some(target.into());
         self
     }
 }
@@ -216,6 +231,21 @@ fn priority_rank(p: TaskPriority) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn branches_default_none_and_builder_sets_them() {
+        let plain = Task::new("t", "T");
+        assert_eq!(plain.source_branch, None);
+        assert_eq!(plain.target_branch, None);
+        let bound = Task::new("t", "T").with_branches("agent/t", "main");
+        assert_eq!(bound.source_branch.as_deref(), Some("agent/t"));
+        assert_eq!(bound.target_branch.as_deref(), Some("main"));
+        // A task deserialized without branch fields keeps them None.
+        let parsed: Task =
+            serde_json::from_str(r#"{"id":"x","title":"X","status":"pending"}"#).unwrap();
+        assert_eq!(parsed.source_branch, None);
+        assert_eq!(parsed.target_branch, None);
+    }
 
     #[test]
     fn add_rejects_duplicate_and_unknown_dependency() {
