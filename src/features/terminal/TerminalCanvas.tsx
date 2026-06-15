@@ -51,6 +51,7 @@ import {
 import { type CopyTextFn, useTerminalSelection } from "./hooks/useTerminalSelection";
 import { pixelToCell } from "./keymap";
 import { type LinkSpan, linkAt, scanLinks } from "./links";
+import { shouldRepaintRow } from "./repaintDecision";
 import type { AnyMatch } from "./search";
 import { viewportRowOf } from "./search";
 import { rowSelection, type SelectionRange } from "./selection";
@@ -1084,16 +1085,18 @@ export function TerminalCanvas({
       // Composite rows are freshly allocated each scroll tick, so
       // ref-equality never short-circuits while scrolled up — which is
       // exactly what we want (the whole viewport must repaint).
+      const rowContentChanged = !prev || prev.cells[row] !== rowCells;
       if (
-        !dimsChanged &&
-        !canvasGeometryChanged &&
-        !viewModeChanged &&
-        !selDirtyRow &&
-        !matchDirtyRow &&
-        !hoverDirtyRow &&
-        !cursorDirtyRow &&
-        prev &&
-        prev.cells[row] === rowCells
+        !shouldRepaintRow({
+          dimsChanged,
+          canvasGeometryChanged,
+          viewModeChanged,
+          selDirtyRow,
+          matchDirtyRow,
+          hoverDirtyRow,
+          cursorDirtyRow,
+          rowContentChanged,
+        })
       ) {
         continue;
       }
