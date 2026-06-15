@@ -107,6 +107,7 @@ pub fn run() {
         .manage(std::sync::Arc::new(LayerRegistry::new()))
         .manage(std::sync::Arc::new(WatcherPool::new()))
         .manage(task::TaskManager::new())
+        .manage(context_store::ContextStoreManager::new())
         .setup(move |app| {
             let lsp_app = app.handle().clone();
             std::thread::Builder::new()
@@ -572,6 +573,10 @@ pub fn run() {
             ipc::task_transition,
             ipc::task_list,
             ipc::task_recompute_ready,
+            ipc::context_set,
+            ipc::context_get,
+            ipc::context_all,
+            ipc::context_remove,
             ipc::discover_projects,
             ipc::default_project_scan_dirs,
             ipc::list_branches,

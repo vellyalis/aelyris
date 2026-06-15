@@ -1,5 +1,6 @@
 mod commands;
 mod config_commands;
+mod context_commands;
 mod db_session_commands;
 mod fs_commands;
 mod fs_watcher_commands;
@@ -23,6 +24,7 @@ mod workflow_commands;
 
 pub use commands::*;
 pub use config_commands::*;
+pub use context_commands::*;
 pub use db_session_commands::*;
 pub use fs_commands::*;
 pub use fs_watcher_commands::*;

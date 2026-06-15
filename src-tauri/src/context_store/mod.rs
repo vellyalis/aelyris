@@ -8,6 +8,10 @@
 //! fleet. This is distinct from the frontend "context pack" (prompt
 //! code-context); this store is project decisions, not source excerpts.
 
+pub mod manager;
+
+pub use manager::ContextStoreManager;
+
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
