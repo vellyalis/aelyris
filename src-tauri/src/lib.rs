@@ -20,6 +20,7 @@ pub mod orchestrator;
 pub mod process;
 pub mod pty;
 pub mod pty_sidecar;
+pub mod review;
 pub mod session;
 pub mod shell_integration;
 pub mod snapshot;
