@@ -25,6 +25,13 @@ const paneTreeRendererSource = rawSource(
     eager: true,
   }) as Record<string, string>,
 );
+const terminalPaintSource = rawSource(
+  import.meta.glob("../features/terminal/terminalPaint.ts", {
+    query: "?raw",
+    import: "default",
+    eager: true,
+  }) as Record<string, string>,
+);
 // jsdom's HTMLCanvasElement.getContext returns null by default — stub a
 // minimal 2D context so the component can exercise its paint logic.
 type CallLog = Array<{ op: string; args: unknown[] }>;
@@ -176,7 +183,10 @@ describe("TerminalCanvas", () => {
     expect(terminalCanvasSource).toContain("canvasGeometryChanged");
     expect(terminalCanvasSource).toContain("devicePixelRatio: canvasDevicePixelRatio");
     expect(terminalCanvasSource).toContain("configureTerminalCanvasText(ctx)");
-    expect(terminalCanvasSource).toContain("snapCanvasTextCoord");
+    // snapCanvasTextCoord moved into the extracted paint module; assert the
+    // device-pixel snap is still wired there and that the canvas imports it.
+    expect(terminalPaintSource).toContain("snapCanvasTextCoord");
+    expect(terminalCanvasSource).toContain('from "./terminalPaint"');
     expect(terminalCanvasSource).toContain("canvasCssSize");
     expect(terminalCanvasSource).toContain("useTerminalRasterBackground");
     expect(terminalCanvasSource).toContain("TERMINAL_RASTER_BG_FALLBACK");
