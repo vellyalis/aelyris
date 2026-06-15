@@ -21,6 +21,14 @@ use crate::task::{TaskGraph, TaskStatus};
 pub trait LoopPorts {
     /// Start an agent for `task_id`. `Ok` means the task is now Running.
     fn dispatch(&mut self, task_id: &str) -> Result<(), String>;
+    /// Task ids whose implementer agent has finished since the last call and are
+    /// now ready for review. Agent completion is a runtime event (the output
+    /// monitor), surfaced here so the pure loop can move work `Running -> Review`
+    /// without an external transition. Default: nothing finished (callers that
+    /// drive the `Review` transition themselves need not implement this).
+    fn poll_finished(&mut self) -> Vec<String> {
+        Vec::new()
+    }
     /// Quality-gate results for a task awaiting review.
     fn gate(&mut self, task_id: &str) -> GateResults;
     /// The reviewer agent's id (must differ from the implementer to merge).
@@ -65,6 +73,13 @@ pub fn step(
 ) -> StepReport {
     let mut merged = Vec::new();
     let mut rejected = Vec::new();
+
+    // 0. Move finished implementations into review. Agent completion is a
+    //    runtime event surfaced via the port; a finished `Running` task becomes
+    //    reviewable in this same step.
+    for id in ports.poll_finished() {
+        let _ = graph.transition(&id, TaskStatus::Review);
+    }
 
     // 1. Resolve reviews.
     let in_review: Vec<String> = graph
@@ -127,6 +142,59 @@ pub fn step(
     }
 }
 
+/// Aggregate outcome of driving the loop to a terminal state.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RunReport {
+    pub steps: usize,
+    pub dispatched: Vec<String>,
+    pub merged: Vec<String>,
+    pub rejected: Vec<String>,
+    pub state: LoopState,
+}
+
+/// Drive the autonomy loop until it reaches a terminal state
+/// (`Complete`/`Stalled`/`HaltedByBudget`) or `max_steps` is exhausted — a
+/// safety bound so a pathological cycle (e.g. an implementer that never finishes)
+/// can never spin forever. `base_usage` supplies the budget axes (tokens/cost);
+/// the live agent count is recomputed from the graph before each step, so the
+/// caller does not track it. This is the controller the runtime invokes (on the
+/// next tick / agent-completion event) to push "one instruction -> parallel
+/// impl -> review -> auto-merge" forward to quiescence.
+pub fn run(
+    graph: &mut TaskGraph,
+    caps: &CostCaps,
+    base_usage: &CostUsage,
+    max_steps: usize,
+    ports: &mut impl LoopPorts,
+) -> RunReport {
+    let mut report = RunReport {
+        steps: 0,
+        dispatched: Vec::new(),
+        merged: Vec::new(),
+        rejected: Vec::new(),
+        state: LoopState::Active,
+    };
+    for _ in 0..max_steps {
+        let usage = CostUsage {
+            active_agents: running_count(graph),
+            ..*base_usage
+        };
+        let r = step(graph, caps, &usage, ports);
+        report.steps += 1;
+        report.dispatched.extend(r.dispatched);
+        report.merged.extend(r.merged);
+        report.rejected.extend(r.rejected);
+        report.state = r.state;
+        if matches!(
+            r.state,
+            LoopState::Complete | LoopState::Stalled | LoopState::HaltedByBudget
+        ) {
+            break;
+        }
+    }
+    report
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -141,6 +209,10 @@ mod tests {
         merge_ok: bool,
         dispatched: Vec<String>,
         merged: Vec<String>,
+        /// When set, every dispatched task is reported finished on the next
+        /// `poll_finished` — models an implementer that completes within a tick.
+        auto_finish: bool,
+        pending_finish: Vec<String>,
     }
 
     impl FakePorts {
@@ -152,6 +224,8 @@ mod tests {
                 merge_ok: true,
                 dispatched: Vec::new(),
                 merged: Vec::new(),
+                auto_finish: false,
+                pending_finish: Vec::new(),
             }
         }
     }
@@ -167,7 +241,13 @@ mod tests {
     impl LoopPorts for FakePorts {
         fn dispatch(&mut self, task_id: &str) -> Result<(), String> {
             self.dispatched.push(task_id.to_string());
+            if self.auto_finish {
+                self.pending_finish.push(task_id.to_string());
+            }
             Ok(())
+        }
+        fn poll_finished(&mut self) -> Vec<String> {
+            std::mem::take(&mut self.pending_finish)
         }
         fn gate(&mut self, task_id: &str) -> GateResults {
             *self.gates.get(task_id).unwrap_or(&GREEN)
@@ -290,5 +370,88 @@ mod tests {
         let report = step(&mut g, &caps(4), &CostUsage::default(), &mut ports);
         assert!(report.merged.is_empty());
         assert_eq!(g.get("a").unwrap().status, TaskStatus::Running);
+    }
+
+    #[test]
+    fn poll_finished_moves_running_task_into_review() {
+        let mut g = TaskGraph::new();
+        g.add(Task::new("a", "A")).unwrap();
+        g.recompute_ready();
+        g.transition("a", TaskStatus::Running).unwrap();
+        let mut ports = FakePorts::new();
+        ports.pending_finish = vec!["a".to_string()];
+        // The finished task enters review and merges in the same step.
+        let report = step(&mut g, &caps(4), &CostUsage::default(), &mut ports);
+        assert_eq!(report.merged, ["a"]);
+        assert_eq!(g.get("a").unwrap().status, TaskStatus::Done);
+    }
+
+    #[test]
+    fn run_drives_dependency_chain_to_complete() {
+        let mut g = TaskGraph::new();
+        g.add(Task::new("a", "A")).unwrap();
+        g.add(Task::new("b", "B").with_dependencies(["a".into()]))
+            .unwrap();
+        g.recompute_ready(); // a Ready, b Blocked
+        let mut ports = FakePorts::new();
+        ports.auto_finish = true; // every dispatched agent finishes next tick
+
+        let report = run(&mut g, &caps(4), &CostUsage::default(), 20, &mut ports);
+
+        assert_eq!(report.state, LoopState::Complete);
+        assert_eq!(g.get("a").unwrap().status, TaskStatus::Done);
+        assert_eq!(g.get("b").unwrap().status, TaskStatus::Done);
+        assert!(report.merged.contains(&"a".to_string()));
+        assert!(report.merged.contains(&"b".to_string()));
+        // a must merge before b is dispatched (dependency order).
+        assert!(report.steps >= 3 && report.steps <= 5);
+    }
+
+    #[test]
+    fn run_stops_at_max_steps_when_an_agent_never_finishes() {
+        let mut g = TaskGraph::new();
+        g.add(Task::new("a", "A")).unwrap();
+        g.recompute_ready();
+        let mut ports = FakePorts::new(); // auto_finish = false: a runs forever
+        let report = run(&mut g, &caps(4), &CostUsage::default(), 5, &mut ports);
+        assert_eq!(report.steps, 5);
+        assert_eq!(report.state, LoopState::Active);
+        assert_eq!(g.get("a").unwrap().status, TaskStatus::Running);
+    }
+
+    #[test]
+    fn run_breaks_immediately_on_stall() {
+        let mut g = TaskGraph::new();
+        g.add(Task::new("dep", "dep")).unwrap();
+        g.add(Task::new("child", "child").with_dependencies(["dep".into()]))
+            .unwrap();
+        g.recompute_ready();
+        g.transition("dep", TaskStatus::Running).unwrap();
+        g.transition("dep", TaskStatus::Failed).unwrap(); // child now Blocked
+        g.recompute_ready();
+        let mut ports = FakePorts::new();
+        let report = run(&mut g, &caps(4), &CostUsage::default(), 20, &mut ports);
+        assert_eq!(report.state, LoopState::Stalled);
+        assert_eq!(report.steps, 1);
+    }
+
+    #[test]
+    fn run_halts_when_over_budget() {
+        let mut g = TaskGraph::new();
+        g.add(Task::new("a", "A")).unwrap();
+        g.recompute_ready();
+        let budget = CostCaps {
+            max_agents: Some(4),
+            max_tokens: Some(100),
+            ..CostCaps::default()
+        };
+        let over = CostUsage {
+            tokens_used: 100,
+            ..Default::default()
+        };
+        let mut ports = FakePorts::new();
+        let report = run(&mut g, &budget, &over, 20, &mut ports);
+        assert_eq!(report.state, LoopState::HaltedByBudget);
+        assert_eq!(report.steps, 1);
     }
 }
