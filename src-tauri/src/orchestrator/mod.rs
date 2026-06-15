@@ -176,7 +176,7 @@ mod tests {
         g.add(Task::new("child", "child").with_dependencies(["dep".into()]))
             .unwrap();
         g.recompute_ready(); // dep (root) -> Ready
-        // Fail the dependency -> child becomes Blocked, dep is Failed (terminal).
+                             // Fail the dependency -> child becomes Blocked, dep is Failed (terminal).
         g.transition("dep", TaskStatus::Running).unwrap();
         g.transition("dep", TaskStatus::Failed).unwrap();
         g.recompute_ready();
