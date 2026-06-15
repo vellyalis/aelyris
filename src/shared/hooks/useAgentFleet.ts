@@ -7,6 +7,7 @@ import {
   type AgentFleetSession,
   type BackendAgentFleetSession,
 } from "../lib/agentFleet";
+import { reportInvokeFailure } from "../lib/fallbackTelemetry";
 import { isTauriRuntime } from "../lib/tauriRuntime";
 import { useAgentManager, type StartAgentMeta } from "./useAgentManager";
 import { useInteractiveAgent } from "./useInteractiveAgent";
@@ -43,14 +44,24 @@ export function useAgentFleet() {
         }
         unlisten = unsubscribe;
       })
-      .catch(() => {
-        /* not in Tauri */
+      .catch((err) => {
+        reportInvokeFailure({
+          source: "agent-fleet",
+          operation: "listen:agent-fleet-updated",
+          err,
+          userVisible: false,
+        });
       });
 
     void invoke<BackendAgentFleetSession[]>("list_agent_fleet")
       .then(apply)
-      .catch(() => {
-        /* older backend or non-Tauri runtime */
+      .catch((err) => {
+        reportInvokeFailure({
+          source: "agent-fleet",
+          operation: "list_agent_fleet",
+          err,
+          userVisible: false,
+        });
       });
 
     return () => {

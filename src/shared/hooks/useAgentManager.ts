@@ -9,6 +9,7 @@ import {
   saveAgentTelemetrySnapshot,
   serializeAgentTelemetrySnapshot,
 } from "../lib/agentTelemetryPersistence";
+import { reportInvokeFailure } from "../lib/fallbackTelemetry";
 import type { OrchestraRoleId } from "../lib/orchestrator";
 import type { WorkforceGuardrailProfile } from "../lib/rightRailWorkforce";
 import { isTauriRuntime } from "../lib/tauriRuntime";
@@ -165,8 +166,13 @@ export function useAgentManager() {
       saveAgentTelemetrySnapshot(sessions);
       if (!isTauriRuntime() || sessions.length === 0) return;
       const snapshotJson = serializeAgentTelemetrySnapshot(sessions);
-      void invoke("save_agent_telemetry_snapshot", { snapshotJson }).catch(() => {
-        /* best-effort backend durability */
+      void invoke("save_agent_telemetry_snapshot", { snapshotJson }).catch((err) => {
+        reportInvokeFailure({
+          source: "agent-manager",
+          operation: "save_agent_telemetry_snapshot",
+          err,
+          userVisible: false,
+        });
       });
     }, TELEMETRY_SAVE_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
@@ -186,8 +192,13 @@ export function useAgentManager() {
         if (restored.length === 0) return;
         setSessions((prev) => mergeRestoredTelemetry(prev, restored));
       })
-      .catch(() => {
-        /* no backend telemetry yet */
+      .catch((err) => {
+        reportInvokeFailure({
+          source: "agent-manager",
+          operation: "list_agent_telemetry_snapshots",
+          err,
+          userVisible: false,
+        });
       });
 
     return () => {
@@ -231,8 +242,13 @@ export function useAgentManager() {
         if (!cancelled && !receivedPushUpdate) {
           setSessions((prev) => mergeAgentSessions(prev, raw, roleMetaRef.current));
         }
-      } catch {
-        /* no agents running */
+      } catch (err) {
+        reportInvokeFailure({
+          source: "agent-manager",
+          operation: "list_agents",
+          err,
+          userVisible: false,
+        });
       }
     };
 
@@ -438,8 +454,13 @@ export function useAgentManager() {
   const stopAgent = useCallback(async (id: string) => {
     try {
       await invoke("stop_agent", { id });
-    } catch {
-      /* ignore */
+    } catch (err) {
+      reportInvokeFailure({
+        source: "agent-manager",
+        operation: "stop_agent",
+        err,
+        userVisible: false,
+      });
     }
     // Cleanup listeners regardless of invoke result
     const unlistens = unlistenRefs.current.get(id);

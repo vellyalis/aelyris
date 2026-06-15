@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { reportInvokeFailure } from "../lib/fallbackTelemetry";
 import { isTauriRuntime } from "../lib/tauriRuntime";
 import { toast } from "../store/toastStore";
 import type { InteractiveSession, SpawnResult } from "../types/interactiveAgent";
@@ -39,8 +40,13 @@ export function useInteractiveAgent() {
           return;
         }
         unlisten = unsub;
-      } catch {
-        /* not in Tauri */
+      } catch (err) {
+        reportInvokeFailure({
+          source: "interactive-agent",
+          operation: "listen:interactive-sessions-updated",
+          err,
+          userVisible: false,
+        });
       }
 
       try {
@@ -49,8 +55,13 @@ export function useInteractiveAgent() {
         if (!receivedEventBeforeSeed) {
           applySessions(initial);
         }
-      } catch {
-        /* not in Tauri */
+      } catch (err) {
+        reportInvokeFailure({
+          source: "interactive-agent",
+          operation: "list_interactive_agents",
+          err,
+          userVisible: false,
+        });
       }
     })();
 
