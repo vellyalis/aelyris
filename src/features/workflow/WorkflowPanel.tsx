@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen as tauriListen } from "@tauri-apps/api/event";
 import { Check, CheckCircle, Clock, Loader, Play, Workflow, X, XCircle } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
-import type { StartAgentMeta } from "../../shared/hooks/useAgentManager";
+import type { StartAgentMeta } from "../../shared/hooks/useAgentFleet";
 import { formatFallbackError, reportInvokeFailure } from "../../shared/lib/fallbackTelemetry";
 import type { OrchestraRoleId } from "../../shared/lib/orchestrator";
 import { isTauriRuntime } from "../../shared/lib/tauriRuntime";

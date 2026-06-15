@@ -143,7 +143,7 @@ describe("WorkflowPanel agent completion bridge", () => {
 
     expect(src).toContain("agent_role: string | null");
     expect(src).toContain("toOrchestraRoleId(phase.agent_role)");
-    expect(src).toContain('import type { StartAgentMeta } from "../../shared/hooks/useAgentManager"');
+    expect(src).toContain('import type { StartAgentMeta } from "../../shared/hooks/useAgentFleet"');
     expect(src).toContain("meta?: StartAgentMeta");
   });
 
