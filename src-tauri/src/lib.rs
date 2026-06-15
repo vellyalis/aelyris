@@ -108,6 +108,7 @@ pub fn run() {
         .manage(std::sync::Arc::new(WatcherPool::new()))
         .manage(task::TaskManager::new())
         .manage(context_store::ContextStoreManager::new())
+        .manage(event_bus::EventBus::new())
         .setup(move |app| {
             let lsp_app = app.handle().clone();
             std::thread::Builder::new()
@@ -577,6 +578,9 @@ pub fn run() {
             ipc::context_get,
             ipc::context_all,
             ipc::context_remove,
+            ipc::event_publish,
+            ipc::event_recent,
+            ipc::event_by_channel,
             ipc::discover_projects,
             ipc::default_project_scan_dirs,
             ipc::list_branches,

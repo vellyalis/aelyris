@@ -7,6 +7,10 @@
 //! routing + a bounded recent-event log; the controller's Tauri-emit wiring
 //! turns a published event into a fleet broadcast.
 
+pub mod manager;
+
+pub use manager::EventBus;
+
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
