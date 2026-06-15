@@ -6,6 +6,10 @@
 //! (budget). This module is the pure decision logic; the spawn gate wires it
 //! into the agent-spawn path. Fed by `AgentSession` cost/token telemetry.
 
+pub mod manager;
+
+pub use manager::CostManager;
+
 use serde::{Deserialize, Serialize};
 
 /// Hard caps. `None` means "no limit on this axis". Defaults keep the
