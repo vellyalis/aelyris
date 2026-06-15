@@ -54,6 +54,13 @@ impl TaskManager {
     pub fn get(&self, id: &str) -> Option<Task> {
         self.lock().get(id).cloned()
     }
+
+    /// Run a read-only computation over the locked graph without exposing or
+    /// cloning it. Lets a higher layer (the orchestrator's scheduling decision)
+    /// read the graph while keeping `task` independent of `orchestrator`.
+    pub fn read<R>(&self, f: impl FnOnce(&TaskGraph) -> R) -> R {
+        f(&self.lock())
+    }
 }
 
 #[cfg(test)]
@@ -89,6 +96,15 @@ mod tests {
         let changed = mgr.transition("dep", TaskStatus::Done).unwrap();
         assert!(changed.contains(&"child".to_string()));
         assert_eq!(mgr.get("child").unwrap().status, TaskStatus::Ready);
+    }
+
+    #[test]
+    fn read_runs_a_closure_over_the_locked_graph() {
+        let mgr = TaskManager::new();
+        mgr.create(Task::new("a", "A")).unwrap();
+        mgr.create(Task::new("b", "B")).unwrap();
+        let ready = mgr.read(|g| g.ready_tasks().len());
+        assert_eq!(ready, 2); // both roots are Ready after the gate
     }
 
     #[test]

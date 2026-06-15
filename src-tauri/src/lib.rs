@@ -586,6 +586,7 @@ pub fn run() {
             ipc::task_transition,
             ipc::task_list,
             ipc::task_recompute_ready,
+            ipc::orchestrator_plan,
             ipc::context_set,
             ipc::context_get,
             ipc::context_all,
