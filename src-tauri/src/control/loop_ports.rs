@@ -1,0 +1,296 @@
+//! Real `LoopPorts` adapter — wires the autonomy loop's I/O ports to the actual
+//! merge backend (`perform_merge` + the serialized `MergeQueue`) while keeping
+//! the quality-gate runner and the agent dispatcher behind injected traits.
+//!
+//! This makes the review -> auto-merge path real and still fully
+//! unit-testable: a green review of a task with bound branches performs a real
+//! git merge, with gate results and agent spawning supplied by injectable
+//! adapters. Only the concrete gate-runner (shells out to test/lint) and
+//! dispatcher (spawns an agent) are runtime-gated. See
+//! docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md (BR9, Acceptance:
+//! end-to-end autonomy).
+
+use crate::control::merge::{MergeIntentStatus, MergeQueue, MergeRequest};
+use crate::git::{perform_merge, MergeOutcome};
+use crate::orchestrator::autonomy::LoopPorts;
+use crate::review::GateResults;
+
+/// Runs the quality gate for a task's branch. Real impl shells out to the
+/// project's test/lint/type-check commands; tests inject scripted results.
+pub trait GateRunner {
+    fn run(&self, task_id: &str, branch: &str) -> GateResults;
+}
+
+/// Spawns an implementer agent for a task. Real impl uses the agent runtime;
+/// tests record the call.
+pub trait Dispatcher {
+    fn dispatch(&self, task_id: &str, branch: Option<&str>) -> Result<(), String>;
+}
+
+/// Resolves a task's merge info: its `(source, target)` branches and the agent
+/// that implemented it. Backed by a `TaskManager` snapshot at runtime.
+pub trait TaskInfo {
+    fn branches(&self, task_id: &str) -> Option<(String, String)>;
+    fn implementer(&self, task_id: &str) -> String;
+}
+
+/// Concrete `LoopPorts`: merges through the real git backend + serialized
+/// queue, and delegates gate/dispatch to injected adapters.
+pub struct LoopPortsAdapter<G, D, T> {
+    repo_path: String,
+    reviewer_id: String,
+    queue: MergeQueue,
+    gate_runner: G,
+    dispatcher: D,
+    task_info: T,
+}
+
+impl<G, D, T> LoopPortsAdapter<G, D, T> {
+    pub fn new(
+        repo_path: impl Into<String>,
+        reviewer_id: impl Into<String>,
+        gate_runner: G,
+        dispatcher: D,
+        task_info: T,
+    ) -> Self {
+        Self {
+            repo_path: repo_path.into(),
+            reviewer_id: reviewer_id.into(),
+            queue: MergeQueue::new(),
+            gate_runner,
+            dispatcher,
+            task_info,
+        }
+    }
+
+    /// The merge queue (intents + their resolved outcomes) after the loop ran.
+    pub fn queue(&self) -> &MergeQueue {
+        &self.queue
+    }
+}
+
+impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<G, D, T> {
+    fn dispatch(&mut self, task_id: &str) -> Result<(), String> {
+        let source = self.task_info.branches(task_id).map(|(source, _)| source);
+        self.dispatcher.dispatch(task_id, source.as_deref())
+    }
+
+    fn gate(&mut self, task_id: &str) -> GateResults {
+        let branch = self
+            .task_info
+            .branches(task_id)
+            .map(|(source, _)| source)
+            .unwrap_or_default();
+        self.gate_runner.run(task_id, &branch)
+    }
+
+    fn reviewer_id(&self) -> String {
+        self.reviewer_id.clone()
+    }
+
+    fn implementer_id(&self, task_id: &str) -> String {
+        self.task_info.implementer(task_id)
+    }
+
+    fn merge(&mut self, task_id: &str) -> Result<(), String> {
+        let (source, target) = self
+            .task_info
+            .branches(task_id)
+            .ok_or_else(|| format!("task {task_id} has no source/target branch"))?;
+        let intent = self.queue.enqueue(MergeRequest {
+            session_id: task_id.to_string(),
+            source_branch: source.clone(),
+            target_branch: target.clone(),
+        })?;
+        self.queue.begin(&intent.intent_id)?;
+        match perform_merge(&self.repo_path, &source, &target) {
+            Ok(MergeOutcome::Conflict { paths }) => {
+                self.queue
+                    .resolve(&intent.intent_id, MergeIntentStatus::Conflict)?;
+                Err(format!("merge conflict: {}", paths.join(", ")))
+            }
+            Ok(_) => {
+                self.queue
+                    .resolve(&intent.intent_id, MergeIntentStatus::Merged)?;
+                Ok(())
+            }
+            Err(err) => {
+                self.queue
+                    .resolve(&intent.intent_id, MergeIntentStatus::Rejected)?;
+                Err(err)
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cost::{CostCaps, CostUsage};
+    use crate::orchestrator::autonomy::step;
+    use crate::task::graph::Task;
+    use crate::task::{TaskGraph, TaskStatus};
+    use git2::{build::CheckoutBuilder, Repository};
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+    use std::path::Path;
+
+    const GREEN: GateResults = GateResults {
+        tests_pass: true,
+        lint_pass: true,
+        types_pass: true,
+        design_consistent: true,
+        context_aligned: true,
+    };
+
+    struct FakeGate(GateResults);
+    impl GateRunner for FakeGate {
+        fn run(&self, _task_id: &str, _branch: &str) -> GateResults {
+            self.0
+        }
+    }
+
+    #[derive(Default)]
+    struct RecordingDispatcher {
+        calls: RefCell<Vec<String>>,
+    }
+    impl Dispatcher for RecordingDispatcher {
+        fn dispatch(&self, task_id: &str, _branch: Option<&str>) -> Result<(), String> {
+            self.calls.borrow_mut().push(task_id.to_string());
+            Ok(())
+        }
+    }
+
+    struct MapInfo {
+        branches: HashMap<String, (String, String)>,
+        implementer: String,
+    }
+    impl TaskInfo for MapInfo {
+        fn branches(&self, task_id: &str) -> Option<(String, String)> {
+            self.branches.get(task_id).cloned()
+        }
+        fn implementer(&self, _task_id: &str) -> String {
+            self.implementer.clone()
+        }
+    }
+
+    fn caps(max: usize) -> CostCaps {
+        CostCaps {
+            max_agents: Some(max),
+            ..CostCaps::default()
+        }
+    }
+
+    fn init_repo() -> (tempfile::TempDir, Repository) {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = Repository::init(dir.path()).unwrap();
+        repo.set_head("refs/heads/main").unwrap();
+        (dir, repo)
+    }
+
+    fn commit(repo: &Repository, files: &[(&str, &str)], parents: &[git2::Oid]) -> git2::Oid {
+        let workdir = repo.workdir().unwrap().to_path_buf();
+        for (name, content) in files {
+            std::fs::write(workdir.join(name), content).unwrap();
+        }
+        let mut index = repo.index().unwrap();
+        for (name, _) in files {
+            index.add_path(Path::new(name)).unwrap();
+        }
+        index.write().unwrap();
+        let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
+        let sig = git2::Signature::now("Test", "t@test").unwrap();
+        let parent_commits: Vec<git2::Commit> = parents
+            .iter()
+            .map(|oid| repo.find_commit(*oid).unwrap())
+            .collect();
+        let parent_refs: Vec<&git2::Commit> = parent_commits.iter().collect();
+        repo.commit(Some("HEAD"), &sig, &sig, "c", &tree, &parent_refs)
+            .unwrap()
+    }
+
+    fn checkout(repo: &Repository, branch: &str) {
+        repo.set_head(&format!("refs/heads/{branch}")).unwrap();
+        repo.checkout_head(Some(CheckoutBuilder::new().force()))
+            .unwrap();
+    }
+
+    /// A feature branch one commit ahead of main, with main checked out.
+    fn repo_with_feature_ahead() -> (tempfile::TempDir, Repository, git2::Oid) {
+        let (dir, repo) = init_repo();
+        let a = commit(&repo, &[("a.txt", "A")], &[]);
+        repo.branch("feature", &repo.find_commit(a).unwrap(), false)
+            .unwrap();
+        checkout(&repo, "feature");
+        let b = commit(&repo, &[("b.txt", "B")], &[a]);
+        checkout(&repo, "main");
+        (dir, repo, b)
+    }
+
+    fn review_task_graph() -> TaskGraph {
+        let mut graph = TaskGraph::new();
+        graph
+            .add(Task::new("t", "T").with_branches("feature", "main"))
+            .unwrap();
+        graph.recompute_ready();
+        graph.transition("t", TaskStatus::Running).unwrap();
+        graph.transition("t", TaskStatus::Review).unwrap();
+        graph
+    }
+
+    fn adapter_for(
+        repo: &Repository,
+        gate: GateResults,
+    ) -> LoopPortsAdapter<FakeGate, RecordingDispatcher, MapInfo> {
+        let mut branches = HashMap::new();
+        branches.insert("t".to_string(), ("feature".to_string(), "main".to_string()));
+        LoopPortsAdapter::new(
+            repo.workdir().unwrap().to_str().unwrap().to_string(),
+            "reviewer",
+            FakeGate(gate),
+            RecordingDispatcher::default(),
+            MapInfo {
+                branches,
+                implementer: "implementer".to_string(),
+            },
+        )
+    }
+
+    #[test]
+    fn green_review_performs_a_real_merge() {
+        let (_dir, repo, feature_tip) = repo_with_feature_ahead();
+        let mut graph = review_task_graph();
+        let mut ports = adapter_for(&repo, GREEN);
+
+        let report = step(&mut graph, &caps(4), &CostUsage::default(), &mut ports);
+
+        assert_eq!(report.merged, ["t"]);
+        assert_eq!(graph.get("t").unwrap().status, TaskStatus::Done);
+        // The real merge moved main to the feature tip.
+        assert_eq!(repo.refname_to_id("refs/heads/main").unwrap(), feature_tip);
+        assert_eq!(ports.queue().intents()[0].status, "merged");
+    }
+
+    #[test]
+    fn red_gate_rejects_without_merging() {
+        let (_dir, repo, _feature_tip) = repo_with_feature_ahead();
+        let main_before = repo.refname_to_id("refs/heads/main").unwrap();
+        let mut graph = review_task_graph();
+        let mut ports = adapter_for(
+            &repo,
+            GateResults {
+                tests_pass: false,
+                ..GREEN
+            },
+        );
+
+        let report = step(&mut graph, &caps(4), &CostUsage::default(), &mut ports);
+
+        assert!(report.merged.is_empty());
+        assert_eq!(report.rejected, ["t"]);
+        assert_eq!(graph.get("t").unwrap().status, TaskStatus::Running);
+        // Nothing merged: main is untouched and no intent was queued.
+        assert_eq!(repo.refname_to_id("refs/heads/main").unwrap(), main_before);
+        assert!(ports.queue().intents().is_empty());
+    }
+}
