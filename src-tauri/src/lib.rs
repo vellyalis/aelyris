@@ -3,6 +3,7 @@ pub mod api;
 pub mod audit;
 pub mod config;
 pub mod control;
+pub mod cost;
 pub mod db;
 pub mod ghostdiff;
 pub mod git;
