@@ -31,6 +31,10 @@ fn tool_names() -> Vec<&'static str> {
         "aether.request_approval",
         "aether.list_pending_approvals",
         "aether.request_merge",
+        "aether.spawn_agent",
+        "aether.stop_agent",
+        "aether.review.approve",
+        "aether.review.reject",
     ]
 }
 
@@ -75,6 +79,27 @@ fn arg_optional_string(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
+}
+
+fn arg_optional_string_array(
+    args: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> ApiResult<Option<Vec<String>>> {
+    let Some(value) = args.get(key) else {
+        return Ok(None);
+    };
+    let array = value
+        .as_array()
+        .ok_or_else(|| ApiError::BadRequest(format!("MCP argument `{key}` must be an array")))?;
+    let items = array
+        .iter()
+        .map(|item| {
+            item.as_str().map(str::to_owned).ok_or_else(|| {
+                ApiError::BadRequest(format!("MCP argument `{key}` must be strings"))
+            })
+        })
+        .collect::<ApiResult<Vec<String>>>()?;
+    Ok(Some(items))
 }
 
 fn arg_optional_f64(
@@ -327,6 +352,64 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                     },
                     "additionalProperties": false
                 }
+            },
+            {
+                "name": "aether.spawn_agent",
+                "description": "Spawn a headless implementer agent. Enforces the live cost cap (BR7); refuses when the fleet is at the agent cap.",
+                "safety": "GATED",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["prompt", "cwd"],
+                    "properties": {
+                        "prompt": { "type": "string" },
+                        "cwd": { "type": "string" },
+                        "model": { "type": "string" },
+                        "allowedTools": { "type": "array", "items": { "type": "string" } },
+                        "resumeId": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aether.stop_agent",
+                "description": "Stop a running headless agent session by id.",
+                "safety": "GATED",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["sessionId"],
+                    "properties": { "sessionId": { "type": "string" } },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aether.review.approve",
+                "description": "Reviewer authority: approve a queued merge intent and perform the real git merge (fast-forward/3-way) into the target branch. The AI reviewer is the gate — there is no human gate in the critical path.",
+                "safety": "REVIEWER_AUTHORITY",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["intentId", "repoPath", "sourceBranch", "targetBranch"],
+                    "properties": {
+                        "intentId": { "type": "string" },
+                        "repoPath": { "type": "string" },
+                        "sourceBranch": { "type": "string" },
+                        "targetBranch": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aether.review.reject",
+                "description": "Reviewer authority: reject a queued merge intent. Resolves the intent without merging.",
+                "safety": "REVIEWER_AUTHORITY",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["intentId"],
+                    "properties": {
+                        "intentId": { "type": "string" },
+                        "reason": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }
             }
         ]
     }))
@@ -560,6 +643,122 @@ pub(super) async fn tools_call(
                 },
             )?;
             serde_json::json!({ "intentId": queued.intent_id, "status": queued.status, "queued": queued, "item": item })
+        }
+        "aether.spawn_agent" => {
+            let manager = state.agent_manager.as_ref().ok_or_else(|| {
+                ApiError::Internal("agent runtime is not attached to this process".to_string())
+            })?;
+            let prompt = arg_string(&args, "prompt")?;
+            let cwd = arg_string(&args, "cwd")?;
+            let model = arg_optional_string(&args, "model");
+            let allowed_tools = arg_optional_string_array(&args, "allowedTools")?;
+            let resume_id = arg_optional_string(&args, "resumeId");
+            // Cost gate (BR7): same shared caps as the UI/IPC spawn paths. Only
+            // headless sessions are counted here (the interactive runtime is not
+            // attached to the API state); the loop enforces the full budget.
+            if let Some(cost) = state.cost_manager.as_ref() {
+                let active_agents = crate::control::agent::list_headless(manager).len();
+                cost.guard_spawn(active_agents)
+                    .map_err(ApiError::BadRequest)?;
+            }
+            let session_id = crate::control::agent::start_headless(
+                manager,
+                crate::control::agent::HeadlessSpawnSpec {
+                    prompt,
+                    cwd,
+                    model,
+                    allowed_tools,
+                    resume_id,
+                },
+            )
+            .map_err(ApiError::BadRequest)?;
+            serde_json::json!({ "sessionId": session_id, "spawned": true })
+        }
+        "aether.stop_agent" => {
+            let manager = state.agent_manager.as_ref().ok_or_else(|| {
+                ApiError::Internal("agent runtime is not attached to this process".to_string())
+            })?;
+            let session_id = arg_string(&args, "sessionId")?;
+            crate::control::agent::stop_headless(manager, &session_id)
+                .map_err(ApiError::BadRequest)?;
+            serde_json::json!({ "sessionId": session_id, "stopped": true })
+        }
+        "aether.review.approve" => {
+            let intent_id = arg_string(&args, "intentId")?;
+            let repo_path = arg_string(&args, "repoPath")?;
+            let source_branch = arg_string(&args, "sourceBranch")?;
+            let target_branch = arg_string(&args, "targetBranch")?;
+            crate::git::validate_branch_name(&source_branch).map_err(ApiError::BadRequest)?;
+            crate::git::validate_branch_name(&target_branch).map_err(ApiError::BadRequest)?;
+
+            // Claim the queued intent (pending -> merging) under the lock so two
+            // reviewers can never merge the same intent twice.
+            {
+                let mut pending = state.mcp_pending.lock().map_err(|_| {
+                    ApiError::Internal("MCP pending queue lock poisoned".to_string())
+                })?;
+                let item = pending
+                    .iter_mut()
+                    .find(|i| i.id == intent_id)
+                    .ok_or_else(|| ApiError::NotFound(intent_id.clone()))?;
+                if item.kind != "merge_conflict_strategy" {
+                    return Err(ApiError::BadRequest(format!(
+                        "intent {intent_id} is not a merge intent"
+                    )));
+                }
+                if item.status != "pending" {
+                    return Err(ApiError::BadRequest(format!(
+                        "intent {intent_id} is not pending (status: {})",
+                        item.status
+                    )));
+                }
+                item.status = "merging".to_string();
+            }
+
+            // Perform the real merge without holding the pending lock.
+            let outcome = crate::git::perform_merge(&repo_path, &source_branch, &target_branch);
+            let final_status = match &outcome {
+                Ok(crate::git::MergeOutcome::Conflict { .. }) => "conflict",
+                Ok(_) => "merged",
+                // The merge could not run; restore the intent so it can be retried.
+                Err(_) => "pending",
+            };
+            {
+                let mut pending = state.mcp_pending.lock().map_err(|_| {
+                    ApiError::Internal("MCP pending queue lock poisoned".to_string())
+                })?;
+                if let Some(item) = pending.iter_mut().find(|i| i.id == intent_id) {
+                    item.status = final_status.to_string();
+                }
+            }
+            match outcome {
+                Ok(outcome) => {
+                    serde_json::json!({ "intentId": intent_id, "status": final_status, "outcome": outcome })
+                }
+                Err(err) => return Err(ApiError::BadRequest(err)),
+            }
+        }
+        "aether.review.reject" => {
+            let intent_id = arg_string(&args, "intentId")?;
+            let reason = arg_optional_string(&args, "reason");
+            let mut pending = state
+                .mcp_pending
+                .lock()
+                .map_err(|_| ApiError::Internal("MCP pending queue lock poisoned".to_string()))?;
+            let item = pending
+                .iter_mut()
+                .find(|i| i.id == intent_id)
+                .ok_or_else(|| ApiError::NotFound(intent_id.clone()))?;
+            if item.status != "pending" {
+                return Err(ApiError::BadRequest(format!(
+                    "intent {intent_id} is not pending (status: {})",
+                    item.status
+                )));
+            }
+            item.status = "rejected".to_string();
+            let resolved = item.clone();
+            drop(pending);
+            serde_json::json!({ "intentId": intent_id, "status": "rejected", "reason": reason, "item": resolved })
         }
         other => {
             return Err(ApiError::BadRequest(format!("unknown MCP tool: {other}")));

@@ -59,7 +59,7 @@ use crate::mux::store::{graph_for_snapshot_restore, FileMuxSnapshotStore};
 #[cfg(test)]
 use crate::pty::ShellType;
 use crate::pty::{PtyError, PtyManager, TerminalInfo};
-use crate::{agent::AgentManager, ghostdiff::LayerRegistry};
+use crate::{agent::AgentManager, cost::CostManager, ghostdiff::LayerRegistry};
 
 mod mcp;
 mod mux;
@@ -154,6 +154,10 @@ pub struct ApiState {
     pub mux: Arc<Mutex<MuxManager>>,
     pub agent_manager: Option<AgentManager>,
     pub ghost_layers: Option<Arc<LayerRegistry>>,
+    /// Shared cost-cap owner (same instance as the Tauri-managed one) so the
+    /// in-process MCP spawn path enforces the same live caps as the UI/IPC
+    /// spawn paths (BR7) — no second source of truth.
+    pub cost_manager: Option<Arc<CostManager>>,
     pub mcp_pending: Arc<Mutex<Vec<McpPendingDecision>>>,
     pub mux_store: Option<Arc<FileMuxSnapshotStore>>,
     pub auth: AuthConfig,
@@ -188,6 +192,7 @@ impl ApiState {
             mux: Arc::new(Mutex::new(MuxManager::new())),
             agent_manager: None,
             ghost_layers: None,
+            cost_manager: None,
             mcp_pending: Arc::new(Mutex::new(Vec::new())),
             mux_store: None,
             auth,
@@ -248,6 +253,11 @@ impl ApiState {
 
     pub fn with_ghost_layers(mut self, layers: Arc<LayerRegistry>) -> Self {
         self.ghost_layers = Some(layers);
+        self
+    }
+
+    pub fn with_cost_manager(mut self, cost_manager: Arc<CostManager>) -> Self {
+        self.cost_manager = Some(cost_manager);
         self
     }
 

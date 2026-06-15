@@ -30,6 +30,10 @@ const requiredTools = [
   "aether.request_approval",
   "aether.list_pending_approvals",
   "aether.request_merge",
+  "aether.spawn_agent",
+  "aether.stop_agent",
+  "aether.review.approve",
+  "aether.review.reject",
 ];
 
 const checks = [
@@ -60,7 +64,8 @@ const checks = [
     ok:
       controlMod.includes("pub mod merge;") &&
       merge.includes("pub fn queue_request") &&
-      merge.includes('status: "queued".to_string()') &&
+      merge.includes("MergeIntentStatus::Queued.as_str().to_string()") &&
+      merge.includes('Self::Queued => "queued"') &&
       apiMcp.includes('"aether.request_merge"') &&
       apiMcp.includes("no merge was performed"),
     detail: "merge requests validate and queue without merging to main",
@@ -83,6 +88,29 @@ const checks = [
       apiMcp.includes('"aether.list_pending_approvals"') &&
       apiMcp.includes('"grantToolExposed": false'),
     detail: "pending approval polling explicitly reports no grant tool exposure",
+  },
+  {
+    id: "reviewer-authority-performs-merge",
+    ok:
+      apiMcp.includes('"aether.review.approve"') &&
+      apiMcp.includes('"aether.review.reject"') &&
+      apiMcp.includes("crate::git::perform_merge(&repo_path, &source_branch, &target_branch)") &&
+      apiMcp.includes('item.status = "merging".to_string()') &&
+      gitMerge.includes("pub fn perform_merge"),
+    detail:
+      "reviewer approve performs a real git merge (claimed pending -> merging -> terminal); reject resolves without merging",
+  },
+  {
+    id: "mcp-spawn-enforces-cost-gate",
+    ok:
+      apiMcp.includes('"aether.spawn_agent"') &&
+      apiMcp.includes('"aether.stop_agent"') &&
+      apiMcp.includes("cost.guard_spawn(active_agents)") &&
+      api.includes("pub fn with_cost_manager") &&
+      api.includes("pub cost_manager: Option<Arc<CostManager>>") &&
+      lib.includes(".with_cost_manager(cost_manager)"),
+    detail:
+      "MCP spawn_agent shares the live cost caps (single source of truth) and enforces the agent cap (BR7)",
   },
   {
     id: "native-state-connected-to-mcp",

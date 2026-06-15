@@ -72,7 +72,7 @@ pub async fn spawn_interactive_agent(
             .state::<crate::agent::AgentManager>()
             .list_sessions()
             .len();
-    app.state::<crate::cost::CostManager>()
+    app.state::<std::sync::Arc<crate::cost::CostManager>>()
         .guard_spawn(active_agents)?;
 
     let (program, mut args) = cli.program_and_args(Some(model_str));

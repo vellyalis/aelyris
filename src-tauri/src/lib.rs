@@ -113,7 +113,7 @@ pub fn run() {
         .manage(task::TaskManager::new())
         .manage(context_store::ContextStoreManager::new())
         .manage(event_bus::EventBus::new())
-        .manage(cost::CostManager::new())
+        .manage(std::sync::Arc::new(cost::CostManager::new()))
         .manage(failure_policy::FailurePolicy::new())
         .manage(std::sync::Mutex::new(file_ownership::FileOwnership::new()))
         .setup(move |app| {
@@ -520,10 +520,15 @@ pub fn run() {
                     .clone();
                 let agent_manager = app.state::<AgentManager>().inner().clone();
                 let ghost_layers = app.state::<std::sync::Arc<LayerRegistry>>().inner().clone();
+                let cost_manager = app
+                    .state::<std::sync::Arc<cost::CostManager>>()
+                    .inner()
+                    .clone();
                 let api_state = api::ApiState::new(pty, api::AuthConfig::from_env())
                     .with_mux(mux_manager)
                     .with_agent_manager(agent_manager)
                     .with_ghost_layers(ghost_layers)
+                    .with_cost_manager(cost_manager)
                     .with_env_mux_store();
                 app.manage(api_state.clone());
                 let serve_state = api_state.clone();

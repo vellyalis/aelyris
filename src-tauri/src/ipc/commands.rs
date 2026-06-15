@@ -3129,7 +3129,7 @@ pub fn start_agent(
         .map(|sessions| sessions.len())
         .unwrap_or(0);
     let active_agents = agent_manager.list_sessions().len() + interactive_count;
-    app.state::<crate::cost::CostManager>()
+    app.state::<std::sync::Arc<crate::cost::CostManager>>()
         .guard_spawn(active_agents)?;
     let id = agent_manager.start_session(&prompt, &cwd, model.as_deref(), allowed_tools, None)?;
     if let Some(profile) = guardrail_profile.as_deref() {
