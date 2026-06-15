@@ -7,6 +7,7 @@ pub mod control;
 pub mod cost;
 pub mod db;
 pub mod event_bus;
+pub mod file_ownership;
 pub mod ghostdiff;
 pub mod git;
 pub mod history;
