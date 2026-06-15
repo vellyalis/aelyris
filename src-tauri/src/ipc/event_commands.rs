@@ -5,6 +5,15 @@ use crate::event_bus::{AgentEvent, AgentEventKind, EventBus, EventChannel};
 /// Live fleet event stream the cockpit feed subscribes to (BR5).
 const AGENT_EVENT: &str = "agent-event";
 
+/// Append an event to the bus log and re-emit it over the `agent-event` Tauri
+/// stream so the cockpit feed updates live. Shared by the explicit
+/// `event_publish` command and the subsystem auto-publishers (task/context
+/// commands) so the wire event name lives in exactly one place.
+pub(crate) fn publish_and_emit(app: &AppHandle, bus: &EventBus, event: AgentEvent) {
+    bus.publish(event.clone());
+    let _ = app.emit(AGENT_EVENT, &event);
+}
+
 /// Publish a typed event: append it to the bus log and re-emit it over Tauri
 /// so the frontend feed updates live. Routes to the kind's default channel
 /// unless `channel` overrides it. Returns the published event.
@@ -20,8 +29,7 @@ pub fn event_publish(
         Some(channel) => AgentEvent::on(kind, channel, payload),
         None => AgentEvent::new(kind, payload),
     };
-    bus.publish(event.clone());
-    let _ = app.emit(AGENT_EVENT, &event);
+    publish_and_emit(&app, &bus, event.clone());
     event
 }
 

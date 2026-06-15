@@ -1,15 +1,29 @@
 use std::collections::BTreeMap;
 
+use serde_json::json;
 use tauri::{AppHandle, Emitter, State};
 
+use super::event_commands::publish_and_emit;
 use crate::context_store::{ContextStoreManager, DecisionChange};
+use crate::event_bus::{AgentEvent, AgentEventKind, EventBus};
 
-/// The per-change ADR event (BR6) and a full-snapshot event for hydration.
-const DECISION_CHANGED: &str = "decision-changed";
+/// A full-snapshot event for store hydration.
 const CONTEXT_STORE_UPDATED: &str = "context-store-updated";
 
-fn broadcast(app: &AppHandle, manager: &ContextStoreManager, change: &DecisionChange) {
-    let _ = app.emit(DECISION_CHANGED, change);
+/// A real ADR change (BR6) flows through the Event Bus as a `DECISION_CHANGED`
+/// event (unified fleet feed) and emits a full snapshot for the store hook.
+fn broadcast(
+    app: &AppHandle,
+    bus: &EventBus,
+    manager: &ContextStoreManager,
+    change: &DecisionChange,
+) {
+    let payload = serde_json::to_value(change).unwrap_or(json!(null));
+    publish_and_emit(
+        app,
+        bus,
+        AgentEvent::new(AgentEventKind::DecisionChanged, payload),
+    );
     let _ = app.emit(CONTEXT_STORE_UPDATED, manager.all());
 }
 
@@ -19,12 +33,13 @@ fn broadcast(app: &AppHandle, manager: &ContextStoreManager, change: &DecisionCh
 pub fn context_set(
     app: AppHandle,
     manager: State<'_, ContextStoreManager>,
+    bus: State<'_, EventBus>,
     key: String,
     value: String,
 ) -> Option<DecisionChange> {
     let change = manager.set(key, value);
     if let Some(ref change) = change {
-        broadcast(&app, &manager, change);
+        broadcast(&app, &bus, &manager, change);
     }
     change
 }
@@ -43,11 +58,12 @@ pub fn context_all(manager: State<'_, ContextStoreManager>) -> BTreeMap<String, 
 pub fn context_remove(
     app: AppHandle,
     manager: State<'_, ContextStoreManager>,
+    bus: State<'_, EventBus>,
     key: String,
 ) -> Option<DecisionChange> {
     let change = manager.remove(&key);
     if let Some(ref change) = change {
-        broadcast(&app, &manager, change);
+        broadcast(&app, &bus, &manager, change);
     }
     change
 }
