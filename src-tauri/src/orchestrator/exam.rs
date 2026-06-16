@@ -1,22 +1,37 @@
-//! Deterministic final-exam harness — drives the WHOLE autonomy loop over a
+//! Deterministic final-exam harness — drives the WHOLE autonomy LOOP over a
 //! realistic multi-task feature build with faults injected (a crashed worker, a
-//! review-rejected branch, two tasks contending for one file lane), and asserts
-//! the runtime's coordination + safety guarantees hold end-to-end with zero
-//! human intervention. See docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md
-//! (Acceptance: end-to-end autonomy). This is the cargo-deterministic proof that
-//! a misbehaving agent can never corrupt the integration — LLM output quality is
-//! out of scope here (caught by the real gates), but every mechanism the loop
-//! must enforce is proven.
+//! review-rejected branch, two tasks contending for one file lane), and checks
+//! the loop's coordination/safety guarantees hold to completion with zero human
+//! intervention. See docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md
+//! (Acceptance: end-to-end autonomy).
 //!
-//! The eight acceptance cases, and where each is asserted:
-//!   ① decomposition  — the input Task Graph (the orchestrator's job; given here)
-//!   ② ownership      — per-step: no two running tasks share an overlapping lane
+//! Scope — be precise about what this proves and what it does NOT:
+//!   * It drives the real `step`/loop logic deterministically. The I/O ports
+//!     (`ScriptedFleet`) are SIMULATED: `merge` records to a vec (no git) and
+//!     `dispatch` queues a completion (no process). So this proves the loop
+//!     COORDINATION is correct given working I/O — not the I/O itself.
+//!   * Real git merge through the adapter is covered separately by the
+//!     `control::loop_ports` tests (real temp-repo FF/3-way merges); the real
+//!     crash-vs-success exit-code sensor by `agent::claude::reap_tests`; the
+//!     mechanical gate by `control::gate_runner` + the real-exit-code test.
+//!   * A real end-to-end run with real LLM agents + real git (and the A/B
+//!     benchmark) is NOT performed here — that is environment/auth-dependent and
+//!     out of cargo's reach. This harness is the deterministic mechanism proof,
+//!     not that real LLM output is good.
+//!
+//! The eight acceptance cases, and how each is treated here:
+//!   ① decomposition  — INPUT, not proven: the Task Graph is given (it is the
+//!                       orchestrator's job to produce it)
+//!   ② ownership      — per-tick invariant: no two running tasks share a lane
+//!                       (binds — mutation-checked: removing the guard fires it)
 //!   ③ context sync   — a review-rejected (stale) task is re-dispatched, not lost
 //!   ④ event handoff  — a dependent auto-starts once its deps merge (no waiting)
-//!   ⑤ self-scaling   — the orchestrator's; the cap below stands in for the bound
-//!   ⑥ cost control   — per-step: running count never exceeds the agent cap
+//!   ⑤ self-scaling   — NOT a runtime feature; the binding cap below stands in
+//!                       for the bound (real scaling is the orchestrator's call)
+//!   ⑥ cost control   — the cap genuinely BINDS (max concurrency == cap)
 //!   ⑦ recovery       — a crashed worker's task is reassigned and still completes
-//!   ⑧ merge          — every branch merges, in dependency order, to completion
+//!   ⑧ merge          — every (simulated) merge happens in dependency order to
+//!                       completion
 
 #![cfg(test)]
 
@@ -153,22 +168,35 @@ fn merge_pos(merged: &[String], id: &str) -> usize {
         .unwrap_or_else(|| panic!("{id} was never merged"))
 }
 
-/// The whole exam in one deterministic run: an "EC site" decomposed into eight
+/// The whole exam in one deterministic run: an "EC site" decomposed into ten
 /// tasks with real dependencies and file lanes, one crashing worker, one
 /// stale/rejected branch, and two tasks contending for the auth lane — driven to
-/// completion with no human in the loop, asserting every guarantee every tick.
+/// completion with no human in the loop, checking the per-tick safety invariants
+/// (lane-disjoint running set, agent cap) and the final outcome.
+///
+/// The cap is made to genuinely BIND: five disjoint-lane roots are ready at the
+/// first tick but the cap is four, so exactly four start and the fifth waits.
+/// Without the cap a fifth would start, so `max_running == cap` below is a real
+/// constraint, not a vacuous `<= cap`. (Lane enforcement is likewise mutation-
+/// checked: removing the dispatch guard makes auth and auth_tests co-run and the
+/// lane-collision assertion fires.)
 #[test]
 fn ten_agents_finish_one_feature_without_a_human_manager() {
     // ① Decomposition: distinct owners, declared deps, disjoint-by-design lanes
-    //    (except the deliberately-contended auth lane below).
+    //    (except the deliberately-contended auth lane). Five no-dep roots come
+    //    first so the cap (4) binds at tick 1 with one root left waiting.
     let mut g = TaskGraph::new();
     g.add(task("auth", "claude", &[], &["src/auth/**"]))
         .unwrap();
-    // Contends for the auth lane on purpose — must serialize behind `auth` (②).
-    g.add(task("auth_tests", "gemini", &[], &["src/auth/test/**"]))
-        .unwrap();
     g.add(task("db", "codex", &[], &["src/db/**"])).unwrap();
     g.add(task("search", "gemini", &[], &["src/search/**"]))
+        .unwrap();
+    g.add(task("infra", "gemini", &[], &["src/infra/**"]))
+        .unwrap();
+    g.add(task("docs", "claude", &[], &["src/docs/**"]))
+        .unwrap();
+    // Contends for the auth lane on purpose — must serialize behind `auth` (②).
+    g.add(task("auth_tests", "gemini", &[], &["src/auth/test/**"]))
         .unwrap();
     g.add(task("notify", "gemini", &["auth"], &["src/notify/**"]))
         .unwrap();
@@ -182,9 +210,11 @@ fn ten_agents_finish_one_feature_without_a_human_manager() {
 
     let all_ids = [
         "auth",
-        "auth_tests",
         "db",
         "search",
+        "infra",
+        "docs",
+        "auth_tests",
         "notify",
         "api",
         "ui",
@@ -203,6 +233,7 @@ fn ten_agents_finish_one_feature_without_a_human_manager() {
 
     let mut recovered = Vec::new();
     let mut rejected = Vec::new();
+    let mut max_running = 0usize;
     let mut final_state = LoopState::Active;
 
     for _ in 0..50 {
@@ -214,6 +245,7 @@ fn ten_agents_finish_one_feature_without_a_human_manager() {
 
         // ⑥ Cost control: the live agent count never exceeds the cap.
         let running = running_ids(&g);
+        max_running = max_running.max(running.len());
         assert!(
             running.len() <= cap,
             "agent cap exceeded: {} running",
@@ -248,6 +280,11 @@ fn ten_agents_finish_one_feature_without_a_human_manager() {
             break;
         }
     }
+
+    // ⑥ Cost control BINDS: five disjoint roots were ready at tick 1 but the cap
+    //    is four, so concurrency peaked at exactly the cap — without the cap a
+    //    fifth would have started. (`<= cap` held every tick above.)
+    assert_eq!(max_running, cap, "the agent cap did not actually bind");
 
     // ⑧ Completion: the loop reached a successful terminal state and every task
     //    merged to Done — nothing lost, nothing stuck.

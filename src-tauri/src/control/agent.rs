@@ -38,7 +38,7 @@ pub fn start_headless(manager: &AgentManager, spec: HeadlessSpawnSpec) -> Contro
 /// Drain a headless agent's stdout/stderr in the background so its OS pipe
 /// buffer never fills and blocks the process — without this an unmonitored
 /// `claude -p` would deadlock before it could exit, and the autonomy loop's
-/// completion sensor (`AgentManager::reap_finished`) would never fire. The
+/// completion sensor (`AgentManager::reap`) would never fire. The
 /// output is not parsed here; the orchestrator reviews the worktree diff, not
 /// the stream.
 fn drain_session_output(manager: &AgentManager, id: &str) {

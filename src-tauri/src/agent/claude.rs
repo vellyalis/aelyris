@@ -261,12 +261,6 @@ impl AgentManager {
         outcome
     }
 
-    /// Task ids of agents that exited cleanly since the last poll (`reap`
-    /// restricted to successes). Retained for callers that only need successes.
-    pub fn reap_finished(&self) -> Vec<String> {
-        self.reap().succeeded
-    }
-
     /// Reap a naturally exited child while keeping its session metadata visible.
     pub fn reap_session(&self, id: &str) -> Result<(), String> {
         let mut sessions = self.lock_sessions()?;

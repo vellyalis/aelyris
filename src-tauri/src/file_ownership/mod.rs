@@ -120,28 +120,40 @@ fn pattern_matches(pattern: &str, path: &str) -> bool {
     pattern == path
 }
 
-/// The base directory/file a pattern is rooted at (glob suffix stripped).
+/// The non-wildcard directory a pattern is anchored at: everything up to (but
+/// not including) the first segment that contains a glob (`*`). So `src/auth/**`
+/// and `src/auth/*` and `src/auth/*.ts` all anchor at `src/auth`, `src/*/x`
+/// anchors at `src`, and a literal path anchors at itself. A leading wildcard
+/// (`*.ts`) anchors at the root (`""`). This generalizes beyond the documented
+/// `/**` `/*` suffix forms so the overlap check stays conservative for ANY glob
+/// a lane might declare (it never under-anchors, so it never misses a collision).
 fn pattern_base(pattern: &str) -> &str {
-    pattern
-        .strip_suffix("/**")
-        .or_else(|| pattern.strip_suffix("/*"))
-        .unwrap_or(pattern)
+    match pattern.find('*') {
+        None => pattern,
+        Some(star) => match pattern[..star].rfind('/') {
+            Some(slash) => &pattern[..slash],
+            None => "",
+        },
+    }
 }
 
-/// Whether two path patterns can match a common path (one base nests in the
+/// Whether two path patterns can match a common path (one anchor nests in the
 /// other). The single source of truth for "do these two lanes collide" — used
 /// both by `conflicts()` (detection) and the autonomy loop's conflict-aware
 /// dispatch (enforcement: never co-dispatch two tasks whose output lanes
-/// overlap). Conservative: it over-flags `*` vs nested but never misses a real
-/// collision (BR8 errs toward caution).
+/// overlap). Conservative by design: it compares the patterns' non-wildcard
+/// anchors, so it over-flags (e.g. `src/auth/*.ts` vs `src/auth/*.css` are
+/// flagged though no file is shared) but never misses a real collision for any
+/// glob form — BR8 errs toward caution (prefer serializing over a write race).
 pub fn patterns_overlap(a: &str, b: &str) -> bool {
     let (base_a, base_b) = (pattern_base(a), pattern_base(b));
     base_a == base_b || is_path_prefix(base_a, base_b) || is_path_prefix(base_b, base_a)
 }
 
-/// Is `prefix` a path-prefix of `path` (equal, or `path` is under `prefix/`)?
+/// Is `prefix` a path-prefix of `path` (the empty/root prefix nests everything,
+/// equal, or `path` is under `prefix/`)?
 fn is_path_prefix(prefix: &str, path: &str) -> bool {
-    path == prefix || path.starts_with(&format!("{prefix}/"))
+    prefix.is_empty() || path == prefix || path.starts_with(&format!("{prefix}/"))
 }
 
 #[cfg(test)]
@@ -207,6 +219,21 @@ mod tests {
         own.assign("a", "src/**");
         own.assign("a", "src/auth/**");
         assert!(own.conflicts().is_empty());
+    }
+
+    #[test]
+    fn overlap_is_conservative_for_non_suffix_globs() {
+        // Beyond the documented `/**` `/*` forms, any glob anchors at its
+        // non-wildcard prefix, so lanes that could touch a common file are
+        // flagged (never missed) — the safety-relevant direction for the
+        // dispatch gate. Disjoint directories are still not flagged.
+        assert!(patterns_overlap("src/auth/*.ts", "src/auth/login.ts"));
+        assert!(patterns_overlap("src/*/index.ts", "src/auth/index.ts"));
+        assert!(patterns_overlap("src/auth/*.ts", "src/auth/*.css")); // over-flag (safe)
+        assert!(!patterns_overlap("src/auth/*.ts", "src/db/pool.ts"));
+        // A leading wildcard anchors at the root, so it conservatively contends
+        // with everything rather than silently slipping the gate.
+        assert!(patterns_overlap("*.ts", "src/auth/login.ts"));
     }
 
     #[test]

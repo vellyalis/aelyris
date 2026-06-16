@@ -44,10 +44,12 @@ pub struct Task {
     /// Branch the task merges into once reviewed (usually `main`).
     #[serde(default)]
     pub target_branch: Option<String>,
-    /// How many times this task has been dispatched and crashed (BR9 recovery).
-    /// The autonomy loop reassigns a crashed task up to a retry bound, then
-    /// leaves it `Failed` — bounded by this counter so a poison task cannot loop
-    /// forever.
+    /// How many times this task's work has failed and been requeued — a crashed
+    /// worker OR a review-rejected branch both bump it (BR9 recovery + rework).
+    /// The autonomy loop reassigns up to a retry bound, then leaves the task
+    /// `Failed` — bounded by this counter so a poison task cannot loop forever.
+    /// Note: crash and rework share this single budget, so a task that both
+    /// crashes once and is rejected once is failed after one rework.
     #[serde(default)]
     pub attempts: u32,
 }
