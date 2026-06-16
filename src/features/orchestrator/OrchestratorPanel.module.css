@@ -1,0 +1,187 @@
+.panel {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.loopRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.loopBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px var(--space-4);
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+  background: var(--glass-thick);
+  box-shadow: inset 0 0 0 1px rgba(124, 214, 235, 0.05);
+}
+
+.loopActive {
+  color: var(--ctp-cyan);
+  box-shadow: inset 0 0 0 1px rgba(148, 226, 213, 0.28);
+}
+.loopComplete {
+  color: var(--status-done);
+  box-shadow: inset 0 0 0 1px rgba(137, 180, 250, 0.28);
+}
+.loopStalled {
+  color: var(--status-edit);
+  box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.28);
+}
+.loopHalted {
+  color: var(--status-error);
+  box-shadow: inset 0 0 0 1px rgba(243, 139, 168, 0.28);
+}
+
+.loopMeta {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.nextRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  font-size: 10px;
+}
+.nextLabel {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+.nextIds {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--aether-champagne);
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.taskList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.taskRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--glass-thick);
+}
+
+.statusDot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.statusPending {
+  background: var(--text-muted);
+}
+.statusReady {
+  background: var(--status-idle);
+}
+.statusRunning {
+  background: var(--ctp-cyan);
+  box-shadow: 0 0 6px rgba(148, 226, 213, 0.5);
+}
+.statusBlocked {
+  background: var(--status-edit);
+}
+.statusReview {
+  background: var(--aether-champagne);
+}
+.statusDone {
+  background: var(--status-done);
+}
+.statusFailed {
+  background: var(--status-error);
+}
+
+.taskTitle {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.taskStatus {
+  flex: 0 0 auto;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.empty {
+  padding: var(--space-6) var(--space-4);
+  color: var(--text-muted);
+  text-align: center;
+  list-style: none;
+}
+
+.feed {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.feedHeading {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.feedList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.feedRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  font-size: 10px;
+}
+.feedKind {
+  min-width: 52px;
+  color: var(--text-secondary);
+}
+.feedChannel {
+  font-size: 9px;
+  color: var(--text-muted);
+}
+.feedSubject {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

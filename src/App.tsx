@@ -86,6 +86,9 @@ const KanbanBoard = lazy(() => import("./features/kanban/KanbanBoard").then((m) 
 const AgentInspector = lazy(() =>
   import("./features/agent-inspector/AgentInspector").then((m) => ({ default: m.AgentInspector })),
 );
+const OrchestratorPanel = lazy(() =>
+  import("./features/orchestrator/OrchestratorPanel").then((m) => ({ default: m.OrchestratorPanel })),
+);
 const ToolkitPanel = lazy(() => import("./features/toolkit/ToolkitPanel").then((m) => ({ default: m.ToolkitPanel })));
 const WorkflowPanel = lazy(() =>
   import("./features/workflow/WorkflowPanel").then((m) => ({ default: m.WorkflowPanel })),
@@ -458,6 +461,7 @@ const RIGHT_RAIL_WIDGET_SYNC_EVENT = "aether:right-rail-widget-sync";
 type RightRailWidgetId =
   | "decision-inbox"
   | "sessions"
+  | "orchestrator"
   | "workflow"
   | "toolkit"
   | "context"
@@ -468,6 +472,7 @@ type RightRailWidgetId =
 const RIGHT_RAIL_WIDGET_IDS: readonly RightRailWidgetId[] = [
   "decision-inbox",
   "sessions",
+  "orchestrator",
   "workflow",
   "toolkit",
   "context",
@@ -6463,6 +6468,19 @@ export function App() {
                               forceOpen={rightRailFocusWidget === "sessions"}
                             >
                               <AgentInspector {...agentInspectorProps} />
+                            </RightRailWidgetFrame>
+                          </Suspense>
+                        </ErrorBoundary>
+                        <ErrorBoundary>
+                          <Suspense fallback={null}>
+                            <RightRailWidgetFrame
+                              widget="orchestrator"
+                              title="Orchestrator"
+                              subtitle="autonomy loop"
+                              defaultOpen={false}
+                              forceOpen={rightRailFocusWidget === "orchestrator"}
+                            >
+                              <OrchestratorPanel />
                             </RightRailWidgetFrame>
                           </Suspense>
                         </ErrorBoundary>
