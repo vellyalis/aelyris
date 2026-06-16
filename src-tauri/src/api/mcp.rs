@@ -1700,3 +1700,40 @@ pub(super) async fn mcp_rpc(
     };
     Json(body).into_response()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeSet;
+
+    /// The MCP surface has three parallel lists that must never drift: the
+    /// catalog (`tool_names`), the schemas (`tools_list`), and the handlers
+    /// (the `tools_call` match). This locks catalog == schemas so a verb can
+    /// never be advertised without a discoverable schema (or vice versa).
+    #[test]
+    fn catalog_and_schemas_list_exactly_the_same_verbs() {
+        let catalog: BTreeSet<String> = tool_names().into_iter().map(String::from).collect();
+        let Json(listed) = tokio::runtime::Runtime::new()
+            .expect("tokio runtime")
+            .block_on(tools_list());
+        let schemas: BTreeSet<String> = listed["tools"]
+            .as_array()
+            .expect("tools is an array")
+            .iter()
+            .map(|tool| {
+                tool["name"]
+                    .as_str()
+                    .expect("every tool schema has a name")
+                    .to_string()
+            })
+            .collect();
+        assert_eq!(
+            catalog,
+            schemas,
+            "tool_names() (catalog) and tools_list() (schemas) drifted: \
+             only-in-catalog={:?}, only-in-schemas={:?}",
+            catalog.difference(&schemas).collect::<Vec<_>>(),
+            schemas.difference(&catalog).collect::<Vec<_>>(),
+        );
+    }
+}
