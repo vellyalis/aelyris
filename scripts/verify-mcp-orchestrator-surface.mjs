@@ -20,6 +20,7 @@ const loopPorts = read("src-tauri/src/control/loop_ports.rs");
 const autonomy = read("src-tauri/src/orchestrator/autonomy.rs");
 const gateRunner = read("src-tauri/src/control/gate_runner.rs");
 const fileOwnership = read("src-tauri/src/file_ownership/mod.rs");
+const examHarness = read("src-tauri/src/orchestrator/exam.rs");
 const agentClaude = read("src-tauri/src/agent/claude.rs");
 const eventBus = read("src-tauri/src/event_bus/mod.rs");
 const knowledgeGraph = read("src-tauri/src/knowledge_graph/mod.rs");
@@ -254,6 +255,23 @@ const checks = [
       autonomy.includes("if lane_busy"),
     detail:
       "the loop never co-dispatches tasks whose output lanes overlap (reusing file_ownership::patterns_overlap) — two agents can never edit the same file at once (BR8, ② ownership enforced)",
+  },
+  {
+    id: "mcp-orchestrator-final-exam-harness",
+    ok:
+      // A deterministic end-to-end harness drives the whole loop over a
+      // multi-task feature build with a crash + a rejection + a lane contention,
+      // asserting every coordination/safety guarantee holds with no human.
+      examHarness.includes("ten_agents_finish_one_feature_without_a_human_manager") &&
+      examHarness.includes("struct ScriptedFleet") &&
+      examHarness.includes("agent cap exceeded") && // ⑥
+      examHarness.includes("lane collision") && // ②
+      examHarness.includes("was not recovered") && // ⑦
+      examHarness.includes("was not reworked") && // ③
+      examHarness.includes("LoopState::Complete") && // ⑧
+      examHarness.includes("merge_pos"), // ④ dependency-ordered integration
+    detail:
+      "a cargo-deterministic final-exam harness proves the runtime enforces every coordination/safety guarantee end-to-end (②⑥ per-tick invariants, ③⑦ fault recovery, ④⑧ dependency-ordered merge to completion) with zero human intervention",
   },
   {
     id: "mcp-coordination-stream-shared",

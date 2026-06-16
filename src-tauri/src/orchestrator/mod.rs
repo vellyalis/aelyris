@@ -9,6 +9,8 @@
 //! is unit-testable with 100% confidence.
 
 pub mod autonomy;
+#[cfg(test)]
+mod exam;
 
 use serde::{Deserialize, Serialize};
 
