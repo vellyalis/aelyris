@@ -304,7 +304,7 @@ fn ten_agents_finish_one_feature_without_a_human_manager() {
         recovered.contains(&"db".to_string()),
         "db was not recovered"
     );
-    assert_eq!(g.get("db").unwrap().attempts, 1);
+    assert_eq!(g.get("db").unwrap().crash_attempts, 1);
 
     // ③ Context sync: the stale/rejected branch was re-dispatched for rework
     //    (one attempt burned) and still merged — no stale work merged, none lost.
@@ -312,7 +312,7 @@ fn ten_agents_finish_one_feature_without_a_human_manager() {
         rejected.contains(&"api".to_string()),
         "api was not reworked"
     );
-    assert_eq!(g.get("api").unwrap().attempts, 1);
+    assert_eq!(g.get("api").unwrap().rework_attempts, 1);
 
     // ④ Event handoff + ⑧ dependency-ordered integration: a dependent only merges
     //    after all its dependencies, proving deps auto-started their dependents.

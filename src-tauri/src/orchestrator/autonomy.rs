@@ -18,11 +18,25 @@ use crate::file_ownership::patterns_overlap;
 use crate::review::{review, GateResults, ReviewVerdict};
 use crate::task::{TaskGraph, TaskStatus};
 
-/// Maximum times a task is dispatched before a repeated crash leaves it
-/// `Failed` (BR9 recovery). With `2`, a crashed task is reassigned once; a
-/// second crash marks it permanently failed so a poison task cannot loop
-/// forever (the stall then surfaces via the loop state, never a lost task).
-pub const MAX_TASK_ATTEMPTS: u32 = 2;
+/// Maximum times a task's worker may CRASH before it is left `Failed` (BR9
+/// recovery). With `2`, a crashed task is reassigned once; a second crash fails
+/// it. Bounded independently from rework so transient infra crashes never steal
+/// a review-rework attempt.
+pub const MAX_CRASH_ATTEMPTS: u32 = 2;
+
+/// Maximum times a task's branch may be REVIEW-REJECTED and re-dispatched for
+/// rework before it is left `Failed`. Independent from crash recovery; either
+/// budget exhausting fails the task so a poison task cannot loop forever.
+pub const MAX_REWORK_ATTEMPTS: u32 = 2;
+
+/// Why a task is being requeued — selects which independent retry budget applies.
+#[derive(Clone, Copy)]
+enum FailureKind {
+    /// Its worker process crashed (non-zero exit).
+    Crash,
+    /// Its branch failed review.
+    Rework,
+}
 
 /// Split result of a completion poll (BR9 recovery): which dispatched agents
 /// finished cleanly (`succeeded` -> review) vs. crashed (`failed` -> reassign)
@@ -83,18 +97,23 @@ fn running_count(graph: &TaskGraph) -> usize {
         .count()
 }
 
-/// Send a failed task back for another attempt, bounded by the retry budget.
-/// Used for both a crashed worker (caller passes a `Running` task) and a
-/// review-rejected branch (caller passes a `Review` task) — `-> Failed` is legal
-/// from either. Under budget it goes `Failed -> Pending` so the dependency gate
+/// Send a failed task back for another attempt, bounded by the retry budget for
+/// its `kind`. Used for both a crashed worker (caller passes a `Running` task,
+/// `FailureKind::Crash`) and a review-rejected branch (caller passes a `Review`
+/// task, `FailureKind::Rework`) — `-> Failed` is legal from either. Crash and
+/// rework draw on SEPARATE budgets, so a transient crash never consumes a
+/// rework. Under budget it goes `Failed -> Pending` so the dependency gate
 /// re-promotes it to `Ready` and it is re-dispatched the same tick with the
 /// CURRENT ADR (every dispatch re-injects the shared context); past the budget
 /// it stays `Failed` (terminal), so a task is never silently lost and a poison
 /// task cannot loop forever. Returns whether it was requeued.
-fn requeue_or_fail(graph: &mut TaskGraph, id: &str) -> bool {
+fn requeue_or_fail(graph: &mut TaskGraph, id: &str, kind: FailureKind) -> bool {
     let _ = graph.transition(id, TaskStatus::Failed);
-    let attempts = graph.record_attempt(id);
-    if attempts < MAX_TASK_ATTEMPTS {
+    let (attempts, max) = match kind {
+        FailureKind::Crash => (graph.record_crash(id), MAX_CRASH_ATTEMPTS),
+        FailureKind::Rework => (graph.record_rework(id), MAX_REWORK_ATTEMPTS),
+    };
+    if attempts < max {
         let _ = graph.transition(id, TaskStatus::Pending);
         true
     } else {
@@ -134,7 +153,7 @@ pub fn step(
         if graph.get(&id).map(|task| task.status) != Some(TaskStatus::Running) {
             continue;
         }
-        if requeue_or_fail(graph, &id) {
+        if requeue_or_fail(graph, &id, FailureKind::Crash) {
             recovered.push(id);
         }
     }
@@ -164,7 +183,7 @@ pub fn step(
                 // context is redone with the new decision), bounded by the retry
                 // budget. A headless agent has already exited, so leaving the
                 // task `Running` would strand it with no worker — requeue instead.
-                requeue_or_fail(graph, &id);
+                requeue_or_fail(graph, &id, FailureKind::Rework);
                 rejected.push(id);
             }
             ReviewVerdict::SelfReviewBlocked => {
@@ -186,7 +205,16 @@ pub fn step(
     //    detected, so two agents can never edit the same file at once. A
     //    lane-blocked task simply stays Ready and is retried once the occupying
     //    task merges and frees its lane.
-    let dispatch_plan = plan(graph, caps, usage);
+    //
+    //    The concurrency count is recomputed from the graph here (not taken from
+    //    the pre-step `usage`) so that a worker that crashed or merged THIS tick
+    //    has already freed its slot — otherwise a recovered task would wait an
+    //    extra tick behind its own just-vacated slot.
+    let live_usage = CostUsage {
+        active_agents: running_count(graph),
+        ..*usage
+    };
+    let dispatch_plan = plan(graph, caps, &live_usage);
     let mut occupied: Vec<String> = graph
         .list()
         .iter()
@@ -424,7 +452,7 @@ mod tests {
         // not stranded in Running with no live agent.
         assert!(report.dispatched.contains(&"a".to_string()));
         assert_eq!(g.get("a").unwrap().status, TaskStatus::Running);
-        assert_eq!(g.get("a").unwrap().attempts, 1);
+        assert_eq!(g.get("a").unwrap().rework_attempts, 1);
     }
 
     #[test]
@@ -443,11 +471,11 @@ mod tests {
                 ..GREEN
             },
         );
-        // Always-red review can't loop forever: after MAX_TASK_ATTEMPTS the task
-        // lands Failed (terminal) and the loop stops, instead of churning.
+        // Always-red review can't loop forever: after MAX_REWORK_ATTEMPTS the
+        // task lands Failed (terminal) and the loop stops, instead of churning.
         let report = run(&mut g, &caps(4), &CostUsage::default(), 20, &mut ports);
         assert_eq!(g.get("a").unwrap().status, TaskStatus::Failed);
-        assert_eq!(g.get("a").unwrap().attempts, MAX_TASK_ATTEMPTS);
+        assert_eq!(g.get("a").unwrap().rework_attempts, MAX_REWORK_ATTEMPTS);
         assert!(matches!(
             report.state,
             LoopState::Stalled | LoopState::Complete
@@ -529,7 +557,7 @@ mod tests {
         assert_eq!(report.recovered, ["a"]);
         assert!(report.dispatched.contains(&"a".to_string()));
         assert_eq!(g.get("a").unwrap().status, TaskStatus::Running);
-        assert_eq!(g.get("a").unwrap().attempts, 1);
+        assert_eq!(g.get("a").unwrap().crash_attempts, 1);
     }
 
     #[test]
@@ -553,7 +581,41 @@ mod tests {
         assert!(r2.recovered.is_empty());
         assert!(!r2.dispatched.contains(&"a".to_string()));
         assert_eq!(g.get("a").unwrap().status, TaskStatus::Failed);
-        assert_eq!(g.get("a").unwrap().attempts, MAX_TASK_ATTEMPTS);
+        assert_eq!(g.get("a").unwrap().crash_attempts, MAX_CRASH_ATTEMPTS);
+    }
+
+    #[test]
+    fn crash_and_rework_budgets_are_independent() {
+        // A transient crash must not steal a legitimate rework attempt: a task
+        // that crashes once AND is rejected once still has budget on both axes
+        // and is re-dispatched, not failed.
+        let mut g = TaskGraph::new();
+        g.add(Task::new("a", "A")).unwrap();
+        g.recompute_ready();
+        g.transition("a", TaskStatus::Running).unwrap();
+        let mut ports = FakePorts::new();
+
+        // Crash once -> recovered (crash_attempts=1), re-dispatched -> Running.
+        ports.pending_fail = vec!["a".to_string()];
+        let r1 = step(&mut g, &caps(4), &CostUsage::default(), &mut ports);
+        assert_eq!(r1.recovered, ["a"]);
+        assert_eq!(g.get("a").unwrap().crash_attempts, 1);
+
+        // Now finish and reject once -> reworked (rework_attempts=1), NOT failed,
+        // because the rework budget is separate from the (already-used) crash one.
+        g.transition("a", TaskStatus::Review).unwrap();
+        ports.gates.insert(
+            "a".to_string(),
+            GateResults {
+                tests_pass: false,
+                ..GREEN
+            },
+        );
+        let r2 = step(&mut g, &caps(4), &CostUsage::default(), &mut ports);
+        assert_eq!(r2.rejected, ["a"]);
+        assert_eq!(g.get("a").unwrap().status, TaskStatus::Running); // re-dispatched
+        assert_eq!(g.get("a").unwrap().crash_attempts, 1);
+        assert_eq!(g.get("a").unwrap().rework_attempts, 1);
     }
 
     #[test]

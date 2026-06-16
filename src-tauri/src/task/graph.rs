@@ -44,14 +44,17 @@ pub struct Task {
     /// Branch the task merges into once reviewed (usually `main`).
     #[serde(default)]
     pub target_branch: Option<String>,
-    /// How many times this task's work has failed and been requeued — a crashed
-    /// worker OR a review-rejected branch both bump it (BR9 recovery + rework).
-    /// The autonomy loop reassigns up to a retry bound, then leaves the task
-    /// `Failed` — bounded by this counter so a poison task cannot loop forever.
-    /// Note: crash and rework share this single budget, so a task that both
-    /// crashes once and is rejected once is failed after one rework.
+    /// How many times this task's worker has CRASHED and been reassigned (BR9
+    /// recovery). Bounded independently from rework so a transient infra crash
+    /// never steals a legitimate review-rework attempt.
     #[serde(default)]
-    pub attempts: u32,
+    pub crash_attempts: u32,
+    /// How many times this task's branch has been REVIEW-REJECTED and re-dispatched
+    /// for rework. Bounded independently from crash recovery. A task is left
+    /// `Failed` once either budget is exhausted, so a poison task cannot loop
+    /// forever.
+    #[serde(default)]
+    pub rework_attempts: u32,
 }
 
 impl Task {
@@ -69,7 +72,8 @@ impl Task {
             outputs: Vec::new(),
             source_branch: None,
             target_branch: None,
-            attempts: 0,
+            crash_attempts: 0,
+            rework_attempts: 0,
         }
     }
 
@@ -156,14 +160,27 @@ impl TaskGraph {
             .collect()
     }
 
-    /// Record one more failed attempt (a crash + reassignment) for a task and
-    /// return the new total. Used by the autonomy loop's recovery to bound
-    /// retries (BR9). Returns 0 for an unknown task.
-    pub fn record_attempt(&mut self, id: &str) -> u32 {
+    /// Record one more crash + reassignment for a task and return the new crash
+    /// count. Used by the autonomy loop's recovery to bound crash retries (BR9),
+    /// independently from rework. Returns 0 for an unknown task.
+    pub fn record_crash(&mut self, id: &str) -> u32 {
         match self.tasks.get_mut(id) {
             Some(task) => {
-                task.attempts += 1;
-                task.attempts
+                task.crash_attempts += 1;
+                task.crash_attempts
+            }
+            None => 0,
+        }
+    }
+
+    /// Record one more review-reject + re-dispatch for a task and return the new
+    /// rework count. Bounds rework independently from crash recovery. Returns 0
+    /// for an unknown task.
+    pub fn record_rework(&mut self, id: &str) -> u32 {
+        match self.tasks.get_mut(id) {
+            Some(task) => {
+                task.rework_attempts += 1;
+                task.rework_attempts
             }
             None => 0,
         }
@@ -379,19 +396,25 @@ mod tests {
     }
 
     #[test]
-    fn record_attempt_increments_and_defaults_to_zero() {
+    fn crash_and_rework_counters_are_independent_and_default_to_zero() {
         let mut g = TaskGraph::new();
         g.add(Task::new("a", "A")).unwrap();
-        assert_eq!(g.get("a").unwrap().attempts, 0);
-        assert_eq!(g.record_attempt("a"), 1);
-        assert_eq!(g.record_attempt("a"), 2);
-        assert_eq!(g.get("a").unwrap().attempts, 2);
+        assert_eq!(g.get("a").unwrap().crash_attempts, 0);
+        assert_eq!(g.get("a").unwrap().rework_attempts, 0);
+        // Crash and rework bump separate counters — neither steals the other's budget.
+        assert_eq!(g.record_crash("a"), 1);
+        assert_eq!(g.record_rework("a"), 1);
+        assert_eq!(g.record_crash("a"), 2);
+        assert_eq!(g.get("a").unwrap().crash_attempts, 2);
+        assert_eq!(g.get("a").unwrap().rework_attempts, 1);
         // Unknown task: no panic, returns 0.
-        assert_eq!(g.record_attempt("ghost"), 0);
-        // A task deserialized without the field defaults to zero attempts.
+        assert_eq!(g.record_crash("ghost"), 0);
+        assert_eq!(g.record_rework("ghost"), 0);
+        // A task deserialized without the fields defaults to zero.
         let parsed: Task =
             serde_json::from_str(r#"{"id":"x","title":"X","status":"pending"}"#).unwrap();
-        assert_eq!(parsed.attempts, 0);
+        assert_eq!(parsed.crash_attempts, 0);
+        assert_eq!(parsed.rework_attempts, 0);
     }
 
     #[test]
