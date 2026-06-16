@@ -86,6 +86,7 @@
     "verify:control-layer": "node scripts/verify-control-layer-scaffold.mjs",
     "verify:mcp-orchestrator": "node scripts/verify-mcp-orchestrator-surface.mjs",
     "verify:orchestrator-step-live": "node scripts/verify-orchestrator-step-live.mjs",
+    "verify:mcp-task-surface-live": "node scripts/verify-mcp-task-surface-live.mjs",
     "verify:goal:refresh-safe": "node scripts/verify-goal-non-token-refresh.mjs",
     "verify:goal:anti-stall": "node scripts/verify-goal-anti-stall-contract.mjs",
     "verify:goal:git-finalization": "node scripts/verify-git-finalization-readiness.mjs",

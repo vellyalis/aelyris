@@ -158,6 +158,10 @@ pub struct ApiState {
     /// in-process MCP spawn path enforces the same live caps as the UI/IPC
     /// spawn paths (BR7) — no second source of truth.
     pub cost_manager: Option<Arc<CostManager>>,
+    /// Shared Task Graph owner (same instance as the Tauri-managed one) so the
+    /// orchestrator AI driving the MCP face operates on exactly the graph the
+    /// cockpit shows — one source of truth across both faces (BR4/BR9).
+    pub task_manager: Option<Arc<crate::task::TaskManager>>,
     pub mcp_pending: Arc<Mutex<Vec<McpPendingDecision>>>,
     pub mux_store: Option<Arc<FileMuxSnapshotStore>>,
     pub auth: AuthConfig,
@@ -193,6 +197,7 @@ impl ApiState {
             agent_manager: None,
             ghost_layers: None,
             cost_manager: None,
+            task_manager: None,
             mcp_pending: Arc::new(Mutex::new(Vec::new())),
             mux_store: None,
             auth,
@@ -258,6 +263,11 @@ impl ApiState {
 
     pub fn with_cost_manager(mut self, cost_manager: Arc<CostManager>) -> Self {
         self.cost_manager = Some(cost_manager);
+        self
+    }
+
+    pub fn with_task_manager(mut self, task_manager: Arc<crate::task::TaskManager>) -> Self {
+        self.task_manager = Some(task_manager);
         self
     }
 

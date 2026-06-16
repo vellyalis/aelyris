@@ -110,7 +110,7 @@ pub fn run() {
         .manage(std::sync::Arc::new(std::sync::Mutex::new(SuggestEngine::new())))
         .manage(std::sync::Arc::new(LayerRegistry::new()))
         .manage(std::sync::Arc::new(WatcherPool::new()))
-        .manage(task::TaskManager::new())
+        .manage(std::sync::Arc::new(task::TaskManager::new()))
         .manage(context_store::ContextStoreManager::new())
         .manage(event_bus::EventBus::new())
         .manage(std::sync::Arc::new(cost::CostManager::new()))
@@ -524,11 +524,16 @@ pub fn run() {
                     .state::<std::sync::Arc<cost::CostManager>>()
                     .inner()
                     .clone();
+                let task_manager = app
+                    .state::<std::sync::Arc<task::TaskManager>>()
+                    .inner()
+                    .clone();
                 let api_state = api::ApiState::new(pty, api::AuthConfig::from_env())
                     .with_mux(mux_manager)
                     .with_agent_manager(agent_manager)
                     .with_ghost_layers(ghost_layers)
                     .with_cost_manager(cost_manager)
+                    .with_task_manager(task_manager)
                     .with_env_mux_store();
                 app.manage(api_state.clone());
                 let serve_state = api_state.clone();

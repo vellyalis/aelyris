@@ -35,6 +35,10 @@ fn tool_names() -> Vec<&'static str> {
         "aether.stop_agent",
         "aether.review.approve",
         "aether.review.reject",
+        "aether.task.create",
+        "aether.task.list",
+        "aether.task.transition",
+        "aether.orchestrator.plan",
     ]
 }
 
@@ -410,6 +414,59 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                     },
                     "additionalProperties": false
                 }
+            },
+            {
+                "name": "aether.task.create",
+                "description": "Create a Task Graph node (BR4): a unit of work the orchestrator AI assigns (owner) and the autonomy loop schedules. Binds source/target branches for the merge wiring. Re-runs the dependency gate.",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["id", "title"],
+                    "properties": {
+                        "id": { "type": "string" },
+                        "title": { "type": "string" },
+                        "description": { "type": "string" },
+                        "owner": { "type": "string" },
+                        "priority": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
+                        "dependencies": { "type": "array", "items": { "type": "string" } },
+                        "sourceBranch": { "type": "string" },
+                        "targetBranch": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aether.task.list",
+                "description": "List every Task Graph node with its lifecycle status, owner, dependencies, and branch bindings.",
+                "safety": "FREE",
+                "inputSchema": { "type": "object", "additionalProperties": false }
+            },
+            {
+                "name": "aether.task.transition",
+                "description": "Transition a task to a new lifecycle state (lifecycle-validated) and re-run the dependency gate.",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["id", "to"],
+                    "properties": {
+                        "id": { "type": "string" },
+                        "to": {
+                            "type": "string",
+                            "enum": ["pending", "ready", "running", "blocked", "review", "done", "failed"]
+                        }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aether.orchestrator.plan",
+                "description": "Read the orchestrator's next scheduling decision for the live Task Graph: which tasks to dispatch now (priority-ordered, concurrency-capped) and the loop state (active/complete/stalled/halted_by_budget). Read-only.",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": { "activeAgents": { "type": "integer", "minimum": 0 } },
+                    "additionalProperties": false
+                }
             }
         ]
     }))
@@ -759,6 +816,72 @@ pub(super) async fn tools_call(
             let resolved = item.clone();
             drop(pending);
             serde_json::json!({ "intentId": intent_id, "status": "rejected", "reason": reason, "item": resolved })
+        }
+        "aether.task.create" => {
+            let tasks = state.task_manager.as_ref().ok_or_else(|| {
+                ApiError::Internal("task graph is not attached to this process".to_string())
+            })?;
+            let mut task =
+                crate::task::Task::new(arg_string(&args, "id")?, arg_string(&args, "title")?);
+            if let Some(description) = arg_optional_string(&args, "description") {
+                task.description = description;
+            }
+            task.owner = arg_optional_string(&args, "owner");
+            if let Some(priority) = args.get("priority").and_then(|value| value.as_str()) {
+                task.priority =
+                    serde_json::from_value(serde_json::Value::String(priority.to_string()))
+                        .map_err(|_| ApiError::BadRequest(format!("invalid priority `{priority}`")))?;
+            }
+            if let Some(dependencies) = arg_optional_string_array(&args, "dependencies")? {
+                task.dependencies = dependencies;
+            }
+            if let (Some(source), Some(target)) = (
+                arg_optional_string(&args, "sourceBranch"),
+                arg_optional_string(&args, "targetBranch"),
+            ) {
+                task = task.with_branches(source, target);
+            }
+            let id = task.id.clone();
+            let changed = tasks
+                .create(task)
+                .map_err(|err| ApiError::BadRequest(err.to_string()))?;
+            serde_json::json!({ "id": id, "created": true, "changed": changed })
+        }
+        "aether.task.list" => {
+            let tasks = state.task_manager.as_ref().ok_or_else(|| {
+                ApiError::Internal("task graph is not attached to this process".to_string())
+            })?;
+            serde_json::json!({ "tasks": tasks.list() })
+        }
+        "aether.task.transition" => {
+            let tasks = state.task_manager.as_ref().ok_or_else(|| {
+                ApiError::Internal("task graph is not attached to this process".to_string())
+            })?;
+            let id = arg_string(&args, "id")?;
+            let to_raw = arg_string(&args, "to")?;
+            let to: crate::task::TaskStatus =
+                serde_json::from_value(serde_json::Value::String(to_raw.clone()))
+                    .map_err(|_| ApiError::BadRequest(format!("invalid task status `{to_raw}`")))?;
+            let changed = tasks
+                .transition(&id, to)
+                .map_err(|err| ApiError::BadRequest(err.to_string()))?;
+            serde_json::json!({ "id": id, "to": to_raw, "changed": changed })
+        }
+        "aether.orchestrator.plan" => {
+            let tasks = state.task_manager.as_ref().ok_or_else(|| {
+                ApiError::Internal("task graph is not attached to this process".to_string())
+            })?;
+            let caps = state
+                .cost_manager
+                .as_ref()
+                .map(|cost| cost.caps())
+                .unwrap_or_default();
+            let usage = crate::cost::CostUsage {
+                active_agents: arg_usize(&args, "activeAgents", 0)?,
+                ..Default::default()
+            };
+            let plan = tasks.read(|graph| crate::orchestrator::plan(graph, &caps, &usage));
+            serde_json::json!({ "plan": plan })
         }
         other => {
             return Err(ApiError::BadRequest(format!("unknown MCP tool: {other}")));

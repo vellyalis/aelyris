@@ -34,6 +34,10 @@ const requiredTools = [
   "aether.stop_agent",
   "aether.review.approve",
   "aether.review.reject",
+  "aether.task.create",
+  "aether.task.list",
+  "aether.task.transition",
+  "aether.orchestrator.plan",
 ];
 
 const checks = [
@@ -122,6 +126,21 @@ const checks = [
       lib.includes(".with_agent_manager(agent_manager)") &&
       lib.includes(".with_ghost_layers(ghost_layers)"),
     detail: "in-process MCP surface reads the same Rust agent and GhostDiff state",
+  },
+  {
+    id: "mcp-task-graph-single-source",
+    ok:
+      apiMcp.includes('"aether.task.create"') &&
+      apiMcp.includes('"aether.task.list"') &&
+      apiMcp.includes('"aether.task.transition"') &&
+      apiMcp.includes('"aether.orchestrator.plan"') &&
+      apiMcp.includes("state.task_manager.as_ref()") &&
+      api.includes("pub task_manager: Option<Arc<crate::task::TaskManager>>") &&
+      api.includes("pub fn with_task_manager") &&
+      lib.includes(".with_task_manager(task_manager)") &&
+      lib.includes("Arc::new(task::TaskManager::new())"),
+    detail:
+      "orchestrator AI can decompose/assign/inspect the Task Graph over MCP against the same Arc<TaskManager> the cockpit shows (one source of truth, BR4/BR9)",
   },
 ];
 

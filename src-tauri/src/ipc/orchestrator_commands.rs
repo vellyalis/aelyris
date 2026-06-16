@@ -25,7 +25,7 @@ use crate::task::{TaskGraph, TaskManager};
 /// dispatch/review/merge pass is `orchestrator_step` below.
 #[tauri::command]
 pub fn orchestrator_plan(
-    tasks: State<'_, TaskManager>,
+    tasks: State<'_, Arc<TaskManager>>,
     cost: State<'_, Arc<CostManager>>,
     usage: CostUsage,
 ) -> DispatchPlan {
@@ -132,7 +132,7 @@ fn spawn_specs(graph: &TaskGraph, repo_path: &str) -> HashMap<String, HeadlessSp
 #[tauri::command]
 pub fn orchestrator_step(
     app: AppHandle,
-    tasks: State<'_, TaskManager>,
+    tasks: State<'_, Arc<TaskManager>>,
     cost: State<'_, Arc<CostManager>>,
     agents: State<'_, AgentManager>,
     bus: State<'_, EventBus>,

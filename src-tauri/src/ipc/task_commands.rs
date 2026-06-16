@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use serde_json::json;
 use tauri::{AppHandle, Emitter, State};
 
@@ -18,7 +20,7 @@ fn emit_task_graph(app: &AppHandle, manager: &TaskManager) {
 #[tauri::command]
 pub fn task_create(
     app: AppHandle,
-    manager: State<'_, TaskManager>,
+    manager: State<'_, Arc<TaskManager>>,
     bus: State<'_, EventBus>,
     task: Task,
 ) -> Result<Vec<String>, String> {
@@ -41,7 +43,7 @@ pub fn task_create(
 #[tauri::command]
 pub fn task_transition(
     app: AppHandle,
-    manager: State<'_, TaskManager>,
+    manager: State<'_, Arc<TaskManager>>,
     bus: State<'_, EventBus>,
     id: String,
     to: TaskStatus,
@@ -61,13 +63,13 @@ pub fn task_transition(
 
 /// Snapshot of every task, insertion-ordered.
 #[tauri::command]
-pub fn task_list(manager: State<'_, TaskManager>) -> Vec<Task> {
+pub fn task_list(manager: State<'_, Arc<TaskManager>>) -> Vec<Task> {
     manager.list()
 }
 
 /// Re-run the dependency gate explicitly and broadcast the new graph.
 #[tauri::command]
-pub fn task_recompute_ready(app: AppHandle, manager: State<'_, TaskManager>) -> Vec<String> {
+pub fn task_recompute_ready(app: AppHandle, manager: State<'_, Arc<TaskManager>>) -> Vec<String> {
     let changed = manager.recompute_ready();
     emit_task_graph(&app, &manager);
     changed
