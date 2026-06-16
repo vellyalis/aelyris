@@ -63,6 +63,12 @@ pub enum AgentEventKind {
     FileLocked,
     /// An agent released its file/path lane (task merged) — now free to claim.
     FileReleased,
+    /// An agent reported what it is doing right now (file/symbol/action) — the
+    /// real-time fleet awareness signal peers coordinate over.
+    AgentActivity,
+    /// An agent declared an intent (a proposal shared before acting) on the
+    /// Intent Bus — the pre-fact signal peers react to.
+    IntentDeclared,
 }
 
 impl AgentEventKind {
@@ -76,6 +82,8 @@ impl AgentEventKind {
             Self::WorktreeCreated => "worktree_created",
             Self::FileLocked => "file_locked",
             Self::FileReleased => "file_released",
+            Self::AgentActivity => "agent_activity",
+            Self::IntentDeclared => "intent_declared",
         }
     }
 
@@ -91,7 +99,10 @@ impl AgentEventKind {
             | Self::AgentSpawned
             | Self::WorktreeCreated
             | Self::FileLocked
-            | Self::FileReleased => EventChannel::System,
+            | Self::FileReleased
+            | Self::AgentActivity => EventChannel::System,
+            // Proposals are deliberation — they belong on the planning channel.
+            Self::IntentDeclared => EventChannel::Planning,
         }
     }
 }

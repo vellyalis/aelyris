@@ -111,6 +111,7 @@ mod tests {
             tokens_used: 42,
             started_at: 123,
             task_id: None,
+            current_activity: None,
         });
 
         assert_eq!(session.run_mode, AgentRunMode::Headless);

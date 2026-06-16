@@ -50,6 +50,12 @@ fn tool_names() -> Vec<&'static str> {
         "aether.context.get",
         "aether.context.all",
         "aether.context.remove",
+        "aether.agent.report_activity",
+        "aether.agent.activity",
+        "aether.intent.propose",
+        "aether.intent.list",
+        "aether.intent.all",
+        "aether.intent.resolve",
     ]
 }
 
@@ -601,6 +607,69 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                     "type": "object",
                     "required": ["key"],
                     "properties": { "key": { "type": "string" } },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aether.agent.report_activity",
+                "description": "Report what an agent is doing right now (BR5): the file/symbol it is touching and the action (editing/reading/running tests/...). Updates the agent's live activity + publishes agent_activity to the fleet stream so peers see who is touching what, down to the function, in real time.",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["sessionId", "action"],
+                    "properties": {
+                        "sessionId": { "type": "string" },
+                        "action": { "type": "string" },
+                        "file": { "type": "string" },
+                        "symbol": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aether.agent.activity",
+                "description": "Read the whole fleet's live activity: each agent's session id, task, status, model, and current activity (file/symbol/action). The real-time 'who is doing what, where' snapshot.",
+                "safety": "FREE",
+                "inputSchema": { "type": "object", "additionalProperties": false }
+            },
+            {
+                "name": "aether.intent.propose",
+                "description": "Declare an intent BEFORE acting (the Intent Bus, the Event Bus' pre-fact half): a proposal like 'switch auth_method to JWT' or 'extract AuthService', with optional file/domain targets. Peers react (align/object/defer) so conflicts and design disagreements surface in discussion, not at merge. Publishes intent_declared to the stream. This is the substrate for 'meetings'.",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["agentId", "proposal"],
+                    "properties": {
+                        "agentId": { "type": "string" },
+                        "proposal": { "type": "string" },
+                        "targets": { "type": "array", "items": { "type": "string" } }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aether.intent.list",
+                "description": "Open (still-deliberating) intents — the live proposal queue peers read before acting.",
+                "safety": "FREE",
+                "inputSchema": { "type": "object", "additionalProperties": false }
+            },
+            {
+                "name": "aether.intent.all",
+                "description": "Every intent with its status (open/accepted/rejected/superseded).",
+                "safety": "FREE",
+                "inputSchema": { "type": "object", "additionalProperties": false }
+            },
+            {
+                "name": "aether.intent.resolve",
+                "description": "Resolve an intent to a terminal status (accepted/rejected/superseded) — the convergence step of a deliberation.",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["id", "status"],
+                    "properties": {
+                        "id": { "type": "string" },
+                        "status": { "type": "string", "enum": ["open", "accepted", "rejected", "superseded"] }
+                    },
                     "additionalProperties": false
                 }
             }
@@ -1207,6 +1276,98 @@ pub(super) async fn tools_call(
                 ));
             }
             serde_json::json!({ "change": change })
+        }
+        "aether.agent.report_activity" => {
+            let manager = state.agent_manager.as_ref().ok_or_else(|| {
+                ApiError::Internal("agent runtime is not attached to this process".to_string())
+            })?;
+            let session_id = arg_string(&args, "sessionId")?;
+            let action = arg_string(&args, "action")?;
+            let file = arg_optional_string(&args, "file");
+            let symbol = arg_optional_string(&args, "symbol");
+            manager
+                .set_activity(&session_id, action.clone(), file.clone(), symbol.clone())
+                .map_err(ApiError::BadRequest)?;
+            // Broadcast the activity to the fleet stream (BR5) so peers see what
+            // this agent is touching/doing in real time.
+            if let Some(bus) = state.event_bus.as_ref() {
+                bus.publish(crate::event_bus::AgentEvent::new(
+                    crate::event_bus::AgentEventKind::AgentActivity,
+                    serde_json::json!({
+                        "sessionId": session_id,
+                        "action": action,
+                        "file": file,
+                        "symbol": symbol,
+                    }),
+                ));
+            }
+            serde_json::json!({ "sessionId": session_id, "reported": true })
+        }
+        "aether.agent.activity" => {
+            let manager = state.agent_manager.as_ref().ok_or_else(|| {
+                ApiError::Internal("agent runtime is not attached to this process".to_string())
+            })?;
+            let fleet: Vec<serde_json::Value> = manager
+                .list_sessions()
+                .into_iter()
+                .map(|session| {
+                    serde_json::json!({
+                        "sessionId": session.id,
+                        "taskId": session.task_id,
+                        "status": session.status,
+                        "model": session.model,
+                        "activity": session.current_activity,
+                    })
+                })
+                .collect();
+            serde_json::json!({ "fleet": fleet })
+        }
+        "aether.intent.propose" => {
+            let bus = state.intent_bus.as_ref().ok_or_else(|| {
+                ApiError::Internal("intent bus is not attached to this process".to_string())
+            })?;
+            let agent_id = arg_string(&args, "agentId")?;
+            let proposal = arg_string(&args, "proposal")?;
+            let targets = arg_optional_string_array(&args, "targets")?.unwrap_or_default();
+            let created_at = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let intent = bus.propose(agent_id, proposal, targets, created_at);
+            // Surface the proposal on the fleet stream so peers can react
+            // BEFORE the work happens (conflict-avoidance + deliberation).
+            if let Some(events) = state.event_bus.as_ref() {
+                events.publish(crate::event_bus::AgentEvent::new(
+                    crate::event_bus::AgentEventKind::IntentDeclared,
+                    serde_json::to_value(&intent).unwrap_or(serde_json::Value::Null),
+                ));
+            }
+            serde_json::json!({ "intent": intent })
+        }
+        "aether.intent.list" => {
+            let bus = state.intent_bus.as_ref().ok_or_else(|| {
+                ApiError::Internal("intent bus is not attached to this process".to_string())
+            })?;
+            serde_json::json!({ "intents": bus.open() })
+        }
+        "aether.intent.all" => {
+            let bus = state.intent_bus.as_ref().ok_or_else(|| {
+                ApiError::Internal("intent bus is not attached to this process".to_string())
+            })?;
+            serde_json::json!({ "intents": bus.all() })
+        }
+        "aether.intent.resolve" => {
+            let bus = state.intent_bus.as_ref().ok_or_else(|| {
+                ApiError::Internal("intent bus is not attached to this process".to_string())
+            })?;
+            let id = arg_string(&args, "id")?;
+            let status_raw = arg_string(&args, "status")?;
+            let status: crate::intent::IntentStatus = serde_json::from_value(
+                serde_json::Value::String(status_raw.clone()),
+            )
+            .map_err(|_| ApiError::BadRequest(format!("invalid intent status `{status_raw}`")))?;
+            let intent = bus.resolve(&id, status);
+            serde_json::json!({ "intent": intent })
         }
         other => {
             return Err(ApiError::BadRequest(format!("unknown MCP tool: {other}")));

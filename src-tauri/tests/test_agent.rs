@@ -28,6 +28,7 @@ fn test_agent_session_info_serialization_contract() {
         tokens_used: 42,
         started_at: 123,
         task_id: None,
+        current_activity: None,
     };
 
     let value = serde_json::to_value(session).expect("serialize AgentSessionInfo");

@@ -45,6 +45,8 @@ const EVENT_LABEL: Record<AgentEventKind, string> = {
   worktree_created: "worktree",
   file_locked: "locked",
   file_released: "released",
+  agent_activity: "activity",
+  intent_declared: "intent",
 };
 
 /** Best-effort subject id from an event payload (`{ id }`), for the feed. */

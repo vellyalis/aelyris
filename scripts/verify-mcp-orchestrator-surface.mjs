@@ -18,6 +18,7 @@ const gitMerge = read("src-tauri/src/git/merge.rs");
 const ipcCommands = read("src-tauri/src/ipc/commands.rs");
 const loopPorts = read("src-tauri/src/control/loop_ports.rs");
 const agentClaude = read("src-tauri/src/agent/claude.rs");
+const eventBus = read("src-tauri/src/event_bus/mod.rs");
 
 const requiredTools = [
   "aether.worktree.validate",
@@ -51,6 +52,12 @@ const requiredTools = [
   "aether.context.get",
   "aether.context.all",
   "aether.context.remove",
+  "aether.agent.report_activity",
+  "aether.agent.activity",
+  "aether.intent.propose",
+  "aether.intent.list",
+  "aether.intent.all",
+  "aether.intent.resolve",
 ];
 
 const checks = [
@@ -198,6 +205,22 @@ const checks = [
       loopPorts.includes("spawn_specs(graph, &repo_path, &adr_header)"),
     detail:
       "orchestrator AI reads/writes the shared ADR (Context Store) over MCP; context.set publishes decision_changed; and the ADR is injected into every dispatched agent's prompt so all agents share the world-model (BR6)",
+  },
+  {
+    id: "mcp-realtime-activity-and-intent",
+    ok:
+      apiMcp.includes('"aether.agent.report_activity"') &&
+      apiMcp.includes('"aether.agent.activity"') &&
+      apiMcp.includes('"aether.intent.propose"') &&
+      apiMcp.includes('"aether.intent.list"') &&
+      agentClaude.includes("pub fn set_activity(") &&
+      agentClaude.includes("pub struct AgentActivity") &&
+      eventBus.includes("AgentActivity") &&
+      eventBus.includes("IntentDeclared") &&
+      api.includes("pub intent_bus: Option<Arc<crate::intent::IntentBus>>") &&
+      lib.includes(".with_intent_bus(intent_bus)"),
+    detail:
+      "agents report live activity (file/symbol/action) read by peers via agent.activity (real-time 'who is doing what'); the Intent Bus shares proposals before acting (pre-fact deliberation / meetings substrate), both on the shared stream",
   },
 ];
 

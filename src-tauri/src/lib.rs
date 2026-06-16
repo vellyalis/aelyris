@@ -16,6 +16,7 @@ pub mod file_ownership;
 pub mod ghostdiff;
 pub mod git;
 pub mod history;
+pub mod intent;
 mod ipc;
 pub mod logging;
 pub mod lsp;
@@ -122,6 +123,7 @@ pub fn run() {
         .manage(std::sync::Arc::new(std::sync::Mutex::new(
             file_ownership::FileOwnership::new(),
         )))
+        .manage(std::sync::Arc::new(intent::IntentBus::new()))
         .setup(move |app| {
             let lsp_app = app.handle().clone();
             std::thread::Builder::new()
@@ -546,6 +548,10 @@ pub fn run() {
                     .state::<std::sync::Arc<context_store::ContextStoreManager>>()
                     .inner()
                     .clone();
+                let intent_bus = app
+                    .state::<std::sync::Arc<intent::IntentBus>>()
+                    .inner()
+                    .clone();
                 let api_state = api::ApiState::new(pty, api::AuthConfig::from_env())
                     .with_mux(mux_manager)
                     .with_agent_manager(agent_manager)
@@ -555,6 +561,7 @@ pub fn run() {
                     .with_event_bus(event_bus)
                     .with_file_ownership(file_ownership)
                     .with_context_store(context_store)
+                    .with_intent_bus(intent_bus)
                     .with_env_mux_store();
                 app.manage(api_state.clone());
                 let serve_state = api_state.clone();

@@ -7,6 +7,21 @@ use uuid::Uuid;
 
 use super::platform_cli_program;
 
+/// What an agent is doing right now, for real-time fleet awareness (BR5): which
+/// file/symbol it is touching and the action. Peers read this (via
+/// `agent.activity` / `fleet_status`) to coordinate without screen-scraping.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentActivity {
+    /// e.g. "editing", "reading", "running tests", "designing".
+    pub action: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file: Option<String>,
+    /// Function/class/module currently in focus, if known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub symbol: Option<String>,
+    pub updated_at: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentSessionInfo {
     pub id: String,
@@ -22,6 +37,9 @@ pub struct AgentSessionInfo {
     /// back to the task it should move into review (BR9).
     #[serde(default)]
     pub task_id: Option<String>,
+    /// What this agent is doing right now (real-time fleet awareness, BR5).
+    #[serde(default)]
+    pub current_activity: Option<AgentActivity>,
 }
 
 struct AgentProcess {
@@ -107,11 +125,9 @@ impl AgentManager {
             cwd: cwd.to_string(),
             cost: 0.0,
             tokens_used: 0,
-            started_at: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs(),
+            started_at: now_secs(),
             task_id: None,
+            current_activity: None,
         };
 
         self.lock_sessions()?
@@ -179,6 +195,28 @@ impl AgentManager {
         let mut sessions = self.lock_sessions()?;
         if let Some(proc) = sessions.get_mut(id) {
             proc.info.task_id = Some(task_id.to_string());
+        }
+        Ok(())
+    }
+
+    /// Set what a session is doing right now (real-time fleet awareness, BR5).
+    /// Reported by the orchestrator on the agent's behalf (or by an MCP-aware
+    /// agent), read by peers via `agent.activity` / `fleet_status`.
+    pub fn set_activity(
+        &self,
+        id: &str,
+        action: String,
+        file: Option<String>,
+        symbol: Option<String>,
+    ) -> Result<(), String> {
+        let mut sessions = self.lock_sessions()?;
+        if let Some(proc) = sessions.get_mut(id) {
+            proc.info.current_activity = Some(AgentActivity {
+                action,
+                file,
+                symbol,
+                updated_at: now_secs(),
+            });
         }
         Ok(())
     }
@@ -290,6 +328,13 @@ impl Drop for AgentManager {
             self.stop_all();
         }
     }
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
 }
 
 /// Kill an entire process tree on Windows using taskkill /T /F

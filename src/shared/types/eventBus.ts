@@ -14,6 +14,8 @@ export const AGENT_EVENT_KINDS = [
   "worktree_created",
   "file_locked",
   "file_released",
+  "agent_activity",
+  "intent_declared",
 ] as const;
 export type AgentEventKind = (typeof AGENT_EVENT_KINDS)[number];
 

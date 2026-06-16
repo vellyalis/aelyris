@@ -174,6 +174,9 @@ pub struct ApiState {
     /// one) so the orchestrator AI reads + writes the decisions every agent
     /// aligns to over MCP (BR6) — the shared world-model.
     pub context_store: Option<Arc<crate::context_store::ContextStoreManager>>,
+    /// Shared Intent Bus (same instance as the Tauri-managed one) so agents can
+    /// share proposals BEFORE acting over MCP — the pre-fact deliberation layer.
+    pub intent_bus: Option<Arc<crate::intent::IntentBus>>,
     pub mcp_pending: Arc<Mutex<Vec<McpPendingDecision>>>,
     pub mux_store: Option<Arc<FileMuxSnapshotStore>>,
     pub auth: AuthConfig,
@@ -213,6 +216,7 @@ impl ApiState {
             event_bus: None,
             file_ownership: None,
             context_store: None,
+            intent_bus: None,
             mcp_pending: Arc::new(Mutex::new(Vec::new())),
             mux_store: None,
             auth,
@@ -304,6 +308,11 @@ impl ApiState {
         context_store: Arc<crate::context_store::ContextStoreManager>,
     ) -> Self {
         self.context_store = Some(context_store);
+        self
+    }
+
+    pub fn with_intent_bus(mut self, intent_bus: Arc<crate::intent::IntentBus>) -> Self {
+        self.intent_bus = Some(intent_bus);
         self
     }
 
