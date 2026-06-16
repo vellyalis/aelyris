@@ -128,8 +128,13 @@ fn pattern_base(pattern: &str) -> &str {
         .unwrap_or(pattern)
 }
 
-/// Whether two patterns can match a common path (one base nests in the other).
-fn patterns_overlap(a: &str, b: &str) -> bool {
+/// Whether two path patterns can match a common path (one base nests in the
+/// other). The single source of truth for "do these two lanes collide" — used
+/// both by `conflicts()` (detection) and the autonomy loop's conflict-aware
+/// dispatch (enforcement: never co-dispatch two tasks whose output lanes
+/// overlap). Conservative: it over-flags `*` vs nested but never misses a real
+/// collision (BR8 errs toward caution).
+pub fn patterns_overlap(a: &str, b: &str) -> bool {
     let (base_a, base_b) = (pattern_base(a), pattern_base(b));
     base_a == base_b || is_path_prefix(base_a, base_b) || is_path_prefix(base_b, base_a)
 }

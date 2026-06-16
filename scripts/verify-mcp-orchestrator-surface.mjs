@@ -19,6 +19,7 @@ const ipcCommands = read("src-tauri/src/ipc/commands.rs");
 const loopPorts = read("src-tauri/src/control/loop_ports.rs");
 const autonomy = read("src-tauri/src/orchestrator/autonomy.rs");
 const gateRunner = read("src-tauri/src/control/gate_runner.rs");
+const fileOwnership = read("src-tauri/src/file_ownership/mod.rs");
 const agentClaude = read("src-tauri/src/agent/claude.rs");
 const eventBus = read("src-tauri/src/event_bus/mod.rs");
 const knowledgeGraph = read("src-tauri/src/knowledge_graph/mod.rs");
@@ -223,6 +224,21 @@ const checks = [
       apiMcp.includes("gate_commands,"),
     detail:
       "orchestrator.step can decide the objective gates (tests/lint/types) mechanically — ProcessGateRunner runs the configured commands in each worktree and maps real exit codes, so a branch whose tests fail cannot merge (BR9, ⑧)",
+  },
+  {
+    id: "mcp-orchestrator-enforces-disjoint-lanes",
+    ok:
+      // The pattern-overlap primitive is shared (one source of truth) between
+      // detection (conflicts) and enforcement (dispatch).
+      fileOwnership.includes("pub fn patterns_overlap") &&
+      // The loop refuses to co-dispatch a task whose outputs overlap a running
+      // task's lane — ownership enforced, not merely detected (BR8 / ②).
+      autonomy.includes("use crate::file_ownership::patterns_overlap") &&
+      autonomy.includes("let lane_busy") &&
+      autonomy.includes("patterns_overlap(out, busy)") &&
+      autonomy.includes("if lane_busy"),
+    detail:
+      "the loop never co-dispatches tasks whose output lanes overlap (reusing file_ownership::patterns_overlap) — two agents can never edit the same file at once (BR8, ② ownership enforced)",
   },
   {
     id: "mcp-coordination-stream-shared",

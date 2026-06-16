@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{plan, LoopState};
 use crate::cost::{CostCaps, CostUsage};
+use crate::file_ownership::patterns_overlap;
 use crate::review::{review, GateResults, ReviewVerdict};
 use crate::task::{TaskGraph, TaskStatus};
 
@@ -161,12 +162,34 @@ pub fn step(
     // 2. Dependency gate (merges may have unblocked dependents).
     graph.recompute_ready();
 
-    // 3. Plan + dispatch.
+    // 3. Plan + dispatch, enforcing disjoint file lanes (BR8). Never co-dispatch
+    //    a task whose declared `outputs` overlap a task already running (or one
+    //    just dispatched this tick) — ownership is *enforced*, not merely
+    //    detected, so two agents can never edit the same file at once. A
+    //    lane-blocked task simply stays Ready and is retried once the occupying
+    //    task merges and frees its lane.
     let dispatch_plan = plan(graph, caps, usage);
+    let mut occupied: Vec<String> = graph
+        .list()
+        .iter()
+        .filter(|task| task.status == TaskStatus::Running)
+        .flat_map(|task| task.outputs.clone())
+        .collect();
     let mut dispatched = Vec::new();
     for id in &dispatch_plan.to_dispatch {
+        let outputs = graph
+            .get(id)
+            .map(|task| task.outputs.clone())
+            .unwrap_or_default();
+        let lane_busy = outputs
+            .iter()
+            .any(|out| occupied.iter().any(|busy| patterns_overlap(out, busy)));
+        if lane_busy {
+            continue;
+        }
         if ports.dispatch(id).is_ok() {
             let _ = graph.transition(id, TaskStatus::Running);
+            occupied.extend(outputs);
             dispatched.push(id.clone());
         }
     }
@@ -501,6 +524,54 @@ mod tests {
         assert_eq!(g.get("ok").unwrap().status, TaskStatus::Done);
         assert_eq!(report.recovered, ["bad"]);
         assert_eq!(g.get("bad").unwrap().status, TaskStatus::Running);
+    }
+
+    fn task_with_outputs(id: &str, outputs: &[&str]) -> Task {
+        let mut task = Task::new(id, id);
+        task.outputs = outputs.iter().map(|o| o.to_string()).collect();
+        task
+    }
+
+    #[test]
+    fn does_not_codispatch_tasks_with_overlapping_lanes() {
+        // a and b both touch src/auth; c is disjoint. a and c may run together;
+        // b is held so two agents never edit the same file (② ownership enforced).
+        let mut g = TaskGraph::new();
+        g.add(task_with_outputs("a", &["src/auth/**"])).unwrap();
+        g.add(task_with_outputs("b", &["src/auth/login.ts"]))
+            .unwrap();
+        g.add(task_with_outputs("c", &["src/ui/**"])).unwrap();
+        g.recompute_ready();
+        let mut ports = FakePorts::new();
+        let report = step(&mut g, &caps(4), &CostUsage::default(), &mut ports);
+        assert!(report.dispatched.contains(&"a".to_string()));
+        assert!(report.dispatched.contains(&"c".to_string()));
+        assert!(!report.dispatched.contains(&"b".to_string()));
+        assert_eq!(g.get("a").unwrap().status, TaskStatus::Running);
+        // b is not lost — it stays Ready and is retried once a's lane frees.
+        assert_eq!(g.get("b").unwrap().status, TaskStatus::Ready);
+    }
+
+    #[test]
+    fn held_lane_task_dispatches_once_the_occupant_merges() {
+        let mut g = TaskGraph::new();
+        g.add(task_with_outputs("a", &["src/auth/**"])).unwrap();
+        g.add(task_with_outputs("b", &["src/auth/login.ts"]))
+            .unwrap();
+        g.recompute_ready();
+        let mut ports = FakePorts::new();
+        ports.auto_finish = true; // a finishes -> review -> merge next tick
+
+        // Tick 1: a dispatched, b held (lane busy).
+        let r1 = step(&mut g, &caps(4), &CostUsage::default(), &mut ports);
+        assert_eq!(r1.dispatched, ["a"]);
+        assert_eq!(g.get("b").unwrap().status, TaskStatus::Ready);
+
+        // Tick 2: a finishes + merges (Done) -> lane free -> b dispatched.
+        let r2 = step(&mut g, &caps(4), &CostUsage::default(), &mut ports);
+        assert!(r2.merged.contains(&"a".to_string()));
+        assert!(r2.dispatched.contains(&"b".to_string()));
+        assert_eq!(g.get("b").unwrap().status, TaskStatus::Running);
     }
 
     #[test]
