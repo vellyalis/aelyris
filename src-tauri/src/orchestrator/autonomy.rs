@@ -83,6 +83,25 @@ fn running_count(graph: &TaskGraph) -> usize {
         .count()
 }
 
+/// Send a failed task back for another attempt, bounded by the retry budget.
+/// Used for both a crashed worker (caller passes a `Running` task) and a
+/// review-rejected branch (caller passes a `Review` task) — `-> Failed` is legal
+/// from either. Under budget it goes `Failed -> Pending` so the dependency gate
+/// re-promotes it to `Ready` and it is re-dispatched the same tick with the
+/// CURRENT ADR (every dispatch re-injects the shared context); past the budget
+/// it stays `Failed` (terminal), so a task is never silently lost and a poison
+/// task cannot loop forever. Returns whether it was requeued.
+fn requeue_or_fail(graph: &mut TaskGraph, id: &str) -> bool {
+    let _ = graph.transition(id, TaskStatus::Failed);
+    let attempts = graph.record_attempt(id);
+    if attempts < MAX_TASK_ATTEMPTS {
+        let _ = graph.transition(id, TaskStatus::Pending);
+        true
+    } else {
+        false
+    }
+}
+
 /// Drive one coordination step:
 /// 1. Resolve every task awaiting `Review`: gate -> verdict -> merge+`Done`,
 ///    reject back to `Running`, or `Blocked` on a self-review.
@@ -104,11 +123,8 @@ pub fn step(
 
     // 0. Sense agent completions and split by outcome (BR9 recovery). A clean
     //    exit moves the `Running` task into review in this same step. A crash
-    //    routes the task back for reassignment: `Running -> Failed`, and if it
-    //    still has retry budget `Failed -> Pending` (so the dependency gate
-    //    re-promotes it to `Ready` and it is re-dispatched below). Once the
-    //    budget is exhausted it stays `Failed` (terminal) — the task is never
-    //    silently lost, and a poison task cannot loop forever.
+    //    routes the task back for reassignment (bounded retries, then `Failed`)
+    //    so a dead worker is re-dispatched rather than its task lost.
     let completions = ports.poll_completions();
     for id in completions.succeeded {
         let _ = graph.transition(&id, TaskStatus::Review);
@@ -118,10 +134,7 @@ pub fn step(
         if graph.get(&id).map(|task| task.status) != Some(TaskStatus::Running) {
             continue;
         }
-        let _ = graph.transition(&id, TaskStatus::Failed);
-        let attempts = graph.record_attempt(&id);
-        if attempts < MAX_TASK_ATTEMPTS {
-            let _ = graph.transition(&id, TaskStatus::Pending);
+        if requeue_or_fail(graph, &id) {
             recovered.push(id);
         }
     }
@@ -146,7 +159,12 @@ pub fn step(
                 }
             }
             ReviewVerdict::Reject { .. } => {
-                let _ = graph.transition(&id, TaskStatus::Running);
+                // Rework: the branch failed review. Re-dispatch it for another
+                // attempt with the CURRENT ADR (so an agent that built on stale
+                // context is redone with the new decision), bounded by the retry
+                // budget. A headless agent has already exited, so leaving the
+                // task `Running` would strand it with no worker — requeue instead.
+                requeue_or_fail(graph, &id);
                 rejected.push(id);
             }
             ReviewVerdict::SelfReviewBlocked => {
@@ -385,7 +403,7 @@ mod tests {
     }
 
     #[test]
-    fn red_review_sends_back_to_running() {
+    fn red_review_redispatches_for_rework() {
         let mut g = TaskGraph::new();
         g.add(Task::new("a", "A")).unwrap();
         g.recompute_ready();
@@ -402,7 +420,38 @@ mod tests {
         let report = step(&mut g, &caps(4), &CostUsage::default(), &mut ports);
         assert_eq!(report.rejected, ["a"]);
         assert!(report.merged.is_empty());
+        // Rejected work is re-dispatched the same tick (with the current ADR),
+        // not stranded in Running with no live agent.
+        assert!(report.dispatched.contains(&"a".to_string()));
         assert_eq!(g.get("a").unwrap().status, TaskStatus::Running);
+        assert_eq!(g.get("a").unwrap().attempts, 1);
+    }
+
+    #[test]
+    fn repeated_review_rejections_exhaust_retries_then_fail() {
+        let mut g = TaskGraph::new();
+        g.add(Task::new("a", "A")).unwrap();
+        g.recompute_ready();
+        g.transition("a", TaskStatus::Running).unwrap();
+        g.transition("a", TaskStatus::Review).unwrap();
+        let mut ports = FakePorts::new();
+        ports.auto_finish = true; // each re-dispatched agent finishes -> Review again
+        ports.gates.insert(
+            "a".to_string(),
+            GateResults {
+                tests_pass: false,
+                ..GREEN
+            },
+        );
+        // Always-red review can't loop forever: after MAX_TASK_ATTEMPTS the task
+        // lands Failed (terminal) and the loop stops, instead of churning.
+        let report = run(&mut g, &caps(4), &CostUsage::default(), 20, &mut ports);
+        assert_eq!(g.get("a").unwrap().status, TaskStatus::Failed);
+        assert_eq!(g.get("a").unwrap().attempts, MAX_TASK_ATTEMPTS);
+        assert!(matches!(
+            report.state,
+            LoopState::Stalled | LoopState::Complete
+        ));
     }
 
     #[test]

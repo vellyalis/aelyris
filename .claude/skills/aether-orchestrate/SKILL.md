@@ -103,6 +103,16 @@ step again. Repeat until `report.state == "complete"`.
 **Review judgment is yours.** You are the `reviewerId`; you supply each task's `gates`
 (your read of its branch — use `agent_diff`/`worktree` to inspect). Green + reviewer≠owner
 is the only path to a real merge. Never self-review (reviewer==owner is blocked).
+- **Mechanical gates:** pass `gateCommands{test,lint,types}` (argv per gate) and the
+  objective gates are run for real in each worktree — a branch whose tests fail can't
+  merge no matter what you claim. Subjective gates (design/context) stay your judgment.
+- **Context convergence (mid-flight decisions):** every dispatch re-injects the current
+  ADR (`context.all()`), so a re-dispatched task always gets the latest decisions. If an
+  agent built on a now-stale assumption, mark its `context_aligned:false` → the loop
+  **re-dispatches it for rework with the fresh ADR** (bounded retries, then it lands
+  `failed` rather than looping). So no agent's stale-context work can merge, and none
+  stays stranded. For a *live interactive* agent you can also `pane_send_input` the new
+  decision to nudge it immediately.
 
 ## Conventions + guardrails
 - **Concurrency cap 4** (the cost gate). The plan won't dispatch past it; pass an accurate

@@ -733,6 +733,27 @@ mod tests {
         assert!(header.ends_with("\n\n"));
     }
 
+    #[test]
+    fn spawn_specs_inject_the_current_adr_into_every_prompt() {
+        // Convergence (③): every dispatched agent — a fresh one or a task
+        // re-dispatched after a mid-flight decision change — carries the CURRENT
+        // ADR ahead of its task, so no agent ever runs on stale context.
+        // `run_step` rebuilds this header from `context.all()` each step, so the
+        // decision an agent sees is always the latest.
+        let mut graph = TaskGraph::new();
+        graph.add(Task::new("t", "Build login")).unwrap();
+        let mut adr = std::collections::BTreeMap::new();
+        adr.insert("auth_method".to_string(), "jwt".to_string());
+        let header = build_adr_header(&adr);
+
+        let specs = spawn_specs(&graph, "/repo", &header);
+        let spec = specs.get("t").unwrap();
+
+        assert!(spec.prompt.starts_with("[Project decisions"));
+        assert!(spec.prompt.contains("auth_method: jwt"));
+        assert!(spec.prompt.contains("Build login"));
+    }
+
     fn lane(task: &str, agent: &str, path: &str) -> HashMap<String, (String, Vec<String>)> {
         let mut lanes = HashMap::new();
         lanes.insert(

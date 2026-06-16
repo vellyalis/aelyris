@@ -201,11 +201,26 @@ const checks = [
       // The pure loop reassigns a crashed task up to a bounded retry count, then
       // leaves it Failed (terminal) — never silently lost.
       autonomy.includes("pub const MAX_TASK_ATTEMPTS") &&
-      autonomy.includes("graph.record_attempt(&id)") &&
+      autonomy.includes("fn requeue_or_fail(") &&
+      autonomy.includes("graph.record_attempt(id)") &&
       autonomy.includes("TaskStatus::Failed") &&
       autonomy.includes("recovered.push(id)"),
     detail:
       "a crashed worker (non-zero exit) is reassigned up to MAX_TASK_ATTEMPTS then left Failed, never lost — recovery wired from reap() through the loop (BR9, ⑦ Recovery)",
+  },
+  {
+    id: "mcp-orchestrator-context-convergence",
+    ok:
+      // Every dispatched agent's prompt carries the CURRENT ADR, rebuilt from
+      // the shared store each step — no agent runs on stale context (③).
+      loopPorts.includes("build_adr_header(&context.all())") &&
+      loopPorts.includes("format!(\"{adr_header}{task_prompt}\")") &&
+      // Rejected/stale work is re-dispatched (with the fresh ADR) via the shared
+      // requeue path, not stranded in Running with no live worker.
+      autonomy.includes("requeue_or_fail(graph, &id)") &&
+      autonomy.includes("ReviewVerdict::Reject"),
+    detail:
+      "a mid-flight decision converges: every (re-)dispatch injects the current ADR (build_adr_header from context.all()), and review-rejected stale work is re-dispatched for rework rather than stranded (BR6, ③ context sync)",
   },
   {
     id: "mcp-orchestrator-mechanical-gate",
