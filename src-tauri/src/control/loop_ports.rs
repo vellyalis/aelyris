@@ -34,6 +34,49 @@ pub trait TaskInfo {
     fn implementer(&self, task_id: &str) -> String;
 }
 
+/// Concrete `TaskInfo` over a point-in-time snapshot of the Task Graph.
+///
+/// Captured *before* a loop step mutates the graph so the autonomy controller
+/// can run `step` while holding the `TaskManager` graph lock without the
+/// adapter re-locking the same `Mutex` (std `Mutex` is not reentrant — a
+/// re-lock from inside the step would deadlock). Branch bindings and owners are
+/// stable across a step (only task *status* changes), so the pre-step snapshot
+/// stays correct for the whole pass.
+pub struct TaskBranchSnapshot {
+    branches: std::collections::HashMap<String, (String, String)>,
+    owners: std::collections::HashMap<String, String>,
+}
+
+impl TaskBranchSnapshot {
+    /// Capture every task's `(source, target)` branch binding and owner from the
+    /// graph. Tasks without both branches are simply absent from `branches`
+    /// (the merge port turns a missing binding into an error — an unbound task
+    /// cannot be merged).
+    pub fn from_graph(graph: &crate::task::TaskGraph) -> Self {
+        let mut branches = std::collections::HashMap::new();
+        let mut owners = std::collections::HashMap::new();
+        for task in graph.list() {
+            if let (Some(source), Some(target)) = (&task.source_branch, &task.target_branch) {
+                branches.insert(task.id.clone(), (source.clone(), target.clone()));
+            }
+            if let Some(owner) = &task.owner {
+                owners.insert(task.id.clone(), owner.clone());
+            }
+        }
+        Self { branches, owners }
+    }
+}
+
+impl TaskInfo for TaskBranchSnapshot {
+    fn branches(&self, task_id: &str) -> Option<(String, String)> {
+        self.branches.get(task_id).cloned()
+    }
+
+    fn implementer(&self, task_id: &str) -> String {
+        self.owners.get(task_id).cloned().unwrap_or_default()
+    }
+}
+
 /// Concrete `LoopPorts`: merges through the real git backend + serialized
 /// queue, and delegates gate/dispatch to injected adapters.
 pub struct LoopPortsAdapter<G, D, T> {
@@ -292,5 +335,50 @@ mod tests {
         // Nothing merged: main is untouched and no intent was queued.
         assert_eq!(repo.refname_to_id("refs/heads/main").unwrap(), main_before);
         assert!(ports.queue().intents().is_empty());
+    }
+
+    #[test]
+    fn snapshot_reads_branches_and_owner_from_the_graph() {
+        let mut graph = TaskGraph::new();
+        let mut bound = Task::new("t", "T").with_branches("feature", "main");
+        bound.owner = Some("impl-agent".to_string());
+        graph.add(bound).unwrap();
+        graph.add(Task::new("u", "U")).unwrap(); // no branches, no owner
+
+        let snap = TaskBranchSnapshot::from_graph(&graph);
+
+        assert_eq!(
+            snap.branches("t"),
+            Some(("feature".to_string(), "main".to_string()))
+        );
+        assert_eq!(snap.implementer("t"), "impl-agent");
+        // Unbound task: no branch pair (the merge port errors on this) and an
+        // empty implementer (distinct from any real reviewer id).
+        assert_eq!(snap.branches("u"), None);
+        assert_eq!(snap.implementer("u"), "");
+        // A task absent from the graph snapshot is simply unknown.
+        assert_eq!(snap.branches("ghost"), None);
+    }
+
+    #[test]
+    fn snapshot_drives_a_real_merge_through_the_adapter() {
+        // The concrete snapshot (not the test-only MapInfo) resolves the branch
+        // pair for a real green-review merge.
+        let (_dir, repo, feature_tip) = repo_with_feature_ahead();
+        let mut graph = review_task_graph();
+        let snapshot = TaskBranchSnapshot::from_graph(&graph);
+        let mut ports = LoopPortsAdapter::new(
+            repo.workdir().unwrap().to_str().unwrap().to_string(),
+            "reviewer",
+            FakeGate(GREEN),
+            RecordingDispatcher::default(),
+            snapshot,
+        );
+
+        let report = step(&mut graph, &caps(4), &CostUsage::default(), &mut ports);
+
+        assert_eq!(report.merged, ["t"]);
+        assert_eq!(graph.get("t").unwrap().status, TaskStatus::Done);
+        assert_eq!(repo.refname_to_id("refs/heads/main").unwrap(), feature_tip);
     }
 }

@@ -61,6 +61,19 @@ impl TaskManager {
     pub fn read<R>(&self, f: impl FnOnce(&TaskGraph) -> R) -> R {
         f(&self.lock())
     }
+
+    /// Run a mutating computation over the locked graph. The autonomy
+    /// controller uses this to drive `orchestrator::autonomy::step`/`run` over
+    /// the live graph in one critical section.
+    ///
+    /// The closure holds the graph lock, so it must not re-enter the manager
+    /// (`get`/`list`/`read`/... would deadlock — std `Mutex` is not reentrant).
+    /// Any task metadata the loop needs (branch bindings, owners) must be read
+    /// from the `&mut TaskGraph` it is handed — e.g. via a `TaskBranchSnapshot`
+    /// captured before the mutation.
+    pub fn with_graph_mut<R>(&self, f: impl FnOnce(&mut TaskGraph) -> R) -> R {
+        f(&mut self.lock())
+    }
 }
 
 #[cfg(test)]
@@ -114,5 +127,19 @@ mod tests {
         mgr.create(Task::new("b", "B")).unwrap();
         let ids: Vec<String> = mgr.list().into_iter().map(|t| t.id).collect();
         assert_eq!(ids, ["a", "b"]);
+    }
+
+    #[test]
+    fn with_graph_mut_drives_a_mutation_over_the_live_graph() {
+        let mgr = TaskManager::new();
+        mgr.create(Task::new("a", "A")).unwrap(); // -> Ready
+        let from = mgr.with_graph_mut(|graph| {
+            let before = graph.get("a").unwrap().status;
+            graph.transition("a", TaskStatus::Running).unwrap();
+            before
+        });
+        assert_eq!(from, TaskStatus::Ready);
+        // The mutation is visible on the shared graph after the lock is released.
+        assert_eq!(mgr.get("a").unwrap().status, TaskStatus::Running);
     }
 }
