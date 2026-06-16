@@ -10,6 +10,8 @@
 //! docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md (Agent Hierarchy, BR9,
 //! Acceptance: end-to-end autonomy).
 
+use serde::{Deserialize, Serialize};
+
 use super::{plan, LoopState};
 use crate::cost::{CostCaps, CostUsage};
 use crate::review::{review, GateResults, ReviewVerdict};
@@ -39,8 +41,9 @@ pub trait LoopPorts {
     fn merge(&mut self, task_id: &str) -> Result<(), String>;
 }
 
-/// What one coordination step did.
-#[derive(Debug, Clone, PartialEq)]
+/// What one coordination step did. Serialized for the `orchestrator_step` IPC
+/// return value + the `orchestrator-step` event the cockpit loop view consumes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StepReport {
     pub dispatched: Vec<String>,
     pub merged: Vec<String>,
