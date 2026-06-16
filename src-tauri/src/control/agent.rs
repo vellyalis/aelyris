@@ -24,13 +24,34 @@ pub fn list_headless(manager: &AgentManager) -> Vec<AgentSession> {
 }
 
 pub fn start_headless(manager: &AgentManager, spec: HeadlessSpawnSpec) -> ControlResult<String> {
-    manager.start_session(
+    let id = manager.start_session(
         &spec.prompt,
         &spec.cwd,
         spec.model.as_deref(),
         spec.allowed_tools,
         spec.resume_id.as_deref(),
-    )
+    )?;
+    drain_session_output(manager, &id);
+    Ok(id)
+}
+
+/// Drain a headless agent's stdout/stderr in the background so its OS pipe
+/// buffer never fills and blocks the process — without this an unmonitored
+/// `claude -p` would deadlock before it could exit, and the autonomy loop's
+/// completion sensor (`AgentManager::reap_finished`) would never fire. The
+/// output is not parsed here; the orchestrator reviews the worktree diff, not
+/// the stream.
+fn drain_session_output(manager: &AgentManager, id: &str) {
+    if let Ok(mut stdout) = manager.take_stdout(id) {
+        std::thread::spawn(move || {
+            let _ = std::io::copy(&mut stdout, &mut std::io::sink());
+        });
+    }
+    if let Ok(mut stderr) = manager.take_stderr(id) {
+        std::thread::spawn(move || {
+            let _ = std::io::copy(&mut stderr, &mut std::io::sink());
+        });
+    }
 }
 
 pub fn stop_headless(manager: &AgentManager, id: &str) -> ControlResult<()> {

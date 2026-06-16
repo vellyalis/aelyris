@@ -17,6 +17,11 @@ pub struct AgentSessionInfo {
     pub cost: f64,
     pub tokens_used: u64,
     pub started_at: u64,
+    /// Task Graph node this agent implements, set when the autonomy loop
+    /// dispatches it. Lets the loop's completion sensor map a finished process
+    /// back to the task it should move into review (BR9).
+    #[serde(default)]
+    pub task_id: Option<String>,
 }
 
 struct AgentProcess {
@@ -106,6 +111,7 @@ impl AgentManager {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs(),
+            task_id: None,
         };
 
         self.lock_sessions()?
@@ -164,6 +170,41 @@ impl AgentManager {
             proc.info.tokens_used = tokens;
         }
         Ok(())
+    }
+
+    /// Tag a session with the Task Graph node it implements. Set by the autonomy
+    /// loop's dispatcher right after spawning so the completion sensor can map a
+    /// finished process back to its task.
+    pub fn set_task(&self, id: &str, task_id: &str) -> Result<(), String> {
+        let mut sessions = self.lock_sessions()?;
+        if let Some(proc) = sessions.get_mut(id) {
+            proc.info.task_id = Some(task_id.to_string());
+        }
+        Ok(())
+    }
+
+    /// Completion sensor (BR9): detect sessions whose child process has exited
+    /// since the last poll, mark them `done`, and return the Task Graph node ids
+    /// of the newly-finished ones. A dispatched agent that exits becomes
+    /// reviewable. Idempotent — each finished session is reported at most once
+    /// (subsequent polls see it already `done`).
+    pub fn reap_finished(&self) -> Vec<String> {
+        let mut finished = Vec::new();
+        let Ok(mut sessions) = self.sessions.lock() else {
+            return finished;
+        };
+        for proc in sessions.values_mut() {
+            if proc.info.status == "done" {
+                continue;
+            }
+            if matches!(proc.child.try_wait(), Ok(Some(_))) {
+                proc.info.status = "done".to_string();
+                if let Some(task_id) = &proc.info.task_id {
+                    finished.push(task_id.clone());
+                }
+            }
+        }
+        finished
     }
 
     /// Reap a naturally exited child while keeping its session metadata visible.

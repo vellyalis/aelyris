@@ -1,3 +1,7 @@
+// The MCP `tools/list` schema is one large `serde_json::json!` literal; its
+// macro expansion needs more than the default recursion budget.
+#![recursion_limit = "256"]
+
 pub mod agent;
 pub mod api;
 pub mod audit;

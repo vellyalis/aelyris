@@ -10,6 +10,8 @@
 //! docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md (BR9, Acceptance:
 //! end-to-end autonomy).
 
+use crate::agent::AgentManager;
+use crate::control::agent::{start_headless, HeadlessSpawnSpec};
 use crate::control::merge::{MergeIntentStatus, MergeQueue, MergeRequest};
 use crate::git::{perform_merge, MergeOutcome};
 use crate::orchestrator::autonomy::LoopPorts;
@@ -21,10 +23,18 @@ pub trait GateRunner {
     fn run(&self, task_id: &str, branch: &str) -> GateResults;
 }
 
-/// Spawns an implementer agent for a task. Real impl uses the agent runtime;
-/// tests record the call.
+/// Spawns an implementer agent for a task and reports which dispatched agents
+/// have finished. The real impl owns the agent runtime (it spawned them), so it
+/// is the natural source of both signals; tests record the call.
 pub trait Dispatcher {
     fn dispatch(&self, task_id: &str, branch: Option<&str>) -> Result<(), String>;
+    /// Task ids whose dispatched agent has finished since the last poll (the
+    /// autonomy loop's completion sensor). Default none — a dispatcher that does
+    /// not track completion (e.g. a test recorder). The real agent dispatcher
+    /// reports process exits here so the loop can move work `Running -> Review`.
+    fn poll_finished(&self) -> Vec<String> {
+        Vec::new()
+    }
 }
 
 /// Resolves a task's merge info: its `(source, target)` branches and the agent
@@ -118,6 +128,10 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<G
         self.dispatcher.dispatch(task_id, source.as_deref())
     }
 
+    fn poll_finished(&mut self) -> Vec<String> {
+        self.dispatcher.poll_finished()
+    }
+
     fn gate(&mut self, task_id: &str) -> GateResults {
         let branch = self
             .task_info
@@ -164,6 +178,132 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<G
             }
         }
     }
+}
+
+/// Gate runner whose verdicts are supplied by the caller (the Reviewer agent /
+/// cockpit) rather than run mechanically. A task with no supplied verdict is
+/// treated as all-red, so it is never merged without an explicit green — the
+/// safe default under full autonomy.
+struct ScriptedGate {
+    verdicts: std::collections::HashMap<String, GateResults>,
+}
+
+const ALL_RED: GateResults = GateResults {
+    tests_pass: false,
+    lint_pass: false,
+    types_pass: false,
+    design_consistent: false,
+    context_aligned: false,
+};
+
+impl GateRunner for ScriptedGate {
+    fn run(&self, task_id: &str, _branch: &str) -> GateResults {
+        self.verdicts.get(task_id).copied().unwrap_or(ALL_RED)
+    }
+}
+
+/// Dispatches a ready task by spawning a real headless implementer agent in the
+/// task's isolated worktree, and reports finished agents (process exit) back to
+/// the loop. Prompt/cwd are captured from the graph snapshot before the step.
+struct AgentDispatcher<'a> {
+    manager: &'a AgentManager,
+    specs: std::collections::HashMap<String, HeadlessSpawnSpec>,
+}
+
+impl Dispatcher for AgentDispatcher<'_> {
+    fn dispatch(&self, task_id: &str, _branch: Option<&str>) -> Result<(), String> {
+        let spec = self
+            .specs
+            .get(task_id)
+            .cloned()
+            .ok_or_else(|| format!("no spawn spec for task {task_id}"))?;
+        let session_id = start_headless(self.manager, spec)?;
+        // Tag the session so the completion sensor maps its exit back to the task.
+        let _ = self.manager.set_task(&session_id, task_id);
+        Ok(())
+    }
+
+    fn poll_finished(&self) -> Vec<String> {
+        self.manager.reap_finished()
+    }
+}
+
+/// Per-task spawn spec (prompt + worktree cwd) captured before the step, used by
+/// the dispatcher when a Ready task is dispatched. Prompt = title + description;
+/// cwd = the predicted isolated worktree path for the task's source branch (or
+/// the repo root when the task has no bound branch).
+fn spawn_specs(
+    graph: &crate::task::TaskGraph,
+    repo_path: &str,
+) -> std::collections::HashMap<String, HeadlessSpawnSpec> {
+    graph
+        .list()
+        .into_iter()
+        .map(|task| {
+            let prompt = if task.description.trim().is_empty() {
+                task.title.clone()
+            } else {
+                format!("{}\n\n{}", task.title, task.description)
+            };
+            let cwd = match &task.source_branch {
+                Some(branch) => crate::control::worktree::predict_path(repo_path, branch)
+                    .to_string_lossy()
+                    .into_owned(),
+                None => repo_path.to_string(),
+            };
+            (
+                task.id.clone(),
+                HeadlessSpawnSpec {
+                    prompt,
+                    cwd,
+                    model: task.owner.clone(),
+                    allowed_tools: None,
+                    resume_id: None,
+                },
+            )
+        })
+        .collect()
+}
+
+/// Drive one autonomy step over the live Task Graph with the real runtime ports
+/// (BR9): caller-supplied gate verdicts resolve reviews into a real git merge,
+/// finished agents (process exit) move `Running -> Review`, and ready tasks are
+/// dispatched by spawning real headless agents (routed to the task owner's
+/// model). Shared by the cockpit IPC (Face 1) and the MCP server (Face 2) so
+/// both faces drive exactly the same loop over the same managed state.
+///
+/// The whole step runs inside the graph lock; branch/owner info is read from a
+/// pre-step snapshot so the loop never re-locks the graph (which would
+/// deadlock). The caller paces repeated calls (agents run between calls); each
+/// call surfaces the agents finished since the last one.
+#[allow(clippy::too_many_arguments)]
+pub fn run_step(
+    tasks: &crate::task::TaskManager,
+    cost: &crate::cost::CostManager,
+    agents: &AgentManager,
+    usage: &crate::cost::CostUsage,
+    repo_path: String,
+    reviewer_id: String,
+    gates: std::collections::HashMap<String, GateResults>,
+) -> crate::orchestrator::autonomy::StepReport {
+    let caps = cost.caps();
+    tasks.with_graph_mut(|graph| {
+        // Snapshots captured before the step mutates the graph — the adapter
+        // never re-locks the manager (std Mutex is not reentrant).
+        let info = TaskBranchSnapshot::from_graph(graph);
+        let specs = spawn_specs(graph, &repo_path);
+        let mut ports = LoopPortsAdapter::new(
+            repo_path,
+            reviewer_id,
+            ScriptedGate { verdicts: gates },
+            AgentDispatcher {
+                manager: agents,
+                specs,
+            },
+            info,
+        );
+        crate::orchestrator::autonomy::step(graph, &caps, usage, &mut ports)
+    })
 }
 
 #[cfg(test)]

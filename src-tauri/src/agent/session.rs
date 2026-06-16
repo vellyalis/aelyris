@@ -110,6 +110,7 @@ mod tests {
             cost: 0.25,
             tokens_used: 42,
             started_at: 123,
+            task_id: None,
         });
 
         assert_eq!(session.run_mode, AgentRunMode::Headless);

@@ -39,6 +39,7 @@ fn tool_names() -> Vec<&'static str> {
         "aether.task.list",
         "aether.task.transition",
         "aether.orchestrator.plan",
+        "aether.orchestrator.step",
     ]
 }
 
@@ -467,6 +468,35 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                     "properties": { "activeAgents": { "type": "integer", "minimum": 0 } },
                     "additionalProperties": false
                 }
+            },
+            {
+                "name": "aether.orchestrator.step",
+                "description": "Drive one autonomy step over the live Task Graph (BR9): finished agents (process exit) move Running->Review; tasks awaiting review with an all-green verdict and reviewer != owner are MERGED into their target branch by a real git merge; ready tasks are dispatched by spawning real headless agents routed to each task owner's model. Call repeatedly to run the loop to quiescence (agents run between calls).",
+                "safety": "REVIEWER_AUTHORITY",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["repoPath", "reviewerId"],
+                    "properties": {
+                        "repoPath": { "type": "string" },
+                        "reviewerId": { "type": "string" },
+                        "activeAgents": { "type": "integer", "minimum": 0 },
+                        "gates": {
+                            "type": "object",
+                            "description": "Map of task id -> reviewer verdict { tests_pass, lint_pass, types_pass, design_consistent, context_aligned }. A task with no entry is treated as all-red and never merged.",
+                            "additionalProperties": {
+                                "type": "object",
+                                "properties": {
+                                    "tests_pass": { "type": "boolean" },
+                                    "lint_pass": { "type": "boolean" },
+                                    "types_pass": { "type": "boolean" },
+                                    "design_consistent": { "type": "boolean" },
+                                    "context_aligned": { "type": "boolean" }
+                                }
+                            }
+                        }
+                    },
+                    "additionalProperties": false
+                }
             }
         ]
     }))
@@ -830,7 +860,9 @@ pub(super) async fn tools_call(
             if let Some(priority) = args.get("priority").and_then(|value| value.as_str()) {
                 task.priority =
                     serde_json::from_value(serde_json::Value::String(priority.to_string()))
-                        .map_err(|_| ApiError::BadRequest(format!("invalid priority `{priority}`")))?;
+                        .map_err(|_| {
+                            ApiError::BadRequest(format!("invalid priority `{priority}`"))
+                        })?;
             }
             if let Some(dependencies) = arg_optional_string_array(&args, "dependencies")? {
                 task.dependencies = dependencies;
@@ -882,6 +914,39 @@ pub(super) async fn tools_call(
             };
             let plan = tasks.read(|graph| crate::orchestrator::plan(graph, &caps, &usage));
             serde_json::json!({ "plan": plan })
+        }
+        "aether.orchestrator.step" => {
+            let tasks = state.task_manager.as_ref().ok_or_else(|| {
+                ApiError::Internal("task graph is not attached to this process".to_string())
+            })?;
+            let cost = state.cost_manager.as_ref().ok_or_else(|| {
+                ApiError::Internal("cost manager is not attached to this process".to_string())
+            })?;
+            let agents = state.agent_manager.as_ref().ok_or_else(|| {
+                ApiError::Internal("agent runtime is not attached to this process".to_string())
+            })?;
+            let repo_path = arg_string(&args, "repoPath")?;
+            let reviewer_id = arg_string(&args, "reviewerId")?;
+            let usage = crate::cost::CostUsage {
+                active_agents: arg_usize(&args, "activeAgents", 0)?,
+                ..Default::default()
+            };
+            let gates: std::collections::HashMap<String, crate::review::GateResults> =
+                match args.get("gates") {
+                    Some(value) => serde_json::from_value(value.clone())
+                        .map_err(|err| ApiError::BadRequest(format!("invalid gates: {err}")))?,
+                    None => std::collections::HashMap::new(),
+                };
+            let report = crate::control::loop_ports::run_step(
+                tasks,
+                cost,
+                agents,
+                &usage,
+                repo_path,
+                reviewer_id,
+                gates,
+            );
+            serde_json::json!({ "report": report })
         }
         other => {
             return Err(ApiError::BadRequest(format!("unknown MCP tool: {other}")));

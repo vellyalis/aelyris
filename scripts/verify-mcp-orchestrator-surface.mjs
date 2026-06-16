@@ -16,6 +16,8 @@ const merge = read("src-tauri/src/control/merge.rs");
 const gitMod = read("src-tauri/src/git/mod.rs");
 const gitMerge = read("src-tauri/src/git/merge.rs");
 const ipcCommands = read("src-tauri/src/ipc/commands.rs");
+const loopPorts = read("src-tauri/src/control/loop_ports.rs");
+const agentClaude = read("src-tauri/src/agent/claude.rs");
 
 const requiredTools = [
   "aether.worktree.validate",
@@ -38,6 +40,7 @@ const requiredTools = [
   "aether.task.list",
   "aether.task.transition",
   "aether.orchestrator.plan",
+  "aether.orchestrator.step",
 ];
 
 const checks = [
@@ -141,6 +144,20 @@ const checks = [
       lib.includes("Arc::new(task::TaskManager::new())"),
     detail:
       "orchestrator AI can decompose/assign/inspect the Task Graph over MCP against the same Arc<TaskManager> the cockpit shows (one source of truth, BR4/BR9)",
+  },
+  {
+    id: "mcp-orchestrator-step-drives-real-loop",
+    ok:
+      apiMcp.includes('"aether.orchestrator.step"') &&
+      apiMcp.includes("crate::control::loop_ports::run_step(") &&
+      loopPorts.includes("pub fn run_step(") &&
+      loopPorts.includes("fn poll_finished(&self) -> Vec<String> {") &&
+      loopPorts.includes("self.manager.reap_finished()") &&
+      loopPorts.includes("self.manager.set_task(&session_id, task_id)") &&
+      agentClaude.includes("pub fn reap_finished(&self) -> Vec<String>") &&
+      agentClaude.includes("pub fn set_task("),
+    detail:
+      "orchestrator.step drives one real autonomy step over MCP (shared run_step): finished agents (reap_finished) -> review, green verdict -> real merge, ready -> spawn; same loop as Face 1",
   },
 ];
 
