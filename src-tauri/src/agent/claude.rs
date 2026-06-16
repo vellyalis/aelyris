@@ -282,7 +282,13 @@ impl Default for AgentManager {
 
 impl Drop for AgentManager {
     fn drop(&mut self) {
-        self.stop_all();
+        // AgentManager is `Clone` and clones share the session map via `Arc`
+        // (e.g. the API/MCP `ApiState` is cloned per request). Only tear the
+        // sessions down when the LAST handle is dropped (app exit) — otherwise a
+        // clone dropping at the end of a request would kill every live agent.
+        if Arc::strong_count(&self.sessions) == 1 {
+            self.stop_all();
+        }
     }
 }
 
