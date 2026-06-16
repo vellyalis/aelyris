@@ -47,6 +47,16 @@ struct AgentProcess {
     info: AgentSessionInfo,
 }
 
+/// Split result of a completion poll (BR9 recovery): which dispatched tasks'
+/// agents finished cleanly vs. crashed since the last poll. The loop advances
+/// `succeeded` into review and routes `failed` back for reassignment so a dead
+/// worker never silently drops its task.
+#[derive(Debug, Default, Clone)]
+pub struct ReapOutcome {
+    pub succeeded: Vec<String>,
+    pub failed: Vec<String>,
+}
+
 #[derive(Clone)]
 pub struct AgentManager {
     sessions: Arc<Mutex<HashMap<String, AgentProcess>>>,
@@ -222,27 +232,39 @@ impl AgentManager {
     }
 
     /// Completion sensor (BR9): detect sessions whose child process has exited
-    /// since the last poll, mark them `done`, and return the Task Graph node ids
-    /// of the newly-finished ones. A dispatched agent that exits becomes
-    /// reviewable. Idempotent — each finished session is reported at most once
-    /// (subsequent polls see it already `done`).
-    pub fn reap_finished(&self) -> Vec<String> {
-        let mut finished = Vec::new();
+    /// since the last poll, splitting them by exit status — a clean exit (code 0)
+    /// is a `succeeded` task (-> review), a non-zero exit / crash is a `failed`
+    /// task (-> recovery/reassign). Marks each session `done`/`failed` so it is
+    /// reported at most once. This is what lets the loop both advance finished
+    /// work and recover a dead worker rather than losing the task.
+    pub fn reap(&self) -> ReapOutcome {
+        let mut outcome = ReapOutcome::default();
         let Ok(mut sessions) = self.sessions.lock() else {
-            return finished;
+            return outcome;
         };
         for proc in sessions.values_mut() {
-            if proc.info.status == "done" {
+            if proc.info.status == "done" || proc.info.status == "failed" {
                 continue;
             }
-            if matches!(proc.child.try_wait(), Ok(Some(_))) {
-                proc.info.status = "done".to_string();
+            if let Ok(Some(exit)) = proc.child.try_wait() {
+                let succeeded = exit.success();
+                proc.info.status = if succeeded { "done" } else { "failed" }.to_string();
                 if let Some(task_id) = &proc.info.task_id {
-                    finished.push(task_id.clone());
+                    if succeeded {
+                        outcome.succeeded.push(task_id.clone());
+                    } else {
+                        outcome.failed.push(task_id.clone());
+                    }
                 }
             }
         }
-        finished
+        outcome
+    }
+
+    /// Task ids of agents that exited cleanly since the last poll (`reap`
+    /// restricted to successes). Retained for callers that only need successes.
+    pub fn reap_finished(&self) -> Vec<String> {
+        self.reap().succeeded
     }
 
     /// Reap a naturally exited child while keeping its session metadata visible.

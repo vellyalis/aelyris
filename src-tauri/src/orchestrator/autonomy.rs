@@ -17,19 +17,36 @@ use crate::cost::{CostCaps, CostUsage};
 use crate::review::{review, GateResults, ReviewVerdict};
 use crate::task::{TaskGraph, TaskStatus};
 
+/// Maximum times a task is dispatched before a repeated crash leaves it
+/// `Failed` (BR9 recovery). With `2`, a crashed task is reassigned once; a
+/// second crash marks it permanently failed so a poison task cannot loop
+/// forever (the stall then surfaces via the loop state, never a lost task).
+pub const MAX_TASK_ATTEMPTS: u32 = 2;
+
+/// Split result of a completion poll (BR9 recovery): which dispatched agents
+/// finished cleanly (`succeeded` -> review) vs. crashed (`failed` -> reassign)
+/// since the last tick. Mirrors `agent::ReapOutcome`; kept loop-local so the
+/// pure loop does not depend on the agent runtime.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Completions {
+    pub succeeded: Vec<String>,
+    pub failed: Vec<String>,
+}
+
 /// Runtime side effects the loop drives. Real impl: LLM-spawned agents, PTY
 /// monitoring, git merge. Tests: a fake that records calls and returns scripted
 /// gate results.
 pub trait LoopPorts {
     /// Start an agent for `task_id`. `Ok` means the task is now Running.
     fn dispatch(&mut self, task_id: &str) -> Result<(), String>;
-    /// Task ids whose implementer agent has finished since the last call and are
-    /// now ready for review. Agent completion is a runtime event (the output
-    /// monitor), surfaced here so the pure loop can move work `Running -> Review`
-    /// without an external transition. Default: nothing finished (callers that
-    /// drive the `Review` transition themselves need not implement this).
-    fn poll_finished(&mut self) -> Vec<String> {
-        Vec::new()
+    /// Dispatched agents that finished since the last call, split by exit
+    /// outcome: a clean exit is `succeeded` (-> review), a crash is `failed`
+    /// (-> recovery/reassign). Agent completion is a runtime event (process
+    /// exit) surfaced here so the pure loop can both advance finished work and
+    /// recover a dead worker without an external transition. Default: nothing
+    /// finished (callers that drive transitions themselves need not implement).
+    fn poll_completions(&mut self) -> Completions {
+        Completions::default()
     }
     /// Quality-gate results for a task awaiting review.
     fn gate(&mut self, task_id: &str) -> GateResults;
@@ -48,6 +65,12 @@ pub struct StepReport {
     pub dispatched: Vec<String>,
     pub merged: Vec<String>,
     pub rejected: Vec<String>,
+    /// Tasks whose agent crashed this step and were reassigned (re-dispatchable
+    /// again) rather than lost. A task that exhausts its retry budget is not
+    /// listed here — it is left `Failed` in the graph (visible via the task list
+    /// and the loop `state`). See BR9 recovery.
+    #[serde(default)]
+    pub recovered: Vec<String>,
     pub state: LoopState,
 }
 
@@ -76,12 +99,30 @@ pub fn step(
 ) -> StepReport {
     let mut merged = Vec::new();
     let mut rejected = Vec::new();
+    let mut recovered = Vec::new();
 
-    // 0. Move finished implementations into review. Agent completion is a
-    //    runtime event surfaced via the port; a finished `Running` task becomes
-    //    reviewable in this same step.
-    for id in ports.poll_finished() {
+    // 0. Sense agent completions and split by outcome (BR9 recovery). A clean
+    //    exit moves the `Running` task into review in this same step. A crash
+    //    routes the task back for reassignment: `Running -> Failed`, and if it
+    //    still has retry budget `Failed -> Pending` (so the dependency gate
+    //    re-promotes it to `Ready` and it is re-dispatched below). Once the
+    //    budget is exhausted it stays `Failed` (terminal) — the task is never
+    //    silently lost, and a poison task cannot loop forever.
+    let completions = ports.poll_completions();
+    for id in completions.succeeded {
         let _ = graph.transition(&id, TaskStatus::Review);
+    }
+    for id in completions.failed {
+        // Only recover a task genuinely in flight (its agent owned a Running task).
+        if graph.get(&id).map(|task| task.status) != Some(TaskStatus::Running) {
+            continue;
+        }
+        let _ = graph.transition(&id, TaskStatus::Failed);
+        let attempts = graph.record_attempt(&id);
+        if attempts < MAX_TASK_ATTEMPTS {
+            let _ = graph.transition(&id, TaskStatus::Pending);
+            recovered.push(id);
+        }
     }
 
     // 1. Resolve reviews.
@@ -141,6 +182,7 @@ pub fn step(
         dispatched,
         merged,
         rejected,
+        recovered,
         state,
     }
 }
@@ -152,6 +194,9 @@ pub struct RunReport {
     pub dispatched: Vec<String>,
     pub merged: Vec<String>,
     pub rejected: Vec<String>,
+    /// Every reassignment performed while driving the loop (a crashed task sent
+    /// back for another attempt). See BR9 recovery.
+    pub recovered: Vec<String>,
     pub state: LoopState,
 }
 
@@ -175,6 +220,7 @@ pub fn run(
         dispatched: Vec::new(),
         merged: Vec::new(),
         rejected: Vec::new(),
+        recovered: Vec::new(),
         state: LoopState::Active,
     };
     for _ in 0..max_steps {
@@ -187,6 +233,7 @@ pub fn run(
         report.dispatched.extend(r.dispatched);
         report.merged.extend(r.merged);
         report.rejected.extend(r.rejected);
+        report.recovered.extend(r.recovered);
         report.state = r.state;
         if matches!(
             r.state,
@@ -213,9 +260,12 @@ mod tests {
         dispatched: Vec<String>,
         merged: Vec<String>,
         /// When set, every dispatched task is reported finished on the next
-        /// `poll_finished` — models an implementer that completes within a tick.
+        /// `poll_completions` — models an implementer that completes within a tick.
         auto_finish: bool,
         pending_finish: Vec<String>,
+        /// Tasks reported as crashed (non-zero exit) on the next poll — models a
+        /// dead worker the loop must recover.
+        pending_fail: Vec<String>,
     }
 
     impl FakePorts {
@@ -229,6 +279,7 @@ mod tests {
                 merged: Vec::new(),
                 auto_finish: false,
                 pending_finish: Vec::new(),
+                pending_fail: Vec::new(),
             }
         }
     }
@@ -249,8 +300,11 @@ mod tests {
             }
             Ok(())
         }
-        fn poll_finished(&mut self) -> Vec<String> {
-            std::mem::take(&mut self.pending_finish)
+        fn poll_completions(&mut self) -> Completions {
+            Completions {
+                succeeded: std::mem::take(&mut self.pending_finish),
+                failed: std::mem::take(&mut self.pending_fail),
+            }
         }
         fn gate(&mut self, task_id: &str) -> GateResults {
             *self.gates.get(task_id).unwrap_or(&GREEN)
@@ -376,7 +430,7 @@ mod tests {
     }
 
     #[test]
-    fn poll_finished_moves_running_task_into_review() {
+    fn clean_exit_moves_running_task_into_review() {
         let mut g = TaskGraph::new();
         g.add(Task::new("a", "A")).unwrap();
         g.recompute_ready();
@@ -387,6 +441,66 @@ mod tests {
         let report = step(&mut g, &caps(4), &CostUsage::default(), &mut ports);
         assert_eq!(report.merged, ["a"]);
         assert_eq!(g.get("a").unwrap().status, TaskStatus::Done);
+    }
+
+    #[test]
+    fn crash_reassigns_and_redispatches_task() {
+        let mut g = TaskGraph::new();
+        g.add(Task::new("a", "A")).unwrap();
+        g.recompute_ready();
+        g.transition("a", TaskStatus::Running).unwrap();
+        let mut ports = FakePorts::new();
+        ports.pending_fail = vec!["a".to_string()];
+        // A dead worker's task is recovered and re-dispatched within the same
+        // tick — never lost (⑦ Recovery).
+        let report = step(&mut g, &caps(4), &CostUsage::default(), &mut ports);
+        assert_eq!(report.recovered, ["a"]);
+        assert!(report.dispatched.contains(&"a".to_string()));
+        assert_eq!(g.get("a").unwrap().status, TaskStatus::Running);
+        assert_eq!(g.get("a").unwrap().attempts, 1);
+    }
+
+    #[test]
+    fn repeated_crashes_exhaust_retries_then_fail() {
+        let mut g = TaskGraph::new();
+        g.add(Task::new("a", "A")).unwrap();
+        g.recompute_ready();
+        g.transition("a", TaskStatus::Running).unwrap();
+        let mut ports = FakePorts::new();
+
+        // First crash: reassigned (attempt 1) and re-dispatched -> Running.
+        ports.pending_fail = vec!["a".to_string()];
+        let r1 = step(&mut g, &caps(4), &CostUsage::default(), &mut ports);
+        assert_eq!(r1.recovered, ["a"]);
+        assert_eq!(g.get("a").unwrap().status, TaskStatus::Running);
+
+        // Second crash: retry budget exhausted -> stays Failed (terminal), not
+        // recovered, not re-dispatched, but never silently lost.
+        ports.pending_fail = vec!["a".to_string()];
+        let r2 = step(&mut g, &caps(4), &CostUsage::default(), &mut ports);
+        assert!(r2.recovered.is_empty());
+        assert!(!r2.dispatched.contains(&"a".to_string()));
+        assert_eq!(g.get("a").unwrap().status, TaskStatus::Failed);
+        assert_eq!(g.get("a").unwrap().attempts, MAX_TASK_ATTEMPTS);
+    }
+
+    #[test]
+    fn crash_and_clean_exit_in_same_tick_are_independent() {
+        let mut g = TaskGraph::new();
+        g.add(Task::new("ok", "OK")).unwrap();
+        g.add(Task::new("bad", "BAD")).unwrap();
+        g.recompute_ready();
+        g.transition("ok", TaskStatus::Running).unwrap();
+        g.transition("bad", TaskStatus::Running).unwrap();
+        let mut ports = FakePorts::new();
+        ports.pending_finish = vec!["ok".to_string()];
+        ports.pending_fail = vec!["bad".to_string()];
+        let report = step(&mut g, &caps(4), &CostUsage::default(), &mut ports);
+        // ok: clean exit -> review -> green -> merged. bad: crash -> recovered.
+        assert_eq!(report.merged, ["ok"]);
+        assert_eq!(g.get("ok").unwrap().status, TaskStatus::Done);
+        assert_eq!(report.recovered, ["bad"]);
+        assert_eq!(g.get("bad").unwrap().status, TaskStatus::Running);
     }
 
     #[test]

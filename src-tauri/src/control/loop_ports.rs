@@ -18,7 +18,7 @@ use crate::control::merge::{MergeIntentStatus, MergeQueue, MergeRequest};
 use crate::event_bus::{AgentEvent, AgentEventKind, EventBus};
 use crate::file_ownership::FileOwnership;
 use crate::git::{perform_merge, MergeOutcome};
-use crate::orchestrator::autonomy::LoopPorts;
+use crate::orchestrator::autonomy::{Completions, LoopPorts};
 use crate::review::GateResults;
 
 /// Runs the quality gate for a task's branch. Real impl shells out to the
@@ -32,12 +32,14 @@ pub trait GateRunner {
 /// is the natural source of both signals; tests record the call.
 pub trait Dispatcher {
     fn dispatch(&self, task_id: &str, branch: Option<&str>) -> Result<(), String>;
-    /// Task ids whose dispatched agent has finished since the last poll (the
-    /// autonomy loop's completion sensor). Default none — a dispatcher that does
-    /// not track completion (e.g. a test recorder). The real agent dispatcher
-    /// reports process exits here so the loop can move work `Running -> Review`.
-    fn poll_finished(&self) -> Vec<String> {
-        Vec::new()
+    /// Dispatched agents that finished since the last poll, split by exit
+    /// outcome (clean exit vs. crash) — the autonomy loop's completion +
+    /// recovery sensor. Default none — a dispatcher that does not track
+    /// completion (e.g. a test recorder). The real agent dispatcher reports
+    /// process exits here so the loop can move clean exits `Running -> Review`
+    /// and recover crashed workers.
+    fn poll_completions(&self) -> Completions {
+        Completions::default()
     }
 }
 
@@ -132,8 +134,8 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<G
         self.dispatcher.dispatch(task_id, source.as_deref())
     }
 
-    fn poll_finished(&mut self) -> Vec<String> {
-        self.dispatcher.poll_finished()
+    fn poll_completions(&mut self) -> Completions {
+        self.dispatcher.poll_completions()
     }
 
     fn gate(&mut self, task_id: &str) -> GateResults {
@@ -227,8 +229,12 @@ impl Dispatcher for AgentDispatcher<'_> {
         Ok(())
     }
 
-    fn poll_finished(&self) -> Vec<String> {
-        self.manager.reap_finished()
+    fn poll_completions(&self) -> Completions {
+        let outcome = self.manager.reap();
+        Completions {
+            succeeded: outcome.succeeded,
+            failed: outcome.failed,
+        }
     }
 }
 
@@ -652,6 +658,7 @@ mod tests {
             dispatched: vec!["t".to_string()],
             merged: vec![],
             rejected: vec![],
+            recovered: vec![],
             state: LoopState::Active,
         };
         apply_file_lanes(&ownership, &bus, &lanes, &report);
@@ -678,6 +685,7 @@ mod tests {
             dispatched: vec![],
             merged: vec!["t".to_string()],
             rejected: vec![],
+            recovered: vec![],
             state: LoopState::Complete,
         };
         apply_file_lanes(&ownership, &bus, &lanes, &report);

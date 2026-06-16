@@ -44,6 +44,12 @@ pub struct Task {
     /// Branch the task merges into once reviewed (usually `main`).
     #[serde(default)]
     pub target_branch: Option<String>,
+    /// How many times this task has been dispatched and crashed (BR9 recovery).
+    /// The autonomy loop reassigns a crashed task up to a retry bound, then
+    /// leaves it `Failed` — bounded by this counter so a poison task cannot loop
+    /// forever.
+    #[serde(default)]
+    pub attempts: u32,
 }
 
 impl Task {
@@ -61,6 +67,7 @@ impl Task {
             outputs: Vec::new(),
             source_branch: None,
             target_branch: None,
+            attempts: 0,
         }
     }
 
@@ -145,6 +152,19 @@ impl TaskGraph {
             .iter()
             .filter_map(|id| self.tasks.get(id))
             .collect()
+    }
+
+    /// Record one more failed attempt (a crash + reassignment) for a task and
+    /// return the new total. Used by the autonomy loop's recovery to bound
+    /// retries (BR9). Returns 0 for an unknown task.
+    pub fn record_attempt(&mut self, id: &str) -> u32 {
+        match self.tasks.get_mut(id) {
+            Some(task) => {
+                task.attempts += 1;
+                task.attempts
+            }
+            None => 0,
+        }
     }
 
     /// Transition a task to `to`, validated against the lifecycle.
@@ -354,6 +374,22 @@ mod tests {
         g.transition("dep", TaskStatus::Done).unwrap();
         g.recompute_ready();
         assert_eq!(g.get("child").unwrap().status, TaskStatus::Ready);
+    }
+
+    #[test]
+    fn record_attempt_increments_and_defaults_to_zero() {
+        let mut g = TaskGraph::new();
+        g.add(Task::new("a", "A")).unwrap();
+        assert_eq!(g.get("a").unwrap().attempts, 0);
+        assert_eq!(g.record_attempt("a"), 1);
+        assert_eq!(g.record_attempt("a"), 2);
+        assert_eq!(g.get("a").unwrap().attempts, 2);
+        // Unknown task: no panic, returns 0.
+        assert_eq!(g.record_attempt("ghost"), 0);
+        // A task deserialized without the field defaults to zero attempts.
+        let parsed: Task =
+            serde_json::from_str(r#"{"id":"x","title":"X","status":"pending"}"#).unwrap();
+        assert_eq!(parsed.attempts, 0);
     }
 
     #[test]

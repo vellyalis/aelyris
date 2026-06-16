@@ -17,6 +17,7 @@ const gitMod = read("src-tauri/src/git/mod.rs");
 const gitMerge = read("src-tauri/src/git/merge.rs");
 const ipcCommands = read("src-tauri/src/ipc/commands.rs");
 const loopPorts = read("src-tauri/src/control/loop_ports.rs");
+const autonomy = read("src-tauri/src/orchestrator/autonomy.rs");
 const agentClaude = read("src-tauri/src/agent/claude.rs");
 const eventBus = read("src-tauri/src/event_bus/mod.rs");
 const knowledgeGraph = read("src-tauri/src/knowledge_graph/mod.rs");
@@ -178,13 +179,31 @@ const checks = [
       apiMcp.includes('"aether.orchestrator.step"') &&
       apiMcp.includes("crate::control::loop_ports::run_step(") &&
       loopPorts.includes("pub fn run_step(") &&
-      loopPorts.includes("fn poll_finished(&self) -> Vec<String> {") &&
-      loopPorts.includes("self.manager.reap_finished()") &&
+      loopPorts.includes("fn poll_completions(&self) -> Completions {") &&
+      loopPorts.includes("self.manager.reap()") &&
       loopPorts.includes("self.manager.set_task(&session_id, task_id)") &&
-      agentClaude.includes("pub fn reap_finished(&self) -> Vec<String>") &&
+      agentClaude.includes("pub fn reap(&self) -> ReapOutcome") &&
       agentClaude.includes("pub fn set_task("),
     detail:
-      "orchestrator.step drives one real autonomy step over MCP (shared run_step): finished agents (reap_finished) -> review, green verdict -> real merge, ready -> spawn; same loop as Face 1",
+      "orchestrator.step drives one real autonomy step over MCP (shared run_step): finished agents (reap) -> review, green verdict -> real merge, ready -> spawn; same loop as Face 1",
+  },
+  {
+    id: "mcp-orchestrator-recovers-crashed-agents",
+    ok:
+      // reap splits clean exits from crashes (exit code), and the dispatcher
+      // forwards both so the loop can recover dead workers (BR9 / ⑦ Recovery).
+      agentClaude.includes("pub struct ReapOutcome") &&
+      agentClaude.includes("exit.success()") &&
+      loopPorts.includes("succeeded: outcome.succeeded") &&
+      loopPorts.includes("failed: outcome.failed") &&
+      // The pure loop reassigns a crashed task up to a bounded retry count, then
+      // leaves it Failed (terminal) — never silently lost.
+      autonomy.includes("pub const MAX_TASK_ATTEMPTS") &&
+      autonomy.includes("graph.record_attempt(&id)") &&
+      autonomy.includes("TaskStatus::Failed") &&
+      autonomy.includes("recovered.push(id)"),
+    detail:
+      "a crashed worker (non-zero exit) is reassigned up to MAX_TASK_ATTEMPTS then left Failed, never lost — recovery wired from reap() through the loop (BR9, ⑦ Recovery)",
   },
   {
     id: "mcp-coordination-stream-shared",
