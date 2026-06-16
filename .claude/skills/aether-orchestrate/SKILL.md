@@ -13,7 +13,21 @@ yourself. Aether is local-only — never push or open PRs.
 
 ## How to call verbs
 
-The runtime is a local HTTP server. Every verb is one call:
+The runtime is a local HTTP server (`127.0.0.1:9333`, bearer auth). Two faces, same
+verb surface:
+
+**Native MCP (preferred — register once, call as native tools).** `POST /mcp` speaks
+JSON-RPC 2.0 (Streamable HTTP), so register Aether as a standard MCP server and the
+`aether.*` verbs become native tools (no HTTP boilerplate). Set a *fixed*
+`AETHER_API_TOKEN` before `pnpm tauri:dev` (otherwise the token rotates each launch), then:
+```json
+// .mcp.json
+{ "mcpServers": { "aether": {
+  "type": "http", "url": "http://127.0.0.1:9333/mcp",
+  "headers": { "Authorization": "Bearer ${AETHER_API_TOKEN}" } } } }
+```
+
+**Direct REST (no registration — call from Bash/node).**
 ```
 POST http://127.0.0.1:9333/mcp/tools/call
   Authorization: Bearer <token>
@@ -22,10 +36,11 @@ POST http://127.0.0.1:9333/mcp/tools/call
 ```
 - **Token:** `$env:AETHER_API_TOKEN`, or grep the dev log for `ephemeral token: <uuid>`
   (printed at startup when the env var is unset). Port is `9333`.
-- **Catalog:** `GET /mcp/tools/list` returns every verb with its JSON schema — read it to
-  confirm arguments. There are ~54 `aether.*` verbs.
+- **Catalog:** `GET /mcp/tools/list` (REST) or the `tools/list` JSON-RPC method returns
+  every verb with its JSON schema — read it to confirm arguments. ~54 `aether.*` verbs.
 - Call them with the Bash tool (`curl`) or a tiny `node`/`fetch` snippet. See
-  `scripts/verify-*-live.mjs` for working examples of every group.
+  `scripts/verify-*-live.mjs` for working examples of every group (incl.
+  `verify-mcp-jsonrpc-live.mjs` for the native endpoint).
 - If calls hang/ECONNREFUSED after a long session, the dev app's WebView2 layer has
   heap-corrupted: kill stale `msedgewebview2` procs, confirm ports 1420/9222/9333 free,
   relaunch `pnpm tauri:dev` — then continue.

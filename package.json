@@ -91,6 +91,7 @@
     "verify:coordination-stream-live": "node scripts/verify-coordination-stream-live.mjs",
     "verify:shared-brain-live": "node scripts/verify-shared-brain-live.mjs",
     "verify:knowledge-graph-live": "node scripts/verify-knowledge-graph-live.mjs",
+    "verify:mcp-jsonrpc-live": "node scripts/verify-mcp-jsonrpc-live.mjs",
     "verify:goal:refresh-safe": "node scripts/verify-goal-non-token-refresh.mjs",
     "verify:goal:anti-stall": "node scripts/verify-goal-anti-stall-contract.mjs",
     "verify:goal:git-finalization": "node scripts/verify-git-finalization-readiness.mjs",

@@ -1597,3 +1597,106 @@ pub(super) async fn tools_call(
         "result": result,
     })))
 }
+
+// ---- Native MCP: JSON-RPC 2.0 over Streamable HTTP ----
+//
+// Lets a standard MCP client (e.g. Claude Code via .mcp.json) register Aether as
+// a native server, so the aether.* verbs appear as native tools instead of being
+// driven over the bespoke REST shape. Reuses `tools_list`/`tools_call` verbatim —
+// only the JSON-RPC envelope differs, so the verb surface is identical across the
+// two faces (one source of truth).
+
+#[derive(Deserialize)]
+pub(super) struct JsonRpcReq {
+    /// Absent for notifications (which get no response).
+    #[serde(default)]
+    id: Option<serde_json::Value>,
+    method: String,
+    #[serde(default)]
+    params: serde_json::Value,
+}
+
+const MCP_PROTOCOL_VERSION: &str = "2024-11-05";
+
+const MCP_INSTRUCTIONS: &str = "Aether is an autonomous build runtime you (the orchestrator) drive via these aether.* tools; the worker agents (real claude/codex/gemini CLIs in isolated worktrees) do the implementation. Loop: (1) context.set the project decisions/ADR (injected into every dispatched agent). (2) task.create one per subtask with owner=<model>, sourceBranch/targetBranch, dependencies, outputs=<file lanes>; check ownership.conflicts. (3) worktree.create each branch. (4) Call orchestrator.step repeatedly with {repoPath, reviewerId(!=owner), activeAgents, gates}: finished agents -> review, all-green verdict -> real git merge, ready tasks -> spawned; agents run between calls, so pace them. (5) Coordinate between steps via event.recent / agent.activity (who edits what), knowledge.impact (blast radius), intent.propose/list (pre-fact proposals), ownership.conflicts, blocker_raised. You are the reviewer; supply each task's gates from your own inspection. Local-only; concurrency cap 4.";
+
+/// Native MCP JSON-RPC endpoint. Handles initialize / tools.list / tools.call /
+/// ping; everything else is method-not-found.
+pub(super) async fn mcp_rpc(
+    State(state): State<ApiState>,
+    Json(req): Json<JsonRpcReq>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+
+    // Notifications (no id, e.g. notifications/initialized) get no response.
+    let Some(id) = req.id.clone() else {
+        return axum::http::StatusCode::ACCEPTED.into_response();
+    };
+
+    let outcome: Result<serde_json::Value, (i64, String)> = match req.method.as_str() {
+        "initialize" => {
+            let version = req
+                .params
+                .get("protocolVersion")
+                .and_then(|value| value.as_str())
+                .unwrap_or(MCP_PROTOCOL_VERSION)
+                .to_string();
+            Ok(serde_json::json!({
+                "protocolVersion": version,
+                "capabilities": { "tools": {} },
+                "serverInfo": { "name": "aether-terminal", "version": env!("CARGO_PKG_VERSION") },
+                "instructions": MCP_INSTRUCTIONS,
+            }))
+        }
+        "ping" => Ok(serde_json::json!({})),
+        "tools/list" => {
+            let Json(listed) = tools_list().await;
+            Ok(serde_json::json!({
+                "tools": listed.get("tools").cloned().unwrap_or_else(|| serde_json::json!([])),
+            }))
+        }
+        "tools/call" => match req.params.get("name").and_then(|value| value.as_str()) {
+            None => Err((-32602, "tools/call requires a string `name`".to_string())),
+            Some(name) => {
+                let arguments = req
+                    .params
+                    .get("arguments")
+                    .cloned()
+                    .unwrap_or_else(|| serde_json::json!({}));
+                let body = ToolCallBody {
+                    name: name.to_string(),
+                    arguments,
+                };
+                match tools_call(State(state), Json(body)).await {
+                    Ok(Json(value)) => {
+                        let inner = value
+                            .get("result")
+                            .cloned()
+                            .unwrap_or(serde_json::Value::Null);
+                        Ok(serde_json::json!({
+                            "content": [{ "type": "text", "text": serde_json::to_string(&inner).unwrap_or_default() }],
+                            "structuredContent": inner,
+                            "isError": false,
+                        }))
+                    }
+                    // MCP convention: a tool-level error is a successful JSON-RPC
+                    // result with isError:true (reserve JSON-RPC errors for the
+                    // protocol itself).
+                    Err(err) => Ok(serde_json::json!({
+                        "content": [{ "type": "text", "text": err.to_string() }],
+                        "isError": true,
+                    })),
+                }
+            }
+        },
+        other => Err((-32601, format!("method not found: {other}"))),
+    };
+
+    let body = match outcome {
+        Ok(result) => serde_json::json!({ "jsonrpc": "2.0", "id": id, "result": result }),
+        Err((code, message)) => serde_json::json!({
+            "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message }
+        }),
+    };
+    Json(body).into_response()
+}

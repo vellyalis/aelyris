@@ -1034,6 +1034,9 @@ pub fn router(state: ApiState) -> Router {
         .route("/mcp/contract", get(mcp::contract))
         .route("/mcp/tools/list", get(mcp::tools_list))
         .route("/mcp/tools/call", post(mcp::tools_call))
+        // Native MCP (JSON-RPC 2.0 / Streamable HTTP) — registerable as a standard
+        // MCP server; reuses the same verb surface as the REST routes above.
+        .route("/mcp", post(mcp::mcp_rpc))
         .route("/health", get(health))
         .route("/daemon/contract", get(daemon_contract))
         .route("/daemon/shutdown", post(daemon_shutdown))
