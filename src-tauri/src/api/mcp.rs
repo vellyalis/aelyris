@@ -497,7 +497,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
             },
             {
                 "name": "aether.orchestrator.step",
-                "description": "Drive one autonomy step over the live Task Graph (BR9): finished agents (process exit) move Running->Review; tasks awaiting review with an all-green verdict and reviewer != owner are MERGED into their target branch by a real git merge; ready tasks are dispatched by spawning real headless agents routed to each task owner's model. Call repeatedly to run the loop to quiescence (agents run between calls).",
+                "description": "Drive one autonomy step over the live Task Graph (BR9): a finished agent's task moves Running->Review on a clean exit or is REASSIGNED on a crash (bounded retries, then left Failed — never lost); tasks awaiting review with an all-green verdict and reviewer != owner are MERGED into their target branch by a real git merge; ready tasks are dispatched by spawning real headless agents routed to each task owner's model. Pass gateCommands to decide the objective gates (tests/lint/types) MECHANICALLY in each worktree so a red branch cannot merge. Call repeatedly to run the loop to quiescence (agents run between calls).",
                 "safety": "REVIEWER_AUTHORITY",
                 "inputSchema": {
                     "type": "object",
@@ -508,7 +508,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                         "activeAgents": { "type": "integer", "minimum": 0 },
                         "gates": {
                             "type": "object",
-                            "description": "Map of task id -> reviewer verdict { tests_pass, lint_pass, types_pass, design_consistent, context_aligned }. A task with no entry is treated as all-red and never merged.",
+                            "description": "Map of task id -> reviewer verdict { tests_pass, lint_pass, types_pass, design_consistent, context_aligned }. A task with no entry is treated as all-red and never merged. When gateCommands run a gate, that objective field is decided mechanically and the verdict's claim for it is ignored.",
                             "additionalProperties": {
                                 "type": "object",
                                 "properties": {
@@ -519,6 +519,16 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                                     "context_aligned": { "type": "boolean" }
                                 }
                             }
+                        },
+                        "gateCommands": {
+                            "type": "object",
+                            "description": "Optional mechanical gate commands run in each task's worktree to decide the objective gates for real. Each is an argv array (e.g. test=[\"pnpm\",\"test\"]); an unset gate falls back to the reviewer's verdict. A configured gate's machine result is authoritative, so a branch whose tests fail cannot merge.",
+                            "properties": {
+                                "test": { "type": "array", "items": { "type": "string" } },
+                                "lint": { "type": "array", "items": { "type": "string" } },
+                                "types": { "type": "array", "items": { "type": "string" } }
+                            },
+                            "additionalProperties": false
                         }
                     },
                     "additionalProperties": false
@@ -1265,6 +1275,16 @@ pub(super) async fn tools_call(
                         .map_err(|err| ApiError::BadRequest(format!("invalid gates: {err}")))?,
                     None => std::collections::HashMap::new(),
                 };
+            // Optional mechanical gate commands: when supplied, the objective
+            // gates (tests/lint/types) are run in each task's worktree and decide
+            // merge-eligibility for real, so a red branch cannot merge (⑧).
+            let gate_commands: Option<crate::control::gate_runner::GateCommands> =
+                match args.get("gateCommands") {
+                    Some(value) => Some(serde_json::from_value(value.clone()).map_err(|err| {
+                        ApiError::BadRequest(format!("invalid gateCommands: {err}"))
+                    })?),
+                    None => None,
+                };
             let report = crate::control::loop_ports::run_step(
                 tasks,
                 cost,
@@ -1276,6 +1296,7 @@ pub(super) async fn tools_call(
                 repo_path,
                 reviewer_id,
                 gates,
+                gate_commands,
             );
             serde_json::json!({ "report": report })
         }

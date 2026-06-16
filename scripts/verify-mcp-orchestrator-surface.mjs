@@ -18,6 +18,7 @@ const gitMerge = read("src-tauri/src/git/merge.rs");
 const ipcCommands = read("src-tauri/src/ipc/commands.rs");
 const loopPorts = read("src-tauri/src/control/loop_ports.rs");
 const autonomy = read("src-tauri/src/orchestrator/autonomy.rs");
+const gateRunner = read("src-tauri/src/control/gate_runner.rs");
 const agentClaude = read("src-tauri/src/agent/claude.rs");
 const eventBus = read("src-tauri/src/event_bus/mod.rs");
 const knowledgeGraph = read("src-tauri/src/knowledge_graph/mod.rs");
@@ -204,6 +205,24 @@ const checks = [
       autonomy.includes("recovered.push(id)"),
     detail:
       "a crashed worker (non-zero exit) is reassigned up to MAX_TASK_ATTEMPTS then left Failed, never lost — recovery wired from reap() through the loop (BR9, ⑦ Recovery)",
+  },
+  {
+    id: "mcp-orchestrator-mechanical-gate",
+    ok:
+      // The mechanical gate runs the target project's commands in the worktree
+      // and maps real exit codes, so a red branch cannot merge (BR9 / ⑧).
+      gateRunner.includes("pub struct ProcessGateRunner") &&
+      gateRunner.includes("pub trait CommandRunner") &&
+      gateRunner.includes("pub struct SystemCommandRunner") &&
+      gateRunner.includes("status.success()") &&
+      // Wired into the shared loop step + exposed on the MCP step verb.
+      loopPorts.includes("ProcessGateRunner::new(") &&
+      loopPorts.includes("SystemCommandRunner") &&
+      loopPorts.includes("gate_commands: Option<crate::control::gate_runner::GateCommands>") &&
+      apiMcp.includes('"gateCommands"') &&
+      apiMcp.includes("gate_commands,"),
+    detail:
+      "orchestrator.step can decide the objective gates (tests/lint/types) mechanically — ProcessGateRunner runs the configured commands in each worktree and maps real exit codes, so a branch whose tests fail cannot merge (BR9, ⑧)",
   },
   {
     id: "mcp-coordination-stream-shared",

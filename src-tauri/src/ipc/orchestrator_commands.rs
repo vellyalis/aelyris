@@ -69,6 +69,9 @@ pub fn orchestrator_step(
         repo_path,
         reviewer_id,
         gates,
+        // The cockpit face supplies reviewer verdicts directly; mechanical gate
+        // commands are an MCP-face (autonomous) opt-in.
+        None,
     );
 
     let _ = app.emit("task-graph-updated", tasks.list());

@@ -186,28 +186,6 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<G
     }
 }
 
-/// Gate runner whose verdicts are supplied by the caller (the Reviewer agent /
-/// cockpit) rather than run mechanically. A task with no supplied verdict is
-/// treated as all-red, so it is never merged without an explicit green — the
-/// safe default under full autonomy.
-struct ScriptedGate {
-    verdicts: std::collections::HashMap<String, GateResults>,
-}
-
-const ALL_RED: GateResults = GateResults {
-    tests_pass: false,
-    lint_pass: false,
-    types_pass: false,
-    design_consistent: false,
-    context_aligned: false,
-};
-
-impl GateRunner for ScriptedGate {
-    fn run(&self, task_id: &str, _branch: &str) -> GateResults {
-        self.verdicts.get(task_id).copied().unwrap_or(ALL_RED)
-    }
-}
-
 /// Dispatches a ready task by spawning a real headless implementer agent in the
 /// task's isolated worktree, and reports finished agents (process exit) back to
 /// the loop. Prompt/cwd are captured from the graph snapshot before the step.
@@ -322,6 +300,7 @@ pub fn run_step(
     repo_path: String,
     reviewer_id: String,
     gates: std::collections::HashMap<String, GateResults>,
+    gate_commands: Option<crate::control::gate_runner::GateCommands>,
 ) -> crate::orchestrator::autonomy::StepReport {
     let caps = cost.caps();
     // The shared ADR, injected into every agent dispatched this step.
@@ -344,10 +323,19 @@ pub fn run_step(
         // never re-locks the manager (std Mutex is not reentrant).
         let info = TaskBranchSnapshot::from_graph(graph);
         let specs = spawn_specs(graph, &repo_path, &adr_header);
+        // Objective gates (tests/lint/types) run mechanically in each task's
+        // worktree when a command is configured; otherwise they (and the
+        // subjective gates always) fall back to the caller's supplied verdict.
+        let gate_runner = crate::control::gate_runner::ProcessGateRunner::new(
+            repo_path.clone(),
+            gate_commands.unwrap_or_default(),
+            gates,
+            crate::control::gate_runner::SystemCommandRunner,
+        );
         let mut ports = LoopPortsAdapter::new(
             repo_path,
             reviewer_id,
-            ScriptedGate { verdicts: gates },
+            gate_runner,
             AgentDispatcher {
                 manager: agents,
                 specs,
@@ -414,6 +402,9 @@ fn apply_file_lanes(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::control::gate_runner::{
+        CommandRunner, GateCommands, ProcessGateRunner, SystemCommandRunner,
+    };
     use crate::cost::{CostCaps, CostUsage};
     use crate::orchestrator::autonomy::{step, StepReport};
     use crate::orchestrator::LoopState;
@@ -626,6 +617,108 @@ mod tests {
         assert_eq!(report.merged, ["t"]);
         assert_eq!(graph.get("t").unwrap().status, TaskStatus::Done);
         assert_eq!(repo.refname_to_id("refs/heads/main").unwrap(), feature_tip);
+    }
+
+    /// A command runner with a constant verdict — proves the mechanical-gate
+    /// wiring (ProcessGateRunner -> step -> real merge) deterministically, with
+    /// the actual process exit-code mapping covered separately below.
+    struct ConstRunner(bool);
+    impl CommandRunner for ConstRunner {
+        fn run(&self, _argv: &[String], _cwd: &str) -> bool {
+            self.0
+        }
+    }
+
+    fn mechanical_gate(repo_path: &str, command_ok: bool) -> ProcessGateRunner<ConstRunner> {
+        let mut verdicts = HashMap::new();
+        verdicts.insert("t".to_string(), GREEN); // reviewer claims green
+        ProcessGateRunner::new(
+            repo_path,
+            GateCommands {
+                test: Some(vec!["pnpm".into(), "test".into()]),
+                ..Default::default()
+            },
+            verdicts,
+            ConstRunner(command_ok),
+        )
+    }
+
+    #[test]
+    fn failing_mechanical_test_gate_blocks_a_real_merge() {
+        // Even with a green reviewer verdict, a failing mechanical test gate
+        // overrides tests_pass -> no merge happens (⑧): main is untouched.
+        let (_dir, repo, _feature_tip) = repo_with_feature_ahead();
+        let repo_path = repo.workdir().unwrap().to_str().unwrap().to_string();
+        let main_before = repo.refname_to_id("refs/heads/main").unwrap();
+        let mut graph = review_task_graph();
+        let mut branches = HashMap::new();
+        branches.insert("t".to_string(), ("feature".to_string(), "main".to_string()));
+        let mut ports = LoopPortsAdapter::new(
+            repo_path.clone(),
+            "reviewer",
+            mechanical_gate(&repo_path, false),
+            RecordingDispatcher::default(),
+            MapInfo {
+                branches,
+                implementer: "implementer".to_string(),
+            },
+        );
+
+        let report = step(&mut graph, &caps(4), &CostUsage::default(), &mut ports);
+
+        assert!(report.merged.is_empty());
+        assert_eq!(report.rejected, ["t"]);
+        assert_eq!(graph.get("t").unwrap().status, TaskStatus::Running);
+        assert_eq!(repo.refname_to_id("refs/heads/main").unwrap(), main_before);
+        assert!(ports.queue().intents().is_empty());
+    }
+
+    #[test]
+    fn passing_mechanical_test_gate_allows_a_real_merge() {
+        // A passing mechanical gate + green subjective verdict merges for real.
+        let (_dir, repo, feature_tip) = repo_with_feature_ahead();
+        let repo_path = repo.workdir().unwrap().to_str().unwrap().to_string();
+        let mut graph = review_task_graph();
+        let mut branches = HashMap::new();
+        branches.insert("t".to_string(), ("feature".to_string(), "main".to_string()));
+        let mut ports = LoopPortsAdapter::new(
+            repo_path.clone(),
+            "reviewer",
+            mechanical_gate(&repo_path, true),
+            RecordingDispatcher::default(),
+            MapInfo {
+                branches,
+                implementer: "implementer".to_string(),
+            },
+        );
+
+        let report = step(&mut graph, &caps(4), &CostUsage::default(), &mut ports);
+
+        assert_eq!(report.merged, ["t"]);
+        assert_eq!(graph.get("t").unwrap().status, TaskStatus::Done);
+        assert_eq!(repo.refname_to_id("refs/heads/main").unwrap(), feature_tip);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn system_command_runner_maps_real_exit_codes() {
+        // The real runner faithfully maps a process's exit status, so the gate
+        // above reflects genuine test outcomes.
+        let dir = tempfile::tempdir().unwrap();
+        let cwd = dir.path().to_str().unwrap();
+        let runner = SystemCommandRunner;
+        let argv = |code: &str| {
+            vec![
+                "cmd".to_string(),
+                "/c".to_string(),
+                "exit".to_string(),
+                code.to_string(),
+            ]
+        };
+        assert!(runner.run(&argv("0"), cwd), "exit 0 -> pass");
+        assert!(!runner.run(&argv("1"), cwd), "exit 1 -> fail");
+        // A command that cannot even spawn is a gate failure (can't prove green).
+        assert!(!runner.run(&["definitely_not_a_real_binary_zzz".to_string()], cwd));
     }
 
     #[test]
