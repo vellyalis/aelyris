@@ -197,6 +197,9 @@ const checks = [
       // forwards both so the loop can recover dead workers (BR9 / ⑦ Recovery).
       agentClaude.includes("pub struct ReapOutcome") &&
       agentClaude.includes("exit.success()") &&
+      // The crash-vs-success split is covered by a BEHAVIORAL test (real child
+      // processes), not just a string-match gate — a broken split fails cargo.
+      agentClaude.includes("fn reap_splits_clean_and_crashed_exits_by_code") &&
       loopPorts.includes("succeeded: outcome.succeeded") &&
       loopPorts.includes("failed: outcome.failed") &&
       // The pure loop reassigns a crashed task up to a bounded retry count, then

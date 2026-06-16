@@ -374,3 +374,78 @@ fn kill_process_tree(pid: u32) -> Result<(), String> {
         Err(format!("taskkill exited with status {}", output.status))
     }
 }
+
+#[cfg(test)]
+#[cfg(windows)]
+mod reap_tests {
+    use super::*;
+    use std::process::Stdio;
+    use std::time::{Duration, Instant};
+
+    fn spawn_exit(code: &str) -> Child {
+        crate::process::hidden_command("cmd")
+            .args(["/c", "exit", code])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn cmd")
+    }
+
+    fn insert(mgr: &AgentManager, id: &str, task_id: &str, child: Child) {
+        let info = AgentSessionInfo {
+            id: id.to_string(),
+            status: "running".to_string(),
+            model: "test".to_string(),
+            prompt: String::new(),
+            cwd: String::new(),
+            cost: 0.0,
+            tokens_used: 0,
+            started_at: 0,
+            task_id: Some(task_id.to_string()),
+            current_activity: None,
+        };
+        mgr.sessions
+            .lock()
+            .unwrap()
+            .insert(id.to_string(), AgentProcess { child, info });
+    }
+
+    /// Behavioral proof of the crash-vs-success completion sensor the loop relies
+    /// on for recovery (⑦): `reap()` must split exits by code — a clean exit (0)
+    /// is `succeeded`, a non-zero exit is `failed`. The loop logic itself is
+    /// tested with fakes that bypass `reap`, so without this test a broken split
+    /// (e.g. always-succeeded) would ship with no failing cargo test.
+    #[test]
+    fn reap_splits_clean_and_crashed_exits_by_code() {
+        let mgr = AgentManager::new();
+        insert(&mgr, "s-ok", "task-ok", spawn_exit("0"));
+        insert(&mgr, "s-bad", "task-bad", spawn_exit("1"));
+
+        // The trivial children exit near-instantly; poll until reap observes both
+        // (bounded so a hang can't wedge the suite).
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let mut succeeded = Vec::new();
+        let mut failed = Vec::new();
+        while (succeeded.is_empty() || failed.is_empty()) && Instant::now() < deadline {
+            let out = mgr.reap();
+            succeeded.extend(out.succeeded);
+            failed.extend(out.failed);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(succeeded, ["task-ok"], "clean exit (0) -> succeeded");
+        assert_eq!(failed, ["task-bad"], "crash (non-zero) -> failed");
+
+        // Idempotent: a reaped session is never reported twice.
+        let again = mgr.reap();
+        assert!(again.succeeded.is_empty() && again.failed.is_empty());
+
+        // Sessions are marked terminally so the UI/fleet reflects the outcome.
+        let statuses: HashMap<String, String> = mgr
+            .list_sessions()
+            .into_iter()
+            .map(|s| (s.id, s.status))
+            .collect();
+        assert_eq!(statuses["s-ok"], "done");
+        assert_eq!(statuses["s-bad"], "failed");
+    }
+}
