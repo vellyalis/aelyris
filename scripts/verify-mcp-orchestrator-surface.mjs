@@ -19,6 +19,7 @@ const ipcCommands = read("src-tauri/src/ipc/commands.rs");
 const loopPorts = read("src-tauri/src/control/loop_ports.rs");
 const agentClaude = read("src-tauri/src/agent/claude.rs");
 const eventBus = read("src-tauri/src/event_bus/mod.rs");
+const knowledgeGraph = read("src-tauri/src/knowledge_graph/mod.rs");
 
 const requiredTools = [
   "aether.worktree.validate",
@@ -59,6 +60,14 @@ const requiredTools = [
   "aether.intent.list",
   "aether.intent.all",
   "aether.intent.resolve",
+  "aether.knowledge.add_node",
+  "aether.knowledge.add_edge",
+  "aether.knowledge.remove_node",
+  "aether.knowledge.remove_edge",
+  "aether.knowledge.dependencies",
+  "aether.knowledge.dependents",
+  "aether.knowledge.impact",
+  "aether.knowledge.graph",
 ];
 
 const checks = [
@@ -224,6 +233,19 @@ const checks = [
       lib.includes(".with_intent_bus(intent_bus)"),
     detail:
       "agents report live activity (file/symbol/action) read by peers via agent.activity (real-time 'who is doing what'); the Intent Bus shares proposals before acting (pre-fact deliberation / meetings substrate), both on the shared stream",
+  },
+  {
+    id: "mcp-knowledge-graph-impact",
+    ok:
+      apiMcp.includes('"aether.knowledge.add_edge"') &&
+      apiMcp.includes('"aether.knowledge.impact"') &&
+      apiMcp.includes('"aether.knowledge.graph"') &&
+      knowledgeGraph.includes("pub fn impact_of(") &&
+      knowledgeGraph.includes("pub fn dependents_of(") &&
+      api.includes("pub knowledge_graph: Option<Arc<crate::knowledge_graph::KnowledgeGraphManager>>") &&
+      lib.includes(".with_knowledge_graph(knowledge_graph)"),
+    detail:
+      "the fleet reasons over code structure (Knowledge Graph) not files: add_node/add_edge build the dependency graph; impact gives the transitive blast radius of a change so a decision/intent's affected symbols are known up front",
   },
 ];
 

@@ -18,6 +18,7 @@ pub mod git;
 pub mod history;
 pub mod intent;
 mod ipc;
+pub mod knowledge_graph;
 pub mod logging;
 pub mod lsp;
 pub mod mux;
@@ -124,6 +125,9 @@ pub fn run() {
             file_ownership::FileOwnership::new(),
         )))
         .manage(std::sync::Arc::new(intent::IntentBus::new()))
+        .manage(std::sync::Arc::new(
+            knowledge_graph::KnowledgeGraphManager::new(),
+        ))
         .setup(move |app| {
             let lsp_app = app.handle().clone();
             std::thread::Builder::new()
@@ -552,6 +556,10 @@ pub fn run() {
                     .state::<std::sync::Arc<intent::IntentBus>>()
                     .inner()
                     .clone();
+                let knowledge_graph = app
+                    .state::<std::sync::Arc<knowledge_graph::KnowledgeGraphManager>>()
+                    .inner()
+                    .clone();
                 let api_state = api::ApiState::new(pty, api::AuthConfig::from_env())
                     .with_mux(mux_manager)
                     .with_agent_manager(agent_manager)
@@ -562,6 +570,7 @@ pub fn run() {
                     .with_file_ownership(file_ownership)
                     .with_context_store(context_store)
                     .with_intent_bus(intent_bus)
+                    .with_knowledge_graph(knowledge_graph)
                     .with_env_mux_store();
                 app.manage(api_state.clone());
                 let serve_state = api_state.clone();

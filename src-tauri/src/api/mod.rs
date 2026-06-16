@@ -177,6 +177,9 @@ pub struct ApiState {
     /// Shared Intent Bus (same instance as the Tauri-managed one) so agents can
     /// share proposals BEFORE acting over MCP — the pre-fact deliberation layer.
     pub intent_bus: Option<Arc<crate::intent::IntentBus>>,
+    /// Shared Knowledge Graph (same instance as the Tauri-managed one) so the
+    /// fleet reasons over code structure + a change's blast radius over MCP.
+    pub knowledge_graph: Option<Arc<crate::knowledge_graph::KnowledgeGraphManager>>,
     pub mcp_pending: Arc<Mutex<Vec<McpPendingDecision>>>,
     pub mux_store: Option<Arc<FileMuxSnapshotStore>>,
     pub auth: AuthConfig,
@@ -217,6 +220,7 @@ impl ApiState {
             file_ownership: None,
             context_store: None,
             intent_bus: None,
+            knowledge_graph: None,
             mcp_pending: Arc::new(Mutex::new(Vec::new())),
             mux_store: None,
             auth,
@@ -313,6 +317,14 @@ impl ApiState {
 
     pub fn with_intent_bus(mut self, intent_bus: Arc<crate::intent::IntentBus>) -> Self {
         self.intent_bus = Some(intent_bus);
+        self
+    }
+
+    pub fn with_knowledge_graph(
+        mut self,
+        knowledge_graph: Arc<crate::knowledge_graph::KnowledgeGraphManager>,
+    ) -> Self {
+        self.knowledge_graph = Some(knowledge_graph);
         self
     }
 

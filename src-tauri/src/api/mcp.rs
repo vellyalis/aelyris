@@ -57,6 +57,14 @@ fn tool_names() -> Vec<&'static str> {
         "aether.intent.list",
         "aether.intent.all",
         "aether.intent.resolve",
+        "aether.knowledge.add_node",
+        "aether.knowledge.add_edge",
+        "aether.knowledge.remove_node",
+        "aether.knowledge.remove_edge",
+        "aether.knowledge.dependencies",
+        "aether.knowledge.dependents",
+        "aether.knowledge.impact",
+        "aether.knowledge.graph",
     ]
 }
 
@@ -688,6 +696,93 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                     },
                     "additionalProperties": false
                 }
+            },
+            {
+                "name": "aether.knowledge.add_node",
+                "description": "Add a node to the code Knowledge Graph (a symbol/module the fleet reasons about) — id, kind (module/service/function/class/component/other), and the file it lives in. Agents reason over structure (User -> AuthService -> JWTProvider -> Redis), not files.",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["id"],
+                    "properties": {
+                        "id": { "type": "string" },
+                        "kind": { "type": "string", "enum": ["module", "service", "function", "class", "component", "other"] },
+                        "file": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aether.knowledge.add_edge",
+                "description": "Record a dependency edge: `dependent` depends on `dependency` (e.g. AuthService -> JWTProvider). Unknown endpoints are auto-created.",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["dependent", "dependency"],
+                    "properties": { "dependent": { "type": "string" }, "dependency": { "type": "string" } },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aether.knowledge.remove_node",
+                "description": "Remove a node + every edge touching it (a symbol was deleted/renamed), so its blast radius never routes through a node that no longer exists. Keeps a long-lived graph from accumulating ghost symbols.",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["id"],
+                    "properties": { "id": { "type": "string" } },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aether.knowledge.remove_edge",
+                "description": "Remove a single dependency edge (a dependency was dropped).",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["dependent", "dependency"],
+                    "properties": { "dependent": { "type": "string" }, "dependency": { "type": "string" } },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aether.knowledge.dependencies",
+                "description": "Direct dependencies of a node (what it needs).",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["id"],
+                    "properties": { "id": { "type": "string" } },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aether.knowledge.dependents",
+                "description": "Direct dependents of a node (who needs it).",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["id"],
+                    "properties": { "id": { "type": "string" } },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aether.knowledge.impact",
+                "description": "The blast radius of changing a node: the transitive set of everything that depends on it. Query this before/after a decision or intent to know exactly which other symbols (and their owners) are affected.",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["id"],
+                    "properties": { "id": { "type": "string" } },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aether.knowledge.graph",
+                "description": "The whole code Knowledge Graph: every node + dependency edge.",
+                "safety": "FREE",
+                "inputSchema": { "type": "object", "additionalProperties": false }
             }
         ]
     }))
@@ -1407,6 +1502,89 @@ pub(super) async fn tools_call(
             .map_err(|_| ApiError::BadRequest(format!("invalid intent status `{status_raw}`")))?;
             let intent = bus.resolve(&id, status);
             serde_json::json!({ "intent": intent })
+        }
+        "aether.knowledge.add_node" => {
+            let kg = state.knowledge_graph.as_ref().ok_or_else(|| {
+                ApiError::Internal("knowledge graph is not attached to this process".to_string())
+            })?;
+            let id = arg_string(&args, "id")?;
+            // Absent kind defaults to Other; a present-but-invalid kind (wrong
+            // type or unknown variant) is rejected, like the other enum verbs.
+            let kind = match args.get("kind") {
+                None => crate::knowledge_graph::NodeKind::default(),
+                Some(value) => serde_json::from_value(value.clone())
+                    .map_err(|_| ApiError::BadRequest(format!("invalid node kind: {value}")))?,
+            };
+            let file = arg_optional_string(&args, "file");
+            kg.add_node(crate::knowledge_graph::CodeNode {
+                id: id.clone(),
+                kind,
+                file,
+            });
+            serde_json::json!({ "id": id, "added": true })
+        }
+        "aether.knowledge.add_edge" => {
+            let kg = state.knowledge_graph.as_ref().ok_or_else(|| {
+                ApiError::Internal("knowledge graph is not attached to this process".to_string())
+            })?;
+            let dependent = arg_string(&args, "dependent")?;
+            let dependency = arg_string(&args, "dependency")?;
+            kg.add_edge(&dependent, &dependency);
+            serde_json::json!({ "dependent": dependent, "dependency": dependency, "added": true })
+        }
+        "aether.knowledge.remove_node" => {
+            let kg = state.knowledge_graph.as_ref().ok_or_else(|| {
+                ApiError::Internal("knowledge graph is not attached to this process".to_string())
+            })?;
+            let id = arg_string(&args, "id")?;
+            // Evict a deleted/renamed symbol + every edge touching it, so its
+            // blast radius never routes through a node that no longer exists.
+            let removed = kg.remove_node(&id);
+            serde_json::json!({ "id": id, "removed": removed })
+        }
+        "aether.knowledge.remove_edge" => {
+            let kg = state.knowledge_graph.as_ref().ok_or_else(|| {
+                ApiError::Internal("knowledge graph is not attached to this process".to_string())
+            })?;
+            let dependent = arg_string(&args, "dependent")?;
+            let dependency = arg_string(&args, "dependency")?;
+            let removed = kg.remove_edge(&dependent, &dependency);
+            serde_json::json!({ "dependent": dependent, "dependency": dependency, "removed": removed })
+        }
+        "aether.knowledge.dependencies" => {
+            let kg = state.knowledge_graph.as_ref().ok_or_else(|| {
+                ApiError::Internal("knowledge graph is not attached to this process".to_string())
+            })?;
+            let id = arg_string(&args, "id")?;
+            serde_json::json!({ "id": id, "dependencies": kg.dependencies_of(&id) })
+        }
+        "aether.knowledge.dependents" => {
+            let kg = state.knowledge_graph.as_ref().ok_or_else(|| {
+                ApiError::Internal("knowledge graph is not attached to this process".to_string())
+            })?;
+            let id = arg_string(&args, "id")?;
+            serde_json::json!({ "id": id, "dependents": kg.dependents_of(&id) })
+        }
+        "aether.knowledge.impact" => {
+            let kg = state.knowledge_graph.as_ref().ok_or_else(|| {
+                ApiError::Internal("knowledge graph is not attached to this process".to_string())
+            })?;
+            let id = arg_string(&args, "id")?;
+            // Transitive blast radius: everything that depends on `id`.
+            serde_json::json!({ "id": id, "impact": kg.impact_of(&id) })
+        }
+        "aether.knowledge.graph" => {
+            let kg = state.knowledge_graph.as_ref().ok_or_else(|| {
+                ApiError::Internal("knowledge graph is not attached to this process".to_string())
+            })?;
+            let edges: Vec<serde_json::Value> = kg
+                .edges()
+                .into_iter()
+                .map(|(dependent, dependency)| {
+                    serde_json::json!({ "dependent": dependent, "dependency": dependency })
+                })
+                .collect();
+            serde_json::json!({ "nodes": kg.nodes(), "edges": edges })
         }
         other => {
             return Err(ApiError::BadRequest(format!("unknown MCP tool: {other}")));
