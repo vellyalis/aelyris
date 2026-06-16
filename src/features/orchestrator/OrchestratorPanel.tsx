@@ -43,6 +43,8 @@ const EVENT_LABEL: Record<AgentEventKind, string> = {
   review_required: "review",
   agent_spawned: "spawned",
   worktree_created: "worktree",
+  file_locked: "locked",
+  file_released: "released",
 };
 
 /** Best-effort subject id from an event payload (`{ id }`), for the feed. */

@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use serde_json::json;
 use tauri::{AppHandle, Emitter, State};
@@ -33,7 +34,7 @@ fn broadcast(
 pub fn context_set(
     app: AppHandle,
     manager: State<'_, ContextStoreManager>,
-    bus: State<'_, EventBus>,
+    bus: State<'_, Arc<EventBus>>,
     key: String,
     value: String,
 ) -> Option<DecisionChange> {
@@ -58,7 +59,7 @@ pub fn context_all(manager: State<'_, ContextStoreManager>) -> BTreeMap<String, 
 pub fn context_remove(
     app: AppHandle,
     manager: State<'_, ContextStoreManager>,
-    bus: State<'_, EventBus>,
+    bus: State<'_, Arc<EventBus>>,
     key: String,
 ) -> Option<DecisionChange> {
     let change = manager.remove(&key);

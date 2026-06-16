@@ -21,7 +21,7 @@ fn emit_task_graph(app: &AppHandle, manager: &TaskManager) {
 pub fn task_create(
     app: AppHandle,
     manager: State<'_, Arc<TaskManager>>,
-    bus: State<'_, EventBus>,
+    bus: State<'_, Arc<EventBus>>,
     task: Task,
 ) -> Result<Vec<String>, String> {
     let (id, title) = (task.id.clone(), task.title.clone());
@@ -44,7 +44,7 @@ pub fn task_create(
 pub fn task_transition(
     app: AppHandle,
     manager: State<'_, Arc<TaskManager>>,
-    bus: State<'_, EventBus>,
+    bus: State<'_, Arc<EventBus>>,
     id: String,
     to: TaskStatus,
 ) -> Result<Vec<String>, String> {

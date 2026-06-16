@@ -44,6 +44,22 @@ impl FileOwnership {
         });
     }
 
+    /// Drop the first claim matching `(agent_id, pattern)`; returns whether one
+    /// was removed. Used when a task merges to free its file lane so a later
+    /// task can claim the same paths without a false conflict.
+    pub fn release(&mut self, agent_id: &str, pattern: &str) -> bool {
+        if let Some(pos) = self
+            .claims
+            .iter()
+            .position(|claim| claim.agent_id == agent_id && claim.pattern == pattern)
+        {
+            self.claims.remove(pos);
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn claims(&self) -> &[OwnershipClaim] {
         &self.claims
     }
@@ -186,5 +202,16 @@ mod tests {
         own.assign("a", "src/**");
         own.assign("a", "src/auth/**");
         assert!(own.conflicts().is_empty());
+    }
+
+    #[test]
+    fn release_drops_a_claim_and_frees_the_path() {
+        let mut own = FileOwnership::new();
+        own.assign("a", "src/auth/**");
+        assert_eq!(own.owner_of("src/auth/login.ts"), Some("a"));
+        assert!(own.release("a", "src/auth/**"));
+        assert_eq!(own.owner_of("src/auth/login.ts"), None);
+        // Releasing again is a no-op (already gone).
+        assert!(!own.release("a", "src/auth/**"));
     }
 }

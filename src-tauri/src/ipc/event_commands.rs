@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use tauri::{AppHandle, Emitter, State};
 
 use crate::event_bus::{AgentEvent, AgentEventKind, EventBus, EventChannel};
@@ -20,7 +22,7 @@ pub(crate) fn publish_and_emit(app: &AppHandle, bus: &EventBus, event: AgentEven
 #[tauri::command]
 pub fn event_publish(
     app: AppHandle,
-    bus: State<'_, EventBus>,
+    bus: State<'_, Arc<EventBus>>,
     kind: AgentEventKind,
     channel: Option<EventChannel>,
     payload: serde_json::Value,
@@ -35,12 +37,12 @@ pub fn event_publish(
 
 /// Recent events, oldest first (cockpit feed hydration).
 #[tauri::command]
-pub fn event_recent(bus: State<'_, EventBus>) -> Vec<AgentEvent> {
+pub fn event_recent(bus: State<'_, Arc<EventBus>>) -> Vec<AgentEvent> {
     bus.recent()
 }
 
 /// Recent events on a single channel.
 #[tauri::command]
-pub fn event_by_channel(bus: State<'_, EventBus>, channel: EventChannel) -> Vec<AgentEvent> {
+pub fn event_by_channel(bus: State<'_, Arc<EventBus>>, channel: EventChannel) -> Vec<AgentEvent> {
     bus.by_channel(channel)
 }

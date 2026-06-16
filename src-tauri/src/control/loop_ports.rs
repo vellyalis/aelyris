@@ -10,9 +10,13 @@
 //! docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md (BR9, Acceptance:
 //! end-to-end autonomy).
 
+use std::sync::Mutex;
+
 use crate::agent::AgentManager;
 use crate::control::agent::{start_headless, HeadlessSpawnSpec};
 use crate::control::merge::{MergeIntentStatus, MergeQueue, MergeRequest};
+use crate::event_bus::{AgentEvent, AgentEventKind, EventBus};
+use crate::file_ownership::FileOwnership;
 use crate::git::{perform_merge, MergeOutcome};
 use crate::orchestrator::autonomy::LoopPorts;
 use crate::review::GateResults;
@@ -281,13 +285,28 @@ pub fn run_step(
     tasks: &crate::task::TaskManager,
     cost: &crate::cost::CostManager,
     agents: &AgentManager,
+    ownership: &Mutex<FileOwnership>,
+    events: &EventBus,
     usage: &crate::cost::CostUsage,
     repo_path: String,
     reviewer_id: String,
     gates: std::collections::HashMap<String, GateResults>,
 ) -> crate::orchestrator::autonomy::StepReport {
     let caps = cost.caps();
-    tasks.with_graph_mut(|graph| {
+    // Each task's owner + declared file paths (outputs), captured before the
+    // step so dispatched/merged tasks can claim/free their file lanes.
+    let lanes: std::collections::HashMap<String, (String, Vec<String>)> = tasks.read(|graph| {
+        graph
+            .list()
+            .iter()
+            .filter_map(|task| {
+                task.owner
+                    .as_ref()
+                    .map(|owner| (task.id.clone(), (owner.clone(), task.outputs.clone())))
+            })
+            .collect()
+    });
+    let report = tasks.with_graph_mut(|graph| {
         // Snapshots captured before the step mutates the graph — the adapter
         // never re-locks the manager (std Mutex is not reentrant).
         let info = TaskBranchSnapshot::from_graph(graph);
@@ -303,14 +322,68 @@ pub fn run_step(
             info,
         );
         crate::orchestrator::autonomy::step(graph, &caps, usage, &mut ports)
-    })
+    });
+    apply_file_lanes(ownership, events, &lanes, &report);
+    report
+}
+
+/// Reflect this step's dispatch/merge into the shared File Ownership + coordination
+/// stream (BR5/BR8): a dispatched task claims its declared file paths for its
+/// agent and publishes `FileLocked`; a merged task releases them and publishes
+/// `FileReleased`. This is what lets peers see "who is touching what" and
+/// dispatch non-overlapping lanes. Ownership is mutated under its own lock, then
+/// events are published after releasing it (no nested locks).
+fn apply_file_lanes(
+    ownership: &Mutex<FileOwnership>,
+    events: &EventBus,
+    lanes: &std::collections::HashMap<String, (String, Vec<String>)>,
+    report: &crate::orchestrator::autonomy::StepReport,
+) {
+    let mut to_publish = Vec::new();
+    {
+        let Ok(mut owner) = ownership.lock() else {
+            return;
+        };
+        for id in &report.dispatched {
+            if let Some((agent, paths)) = lanes.get(id) {
+                if paths.is_empty() {
+                    continue;
+                }
+                for path in paths {
+                    owner.assign(agent.clone(), path.clone());
+                }
+                to_publish.push(AgentEvent::new(
+                    AgentEventKind::FileLocked,
+                    serde_json::json!({ "task": id, "agent": agent, "paths": paths }),
+                ));
+            }
+        }
+        for id in &report.merged {
+            if let Some((agent, paths)) = lanes.get(id) {
+                if paths.is_empty() {
+                    continue;
+                }
+                for path in paths {
+                    owner.release(agent, path);
+                }
+                to_publish.push(AgentEvent::new(
+                    AgentEventKind::FileReleased,
+                    serde_json::json!({ "task": id, "agent": agent, "paths": paths }),
+                ));
+            }
+        }
+    }
+    for event in to_publish {
+        events.publish(event);
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::cost::{CostCaps, CostUsage};
-    use crate::orchestrator::autonomy::step;
+    use crate::orchestrator::autonomy::{step, StepReport};
+    use crate::orchestrator::LoopState;
     use crate::task::graph::Task;
     use crate::task::{TaskGraph, TaskStatus};
     use git2::{build::CheckoutBuilder, Repository};
@@ -520,5 +593,61 @@ mod tests {
         assert_eq!(report.merged, ["t"]);
         assert_eq!(graph.get("t").unwrap().status, TaskStatus::Done);
         assert_eq!(repo.refname_to_id("refs/heads/main").unwrap(), feature_tip);
+    }
+
+    fn lane(task: &str, agent: &str, path: &str) -> HashMap<String, (String, Vec<String>)> {
+        let mut lanes = HashMap::new();
+        lanes.insert(
+            task.to_string(),
+            (agent.to_string(), vec![path.to_string()]),
+        );
+        lanes
+    }
+
+    #[test]
+    fn dispatched_task_claims_its_lane_and_publishes_file_locked() {
+        let ownership = Mutex::new(FileOwnership::new());
+        let bus = EventBus::new();
+        let lanes = lane("t", "agent-a", "src/auth/login.ts");
+        let report = StepReport {
+            dispatched: vec!["t".to_string()],
+            merged: vec![],
+            rejected: vec![],
+            state: LoopState::Active,
+        };
+        apply_file_lanes(&ownership, &bus, &lanes, &report);
+        assert_eq!(
+            ownership.lock().unwrap().owner_of("src/auth/login.ts"),
+            Some("agent-a")
+        );
+        let events = bus.recent();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].kind, AgentEventKind::FileLocked);
+        assert_eq!(events[0].payload["agent"], "agent-a");
+    }
+
+    #[test]
+    fn merged_task_releases_its_lane_and_publishes_file_released() {
+        let ownership = Mutex::new(FileOwnership::new());
+        ownership
+            .lock()
+            .unwrap()
+            .assign("agent-a", "src/auth/login.ts");
+        let bus = EventBus::new();
+        let lanes = lane("t", "agent-a", "src/auth/login.ts");
+        let report = StepReport {
+            dispatched: vec![],
+            merged: vec!["t".to_string()],
+            rejected: vec![],
+            state: LoopState::Complete,
+        };
+        apply_file_lanes(&ownership, &bus, &lanes, &report);
+        assert_eq!(
+            ownership.lock().unwrap().owner_of("src/auth/login.ts"),
+            None
+        );
+        let events = bus.recent();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].kind, AgentEventKind::FileReleased);
     }
 }

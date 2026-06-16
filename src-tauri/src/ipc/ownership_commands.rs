@@ -1,4 +1,4 @@
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use tauri::State;
 
@@ -15,7 +15,7 @@ fn lock(state: &Mutex<FileOwnership>) -> std::sync::MutexGuard<'_, FileOwnership
 /// over the tested FileOwnership core.
 #[tauri::command]
 pub fn ownership_assign(
-    state: State<'_, Mutex<FileOwnership>>,
+    state: State<'_, Arc<Mutex<FileOwnership>>>,
     agent_id: String,
     pattern: String,
 ) -> Vec<OwnershipConflict> {
@@ -26,18 +26,21 @@ pub fn ownership_assign(
 
 /// The agent that owns `path` (first matching claim), if any.
 #[tauri::command]
-pub fn ownership_owner_of(state: State<'_, Mutex<FileOwnership>>, path: String) -> Option<String> {
+pub fn ownership_owner_of(
+    state: State<'_, Arc<Mutex<FileOwnership>>>,
+    path: String,
+) -> Option<String> {
     lock(&state).owner_of(&path).map(str::to_string)
 }
 
 /// All current ownership claims.
 #[tauri::command]
-pub fn ownership_claims(state: State<'_, Mutex<FileOwnership>>) -> Vec<OwnershipClaim> {
+pub fn ownership_claims(state: State<'_, Arc<Mutex<FileOwnership>>>) -> Vec<OwnershipClaim> {
     lock(&state).claims().to_vec()
 }
 
 /// All current cross-agent ownership conflicts.
 #[tauri::command]
-pub fn ownership_conflicts(state: State<'_, Mutex<FileOwnership>>) -> Vec<OwnershipConflict> {
+pub fn ownership_conflicts(state: State<'_, Arc<Mutex<FileOwnership>>>) -> Vec<OwnershipConflict> {
     lock(&state).conflicts()
 }

@@ -40,6 +40,12 @@ fn tool_names() -> Vec<&'static str> {
         "aether.task.transition",
         "aether.orchestrator.plan",
         "aether.orchestrator.step",
+        "aether.event.recent",
+        "aether.event.by_channel",
+        "aether.ownership.assign",
+        "aether.ownership.owner_of",
+        "aether.ownership.claims",
+        "aether.ownership.conflicts",
     ]
 }
 
@@ -430,6 +436,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                         "owner": { "type": "string" },
                         "priority": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
                         "dependencies": { "type": "array", "items": { "type": "string" } },
+                        "outputs": { "type": "array", "items": { "type": "string" }, "description": "Declared file lanes claimed on dispatch (FileLocked)." },
                         "sourceBranch": { "type": "string" },
                         "targetBranch": { "type": "string" }
                     },
@@ -497,6 +504,62 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                     },
                     "additionalProperties": false
                 }
+            },
+            {
+                "name": "aether.event.recent",
+                "description": "Subscribe to the fleet coordination stream (BR5): recent events across all channels, oldest first. The orchestrator reads this to see who is doing what — task_created/completed, decision_changed, review_required, agent_spawned, worktree_created, file_locked/released — without screen-scraping.",
+                "safety": "FREE",
+                "inputSchema": { "type": "object", "additionalProperties": false }
+            },
+            {
+                "name": "aether.event.by_channel",
+                "description": "Recent events on one coordination channel.",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["channel"],
+                    "properties": {
+                        "channel": {
+                            "type": "string",
+                            "enum": ["planning", "backend", "frontend", "database", "review", "system"]
+                        }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aether.ownership.assign",
+                "description": "Claim a path pattern for an agent (BR8) so parallel lanes never write the same files; returns the resulting cross-agent conflicts. Patterns: exact (src/main.rs), direct children (src/auth/*), recursive (src/auth/**).",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["agentId", "pattern"],
+                    "properties": { "agentId": { "type": "string" }, "pattern": { "type": "string" } },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aether.ownership.owner_of",
+                "description": "The agent that owns a path (first matching claim), if any.",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["path"],
+                    "properties": { "path": { "type": "string" } },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aether.ownership.claims",
+                "description": "All current file-ownership claims.",
+                "safety": "FREE",
+                "inputSchema": { "type": "object", "additionalProperties": false }
+            },
+            {
+                "name": "aether.ownership.conflicts",
+                "description": "All current cross-agent ownership conflicts (overlapping claims by different agents) — the collisions to resolve before dispatching parallel lanes.",
+                "safety": "FREE",
+                "inputSchema": { "type": "object", "additionalProperties": false }
             }
         ]
     }))
@@ -867,6 +930,11 @@ pub(super) async fn tools_call(
             if let Some(dependencies) = arg_optional_string_array(&args, "dependencies")? {
                 task.dependencies = dependencies;
             }
+            // Declared file lanes (BR8): when the task is dispatched these paths
+            // are claimed for its owner + a FileLocked event is published.
+            if let Some(outputs) = arg_optional_string_array(&args, "outputs")? {
+                task.outputs = outputs;
+            }
             if let (Some(source), Some(target)) = (
                 arg_optional_string(&args, "sourceBranch"),
                 arg_optional_string(&args, "targetBranch"),
@@ -874,9 +942,18 @@ pub(super) async fn tools_call(
                 task = task.with_branches(source, target);
             }
             let id = task.id.clone();
+            let title = task.title.clone();
             let changed = tasks
                 .create(task)
                 .map_err(|err| ApiError::BadRequest(err.to_string()))?;
+            // Publish to the shared coordination stream so the fleet sees the
+            // new work (BR5) — same event the cockpit task_create command emits.
+            if let Some(bus) = state.event_bus.as_ref() {
+                bus.publish(crate::event_bus::AgentEvent::new(
+                    crate::event_bus::AgentEventKind::TaskCreated,
+                    serde_json::json!({ "id": id, "title": title }),
+                ));
+            }
             serde_json::json!({ "id": id, "created": true, "changed": changed })
         }
         "aether.task.list" => {
@@ -897,6 +974,25 @@ pub(super) async fn tools_call(
             let changed = tasks
                 .transition(&id, to)
                 .map_err(|err| ApiError::BadRequest(err.to_string()))?;
+            // Reaching Review/Done publishes the lifecycle event to the shared
+            // stream (BR5), mirroring the cockpit task_transition command.
+            if let Some(bus) = state.event_bus.as_ref() {
+                let kind = match to {
+                    crate::task::TaskStatus::Review => {
+                        Some(crate::event_bus::AgentEventKind::ReviewRequired)
+                    }
+                    crate::task::TaskStatus::Done => {
+                        Some(crate::event_bus::AgentEventKind::TaskCompleted)
+                    }
+                    _ => None,
+                };
+                if let Some(kind) = kind {
+                    bus.publish(crate::event_bus::AgentEvent::new(
+                        kind,
+                        serde_json::json!({ "id": id }),
+                    ));
+                }
+            }
             serde_json::json!({ "id": id, "to": to_raw, "changed": changed })
         }
         "aether.orchestrator.plan" => {
@@ -925,6 +1021,12 @@ pub(super) async fn tools_call(
             let agents = state.agent_manager.as_ref().ok_or_else(|| {
                 ApiError::Internal("agent runtime is not attached to this process".to_string())
             })?;
+            let ownership = state.file_ownership.as_ref().ok_or_else(|| {
+                ApiError::Internal("file ownership is not attached to this process".to_string())
+            })?;
+            let events = state.event_bus.as_ref().ok_or_else(|| {
+                ApiError::Internal("event bus is not attached to this process".to_string())
+            })?;
             let repo_path = arg_string(&args, "repoPath")?;
             let reviewer_id = arg_string(&args, "reviewerId")?;
             let usage = crate::cost::CostUsage {
@@ -941,12 +1043,79 @@ pub(super) async fn tools_call(
                 tasks,
                 cost,
                 agents,
+                ownership,
+                events,
                 &usage,
                 repo_path,
                 reviewer_id,
                 gates,
             );
             serde_json::json!({ "report": report })
+        }
+        "aether.event.recent" => {
+            let bus = state.event_bus.as_ref().ok_or_else(|| {
+                ApiError::Internal("event bus is not attached to this process".to_string())
+            })?;
+            serde_json::json!({ "events": bus.recent() })
+        }
+        "aether.event.by_channel" => {
+            let bus = state.event_bus.as_ref().ok_or_else(|| {
+                ApiError::Internal("event bus is not attached to this process".to_string())
+            })?;
+            let channel_raw = arg_string(&args, "channel")?;
+            let channel: crate::event_bus::EventChannel = serde_json::from_value(
+                serde_json::Value::String(channel_raw.clone()),
+            )
+            .map_err(|_| ApiError::BadRequest(format!("invalid channel `{channel_raw}`")))?;
+            serde_json::json!({ "channel": channel_raw, "events": bus.by_channel(channel) })
+        }
+        "aether.ownership.assign" => {
+            let ownership = state.file_ownership.as_ref().ok_or_else(|| {
+                ApiError::Internal("file ownership is not attached to this process".to_string())
+            })?;
+            let agent_id = arg_string(&args, "agentId")?;
+            let pattern = arg_string(&args, "pattern")?;
+            let conflicts = {
+                let mut owner = ownership
+                    .lock()
+                    .map_err(|_| ApiError::Internal("file ownership lock poisoned".to_string()))?;
+                owner.assign(agent_id.clone(), pattern.clone());
+                owner.conflicts()
+            };
+            serde_json::json!({ "agentId": agent_id, "pattern": pattern, "conflicts": conflicts })
+        }
+        "aether.ownership.owner_of" => {
+            let ownership = state.file_ownership.as_ref().ok_or_else(|| {
+                ApiError::Internal("file ownership is not attached to this process".to_string())
+            })?;
+            let path = arg_string(&args, "path")?;
+            let owner = ownership
+                .lock()
+                .map_err(|_| ApiError::Internal("file ownership lock poisoned".to_string()))?
+                .owner_of(&path)
+                .map(str::to_string);
+            serde_json::json!({ "path": path, "owner": owner })
+        }
+        "aether.ownership.claims" => {
+            let ownership = state.file_ownership.as_ref().ok_or_else(|| {
+                ApiError::Internal("file ownership is not attached to this process".to_string())
+            })?;
+            let claims = ownership
+                .lock()
+                .map_err(|_| ApiError::Internal("file ownership lock poisoned".to_string()))?
+                .claims()
+                .to_vec();
+            serde_json::json!({ "claims": claims })
+        }
+        "aether.ownership.conflicts" => {
+            let ownership = state.file_ownership.as_ref().ok_or_else(|| {
+                ApiError::Internal("file ownership is not attached to this process".to_string())
+            })?;
+            let conflicts = ownership
+                .lock()
+                .map_err(|_| ApiError::Internal("file ownership lock poisoned".to_string()))?
+                .conflicts();
+            serde_json::json!({ "conflicts": conflicts })
         }
         other => {
             return Err(ApiError::BadRequest(format!("unknown MCP tool: {other}")));

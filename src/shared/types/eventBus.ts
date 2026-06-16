@@ -12,6 +12,8 @@ export const AGENT_EVENT_KINDS = [
   "review_required",
   "agent_spawned",
   "worktree_created",
+  "file_locked",
+  "file_released",
 ] as const;
 export type AgentEventKind = (typeof AGENT_EVENT_KINDS)[number];
 

@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use serde_json::json;
 use tauri::{AppHandle, Emitter, State};
@@ -9,6 +9,7 @@ use crate::agent::AgentManager;
 use crate::control::loop_ports::run_step;
 use crate::cost::{CostManager, CostUsage};
 use crate::event_bus::{AgentEvent, AgentEventKind, EventBus};
+use crate::file_ownership::FileOwnership;
 use crate::orchestrator::autonomy::StepReport;
 use crate::orchestrator::{plan, DispatchPlan};
 use crate::review::GateResults;
@@ -48,7 +49,8 @@ pub fn orchestrator_step(
     tasks: State<'_, Arc<TaskManager>>,
     cost: State<'_, Arc<CostManager>>,
     agents: State<'_, AgentManager>,
-    bus: State<'_, EventBus>,
+    bus: State<'_, Arc<EventBus>>,
+    ownership: State<'_, Arc<Mutex<FileOwnership>>>,
     usage: CostUsage,
     repo_path: String,
     reviewer_id: String,
@@ -58,6 +60,8 @@ pub fn orchestrator_step(
         &tasks,
         &cost,
         &agents,
+        &ownership,
+        &bus,
         &usage,
         repo_path,
         reviewer_id,

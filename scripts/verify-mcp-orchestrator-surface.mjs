@@ -41,6 +41,12 @@ const requiredTools = [
   "aether.task.transition",
   "aether.orchestrator.plan",
   "aether.orchestrator.step",
+  "aether.event.recent",
+  "aether.event.by_channel",
+  "aether.ownership.assign",
+  "aether.ownership.owner_of",
+  "aether.ownership.claims",
+  "aether.ownership.conflicts",
 ];
 
 const checks = [
@@ -158,6 +164,22 @@ const checks = [
       agentClaude.includes("pub fn set_task("),
     detail:
       "orchestrator.step drives one real autonomy step over MCP (shared run_step): finished agents (reap_finished) -> review, green verdict -> real merge, ready -> spawn; same loop as Face 1",
+  },
+  {
+    id: "mcp-coordination-stream-shared",
+    ok:
+      apiMcp.includes('"aether.event.recent"') &&
+      apiMcp.includes('"aether.ownership.assign"') &&
+      apiMcp.includes('"aether.ownership.conflicts"') &&
+      api.includes("pub event_bus: Option<Arc<crate::event_bus::EventBus>>") &&
+      api.includes("pub file_ownership: Option<Arc<Mutex<crate::file_ownership::FileOwnership>>>") &&
+      lib.includes(".with_event_bus(event_bus)") &&
+      lib.includes(".with_file_ownership(file_ownership)") &&
+      loopPorts.includes("fn apply_file_lanes(") &&
+      loopPorts.includes("AgentEventKind::FileLocked") &&
+      loopPorts.includes("AgentEventKind::FileReleased"),
+    detail:
+      "orchestrator AI subscribes to the shared Event Bus + assigns/inspects File Ownership over MCP (same instances the cockpit/loop use); dispatch claims file lanes + publishes FileLocked, merge releases + publishes FileReleased (BR5/BR8)",
   },
 ];
 

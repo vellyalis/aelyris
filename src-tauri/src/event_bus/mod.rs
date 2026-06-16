@@ -59,6 +59,10 @@ pub enum AgentEventKind {
     ReviewRequired,
     AgentSpawned,
     WorktreeCreated,
+    /// An agent claimed a file/path lane (dispatch) — peers should avoid it.
+    FileLocked,
+    /// An agent released its file/path lane (task merged) — now free to claim.
+    FileReleased,
 }
 
 impl AgentEventKind {
@@ -70,6 +74,8 @@ impl AgentEventKind {
             Self::ReviewRequired => "review_required",
             Self::AgentSpawned => "agent_spawned",
             Self::WorktreeCreated => "worktree_created",
+            Self::FileLocked => "file_locked",
+            Self::FileReleased => "file_released",
         }
     }
 
@@ -78,11 +84,14 @@ impl AgentEventKind {
         match self {
             Self::TaskCreated | Self::TaskCompleted => EventChannel::Planning,
             Self::ReviewRequired => EventChannel::Review,
-            // Decision changes are project-wide and agent/worktree lifecycle is
-            // infra — both land on the fleet-wide system channel.
-            Self::DecisionChanged | Self::AgentSpawned | Self::WorktreeCreated => {
-                EventChannel::System
-            }
+            // Decision changes are project-wide, agent/worktree lifecycle is
+            // infra, and file lane claims are fleet-wide coordination — all land
+            // on the fleet-wide system channel.
+            Self::DecisionChanged
+            | Self::AgentSpawned
+            | Self::WorktreeCreated
+            | Self::FileLocked
+            | Self::FileReleased => EventChannel::System,
         }
     }
 }
