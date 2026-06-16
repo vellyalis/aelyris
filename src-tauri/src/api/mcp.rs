@@ -51,6 +51,7 @@ fn tool_names() -> Vec<&'static str> {
         "aether.context.all",
         "aether.context.remove",
         "aether.agent.report_activity",
+        "aether.agent.report_blocker",
         "aether.agent.activity",
         "aether.intent.propose",
         "aether.intent.list",
@@ -622,6 +623,21 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                         "action": { "type": "string" },
                         "file": { "type": "string" },
                         "symbol": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aether.agent.report_blocker",
+                "description": "Report that an agent is stuck (BR5): a summary of the blocker and optionally what it needs (a decision, another agent's output, ...). Marks the agent blocked + publishes blocker_raised so a peer/orchestrator can unblock it rather than it stalling silently.",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["sessionId", "summary"],
+                    "properties": {
+                        "sessionId": { "type": "string" },
+                        "summary": { "type": "string" },
+                        "needs": { "type": "string" }
                     },
                     "additionalProperties": false
                 }
@@ -1302,6 +1318,29 @@ pub(super) async fn tools_call(
                 ));
             }
             serde_json::json!({ "sessionId": session_id, "reported": true })
+        }
+        "aether.agent.report_blocker" => {
+            let manager = state.agent_manager.as_ref().ok_or_else(|| {
+                ApiError::Internal("agent runtime is not attached to this process".to_string())
+            })?;
+            let session_id = arg_string(&args, "sessionId")?;
+            let summary = arg_string(&args, "summary")?;
+            let needs = arg_optional_string(&args, "needs");
+            // Best-effort: mark the agent blocked (no-op if the session is gone).
+            let _ = manager.set_activity(&session_id, "blocked".to_string(), None, None);
+            // Surface the blocker on the stream so a peer/orchestrator can
+            // unblock it instead of the agent stalling silently.
+            if let Some(bus) = state.event_bus.as_ref() {
+                bus.publish(crate::event_bus::AgentEvent::new(
+                    crate::event_bus::AgentEventKind::BlockerRaised,
+                    serde_json::json!({
+                        "sessionId": session_id,
+                        "summary": summary,
+                        "needs": needs,
+                    }),
+                ));
+            }
+            serde_json::json!({ "sessionId": session_id, "raised": true })
         }
         "aether.agent.activity" => {
             let manager = state.agent_manager.as_ref().ok_or_else(|| {

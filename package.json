@@ -89,6 +89,7 @@
     "verify:mcp-task-surface-live": "node scripts/verify-mcp-task-surface-live.mjs",
     "verify:autonomy-loop-live": "node scripts/verify-autonomy-loop-live.mjs",
     "verify:coordination-stream-live": "node scripts/verify-coordination-stream-live.mjs",
+    "verify:shared-brain-live": "node scripts/verify-shared-brain-live.mjs",
     "verify:goal:refresh-safe": "node scripts/verify-goal-non-token-refresh.mjs",
     "verify:goal:anti-stall": "node scripts/verify-goal-anti-stall-contract.mjs",
     "verify:goal:git-finalization": "node scripts/verify-git-finalization-readiness.mjs",

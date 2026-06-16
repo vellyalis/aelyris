@@ -69,6 +69,9 @@ pub enum AgentEventKind {
     /// An agent declared an intent (a proposal shared before acting) on the
     /// Intent Bus — the pre-fact signal peers react to.
     IntentDeclared,
+    /// An agent is stuck (the "what am I blocked on" channel) — surfaced so a
+    /// peer or the orchestrator can unblock it rather than it stalling silently.
+    BlockerRaised,
 }
 
 impl AgentEventKind {
@@ -84,6 +87,7 @@ impl AgentEventKind {
             Self::FileReleased => "file_released",
             Self::AgentActivity => "agent_activity",
             Self::IntentDeclared => "intent_declared",
+            Self::BlockerRaised => "blocker_raised",
         }
     }
 
@@ -100,7 +104,8 @@ impl AgentEventKind {
             | Self::WorktreeCreated
             | Self::FileLocked
             | Self::FileReleased
-            | Self::AgentActivity => EventChannel::System,
+            | Self::AgentActivity
+            | Self::BlockerRaised => EventChannel::System,
             // Proposals are deliberation — they belong on the planning channel.
             Self::IntentDeclared => EventChannel::Planning,
         }

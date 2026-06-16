@@ -47,6 +47,7 @@ const EVENT_LABEL: Record<AgentEventKind, string> = {
   file_released: "released",
   agent_activity: "activity",
   intent_declared: "intent",
+  blocker_raised: "blocked",
 };
 
 /** Best-effort subject id from an event payload (`{ id }`), for the feed. */

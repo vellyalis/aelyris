@@ -53,6 +53,7 @@ const requiredTools = [
   "aether.context.all",
   "aether.context.remove",
   "aether.agent.report_activity",
+  "aether.agent.report_blocker",
   "aether.agent.activity",
   "aether.intent.propose",
   "aether.intent.list",
@@ -210,6 +211,7 @@ const checks = [
     id: "mcp-realtime-activity-and-intent",
     ok:
       apiMcp.includes('"aether.agent.report_activity"') &&
+      apiMcp.includes('"aether.agent.report_blocker"') &&
       apiMcp.includes('"aether.agent.activity"') &&
       apiMcp.includes('"aether.intent.propose"') &&
       apiMcp.includes('"aether.intent.list"') &&
@@ -217,6 +219,7 @@ const checks = [
       agentClaude.includes("pub struct AgentActivity") &&
       eventBus.includes("AgentActivity") &&
       eventBus.includes("IntentDeclared") &&
+      eventBus.includes("BlockerRaised") &&
       api.includes("pub intent_bus: Option<Arc<crate::intent::IntentBus>>") &&
       lib.includes(".with_intent_bus(intent_bus)"),
     detail:
