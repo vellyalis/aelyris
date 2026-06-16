@@ -6,6 +6,7 @@ use tauri::{AppHandle, Emitter, State};
 
 use super::event_commands::publish_and_emit;
 use crate::agent::AgentManager;
+use crate::context_store::ContextStoreManager;
 use crate::control::loop_ports::run_step;
 use crate::cost::{CostManager, CostUsage};
 use crate::event_bus::{AgentEvent, AgentEventKind, EventBus};
@@ -51,6 +52,7 @@ pub fn orchestrator_step(
     agents: State<'_, AgentManager>,
     bus: State<'_, Arc<EventBus>>,
     ownership: State<'_, Arc<Mutex<FileOwnership>>>,
+    context: State<'_, Arc<ContextStoreManager>>,
     usage: CostUsage,
     repo_path: String,
     reviewer_id: String,
@@ -62,6 +64,7 @@ pub fn orchestrator_step(
         &agents,
         &ownership,
         &bus,
+        &context,
         &usage,
         repo_path,
         reviewer_id,

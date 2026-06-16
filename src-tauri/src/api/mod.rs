@@ -170,6 +170,10 @@ pub struct ApiState {
     /// one) so the orchestrator AI can assign/inspect path claims + conflicts
     /// over MCP (BR8) and dispatch non-overlapping lanes.
     pub file_ownership: Option<Arc<Mutex<crate::file_ownership::FileOwnership>>>,
+    /// Shared Context Store / project ADR (same instance as the Tauri-managed
+    /// one) so the orchestrator AI reads + writes the decisions every agent
+    /// aligns to over MCP (BR6) — the shared world-model.
+    pub context_store: Option<Arc<crate::context_store::ContextStoreManager>>,
     pub mcp_pending: Arc<Mutex<Vec<McpPendingDecision>>>,
     pub mux_store: Option<Arc<FileMuxSnapshotStore>>,
     pub auth: AuthConfig,
@@ -208,6 +212,7 @@ impl ApiState {
             task_manager: None,
             event_bus: None,
             file_ownership: None,
+            context_store: None,
             mcp_pending: Arc::new(Mutex::new(Vec::new())),
             mux_store: None,
             auth,
@@ -291,6 +296,14 @@ impl ApiState {
         file_ownership: Arc<Mutex<crate::file_ownership::FileOwnership>>,
     ) -> Self {
         self.file_ownership = Some(file_ownership);
+        self
+    }
+
+    pub fn with_context_store(
+        mut self,
+        context_store: Arc<crate::context_store::ContextStoreManager>,
+    ) -> Self {
+        self.context_store = Some(context_store);
         self
     }
 

@@ -115,7 +115,7 @@ pub fn run() {
         .manage(std::sync::Arc::new(LayerRegistry::new()))
         .manage(std::sync::Arc::new(WatcherPool::new()))
         .manage(std::sync::Arc::new(task::TaskManager::new()))
-        .manage(context_store::ContextStoreManager::new())
+        .manage(std::sync::Arc::new(context_store::ContextStoreManager::new()))
         .manage(std::sync::Arc::new(event_bus::EventBus::new()))
         .manage(std::sync::Arc::new(cost::CostManager::new()))
         .manage(failure_policy::FailurePolicy::new())
@@ -542,6 +542,10 @@ pub fn run() {
                     .state::<std::sync::Arc<std::sync::Mutex<file_ownership::FileOwnership>>>()
                     .inner()
                     .clone();
+                let context_store = app
+                    .state::<std::sync::Arc<context_store::ContextStoreManager>>()
+                    .inner()
+                    .clone();
                 let api_state = api::ApiState::new(pty, api::AuthConfig::from_env())
                     .with_mux(mux_manager)
                     .with_agent_manager(agent_manager)
@@ -550,6 +554,7 @@ pub fn run() {
                     .with_task_manager(task_manager)
                     .with_event_bus(event_bus)
                     .with_file_ownership(file_ownership)
+                    .with_context_store(context_store)
                     .with_env_mux_store();
                 app.manage(api_state.clone());
                 let serve_state = api_state.clone();

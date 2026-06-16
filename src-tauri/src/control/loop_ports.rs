@@ -239,15 +239,23 @@ impl Dispatcher for AgentDispatcher<'_> {
 fn spawn_specs(
     graph: &crate::task::TaskGraph,
     repo_path: &str,
+    adr_header: &str,
 ) -> std::collections::HashMap<String, HeadlessSpawnSpec> {
     graph
         .list()
         .into_iter()
         .map(|task| {
-            let prompt = if task.description.trim().is_empty() {
+            let task_prompt = if task.description.trim().is_empty() {
                 task.title.clone()
             } else {
                 format!("{}\n\n{}", task.title, task.description)
+            };
+            // Inject the shared ADR so every agent works from the same
+            // world-model (e.g. it knows auth_method=jwt) rather than blind.
+            let prompt = if adr_header.is_empty() {
+                task_prompt
+            } else {
+                format!("{adr_header}{task_prompt}")
             };
             let cwd = match &task.source_branch {
                 Some(branch) => crate::control::worktree::predict_path(repo_path, branch)
@@ -280,6 +288,22 @@ fn spawn_specs(
 /// pre-step snapshot so the loop never re-locks the graph (which would
 /// deadlock). The caller paces repeated calls (agents run between calls); each
 /// call surfaces the agents finished since the last one.
+/// Render the shared ADR (Context Store decisions) as a prompt header injected
+/// into every dispatched agent, so all agents work from the same world-model.
+/// Empty when there are no decisions.
+fn build_adr_header(adr: &std::collections::BTreeMap<String, String>) -> String {
+    if adr.is_empty() {
+        return String::new();
+    }
+    let mut header =
+        String::from("[Project decisions — align your work to these shared decisions]\n");
+    for (key, value) in adr {
+        header.push_str(&format!("- {key}: {value}\n"));
+    }
+    header.push('\n');
+    header
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn run_step(
     tasks: &crate::task::TaskManager,
@@ -287,12 +311,15 @@ pub fn run_step(
     agents: &AgentManager,
     ownership: &Mutex<FileOwnership>,
     events: &EventBus,
+    context: &crate::context_store::ContextStoreManager,
     usage: &crate::cost::CostUsage,
     repo_path: String,
     reviewer_id: String,
     gates: std::collections::HashMap<String, GateResults>,
 ) -> crate::orchestrator::autonomy::StepReport {
     let caps = cost.caps();
+    // The shared ADR, injected into every agent dispatched this step.
+    let adr_header = build_adr_header(&context.all());
     // Each task's owner + declared file paths (outputs), captured before the
     // step so dispatched/merged tasks can claim/free their file lanes.
     let lanes: std::collections::HashMap<String, (String, Vec<String>)> = tasks.read(|graph| {
@@ -310,7 +337,7 @@ pub fn run_step(
         // Snapshots captured before the step mutates the graph — the adapter
         // never re-locks the manager (std Mutex is not reentrant).
         let info = TaskBranchSnapshot::from_graph(graph);
-        let specs = spawn_specs(graph, &repo_path);
+        let specs = spawn_specs(graph, &repo_path, &adr_header);
         let mut ports = LoopPortsAdapter::new(
             repo_path,
             reviewer_id,
@@ -593,6 +620,18 @@ mod tests {
         assert_eq!(report.merged, ["t"]);
         assert_eq!(graph.get("t").unwrap().status, TaskStatus::Done);
         assert_eq!(repo.refname_to_id("refs/heads/main").unwrap(), feature_tip);
+    }
+
+    #[test]
+    fn adr_header_lists_decisions_and_is_empty_when_none() {
+        assert!(build_adr_header(&std::collections::BTreeMap::new()).is_empty());
+        let mut adr = std::collections::BTreeMap::new();
+        adr.insert("auth_method".to_string(), "jwt".to_string());
+        adr.insert("database".to_string(), "postgresql".to_string());
+        let header = build_adr_header(&adr);
+        assert!(header.contains("auth_method: jwt"));
+        assert!(header.contains("database: postgresql"));
+        assert!(header.ends_with("\n\n"));
     }
 
     fn lane(task: &str, agent: &str, path: &str) -> HashMap<String, (String, Vec<String>)> {

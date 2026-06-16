@@ -33,7 +33,7 @@ fn broadcast(
 #[tauri::command]
 pub fn context_set(
     app: AppHandle,
-    manager: State<'_, ContextStoreManager>,
+    manager: State<'_, Arc<ContextStoreManager>>,
     bus: State<'_, Arc<EventBus>>,
     key: String,
     value: String,
@@ -46,19 +46,19 @@ pub fn context_set(
 }
 
 #[tauri::command]
-pub fn context_get(manager: State<'_, ContextStoreManager>, key: String) -> Option<String> {
+pub fn context_get(manager: State<'_, Arc<ContextStoreManager>>, key: String) -> Option<String> {
     manager.get(&key)
 }
 
 #[tauri::command]
-pub fn context_all(manager: State<'_, ContextStoreManager>) -> BTreeMap<String, String> {
+pub fn context_all(manager: State<'_, Arc<ContextStoreManager>>) -> BTreeMap<String, String> {
     manager.all()
 }
 
 #[tauri::command]
 pub fn context_remove(
     app: AppHandle,
-    manager: State<'_, ContextStoreManager>,
+    manager: State<'_, Arc<ContextStoreManager>>,
     bus: State<'_, Arc<EventBus>>,
     key: String,
 ) -> Option<DecisionChange> {

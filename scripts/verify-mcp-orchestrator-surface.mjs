@@ -47,6 +47,10 @@ const requiredTools = [
   "aether.ownership.owner_of",
   "aether.ownership.claims",
   "aether.ownership.conflicts",
+  "aether.context.set",
+  "aether.context.get",
+  "aether.context.all",
+  "aether.context.remove",
 ];
 
 const checks = [
@@ -180,6 +184,20 @@ const checks = [
       loopPorts.includes("AgentEventKind::FileReleased"),
     detail:
       "orchestrator AI subscribes to the shared Event Bus + assigns/inspects File Ownership over MCP (same instances the cockpit/loop use); dispatch claims file lanes + publishes FileLocked, merge releases + publishes FileReleased (BR5/BR8)",
+  },
+  {
+    id: "mcp-shared-adr-world-model",
+    ok:
+      apiMcp.includes('"aether.context.set"') &&
+      apiMcp.includes('"aether.context.all"') &&
+      apiMcp.includes("AgentEventKind::DecisionChanged") &&
+      api.includes("pub context_store: Option<Arc<crate::context_store::ContextStoreManager>>") &&
+      lib.includes(".with_context_store(context_store)") &&
+      loopPorts.includes("fn build_adr_header(") &&
+      loopPorts.includes("align your work to these shared decisions") &&
+      loopPorts.includes("spawn_specs(graph, &repo_path, &adr_header)"),
+    detail:
+      "orchestrator AI reads/writes the shared ADR (Context Store) over MCP; context.set publishes decision_changed; and the ADR is injected into every dispatched agent's prompt so all agents share the world-model (BR6)",
   },
 ];
 

@@ -46,6 +46,10 @@ fn tool_names() -> Vec<&'static str> {
         "aether.ownership.owner_of",
         "aether.ownership.claims",
         "aether.ownership.conflicts",
+        "aether.context.set",
+        "aether.context.get",
+        "aether.context.all",
+        "aether.context.remove",
     ]
 }
 
@@ -560,6 +564,45 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 "description": "All current cross-agent ownership conflicts (overlapping claims by different agents) — the collisions to resolve before dispatching parallel lanes.",
                 "safety": "FREE",
                 "inputSchema": { "type": "object", "additionalProperties": false }
+            },
+            {
+                "name": "aether.context.set",
+                "description": "Set a project decision in the shared Context Store / ADR (BR6) — e.g. auth_method=jwt, database=postgresql, framework=nextjs — the world-model every agent aligns to. Publishes decision_changed to the fleet stream on a real change. This ADR is injected into every dispatched agent's prompt.",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["key", "value"],
+                    "properties": { "key": { "type": "string" }, "value": { "type": "string" } },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aether.context.get",
+                "description": "Read one project decision from the shared ADR.",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["key"],
+                    "properties": { "key": { "type": "string" } },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aether.context.all",
+                "description": "The full shared ADR (every project decision) — the world-model snapshot.",
+                "safety": "FREE",
+                "inputSchema": { "type": "object", "additionalProperties": false }
+            },
+            {
+                "name": "aether.context.remove",
+                "description": "Remove a project decision from the shared ADR. Publishes decision_changed.",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["key"],
+                    "properties": { "key": { "type": "string" } },
+                    "additionalProperties": false
+                }
             }
         ]
     }))
@@ -1027,6 +1070,9 @@ pub(super) async fn tools_call(
             let events = state.event_bus.as_ref().ok_or_else(|| {
                 ApiError::Internal("event bus is not attached to this process".to_string())
             })?;
+            let context = state.context_store.as_ref().ok_or_else(|| {
+                ApiError::Internal("context store is not attached to this process".to_string())
+            })?;
             let repo_path = arg_string(&args, "repoPath")?;
             let reviewer_id = arg_string(&args, "reviewerId")?;
             let usage = crate::cost::CostUsage {
@@ -1045,6 +1091,7 @@ pub(super) async fn tools_call(
                 agents,
                 ownership,
                 events,
+                context,
                 &usage,
                 repo_path,
                 reviewer_id,
@@ -1116,6 +1163,50 @@ pub(super) async fn tools_call(
                 .map_err(|_| ApiError::Internal("file ownership lock poisoned".to_string()))?
                 .conflicts();
             serde_json::json!({ "conflicts": conflicts })
+        }
+        "aether.context.set" => {
+            let store = state.context_store.as_ref().ok_or_else(|| {
+                ApiError::Internal("context store is not attached to this process".to_string())
+            })?;
+            let key = arg_string(&args, "key")?;
+            let value = arg_string(&args, "value")?;
+            let change = store.set(key, value);
+            // Broadcast to the fleet stream (BR6) — only on a real change, so the
+            // shared world-model update reaches every subscriber once.
+            if let (Some(change), Some(bus)) = (&change, state.event_bus.as_ref()) {
+                bus.publish(crate::event_bus::AgentEvent::new(
+                    crate::event_bus::AgentEventKind::DecisionChanged,
+                    serde_json::to_value(change).unwrap_or(serde_json::Value::Null),
+                ));
+            }
+            serde_json::json!({ "change": change })
+        }
+        "aether.context.get" => {
+            let store = state.context_store.as_ref().ok_or_else(|| {
+                ApiError::Internal("context store is not attached to this process".to_string())
+            })?;
+            let key = arg_string(&args, "key")?;
+            serde_json::json!({ "key": key, "value": store.get(&key) })
+        }
+        "aether.context.all" => {
+            let store = state.context_store.as_ref().ok_or_else(|| {
+                ApiError::Internal("context store is not attached to this process".to_string())
+            })?;
+            serde_json::json!({ "decisions": store.all() })
+        }
+        "aether.context.remove" => {
+            let store = state.context_store.as_ref().ok_or_else(|| {
+                ApiError::Internal("context store is not attached to this process".to_string())
+            })?;
+            let key = arg_string(&args, "key")?;
+            let change = store.remove(&key);
+            if let (Some(change), Some(bus)) = (&change, state.event_bus.as_ref()) {
+                bus.publish(crate::event_bus::AgentEvent::new(
+                    crate::event_bus::AgentEventKind::DecisionChanged,
+                    serde_json::to_value(change).unwrap_or(serde_json::Value::Null),
+                ));
+            }
+            serde_json::json!({ "change": change })
         }
         other => {
             return Err(ApiError::BadRequest(format!("unknown MCP tool: {other}")));
