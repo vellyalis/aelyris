@@ -185,3 +185,27 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.decisionRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  font-size: 10px;
+}
+.decisionKey {
+  flex: 0 0 auto;
+  max-width: 45%;
+  overflow: hidden;
+  color: var(--aether-champagne);
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.decisionValue {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

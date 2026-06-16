@@ -36,7 +36,7 @@ function task(partial: Partial<Task> & { id: string }): Task {
 
 const CAPS = { max_agents: 4, max_tokens: null, max_cost_usd: null, max_runtime_secs: null };
 
-function mockInvoke(tasks: Task[], plan: unknown) {
+function mockInvoke(tasks: Task[], plan: unknown, decisions: Record<string, string> = {}) {
   tauriMocks.invoke.mockImplementation((cmd: string) => {
     switch (cmd) {
       case "task_list":
@@ -45,6 +45,8 @@ function mockInvoke(tasks: Task[], plan: unknown) {
         return Promise.resolve(CAPS);
       case "event_recent":
         return Promise.resolve([]);
+      case "context_all":
+        return Promise.resolve(decisions);
       case "orchestrator_plan":
         return Promise.resolve(plan);
       default:
@@ -126,5 +128,15 @@ describe("OrchestratorPanel", () => {
 
     await waitFor(() => expect(screen.getByText("merged")).toBeTruthy());
     expect(screen.getByText("Activity")).toBeTruthy();
+  });
+
+  it("renders the shared context-store decisions", async () => {
+    mockInvoke([], { to_dispatch: [], state: "complete" }, { "merge-strategy": "auto-ff" });
+
+    render(<OrchestratorPanel />);
+
+    await waitFor(() => expect(screen.getByText("Decisions")).toBeTruthy());
+    expect(screen.getByText("merge-strategy")).toBeTruthy();
+    expect(screen.getByText("auto-ff")).toBeTruthy();
   });
 });

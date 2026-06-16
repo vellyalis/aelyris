@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useContextStore } from "../../shared/hooks/useContextStore";
 import { useCostManager } from "../../shared/hooks/useCostManager";
 import { useEventBus } from "../../shared/hooks/useEventBus";
 import { useOrchestratorPlan } from "../../shared/hooks/useOrchestratorPlan";
@@ -64,6 +65,7 @@ export function OrchestratorPanel() {
   const { tasks } = useTaskGraph();
   const { caps } = useCostManager();
   const { events } = useEventBus();
+  const { decisions } = useContextStore();
   const { fetchPlan } = useOrchestratorPlan();
   const [plan, setPlan] = useState<DispatchPlan | null>(null);
 
@@ -103,6 +105,8 @@ export function OrchestratorPanel() {
         .reverse(),
     [events],
   );
+
+  const decisionEntries = useMemo(() => Object.entries(decisions), [decisions]);
 
   return (
     <div className={styles.panel}>
@@ -153,6 +157,22 @@ export function OrchestratorPanel() {
                 </li>
               );
             })}
+          </ul>
+        </div>
+      )}
+
+      {decisionEntries.length > 0 && (
+        <div className={styles.feed}>
+          <div className={styles.feedHeading}>Decisions</div>
+          <ul className={styles.feedList}>
+            {decisionEntries.map(([key, value]) => (
+              <li key={key} className={styles.decisionRow}>
+                <span className={styles.decisionKey}>{key}</span>
+                <span className={styles.decisionValue} title={value}>
+                  {value}
+                </span>
+              </li>
+            ))}
           </ul>
         </div>
       )}
