@@ -1757,4 +1757,31 @@ mod tests {
             schemas.difference(&catalog).collect::<Vec<_>>(),
         );
     }
+
+    /// The pane-input byte ceiling lives once in `WS_MAX_INPUT_FRAME_BYTES`
+    /// and is enforced at the WS handler, but the advertised JSON schemas
+    /// repeat it as a raw `maxLength` literal in two places. Lock them
+    /// together so editing the const without updating a schema (or
+    /// vice-versa) can never silently make the advertised input bound a lie.
+    #[test]
+    fn input_schema_maxlength_matches_ws_frame_bound() {
+        let Json(listed) = tokio::runtime::Runtime::new()
+            .expect("tokio runtime")
+            .block_on(tools_list());
+        let tools = listed["tools"].as_array().expect("tools is an array");
+        for verb in ["mux.workspace.safeInput", "aether.pane_send_input"] {
+            let tool = tools
+                .iter()
+                .find(|tool| tool["name"].as_str() == Some(verb))
+                .unwrap_or_else(|| panic!("verb {verb} present in tools_list"));
+            let max_length = tool["inputSchema"]["properties"]["text"]["maxLength"]
+                .as_u64()
+                .unwrap_or_else(|| panic!("{verb} text.maxLength is a number"));
+            assert_eq!(
+                max_length,
+                crate::api::WS_MAX_INPUT_FRAME_BYTES as u64,
+                "{verb} schema maxLength drifted from WS_MAX_INPUT_FRAME_BYTES",
+            );
+        }
+    }
 }
