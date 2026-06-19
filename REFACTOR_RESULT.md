@@ -40,9 +40,10 @@ Branch: `refactor/debt-reduction-tierA`（base `codex/release-hardening-quality-
 > 共通理由: 実装すると **gate 赤化 / IPC・DB・security 契約変更 / 進行中 cockpit spec（Codex 所有）との衝突 / 観測挙動変化** のいずれかを招く。
 > 「負債を残さず」= これらを強行して**より大きな負債（壊れたリリースゲート・契約ドリフト）を作らない**こと。owner 判断が要る。
 
-### 🔴 最優先: 実バグ候補 C-22（autonomy ループの永久 Running）
+### ✅ 解決済み（旧🔴最優先）: 実バグ C-22（autonomy ループの永久 Running） — fix `ed48855` / branch `fix/autonomy-merge-conflict-stall`
 - **`src-tauri/src/orchestrator/autonomy.rs:171-178`**: merge 失敗（conflict）が `Review→Running` へ遷移するが、headless agent は既に exit 済み → **worker 無しで永久 Running**。`poll_completions` は二度と発火せず、retry 予算も消費しないためループ全体が stall。
 - 対比: reject 経路（`:180-188`）は同じ状況を `requeue_or_fail(graph, &id, FailureKind::Rework)` で回避（コメント「a headless agent has already exited, so leaving the task Running would strand it」）。
+- **✅ 修正済み**: merge-failure 分岐を `requeue_or_fail(.., Rework)` に変更（reject と対称・rework 予算・最新 ADR で再 dispatch・予算超過で Failed）。回帰テスト2件追加し **mutation で binding 実証**（`Review→Running` に戻すと `rejected []≠["a"]`／`status Running≠Failed` で両テスト落）。ユーザー承認方向（conflict→rework 予算）。cargo lib 789→791 passed。
 - **提案**: merge-failure 分岐も `requeue_or_fail(.., Rework)` にして rework 予算で再 dispatch。**ただし観測挙動が変わり BR9 spec 意図の確認が要る**（conflict は rework 予算で再試行すべきか／別予算か）。→ 別 goal で要修正。
 
 ### 🔴 B-1: clipboard コマンド抽出（gate 結合で凍結）
