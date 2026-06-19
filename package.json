@@ -116,6 +116,7 @@
     "test:e2e:ui": "playwright test --ui",
     "verify:ime": "node scripts/verify-ime.mjs",
     "lint": "biome check src/",
+    "lint:scripts": "biome check scripts/",
     "format": "biome format --write src/"
   },
   "dependencies": {
