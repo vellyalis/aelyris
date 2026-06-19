@@ -1145,7 +1145,7 @@ impl Database {
         limit: usize,
     ) -> Result<Vec<TerminalOutputJournalRow>, String> {
         validate_audit_atom("terminal id", terminal_id)?;
-        let bounded = limit.clamp(1, MAX_TERMINAL_OUTPUT_JOURNAL_ROWS_PER_TERMINAL);
+        let bounded = clamp_limit(limit, MAX_TERMINAL_OUTPUT_JOURNAL_ROWS_PER_TERMINAL);
         let mut stmt = self
             .conn
             .prepare(
@@ -1196,7 +1196,7 @@ impl Database {
         if let Some(entity_id) = entity_id {
             validate_audit_atom("entity id filter", entity_id)?;
         }
-        let bounded = limit.clamp(1, 500);
+        let bounded = clamp_limit(limit, 500);
         let mut stmt = self
             .conn
             .prepare(
@@ -1327,7 +1327,7 @@ impl Database {
         filter: &AuditJournalFilter,
     ) -> Result<Vec<AuditJournalEventRecord>, String> {
         validate_audit_journal_filter(filter)?;
-        let bounded = filter.limit.unwrap_or(100).clamp(1, 500);
+        let bounded = clamp_limit(filter.limit.unwrap_or(100), 500);
         let mut stmt = self
             .conn
             .prepare(
