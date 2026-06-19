@@ -5,9 +5,9 @@ use serde_json::json;
 use tauri::{AppHandle, Emitter, State};
 
 use super::event_commands::publish_and_emit;
-use crate::agent::AgentManager;
 use crate::context_store::ContextStoreManager;
-use crate::control::loop_ports::run_step;
+use crate::control::loop_ports::run_step_visible;
+use crate::control::pane_fleet::PaneFleet;
 use crate::cost::{CostManager, CostUsage};
 use crate::event_bus::{AgentEvent, AgentEventKind, EventBus};
 use crate::file_ownership::FileOwnership;
@@ -36,12 +36,13 @@ pub fn orchestrator_plan(
 
 /// Drive one autonomy step over the live Task Graph (BR9): resolve reviews with
 /// the caller-supplied gate verdicts into a real git merge, move finished agents
-/// (process exit) `Running -> Review`, and dispatch ready tasks by spawning real
-/// headless agents routed to each task owner's model. The loop logic lives in
-/// `control::loop_ports::run_step`, shared with the MCP face; this command adds
-/// the cockpit-side broadcasts: `task-graph-updated`, `orchestrator-step`, and a
-/// `TaskCompleted` event per merged task.
-// Five of the arguments are injected Tauri state (app/tasks/cost/agents/bus);
+/// (PTY exit) `Running -> Review`, and dispatch ready tasks by spawning each in a
+/// **visible PTY pane** (1 pane = 1 agent) routed to its owner's model. The loop
+/// logic lives in `control::loop_ports::run_step_visible`; this command adds the
+/// cockpit-side broadcasts: `task-graph-updated`, `orchestrator-step`, and a
+/// `TaskCompleted` event per merged task. (The MCP face keeps the headless
+/// `run_step`.)
+// Six of the arguments are injected Tauri state (app/tasks/cost/fleet/bus/...);
 // only `usage`/`repo_path`/`reviewer_id`/`gates` are the caller's.
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
@@ -49,7 +50,7 @@ pub fn orchestrator_step(
     app: AppHandle,
     tasks: State<'_, Arc<TaskManager>>,
     cost: State<'_, Arc<CostManager>>,
-    agents: State<'_, AgentManager>,
+    fleet: State<'_, PaneFleet>,
     bus: State<'_, Arc<EventBus>>,
     ownership: State<'_, Arc<Mutex<FileOwnership>>>,
     context: State<'_, Arc<ContextStoreManager>>,
@@ -58,10 +59,10 @@ pub fn orchestrator_step(
     reviewer_id: String,
     gates: HashMap<String, GateResults>,
 ) -> StepReport {
-    let report = run_step(
+    let report = run_step_visible(
         &tasks,
         &cost,
-        &agents,
+        &fleet,
         &ownership,
         &bus,
         &context,

@@ -146,6 +146,15 @@ pub fn run() {
                 })
                 .ok();
 
+            // Visible-pane agent runtime (managed state): the autonomy loop's
+            // cockpit-face dispatch backend. Shares the managed PtyManager so a
+            // loop-dispatched agent runs in a real terminal the operator can
+            // watch (1 pane = 1 agent), with completion sensed from PTY exit.
+            {
+                let pty = app.state::<PtyManager>().inner().clone();
+                app.manage(control::pane_fleet::PaneFleet::new(pty));
+            }
+
             // Initialize database as managed state
             let db_path = db::db_path();
             match Database::open(&db_path) {

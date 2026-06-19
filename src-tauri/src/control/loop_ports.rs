@@ -15,6 +15,7 @@ use std::sync::Mutex;
 use crate::agent::AgentManager;
 use crate::control::agent::{start_headless, HeadlessSpawnSpec};
 use crate::control::merge::{MergeIntentStatus, MergeQueue, MergeRequest};
+use crate::control::pane_fleet::PaneFleet;
 use crate::event_bus::{AgentEvent, AgentEventKind, EventBus};
 use crate::file_ownership::FileOwnership;
 use crate::git::{perform_merge, MergeOutcome};
@@ -252,29 +253,11 @@ fn spawn_specs(
         .list()
         .into_iter()
         .map(|task| {
-            let task_prompt = if task.description.trim().is_empty() {
-                task.title.clone()
-            } else {
-                format!("{}\n\n{}", task.title, task.description)
-            };
-            // Inject the shared ADR so every agent works from the same
-            // world-model (e.g. it knows auth_method=jwt) rather than blind.
-            let prompt = if adr_header.is_empty() {
-                task_prompt
-            } else {
-                format!("{adr_header}{task_prompt}")
-            };
-            let cwd = match &task.source_branch {
-                Some(branch) => crate::control::worktree::predict_path(repo_path, branch)
-                    .to_string_lossy()
-                    .into_owned(),
-                None => repo_path.to_string(),
-            };
             (
                 task.id.clone(),
                 HeadlessSpawnSpec {
-                    prompt,
-                    cwd,
+                    prompt: task_agent_prompt(task, adr_header),
+                    cwd: task_worktree_cwd(task, repo_path),
                     // Route to the task's explicit `model` if set, else its
                     // `owner` (back-compat). `owner` stays the implementer
                     // identity for the reviewer-!=-implementer merge gate.
@@ -285,6 +268,115 @@ fn spawn_specs(
             )
         })
         .collect()
+}
+
+/// The prompt a dispatched agent runs for `task`: title (+ description) prefixed
+/// with the shared ADR header so every agent works from the same world-model
+/// (e.g. it knows auth_method=jwt) rather than blind. Shared by the headless and
+/// visible-pane spec builders so both inject the same prompt.
+fn task_agent_prompt(task: &crate::task::graph::Task, adr_header: &str) -> String {
+    let body = if task.description.trim().is_empty() {
+        task.title.clone()
+    } else {
+        format!("{}\n\n{}", task.title, task.description)
+    };
+    if adr_header.is_empty() {
+        body
+    } else {
+        format!("{adr_header}{body}")
+    }
+}
+
+/// The working directory a dispatched agent runs in: the predicted isolated
+/// worktree for the task's source branch, or the repo root when it has no bound
+/// branch. Shared by the headless and visible-pane spec builders.
+fn task_worktree_cwd(task: &crate::task::graph::Task, repo_path: &str) -> String {
+    match &task.source_branch {
+        Some(branch) => crate::control::worktree::predict_path(repo_path, branch)
+            .to_string_lossy()
+            .into_owned(),
+        None => repo_path.to_string(),
+    }
+}
+
+/// Default visible-pane geometry for a loop-dispatched agent. Wide enough for a
+/// CLI agent's output to read well in a fleet-grid tile; the frontend resizes
+/// the PTY to the real tile size once the pane mounts.
+const PANE_COLS: u16 = 120;
+const PANE_ROWS: u16 = 32;
+
+/// Per-task visible-pane spawn spec captured before the step (the PTY counterpart
+/// of `HeadlessSpawnSpec`): the prompt + worktree cwd + routed model the
+/// `PaneDispatcher` turns into a `claude/codex/gemini` CLI invocation in a fresh
+/// visible terminal.
+#[derive(Debug, Clone)]
+struct PaneSpawnSpec {
+    prompt: String,
+    cwd: String,
+    model: Option<String>,
+    cols: u16,
+    rows: u16,
+}
+
+/// Like `spawn_specs` but for the visible-pane runtime: each ready task becomes a
+/// `PaneSpawnSpec` carrying the same ADR-prefixed prompt, worktree cwd, and
+/// routed model, plus the default pane geometry.
+fn pane_spawn_specs(
+    graph: &crate::task::TaskGraph,
+    repo_path: &str,
+    adr_header: &str,
+) -> std::collections::HashMap<String, PaneSpawnSpec> {
+    graph
+        .list()
+        .into_iter()
+        .map(|task| {
+            (
+                task.id.clone(),
+                PaneSpawnSpec {
+                    prompt: task_agent_prompt(task, adr_header),
+                    cwd: task_worktree_cwd(task, repo_path),
+                    model: task.agent_model(),
+                    cols: PANE_COLS,
+                    rows: PANE_ROWS,
+                },
+            )
+        })
+        .collect()
+}
+
+/// Dispatches a ready task by spawning its implementer agent in a **visible PTY
+/// pane** (1 pane = 1 agent) through the shared `PaneFleet`, and reports finished
+/// panes (PTY exit) back to the loop. The CLI command is resolved from the task's
+/// model + prompt via the same `agent_command_spec` the interactive spawn uses,
+/// so loop-dispatched and hand-spawned agents launch identically. This is the
+/// visible counterpart of `AgentDispatcher`.
+struct PaneDispatcher<'a> {
+    fleet: &'a PaneFleet,
+    specs: std::collections::HashMap<String, PaneSpawnSpec>,
+}
+
+impl Dispatcher for PaneDispatcher<'_> {
+    fn dispatch(&self, task_id: &str, _branch: Option<&str>) -> Result<(), String> {
+        let spec = self
+            .specs
+            .get(task_id)
+            .cloned()
+            .ok_or_else(|| format!("no pane spawn spec for task {task_id}"))?;
+        let model = spec.model.as_deref().unwrap_or("sonnet");
+        let (program, args, env) =
+            crate::agent::interactive::agent_command_spec(model, Some(&spec.prompt))?;
+        self.fleet.spawn(
+            task_id, &program, &args, spec.cols, spec.rows, &spec.cwd, env,
+        )?;
+        Ok(())
+    }
+
+    fn poll_completions(&self) -> Completions {
+        // Same wall-clock hang budget as the headless dispatcher; a pane that
+        // never exits is killed and its task recovered on the timeout budget.
+        self.fleet
+            .poll_completions(AGENT_HANG_TIMEOUT_SECS, now_secs())
+    }
 }
 
 /// Drive one autonomy step over the live Task Graph with the real runtime ports
@@ -314,6 +406,25 @@ fn build_adr_header(adr: &std::collections::BTreeMap<String, String>) -> String 
     header
 }
 
+/// Capture each task's `(owner, declared output paths)` before a step so the
+/// dispatch/merge in the report can claim/free the right file lanes. Shared by
+/// the headless and visible-pane step runners.
+fn capture_lanes(
+    tasks: &crate::task::TaskManager,
+) -> std::collections::HashMap<String, (String, Vec<String>)> {
+    tasks.read(|graph| {
+        graph
+            .list()
+            .iter()
+            .filter_map(|task| {
+                task.owner
+                    .as_ref()
+                    .map(|owner| (task.id.clone(), (owner.clone(), task.outputs.clone())))
+            })
+            .collect()
+    })
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn run_step(
     tasks: &crate::task::TaskManager,
@@ -333,17 +444,7 @@ pub fn run_step(
     let adr_header = build_adr_header(&context.all());
     // Each task's owner + declared file paths (outputs), captured before the
     // step so dispatched/merged tasks can claim/free their file lanes.
-    let lanes: std::collections::HashMap<String, (String, Vec<String>)> = tasks.read(|graph| {
-        graph
-            .list()
-            .iter()
-            .filter_map(|task| {
-                task.owner
-                    .as_ref()
-                    .map(|owner| (task.id.clone(), (owner.clone(), task.outputs.clone())))
-            })
-            .collect()
-    });
+    let lanes = capture_lanes(tasks);
     let report = tasks.with_graph_mut(|graph| {
         // Snapshots captured before the step mutates the graph — the adapter
         // never re-locks the manager (std Mutex is not reentrant).
@@ -366,6 +467,54 @@ pub fn run_step(
                 manager: agents,
                 specs,
             },
+            info,
+        );
+        crate::orchestrator::autonomy::step(graph, &caps, usage, &mut ports)
+    });
+    apply_file_lanes(ownership, events, &lanes, &report);
+    publish_escalations(events, &report);
+    report
+}
+
+/// Drive one autonomy step exactly like [`run_step`], but dispatch each ready
+/// task into a **visible PTY pane** (1 pane = 1 agent) through the shared
+/// `PaneFleet` instead of an invisible headless child. The loop logic, gates,
+/// merge, file lanes, and escalations are identical — only the dispatch backend
+/// differs (`PaneDispatcher` over `PaneFleet` vs. `AgentDispatcher` over
+/// `AgentManager`), and completion is sensed from PTY exit rather than a drained
+/// subprocess. This is the cockpit (Face 1) path so the operator sees each agent
+/// working in its own terminal; the MCP face keeps the headless `run_step`.
+#[allow(clippy::too_many_arguments)]
+pub fn run_step_visible(
+    tasks: &crate::task::TaskManager,
+    cost: &crate::cost::CostManager,
+    fleet: &PaneFleet,
+    ownership: &Mutex<FileOwnership>,
+    events: &EventBus,
+    context: &crate::context_store::ContextStoreManager,
+    usage: &crate::cost::CostUsage,
+    repo_path: String,
+    reviewer_id: String,
+    gates: std::collections::HashMap<String, GateResults>,
+    gate_commands: Option<crate::control::gate_runner::GateCommands>,
+) -> crate::orchestrator::autonomy::StepReport {
+    let caps = cost.caps();
+    let adr_header = build_adr_header(&context.all());
+    let lanes = capture_lanes(tasks);
+    let report = tasks.with_graph_mut(|graph| {
+        let info = TaskBranchSnapshot::from_graph(graph);
+        let specs = pane_spawn_specs(graph, &repo_path, &adr_header);
+        let gate_runner = crate::control::gate_runner::ProcessGateRunner::new(
+            repo_path.clone(),
+            gate_commands.unwrap_or_default(),
+            gates,
+            crate::control::gate_runner::SystemCommandRunner,
+        );
+        let mut ports = LoopPortsAdapter::new(
+            repo_path,
+            reviewer_id,
+            gate_runner,
+            PaneDispatcher { fleet, specs },
             info,
         );
         crate::orchestrator::autonomy::step(graph, &caps, usage, &mut ports)

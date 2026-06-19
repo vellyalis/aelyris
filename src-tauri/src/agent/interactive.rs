@@ -130,6 +130,51 @@ impl AgentCli {
     }
 }
 
+/// A resolved agent CLI launch: `(program, args, environment)`.
+pub type AgentLaunchSpec = (String, Vec<String>, HashMap<String, String>);
+
+/// Resolve a model name to the `(program, args, env)` for spawning that agent's
+/// CLI in an **interactive/visible PTY** (human-readable output, not the headless
+/// `--output-format stream-json` stream). Single source of truth shared by the
+/// interactive spawn command and the autonomy loop's visible-pane dispatcher so
+/// both launch agents identically.
+///
+/// When `initial_prompt` is set the agent starts working immediately on it
+/// (Claude additionally gets `--verbose` for richer monitorable output). Errors
+/// if the model maps to an unknown/unsafe CLI.
+pub fn agent_command_spec(
+    model: &str,
+    initial_prompt: Option<&str>,
+) -> Result<AgentLaunchSpec, String> {
+    let cli = AgentCli::from_model(model);
+    cli.validate()?;
+    let (program, mut args) = cli.program_and_args(Some(model));
+
+    if let Some(prompt) = initial_prompt {
+        match cli {
+            AgentCli::Claude => {
+                // --verbose gives richer output for monitoring; -p starts work.
+                args.push("--verbose".to_string());
+                args.push("-p".to_string());
+                args.push(prompt.to_string());
+            }
+            AgentCli::Codex | AgentCli::Gemini => {
+                args.push("-p".to_string());
+                args.push(prompt.to_string());
+            }
+            AgentCli::Custom(_) => {
+                // No standard way to pass a prompt to a custom CLI.
+            }
+        }
+    }
+
+    let mut env = HashMap::new();
+    env.insert("AETHER_AGENT_CLI".to_string(), format!("{:?}", cli));
+    env.insert("AETHER_AGENT_MODEL".to_string(), model.to_string());
+
+    Ok((program, args, env))
+}
+
 /// Metadata for a live interactive agent session (PTY-based)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InteractiveSessionInfo {
@@ -373,6 +418,46 @@ mod tests {
         let (prog, args) = cli.program_and_args(None);
         assert_eq!(prog, "my-agent");
         assert!(args.is_empty());
+    }
+
+    #[test]
+    fn agent_command_spec_claude_injects_model_verbose_and_prompt() {
+        let (program, args, env) =
+            agent_command_spec("opus", Some("build the login screen")).unwrap();
+        assert_eq!(program, platform_cli_program("claude"));
+        assert_eq!(
+            args,
+            vec![
+                "--model",
+                "opus",
+                "--verbose",
+                "-p",
+                "build the login screen"
+            ]
+        );
+        assert_eq!(
+            env.get("AETHER_AGENT_MODEL").map(String::as_str),
+            Some("opus")
+        );
+        assert_eq!(
+            env.get("AETHER_AGENT_CLI").map(String::as_str),
+            Some("Claude")
+        );
+    }
+
+    #[test]
+    fn agent_command_spec_codex_passes_prompt_without_verbose() {
+        let (program, args, _env) = agent_command_spec("codex-mini", Some("review")).unwrap();
+        assert_eq!(program, platform_cli_program("codex"));
+        // Codex/Gemini get -p prompt but no --model / --verbose flags.
+        assert_eq!(args, vec!["-p", "review"]);
+    }
+
+    #[test]
+    fn agent_command_spec_without_prompt_has_no_prompt_args() {
+        let (_program, args, _env) = agent_command_spec("sonnet", None).unwrap();
+        // Claude with a model but no prompt: just the model flags, nothing to run.
+        assert_eq!(args, vec!["--model", "sonnet"]);
     }
 
     #[test]

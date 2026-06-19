@@ -75,7 +75,11 @@ pub async fn spawn_interactive_agent(
     app.state::<std::sync::Arc<crate::cost::CostManager>>()
         .guard_spawn(active_agents)?;
 
-    let (program, mut args) = cli.program_and_args(Some(model_str));
+    // Resolve the agent's CLI command (program + args + env) from its model and
+    // optional initial prompt — shared with the autonomy loop's visible-pane
+    // dispatcher so interactive and loop-dispatched agents launch identically.
+    let (program, args, env) =
+        crate::agent::interactive::agent_command_spec(model_str, initial_prompt.as_deref())?;
 
     // Validate branch_name if provided (prevent path traversal / shell injection)
     if let Some(ref branch) = branch_name {
@@ -96,35 +100,6 @@ pub async fn spawn_interactive_agent(
         } else {
             (cwd.clone(), None, None, None)
         };
-
-    // If initial_prompt is provided and this is Claude, pass it via -p flag
-    // so Claude starts working immediately (but stays interactive after)
-    if let Some(ref prompt) = initial_prompt {
-        match cli {
-            AgentCli::Claude => {
-                // Use --verbose to get richer output for monitoring
-                args.push("--verbose".to_string());
-                args.push("-p".to_string());
-                args.push(prompt.clone());
-            }
-            AgentCli::Codex => {
-                args.push("-p".to_string());
-                args.push(prompt.clone());
-            }
-            AgentCli::Gemini => {
-                args.push("-p".to_string());
-                args.push(prompt.clone());
-            }
-            AgentCli::Custom(_) => {
-                // No standard way to pass prompt for custom CLIs
-            }
-        }
-    }
-
-    // Environment vars for the agent process
-    let mut env = std::collections::HashMap::new();
-    env.insert("AETHER_AGENT_CLI".to_string(), format!("{:?}", cli));
-    env.insert("AETHER_AGENT_MODEL".to_string(), model_str.to_string());
 
     // Spawn through the long-lived sidecar when available. AI CLI sessions
     // exercise the same IME / clipboard / reconnect boundary as normal panes,
