@@ -2,7 +2,11 @@
 //! Pure module move — no behavior change. Shared helpers remain in `commands`.
 use tauri::{AppHandle, Manager};
 
-use super::commands::*;
+use super::commands::{
+    capture_if_enter, record_audit_event, sanitize_audit_error, save_submitted_command_history,
+    sync_mux_pane_name, sync_mux_pane_role, terminal_ids_async, terminal_write_async,
+    validate_keys_payload, OutputBufferRegistry,
+};
 
 /// Send keystrokes to a specific terminal pane. Mirrors `write_terminal`'s
 /// snapshot hook so Orchestra agents that drive a pane through this IPC
