@@ -2,19 +2,21 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use serde_json::json;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use super::event_commands::publish_and_emit;
 use crate::context_store::ContextStoreManager;
-use crate::control::loop_ports::run_step_visible;
+use crate::control::loop_ports::{run_step_visible, PANE_COLS, PANE_ROWS};
 use crate::control::pane_fleet::PaneFleet;
 use crate::cost::{CostManager, CostUsage};
 use crate::event_bus::{AgentEvent, AgentEventKind, EventBus};
 use crate::file_ownership::FileOwnership;
 use crate::orchestrator::autonomy::StepReport;
 use crate::orchestrator::{plan, DispatchPlan};
+use crate::pty::PtyManager;
 use crate::review::GateResults;
 use crate::task::TaskManager;
+use crate::term::NativeTerminalRegistry;
 
 /// The orchestrator's next scheduling decision for the live task graph: which
 /// tasks to dispatch now (priority-ordered, concurrency-capped against the
@@ -74,6 +76,40 @@ pub fn orchestrator_step(
         // commands are an MCP-face (autonomous) opt-in.
         None,
     );
+
+    // Make each freshly dispatched agent visible: the loop spawned its PTY
+    // through PaneFleet; connect that terminal to the frontend (native engine +
+    // render monitor) and announce it as `AgentSpawned` so the cockpit fleet
+    // grid mounts a live pane per agent (1 pane = 1 agent). Errors here only
+    // affect the picture, never the loop's own completion/recovery.
+    if !report.dispatched.is_empty() {
+        let pty = app.state::<PtyManager>().inner().clone();
+        let native_registry = app.state::<Arc<NativeTerminalRegistry>>().inner().clone();
+        for task_id in &report.dispatched {
+            let Some(terminal_id) = fleet.terminal_of(task_id) else {
+                continue;
+            };
+            let model = tasks
+                .read(|graph| graph.get(task_id).and_then(|task| task.agent_model()))
+                .unwrap_or_else(|| "sonnet".to_string());
+            super::interactive_commands::spawn_loop_pane_render(
+                &app,
+                &pty,
+                native_registry.clone(),
+                terminal_id.clone(),
+                PANE_COLS,
+                PANE_ROWS,
+            );
+            publish_and_emit(
+                &app,
+                &bus,
+                AgentEvent::new(
+                    AgentEventKind::AgentSpawned,
+                    json!({ "taskId": task_id, "terminalId": terminal_id, "model": model }),
+                ),
+            );
+        }
+    }
 
     let _ = app.emit("task-graph-updated", tasks.list());
     let _ = app.emit("orchestrator-step", &report);

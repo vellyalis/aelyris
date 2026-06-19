@@ -275,15 +275,15 @@ fn spawn_specs(
 /// (e.g. it knows auth_method=jwt) rather than blind. Shared by the headless and
 /// visible-pane spec builders so both inject the same prompt.
 fn task_agent_prompt(task: &crate::task::graph::Task, adr_header: &str) -> String {
-    let body = if task.description.trim().is_empty() {
+    let task_prompt = if task.description.trim().is_empty() {
         task.title.clone()
     } else {
         format!("{}\n\n{}", task.title, task.description)
     };
     if adr_header.is_empty() {
-        body
+        task_prompt
     } else {
-        format!("{adr_header}{body}")
+        format!("{adr_header}{task_prompt}")
     }
 }
 
@@ -301,9 +301,10 @@ fn task_worktree_cwd(task: &crate::task::graph::Task, repo_path: &str) -> String
 
 /// Default visible-pane geometry for a loop-dispatched agent. Wide enough for a
 /// CLI agent's output to read well in a fleet-grid tile; the frontend resizes
-/// the PTY to the real tile size once the pane mounts.
-const PANE_COLS: u16 = 120;
-const PANE_ROWS: u16 = 32;
+/// the PTY to the real tile size once the pane mounts. `pub(crate)` so the IPC
+/// face creates the native engine session at the same size the PTY was spawned.
+pub(crate) const PANE_COLS: u16 = 120;
+pub(crate) const PANE_ROWS: u16 = 32;
 
 /// Per-task visible-pane spawn spec captured before the step (the PTY counterpart
 /// of `HeadlessSpawnSpec`): the prompt + worktree cwd + routed model the

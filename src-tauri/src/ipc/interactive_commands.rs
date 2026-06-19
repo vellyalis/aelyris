@@ -397,6 +397,109 @@ fn emit_interactive_sessions(app: &AppHandle, mgr: &InteractiveSessionManager) {
     }
 }
 
+/// Feed one PTY output chunk into the native terminal engine for `id` and emit
+/// the resulting grid diff + any OSC 133 prompt marks. Shared by the interactive
+/// agent monitor and the autonomy loop's visible-pane renderer so both render a
+/// PTY through the same engine path (`term:diff-{id}` + `term:prompt-mark-{id}`).
+fn emit_native_advance(
+    app: &AppHandle,
+    native_registry: &NativeTerminalRegistry,
+    id: &str,
+    data: &[u8],
+) {
+    let advance_result = native_registry.advance(id, data);
+    if let Some(diff) = advance_result.diff {
+        let _ = app.emit(&format!("term:diff-{}", id), diff);
+    }
+    for mark in advance_result.new_marks {
+        persist_prompt_mark_exit_code(app, id, &mark);
+        let _ = app.emit(&format!("term:prompt-mark-{}", id), mark);
+    }
+}
+
+/// Connect an autonomy-loop-dispatched agent terminal (Face 1) to the frontend
+/// so the cockpit's fleet grid can mount it as a live pane. The loop spawns the
+/// PTY through `PaneFleet`; this wires that terminal exactly like an interactive
+/// agent — a native engine session + a render monitor emitting `term:diff-{id}`
+/// and `pty-exit-{id}`. Unlike `run_output_monitor` it does not parse status/cost
+/// or touch the interactive session manager (a loop pane is owned by the loop,
+/// not the interactive fleet); it is purely the render bridge.
+pub(crate) fn spawn_loop_pane_render(
+    app: &AppHandle,
+    pty: &PtyManager,
+    native_registry: Arc<NativeTerminalRegistry>,
+    terminal_id: String,
+    cols: u16,
+    rows: u16,
+) {
+    if let Err(e) = native_registry.create(&terminal_id, cols, rows) {
+        log::warn!("native engine create failed for loop pane {terminal_id}: {e}");
+    }
+    let rx = match pty.subscribe_output(&terminal_id) {
+        Ok(rx) => rx,
+        Err(err) => {
+            log::warn!("loop pane {terminal_id} output subscribe failed: {err}");
+            return;
+        }
+    };
+
+    // Per-PTY flush ticker (matches the interactive pipeline) so the last
+    // unsettled diff isn't stuck inside the coalesce window.
+    let flush_alive = Arc::new(AtomicBool::new(true));
+    {
+        let alive = flush_alive.clone();
+        let flush_registry = native_registry.clone();
+        let flush_handle = app.clone();
+        let flush_id = terminal_id.clone();
+        std::thread::spawn(move || {
+            while alive.load(Ordering::Acquire) {
+                std::thread::sleep(std::time::Duration::from_millis(33));
+                if let Some(diff) = flush_registry.flush(&flush_id) {
+                    let _ = flush_handle.emit(&format!("term:diff-{}", flush_id), diff);
+                }
+            }
+        });
+    }
+
+    let app_handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        run_loop_pane_monitor(rx, &terminal_id, &app_handle, native_registry, flush_alive).await;
+    });
+}
+
+/// Render-only monitor for a loop pane: pumps PTY output into the native engine
+/// (grid diffs + prompt marks), mirrors raw bytes as `pty-output-{id}`, and on
+/// exit emits `pty-exit-{id}` and tears down the engine session. The loop's own
+/// `PaneFleet` waiter owns completion/recovery — this only drives the picture.
+async fn run_loop_pane_monitor(
+    mut rx: broadcast::Receiver<Vec<u8>>,
+    terminal_id: &str,
+    app: &AppHandle,
+    native_registry: Arc<NativeTerminalRegistry>,
+    flush_alive: Arc<AtomicBool>,
+) {
+    loop {
+        match rx.recv().await {
+            Ok(chunk) => {
+                let _ = app.emit(&format!("pty-output-{}", terminal_id), chunk.clone());
+                emit_native_advance(app, &native_registry, terminal_id, &chunk);
+            }
+            Err(broadcast::error::RecvError::Lagged(n)) => {
+                log::warn!(
+                    "loop pane {} monitor lagged, dropped {} chunks",
+                    terminal_id,
+                    n
+                );
+                continue;
+            }
+            Err(broadcast::error::RecvError::Closed) => break,
+        }
+    }
+    flush_alive.store(false, Ordering::Release);
+    native_registry.remove(terminal_id);
+    let _ = app.emit(&format!("pty-exit-{}", terminal_id), ());
+}
+
 /// Reads PTY output from the broadcast channel, applies CLI parser, emits
 /// status updates. Also emits the raw output as `pty-output-{id}` and feeds
 /// the native engine so TerminalCanvas can render the agent PTY.
@@ -424,14 +527,7 @@ async fn run_output_monitor(
                 // Fan out to native engine for grid-based rendering, plus
                 // OSC 133 prompt marks. Diffs are 60fps-coalesced; prompt
                 // marks are emitted immediately.
-                let advance_result = native_registry.advance(session_id, data);
-                if let Some(diff) = advance_result.diff {
-                    let _ = app.emit(&format!("term:diff-{}", session_id), diff);
-                }
-                for mark in advance_result.new_marks {
-                    persist_prompt_mark_exit_code(app, session_id, &mark);
-                    let _ = app.emit(&format!("term:prompt-mark-{}", session_id), mark);
-                }
+                emit_native_advance(app, &native_registry, session_id, data);
 
                 // Parse for status/cost (strip ANSI first)
                 if let Ok(text) = std::str::from_utf8(data) {
