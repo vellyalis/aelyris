@@ -47,6 +47,7 @@ const requiredTools = [
   "aether.task.transition",
   "aether.orchestrator.plan",
   "aether.orchestrator.step",
+  "aether.supervisor.health",
   "aether.event.recent",
   "aether.event.by_channel",
   "aether.ownership.assign",
@@ -224,7 +225,7 @@ const checks = [
       loopPorts.includes("format!(\"{adr_header}{task_prompt}\")") &&
       // Rejected/stale work is re-dispatched (with the fresh ADR) via the shared
       // requeue path on the rework budget, not stranded in Running with no worker.
-      autonomy.includes("requeue_or_fail(graph, &id, FailureKind::Rework)") &&
+      autonomy.includes("requeue_or_escalate(graph, &id, FailureKind::Rework") &&
       autonomy.includes("ReviewVerdict::Reject"),
     detail:
       "a mid-flight decision converges: every (re-)dispatch injects the current ADR (build_adr_header from context.all()), and review-rejected stale work is re-dispatched for rework rather than stranded (BR6, ③ context sync)",

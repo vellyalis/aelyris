@@ -40,6 +40,7 @@ fn tool_names() -> Vec<&'static str> {
         "aether.task.transition",
         "aether.orchestrator.plan",
         "aether.orchestrator.step",
+        "aether.supervisor.health",
         "aether.event.recent",
         "aether.event.by_channel",
         "aether.ownership.assign",
@@ -489,6 +490,16 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
             {
                 "name": "aether.orchestrator.plan",
                 "description": "Read the orchestrator's next scheduling decision for the live Task Graph: which tasks to dispatch now (priority-ordered, concurrency-capped) and the loop state (active/complete/stalled/halted_by_budget). Read-only.",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": { "activeAgents": { "type": "integer", "minimum": 0 } },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aether.supervisor.health",
+                "description": "Read the Architect's health assessment of the live autonomy loop, one level above the orchestrator: a verdict (healthy/degraded/stuck), task-status counts, budget pressure, and machine-readable directives (re_decompose a given-up task, unblock a blocked one, halt on budget) for the super-supervisor to act on. Read-only.",
                 "safety": "FREE",
                 "inputSchema": {
                     "type": "object",
@@ -1245,6 +1256,22 @@ pub(super) async fn tools_call(
             };
             let plan = tasks.read(|graph| crate::orchestrator::plan(graph, &caps, &usage));
             serde_json::json!({ "plan": plan })
+        }
+        "aether.supervisor.health" => {
+            let tasks = state.task_manager.as_ref().ok_or_else(|| {
+                ApiError::Internal("task graph is not attached to this process".to_string())
+            })?;
+            let caps = state
+                .cost_manager
+                .as_ref()
+                .map(|cost| cost.caps())
+                .unwrap_or_default();
+            let usage = crate::cost::CostUsage {
+                active_agents: arg_usize(&args, "activeAgents", 0)?,
+                ..Default::default()
+            };
+            let health = tasks.read(|graph| crate::supervisor::assess(graph, &caps, &usage));
+            serde_json::json!({ "health": health })
         }
         "aether.orchestrator.step" => {
             let tasks = state.task_manager.as_ref().ok_or_else(|| {
