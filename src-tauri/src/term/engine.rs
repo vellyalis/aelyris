@@ -224,8 +224,7 @@ impl TermEngine {
                     continue;
                 }
                 ImageParseStep::Incomplete => {
-                    self.parser.advance(&mut self.term, &combined[consumed..i]);
-                    self.osc_pending = combined[i..].to_vec();
+                    self.stash_pending(&combined, consumed, i);
                     return new_marks;
                 }
                 ImageParseStep::None => {} // fall through to OSC 1338
@@ -246,8 +245,7 @@ impl TermEngine {
                     continue;
                 }
                 ChunkedOscParseStep::Incomplete => {
-                    self.parser.advance(&mut self.term, &combined[consumed..i]);
-                    self.osc_pending = combined[i..].to_vec();
+                    self.stash_pending(&combined, consumed, i);
                     return new_marks;
                 }
                 ChunkedOscParseStep::None => {} // fall through to OSC 133
@@ -276,8 +274,7 @@ impl TermEngine {
                 ParseStep::Incomplete => {
                     // Flush up-to-but-not-including this ESC. Stash the
                     // tail for the next advance.
-                    self.parser.advance(&mut self.term, &combined[consumed..i]);
-                    self.osc_pending = combined[i..].to_vec();
+                    self.stash_pending(&combined, consumed, i);
                     return new_marks;
                 }
                 ParseStep::None => {
@@ -292,6 +289,16 @@ impl TermEngine {
             self.parser.advance(&mut self.term, &combined[consumed..]);
         }
         new_marks
+    }
+
+    /// Flush the bytes consumed so far into the parser, then stash the
+    /// unterminated escape tail back into `osc_pending` so the next `advance`
+    /// re-scans it. Shared verbatim by the three `Incomplete` escape-parse
+    /// branches (image / chunked-OSC / OSC 133) so the flush+stash logic has a
+    /// single home.
+    fn stash_pending(&mut self, combined: &[u8], consumed: usize, i: usize) {
+        self.parser.advance(&mut self.term, &combined[consumed..i]);
+        self.osc_pending = combined[i..].to_vec();
     }
 
     /// Read-only access to the inline-image registry. Sprint 2/3 surfaces
