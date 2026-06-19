@@ -261,6 +261,57 @@ impl AgentManager {
         outcome
     }
 
+    /// Hang detector (BR9): kill and report any session whose worker has run past
+    /// `timeout_secs` of wall-clock without exiting. A hung agent never exits, so
+    /// it never appears in `reap()` and would otherwise wedge its task in
+    /// `Running` forever; this kills it and surfaces the task so the loop can
+    /// reassign it on the bounded timeout budget. The killed session is marked
+    /// `failed` so it is reported at most once and is visible in the fleet. `now`
+    /// is the current Unix epoch (seconds), injected so the boundary is testable.
+    pub fn reap_timed_out(&self, timeout_secs: u64, now: u64) -> Vec<String> {
+        let mut timed_out = Vec::new();
+        let Ok(mut sessions) = self.sessions.lock() else {
+            return timed_out;
+        };
+        for proc in sessions.values_mut() {
+            // Already finished/reaped (or previously timed out) -> leave it.
+            if proc.info.status == "done" || proc.info.status == "failed" {
+                continue;
+            }
+            // Only loop-dispatched agents (task-bound) are subject to the loop's
+            // hang budget. Interactive/chat sessions (no task_id) are the user's,
+            // not the loop's — never kill them on this timer.
+            let Some(task_id) = proc.info.task_id.clone() else {
+                continue;
+            };
+            // Still within its wall-clock budget -> healthy.
+            if now.saturating_sub(proc.info.started_at) <= timeout_secs {
+                continue;
+            }
+            // Past the budget but it already exited this tick -> let reap()
+            // classify it by exit code instead of forcing a timeout.
+            if matches!(proc.child.try_wait(), Ok(Some(_))) {
+                continue;
+            }
+            // Genuinely hung: kill the process tree in place. We already hold the
+            // sessions lock, so we must NOT call stop_session (it re-locks the
+            // non-reentrant std Mutex -> deadlock).
+            let pid = proc.child.id();
+            if let Err(e) = kill_process_tree(pid) {
+                log::warn!(
+                    "timeout taskkill failed for PID {}: {}. Falling back.",
+                    pid,
+                    e
+                );
+                let _ = proc.child.kill();
+            }
+            let _ = proc.child.wait();
+            proc.info.status = "failed".to_string();
+            timed_out.push(task_id);
+        }
+        timed_out
+    }
+
     /// Reap a naturally exited child while keeping its session metadata visible.
     pub fn reap_session(&self, id: &str) -> Result<(), String> {
         let mut sessions = self.lock_sessions()?;
@@ -385,6 +436,37 @@ mod reap_tests {
             .expect("spawn cmd")
     }
 
+    fn insert_untracked(mgr: &AgentManager, id: &str, child: Child) {
+        let info = AgentSessionInfo {
+            id: id.to_string(),
+            status: "running".to_string(),
+            model: "test".to_string(),
+            prompt: String::new(),
+            cwd: String::new(),
+            cost: 0.0,
+            tokens_used: 0,
+            started_at: 0,
+            task_id: None,
+            current_activity: None,
+        };
+        mgr.sessions
+            .lock()
+            .unwrap()
+            .insert(id.to_string(), AgentProcess { child, info });
+    }
+
+    fn spawn_sleeper() -> Child {
+        // Stays alive long enough to be observed as "hung". The test kills it via
+        // reap_timed_out, so the wall-clock is never actually waited out. `ping`
+        // ignores stdin, so it does not exit early under redirected stdio.
+        crate::process::hidden_command("cmd")
+            .args(["/c", "ping", "127.0.0.1", "-n", "30"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn sleeper")
+    }
+
     fn insert(mgr: &AgentManager, id: &str, task_id: &str, child: Child) {
         let info = AgentSessionInfo {
             id: id.to_string(),
@@ -441,5 +523,67 @@ mod reap_tests {
             .collect();
         assert_eq!(statuses["s-ok"], "done");
         assert_eq!(statuses["s-bad"], "failed");
+    }
+
+    /// Behavioral proof of the hang detector the loop relies on to recover a
+    /// worker that never exits: `reap_timed_out` must kill + report ONLY sessions
+    /// past their wall-clock budget, mark them terminally, and never double-report.
+    /// `now` is injected so the budget boundary is deterministic.
+    #[test]
+    fn reap_timed_out_kills_only_sessions_past_their_budget() {
+        let mgr = AgentManager::new();
+        insert(&mgr, "s1", "task-1", spawn_sleeper()); // started_at = 0
+
+        // Within budget (elapsed 5s <= 10s): healthy, untouched.
+        assert!(
+            mgr.reap_timed_out(10, 5).is_empty(),
+            "a session within its runtime budget is not timed out"
+        );
+        let running = mgr
+            .list_sessions()
+            .into_iter()
+            .find(|s| s.id == "s1")
+            .unwrap();
+        assert_eq!(running.status, "running");
+
+        // Past budget (elapsed 100s > 10s): killed, its task reported for recovery.
+        assert_eq!(
+            mgr.reap_timed_out(10, 100),
+            ["task-1"],
+            "a hung session past its budget is killed and its task reported"
+        );
+        let killed = mgr
+            .list_sessions()
+            .into_iter()
+            .find(|s| s.id == "s1")
+            .unwrap();
+        assert_eq!(
+            killed.status, "failed",
+            "a timed-out session is marked terminally"
+        );
+
+        // Idempotent: a killed session is never reported twice.
+        assert!(
+            mgr.reap_timed_out(10, 200).is_empty(),
+            "a killed session is not reported again"
+        );
+
+        // A session with no task_id (interactive/chat — not loop-managed) is
+        // never killed by the hang timer, even far past the budget.
+        insert_untracked(&mgr, "interactive", spawn_sleeper());
+        assert!(
+            mgr.reap_timed_out(10, 1_000_000).is_empty(),
+            "an untracked (no task_id) session is not timed out by the loop"
+        );
+        assert_eq!(
+            mgr.list_sessions()
+                .into_iter()
+                .find(|s| s.id == "interactive")
+                .unwrap()
+                .status,
+            "running",
+            "an interactive session is left running"
+        );
+        let _ = mgr.stop_session("interactive");
     }
 }

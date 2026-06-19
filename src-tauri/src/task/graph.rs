@@ -62,6 +62,12 @@ pub struct Task {
     /// forever.
     #[serde(default)]
     pub rework_attempts: u32,
+    /// How many times this task's worker has TIMED OUT (hung past the wall-clock
+    /// budget, killed, and reassigned). Bounded independently from crash and
+    /// rework so a flaky-but-slow path cannot loop forever, and a hang escalates
+    /// distinctly from a crash. See BR9 / failure policy.
+    #[serde(default)]
+    pub timeout_attempts: u32,
 }
 
 impl Task {
@@ -82,6 +88,7 @@ impl Task {
             target_branch: None,
             crash_attempts: 0,
             rework_attempts: 0,
+            timeout_attempts: 0,
         }
     }
 
@@ -198,6 +205,19 @@ impl TaskGraph {
             Some(task) => {
                 task.rework_attempts += 1;
                 task.rework_attempts
+            }
+            None => 0,
+        }
+    }
+
+    /// Record one more wall-clock TIMEOUT (hung worker killed + reassigned) for a
+    /// task and return the new timeout count. Bounds hang recovery independently
+    /// from crash and rework. Returns 0 for an unknown task.
+    pub fn record_timeout(&mut self, id: &str) -> u32 {
+        match self.tasks.get_mut(id) {
+            Some(task) => {
+                task.timeout_attempts += 1;
+                task.timeout_attempts
             }
             None => 0,
         }

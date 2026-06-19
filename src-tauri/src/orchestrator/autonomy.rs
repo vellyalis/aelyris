@@ -29,6 +29,13 @@ pub const MAX_CRASH_ATTEMPTS: u32 = 2;
 /// budget exhausting fails the task so a poison task cannot loop forever.
 pub const MAX_REWORK_ATTEMPTS: u32 = 2;
 
+/// Maximum times a task's worker may HANG (exceed the wall-clock budget, be
+/// killed, and reassigned) before it is left `Failed`. Independent from crash
+/// and rework so a slow-but-recoverable path is bounded without stealing the
+/// other budgets, and a hang can escalate distinctly (failure policy: a timeout
+/// escalates to the planner, a crash notifies the reviewer).
+pub const MAX_TIMEOUT_ATTEMPTS: u32 = 2;
+
 /// Why a task is being requeued — selects which independent retry budget applies.
 #[derive(Clone, Copy)]
 enum FailureKind {
@@ -36,6 +43,8 @@ enum FailureKind {
     Crash,
     /// Its branch failed review.
     Rework,
+    /// Its worker hung past the wall-clock budget and was killed.
+    Timeout,
 }
 
 /// Split result of a completion poll (BR9 recovery): which dispatched agents
@@ -46,6 +55,11 @@ enum FailureKind {
 pub struct Completions {
     pub succeeded: Vec<String>,
     pub failed: Vec<String>,
+    /// Dispatched agents that HUNG past the wall-clock budget and were killed
+    /// since the last tick (-> recovery/reassign on the timeout budget). A hung
+    /// worker never exits, so it is surfaced here by the adapter (which owns the
+    /// session clock + the kill) rather than by the exit-based `failed` split.
+    pub timed_out: Vec<String>,
 }
 
 /// Runtime side effects the loop drives. Real impl: LLM-spawned agents, PTY
@@ -80,10 +94,11 @@ pub struct StepReport {
     pub dispatched: Vec<String>,
     pub merged: Vec<String>,
     pub rejected: Vec<String>,
-    /// Tasks whose agent crashed this step and were reassigned (re-dispatchable
-    /// again) rather than lost. A task that exhausts its retry budget is not
-    /// listed here — it is left `Failed` in the graph (visible via the task list
-    /// and the loop `state`). See BR9 recovery.
+    /// Tasks whose worker died this step (crashed with a non-zero exit, or hung
+    /// past the wall-clock budget and was killed) and were reassigned
+    /// (re-dispatchable again) rather than lost. A task that exhausts its retry
+    /// budget is not listed here — it is left `Failed` in the graph (visible via
+    /// the task list and the loop `state`). See BR9 recovery.
     #[serde(default)]
     pub recovered: Vec<String>,
     pub state: LoopState,
@@ -112,6 +127,7 @@ fn requeue_or_fail(graph: &mut TaskGraph, id: &str, kind: FailureKind) -> bool {
     let (attempts, max) = match kind {
         FailureKind::Crash => (graph.record_crash(id), MAX_CRASH_ATTEMPTS),
         FailureKind::Rework => (graph.record_rework(id), MAX_REWORK_ATTEMPTS),
+        FailureKind::Timeout => (graph.record_timeout(id), MAX_TIMEOUT_ATTEMPTS),
     };
     if attempts < max {
         let _ = graph.transition(id, TaskStatus::Pending);
@@ -154,6 +170,18 @@ pub fn step(
             continue;
         }
         if requeue_or_fail(graph, &id, FailureKind::Crash) {
+            recovered.push(id);
+        }
+    }
+    for id in completions.timed_out {
+        // A worker that hung past the wall-clock budget was killed by the adapter
+        // (a hang never exits, so it never appears in `failed`). Recover its task
+        // on the independent timeout budget — re-dispatched with the current ADR,
+        // or `Failed` past the budget — so a stuck agent can never wedge the loop.
+        if graph.get(&id).map(|task| task.status) != Some(TaskStatus::Running) {
+            continue;
+        }
+        if requeue_or_fail(graph, &id, FailureKind::Timeout) {
             recovered.push(id);
         }
     }
@@ -342,6 +370,9 @@ mod tests {
         /// Tasks reported as crashed (non-zero exit) on the next poll — models a
         /// dead worker the loop must recover.
         pending_fail: Vec<String>,
+        /// Tasks reported as hung-and-killed on the next poll — models a worker
+        /// that exceeded the wall-clock budget and was killed by the adapter.
+        pending_timeout: Vec<String>,
     }
 
     impl FakePorts {
@@ -356,6 +387,7 @@ mod tests {
                 auto_finish: false,
                 pending_finish: Vec::new(),
                 pending_fail: Vec::new(),
+                pending_timeout: Vec::new(),
             }
         }
     }
@@ -380,6 +412,7 @@ mod tests {
             Completions {
                 succeeded: std::mem::take(&mut self.pending_finish),
                 failed: std::mem::take(&mut self.pending_fail),
+                timed_out: std::mem::take(&mut self.pending_timeout),
             }
         }
         fn gate(&mut self, task_id: &str) -> GateResults {
@@ -668,6 +701,50 @@ mod tests {
         assert_eq!(g.get("a").unwrap().status, TaskStatus::Running); // re-dispatched
         assert_eq!(g.get("a").unwrap().crash_attempts, 1);
         assert_eq!(g.get("a").unwrap().rework_attempts, 1);
+    }
+
+    #[test]
+    fn timeout_redispatches_for_recovery_not_stranded() {
+        let mut g = TaskGraph::new();
+        g.add(Task::new("a", "A")).unwrap();
+        g.recompute_ready();
+        g.transition("a", TaskStatus::Running).unwrap();
+        let mut ports = FakePorts::new();
+        // The adapter killed a worker hung past its budget and surfaces its task.
+        ports.pending_timeout = vec!["a".to_string()];
+        let report = step(&mut g, &caps(4), &CostUsage::default(), &mut ports);
+        // Recovered on the timeout budget and re-dispatched the same tick — NOT
+        // stranded in Running with no live agent (a hang never exits, so without
+        // this the task would wedge forever).
+        assert_eq!(report.recovered, ["a"]);
+        assert!(report.dispatched.contains(&"a".to_string()));
+        assert_eq!(g.get("a").unwrap().status, TaskStatus::Running);
+        assert_eq!(g.get("a").unwrap().timeout_attempts, 1);
+        // A timeout draws on its own budget, not crash or rework.
+        assert_eq!(g.get("a").unwrap().crash_attempts, 0);
+        assert_eq!(g.get("a").unwrap().rework_attempts, 0);
+    }
+
+    #[test]
+    fn repeated_timeouts_exhaust_retries_then_fail() {
+        let mut g = TaskGraph::new();
+        g.add(Task::new("a", "A")).unwrap();
+        g.recompute_ready();
+        g.transition("a", TaskStatus::Running).unwrap();
+        let mut ports = FakePorts::new();
+
+        // First timeout: reassigned (attempt 1), re-dispatched -> Running.
+        ports.pending_timeout = vec!["a".to_string()];
+        let r1 = step(&mut g, &caps(4), &CostUsage::default(), &mut ports);
+        assert_eq!(r1.recovered, ["a"]);
+        assert_eq!(g.get("a").unwrap().status, TaskStatus::Running);
+
+        // Second timeout: budget exhausted -> stays Failed (terminal), never lost.
+        ports.pending_timeout = vec!["a".to_string()];
+        let r2 = step(&mut g, &caps(4), &CostUsage::default(), &mut ports);
+        assert!(r2.recovered.is_empty());
+        assert_eq!(g.get("a").unwrap().status, TaskStatus::Failed);
+        assert_eq!(g.get("a").unwrap().timeout_attempts, MAX_TIMEOUT_ATTEMPTS);
     }
 
     #[test]

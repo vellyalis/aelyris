@@ -21,6 +21,21 @@ use crate::git::{perform_merge, MergeOutcome};
 use crate::orchestrator::autonomy::{Completions, LoopPorts};
 use crate::review::GateResults;
 
+/// Wall-clock budget for a single dispatched agent before it is treated as hung
+/// and killed (BR9 hang recovery). Deliberately generous so a legitimately long
+/// real-agent run is never killed; a worker stuck past this is genuinely hung
+/// (it never exits), so it is killed and its task reassigned on the bounded
+/// timeout budget rather than wedging the loop in `Running` forever.
+const AGENT_HANG_TIMEOUT_SECS: u64 = 1800;
+
+/// Current Unix epoch in seconds, for the hang detector's wall-clock budget.
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
 /// Runs the quality gate for a task's branch. Real impl shells out to the
 /// project's test/lint/type-check commands; tests inject scripted results.
 pub trait GateRunner {
@@ -209,9 +224,17 @@ impl Dispatcher for AgentDispatcher<'_> {
 
     fn poll_completions(&self) -> Completions {
         let outcome = self.manager.reap();
+        // Kill + surface any worker hung past the wall-clock budget. A hang never
+        // exits, so reap() above never sees it; without this a stuck agent would
+        // wedge its task in Running forever. The loop recovers these on the
+        // bounded timeout budget.
+        let timed_out = self
+            .manager
+            .reap_timed_out(AGENT_HANG_TIMEOUT_SECS, now_secs());
         Completions {
             succeeded: outcome.succeeded,
             failed: outcome.failed,
+            timed_out,
         }
     }
 }
