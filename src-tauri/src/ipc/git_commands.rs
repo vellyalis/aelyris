@@ -140,14 +140,7 @@ fn run_git_cmd_with_output(
 /// Get original file content from git HEAD (for diff)
 #[tauri::command]
 pub fn git_file_original(repo_path: String, file_path: String) -> Result<String, String> {
-    // Normalize separators then compute relative path via strip_prefix
-    let repo_norm = repo_path.replace('\\', "/");
-    let file_norm = file_path.replace('\\', "/");
-    let relative = file_norm
-        .strip_prefix(&repo_norm)
-        .unwrap_or(&file_norm)
-        .trim_start_matches('/')
-        .to_string();
+    let relative = git_relative_path(&repo_path, &file_path);
 
     let output = crate::process::hidden_command("git")
         .args(["show", &format!("HEAD:{}", relative)])
@@ -175,13 +168,7 @@ pub(crate) fn git_relative_path(repo_path: &str, file_path: &str) -> String {
 /// Get unified diff for a specific file against HEAD.
 #[tauri::command]
 pub fn git_diff_file(repo_path: String, file_path: String) -> Result<String, String> {
-    let repo_norm = repo_path.replace('\\', "/");
-    let file_norm = file_path.replace('\\', "/");
-    let relative = file_norm
-        .strip_prefix(&repo_norm)
-        .unwrap_or(&file_norm)
-        .trim_start_matches('/')
-        .to_string();
+    let relative = git_relative_path(&repo_path, &file_path);
 
     let output = crate::process::hidden_command("git")
         .args(["diff", "HEAD", "--", &relative])
@@ -204,16 +191,10 @@ pub fn git_diff_files(
     repo_path: String,
     file_paths: Vec<String>,
 ) -> Result<Vec<(String, String)>, String> {
-    let repo_norm = repo_path.replace('\\', "/");
     let mut results = Vec::new();
 
     for file_path in file_paths {
-        let file_norm = file_path.replace('\\', "/");
-        let relative = file_norm
-            .strip_prefix(&repo_norm)
-            .unwrap_or(&file_norm)
-            .trim_start_matches('/')
-            .to_string();
+        let relative = git_relative_path(&repo_path, &file_path);
 
         let output = crate::process::hidden_command("git")
             .args(["diff", "HEAD", "--", &relative])
