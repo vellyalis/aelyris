@@ -371,7 +371,26 @@ pub fn run_step(
         crate::orchestrator::autonomy::step(graph, &caps, usage, &mut ports)
     });
     apply_file_lanes(ownership, events, &lanes, &report);
+    publish_escalations(events, &report);
     report
+}
+
+/// Push each give-up escalation from the step onto the coordination stream as an
+/// `EscalationRaised` event (review channel), so a task the loop left `Failed`
+/// (a retry budget exhausted) is surfaced to the supervisor/reviewer — via the
+/// cockpit event feed AND the MCP `event.recent` the orchestrator polls — rather
+/// than dying silently. Published after the step (no graph lock held).
+fn publish_escalations(events: &EventBus, report: &crate::orchestrator::autonomy::StepReport) {
+    for esc in &report.escalations {
+        events.publish(AgentEvent::new(
+            AgentEventKind::EscalationRaised,
+            serde_json::json!({
+                "taskId": esc.task_id,
+                "reason": esc.reason,
+                "action": esc.action,
+            }),
+        ));
+    }
 }
 
 /// Reflect this step's dispatch/merge into the shared File Ownership + coordination
@@ -799,6 +818,7 @@ mod tests {
             merged: vec![],
             rejected: vec![],
             recovered: vec![],
+            escalations: vec![],
             state: LoopState::Active,
         };
         apply_file_lanes(&ownership, &bus, &lanes, &report);
@@ -826,6 +846,7 @@ mod tests {
             merged: vec!["t".to_string()],
             rejected: vec![],
             recovered: vec![],
+            escalations: vec![],
             state: LoopState::Complete,
         };
         apply_file_lanes(&ownership, &bus, &lanes, &report);
@@ -836,5 +857,33 @@ mod tests {
         let events = bus.recent();
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].kind, AgentEventKind::FileReleased);
+    }
+
+    #[test]
+    fn step_escalations_are_published_to_the_coordination_stream() {
+        // A give-up escalation from the step (a task the loop left Failed) is
+        // pushed onto the coordination stream so the supervisor/reviewer is told
+        // — via the cockpit feed AND the MCP `event.recent` — rather than the
+        // task dying silently.
+        let bus = EventBus::new();
+        let report = StepReport {
+            dispatched: vec![],
+            merged: vec![],
+            rejected: vec![],
+            recovered: vec![],
+            escalations: vec![crate::orchestrator::autonomy::Escalation {
+                task_id: "t".to_string(),
+                reason: "timeout".to_string(),
+                action: crate::failure_policy::RecoveryAction::EscalateToPlanner,
+            }],
+            state: LoopState::Stalled,
+        };
+        publish_escalations(&bus, &report);
+        let events = bus.recent();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].kind, AgentEventKind::EscalationRaised);
+        assert_eq!(events[0].payload["taskId"], "t");
+        assert_eq!(events[0].payload["reason"], "timeout");
+        assert_eq!(events[0].payload["action"], "escalate_to_planner");
     }
 }

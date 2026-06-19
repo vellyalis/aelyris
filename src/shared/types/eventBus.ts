@@ -17,6 +17,7 @@ export const AGENT_EVENT_KINDS = [
   "agent_activity",
   "intent_declared",
   "blocker_raised",
+  "escalation_raised",
 ] as const;
 export type AgentEventKind = (typeof AGENT_EVENT_KINDS)[number];
 

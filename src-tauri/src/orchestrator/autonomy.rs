@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{plan, LoopState};
 use crate::cost::{CostCaps, CostUsage};
+use crate::failure_policy::{FailureEvent, FailurePolicy, RecoveryAction};
 use crate::file_ownership::patterns_overlap;
 use crate::review::{review, GateResults, ReviewVerdict};
 use crate::task::{TaskGraph, TaskStatus};
@@ -87,6 +88,20 @@ pub trait LoopPorts {
     fn merge(&mut self, task_id: &str) -> Result<(), String>;
 }
 
+/// A task the loop gave up on this step (a retry budget was exhausted, leaving
+/// it `Failed`) plus the failure policy's recommended action. The adapter turns
+/// each of these into an `EscalationRaised` event so a Failed task is pushed to
+/// the supervisor/reviewer rather than left silently terminal — the
+/// auto-escalation that keeps the loop safe to run unattended.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Escalation {
+    pub task_id: String,
+    /// Which retry budget the task exhausted: `crash` / `rework` / `timeout`.
+    pub reason: String,
+    /// What the failure policy recommends the supervisor do about it.
+    pub action: RecoveryAction,
+}
+
 /// What one coordination step did. Serialized for the `orchestrator_step` IPC
 /// return value + the `orchestrator-step` event the cockpit loop view consumes.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -101,6 +116,12 @@ pub struct StepReport {
     /// the task list and the loop `state`). See BR9 recovery.
     #[serde(default)]
     pub recovered: Vec<String>,
+    /// Tasks the loop gave up on this step (a retry budget exhausted -> Failed),
+    /// each with the failure policy's recommended action. The adapter publishes
+    /// an `EscalationRaised` event per entry so a Failed task is never left
+    /// silently — it is pushed to the supervisor/reviewer.
+    #[serde(default)]
+    pub escalations: Vec<Escalation>,
     pub state: LoopState,
 }
 
@@ -137,6 +158,41 @@ fn requeue_or_fail(graph: &mut TaskGraph, id: &str, kind: FailureKind) -> bool {
     }
 }
 
+/// Requeue a failed task, OR — if its retry budget is exhausted (`requeue_or_fail`
+/// returns false, leaving it `Failed`) — record an escalation so the supervisor
+/// is told about the give-up rather than the task dying silently. The failure
+/// policy maps the exhausted budget to an action (a crash/rework notifies the
+/// reviewer, a repeated timeout escalates to the planner for re-decomposition).
+/// Returns whether the task was requeued (so the caller still drives its
+/// recovered/rejected reporting). Pure: the policy is a value, no I/O.
+fn requeue_or_escalate(
+    graph: &mut TaskGraph,
+    id: &str,
+    kind: FailureKind,
+    policy: &FailurePolicy,
+    escalations: &mut Vec<Escalation>,
+) -> bool {
+    if requeue_or_fail(graph, id, kind) {
+        return true;
+    }
+    let (reason, event) = match kind {
+        FailureKind::Crash => (
+            "crash",
+            FailureEvent::AgentCrashed {
+                retries: MAX_CRASH_ATTEMPTS,
+            },
+        ),
+        FailureKind::Rework => ("rework", FailureEvent::TaskFailed),
+        FailureKind::Timeout => ("timeout", FailureEvent::Timeout),
+    };
+    escalations.push(Escalation {
+        task_id: id.to_string(),
+        reason: reason.to_string(),
+        action: policy.decide(event),
+    });
+    false
+}
+
 /// Drive one coordination step:
 /// 1. Resolve every task awaiting `Review`: gate -> verdict -> merge+`Done`,
 ///    reject back to `Running`, or `Blocked` on a self-review.
@@ -155,6 +211,11 @@ pub fn step(
     let mut merged = Vec::new();
     let mut rejected = Vec::new();
     let mut recovered = Vec::new();
+    let mut escalations = Vec::new();
+    // The retry budgets the loop enforces (crash/rework/timeout = 2 each) are the
+    // "give-up" point, so the policy's restart budget mirrors the crash budget:
+    // an exhausted crash -> NotifyReviewer, an exhausted timeout -> EscalateToPlanner.
+    let policy = FailurePolicy::with_max_restarts(MAX_CRASH_ATTEMPTS);
 
     // 0. Sense agent completions and split by outcome (BR9 recovery). A clean
     //    exit moves the `Running` task into review in this same step. A crash
@@ -169,7 +230,7 @@ pub fn step(
         if graph.get(&id).map(|task| task.status) != Some(TaskStatus::Running) {
             continue;
         }
-        if requeue_or_fail(graph, &id, FailureKind::Crash) {
+        if requeue_or_escalate(graph, &id, FailureKind::Crash, &policy, &mut escalations) {
             recovered.push(id);
         }
     }
@@ -181,7 +242,7 @@ pub fn step(
         if graph.get(&id).map(|task| task.status) != Some(TaskStatus::Running) {
             continue;
         }
-        if requeue_or_fail(graph, &id, FailureKind::Timeout) {
+        if requeue_or_escalate(graph, &id, FailureKind::Timeout, &policy, &mut escalations) {
             recovered.push(id);
         }
     }
@@ -208,7 +269,7 @@ pub fn step(
                     // for rework on the rework budget — re-dispatched the same
                     // tick with the current ADR, or `Failed` past the budget —
                     // exactly like a review rejection. Never strands.
-                    requeue_or_fail(graph, &id, FailureKind::Rework);
+                    requeue_or_escalate(graph, &id, FailureKind::Rework, &policy, &mut escalations);
                     rejected.push(id);
                 }
             }
@@ -218,7 +279,7 @@ pub fn step(
                 // context is redone with the new decision), bounded by the retry
                 // budget. A headless agent has already exited, so leaving the
                 // task `Running` would strand it with no worker — requeue instead.
-                requeue_or_fail(graph, &id, FailureKind::Rework);
+                requeue_or_escalate(graph, &id, FailureKind::Rework, &policy, &mut escalations);
                 rejected.push(id);
             }
             ReviewVerdict::SelfReviewBlocked => {
@@ -287,6 +348,7 @@ pub fn step(
         merged,
         rejected,
         recovered,
+        escalations,
         state,
     }
 }
@@ -298,9 +360,12 @@ pub struct RunReport {
     pub dispatched: Vec<String>,
     pub merged: Vec<String>,
     pub rejected: Vec<String>,
-    /// Every reassignment performed while driving the loop (a crashed task sent
-    /// back for another attempt). See BR9 recovery.
+    /// Every reassignment performed while driving the loop (a crashed or
+    /// hung-and-killed worker's task sent back for another attempt). See BR9.
     pub recovered: Vec<String>,
+    /// Every give-up escalation raised while driving the loop (a task whose retry
+    /// budget was exhausted, surfaced to the supervisor with a recovery action).
+    pub escalations: Vec<Escalation>,
     pub state: LoopState,
 }
 
@@ -325,6 +390,7 @@ pub fn run(
         merged: Vec::new(),
         rejected: Vec::new(),
         recovered: Vec::new(),
+        escalations: Vec::new(),
         state: LoopState::Active,
     };
     for _ in 0..max_steps {
@@ -338,6 +404,7 @@ pub fn run(
         report.merged.extend(r.merged);
         report.rejected.extend(r.rejected);
         report.recovered.extend(r.recovered);
+        report.escalations.extend(r.escalations);
         report.state = r.state;
         if matches!(
             r.state,
@@ -352,6 +419,7 @@ pub fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::failure_policy::RecoveryAction;
     use crate::task::graph::Task;
     use std::collections::HashMap;
 
@@ -520,6 +588,10 @@ mod tests {
             report.state,
             LoopState::Stalled | LoopState::Complete
         ));
+        // The rework give-up is escalated so the reviewer re-plans/inspects.
+        assert!(report.escalations.iter().any(|e| e.task_id == "a"
+            && e.reason == "rework"
+            && e.action == RecoveryAction::NotifyReviewer));
     }
 
     #[test]
@@ -565,6 +637,10 @@ mod tests {
             report.state,
             LoopState::Stalled | LoopState::Complete
         ));
+        // The rework give-up is escalated so the reviewer re-plans/inspects.
+        assert!(report.escalations.iter().any(|e| e.task_id == "a"
+            && e.reason == "rework"
+            && e.action == RecoveryAction::NotifyReviewer));
     }
 
     #[test]
@@ -667,6 +743,12 @@ mod tests {
         assert!(!r2.dispatched.contains(&"a".to_string()));
         assert_eq!(g.get("a").unwrap().status, TaskStatus::Failed);
         assert_eq!(g.get("a").unwrap().crash_attempts, MAX_CRASH_ATTEMPTS);
+        // ...and the give-up is auto-escalated to the supervisor (repeated crash
+        // -> notify reviewer), not left silently Failed.
+        assert_eq!(r2.escalations.len(), 1);
+        assert_eq!(r2.escalations[0].task_id, "a");
+        assert_eq!(r2.escalations[0].reason, "crash");
+        assert_eq!(r2.escalations[0].action, RecoveryAction::NotifyReviewer);
     }
 
     #[test]
@@ -745,6 +827,10 @@ mod tests {
         assert!(r2.recovered.is_empty());
         assert_eq!(g.get("a").unwrap().status, TaskStatus::Failed);
         assert_eq!(g.get("a").unwrap().timeout_attempts, MAX_TIMEOUT_ATTEMPTS);
+        // A repeated hang escalates to the planner for re-decomposition.
+        assert_eq!(r2.escalations.len(), 1);
+        assert_eq!(r2.escalations[0].reason, "timeout");
+        assert_eq!(r2.escalations[0].action, RecoveryAction::EscalateToPlanner);
     }
 
     #[test]

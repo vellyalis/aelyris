@@ -72,6 +72,11 @@ pub enum AgentEventKind {
     /// An agent is stuck (the "what am I blocked on" channel) — surfaced so a
     /// peer or the orchestrator can unblock it rather than it stalling silently.
     BlockerRaised,
+    /// The loop gave up on a task (a retry budget — crash/rework/timeout — was
+    /// exhausted, leaving it `Failed`). Pushed to the supervisor/reviewer with
+    /// the failure policy's recommended action so a Failed task is never left
+    /// silently — the auto-escalation that keeps the loop unattended-safe.
+    EscalationRaised,
 }
 
 impl AgentEventKind {
@@ -88,6 +93,7 @@ impl AgentEventKind {
             Self::AgentActivity => "agent_activity",
             Self::IntentDeclared => "intent_declared",
             Self::BlockerRaised => "blocker_raised",
+            Self::EscalationRaised => "escalation_raised",
         }
     }
 
@@ -95,7 +101,9 @@ impl AgentEventKind {
     pub const fn default_channel(self) -> EventChannel {
         match self {
             Self::TaskCreated | Self::TaskCompleted => EventChannel::Planning,
-            Self::ReviewRequired => EventChannel::Review,
+            // Review verdicts and escalations both demand reviewer/supervisor
+            // attention — they land on the review channel.
+            Self::ReviewRequired | Self::EscalationRaised => EventChannel::Review,
             // Decision changes are project-wide, agent/worktree lifecycle is
             // infra, and file lane claims are fleet-wide coordination — all land
             // on the fleet-wide system channel.
