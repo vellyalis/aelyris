@@ -173,8 +173,15 @@ pub fn step(
                     let _ = graph.transition(&id, TaskStatus::Done);
                     merged.push(id);
                 } else {
-                    // Merge failed (e.g. conflict) -> rework.
-                    let _ = graph.transition(&id, TaskStatus::Running);
+                    // Merge failed (e.g. a conflict because the target advanced
+                    // under the branch). The headless agent has already exited,
+                    // so leaving the task `Running` would strand it with no
+                    // worker (no completion event will ever fire again). Requeue
+                    // for rework on the rework budget — re-dispatched the same
+                    // tick with the current ADR, or `Failed` past the budget —
+                    // exactly like a review rejection. Never strands.
+                    requeue_or_fail(graph, &id, FailureKind::Rework);
+                    rejected.push(id);
                 }
             }
             ReviewVerdict::Reject { .. } => {
@@ -473,6 +480,51 @@ mod tests {
         );
         // Always-red review can't loop forever: after MAX_REWORK_ATTEMPTS the
         // task lands Failed (terminal) and the loop stops, instead of churning.
+        let report = run(&mut g, &caps(4), &CostUsage::default(), 20, &mut ports);
+        assert_eq!(g.get("a").unwrap().status, TaskStatus::Failed);
+        assert_eq!(g.get("a").unwrap().rework_attempts, MAX_REWORK_ATTEMPTS);
+        assert!(matches!(
+            report.state,
+            LoopState::Stalled | LoopState::Complete
+        ));
+    }
+
+    #[test]
+    fn merge_conflict_redispatches_for_rework_not_stranded() {
+        let mut g = TaskGraph::new();
+        g.add(Task::new("a", "A")).unwrap();
+        g.recompute_ready();
+        g.transition("a", TaskStatus::Running).unwrap();
+        g.transition("a", TaskStatus::Review).unwrap();
+        let mut ports = FakePorts::new();
+        ports.merge_ok = false; // review is green, but the merge conflicts
+        let report = step(&mut g, &caps(4), &CostUsage::default(), &mut ports);
+        // A conflicted merge is NOT a successful merge.
+        assert!(report.merged.is_empty());
+        // The task is requeued for rework (same tick, current ADR), NOT stranded
+        // in Running with no live agent — the headless agent already exited, so a
+        // Review->Running transition would leave it with no completion source
+        // forever (the C-22 stall this test guards against).
+        assert_eq!(report.rejected, ["a"]);
+        assert!(report.dispatched.contains(&"a".to_string()));
+        assert_eq!(g.get("a").unwrap().status, TaskStatus::Running);
+        assert_eq!(g.get("a").unwrap().rework_attempts, 1);
+        // A merge conflict draws on the rework budget, not the crash budget.
+        assert_eq!(g.get("a").unwrap().crash_attempts, 0);
+    }
+
+    #[test]
+    fn repeated_merge_conflicts_exhaust_retries_then_fail() {
+        let mut g = TaskGraph::new();
+        g.add(Task::new("a", "A")).unwrap();
+        g.recompute_ready();
+        g.transition("a", TaskStatus::Running).unwrap();
+        g.transition("a", TaskStatus::Review).unwrap();
+        let mut ports = FakePorts::new();
+        ports.merge_ok = false; // every merge conflicts
+        ports.auto_finish = true; // each re-dispatched agent finishes -> Review again
+                                  // A perpetually-conflicting merge can't loop forever: after
+                                  // MAX_REWORK_ATTEMPTS the task lands Failed (terminal) and the loop stops.
         let report = run(&mut g, &caps(4), &CostUsage::default(), 20, &mut ports);
         assert_eq!(g.get("a").unwrap().status, TaskStatus::Failed);
         assert_eq!(g.get("a").unwrap().rework_attempts, MAX_REWORK_ATTEMPTS);
