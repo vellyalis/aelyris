@@ -1,0 +1,59 @@
+.fleet {
+  margin-bottom: var(--space-6);
+}
+
+.heading {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+}
+
+.count {
+  font-weight: var(--weight-normal);
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-muted);
+}
+
+/* auto-fill so a wide right rail shows agents side by side, a narrow one
+   stacks them into a single readable column. */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--space-4);
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  height: 240px;
+  overflow: hidden;
+  border: 1px solid var(--white-15);
+  border-radius: var(--radius-panel);
+  background: var(--glass-solid);
+}
+
+.tileHeader {
+  flex-shrink: 0;
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-bottom: 1px solid var(--white-10);
+}
+
+/* Concrete-height flex child so the height:100% AgentTerminal fills it. */
+.tileBody {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}

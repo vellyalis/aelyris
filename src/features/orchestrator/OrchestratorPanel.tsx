@@ -7,6 +7,8 @@ import { useTaskGraph } from "../../shared/hooks/useTaskGraph";
 import type { AgentEvent, AgentEventKind } from "../../shared/types/eventBus";
 import type { DispatchPlan, LoopState } from "../../shared/types/orchestratorPlan";
 import type { TaskStatus } from "../../shared/types/taskStatus";
+import { deriveFleetAgents } from "./fleetAgents";
+import { FleetGrid } from "./FleetGrid";
 import styles from "./OrchestratorPanel.module.css";
 
 const LOOP_STATE_LABEL: Record<LoopState, string> = {
@@ -112,6 +114,10 @@ export function OrchestratorPanel() {
     [events],
   );
 
+  // Live fleet: each running task with an announced visible PTY pane — the
+  // "1 pane = 1 agent" grid the operator watches work happen in.
+  const fleetAgents = useMemo(() => deriveFleetAgents(events, tasks), [events, tasks]);
+
   const decisionEntries = useMemo(() => Object.entries(decisions), [decisions]);
 
   return (
@@ -132,6 +138,8 @@ export function OrchestratorPanel() {
           <span className={styles.nextIds}>{plan.to_dispatch.join(" · ")}</span>
         </div>
       )}
+
+      <FleetGrid agents={fleetAgents} />
 
       <ul className={styles.taskList}>
         {ordered.length === 0 ? (
