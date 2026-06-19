@@ -252,7 +252,10 @@ fn spawn_specs(
                 HeadlessSpawnSpec {
                     prompt,
                     cwd,
-                    model: task.owner.clone(),
+                    // Route to the task's explicit `model` if set, else its
+                    // `owner` (back-compat). `owner` stays the implementer
+                    // identity for the reviewer-!=-implementer merge gate.
+                    model: task.agent_model(),
                     allowed_tools: None,
                     resume_id: None,
                 },

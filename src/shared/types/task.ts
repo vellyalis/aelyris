@@ -15,7 +15,10 @@ export interface Task {
   title: string;
   description: string;
   status: TaskStatus;
+  /** Implementer identity (used by the reviewer-!=-implementer merge gate). */
   owner?: string | null;
+  /** Agent CLI to spawn (claude/codex/gemini); the loop falls back to `owner`. */
+  model?: string | null;
   priority: TaskPriority;
   estimate?: number | null;
   dependencies: string[];

@@ -443,7 +443,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
             },
             {
                 "name": "aether.task.create",
-                "description": "Create a Task Graph node (BR4): a unit of work the orchestrator AI assigns (owner) and the autonomy loop schedules. Binds source/target branches for the merge wiring. Re-runs the dependency gate.",
+                "description": "Create a Task Graph node (BR4): a unit of work the orchestrator AI assigns (owner = implementer identity, used by the reviewer-!=-implementer merge gate) and the autonomy loop schedules. Optionally route to a specific model (claude/codex/gemini) via `model`; when omitted the loop falls back to `owner`. Binds source/target branches for the merge wiring. Re-runs the dependency gate.",
                 "safety": "FREE",
                 "inputSchema": {
                     "type": "object",
@@ -453,6 +453,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                         "title": { "type": "string" },
                         "description": { "type": "string" },
                         "owner": { "type": "string" },
+                        "model": { "type": "string", "description": "Agent CLI to spawn (claude/codex/gemini); defaults to owner." },
                         "priority": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
                         "dependencies": { "type": "array", "items": { "type": "string" } },
                         "outputs": { "type": "array", "items": { "type": "string" }, "description": "Declared file lanes claimed on dispatch (FileLocked)." },
@@ -497,7 +498,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
             },
             {
                 "name": "aether.orchestrator.step",
-                "description": "Drive one autonomy step over the live Task Graph (BR9): a finished agent's task moves Running->Review on a clean exit or is REASSIGNED on a crash (bounded retries, then left Failed — never lost); tasks awaiting review with an all-green verdict and reviewer != owner are MERGED into their target branch by a real git merge; ready tasks are dispatched by spawning real headless agents routed to each task owner's model. Pass gateCommands to decide the objective gates (tests/lint/types) MECHANICALLY in each worktree so a red branch cannot merge. Call repeatedly to run the loop to quiescence (agents run between calls).",
+                "description": "Drive one autonomy step over the live Task Graph (BR9): a finished agent's task moves Running->Review on a clean exit or is REASSIGNED on a crash (bounded retries, then left Failed — never lost); tasks awaiting review with an all-green verdict and reviewer != owner are MERGED into their target branch by a real git merge; ready tasks are dispatched by spawning real headless agents routed to each task's model (its `model`, or `owner` by default). Pass gateCommands to decide the objective gates (tests/lint/types) MECHANICALLY in each worktree so a red branch cannot merge. Call repeatedly to run the loop to quiescence (agents run between calls).",
                 "safety": "REVIEWER_AUTHORITY",
                 "inputSchema": {
                     "type": "object",
@@ -1153,6 +1154,7 @@ pub(super) async fn tools_call(
                 task.description = description;
             }
             task.owner = arg_optional_string(&args, "owner");
+            task.model = arg_optional_string(&args, "model");
             if let Some(priority) = args.get("priority").and_then(|value| value.as_str()) {
                 task.priority =
                     serde_json::from_value(serde_json::Value::String(priority.to_string()))
@@ -1639,7 +1641,7 @@ pub(super) struct JsonRpcReq {
 
 const MCP_PROTOCOL_VERSION: &str = "2024-11-05";
 
-const MCP_INSTRUCTIONS: &str = "Aether is an autonomous build runtime you (the orchestrator) drive via these aether.* tools; the worker agents (real claude/codex/gemini CLIs in isolated worktrees) do the implementation. Loop: (1) context.set the project decisions/ADR (injected into every dispatched agent). (2) task.create one per subtask with owner=<model>, sourceBranch/targetBranch, dependencies, outputs=<file lanes>; check ownership.conflicts. (3) worktree.create each branch. (4) Call orchestrator.step repeatedly with {repoPath, reviewerId(!=owner), activeAgents, gates}: finished agents -> review, all-green verdict -> real git merge, ready tasks -> spawned; agents run between calls, so pace them. (5) Coordinate between steps via event.recent / agent.activity (who edits what), knowledge.impact (blast radius), intent.propose/list (pre-fact proposals), ownership.conflicts, blocker_raised. You are the reviewer; supply each task's gates from your own inspection. Local-only; concurrency cap 4.";
+const MCP_INSTRUCTIONS: &str = "Aether is an autonomous build runtime you (the orchestrator) drive via these aether.* tools; the worker agents (real claude/codex/gemini CLIs in isolated worktrees) do the implementation. Loop: (1) context.set the project decisions/ADR (injected into every dispatched agent). (2) task.create one per subtask with owner=<implementer identity> (reviewer must differ from it to merge), model=<claude|codex|gemini> (optional CLI routing; defaults to owner), sourceBranch/targetBranch, dependencies, outputs=<file lanes>; check ownership.conflicts. (3) worktree.create each branch. (4) Call orchestrator.step repeatedly with {repoPath, reviewerId(!=owner), activeAgents, gates}: finished agents -> review, all-green verdict -> real git merge, ready tasks -> spawned; agents run between calls, so pace them. (5) Coordinate between steps via event.recent / agent.activity (who edits what), knowledge.impact (blast radius), intent.propose/list (pre-fact proposals), ownership.conflicts, blocker_raised. You are the reviewer; supply each task's gates from your own inspection. Local-only; concurrency cap 4.";
 
 /// Native MCP JSON-RPC endpoint. Handles initialize / tools.list / tools.call /
 /// ping; everything else is method-not-found.

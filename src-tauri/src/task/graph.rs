@@ -27,6 +27,13 @@ pub struct Task {
     pub status: TaskStatus,
     #[serde(default)]
     pub owner: Option<String>,
+    /// Which agent CLI model implements the task (e.g. claude/codex/gemini).
+    /// When unset, the loop falls back to `owner` (which historically doubled as
+    /// the model). `owner` stays the implementer IDENTITY for the
+    /// reviewer-!=-implementer merge gate; `model` only selects the spawned CLI.
+    /// See `Task::agent_model`.
+    #[serde(default)]
+    pub model: Option<String>,
     #[serde(default)]
     pub priority: TaskPriority,
     /// Optional effort estimate (caller-defined unit, e.g. minutes or points).
@@ -66,6 +73,7 @@ impl Task {
             description: String::new(),
             status: TaskStatus::Pending,
             owner: None,
+            model: None,
             priority: TaskPriority::default(),
             estimate: None,
             dependencies: Vec::new(),
@@ -87,6 +95,15 @@ impl Task {
         self.source_branch = Some(source.into());
         self.target_branch = Some(target.into());
         self
+    }
+
+    /// The CLI model that implements this task: the explicit `model` if set,
+    /// else `owner` (back-compat — owner doubled as the model before the two
+    /// were split). Only selects which agent CLI is spawned; `owner` remains the
+    /// implementer identity used by the reviewer-!=-implementer merge gate, so a
+    /// task can be owned by a logical identity yet executed by any model.
+    pub fn agent_model(&self) -> Option<String> {
+        self.model.clone().or_else(|| self.owner.clone())
     }
 }
 
@@ -284,6 +301,31 @@ mod tests {
             serde_json::from_str(r#"{"id":"x","title":"X","status":"pending"}"#).unwrap();
         assert_eq!(parsed.source_branch, None);
         assert_eq!(parsed.target_branch, None);
+    }
+
+    #[test]
+    fn agent_model_prefers_model_then_owner_with_backcompat() {
+        // No model, no owner -> nothing to route on.
+        let plain = Task::new("t", "T");
+        assert_eq!(plain.model, None);
+        assert_eq!(plain.agent_model(), None);
+        // Back-compat: owner doubled as the model, so owner is the fallback.
+        let mut owned = Task::new("t", "T");
+        owned.owner = Some("claude".to_string());
+        assert_eq!(owned.agent_model().as_deref(), Some("claude"));
+        // Explicit model wins, while owner stays the (distinct) implementer identity.
+        let mut split = Task::new("t", "T");
+        split.owner = Some("backend".to_string());
+        split.model = Some("codex".to_string());
+        assert_eq!(split.agent_model().as_deref(), Some("codex"));
+        assert_eq!(split.owner.as_deref(), Some("backend"));
+        // A task deserialized without `model` keeps it None (back-compat with
+        // graphs/payloads written before owner and model were split).
+        let parsed: Task =
+            serde_json::from_str(r#"{"id":"x","title":"X","status":"pending","owner":"gemini"}"#)
+                .unwrap();
+        assert_eq!(parsed.model, None);
+        assert_eq!(parsed.agent_model().as_deref(), Some("gemini"));
     }
 
     #[test]
