@@ -82,9 +82,12 @@ cargo fmt --check
 | P1-1 | 永続化スキーマ migration（context_decisions/tasks/task_dependencies） | P1 | ✅ | feat/runtime-hardening |
 | P1-2 | DecisionRepo + ContextStoreManager write-through/復元 | P1 | ✅ | 〃 |
 | P1-4(context) | lib.rs setup で Context Store 起動時復元を配線 | P1 | ✅ | 〃 |
-| P1-3 | TaskRepo + 既存 `task::TaskManager` への配線 | P1 | ⬜ | |
-| P1-4(task) | lib.rs setup で Task Graph 起動時復元を配線 | P1 | ⬜ | |
+| P1-3 | TaskRepo(フルスナップショット) + 既存 `TaskManager` write-through | P1 | ✅ | feat/runtime-hardening |
+| P1-4(task) | lib.rs setup で Task Graph 起動時復元を配線 | P1 | ✅ | 〃 |
+| P1-audit | 敵対的マルチレンズ監査(18 agent)→確定12件、busy_timeout(HIGH)等を修正 | P1 | ✅ | 〃 |
 | P1-5 | 実機: dispatch→kill→再起動で状態復元 検証 | P1 | ⬜ | |
+
+> **P1-audit 結果**: HIGH=「WAL複数writer×busy_timeout未設定→SQLITE_BUSYで書き込みsilent drop」を修正(全接続に`busy_timeout=5s`)。他: 依存Vec順序保持/i64→u32安全変換/no-op recompute非永続化/docs整合。受容(設計上妥当)=panic時非永続(full snapshotで自己回復)・load all-or-nothing(失敗時attachせず上書きしない)・ManagedDb poison(既存・範囲外)。誤検知1件(WAL未有効)は棄却。
 
 > 補足: P1-3 は新Managerを作らず**既存 `src-tauri/src/task/manager.rs` `TaskManager`**（`Mutex<TaskGraph>`）に repo を配線する（[`03`](03_IMPLEMENTATION_PLAN.md) の記述を更新済み想定）。`TaskStatus`/`TaskPriority` の `from_str` 追加＋round-trip テストが前提。
 

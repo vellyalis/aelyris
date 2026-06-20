@@ -50,7 +50,7 @@ ipc / mcp  →  manager  →  persistence(repo)  →  db
 | エラー/ログ | 永続化失敗はResult伝播＋tracing。silent swallow禁止 |
 | 設定/環境差 | `db_path()` は既存。テストは `:memory:` で環境非依存 |
 | 非同期/並行 | Mutexクリティカルセクションは短く。await をロック保持中に跨がない |
-| パフォーマンス | write-throughは差分のみ。全件再書き込み禁止 |
+| パフォーマンス | ContextStore=key差分。TaskGraph=フルスナップショット(数十タスク規模・with_graph_mut逃げ道封じのため意図的)。no-op recompute は書かない。複数writer競合は busy_timeout で待つ |
 | セキュリティ境界 | P5 trait で将来の認可点を1箇所に集約 |
 | 命名・配置 | `persistence/` 配下、`*_repo.rs`、メソッドは load/upsert/delete で統一 |
 

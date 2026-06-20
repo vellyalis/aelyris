@@ -1,15 +1,27 @@
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use super::graph::{Task, TaskGraph, TaskGraphError};
 use super::status::TaskStatus;
+use crate::db::ManagedDb;
+use crate::persistence::TaskRepo;
 
 /// Thread-safe owner of the Task Graph, managed in Tauri state (mirrors the
 /// `AgentManager` / `InteractiveSessionManager` pattern). Mutating operations
 /// re-run the dependency gate so callers get the ids that became `Ready` (or
 /// `Blocked`) and can broadcast a `task-graph-updated` event.
+///
+/// In-memory is the hot read cache; SQLite (via [`TaskRepo`]) is the source of
+/// truth. Because `with_graph_mut` lets the autonomy loop mutate the graph
+/// opaquely (status, crash/rework/timeout counters, branch bindings), every
+/// mutating method persists the WHOLE graph snapshot afterwards — eliminating
+/// the "missed write-through site" bug class. A `db` is attached at startup
+/// ([`attach_db`]); when absent (tests, non-persistent mode) the manager is
+/// purely in-memory, exactly as before. Persist failures are logged loudly,
+/// never silently swallowed.
 #[derive(Default)]
 pub struct TaskManager {
     graph: Mutex<TaskGraph>,
+    db: Mutex<Option<Arc<ManagedDb>>>,
 }
 
 impl TaskManager {
@@ -25,12 +37,45 @@ impl TaskManager {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
+    fn db(&self) -> Option<Arc<ManagedDb>> {
+        self.db
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    /// Persist the full graph snapshot. Called while the graph lock is held so
+    /// the in-memory state and SQLite never diverge. A no-op without a `db`.
+    fn persist(&self, graph: &TaskGraph) {
+        if let Some(db) = self.db() {
+            if let Err(e) = db.with(|d| TaskRepo::save_graph(d, graph)) {
+                tracing::error!(error = %e, "task graph persist failed");
+            }
+        }
+    }
+
+    /// Attach the persistence backend and restore any persisted graph into
+    /// memory. Called once at startup after the database is opened. Returns the
+    /// number of restored tasks.
+    pub fn attach_db(&self, db: Arc<ManagedDb>) -> Result<usize, String> {
+        let restored = db.with(TaskRepo::load_graph)?;
+        let len = restored.len();
+        *self.lock() = restored;
+        *self
+            .db
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(db);
+        Ok(len)
+    }
+
     /// Add a task, then re-run the dependency gate. Returns the ids whose
     /// status changed as a result (e.g. a root task that became `Ready`).
     pub fn create(&self, task: Task) -> Result<Vec<String>, TaskGraphError> {
         let mut graph = self.lock();
         graph.add(task)?;
-        Ok(graph.recompute_ready())
+        let changed = graph.recompute_ready();
+        self.persist(&graph);
+        Ok(changed)
     }
 
     /// Transition a task, then re-run the gate (finishing a dependency can
@@ -38,12 +83,21 @@ impl TaskManager {
     pub fn transition(&self, id: &str, to: TaskStatus) -> Result<Vec<String>, TaskGraphError> {
         let mut graph = self.lock();
         graph.transition(id, to)?;
-        Ok(graph.recompute_ready())
+        let changed = graph.recompute_ready();
+        self.persist(&graph);
+        Ok(changed)
     }
 
     /// Re-run the dependency gate explicitly. Returns ids whose status changed.
+    /// Persists only when the gate actually changed something — a no-op gate
+    /// pass must not issue a full-graph write (and add WAL write contention).
     pub fn recompute_ready(&self) -> Vec<String> {
-        self.lock().recompute_ready()
+        let mut graph = self.lock();
+        let changed = graph.recompute_ready();
+        if !changed.is_empty() {
+            self.persist(&graph);
+        }
+        changed
     }
 
     /// A snapshot of every task in insertion order.
@@ -72,7 +126,13 @@ impl TaskManager {
     /// from the `&mut TaskGraph` it is handed — e.g. via a `TaskBranchSnapshot`
     /// captured before the mutation.
     pub fn with_graph_mut<R>(&self, f: impl FnOnce(&mut TaskGraph) -> R) -> R {
-        f(&mut self.lock())
+        let mut graph = self.lock();
+        let result = f(&mut graph);
+        // The closure may have mutated status, recovery counters, or branch
+        // bindings (the autonomy loop does all three). Persist the snapshot so
+        // none of it is lost on restart.
+        self.persist(&graph);
+        result
     }
 }
 
@@ -141,5 +201,57 @@ mod tests {
         assert_eq!(from, TaskStatus::Ready);
         // The mutation is visible on the shared graph after the lock is released.
         assert_eq!(mgr.get("a").unwrap().status, TaskStatus::Running);
+    }
+
+    fn mem_db() -> Arc<ManagedDb> {
+        Arc::new(ManagedDb::new(crate::db::Database::open_memory().unwrap()))
+    }
+
+    #[test]
+    fn graph_survives_a_simulated_restart_via_db() {
+        let db = mem_db();
+        let first = TaskManager::new();
+        assert_eq!(first.attach_db(db.clone()).unwrap(), 0);
+        first.create(Task::new("dep", "Dep")).unwrap();
+        first
+            .create(Task::new("child", "Child").with_dependencies(["dep".to_string()]))
+            .unwrap();
+        first.transition("dep", TaskStatus::Running).unwrap();
+        drop(first);
+
+        // A brand-new manager attached to the SAME db restores the live graph.
+        let second = TaskManager::new();
+        assert_eq!(second.attach_db(db).unwrap(), 2);
+        assert_eq!(second.get("dep").unwrap().status, TaskStatus::Running);
+        assert_eq!(
+            second.get("child").unwrap().dependencies,
+            vec!["dep".to_string()]
+        );
+    }
+
+    #[test]
+    fn autonomy_style_mutations_through_with_graph_mut_are_persisted() {
+        // The autonomy loop mutates the graph opaquely via with_graph_mut —
+        // crash/rework/timeout counters must survive restart (the bug class
+        // full-snapshot persistence closes).
+        let db = mem_db();
+        let first = TaskManager::new();
+        first.attach_db(db.clone()).unwrap();
+        first.create(Task::new("t", "T")).unwrap();
+        first.with_graph_mut(|graph| {
+            graph.transition("t", TaskStatus::Running).unwrap();
+            graph.record_crash("t");
+            graph.record_crash("t");
+            graph.record_timeout("t");
+        });
+        drop(first);
+
+        let second = TaskManager::new();
+        second.attach_db(db).unwrap();
+        let t = second.get("t").unwrap();
+        assert_eq!(t.status, TaskStatus::Running);
+        assert_eq!(t.crash_attempts, 2);
+        assert_eq!(t.timeout_attempts, 1);
+        assert_eq!(t.rework_attempts, 0);
     }
 }

@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::str::FromStr;
 
 use super::status::TaskStatus;
 
@@ -14,6 +15,34 @@ pub enum TaskPriority {
     Medium,
     High,
     Critical,
+}
+
+impl TaskPriority {
+    /// Canonical snake_case name, matching the serde representation. Used for
+    /// persistence (the `tasks.priority` column) and stays in lockstep with the
+    /// `FromStr` impl below (round-trip tested).
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+            Self::Critical => "critical",
+        }
+    }
+}
+
+impl FromStr for TaskPriority {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "low" => Ok(Self::Low),
+            "medium" => Ok(Self::Medium),
+            "high" => Ok(Self::High),
+            "critical" => Ok(Self::Critical),
+            other => Err(format!("unknown task priority: {other}")),
+        }
+    }
 }
 
 /// A unit of work in the Task Graph. See
@@ -494,5 +523,24 @@ mod tests {
         g.recompute_ready();
         let ids: Vec<&str> = g.ready_tasks().iter().map(|t| t.id.as_str()).collect();
         assert_eq!(ids, ["crit", "med", "low"]);
+    }
+
+    #[test]
+    fn priority_as_str_matches_serde_and_from_str_roundtrips() {
+        let all = [
+            TaskPriority::Low,
+            TaskPriority::Medium,
+            TaskPriority::High,
+            TaskPriority::Critical,
+        ];
+        for p in all {
+            // as_str agrees with the serde representation (the contract the DB
+            // column and any TS bridge rely on).
+            let serde_name = serde_json::to_value(p).unwrap();
+            assert_eq!(serde_name.as_str(), Some(p.as_str()));
+            // round-trips back to the same variant.
+            assert_eq!(TaskPriority::from_str(p.as_str()).unwrap(), p);
+        }
+        assert!(TaskPriority::from_str("urgent").is_err());
     }
 }

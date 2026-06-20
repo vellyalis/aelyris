@@ -34,24 +34,21 @@
 
 ### P1-3 ⬜ TaskRepo（task_graph 永続化）
 - **新規ファイル**: `src-tauri/src/persistence/task_repo.rs`
-- **前提追加**: `TaskStatus` / `TaskPriority` に `from_str(&str)->Option<Self>` を追加（`as_str` の逆）。**round-trip テスト**で縛る（[`02_SPEC.md` §4](02_SPEC.md)）。
-  - ファイル: `src-tauri/src/task/status.rs`（status）、`task/graph.rs`（priority）。
-- **API**:
-  - `TaskRepo::load_graph(db) -> Result<TaskGraph, String>`（sort_order ASC で order 復元、依存テーブル結合）
-  - `TaskRepo::upsert_task(db, &Task, sort_order) -> Result<(), String>`
-  - `TaskRepo::replace_dependencies(db, task_id, &[String]) -> Result<(), String>`
-- **配線**: **新 `TaskGraphManager`**（`Mutex<TaskGraph>` + `db: Option`）を `task/manager.rs` に新設。現在 `TaskGraph` を直接 Tauri state にしている箇所（`ipc/task_commands.rs`, `orchestrator/*`）を Manager 経由へ寄せる。
-  - add/transition/record_* の各変更後に該当タスクを upsert（差分のみ）。
+- **前提追加（実装で判明）**: `TaskStatus::from_str` は **既に存在**（status.rs、round-trip テスト済）。追加が要るのは `TaskPriority` の `as_str` + `FromStr` のみ（graph.rs、round-trip テスト追加）。
+- **API（実装で確定）**:
+  - `TaskRepo::load_graph(db) -> Result<TaskGraph, String>`（sort_order ASC で order 復元、依存は rowid 順、status は from_str で復元＝**recompute しない**）
+  - `TaskRepo::save_graph(db, &TaskGraph) -> Result<(), String>`（**全タスク+依存を1トランザクションでフル upsert**。`unchecked_transaction` で `&Database` のまま原子的に）
+- **配線（実装で確定）**: **新 Manager は作らない**。既存 `task/manager.rs` `TaskManager`（`Mutex<TaskGraph>`）に `db: Mutex<Option<Arc<ManagedDb>>>` を追加し、`create`/`transition`/`recompute_ready`/`with_graph_mut` の**各ミューテーション後に `save_graph`（フルスナップショット）**。これにより `with_graph_mut`（autonomy の不透明変更）の書き漏らしを構造的に排除。
 - **テスト(RED)**:
-  - repo: 3タスク(1依存)を upsert→load_graph で構造・status・attempts・order 完全一致。
-  - manager: transition→再load で status 保持。record_crash→再load で crash_attempts 保持。
+  - repo: 3タスク(1依存)を save_graph→load_graph で構造・status・attempts・order・branch 完全一致。
+  - manager: transition→再load で status 保持。**`with_graph_mut` 経由の record_crash→再load で crash_attempts 保持**。
 - **注意**: `TaskGraph` のドメインロジック（recompute_ready等）は**変更しない**。Manager が薄く包むだけ。
-- **粒度**: `task_repo.rs` ~120行 → 超えそうなら load/upsert/deps で分割。
+- **粒度**: `task_repo.rs` ~230行（RawTask + save + load + tests）。800行ルール内。
 
 ### P1-4 ⬜ 起動時復元 + lib.rs 配線
-- **ファイル**: `src-tauri/src/lib.rs`（setup で Manager 構築箇所）
-- **変更**: アプリ起動で `db_path()` から `Database` を開き（既存）、`DecisionRepo::load_all` / `TaskRepo::load_graph` で Manager を初期化して `manage()`。
-- **エラー方針**: load失敗は**起動中断＋ログ**（空で握り潰さない、[`02_SPEC.md` §6](02_SPEC.md)）。
+- **ファイル**: `src-tauri/src/lib.rs`（setup の DB 初期化直後）
+- **変更**: 各 Manager に**同一DBファイルへの専用接続**を `attach_db` で渡し、`load_*` で in-memory を再構築（[`02_SPEC.md` 実装メモ](02_SPEC.md)）。
+- **エラー方針（実装で確定）**: load失敗は**loud な error ログ＋in-memory継続（soft-fail）**。デスクトップアプリを丸ごと止めない。重要: 失敗時は `attach_db` が Err を返し **db を attach しない**ので、以後のミューテーションは永続化されず、壊れた可能性のあるDBを**上書きしない**（安全）。
 - **テスト**: lib.rs は実機寄りなので、復元ロジック本体は P1-2/P1-3 のユニットでカバー済。ここは配線。
 - **観点チェック**: infra without wiring 禁止 → MCP `aether.context.*` / `aether.task.*` が新Manager経由で永続化されることを1つ結合テスト。
 

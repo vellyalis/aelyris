@@ -188,6 +188,21 @@ pub fn run() {
                 Err(e) => log::error!("Context store persistence unavailable: {}", e),
             }
 
+            // Runtime Hardening P1: make the Task Graph durable the same way.
+            // The autonomy loop's live fleet state (statuses, crash/rework/
+            // timeout counters, branch bindings) was in-memory only; this
+            // restores it across restart. Own connection, loud-fail to in-memory.
+            match Database::open(&db_path) {
+                Ok(t_db) => {
+                    let tm = app.state::<std::sync::Arc<task::TaskManager>>();
+                    match tm.attach_db(std::sync::Arc::new(db::ManagedDb::new(t_db))) {
+                        Ok(n) => log::info!("Task graph restored {} task(s)", n),
+                        Err(e) => log::error!("Task graph restore failed: {}", e),
+                    }
+                }
+                Err(e) => log::error!("Task graph persistence unavailable: {}", e),
+            }
+
             let sidecar_state = app.state::<pty_sidecar::PtySidecarState>().inner().clone();
             let sidecar_fallback_pty: PtyManager = app.state::<PtyManager>().inner().clone();
             let sidecar_adopt_app = app.handle().clone();

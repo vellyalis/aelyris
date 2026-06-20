@@ -340,6 +340,13 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.pragma_update(None, "journal_mode", "WAL")?;
     // Enable foreign keys
     conn.pragma_update(None, "foreign_keys", "ON")?;
+    // Wait for the WAL write lock instead of failing immediately. The Context
+    // Store and Task Graph managers each open their OWN connection to this file
+    // (Runtime Hardening P1), so three+ writers now contend. Without a busy
+    // timeout a contended write-through returns SQLITE_BUSY at once and would be
+    // logged-and-dropped — a silent durability hole that defeats "SQLite = the
+    // source of truth". A modest timeout makes the loser wait for the lock.
+    conn.busy_timeout(std::time::Duration::from_secs(5))?;
 
     Ok(())
 }
@@ -388,5 +395,18 @@ mod tests {
             )
             .unwrap();
         assert_eq!(dep, "a");
+    }
+
+    #[test]
+    fn busy_timeout_is_set_so_contended_writers_wait() {
+        // Guards the multi-writer durability fix: every connection that runs
+        // migrations must come out with a non-zero busy_timeout, otherwise a
+        // contended write-through silently fails with SQLITE_BUSY.
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        let timeout_ms: i64 = conn
+            .query_row("PRAGMA busy_timeout", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(timeout_ms, 5000);
     }
 }

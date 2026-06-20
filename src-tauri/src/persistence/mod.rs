@@ -7,5 +7,7 @@
 //! `TaskGraph`) stays I/O-free; managers call these repos after mutating memory.
 
 pub mod decision_repo;
+pub mod task_repo;
 
 pub use decision_repo::DecisionRepo;
+pub use task_repo::TaskRepo;
