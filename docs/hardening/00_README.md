@@ -49,7 +49,7 @@
 | **P2** | 並行耐久性の証明（自動）+ 実LLM中規模実走（手動受入） | Core未実戦の不安 | 🟡 |
 | **P3** | Event Bus 無損失化（durable log + seqカーソル + 自己回復） | 連絡漏れ | ✅ |
 | **P4** | Supervisor実体（escalation durable化）+ C-22回帰 | 詰まり放置 | ✅ |
-| **P5** | エンタープライズ層を**契約(trait)だけ**用意（RBAC/監査/テナント） | 後付け可能性の担保 | ⬜ |
+| **P5** | governance choke point（MCP境界の認可+監査、policy差し替え可能） | 後付け可能性の担保 | ✅ |
 
 > エンタープライズ機能の実装本体は **P5の射程外**（contract-onlyで後付け可能に保つだけ）。Coreが実戦で正しいと分かってから鎧を着せる。
 
@@ -90,6 +90,23 @@ cargo fmt --check
 
 > **P1-5a**: `tests/test_runtime_persistence.rs` 2件PASS。実DBファイルに ContextStore + TaskGraph を**別々の専用接続**で書き(multi-writer+busy_timeout経路)、全接続drop(WALチェックポイント)→新Managerで再オープン→decisions/status/crash_attempts/依存/terminal状態を完全復元。プロセス再起動の決定的プロキシ。GUI不要・CI可能。
 > **P1-5b(残)**: 実アプリでの最終目視確認。現在 Aether.exe は**旧バイナリ**稼働中なので、新binをビルド・起動してからの確認になる（任意・低リスク。ロジックは P1-5a で証明済）。
+
+### P5 — governance choke point（✅ branch `feat/runtime-hardening`）
+
+| タスクID | 内容 | 状態 |
+|---------|------|------|
+| P5-trait | `governance/`: `AccessControl`/`TenantResolver` trait + `AllowAll`/`SingleTenant` default + `Governance` holder | ✅ |
+| P5-choke | `tools_call`(MCP)先頭に単一認可ゲート。Deny→durable監査(audit journal)+403。default allow-allで挙動不変 | ✅ |
+| P5-wire | ApiState `governance`(default)+`with_governance`/`with_access_and_tenants`。`ApiError::Forbidden`(403) | ✅ |
+| P5-audit | 敵対レビュー→#1(MED境界)文書化 + #4b/#4c/#3.5b 修正 | ✅ |
+
+> **意義**: 外部プログラム面(MCP)の全 verb が**1つの認可choke point**を通る。enterprise は `AccessControl` を差し替えるだけで RBAC を強制でき、verb handler を一切触らない＝「契約は配線済み、実装は後付け」。拒否は audit journal に durable 記録(enterprise audit trail)。
+> **敵対レビューの確定対応**:
+> - **#1(MED 境界限界)**: governance は **MCP verb 面のみ**。REST `/sessions`・WS・`/mux/*` は素通り(同等のPTY操作)。**現auth=単一トークン単一ユーザー＝authn==authzで現時点実害ゼロ**、multi-user RBAC化で顕在化。→ module docに境界を明記(誇張しない)。フルRBACはREST/WSも要gate＋actor解決＝別productization。
+> - **#4c**: Deny reasonを403ボディに返すと内部情報漏洩→**汎用403**、詳細はaudit のみ。
+> - **#4b**: TenantResolver注入builder無し→`with_access_and_tenants`追加。
+> - **#3.5b**: db付きdeny→audit行検証テスト追加。
+> **既知 limitation(意図的)**: actor=`"operator"`固定(単一トークンauthにidentity解決元が無い)。per-verbポリシーは効くがper-actor RBACはmulti-user auth待ち。trait shapeは actor 受領可能な正しい形。allowは未監査(denyのみ)。**フルenterprise(マルチノード/RBAC backend/SSO)はlocal-first範囲外**。
 
 ### P3 — Event Bus 無損失化（✅ branch `feat/runtime-hardening`）
 

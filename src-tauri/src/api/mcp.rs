@@ -824,11 +824,57 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
     }))
 }
 
+/// Durably audit a governance denial (P5) so an enterprise deployment has a
+/// trail of every blocked verb. A no-op without an attached db; a write failure
+/// is logged, never silently swallowed.
+fn audit_access_denied(state: &ApiState, actor: &str, verb: &str, reason: &str) {
+    let Some(db) = state.db.as_ref() else {
+        return;
+    };
+    let event = crate::db::AuditJournalAppend {
+        workspace_id: state.governance.tenant_of(actor),
+        thread_id: None,
+        session_id: None,
+        pane_id: None,
+        terminal_id: None,
+        agent_id: Some(actor.to_string()),
+        workflow_id: None,
+        task_id: None,
+        correlation_id: Some(verb.to_string()),
+        kind: "access_denied".to_string(),
+        severity: "warning".to_string(),
+        source: "governance".to_string(),
+        confidence: None,
+        payload_json: serde_json::json!({ "actor": actor, "verb": verb, "reason": reason }),
+    };
+    if let Err(e) = db.with(|d| d.append_audit_journal_event(&event)) {
+        tracing::error!(verb, error = %e, "access-denied audit failed");
+    }
+}
+
 pub(super) async fn tools_call(
     State(state): State<ApiState>,
     Json(body): Json<ToolCallBody>,
 ) -> ApiResult<Json<serde_json::Value>> {
     let args = body.arguments.as_object().cloned().unwrap_or_default();
+    // P5 governance choke point: EVERY MCP verb flows through one authorization
+    // gate. The default policy allows all (local-first, behaviour unchanged); an
+    // enterprise build swaps in an RBAC policy with no handler change. A denial
+    // is durably audited, then returned as 403. Actor identity is single-operator
+    // for now (enterprise auth would resolve it from the token).
+    let actor = "operator";
+    if let crate::governance::AccessDecision::Deny(reason) =
+        state.governance.authorize(actor, &body.name)
+    {
+        // Audit the detailed reason durably, but return only a GENERIC 403 to the
+        // caller: a policy reason may reference internal roles/resources and must
+        // not leak to the client.
+        audit_access_denied(&state, actor, &body.name, &reason);
+        return Err(ApiError::Forbidden(format!(
+            "verb `{}` is not permitted",
+            body.name
+        )));
+    }
     let result = match body.name.as_str() {
         "terminal.list" => serde_json::json!({
             "sessions": state.pty.list_info(),
@@ -1852,5 +1898,86 @@ mod tests {
                 "{verb} schema maxLength drifted from WS_MAX_INPUT_FRAME_BYTES",
             );
         }
+    }
+
+    /// P5 governance choke point: a denying policy blocks a verb with 403 BEFORE
+    /// it dispatches, while the default allow-all policy passes it through. Binds
+    /// the seam so enterprise policy is enforced without touching any handler.
+    #[test]
+    fn governance_denies_with_403_and_allows_by_default() {
+        use crate::governance::{AccessControl, AccessDecision, Governance};
+        use crate::pty::PtyManager;
+        use std::sync::Arc;
+
+        struct DenyAll;
+        impl AccessControl for DenyAll {
+            fn authorize(&self, _actor: &str, verb: &str) -> AccessDecision {
+                AccessDecision::Deny(format!("{verb} blocked"))
+            }
+        }
+
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let body = || ToolCallBody {
+            name: "terminal.list".to_string(),
+            arguments: serde_json::json!({}),
+        };
+
+        // Denying policy -> 403 Forbidden before the verb ever dispatches.
+        let denied = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_governance(Arc::new(Governance::with_access(Box::new(DenyAll))));
+        let result = rt.block_on(tools_call(State(denied), Json(body())));
+        assert!(
+            matches!(result, Err(ApiError::Forbidden(_))),
+            "a denied verb must 403"
+        );
+
+        // Default (allow-all) lets the same verb run.
+        let allowed = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"));
+        let result = rt.block_on(tools_call(State(allowed), Json(body())));
+        assert!(
+            result.is_ok(),
+            "default allow-all must pass the verb through"
+        );
+    }
+
+    /// A denial is durably recorded to the audit journal — the enterprise audit
+    /// trail of blocked verbs (binds the audit write path, not just the 403).
+    #[test]
+    fn denied_verb_is_durably_audited() {
+        use crate::db::{AuditJournalFilter, Database, ManagedDb};
+        use crate::governance::{AccessControl, AccessDecision, Governance};
+        use crate::pty::PtyManager;
+        use std::sync::Arc;
+
+        struct DenyAll;
+        impl AccessControl for DenyAll {
+            fn authorize(&self, _actor: &str, verb: &str) -> AccessDecision {
+                AccessDecision::Deny(format!("{verb} blocked"))
+            }
+        }
+
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_governance(Arc::new(Governance::with_access(Box::new(DenyAll))))
+            .with_db(Some(db.clone()));
+        let body = ToolCallBody {
+            name: "aether.spawn_agent".to_string(),
+            arguments: serde_json::json!({}),
+        };
+        let result = rt.block_on(tools_call(State(state), Json(body)));
+        assert!(matches!(result, Err(ApiError::Forbidden(_))));
+
+        let rows = db
+            .with(|d| {
+                d.list_audit_journal_events(&AuditJournalFilter {
+                    kind: Some("access_denied".to_string()),
+                    limit: Some(10),
+                    ..Default::default()
+                })
+            })
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].kind, "access_denied");
     }
 }

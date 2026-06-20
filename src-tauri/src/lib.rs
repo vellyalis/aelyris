@@ -15,6 +15,7 @@ pub mod failure_policy;
 pub mod file_ownership;
 pub mod ghostdiff;
 pub mod git;
+pub mod governance;
 pub mod history;
 pub mod intent;
 mod ipc;

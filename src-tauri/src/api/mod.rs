@@ -186,6 +186,10 @@ pub struct ApiState {
     /// non-persistent mode (a no-op sink).
     pub db: Option<Arc<crate::db::ManagedDb>>,
     pub mcp_pending: Arc<Mutex<Vec<McpPendingDecision>>>,
+    /// Governance policy (P5): the single authorization + tenancy choke point
+    /// every MCP verb flows through. Defaults to allow-all + single-tenant, so
+    /// behaviour is unchanged; an enterprise build swaps the access policy here.
+    pub governance: Arc<crate::governance::Governance>,
     pub mux_store: Option<Arc<FileMuxSnapshotStore>>,
     pub auth: AuthConfig,
     pub shutdown: Arc<Notify>,
@@ -228,6 +232,7 @@ impl ApiState {
             knowledge_graph: None,
             db: None,
             mcp_pending: Arc::new(Mutex::new(Vec::new())),
+            governance: Arc::new(crate::governance::Governance::new()),
             mux_store: None,
             auth,
             shutdown: Arc::new(Notify::new()),
@@ -304,6 +309,13 @@ impl ApiState {
     /// face. `None` leaves the sink a no-op (tests / non-persistent mode).
     pub fn with_db(mut self, db: Option<Arc<crate::db::ManagedDb>>) -> Self {
         self.db = db;
+        self
+    }
+
+    /// Swap the governance policy (P5). Enterprise builds inject an RBAC access
+    /// policy here; tests inject a denying policy to exercise the choke point.
+    pub fn with_governance(mut self, governance: Arc<crate::governance::Governance>) -> Self {
+        self.governance = governance;
         self
     }
 
@@ -978,6 +990,9 @@ pub enum ApiError {
     #[error("unauthorized")]
     Unauthorized,
 
+    #[error("forbidden: {0}")]
+    Forbidden(String),
+
     #[error("rate limit exceeded")]
     RateLimited,
 
@@ -998,6 +1013,7 @@ impl IntoResponse for ApiError {
             ApiError::BadRequest(_) => (StatusCode::BAD_REQUEST, "bad_request"),
             ApiError::Conflict(_) => (StatusCode::CONFLICT, "conflict"),
             ApiError::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized"),
+            ApiError::Forbidden(_) => (StatusCode::FORBIDDEN, "forbidden"),
             ApiError::RateLimited => (StatusCode::TOO_MANY_REQUESTS, "rate_limited"),
             ApiError::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "internal"),
         };
