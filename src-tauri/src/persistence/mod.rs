@@ -1,0 +1,11 @@
+//! Persistence repositories — the write-through bridge between the Agent
+//! Runtime Core's in-memory domain state and SQLite (the source of truth).
+//!
+//! See docs/hardening/02_SPEC.md §2/§5. Each repo takes a `&Database`, owns its
+//! own SQL, and exposes `load_*` (startup restore) plus `upsert`/`delete`
+//! (write-through on each real change). The domain core (`ContextStore`,
+//! `TaskGraph`) stays I/O-free; managers call these repos after mutating memory.
+
+pub mod decision_repo;
+
+pub use decision_repo::DecisionRepo;

@@ -39,6 +39,12 @@ impl ContextStore {
         Self::default()
     }
 
+    /// Rebuild a store from a persisted snapshot (startup restore, FR-3). The
+    /// `BTreeMap` re-orders deterministically, so the source order is irrelevant.
+    pub fn from_map(decisions: BTreeMap<String, String>) -> Self {
+        Self { decisions }
+    }
+
     pub fn len(&self) -> usize {
         self.decisions.len()
     }

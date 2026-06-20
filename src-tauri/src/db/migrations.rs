@@ -299,6 +299,40 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             role        TEXT NOT NULL DEFAULT '',
             updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
         );
+
+        -- Runtime Hardening P1: durable Agent Runtime Core state. The Context
+        -- Store (shared ADR) and Task Graph were in-memory only and lost on
+        -- restart; these tables make them survive. See docs/hardening/02_SPEC.md.
+        CREATE TABLE IF NOT EXISTS context_decisions (
+            key        TEXT PRIMARY KEY,
+            value      TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS tasks (
+            id               TEXT PRIMARY KEY,
+            title            TEXT NOT NULL,
+            description      TEXT NOT NULL DEFAULT '',
+            status           TEXT NOT NULL DEFAULT 'pending',
+            owner            TEXT,
+            model            TEXT,
+            priority         TEXT NOT NULL DEFAULT 'medium',
+            estimate         INTEGER,
+            outputs_json     TEXT NOT NULL DEFAULT '[]',
+            source_branch    TEXT,
+            target_branch    TEXT,
+            crash_attempts   INTEGER NOT NULL DEFAULT 0,
+            rework_attempts  INTEGER NOT NULL DEFAULT 0,
+            timeout_attempts INTEGER NOT NULL DEFAULT 0,
+            sort_order       INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_tasks_sort_order ON tasks(sort_order);
+
+        CREATE TABLE IF NOT EXISTS task_dependencies (
+            task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+            dep_id  TEXT NOT NULL,
+            PRIMARY KEY (task_id, dep_id)
+        );
         ",
     )?;
 
@@ -308,4 +342,51 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.pragma_update(None, "foreign_keys", "ON")?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn migrations_are_idempotent_and_create_runtime_core_tables() {
+        let conn = Connection::open_in_memory().unwrap();
+        // Running twice must not error (IF NOT EXISTS / INSERT OR IGNORE).
+        run_migrations(&conn).unwrap();
+        run_migrations(&conn).unwrap();
+
+        // P1 Context Store table round-trips a decision.
+        conn.execute(
+            "INSERT INTO context_decisions (key, value) VALUES (?1, ?2)",
+            ["auth_method", "jwt"],
+        )
+        .unwrap();
+        let value: String = conn
+            .query_row(
+                "SELECT value FROM context_decisions WHERE key = ?1",
+                ["auth_method"],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(value, "jwt");
+
+        // P1 Task tables: a task plus a dependency edge survive insert/select.
+        conn.execute("INSERT INTO tasks (id, title) VALUES ('a', 'A')", [])
+            .unwrap();
+        conn.execute("INSERT INTO tasks (id, title) VALUES ('b', 'B')", [])
+            .unwrap();
+        conn.execute(
+            "INSERT INTO task_dependencies (task_id, dep_id) VALUES ('b', 'a')",
+            [],
+        )
+        .unwrap();
+        let dep: String = conn
+            .query_row(
+                "SELECT dep_id FROM task_dependencies WHERE task_id = 'b'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(dep, "a");
+    }
 }

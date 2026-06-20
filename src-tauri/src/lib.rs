@@ -23,6 +23,7 @@ pub mod logging;
 pub mod lsp;
 pub mod mux;
 pub mod orchestrator;
+pub mod persistence;
 pub mod process;
 pub mod pty;
 pub mod pty_sidecar;
@@ -169,6 +170,22 @@ pub fn run() {
                         app.handle().manage(db::ManagedDb::new(mem_db));
                     }
                 }
+            }
+
+            // Runtime Hardening P1: make the Context Store (shared ADR) durable.
+            // It opens its OWN connection to the same file (SQLite WAL allows
+            // concurrent connections) rather than threading an Arc through the
+            // 36 `State<ManagedDb>` consumers. On failure we log loudly and fall
+            // back to in-memory — never silently start with an empty store.
+            match Database::open(&db_path) {
+                Ok(cs_db) => {
+                    let cs = app.state::<std::sync::Arc<context_store::ContextStoreManager>>();
+                    match cs.attach_db(std::sync::Arc::new(db::ManagedDb::new(cs_db))) {
+                        Ok(n) => log::info!("Context store restored {} decision(s)", n),
+                        Err(e) => log::error!("Context store restore failed: {}", e),
+                    }
+                }
+                Err(e) => log::error!("Context store persistence unavailable: {}", e),
             }
 
             let sidecar_state = app.state::<pty_sidecar::PtySidecarState>().inner().clone();

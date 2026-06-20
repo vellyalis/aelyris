@@ -264,6 +264,13 @@ impl Database {
         Ok(Self { conn })
     }
 
+    /// Borrow the underlying connection. Used by the `persistence` repositories
+    /// (decision/task/event) so they can own their own SQL without bloating this
+    /// module. Crate-internal — external callers go through typed methods.
+    pub(crate) fn conn(&self) -> &Connection {
+        &self.conn
+    }
+
     // --- Session CRUD ---
 
     /// Persist a pane's user-assigned name/role so sidecar sessions that
