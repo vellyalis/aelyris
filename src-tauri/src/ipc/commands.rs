@@ -2312,7 +2312,25 @@ pub async fn resize_terminal(
         .try_state::<crate::pty_sidecar::PtySidecarState>()
         .and_then(|state| state.client())
     {
-        sidecar.resize(&id, cols, rows).await
+        match sidecar.resize(&id, cols, rows).await {
+            Ok(()) => Ok(()),
+            Err(sidecar_err) => {
+                // The id may be an in-process PtyManager terminal the sidecar
+                // does not own (e.g. an autonomy fleet pane, always spawned
+                // in-process) — fall back to resizing it directly before
+                // reporting the original failure.
+                let pty_manager = app.state::<PtyManager>().inner().clone();
+                let resize_id = id.clone();
+                let fallback = tauri::async_runtime::spawn_blocking(move || {
+                    pty_manager
+                        .resize(&resize_id, cols, rows)
+                        .map_err(|err| err.to_string())
+                })
+                .await
+                .map_err(|err| format!("Terminal resize task failed: {}", err))?;
+                fallback.map_err(|_| sidecar_err)
+            }
+        }
     } else {
         let pty_manager = app.state::<PtyManager>().inner().clone();
         let resize_id = id.clone();
