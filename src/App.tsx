@@ -1,4 +1,5 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { listen as tauriListen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
   Activity,
   Bot,
@@ -2447,6 +2448,33 @@ export function App() {
   const rightRailProjectPathRef = useRef("");
   const rightRailGuardrailProfileRef = useRef<WorkforceGuardrailProfile>("Research");
   const rightRailGuardrailInitialPersistRef = useRef(false);
+
+  // Reveal the autonomy fleet when the loop spawns an agent into a visible pane:
+  // force-open the Orchestrator widget so its FleetGrid mounts and the operator
+  // sees the agent working, instead of the panes living in a collapsed panel.
+  // Live events only (no history hydration) so it never auto-opens on startup.
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    let unlisten: UnlistenFn | null = null;
+    let cancelled = false;
+    void tauriListen<{ kind?: string }>("agent-event", (event) => {
+      if (cancelled) return;
+      if (event.payload?.kind === "agent_spawned") {
+        setRightRailFocusWidget("orchestrator");
+      }
+    })
+      .then((fn) => {
+        if (cancelled) fn();
+        else unlisten = fn;
+      })
+      .catch(() => {
+        /* backend unreachable (e.g. tests) — fleet auto-reveal is best-effort */
+      });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
 
   useEffect(() => {
     const onEditorModeChange = (event: Event) => {
