@@ -133,6 +133,33 @@ impl AgentCli {
 /// A resolved agent CLI launch: `(program, args, environment)`.
 pub type AgentLaunchSpec = (String, Vec<String>, HashMap<String, String>);
 
+/// Default Claude model when a task carries no usable model.
+const DEFAULT_AGENT_MODEL: &str = "sonnet";
+/// Claude model aliases the CLI accepts directly.
+const CLAUDE_MODEL_ALIASES: &[&str] = &["sonnet", "opus", "haiku", "default"];
+
+/// Resolve a task's routed model to one a CLI will actually accept and run.
+///
+/// An autonomy task with no explicit `model` falls back to its `owner` — an
+/// *identity* like "impl" or "reviewer", not a model. Passing that as
+/// `--model impl` makes the CLI reject it ("model may not exist") and exit
+/// immediately, so the agent pane flashes and dies instead of working. Map any
+/// unrecognized value to the default usable model so the agent always runs.
+/// Recognized: codex*/gemini*/claude* providers and the Claude aliases above.
+pub fn resolve_agent_model(model: &str) -> String {
+    let trimmed = model.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    let recognized = lower.starts_with("codex")
+        || lower.starts_with("gemini")
+        || lower.starts_with("claude")
+        || CLAUDE_MODEL_ALIASES.contains(&lower.as_str());
+    if recognized {
+        trimmed.to_string()
+    } else {
+        DEFAULT_AGENT_MODEL.to_string()
+    }
+}
+
 /// Resolve a model name to the `(program, args, env)` for spawning that agent's
 /// CLI in an **interactive/visible PTY** (human-readable output, not the headless
 /// `--output-format stream-json` stream). Single source of truth shared by the
@@ -146,6 +173,10 @@ pub fn agent_command_spec(
     model: &str,
     initial_prompt: Option<&str>,
 ) -> Result<AgentLaunchSpec, String> {
+    // Map an identity/unknown model (e.g. a task's owner) to a usable one so the
+    // CLI never rejects `--model <identity>` and exits before doing any work.
+    let model = resolve_agent_model(model);
+    let model = model.as_str();
     let cli = AgentCli::from_model(model);
     cli.validate()?;
     let (program, mut args) = cli.program_and_args(Some(model));
@@ -458,6 +489,31 @@ mod tests {
         let (_program, args, _env) = agent_command_spec("sonnet", None).unwrap();
         // Claude with a model but no prompt: just the model flags, nothing to run.
         assert_eq!(args, vec!["--model", "sonnet"]);
+    }
+
+    #[test]
+    fn resolve_agent_model_maps_identities_to_a_usable_default() {
+        // An identity owner routed as a model would be rejected by the CLI.
+        assert_eq!(resolve_agent_model("impl"), "sonnet");
+        assert_eq!(resolve_agent_model("reviewer-agent"), "sonnet");
+        assert_eq!(resolve_agent_model(""), "sonnet");
+        // Recognized aliases/providers pass through untouched.
+        assert_eq!(resolve_agent_model("opus"), "opus");
+        assert_eq!(resolve_agent_model("codex-mini"), "codex-mini");
+        assert_eq!(resolve_agent_model("gemini-2.5-pro"), "gemini-2.5-pro");
+        assert_eq!(resolve_agent_model("claude-opus-4-8"), "claude-opus-4-8");
+    }
+
+    #[test]
+    fn agent_command_spec_falls_back_to_a_usable_model_for_an_identity() {
+        // A task whose model is an identity (its owner) must still launch a real,
+        // usable agent instead of `--model impl` (which the CLI rejects).
+        let (program, args, _env) = agent_command_spec("impl", Some("do the work")).unwrap();
+        assert_eq!(program, platform_cli_program("claude"));
+        assert_eq!(
+            args,
+            vec!["--model", "sonnet", "--verbose", "-p", "do the work"]
+        );
     }
 
     #[test]
