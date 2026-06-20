@@ -46,7 +46,7 @@
 | Phase | テーマ | 解消する弱点 | 状態 |
 |-------|-------|------------|------|
 | **P1** | 永続化（ContextStore + TaskGraph → SQLite write-through + 起動時復元） | 再起動で会社が消える | ⬜ 未着手 |
-| **P2** | 実LLM 1本通し ハードニング（取りこぼし炙り出し） | Core未実戦の不安 | ⬜ |
+| **P2** | 並行耐久性の証明（自動）+ 実LLM中規模実走（手動受入） | Core未実戦の不安 | 🟡 |
 | **P3** | Event Bus 無損失化（durable log + pub/sub、上限撤廃） | 連絡漏れ | ⬜ |
 | **P4** | Supervisor実体（escalation durable化）+ C-22回帰 | 詰まり放置 | ✅ |
 | **P5** | エンタープライズ層を**契約(trait)だけ**用意（RBAC/監査/テナント） | 後付け可能性の担保 | ⬜ |
@@ -90,6 +90,17 @@ cargo fmt --check
 
 > **P1-5a**: `tests/test_runtime_persistence.rs` 2件PASS。実DBファイルに ContextStore + TaskGraph を**別々の専用接続**で書き(multi-writer+busy_timeout経路)、全接続drop(WALチェックポイント)→新Managerで再オープン→decisions/status/crash_attempts/依存/terminal状態を完全復元。プロセス再起動の決定的プロキシ。GUI不要・CI可能。
 > **P1-5b(残)**: 実アプリでの最終目視確認。現在 Aether.exe は**旧バイナリ**稼働中なので、新binをビルド・起動してからの確認になる（任意・低リスク。ロジックは P1-5a で証明済）。
+
+### P2 — 並行耐久性 + 実LLM実走（🟡 自動部分✅ / 手動受入は残）
+
+| タスクID | 内容 | 状態 |
+|---------|------|------|
+| P2-conc | **並行耐久性ストレステスト** `tests/test_concurrent_durability.rs`：本番トポロジ(ContextStore/TaskGraph/audit が各自の接続で1ファイルを叩く)を3スレッド同時×各100書き込み→**1件も損失なし**を縛る。busy_timeout が実負荷で効く証明・デッドロックなし | ✅ |
+| P2-llm(手動) | 実 claude/codex 3体で中規模1機能を完成まで(worktree→Reviewer→merge)。`scripts/conduct-build.mjs` が土台(d660a62で最小実証済)。**要: 新binビルド+起動+認証CLI** | ⬜ |
+| P2-scale(注記) | `TaskRepo::save_graph` はフルスナップショット=1ミューテーション O(N)、N回createで O(N²)。数十タスクは安価(100タスク0.9s)。**数千タスク規模では incremental save が必要**(現状はlocal-first想定で許容、必要時に最適化＝早すぎる最適化を避ける) | 📝 |
+
+> **P2-conc の意義**: 監査HIGH(busy_timeout欠如→SQLITE_BUSYで書き込みsilent drop)の修正が、実際の並行書き込み下で本当に取りこぼさないことを決定的に証明。busy_timeout=0なら落ちる不変を縛る。エンタープライズの durability-under-concurrency の核心。
+> **P2-llm の手動性**: 実LLMをGUIで走らせる最終受入は稼働アプリ+認証CLIが要るため自動化不可。新binを起動して `scripts/conduct-build.mjs` で中規模実走し、走行中の取りこぼし/詰まりを観察→出たものをP3/P4のREDに落とす運用。
 
 ### P4 — Supervisor 実体 + C-22（✅ branch `feat/runtime-hardening`）
 
