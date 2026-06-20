@@ -85,7 +85,11 @@ cargo fmt --check
 | P1-3 | TaskRepo(フルスナップショット) + 既存 `TaskManager` write-through | P1 | ✅ | feat/runtime-hardening |
 | P1-4(task) | lib.rs setup で Task Graph 起動時復元を配線 | P1 | ✅ | 〃 |
 | P1-audit | 敵対的マルチレンズ監査(18 agent)→確定12件、busy_timeout(HIGH)等を修正 | P1 | ✅ | 〃 |
-| P1-5 | 実機: dispatch→kill→再起動で状態復元 検証 | P1 | ⬜ | |
+| P1-5a | 実ファイル再起動(接続close→reopen)統合テスト=耐久性の決定的証明 | P1 | ✅ | `tests/test_runtime_persistence.rs` |
+| P1-5b | 実GUI(`pnpm tauri dev`)で dispatch→kill→再起動の手動確認 | P1 | ⬜ | 新binビルド+起動が要(現稼働は旧bin) |
+
+> **P1-5a**: `tests/test_runtime_persistence.rs` 2件PASS。実DBファイルに ContextStore + TaskGraph を**別々の専用接続**で書き(multi-writer+busy_timeout経路)、全接続drop(WALチェックポイント)→新Managerで再オープン→decisions/status/crash_attempts/依存/terminal状態を完全復元。プロセス再起動の決定的プロキシ。GUI不要・CI可能。
+> **P1-5b(残)**: 実アプリでの最終目視確認。現在 Aether.exe は**旧バイナリ**稼働中なので、新binをビルド・起動してからの確認になる（任意・低リスク。ロジックは P1-5a で証明済）。
 
 > **P1-audit 結果**: HIGH=「WAL複数writer×busy_timeout未設定→SQLITE_BUSYで書き込みsilent drop」を修正(全接続に`busy_timeout=5s`)。他: 依存Vec順序保持/i64→u32安全変換/no-op recompute非永続化/docs整合。受容(設計上妥当)=panic時非永続(full snapshotで自己回復)・load all-or-nothing(失敗時attachせず上書きしない)・ManagedDb poison(既存・範囲外)。誤検知1件(WAL未有効)は棄却。
 
