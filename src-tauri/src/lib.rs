@@ -818,23 +818,22 @@ pub fn run() {
                 if let Some(state) = app.try_state::<api::ApiState>() {
                     state.trigger_shutdown();
                 }
-                // Explicit cleanup only applies to the fallback in-process PTY
-                // owner. When the sidecar is active, tmux-like sessions remain
-                // alive after the WebView/Tauri UI exits — unless the user
-                // opted in to full shutdown via terminal.shutdown_sidecar_on_exit.
+                // Kill in-process PTYs on exit. These are the fallback owner's
+                // user shells AND the autonomy loop's fleet panes (always spawned
+                // in-process) — both are ephemeral and would otherwise orphan
+                // live agent processes after the window closes. `close_all` only
+                // touches PtyManager's in-process instances; the sidecar's own
+                // tmux-like sessions live in a separate process and persist by
+                // design (unless the user opted into full shutdown below).
+                if let Some(pty) = app.try_state::<PtyManager>() {
+                    pty.close_all();
+                }
                 let sidecar_client = app
                     .try_state::<pty_sidecar::PtySidecarState>()
                     .and_then(|state| state.client());
-                match sidecar_client {
-                    Some(client) => {
-                        if config::load_config().terminal.shutdown_sidecar_on_exit {
-                            tauri::async_runtime::block_on(client.shutdown_daemon());
-                        }
-                    }
-                    None => {
-                        if let Some(pty) = app.try_state::<PtyManager>() {
-                            pty.close_all();
-                        }
+                if let Some(client) = sidecar_client {
+                    if config::load_config().terminal.shutdown_sidecar_on_exit {
+                        tauri::async_runtime::block_on(client.shutdown_daemon());
                     }
                 }
             }

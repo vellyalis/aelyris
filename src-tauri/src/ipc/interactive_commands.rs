@@ -439,6 +439,8 @@ pub(crate) fn spawn_loop_pane_render(
         Ok(rx) => rx,
         Err(err) => {
             log::warn!("loop pane {terminal_id} output subscribe failed: {err}");
+            // Don't leak the engine session we just created; nothing will render.
+            native_registry.remove(&terminal_id);
             return;
         }
     };

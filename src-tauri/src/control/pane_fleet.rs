@@ -34,6 +34,14 @@ fn now_secs() -> u64 {
         .unwrap_or(0)
 }
 
+/// Record a pane as failed (non-zero exit) in its exit slot so the loop's next
+/// poll recovers the task — used when no waiter thread can observe the real exit.
+fn mark_failed(exit: &Arc<Mutex<Option<bool>>>) {
+    if let Ok(mut slot) = exit.lock() {
+        *slot = Some(false);
+    }
+}
+
 /// One dispatched pane: the visible terminal running its agent, when it started
 /// (for the hang budget), and a slot the waiter thread fills with the exit
 /// outcome (`Some(succeeded)` once the process exits; `None` while running).
@@ -92,7 +100,7 @@ impl PaneFleet {
                 // `AgentManager::reap`'s split so the loop recovers a crashed
                 // worker. (`ExitInfo::crashed` is a UI crash-banner heuristic
                 // that treats exit 1 as "clean", which is the wrong split here.)
-                let _ = std::thread::Builder::new()
+                let waiter = std::thread::Builder::new()
                     .name(format!("pane-waiter-{terminal_id}"))
                     .spawn(move || {
                         let succeeded = match child.wait() {
@@ -103,28 +111,38 @@ impl PaneFleet {
                             *slot = Some(succeeded);
                         }
                     });
+                if waiter.is_err() {
+                    // No waiter thread => the exit would never be observed and the
+                    // task would wait out the full hang timeout. Mark it failed now
+                    // so the loop recovers it promptly.
+                    mark_failed(&exit);
+                }
             }
             None => {
                 // The child was already taken/gone right after spawn (should not
                 // happen — we are the sole owner). Mark it failed so the loop
                 // recovers the task rather than waiting forever on a pane whose
                 // exit will never be observed.
-                if let Ok(mut slot) = exit.lock() {
-                    *slot = Some(false);
-                }
+                mark_failed(&exit);
             }
         }
 
-        if let Ok(mut runs) = self.runs.lock() {
-            runs.insert(
-                task_id.to_string(),
-                PaneRun {
-                    terminal_id: terminal_id.clone(),
-                    started_at: now_secs(),
-                    exit,
-                },
-            );
-        }
+        // Register the pane so poll_completions can report it. Recover a poisoned
+        // lock (a prior panic) rather than dropping the task on the floor — a
+        // dispatched task that never lands in the map would be stranded in
+        // Running forever (the C-22 strand the loop must never allow).
+        let mut runs = self
+            .runs
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        runs.insert(
+            task_id.to_string(),
+            PaneRun {
+                terminal_id: terminal_id.clone(),
+                started_at: now_secs(),
+                exit,
+            },
+        );
         Ok(terminal_id)
     }
 
@@ -133,7 +151,7 @@ impl PaneFleet {
     pub fn terminal_of(&self, task_id: &str) -> Option<String> {
         self.runs
             .lock()
-            .ok()?
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
             .get(task_id)
             .map(|run| run.terminal_id.clone())
     }
@@ -146,9 +164,12 @@ impl PaneFleet {
     /// testable. Mirrors `AgentManager::reap` + `reap_timed_out` for the visible
     /// runtime.
     pub fn poll_completions(&self, timeout_secs: u64, now: u64) -> Completions {
-        let Ok(mut runs) = self.runs.lock() else {
-            return Completions::default();
-        };
+        // Recover a poisoned lock rather than wedging the whole fleet (every
+        // in-flight task stranded) on one prior panic.
+        let mut runs = self
+            .runs
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
 
         // Snapshot the observable state (owned) so the pure classifier does not
         // borrow the map we are about to mutate.
@@ -156,7 +177,6 @@ impl PaneFleet {
             .iter()
             .map(|(task_id, run)| RunSnapshot {
                 task_id: task_id.clone(),
-                terminal_id: run.terminal_id.clone(),
                 exit: run.exit.lock().ok().and_then(|slot| *slot),
                 started_at: run.started_at,
             })
@@ -164,19 +184,15 @@ impl PaneFleet {
 
         let completions = classify(&snapshot, timeout_secs, now);
 
-        // Apply side effects: kill the hung panes (they never exited), reap the
-        // finished ones (their child was already waited), and forget every
-        // reported task. A terminal lookup uses the snapshot so it stays correct
-        // even as we remove entries.
-        let terminal_of = |task: &str| -> Option<String> {
-            snapshot
-                .iter()
-                .find(|run| run.task_id == task)
-                .map(|run| run.terminal_id.clone())
-        };
+        // Remove every reported task from the map under the lock, collecting the
+        // terminals to act on; do the PTY I/O AFTER releasing the lock so a
+        // pane spawn/poll on another path is never blocked behind it. `remove`
+        // hands back the terminal id directly (no second lookup).
+        let mut to_kill = Vec::new(); // hung panes: still running, must be killed
+        let mut to_reap = Vec::new(); // finished panes: already exited, just clean up
         for task in &completions.timed_out {
-            if let Some(terminal) = terminal_of(task) {
-                let _ = self.pty.close(&terminal);
+            if let Some(run) = runs.remove(task) {
+                to_kill.push(run.terminal_id);
             }
         }
         for task in completions
@@ -184,17 +200,17 @@ impl PaneFleet {
             .iter()
             .chain(completions.failed.iter())
         {
-            if let Some(terminal) = terminal_of(task) {
-                let _ = self.pty.remove_exited(&terminal);
+            if let Some(run) = runs.remove(task) {
+                to_reap.push(run.terminal_id);
             }
         }
-        for task in completions
-            .succeeded
-            .iter()
-            .chain(completions.failed.iter())
-            .chain(completions.timed_out.iter())
-        {
-            runs.remove(task);
+        drop(runs);
+
+        for terminal in to_kill {
+            let _ = self.pty.close(&terminal);
+        }
+        for terminal in to_reap {
+            let _ = self.pty.remove_exited(&terminal);
         }
 
         completions
@@ -205,7 +221,6 @@ impl PaneFleet {
 #[derive(Clone)]
 struct RunSnapshot {
     task_id: String,
-    terminal_id: String,
     /// `Some(true)` clean exit, `Some(false)` non-zero exit, `None` still running.
     exit: Option<bool>,
     started_at: u64,
@@ -239,7 +254,6 @@ mod tests {
     fn run(task: &str, exit: Option<bool>, started_at: u64) -> RunSnapshot {
         RunSnapshot {
             task_id: task.to_string(),
-            terminal_id: format!("term-{task}"),
             exit,
             started_at,
         }
