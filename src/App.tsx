@@ -1,4 +1,5 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { listen as tauriListen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
   Activity,
   Bot,
@@ -88,9 +89,6 @@ const AgentInspector = lazy(() =>
 );
 const OrchestratorPanel = lazy(() =>
   import("./features/orchestrator/OrchestratorPanel").then((m) => ({ default: m.OrchestratorPanel })),
-);
-const FleetOverlay = lazy(() =>
-  import("./features/orchestrator/FleetOverlay").then((m) => ({ default: m.FleetOverlay })),
 );
 const ToolkitPanel = lazy(() => import("./features/toolkit/ToolkitPanel").then((m) => ({ default: m.ToolkitPanel })));
 const WorkflowPanel = lazy(() =>
@@ -2650,6 +2648,55 @@ export function App() {
     reorderTab,
   } = useTabManager("powershell");
   const activePtyId = tabActivePtyIds[activeTabId] ?? null;
+
+  // Loop-dispatched agents → real split panes in the active terminal tab. We
+  // accumulate the live agent terminals from the agent_spawned event stream and
+  // hand the set to the active tab's PaneTreeContainer, which splits the active
+  // pane and binds each agent's PTY (1 pane = 1 agent), so the operator watches
+  // them work in genuine terminal panes.
+  const [paneAgentSpawns, setPaneAgentSpawns] = useState<{
+    tabId: string;
+    agents: { terminalId: string; model: string }[];
+    sequence: number;
+  } | null>(null);
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    let unlisten: UnlistenFn | null = null;
+    let cancelled = false;
+    void tauriListen<{ kind?: string; payload?: { terminalId?: unknown; model?: unknown } }>(
+      "agent-event",
+      (event) => {
+        if (cancelled) return;
+        const message = event.payload;
+        if (message?.kind !== "agent_spawned") return;
+        const terminalId = message.payload?.terminalId;
+        if (typeof terminalId !== "string") return;
+        const model = typeof message.payload?.model === "string" ? message.payload.model : "sonnet";
+        setPaneAgentSpawns((prev) => {
+          const sameTab = prev && prev.tabId === activeTabId ? prev : null;
+          const agents = sameTab?.agents ?? [];
+          if (agents.some((agent) => agent.terminalId === terminalId)) return prev;
+          return {
+            tabId: activeTabId,
+            agents: [...agents, { terminalId, model }],
+            sequence: (sameTab?.sequence ?? 0) + 1,
+          };
+        });
+      },
+    )
+      .then((fn) => {
+        if (cancelled) fn();
+        else unlisten = fn;
+      })
+      .catch(() => {
+        /* backend unreachable (e.g. tests) — fleet panes are best-effort */
+      });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [activeTabId]);
+
   const activeTerminalTarget = useMemo<ActiveTerminalTarget>(
     () => ({
       terminalId: activePtyId,
@@ -4474,6 +4521,7 @@ export function App() {
         renamePaneRequest={paneRenameRequest?.tabId === tab.id ? paneRenameRequest : null}
         cyclePaneRoleRequest={paneRoleCycleRequest?.tabId === tab.id ? paneRoleCycleRequest : null}
         layoutRequest={paneLayoutRequest?.tabId === tab.id ? paneLayoutRequest : null}
+        spawnAgentPaneRequest={paneAgentSpawns?.tabId === tab.id ? paneAgentSpawns : null}
       />
     </div>
   ));
@@ -5156,13 +5204,6 @@ export function App() {
                 ) : (
                   terminalSurface
                 )}
-                {/* Center fleet takeover: fills this panel with live agent
-                    terminals while the autonomy loop runs (auto-hides idle). */}
-                <ErrorBoundary>
-                  <Suspense fallback={null}>
-                    <FleetOverlay />
-                  </Suspense>
-                </ErrorBoundary>
               </section>
 
               <aside

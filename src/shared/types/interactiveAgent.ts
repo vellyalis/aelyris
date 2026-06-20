@@ -43,13 +43,3 @@ export function getCliLabel(cli: AgentCliType): string {
 export function getCliColor(cli: AgentCliType): string {
   return CLI_LABELS[cli]?.color ?? "var(--text-primary)";
 }
-
-/**
- * Map a model name to its backing CLI — TS mirror of Rust `AgentCli::from_model`.
- * Used to label/colour a loop-dispatched agent pane from its announced model.
- */
-export function cliFromModel(model: string): AgentCliType {
-  if (model.startsWith("codex")) return "codex";
-  if (model.startsWith("gemini")) return "gemini";
-  return "claude";
-}

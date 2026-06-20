@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ShellType } from "../../../shared/types/terminalPane";
 import { reportFallback, reportInvokeFailure } from "../../../shared/lib/fallbackTelemetry";
@@ -70,6 +71,19 @@ export interface PaneLayoutRequest {
   sequence: number;
 }
 
+/**
+ * Imperative bridge to mount autonomy-loop agents' already-spawned PTYs as real
+ * split panes in this tab (1 pane = 1 agent). Each agent terminal is spawned
+ * in-process by the loop with a live render bridge; here we split the active pane
+ * and bind that terminal, so the operator watches it work in a genuine pane. The
+ * full live set is carried (not one at a time) so a burst of dispatches is never
+ * lost to render batching; already-mounted terminals are skipped.
+ */
+export interface PaneAgentSpawnRequest {
+  agents: ReadonlyArray<{ terminalId: string; model: string }>;
+  sequence: number;
+}
+
 interface PaneTreeContainerProps {
   shell: ShellType;
   cwd?: string;
@@ -100,6 +114,8 @@ interface PaneTreeContainerProps {
   cyclePaneRoleRequest?: PaneRoleCycleRequest | null;
   /** Imperative layout bridge used by tmux-style layout and swap commands. */
   layoutRequest?: PaneLayoutRequest | null;
+  /** Imperative bridge to mount a loop-dispatched agent's PTY as a split pane. */
+  spawnAgentPaneRequest?: PaneAgentSpawnRequest | null;
   /** localStorage key used to restore this tab's pane topology and labels. */
   layoutStorageKey?: string;
   /** Used only for durable backend layout metadata; empty is accepted. */
@@ -137,6 +153,7 @@ export function PaneTreeContainer({
   renamePaneRequest,
   cyclePaneRoleRequest,
   layoutRequest,
+  spawnAgentPaneRequest,
   layoutStorageKey,
   projectPath,
 }: PaneTreeContainerProps) {
@@ -291,12 +308,17 @@ export function PaneTreeContainer({
         if (cancelled) return;
         if (backendPanes.length === 0) {
           setOrphanedBackendPanes([]);
-          const endedPaneIds = Array.from(terminalIds.keys());
+          // Loop agent panes are in-process terminals, absent from the sidecar's
+          // pane list — never reconcile them as dead.
+          const endedPaneIds = Array.from(terminalIds.keys()).filter(
+            (paneId) => !agentPaneIdsRef.current.has(paneId),
+          );
           setPaneLifecycleStates((prev) => {
             if (terminalIds.size === 0) return prev;
             let changed = false;
             const next = new Map(prev);
             for (const paneId of terminalIds.keys()) {
+              if (agentPaneIdsRef.current.has(paneId)) continue;
               const current = next.get(paneId);
               if (current && current !== "layout-only" && current !== "detached" && current !== "live") continue;
               next.set(paneId, "exited");
@@ -328,6 +350,9 @@ export function PaneTreeContainer({
           registerTerminal(attached.paneId, attached.terminalId);
         }
         const endedPaneIds = restoredPaneIds.filter((paneId) => {
+          // Loop agent panes are in-process terminals, absent from the sidecar's
+          // pane list — never reconcile them as dead.
+          if (agentPaneIdsRef.current.has(paneId)) return false;
           const terminalId = terminalIds.get(paneId);
           return Boolean(terminalId && !backendTerminalIds.has(terminalId));
         });
@@ -336,6 +361,7 @@ export function PaneTreeContainer({
           const next = new Map(prev);
           const attachedPaneIds = new Set(reconciliation.attached.map((attached) => attached.paneId));
           for (const paneId of restoredPaneIds) {
+            if (agentPaneIdsRef.current.has(paneId)) continue;
             const current = next.get(paneId);
             const terminalId = terminalIds.get(paneId);
             const lifecycle = terminalId
@@ -515,6 +541,15 @@ export function PaneTreeContainer({
   const handledRenameSequenceRef = useRef<number | null>(null);
   const handledRoleCycleSequenceRef = useRef<number | null>(null);
   const handledLayoutSequenceRef = useRef<number | null>(null);
+  const handledAgentSpawnSequenceRef = useRef<number | null>(null);
+  // PaneIds (== terminalIds) of loop-dispatched agent panes. Tracked so backend
+  // reconciliation does not mistake them for dead (they are in-process terminals,
+  // not in the sidecar's pane list) and so we can close them when they exit.
+  const agentPaneIdsRef = useRef<Set<string>>(new Set());
+  // TerminalIds ever mounted as an agent pane — never cleared, so a pane that
+  // exited and closed is not re-mounted when the (cumulative) request re-renders.
+  const everMountedAgentsRef = useRef<Set<string>>(new Set());
+  const agentPaneUnlistenRef = useRef<Map<string, () => void>>(new Map());
   const firstLiveTerminalId = useMemo(() => {
     for (const paneId of collectLeafIds(tree)) {
       const terminalId = terminalIds.get(paneId);
@@ -932,6 +967,58 @@ export function PaneTreeContainer({
     handledLayoutSequenceRef.current = layoutRequest.sequence;
     applyLayoutViaMux(layoutRequest.command);
   }, [applyLayoutViaMux, layoutRequest]);
+
+  // Mount loop-dispatched agents' PTYs as real split panes: split the active
+  // pane and BIND each existing agent terminal (no new shell), so the operator
+  // watches the agents work in genuine, resizable panes. Tiles the layout so
+  // accumulating agents fill the tab. Each pane closes when its agent exits.
+  useEffect(() => {
+    if (!spawnAgentPaneRequest) return;
+    if (handledAgentSpawnSequenceRef.current === spawnAgentPaneRequest.sequence) return;
+    handledAgentSpawnSequenceRef.current = spawnAgentPaneRequest.sequence;
+
+    let mountedAny = false;
+    for (const { terminalId } of spawnAgentPaneRequest.agents) {
+      if (everMountedAgentsRef.current.has(terminalId) || collectLeafIds(tree).includes(terminalId)) continue;
+      const targetId = activePaneId && findLeaf(tree, activePaneId) ? activePaneId : collectLeafIds(tree)[0];
+      if (!targetId) break;
+      const targetLeaf = findLeaf(tree, targetId);
+      const direction: SplitDirection = agentPaneIdsRef.current.size % 2 === 0 ? "right" : "down";
+      splitWithExistingTerminal(targetId, direction, terminalId, targetLeaf?.shell ?? shell, targetLeaf?.cwd ?? cwd);
+      agentPaneIdsRef.current.add(terminalId);
+      everMountedAgentsRef.current.add(terminalId);
+      setPaneLifecycleStates((prev) => new Map(prev).set(terminalId, "live"));
+      mountedAny = true;
+
+      if (isTauriRuntime()) {
+        const id = terminalId;
+        void listen(`pty-exit-${id}`, () => {
+          agentPaneIdsRef.current.delete(id);
+          const unlisten = agentPaneUnlistenRef.current.get(id);
+          unlisten?.();
+          agentPaneUnlistenRef.current.delete(id);
+          // The loop already reaped the backend PTY; just drop the local pane.
+          close(id, { closeBackend: false });
+        })
+          .then((unlisten) => {
+            agentPaneUnlistenRef.current.set(id, unlisten);
+          })
+          .catch(() => {
+            /* backend unreachable — the pane stays until manually closed */
+          });
+      }
+    }
+    if (mountedAny) rebalance("tiled");
+  }, [spawnAgentPaneRequest, activePaneId, tree, splitWithExistingTerminal, rebalance, close, shell, cwd]);
+
+  // Detach agent-pane exit listeners on unmount.
+  useEffect(() => {
+    const listeners = agentPaneUnlistenRef.current;
+    return () => {
+      for (const unlisten of listeners.values()) unlisten();
+      listeners.clear();
+    };
+  }, []);
 
   const backendPaneRouting = useMemo(() => collectBackendPaneRouting(tree), [tree]);
   const renamedBackendNames = useRef(new Map<string, string>());
