@@ -441,6 +441,7 @@ pub fn run_step(
     reviewer_id: String,
     gates: std::collections::HashMap<String, GateResults>,
     gate_commands: Option<crate::control::gate_runner::GateCommands>,
+    db: Option<&crate::db::ManagedDb>,
 ) -> crate::orchestrator::autonomy::StepReport {
     let caps = cost.caps();
     // The shared ADR, injected into every agent dispatched this step.
@@ -476,6 +477,12 @@ pub fn run_step(
     });
     apply_file_lanes(ownership, events, &lanes, &report);
     publish_escalations(events, &report);
+    // Durable half of the escalation surface: persist each give-up when a db is
+    // attached, so a Failed task survives restart on BOTH faces (P4). The Event
+    // Bus publish above keeps live cockpit visibility.
+    if let Some(db) = db {
+        crate::supervisor::escalation_sink::persist_escalations(db, &report);
+    }
     report
 }
 
@@ -500,6 +507,7 @@ pub fn run_step_visible(
     reviewer_id: String,
     gates: std::collections::HashMap<String, GateResults>,
     gate_commands: Option<crate::control::gate_runner::GateCommands>,
+    db: Option<&crate::db::ManagedDb>,
 ) -> crate::orchestrator::autonomy::StepReport {
     let caps = cost.caps();
     let adr_header = build_adr_header(&context.all());
@@ -524,6 +532,12 @@ pub fn run_step_visible(
     });
     apply_file_lanes(ownership, events, &lanes, &report);
     publish_escalations(events, &report);
+    // Durable half of the escalation surface: persist each give-up when a db is
+    // attached, so a Failed task survives restart on BOTH faces (P4). The Event
+    // Bus publish above keeps live cockpit visibility.
+    if let Some(db) = db {
+        crate::supervisor::escalation_sink::persist_escalations(db, &report);
+    }
     report
 }
 
@@ -769,6 +783,51 @@ mod tests {
         // Nothing merged: main is untouched and no intent was queued.
         assert_eq!(repo.refname_to_id("refs/heads/main").unwrap(), main_before);
         assert!(ports.queue().intents().is_empty());
+    }
+
+    /// Feature and main both edit `shared.txt` divergently from a common base, so
+    /// merging feature into main is a real 3-way CONFLICT.
+    fn repo_with_conflicting_feature() -> (tempfile::TempDir, Repository) {
+        let (dir, repo) = init_repo();
+        let a = commit(&repo, &[("shared.txt", "base")], &[]);
+        repo.branch("feature", &repo.find_commit(a).unwrap(), false)
+            .unwrap();
+        checkout(&repo, "feature");
+        commit(&repo, &[("shared.txt", "feature change")], &[a]);
+        checkout(&repo, "main");
+        commit(&repo, &[("shared.txt", "main change")], &[a]);
+        (dir, repo)
+    }
+
+    #[test]
+    fn merge_conflict_escalates_and_never_strands_the_task() {
+        // C-22 regression: a real merge conflict (green review, but the branch
+        // can't merge because main advanced under it) must NOT leave the task
+        // `Running` with no worker forever. The headless agent already exited, so
+        // the loop requeues for rework; with the rework budget pre-consumed this
+        // conflict exhausts it -> the task is left `Failed` AND escalated (pushed
+        // to the supervisor / durable escalation sink), never silently stranded.
+        let (_dir, repo) = repo_with_conflicting_feature();
+        let main_before = repo.refname_to_id("refs/heads/main").unwrap();
+        let mut graph = review_task_graph(); // task "t" in Review, branches feature/main
+        graph.record_rework("t"); // 1 of MAX_REWORK_ATTEMPTS (2) already used
+        let mut ports = adapter_for(&repo, GREEN); // reviewer is green; the MERGE conflicts
+
+        let report = step(&mut graph, &caps(4), &CostUsage::default(), &mut ports);
+
+        // Did not merge: main is untouched, task is not Done.
+        assert!(report.merged.is_empty());
+        assert_eq!(repo.refname_to_id("refs/heads/main").unwrap(), main_before);
+        assert_eq!(report.rejected, ["t"]);
+        // Not stranded: the task is terminal `Failed`, not a worker-less `Running`.
+        assert_eq!(graph.get("t").unwrap().status, TaskStatus::Failed);
+        // Escalated, not silent: the give-up is surfaced with its reason.
+        assert!(report
+            .escalations
+            .iter()
+            .any(|e| e.task_id == "t" && e.reason == "rework"));
+        // The merge intent recorded the conflict outcome.
+        assert_eq!(ports.queue().intents()[0].status, "conflict");
     }
 
     #[test]

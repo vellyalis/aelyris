@@ -613,6 +613,15 @@ pub fn run() {
                     .with_context_store(context_store)
                     .with_intent_bus(intent_bus)
                     .with_knowledge_graph(knowledge_graph)
+                    // P4: give the MCP face its own connection to the same db
+                    // file so the autonomous loop persists escalations durably
+                    // (WAL + busy_timeout make the extra writer safe). A failed
+                    // open degrades the sink to a no-op, never blocks startup.
+                    .with_db(
+                        Database::open(&db_path)
+                            .ok()
+                            .map(|d| std::sync::Arc::new(db::ManagedDb::new(d))),
+                    )
                     .with_env_mux_store();
                 app.manage(api_state.clone());
                 let serve_state = api_state.clone();

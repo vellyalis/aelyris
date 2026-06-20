@@ -180,6 +180,11 @@ pub struct ApiState {
     /// Shared Knowledge Graph (same instance as the Tauri-managed one) so the
     /// fleet reasons over code structure + a change's blast radius over MCP.
     pub knowledge_graph: Option<Arc<crate::knowledge_graph::KnowledgeGraphManager>>,
+    /// Dedicated durable store (its own connection to the same db file) so the
+    /// autonomous MCP face persists escalations (Runtime Hardening P4) — the
+    /// unattended-safe durability the cockpit face also gets. `None` in tests /
+    /// non-persistent mode (a no-op sink).
+    pub db: Option<Arc<crate::db::ManagedDb>>,
     pub mcp_pending: Arc<Mutex<Vec<McpPendingDecision>>>,
     pub mux_store: Option<Arc<FileMuxSnapshotStore>>,
     pub auth: AuthConfig,
@@ -221,6 +226,7 @@ impl ApiState {
             context_store: None,
             intent_bus: None,
             knowledge_graph: None,
+            db: None,
             mcp_pending: Arc::new(Mutex::new(Vec::new())),
             mux_store: None,
             auth,
@@ -291,6 +297,13 @@ impl ApiState {
 
     pub fn with_task_manager(mut self, task_manager: Arc<crate::task::TaskManager>) -> Self {
         self.task_manager = Some(task_manager);
+        self
+    }
+
+    /// Attach the durable store used to persist autonomy escalations on the MCP
+    /// face. `None` leaves the sink a no-op (tests / non-persistent mode).
+    pub fn with_db(mut self, db: Option<Arc<crate::db::ManagedDb>>) -> Self {
+        self.db = db;
         self
     }
 

@@ -75,6 +75,11 @@ pub fn orchestrator_step(
         // The cockpit face supplies reviewer verdicts directly; mechanical gate
         // commands are an MCP-face (autonomous) opt-in.
         None,
+        // P4 (Supervisor 実体): the loop driver durably records every give-up (a
+        // retry budget exhausted -> Failed) to the audit journal, so a Failed
+        // task survives restart instead of living only in the volatile Event Bus
+        // ring. ManagedDb is always managed (file, or in-memory fallback).
+        Some(app.state::<crate::db::ManagedDb>().inner()),
     );
 
     // Make each freshly dispatched agent visible: the loop spawned its PTY

@@ -1326,6 +1326,9 @@ pub(super) async fn tools_call(
                 reviewer_id,
                 gates,
                 gate_commands,
+                // P4: the autonomous (MCP) face persists give-ups too — the path
+                // that most needs unattended-safe durability.
+                state.db.as_deref(),
             );
             serde_json::json!({ "report": report })
         }

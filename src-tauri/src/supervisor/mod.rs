@@ -11,6 +11,8 @@
 //!
 //! See docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md (Agent Hierarchy).
 
+pub mod escalation_sink;
+
 use serde::{Deserialize, Serialize};
 
 use crate::cost::{CostCaps, CostUsage};

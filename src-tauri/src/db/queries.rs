@@ -109,7 +109,7 @@ pub struct AuditJournalAppend {
     pub payload_json: serde_json::Value,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuditJournalFilter {
     pub workspace_id: Option<String>,

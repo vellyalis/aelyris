@@ -48,7 +48,7 @@
 | **P1** | 永続化（ContextStore + TaskGraph → SQLite write-through + 起動時復元） | 再起動で会社が消える | ⬜ 未着手 |
 | **P2** | 実LLM 1本通し ハードニング（取りこぼし炙り出し） | Core未実戦の不安 | ⬜ |
 | **P3** | Event Bus 無損失化（durable log + pub/sub、上限撤廃） | 連絡漏れ | ⬜ |
-| **P4** | Supervisor実体 + mergeコンフリクト自動エスカレーション（C-22解消） | 詰まり放置 | ⬜ |
+| **P4** | Supervisor実体（escalation durable化）+ C-22回帰 | 詰まり放置 | ✅ |
 | **P5** | エンタープライズ層を**契約(trait)だけ**用意（RBAC/監査/テナント） | 後付け可能性の担保 | ⬜ |
 
 > エンタープライズ機能の実装本体は **P5の射程外**（contract-onlyで後付け可能に保つだけ）。Coreが実戦で正しいと分かってから鎧を着せる。
@@ -90,6 +90,19 @@ cargo fmt --check
 
 > **P1-5a**: `tests/test_runtime_persistence.rs` 2件PASS。実DBファイルに ContextStore + TaskGraph を**別々の専用接続**で書き(multi-writer+busy_timeout経路)、全接続drop(WALチェックポイント)→新Managerで再オープン→decisions/status/crash_attempts/依存/terminal状態を完全復元。プロセス再起動の決定的プロキシ。GUI不要・CI可能。
 > **P1-5b(残)**: 実アプリでの最終目視確認。現在 Aether.exe は**旧バイナリ**稼働中なので、新binをビルド・起動してからの確認になる（任意・低リスク。ロジックは P1-5a で証明済）。
+
+### P4 — Supervisor 実体 + C-22（✅ branch `feat/runtime-hardening`）
+
+| タスクID | 内容 | 状態 |
+|---------|------|------|
+| P4-C22 | **C-22 は既修正と判明** → 実git 3wayコンフリクト回帰テストで根絶を担保 | ✅ |
+| P4-sink | Escalation Sink: give-up を durable な audit journal 行へ（揮発リング卒業） | ✅ |
+| P4-both | durable sink を**ロジック層**(run_step/run_step_visible)へ畳み込み、IPC+MCP両faceを単一経路に | ✅ |
+| P4-audit | 敵対レビュー(general-purpose)→HIGH「MCP face非対称」を捕捉し上記で解消 | ✅ |
+| P4-rest(任意) | manual re-plan 経路を足す時の escalation 冪等キー(L-2 潜在)・operator toast 強化 | ⬜ |
+
+> **C-22 の真相**: 「mergeコンフリクト→永久Running」は過去のコックピット監査で既に修正済だった。`perform_merge` は git2 インメモリ3way mergeで**コンフリクト時にrepoを汚さず**`Conflict`を返し、`LoopPortsAdapter::merge`が`Err`化、pure loopが rework→Failed+escalation。`merge_conflict_escalates_and_never_strands_the_task` で実gitコンフリクト→Failed+escalation を回帰固定。
+> **P4 の真の価値**: escalation が**揮発EventBusリング(cap256)に出るだけ**で①再起動消失②evict③proactive通知なし＝「発火しっぱなし」だったのを、**durable audit journal 行**(再起動耐性・evictなし・task_id/reason/action でtraceable)へ昇格。敵対レビューが「MCP/自律faceだけ durable化漏れ」(HIGH)を捕捉→ループ駆動関数に sink を畳み込み両face対称化。live可視性は既存のEventBus feed(OrchestratorPanelが`escalation_raised`表示)が継続。
 
 > **P1-audit 結果**: HIGH=「WAL複数writer×busy_timeout未設定→SQLITE_BUSYで書き込みsilent drop」を修正(全接続に`busy_timeout=5s`)。他: 依存Vec順序保持/i64→u32安全変換/no-op recompute非永続化/docs整合。受容(設計上妥当)=panic時非永続(full snapshotで自己回復)・load all-or-nothing(失敗時attachせず上書きしない)・ManagedDb poison(既存・範囲外)。誤検知1件(WAL未有効)は棄却。
 
