@@ -172,6 +172,7 @@ pub fn resolve_agent_model(model: &str) -> String {
 pub fn agent_command_spec(
     model: &str,
     initial_prompt: Option<&str>,
+    autonomous: bool,
 ) -> Result<AgentLaunchSpec, String> {
     // Map an identity/unknown model (e.g. a task's owner) to a usable one so the
     // CLI never rejects `--model <identity>` and exits before doing any work.
@@ -184,6 +185,15 @@ pub fn agent_command_spec(
     if let Some(prompt) = initial_prompt {
         match cli {
             AgentCli::Claude => {
+                if autonomous {
+                    // Autonomous worker in its own isolated worktree: auto-accept
+                    // file edits so it can actually build without an interactive
+                    // permission gate. This is the edits-only mode, NOT the full
+                    // dangerous bypass, matching "agents write freely inside their
+                    // own worktree" (BR1/Design Principle 1).
+                    args.push("--permission-mode".to_string());
+                    args.push("acceptEdits".to_string());
+                }
                 // --verbose gives richer output for monitoring; -p starts work.
                 args.push("--verbose".to_string());
                 args.push("-p".to_string());
@@ -454,7 +464,7 @@ mod tests {
     #[test]
     fn agent_command_spec_claude_injects_model_verbose_and_prompt() {
         let (program, args, env) =
-            agent_command_spec("opus", Some("build the login screen")).unwrap();
+            agent_command_spec("opus", Some("build the login screen"), false).unwrap();
         assert_eq!(program, platform_cli_program("claude"));
         assert_eq!(
             args,
@@ -477,16 +487,36 @@ mod tests {
     }
 
     #[test]
+    fn agent_command_spec_autonomous_claude_auto_accepts_edits() {
+        // An autonomous loop worker gets --permission-mode acceptEdits so it can
+        // actually write code in its worktree without an interactive gate.
+        let (_program, args, _env) =
+            agent_command_spec("sonnet", Some("write the file"), true).unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--model",
+                "sonnet",
+                "--permission-mode",
+                "acceptEdits",
+                "--verbose",
+                "-p",
+                "write the file"
+            ]
+        );
+    }
+
+    #[test]
     fn agent_command_spec_codex_passes_prompt_without_verbose() {
-        let (program, args, _env) = agent_command_spec("codex-mini", Some("review")).unwrap();
+        let (program, args, _env) = agent_command_spec("codex-mini", Some("review"), true).unwrap();
         assert_eq!(program, platform_cli_program("codex"));
-        // Codex/Gemini get -p prompt but no --model / --verbose flags.
+        // Codex/Gemini get -p prompt but no --model / --verbose / permission flags.
         assert_eq!(args, vec!["-p", "review"]);
     }
 
     #[test]
     fn agent_command_spec_without_prompt_has_no_prompt_args() {
-        let (_program, args, _env) = agent_command_spec("sonnet", None).unwrap();
+        let (_program, args, _env) = agent_command_spec("sonnet", None, false).unwrap();
         // Claude with a model but no prompt: just the model flags, nothing to run.
         assert_eq!(args, vec!["--model", "sonnet"]);
     }
@@ -508,7 +538,7 @@ mod tests {
     fn agent_command_spec_falls_back_to_a_usable_model_for_an_identity() {
         // A task whose model is an identity (its owner) must still launch a real,
         // usable agent instead of `--model impl` (which the CLI rejects).
-        let (program, args, _env) = agent_command_spec("impl", Some("do the work")).unwrap();
+        let (program, args, _env) = agent_command_spec("impl", Some("do the work"), false).unwrap();
         assert_eq!(program, platform_cli_program("claude"));
         assert_eq!(
             args,

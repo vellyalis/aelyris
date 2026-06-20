@@ -364,8 +364,10 @@ impl Dispatcher for PaneDispatcher<'_> {
             .cloned()
             .ok_or_else(|| format!("no pane spawn spec for task {task_id}"))?;
         let model = spec.model.as_deref().unwrap_or("sonnet");
+        // Loop workers are autonomous (own worktree) → auto-accept edits so they
+        // actually build, not just respond.
         let (program, args, env) =
-            crate::agent::interactive::agent_command_spec(model, Some(&spec.prompt))?;
+            crate::agent::interactive::agent_command_spec(model, Some(&spec.prompt), true)?;
         self.fleet.spawn(
             task_id, &program, &args, spec.cols, spec.rows, &spec.cwd, env,
         )?;

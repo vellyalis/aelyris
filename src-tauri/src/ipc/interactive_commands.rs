@@ -78,8 +78,10 @@ pub async fn spawn_interactive_agent(
     // Resolve the agent's CLI command (program + args + env) from its model and
     // optional initial prompt — shared with the autonomy loop's visible-pane
     // dispatcher so interactive and loop-dispatched agents launch identically.
+    // Interactive (user-driven) agent: NOT autonomous — the user keeps the edit
+    // permission gate. The autonomy loop's workers pass `true` instead.
     let (program, args, env) =
-        crate::agent::interactive::agent_command_spec(model_str, initial_prompt.as_deref())?;
+        crate::agent::interactive::agent_command_spec(model_str, initial_prompt.as_deref(), false)?;
 
     // Validate branch_name if provided (prevent path traversal / shell injection)
     if let Some(ref branch) = branch_name {
