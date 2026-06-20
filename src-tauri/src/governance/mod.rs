@@ -72,12 +72,51 @@ impl TenantResolver for SingleTenant {
     }
 }
 
+pub const DEFAULT_ACTOR: &str = "operator";
+
+/// An authenticated caller's identity, resolved at the auth boundary and carried
+/// in request extensions so every surface authorizes against the same actor.
+/// E1 default is the single operator; E2 (API keys) resolves a real principal.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Principal {
+    pub actor: String,
+    pub tenant: String,
+    pub roles: Vec<String>,
+}
+
+impl Default for Principal {
+    fn default() -> Self {
+        Self {
+            actor: DEFAULT_ACTOR.to_string(),
+            tenant: DEFAULT_TENANT.to_string(),
+            roles: Vec::new(),
+        }
+    }
+}
+
+/// Resolve a verified bearer credential to a `Principal`. The E1 default ignores
+/// the token and returns the single operator; E2 swaps in an API-key resolver
+/// (`token -> principals` row) without touching any call site.
+pub trait PrincipalResolver: Send + Sync {
+    fn resolve(&self, token: &str) -> Principal;
+}
+
+/// Default resolver: every authenticated caller is the single operator.
+pub struct SingleOperator;
+
+impl PrincipalResolver for SingleOperator {
+    fn resolve(&self, _token: &str) -> Principal {
+        Principal::default()
+    }
+}
+
 /// The active governance policy, held in API state. Defaults to allow-all +
-/// single-tenant; swap either half for enterprise enforcement without changing
-/// any call site.
+/// single-tenant + single-operator; swap any half for enterprise enforcement
+/// without changing a single call site.
 pub struct Governance {
     access: Box<dyn AccessControl>,
     tenants: Box<dyn TenantResolver>,
+    resolver: Box<dyn PrincipalResolver>,
 }
 
 impl Default for Governance {
@@ -85,6 +124,7 @@ impl Default for Governance {
         Self {
             access: Box::new(AllowAll),
             tenants: Box::new(SingleTenant),
+            resolver: Box::new(SingleOperator),
         }
     }
 }
@@ -94,12 +134,12 @@ impl Governance {
         Self::default()
     }
 
-    /// Build with an explicit access policy (enterprise / tests). Tenancy stays
-    /// single-tenant; use [`with_access_and_tenants`] to swap both halves.
+    /// Build with an explicit access policy (enterprise / tests). Tenancy +
+    /// identity stay default; use the other builders to swap those halves.
     pub fn with_access(access: Box<dyn AccessControl>) -> Self {
         Self {
             access,
-            tenants: Box::new(SingleTenant),
+            ..Self::default()
         }
     }
 
@@ -110,15 +150,30 @@ impl Governance {
         access: Box<dyn AccessControl>,
         tenants: Box<dyn TenantResolver>,
     ) -> Self {
-        Self { access, tenants }
+        Self {
+            access,
+            tenants,
+            ..Self::default()
+        }
     }
 
-    /// The single authorization choke point every MCP verb flows through.
+    /// Swap the principal resolver (E2: API-key auth). Default is single-operator.
+    pub fn with_resolver(mut self, resolver: Box<dyn PrincipalResolver>) -> Self {
+        self.resolver = resolver;
+        self
+    }
+
+    /// The single authorization choke point every verb flows through.
     pub fn authorize(&self, actor: &str, verb: &str) -> AccessDecision {
         self.access.authorize(actor, verb)
     }
 
     pub fn tenant_of(&self, actor: &str) -> String {
         self.tenants.tenant_of(actor)
+    }
+
+    /// Resolve a verified credential to the calling principal (E1: operator).
+    pub fn resolve_principal(&self, token: &str) -> Principal {
+        self.resolver.resolve(token)
     }
 }

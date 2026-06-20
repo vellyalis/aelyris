@@ -68,6 +68,45 @@ fn collect_layout_pane_ids(node: &serde_json::Value, ids: &mut Vec<String>) {
     }
 }
 
+// ─── Governance (E1: choke point covers REST, not just MCP) ──────────────────
+
+#[tokio::test]
+async fn governance_denies_a_rest_route_with_403() {
+    use aether_terminal_lib::governance::{AccessControl, AccessDecision, Governance};
+    use std::sync::Arc;
+
+    struct DenyAll;
+    impl AccessControl for DenyAll {
+        fn authorize(&self, _actor: &str, _verb: &str) -> AccessDecision {
+            AccessDecision::Deny("blocked".to_string())
+        }
+    }
+
+    // A server whose governance denies every capability.
+    let state = ApiState::new(PtyManager::new(), AuthConfig::with_token("s3cret"))
+        .with_governance(Arc::new(Governance::with_access(Box::new(DenyAll))));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let serve_state = state.clone();
+    let join = tokio::spawn(async move {
+        let _ = api::serve_on_listener(serve_state, listener).await;
+    });
+    tokio::task::yield_now().await;
+    let base = format!("http://{addr}");
+
+    // An AUTHENTICATED request to a REST route is blocked at the governance layer
+    // (403, not 401) — E1 gates REST/WS/mux, not just the MCP verb surface.
+    let resp = client()
+        .get(format!("{base}/sessions"))
+        .header(AUTHORIZATION, "Bearer s3cret")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+    shutdown_server(&state, join).await;
+}
+
 // ─── Auth ───────────────────────────────────────────────────────────────────
 
 #[tokio::test]

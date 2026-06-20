@@ -824,34 +824,6 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
     }))
 }
 
-/// Durably audit a governance denial (P5) so an enterprise deployment has a
-/// trail of every blocked verb. A no-op without an attached db; a write failure
-/// is logged, never silently swallowed.
-fn audit_access_denied(state: &ApiState, actor: &str, verb: &str, reason: &str) {
-    let Some(db) = state.db.as_ref() else {
-        return;
-    };
-    let event = crate::db::AuditJournalAppend {
-        workspace_id: state.governance.tenant_of(actor),
-        thread_id: None,
-        session_id: None,
-        pane_id: None,
-        terminal_id: None,
-        agent_id: Some(actor.to_string()),
-        workflow_id: None,
-        task_id: None,
-        correlation_id: Some(verb.to_string()),
-        kind: "access_denied".to_string(),
-        severity: "warning".to_string(),
-        source: "governance".to_string(),
-        confidence: None,
-        payload_json: serde_json::json!({ "actor": actor, "verb": verb, "reason": reason }),
-    };
-    if let Err(e) = db.with(|d| d.append_audit_journal_event(&event)) {
-        tracing::error!(verb, error = %e, "access-denied audit failed");
-    }
-}
-
 pub(super) async fn tools_call(
     State(state): State<ApiState>,
     Json(body): Json<ToolCallBody>,
@@ -869,7 +841,7 @@ pub(super) async fn tools_call(
         // Audit the detailed reason durably, but return only a GENERIC 403 to the
         // caller: a policy reason may reference internal roles/resources and must
         // not leak to the client.
-        audit_access_denied(&state, actor, &body.name, &reason);
+        super::audit_access_denied(&state, actor, &body.name, &reason);
         return Err(ApiError::Forbidden(format!(
             "verb `{}` is not permitted",
             body.name

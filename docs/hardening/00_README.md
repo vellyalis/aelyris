@@ -14,6 +14,7 @@
 | 02 | [`02_SPEC.md`](02_SPEC.md) | 仕様書。アーキ層・永続化パターン・SQLiteスキーマ・データ契約・モジュール境界 | 実装着手前 |
 | 03 | [`03_IMPLEMENTATION_PLAN.md`](03_IMPLEMENTATION_PLAN.md) | 詳細実装計画。Phase別・タスク粒度・ファイルパス・TDD手順・ゲート | 各Phase着手時 |
 | 04 | [`04_DEBT_AND_MODULARITY.md`](04_DEBT_AND_MODULARITY.md) | 負債を作らない/減らす計画。粒度ルール・所有マップ・13観点ゲート・触るなリスト | 毎タスクの前後 |
+| 05 | [`05_ENTERPRISE_PRODUCTIZATION.md`](05_ENTERPRISE_PRODUCTIZATION.md) | enterprise 拡張(P5の続き)。E1=governance全面化(実装済)/E2=APIキーmulti-user auth/E3=RBAC+テナント分離(設計) | enterprise化検討時 |
 
 ---
 

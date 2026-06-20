@@ -31,6 +31,19 @@ fn default_is_single_tenant() {
 }
 
 #[test]
+fn default_principal_and_resolver_are_the_operator() {
+    let p = Principal::default();
+    assert_eq!(p.actor, DEFAULT_ACTOR);
+    assert_eq!(p.tenant, DEFAULT_TENANT);
+    assert!(p.roles.is_empty());
+
+    // The default resolver returns the operator for any verified token (E1).
+    let g = Governance::new();
+    assert_eq!(g.resolve_principal("any-token").actor, DEFAULT_ACTOR);
+    assert_eq!(g.resolve_principal("").actor, DEFAULT_ACTOR);
+}
+
+#[test]
 fn a_denying_policy_blocks_only_its_verb() {
     let g = Governance::with_access(Box::new(DenyVerb("aether.spawn_agent")));
     match g.authorize("operator", "aether.spawn_agent") {

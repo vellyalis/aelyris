@@ -880,13 +880,15 @@ fn ct_eq(a: &[u8], b: &[u8]) -> bool {
 
 async fn auth_middleware(
     State(state): State<ApiState>,
-    req: Request,
+    mut req: Request,
     next: Next,
 ) -> Result<Response, ApiError> {
-    let header = req
+    // Owned so the borrow of `req` ends before we insert the resolved Principal.
+    let auth_header: Option<String> = req
         .headers()
         .get(header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok());
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned);
     let is_ws = req.uri().path().ends_with("/stream");
 
     // Bound local hammering before token verification too. This does allow
@@ -907,7 +909,7 @@ async fn auth_middleware(
         return Err(ApiError::RateLimited);
     }
 
-    let authorized = if state.auth.verify(header) {
+    let authorized = if state.auth.verify(auth_header.as_deref()) {
         true
     } else if is_ws {
         // WebSocket query-string auth accepts only short-lived, single-use
@@ -940,7 +942,107 @@ async fn auth_middleware(
         return Err(ApiError::Unauthorized);
     }
 
+    // E1: resolve the verified credential to a Principal and carry it in request
+    // extensions, so the authorization layer (and handlers) authorize against one
+    // actor across every surface. Default resolver returns the single operator.
+    let principal = state
+        .governance
+        .resolve_principal(auth_header.as_deref().unwrap_or(""));
+    req.extensions_mut().insert(principal);
+
     Ok(next.run(req).await)
+}
+
+/// E1 governance choke point over EVERY external surface (REST / WebSocket / mux
+/// / MCP / daemon). Runs just inside `auth_middleware`, so the Principal is
+/// already in extensions. Derives a capability from the matched route + method
+/// and authorizes it; a denial is durably audited and returned as 403. The
+/// default policy allows all, so behaviour is unchanged. MCP additionally
+/// self-authorizes per-verb in `tools_call` (defense in depth).
+async fn authorization_middleware(
+    State(state): State<ApiState>,
+    req: Request,
+    next: Next,
+) -> Result<Response, ApiError> {
+    let principal = req
+        .extensions()
+        .get::<crate::governance::Principal>()
+        .cloned()
+        .unwrap_or_default();
+    let route = req
+        .extensions()
+        .get::<axum::extract::MatchedPath>()
+        .map(|m| m.as_str().to_string())
+        .unwrap_or_else(|| req.uri().path().to_string());
+    let capability = derive_capability(req.method(), &route);
+    if let crate::governance::AccessDecision::Deny(reason) =
+        state.governance.authorize(&principal.actor, &capability)
+    {
+        audit_access_denied(&state, &principal.actor, &capability, &reason);
+        return Err(ApiError::Forbidden(format!(
+            "`{capability}` is not permitted"
+        )));
+    }
+    Ok(next.run(req).await)
+}
+
+/// Map a matched route + method to a stable capability name an `AccessControl`
+/// policy can target. `route` is the axum `MatchedPath` TEMPLATE (e.g.
+/// `/sessions/{id}/input`), so capabilities never embed a concrete id — that
+/// relies on the `matched-path` feature (on by default; this crate does not
+/// disable default features). If it were ever disabled the fallback would embed
+/// real ids, so keep `matched-path` enabled. Unmapped routes get a deterministic
+/// `method:route` fallback (still default-allow, still policy-targetable).
+fn derive_capability(method: &Method, route: &str) -> String {
+    let name = match (method.as_str(), route) {
+        ("POST", "/sessions") => "session.create",
+        ("GET", "/sessions") => "session.list",
+        ("POST", "/commands") => "session.create_command",
+        ("DELETE", "/sessions/{id}") => "session.close",
+        ("POST", "/sessions/{id}/resize") => "session.resize",
+        ("POST", "/sessions/{id}/input") => "session.input",
+        ("GET", "/sessions/{id}/capture") => "session.capture",
+        ("GET", "/sessions/{id}/search") => "session.search",
+        ("POST", "/sessions/{id}/stream-ticket") => "session.stream_ticket",
+        ("GET", "/sessions/{id}/stream") => "session.stream",
+        ("POST", "/mcp/tools/call") => "mcp.tools.call",
+        ("POST", "/mcp") => "mcp.rpc",
+        ("GET", "/mcp/tools/list") => "mcp.tools.list",
+        ("GET", "/mcp/contract") => "mcp.contract",
+        ("GET", "/health") => "health.read",
+        ("GET", "/daemon/contract") => "daemon.contract",
+        ("POST", "/daemon/shutdown") => "daemon.shutdown",
+        _ => return format!("{}:{route}", method.as_str().to_ascii_lowercase()),
+    };
+    name.to_string()
+}
+
+/// Durably audit a governance denial (P5/E1) so an enterprise deployment has a
+/// trail of every blocked operation across all surfaces. A no-op without an
+/// attached db; a write failure is logged, never silently swallowed.
+pub(crate) fn audit_access_denied(state: &ApiState, actor: &str, verb: &str, reason: &str) {
+    let Some(db) = state.db.as_ref() else {
+        return;
+    };
+    let event = crate::db::AuditJournalAppend {
+        workspace_id: state.governance.tenant_of(actor),
+        thread_id: None,
+        session_id: None,
+        pane_id: None,
+        terminal_id: None,
+        agent_id: Some(actor.to_string()),
+        workflow_id: None,
+        task_id: None,
+        correlation_id: Some(verb.to_string()),
+        kind: "access_denied".to_string(),
+        severity: "warning".to_string(),
+        source: "governance".to_string(),
+        confidence: None,
+        payload_json: serde_json::json!({ "actor": actor, "verb": verb, "reason": reason }),
+    };
+    if let Err(e) = db.with(|d| d.append_audit_journal_event(&event)) {
+        tracing::error!(verb, error = %e, "access-denied audit failed");
+    }
 }
 
 /// Minimal `%xx` percent-decoder for the query-string token path. We don't
@@ -1069,6 +1171,12 @@ pub fn router(state: ApiState) -> Router {
         .route("/health", get(health))
         .route("/daemon/contract", get(daemon_contract))
         .route("/daemon/shutdown", post(daemon_shutdown))
+        // E1: authorization runs just INSIDE auth (auth is added last = outermost,
+        // so it runs first and inserts the Principal that this layer reads).
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            authorization_middleware,
+        ))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth_middleware,
