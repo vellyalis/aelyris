@@ -13,6 +13,7 @@ pub use manager::EventBus;
 
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
+use std::str::FromStr;
 
 /// Named coordination channels (rendered with a leading `#` in UIs).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -45,6 +46,23 @@ impl EventChannel {
             Self::Review => "review",
             Self::System => "system",
         }
+    }
+}
+
+impl FromStr for EventChannel {
+    type Err = String;
+
+    /// Parse a persisted channel name (inverse of `as_str`, round-trip tested).
+    fn from_str(value: &str) -> Result<Self, String> {
+        Ok(match value {
+            "planning" => Self::Planning,
+            "backend" => Self::Backend,
+            "frontend" => Self::Frontend,
+            "database" => Self::Database,
+            "review" => Self::Review,
+            "system" => Self::System,
+            other => return Err(format!("unknown event channel: {other}")),
+        })
     }
 }
 
@@ -120,6 +138,29 @@ impl AgentEventKind {
     }
 }
 
+impl FromStr for AgentEventKind {
+    type Err = String;
+
+    /// Parse a persisted kind name (inverse of `as_str`, round-trip tested).
+    fn from_str(value: &str) -> Result<Self, String> {
+        Ok(match value {
+            "task_created" => Self::TaskCreated,
+            "task_completed" => Self::TaskCompleted,
+            "decision_changed" => Self::DecisionChanged,
+            "review_required" => Self::ReviewRequired,
+            "agent_spawned" => Self::AgentSpawned,
+            "worktree_created" => Self::WorktreeCreated,
+            "file_locked" => Self::FileLocked,
+            "file_released" => Self::FileReleased,
+            "agent_activity" => Self::AgentActivity,
+            "intent_declared" => Self::IntentDeclared,
+            "blocker_raised" => Self::BlockerRaised,
+            "escalation_raised" => Self::EscalationRaised,
+            other => return Err(format!("unknown event kind: {other}")),
+        })
+    }
+}
+
 /// A published event. `payload` is free-form JSON so each kind can carry its
 /// own shape (a task id, a `DecisionChange`, a session id, ...).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -148,6 +189,16 @@ impl AgentEvent {
             payload,
         }
     }
+}
+
+/// A durably-logged event with its monotonic sequence number (P3). Subscribers
+/// poll `seq > cursor` to receive every event exactly once with no loss — the
+/// guarantee the bounded in-memory ring cannot make.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SeqEvent {
+    pub seq: i64,
+    #[serde(flatten)]
+    pub event: AgentEvent,
 }
 
 /// Bounded in-memory log of recent events — backs the cockpit event feed and
@@ -207,6 +258,7 @@ impl EventLog {
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::str::FromStr;
 
     #[test]
     fn new_routes_to_default_channel() {
@@ -310,5 +362,40 @@ mod tests {
         ] {
             assert!(EVENT_CHANNELS.contains(&kind.default_channel()));
         }
+    }
+
+    #[test]
+    fn channel_as_str_from_str_round_trips_all_variants() {
+        for ch in EVENT_CHANNELS {
+            assert_eq!(EventChannel::from_str(ch.as_str()).unwrap(), ch);
+        }
+        assert!(EventChannel::from_str("nope").is_err());
+    }
+
+    #[test]
+    fn kind_as_str_from_str_round_trips_all_variants() {
+        let all = [
+            AgentEventKind::TaskCreated,
+            AgentEventKind::TaskCompleted,
+            AgentEventKind::DecisionChanged,
+            AgentEventKind::ReviewRequired,
+            AgentEventKind::AgentSpawned,
+            AgentEventKind::WorktreeCreated,
+            AgentEventKind::FileLocked,
+            AgentEventKind::FileReleased,
+            AgentEventKind::AgentActivity,
+            AgentEventKind::IntentDeclared,
+            AgentEventKind::BlockerRaised,
+            AgentEventKind::EscalationRaised,
+        ];
+        for kind in all {
+            // as_str agrees with serde, and from_str inverts it.
+            assert_eq!(
+                serde_json::to_value(kind).unwrap().as_str(),
+                Some(kind.as_str())
+            );
+            assert_eq!(AgentEventKind::from_str(kind.as_str()).unwrap(), kind);
+        }
+        assert!(AgentEventKind::from_str("unknown").is_err());
     }
 }

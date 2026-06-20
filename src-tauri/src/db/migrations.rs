@@ -333,6 +333,21 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             dep_id  TEXT NOT NULL,
             PRIMARY KEY (task_id, dep_id)
         );
+
+        -- Runtime Hardening P3: durable, append-only coordination event log. The
+        -- in-memory Event Bus ring (cap 256) silently evicts old events, so a
+        -- slow poller or a restart loses notifications. This log keeps every
+        -- event with a monotonic `seq` so subscribers poll `seq > cursor` and
+        -- never miss one (no-loss). See docs/hardening/02_SPEC.md.
+        CREATE TABLE IF NOT EXISTS agent_events (
+            seq          INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind         TEXT NOT NULL,
+            channel      TEXT NOT NULL,
+            payload_json TEXT NOT NULL DEFAULT 'null',
+            created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_agent_events_channel_seq
+            ON agent_events(channel, seq);
         ",
     )?;
 

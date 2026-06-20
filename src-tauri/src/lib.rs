@@ -203,6 +203,19 @@ pub fn run() {
                 Err(e) => log::error!("Task graph persistence unavailable: {}", e),
             }
 
+            // Runtime Hardening P3: back the Event Bus with a durable append-only
+            // log so coordination notifications survive eviction + restart (the
+            // no-loss `since` cursor reads it). Own connection, loud-fail to the
+            // in-memory ring only. No restore: the log is replayed by cursor.
+            match Database::open(&db_path) {
+                Ok(ev_db) => {
+                    app.state::<std::sync::Arc<event_bus::EventBus>>()
+                        .attach_db(std::sync::Arc::new(db::ManagedDb::new(ev_db)));
+                    log::info!("Event Bus durable log attached");
+                }
+                Err(e) => log::error!("Event Bus persistence unavailable: {}", e),
+            }
+
             let sidecar_state = app.state::<pty_sidecar::PtySidecarState>().inner().clone();
             let sidecar_fallback_pty: PtyManager = app.state::<PtyManager>().inner().clone();
             let sidecar_adopt_app = app.handle().clone();

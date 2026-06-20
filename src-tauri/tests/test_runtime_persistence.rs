@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 use aether_terminal_lib::context_store::ContextStoreManager;
 use aether_terminal_lib::db::{Database, ManagedDb};
+use aether_terminal_lib::event_bus::{AgentEvent, AgentEventKind, EventBus};
 use aether_terminal_lib::task::{Task, TaskManager, TaskStatus};
 use tempfile::tempdir;
 
@@ -90,4 +91,44 @@ fn mutations_after_restore_persist_through_a_second_restart() {
     let tm = TaskManager::new();
     assert_eq!(tm.attach_db(open(&db_path)).unwrap(), 1);
     assert_eq!(tm.get("t").unwrap().status, TaskStatus::Done);
+}
+
+#[test]
+fn event_log_survives_a_real_file_restart_with_no_loss() {
+    // P3: the durable Event Bus log must keep EVERY notification across a restart
+    // — even past the 256 in-memory ring cap that would have evicted ~44 of these.
+    let dir = tempdir().unwrap();
+    let db_path = dir.path().join("aether_events.db");
+
+    // Session 1: publish 300 events through a db-backed bus, then drop it.
+    {
+        let bus = EventBus::new();
+        bus.attach_db(open(&db_path));
+        for i in 0..300 {
+            bus.publish(AgentEvent::new(
+                AgentEventKind::AgentActivity,
+                serde_json::json!({ "i": i }),
+            ));
+        }
+    }
+
+    // Session 2: a fresh bus on the same file replays ALL 300 by cursor, with no
+    // gaps (strictly increasing seq), proving no-loss durability across restart.
+    let bus2 = EventBus::new();
+    bus2.attach_db(open(&db_path));
+    assert!(bus2.recent().is_empty(), "ring starts cold after restart");
+    let mut cursor = 0;
+    let mut seen = 0;
+    loop {
+        let batch = bus2.since(cursor, 64);
+        if batch.is_empty() {
+            break;
+        }
+        for e in &batch {
+            assert!(e.seq > cursor, "seq must strictly increase (no gaps)");
+            cursor = e.seq;
+            seen += 1;
+        }
+    }
+    assert_eq!(seen, 300, "every event survived the restart");
 }

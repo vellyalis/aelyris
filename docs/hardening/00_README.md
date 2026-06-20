@@ -47,7 +47,7 @@
 |-------|-------|------------|------|
 | **P1** | 永続化（ContextStore + TaskGraph → SQLite write-through + 起動時復元） | 再起動で会社が消える | ⬜ 未着手 |
 | **P2** | 並行耐久性の証明（自動）+ 実LLM中規模実走（手動受入） | Core未実戦の不安 | 🟡 |
-| **P3** | Event Bus 無損失化（durable log + pub/sub、上限撤廃） | 連絡漏れ | ⬜ |
+| **P3** | Event Bus 無損失化（durable log + seqカーソル + 自己回復） | 連絡漏れ | ✅ |
 | **P4** | Supervisor実体（escalation durable化）+ C-22回帰 | 詰まり放置 | ✅ |
 | **P5** | エンタープライズ層を**契約(trait)だけ**用意（RBAC/監査/テナント） | 後付け可能性の担保 | ⬜ |
 
@@ -90,6 +90,22 @@ cargo fmt --check
 
 > **P1-5a**: `tests/test_runtime_persistence.rs` 2件PASS。実DBファイルに ContextStore + TaskGraph を**別々の専用接続**で書き(multi-writer+busy_timeout経路)、全接続drop(WALチェックポイント)→新Managerで再オープン→decisions/status/crash_attempts/依存/terminal状態を完全復元。プロセス再起動の決定的プロキシ。GUI不要・CI可能。
 > **P1-5b(残)**: 実アプリでの最終目視確認。現在 Aether.exe は**旧バイナリ**稼働中なので、新binをビルド・起動してからの確認になる（任意・低リスク。ロジックは P1-5a で証明済）。
+
+### P3 — Event Bus 無損失化（✅ branch `feat/runtime-hardening`）
+
+| タスクID | 内容 | 状態 |
+|---------|------|------|
+| P3-log | `agent_events` テーブル + `persistence/event_repo.rs`(append/since(seq)/by_channel_since)。seq単調(AUTOINCREMENT) | ✅ |
+| P3-bus | `EventBus` write-through publish + `since` カーソル。リングは表示用ホットキャッシュに降格。db後付けattach | ✅ |
+| P3-mcp | MCP `aether.event.since` verb(afterSeq/limit→nextSeq)。購読者は欠番なく全件取得 | ✅ |
+| P3-audit | 敵対レビュー→**H-1/M-1/L-1 全修正** | ✅ |
+
+> **no-loss の意味**: cap256リングは古いイベントをsilent evictし再起動で消える。durable log は全件を単調seqで保持し、`since(cursor)`で欠番なく取得＝再起動・evict耐性。ライブfeedは既存Tauri emit(push)で元々落ちない。
+> **P3-audit で潰した3件**:
+> - **H-1(HIGH)**: append失敗時、イベントがring(ライブ)に出るがdurableに入らず`since`がsilent loss(busy以外のディスク満杯/IOで発生)。→ **順序保持・有界(4096)・自己回復するpendingリトライキュー**で修正。失敗→pending退避(ringにも入れライブ維持)、次publishで順序維持ドレイン＝transient障害が自己回復しdurableに必着。DROP TABLE注入テストで縛る。
+> - **M-1(MED)**: 未知kind/channelの1行で`since`全体が空(部分破損で全件巻き添え)。→ 不良行はwarnしてskip、ストリームを止めない。
+> - **L-1(LOW)**: limit/afterSeqのサーバ側clamp無し→巨大limitで`LIMIT -1`全件返却。→ `clamp(1,1000)`/`max(0)`。
+> **既知特性**: pendingは次publishで再試行。完全idle中の自己回復はしない(bounded保持+loud log、将来は背景flush)。フロントのcockpit feedはlive push継続(since-cursor化は任意の後続)。
 
 ### P2 — 並行耐久性 + 実LLM実走（🟡 自動部分✅ / 手動受入は残）
 

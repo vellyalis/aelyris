@@ -43,6 +43,7 @@ fn tool_names() -> Vec<&'static str> {
         "aether.supervisor.health",
         "aether.event.recent",
         "aether.event.by_channel",
+        "aether.event.since",
         "aether.ownership.assign",
         "aether.ownership.owner_of",
         "aether.ownership.claims",
@@ -564,6 +565,19 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                             "type": "string",
                             "enum": ["planning", "backend", "frontend", "database", "review", "system"]
                         }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aether.event.since",
+                "description": "No-loss subscribe to the fleet coordination stream (BR5/P3): every event with seq > afterSeq, oldest first, up to limit, each tagged with its monotonic seq. Poll with afterSeq=0, then advance afterSeq to the last seq returned — unlike event.recent (a bounded ring that evicts), this never skips an event and survives restart. Use this for reliable orchestration.",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "afterSeq": { "type": "integer", "minimum": 0 },
+                        "limit": { "type": "integer", "minimum": 1, "maximum": 1000 }
                     },
                     "additionalProperties": false
                 }
@@ -1348,6 +1362,29 @@ pub(super) async fn tools_call(
             )
             .map_err(|_| ApiError::BadRequest(format!("invalid channel `{channel_raw}`")))?;
             serde_json::json!({ "channel": channel_raw, "events": bus.by_channel(channel) })
+        }
+        "aether.event.since" => {
+            let bus = state.event_bus.as_ref().ok_or_else(|| {
+                ApiError::Internal("event bus is not attached to this process".to_string())
+            })?;
+            // Clamp server-side, independent of inputSchema validation: a stray
+            // negative cursor or a huge limit (which would become LIMIT -1 =
+            // unbounded) must never reach SQLite.
+            let after_seq = args
+                .get("afterSeq")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0)
+                .max(0);
+            let limit = args
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .map(|v| v as usize)
+                .unwrap_or(100)
+                .clamp(1, 1000);
+            let events = bus.since(after_seq, limit);
+            // The cursor to pass as next afterSeq (unchanged when nothing new).
+            let next_seq = events.last().map(|e| e.seq).unwrap_or(after_seq);
+            serde_json::json!({ "events": events, "nextSeq": next_seq })
         }
         "aether.ownership.assign" => {
             let ownership = state.file_ownership.as_ref().ok_or_else(|| {
