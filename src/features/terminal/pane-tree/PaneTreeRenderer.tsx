@@ -19,6 +19,8 @@ interface PaneTreeRendererProps {
    */
   terminalIds: Map<string, string>;
   paneLifecycleStates?: ReadonlyMap<string, PaneLifecycleState>;
+  /** terminalId → live agent identity for fleet panes (drives the agent chip). */
+  agentMeta?: ReadonlyMap<string, { model: string; status: "running" | "done" | "error" }>;
   synchronizedPanes?: boolean;
   onFocusPane: (id: string) => void;
   onSplit: (id: string, direction: SplitDirection) => void;
@@ -81,6 +83,7 @@ export function PaneTreeRenderer({
   maximizedPaneId,
   terminalIds,
   paneLifecycleStates,
+  agentMeta,
   synchronizedPanes = false,
   onFocusPane,
   onSplit,
@@ -345,6 +348,9 @@ export function PaneTreeRenderer({
         if (hasRealSize) initializedRef.current.add(leaf.id);
         const lifecycle = paneLifecycleStates?.get(leaf.id);
         const terminalId = terminalIds.get(leaf.id) ?? null;
+        // Agent panes are bound by terminal id (== leaf.id at spawn); surface the
+        // live identity so the pane reads as a fleet member, not a blank shell.
+        const agent = agentMeta?.get(terminalId ?? leaf.id);
         const endedLifecycle = lifecycle === "detached" || lifecycle === "exited" || lifecycle === "crashed";
         const shouldSuspendForLeaf = suspendTerminalMounts && lifecycle !== "starting" && lifecycle !== "restarting";
         const shouldHoldForAttach = endedLifecycle;
@@ -358,6 +364,7 @@ export function PaneTreeRenderer({
             className={styles.terminalMount}
             data-active={isActive ? "true" : undefined}
             data-maximized={isMaximized ? "true" : undefined}
+            data-agent={agent ? "true" : undefined}
             data-terminal-text-clarity={terminalTextClarity}
             style={
               rect && isVisible
@@ -378,6 +385,7 @@ export function PaneTreeRenderer({
               terminalId={terminalId}
               paneTitle={leaf.title}
               paneRole={leaf.role}
+              activeAgent={agent ? { model: agent.model, status: agent.status } : null}
               isActive={isActive}
               isMaximized={isMaximized}
               onRenamePane={(title) => onRenamePane(leaf.id, title)}

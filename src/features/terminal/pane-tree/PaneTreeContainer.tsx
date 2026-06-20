@@ -166,6 +166,12 @@ export function PaneTreeContainer({
   const [paneLifecycleStates, setPaneLifecycleStates] = useState<ReadonlyMap<string, PaneLifecycleState>>(
     () => new Map(),
   );
+  // Per-agent-pane identity + live status (keyed by terminal id == agent pane id).
+  // Drives the TerminalInfoBar agent chip so each fleet pane shows what it is and
+  // whether it is still working — the visible-fleet liveliness signal.
+  const [agentMeta, setAgentMeta] = useState<ReadonlyMap<string, { model: string; status: "running" | "done" }>>(
+    () => new Map(),
+  );
   const [synchronizedPanes, setSynchronizedPanes] = useState(() => initialSnapshot?.synchronizedPanes === true);
   const [orphanedBackendPanes, setOrphanedBackendPanes] = useState<PaneSwitcherEntry[]>([]);
   const [backendReconciled, setBackendReconciled] = useState(() => !layoutStorageKey);
@@ -978,7 +984,7 @@ export function PaneTreeContainer({
     handledAgentSpawnSequenceRef.current = spawnAgentPaneRequest.sequence;
 
     let mountedAny = false;
-    for (const { terminalId } of spawnAgentPaneRequest.agents) {
+    for (const { terminalId, model } of spawnAgentPaneRequest.agents) {
       if (everMountedAgentsRef.current.has(terminalId) || collectLeafIds(tree).includes(terminalId)) continue;
       const targetId = activePaneId && findLeaf(tree, activePaneId) ? activePaneId : collectLeafIds(tree)[0];
       if (!targetId) break;
@@ -988,6 +994,7 @@ export function PaneTreeContainer({
       agentPaneIdsRef.current.add(terminalId);
       everMountedAgentsRef.current.add(terminalId);
       setPaneLifecycleStates((prev) => new Map(prev).set(terminalId, "live"));
+      setAgentMeta((prev) => new Map(prev).set(terminalId, { model, status: "running" }));
       mountedAny = true;
 
       if (isTauriRuntime()) {
@@ -997,7 +1004,15 @@ export function PaneTreeContainer({
           const unlisten = agentPaneUnlistenRef.current.get(id);
           unlisten?.();
           agentPaneUnlistenRef.current.delete(id);
-          // The loop already reaped the backend PTY; just drop the local pane.
+          // The loop already reaped the backend PTY; drop the local pane (keeping
+          // a dead-PTY pane only renders a "disconnected" shell). Clear its agent
+          // identity so the chip map doesn't leak.
+          setAgentMeta((prev) => {
+            if (!prev.has(id)) return prev;
+            const next = new Map(prev);
+            next.delete(id);
+            return next;
+          });
           close(id, { closeBackend: false });
         })
           .then((unlisten) => {
@@ -1091,6 +1106,7 @@ export function PaneTreeContainer({
       maximizedPaneId={maximizedPaneId}
       terminalIds={terminalIds}
       paneLifecycleStates={paneLifecycleStates}
+      agentMeta={agentMeta}
       synchronizedPanes={synchronizedPanes}
       onFocusPane={setActivePaneId}
       onSplit={splitViaMux}
