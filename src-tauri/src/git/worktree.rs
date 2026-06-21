@@ -263,7 +263,11 @@ pub fn commit_worktree(
         .map_err(|e| format!("Open worktree {}: {}", worktree_dir.display(), e))?;
 
     // Stage everything: add_all (DEFAULT honors .gitignore) covers new + modified
-    // files; update_all covers deletions/renames of tracked files.
+    // files; update_all covers deletions/renames of tracked files. The `None`
+    // callback is a path-match FILTER, not an error channel — a genuine read/stage
+    // failure (e.g. a file still locked by a not-yet-dead agent on Windows) is
+    // returned as an Err here and propagated, failing the merge so the loop
+    // requeues for rework; a file is never silently dropped from the commit.
     let mut index = repo.index().map_err(|e| format!("Worktree index: {}", e))?;
     index
         .add_all(["*"], git2::IndexAddOption::DEFAULT, None)
@@ -284,10 +288,18 @@ pub fn commit_worktree(
     let parent = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
     match &parent {
         Some(parent_commit) if parent_commit.tree_id() == tree_oid => return Ok(None),
-        // Unborn HEAD + empty tree -> nothing to commit (defensive; a worktree
-        // always has a born HEAD on its branch in practice).
+        Some(_) => {}
+        // Unborn HEAD + empty tree -> nothing to commit.
         None if tree.is_empty() => return Ok(None),
-        _ => {}
+        // Unborn HEAD + staged changes must never happen: create_worktree always
+        // starts the worktree on a born branch. Enforce the invariant rather than
+        // make a parentless root commit, which perform_merge would see as
+        // unrelated history and fail to merge (burning a rework budget).
+        None => {
+            return Err(format!(
+                "commit_worktree: worktree for '{branch}' has an unborn HEAD with staged changes"
+            ));
+        }
     }
 
     let signature = repo

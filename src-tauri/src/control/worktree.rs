@@ -31,9 +31,7 @@ pub fn remove_for_branch(repo_path: &str, branch: &str, delete_branch: bool) -> 
 }
 
 /// Commit a green-reviewed task's worktree on its BRANCH before the loop merges
-/// it, so `perform_merge` sees the worker's real work as ahead of the target
-/// instead of an empty tip. `Ok(None)` means there was nothing to commit
-/// (idempotent / empty diff). See [`git::commit_worktree`].
+/// it. `Ok(None)` = nothing to commit. See [`git::commit_worktree`] for details.
 pub fn commit_for_branch(
     repo_path: &str,
     branch: &str,
