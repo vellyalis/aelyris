@@ -9,7 +9,7 @@ import { chromium } from "@playwright/test";
 
 const CDP_URL = "http://127.0.0.1:9222";
 const SHOT = "C:/Users/owner/Aether_Terminal/.codex-auto/production-smoke/fleet-demo.png";
-const N = Number.parseInt(process.env.FLEET_N ?? "4", 10);
+const N = Number.parseInt(process.env.FLEET_N ?? "8", 10);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function setupRepo() {
@@ -29,6 +29,10 @@ const PROMPTS = [
   "List 8 famous algorithms, each with a one-line description.",
   "Explain what a binary search tree is in 4 short bullet points.",
   "Write a haiku about mountains, then one about rivers.",
+  "Summarize the CAP theorem in 5 bullets.",
+  "List 6 classic data structures with one use case each.",
+  "Write a haiku about the city at night, then explain it.",
+  "Explain TCP vs UDP in 5 short bullet points.",
 ];
 
 async function main() {
