@@ -373,6 +373,17 @@ impl PtyManager {
         self.take_child_with_token(id).map(|(child, _)| child)
     }
 
+    /// Test-only: the OS process id of a live session's child, if any, without
+    /// removing the child from the session. Used to verify the no-orphan guard
+    /// assigned the ConPTY child to the kill-on-close job.
+    #[cfg(test)]
+    pub fn child_pid(&self, id: &str) -> Option<u32> {
+        let instances = self.instances.lock().ok()?;
+        let instance = instances.get(id)?;
+        let slot = instance.child.lock().ok()?;
+        slot.as_ref().and_then(|child| child.process_id())
+    }
+
     fn take_child_with_token(&self, id: &str) -> Option<(Box<dyn Child + Send + Sync>, Uuid)> {
         let instances = self.instances.lock().ok()?;
         let instance = instances.get(id)?;
@@ -718,4 +729,47 @@ fn spawn_reader_thread(
             }
         }
     });
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+
+    /// Settles the no-orphan guarantee for the highest-value target: agent CLIs
+    /// hosted in a ConPTY pane. Spawns a real, long-lived ConPTY child through
+    /// the production spawn path and proves the guard made it an actual MEMBER
+    /// of the process-global kill-on-close Job Object (so it dies with the host
+    /// even on a crash). If ConPTY's own job blocked nested assignment this would
+    /// fail — i.e. this is the deterministic stand-in for the live-crash check.
+    #[test]
+    fn conpty_child_is_assigned_to_the_kill_on_close_job() {
+        let mgr = PtyManager::new();
+        let id = "no-orphan-conpty-membership";
+        mgr.spawn_command_with_id(
+            id,
+            "cmd",
+            &[
+                "/c".to_string(),
+                "ping".to_string(),
+                "-n".to_string(),
+                "10".to_string(),
+                "127.0.0.1".to_string(),
+            ],
+            80,
+            24,
+            None,
+            None,
+        )
+        .expect("spawn ConPTY child");
+
+        let pid = mgr.child_pid(id).expect("ConPTY child should expose a pid");
+        let member = crate::process::is_orphan_guarded(pid);
+        // Tear down first so a failed assertion still kills the child.
+        let _ = mgr.close(id);
+        assert_eq!(
+            member,
+            Some(true),
+            "ConPTY child (pid {pid}) must be a member of the kill-on-close job"
+        );
+    }
 }

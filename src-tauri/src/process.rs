@@ -118,9 +118,12 @@ mod job {
             match OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, false, pid) {
                 Ok(process) => {
                     if let Err(err) = AssignProcessToJobObject(job, process) {
-                        // Common, benign: the child is already in a non-nestable
-                        // job (e.g. ConPTY's). It then relies on the graceful
-                        // kill paths instead — not a leak source by itself.
+                        // Rare: Win8+ allows nested jobs, so even ConPTY children
+                        // normally assign fine — verified by the membership test
+                        // pty::manager::tests::conpty_child_is_assigned_to_the_
+                        // kill_on_close_job. A genuine failure (a truly non-nestable
+                        // job) just falls back to the graceful kill paths — not a
+                        // leak source by itself.
                         log::debug!("no-orphan job: assign pid={pid} failed: {err}");
                     }
                     let _ = CloseHandle(process);
@@ -137,6 +140,36 @@ mod job {
     pub fn is_available() -> bool {
         handle().is_some()
     }
+
+    /// Test-only: is `pid` an actual MEMBER of the kill-on-close job? Returns
+    /// None if the job is unavailable or the membership query itself failed.
+    /// Lets tests prove `assign` truly added the child (not merely that it did
+    /// not panic), including for ConPTY children whose own job could in theory
+    /// block nested assignment.
+    #[cfg(test)]
+    pub fn is_member(pid: u32) -> Option<bool> {
+        use windows::core::BOOL;
+        use windows::Win32::System::JobObjects::IsProcessInJob;
+        use windows::Win32::System::Threading::PROCESS_QUERY_INFORMATION;
+        let job = handle()?;
+        unsafe {
+            let process = OpenProcess(PROCESS_QUERY_INFORMATION, false, pid).ok()?;
+            let mut result = BOOL(0);
+            let query = IsProcessInJob(process, Some(job), &mut result);
+            let _ = CloseHandle(process);
+            query.ok()?;
+            Some(result.as_bool())
+        }
+    }
+}
+
+/// Test-only (Windows): is `pid` actually a member of the process-global
+/// kill-on-close Job Object? Lets tests bind the no-orphan guard across BOTH
+/// spawn backends — the direct `std::process` spawn (headless agent path) and
+/// ConPTY children via `PtyManager` — instead of only asserting no panic.
+#[cfg(all(test, windows))]
+pub fn is_orphan_guarded(pid: u32) -> Option<bool> {
+    job::is_member(pid)
 }
 
 #[cfg(all(test, windows))]
@@ -160,6 +193,13 @@ mod tests {
             .expect("spawn sleeper child");
         // Must not panic regardless of whether the child was already in a job.
         guard_child_against_orphan(child.id());
+        // And it must actually be a MEMBER now (binds the direct-spawn path used
+        // by the headless agent CLI), not merely "did not panic".
+        assert_eq!(
+            job::is_member(child.id()),
+            Some(true),
+            "a directly-spawned child must be a member of the kill-on-close job"
+        );
         let _ = child.kill();
         let _ = child.wait();
     }
