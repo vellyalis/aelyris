@@ -241,6 +241,76 @@ pub fn predict_worktree_path(repo_path: &str, branch_name: &str) -> std::path::P
     parent.join(format!("{}-{}", name, branch_name))
 }
 
+/// Stage every change in the worktree on `branch` and commit it on that branch's
+/// tip. Returns `Ok(Some(oid))` for a new commit, `Ok(None)` when there was
+/// nothing to commit (an empty diff — NOT an error). Idempotent: a second call
+/// after a clean commit finds no change and returns `Ok(None)`.
+///
+/// The autonomy loop calls this to make a green-reviewed worker's work durable
+/// BEFORE it is merged: committing to the worktree's checked-out `branch` advances
+/// `refs/heads/<branch>`, which is exactly the ref `perform_merge` resolves as the
+/// merge source (without this the source tip never moves and the merge is empty).
+/// The identity reuses the repo config, else a deterministic `Aether
+/// <aether@local>` fallback, matching the merge commit.
+pub fn commit_worktree(
+    repo_path: &str,
+    branch: &str,
+    message: &str,
+) -> Result<Option<String>, String> {
+    validate_branch_name(branch)?;
+    let worktree_dir = predict_worktree_path(repo_path, branch);
+    let repo = Repository::open(&worktree_dir)
+        .map_err(|e| format!("Open worktree {}: {}", worktree_dir.display(), e))?;
+
+    // Stage everything: add_all (DEFAULT honors .gitignore) covers new + modified
+    // files; update_all covers deletions/renames of tracked files.
+    let mut index = repo.index().map_err(|e| format!("Worktree index: {}", e))?;
+    index
+        .add_all(["*"], git2::IndexAddOption::DEFAULT, None)
+        .map_err(|e| format!("Stage all: {}", e))?;
+    index
+        .update_all(["*"], None)
+        .map_err(|e| format!("Stage deletions: {}", e))?;
+    index.write().map_err(|e| format!("Write index: {}", e))?;
+    let tree_oid = index
+        .write_tree()
+        .map_err(|e| format!("Write tree: {}", e))?;
+    let tree = repo
+        .find_tree(tree_oid)
+        .map_err(|e| format!("Find tree: {}", e))?;
+
+    // Empty-diff guard: if the staged tree matches HEAD's tree there is nothing to
+    // commit (also covers "already committed on a prior tick / by a legacy script").
+    let parent = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
+    match &parent {
+        Some(parent_commit) if parent_commit.tree_id() == tree_oid => return Ok(None),
+        // Unborn HEAD + empty tree -> nothing to commit (defensive; a worktree
+        // always has a born HEAD on its branch in practice).
+        None if tree.is_empty() => return Ok(None),
+        _ => {}
+    }
+
+    let signature = repo
+        .signature()
+        .or_else(|_| git2::Signature::now("Aether", "aether@local"))
+        .map_err(|e| format!("Commit signature: {}", e))?;
+
+    // Commit on HEAD (the worktree's checked-out source branch), parented on its
+    // current tip, so refs/heads/<branch> advances to the new commit.
+    let parents: Vec<&git2::Commit> = parent.iter().collect();
+    let oid = repo
+        .commit(
+            Some("HEAD"),
+            &signature,
+            &signature,
+            message,
+            &tree,
+            &parents,
+        )
+        .map_err(|e| format!("Commit worktree: {}", e))?;
+    Ok(Some(oid.to_string()))
+}
+
 /// Create a new worktree for a branch
 pub fn create_worktree(repo_path: &str, branch_name: &str) -> Result<WorktreeInfo, String> {
     validate_branch_name(branch_name)?;
@@ -372,6 +442,79 @@ mod tests {
             !branches.iter().any(|b| b.name == "agent/x"),
             "merged branch should be deleted"
         );
+    }
+
+    #[test]
+    fn commit_worktree_stages_uncommitted_work_and_makes_the_merge_real() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir(&repo).unwrap();
+        let repo_str = repo.to_string_lossy().replace('\\', "/");
+        let git = |args: &[&str]| {
+            crate::process::hidden_command("git")
+                .args(args)
+                .current_dir(&repo)
+                .output()
+                .expect("git available")
+        };
+        git(&["init", "-q", "-b", "main"]);
+        git(&["config", "user.email", "t@t.t"]);
+        git(&["config", "user.name", "t"]);
+        std::fs::write(repo.join("base.txt"), "base").unwrap();
+        git(&["add", "."]);
+        git(&["commit", "-qm", "base"]);
+
+        create_worktree(&repo_str, "agent/y").expect("create worktree");
+        let wt = predict_worktree_path(&repo_str, "agent/y");
+        let tip_before = Repository::open(&wt)
+            .unwrap()
+            .head()
+            .unwrap()
+            .peel_to_commit()
+            .unwrap()
+            .id()
+            .to_string();
+
+        // The worker writes a file but never commits — the real production gap.
+        std::fs::write(wt.join("GREETING.md"), "hello").unwrap();
+
+        let oid = commit_worktree(&repo_str, "agent/y", "aether: task-greeting")
+            .expect("commit ok")
+            .expect("a commit was made");
+
+        // The source branch tip advanced to the new commit in the MAIN repo, so
+        // perform_merge will now see real work ahead.
+        let main_repo = Repository::open(&repo_str).unwrap();
+        assert_ne!(oid, tip_before);
+        assert_eq!(
+            main_repo
+                .refname_to_id("refs/heads/agent/y")
+                .unwrap()
+                .to_string(),
+            oid
+        );
+
+        // Without the external script, perform_merge now fast-forwards main and
+        // main's tip tree contains the worker's file — the audit gap is closed.
+        let outcome = crate::git::perform_merge(&repo_str, "agent/y", "main").expect("merge");
+        assert!(
+            matches!(outcome, crate::git::MergeOutcome::FastForwarded { .. }),
+            "expected fast-forward, got {outcome:?}"
+        );
+        let main_tip = main_repo.head().unwrap().peel_to_commit().unwrap();
+        assert!(
+            main_tip
+                .tree()
+                .unwrap()
+                .get_path(std::path::Path::new("GREETING.md"))
+                .is_ok(),
+            "main's tip now contains the worker's committed file"
+        );
+
+        // Idempotency: committing the now-clean worktree again is a no-op.
+        assert!(commit_worktree(&repo_str, "agent/y", "aether: again")
+            .expect("ok")
+            .is_none());
     }
 
     #[test]

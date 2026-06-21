@@ -72,14 +72,13 @@ try {
   }
   console.log("  workers built:", JSON.stringify(TASKS.filter(fileReady).map((t) => t.id)));
 
-  console.log("CONDUCTOR: commit each worker's output on its branch ->");
-  for (const t of TASKS) {
-    if (!fileReady(t)) continue;
-    try { git(wt[t.id], "add", "-A"); git(wt[t.id], "commit", "-m", `${t.owner}: add ${t.file}`); }
-    catch (e) { console.log("  commit skip", t.id, String(e).slice(0, 80)); }
-  }
+  // NOTE: the conductor NO LONGER commits the workers' worktrees. The autonomy
+  // loop now commits each green-reviewed task's worktree itself (inside
+  // LoopPortsAdapter::merge, via git::commit_worktree) before merging — proving
+  // dispatch -> build -> COMMIT (by the loop) -> review -> merge end-to-end with
+  // no external git mutation of the worktrees.
 
-  console.log("CONDUCTOR: review (all-green) + Reviewer merges to main ->");
+  console.log("CONDUCTOR: review (all-green); the loop commits each worktree then the Reviewer merges to main ->");
   const green = { tests_pass: true, lint_pass: true, types_pass: true, design_consistent: true, context_aligned: true };
   for (let i = 0; i < 8; i++) {
     const gates = Object.fromEntries(TASKS.filter(fileReady).map((t) => [t.id, green]));

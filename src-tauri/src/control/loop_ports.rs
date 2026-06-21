@@ -176,6 +176,23 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<G
             .task_info
             .branches(task_id)
             .ok_or_else(|| format!("task {task_id} has no source/target branch"))?;
+        // Commit the green-reviewed worker's worktree on `source` BEFORE merging,
+        // so perform_merge sees the real work ahead of `target`. Without this the
+        // source tip never moved (the agent writes files but never commits), so
+        // every merge was an empty AlreadyMerged and the conductor SCRIPT had to
+        // commit each worktree externally. Only commit when the task's isolated
+        // worktree exists on disk (a task in the repo root has nothing the loop
+        // owns to commit). A commit failure fails the merge -> the loop requeues
+        // the task for rework (never strands); Ok(None) (empty diff) is a success
+        // and the existing AlreadyMerged path decides the outcome.
+        if crate::control::worktree::predict_path(&self.repo_path, &source).exists() {
+            crate::control::worktree::commit_for_branch(
+                &self.repo_path,
+                &source,
+                &format!("aether: {task_id}"),
+            )
+            .map_err(|e| format!("commit worktree for {source} failed: {e}"))?;
+        }
         let intent = self.queue.enqueue(MergeRequest {
             session_id: task_id.to_string(),
             source_branch: source.clone(),
