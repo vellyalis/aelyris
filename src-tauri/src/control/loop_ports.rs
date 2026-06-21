@@ -364,10 +364,10 @@ impl Dispatcher for PaneDispatcher<'_> {
             .cloned()
             .ok_or_else(|| format!("no pane spawn spec for task {task_id}"))?;
         let model = spec.model.as_deref().unwrap_or("sonnet");
-        // Loop workers are autonomous (own worktree) → auto-accept edits so they
-        // actually build, not just respond.
+        // Loop workers run INSIDE a visible PowerShell pane (split pane → shell →
+        // AI CLI), autonomous (own worktree) so they auto-accept edits and build.
         let (program, args, env) =
-            crate::agent::interactive::agent_command_spec(model, Some(&spec.prompt), true)?;
+            crate::agent::interactive::agent_shell_command_spec(model, &spec.prompt, true)?;
         self.fleet.spawn(
             task_id, &program, &args, spec.cols, spec.rows, &spec.cwd, env,
         )?;

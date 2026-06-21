@@ -217,6 +217,67 @@ pub fn agent_command_spec(
     Ok((program, args, env))
 }
 
+/// Quote a token for a PowerShell single-quoted string literal (doubling any
+/// embedded single quote). Used to build the in-shell command line safely.
+fn ps_single_quote(token: &str) -> String {
+    format!("'{}'", token.replace('\'', "''"))
+}
+
+/// Launch the agent CLI **inside a visible PowerShell pane** — the operator's
+/// mental model: a normal terminal that invokes `claude`/`codex`. Same CLI and
+/// flags as [`agent_command_spec`], but run via `powershell -Command "& <cli>
+/// … $env:AETHER_AGENT_PROMPT; exit $LASTEXITCODE"`.
+///
+/// The prompt travels through the `AETHER_AGENT_PROMPT` env var and is referenced
+/// (not interpolated) inside the command, so arbitrary prompt text needs no
+/// shell escaping. `exit $LASTEXITCODE` makes PowerShell exit with the CLI's exit
+/// code, so the loop's PTY-exit completion/recovery signal (clean vs crashed) is
+/// preserved; the renderer then keeps the finished pane showing the CLI output.
+pub fn agent_shell_command_spec(
+    model: &str,
+    prompt: &str,
+    autonomous: bool,
+) -> Result<AgentLaunchSpec, String> {
+    let model = resolve_agent_model(model);
+    let cli = AgentCli::from_model(&model);
+    cli.validate()?;
+    let (cli_program, mut cli_args) = cli.program_and_args(Some(&model));
+    match cli {
+        AgentCli::Claude => {
+            if autonomous {
+                cli_args.push("--permission-mode".to_string());
+                cli_args.push("acceptEdits".to_string());
+            }
+            cli_args.push("-p".to_string());
+        }
+        AgentCli::Codex | AgentCli::Gemini => cli_args.push("-p".to_string()),
+        AgentCli::Custom(_) => {}
+    }
+
+    let mut command = format!("& {}", ps_single_quote(&cli_program));
+    for arg in &cli_args {
+        command.push(' ');
+        command.push_str(&ps_single_quote(arg));
+    }
+    command.push_str(" $env:AETHER_AGENT_PROMPT; exit $LASTEXITCODE");
+
+    let mut env = HashMap::new();
+    env.insert("AETHER_AGENT_CLI".to_string(), format!("{:?}", cli));
+    env.insert("AETHER_AGENT_MODEL".to_string(), model);
+    env.insert("AETHER_AGENT_PROMPT".to_string(), prompt.to_string());
+
+    Ok((
+        platform_cli_program("powershell"),
+        vec![
+            "-NoLogo".to_string(),
+            "-NoProfile".to_string(),
+            "-Command".to_string(),
+            command,
+        ],
+        env,
+    ))
+}
+
 /// Metadata for a live interactive agent session (PTY-based)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InteractiveSessionInfo {
@@ -536,6 +597,40 @@ mod tests {
         let (program, args, _env) = agent_command_spec("impl", Some("do the work"), false).unwrap();
         assert_eq!(program, platform_cli_program("claude"));
         assert_eq!(args, vec!["--model", "sonnet", "-p", "do the work"]);
+    }
+
+    #[test]
+    fn agent_shell_command_spec_runs_the_cli_inside_powershell_with_prompt_via_env() {
+        let (program, args, env) =
+            agent_shell_command_spec("impl", "build the 'login' screen", true).unwrap();
+        assert_eq!(program, platform_cli_program("powershell"));
+        // -Command carries the in-shell invocation; the prompt is NOT inlined.
+        assert_eq!(args[0], "-NoLogo");
+        assert_eq!(args[1], "-NoProfile");
+        assert_eq!(args[2], "-Command");
+        let cmd = &args[3];
+        assert!(
+            cmd.starts_with("& "),
+            "runs the CLI via the call operator: {cmd}"
+        );
+        assert!(cmd.contains("'--model' 'sonnet'"), "resolved model: {cmd}");
+        assert!(
+            cmd.contains("'--permission-mode' 'acceptEdits'"),
+            "autonomous edits: {cmd}"
+        );
+        assert!(
+            cmd.ends_with("'-p' $env:AETHER_AGENT_PROMPT; exit $LASTEXITCODE"),
+            "prompt via env: {cmd}"
+        );
+        // The prompt (with its embedded quote) lives in the env var, unescaped.
+        assert_eq!(
+            env.get("AETHER_AGENT_PROMPT").map(String::as_str),
+            Some("build the 'login' screen")
+        );
+        assert_eq!(
+            env.get("AETHER_AGENT_MODEL").map(String::as_str),
+            Some("sonnet")
+        );
     }
 
     #[test]
