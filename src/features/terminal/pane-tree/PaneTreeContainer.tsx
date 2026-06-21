@@ -136,6 +136,9 @@ interface BackendPaneInfo {
   cwd?: string;
 }
 
+/** Most recent finished agent panes kept on screen; older ones auto-close. */
+const MAX_DONE_AGENT_PANES = 6;
+
 /**
  * Container that owns the PaneTree state for a single tab.
  * Connects the usePaneTree hook to the PaneTreeRenderer.
@@ -556,6 +559,11 @@ export function PaneTreeContainer({
   // exited and closed is not re-mounted when the (cumulative) request re-renders.
   const everMountedAgentsRef = useRef<Set<string>>(new Set());
   const agentPaneUnlistenRef = useRef<Map<string, () => void>>(new Map());
+  // FIFO of finished ("done") agent panes, kept on screen for review. Bounded so
+  // the kept-on-exit fleet panes can't accumulate without limit across many
+  // dispatch rounds (memory/DOM/render-cost leak) — the oldest is closed when the
+  // cap is exceeded. `everMountedAgentsRef` still bars re-mounting a closed agent.
+  const doneAgentOrderRef = useRef<string[]>([]);
   const firstLiveTerminalId = useMemo(() => {
     for (const paneId of collectLeafIds(tree)) {
       const terminalId = terminalIds.get(paneId);
@@ -1012,6 +1020,21 @@ export function PaneTreeContainer({
             if (!meta) return prev;
             return new Map(prev).set(id, { ...meta, status: "done" });
           });
+          // Bound the kept "done" panes: close the oldest once over the cap so
+          // they cannot accumulate without limit across many dispatch rounds.
+          agentPaneIdsRef.current.delete(id);
+          doneAgentOrderRef.current.push(id);
+          while (doneAgentOrderRef.current.length > MAX_DONE_AGENT_PANES) {
+            const evict = doneAgentOrderRef.current.shift();
+            if (!evict) break;
+            setAgentMeta((prev) => {
+              if (!prev.has(evict)) return prev;
+              const next = new Map(prev);
+              next.delete(evict);
+              return next;
+            });
+            close(evict, { closeBackend: false });
+          }
         })
           .then((unlisten) => {
             agentPaneUnlistenRef.current.set(id, unlisten);
@@ -1022,7 +1045,7 @@ export function PaneTreeContainer({
       }
     }
     if (mountedAny) rebalance("tiled");
-  }, [spawnAgentPaneRequest, activePaneId, tree, splitWithExistingTerminal, rebalance, shell, cwd]);
+  }, [spawnAgentPaneRequest, activePaneId, tree, splitWithExistingTerminal, rebalance, close, shell, cwd]);
 
   // Detach agent-pane exit listeners on unmount.
   useEffect(() => {
