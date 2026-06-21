@@ -166,9 +166,8 @@ pub fn resolve_agent_model(model: &str) -> String {
 /// interactive spawn command and the autonomy loop's visible-pane dispatcher so
 /// both launch agents identically.
 ///
-/// When `initial_prompt` is set the agent starts working immediately on it
-/// (Claude additionally gets `--verbose` for richer monitorable output). Errors
-/// if the model maps to an unknown/unsafe CLI.
+/// When `initial_prompt` is set the agent starts working immediately on it.
+/// Errors if the model maps to an unknown/unsafe CLI.
 pub fn agent_command_spec(
     model: &str,
     initial_prompt: Option<&str>,
@@ -194,8 +193,10 @@ pub fn agent_command_spec(
                     args.push("--permission-mode".to_string());
                     args.push("acceptEdits".to_string());
                 }
-                // --verbose gives richer output for monitoring; -p starts work.
-                args.push("--verbose".to_string());
+                // -p runs the task and prints claude's response into the visible
+                // pane. We deliberately do NOT add --verbose: its event-log flood
+                // saturates the multi-pane terminal renderer (the visible fleet
+                // hung/crashed under it) and buries the human-readable output.
                 args.push("-p".to_string());
                 args.push(prompt.to_string());
             }
@@ -462,19 +463,14 @@ mod tests {
     }
 
     #[test]
-    fn agent_command_spec_claude_injects_model_verbose_and_prompt() {
+    fn agent_command_spec_claude_injects_model_and_prompt() {
         let (program, args, env) =
             agent_command_spec("opus", Some("build the login screen"), false).unwrap();
         assert_eq!(program, platform_cli_program("claude"));
+        // No --verbose: its event flood overwhelms the multi-pane renderer.
         assert_eq!(
             args,
-            vec![
-                "--model",
-                "opus",
-                "--verbose",
-                "-p",
-                "build the login screen"
-            ]
+            vec!["--model", "opus", "-p", "build the login screen"]
         );
         assert_eq!(
             env.get("AETHER_AGENT_MODEL").map(String::as_str),
@@ -499,7 +495,6 @@ mod tests {
                 "sonnet",
                 "--permission-mode",
                 "acceptEdits",
-                "--verbose",
                 "-p",
                 "write the file"
             ]
@@ -540,10 +535,7 @@ mod tests {
         // usable agent instead of `--model impl` (which the CLI rejects).
         let (program, args, _env) = agent_command_spec("impl", Some("do the work"), false).unwrap();
         assert_eq!(program, platform_cli_program("claude"));
-        assert_eq!(
-            args,
-            vec!["--model", "sonnet", "--verbose", "-p", "do the work"]
-        );
+        assert_eq!(args, vec!["--model", "sonnet", "-p", "do the work"]);
     }
 
     #[test]

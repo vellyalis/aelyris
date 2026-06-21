@@ -1000,20 +1000,18 @@ export function PaneTreeContainer({
       if (isTauriRuntime()) {
         const id = terminalId;
         void listen(`pty-exit-${id}`, () => {
-          agentPaneIdsRef.current.delete(id);
           const unlisten = agentPaneUnlistenRef.current.get(id);
           unlisten?.();
           agentPaneUnlistenRef.current.delete(id);
-          // The loop already reaped the backend PTY; drop the local pane (keeping
-          // a dead-PTY pane only renders a "disconnected" shell). Clear its agent
-          // identity so the chip map doesn't leak.
+          // KEEP the pane: mark the agent done so its final claude output stays on
+          // screen for review. The fleet persists instead of vanishing the instant
+          // each agent finishes — the visible-fleet experience (PaneTreeRenderer
+          // keeps the terminal buffer mounted for agent panes even once exited).
           setAgentMeta((prev) => {
-            if (!prev.has(id)) return prev;
-            const next = new Map(prev);
-            next.delete(id);
-            return next;
+            const meta = prev.get(id);
+            if (!meta) return prev;
+            return new Map(prev).set(id, { ...meta, status: "done" });
           });
-          close(id, { closeBackend: false });
         })
           .then((unlisten) => {
             agentPaneUnlistenRef.current.set(id, unlisten);
@@ -1024,7 +1022,7 @@ export function PaneTreeContainer({
       }
     }
     if (mountedAny) rebalance("tiled");
-  }, [spawnAgentPaneRequest, activePaneId, tree, splitWithExistingTerminal, rebalance, close, shell, cwd]);
+  }, [spawnAgentPaneRequest, activePaneId, tree, splitWithExistingTerminal, rebalance, shell, cwd]);
 
   // Detach agent-pane exit listeners on unmount.
   useEffect(() => {
