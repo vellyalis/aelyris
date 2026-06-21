@@ -191,6 +191,15 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<G
             Ok(_) => {
                 self.queue
                     .resolve(&intent.intent_id, MergeIntentStatus::Merged)?;
+                // Reclaim the merged task's isolated worktree (the conductor
+                // creates one per task; nothing else removed it, so they piled up
+                // on disk across a long-running fleet). Best-effort: the branch is
+                // already merged, so a cleanup failure must not fail the merge.
+                if let Err(e) =
+                    crate::control::worktree::remove_for_branch(&self.repo_path, &source, true)
+                {
+                    log::warn!("post-merge worktree cleanup for {source} failed (non-fatal): {e}");
+                }
                 Ok(())
             }
             Err(err) => {

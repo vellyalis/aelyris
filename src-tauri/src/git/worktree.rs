@@ -169,6 +169,44 @@ pub fn remove_worktree(
     Ok(())
 }
 
+/// Remove the worktree that `create_worktree(repo_path, branch)` placed, by its
+/// PREDICTED PATH. `git worktree remove` resolves a path, NOT a branch name
+/// (`git worktree remove <branch>` fails with "not a working tree"), so callers
+/// that only know the branch must route through here rather than `remove_worktree`.
+/// When `delete_branch`, the now-merged branch is deleted too. Prunes stale refs.
+pub fn remove_worktree_for_branch(
+    repo_path: &str,
+    branch: &str,
+    delete_branch: bool,
+) -> Result<(), String> {
+    validate_branch_name(branch)?;
+    let path = predict_worktree_path(repo_path, branch)
+        .to_string_lossy()
+        .replace('\\', "/");
+    let output = crate::process::hidden_command("git")
+        .args(["worktree", "remove", &path, "--force"])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Git worktree remove failed: {}", e))?;
+    if !output.status.success() {
+        return Err(format!(
+            "Worktree removal failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    let _ = crate::process::hidden_command("git")
+        .args(["worktree", "prune"])
+        .current_dir(repo_path)
+        .output();
+    if delete_branch {
+        let _ = crate::process::hidden_command("git")
+            .args(["branch", "-D", branch])
+            .current_dir(repo_path)
+            .output();
+    }
+    Ok(())
+}
+
 /// Validate branch name: ASCII alphanumeric, hyphens, underscores, slashes, dots only.
 /// Rejects path traversal, absolute-ish paths, unsafe prefixes, and overlong names.
 pub fn validate_branch_name(name: &str) -> Result<(), String> {
@@ -294,7 +332,45 @@ pub fn list_branches(repo_path: &str) -> Result<Vec<BranchInfo>, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::validate_branch_name;
+    use super::*;
+
+    /// Proves the path-based removal actually reclaims a created worktree —
+    /// `git worktree remove <branch>` (the old behaviour) fails with "not a
+    /// working tree", so this is the regression guard for the disk leak fix.
+    #[test]
+    fn remove_worktree_for_branch_actually_removes_it() {
+        use std::process::Command;
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir(&repo).unwrap();
+        let repo_str = repo.to_string_lossy().replace('\\', "/");
+        let git = |args: &[&str]| {
+            Command::new("git")
+                .args(args)
+                .current_dir(&repo)
+                .output()
+                .expect("git available")
+        };
+        git(&["init", "-q", "-b", "main"]);
+        git(&["config", "user.email", "t@t.t"]);
+        git(&["config", "user.name", "t"]);
+        std::fs::write(repo.join("a.txt"), "hi").unwrap();
+        git(&["add", "."]);
+        git(&["commit", "-qm", "base"]);
+
+        create_worktree(&repo_str, "agent/x").expect("create worktree");
+        let wt = predict_worktree_path(&repo_str, "agent/x");
+        assert!(wt.exists(), "worktree should exist at {wt:?}");
+
+        remove_worktree_for_branch(&repo_str, "agent/x", true).expect("remove worktree");
+        assert!(!wt.exists(), "worktree dir should be gone after removal");
+        // The merged branch was deleted too.
+        let branches = list_branches(&repo_str).unwrap_or_default();
+        assert!(
+            !branches.iter().any(|b| b.name == "agent/x"),
+            "merged branch should be deleted"
+        );
+    }
 
     #[test]
     fn validates_safe_agent_branch_names() {

@@ -23,6 +23,13 @@ pub fn remove(repo_path: &str, worktree_name: &str, delete_branch: bool) -> Cont
     git::remove_worktree(repo_path, worktree_name, delete_branch)
 }
 
+/// Remove a task's worktree by its BRANCH (resolves to the predicted path, which
+/// `git worktree remove` actually accepts). Used by the loop to reclaim a merged
+/// task's isolated worktree.
+pub fn remove_for_branch(repo_path: &str, branch: &str, delete_branch: bool) -> ControlResult<()> {
+    git::remove_worktree_for_branch(repo_path, branch, delete_branch)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
