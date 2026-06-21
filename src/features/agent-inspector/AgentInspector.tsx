@@ -814,7 +814,12 @@ export function AgentInspector({
                       {STATUS_LABELS[s.status]}
                     </span>
                     {pct > 0 && pct < 100 && <span className={styles.parallelPct}>{pct}%</span>}
-                    {s.status !== "done" && s.status !== "idle" && (
+                    {/* Show Stop for any live session. An interactive TUI is
+                        persistent — it sits at "idle" while still alive — so
+                        interactive sessions keep Stop on idle (matching
+                        InteractiveSessionCard); non-interactive fleet sessions
+                        keep the original idle-hides-Stop behavior. */}
+                    {s.status !== "done" && (s.runtime === "interactive" || s.status !== "idle") && (
                       <StopButton
                         className={styles.stopBtn}
                         label={`Stop session ${s.name}`}
