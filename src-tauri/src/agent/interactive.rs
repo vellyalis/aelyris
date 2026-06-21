@@ -397,6 +397,18 @@ impl InteractiveSessionManager {
         Ok(self.lock_sessions()?.values().cloned().collect())
     }
 
+    /// Number of LIVE sessions — everything except finished `"done"` ones — which
+    /// is what the BR7 spawn cap must count. A session that reached `"done"` (a
+    /// crashed interactive CLI, or a finished one not yet dismissed) is not
+    /// occupying a live agent slot, so it must not block new spawns. `"idle"` IS
+    /// live (a persistent interactive TUI waiting at its prompt). Returns 0 on a
+    /// poisoned lock (fail-open, matching the cap call site).
+    pub fn active_count(&self) -> usize {
+        self.lock_sessions()
+            .map(|sessions| sessions.values().filter(|i| i.status != "done").count())
+            .unwrap_or(0)
+    }
+
     fn lock_sessions(
         &self,
     ) -> Result<std::sync::MutexGuard<'_, HashMap<String, InteractiveSessionInfo>>, String> {
@@ -435,6 +447,28 @@ mod tests {
         mgr.register(make_session("s1", AgentCli::Claude)).unwrap();
         mgr.register(make_session("s2", AgentCli::Gemini)).unwrap();
         assert_eq!(mgr.list().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn active_count_excludes_done_but_keeps_idle() {
+        let mgr = InteractiveSessionManager::new();
+        mgr.register(make_session("s1", AgentCli::Claude)).unwrap();
+        mgr.register(make_session("s2", AgentCli::Gemini)).unwrap();
+        assert_eq!(mgr.active_count(), 2);
+
+        // A finished/crashed session reaches "done" but lingers in the list; it
+        // must stop counting toward the live spawn cap (the BR7 leak fix).
+        mgr.update_status("s2", "done").unwrap();
+        assert_eq!(mgr.list().unwrap().len(), 2, "done session is still listed");
+        assert_eq!(
+            mgr.active_count(),
+            1,
+            "a done session must not occupy a live cap slot"
+        );
+
+        // "idle" is a LIVE state for a persistent interactive TUI, so it still counts.
+        mgr.update_status("s1", "idle").unwrap();
+        assert_eq!(mgr.active_count(), 1);
     }
 
     #[test]

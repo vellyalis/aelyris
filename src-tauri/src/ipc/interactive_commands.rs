@@ -63,11 +63,9 @@ pub async fn spawn_interactive_agent(
     cli.validate()?;
 
     // Cost gate (BR7): refuse a new agent when the live fleet is at the cap.
-    let active_agents = app
-        .state::<InteractiveSessionManager>()
-        .list()
-        .map(|sessions| sessions.len())
-        .unwrap_or(0)
+    // Count only LIVE interactive sessions — a lingering "done" one (e.g. a
+    // crashed interactive CLI) is not occupying a slot and must not block spawns.
+    let active_agents = app.state::<InteractiveSessionManager>().active_count()
         + app
             .state::<crate::agent::AgentManager>()
             .list_sessions()
