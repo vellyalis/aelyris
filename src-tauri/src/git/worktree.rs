@@ -339,13 +339,15 @@ mod tests {
     /// working tree", so this is the regression guard for the disk leak fix.
     #[test]
     fn remove_worktree_for_branch_actually_removes_it() {
-        use std::process::Command;
         let tmp = tempfile::tempdir().unwrap();
         let repo = tmp.path().join("repo");
         std::fs::create_dir(&repo).unwrap();
         let repo_str = repo.to_string_lossy().replace('\\', "/");
+        // Route git through hidden_command (not a raw std spawn) so the
+        // spawn-hygiene gate (test_process_spawn_hygiene) stays green; it also
+        // avoids a console flash when the suite runs git on Windows.
         let git = |args: &[&str]| {
-            Command::new("git")
+            crate::process::hidden_command("git")
                 .args(args)
                 .current_dir(&repo)
                 .output()
