@@ -299,6 +299,16 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             role        TEXT NOT NULL DEFAULT '',
             updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
         );
+
+        -- Shared ADR / world-model (BR6): the project decisions injected into
+        -- every dispatched agent's prompt. Persisted so the world-model survives
+        -- an app restart instead of resetting to empty (which silently
+        -- de-aligned every agent on the next launch). One row per decision key.
+        CREATE TABLE IF NOT EXISTS context_store_decisions (
+            key        TEXT PRIMARY KEY,
+            value      TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        );
         ",
     )?;
 

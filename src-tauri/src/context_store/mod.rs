@@ -87,6 +87,13 @@ impl ContextStore {
             value: None,
         })
     }
+
+    /// Replace ALL decisions wholesale for a silent restore-on-launch. Bypasses
+    /// change detection and `DECISION_CHANGED` entirely — a restored map must not
+    /// re-emit events or re-persist. Used only by the launch-time hydrate path.
+    pub fn replace_all(&mut self, decisions: BTreeMap<String, String>) {
+        self.decisions = decisions;
+    }
 }
 
 #[cfg(test)]
@@ -138,5 +145,20 @@ mod tests {
         store.set("database", "postgresql");
         let keys: Vec<&str> = store.all().keys().map(String::as_str).collect();
         assert_eq!(keys, ["auth_method", "database", "framework"]);
+    }
+
+    #[test]
+    fn replace_all_overwrites_wholesale() {
+        let mut store = ContextStore::new();
+        store.set("a", "1");
+        let mut restored = BTreeMap::new();
+        restored.insert("x".to_string(), "10".to_string());
+        restored.insert("y".to_string(), "20".to_string());
+        store.replace_all(restored);
+        // The prior in-memory decision is gone; only the restored map remains.
+        assert_eq!(store.get("a"), None);
+        assert_eq!(store.get("x"), Some("10"));
+        let keys: Vec<&str> = store.all().keys().map(String::as_str).collect();
+        assert_eq!(keys, ["x", "y"]);
     }
 }

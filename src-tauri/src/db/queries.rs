@@ -311,6 +311,55 @@ impl Database {
             .map_err(|e| format!("Delete pane metadata: {}", e))
     }
 
+    // --- Context Store (shared ADR / world-model, BR6) persistence ---
+
+    /// Persist a single ADR decision. Upsert so a changed value overwrites the
+    /// prior one, matching the in-memory store's last-write-wins semantics.
+    pub fn upsert_context_decision(&self, key: &str, value: &str) -> Result<(), String> {
+        self.conn
+            .execute(
+                "INSERT INTO context_store_decisions (key, value, updated_at)
+                 VALUES (?1, ?2, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+                 ON CONFLICT(key) DO UPDATE SET
+                     value = excluded.value,
+                     updated_at = excluded.updated_at",
+                params![key, value],
+            )
+            .map(|_| ())
+            .map_err(|e| format!("Upsert context decision: {}", e))
+    }
+
+    /// Remove a persisted decision (mirrors `ContextStore::remove`).
+    pub fn delete_context_decision(&self, key: &str) -> Result<(), String> {
+        self.conn
+            .execute(
+                "DELETE FROM context_store_decisions WHERE key = ?1",
+                params![key],
+            )
+            .map(|_| ())
+            .map_err(|e| format!("Delete context decision: {}", e))
+    }
+
+    /// Load all persisted decisions, key-ordered into a `BTreeMap` to preserve
+    /// the in-memory store's deterministic-ordering invariant on restore.
+    pub fn load_context_decisions(&self) -> Result<BTreeMap<String, String>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT key, value FROM context_store_decisions ORDER BY key")
+            .map_err(|e| format!("Prepare load context decisions: {}", e))?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|e| format!("Query context decisions: {}", e))?;
+        let mut out = BTreeMap::new();
+        for row in rows {
+            let (k, v) = row.map_err(|e| format!("Read context decision row: {}", e))?;
+            out.insert(k, v);
+        }
+        Ok(out)
+    }
+
     pub fn create_session(&self, name: &str) -> Result<Session, String> {
         let id = Uuid::new_v4().to_string();
         self.conn
@@ -2400,6 +2449,32 @@ fn opt_i64_to_u16(value: Option<i64>) -> Option<u16> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_context_decisions_upsert_load_delete_roundtrip() {
+        let db = Database::open_memory().unwrap();
+        // Empty store loads as an empty map.
+        assert!(db.load_context_decisions().unwrap().is_empty());
+
+        db.upsert_context_decision("framework", "remix").unwrap();
+        db.upsert_context_decision("auth_method", "jwt").unwrap();
+        // Upsert is last-write-wins.
+        db.upsert_context_decision("framework", "nextjs").unwrap();
+
+        let loaded = db.load_context_decisions().unwrap();
+        assert_eq!(loaded.get("framework").map(String::as_str), Some("nextjs"));
+        assert_eq!(loaded.get("auth_method").map(String::as_str), Some("jwt"));
+        // Deterministic key ordering preserved (BTreeMap).
+        let keys: Vec<&str> = loaded.keys().map(String::as_str).collect();
+        assert_eq!(keys, ["auth_method", "framework"]);
+
+        db.delete_context_decision("framework").unwrap();
+        let after = db.load_context_decisions().unwrap();
+        assert_eq!(after.len(), 1);
+        assert!(!after.contains_key("framework"));
+        // Deleting a missing key is a no-op, not an error.
+        db.delete_context_decision("nope").unwrap();
+    }
 
     #[test]
     fn test_command_history_save_and_search() {

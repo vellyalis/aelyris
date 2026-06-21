@@ -155,18 +155,53 @@ pub fn run() {
                 app.manage(control::pane_fleet::PaneFleet::new(pty));
             }
 
-            // Initialize database as managed state
+            // Initialize database as managed state.
+            //
+            // The shared ADR/world-model (Context Store) is restored from disk
+            // here — AFTER the DB is open but BEFORE it is published — and the DB
+            // is then wired into the manager so future decisions persist. Without
+            // this, every restart silently wiped the world-model that is injected
+            // into every dispatched agent's prompt. A local fn (not a closure)
+            // keeps it out of the environment-capture borrow.
+            fn restore_context_store(app: &tauri::AppHandle, db: &db::ManagedDb) {
+                let store = app
+                    .state::<std::sync::Arc<context_store::ContextStoreManager>>()
+                    .inner()
+                    .clone();
+                match db.with(|d| d.load_context_decisions()) {
+                    Ok(decisions) => {
+                        if !decisions.is_empty() {
+                            log::info!(
+                                "context store: restored {} project decision(s) from disk",
+                                decisions.len()
+                            );
+                        }
+                        // hydrate BEFORE attach_db so the silent restore does not
+                        // re-write the rows it just read.
+                        store.hydrate(decisions);
+                    }
+                    Err(err) => log::warn!("context store: restore from disk failed: {err}"),
+                }
+                store.attach_db(db.clone());
+            }
+
             let db_path = db::db_path();
             match Database::open(&db_path) {
                 Ok(database) => {
                     log::info!("Database initialized at {:?}", db_path);
-                    app.handle().manage(db::ManagedDb::new(database));
+                    let managed = db::ManagedDb::new(database);
+                    restore_context_store(app.handle(), &managed);
+                    app.handle().manage(managed);
                 }
                 Err(e) => {
                     log::error!("Failed to initialize database: {}", e);
-                    // Provide a fallback in-memory db so commands don't panic
+                    // Provide a fallback in-memory db so commands don't panic. The
+                    // restore is an empty no-op and writes won't survive restart,
+                    // but the store stays consistent and dispatch never breaks.
                     if let Ok(mem_db) = Database::open_memory() {
-                        app.handle().manage(db::ManagedDb::new(mem_db));
+                        let managed = db::ManagedDb::new(mem_db);
+                        restore_context_store(app.handle(), &managed);
+                        app.handle().manage(managed);
                     }
                 }
             }
