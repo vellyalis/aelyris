@@ -27,9 +27,15 @@ impl ContextStoreManager {
     }
 
     /// Wire the durable store. Called once at launch, AFTER `hydrate`, so the
-    /// restore replay does not re-persist what it just read.
+    /// restore replay does not re-persist what it just read. A second call is a
+    /// programming error (the first DB handle stays wired) — log it so a future
+    /// double-init can't silently send writes to the wrong connection.
     pub fn attach_db(&self, db: ManagedDb) {
-        let _ = self.db.set(db);
+        if self.db.set(db).is_err() {
+            log::warn!(
+                "context store: attach_db called more than once; keeping the first DB handle"
+            );
+        }
     }
 
     /// Silently load restored decisions at launch. Bypasses change detection and
@@ -164,8 +170,9 @@ mod tests {
         use crate::db::{Database, ManagedDb};
         let db = ManagedDb::new(Database::open_memory().unwrap());
         let mgr = ContextStoreManager::new();
-        // Attach first, then hydrate, to prove hydrate bypasses persistence even
-        // when a DB is wired (a restore must not re-write the rows it just read).
+        // NOTE: production restores hydrate-THEN-attach (see lib.rs). Here we
+        // deliberately do the INVERSE (attach first) to prove the stronger
+        // invariant: hydrate never persists even when a DB is already wired.
         mgr.attach_db(db.clone());
         let mut seed = BTreeMap::new();
         seed.insert("k".to_string(), "v".to_string());

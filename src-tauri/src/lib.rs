@@ -199,6 +199,11 @@ pub fn run() {
                     // restore is an empty no-op and writes won't survive restart,
                     // but the store stays consistent and dispatch never breaks.
                     if let Ok(mem_db) = Database::open_memory() {
+                        log::warn!(
+                            "using an in-memory fallback DB: all persistence — including the \
+                             shared context store / ADR world-model — will NOT survive an app \
+                             restart this session"
+                        );
                         let managed = db::ManagedDb::new(mem_db);
                         restore_context_store(app.handle(), &managed);
                         app.handle().manage(managed);

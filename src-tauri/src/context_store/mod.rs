@@ -90,8 +90,9 @@ impl ContextStore {
 
     /// Replace ALL decisions wholesale for a silent restore-on-launch. Bypasses
     /// change detection and `DECISION_CHANGED` entirely — a restored map must not
-    /// re-emit events or re-persist. Used only by the launch-time hydrate path.
-    pub fn replace_all(&mut self, decisions: BTreeMap<String, String>) {
+    /// re-emit events or re-persist. Restricted to this module tree (the manager's
+    /// `hydrate` is the only caller) so nothing else can bypass change detection.
+    pub(in crate::context_store) fn replace_all(&mut self, decisions: BTreeMap<String, String>) {
         self.decisions = decisions;
     }
 }
