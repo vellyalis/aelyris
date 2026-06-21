@@ -326,6 +326,10 @@ struct PaneSpawnSpec {
     model: Option<String>,
     cols: u16,
     rows: u16,
+    /// The task's declared output paths (relative to `cwd`). The visible fleet's
+    /// structural completion signal: an interactive agent never exits, so it is
+    /// reported done once these all exist in its worktree (see `PaneFleet`).
+    outputs: Vec<String>,
 }
 
 /// Like `spawn_specs` but for the visible-pane runtime: each ready task becomes a
@@ -348,6 +352,7 @@ fn pane_spawn_specs(
                     model: task.agent_model(),
                     cols: PANE_COLS,
                     rows: PANE_ROWS,
+                    outputs: task.outputs.clone(),
                 },
             )
         })
@@ -374,11 +379,21 @@ impl Dispatcher for PaneDispatcher<'_> {
             .ok_or_else(|| format!("no pane spawn spec for task {task_id}"))?;
         let model = spec.model.as_deref().unwrap_or("sonnet");
         // Loop workers run INSIDE a visible PowerShell pane (split pane → shell →
-        // AI CLI), autonomous (own worktree) so they auto-accept edits and build.
+        // AI CLI), as the live INTERACTIVE TUI (not headless -p), autonomous (own
+        // worktree) so they auto-accept edits and build. Because the interactive
+        // session never exits, completion is sensed structurally from the task's
+        // declared outputs appearing in the worktree (passed to the fleet here).
         let (program, args, env) =
             crate::agent::interactive::agent_shell_command_spec(model, &spec.prompt, true)?;
         self.fleet.spawn(
-            task_id, &program, &args, spec.cols, spec.rows, &spec.cwd, env,
+            task_id,
+            &program,
+            &args,
+            spec.cols,
+            spec.rows,
+            &spec.cwd,
+            env,
+            spec.outputs.clone(),
         )?;
         Ok(())
     }

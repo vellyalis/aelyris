@@ -223,16 +223,25 @@ fn ps_single_quote(token: &str) -> String {
     format!("'{}'", token.replace('\'', "''"))
 }
 
-/// Launch the agent CLI **inside a visible PowerShell pane** — the operator's
-/// mental model: a normal terminal that invokes `claude`/`codex`. Same CLI and
-/// flags as [`agent_command_spec`], but run via `powershell -Command "& <cli>
-/// … $env:AETHER_AGENT_PROMPT; exit $LASTEXITCODE"`.
+/// Launch the agent CLI **inside a visible PowerShell pane**, running its full
+/// INTERACTIVE TUI — the operator's mental model: split pane → a shell starts →
+/// the AI CLI is invoked in it and you watch it work live. Run via `powershell
+/// -Command "& <cli> … $env:AETHER_AGENT_PROMPT; exit $LASTEXITCODE"`.
+///
+/// Deliberately **no `-p`**: `-p`/`--print` is headless ("Print response and
+/// exit") — the operator sees only a text dump, not the agent's live interface.
+/// Omitting it runs the CLI's interactive TUI, which renders in the pane (the
+/// native engine is `alacritty_terminal`, so the alternate-screen full-screen UI
+/// is handled) and stays open. Because an interactive session never exits, the
+/// loop cannot use the PTY-exit sensor for it; completion is detected
+/// structurally from the task's declared outputs appearing in the worktree (see
+/// [`crate::control::pane_fleet::PaneFleet::poll_completions`]). The trailing
+/// `; exit $LASTEXITCODE` is a backstop: if the CLI *does* exit (e.g. a crash),
+/// PowerShell exits with its code so the PTY-exit recovery path still fires.
 ///
 /// The prompt travels through the `AETHER_AGENT_PROMPT` env var and is referenced
 /// (not interpolated) inside the command, so arbitrary prompt text needs no
-/// shell escaping. `exit $LASTEXITCODE` makes PowerShell exit with the CLI's exit
-/// code, so the loop's PTY-exit completion/recovery signal (clean vs crashed) is
-/// preserved; the renderer then keeps the finished pane showing the CLI output.
+/// shell escaping.
 pub fn agent_shell_command_spec(
     model: &str,
     prompt: &str,
@@ -248,9 +257,9 @@ pub fn agent_shell_command_spec(
                 cli_args.push("--permission-mode".to_string());
                 cli_args.push("acceptEdits".to_string());
             }
-            cli_args.push("-p".to_string());
+            // No -p: run the interactive TUI (visible, persistent), not headless print.
         }
-        AgentCli::Codex | AgentCli::Gemini => cli_args.push("-p".to_string()),
+        AgentCli::Codex | AgentCli::Gemini => {}
         AgentCli::Custom(_) => {}
     }
 
@@ -600,7 +609,7 @@ mod tests {
     }
 
     #[test]
-    fn agent_shell_command_spec_runs_the_cli_inside_powershell_with_prompt_via_env() {
+    fn agent_shell_command_spec_runs_the_interactive_cli_inside_powershell() {
         let (program, args, env) =
             agent_shell_command_spec("impl", "build the 'login' screen", true).unwrap();
         assert_eq!(program, platform_cli_program("powershell"));
@@ -618,9 +627,13 @@ mod tests {
             cmd.contains("'--permission-mode' 'acceptEdits'"),
             "autonomous edits: {cmd}"
         );
+        // CRITICAL: no `-p`. -p is headless print mode (a text dump that exits);
+        // the visible fleet must run the INTERACTIVE TUI so the operator watches
+        // the agent work. Completion is detected from worktree outputs instead.
+        assert!(!cmd.contains("'-p'"), "must NOT be headless -p: {cmd}");
         assert!(
-            cmd.ends_with("'-p' $env:AETHER_AGENT_PROMPT; exit $LASTEXITCODE"),
-            "prompt via env: {cmd}"
+            cmd.ends_with("'acceptEdits' $env:AETHER_AGENT_PROMPT; exit $LASTEXITCODE"),
+            "interactive prompt via env, exit-code backstop: {cmd}"
         );
         // The prompt (with its embedded quote) lives in the env var, unescaped.
         assert_eq!(
