@@ -309,6 +309,21 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             value      TEXT NOT NULL,
             updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
         );
+
+        -- The autonomy TaskGraph (BR4): one row per task so an interrupted build
+        -- survives an app restart and the loop can resume. `sort_order` rebuilds
+        -- the graph's insertion order; `task_json` holds the full serde Task (the
+        -- variable-length deps/outputs/branches/retry-budgets); `status` is also a
+        -- native column for cheap inspection. Persisted as a whole-graph snapshot.
+        CREATE TABLE IF NOT EXISTS task_graph_tasks (
+            id         TEXT PRIMARY KEY,
+            sort_order INTEGER NOT NULL,
+            status     TEXT NOT NULL,
+            task_json  TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_task_graph_tasks_order
+            ON task_graph_tasks(sort_order);
         ",
     )?;
 

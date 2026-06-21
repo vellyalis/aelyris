@@ -185,12 +185,39 @@ pub fn run() {
                 store.attach_db(db.clone());
             }
 
+            // Restore the autonomy TaskGraph so an interrupted build survives a
+            // restart: load the persisted graph, collapse volatile in-flight
+            // (Running/Review) tasks to Ready (their worker died at crash) so the
+            // loop safely re-dispatches them, hydrate silently, then attach for
+            // save-on-write. Same hydrate-before-attach invariant as the store.
+            fn restore_task_graph(app: &tauri::AppHandle, db: &db::ManagedDb) {
+                let tasks = app
+                    .state::<std::sync::Arc<task::TaskManager>>()
+                    .inner()
+                    .clone();
+                match db.with(|d| d.load_task_graph()) {
+                    Ok(loaded) => {
+                        let count = loaded.len();
+                        let restored = task::tasks_for_restore(loaded);
+                        if count > 0 {
+                            log::info!(
+                                "task graph: restored {count} task(s) from disk (in-flight reset to ready)"
+                            );
+                        }
+                        tasks.hydrate(restored);
+                    }
+                    Err(err) => log::warn!("task graph: restore from disk failed: {err}"),
+                }
+                tasks.attach_db(db.clone());
+            }
+
             let db_path = db::db_path();
             match Database::open(&db_path) {
                 Ok(database) => {
                     log::info!("Database initialized at {:?}", db_path);
                     let managed = db::ManagedDb::new(database);
                     restore_context_store(app.handle(), &managed);
+                    restore_task_graph(app.handle(), &managed);
                     app.handle().manage(managed);
                 }
                 Err(e) => {
@@ -201,11 +228,12 @@ pub fn run() {
                     if let Ok(mem_db) = Database::open_memory() {
                         log::warn!(
                             "using an in-memory fallback DB: all persistence — including the \
-                             shared context store / ADR world-model — will NOT survive an app \
-                             restart this session"
+                             shared context store / ADR world-model and the autonomy task graph \
+                             — will NOT survive an app restart this session"
                         );
                         let managed = db::ManagedDb::new(mem_db);
                         restore_context_store(app.handle(), &managed);
+                        restore_task_graph(app.handle(), &managed);
                         app.handle().manage(managed);
                     }
                 }

@@ -6,6 +6,7 @@ use std::path::Path;
 use uuid::Uuid;
 
 use super::migrations;
+use crate::task::graph::Task;
 
 /// Core database handle for Aether Terminal
 pub struct Database {
@@ -358,6 +359,54 @@ impl Database {
             out.insert(k, v);
         }
         Ok(out)
+    }
+
+    // --- Autonomy TaskGraph (BR4) persistence ---
+
+    /// Load the whole task graph in insertion order. Each row's `task_json` is the
+    /// full serde `Task`; `#[serde(default)]` on its optional fields makes it
+    /// forward/back-compatible with rows written before a field existed.
+    pub fn load_task_graph(&self) -> Result<Vec<Task>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT task_json FROM task_graph_tasks ORDER BY sort_order")
+            .map_err(|e| format!("Prepare load task graph: {}", e))?;
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| format!("Query task graph: {}", e))?;
+        let mut tasks = Vec::new();
+        for row in rows {
+            let json = row.map_err(|e| format!("Read task row: {}", e))?;
+            let task: Task =
+                serde_json::from_str(&json).map_err(|e| format!("Deserialize task: {}", e))?;
+            tasks.push(task);
+        }
+        Ok(tasks)
+    }
+
+    /// Persist the whole task graph as a consistent snapshot: one transaction that
+    /// clears the table then re-inserts every task with its index as `sort_order`,
+    /// so the persisted graph is never a torn partial state. The loop mutates many
+    /// tasks per step under one lock, so whole-graph replace is the right (and
+    /// simplest-consistent) granularity.
+    pub fn replace_task_graph(&self, tasks: &[Task]) -> Result<(), String> {
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| format!("Begin task graph txn: {}", e))?;
+        tx.execute("DELETE FROM task_graph_tasks", [])
+            .map_err(|e| format!("Clear task graph: {}", e))?;
+        for (index, task) in tasks.iter().enumerate() {
+            let json = serde_json::to_string(task)
+                .map_err(|e| format!("Serialize task {}: {}", task.id, e))?;
+            tx.execute(
+                "INSERT INTO task_graph_tasks (id, sort_order, status, task_json, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+                params![task.id, index as i64, task.status.as_str(), json],
+            )
+            .map_err(|e| format!("Insert task {}: {}", task.id, e))?;
+        }
+        tx.commit().map_err(|e| format!("Commit task graph: {}", e))
     }
 
     pub fn create_session(&self, name: &str) -> Result<Session, String> {
@@ -2474,6 +2523,38 @@ mod tests {
         assert!(!after.contains_key("framework"));
         // Deleting a missing key is a no-op, not an error.
         db.delete_context_decision("nope").unwrap();
+    }
+
+    #[test]
+    fn test_task_graph_replace_load_roundtrip() {
+        use crate::task::graph::{Task, TaskPriority};
+        use crate::task::status::TaskStatus;
+        let db = Database::open_memory().unwrap();
+        assert!(db.load_task_graph().unwrap().is_empty());
+
+        let mut a = Task::new("a", "A");
+        a.status = TaskStatus::Done;
+        a.crash_attempts = 2;
+        let mut b = Task::new("b", "B");
+        b.status = TaskStatus::Running;
+        b.priority = TaskPriority::High;
+        db.replace_task_graph(&[a.clone(), b.clone()]).unwrap();
+
+        let loaded = db.load_task_graph().unwrap();
+        assert_eq!(loaded.len(), 2);
+        // sort_order preserves insertion order; full Task round-trips (incl. budgets).
+        assert_eq!(loaded[0].id, "a");
+        assert_eq!(loaded[0].status, TaskStatus::Done);
+        assert_eq!(loaded[0].crash_attempts, 2);
+        assert_eq!(loaded[1].id, "b");
+        assert_eq!(loaded[1].status, TaskStatus::Running);
+        assert_eq!(loaded[1].priority, TaskPriority::High);
+
+        // Replace is a whole-graph snapshot: old rows are cleared.
+        db.replace_task_graph(&[a.clone()]).unwrap();
+        let after = db.load_task_graph().unwrap();
+        assert_eq!(after.len(), 1);
+        assert_eq!(after[0].id, "a");
     }
 
     #[test]

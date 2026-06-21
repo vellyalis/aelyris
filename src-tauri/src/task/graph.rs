@@ -172,6 +172,21 @@ impl TaskGraph {
         Ok(())
     }
 
+    /// Restore the whole graph from a persisted snapshot, bypassing `add`'s DAG
+    /// checks (the persisted graph was already a valid DAG). Sets `tasks`/`order`
+    /// directly so the exact prior state — statuses, branch bindings, and retry
+    /// budgets — is reproduced verbatim; the input order defines the listing order.
+    /// Restricted to this module so nothing else can bypass the append-only `add`
+    /// invariant; the manager's launch-time `hydrate` is the only caller.
+    pub(in crate::task) fn hydrate_restore(&mut self, tasks: Vec<Task>) {
+        self.tasks.clear();
+        self.order.clear();
+        for task in tasks {
+            self.order.push(task.id.clone());
+            self.tasks.insert(task.id.clone(), task);
+        }
+    }
+
     pub fn get(&self, id: &str) -> Option<&Task> {
         self.tasks.get(id)
     }
