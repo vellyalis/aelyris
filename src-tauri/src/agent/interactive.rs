@@ -161,13 +161,21 @@ pub fn resolve_agent_model(model: &str) -> String {
 }
 
 /// Resolve a model name to the `(program, args, env)` for spawning that agent's
-/// CLI in an **interactive/visible PTY** (human-readable output, not the headless
-/// `--output-format stream-json` stream). Single source of truth shared by the
-/// interactive spawn command and the autonomy loop's visible-pane dispatcher so
-/// both launch agents identically.
+/// CLI as a **live interactive TUI in a visible PTY** — the AgentInspector's
+/// human-driven agent terminal. Deliberately NOT `-p`: `-p`/`--print` is headless
+/// ("Print response and exit") — a text dump, not the agent's live interface.
+/// Omitting it runs the interactive TUI the operator watches and can talk to
+/// (the native engine is `alacritty_terminal`, so the alt-screen UI renders).
 ///
-/// When `initial_prompt` is set the agent starts working immediately on it.
-/// Errors if the model maps to an unknown/unsafe CLI.
+/// Sibling launch paths, kept separate on purpose: the autonomy loop's *visible
+/// fleet* uses [`agent_shell_command_spec`] (same no-`-p` interactive TUI, but
+/// wrapped in a PowerShell pane with an exit-code backstop for the loop); the
+/// *headless* autonomy path is [`crate::agent::claude`] (`-p --output-format
+/// stream-json`, parsed for cost/tokens).
+///
+/// When `initial_prompt` is set it is passed as a **positional arg** (exec-style
+/// argv — no shell, so no escaping), and interactive claude starts a session and
+/// works on it immediately. Errors if the model maps to an unknown/unsafe CLI.
 pub fn agent_command_spec(
     model: &str,
     initial_prompt: Option<&str>,
@@ -189,19 +197,18 @@ pub fn agent_command_spec(
                     // file edits so it can actually build without an interactive
                     // permission gate. This is the edits-only mode, NOT the full
                     // dangerous bypass, matching "agents write freely inside their
-                    // own worktree" (BR1/Design Principle 1).
+                    // own worktree" (BR1/Design Principle 1). The AgentInspector
+                    // passes `false` so a human keeps the edit-approval gate.
                     args.push("--permission-mode".to_string());
                     args.push("acceptEdits".to_string());
                 }
-                // -p runs the task and prints claude's response into the visible
-                // pane. We deliberately do NOT add --verbose: its event-log flood
-                // saturates the multi-pane terminal renderer (the visible fleet
-                // hung/crashed under it) and buries the human-readable output.
-                args.push("-p".to_string());
+                // No -p: run the interactive TUI (visible, persistent), not the
+                // headless print dump. The prompt is a positional arg so claude
+                // starts a session and works on it immediately.
                 args.push(prompt.to_string());
             }
             AgentCli::Codex | AgentCli::Gemini => {
-                args.push("-p".to_string());
+                // Interactive too (no -p): prompt as a positional arg.
                 args.push(prompt.to_string());
             }
             AgentCli::Custom(_) => {
@@ -533,15 +540,14 @@ mod tests {
     }
 
     #[test]
-    fn agent_command_spec_claude_injects_model_and_prompt() {
+    fn agent_command_spec_claude_injects_model_and_interactive_prompt() {
         let (program, args, env) =
             agent_command_spec("opus", Some("build the login screen"), false).unwrap();
         assert_eq!(program, platform_cli_program("claude"));
-        // No --verbose: its event flood overwhelms the multi-pane renderer.
-        assert_eq!(
-            args,
-            vec!["--model", "opus", "-p", "build the login screen"]
-        );
+        // No -p: the AgentInspector agent runs the INTERACTIVE TUI; the prompt is
+        // a positional arg, not a headless `-p` dump.
+        assert!(!args.iter().any(|a| a == "-p"), "must NOT be headless -p");
+        assert_eq!(args, vec!["--model", "opus", "build the login screen"]);
         assert_eq!(
             env.get("AETHER_AGENT_MODEL").map(String::as_str),
             Some("opus")
@@ -554,8 +560,8 @@ mod tests {
 
     #[test]
     fn agent_command_spec_autonomous_claude_auto_accepts_edits() {
-        // An autonomous loop worker gets --permission-mode acceptEdits so it can
-        // actually write code in its worktree without an interactive gate.
+        // An autonomous worker gets --permission-mode acceptEdits so it can write
+        // code in its worktree without a gate — still interactive (no -p).
         let (_program, args, _env) =
             agent_command_spec("sonnet", Some("write the file"), true).unwrap();
         assert_eq!(
@@ -565,18 +571,17 @@ mod tests {
                 "sonnet",
                 "--permission-mode",
                 "acceptEdits",
-                "-p",
                 "write the file"
             ]
         );
     }
 
     #[test]
-    fn agent_command_spec_codex_passes_prompt_without_verbose() {
+    fn agent_command_spec_codex_passes_interactive_prompt() {
         let (program, args, _env) = agent_command_spec("codex-mini", Some("review"), true).unwrap();
         assert_eq!(program, platform_cli_program("codex"));
-        // Codex/Gemini get -p prompt but no --model / --verbose / permission flags.
-        assert_eq!(args, vec!["-p", "review"]);
+        // Codex/Gemini: interactive prompt (no -p), no --model / permission flags.
+        assert_eq!(args, vec!["review"]);
     }
 
     #[test]
@@ -605,7 +610,7 @@ mod tests {
         // usable agent instead of `--model impl` (which the CLI rejects).
         let (program, args, _env) = agent_command_spec("impl", Some("do the work"), false).unwrap();
         assert_eq!(program, platform_cli_program("claude"));
-        assert_eq!(args, vec!["--model", "sonnet", "-p", "do the work"]);
+        assert_eq!(args, vec!["--model", "sonnet", "do the work"]);
     }
 
     #[test]

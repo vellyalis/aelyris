@@ -33,4 +33,16 @@ describe("InteractiveSessionCard", () => {
     expect(container.textContent).not.toContain("gemini-2.5-pro");
     expect(container.textContent).not.toContain("$0.03");
   });
+
+  it("keeps the Stop affordance for a live but idle interactive session", () => {
+    // An interactive TUI agent is persistent: it sits at "idle" (waiting at its
+    // prompt) while still alive. The operator must be able to stop it — only a
+    // finished "done" session hides Stop.
+    const idle = render(<InteractiveSessionCard session={baseSession({ status: "idle" })} />);
+    expect(idle.getByLabelText("Stop interactive session interactive-1")).toBeTruthy();
+    cleanup();
+
+    const done = render(<InteractiveSessionCard session={baseSession({ status: "done" })} />);
+    expect(done.queryByLabelText("Stop interactive session interactive-1")).toBeNull();
+  });
 });

@@ -360,11 +360,12 @@ fn pane_spawn_specs(
 }
 
 /// Dispatches a ready task by spawning its implementer agent in a **visible PTY
-/// pane** (1 pane = 1 agent) through the shared `PaneFleet`, and reports finished
-/// panes (PTY exit) back to the loop. The CLI command is resolved from the task's
-/// model + prompt via the same `agent_command_spec` the interactive spawn uses,
-/// so loop-dispatched and hand-spawned agents launch identically. This is the
-/// visible counterpart of `AgentDispatcher`.
+/// pane** (1 pane = 1 agent) through the shared `PaneFleet`. The CLI command is
+/// resolved from the task's model + prompt via `agent_shell_command_spec` (the
+/// interactive TUI inside a PowerShell pane); completion is sensed structurally
+/// from declared outputs (the interactive TUI never exits). This is the visible
+/// counterpart of `AgentDispatcher`. The AgentInspector's hand-spawned agents use
+/// the sibling `agent_command_spec` (interactive TUI, launched directly).
 struct PaneDispatcher<'a> {
     fleet: &'a PaneFleet,
     specs: std::collections::HashMap<String, PaneSpawnSpec>,
