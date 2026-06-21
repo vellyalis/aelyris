@@ -24,9 +24,26 @@ pub use status::{TaskStatus, TASK_STATUS_NAMES};
 /// verbatim, so a poison task that already exhausted its budget cannot reset and
 /// loop forever. The task-graph analog of the mux snapshot's volatile-field reset.
 pub fn tasks_for_restore(tasks: Vec<Task>) -> Vec<Task> {
+    let known: std::collections::HashSet<String> = tasks.iter().map(|t| t.id.clone()).collect();
     tasks
         .into_iter()
         .map(|mut task| {
+            // Defense-in-depth against a corrupt / partially-migrated persisted
+            // graph: a dependency id absent from the loaded set is unsatisfiable.
+            // Leaving it would let the gate (which filter_maps missing deps) treat
+            // the task as "all deps done" and wrongly dispatch it. Mark it Failed
+            // (terminal — never dispatched, but replannable) instead. Normal graphs
+            // never hit this: `add()` enforces deps exist and tasks are never deleted.
+            if task.dependencies.iter().any(|dep| !known.contains(dep)) {
+                log::warn!(
+                    "task graph: task '{}' depends on a task missing from the restored graph; marking Failed",
+                    task.id
+                );
+                task.status = TaskStatus::Failed;
+                return task;
+            }
+            // Collapse volatile in-flight states (Running, Review) to Ready — the
+            // worker died at crash — so the loop safely re-dispatches them.
             if matches!(task.status, TaskStatus::Running | TaskStatus::Review) {
                 task.status = TaskStatus::Ready;
             }
@@ -68,5 +85,20 @@ mod restore_tests {
         assert_eq!(out[0].crash_attempts, 2);
         assert_eq!(out[0].timeout_attempts, 1);
         assert_eq!(out[1].rework_attempts, 2);
+    }
+
+    #[test]
+    fn restore_marks_a_task_with_a_dangling_dependency_failed() {
+        let mut ok = Task::new("ok", "OK");
+        ok.status = TaskStatus::Running; // valid, in-flight
+        let mut orphan = Task::new("orphan", "Orphan");
+        orphan.status = TaskStatus::Ready;
+        orphan.dependencies = vec!["missing".to_string()]; // dep absent from the set
+
+        let out = tasks_for_restore(vec![ok, orphan]);
+        // The valid in-flight task is reset to Ready as usual.
+        assert_eq!(out[0].status, TaskStatus::Ready);
+        // The task whose dependency is missing is Failed, not wrongly dispatched.
+        assert_eq!(out[1].status, TaskStatus::Failed);
     }
 }

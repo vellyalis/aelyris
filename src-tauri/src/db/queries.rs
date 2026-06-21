@@ -390,6 +390,12 @@ impl Database {
     /// tasks per step under one lock, so whole-graph replace is the right (and
     /// simplest-consistent) granularity.
     pub fn replace_task_graph(&self, tasks: &[Task]) -> Result<(), String> {
+        // SAFETY: `unchecked_transaction` (vs `transaction`, which needs &mut Connection)
+        // is sound here because `Database` is only ever reached through
+        // `ManagedDb { inner: Arc<Mutex<Database>> }` (db/mod.rs), so all access to this
+        // `Connection` is serialized by that Mutex — there is never concurrent or
+        // re-entrant use. The txn rolls back on drop if any step fails before commit, so
+        // a partial failure never leaves the table empty.
         let tx = self
             .conn
             .unchecked_transaction()
