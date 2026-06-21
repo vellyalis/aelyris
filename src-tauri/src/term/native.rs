@@ -29,6 +29,23 @@ pub struct AdvanceResult {
 /// Minimum gap between emitted diffs per session. 16ms ~= 60fps cap.
 const COALESCE_INTERVAL: Duration = Duration::from_millis(16);
 
+/// A session that emitted a diff within this window counts as "actively
+/// streaming" when scaling the coalesce cadence for a dense fleet.
+const STREAMING_WINDOW: Duration = Duration::from_millis(250);
+
+/// Adaptive per-session diff cadence. A few streaming panes keep the full 16ms
+/// (~60fps); as more panes stream concurrently, the interval stretches so the
+/// AGGREGATE paint/IPC load across the visible fleet stays bounded. WebView2's
+/// software canvas cannot paint a dozen panes every frame, but 60-vs-25fps is
+/// imperceptible across tiled panes — so 1-3 streaming → 16ms, 4-6 → 32ms,
+/// 7+ → 48ms (~20fps) cap. The single focused terminal (when it's the only one
+/// streaming) always stays at full 60fps.
+fn adaptive_coalesce_interval(streaming_count: usize) -> Duration {
+    let steps = streaming_count.saturating_sub(1) / 3;
+    let ms = (COALESCE_INTERVAL.as_millis() as u64 + steps as u64 * 16).min(48);
+    Duration::from_millis(ms)
+}
+
 struct NativeSession {
     engine: TermEngine,
     tracker: DiffTracker,
@@ -96,6 +113,13 @@ impl NativeTerminalRegistry {
             );
             return AdvanceResult::default();
         };
+        // Count actively-streaming sessions BEFORE the mutable borrow so this
+        // session's diff cadence scales with how many panes are streaming at once.
+        let now = Instant::now();
+        let streaming = guard
+            .values()
+            .filter(|s| now.duration_since(s.last_emit_at) < STREAMING_WINDOW)
+            .count();
         let Some(session) = guard.get_mut(id) else {
             log::debug!(
                 "native advance: unknown session id={id}, dropping {} bytes",
@@ -112,8 +136,7 @@ impl NativeTerminalRegistry {
             );
         }
 
-        let now = Instant::now();
-        if now.duration_since(session.last_emit_at) < COALESCE_INTERVAL {
+        if now.duration_since(session.last_emit_at) < adaptive_coalesce_interval(streaming) {
             return AdvanceResult {
                 diff: None,
                 new_marks,
@@ -353,6 +376,18 @@ pub struct ImageMetricsResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn adaptive_coalesce_interval_scales_with_streaming_fleet() {
+        // A few streaming panes keep full 60fps; a dense fleet stretches toward
+        // the ~20fps cap so the aggregate render load stays bounded.
+        assert_eq!(adaptive_coalesce_interval(0), Duration::from_millis(16));
+        assert_eq!(adaptive_coalesce_interval(1), Duration::from_millis(16));
+        assert_eq!(adaptive_coalesce_interval(3), Duration::from_millis(16));
+        assert_eq!(adaptive_coalesce_interval(4), Duration::from_millis(32));
+        assert_eq!(adaptive_coalesce_interval(7), Duration::from_millis(48));
+        assert_eq!(adaptive_coalesce_interval(12), Duration::from_millis(48)); // capped
+    }
 
     #[test]
     fn first_advance_emits_full_frame() {
