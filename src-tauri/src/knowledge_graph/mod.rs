@@ -12,6 +12,7 @@
 //! aggregation across the repo) is a thin adapter layered on top later; the
 //! graph + impact analysis stand alone.
 
+pub mod index;
 pub mod manager;
 
 pub use manager::KnowledgeGraphManager;

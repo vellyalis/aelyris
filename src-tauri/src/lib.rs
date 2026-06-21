@@ -862,6 +862,7 @@ pub fn run() {
             ipc::lsp_stop,
             ipc::lsp_list,
             ipc::list_all_files,
+            ipc::populate_knowledge_graph,
             // Interactive agent session commands
             ipc::spawn_interactive_agent,
             ipc::stop_interactive_agent,

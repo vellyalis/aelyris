@@ -3678,6 +3678,10 @@ export function App() {
       setRootProjectPath(normalized);
       addTabWithCwd("powershell", normalized);
       clearFiles();
+      // Populate the Knowledge Graph (code dependency map) from this project's
+      // source — best-effort, off the UI thread. It persists, so it survives a
+      // restart and simply re-runs on the next open if this attempt fails.
+      void tauriInvoke("populate_knowledge_graph", { rootPath: normalized }).catch(() => {});
     },
     [addTabWithCwd, clearFiles, confirmDiscardUnsavedFiles, setRootProjectPath],
   );
