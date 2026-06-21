@@ -231,6 +231,7 @@ import { ConfirmDialog, showConfirm } from "./shared/ui/ConfirmDialog";
 import { ErrorBoundary } from "./shared/ui/ErrorBoundary";
 import { HandoffDialog } from "./shared/ui/HandoffDialog";
 import { LazyDialog } from "./shared/ui/LazyDialog";
+import { FleetHud } from "./features/fleet-hud/FleetHud";
 import { OnboardingOverlay } from "./shared/ui/OnboardingOverlay";
 import { OrchestraDialog, showOrchestra } from "./shared/ui/OrchestraDialog";
 import { PromptDialog } from "./shared/ui/PromptDialog";
@@ -6938,6 +6939,7 @@ export function App() {
             <OrchestraDialog />
             <HistorySearchDialog onAccept={handleHistoryAccept} defaultCwdPrefix={projectPath || undefined} />
             <OnboardingOverlay />
+            <FleetHud />
           </div>
         </ToastProvider>
       </TooltipProvider>
