@@ -211,6 +211,31 @@ pub fn run() {
                 tasks.attach_db(db.clone());
             }
 
+            // Restore the Knowledge Graph (code dependency map) so the populated
+            // graph survives a restart instead of resetting to empty. Straight
+            // load -> hydrate (no volatile state); hydrate-before-attach so the
+            // restore does not re-persist what it just read.
+            fn restore_knowledge_graph(app: &tauri::AppHandle, db: &db::ManagedDb) {
+                let kg = app
+                    .state::<std::sync::Arc<knowledge_graph::KnowledgeGraphManager>>()
+                    .inner()
+                    .clone();
+                match db.with(|d| d.load_code_graph()) {
+                    Ok((nodes, edges)) => {
+                        if !nodes.is_empty() {
+                            log::info!(
+                                "knowledge graph: restored {} node(s) / {} edge(s) from disk",
+                                nodes.len(),
+                                edges.len()
+                            );
+                        }
+                        kg.hydrate(nodes, edges);
+                    }
+                    Err(err) => log::warn!("knowledge graph: restore from disk failed: {err}"),
+                }
+                kg.attach_db(db.clone());
+            }
+
             let db_path = db::db_path();
             match Database::open(&db_path) {
                 Ok(database) => {
@@ -218,6 +243,7 @@ pub fn run() {
                     let managed = db::ManagedDb::new(database);
                     restore_context_store(app.handle(), &managed);
                     restore_task_graph(app.handle(), &managed);
+                    restore_knowledge_graph(app.handle(), &managed);
                     app.handle().manage(managed);
                 }
                 Err(e) => {
@@ -234,6 +260,7 @@ pub fn run() {
                         let managed = db::ManagedDb::new(mem_db);
                         restore_context_store(app.handle(), &managed);
                         restore_task_graph(app.handle(), &managed);
+                        restore_knowledge_graph(app.handle(), &managed);
                         app.handle().manage(managed);
                     }
                 }

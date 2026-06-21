@@ -93,6 +93,37 @@ impl CodeGraph {
             .insert(dependency.to_string());
     }
 
+    /// Replace the whole graph from a persisted/rebuilt snapshot. Sets the
+    /// private maps directly so the exact node set + edges reproduce verbatim,
+    /// without re-running `add_edge`'s auto-create side effects (a well-formed
+    /// snapshot already carries every endpoint node). Restricted to this module so
+    /// nothing outside can bypass the normal mutators; the manager's `hydrate`
+    /// (restore) and `replace_graph` (re-index) are the only callers.
+    pub(in crate::knowledge_graph) fn replace(
+        &mut self,
+        nodes: Vec<CodeNode>,
+        edges: Vec<(String, String)>,
+    ) {
+        self.nodes.clear();
+        self.deps.clear();
+        for node in nodes {
+            self.nodes.insert(node.id.clone(), node);
+        }
+        for (dependent, dependency) in edges {
+            if dependent == dependency {
+                continue;
+            }
+            for id in [&dependent, &dependency] {
+                self.nodes.entry(id.clone()).or_insert_with(|| CodeNode {
+                    id: id.clone(),
+                    kind: NodeKind::Other,
+                    file: None,
+                });
+            }
+            self.deps.entry(dependent).or_default().insert(dependency);
+        }
+    }
+
     /// Remove a node and every edge touching it (the symbol was deleted or
     /// renamed). Returns whether it existed. Keeps the graph from accumulating
     /// ghost symbols whose blast radius would be misleading.
