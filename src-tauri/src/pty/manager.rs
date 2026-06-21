@@ -269,6 +269,15 @@ impl PtyManager {
             .slave
             .spawn_command(cmd)
             .map_err(|e| format!("Failed to spawn command '{}': {}", program, e))?;
+        // No-orphan guard: assign the child to this process's kill-on-close Job
+        // Object so an agent CLI/shell can never outlive its host (app or
+        // sidecar), even on an abnormal crash where no shutdown code runs.
+        // Assigns by PID immediately after spawn; the PID-recycling window is
+        // negligible (the call is synchronous here, and the required
+        // PROCESS_SET_QUOTA|PROCESS_TERMINATE rights bound which PIDs can be opened).
+        if let Some(pid) = child.process_id() {
+            crate::process::guard_child_against_orphan(pid);
+        }
         let child_killer = child.clone_killer();
 
         let writer = pair
