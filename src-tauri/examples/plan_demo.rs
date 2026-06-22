@@ -28,7 +28,12 @@ fn main() {
     };
 
     println!("GOAL: {goal}\n(decomposing with claude — real LLM call...)\n");
-    match decompose_to_plan(&goal, "A small Rust project; tests run with cargo test.", llm, 3) {
+    match decompose_to_plan(
+        &goal,
+        "A small Rust project; tests run with cargo test.",
+        llm,
+        3,
+    ) {
         Ok(tasks) => {
             println!("VALID PLAN — {} tasks, in dependency order:\n", tasks.len());
             for (i, t) in tasks.iter().enumerate() {
