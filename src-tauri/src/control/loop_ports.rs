@@ -147,6 +147,12 @@ impl<G, D, T> LoopPortsAdapter<G, D, T> {
 impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<G, D, T> {
     fn dispatch(&mut self, task_id: &str) -> Result<(), String> {
         let source = self.task_info.branches(task_id).map(|(source, _)| source);
+        // Loop-owned worktree: create the task's isolated worktree (idempotent —
+        // a re-dispatch after rework reuses it) before spawning, so the worker has
+        // a real cwd without the conductor pre-creating it.
+        if let Some(branch) = source.as_deref() {
+            crate::control::worktree::ensure_for_branch(&self.repo_path, branch)?;
+        }
         self.dispatcher.dispatch(task_id, source.as_deref())
     }
 
@@ -176,12 +182,32 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<G
             .task_info
             .branches(task_id)
             .ok_or_else(|| format!("task {task_id} has no source/target branch"))?;
+        let worktree = crate::control::worktree::predict_path(&self.repo_path, &source);
         let intent = self.queue.enqueue(MergeRequest {
             session_id: task_id.to_string(),
             source_branch: source.clone(),
             target_branch: target.clone(),
         })?;
         self.queue.begin(&intent.intent_id)?;
+        // Loop-owned worktree (commit-to-merge): commit the green-reviewed worker's
+        // worktree on `source` BEFORE merging, so perform_merge sees the real work
+        // ahead of `target`. Without this the source tip never moved (the agent
+        // writes files but never commits) and every merge was an empty
+        // AlreadyMerged. Only when the isolated worktree exists on disk (a repo-root
+        // task owns nothing to commit). Done AFTER begin so a commit failure resolves
+        // the intent as Rejected (audit evidence) and fails the merge -> the loop
+        // requeues for rework (never strands); Ok(None) (empty diff) is fine.
+        if worktree.is_dir() {
+            if let Err(e) = crate::control::worktree::commit_for_branch(
+                &self.repo_path,
+                &source,
+                &format!("aether: {task_id}"),
+            ) {
+                self.queue
+                    .resolve(&intent.intent_id, MergeIntentStatus::Rejected)?;
+                return Err(format!("commit worktree for {source} failed: {e}"));
+            }
+        }
         match perform_merge(&self.repo_path, &source, &target) {
             Ok(MergeOutcome::Conflict { paths }) => {
                 self.queue
@@ -191,6 +217,16 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<G
             Ok(_) => {
                 self.queue
                     .resolve(&intent.intent_id, MergeIntentStatus::Merged)?;
+                // Loop-owned worktree (cleanup): the branch is merged, so reclaim
+                // its isolated worktree. Best-effort — the merge already succeeded,
+                // so a cleanup failure must not turn a Done task back into an error.
+                if worktree.is_dir() {
+                    let _ = crate::control::worktree::remove_for_branch(
+                        &self.repo_path,
+                        &source,
+                        false,
+                    );
+                }
                 Ok(())
             }
             Err(err) => {
@@ -1096,5 +1132,100 @@ mod tests {
         assert_eq!(events[0].payload["taskId"], "t");
         assert_eq!(events[0].payload["reason"], "timeout");
         assert_eq!(events[0].payload["action"], "escalate_to_planner");
+    }
+
+    #[test]
+    fn dispatch_creates_the_tasks_worktree() {
+        // Loop-owned worktree (create): dispatching a Ready task with a bound
+        // source branch creates its isolated worktree — the conductor no longer has
+        // to pre-create it.
+        let (_dir, repo) = init_repo();
+        commit(&repo, &[("base.txt", "base")], &[]);
+        let repo_path = repo.workdir().unwrap().to_str().unwrap().to_string();
+        let mut graph = TaskGraph::new();
+        graph
+            .add(Task::new("t", "T").with_branches("agent/build", "main"))
+            .unwrap();
+        graph.recompute_ready(); // t -> Ready
+        let mut branches = HashMap::new();
+        branches.insert(
+            "t".to_string(),
+            ("agent/build".to_string(), "main".to_string()),
+        );
+        let mut ports = LoopPortsAdapter::new(
+            repo_path.clone(),
+            "reviewer",
+            FakeGate(GREEN),
+            RecordingDispatcher::default(),
+            MapInfo {
+                branches,
+                implementer: "impl".to_string(),
+            },
+        );
+
+        let report = step(&mut graph, &caps(4), &CostUsage::default(), &mut ports);
+
+        assert!(report.dispatched.contains(&"t".to_string()));
+        assert_eq!(graph.get("t").unwrap().status, TaskStatus::Running);
+        assert!(
+            crate::control::worktree::predict_path(&repo_path, "agent/build").is_dir(),
+            "the loop created the task's isolated worktree at dispatch"
+        );
+    }
+
+    #[test]
+    fn loop_commits_the_worktree_then_merges_then_removes_it() {
+        // Loop-owned worktree (commit + cleanup): a Review task whose isolated
+        // worktree holds UNCOMMITTED worker output. A green review must commit the
+        // worktree (so the branch advances), merge it into main, and reclaim the
+        // worktree — with no external git mutation.
+        let (_dir, repo) = init_repo();
+        commit(&repo, &[("base.txt", "base")], &[]);
+        let repo_path = repo.workdir().unwrap().to_str().unwrap().to_string();
+
+        crate::control::worktree::ensure_for_branch(&repo_path, "agent/feat").unwrap();
+        let wt = crate::control::worktree::predict_path(&repo_path, "agent/feat");
+        std::fs::write(wt.join("GREETING.md"), "hello").unwrap();
+        assert!(wt.is_dir());
+
+        let mut graph = TaskGraph::new();
+        graph
+            .add(Task::new("t", "T").with_branches("agent/feat", "main"))
+            .unwrap();
+        graph.recompute_ready();
+        graph.transition("t", TaskStatus::Running).unwrap();
+        graph.transition("t", TaskStatus::Review).unwrap();
+        let mut branches = HashMap::new();
+        branches.insert(
+            "t".to_string(),
+            ("agent/feat".to_string(), "main".to_string()),
+        );
+        let mut ports = LoopPortsAdapter::new(
+            repo_path.clone(),
+            "reviewer",
+            FakeGate(GREEN),
+            RecordingDispatcher::default(),
+            MapInfo {
+                branches,
+                implementer: "implementer".to_string(),
+            },
+        );
+
+        let report = step(&mut graph, &caps(4), &CostUsage::default(), &mut ports);
+
+        assert_eq!(report.merged, ["t"]);
+        assert_eq!(graph.get("t").unwrap().status, TaskStatus::Done);
+        // The worker's uncommitted file was committed by the loop and merged to main.
+        let main_tip = repo.head().unwrap().peel_to_commit().unwrap();
+        assert!(
+            main_tip
+                .tree()
+                .unwrap()
+                .get_path(Path::new("GREETING.md"))
+                .is_ok(),
+            "worker output committed by the loop reached main"
+        );
+        // The merged task's worktree was reclaimed.
+        assert!(!wt.is_dir(), "loop removed the merged task's worktree");
     }
 }

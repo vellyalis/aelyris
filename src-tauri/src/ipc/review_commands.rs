@@ -73,16 +73,11 @@ pub async fn review_branch(
     let adr = format_decisions(&context.all());
 
     let result = tauri::async_runtime::spawn_blocking(move || -> Result<_, String> {
-        let diff = crate::git::diff_three_dot(
-            &repo_path,
-            &target_branch,
-            &source_branch,
-            REVIEW_DIFF_CAP,
-        )?;
-        // `source_branch` was validated by diff_three_dot above, so the predicted
-        // path is safe to build. Fail loudly if the worktree isn't on disk —
-        // otherwise gates would red with a confusing "no command configured"
-        // instead of the real cause.
+        // The worktree is where the worker built. Fail loudly if it isn't on disk
+        // (the loop creates it at dispatch) — otherwise gates would red with a
+        // confusing "no command configured" instead of the real cause. Validate
+        // the branch first so the predicted path is safe to build.
+        crate::git::validate_branch_name(&source_branch)?;
         let worktree = crate::control::worktree::predict_path(&repo_path, &source_branch);
         if !worktree.is_dir() {
             return Err(format!(
@@ -90,6 +85,24 @@ pub async fn review_branch(
                 worktree.display()
             ));
         }
+        // Snapshot the worker's output onto its branch (idempotent) BEFORE diffing,
+        // so the judge sees the real change. The loop commits each worktree at merge
+        // time, but review runs first; without this the source tip hasn't moved and
+        // the three-dot diff would be empty (judge -> spurious context_aligned fail).
+        // Best-effort: a commit hiccup leaves an empty diff the judge handles safely
+        // (it never produces a false green), and the deterministic gates run on the
+        // worktree's files regardless.
+        let _ = crate::control::worktree::commit_for_branch(
+            &repo_path,
+            &source_branch,
+            &format!("aether: review {source_branch}"),
+        );
+        let diff = crate::git::diff_three_dot(
+            &repo_path,
+            &target_branch,
+            &source_branch,
+            REVIEW_DIFF_CAP,
+        )?;
         let commands = review::detect_gate_commands(&worktree);
         let input = review::ReviewInputs {
             worktree: &worktree,

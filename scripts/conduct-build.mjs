@@ -7,7 +7,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname, basename } from "node:path";
 import { chromium } from "@playwright/test";
 
 const CDP = "http://127.0.0.1:9222";
@@ -48,16 +48,18 @@ try {
   await inv("context_set", { key: "language", value: "rust" });
   await inv("context_set", { key: "style", value: "concise and tested" });
 
-  console.log("CONDUCTOR: create worktrees + decompose into tasks ->");
+  console.log("CONDUCTOR: decompose into tasks (the LOOP owns the worktrees) ->");
+  // The autonomy loop now creates each task's worktree at dispatch, commits it
+  // before merge, and removes it after — so the conductor no longer pre-creates
+  // them. Predict where the loop will place each one (same formula as the backend)
+  // to watch the workers build.
   const wt = {};
   for (const t of TASKS) {
-    const info = await inv("create_worktree", { repoPath: repo, branchName: t.branch });
-    wt[t.id] = info.path;
+    wt[t.id] = join(dirname(repo), `${basename(repo)}-${t.branch}`);
     await inv("task_create", { task: { id: t.id, title: t.title, description: "", status: "pending",
       owner: t.owner, model: "sonnet", priority: "medium", dependencies: [], outputs: [t.file],
       source_branch: t.branch, target_branch: "main" } });
   }
-  console.log("  worktrees:", JSON.stringify(wt));
 
   const step = (gates = {}) => inv("orchestrator_step", {
     usage: { active_agents: 0, tokens_used: 0, cost_usd: 0, runtime_secs: 0 },
@@ -80,12 +82,11 @@ try {
   }
   console.log("  workers built:", JSON.stringify(TASKS.filter(fileReady).map((t) => t.id)));
 
-  console.log("CONDUCTOR: commit each worker's output on its branch ->");
-  for (const t of TASKS) {
-    if (!fileReady(t)) continue;
-    try { git(wt[t.id], "add", "-A"); git(wt[t.id], "commit", "-m", `${t.owner}: add ${t.file}`); }
-    catch (e) { console.log("  commit skip", t.id, String(e).slice(0, 80)); }
-  }
+  // NOTE: the conductor no longer commits (or pre-creates) the workers' worktrees.
+  // The autonomy loop OWNS the worktree lifecycle end-to-end — it creates each one
+  // at dispatch, the reviewer commits it before diffing, and the loop merges then
+  // removes it — proving create -> dispatch -> build -> COMMIT (by the runtime) ->
+  // review -> merge -> cleanup with no external git mutation of the worktrees.
 
   // REAL review: per branch, run the project's cargo gates in its worktree AND
   // ask the LLM to judge the diff against the shared decisions + task. The gates

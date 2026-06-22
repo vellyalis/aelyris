@@ -176,12 +176,16 @@ pub fn validate_branch_name(name: &str) -> Result<(), String> {
         return Err("Branch name must be 1-200 characters".to_string());
     }
     if name.contains("..")
+        || name.contains("/.")
         || name.starts_with('/')
         || name.starts_with('\\')
         || name.starts_with('-')
         || name.starts_with('.')
         || name.contains(':')
     {
+        // `/.` blocks a path-component dot-prefix (feat/.git, feat/.env) that would
+        // otherwise resolve a worktree path into a `.git`/dotfile dir, matching
+        // git's own check-ref-format rule.
         return Err(format!("Invalid branch name: {}", name));
     }
     if !name
@@ -201,6 +205,129 @@ pub fn predict_worktree_path(repo_path: &str, branch_name: &str) -> std::path::P
     let parent = repo.parent().unwrap_or(repo);
     let name = repo.file_name().unwrap_or_default().to_string_lossy();
     parent.join(format!("{}-{}", name, branch_name))
+}
+
+/// Stage every change in the worktree on `branch` and commit it on that branch's
+/// tip. Returns `Ok(Some(oid))` for a new commit, `Ok(None)` when there was
+/// nothing to commit (an empty diff — NOT an error). Idempotent: a second call
+/// after a clean commit finds no change and returns `Ok(None)`.
+///
+/// The autonomy loop calls this to make a green-reviewed worker's work durable
+/// BEFORE it is merged: committing to the worktree's checked-out `branch` advances
+/// `refs/heads/<branch>`, which is exactly the ref `perform_merge` resolves as the
+/// merge source (without this the source tip never moves and the merge is empty).
+/// The identity reuses the repo config, else a deterministic `Aether
+/// <aether@local>` fallback, matching the merge commit.
+pub fn commit_worktree(
+    repo_path: &str,
+    branch: &str,
+    message: &str,
+) -> Result<Option<String>, String> {
+    validate_branch_name(branch)?;
+    let worktree_dir = predict_worktree_path(repo_path, branch);
+    let repo = Repository::open(&worktree_dir)
+        .map_err(|e| format!("Open worktree {}: {}", worktree_dir.display(), e))?;
+
+    // Stage everything: add_all (DEFAULT honors .gitignore) covers new + modified
+    // files; update_all covers deletions/renames of tracked files.
+    let mut index = repo.index().map_err(|e| format!("Worktree index: {}", e))?;
+    index
+        .add_all(["*"], git2::IndexAddOption::DEFAULT, None)
+        .map_err(|e| format!("Stage all: {}", e))?;
+    index
+        .update_all(["*"], None)
+        .map_err(|e| format!("Stage deletions: {}", e))?;
+    index.write().map_err(|e| format!("Write index: {}", e))?;
+    let tree_oid = index
+        .write_tree()
+        .map_err(|e| format!("Write tree: {}", e))?;
+    let tree = repo
+        .find_tree(tree_oid)
+        .map_err(|e| format!("Find tree: {}", e))?;
+
+    // Empty-diff guard: if the staged tree matches HEAD's tree there is nothing to
+    // commit (also covers "already committed on a prior tick / by a legacy script").
+    let parent = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
+    match &parent {
+        Some(parent_commit) if parent_commit.tree_id() == tree_oid => return Ok(None),
+        // Unborn HEAD + empty tree -> nothing to commit (defensive; a worktree
+        // always has a born HEAD on its branch in practice).
+        None if tree.is_empty() => return Ok(None),
+        _ => {}
+    }
+
+    let signature = repo
+        .signature()
+        .or_else(|_| git2::Signature::now("Aether", "aether@local"))
+        .map_err(|e| format!("Commit signature: {}", e))?;
+
+    // Commit on HEAD (the worktree's checked-out source branch), parented on its
+    // current tip, so refs/heads/<branch> advances to the new commit.
+    let parents: Vec<&git2::Commit> = parent.iter().collect();
+    let oid = repo
+        .commit(
+            Some("HEAD"),
+            &signature,
+            &signature,
+            message,
+            &tree,
+            &parents,
+        )
+        .map_err(|e| format!("Commit worktree: {}", e))?;
+    Ok(Some(oid.to_string()))
+}
+
+/// Create the worktree for `branch` if it is not already on disk; a no-op when it
+/// is (idempotent — a task re-dispatched after rework reuses its worktree). This
+/// is what lets the autonomy loop OWN worktree creation at dispatch instead of
+/// relying on the conductor to pre-create them.
+pub fn ensure_worktree(repo_path: &str, branch_name: &str) -> Result<(), String> {
+    validate_branch_name(branch_name)?;
+    if predict_worktree_path(repo_path, branch_name).is_dir() {
+        return Ok(());
+    }
+    create_worktree(repo_path, branch_name).map(|_| ())
+}
+
+/// Remove the worktree for `branch` by its predicted path (the path-based form of
+/// [`remove_worktree`], which takes a worktree NAME). Used by the autonomy loop to
+/// clean up a task's isolated worktree once its branch is merged. Pruning + the
+/// optional branch delete mirror [`remove_worktree`]. A best-effort caller can
+/// ignore the result — a failed cleanup never invalidates an already-done merge.
+pub fn remove_worktree_for_branch(
+    repo_path: &str,
+    branch: &str,
+    delete_branch: bool,
+) -> Result<(), String> {
+    validate_branch_name(branch)?;
+    // Forward-slash the path before handing it to the git CLI: on Windows a
+    // backslash PathBuf string can make `git worktree remove` fail with "not a
+    // working tree" (create_worktree applies the same normalisation).
+    let worktree_path = predict_worktree_path(repo_path, branch)
+        .to_string_lossy()
+        .replace('\\', "/");
+    let output = crate::process::hidden_command("git")
+        .args(["worktree", "remove", &worktree_path, "--force"])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Git worktree remove failed: {}", e))?;
+    if !output.status.success() {
+        return Err(format!(
+            "Worktree removal failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    let _ = crate::process::hidden_command("git")
+        .args(["worktree", "prune"])
+        .current_dir(repo_path)
+        .output();
+    if delete_branch {
+        let _ = crate::process::hidden_command("git")
+            .args(["branch", "-D", branch])
+            .current_dir(repo_path)
+            .output();
+    }
+    Ok(())
 }
 
 /// Create a new worktree for a branch
@@ -294,7 +421,118 @@ pub fn list_branches(repo_path: &str) -> Result<Vec<BranchInfo>, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::validate_branch_name;
+    use super::{
+        commit_worktree, create_worktree, ensure_worktree, predict_worktree_path,
+        remove_worktree_for_branch, validate_branch_name,
+    };
+    use git2::Repository;
+
+    /// A real git repo (temp dir) with one base commit on `main`. Returns the dir
+    /// (kept alive by the caller) and the forward-slashed repo path.
+    fn base_repo() -> (tempfile::TempDir, String) {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir(&repo).unwrap();
+        let repo_str = repo.to_string_lossy().replace('\\', "/");
+        let git = |args: &[&str]| {
+            crate::process::hidden_command("git")
+                .args(args)
+                .current_dir(&repo)
+                .output()
+                .expect("git available")
+        };
+        git(&["init", "-q", "-b", "main"]);
+        git(&["config", "user.email", "t@t.t"]);
+        git(&["config", "user.name", "t"]);
+        std::fs::write(repo.join("base.txt"), "base").unwrap();
+        git(&["add", "."]);
+        git(&["commit", "-qm", "base"]);
+        (tmp, repo_str)
+    }
+
+    #[test]
+    fn commit_worktree_stages_uncommitted_work_and_makes_the_merge_real() {
+        let (_tmp, repo_str) = base_repo();
+        create_worktree(&repo_str, "agent/y").expect("create worktree");
+        let wt = predict_worktree_path(&repo_str, "agent/y");
+        let tip_before = Repository::open(&wt)
+            .unwrap()
+            .head()
+            .unwrap()
+            .peel_to_commit()
+            .unwrap()
+            .id()
+            .to_string();
+
+        // The worker writes a file but never commits — the real production gap.
+        std::fs::write(wt.join("GREETING.md"), "hello").unwrap();
+
+        let oid = commit_worktree(&repo_str, "agent/y", "aether: task-greeting")
+            .expect("commit ok")
+            .expect("a commit was made");
+
+        // The source branch tip advanced to the new commit in the MAIN repo, so
+        // perform_merge will now see real work ahead.
+        let main_repo = Repository::open(&repo_str).unwrap();
+        assert_ne!(oid, tip_before);
+        assert_eq!(
+            main_repo
+                .refname_to_id("refs/heads/agent/y")
+                .unwrap()
+                .to_string(),
+            oid
+        );
+
+        // Without any external script, perform_merge now fast-forwards main and
+        // main's tip tree contains the worker's file — the audit gap is closed.
+        let outcome = crate::git::perform_merge(&repo_str, "agent/y", "main").expect("merge");
+        assert!(
+            matches!(outcome, crate::git::MergeOutcome::FastForwarded { .. }),
+            "expected fast-forward, got {outcome:?}"
+        );
+        let main_tip = main_repo.head().unwrap().peel_to_commit().unwrap();
+        assert!(main_tip
+            .tree()
+            .unwrap()
+            .get_path(std::path::Path::new("GREETING.md"))
+            .is_ok());
+
+        // Idempotency: committing the now-clean worktree again is a no-op.
+        assert!(commit_worktree(&repo_str, "agent/y", "aether: again")
+            .expect("ok")
+            .is_none());
+    }
+
+    #[test]
+    fn ensure_worktree_creates_once_then_is_idempotent() {
+        let (_tmp, repo_str) = base_repo();
+        let path = predict_worktree_path(&repo_str, "agent/z");
+        assert!(!path.is_dir(), "no worktree yet");
+        ensure_worktree(&repo_str, "agent/z").expect("first ensure creates");
+        assert!(path.is_dir(), "worktree now on disk");
+        // Second call is a no-op (does not error on the existing worktree, unlike
+        // a raw create_worktree which would fail).
+        ensure_worktree(&repo_str, "agent/z").expect("second ensure is a no-op");
+        assert!(
+            create_worktree(&repo_str, "agent/z").is_err(),
+            "raw create would fail"
+        );
+    }
+
+    #[test]
+    fn remove_worktree_for_branch_deletes_the_worktree_dir() {
+        let (_tmp, repo_str) = base_repo();
+        ensure_worktree(&repo_str, "agent/gone").expect("create");
+        let path = predict_worktree_path(&repo_str, "agent/gone");
+        assert!(path.is_dir());
+        remove_worktree_for_branch(&repo_str, "agent/gone", false).expect("remove");
+        assert!(!path.is_dir(), "worktree dir removed");
+        // The branch ref is kept (delete_branch=false).
+        assert!(Repository::open(&repo_str)
+            .unwrap()
+            .refname_to_id("refs/heads/agent/gone")
+            .is_ok());
+    }
 
     #[test]
     fn validates_safe_agent_branch_names() {
@@ -316,6 +554,8 @@ mod tests {
             "/absolute",
             "\\absolute",
             "feature/../main",
+            "feature/.git",
+            "feature/.env",
             "feature:main",
             "feature/日本語",
             &"a".repeat(201),
