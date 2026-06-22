@@ -47,6 +47,7 @@ request/observe but the **watchdog policy engine + human** grant. Never expose a
 | [UI_TOKEN_DIAL_SPEC.md](./UI_TOKEN_DIAL_SPEC.md) | `global.css` token dial-up change list, new tokens, accent unification, motion | 1 |
 | [COCKPIT_UX_SPEC.md](./COCKPIT_UX_SPEC.md) | 6 cockpit surfaces as projections of `useAgentFleet().sessions` | 2, 4 |
 | [MCP_TOOL_SURFACE_SPEC.md](./MCP_TOOL_SURFACE_SPEC.md) | `aether.mcp.v1` tool catalog, transport, gate enforcement | 2.5 |
+| [VISIBLE_AGENT_PANE_RUNTIME_SPEC.md](./VISIBLE_AGENT_PANE_RUNTIME_SPEC.md) | visible agent pane runtime boundary: GUI-visible agents are PTY/interactive TUI/no `-p`; headless `-p` is batch/planner/MCP-only; Orchestra dispatch must mount 1 agent = 1 pane in the central terminal pane tree; live symbol/function ownership makes parallel work collision-aware | cross-cutting |
 | **CODEX_HANDOFF.md** (this) | Work breakdown, dependency DAG, acceptance gates, paste-ready prompts | all |
 
 ## 3. Shared contract (binding — every WU must honor)
@@ -166,6 +167,7 @@ Before handing back any WU, run from `src-tauri/`: `cargo test` · `cargo clippy
 - **Right-rail suite:** `verify-right-rail-*.mjs` (orchestrated by `verify-right-rail-suite.mjs`) guards rail/density — re-run after WU-2.1 and any token dial.
 - **Single-blur rule:** UI WUs change only alpha/size/tokens — never add a second `backdrop-filter` to a child.
 - **Gate invariant:** no MCP tool may grant its own approval or merge to main (WU-2.5.x).
+- **Visible agent invariant:** any agent rendered in a GUI pane must use the visible PTY / interactive TUI path and must not pass `-p` / `--print`. Headless `-p` is allowed only for batch/planner/reviewer/MCP flows with no pane rendering. See `VISIBLE_AGENT_PANE_RUNTIME_SPEC.md`.
 - **Conventions:** immutability, files <800 lines, explicit error handling, no `console.log`. **Local-only project — never push or open PRs** (`project_local_only`).
 
 ## 7. Out of scope / deferred
