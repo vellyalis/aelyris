@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use super::graph::{Task, TaskGraph, TaskGraphError};
+use super::planner::validate_plan;
 use super::status::TaskStatus;
 use crate::db::ManagedDb;
 use crate::persistence::TaskRepo;
@@ -74,6 +75,30 @@ impl TaskManager {
         let mut graph = self.lock();
         graph.add(task)?;
         let changed = graph.recompute_ready();
+        self.persist(&graph);
+        Ok(changed)
+    }
+
+    /// Submit a whole LLM-authored build plan ATOMICALLY. The plan is validated
+    /// ([`validate_plan`]: acyclic DAG, declared lanes/owner/branches, and —
+    /// crucially — parallel tasks own DISJOINT file lanes) and staged on a clone
+    /// of the live graph; the clone is swapped in only if EVERY task adds cleanly
+    /// (no id collision with existing tasks). On any problem the whole plan is
+    /// rejected with every error listed and the live graph is untouched — no
+    /// partial graph, no silent fallback. This is the gate that lets the
+    /// orchestrator LLM plan freely and safely. Returns the ids the gate moved to
+    /// `Ready`/`Blocked`.
+    pub fn submit_plan(&self, tasks: Vec<Task>) -> Result<Vec<String>, Vec<String>> {
+        let ordered = validate_plan(tasks)?;
+        let mut graph = self.lock();
+        let mut staging = graph.clone();
+        for task in ordered {
+            staging
+                .add(task)
+                .map_err(|e| vec![format!("plan rejected — {e}")])?;
+        }
+        let changed = staging.recompute_ready();
+        *graph = staging;
         self.persist(&graph);
         Ok(changed)
     }
@@ -155,6 +180,59 @@ mod tests {
         assert!(mgr
             .create(Task::new("b", "B").with_dependencies(["missing".to_string()]))
             .is_err());
+    }
+
+    /// A fully-specified, dispatchable task for plan-submission tests.
+    fn full(id: &str, outputs: &[&str], deps: &[&str]) -> Task {
+        let mut t = Task::new(id, format!("do {id}"));
+        t.owner = Some("worker".to_string());
+        t.outputs = outputs.iter().map(|s| s.to_string()).collect();
+        t.dependencies = deps.iter().map(|s| s.to_string()).collect();
+        t.source_branch = Some(format!("feat/{id}"));
+        t.target_branch = Some("main".to_string());
+        t
+    }
+
+    #[test]
+    fn submit_plan_adds_a_valid_plan_atomically_in_dependency_order() {
+        let mgr = TaskManager::new();
+        let changed = mgr
+            .submit_plan(vec![
+                full("c", &["src/c/**"], &["a"]), // listed before its dependency on purpose
+                full("a", &["src/a/**"], &[]),
+            ])
+            .unwrap();
+        assert_eq!(mgr.list().len(), 2);
+        assert_eq!(mgr.get("a").unwrap().status, TaskStatus::Ready);
+        assert_eq!(mgr.get("c").unwrap().status, TaskStatus::Pending);
+        assert!(changed.contains(&"a".to_string()));
+    }
+
+    #[test]
+    fn submit_plan_rejects_an_invalid_plan_and_leaves_the_graph_untouched() {
+        let mgr = TaskManager::new();
+        mgr.create(Task::new("existing", "E")).unwrap();
+        // Two parallel tasks with overlapping lanes -> the whole plan is rejected.
+        let errs = mgr
+            .submit_plan(vec![
+                full("x", &["src/shared/**"], &[]),
+                full("y", &["src/shared/y.rs"], &[]),
+            ])
+            .unwrap_err();
+        assert!(errs.iter().any(|e| e.contains("overlap")), "{errs:?}");
+        assert_eq!(mgr.list().len(), 1, "no plan task was added");
+        assert!(mgr.get("x").is_none() && mgr.get("y").is_none());
+    }
+
+    #[test]
+    fn submit_plan_rejects_a_plan_colliding_with_an_existing_task() {
+        let mgr = TaskManager::new();
+        mgr.create(Task::new("dup", "D")).unwrap();
+        let errs = mgr
+            .submit_plan(vec![full("dup", &["src/dup/**"], &[])])
+            .unwrap_err();
+        assert!(errs.iter().any(|e| e.contains("dup")), "{errs:?}");
+        assert_eq!(mgr.list().len(), 1, "graph untouched on collision");
     }
 
     #[test]

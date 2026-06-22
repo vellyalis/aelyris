@@ -9,8 +9,10 @@
 
 pub mod graph;
 pub mod manager;
+pub mod planner;
 pub mod status;
 
 pub use graph::{Task, TaskGraph, TaskGraphError, TaskPriority};
 pub use manager::TaskManager;
+pub use planner::validate_plan;
 pub use status::{TaskStatus, TASK_STATUS_NAMES};

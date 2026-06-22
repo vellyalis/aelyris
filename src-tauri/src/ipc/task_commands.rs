@@ -38,6 +38,39 @@ pub fn task_create(
     Ok(changed)
 }
 
+/// Submit a whole LLM-authored build plan ATOMICALLY: it is validated (acyclic
+/// DAG, declared lanes/owner/branches, parallel tasks own DISJOINT lanes) and
+/// either added in full or rejected in full — the graph is never left partial.
+/// On success the gate runs, the graph is broadcast, and one `TaskCreated` event
+/// is published per task. On rejection EVERY problem is returned so the
+/// orchestrator can re-plan; nothing is created. This is the safe entry point
+/// for the orchestrator's goal decomposition.
+#[tauri::command]
+pub fn task_submit_plan(
+    app: AppHandle,
+    manager: State<'_, Arc<TaskManager>>,
+    bus: State<'_, Arc<EventBus>>,
+    tasks: Vec<Task>,
+) -> Result<Vec<String>, Vec<String>> {
+    let created: Vec<(String, String)> = tasks
+        .iter()
+        .map(|t| (t.id.clone(), t.title.clone()))
+        .collect();
+    let changed = manager.submit_plan(tasks)?;
+    emit_task_graph(&app, &manager);
+    for (id, title) in created {
+        publish_and_emit(
+            &app,
+            &bus,
+            AgentEvent::new(
+                AgentEventKind::TaskCreated,
+                json!({ "id": id, "title": title }),
+            ),
+        );
+    }
+    Ok(changed)
+}
+
 /// Transition a task (lifecycle-validated), re-run the gate, and broadcast.
 /// Reaching `Review`/`Done` also publishes the corresponding lifecycle event.
 #[tauri::command]

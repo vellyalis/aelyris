@@ -162,7 +162,11 @@ pub enum TaskGraphError {
 /// In-memory Task Graph. Dependencies must reference already-added tasks, so
 /// the graph is a DAG by construction (a task cannot depend on something not
 /// yet added, and additions are append-only) — no cycle is representable.
-#[derive(Debug, Default)]
+///
+/// `Clone` enables atomic batch submission: a plan is staged on a clone and the
+/// clone is swapped in only if every task adds cleanly (see
+/// `TaskManager::submit_plan`), so a rejected plan never leaves a partial graph.
+#[derive(Debug, Default, Clone)]
 pub struct TaskGraph {
     tasks: HashMap<String, Task>,
     /// Insertion order, for stable listing.
