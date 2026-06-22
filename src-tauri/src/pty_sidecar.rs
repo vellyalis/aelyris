@@ -1227,6 +1227,16 @@ fn spawn_server_process(token: &str) -> Result<(), String> {
         }
     }
 
+    // NOTE: the sidecar is deliberately NOT assigned to the app's kill-on-close
+    // job. It is the PTY daemon that must OUTLIVE the app to enable
+    // detach/reattach (the next app launch adopts its live sessions, see
+    // terminate_stale_expected_sidecar vs. adoption above). Its own agent/shell
+    // children are still orphan-safe: the sidecar assigns every PTY child to ITS
+    // OWN kill-on-close job (see PtyManager::spawn_command_with_id), so whenever
+    // the sidecar exits — cleanly, or terminated as stale on the next launch —
+    // the OS kills every agent it hosts. A sidecar abandoned by a crashed app
+    // that never relaunches is the one residual case; it is a single process
+    // (not accumulating) and the next Aether launch reaps it.
     command
         .spawn()
         .map(|_| ())

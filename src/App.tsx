@@ -231,6 +231,7 @@ import { ConfirmDialog, showConfirm } from "./shared/ui/ConfirmDialog";
 import { ErrorBoundary } from "./shared/ui/ErrorBoundary";
 import { HandoffDialog } from "./shared/ui/HandoffDialog";
 import { LazyDialog } from "./shared/ui/LazyDialog";
+import { FleetHud } from "./features/fleet-hud/FleetHud";
 import { OnboardingOverlay } from "./shared/ui/OnboardingOverlay";
 import { OrchestraDialog, showOrchestra } from "./shared/ui/OrchestraDialog";
 import { PromptDialog } from "./shared/ui/PromptDialog";
@@ -3677,6 +3678,10 @@ export function App() {
       setRootProjectPath(normalized);
       addTabWithCwd("powershell", normalized);
       clearFiles();
+      // Populate the Knowledge Graph (code dependency map) from this project's
+      // source — best-effort, off the UI thread. It persists, so it survives a
+      // restart and simply re-runs on the next open if this attempt fails.
+      void tauriInvoke("populate_knowledge_graph", { rootPath: normalized }).catch(() => {});
     },
     [addTabWithCwd, clearFiles, confirmDiscardUnsavedFiles, setRootProjectPath],
   );
@@ -6938,6 +6943,7 @@ export function App() {
             <OrchestraDialog />
             <HistorySearchDialog onAccept={handleHistoryAccept} defaultCwdPrefix={projectPath || undefined} />
             <OnboardingOverlay />
+            <FleetHud />
           </div>
         </ToastProvider>
       </TooltipProvider>

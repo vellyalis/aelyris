@@ -51,6 +51,22 @@ struct PaneRun {
     /// `Some(true)` = clean exit (code 0); `Some(false)` = non-zero exit / wait
     /// failure; `None` = still running. Written once by the waiter thread.
     exit: Arc<Mutex<Option<bool>>>,
+    /// The agent's worktree (its cwd), and the task's declared output paths
+    /// relative to it. An INTERACTIVE agent (the visible TUI) never exits, so the
+    /// exit slot never fills; instead the pane is "done" once all these outputs
+    /// exist on disk — the structural completion signal for the visible fleet.
+    /// Empty `outputs` ⇒ no structural signal (the pane rides the exit/timeout path).
+    worktree_path: String,
+    outputs: Vec<String>,
+}
+
+/// Whether every declared output path exists under the worktree. The structural
+/// completion signal for interactive agents (which never exit): the work product
+/// is on disk. Empty `outputs` is NOT "ready" — the caller must guard that so a
+/// task declaring no outputs is not reported done the instant it is dispatched.
+fn outputs_present(worktree_path: &str, outputs: &[String]) -> bool {
+    let root = std::path::Path::new(worktree_path);
+    outputs.iter().all(|rel| root.join(rel).exists())
 }
 
 /// Persistent registry mapping each loop task to its visible PTY pane and
@@ -86,6 +102,7 @@ impl PaneFleet {
         rows: u16,
         cwd: &str,
         env: HashMap<String, String>,
+        outputs: Vec<String>,
     ) -> Result<String, String> {
         let terminal_id =
             self.pty
@@ -141,6 +158,8 @@ impl PaneFleet {
                 terminal_id: terminal_id.clone(),
                 started_at: now_secs(),
                 exit,
+                worktree_path: cwd.to_string(),
+                outputs,
             },
         );
         Ok(terminal_id)
@@ -179,17 +198,38 @@ impl PaneFleet {
                 task_id: task_id.clone(),
                 exit: run.exit.lock().ok().and_then(|slot| *slot),
                 started_at: run.started_at,
+                worktree_path: run.worktree_path.clone(),
+                outputs: run.outputs.clone(),
             })
             .collect();
 
-        let completions = classify(&snapshot, timeout_secs, now);
+        let mut completions = classify(&snapshot, timeout_secs, now);
+
+        // Structural completion for INTERACTIVE agents: the visible TUI never
+        // exits, so the exit-slot sensor above never fires for it and the task
+        // would otherwise wait out the full hang timeout. A still-running pane
+        // (within budget) whose task has produced all its declared outputs on
+        // disk is done — report it succeeded and kill the now-idle TUI process.
+        // `exit.is_none()` keeps this disjoint from classify's exit-based
+        // succeeded/failed, so a task is never reported twice.
+        let outputs_ready: std::collections::HashSet<String> = snapshot
+            .iter()
+            .filter(|run| {
+                run.exit.is_none()
+                    && now.saturating_sub(run.started_at) <= timeout_secs
+                    && !run.outputs.is_empty()
+                    && outputs_present(&run.worktree_path, &run.outputs)
+            })
+            .map(|run| run.task_id.clone())
+            .collect();
+        completions.succeeded.extend(outputs_ready.iter().cloned());
 
         // Remove every reported task from the map under the lock, collecting the
         // terminals to act on; do the PTY I/O AFTER releasing the lock so a
         // pane spawn/poll on another path is never blocked behind it. `remove`
         // hands back the terminal id directly (no second lookup).
-        let mut to_kill = Vec::new(); // hung panes: still running, must be killed
-        let mut to_reap = Vec::new(); // finished panes: already exited, just clean up
+        let mut to_kill = Vec::new(); // still-running panes (hung or done-but-alive): must be killed
+        let mut to_reap = Vec::new(); // already-exited panes: just clean up
         for task in &completions.timed_out {
             if let Some(run) = runs.remove(task) {
                 to_kill.push(run.terminal_id);
@@ -201,7 +241,13 @@ impl PaneFleet {
             .chain(completions.failed.iter())
         {
             if let Some(run) = runs.remove(task) {
-                to_reap.push(run.terminal_id);
+                // Outputs-ready panes are still alive (interactive TUI) → kill;
+                // exit-observed panes already terminated → reap.
+                if outputs_ready.contains(task) {
+                    to_kill.push(run.terminal_id);
+                } else {
+                    to_reap.push(run.terminal_id);
+                }
             }
         }
         drop(runs);
@@ -217,13 +263,16 @@ impl PaneFleet {
     }
 }
 
-/// Owned, side-effect-free view of one pane for the classifier.
+/// Owned, side-effect-free view of one pane for the classifier and the
+/// structural (outputs-present) completion pass.
 #[derive(Clone)]
 struct RunSnapshot {
     task_id: String,
     /// `Some(true)` clean exit, `Some(false)` non-zero exit, `None` still running.
     exit: Option<bool>,
     started_at: u64,
+    worktree_path: String,
+    outputs: Vec<String>,
 }
 
 /// Pure completion/timeout decision over the current panes — the part the loop's
@@ -256,6 +305,8 @@ mod tests {
             task_id: task.to_string(),
             exit,
             started_at,
+            worktree_path: String::new(),
+            outputs: Vec::new(),
         }
     }
 
@@ -333,10 +384,28 @@ mod tests {
         let fleet = PaneFleet::new(PtyManager::new());
         let argv = |code: &str| vec!["/c".to_string(), "exit".to_string(), code.to_string()];
         fleet
-            .spawn("task-ok", "cmd", &argv("0"), 80, 24, ".", HashMap::new())
+            .spawn(
+                "task-ok",
+                "cmd",
+                &argv("0"),
+                80,
+                24,
+                ".",
+                HashMap::new(),
+                Vec::new(),
+            )
             .expect("spawn ok pane");
         fleet
-            .spawn("task-bad", "cmd", &argv("1"), 80, 24, ".", HashMap::new())
+            .spawn(
+                "task-bad",
+                "cmd",
+                &argv("1"),
+                80,
+                24,
+                ".",
+                HashMap::new(),
+                Vec::new(),
+            )
             .expect("spawn bad pane");
 
         // The binding is queryable while the pane is tracked (used to announce
@@ -361,5 +430,98 @@ mod tests {
         let again = fleet.poll_completions(3600, now_secs());
         assert!(again.succeeded.is_empty() && again.failed.is_empty());
         assert!(fleet.terminal_of("task-ok").is_none());
+    }
+
+    #[test]
+    fn outputs_present_requires_every_declared_output() {
+        let dir = std::env::temp_dir().join(format!("aether-outputs-{}", now_secs()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let root = dir.to_string_lossy().to_string();
+        std::fs::write(dir.join("A.md"), "a").unwrap();
+
+        // All present -> ready; a missing one -> not ready.
+        assert!(outputs_present(&root, &["A.md".to_string()]));
+        assert!(!outputs_present(
+            &root,
+            &["A.md".to_string(), "B.md".to_string()]
+        ));
+        std::fs::write(dir.join("B.md"), "b").unwrap();
+        assert!(outputs_present(
+            &root,
+            &["A.md".to_string(), "B.md".to_string()]
+        ));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The defining behavior of the visible fleet: an INTERACTIVE agent never
+    /// exits, so the exit-slot sensor stays `None` forever. Proof that the pane
+    /// is still reported done — structurally — once its declared output appears
+    /// in the worktree, and the now-idle process is killed + forgotten. Without
+    /// this, every interactive agent would wedge in Running until the hang
+    /// timeout. Uses a real non-exiting PTY process so the exit path genuinely
+    /// never fires (a pure-classifier test could not catch a broken integration).
+    #[cfg(windows)]
+    #[test]
+    fn poll_reports_interactive_pane_done_when_outputs_appear() {
+        use std::time::{Duration, Instant};
+
+        let work = std::env::temp_dir().join(format!("aether-interactive-{}", now_secs()));
+        std::fs::create_dir_all(&work).unwrap();
+        let cwd = work.to_string_lossy().to_string();
+
+        let fleet = PaneFleet::new(PtyManager::new());
+        // A process that does NOT exit on its own within the test window — stands
+        // in for the interactive claude TUI that waits indefinitely.
+        let argv = vec![
+            "-NoLogo".to_string(),
+            "-NoProfile".to_string(),
+            "-Command".to_string(),
+            "Start-Sleep -Seconds 120".to_string(),
+        ];
+        fleet
+            .spawn(
+                "task-build",
+                "powershell",
+                &argv,
+                80,
+                24,
+                &cwd,
+                HashMap::new(),
+                vec!["BUILT.md".to_string()],
+            )
+            .expect("spawn interactive-like pane");
+
+        // Before the output exists: the pane is running, the exit slot is None,
+        // and a generous budget keeps it off the timeout path -> reported as
+        // neither done nor failed.
+        let c = fleet.poll_completions(3600, now_secs());
+        assert!(
+            c.succeeded.is_empty() && c.failed.is_empty() && c.timed_out.is_empty(),
+            "interactive pane is not done before its output appears"
+        );
+        assert!(fleet.terminal_of("task-build").is_some());
+
+        // The agent "produces" its declared output.
+        std::fs::write(work.join("BUILT.md"), "done").unwrap();
+
+        // Now the structural sensor fires: succeeded, even though the process is
+        // still alive (and is killed by the poll).
+        let c = fleet.poll_completions(3600, now_secs());
+        assert_eq!(c.succeeded, ["task-build"], "outputs present -> succeeded");
+        assert!(c.failed.is_empty() && c.timed_out.is_empty());
+
+        // Reported once: the binding is gone and a re-poll is empty (it was
+        // removed even though it never exited on its own).
+        assert!(fleet.terminal_of("task-build").is_none());
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut again = fleet.poll_completions(3600, now_secs());
+        while !again.succeeded.is_empty() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(50));
+            again = fleet.poll_completions(3600, now_secs());
+        }
+        assert!(again.succeeded.is_empty(), "no double-report");
+
+        let _ = std::fs::remove_dir_all(&work);
     }
 }

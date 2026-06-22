@@ -218,14 +218,18 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<G
                 self.queue
                     .resolve(&intent.intent_id, MergeIntentStatus::Merged)?;
                 // Loop-owned worktree (cleanup): the branch is merged, so reclaim
-                // its isolated worktree. Best-effort — the merge already succeeded,
-                // so a cleanup failure must not turn a Done task back into an error.
+                // its isolated worktree AND delete the merged branch — otherwise
+                // they pile up on disk across a long-running fleet. Best-effort and
+                // guarded on the worktree existing: the merge already succeeded, so
+                // a cleanup failure must not turn a Done task back into an error.
                 if worktree.is_dir() {
-                    let _ = crate::control::worktree::remove_for_branch(
-                        &self.repo_path,
-                        &source,
-                        false,
-                    );
+                    if let Err(e) =
+                        crate::control::worktree::remove_for_branch(&self.repo_path, &source, true)
+                    {
+                        log::warn!(
+                            "post-merge worktree cleanup for {source} failed (non-fatal): {e}"
+                        );
+                    }
                 }
                 Ok(())
             }
@@ -353,6 +357,10 @@ struct PaneSpawnSpec {
     model: Option<String>,
     cols: u16,
     rows: u16,
+    /// The task's declared output paths (relative to `cwd`). The visible fleet's
+    /// structural completion signal: an interactive agent never exits, so it is
+    /// reported done once these all exist in its worktree (see `PaneFleet`).
+    outputs: Vec<String>,
 }
 
 /// Like `spawn_specs` but for the visible-pane runtime: each ready task becomes a
@@ -375,6 +383,7 @@ fn pane_spawn_specs(
                     model: task.agent_model(),
                     cols: PANE_COLS,
                     rows: PANE_ROWS,
+                    outputs: task.outputs.clone(),
                 },
             )
         })
@@ -382,11 +391,12 @@ fn pane_spawn_specs(
 }
 
 /// Dispatches a ready task by spawning its implementer agent in a **visible PTY
-/// pane** (1 pane = 1 agent) through the shared `PaneFleet`, and reports finished
-/// panes (PTY exit) back to the loop. The CLI command is resolved from the task's
-/// model + prompt via the same `agent_command_spec` the interactive spawn uses,
-/// so loop-dispatched and hand-spawned agents launch identically. This is the
-/// visible counterpart of `AgentDispatcher`.
+/// pane** (1 pane = 1 agent) through the shared `PaneFleet`. The CLI command is
+/// resolved from the task's model + prompt via `agent_shell_command_spec` (the
+/// interactive TUI inside a PowerShell pane); completion is sensed structurally
+/// from declared outputs (the interactive TUI never exits). This is the visible
+/// counterpart of `AgentDispatcher`. The AgentInspector's hand-spawned agents use
+/// the sibling `agent_command_spec` (interactive TUI, launched directly).
 struct PaneDispatcher<'a> {
     fleet: &'a PaneFleet,
     specs: std::collections::HashMap<String, PaneSpawnSpec>,
@@ -400,12 +410,22 @@ impl Dispatcher for PaneDispatcher<'_> {
             .cloned()
             .ok_or_else(|| format!("no pane spawn spec for task {task_id}"))?;
         let model = spec.model.as_deref().unwrap_or("sonnet");
-        // Loop workers are autonomous (own worktree) → auto-accept edits so they
-        // actually build, not just respond.
+        // Loop workers run INSIDE a visible PowerShell pane (split pane → shell →
+        // AI CLI), as the live INTERACTIVE TUI (not headless -p), autonomous (own
+        // worktree) so they auto-accept edits and build. Because the interactive
+        // session never exits, completion is sensed structurally from the task's
+        // declared outputs appearing in the worktree (passed to the fleet here).
         let (program, args, env) =
-            crate::agent::interactive::agent_command_spec(model, Some(&spec.prompt), true)?;
+            crate::agent::interactive::agent_shell_command_spec(model, &spec.prompt, true)?;
         self.fleet.spawn(
-            task_id, &program, &args, spec.cols, spec.rows, &spec.cwd, env,
+            task_id,
+            &program,
+            &args,
+            spec.cols,
+            spec.rows,
+            &spec.cwd,
+            env,
+            spec.outputs.clone(),
         )?;
         Ok(())
     }

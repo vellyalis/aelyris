@@ -161,14 +161,21 @@ pub fn resolve_agent_model(model: &str) -> String {
 }
 
 /// Resolve a model name to the `(program, args, env)` for spawning that agent's
-/// CLI in an **interactive/visible PTY** (human-readable output, not the headless
-/// `--output-format stream-json` stream). Single source of truth shared by the
-/// interactive spawn command and the autonomy loop's visible-pane dispatcher so
-/// both launch agents identically.
+/// CLI as a **live interactive TUI in a visible PTY** — the AgentInspector's
+/// human-driven agent terminal. Deliberately NOT `-p`: `-p`/`--print` is headless
+/// ("Print response and exit") — a text dump, not the agent's live interface.
+/// Omitting it runs the interactive TUI the operator watches and can talk to
+/// (the native engine is `alacritty_terminal`, so the alt-screen UI renders).
 ///
-/// When `initial_prompt` is set the agent starts working immediately on it
-/// (Claude additionally gets `--verbose` for richer monitorable output). Errors
-/// if the model maps to an unknown/unsafe CLI.
+/// Sibling launch paths, kept separate on purpose: the autonomy loop's *visible
+/// fleet* uses [`agent_shell_command_spec`] (same no-`-p` interactive TUI, but
+/// wrapped in a PowerShell pane with an exit-code backstop for the loop); the
+/// *headless* autonomy path is [`crate::agent::claude`] (`-p --output-format
+/// stream-json`, parsed for cost/tokens).
+///
+/// When `initial_prompt` is set it is passed as a **positional arg** (exec-style
+/// argv — no shell, so no escaping), and interactive claude starts a session and
+/// works on it immediately. Errors if the model maps to an unknown/unsafe CLI.
 pub fn agent_command_spec(
     model: &str,
     initial_prompt: Option<&str>,
@@ -190,17 +197,18 @@ pub fn agent_command_spec(
                     // file edits so it can actually build without an interactive
                     // permission gate. This is the edits-only mode, NOT the full
                     // dangerous bypass, matching "agents write freely inside their
-                    // own worktree" (BR1/Design Principle 1).
+                    // own worktree" (BR1/Design Principle 1). The AgentInspector
+                    // passes `false` so a human keeps the edit-approval gate.
                     args.push("--permission-mode".to_string());
                     args.push("acceptEdits".to_string());
                 }
-                // --verbose gives richer output for monitoring; -p starts work.
-                args.push("--verbose".to_string());
-                args.push("-p".to_string());
+                // No -p: run the interactive TUI (visible, persistent), not the
+                // headless print dump. The prompt is a positional arg so claude
+                // starts a session and works on it immediately.
                 args.push(prompt.to_string());
             }
             AgentCli::Codex | AgentCli::Gemini => {
-                args.push("-p".to_string());
+                // Interactive too (no -p): prompt as a positional arg.
                 args.push(prompt.to_string());
             }
             AgentCli::Custom(_) => {
@@ -214,6 +222,76 @@ pub fn agent_command_spec(
     env.insert("AETHER_AGENT_MODEL".to_string(), model.to_string());
 
     Ok((program, args, env))
+}
+
+/// Quote a token for a PowerShell single-quoted string literal (doubling any
+/// embedded single quote). Used to build the in-shell command line safely.
+fn ps_single_quote(token: &str) -> String {
+    format!("'{}'", token.replace('\'', "''"))
+}
+
+/// Launch the agent CLI **inside a visible PowerShell pane**, running its full
+/// INTERACTIVE TUI — the operator's mental model: split pane → a shell starts →
+/// the AI CLI is invoked in it and you watch it work live. Run via `powershell
+/// -Command "& <cli> … $env:AETHER_AGENT_PROMPT; exit $LASTEXITCODE"`.
+///
+/// Deliberately **no `-p`**: `-p`/`--print` is headless ("Print response and
+/// exit") — the operator sees only a text dump, not the agent's live interface.
+/// Omitting it runs the CLI's interactive TUI, which renders in the pane (the
+/// native engine is `alacritty_terminal`, so the alternate-screen full-screen UI
+/// is handled) and stays open. Because an interactive session never exits, the
+/// loop cannot use the PTY-exit sensor for it; completion is detected
+/// structurally from the task's declared outputs appearing in the worktree (see
+/// [`crate::control::pane_fleet::PaneFleet::poll_completions`]). The trailing
+/// `; exit $LASTEXITCODE` is a backstop: if the CLI *does* exit (e.g. a crash),
+/// PowerShell exits with its code so the PTY-exit recovery path still fires.
+///
+/// The prompt travels through the `AETHER_AGENT_PROMPT` env var and is referenced
+/// (not interpolated) inside the command, so arbitrary prompt text needs no
+/// shell escaping.
+pub fn agent_shell_command_spec(
+    model: &str,
+    prompt: &str,
+    autonomous: bool,
+) -> Result<AgentLaunchSpec, String> {
+    let model = resolve_agent_model(model);
+    let cli = AgentCli::from_model(&model);
+    cli.validate()?;
+    let (cli_program, mut cli_args) = cli.program_and_args(Some(&model));
+    match cli {
+        AgentCli::Claude => {
+            if autonomous {
+                cli_args.push("--permission-mode".to_string());
+                cli_args.push("acceptEdits".to_string());
+            }
+            // No -p: run the interactive TUI (visible, persistent), not headless print.
+        }
+        AgentCli::Codex | AgentCli::Gemini => {}
+        AgentCli::Custom(_) => {}
+    }
+
+    let mut command = format!("& {}", ps_single_quote(&cli_program));
+    for arg in &cli_args {
+        command.push(' ');
+        command.push_str(&ps_single_quote(arg));
+    }
+    command.push_str(" $env:AETHER_AGENT_PROMPT; exit $LASTEXITCODE");
+
+    let mut env = HashMap::new();
+    env.insert("AETHER_AGENT_CLI".to_string(), format!("{:?}", cli));
+    env.insert("AETHER_AGENT_MODEL".to_string(), model);
+    env.insert("AETHER_AGENT_PROMPT".to_string(), prompt.to_string());
+
+    Ok((
+        platform_cli_program("powershell"),
+        vec![
+            "-NoLogo".to_string(),
+            "-NoProfile".to_string(),
+            "-Command".to_string(),
+            command,
+        ],
+        env,
+    ))
 }
 
 /// Metadata for a live interactive agent session (PTY-based)
@@ -319,6 +397,18 @@ impl InteractiveSessionManager {
         Ok(self.lock_sessions()?.values().cloned().collect())
     }
 
+    /// Number of LIVE sessions — everything except finished `"done"` ones — which
+    /// is what the BR7 spawn cap must count. A session that reached `"done"` (a
+    /// crashed interactive CLI, or a finished one not yet dismissed) is not
+    /// occupying a live agent slot, so it must not block new spawns. `"idle"` IS
+    /// live (a persistent interactive TUI waiting at its prompt). Returns 0 on a
+    /// poisoned lock (fail-open, matching the cap call site).
+    pub fn active_count(&self) -> usize {
+        self.lock_sessions()
+            .map(|sessions| sessions.values().filter(|i| i.status != "done").count())
+            .unwrap_or(0)
+    }
+
     fn lock_sessions(
         &self,
     ) -> Result<std::sync::MutexGuard<'_, HashMap<String, InteractiveSessionInfo>>, String> {
@@ -357,6 +447,28 @@ mod tests {
         mgr.register(make_session("s1", AgentCli::Claude)).unwrap();
         mgr.register(make_session("s2", AgentCli::Gemini)).unwrap();
         assert_eq!(mgr.list().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn active_count_excludes_done_but_keeps_idle() {
+        let mgr = InteractiveSessionManager::new();
+        mgr.register(make_session("s1", AgentCli::Claude)).unwrap();
+        mgr.register(make_session("s2", AgentCli::Gemini)).unwrap();
+        assert_eq!(mgr.active_count(), 2);
+
+        // A finished/crashed session reaches "done" but lingers in the list; it
+        // must stop counting toward the live spawn cap (the BR7 leak fix).
+        mgr.update_status("s2", "done").unwrap();
+        assert_eq!(mgr.list().unwrap().len(), 2, "done session is still listed");
+        assert_eq!(
+            mgr.active_count(),
+            1,
+            "a done session must not occupy a live cap slot"
+        );
+
+        // "idle" is a LIVE state for a persistent interactive TUI, so it still counts.
+        mgr.update_status("s1", "idle").unwrap();
+        assert_eq!(mgr.active_count(), 1);
     }
 
     #[test]
@@ -462,20 +574,14 @@ mod tests {
     }
 
     #[test]
-    fn agent_command_spec_claude_injects_model_verbose_and_prompt() {
+    fn agent_command_spec_claude_injects_model_and_interactive_prompt() {
         let (program, args, env) =
             agent_command_spec("opus", Some("build the login screen"), false).unwrap();
         assert_eq!(program, platform_cli_program("claude"));
-        assert_eq!(
-            args,
-            vec![
-                "--model",
-                "opus",
-                "--verbose",
-                "-p",
-                "build the login screen"
-            ]
-        );
+        // No -p: the AgentInspector agent runs the INTERACTIVE TUI; the prompt is
+        // a positional arg, not a headless `-p` dump.
+        assert!(!args.iter().any(|a| a == "-p"), "must NOT be headless -p");
+        assert_eq!(args, vec!["--model", "opus", "build the login screen"]);
         assert_eq!(
             env.get("AETHER_AGENT_MODEL").map(String::as_str),
             Some("opus")
@@ -488,8 +594,8 @@ mod tests {
 
     #[test]
     fn agent_command_spec_autonomous_claude_auto_accepts_edits() {
-        // An autonomous loop worker gets --permission-mode acceptEdits so it can
-        // actually write code in its worktree without an interactive gate.
+        // An autonomous worker gets --permission-mode acceptEdits so it can write
+        // code in its worktree without a gate — still interactive (no -p).
         let (_program, args, _env) =
             agent_command_spec("sonnet", Some("write the file"), true).unwrap();
         assert_eq!(
@@ -499,19 +605,17 @@ mod tests {
                 "sonnet",
                 "--permission-mode",
                 "acceptEdits",
-                "--verbose",
-                "-p",
                 "write the file"
             ]
         );
     }
 
     #[test]
-    fn agent_command_spec_codex_passes_prompt_without_verbose() {
+    fn agent_command_spec_codex_passes_interactive_prompt() {
         let (program, args, _env) = agent_command_spec("codex-mini", Some("review"), true).unwrap();
         assert_eq!(program, platform_cli_program("codex"));
-        // Codex/Gemini get -p prompt but no --model / --verbose / permission flags.
-        assert_eq!(args, vec!["-p", "review"]);
+        // Codex/Gemini: interactive prompt (no -p), no --model / permission flags.
+        assert_eq!(args, vec!["review"]);
     }
 
     #[test]
@@ -540,9 +644,44 @@ mod tests {
         // usable agent instead of `--model impl` (which the CLI rejects).
         let (program, args, _env) = agent_command_spec("impl", Some("do the work"), false).unwrap();
         assert_eq!(program, platform_cli_program("claude"));
+        assert_eq!(args, vec!["--model", "sonnet", "do the work"]);
+    }
+
+    #[test]
+    fn agent_shell_command_spec_runs_the_interactive_cli_inside_powershell() {
+        let (program, args, env) =
+            agent_shell_command_spec("impl", "build the 'login' screen", true).unwrap();
+        assert_eq!(program, platform_cli_program("powershell"));
+        // -Command carries the in-shell invocation; the prompt is NOT inlined.
+        assert_eq!(args[0], "-NoLogo");
+        assert_eq!(args[1], "-NoProfile");
+        assert_eq!(args[2], "-Command");
+        let cmd = &args[3];
+        assert!(
+            cmd.starts_with("& "),
+            "runs the CLI via the call operator: {cmd}"
+        );
+        assert!(cmd.contains("'--model' 'sonnet'"), "resolved model: {cmd}");
+        assert!(
+            cmd.contains("'--permission-mode' 'acceptEdits'"),
+            "autonomous edits: {cmd}"
+        );
+        // CRITICAL: no `-p`. -p is headless print mode (a text dump that exits);
+        // the visible fleet must run the INTERACTIVE TUI so the operator watches
+        // the agent work. Completion is detected from worktree outputs instead.
+        assert!(!cmd.contains("'-p'"), "must NOT be headless -p: {cmd}");
+        assert!(
+            cmd.ends_with("'acceptEdits' $env:AETHER_AGENT_PROMPT; exit $LASTEXITCODE"),
+            "interactive prompt via env, exit-code backstop: {cmd}"
+        );
+        // The prompt (with its embedded quote) lives in the env var, unescaped.
         assert_eq!(
-            args,
-            vec!["--model", "sonnet", "--verbose", "-p", "do the work"]
+            env.get("AETHER_AGENT_PROMPT").map(String::as_str),
+            Some("build the 'login' screen")
+        );
+        assert_eq!(
+            env.get("AETHER_AGENT_MODEL").map(String::as_str),
+            Some("sonnet")
         );
     }
 

@@ -157,18 +157,100 @@ pub fn run() {
                 app.manage(control::pane_fleet::PaneFleet::new(pty));
             }
 
-            // Initialize database as managed state
+            // Initialize database as managed state.
+            //
+            // The shared ADR/world-model (Context Store) is restored from disk
+            // here — AFTER the DB is open but BEFORE it is published — and the DB
+            // is then wired into the manager so future decisions persist. Without
+            // this, every restart silently wiped the world-model that is injected
+            // into every dispatched agent's prompt. A local fn (not a closure)
+            // keeps it out of the environment-capture borrow.
+            fn restore_context_store(app: &tauri::AppHandle, db: &db::ManagedDb) {
+                let store = app
+                    .state::<std::sync::Arc<context_store::ContextStoreManager>>()
+                    .inner()
+                    .clone();
+                // P1 design: attach_db both wires the DB and restores the persisted
+                // decisions into memory in one step (no separate hydrate).
+                match store.attach_db(std::sync::Arc::new(db.clone())) {
+                    Ok(n) if n > 0 => {
+                        log::info!("context store: restored {n} project decision(s) from disk")
+                    }
+                    Ok(_) => {}
+                    Err(err) => log::warn!("context store: restore from disk failed: {err}"),
+                }
+            }
+
+            // Restore the autonomy TaskGraph so an interrupted build survives a
+            // restart: load the persisted graph, collapse volatile in-flight
+            // (Running/Review) tasks to Ready (their worker died at crash) so the
+            // loop safely re-dispatches them, hydrate silently, then attach for
+            // save-on-write. Same hydrate-before-attach invariant as the store.
+            fn restore_task_graph(app: &tauri::AppHandle, db: &db::ManagedDb) {
+                let tasks = app
+                    .state::<std::sync::Arc<task::TaskManager>>()
+                    .inner()
+                    .clone();
+                // P1 design: attach_db wires the DB and restores the persisted graph
+                // in one step (no separate hydrate).
+                match tasks.attach_db(std::sync::Arc::new(db.clone())) {
+                    Ok(n) if n > 0 => log::info!("task graph: restored {n} task(s) from disk"),
+                    Ok(_) => {}
+                    Err(err) => log::warn!("task graph: restore from disk failed: {err}"),
+                }
+            }
+
+            // Restore the Knowledge Graph (code dependency map) so the populated
+            // graph survives a restart instead of resetting to empty. Straight
+            // load -> hydrate (no volatile state); hydrate-before-attach so the
+            // restore does not re-persist what it just read.
+            fn restore_knowledge_graph(app: &tauri::AppHandle, db: &db::ManagedDb) {
+                let kg = app
+                    .state::<std::sync::Arc<knowledge_graph::KnowledgeGraphManager>>()
+                    .inner()
+                    .clone();
+                match db.with(|d| d.load_code_graph()) {
+                    Ok((nodes, edges)) => {
+                        if !nodes.is_empty() {
+                            log::info!(
+                                "knowledge graph: restored {} node(s) / {} edge(s) from disk",
+                                nodes.len(),
+                                edges.len()
+                            );
+                        }
+                        kg.hydrate(nodes, edges);
+                    }
+                    Err(err) => log::warn!("knowledge graph: restore from disk failed: {err}"),
+                }
+                kg.attach_db(db.clone());
+            }
+
             let db_path = db::db_path();
             match Database::open(&db_path) {
                 Ok(database) => {
                     log::info!("Database initialized at {:?}", db_path);
-                    app.handle().manage(db::ManagedDb::new(database));
+                    let managed = db::ManagedDb::new(database);
+                    restore_context_store(app.handle(), &managed);
+                    restore_task_graph(app.handle(), &managed);
+                    restore_knowledge_graph(app.handle(), &managed);
+                    app.handle().manage(managed);
                 }
                 Err(e) => {
                     log::error!("Failed to initialize database: {}", e);
-                    // Provide a fallback in-memory db so commands don't panic
+                    // Provide a fallback in-memory db so commands don't panic. The
+                    // restore is an empty no-op and writes won't survive restart,
+                    // but the store stays consistent and dispatch never breaks.
                     if let Ok(mem_db) = Database::open_memory() {
-                        app.handle().manage(db::ManagedDb::new(mem_db));
+                        log::warn!(
+                            "using an in-memory fallback DB: all persistence — including the \
+                             shared context store / ADR world-model and the autonomy task graph \
+                             — will NOT survive an app restart this session"
+                        );
+                        let managed = db::ManagedDb::new(mem_db);
+                        restore_context_store(app.handle(), &managed);
+                        restore_task_graph(app.handle(), &managed);
+                        restore_knowledge_graph(app.handle(), &managed);
+                        app.handle().manage(managed);
                     }
                 }
             }
@@ -826,6 +908,7 @@ pub fn run() {
             ipc::lsp_stop,
             ipc::lsp_list,
             ipc::list_all_files,
+            ipc::populate_knowledge_graph,
             // Interactive agent session commands
             ipc::spawn_interactive_agent,
             ipc::stop_interactive_agent,

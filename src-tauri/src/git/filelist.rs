@@ -33,7 +33,7 @@ fn list_git_tracked(root_path: &str, max_files: usize) -> Result<Vec<FileListEnt
         if entries.len() >= max_files {
             break;
         }
-        let path_str = String::from_utf8_lossy(&entry.path).to_string();
+        let path_str = String::from_utf8_lossy(&entry.path).replace('\\', "/");
         let full_path = workdir.join(&path_str);
         let size = std::fs::metadata(&full_path).map(|m| m.len()).unwrap_or(0);
         entries.push(FileListEntry {

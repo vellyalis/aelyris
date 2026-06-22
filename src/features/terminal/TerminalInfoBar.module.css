@@ -284,3 +284,57 @@
   background: color-mix(in srgb, var(--accent) 9%, transparent);
   color: color-mix(in srgb, var(--accent) 72%, var(--gold));
 }
+
+/* Agent pane identity chip — a live status dot + model. The dot pulses while
+ * the agent works so even a blank (thinking) pane reads as a live fleet member;
+ * it settles to a steady green on done, red on error. This is the per-pane
+ * "ぴこぴこ" liveliness signal. */
+.agentChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2, 4px);
+  flex-shrink: 0;
+}
+
+.agentDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ctp-cyan, #94e2d5);
+  flex-shrink: 0;
+}
+
+.agentChip[data-status="running"] .agentDot {
+  background: var(--ctp-cyan, #94e2d5);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--ctp-cyan, #94e2d5) 70%, transparent);
+  animation: agentPulse 1.4s var(--ease-breath, ease-in-out) infinite;
+}
+
+.agentChip[data-status="done"] .agentDot {
+  background: var(--ctp-green, #a6e3a1);
+}
+
+.agentChip[data-status="error"] .agentDot {
+  background: var(--ctp-red, #f38ba8);
+}
+
+@keyframes agentPulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--ctp-cyan, #94e2d5) 65%, transparent);
+    opacity: 1;
+  }
+  70% {
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--ctp-cyan, #94e2d5) 0%, transparent);
+    opacity: 0.55;
+  }
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--ctp-cyan, #94e2d5) 0%, transparent);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agentChip[data-status="running"] .agentDot {
+    animation: none;
+  }
+}

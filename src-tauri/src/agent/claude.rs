@@ -126,6 +126,11 @@ impl AgentManager {
         let child = cmd
             .spawn()
             .map_err(|e| format!("Failed to start {}: {}", cli_cmd, e))?;
+        // No-orphan guard: this headless agent CLI is spawned directly (not via a
+        // PTY), so mirror PtyManager::spawn_command_with_id and assign it to this
+        // process's kill-on-close Job Object. Otherwise an abnormal host exit (e.g.
+        // a WebView2 crash, where no shutdown code runs) would orphan the agent.
+        crate::process::guard_child_against_orphan(child.id());
 
         let info = AgentSessionInfo {
             id: id.clone(),

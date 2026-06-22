@@ -15,7 +15,10 @@ const sources = import.meta.glob("../App.tsx", {
 function getSrc(): string {
   const entries = Object.entries(sources);
   expect(entries.length).toBe(1);
-  return entries[0][1];
+  // Normalize CRLF -> LF so source-content regexes (e.g. `\n}\n\n`) are
+  // EOL-independent; on Windows checkouts (core.autocrlf=true) the working tree
+  // is CRLF, which would otherwise break newline-anchored matches.
+  return entries[0][1].replace(/\r\n/g, "\n");
 }
 
 function getStyles(): string {

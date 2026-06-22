@@ -169,6 +169,44 @@ pub fn remove_worktree(
     Ok(())
 }
 
+/// Remove the worktree that `create_worktree(repo_path, branch)` placed, by its
+/// PREDICTED PATH. `git worktree remove` resolves a path, NOT a branch name
+/// (`git worktree remove <branch>` fails with "not a working tree"), so callers
+/// that only know the branch must route through here rather than `remove_worktree`.
+/// When `delete_branch`, the now-merged branch is deleted too. Prunes stale refs.
+pub fn remove_worktree_for_branch(
+    repo_path: &str,
+    branch: &str,
+    delete_branch: bool,
+) -> Result<(), String> {
+    validate_branch_name(branch)?;
+    let path = predict_worktree_path(repo_path, branch)
+        .to_string_lossy()
+        .replace('\\', "/");
+    let output = crate::process::hidden_command("git")
+        .args(["worktree", "remove", &path, "--force"])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Git worktree remove failed: {}", e))?;
+    if !output.status.success() {
+        return Err(format!(
+            "Worktree removal failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    let _ = crate::process::hidden_command("git")
+        .args(["worktree", "prune"])
+        .current_dir(repo_path)
+        .output();
+    if delete_branch {
+        let _ = crate::process::hidden_command("git")
+            .args(["branch", "-D", branch])
+            .current_dir(repo_path)
+            .output();
+    }
+    Ok(())
+}
+
 /// Validate branch name: ASCII alphanumeric, hyphens, underscores, slashes, dots only.
 /// Rejects path traversal, absolute-ish paths, unsafe prefixes, and overlong names.
 pub fn validate_branch_name(name: &str) -> Result<(), String> {
@@ -229,7 +267,11 @@ pub fn commit_worktree(
         .map_err(|e| format!("Open worktree {}: {}", worktree_dir.display(), e))?;
 
     // Stage everything: add_all (DEFAULT honors .gitignore) covers new + modified
-    // files; update_all covers deletions/renames of tracked files.
+    // files; update_all covers deletions/renames of tracked files. The `None`
+    // callback is a path-match FILTER, not an error channel — a genuine read/stage
+    // failure (e.g. a file still locked by a not-yet-dead agent on Windows) is
+    // returned as an Err here and propagated, failing the merge so the loop
+    // requeues for rework; a file is never silently dropped from the commit.
     let mut index = repo.index().map_err(|e| format!("Worktree index: {}", e))?;
     index
         .add_all(["*"], git2::IndexAddOption::DEFAULT, None)
@@ -250,10 +292,18 @@ pub fn commit_worktree(
     let parent = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
     match &parent {
         Some(parent_commit) if parent_commit.tree_id() == tree_oid => return Ok(None),
-        // Unborn HEAD + empty tree -> nothing to commit (defensive; a worktree
-        // always has a born HEAD on its branch in practice).
+        Some(_) => {}
+        // Unborn HEAD + empty tree -> nothing to commit.
         None if tree.is_empty() => return Ok(None),
-        _ => {}
+        // Unborn HEAD + staged changes must never happen: create_worktree always
+        // starts the worktree on a born branch. Enforce the invariant rather than
+        // make a parentless root commit, which perform_merge would see as
+        // unrelated history and fail to merge (burning a rework budget).
+        None => {
+            return Err(format!(
+                "commit_worktree: worktree for '{branch}' has an unborn HEAD with staged changes"
+            ));
+        }
     }
 
     let signature = repo
@@ -287,47 +337,6 @@ pub fn ensure_worktree(repo_path: &str, branch_name: &str) -> Result<(), String>
         return Ok(());
     }
     create_worktree(repo_path, branch_name).map(|_| ())
-}
-
-/// Remove the worktree for `branch` by its predicted path (the path-based form of
-/// [`remove_worktree`], which takes a worktree NAME). Used by the autonomy loop to
-/// clean up a task's isolated worktree once its branch is merged. Pruning + the
-/// optional branch delete mirror [`remove_worktree`]. A best-effort caller can
-/// ignore the result — a failed cleanup never invalidates an already-done merge.
-pub fn remove_worktree_for_branch(
-    repo_path: &str,
-    branch: &str,
-    delete_branch: bool,
-) -> Result<(), String> {
-    validate_branch_name(branch)?;
-    // Forward-slash the path before handing it to the git CLI: on Windows a
-    // backslash PathBuf string can make `git worktree remove` fail with "not a
-    // working tree" (create_worktree applies the same normalisation).
-    let worktree_path = predict_worktree_path(repo_path, branch)
-        .to_string_lossy()
-        .replace('\\', "/");
-    let output = crate::process::hidden_command("git")
-        .args(["worktree", "remove", &worktree_path, "--force"])
-        .current_dir(repo_path)
-        .output()
-        .map_err(|e| format!("Git worktree remove failed: {}", e))?;
-    if !output.status.success() {
-        return Err(format!(
-            "Worktree removal failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        ));
-    }
-    let _ = crate::process::hidden_command("git")
-        .args(["worktree", "prune"])
-        .current_dir(repo_path)
-        .output();
-    if delete_branch {
-        let _ = crate::process::hidden_command("git")
-            .args(["branch", "-D", branch])
-            .current_dir(repo_path)
-            .output();
-    }
-    Ok(())
 }
 
 /// Create a new worktree for a branch
@@ -421,14 +430,13 @@ pub fn list_branches(repo_path: &str) -> Result<Vec<BranchInfo>, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        commit_worktree, create_worktree, ensure_worktree, predict_worktree_path,
-        remove_worktree_for_branch, validate_branch_name,
-    };
+    use super::*;
     use git2::Repository;
 
     /// A real git repo (temp dir) with one base commit on `main`. Returns the dir
-    /// (kept alive by the caller) and the forward-slashed repo path.
+    /// (kept alive by the caller) and the forward-slashed repo path. git runs via
+    /// hidden_command so the spawn-hygiene gate stays green (no raw std spawn) and
+    /// there is no console flash on Windows.
     fn base_repo() -> (tempfile::TempDir, String) {
         let tmp = tempfile::tempdir().unwrap();
         let repo = tmp.path().join("repo");
@@ -448,6 +456,27 @@ mod tests {
         git(&["add", "."]);
         git(&["commit", "-qm", "base"]);
         (tmp, repo_str)
+    }
+
+    /// Proves the path-based removal actually reclaims a created worktree —
+    /// `git worktree remove <branch>` (the old behaviour) fails with "not a
+    /// working tree", so this is the regression guard for the disk leak fix. Also
+    /// covers delete_branch = true.
+    #[test]
+    fn remove_worktree_for_branch_actually_removes_it() {
+        let (_tmp, repo_str) = base_repo();
+        create_worktree(&repo_str, "agent/x").expect("create worktree");
+        let wt = predict_worktree_path(&repo_str, "agent/x");
+        assert!(wt.exists(), "worktree should exist at {wt:?}");
+
+        remove_worktree_for_branch(&repo_str, "agent/x", true).expect("remove worktree");
+        assert!(!wt.exists(), "worktree dir should be gone after removal");
+        // The merged branch was deleted too (delete_branch = true).
+        let branches = list_branches(&repo_str).unwrap_or_default();
+        assert!(
+            !branches.iter().any(|b| b.name == "agent/x"),
+            "merged branch should be deleted"
+        );
     }
 
     #[test]
@@ -491,11 +520,14 @@ mod tests {
             "expected fast-forward, got {outcome:?}"
         );
         let main_tip = main_repo.head().unwrap().peel_to_commit().unwrap();
-        assert!(main_tip
-            .tree()
-            .unwrap()
-            .get_path(std::path::Path::new("GREETING.md"))
-            .is_ok());
+        assert!(
+            main_tip
+                .tree()
+                .unwrap()
+                .get_path(std::path::Path::new("GREETING.md"))
+                .is_ok(),
+            "main's tip now contains the worker's committed file"
+        );
 
         // Idempotency: committing the now-clean worktree again is a no-op.
         assert!(commit_worktree(&repo_str, "agent/y", "aether: again")
@@ -520,14 +552,14 @@ mod tests {
     }
 
     #[test]
-    fn remove_worktree_for_branch_deletes_the_worktree_dir() {
+    fn remove_worktree_for_branch_keeps_branch_when_not_deleting() {
         let (_tmp, repo_str) = base_repo();
         ensure_worktree(&repo_str, "agent/gone").expect("create");
         let path = predict_worktree_path(&repo_str, "agent/gone");
         assert!(path.is_dir());
         remove_worktree_for_branch(&repo_str, "agent/gone", false).expect("remove");
         assert!(!path.is_dir(), "worktree dir removed");
-        // The branch ref is kept (delete_branch=false).
+        // The branch ref is kept (delete_branch = false).
         assert!(Repository::open(&repo_str)
             .unwrap()
             .refname_to_id("refs/heads/agent/gone")

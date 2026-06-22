@@ -92,7 +92,11 @@ export function InteractiveSessionCard({
               <span className={styles.cardPreviewText}>{is.initial_prompt}</span>
             </div>
           )}
-          {is.status !== "done" && is.status !== "idle" && (
+          {is.status !== "done" && (
+            // Show Stop for any LIVE session. An interactive TUI agent is
+            // persistent — it sits at "idle" (waiting at its prompt) when it has
+            // nothing to do but is still alive — so "idle" must keep the Stop
+            // affordance; only a finished ("done") session hides it.
             <div className={styles.cardMeta}>
               <StopButton
                 className={styles.stopBtn}

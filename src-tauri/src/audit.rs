@@ -37,6 +37,23 @@ impl<R: Runtime> AuditEventEmitter for AppHandle<R> {
     }
 }
 
+/// Compact the audit journal every `AUDIT_COMPACT_EVERY` appends, keeping the most
+/// recent `AUDIT_RETENTION` events; a snapshot preserves the state before the
+/// boundary, so older granular events are dropped without losing the position.
+const AUDIT_COMPACT_EVERY: i64 = 256;
+const AUDIT_RETENTION: i64 = 2000;
+
+/// Pure decision: after appending event `sequence`, the boundary to compact
+/// before (keeping the last `AUDIT_RETENTION`), or `None` to skip this append.
+/// Bounds the journal's otherwise-unbounded growth (it reached 84MB in testing).
+fn audit_compact_boundary(sequence: i64) -> Option<i64> {
+    if sequence % AUDIT_COMPACT_EVERY == 0 && sequence > AUDIT_RETENTION {
+        Some(sequence - AUDIT_RETENTION)
+    } else {
+        None
+    }
+}
+
 pub fn append_audit_event_and_emit(
     app: &AppHandle<impl Runtime>,
     event: AuditJournalAppend,
@@ -55,6 +72,12 @@ pub fn append_audit_event_with_emitter<E: AuditEventEmitter>(
     match db.with(|d| d.append_audit_journal_event(&event)) {
         Ok(record) => {
             emitter.emit_audit_payload(AUDIT_EVENT_BUS_EVENT, &record)?;
+            // Bound journal growth: periodically drop events past the retention
+            // window (a snapshot preserves the pre-boundary state). Best-effort —
+            // a compaction failure must never fail the audit append itself.
+            if let Some(before) = audit_compact_boundary(record.sequence) {
+                let _ = db.with(|d| d.compact_audit_event_journal(&record.workspace_id, before));
+            }
             Ok(record)
         }
         Err(error) => {
@@ -94,6 +117,11 @@ pub fn append_audit_events_with_emitter<E: AuditEventEmitter>(
             for record in &records {
                 emitter.emit_audit_payload(AUDIT_EVENT_BUS_EVENT, record)?;
             }
+            if let Some(last) = records.last() {
+                if let Some(before) = audit_compact_boundary(last.sequence) {
+                    let _ = db.with(|d| d.compact_audit_event_journal(&last.workspace_id, before));
+                }
+            }
             Ok(records)
         }
         Err(error) => {
@@ -127,4 +155,25 @@ fn emit_audit_write_incident<E: AuditEventEmitter>(
         message: message.to_string(),
     };
     let _ = emitter.emit_audit_payload(AUDIT_EVENT_BUS_INCIDENT, incident);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{audit_compact_boundary, AUDIT_COMPACT_EVERY, AUDIT_RETENTION};
+
+    #[test]
+    fn compaction_only_triggers_on_cadence_past_the_retention_window() {
+        // Below the retention window: never compact (nothing to drop yet).
+        assert_eq!(audit_compact_boundary(AUDIT_COMPACT_EVERY), None);
+        assert_eq!(audit_compact_boundary(AUDIT_RETENTION), None);
+        // Off-cadence sequence past the window: skip until the next multiple.
+        assert_eq!(audit_compact_boundary(AUDIT_RETENTION + 1), None);
+        // On-cadence past the window: compact, keeping the last AUDIT_RETENTION.
+        let first = ((AUDIT_RETENTION / AUDIT_COMPACT_EVERY) + 1) * AUDIT_COMPACT_EVERY;
+        assert_eq!(audit_compact_boundary(first), Some(first - AUDIT_RETENTION));
+        assert_eq!(
+            audit_compact_boundary(first + AUDIT_COMPACT_EVERY),
+            Some(first + AUDIT_COMPACT_EVERY - AUDIT_RETENTION)
+        );
+    }
 }

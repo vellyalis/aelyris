@@ -136,6 +136,9 @@ interface BackendPaneInfo {
   cwd?: string;
 }
 
+/** Most recent finished agent panes kept on screen; older ones auto-close. */
+const MAX_DONE_AGENT_PANES = 6;
+
 /**
  * Container that owns the PaneTree state for a single tab.
  * Connects the usePaneTree hook to the PaneTreeRenderer.
@@ -164,6 +167,12 @@ export function PaneTreeContainer({
   const hasFastSnapshot = initialSnapshot !== null;
   const [layoutHydrated, setLayoutHydrated] = useState(() => !layoutStorageKey);
   const [paneLifecycleStates, setPaneLifecycleStates] = useState<ReadonlyMap<string, PaneLifecycleState>>(
+    () => new Map(),
+  );
+  // Per-agent-pane identity + live status (keyed by terminal id == agent pane id).
+  // Drives the TerminalInfoBar agent chip so each fleet pane shows what it is and
+  // whether it is still working — the visible-fleet liveliness signal.
+  const [agentMeta, setAgentMeta] = useState<ReadonlyMap<string, { model: string; status: "running" | "done" }>>(
     () => new Map(),
   );
   const [synchronizedPanes, setSynchronizedPanes] = useState(() => initialSnapshot?.synchronizedPanes === true);
@@ -550,6 +559,11 @@ export function PaneTreeContainer({
   // exited and closed is not re-mounted when the (cumulative) request re-renders.
   const everMountedAgentsRef = useRef<Set<string>>(new Set());
   const agentPaneUnlistenRef = useRef<Map<string, () => void>>(new Map());
+  // FIFO of finished ("done") agent panes, kept on screen for review. Bounded so
+  // the kept-on-exit fleet panes can't accumulate without limit across many
+  // dispatch rounds (memory/DOM/render-cost leak) — the oldest is closed when the
+  // cap is exceeded. `everMountedAgentsRef` still bars re-mounting a closed agent.
+  const doneAgentOrderRef = useRef<string[]>([]);
   const firstLiveTerminalId = useMemo(() => {
     for (const paneId of collectLeafIds(tree)) {
       const terminalId = terminalIds.get(paneId);
@@ -978,7 +992,7 @@ export function PaneTreeContainer({
     handledAgentSpawnSequenceRef.current = spawnAgentPaneRequest.sequence;
 
     let mountedAny = false;
-    for (const { terminalId } of spawnAgentPaneRequest.agents) {
+    for (const { terminalId, model } of spawnAgentPaneRequest.agents) {
       if (everMountedAgentsRef.current.has(terminalId) || collectLeafIds(tree).includes(terminalId)) continue;
       const targetId = activePaneId && findLeaf(tree, activePaneId) ? activePaneId : collectLeafIds(tree)[0];
       if (!targetId) break;
@@ -988,17 +1002,39 @@ export function PaneTreeContainer({
       agentPaneIdsRef.current.add(terminalId);
       everMountedAgentsRef.current.add(terminalId);
       setPaneLifecycleStates((prev) => new Map(prev).set(terminalId, "live"));
+      setAgentMeta((prev) => new Map(prev).set(terminalId, { model, status: "running" }));
       mountedAny = true;
 
       if (isTauriRuntime()) {
         const id = terminalId;
         void listen(`pty-exit-${id}`, () => {
-          agentPaneIdsRef.current.delete(id);
           const unlisten = agentPaneUnlistenRef.current.get(id);
           unlisten?.();
           agentPaneUnlistenRef.current.delete(id);
-          // The loop already reaped the backend PTY; just drop the local pane.
-          close(id, { closeBackend: false });
+          // KEEP the pane: mark the agent done so its final claude output stays on
+          // screen for review. The fleet persists instead of vanishing the instant
+          // each agent finishes — the visible-fleet experience (PaneTreeRenderer
+          // keeps the terminal buffer mounted for agent panes even once exited).
+          setAgentMeta((prev) => {
+            const meta = prev.get(id);
+            if (!meta) return prev;
+            return new Map(prev).set(id, { ...meta, status: "done" });
+          });
+          // Bound the kept "done" panes: close the oldest once over the cap so
+          // they cannot accumulate without limit across many dispatch rounds.
+          agentPaneIdsRef.current.delete(id);
+          doneAgentOrderRef.current.push(id);
+          while (doneAgentOrderRef.current.length > MAX_DONE_AGENT_PANES) {
+            const evict = doneAgentOrderRef.current.shift();
+            if (!evict) break;
+            setAgentMeta((prev) => {
+              if (!prev.has(evict)) return prev;
+              const next = new Map(prev);
+              next.delete(evict);
+              return next;
+            });
+            close(evict, { closeBackend: false });
+          }
         })
           .then((unlisten) => {
             agentPaneUnlistenRef.current.set(id, unlisten);
@@ -1091,6 +1127,7 @@ export function PaneTreeContainer({
       maximizedPaneId={maximizedPaneId}
       terminalIds={terminalIds}
       paneLifecycleStates={paneLifecycleStates}
+      agentMeta={agentMeta}
       synchronizedPanes={synchronizedPanes}
       onFocusPane={setActivePaneId}
       onSplit={splitViaMux}

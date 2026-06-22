@@ -19,7 +19,7 @@ interface TerminalInfoBarProps {
   terminalId?: string | null;
   paneTitle?: string;
   paneRole?: PaneRole;
-  activeAgent?: { model: string; cost: number } | null;
+  activeAgent?: { model: string; cost?: number; status?: "running" | "done" | "error" } | null;
   isActive?: boolean;
   isMaximized?: boolean;
   onRenamePane?: (title: string | null) => void;
@@ -136,10 +136,13 @@ export const TerminalInfoBar = memo(function TerminalInfoBar({
       {dir && <span className={styles.cwd}>~/{dir}</span>}
       <div className={styles.spacer} />
       {activeAgent && (
-        <>
+        <span className={styles.agentChip} data-status={activeAgent.status}>
+          {activeAgent.status && <span className={styles.agentDot} aria-hidden />}
           <span className={styles.meta}>{activeAgent.model}</span>
-          <span className={styles.cost}>&lt;${activeAgent.cost.toFixed(2)}</span>
-        </>
+          {typeof activeAgent.cost === "number" && (
+            <span className={styles.cost}>&lt;${activeAgent.cost.toFixed(2)}</span>
+          )}
+        </span>
       )}
       {onSplitRight && (
         <button

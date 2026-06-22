@@ -86,12 +86,15 @@ aether-terminal/
 | Ctrl+Shift+H | ペイン水平分割 |
 | Ctrl+Shift+V | ペイン垂直分割 |
 | Ctrl+Space | Ghost text サジェスト受入 |
-| F12 | Go to Definition (LSP) |
+| F12 | ターミナル ファンクションキー送出 (CSI `\x1b[24~`)。※LSP Go to Definition は未実装 |
 | Escape | エディタ/検索/Diff → ターミナル復帰 |
 
 ## Gotchas
 - Mica: Win11専用。Win10はAcrylicフォールバック
 - ConPTY: `PSEUDOCONSOLE_PASSTHROUGH_MODE` (0x8) はWin11 22H2+のみ
+- LSP: 現状 `textDocument/completion` と `hover` のみ surface (`src/features/editor/lsp/registerProviders.ts`)。
+  go-to-definition / 診断(publishDiagnostics) / references は未実装。また `notifyChange` (`useLsp.ts`) が
+  未配線で、`didOpen` 後の編集がサーバへ届かず補完/hover が陳腐化する既知バグあり。
 
 ## 開発方針（負債管理・変更容易性）
 コード変更時は常に「**既存仕様を壊さず・負債を減らし・今後変更しやすく**」を満たす。

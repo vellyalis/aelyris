@@ -6,6 +6,11 @@ use std::path::Path;
 use uuid::Uuid;
 
 use super::migrations;
+use crate::knowledge_graph::CodeNode;
+
+/// A loaded code-graph snapshot: `(nodes, edges)`, each edge `(dependent, dependency)`.
+/// Aliased to keep query signatures readable (and satisfy clippy::type_complexity).
+type CodeGraphRows = (Vec<CodeNode>, Vec<(String, String)>);
 
 /// Core database handle for Aether Terminal
 pub struct Database {
@@ -316,6 +321,84 @@ impl Database {
             )
             .map(|_| ())
             .map_err(|e| format!("Delete pane metadata: {}", e))
+    }
+
+    // --- Knowledge graph (code dependency map) persistence ---
+
+    /// Persist the whole code graph as a consistent snapshot: one transaction that
+    /// clears both tables then re-inserts nodes (sort_order = index) and edges,
+    /// mirroring replace_task_graph.
+    pub fn replace_code_graph(
+        &self,
+        nodes: &[CodeNode],
+        edges: &[(String, String)],
+    ) -> Result<(), String> {
+        // SAFETY: unchecked_transaction is sound here for the same reason as
+        // replace_task_graph — Database is only reached through ManagedDb's
+        // Arc<Mutex>, so the connection is always serialized; the txn rolls back
+        // on drop if any step fails before commit.
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| format!("Begin code graph txn: {}", e))?;
+        tx.execute("DELETE FROM code_graph_edges", [])
+            .map_err(|e| format!("Clear code graph edges: {}", e))?;
+        tx.execute("DELETE FROM code_graph_nodes", [])
+            .map_err(|e| format!("Clear code graph nodes: {}", e))?;
+        for (index, node) in nodes.iter().enumerate() {
+            let json = serde_json::to_string(node)
+                .map_err(|e| format!("Serialize node {}: {}", node.id, e))?;
+            let kind = serde_json::to_string(&node.kind)
+                .map(|s| s.trim_matches('"').to_string())
+                .unwrap_or_else(|_| "other".to_string());
+            tx.execute(
+                "INSERT INTO code_graph_nodes (id, sort_order, kind, node_json, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+                params![node.id, index as i64, kind, json],
+            )
+            .map_err(|e| format!("Insert node {}: {}", node.id, e))?;
+        }
+        for (index, (dependent, dependency)) in edges.iter().enumerate() {
+            tx.execute(
+                "INSERT INTO code_graph_edges (dependent, dependency, sort_order)
+                 VALUES (?1, ?2, ?3)",
+                params![dependent, dependency, index as i64],
+            )
+            .map_err(|e| format!("Insert edge {}->{}: {}", dependent, dependency, e))?;
+        }
+        tx.commit().map_err(|e| format!("Commit code graph: {}", e))
+    }
+
+    /// Load the whole code graph (nodes in sort_order, then edges in sort_order).
+    pub fn load_code_graph(&self) -> Result<CodeGraphRows, String> {
+        let mut node_stmt = self
+            .conn
+            .prepare("SELECT node_json FROM code_graph_nodes ORDER BY sort_order")
+            .map_err(|e| format!("Prepare load code graph nodes: {}", e))?;
+        let node_rows = node_stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| format!("Query code graph nodes: {}", e))?;
+        let mut nodes = Vec::new();
+        for row in node_rows {
+            let json = row.map_err(|e| format!("Read node row: {}", e))?;
+            let node: CodeNode =
+                serde_json::from_str(&json).map_err(|e| format!("Deserialize node: {}", e))?;
+            nodes.push(node);
+        }
+        let mut edge_stmt = self
+            .conn
+            .prepare("SELECT dependent, dependency FROM code_graph_edges ORDER BY sort_order")
+            .map_err(|e| format!("Prepare load code graph edges: {}", e))?;
+        let edge_rows = edge_stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|e| format!("Query code graph edges: {}", e))?;
+        let mut edges = Vec::new();
+        for row in edge_rows {
+            edges.push(row.map_err(|e| format!("Read edge row: {}", e))?);
+        }
+        Ok((nodes, edges))
     }
 
     pub fn create_session(&self, name: &str) -> Result<Session, String> {
@@ -2407,6 +2490,45 @@ fn opt_i64_to_u16(value: Option<i64>) -> Option<u16> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_code_graph_replace_load_roundtrip() {
+        use crate::knowledge_graph::{CodeNode, NodeKind};
+        let db = Database::open_memory().unwrap();
+        let (n0, e0) = db.load_code_graph().unwrap();
+        assert!(n0.is_empty() && e0.is_empty());
+
+        let nodes = vec![
+            CodeNode {
+                id: "src/a.rs".into(),
+                kind: NodeKind::Module,
+                file: Some("src/a.rs".into()),
+            },
+            CodeNode {
+                id: "src/b.rs".into(),
+                kind: NodeKind::Module,
+                file: Some("src/b.rs".into()),
+            },
+        ];
+        let edges = vec![("src/a.rs".to_string(), "src/b.rs".to_string())];
+        db.replace_code_graph(&nodes, &edges).unwrap();
+
+        let (loaded_nodes, loaded_edges) = db.load_code_graph().unwrap();
+        assert_eq!(loaded_nodes.len(), 2);
+        assert_eq!(loaded_nodes[0].id, "src/a.rs"); // sort_order preserved
+        assert_eq!(loaded_nodes[0].kind, NodeKind::Module);
+        assert_eq!(loaded_nodes[0].file.as_deref(), Some("src/a.rs"));
+        assert_eq!(
+            loaded_edges,
+            [("src/a.rs".to_string(), "src/b.rs".to_string())]
+        );
+
+        // Whole-graph replace clears old rows.
+        db.replace_code_graph(&nodes[..1], &[]).unwrap();
+        let (after_nodes, after_edges) = db.load_code_graph().unwrap();
+        assert_eq!(after_nodes.len(), 1);
+        assert!(after_edges.is_empty());
+    }
 
     #[test]
     fn test_command_history_save_and_search() {

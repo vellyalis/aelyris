@@ -10,17 +10,23 @@ pub use queries::{
 };
 
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
-/// Thread-safe database wrapper for use as Tauri managed state
+/// Thread-safe database wrapper for use as Tauri managed state.
+///
+/// The single `Connection` lives behind `Arc<Mutex<_>>` so the handle is cheaply
+/// cloneable: the SAME connection can be shared with a long-lived owner (e.g. the
+/// Context Store manager's save-on-write sink) without opening a second
+/// connection. All access still serializes through the one Mutex.
+#[derive(Clone)]
 pub struct ManagedDb {
-    inner: Mutex<Database>,
+    inner: Arc<Mutex<Database>>,
 }
 
 impl ManagedDb {
     pub fn new(db: Database) -> Self {
         Self {
-            inner: Mutex::new(db),
+            inner: Arc::new(Mutex::new(db)),
         }
     }
 

@@ -63,11 +63,9 @@ pub async fn spawn_interactive_agent(
     cli.validate()?;
 
     // Cost gate (BR7): refuse a new agent when the live fleet is at the cap.
-    let active_agents = app
-        .state::<InteractiveSessionManager>()
-        .list()
-        .map(|sessions| sessions.len())
-        .unwrap_or(0)
+    // Count only LIVE interactive sessions — a lingering "done" one (e.g. a
+    // crashed interactive CLI) is not occupying a slot and must not block spawns.
+    let active_agents = app.state::<InteractiveSessionManager>().active_count()
         + app
             .state::<crate::agent::AgentManager>()
             .list_sessions()
@@ -76,10 +74,10 @@ pub async fn spawn_interactive_agent(
         .guard_spawn(active_agents)?;
 
     // Resolve the agent's CLI command (program + args + env) from its model and
-    // optional initial prompt — shared with the autonomy loop's visible-pane
-    // dispatcher so interactive and loop-dispatched agents launch identically.
-    // Interactive (user-driven) agent: NOT autonomous — the user keeps the edit
-    // permission gate. The autonomy loop's workers pass `true` instead.
+    // optional initial prompt. This launches the live INTERACTIVE claude TUI (no
+    // headless `-p`), so the operator watches the agent work and can talk to it.
+    // `false` = NOT autonomous: the human keeps the edit-approval gate (the
+    // autonomy loop's *fleet* workers use `agent_shell_command_spec` with `true`).
     let (program, args, env) =
         crate::agent::interactive::agent_command_spec(model_str, initial_prompt.as_deref(), false)?;
 

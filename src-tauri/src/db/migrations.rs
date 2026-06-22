@@ -348,6 +348,31 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
         );
         CREATE INDEX IF NOT EXISTS idx_agent_events_channel_seq
             ON agent_events(channel, seq);
+
+        -- The Knowledge Graph (code dependency map agents reason over), brought in
+        -- from the shared-brain work. Persisted as a whole-graph snapshot
+        -- (atomically replaced) so the populated graph survives an app restart
+        -- instead of resetting to empty. `node_json` holds the full serde CodeNode
+        -- (forward-compatible via #[serde(default)]). Context Store + Task Graph
+        -- persistence is owned by P1 above (context_decisions / tasks), so the
+        -- shared-brain duplicates of those tables are intentionally not created.
+        CREATE TABLE IF NOT EXISTS code_graph_nodes (
+            id         TEXT PRIMARY KEY,
+            sort_order INTEGER NOT NULL,
+            kind       TEXT NOT NULL,
+            node_json  TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_code_graph_nodes_order
+            ON code_graph_nodes(sort_order);
+        CREATE TABLE IF NOT EXISTS code_graph_edges (
+            dependent  TEXT NOT NULL,
+            dependency TEXT NOT NULL,
+            sort_order INTEGER NOT NULL,
+            PRIMARY KEY (dependent, dependency)
+        );
+        CREATE INDEX IF NOT EXISTS idx_code_graph_edges_order
+            ON code_graph_edges(sort_order);
         ",
     )?;
 
