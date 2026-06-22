@@ -104,9 +104,27 @@ fn resolved_imports(lang: Lang, importer: &str, text: &str, known: &HashSet<&str
 
 // ---- Rust import extraction ----
 
+/// Strip a leading visibility modifier (`pub`, `pub(crate)`, `pub(super)`,
+/// `pub(in path)`) so `pub(crate) mod x;` / `pub(crate) use crate::y` parse like
+/// their bare forms. `pub` must be a whole token (followed by space or `(`), so an
+/// identifier like `public_fn` is left untouched.
+fn strip_vis(line: &str) -> &str {
+    let Some(rest) = line.strip_prefix("pub") else {
+        return line;
+    };
+    match rest.chars().next() {
+        Some(' ') => rest.trim_start(),
+        Some('(') => match rest.find(')') {
+            Some(i) => rest[i + 1..].trim_start(),
+            None => line,
+        },
+        _ => line,
+    }
+}
+
 /// `mod foo;` / `pub mod foo;` — a module DECLARATION (not an inline `mod foo {`).
 fn rust_mod(line: &str) -> Option<&str> {
-    let rest = line.strip_prefix("pub ").unwrap_or(line);
+    let rest = strip_vis(line);
     let name = rest.strip_prefix("mod ")?.strip_suffix(';')?.trim();
     if !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
         Some(name)
@@ -118,8 +136,9 @@ fn rust_mod(line: &str) -> Option<&str> {
 /// `use crate::a::b::C;` -> the path segments after `crate::`, stopping at the
 /// first `;`, `{`, whitespace (an `as`/comment), or `*`.
 fn rust_use_crate(line: &str) -> Option<Vec<String>> {
-    let rest = line.strip_prefix("pub ").unwrap_or(line);
-    let rest = rest.strip_prefix("use ")?.strip_prefix("crate::")?;
+    let rest = strip_vis(line)
+        .strip_prefix("use ")?
+        .strip_prefix("crate::")?;
     let end = rest.find([';', '{', ' ', '*']).unwrap_or(rest.len());
     let segs: Vec<String> = rest[..end]
         .split("::")
@@ -176,13 +195,35 @@ fn resolve_rust_crate(importer: &str, segs: &[String], known: &HashSet<&str>) ->
 
 // ---- Web (TS/JS) import extraction ----
 
+/// True if `line` begins with `kw` as a whole token — the next char (if any) is
+/// not an identifier char. `import`/`export` then match the keyword but reject an
+/// identifier that merely *starts with* those letters (`imported`, `exporter`).
+fn starts_with_kw(line: &str, kw: &str) -> bool {
+    line.strip_prefix(kw).is_some_and(|rest| {
+        !rest
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
+    })
+}
+
 /// Relative import specs in one line: `... from '<x>'`, `require('<x>')`,
 /// `import('<x>')`. Only specs starting with `.` (relative) are returned.
 fn web_specs(line: &str) -> Vec<String> {
+    let line = line.trim();
     let mut specs = Vec::new();
-    if let Some(i) = line.find(" from ") {
-        if let Some(s) = quoted_after(&line[i + " from ".len()..]) {
-            specs.push(s);
+    // A static `from` import clause lives only at statement scope: a line whose
+    // leading TOKEN is `import`/`export`, or the closing line of a multi-line named
+    // import (`} from '...'`). `starts_with_kw` is a whole-token test (the line is
+    // trimmed), so a `" from "` hiding inside a string/comment is rejected and an
+    // identifier such as `imported`/`exporter` does NOT pass. Best-effort: a line
+    // that genuinely begins with the `import`/`export` keyword yet carries a string
+    // `from '...'` is an accepted rare false positive (this is not a JS parser).
+    if starts_with_kw(line, "import") || starts_with_kw(line, "export") || line.starts_with('}') {
+        if let Some(i) = line.find(" from ") {
+            if let Some(s) = quoted_after(&line[i + " from ".len()..]) {
+                specs.push(s);
+            }
         }
     }
     for marker in ["require(", "import("] {
@@ -325,5 +366,102 @@ mod tests {
         assert_eq!(normalize("web/./y"), "web/y");
         assert_eq!(normalize("web/sub/../y"), "web/y");
         assert_eq!(normalize("a/b/../../c"), "c");
+    }
+
+    #[test]
+    fn web_specs_sees_multiline_import_close_line() {
+        // The `from` clause of a multi-line named import lands on a line that
+        // starts with `}` and carries neither `import` nor `export`. It must still
+        // be recognized — this is the common Prettier-formatted import shape.
+        assert_eq!(web_specs("} from './y';"), vec!["./y".to_string()]);
+    }
+
+    #[test]
+    fn web_specs_ignores_from_inside_a_string_or_comment() {
+        // A ` from '<relative>'` substring inside a string literal or comment is NOT
+        // an import. Each assertion below pins a DIFFERENT gate weakness so the test
+        // actually binds the fix rather than passing vacuously:
+        //   - no-gate scanner would leak all four;
+        //   - a `contains("import")` gate additionally leaks #1 and #2;
+        //   - a `starts_with("import")` prefix gate additionally leaks #3 and #4.
+        // Only a whole-token gate rejects every one.
+        assert!(
+            web_specs(r#"const doc = "imported from './secret'";"#).is_empty(),
+            "#1 string-literal `from` on a non-import line"
+        );
+        assert!(
+            web_specs("// reimport helpers from './legacy'").is_empty(),
+            "#2 comment whose word contains \"import\""
+        );
+        assert!(
+            web_specs("imported from './secret' = parseHeader(line);").is_empty(),
+            "#3 identifier that merely starts with `import` must not pass the gate"
+        );
+        assert!(
+            web_specs(r#"exporter.note = " from './b'";"#).is_empty(),
+            "#4 identifier that merely starts with `export` must not pass the gate"
+        );
+    }
+
+    #[test]
+    fn web_specs_reads_every_relative_import_form() {
+        assert_eq!(
+            web_specs("import { y } from './y';"),
+            vec!["./y".to_string()]
+        );
+        assert_eq!(
+            web_specs("export * from './re-export';"),
+            vec!["./re-export".to_string()]
+        );
+        assert_eq!(web_specs("import D from './d';"), vec!["./d".to_string()]);
+        assert_eq!(
+            web_specs("const x = require('./mod');"),
+            vec!["./mod".to_string()]
+        );
+        assert_eq!(
+            web_specs("await import('./lazy');"),
+            vec!["./lazy".to_string()]
+        );
+        // External (non-relative) specs are dropped — genuinely out of graph.
+        assert!(web_specs("import React from 'react';").is_empty());
+    }
+
+    #[test]
+    fn strip_vis_removes_only_a_leading_visibility_modifier() {
+        assert_eq!(strip_vis("pub mod x;"), "mod x;");
+        assert_eq!(strip_vis("pub(crate) mod x;"), "mod x;");
+        assert_eq!(strip_vis("pub(super) use crate::y;"), "use crate::y;");
+        assert_eq!(strip_vis("pub(in crate::a) mod z;"), "mod z;");
+        // `pub` as part of a larger identifier is left untouched.
+        assert_eq!(strip_vis("public_fn();"), "public_fn();");
+        // No leading `pub` at all — returned verbatim.
+        assert_eq!(strip_vis("use crate::y;"), "use crate::y;");
+        // A bare `pub` token (nothing follows) is left as-is; it matches no decl.
+        assert_eq!(strip_vis("pub"), "pub");
+    }
+
+    #[test]
+    fn index_project_handles_restricted_visibility_rust_imports() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write(
+            root,
+            "src/a.rs",
+            "pub(crate) mod b;\npub(super) use crate::c::Thing;\n",
+        );
+        write(root, "src/b.rs", "pub struct B;\n");
+        write(root, "src/c.rs", "pub struct Thing;\n");
+        let root_str = root.to_string_lossy().replace('\\', "/");
+
+        let edgeset: HashSet<(String, String)> = index_project(&root_str).1.into_iter().collect();
+
+        assert!(
+            edgeset.contains(&("src/a.rs".into(), "src/b.rs".into())),
+            "pub(crate) mod edge missing: {edgeset:?}"
+        );
+        assert!(
+            edgeset.contains(&("src/a.rs".into(), "src/c.rs".into())),
+            "pub(super) use-crate edge missing: {edgeset:?}"
+        );
     }
 }
