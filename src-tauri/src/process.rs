@@ -69,7 +69,14 @@ mod job {
     /// exactly the trigger that kills the members. Raw `HANDLE` is not `Send`/
     /// `Sync`, but a job handle is a process-wide kernel object we only ever read.
     struct Job(HANDLE);
+    // SAFETY: a job `HANDLE` is a process-wide kernel object. We store it once in a
+    // `OnceLock` (initialization is serialized) and only ever pass it by value to
+    // `AssignProcessToJobObject` / `IsProcessInJob`, which are thread-safe by Windows
+    // design. We never mutate through it and never close it, so sharing it across
+    // threads cannot create a data race or a use-after-close.
     unsafe impl Send for Job {}
+    // SAFETY: see the `Send` impl above — the handle is read-only and the Win32 calls
+    // that consume it are internally synchronized by the kernel.
     unsafe impl Sync for Job {}
 
     static JOB: OnceLock<Option<Job>> = OnceLock::new();
@@ -79,6 +86,10 @@ mod job {
     }
 
     fn create() -> Option<Job> {
+        // SAFETY: `CreateJobObjectW`/`SetInformationJobObject` are FFI calls. The
+        // `JOBOBJECT_EXTENDED_LIMIT_INFORMATION` is fully initialized and outlives the
+        // call; its size is passed exactly. On any error we close the handle we own
+        // (`CloseHandle(job)`) before returning, so no handle is leaked.
         unsafe {
             let job = match CreateJobObjectW(None, PCWSTR::null()) {
                 Ok(handle) => handle,
@@ -114,6 +125,13 @@ mod job {
         let Some(job) = handle() else {
             return;
         };
+        // SAFETY: `OpenProcess` returns an owned handle on `Ok`, which we pass to
+        // `AssignProcessToJobObject` and then close exactly once with `CloseHandle`
+        // on every path. `job` is the process-global handle that lives for the whole
+        // process, so it is valid for the duration of the assign. The assign happens
+        // AFTER `CreateProcessW`, so a host crash in that (small) window can leave the
+        // child unguarded — see the spawn-site note; the ConPTY path cannot eliminate
+        // this window without vendoring portable-pty.
         unsafe {
             match OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, false, pid) {
                 Ok(process) => {
@@ -122,14 +140,16 @@ mod job {
                         // normally assign fine — verified by the membership test
                         // pty::manager::tests::conpty_child_is_assigned_to_the_
                         // kill_on_close_job. A genuine failure (a truly non-nestable
-                        // job) just falls back to the graceful kill paths — not a
-                        // leak source by itself.
-                        log::debug!("no-orphan job: assign pid={pid} failed: {err}");
+                        // job, e.g. an enterprise GPO-imposed outer job) falls back to
+                        // the graceful kill paths — not a leak source by itself, but
+                        // it silently weakens the crash backstop, so warn (not debug)
+                        // so an operator can see the degraded state.
+                        log::warn!("no-orphan job: assign pid={pid} failed: {err}");
                     }
                     let _ = CloseHandle(process);
                 }
                 Err(err) => {
-                    log::debug!("no-orphan job: OpenProcess pid={pid} failed: {err}");
+                    log::warn!("no-orphan job: OpenProcess pid={pid} failed: {err}");
                 }
             }
         }
@@ -152,6 +172,9 @@ mod job {
         use windows::Win32::System::JobObjects::IsProcessInJob;
         use windows::Win32::System::Threading::PROCESS_QUERY_INFORMATION;
         let job = handle()?;
+        // SAFETY: `OpenProcess` yields an owned handle on `Ok` which we close exactly
+        // once with `CloseHandle` after the query. `result` is a stack `BOOL` written
+        // by `IsProcessInJob`; `job` is the long-lived process-global handle. Test-only.
         unsafe {
             let process = OpenProcess(PROCESS_QUERY_INFORMATION, false, pid).ok()?;
             let mut result = BOOL(0);

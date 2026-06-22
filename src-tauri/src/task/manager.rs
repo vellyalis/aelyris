@@ -59,7 +59,27 @@ impl TaskManager {
     /// memory. Called once at startup after the database is opened. Returns the
     /// number of restored tasks.
     pub fn attach_db(&self, db: Arc<ManagedDb>) -> Result<usize, String> {
-        let restored = db.with(TaskRepo::load_graph)?;
+        let loaded = db.with(TaskRepo::load_graph)?;
+        // Collapse the volatile in-flight states (Running/Review) before the graph
+        // goes live: at crash the worker for such a task is gone (headless agents
+        // exited; visible-pane PTYs died with the app), so leaving it Running/Review
+        // would stall the loop forever on a completion event that never fires. Without
+        // this the restore is a verbatim reload and an interrupted build never resumes.
+        // `tasks_for_restore` drops them to Pending (preserving topology and the retry
+        // budgets, so a poison task can't reset and loop), then `recompute_ready`
+        // re-derives readiness from the actual dep states — a dependent is only
+        // re-readied once its deps are Done, never dispatched out of order. `load_graph`
+        // already proved every dependency exists (its own `add` would have errored
+        // otherwise), so rebuilding in the same order re-adds cleanly.
+        let collapsed =
+            crate::task::tasks_for_restore(loaded.list().into_iter().cloned().collect());
+        let mut restored = TaskGraph::new();
+        for task in collapsed {
+            restored
+                .add(task)
+                .map_err(|e| format!("Rebuild task graph after restore collapse: {e}"))?;
+        }
+        restored.recompute_ready();
         let len = restored.len();
         *self.lock() = restored;
         *self
@@ -368,7 +388,13 @@ mod tests {
         // A brand-new manager attached to the SAME db restores the live graph.
         let second = TaskManager::new();
         assert_eq!(second.attach_db(db).unwrap(), 2);
-        assert_eq!(second.get("dep").unwrap().status, TaskStatus::Running);
+        // `dep` was Running at "crash"; restore collapses the volatile in-flight
+        // state to Pending, then recompute_ready re-derives it to Ready (dep has no
+        // unfinished dependencies) so the loop re-dispatches it (its worker is gone).
+        // The exact persisted status is still round-tripped by TaskRepo::load_graph —
+        // the collapse + re-gate is applied at the manager's attach_db restore
+        // boundary, not in the repo. Topology (child's dependency on dep) is preserved.
+        assert_eq!(second.get("dep").unwrap().status, TaskStatus::Ready);
         assert_eq!(
             second.get("child").unwrap().dependencies,
             vec!["dep".to_string()]
@@ -395,9 +421,44 @@ mod tests {
         let second = TaskManager::new();
         second.attach_db(db).unwrap();
         let t = second.get("t").unwrap();
-        assert_eq!(t.status, TaskStatus::Running);
+        // Restore collapses the volatile Running state to Pending and recompute_ready
+        // re-readies it (no deps -> deps vacuously all-Done -> Ready), but the retry
+        // budgets MUST survive verbatim — otherwise a poison task that already burned
+        // its crash/timeout budget would reset and loop forever.
+        assert_eq!(t.status, TaskStatus::Ready);
         assert_eq!(t.crash_attempts, 2);
         assert_eq!(t.timeout_attempts, 1);
         assert_eq!(t.rework_attempts, 0);
+    }
+
+    #[test]
+    fn restore_regates_a_dependent_and_never_dispatches_it_before_its_dependency() {
+        // Defense-in-depth for the dependency gate across restart. We persist an
+        // (artificially) inconsistent crashed state — A Running AND B Running where B
+        // depends on A — which the live gate never produces (B couldn't have started
+        // until A was Done). Restore must NOT trust the persisted in-flight status: it
+        // collapses both to Pending then recompute_ready re-derives readiness, so the
+        // dependent B stays gated (NOT Ready) while only the root A is re-dispatchable.
+        // Were the collapse straight to Ready, B would be dispatched out of order
+        // against an unfinished dependency.
+        let db = mem_db();
+        {
+            let mut g = TaskGraph::new();
+            let mut a = Task::new("a", "A");
+            a.status = TaskStatus::Running;
+            g.add(a).unwrap();
+            let mut b = Task::new("b", "B").with_dependencies(["a".to_string()]);
+            b.status = TaskStatus::Running;
+            g.add(b).unwrap();
+            db.with(|d| TaskRepo::save_graph(d, &g)).unwrap();
+        }
+
+        let mgr = TaskManager::new();
+        assert_eq!(mgr.attach_db(db).unwrap(), 2);
+        // Root A (no deps) is re-readied for dispatch.
+        assert_eq!(mgr.get("a").unwrap().status, TaskStatus::Ready);
+        // Dependent B is re-gated to Pending — its dep A is not Done, so it must NOT
+        // be Ready (the loop would otherwise run it ahead of A).
+        assert_eq!(mgr.get("b").unwrap().status, TaskStatus::Pending);
     }
 }

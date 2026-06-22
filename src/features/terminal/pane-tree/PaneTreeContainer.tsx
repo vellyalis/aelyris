@@ -564,6 +564,16 @@ export function PaneTreeContainer({
   // dispatch rounds (memory/DOM/render-cost leak) — the oldest is closed when the
   // cap is exceeded. `everMountedAgentsRef` still bars re-mounting a closed agent.
   const doneAgentOrderRef = useRef<string[]>([]);
+  // Agent-pane exit listeners are registered ONCE per agent and never re-registered
+  // (already-mounted agents are skipped on later dispatch rounds). `close` is
+  // `useCallback([tree])`, so a listener that captured an early `close` would compute
+  // `shouldClosePty` from a STALE `tree` snapshot when it later evicts a done pane —
+  // leaking that pane's `terminalIds` entry. Route eviction through a ref kept at the
+  // latest `close` so the listener always sees the live tree.
+  const closeRef = useRef(close);
+  useEffect(() => {
+    closeRef.current = close;
+  }, [close]);
   const firstLiveTerminalId = useMemo(() => {
     for (const paneId of collectLeafIds(tree)) {
       const terminalId = terminalIds.get(paneId);
@@ -1033,7 +1043,7 @@ export function PaneTreeContainer({
               next.delete(evict);
               return next;
             });
-            close(evict, { closeBackend: false });
+            closeRef.current(evict, { closeBackend: false });
           }
         })
           .then((unlisten) => {
@@ -1045,7 +1055,10 @@ export function PaneTreeContainer({
       }
     }
     if (mountedAny) rebalance("tiled");
-  }, [spawnAgentPaneRequest, activePaneId, tree, splitWithExistingTerminal, rebalance, close, shell, cwd]);
+    // `close` is intentionally not a dep: the exit listener reaches it via `closeRef`
+    // (kept current by its own effect), so this effect need not re-run when `close`
+    // changes identity — re-running would only risk re-mounting churn.
+  }, [spawnAgentPaneRequest, activePaneId, tree, splitWithExistingTerminal, rebalance, shell, cwd]);
 
   // Detach agent-pane exit listeners on unmount.
   useEffect(() => {
