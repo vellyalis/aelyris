@@ -38,6 +38,73 @@ pub fn task_create(
     Ok(changed)
 }
 
+/// Run a one-shot `claude -p` decomposition and return its stdout. Blocking — a
+/// subprocess call, so callers must keep it off the async runtime.
+fn claude_decompose(prompt: &str, model: &str) -> Result<String, String> {
+    let program = crate::agent::interactive::platform_cli_program("claude");
+    let out = crate::process::hidden_command(&program)
+        .arg("-p")
+        .arg(prompt)
+        .arg("--model")
+        .arg(model)
+        .output()
+        .map_err(|e| format!("failed to spawn claude: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "claude exited {}: {}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).to_string())
+}
+
+/// AUTONOMOUS PLANNING entry point: decompose a one-line `goal` into a build
+/// plan with the planner LLM, then submit it atomically. The LLM self-corrects
+/// against the validator (invalid plans are re-prompted with their errors) and,
+/// if it still can't produce a valid plan, this fails loudly — there is no
+/// hand-canned fallback. On success the task graph is populated + broadcast and a
+/// `TaskCreated` event is published per task; the autonomy loop can then run it.
+#[tauri::command]
+pub async fn plan_build(
+    app: AppHandle,
+    manager: State<'_, Arc<TaskManager>>,
+    bus: State<'_, Arc<EventBus>>,
+    goal: String,
+    context: Option<String>,
+    model: Option<String>,
+) -> Result<Vec<String>, String> {
+    let ctx = context.unwrap_or_default();
+    let mdl = model.unwrap_or_else(|| "sonnet".to_string());
+    // The decomposition is a blocking subprocess + validation loop; run it off
+    // the async runtime.
+    let ordered = tauri::async_runtime::spawn_blocking(move || {
+        crate::task::decompose_to_plan(&goal, &ctx, |prompt| claude_decompose(prompt, &mdl), 3)
+    })
+    .await
+    .map_err(|e| format!("planner task join error: {e}"))??;
+
+    let created: Vec<(String, String)> = ordered
+        .iter()
+        .map(|t| (t.id.clone(), t.title.clone()))
+        .collect();
+    let changed = manager
+        .submit_plan(ordered)
+        .map_err(|errs| errs.join("; "))?;
+    emit_task_graph(&app, &manager);
+    for (id, title) in created {
+        publish_and_emit(
+            &app,
+            &bus,
+            AgentEvent::new(
+                AgentEventKind::TaskCreated,
+                json!({ "id": id, "title": title }),
+            ),
+        );
+    }
+    Ok(changed)
+}
+
 /// Submit a whole LLM-authored build plan ATOMICALLY: it is validated (acyclic
 /// DAG, declared lanes/owner/branches, parallel tasks own DISJOINT lanes) and
 /// either added in full or rejected in full — the graph is never left partial.

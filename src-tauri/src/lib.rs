@@ -691,6 +691,7 @@ pub fn run() {
             ipc::performance_observatory_metrics,
             ipc::task_create,
             ipc::task_submit_plan,
+            ipc::plan_build,
             ipc::task_transition,
             ipc::task_list,
             ipc::task_recompute_ready,
