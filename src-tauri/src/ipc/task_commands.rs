@@ -38,27 +38,6 @@ pub fn task_create(
     Ok(changed)
 }
 
-/// Run a one-shot `claude -p` decomposition and return its stdout. Blocking — a
-/// subprocess call, so callers must keep it off the async runtime.
-fn claude_decompose(prompt: &str, model: &str) -> Result<String, String> {
-    let program = crate::agent::interactive::platform_cli_program("claude");
-    let out = crate::process::hidden_command(&program)
-        .arg("-p")
-        .arg(prompt)
-        .arg("--model")
-        .arg(model)
-        .output()
-        .map_err(|e| format!("failed to spawn claude: {e}"))?;
-    if !out.status.success() {
-        return Err(format!(
-            "claude exited {}: {}",
-            out.status,
-            String::from_utf8_lossy(&out.stderr).trim()
-        ));
-    }
-    Ok(String::from_utf8_lossy(&out.stdout).to_string())
-}
-
 /// AUTONOMOUS PLANNING entry point: decompose a one-line `goal` into a build
 /// plan with the planner LLM, then submit it atomically. The LLM self-corrects
 /// against the validator (invalid plans are re-prompted with their errors) and,
@@ -79,7 +58,12 @@ pub async fn plan_build(
     // The decomposition is a blocking subprocess + validation loop; run it off
     // the async runtime.
     let ordered = tauri::async_runtime::spawn_blocking(move || {
-        crate::task::decompose_to_plan(&goal, &ctx, |prompt| claude_decompose(prompt, &mdl), 3)
+        crate::task::decompose_to_plan(
+            &goal,
+            &ctx,
+            |prompt| crate::agent::claude_oneshot(prompt, &mdl),
+            3,
+        )
     })
     .await
     .map_err(|e| format!("planner task join error: {e}"))??;

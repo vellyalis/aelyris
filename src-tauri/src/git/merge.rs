@@ -206,6 +206,69 @@ pub fn perform_merge(
     })
 }
 
+/// Unified diff of what `branch` introduces relative to `base`: the three-dot
+/// diff `merge-base(base, branch)..branch`, rendered as patch text for the
+/// semantic reviewer. The patch body is a HARD-capped at `max_bytes` — lines are
+/// added whole and a line that would exceed the cap is dropped (a marker is then
+/// appended), so the body never exceeds `max_bytes` (the appended marker aside) and
+/// a large branch can't blow the LLM's context. When the branches share no merge
+/// base, falls back to diffing against `base`'s tip.
+pub fn diff_three_dot(
+    repo_path: &str,
+    base: &str,
+    branch: &str,
+    max_bytes: usize,
+) -> Result<String, String> {
+    validate_branch_name(base)?;
+    validate_branch_name(branch)?;
+
+    let repo = git2::Repository::open(repo_path).map_err(|err| format!("open repo: {err}"))?;
+    let base_oid = resolve_branchish(&repo, base)?;
+    let branch_oid = resolve_branchish(&repo, branch)?;
+    // Diff against the common ancestor (three-dot) so only the branch's own work
+    // shows, not commits the target gained meanwhile.
+    let from_oid = repo.merge_base(base_oid, branch_oid).unwrap_or(base_oid);
+
+    let from_tree = repo
+        .find_commit(from_oid)
+        .and_then(|c| c.tree())
+        .map_err(|err| format!("base tree: {err}"))?;
+    let branch_tree = repo
+        .find_commit(branch_oid)
+        .and_then(|c| c.tree())
+        .map_err(|err| format!("branch tree: {err}"))?;
+
+    let mut opts = git2::DiffOptions::new();
+    opts.context_lines(3);
+    let diff = repo
+        .diff_tree_to_tree(Some(&from_tree), Some(&branch_tree), Some(&mut opts))
+        .map_err(|err| format!("diff: {err}"))?;
+
+    let mut buf = String::new();
+    let mut truncated = false;
+    diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
+        let origin = line.origin();
+        let prefix_len = usize::from(matches!(origin, '+' | '-' | ' '));
+        let content = String::from_utf8_lossy(line.content());
+        // Hard cap: only add the line if the whole line fits, so `buf` never
+        // exceeds `max_bytes`; the first line that would overflow stops the patch.
+        if buf.len() + prefix_len + content.len() <= max_bytes {
+            if prefix_len == 1 {
+                buf.push(origin);
+            }
+            buf.push_str(&content);
+        } else {
+            truncated = true;
+        }
+        true
+    })
+    .map_err(|err| format!("render diff: {err}"))?;
+    if truncated {
+        buf.push_str("\n…(diff truncated for review)\n");
+    }
+    Ok(buf)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -314,6 +377,55 @@ mod tests {
         );
         // The merge brought feature's file into the checked-out main worktree.
         assert!(repo.workdir().unwrap().join("b.txt").exists());
+    }
+
+    #[test]
+    fn diff_three_dot_shows_only_the_branchs_own_work() {
+        let (_dir, repo) = init_repo();
+        let a = commit(&repo, &[("a.txt", "A")], "A", &[]);
+        repo.branch("feature", &repo.find_commit(a).unwrap(), false)
+            .unwrap();
+        // Target moves on independently after the fork...
+        commit(&repo, &[("main_only.txt", "M")], "main work", &[a]);
+        // ...and the feature branch adds its own file.
+        checkout_branch(&repo, "feature");
+        commit(&repo, &[("feature.txt", "hello from worker")], "feat", &[a]);
+
+        let diff = diff_three_dot(&path_of(&repo), "main", "feature", 10_000).unwrap();
+        // Three-dot: the branch's added file shows, the target-only file does not.
+        assert!(diff.contains("feature.txt"), "{diff}");
+        assert!(diff.contains("+hello from worker"), "{diff}");
+        assert!(
+            !diff.contains("main_only.txt"),
+            "three-dot hides target work: {diff}"
+        );
+    }
+
+    #[test]
+    fn diff_three_dot_truncates_and_validates_branch_names() {
+        let (_dir, repo) = init_repo();
+        let a = commit(&repo, &[("a.txt", "A")], "A", &[]);
+        repo.branch("feature", &repo.find_commit(a).unwrap(), false)
+            .unwrap();
+        checkout_branch(&repo, "feature");
+        // Many lines so the cap genuinely SKIPS later lines once the body is full.
+        let big = "a line of demo text\n".repeat(500);
+        commit(&repo, &[("big.txt", big.as_str())], "big", &[a]);
+        let diff = diff_three_dot(&path_of(&repo), "main", "feature", 200).unwrap();
+        assert!(
+            diff.contains("(diff truncated for review)"),
+            "capped output: {diff}"
+        );
+        // Hard cap: the patch body (before the truncation marker) never exceeds max_bytes.
+        let body = diff.split("\n…(diff truncated").next().unwrap();
+        assert!(
+            body.len() <= 200,
+            "body hard-capped at max_bytes, got {}",
+            body.len()
+        );
+
+        // A traversal-style branch name is rejected before opening anything.
+        assert!(diff_three_dot(".", "../evil", "feature", 100).is_err());
     }
 
     #[test]

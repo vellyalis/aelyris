@@ -5,7 +5,7 @@
 // merges their work to main. Proves: human -> conductor -> Agent Runtime -> AI fleet.
 // Prereq: pnpm tauri:dev (CDP 9222), claude on PATH + authenticated.
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "@playwright/test";
@@ -18,16 +18,24 @@ const repo = mkdtempSync(join(tmpdir(), "aether-build-"));
 git(repo, "init", "-b", "main");
 git(repo, "config", "user.email", "conductor@aether.test");
 git(repo, "config", "user.name", "Conductor");
-writeFileSync(join(repo, "README.md"), "# demo project\n");
+// A tiny Rust crate so the REAL reviewer's gates (cargo test/clippy/check) can
+// actually run and pass — a markdown file has no quality gate to prove, and the
+// reviewer never assumes-green for an ungated change.
+writeFileSync(join(repo, "Cargo.toml"),
+  '[package]\nname = "greeting-demo"\nversion = "0.1.0"\nedition = "2021"\n');
+mkdirSync(join(repo, "src"), { recursive: true });
+writeFileSync(join(repo, "src", "lib.rs"), "//! greeting demo crate\n");
 git(repo, "add", ".");
-git(repo, "commit", "-m", "init");
+git(repo, "commit", "-m", "init crate");
 
-// The conductor's decomposition of "build a tiny greeting project".
+// The conductor's decomposition: each worker adds a passing, clippy-clean
+// integration test under tests/ (disjoint file lanes) that `cargo test` compiles
+// and runs in the worktree — real evidence for the reviewer to gate on.
 const TASKS = [
-  { id: "task-greeting", owner: "worker-a", branch: "feat/greeting", file: "GREETING.md",
-    title: "Create a file named GREETING.md containing a single friendly one-line greeting. Only create that file." },
-  { id: "task-farewell", owner: "worker-b", branch: "feat/farewell", file: "FAREWELL.md",
-    title: "Create a file named FAREWELL.md containing a single one-line farewell. Only create that file." },
+  { id: "task-greeting", owner: "worker-a", branch: "feat/greeting", file: "tests/greeting.rs",
+    title: "Create a Rust integration test at tests/greeting.rs. Add a helper `fn greet() -> String` that returns a friendly one-line greeting containing the word \"friend\", and a #[test] function that calls it and asserts the result contains \"friend\". Build the string at runtime via the helper — do NOT call is_empty() on a string literal (clippy rejects that under -D warnings). It must compile, pass `cargo test`, and be clippy-clean. Only create that file." },
+  { id: "task-farewell", owner: "worker-b", branch: "feat/farewell", file: "tests/farewell.rs",
+    title: "Create a Rust integration test at tests/farewell.rs. Add a helper `fn farewell() -> String` that returns a one-line farewell containing the word \"bye\", and a #[test] function that calls it and asserts the result contains \"bye\". Build the string at runtime via the helper — do NOT call is_empty() on a string literal (clippy rejects that under -D warnings). It must compile, pass `cargo test`, and be clippy-clean. Only create that file." },
 ];
 
 const browser = await chromium.connectOverCDP(CDP);
@@ -37,8 +45,8 @@ try {
   const inv = (n, a) => page.evaluate(([nn, aa]) => window.__TAURI_INTERNALS__.invoke(nn, aa), [n, a]);
 
   console.log("CONDUCTOR: shared decisions (ADR) ->");
-  await inv("context_set", { key: "language", value: "markdown" });
-  await inv("context_set", { key: "style", value: "concise and friendly" });
+  await inv("context_set", { key: "language", value: "rust" });
+  await inv("context_set", { key: "style", value: "concise and tested" });
 
   console.log("CONDUCTOR: create worktrees + decompose into tasks ->");
   const wt = {};
@@ -79,10 +87,24 @@ try {
     catch (e) { console.log("  commit skip", t.id, String(e).slice(0, 80)); }
   }
 
-  console.log("CONDUCTOR: review (all-green) + Reviewer merges to main ->");
-  const green = { tests_pass: true, lint_pass: true, types_pass: true, design_consistent: true, context_aligned: true };
+  // REAL review: per branch, run the project's cargo gates in its worktree AND
+  // ask the LLM to judge the diff against the shared decisions + task. The gates
+  // it returns (not a hand-canned "green") are what the loop merges on. Run once
+  // — the verdict for a committed branch is deterministic.
+  console.log("CONDUCTOR: REAL review (cargo gates + LLM judge per branch) ->");
+  const gates = {};
+  for (const t of TASKS.filter(fileReady)) {
+    const rv = await inv("review_branch", {
+      repoPath: repo, sourceBranch: t.branch, targetBranch: "main",
+      taskTitle: t.title, reviewerId: "reviewer", implementerId: t.owner, model: "sonnet",
+    });
+    gates[t.id] = rv.gates;
+    console.log(`  review ${t.id}: ${rv.verdict.verdict} (mergeOk=${rv.mergeOk})`,
+      rv.reasons.length ? JSON.stringify(rv.reasons) : "");
+  }
+
+  console.log("CONDUCTOR: Reviewer merges every branch the real review cleared ->");
   for (let i = 0; i < 8; i++) {
-    const gates = Object.fromEntries(TASKS.filter(fileReady).map((t) => [t.id, green]));
     rep = await step(gates);
     console.log(`  step ${i}: merged=${JSON.stringify(rep.merged)} rejected=${JSON.stringify(rep.rejected)} state=${rep.state} tasks=${JSON.stringify(await statuses())}`);
     if (rep.state === "complete") break;

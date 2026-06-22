@@ -123,6 +123,32 @@ pub fn run_deterministic_gates(
     gates
 }
 
+/// Real command executor for [`run_deterministic_gates`]: spawns `program` with
+/// `args` in `cwd` (hidden window), captures combined stdout+stderr, and reports
+/// success from the exit status. A spawn failure is a FAILED run (`success:
+/// false`) with the OS error as output — an un-runnable gate is never green. This
+/// is the production adapter the unit tests substitute with a stub closure.
+pub fn spawn_run(cwd: &Path, program: &str, args: &[String]) -> CommandRun {
+    match crate::process::hidden_command(program)
+        .args(args)
+        .current_dir(cwd)
+        .output()
+    {
+        Ok(out) => {
+            let mut output = String::from_utf8_lossy(&out.stdout).into_owned();
+            output.push_str(&String::from_utf8_lossy(&out.stderr));
+            CommandRun {
+                success: out.status.success(),
+                output,
+            }
+        }
+        Err(e) => CommandRun {
+            success: false,
+            output: format!("failed to run `{program}`: {e}"),
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -202,5 +228,32 @@ mod tests {
         assert!(!g.tests_pass, "one of the test commands failed");
         assert!(g.lint_pass && g.types_pass);
         assert_eq!(g.failures[0].0, "tests");
+    }
+
+    /// Behavioral proof of the production executor: a real exit-0 command is a
+    /// successful run, a real non-zero exit is a failed run, and a missing
+    /// program is a failed run (never a panic). The aggregation logic above is
+    /// tested with stubs; this pins the adapter the stubs stand in for so a
+    /// broken spawn (e.g. success hard-coded) would fail a cargo test.
+    #[cfg(windows)]
+    #[test]
+    fn spawn_run_maps_real_exit_codes_and_spawn_failure() {
+        let zero = spawn_run(
+            Path::new("."),
+            "cmd",
+            &["/c".into(), "exit".into(), "0".into()],
+        );
+        assert!(zero.success, "exit 0 -> success");
+
+        let one = spawn_run(
+            Path::new("."),
+            "cmd",
+            &["/c".into(), "exit".into(), "1".into()],
+        );
+        assert!(!one.success, "exit 1 -> failure");
+
+        let missing = spawn_run(Path::new("."), "definitely-not-a-real-program-xyz", &[]);
+        assert!(!missing.success, "an un-runnable gate is never green");
+        assert!(missing.output.contains("failed to run"));
     }
 }

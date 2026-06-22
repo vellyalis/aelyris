@@ -7,9 +7,15 @@
 //! deterministic decision; the actual git merge is the runtime controller's
 //! job, so the policy stays unit-testable with 100% confidence.
 
+pub mod branch;
 pub mod gates;
+pub mod judge;
 
-pub use gates::{run_deterministic_gates, CommandRun, DeterministicGates, GateCommand, GateKind};
+pub use branch::{detect_gate_commands, review_branch, BranchReview, ReviewInputs};
+pub use gates::{
+    run_deterministic_gates, spawn_run, CommandRun, DeterministicGates, GateCommand, GateKind,
+};
+pub use judge::{judge_semantics, SemanticVerdict};
 
 use serde::{Deserialize, Serialize};
 

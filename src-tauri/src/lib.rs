@@ -697,6 +697,7 @@ pub fn run() {
             ipc::task_recompute_ready,
             ipc::orchestrator_plan,
             ipc::orchestrator_step,
+            ipc::review_branch,
             ipc::context_set,
             ipc::context_get,
             ipc::context_all,
