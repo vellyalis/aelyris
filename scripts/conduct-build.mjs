@@ -5,9 +5,9 @@
 // merges their work to main. Proves: human -> conductor -> Agent Runtime -> AI fleet.
 // Prereq: pnpm tauri:dev (CDP 9222), claude on PATH + authenticated.
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname, basename } from "node:path";
 import { chromium } from "@playwright/test";
 
 const CDP = "http://127.0.0.1:9222";
@@ -18,16 +18,24 @@ const repo = mkdtempSync(join(tmpdir(), "aether-build-"));
 git(repo, "init", "-b", "main");
 git(repo, "config", "user.email", "conductor@aether.test");
 git(repo, "config", "user.name", "Conductor");
-writeFileSync(join(repo, "README.md"), "# demo project\n");
+// A tiny Rust crate so the REAL reviewer's gates (cargo test/clippy/check) can
+// actually run and pass — a markdown file has no quality gate to prove, and the
+// reviewer never assumes-green for an ungated change.
+writeFileSync(join(repo, "Cargo.toml"),
+  '[package]\nname = "greeting-demo"\nversion = "0.1.0"\nedition = "2021"\n');
+mkdirSync(join(repo, "src"), { recursive: true });
+writeFileSync(join(repo, "src", "lib.rs"), "//! greeting demo crate\n");
 git(repo, "add", ".");
-git(repo, "commit", "-m", "init");
+git(repo, "commit", "-m", "init crate");
 
-// The conductor's decomposition of "build a tiny greeting project".
+// The conductor's decomposition: each worker adds a passing, clippy-clean
+// integration test under tests/ (disjoint file lanes) that `cargo test` compiles
+// and runs in the worktree — real evidence for the reviewer to gate on.
 const TASKS = [
-  { id: "task-greeting", owner: "worker-a", branch: "feat/greeting", file: "GREETING.md",
-    title: "Create a file named GREETING.md containing a single friendly one-line greeting. Only create that file." },
-  { id: "task-farewell", owner: "worker-b", branch: "feat/farewell", file: "FAREWELL.md",
-    title: "Create a file named FAREWELL.md containing a single one-line farewell. Only create that file." },
+  { id: "task-greeting", owner: "worker-a", branch: "feat/greeting", file: "tests/greeting.rs",
+    title: "Create a Rust integration test at tests/greeting.rs. Add a helper `fn greet() -> String` that returns a friendly one-line greeting containing the word \"friend\", and a #[test] function that calls it and asserts the result contains \"friend\". Build the string at runtime via the helper — do NOT call is_empty() on a string literal (clippy rejects that under -D warnings). It must compile, pass `cargo test`, and be clippy-clean. Only create that file." },
+  { id: "task-farewell", owner: "worker-b", branch: "feat/farewell", file: "tests/farewell.rs",
+    title: "Create a Rust integration test at tests/farewell.rs. Add a helper `fn farewell() -> String` that returns a one-line farewell containing the word \"bye\", and a #[test] function that calls it and asserts the result contains \"bye\". Build the string at runtime via the helper — do NOT call is_empty() on a string literal (clippy rejects that under -D warnings). It must compile, pass `cargo test`, and be clippy-clean. Only create that file." },
 ];
 
 const browser = await chromium.connectOverCDP(CDP);
@@ -37,19 +45,21 @@ try {
   const inv = (n, a) => page.evaluate(([nn, aa]) => window.__TAURI_INTERNALS__.invoke(nn, aa), [n, a]);
 
   console.log("CONDUCTOR: shared decisions (ADR) ->");
-  await inv("context_set", { key: "language", value: "markdown" });
-  await inv("context_set", { key: "style", value: "concise and friendly" });
+  await inv("context_set", { key: "language", value: "rust" });
+  await inv("context_set", { key: "style", value: "concise and tested" });
 
-  console.log("CONDUCTOR: create worktrees + decompose into tasks ->");
+  console.log("CONDUCTOR: decompose into tasks (the LOOP owns the worktrees) ->");
+  // The autonomy loop now creates each task's worktree at dispatch, commits it
+  // before merge, and removes it after — so the conductor no longer pre-creates
+  // them. Predict where the loop will place each one (same formula as the backend)
+  // to watch the workers build.
   const wt = {};
   for (const t of TASKS) {
-    const info = await inv("create_worktree", { repoPath: repo, branchName: t.branch });
-    wt[t.id] = info.path;
+    wt[t.id] = join(dirname(repo), `${basename(repo)}-${t.branch}`);
     await inv("task_create", { task: { id: t.id, title: t.title, description: "", status: "pending",
       owner: t.owner, model: "sonnet", priority: "medium", dependencies: [], outputs: [t.file],
       source_branch: t.branch, target_branch: "main" } });
   }
-  console.log("  worktrees:", JSON.stringify(wt));
 
   const step = (gates = {}) => inv("orchestrator_step", {
     usage: { active_agents: 0, tokens_used: 0, cost_usd: 0, runtime_secs: 0 },
@@ -72,19 +82,52 @@ try {
   }
   console.log("  workers built:", JSON.stringify(TASKS.filter(fileReady).map((t) => t.id)));
 
-  console.log("CONDUCTOR: commit each worker's output on its branch ->");
-  for (const t of TASKS) {
-    if (!fileReady(t)) continue;
-    try { git(wt[t.id], "add", "-A"); git(wt[t.id], "commit", "-m", `${t.owner}: add ${t.file}`); }
-    catch (e) { console.log("  commit skip", t.id, String(e).slice(0, 80)); }
+  // NOTE: the conductor no longer commits (or pre-creates) the workers' worktrees.
+  // The autonomy loop OWNS the worktree lifecycle end-to-end — it creates each one
+  // at dispatch, the reviewer commits it before diffing, and the loop merges then
+  // removes it — proving create -> dispatch -> build -> COMMIT (by the runtime) ->
+  // review -> merge -> cleanup with no external git mutation of the worktrees.
+
+  // REAL review: per branch, run the project's cargo gates in its worktree AND
+  // ask the LLM to judge the diff against the shared decisions + task. The gates
+  // it returns (not a hand-canned "green") are what the loop merges on. Run once
+  // — the verdict for a committed branch is deterministic.
+  console.log("CONDUCTOR: REAL review (cargo gates + LLM judge per branch) ->");
+  const gates = {};
+  for (const t of TASKS.filter(fileReady)) {
+    const rv = await inv("review_branch", {
+      repoPath: repo, sourceBranch: t.branch, targetBranch: "main",
+      taskTitle: t.title, reviewerId: "reviewer", implementerId: t.owner, model: "sonnet",
+    });
+    gates[t.id] = rv.gates;
+    console.log(`  review ${t.id}: ${rv.verdict.verdict} (mergeOk=${rv.mergeOk})`,
+      rv.reasons.length ? JSON.stringify(rv.reasons) : "");
   }
 
-  console.log("CONDUCTOR: review (all-green) + Reviewer merges to main ->");
-  const green = { tests_pass: true, lint_pass: true, types_pass: true, design_consistent: true, context_aligned: true };
+  console.log("CONDUCTOR: Reviewer merges every branch the real review cleared ->");
+  // Bound runaway re-planning: a re-decomposed subtask can itself fail and escalate,
+  // so cap total re-plans per run to keep the LLM-call/API cost finite.
+  const MAX_REPLANS = 3;
+  let replanCount = 0;
   for (let i = 0; i < 8; i++) {
-    const gates = Object.fromEntries(TASKS.filter(fileReady).map((t) => [t.id, green]));
     rep = await step(gates);
     console.log(`  step ${i}: merged=${JSON.stringify(rep.merged)} rejected=${JSON.stringify(rep.rejected)} state=${rep.state} tasks=${JSON.stringify(await statuses())}`);
+    // MID-RUN RE-PLAN (gap #3): a task that exhausts its retry budget raises an
+    // `escalate_to_planner` escalation. Rather than wait for a human, the conductor
+    // asks the Planner to re-decompose it into subtasks and splice them in — the
+    // build resumes itself. (The happy path above never times out, so this is the
+    // documented reaction, not a step the demo normally reaches.)
+    for (const e of rep.escalations ?? []) {
+      if (e.action !== "escalate_to_planner") continue;
+      if (replanCount >= MAX_REPLANS) {
+        console.log(`  escalation: ${e.task_id} -> RE-PLAN SKIPPED (cap ${MAX_REPLANS} reached)`);
+        continue;
+      }
+      replanCount++;
+      console.log(`  escalation: ${e.task_id} exhausted '${e.reason}' -> RE-PLAN (${replanCount}/${MAX_REPLANS})`);
+      const rp = await inv("replan_task", { taskId: e.task_id, model: "sonnet" });
+      console.log(`  re-planned ${rp.failedTask} -> subtasks ${JSON.stringify(rp.subtaskIds)}, rewired ${JSON.stringify(rp.rewiredDependents)}`);
+    }
     if (rep.state === "complete") break;
     await sleep(1500);
   }

@@ -23,6 +23,31 @@ pub fn remove(repo_path: &str, worktree_name: &str, delete_branch: bool) -> Cont
     git::remove_worktree(repo_path, worktree_name, delete_branch)
 }
 
+/// Create the worktree for `branch` if it is not already on disk (idempotent).
+/// The autonomy loop calls this at dispatch so each worker has its isolated
+/// worktree without the conductor pre-creating it. See [`git::ensure_worktree`].
+pub fn ensure_for_branch(repo_path: &str, branch: &str) -> ControlResult<()> {
+    git::ensure_worktree(repo_path, branch)
+}
+
+/// Commit a green-reviewed task's worktree on its BRANCH before the loop merges
+/// it, so `perform_merge` sees the worker's real work as ahead of the target
+/// instead of an empty tip. `Ok(None)` means there was nothing to commit
+/// (idempotent / empty diff). See [`git::commit_worktree`].
+pub fn commit_for_branch(
+    repo_path: &str,
+    branch: &str,
+    message: &str,
+) -> ControlResult<Option<String>> {
+    git::commit_worktree(repo_path, branch, message)
+}
+
+/// Remove the worktree for `branch` after its work has merged (loop cleanup), by
+/// its predicted path. See [`git::remove_worktree_for_branch`].
+pub fn remove_for_branch(repo_path: &str, branch: &str, delete_branch: bool) -> ControlResult<()> {
+    git::remove_worktree_for_branch(repo_path, branch, delete_branch)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

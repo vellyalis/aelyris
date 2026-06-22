@@ -1,5 +1,6 @@
 mod claude;
 pub mod interactive;
+mod oneshot;
 pub mod output_monitor;
 pub mod parser;
 pub mod router;
@@ -11,5 +12,6 @@ pub use claude::*;
 pub use interactive::{
     platform_cli_program, AgentCli, InteractiveSessionInfo, InteractiveSessionManager,
 };
+pub use oneshot::claude_oneshot;
 pub use session::{AgentRunMode, AgentSession};
 pub use status::AgentRunStatus;

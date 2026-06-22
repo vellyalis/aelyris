@@ -14,7 +14,7 @@ fn backend_helper_processes_use_hidden_command_wrapper() {
             return;
         };
         for (index, line) in text.lines().enumerate() {
-            if line.contains("Command::new") || line.contains("std::process::Command") {
+            if spawns_raw_command(line) {
                 offenders.push(format!(
                     "{}:{}: {}",
                     path.strip_prefix(src.parent().unwrap_or(&src))
@@ -112,6 +112,30 @@ fn tauri_builder_does_not_launch_sidecar_synchronously() {
         commands_text.contains("sidecar_state.lock_native_backend()"),
         "first native PTY spawn must lock out late sidecar adoption after native state exists"
     );
+}
+
+/// True iff `line` spawns a process through the bare std API rather than the
+/// `crate::process::hidden_command` wrapper. Matches `std::process::Command` and
+/// the `Command::new` token, but NOT a longer identifier that merely ends in
+/// `Command` — e.g. `GateCommand::new` is a data-struct constructor, not a spawn,
+/// so it must not trip the gate (a word-boundary guard the old substring lacked).
+fn spawns_raw_command(line: &str) -> bool {
+    if line.contains("std::process::Command") {
+        return true;
+    }
+    let needle = "Command::new";
+    let mut rest = line;
+    while let Some(pos) = rest.find(needle) {
+        let part_of_longer_ident = rest[..pos]
+            .chars()
+            .next_back()
+            .is_some_and(|c| c.is_alphanumeric() || c == '_');
+        if !part_of_longer_ident {
+            return true;
+        }
+        rest = &rest[pos + needle.len()..];
+    }
+    false
 }
 
 fn visit_rs_files(path: &Path, on_file: &mut impl FnMut(&Path)) {
