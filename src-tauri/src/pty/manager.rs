@@ -272,9 +272,13 @@ impl PtyManager {
         // No-orphan guard: assign the child to this process's kill-on-close Job
         // Object so an agent CLI/shell can never outlive its host (app or
         // sidecar), even on an abnormal crash where no shutdown code runs.
-        // Assigns by PID immediately after spawn; the PID-recycling window is
-        // negligible (the call is synchronous here, and the required
-        // PROCESS_SET_QUOTA|PROCESS_TERMINATE rights bound which PIDs can be opened).
+        // Assigns by PID synchronously, immediately after spawn. A real (small)
+        // window exists between CreateProcessW inside portable-pty and this assign:
+        // a host crash THERE leaves the child unguarded. It is not closeable on the
+        // ConPTY path without vendoring portable-pty to add CREATE_SUSPENDED + assign
+        // + ResumeThread, so the guard is best-effort against crashes and exact for
+        // normal teardown. The required PROCESS_SET_QUOTA|PROCESS_TERMINATE rights
+        // bound which PIDs can be opened, so PID recycling is not a concern.
         if let Some(pid) = child.process_id() {
             crate::process::guard_child_against_orphan(pid);
         }

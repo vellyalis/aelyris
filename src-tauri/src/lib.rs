@@ -183,9 +183,11 @@ pub fn run() {
 
             // Restore the autonomy TaskGraph so an interrupted build survives a
             // restart: load the persisted graph, collapse volatile in-flight
-            // (Running/Review) tasks to Ready (their worker died at crash) so the
-            // loop safely re-dispatches them, hydrate silently, then attach for
-            // save-on-write. Same hydrate-before-attach invariant as the store.
+            // (Running/Review) tasks to Pending (their worker died at crash) and
+            // re-run the dependency gate so only tasks whose deps are Done become
+            // Ready — the loop re-dispatches them without ever running a dependent
+            // ahead of unfinished work — then attach for save-on-write. Same
+            // hydrate-before-attach invariant as the store.
             fn restore_task_graph(app: &tauri::AppHandle, db: &db::ManagedDb) {
                 let tasks = app
                     .state::<std::sync::Arc<task::TaskManager>>()

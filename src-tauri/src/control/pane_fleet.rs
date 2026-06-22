@@ -66,7 +66,12 @@ struct PaneRun {
 /// task declaring no outputs is not reported done the instant it is dispatched.
 fn outputs_present(worktree_path: &str, outputs: &[String]) -> bool {
     let root = std::path::Path::new(worktree_path);
-    outputs.iter().all(|rel| root.join(rel).exists())
+    // `is_file`, not `exists`: a declared output is a work-product FILE. `exists`
+    // also returns true for a directory, so an agent that creates an output dir
+    // (e.g. `dist/`) before writing into it would be reported done — and its TUI
+    // killed — the instant the directory appears, before any content lands. A bare
+    // file is the structural "produced it" signal.
+    outputs.iter().all(|rel| root.join(rel).is_file())
 }
 
 /// Persistent registry mapping each loop task to its visible PTY pane and
@@ -183,25 +188,27 @@ impl PaneFleet {
     /// testable. Mirrors `AgentManager::reap` + `reap_timed_out` for the visible
     /// runtime.
     pub fn poll_completions(&self, timeout_secs: u64, now: u64) -> Completions {
-        // Recover a poisoned lock rather than wedging the whole fleet (every
-        // in-flight task stranded) on one prior panic.
-        let mut runs = self
-            .runs
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-
-        // Snapshot the observable state (owned) so the pure classifier does not
-        // borrow the map we are about to mutate.
-        let snapshot: Vec<RunSnapshot> = runs
-            .iter()
-            .map(|(task_id, run)| RunSnapshot {
-                task_id: task_id.clone(),
-                exit: run.exit.lock().ok().and_then(|slot| *slot),
-                started_at: run.started_at,
-                worktree_path: run.worktree_path.clone(),
-                outputs: run.outputs.clone(),
-            })
-            .collect();
+        // Snapshot the observable state (owned) UNDER the lock, then release it
+        // before the pure classify + the `outputs_present` filesystem stats. Holding
+        // `runs` across per-output `stat()` calls (slow / antivirus-intercepted FS)
+        // would block a concurrent `spawn` on another path for that whole duration.
+        // Recover a poisoned lock rather than wedging the whole fleet on one prior
+        // panic.
+        let snapshot: Vec<RunSnapshot> = {
+            let runs = self
+                .runs
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            runs.iter()
+                .map(|(task_id, run)| RunSnapshot {
+                    task_id: task_id.clone(),
+                    exit: run.exit.lock().ok().and_then(|slot| *slot),
+                    started_at: run.started_at,
+                    worktree_path: run.worktree_path.clone(),
+                    outputs: run.outputs.clone(),
+                })
+                .collect()
+        };
 
         let mut completions = classify(&snapshot, timeout_secs, now);
 
@@ -224,33 +231,40 @@ impl PaneFleet {
             .collect();
         completions.succeeded.extend(outputs_ready.iter().cloned());
 
-        // Remove every reported task from the map under the lock, collecting the
-        // terminals to act on; do the PTY I/O AFTER releasing the lock so a
-        // pane spawn/poll on another path is never blocked behind it. `remove`
+        // Re-acquire the lock only to remove the reported tasks and collect the
+        // terminals to act on; the PTY I/O happens AFTER the lock drops so a pane
+        // spawn/poll on another path is never blocked behind it. Re-locking after the
+        // unlocked compute is safe: we only remove ids classified terminal from the
+        // snapshot, and `remove` is a no-op for any task already gone. `remove`
         // hands back the terminal id directly (no second lookup).
         let mut to_kill = Vec::new(); // still-running panes (hung or done-but-alive): must be killed
         let mut to_reap = Vec::new(); // already-exited panes: just clean up
-        for task in &completions.timed_out {
-            if let Some(run) = runs.remove(task) {
-                to_kill.push(run.terminal_id);
-            }
-        }
-        for task in completions
-            .succeeded
-            .iter()
-            .chain(completions.failed.iter())
         {
-            if let Some(run) = runs.remove(task) {
-                // Outputs-ready panes are still alive (interactive TUI) → kill;
-                // exit-observed panes already terminated → reap.
-                if outputs_ready.contains(task) {
+            let mut runs = self
+                .runs
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            for task in &completions.timed_out {
+                if let Some(run) = runs.remove(task) {
                     to_kill.push(run.terminal_id);
-                } else {
-                    to_reap.push(run.terminal_id);
+                }
+            }
+            for task in completions
+                .succeeded
+                .iter()
+                .chain(completions.failed.iter())
+            {
+                if let Some(run) = runs.remove(task) {
+                    // Outputs-ready panes are still alive (interactive TUI) → kill;
+                    // exit-observed panes already terminated → reap.
+                    if outputs_ready.contains(task) {
+                        to_kill.push(run.terminal_id);
+                    } else {
+                        to_reap.push(run.terminal_id);
+                    }
                 }
             }
         }
-        drop(runs);
 
         for terminal in to_kill {
             let _ = self.pty.close(&terminal);

@@ -60,7 +60,11 @@ fn runtime_core_state_survives_a_real_file_restart() {
 
     assert_eq!(restored_tasks, 2);
     let api = tm2.get("api").unwrap();
-    assert_eq!(api.status, TaskStatus::Running);
+    // `api` was Running at "crash"; restore collapses the volatile in-flight state to
+    // Ready so the loop re-dispatches it (its worker is gone). The recovery counter —
+    // the durability point of this test — survives verbatim, and the dependent `ui`
+    // stays Pending because its dependency is not Done.
+    assert_eq!(api.status, TaskStatus::Ready);
     assert_eq!(api.crash_attempts, 1);
     let ui = tm2.get("ui").unwrap();
     assert_eq!(ui.status, TaskStatus::Pending);

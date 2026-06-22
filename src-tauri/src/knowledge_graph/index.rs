@@ -31,6 +31,13 @@ enum Lang {
 /// `(dependent, dependency)` — the importer depends on the imported file.
 pub fn index_project(root: &str) -> (Vec<CodeNode>, Vec<(String, String)>) {
     let files = crate::git::list_all_files(root, MAX_FILES).unwrap_or_default();
+    if files.len() >= MAX_FILES {
+        // The scan is capped so a huge repo can't blow memory; say so rather than
+        // silently returning a partial graph that callers would read as complete.
+        log::warn!(
+            "knowledge graph: file scan hit the {MAX_FILES}-file cap; the code graph may be incomplete for this repository"
+        );
+    }
     let sources: Vec<String> = files
         .into_iter()
         .filter(|f| f.size <= MAX_FILE_BYTES && lang_of(&f.relative_path).is_some())
@@ -212,6 +219,15 @@ fn starts_with_kw(line: &str, kw: &str) -> bool {
 fn web_specs(line: &str) -> Vec<String> {
     let line = line.trim();
     let mut specs = Vec::new();
+    // Skip comment lines: a `//` line comment, or a `/* … */` / `*` JSDoc block line,
+    // can mention `require('./x')` / `import('./x')` in prose. Treating that as a real
+    // import injects a PHANTOM dependency edge that then propagates through transitive
+    // blast-radius (`impact_of`), so callers would see files that are not actually
+    // affected. (A marker embedded in a STRING LITERAL inside real code stays
+    // best-effort — this is a structural scan, not a JS parser.)
+    if line.starts_with("//") || line.starts_with("/*") || line.starts_with('*') {
+        return specs;
+    }
     // A static `from` import clause lives only at statement scope: a line whose
     // leading TOKEN is `import`/`export`, or the closing line of a multi-line named
     // import (`} from '...'`). `starts_with_kw` is a whole-token test (the line is
@@ -400,6 +416,39 @@ mod tests {
         assert!(
             web_specs(r#"exporter.note = " from './b'";"#).is_empty(),
             "#4 identifier that merely starts with `export` must not pass the gate"
+        );
+    }
+
+    #[test]
+    fn web_specs_ignores_require_and_import_markers_inside_comments() {
+        // The require(/import( marker loop runs unconditionally on a line, so a
+        // WHOLE-TOKEN marker sitting inside a comment (prose mentioning an old path,
+        // JSDoc, a commented-out line) would inject a PHANTOM dependency edge that
+        // then pollutes transitive blast-radius. The comment-line gate suppresses it.
+        // These cases are NOT caught by the `from`-clause whole-token gate, so they
+        // bind the comment-gate specifically (deleting it would fail this test).
+        assert!(
+            web_specs("// import('./x')").is_empty(),
+            "line comment with a whole-token dynamic import marker"
+        );
+        assert!(
+            web_specs("// const m = require('./legacy');").is_empty(),
+            "commented-out require() line"
+        );
+        assert!(
+            web_specs("/* require('./y') */").is_empty(),
+            "block-comment-open line with a require marker"
+        );
+        assert!(
+            web_specs("   * see import('./z') for details").is_empty(),
+            "indented JSDoc continuation line (pins trim-before-gate ordering)"
+        );
+        // A real import with a trailing line comment is still read (the line's
+        // leading token is `import`, not a comment marker).
+        assert_eq!(
+            web_specs("import { y } from './y'; // keep"),
+            vec!["./y".to_string()],
+            "a real import with a trailing comment must still be detected"
         );
     }
 

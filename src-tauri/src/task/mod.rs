@@ -22,14 +22,21 @@ pub use replan::{replan_into, ReplanOutcome};
 pub use status::{TaskStatus, TASK_STATUS_NAMES};
 
 /// Transform a loaded task graph for safe restore after a restart. Collapses the
-/// volatile in-flight states (`Running`, `Review`) down to `Ready`: at crash the
+/// volatile in-flight states (`Running`, `Review`) down to `Pending`: at crash the
 /// worker process for such a task is gone (headless agents exited; visible-pane
 /// PTYs died with the app), so leaving it `Running`/`Review` would stall the loop
-/// waiting for a completion event that never fires. Every other field — topology,
-/// branch bindings, outputs, and especially the three retry budgets — is preserved
+/// waiting for a completion event that never fires. It drops to `Pending`, NOT
+/// straight to `Ready`, so the caller MUST re-run the dependency gate
+/// ([`TaskGraph::recompute_ready`]) afterwards — that re-derives readiness from the
+/// actual dep states, so a task is only re-dispatched once its deps are truly
+/// `Done`. A dependent therefore can never be dispatched out of order ahead of an
+/// unfinished dependency, even from an inconsistent/older persisted graph. (In a
+/// gate-consistent graph an in-flight task's deps are already all `Done`, so it
+/// promotes straight back to `Ready`.) Every other field — topology, branch
+/// bindings, outputs, and especially the three retry budgets — is preserved
 /// verbatim, so a poison task that already exhausted its budget cannot reset and
 /// loop forever. The task-graph analog of the mux snapshot's volatile-field reset.
-pub fn tasks_for_restore(tasks: Vec<Task>) -> Vec<Task> {
+pub(crate) fn tasks_for_restore(tasks: Vec<Task>) -> Vec<Task> {
     let known: std::collections::HashSet<String> = tasks.iter().map(|t| t.id.clone()).collect();
     tasks
         .into_iter()
@@ -48,10 +55,12 @@ pub fn tasks_for_restore(tasks: Vec<Task>) -> Vec<Task> {
                 task.status = TaskStatus::Failed;
                 return task;
             }
-            // Collapse volatile in-flight states (Running, Review) to Ready — the
-            // worker died at crash — so the loop safely re-dispatches them.
+            // Collapse volatile in-flight states (Running, Review) to Pending — the
+            // worker died at crash. Pending (not Ready) so the caller's
+            // recompute_ready re-gates it: a dependent is only re-readied once its
+            // deps are actually Done, never dispatched ahead of unfinished work.
             if matches!(task.status, TaskStatus::Running | TaskStatus::Review) {
-                task.status = TaskStatus::Ready;
+                task.status = TaskStatus::Pending;
             }
             task
         })
@@ -63,7 +72,7 @@ mod restore_tests {
     use super::*;
 
     #[test]
-    fn restore_resets_in_flight_to_ready_and_preserves_budgets() {
+    fn restore_resets_in_flight_to_pending_and_preserves_budgets() {
         let mut running = Task::new("r", "Running");
         running.status = TaskStatus::Running;
         running.crash_attempts = 2;
@@ -80,9 +89,11 @@ mod restore_tests {
 
         let out = tasks_for_restore(vec![running, review, done, failed, blocked]);
 
-        // Volatile in-flight states collapse to Ready (re-dispatchable next tick).
-        assert_eq!(out[0].status, TaskStatus::Ready);
-        assert_eq!(out[1].status, TaskStatus::Ready);
+        // Volatile in-flight states collapse to Pending — the caller's
+        // recompute_ready then re-gates them (Done deps -> Ready, Failed dep ->
+        // Blocked), so a dependent is never dispatched ahead of unfinished work.
+        assert_eq!(out[0].status, TaskStatus::Pending);
+        assert_eq!(out[1].status, TaskStatus::Pending);
         // Stable states are untouched.
         assert_eq!(out[2].status, TaskStatus::Done);
         assert_eq!(out[3].status, TaskStatus::Failed);
@@ -102,8 +113,8 @@ mod restore_tests {
         orphan.dependencies = vec!["missing".to_string()]; // dep absent from the set
 
         let out = tasks_for_restore(vec![ok, orphan]);
-        // The valid in-flight task is reset to Ready as usual.
-        assert_eq!(out[0].status, TaskStatus::Ready);
+        // The valid in-flight task is reset to Pending (re-gated by recompute_ready).
+        assert_eq!(out[0].status, TaskStatus::Pending);
         // The task whose dependency is missing is Failed, not wrongly dispatched.
         assert_eq!(out[1].status, TaskStatus::Failed);
     }
