@@ -56,7 +56,16 @@ pub fn plan(graph: &TaskGraph, caps: &CostCaps, usage: &CostUsage) -> DispatchPl
     }
 
     let tasks = graph.list();
-    if tasks.is_empty() || tasks.iter().all(|task| task.status == TaskStatus::Done) {
+    // Complete once every task has reached a TERMINAL state (Done or Failed) —
+    // there is nothing left to run. A merely-`Done` test would wrongly hold the
+    // loop open forever after mid-run re-planning, which leaves the superseded
+    // original task as an orphaned `Failed` audit record (its dependents rewired
+    // onto the new subtasks); once those subtasks finish, the graph is all-Done +
+    // that one Failed node, which is genuinely quiescent. A task that is *stuck*
+    // (Blocked/Pending/Ready with no way forward) is non-terminal, so it still
+    // falls through to `Stalled` below — failures are surfaced via the task list,
+    // not by wedging the loop state.
+    if tasks.is_empty() || tasks.iter().all(|task| task.status.is_terminal()) {
         return DispatchPlan {
             to_dispatch: Vec::new(),
             state: LoopState::Complete,
@@ -79,8 +88,10 @@ pub fn plan(graph: &TaskGraph, caps: &CostCaps, usage: &CostUsage) -> DispatchPl
         .map(|task| task.id.clone())
         .collect();
 
-    // Stalled: nothing to start this pass AND nothing in flight, yet work
-    // remains (the non-Done tasks left are blocked or failed).
+    // Stalled: nothing to start this pass AND nothing in flight, yet a
+    // NON-terminal task remains (a Blocked/Pending/Ready task with no way
+    // forward). A purely-Failed remnant is terminal and was already treated as
+    // Complete above, so it does not reach here.
     let state = if to_dispatch.is_empty() && running == 0 {
         LoopState::Stalled
     } else {
@@ -187,6 +198,26 @@ mod tests {
         let plan = plan(&g, &caps(Some(4)), &usage(0));
         assert!(plan.to_dispatch.is_empty());
         assert_eq!(plan.state, LoopState::Stalled);
+    }
+
+    #[test]
+    fn all_terminal_done_and_failed_is_complete_after_replan() {
+        // After a mid-run re-plan, the superseded task is an orphaned Failed audit
+        // record while the re-planned work runs to Done. With nothing non-terminal
+        // left, the loop is quiescent -> Complete (not Stalled): a re-planned build
+        // that finishes must not hang in Stalled because of the audit remnant.
+        let mut g = TaskGraph::new();
+        g.add(Task::new("dead", "superseded")).unwrap();
+        g.add(Task::new("sub", "re-planned work")).unwrap();
+        g.transition("dead", TaskStatus::Ready).unwrap();
+        g.transition("dead", TaskStatus::Running).unwrap();
+        g.transition("dead", TaskStatus::Failed).unwrap();
+        g.transition("sub", TaskStatus::Ready).unwrap();
+        g.transition("sub", TaskStatus::Running).unwrap();
+        g.transition("sub", TaskStatus::Done).unwrap();
+        let plan = plan(&g, &caps(Some(4)), &usage(0));
+        assert!(plan.to_dispatch.is_empty());
+        assert_eq!(plan.state, LoopState::Complete);
     }
 
     #[test]

@@ -103,6 +103,28 @@ impl TaskManager {
         Ok(changed)
     }
 
+    /// Mid-run RE-PLAN (autonomy gap #3): splice a Planner re-decomposition of a
+    /// terminally-`Failed` task into the live graph ATOMICALLY. The subtasks are
+    /// validated as a plan and added, and every task that depended on the failed
+    /// task is rewired onto the new subtask sinks so the chain resumes — all
+    /// staged on a clone and swapped in only on success, exactly like
+    /// [`submit_plan`]. On any problem (the task isn't failed, an invalid subplan,
+    /// an id collision) the whole re-plan is rejected and the live graph is
+    /// untouched. The subtasks are authored by the Planner LLM at the call site;
+    /// this method is the pure, atomic graph mutation.
+    pub fn replan_failed_task(
+        &self,
+        failed_id: &str,
+        subtasks: Vec<Task>,
+    ) -> Result<super::replan::ReplanOutcome, Vec<String>> {
+        let mut graph = self.lock();
+        let mut staging = graph.clone();
+        let outcome = super::replan::replan_into(&mut staging, failed_id, subtasks)?;
+        *graph = staging;
+        self.persist(&graph);
+        Ok(outcome)
+    }
+
     /// Transition a task, then re-run the gate (finishing a dependency can
     /// unblock dependents). Returns ids whose status changed by the gate.
     pub fn transition(&self, id: &str, to: TaskStatus) -> Result<Vec<String>, TaskGraphError> {
@@ -247,6 +269,52 @@ mod tests {
         let changed = mgr.transition("dep", TaskStatus::Done).unwrap();
         assert!(changed.contains(&"child".to_string()));
         assert_eq!(mgr.get("child").unwrap().status, TaskStatus::Ready);
+    }
+
+    #[test]
+    fn replan_failed_task_splices_subtasks_and_rewires_atomically() {
+        let mgr = TaskManager::new();
+        mgr.create(Task::new("dead", "Build")).unwrap();
+        mgr.create(Task::new("child", "Use").with_dependencies(["dead".to_string()]))
+            .unwrap();
+        // `create` already gated `dead` to Ready (a root); drive it to Failed.
+        mgr.transition("dead", TaskStatus::Running).unwrap();
+        mgr.transition("dead", TaskStatus::Failed).unwrap();
+        assert_eq!(mgr.get("child").unwrap().status, TaskStatus::Blocked);
+
+        let outcome = mgr
+            .replan_failed_task("dead", vec![full("x1", &["src/x1/**"], &[])])
+            .unwrap();
+        assert_eq!(outcome.subtask_ids, ["x1"]);
+        assert_eq!(outcome.rewired_dependents, ["child"]);
+        // child is rewired onto the new sink and the subtask is live in the graph.
+        assert_eq!(mgr.get("child").unwrap().dependencies, ["x1"]);
+        assert_eq!(mgr.get("x1").unwrap().status, TaskStatus::Ready);
+    }
+
+    #[test]
+    fn replan_failed_task_rejects_and_leaves_graph_untouched() {
+        let mgr = TaskManager::new();
+        mgr.create(Task::new("dead", "Build")).unwrap(); // -> Ready (root)
+        mgr.transition("dead", TaskStatus::Running).unwrap();
+        mgr.transition("dead", TaskStatus::Failed).unwrap();
+        // A subtask colliding with the existing `dead` id rejects the whole splice.
+        let errs = mgr
+            .replan_failed_task("dead", vec![full("dead", &["src/d/**"], &[])])
+            .unwrap_err();
+        assert!(!errs.is_empty());
+        assert_eq!(mgr.list().len(), 1, "graph untouched on a rejected re-plan");
+    }
+
+    #[test]
+    fn replan_refuses_a_task_that_is_not_failed() {
+        let mgr = TaskManager::new();
+        mgr.create(Task::new("live", "Live")).unwrap(); // Ready, not Failed
+        let errs = mgr
+            .replan_failed_task("live", vec![full("x1", &["src/x1/**"], &[])])
+            .unwrap_err();
+        assert!(errs[0].contains("not failed"), "{errs:?}");
+        assert_eq!(mgr.list().len(), 1, "no subtask leaked in");
     }
 
     #[test]

@@ -104,9 +104,29 @@ try {
   }
 
   console.log("CONDUCTOR: Reviewer merges every branch the real review cleared ->");
+  // Bound runaway re-planning: a re-decomposed subtask can itself fail and escalate,
+  // so cap total re-plans per run to keep the LLM-call/API cost finite.
+  const MAX_REPLANS = 3;
+  let replanCount = 0;
   for (let i = 0; i < 8; i++) {
     rep = await step(gates);
     console.log(`  step ${i}: merged=${JSON.stringify(rep.merged)} rejected=${JSON.stringify(rep.rejected)} state=${rep.state} tasks=${JSON.stringify(await statuses())}`);
+    // MID-RUN RE-PLAN (gap #3): a task that exhausts its retry budget raises an
+    // `escalate_to_planner` escalation. Rather than wait for a human, the conductor
+    // asks the Planner to re-decompose it into subtasks and splice them in — the
+    // build resumes itself. (The happy path above never times out, so this is the
+    // documented reaction, not a step the demo normally reaches.)
+    for (const e of rep.escalations ?? []) {
+      if (e.action !== "escalate_to_planner") continue;
+      if (replanCount >= MAX_REPLANS) {
+        console.log(`  escalation: ${e.task_id} -> RE-PLAN SKIPPED (cap ${MAX_REPLANS} reached)`);
+        continue;
+      }
+      replanCount++;
+      console.log(`  escalation: ${e.task_id} exhausted '${e.reason}' -> RE-PLAN (${replanCount}/${MAX_REPLANS})`);
+      const rp = await inv("replan_task", { taskId: e.task_id, model: "sonnet" });
+      console.log(`  re-planned ${rp.failedTask} -> subtasks ${JSON.stringify(rp.subtaskIds)}, rewired ${JSON.stringify(rp.rewiredDependents)}`);
+    }
     if (rep.state === "complete") break;
     await sleep(1500);
   }

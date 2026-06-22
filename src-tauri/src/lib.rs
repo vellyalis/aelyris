@@ -692,6 +692,7 @@ pub fn run() {
             ipc::task_create,
             ipc::task_submit_plan,
             ipc::plan_build,
+            ipc::replan_task,
             ipc::task_transition,
             ipc::task_list,
             ipc::task_recompute_ready,

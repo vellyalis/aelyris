@@ -11,10 +11,12 @@ pub mod decompose;
 pub mod graph;
 pub mod manager;
 pub mod planner;
+pub mod replan;
 pub mod status;
 
 pub use decompose::decompose_to_plan;
 pub use graph::{Task, TaskGraph, TaskGraphError, TaskPriority};
 pub use manager::TaskManager;
 pub use planner::validate_plan;
+pub use replan::{replan_into, ReplanOutcome};
 pub use status::{TaskStatus, TASK_STATUS_NAMES};

@@ -316,6 +316,34 @@ impl TaskGraph {
         changed
     }
 
+    /// Replace dependency `old` with `new_deps` in every task that lists it,
+    /// preserving the task's other dependencies and de-duplicating. Used by
+    /// mid-run RE-PLANNING: when a terminally-failed task is re-decomposed into
+    /// subtasks, its dependents must wait on the new subtask sinks instead of the
+    /// dead task, so the dependency chain resumes through the fresh work. Returns
+    /// the ids whose dependency list changed (sorted, for deterministic
+    /// reporting). The caller must ensure every id in `new_deps` already exists in
+    /// the graph (the splice adds the subtasks first), keeping the DAG invariant —
+    /// a rewired dependent can only point at the newly-added subtasks, which have
+    /// no path back to it, so no cycle is introduced.
+    pub fn rewire_dependency(&mut self, old: &str, new_deps: &[String]) -> Vec<String> {
+        let mut changed = Vec::new();
+        for task in self.tasks.values_mut() {
+            if !task.dependencies.iter().any(|d| d == old) {
+                continue;
+            }
+            task.dependencies.retain(|d| d != old);
+            for nd in new_deps {
+                if !task.dependencies.contains(nd) {
+                    task.dependencies.push(nd.clone());
+                }
+            }
+            changed.push(task.id.clone());
+        }
+        changed.sort();
+        changed
+    }
+
     /// Ready tasks, highest priority first (stable within a priority).
     pub fn ready_tasks(&self) -> Vec<&Task> {
         let mut ready: Vec<&Task> = self
@@ -510,6 +538,47 @@ mod tests {
             serde_json::from_str(r#"{"id":"x","title":"X","status":"pending"}"#).unwrap();
         assert_eq!(parsed.crash_attempts, 0);
         assert_eq!(parsed.rework_attempts, 0);
+    }
+
+    #[test]
+    fn rewire_dependency_replaces_old_with_new_deps_everywhere() {
+        let mut g = TaskGraph::new();
+        g.add(Task::new("dead", "Dead")).unwrap();
+        g.add(Task::new("s1", "S1")).unwrap();
+        g.add(Task::new("s2", "S2")).unwrap();
+        g.add(Task::new("y", "Y").with_dependencies(["dead".into(), "keep".into()]))
+            .unwrap_err(); // 'keep' doesn't exist yet
+        g.add(Task::new("keep", "Keep")).unwrap();
+        g.add(Task::new("y", "Y").with_dependencies(["dead".into(), "keep".into()]))
+            .unwrap();
+        g.add(Task::new("z", "Z").with_dependencies(["dead".into()]))
+            .unwrap();
+        g.add(Task::new("unrelated", "U")).unwrap();
+
+        let changed = g.rewire_dependency("dead", &["s1".to_string(), "s2".to_string()]);
+        assert_eq!(
+            changed,
+            ["y", "z"],
+            "only dependents of `dead` change, sorted"
+        );
+        // y keeps its other dep and gains both sinks; `dead` is gone.
+        let mut y_deps = g.get("y").unwrap().dependencies.clone();
+        y_deps.sort();
+        assert_eq!(y_deps, ["keep", "s1", "s2"]);
+        assert_eq!(g.get("z").unwrap().dependencies, ["s1", "s2"]);
+        assert!(g.get("unrelated").unwrap().dependencies.is_empty());
+    }
+
+    #[test]
+    fn rewire_dependency_dedups_when_a_new_dep_already_present() {
+        let mut g = TaskGraph::new();
+        g.add(Task::new("dead", "Dead")).unwrap();
+        g.add(Task::new("s1", "S1")).unwrap();
+        // y already depends on s1 AND dead — rewiring dead->s1 must not duplicate s1.
+        g.add(Task::new("y", "Y").with_dependencies(["dead".into(), "s1".into()]))
+            .unwrap();
+        g.rewire_dependency("dead", &["s1".to_string()]);
+        assert_eq!(g.get("y").unwrap().dependencies, ["s1"]);
     }
 
     #[test]
