@@ -47,6 +47,19 @@ impl MergeIntentStore {
             .with(|d| MergeRepo::set_state(d, intent_id, state, now))
     }
 
+    /// Record who approved and on what gates (mutable metadata; the merge target
+    /// stays immutable).
+    pub fn record_approval(
+        &self,
+        intent_id: &str,
+        reviewer_id: &str,
+        gates_digest: Option<&str>,
+        now: i64,
+    ) -> Result<(), String> {
+        self.db
+            .with(|d| MergeRepo::record_approval(d, intent_id, reviewer_id, gates_digest, now))
+    }
+
     pub fn list_in_state(&self, state: MergeIntentState) -> Result<Vec<MergeIntent>, String> {
         self.db.with(|d| MergeRepo::list_in_state(d, state))
     }

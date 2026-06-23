@@ -449,16 +449,15 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
             },
             {
                 "name": "aether.review.approve",
-                "description": "Reviewer authority: approve a queued merge intent and perform the real git merge (fast-forward/3-way) into the target branch. The AI reviewer is the gate — there is no human gate in the critical path.",
+                "description": "Reviewer authority: approve a DURABLE merge intent BY ID and perform the real git merge (fast-forward/3-way) into its BOUND target. The repo/source/target are read from the stored immutable intent — this verb does NOT accept repo/source/target (a caller can never re-point the merge), and rejects any unknown field. Operator-authority: the verb IS the verdict (an optional `verdict` must equal \"approve\"); `gatesDigest` records approval evidence. The bound branch tips are re-validated first: an already-merged target is idempotent; a moved tip becomes needs_reconcile. Returns { intentId, status, outcome }.",
                 "safety": "REVIEWER_AUTHORITY",
                 "inputSchema": {
                     "type": "object",
-                    "required": ["intentId", "repoPath", "sourceBranch", "targetBranch"],
+                    "required": ["intentId"],
                     "properties": {
                         "intentId": { "type": "string" },
-                        "repoPath": { "type": "string" },
-                        "sourceBranch": { "type": "string" },
-                        "targetBranch": { "type": "string" }
+                        "verdict": { "type": "string", "enum": ["approve"] },
+                        "gatesDigest": { "type": "string" }
                     },
                     "additionalProperties": false
                 }
@@ -1292,58 +1291,164 @@ pub(super) async fn tools_call(
             serde_json::json!({ "sessionId": session_id, "stopped": true })
         }
         "aether.review.approve" => {
+            let store = state.merge_store.as_ref().ok_or_else(|| {
+                ApiError::Internal("merge persistence is not attached to this process".to_string())
+            })?;
+            // HARD BOUNDARIES #1 + #2: approve binds ONLY to a stored intent. The MCP
+            // dispatcher does NOT enforce the declared input schema (it hands the
+            // handler the raw args), so repo/source/target — and EVERY other unknown
+            // field — are rejected EXPLICITLY here, before any merge work. A caller
+            // can never re-point the merge.
+            const APPROVE_ALLOWED: &[&str] = &["intentId", "verdict", "gatesDigest"];
+            if let Some(bad) = args.keys().find(|k| !APPROVE_ALLOWED.contains(&k.as_str())) {
+                return Err(ApiError::BadRequest(format!(
+                    "aether.review.approve does not accept `{bad}`: it approves a stored intent by \
+                     intentId only — repo/source/target come from the immutable intent, never the caller"
+                )));
+            }
             let intent_id = arg_string(&args, "intentId")?;
-            let repo_path = arg_string(&args, "repoPath")?;
-            let source_branch = arg_string(&args, "sourceBranch")?;
-            let target_branch = arg_string(&args, "targetBranch")?;
-            crate::git::validate_branch_name(&source_branch).map_err(ApiError::BadRequest)?;
-            crate::git::validate_branch_name(&target_branch).map_err(ApiError::BadRequest)?;
-
-            // Claim the queued intent (pending -> merging) under the lock so two
-            // reviewers can never merge the same intent twice.
-            {
-                let mut pending = state.mcp_pending.lock().map_err(|_| {
-                    ApiError::Internal("MCP pending queue lock poisoned".to_string())
-                })?;
-                let item = pending
-                    .iter_mut()
-                    .find(|i| i.id == intent_id)
-                    .ok_or_else(|| ApiError::NotFound(intent_id.clone()))?;
-                if item.kind != "merge_conflict_strategy" {
-                    return Err(ApiError::BadRequest(format!(
-                        "intent {intent_id} is not a merge intent"
-                    )));
+            // STRICT shape (close the type-confusion bypass): a present `verdict`
+            // must be EXACTLY the string "approve", and a present `gatesDigest` must
+            // be a string. A non-string value (object/array/null/number) is a
+            // rejected shape, NOT "absent" — `arg_optional_string` would silently
+            // treat `{"verdict":{...}}` as absent and let a malformed call through.
+            if let Some(v) = args.get("verdict") {
+                if v.as_str() != Some("approve") {
+                    return Err(ApiError::BadRequest(
+                        "verdict must be the string \"approve\"; use aether.review.reject to reject"
+                            .to_string(),
+                    ));
                 }
-                if item.status != "pending" {
-                    return Err(ApiError::BadRequest(format!(
-                        "intent {intent_id} is not pending (status: {})",
-                        item.status
-                    )));
-                }
-                item.status = "merging".to_string();
             }
-
-            // Perform the real merge without holding the pending lock.
-            let outcome = crate::git::perform_merge(&repo_path, &source_branch, &target_branch);
-            let final_status = match &outcome {
-                Ok(crate::git::MergeOutcome::Conflict { .. }) => "conflict",
-                Ok(_) => "merged",
-                // The merge could not run; restore the intent so it can be retried.
-                Err(_) => "pending",
+            let gates_digest = match args.get("gatesDigest") {
+                None => None,
+                Some(serde_json::Value::String(s)) => Some(s.clone()),
+                Some(_) => {
+                    return Err(ApiError::BadRequest(
+                        "gatesDigest must be a string".to_string(),
+                    ))
+                }
             };
+
+            // Load the IMMUTABLE intent — every merge parameter comes from HERE.
+            let intent = store
+                .get(&intent_id)
+                .map_err(ApiError::Internal)?
+                .ok_or_else(|| ApiError::NotFound(intent_id.clone()))?;
+            let now = now_secs() as i64;
+
+            // CAS-claim the merge: the DB row is the arbiter (boundary #5). Only one
+            // winner, only from queued/ready_to_merge — a re-approve of a merged /
+            // in-flight / needs-reconcile intent loses here.
+            if !store
+                .claim_for_merge(&intent_id, now)
+                .map_err(ApiError::Internal)?
             {
-                let mut pending = state.mcp_pending.lock().map_err(|_| {
-                    ApiError::Internal("MCP pending queue lock poisoned".to_string())
-                })?;
-                if let Some(item) = pending.iter_mut().find(|i| i.id == intent_id) {
-                    item.status = final_status.to_string();
-                }
+                return Err(ApiError::BadRequest(format!(
+                    "intent {intent_id} is not claimable (state {}): already merging, terminal, or needs reconcile",
+                    intent.state.as_str()
+                )));
             }
-            match outcome {
-                Ok(outcome) => {
-                    serde_json::json!({ "intentId": intent_id, "status": final_status, "outcome": outcome })
+            // Durable approval evidence (mutable metadata; does NOT touch the target).
+            // A post-claim failure must not strand the row in `merging` — flip it to
+            // needs_reconcile before surfacing the error (every exit is definite).
+            if let Err(e) = store.record_approval(&intent_id, actor, gates_digest.as_deref(), now) {
+                let _ = store.set_state(
+                    &intent_id,
+                    crate::merge_intent::MergeIntentState::NeedsReconcile,
+                    now,
+                );
+                return Err(ApiError::Internal(e));
+            }
+
+            // IDEMPOTENT already-merged: if the target already contains the REVIEWED
+            // source commit, the merge is done — even if the source branch has since
+            // advanced (so the OID-bound merge below would otherwise see stale tips).
+            // No lock held (boundary #5); the stored repo/branch/oid only (boundary #4).
+            let already_merged = match crate::git::branch_contains_commit(
+                &intent.repo_path,
+                &intent.target_branch,
+                &intent.source_oid,
+            ) {
+                Ok(landed) => landed,
+                Err(e) => {
+                    store
+                        .set_state(
+                            &intent_id,
+                            crate::merge_intent::MergeIntentState::NeedsReconcile,
+                            now,
+                        )
+                        .map_err(ApiError::Internal)?;
+                    return Err(ApiError::BadRequest(format!(
+                        "intent {intent_id}: repo unreadable, marked needs_reconcile: {e}"
+                    )));
                 }
-                Err(err) => return Err(ApiError::BadRequest(err)),
+            };
+            if already_merged {
+                store
+                    .set_state(
+                        &intent_id,
+                        crate::merge_intent::MergeIntentState::Merged,
+                        now,
+                    )
+                    .map_err(ApiError::Internal)?;
+                serde_json::json!({
+                    "intentId": intent_id,
+                    "status": "merged",
+                    "outcome": { "status": "already_merged" },
+                })
+            } else {
+                // The OID-BOUND merge (boundary #4): perform_merge_bound opens the
+                // repo ONCE, re-resolves the tips, and merges ONLY if both still
+                // equal the reviewed OIDs — there is no second name-resolution window
+                // in which a moved tip could merge an unreviewed commit. No lock held.
+                match crate::git::perform_merge_bound(
+                    &intent.repo_path,
+                    &intent.source_branch,
+                    &intent.target_branch,
+                    &intent.source_oid,
+                    &intent.target_oid,
+                ) {
+                    Ok(crate::git::BoundMergeResult::StaleTips) => {
+                        store
+                            .set_state(
+                                &intent_id,
+                                crate::merge_intent::MergeIntentState::NeedsReconcile,
+                                now,
+                            )
+                            .map_err(ApiError::Internal)?;
+                        return Err(ApiError::BadRequest(format!(
+                            "intent {intent_id}: branch tips moved since request; marked needs_reconcile"
+                        )));
+                    }
+                    Ok(crate::git::BoundMergeResult::Merged(outcome)) => {
+                        let final_state = match &outcome {
+                            crate::git::MergeOutcome::Conflict { .. } => {
+                                crate::merge_intent::MergeIntentState::Conflict
+                            }
+                            _ => crate::merge_intent::MergeIntentState::Merged,
+                        };
+                        store
+                            .set_state(&intent_id, final_state, now)
+                            .map_err(ApiError::Internal)?;
+                        serde_json::json!({
+                            "intentId": intent_id,
+                            "status": final_state.as_str(),
+                            "outcome": outcome,
+                        })
+                    }
+                    // Merge could not run; surface for reconciliation, never retry blindly.
+                    Err(err) => {
+                        store
+                            .set_state(
+                                &intent_id,
+                                crate::merge_intent::MergeIntentState::NeedsReconcile,
+                                now,
+                            )
+                            .map_err(ApiError::Internal)?;
+                        return Err(ApiError::BadRequest(err));
+                    }
+                }
             }
         }
         "aether.review.reject" => {
@@ -2878,5 +2983,245 @@ mod tests {
             .block_on(tools_call(State(no_store), Json(body)))
             .expect_err("fail closed without a merge store");
         assert!(matches!(err, ApiError::Internal(_)), "{err:?}");
+    }
+
+    /// P0-3 inc4/5 (the security headline): `aether.review.approve` binds ONLY to a
+    /// stored intent. It must REJECT caller-supplied repo/source/target and any
+    /// unknown field BEFORE merging (boundaries #1+#2), merge using ONLY the stored
+    /// branches (boundary #4), and not be re-claimable once merged.
+    #[test]
+    fn review_approve_rejects_overrides_and_merges_only_the_stored_intent() {
+        use crate::db::{Database, ManagedDb};
+        use crate::merge_intent::store::MergeIntentStore;
+        use crate::pty::PtyManager;
+        use git2::{build::CheckoutBuilder, Repository};
+        use std::path::Path;
+        use std::sync::Arc;
+
+        // temp repo: main at base; `feature` one commit ahead (fast-forwardable).
+        let dir = tempfile::tempdir().unwrap();
+        let repo = Repository::init(dir.path()).unwrap();
+        repo.set_head("refs/heads/main").unwrap();
+        let commit = |file: &str, content: &str, parents: &[git2::Oid]| -> git2::Oid {
+            let wd = repo.workdir().unwrap().to_path_buf();
+            std::fs::write(wd.join(file), content).unwrap();
+            let mut idx = repo.index().unwrap();
+            idx.add_path(Path::new(file)).unwrap();
+            idx.write().unwrap();
+            let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+            let sig = git2::Signature::now("T", "t@t").unwrap();
+            let pcs: Vec<git2::Commit> = parents
+                .iter()
+                .map(|o| repo.find_commit(*o).unwrap())
+                .collect();
+            let prefs: Vec<&git2::Commit> = pcs.iter().collect();
+            repo.commit(Some("HEAD"), &sig, &sig, "c", &tree, &prefs)
+                .unwrap()
+        };
+        let base = commit("a.txt", "base", &[]);
+        repo.branch("feature", &repo.find_commit(base).unwrap(), false)
+            .unwrap();
+        repo.set_head("refs/heads/feature").unwrap();
+        repo.checkout_head(Some(CheckoutBuilder::new().force()))
+            .unwrap();
+        let feat = commit("b.txt", "feat", &[base]);
+        repo.set_head("refs/heads/main").unwrap();
+        repo.checkout_head(Some(CheckoutBuilder::new().force()))
+            .unwrap();
+        let repo_path = repo.workdir().unwrap().to_str().unwrap().to_string();
+
+        let store = Arc::new(MergeIntentStore::new(Arc::new(ManagedDb::new(
+            Database::open_memory().unwrap(),
+        ))));
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_merge_store(Some(store));
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let call = |name: &str, args: serde_json::Value| {
+            let body = ToolCallBody {
+                name: name.to_string(),
+                arguments: args,
+            };
+            rt.block_on(tools_call(State(state.clone()), Json(body)))
+        };
+
+        // Request a durable intent for feature -> main.
+        let Json(req) = call(
+            "aether.request_merge",
+            serde_json::json!({
+                "taskId": "task-1", "repoPath": repo_path,
+                "sourceBranch": "feature", "targetBranch": "main",
+            }),
+        )
+        .expect("request ok");
+        let intent_id = req["result"]["intentId"].as_str().unwrap().to_string();
+
+        // BOUNDARY #1: a caller-supplied repo/source/target is rejected (it tries to
+        // re-point the merge) — BEFORE any merge, so the intent stays claimable.
+        let override_err = call(
+            "aether.review.approve",
+            serde_json::json!({
+                "intentId": intent_id, "repoPath": "C:/evil",
+                "sourceBranch": "evil", "targetBranch": "main",
+            }),
+        )
+        .expect_err("override must be rejected");
+        assert!(
+            matches!(override_err, ApiError::BadRequest(_)),
+            "{override_err:?}"
+        );
+
+        // BOUNDARY #2: any OTHER unknown field is rejected too.
+        let unknown_err = call(
+            "aether.review.approve",
+            serde_json::json!({ "intentId": intent_id, "smuggle": 1 }),
+        )
+        .expect_err("unknown field must be rejected");
+        assert!(
+            matches!(unknown_err, ApiError::BadRequest(_)),
+            "{unknown_err:?}"
+        );
+
+        // The real approve (intentId only) merges using the STORED branches.
+        let Json(ok) = call(
+            "aether.review.approve",
+            serde_json::json!({ "intentId": intent_id, "verdict": "approve" }),
+        )
+        .expect("approve ok");
+        assert_eq!(ok["result"]["status"], "merged");
+        // main now actually contains the feature commit (the merge really happened).
+        assert!(crate::git::branch_contains_commit(&repo_path, "main", &feat.to_string()).unwrap());
+
+        // A merged intent is no longer claimable — a re-approve loses the CAS.
+        let reapprove = call(
+            "aether.review.approve",
+            serde_json::json!({ "intentId": intent_id }),
+        )
+        .expect_err("re-approve of a merged intent must fail");
+        assert!(
+            matches!(reapprove, ApiError::BadRequest(_)),
+            "{reapprove:?}"
+        );
+
+        // An unknown intent id is NotFound.
+        let missing = call(
+            "aether.review.approve",
+            serde_json::json!({ "intentId": "ghost" }),
+        )
+        .expect_err("unknown intent");
+        assert!(matches!(missing, ApiError::NotFound(_)), "{missing:?}");
+    }
+
+    /// P0-3 inc4/5 robustness (Codex headline review): a non-string `verdict` /
+    /// `gatesDigest` must be REJECTED, not silently treated as absent (type-
+    /// confusion bypass); and if a branch tip moved since the request, the
+    /// OID-bound merge must mark the intent needs_reconcile rather than merge an
+    /// unreviewed commit.
+    #[test]
+    fn review_approve_rejects_nonstring_fields_and_flags_stale_tips() {
+        use crate::db::{Database, ManagedDb};
+        use crate::merge_intent::{store::MergeIntentStore, MergeIntentState};
+        use crate::pty::PtyManager;
+        use git2::{build::CheckoutBuilder, Repository};
+        use std::path::Path;
+        use std::sync::Arc;
+
+        let dir = tempfile::tempdir().unwrap();
+        let repo = Repository::init(dir.path()).unwrap();
+        repo.set_head("refs/heads/main").unwrap();
+        let commit = |file: &str, content: &str, parents: &[git2::Oid]| -> git2::Oid {
+            let wd = repo.workdir().unwrap().to_path_buf();
+            std::fs::write(wd.join(file), content).unwrap();
+            let mut idx = repo.index().unwrap();
+            idx.add_path(Path::new(file)).unwrap();
+            idx.write().unwrap();
+            let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+            let sig = git2::Signature::now("T", "t@t").unwrap();
+            let pcs: Vec<git2::Commit> = parents
+                .iter()
+                .map(|o| repo.find_commit(*o).unwrap())
+                .collect();
+            let prefs: Vec<&git2::Commit> = pcs.iter().collect();
+            repo.commit(Some("HEAD"), &sig, &sig, "c", &tree, &prefs)
+                .unwrap()
+        };
+        let base = commit("a.txt", "base", &[]);
+        repo.branch("feature", &repo.find_commit(base).unwrap(), false)
+            .unwrap();
+        repo.set_head("refs/heads/feature").unwrap();
+        repo.checkout_head(Some(CheckoutBuilder::new().force()))
+            .unwrap();
+        commit("b.txt", "feat", &[base]);
+        repo.set_head("refs/heads/main").unwrap();
+        repo.checkout_head(Some(CheckoutBuilder::new().force()))
+            .unwrap();
+        let repo_path = repo.workdir().unwrap().to_str().unwrap().to_string();
+
+        // Keep a handle to the store so we can assert the persisted state directly.
+        let store = Arc::new(MergeIntentStore::new(Arc::new(ManagedDb::new(
+            Database::open_memory().unwrap(),
+        ))));
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_merge_store(Some(store.clone()));
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let call = |name: &str, args: serde_json::Value| {
+            let body = ToolCallBody {
+                name: name.to_string(),
+                arguments: args,
+            };
+            rt.block_on(tools_call(State(state.clone()), Json(body)))
+        };
+
+        let Json(req) = call(
+            "aether.request_merge",
+            serde_json::json!({
+                "taskId": "task-1", "repoPath": repo_path,
+                "sourceBranch": "feature", "targetBranch": "main",
+            }),
+        )
+        .expect("request ok");
+        let intent_id = req["result"]["intentId"].as_str().unwrap().to_string();
+
+        // Type confusion: a NON-string verdict / gatesDigest is rejected, not
+        // treated as absent (the intent stays claimable).
+        let bad_verdict = call(
+            "aether.review.approve",
+            serde_json::json!({ "intentId": intent_id, "verdict": { "repoPath": "evil" } }),
+        )
+        .expect_err("object verdict rejected");
+        assert!(
+            matches!(bad_verdict, ApiError::BadRequest(_)),
+            "{bad_verdict:?}"
+        );
+        let bad_digest = call(
+            "aether.review.approve",
+            serde_json::json!({ "intentId": intent_id, "gatesDigest": 5 }),
+        )
+        .expect_err("non-string gatesDigest rejected");
+        assert!(
+            matches!(bad_digest, ApiError::BadRequest(_)),
+            "{bad_digest:?}"
+        );
+        // Still claimable (the bad calls did not consume it).
+        assert_eq!(
+            store.get(&intent_id).unwrap().unwrap().state,
+            MergeIntentState::Queued
+        );
+
+        // Move the target tip AFTER the request: main diverges from the reviewed base.
+        commit("c.txt", "main-moved", &[base]);
+
+        // The OID-bound approve must NOT merge an unreviewed state — it flags
+        // needs_reconcile.
+        let stale = call(
+            "aether.review.approve",
+            serde_json::json!({ "intentId": intent_id }),
+        )
+        .expect_err("stale tips rejected");
+        assert!(matches!(stale, ApiError::BadRequest(_)), "{stale:?}");
+        assert_eq!(
+            store.get(&intent_id).unwrap().unwrap().state,
+            MergeIntentState::NeedsReconcile,
+            "a moved tip leaves the intent needs_reconcile, never merged"
+        );
     }
 }

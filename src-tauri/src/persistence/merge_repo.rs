@@ -194,6 +194,32 @@ impl MergeRepo {
         Ok(changed == 1)
     }
 
+    /// Record approval evidence (reviewer + gates digest) on an intent. These are
+    /// MUTABLE metadata columns — recording who approved and on what gates does NOT
+    /// change the merge target (the immutability trigger still guards the
+    /// merge-defining columns).
+    pub fn record_approval(
+        db: &Database,
+        intent_id: &str,
+        reviewer_id: &str,
+        gates_digest: Option<&str>,
+        now: i64,
+    ) -> Result<(), String> {
+        let changed = db
+            .conn()
+            .execute(
+                "UPDATE merge_intents SET reviewer_id = ?2, gates_digest = ?3, updated_at = ?4 \
+                 WHERE intent_id = ?1",
+                params![intent_id, reviewer_id, gates_digest, now],
+            )
+            .map_err(|e| format!("record approval for {intent_id}: {e}"))?;
+        if changed == 1 {
+            Ok(())
+        } else {
+            Err(format!("merge intent not found: {intent_id}"))
+        }
+    }
+
     /// Move an intent to a new lifecycle state (the terminal/attention write after
     /// a merge attempt). The immutable-column trigger guarantees this can only
     /// touch `state`/`updated_at`.
