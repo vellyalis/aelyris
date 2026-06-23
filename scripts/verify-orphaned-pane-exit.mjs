@@ -9,9 +9,20 @@
 // resize -> 404 "Terminal degraded". THE FIX emits a typed
 // `{ code: null, crashed: false }`.
 //
-// This probe captures the real pty-exit payload via the Tauri v2 event plugin
-// and asserts it is NON-NULL typed, then confirms resizing the reaped id now
-// 404s at the backend (PTY truly gone) while the FE shows no degraded warning.
+// IMPORTANT — pane discovery (why we do NOT diff `list_terminals`):
+//   The autonomy fleet (`PaneFleet`) spawns its panes in the IN-PROCESS
+//   `PtyManager`. But in the dev build the PTY sidecar is connected, so the
+//   `list_terminals` IPC (`terminal_ids_async`) returns the SIDECAR's terminal
+//   list — a DIFFERENT registry. So a freshly dispatched fleet pane NEVER shows
+//   up in `list_terminals` here. The correct, runtime-faithful way to learn a
+//   dispatched pane's terminal id is the `AgentSpawned` event the cockpit emits
+//   (`orchestrator_commands.rs`): `agent-event` with kind `agent_spawned` and
+//   payload `{ taskId, terminalId, model }`. We capture that.
+//
+// NOTE — known native-crash risk: reaping a pane exercises the native PTY
+// close path, where a ConPTY/WebView2 race can ACCESS_VIOLATION the app under
+// load (a separate, pre-existing stability issue). If this probe dies with
+// "Target page ... closed", check the dev log for STATUS_ACCESS_VIOLATION.
 //
 // Prereq: pnpm tauri:dev (CDP 9222), claude on PATH + authenticated.
 import { execFileSync } from "node:child_process";
@@ -53,6 +64,26 @@ try {
   const inv = (n, a) =>
     page.evaluate(([nn, aa]) => window.__TAURI_INTERNALS__.invoke(nn, aa), [n, a]);
 
+  // Capture the AgentSpawned event so we learn the dispatched pane's terminal id
+  // (see header — list_terminals can't see fleet panes in the sidecar dev build).
+  const installSpawnCapture = () =>
+    page.evaluate(() => {
+      window.__agentSpawned = [];
+      const internals = window.__TAURI_INTERNALS__;
+      const handler = internals.transformCallback((event) => {
+        const p = event?.payload;
+        if (p && p.kind === "agent_spawned" && p.payload) {
+          window.__agentSpawned.push(p.payload);
+        }
+      });
+      return internals.invoke("plugin:event|listen", {
+        event: "agent-event",
+        target: { kind: "Any" },
+        handler,
+      });
+    });
+  const readSpawned = () => page.evaluate(() => window.__agentSpawned ?? []);
+
   // Install a pty-exit capture for a given terminal id using the Tauri v2 event
   // plugin internals (withGlobalTauri is off, so use __TAURI_INTERNALS__).
   const installExitCapture = (terminalId) =>
@@ -76,6 +107,8 @@ try {
       ).length,
     );
 
+  await installSpawnCapture();
+
   const info = await inv("create_worktree", { repoPath: repo, branchName: TASK.branch });
   const wtPath = info.path;
   await inv("task_create", {
@@ -94,7 +127,6 @@ try {
     },
   });
 
-  const before = new Set(await inv("list_terminals", {}));
   const rep = await inv("orchestrator_step", {
     usage: { active_agents: 0, tokens_used: 0, cost_usd: 0, runtime_secs: 0 },
     repoPath: repo,
@@ -104,27 +136,30 @@ try {
   console.log("dispatched:", JSON.stringify(rep.dispatched));
   if (!rep.dispatched.includes(TASK.id)) fail(`task not dispatched: ${TASK.id}`);
 
-  // Find the freshly spawned fleet pane terminal id (diff of list_terminals).
-  await sleep(2000);
-  const after = await inv("list_terminals", {});
-  const newIds = after.filter((id) => !before.has(id));
-  console.log("new terminals:", JSON.stringify(newIds));
-  if (newIds.length !== 1) fail(`expected 1 new terminal, got ${newIds.length}`);
-  const termId = newIds[0];
+  // Learn the fleet pane's terminal id from the AgentSpawned event.
+  let termId = null;
+  for (let i = 0; i < 15 && !termId; i++) {
+    const spawned = await readSpawned();
+    const mine = spawned.find((s) => s.taskId === TASK.id);
+    if (mine) termId = mine.terminalId;
+    else await sleep(1000);
+  }
+  console.log("fleet pane terminal id (from AgentSpawned):", termId);
+  if (!termId) fail("never received AgentSpawned for our task (no fleet pane terminal id)");
 
   await installExitCapture(termId);
   console.log(`installed pty-exit capture for ${termId}; degraded spans now=${await degradedCount()}`);
 
   // Wait for the real claude agent to produce the declared output.
   let built = false;
-  for (let i = 0; i < 40; i++) {
+  for (let i = 0; i < 60; i++) {
     if (existsSync(join(wtPath, TASK.file))) {
       built = true;
       break;
     }
     await sleep(2000);
   }
-  console.log(`output ${TASK.file} built in worktree: ${built} (after ~${built ? "<80" : "80"}s)`);
+  console.log(`output ${TASK.file} built in worktree: ${built}`);
   if (!built) fail("agent never produced HELLO.md within budget");
 
   // Second step: poll_completions sees outputs-ready -> kills + reaps the pane.
@@ -138,29 +173,28 @@ try {
 
   // Give the reap + channel-close + emit a moment to propagate.
   let cap = await readExitCapture();
-  for (let i = 0; i < 15 && !cap.fired; i++) {
+  for (let i = 0; i < 20 && !cap.fired; i++) {
     await sleep(1000);
     cap = await readExitCapture();
   }
   console.log("pty-exit capture:", JSON.stringify(cap));
 
-  // ── Assertions ──
+  // ── Core assertion: the reaped pane emitted a TYPED, NON-NULL ExitInfo ──
   if (!cap.fired) fail("pty-exit never fired for the reaped pane");
   if (cap.payload === null || cap.payload === undefined)
     fail(`pty-exit payload is null/undefined (THE OLD BUG): ${JSON.stringify(cap.payload)}`);
   if (typeof cap.payload !== "object" || !("crashed" in cap.payload) || !("code" in cap.payload))
     fail(`pty-exit payload is not a typed ExitInfo: ${JSON.stringify(cap.payload)}`);
 
-  // The PTY is truly gone now (reaped) — backend resize must 404; this is the
-  // condition that, pre-fix, the FE kept hitting on every relayout.
+  // ── Secondary (informational): resize routing + degraded banner. These depend
+  // on sidecar-vs-in-process routing, so they are logged, not hard-asserted. ──
   let resizeErr = null;
   try {
     await inv("resize_terminal", { id: termId, cols: 80, rows: 24 });
   } catch (e) {
     resizeErr = String(e);
   }
-  console.log("post-reap resize result:", resizeErr ?? "(ok — pane still alive?!)");
-
+  console.log("post-reap resize result:", resizeErr ?? "(ok)");
   const deg = await degradedCount();
   console.log(`"Terminal degraded" spans visible: ${deg}`);
 
