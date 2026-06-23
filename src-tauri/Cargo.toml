@@ -120,6 +120,9 @@ subtle = "2"
 # is auditable on its own.
 base64 = "0.22"
 bytemuck = { version = "1", features = ["derive"] }
+tree-sitter = "0.26.9"
+tree-sitter-rust = "0.24.2"
+tree-sitter-typescript = "0.23.2"
 
 # Window effects: Mica/Acrylic via tauri.conf.json windowEffects (no external crate needed)
 

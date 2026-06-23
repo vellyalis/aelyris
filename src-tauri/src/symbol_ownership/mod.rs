@@ -262,6 +262,18 @@ impl SymbolOwnership {
         before - self.claims.len()
     }
 
+    /// Release every claim `agent_id` holds in `path`. The parser tier re-derives a
+    /// file's WHOLE symbol set on each parse, so it reconciles by dropping the agent's
+    /// prior claims for that file before recording the fresh set — a renamed/removed
+    /// symbol's stale claim is freed, not stranded until its lease lapses. Returns the
+    /// count freed.
+    pub fn release_for_agent_path(&mut self, agent_id: &str, path: &str) -> usize {
+        let before = self.claims.len();
+        self.claims
+            .retain(|c| !(c.agent_id == agent_id && c.path == path));
+        before - self.claims.len()
+    }
+
     /// Drop expired claims (lease lapsed). Returns the ids removed so the caller
     /// can publish `FileReleased`-style events for them.
     pub fn expire(&mut self, now: u64) -> Vec<String> {
@@ -904,6 +916,41 @@ mod tests {
         own.claim(c2, 0);
         assert_eq!(own.release_for_task("task-1"), 2);
         assert_eq!(own.live_claims(0).len(), 0);
+    }
+
+    #[test]
+    fn release_for_agent_path_frees_only_that_agents_claims_in_that_file() {
+        let mut own = SymbolOwnership::new();
+        for (id, agent, path, s, e) in [
+            ("c1", "a", "src/x.rs", 1, 5),
+            ("c2", "a", "src/x.rs", 10, 20),
+            ("c3", "a", "src/y.rs", 1, 5),
+            ("c4", "b", "src/x.rs", 30, 40),
+        ] {
+            own.claim(
+                claim(
+                    id,
+                    agent,
+                    path,
+                    "f",
+                    s,
+                    e,
+                    ClaimMode::Write,
+                    Confidence::Parser,
+                ),
+                0,
+            );
+        }
+        // Only agent a's TWO claims in x.rs are freed.
+        assert_eq!(own.release_for_agent_path("a", "src/x.rs"), 2);
+        let live = own.live_claims(0);
+        assert_eq!(live.len(), 2);
+        assert!(live
+            .iter()
+            .any(|c| c.agent_id == "a" && c.path == "src/y.rs"));
+        assert!(live
+            .iter()
+            .any(|c| c.agent_id == "b" && c.path == "src/x.rs"));
     }
 
     #[test]

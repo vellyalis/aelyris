@@ -133,6 +133,152 @@ pub fn intents_from_diff(diff: &str, mode: ClaimMode) -> Vec<SymbolIntent> {
         .collect()
 }
 
+// ---- Parser tier (tree-sitter) — Confidence::Parser, exact symbol boundaries ----
+//
+// A REAL parse (NOT a regex/heuristic — A4 hard boundary) of the file source into
+// declaration ranges. Only Lsp/Parser confidence may unlock symbol-level parallelism
+// on a normal source file, so these ranges must be trustworthy: if the source does not
+// parse cleanly, or the language is unsupported, we emit NOTHING (file-level fallback)
+// rather than a guessed range.
+
+/// Languages the parser tier understands; anything else -> file fallback.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ParseLang {
+    Rust,
+    TypeScript,
+    Tsx,
+}
+
+impl ParseLang {
+    fn from_path(path: &str) -> Option<Self> {
+        let name = path
+            .rsplit(['/', '\\'])
+            .next()
+            .unwrap_or(path)
+            .to_ascii_lowercase();
+        match name.rsplit('.').next().unwrap_or("") {
+            "rs" => Some(Self::Rust),
+            "ts" | "mts" | "cts" => Some(Self::TypeScript),
+            // TSX only — the A4 boundary is Rust + TS/TSX. The TSX grammar COULD parse
+            // plain JS/JSX (it's a superset), but accepting `.js`/`.jsx` here would
+            // silently widen the support matrix; that stays an explicit follow-up.
+            "tsx" => Some(Self::Tsx),
+            _ => None,
+        }
+    }
+
+    fn language(self) -> tree_sitter::Language {
+        match self {
+            Self::Rust => tree_sitter_rust::LANGUAGE.into(),
+            Self::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+            Self::Tsx => tree_sitter_typescript::LANGUAGE_TSX.into(),
+        }
+    }
+
+    fn query_src(self) -> &'static str {
+        match self {
+            Self::Rust => RUST_SYMBOL_QUERY,
+            Self::TypeScript | Self::Tsx => TS_SYMBOL_QUERY,
+        }
+    }
+}
+
+/// `@def` = the whole declaration node (its line span IS the owned range); `@name` =
+/// the identifier text. `function_item` also covers methods (a method is a
+/// `function_item` inside an `impl_item`).
+const RUST_SYMBOL_QUERY: &str = r#"
+(function_item name: (identifier) @name) @def
+(struct_item name: (type_identifier) @name) @def
+(enum_item name: (type_identifier) @name) @def
+(trait_item name: (type_identifier) @name) @def
+"#;
+
+/// Functions, generators, class methods, classes, and arrow/function-expression
+/// components bound to a `const` (the common React component shape).
+const TS_SYMBOL_QUERY: &str = r#"
+(function_declaration name: (identifier) @name) @def
+(generator_function_declaration name: (identifier) @name) @def
+(method_definition name: (property_identifier) @name) @def
+(class_declaration name: (type_identifier) @name) @def
+(lexical_declaration
+  (variable_declarator
+    name: (identifier) @name
+    value: [(arrow_function) (function_expression)])) @def
+"#;
+
+/// Parse `source` (the file's content) for `path`'s language into Parser-confidence
+/// [`SymbolIntent`]s — one per function / method / class / struct / enum / trait /
+/// component, each with the full inclusive line range. Returns EMPTY when the language
+/// is unsupported OR the source does not parse cleanly (no guessed ranges — only a real,
+/// error-free parse earns `Confidence::Parser`; spec §6.3 + A4 hard boundary). Pure:
+/// in-memory parse, no I/O.
+pub fn intents_from_source(path: &str, source: &str, mode: ClaimMode) -> Vec<SymbolIntent> {
+    use tree_sitter::{Parser, Query, QueryCursor, StreamingIterator};
+
+    let Some(lang) = ParseLang::from_path(path) else {
+        return Vec::new();
+    };
+    let language = lang.language();
+    let mut parser = Parser::new();
+    if parser.set_language(&language).is_err() {
+        return Vec::new();
+    }
+    let Some(tree) = parser.parse(source, None) else {
+        return Vec::new();
+    };
+    // A parse error means the ranges may be unreliable -> emit nothing (file fallback)
+    // rather than a possibly-wrong Parser claim.
+    if tree.root_node().has_error() {
+        return Vec::new();
+    }
+    let Ok(query) = Query::new(&language, lang.query_src()) else {
+        return Vec::new();
+    };
+    let (Some(name_idx), Some(def_idx)) = (
+        query.capture_index_for_name("name"),
+        query.capture_index_for_name("def"),
+    ) else {
+        return Vec::new();
+    };
+    let bytes = source.as_bytes();
+    let mut cursor = QueryCursor::new();
+    let mut matches = cursor.matches(&query, tree.root_node(), bytes);
+    let mut out = Vec::new();
+    while let Some(m) = matches.next() {
+        let mut name: Option<&str> = None;
+        let mut def: Option<tree_sitter::Node> = None;
+        for cap in m.captures {
+            if cap.index == name_idx {
+                name = cap.node.utf8_text(bytes).ok();
+            } else if cap.index == def_idx {
+                def = Some(cap.node);
+            }
+        }
+        let (Some(name), Some(def)) = (name, def) else {
+            continue;
+        };
+        // tree-sitter rows are 0-based; SymbolRange is 1-based inclusive.
+        let start = def
+            .start_position()
+            .row
+            .saturating_add(1)
+            .min(MAX_LINE as usize) as u32;
+        let end = def
+            .end_position()
+            .row
+            .saturating_add(1)
+            .min(MAX_LINE as usize) as u32;
+        out.push(SymbolIntent {
+            path: path.to_string(),
+            symbol: name.to_string(),
+            range: SymbolRange::new(start, end),
+            mode,
+            confidence: Confidence::Parser,
+        });
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -316,5 +462,121 @@ diff --git a/README.md b/README.md
                 range: SymbolRange::new(2, 2)
             }]
         );
+    }
+
+    // ---- Parser tier (tree-sitter) ----
+
+    fn names(intents: &[SymbolIntent]) -> Vec<&str> {
+        intents.iter().map(|i| i.symbol.as_str()).collect()
+    }
+
+    #[test]
+    fn parses_rust_struct_fn_and_impl_method_with_exact_ranges() {
+        // Line numbers (1-based):
+        // 1 struct Point {        5 impl Point {           11 fn free_fn() {
+        // 2     x: i32,           6     fn new() -> Self {  12     let _ = 1;
+        // 3 }                     7         Point { x: 0 }  13 }
+        // 4 (blank)               8     }
+        //                         9 }
+        //                         10 (blank)
+        let src = "struct Point {\n    x: i32,\n}\n\nimpl Point {\n    fn new() -> Self {\n        Point { x: 0 }\n    }\n}\n\nfn free_fn() {\n    let _ = 1;\n}\n";
+        let intents = intents_from_source("src/geo.rs", src, ClaimMode::Write);
+        let got = names(&intents);
+        assert!(got.contains(&"Point"), "got {got:?}");
+        assert!(
+            got.contains(&"new"),
+            "method (function_item in impl) {got:?}"
+        );
+        assert!(got.contains(&"free_fn"), "got {got:?}");
+        assert!(intents.iter().all(|i| i.confidence == Confidence::Parser));
+        let by = |n: &str| intents.iter().find(|i| i.symbol == n).unwrap().range;
+        assert_eq!(by("Point"), SymbolRange::new(1, 3));
+        assert_eq!(by("new"), SymbolRange::new(6, 8));
+        assert_eq!(by("free_fn"), SymbolRange::new(11, 13));
+    }
+
+    #[test]
+    fn parses_tsx_function_component_class_and_method() {
+        // 1 export function greet(name: string) {   9  class Svc {
+        // 2   return name;                          10   run() {
+        // 3 }                                        11     return 1;
+        // 4 (blank)                                  12   }
+        // 5 export const Button = () => {            13 }
+        // 6   return null;
+        // 7 };
+        // 8 (blank)
+        let src = "export function greet(name: string) {\n  return name;\n}\n\nexport const Button = () => {\n  return null;\n};\n\nclass Svc {\n  run() {\n    return 1;\n  }\n}\n";
+        let intents = intents_from_source("src/App.tsx", src, ClaimMode::Write);
+        let got = names(&intents);
+        assert!(got.contains(&"greet"), "got {got:?}");
+        assert!(got.contains(&"Button"), "arrow component {got:?}");
+        assert!(got.contains(&"Svc"), "got {got:?}");
+        assert!(got.contains(&"run"), "method {got:?}");
+        assert!(intents.iter().all(|i| i.confidence == Confidence::Parser));
+        let by = |n: &str| intents.iter().find(|i| i.symbol == n).unwrap().range;
+        assert_eq!(by("greet"), SymbolRange::new(1, 3));
+        assert_eq!(by("Button"), SymbolRange::new(5, 7));
+    }
+
+    #[test]
+    fn unsupported_extension_yields_no_intents() {
+        assert!(intents_from_source("README.md", "# title\n", ClaimMode::Write).is_empty());
+        assert!(intents_from_source("data.json", "{}", ClaimMode::Write).is_empty());
+    }
+
+    #[test]
+    fn unparseable_source_falls_back_to_nothing_not_a_guessed_range() {
+        // Broken Rust -> has_error -> emit nothing (file-level fallback), never a
+        // wrong Parser claim (A4 hard boundary).
+        let intents = intents_from_source("src/x.rs", "fn broken( { let", ClaimMode::Write);
+        assert!(intents.is_empty());
+    }
+
+    #[test]
+    fn empty_source_yields_no_intents() {
+        assert!(intents_from_source("src/x.rs", "", ClaimMode::Write).is_empty());
+    }
+
+    #[test]
+    fn all_symbol_queries_compile_against_their_grammars() {
+        // Guards against a grammar bump silently disabling a tier: if a node kind in a
+        // query vanishes, Query::new errors and the tier goes dead (returns nothing).
+        // Also the only coverage of the standalone TypeScript grammar's query.
+        for lang in [ParseLang::Rust, ParseLang::TypeScript, ParseLang::Tsx] {
+            let language = lang.language();
+            assert!(
+                tree_sitter::Query::new(&language, lang.query_src()).is_ok(),
+                "{lang:?} symbol query failed to compile against its grammar",
+            );
+        }
+    }
+
+    #[test]
+    fn parses_typescript_ts_grammar_function_and_class() {
+        // `.ts` uses LANGUAGE_TYPESCRIPT (not the TSX grammar) — exercise that path.
+        let src = "export function f(): number {\n  return 1;\n}\n\nclass C {\n  m() {\n    return 2;\n  }\n}\n";
+        let intents = intents_from_source("src/x.ts", src, ClaimMode::Write);
+        let got = names(&intents);
+        assert!(got.contains(&"f"), "got {got:?}");
+        assert!(got.contains(&"C"), "got {got:?}");
+        assert!(got.contains(&"m"), "got {got:?}");
+        assert!(intents.iter().all(|i| i.confidence == Confidence::Parser));
+    }
+
+    #[test]
+    fn leading_blank_lines_do_not_shift_ranges() {
+        // The extractor must see the source UNTRIMMED: a fn after 2 blank lines is at
+        // line 3, not line 1 (the MCP layer reads `source` raw for exactly this).
+        let src = "\n\nfn shifted() {\n    let _ = 1;\n}\n";
+        let intents = intents_from_source("src/x.rs", src, ClaimMode::Write);
+        let f = intents.iter().find(|i| i.symbol == "shifted").unwrap();
+        assert_eq!(f.range, SymbolRange::new(3, 5));
+    }
+
+    #[test]
+    fn js_and_jsx_are_not_in_the_support_matrix() {
+        // A4 boundary = Rust + TS/TSX. JS/JSX -> file-level fallback (no intents).
+        assert!(intents_from_source("src/x.js", "function f(){}", ClaimMode::Write).is_empty());
+        assert!(intents_from_source("src/x.jsx", "function f(){}", ClaimMode::Write).is_empty());
     }
 }
