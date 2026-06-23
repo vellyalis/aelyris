@@ -1,20 +1,27 @@
 //! Symbol extraction — derive [`SymbolIntent`]s from a source (spec §6.3 tiers).
 //!
-//! **Tier implemented here: DIFF-HUNK.** Parse a unified diff's hunk headers into
-//! per-file NEW-side line ranges, tagged [`Confidence::DiffHunk`]. DiffHunk is the
-//! INFERRED tier: it never unlocks symbol-level parallelism ([`super::unlocks_parallelism`]
-//! returns false), so an agent's actual edits serialize overlapping ready tasks and
-//! light the conflict badge with PRECISE ranges, but can never prove disjointness
-//! (the §6.5 slow path). It needs no language server, no parser, no file contents —
-//! only the diff text the agent already has (`git diff` / [`crate::git::merge::diff_three_dot`]).
+//! Two tiers are implemented here (extraction order §6.3 = LSP → Parser → DiffHunk → file):
 //!
-//! Higher tiers that DO prove exact boundaries (LSP `textDocument/documentSymbol`,
-//! a parser) are deferred to a later increment; they emit `Confidence::Lsp`/`Parser`
-//! intents and plug in alongside this one. No `SymbolExtractor` trait is introduced
-//! yet — with one tier it would be speculative abstraction; the trait seam lands
-//! with the second tier, when its shape is known.
+//!   - **PARSER** ([`intents_from_source`]) — a REAL tree-sitter parse of the file source
+//!     (Rust / TS / TSX) into exact declaration ranges, tagged [`Confidence::Parser`].
+//!     Parser ranges are exact, so they unlock symbol-level parallelism on a normal source
+//!     file (but not a shared config/schema file — [`super::unlocks_parallelism`]). An
+//!     unsupported language or an unclean parse yields NOTHING (file-level fallback) — only a
+//!     real, error-free parse earns `Parser`; we never label a guess as exact (§6.3 boundary).
+//!   - **DIFF-HUNK** ([`intents_from_diff`]) — parse a unified diff's hunk headers into
+//!     per-file NEW-side line ranges, tagged [`Confidence::DiffHunk`]. DiffHunk is INFERRED:
+//!     it never unlocks parallelism (it can't prove disjointness — the §6.5 slow path), so an
+//!     agent's actual edits serialize overlapping ready tasks and light the conflict badge
+//!     with precise ranges. Needs only the diff text the agent already has.
 //!
-//! Pure: no I/O, no clock, no locks. The diff text is supplied by the caller and the
+//! The remaining §6.3 tiers are DEFERRED: the **LSP** `textDocument/documentSymbol` tier
+//! (`Confidence::Lsp`, the only one that unlocks shared config/schema/types files) needs
+//! backend request↔response correlation the current frontend-driven LSP client lacks (the
+//! A4-LSP follow-up); the **file-level fallback** is simply the absence of any intent (the
+//! existing file gate). No `SymbolExtractor` trait is introduced — the two tiers have
+//! different inputs (a diff vs file source), so a shared trait would be speculative now.
+//!
+//! Pure: no I/O, no clock, no locks. The source/diff text is supplied by the caller and the
 //! wiring layer (IPC/MCP) stamps claim ids + leases.
 
 use super::{ClaimMode, Confidence, SymbolIntent, SymbolRange};

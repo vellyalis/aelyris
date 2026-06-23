@@ -1650,14 +1650,25 @@ pub(super) async fn tools_call(
                     .unwrap_or(serde_json::Value::Null),
             )
             .map_err(|_| ApiError::BadRequest("invalid confidence".to_string()))?;
+            let claim_id = arg_string(&args, "claimId")?;
+            // `parse:` / `dh:` are RESERVED id prefixes for extractor-derived claims
+            // (claim_from_source / claim_from_diff) so their reconcile can't sweep a
+            // hand-made claim. Reject a manual claim that squats on them.
+            if claim_id.starts_with("parse:") || claim_id.starts_with("dh:") {
+                return Err(ApiError::BadRequest(
+                    "claimId prefix `parse:`/`dh:` is reserved for derived claims".to_string(),
+                ));
+            }
             let claim = crate::symbol_ownership::SymbolClaim {
-                claim_id: arg_string(&args, "claimId")?,
+                claim_id,
                 agent_id: arg_string(&args, "agentId")?,
                 task_id: args
                     .get("taskId")
                     .and_then(|v| v.as_str())
                     .map(String::from),
-                path: arg_string(&args, "path")?,
+                // Normalize to forward slashes so a `src\x.rs` claim conflict-detects
+                // against a `src/x.rs` claim (path equality drives conflict_between).
+                path: arg_string(&args, "path")?.replace('\\', "/"),
                 symbol: arg_string(&args, "symbol")?,
                 range: crate::symbol_ownership::SymbolRange::new(start_line, end_line),
                 mode,
@@ -1827,7 +1838,10 @@ pub(super) async fn tools_call(
                 .get("taskId")
                 .and_then(|v| v.as_str())
                 .map(String::from);
-            let path = arg_string(&args, "path")?;
+            // Normalize the path to forward slashes so the reconcile prefix and the
+            // per-claim ids are spelling-consistent across calls (re-parsing `src\x.rs`
+            // then `src/x.rs` reconciles the same file).
+            let path = arg_string(&args, "path")?.replace('\\', "/");
             // Raw (no trim): trimming would strip leading blank lines and shift every
             // parsed symbol's line number. Empty source is valid -> fallback, no claims.
             let source = arg_string_raw(&args, "source")?;
@@ -2587,5 +2601,27 @@ mod tests {
                 .any(|i| i.starts_with("parse:a:src/x.rs:") && i.contains("alpha")),
             "parser claim must be recorded: {ids:?}"
         );
+    }
+
+    /// A manual claim cannot squat on the reserved `parse:`/`dh:` id prefixes — that
+    /// would let the extractor reconcile sweep a hand-made claim.
+    #[test]
+    fn manual_claim_rejects_reserved_id_prefix() {
+        use crate::pty::PtyManager;
+        use crate::symbol_ownership::SymbolOwnership;
+        use std::sync::{Arc, Mutex};
+
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let owner = Arc::new(Mutex::new(SymbolOwnership::new()));
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_symbol_ownership(owner);
+        let body = ToolCallBody {
+            name: "aether.symbol.claim".to_string(),
+            arguments: serde_json::json!({ "claimId": "parse:a:src/x.rs:foo@1-3", "agentId": "a",
+                "path": "src/x.rs", "symbol": "foo", "startLine": 1, "endLine": 3,
+                "mode": "write", "confidence": "parser" }),
+        };
+        let result = rt.block_on(tools_call(State(state), Json(body)));
+        assert!(matches!(result, Err(ApiError::BadRequest(_))));
     }
 }
