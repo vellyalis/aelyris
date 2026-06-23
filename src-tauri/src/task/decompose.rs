@@ -189,7 +189,18 @@ pub fn decompose_to_plan(
         let (tasks, unresolved) =
             crate::task::symbol_enrich::enrich_plan_with_symbols(repo_root, planned);
         match validate_plan(tasks) {
-            Ok(ordered) => return Ok(ordered),
+            // Accept ONLY a structurally valid plan whose every declared symbol target
+            // verified. An unresolved target means the planner declared an edit we could
+            // NOT prove against real source — accepting the plan anyway would silently
+            // ignore that intended edit (a partial-symbol unlock), so the attempt fails
+            // and the diagnostics are fed back so the next attempt fixes or removes it.
+            Ok(ordered) if unresolved.is_empty() => return Ok(ordered),
+            Ok(_) => {
+                prior_errors = unresolved;
+                prior_errors.sort();
+                prior_errors.dedup();
+                let _ = attempt;
+            }
             Err(mut errs) => {
                 // Surface why same-file parallelism was rejected (the unproven symbol),
                 // not just the collision, so the next attempt is actionable.
@@ -316,5 +327,18 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.contains("planner LLM call failed"), "{err}");
+    }
+
+    #[test]
+    fn an_unverifiable_symbol_target_fails_the_attempt_even_if_structurally_valid() {
+        // A structurally fine single-task plan whose declared symbol can't be verified must
+        // NOT be accepted — the planner declared an edit we couldn't prove against real
+        // source, and silently ignoring it would be a partial-symbol unlock.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("src")).unwrap();
+        std::fs::write(dir.path().join("src/x.rs"), "fn real() {}\n").unwrap();
+        let plan = r#"[{"id":"a","title":"A","owner":"w","outputs":["src/x.rs"],"source_branch":"feat/a","target_branch":"main","symbol_targets":[{"path":"src/x.rs","symbol":"ghost","mode":"write"}]}]"#;
+        let err = decompose_to_plan("g", "", dir.path(), |_| Ok(plan.to_string()), 1).unwrap_err();
+        assert!(err.contains("could not be verified"), "{err}");
     }
 }

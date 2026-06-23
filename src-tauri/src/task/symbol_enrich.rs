@@ -7,6 +7,7 @@
 //! diagnostic so the planner can fix the name or add a dependency. It NEVER trusts an
 //! LLM-supplied range or confidence (the hard boundary against mislabeling a guess as exact).
 
+use std::collections::HashSet;
 use std::path::Path;
 
 use super::decompose::{PlannedSymbolTarget, PlannedTask};
@@ -30,16 +31,27 @@ pub fn enrich_plan_with_symbols(
         .map(|pt| {
             let targets = pt.symbol_targets.clone();
             let mut task = pt.into_task();
-            let mut verified = Vec::new();
+            let mut verified: Vec<SymbolIntent> = Vec::new();
+            // Files where ANY declared target failed verification — every verified symbol
+            // on such a file is dropped too, so a task is NEVER PARTIALLY unlocked on a
+            // file (some functions proven, others not = it could still edit the unproven
+            // region while a peer co-edits it). The whole file falls back to file-level.
+            let mut poisoned: HashSet<String> = HashSet::new();
             for target in &targets {
                 match verify_target(repo_root, target) {
                     Ok(intent) => verified.push(intent),
-                    Err(reason) => unresolved.push(format!(
-                        "task {} symbol target {}:{} could not be verified ({reason}) — fix the name, ensure the file exists, or drop it (the task then stays file-level for that file)",
-                        task.id, target.path, target.symbol
-                    )),
+                    Err(reason) => {
+                        poisoned.insert(
+                            safe_repo_relative(&target.path).unwrap_or_else(|_| target.path.clone()),
+                        );
+                        unresolved.push(format!(
+                            "task {} symbol target {}:{} could not be verified ({reason}) — fix the name, ensure the file exists, or remove it (the task then stays file-level for that whole file)",
+                            task.id, target.path, target.symbol
+                        ));
+                    }
                 }
             }
+            verified.retain(|i| !poisoned.contains(&i.path));
             task.symbols = verified;
             task
         })
@@ -52,15 +64,29 @@ pub fn enrich_plan_with_symbols(
 fn verify_target(repo_root: &Path, target: &PlannedSymbolTarget) -> Result<SymbolIntent, String> {
     let rel = safe_repo_relative(&target.path)?;
     let abs = repo_root.join(&rel);
-    let meta = std::fs::metadata(&abs).map_err(|_| "file does not exist".to_string())?;
+    // `symlink_metadata` does NOT follow links: reject a symlinked file outright — a
+    // verified read must be a real file under the repo, never a link that could resolve
+    // outside it.
+    let meta = std::fs::symlink_metadata(&abs).map_err(|_| "file does not exist".to_string())?;
+    if meta.file_type().is_symlink() {
+        return Err("symlinks are not allowed".to_string());
+    }
     if !meta.is_file() {
         return Err("path is not a file".to_string());
     }
     if meta.len() > MAX_SOURCE_BYTES {
         return Err("file exceeds the 1 MiB parse cap".to_string());
     }
-    let source =
-        std::fs::read_to_string(&abs).map_err(|_| "file is not valid UTF-8 text".to_string())?;
+    // Defense in depth (parent-dir junction/symlink): prove the RESOLVED path stays under
+    // the canonical repo root before reading it.
+    let canonical_root =
+        std::fs::canonicalize(repo_root).map_err(|_| "repo root unavailable".to_string())?;
+    let resolved = std::fs::canonicalize(&abs).map_err(|_| "file does not exist".to_string())?;
+    if !resolved.starts_with(&canonical_root) {
+        return Err("path resolves outside the repo root".to_string());
+    }
+    let source = std::fs::read_to_string(&resolved)
+        .map_err(|_| "file is not valid UTF-8 text".to_string())?;
     // Real tree-sitter parse -> Parser confidence + exact ranges; empty on an
     // unsupported language or an unclean parse (the extractor never guesses).
     let mut matches: Vec<SymbolIntent> = intents_from_source(&rel, &source, target.mode)
@@ -164,19 +190,41 @@ mod tests {
     }
 
     #[test]
-    fn enrich_populates_verified_symbols_and_reports_unresolved() {
+    fn poison_drops_all_verified_symbols_on_a_file_with_any_failed_target() {
+        // real + ghost both target src/x.rs; ghost fails -> the WHOLE file is poisoned, so
+        // even the verified `real` is dropped (no PARTIAL unlock). The task falls back to
+        // file-level for src/x.rs, and the ghost is reported as a diagnostic.
         let dir = tempfile::tempdir().unwrap();
         write(dir.path(), "src/x.rs", "fn real() {\n    let _ = 1;\n}\n");
-        let mut pt: PlannedTask = serde_json::from_str(
+        let pt: PlannedTask = serde_json::from_str(
             r#"{"id":"t","title":"edit","owner":"w","outputs":["src/x.rs"],"source_branch":"feat/t","target_branch":"main",
                 "symbol_targets":[{"path":"src/x.rs","symbol":"real","mode":"write"},{"path":"src/x.rs","symbol":"ghost","mode":"write"}]}"#,
         )
         .unwrap();
-        // sanity: the LLM-side contract parsed both targets.
         assert_eq!(pt.symbol_targets.len(), 2);
-        pt.symbol_targets.sort_by(|a, b| a.symbol.cmp(&b.symbol)); // deterministic order
         let (tasks, unresolved) = enrich_plan_with_symbols(dir.path(), vec![pt]);
-        // The real symbol is verified (Parser); the ghost is dropped + reported.
+        assert!(
+            tasks[0].symbols.is_empty(),
+            "poisoned file must keep NO symbols"
+        );
+        assert!(
+            unresolved.iter().any(|u| u.contains("ghost")),
+            "{unresolved:?}"
+        );
+    }
+
+    #[test]
+    fn a_verified_symbol_on_an_unpoisoned_file_survives() {
+        // real on src/x.rs (verified) + ghost on a MISSING src/y.rs: only y.rs is poisoned,
+        // so the verified real on x.rs is kept (cross-file failures don't nuke everything).
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "src/x.rs", "fn real() {\n    let _ = 1;\n}\n");
+        let pt: PlannedTask = serde_json::from_str(
+            r#"{"id":"t","title":"edit","owner":"w","outputs":["src/x.rs","src/y.rs"],"source_branch":"feat/t","target_branch":"main",
+                "symbol_targets":[{"path":"src/x.rs","symbol":"real","mode":"write"},{"path":"src/y.rs","symbol":"ghost","mode":"write"}]}"#,
+        )
+        .unwrap();
+        let (tasks, unresolved) = enrich_plan_with_symbols(dir.path(), vec![pt]);
         assert_eq!(tasks[0].symbols.len(), 1);
         assert_eq!(tasks[0].symbols[0].symbol, "real");
         assert_eq!(tasks[0].symbols[0].confidence, Confidence::Parser);
