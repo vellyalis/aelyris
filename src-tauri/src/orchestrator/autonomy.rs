@@ -792,6 +792,33 @@ mod tests {
     }
 
     #[test]
+    fn parser_disjoint_symbols_on_normal_file_co_dispatch() {
+        // Parser confidence (exact boundaries) UNLOCKS same-file parallelism on a
+        // NORMAL source file — the payoff of the parser tier (A4.1): two tasks editing
+        // disjoint functions in one .rs file run at once, while the shared-config and
+        // DiffHunk cases above stay serialized. Completes the §6.2/§6.5 gating matrix.
+        let mut g = TaskGraph::new();
+        g.add(task_on_file(
+            "a",
+            "src/x.rs",
+            vec![intent_on("src/x.rs", 1, 20, Confidence::Parser)],
+        ))
+        .unwrap();
+        g.add(task_on_file(
+            "b",
+            "src/x.rs",
+            vec![intent_on("src/x.rs", 40, 60, Confidence::Parser)],
+        ))
+        .unwrap();
+        g.recompute_ready();
+        let mut ports = FakePorts::new();
+        let report = step(&mut g, &caps(4), &CostUsage::default(), &mut ports);
+        assert_eq!(report.dispatched.len(), 2);
+        assert_eq!(g.get("a").unwrap().status, TaskStatus::Running);
+        assert_eq!(g.get("b").unwrap().status, TaskStatus::Running);
+    }
+
+    #[test]
     fn green_review_merges_and_completes() {
         let mut g = TaskGraph::new();
         g.add(Task::new("a", "A")).unwrap();
