@@ -133,6 +133,40 @@ impl AgentCli {
 /// A resolved agent CLI launch: `(program, args, environment)`.
 pub type AgentLaunchSpec = (String, Vec<String>, HashMap<String, String>);
 
+/// Auto-approve flags that make a worker run AUTONOMOUSLY in its OWN isolated
+/// worktree — each CLI's equivalent of "don't stop to ask, you own this
+/// worktree" (BR1 / Design Principle 1: agents write freely inside their own
+/// worktree). This is the single source of truth so every spawn path
+/// (`agent_command_spec`, `agent_shell_command_spec`) grants the same policy per
+/// model provider, instead of only Claude getting it. Each provider gets its
+/// edits-only / sandbox-confined autonomous mode, NOT a full dangerous bypass:
+///
+/// - Claude: `--permission-mode acceptEdits` — auto-accept file edits.
+/// - Codex: `--sandbox workspace-write --ask-for-approval never` — broader than
+///   edits-only: shell commands also run with no human gate, but the OS sandbox
+///   confines WRITES to the workspace (NOT danger-full-access; reads/network are
+///   not restricted). Codex has no edits-only mode; `on-request` would re-stall
+///   an unattended fleet pane on the first command, so `never` is required.
+/// - Gemini: `--approval-mode auto_edit` — auto-approve edit tools, the
+///   edits-only mirror of Claude's acceptEdits (NOT `yolo`, which auto-approves
+///   every tool).
+///
+/// A custom CLI gets no flags (no known safe auto-approve flag to assume).
+fn autonomous_flags(cli: &AgentCli) -> Vec<String> {
+    let owned = |parts: &[&str]| parts.iter().map(|s| s.to_string()).collect();
+    match cli {
+        AgentCli::Claude => owned(&["--permission-mode", "acceptEdits"]),
+        AgentCli::Codex => owned(&[
+            "--sandbox",
+            "workspace-write",
+            "--ask-for-approval",
+            "never",
+        ]),
+        AgentCli::Gemini => owned(&["--approval-mode", "auto_edit"]),
+        AgentCli::Custom(_) => Vec::new(),
+    }
+}
+
 /// Default Claude model when a task carries no usable model.
 const DEFAULT_AGENT_MODEL: &str = "sonnet";
 /// Claude model aliases the CLI accepts directly.
@@ -189,26 +223,20 @@ pub fn agent_command_spec(
     cli.validate()?;
     let (program, mut args) = cli.program_and_args(Some(model));
 
+    // Autonomous worker in its own isolated worktree: grant the per-provider
+    // auto-approve policy so it can actually build without stopping at an
+    // interactive permission gate (NOT a full dangerous bypass). The
+    // AgentInspector passes `false` so a human keeps the approval gate.
+    if autonomous {
+        args.extend(autonomous_flags(&cli));
+    }
+
     if let Some(prompt) = initial_prompt {
         match cli {
-            AgentCli::Claude => {
-                if autonomous {
-                    // Autonomous worker in its own isolated worktree: auto-accept
-                    // file edits so it can actually build without an interactive
-                    // permission gate. This is the edits-only mode, NOT the full
-                    // dangerous bypass, matching "agents write freely inside their
-                    // own worktree" (BR1/Design Principle 1). The AgentInspector
-                    // passes `false` so a human keeps the edit-approval gate.
-                    args.push("--permission-mode".to_string());
-                    args.push("acceptEdits".to_string());
-                }
-                // No -p: run the interactive TUI (visible, persistent), not the
-                // headless print dump. The prompt is a positional arg so claude
-                // starts a session and works on it immediately.
-                args.push(prompt.to_string());
-            }
-            AgentCli::Codex | AgentCli::Gemini => {
-                // Interactive too (no -p): prompt as a positional arg.
+            // No -p: run the interactive TUI (visible, persistent), not the
+            // headless print dump. The prompt is a positional arg so the CLI
+            // starts a session and works on it immediately.
+            AgentCli::Claude | AgentCli::Codex | AgentCli::Gemini => {
                 args.push(prompt.to_string());
             }
             AgentCli::Custom(_) => {
@@ -258,16 +286,12 @@ pub fn agent_shell_command_spec(
     let cli = AgentCli::from_model(&model);
     cli.validate()?;
     let (cli_program, mut cli_args) = cli.program_and_args(Some(&model));
-    match cli {
-        AgentCli::Claude => {
-            if autonomous {
-                cli_args.push("--permission-mode".to_string());
-                cli_args.push("acceptEdits".to_string());
-            }
-            // No -p: run the interactive TUI (visible, persistent), not headless print.
-        }
-        AgentCli::Codex | AgentCli::Gemini => {}
-        AgentCli::Custom(_) => {}
+    // No -p: run the interactive TUI (visible, persistent), not headless print.
+    // Autonomous fleet worker → grant the per-provider auto-approve policy so a
+    // non-Claude worker (codex/gemini) builds without stalling at its own
+    // permission prompt, exactly like Claude's acceptEdits.
+    if autonomous {
+        cli_args.extend(autonomous_flags(&cli));
     }
 
     let mut command = format!("& {}", ps_single_quote(&cli_program));
@@ -612,10 +636,117 @@ mod tests {
 
     #[test]
     fn agent_command_spec_codex_passes_interactive_prompt() {
-        let (program, args, _env) = agent_command_spec("codex-mini", Some("review"), true).unwrap();
+        // Codex worker, NON-autonomous (AgentInspector path): interactive prompt
+        // (no -p), no --model, and no auto-approve flags — a human keeps the gate.
+        let (program, args, _env) =
+            agent_command_spec("codex-mini", Some("review"), false).unwrap();
         assert_eq!(program, platform_cli_program("codex"));
-        // Codex/Gemini: interactive prompt (no -p), no --model / permission flags.
         assert_eq!(args, vec!["review"]);
+    }
+
+    #[test]
+    fn agent_command_spec_autonomous_codex_auto_approves_in_workspace() {
+        // An autonomous codex fleet worker gets codex's equivalent of claude's
+        // acceptEdits: writes confined to the workspace, no approval prompts, so
+        // it builds on its own instead of stalling at a permission gate. This is
+        // what makes the visible fleet genuinely multi-model (not claude-only).
+        let (program, args, env) =
+            agent_command_spec("codex-mini", Some("build it"), true).unwrap();
+        assert_eq!(program, platform_cli_program("codex"));
+        assert_eq!(
+            args,
+            vec![
+                "--sandbox",
+                "workspace-write",
+                "--ask-for-approval",
+                "never",
+                "build it"
+            ]
+        );
+        assert_eq!(
+            env.get("AETHER_AGENT_CLI").map(String::as_str),
+            Some("Codex")
+        );
+    }
+
+    #[test]
+    fn agent_command_spec_autonomous_gemini_auto_approves() {
+        // Gemini's edits-only auto-approve (auto_edit), mirroring Claude's
+        // acceptEdits — NOT `yolo`, which would auto-approve every tool.
+        let (program, args, _env) =
+            agent_command_spec("gemini-2.5-pro", Some("build it"), true).unwrap();
+        assert_eq!(program, platform_cli_program("gemini"));
+        assert_eq!(args, vec!["--approval-mode", "auto_edit", "build it"]);
+    }
+
+    #[test]
+    fn agent_shell_command_spec_autonomous_codex_auto_approves_in_workspace() {
+        // The visible-fleet path (codex inside a PowerShell pane) must carry the
+        // same autonomous auto-approve policy, or a codex pane would launch but
+        // hang on its own write-permission prompt and never produce its outputs.
+        let (program, args, env) =
+            agent_shell_command_spec("codex-mini", "write the file", true).unwrap();
+        assert_eq!(program, platform_cli_program("powershell"));
+        let cmd = &args[3];
+        assert!(cmd.contains("'codex"), "runs codex: {cmd}");
+        assert!(
+            cmd.contains("'--sandbox' 'workspace-write'")
+                && cmd.contains("'--ask-for-approval' 'never'"),
+            "autonomous codex auto-approve: {cmd}"
+        );
+        assert!(!cmd.contains("'-p'"), "must NOT be headless -p: {cmd}");
+        assert_eq!(
+            env.get("AETHER_AGENT_CLI").map(String::as_str),
+            Some("Codex")
+        );
+    }
+
+    #[test]
+    fn agent_shell_command_spec_autonomous_gemini_auto_approves() {
+        // Parity with the codex shell test: the gemini fleet pane must carry its
+        // edits-only auto-approve (auto_edit) through the PowerShell wrapper too,
+        // or the pane would launch but hang on its own permission prompt.
+        let (program, args, env) =
+            agent_shell_command_spec("gemini-2.5-pro", "write the file", true).unwrap();
+        assert_eq!(program, platform_cli_program("powershell"));
+        let cmd = &args[3];
+        assert!(cmd.contains("'gemini"), "runs gemini: {cmd}");
+        assert!(
+            cmd.contains("'--approval-mode' 'auto_edit'"),
+            "autonomous gemini auto-approve (edits-only, not yolo): {cmd}"
+        );
+        assert!(!cmd.contains("'-p'"), "must NOT be headless -p: {cmd}");
+        assert_eq!(
+            env.get("AETHER_AGENT_CLI").map(String::as_str),
+            Some("Gemini")
+        );
+    }
+
+    #[test]
+    fn autonomous_flags_maps_each_provider_to_its_safe_autonomous_mode() {
+        // Direct binding of the single source of truth: if a new AgentCli arm is
+        // ever added without a matching autonomous_flags arm, this test (plus the
+        // exhaustive match) forces the decision instead of silently granting no
+        // policy. Claude/Gemini are edits-only; Codex is sandbox-confined; a
+        // custom CLI gets nothing (no known-safe flag to assume).
+        assert_eq!(
+            autonomous_flags(&AgentCli::Claude),
+            vec!["--permission-mode", "acceptEdits"]
+        );
+        assert_eq!(
+            autonomous_flags(&AgentCli::Codex),
+            vec![
+                "--sandbox",
+                "workspace-write",
+                "--ask-for-approval",
+                "never"
+            ]
+        );
+        assert_eq!(
+            autonomous_flags(&AgentCli::Gemini),
+            vec!["--approval-mode", "auto_edit"]
+        );
+        assert!(autonomous_flags(&AgentCli::Custom("aider".to_string())).is_empty());
     }
 
     #[test]

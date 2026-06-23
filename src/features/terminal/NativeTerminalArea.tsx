@@ -1041,6 +1041,12 @@ export function NativeTerminalArea({
   useEffect(() => {
     if (previewMode) return;
     if (!terminalId || !dims) return;
+    // Never resize a PTY that has already exited. A kept-on-screen pane whose
+    // backend PTY is gone (e.g. a fleet/agent pane reaped after completion) has
+    // nothing to resize — attempting it just 404s on every relayout and the
+    // alt-screen can't reflow, which surfaced as a "Terminal degraded" banner and
+    // a mis-drawn pane.
+    if (exitInfo) return;
     let cancelled = false;
     void Promise.resolve(resizePty(terminalId, dims.cols, dims.rows))
       .then(() => {
@@ -1051,6 +1057,16 @@ export function NativeTerminalArea({
       .catch((err) => {
         if (cancelled) return;
         const message = formatErrorMessage(err);
+        // A resize that fails because the PTY is gone from BOTH backends (sidecar
+        // AND in-process) means the terminal has exited. `resize_terminal` only
+        // returns a not-found/404 here AFTER its in-process fallback also misses,
+        // so it is a reliable "dead" signal — not a transient error. Mark the pane
+        // exited (the guard above then stops retrying and the pane shows a clean
+        // exited state) instead of spamming a "degraded" warning on every relayout.
+        if (/\bnot found\b|\b404\b/i.test(message)) {
+          setExitInfo((prev) => prev ?? { code: null, crashed: false });
+          return;
+        }
         reportInvokeFailure({
           source: "terminal",
           operation: "resize_terminal",
@@ -1063,7 +1079,7 @@ export function NativeTerminalArea({
     return () => {
       cancelled = true;
     };
-  }, [terminalId, dims, resizePty, previewMode]);
+  }, [terminalId, dims, resizePty, previewMode, exitInfo]);
 
   // ── Global keybindings ──
   useEffect(() => {
