@@ -53,16 +53,21 @@ pub async fn plan_build(
     bus: State<'_, Arc<EventBus>>,
     goal: String,
     context: Option<String>,
+    repo_path: String,
     model: Option<String>,
 ) -> Result<Vec<String>, String> {
     let ctx = context.unwrap_or_default();
     let mdl = model.unwrap_or_else(|| "sonnet".to_string());
+    // The repo root anchors symbol-target verification (the planner's declared symbols are
+    // parsed from the REAL source there); see task::symbol_enrich.
+    let repo = std::path::PathBuf::from(repo_path);
     // The decomposition is a blocking subprocess + validation loop; run it off
     // the async runtime.
     let ordered = tauri::async_runtime::spawn_blocking(move || {
         crate::task::decompose_to_plan(
             &goal,
             &ctx,
+            &repo,
             |prompt| crate::agent::claude_oneshot(prompt, &mdl),
             3,
         )
@@ -120,6 +125,7 @@ pub async fn replan_task(
     bus: State<'_, Arc<EventBus>>,
     context: State<'_, Arc<ContextStoreManager>>,
     task_id: String,
+    repo_path: String,
     model: Option<String>,
 ) -> Result<ReplanReport, String> {
     let failed = manager
@@ -159,13 +165,16 @@ must cover these outputs: {outputs}.\n\
         .collect::<Vec<_>>()
         .join("\n");
     let mdl = model.unwrap_or_else(|| "sonnet".to_string());
+    let repo = std::path::PathBuf::from(repo_path);
 
     // Decompose with the Planner LLM off the async runtime (blocking subprocess +
-    // validation loop), then splice atomically.
+    // validation loop), then splice atomically. The repo root anchors symbol-target
+    // verification (task::symbol_enrich).
     let subtasks = tauri::async_runtime::spawn_blocking(move || {
         crate::task::decompose_to_plan(
             &goal,
             &adr,
+            &repo,
             |prompt| crate::agent::claude_oneshot(prompt, &mdl),
             3,
         )

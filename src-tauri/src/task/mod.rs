@@ -13,6 +13,9 @@ pub mod manager;
 pub mod planner;
 pub mod replan;
 pub mod status;
+/// Plan symbol enrichment (A6.3) — verifies planner-declared symbol names against real
+/// source to mint `Confidence::Parser` ranges; the ONLY path that may set `Task.symbols`.
+pub(crate) mod symbol_enrich;
 
 pub use decompose::decompose_to_plan;
 pub use graph::{Task, TaskGraph, TaskGraphError, TaskPriority};

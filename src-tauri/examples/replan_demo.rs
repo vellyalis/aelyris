@@ -52,7 +52,13 @@ existing task.",
     );
     let context = "- language: rust\n- style: small, tested modules";
 
-    let subtasks = match decompose_to_plan(&goal, context, |p| claude_oneshot(p, "sonnet"), 3) {
+    let subtasks = match decompose_to_plan(
+        &goal,
+        context,
+        std::path::Path::new("."),
+        |p| claude_oneshot(p, "sonnet"),
+        3,
+    ) {
         Ok(tasks) => tasks,
         Err(e) => {
             eprintln!("RE-PLAN FAILED (no fallback): {e}");

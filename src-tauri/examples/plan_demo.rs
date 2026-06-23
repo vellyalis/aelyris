@@ -31,6 +31,7 @@ fn main() {
     match decompose_to_plan(
         &goal,
         "A small Rust project; tests run with cargo test.",
+        std::path::Path::new("."),
         llm,
         3,
     ) {

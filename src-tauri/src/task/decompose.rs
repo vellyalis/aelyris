@@ -19,10 +19,26 @@ use super::graph::{Task, TaskPriority};
 use super::planner::validate_plan;
 use super::status::TaskStatus;
 
+/// A symbol the planner declares a task will EDIT — NAME + mode only. The planner
+/// NEVER asserts a range or confidence (it cannot prove them — that would mislabel a
+/// guess as exact); [`crate::task::symbol_enrich::enrich_plan_with_symbols`] verifies the
+/// name against real source to mint the exact `Confidence::Parser` range, or drops it.
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct PlannedSymbolTarget {
+    pub(crate) path: String,
+    pub(crate) symbol: String,
+    #[serde(default = "default_write_mode")]
+    pub(crate) mode: crate::symbol_ownership::ClaimMode,
+}
+
+fn default_write_mode() -> crate::symbol_ownership::ClaimMode {
+    crate::symbol_ownership::ClaimMode::Write
+}
+
 /// The shape the LLM must emit per task — the subset of [`Task`] a planner
 /// authors. Everything else (status, recovery counters) is runtime state.
 #[derive(Debug, Deserialize)]
-struct PlannedTask {
+pub(crate) struct PlannedTask {
     id: String,
     title: String,
     #[serde(default)]
@@ -35,10 +51,14 @@ struct PlannedTask {
     target_branch: String,
     #[serde(default)]
     priority: Option<String>,
+    /// Optional symbol targets (names only) for same-file parallelism. Verified by
+    /// enrichment before validation; never trusted as-is.
+    #[serde(default)]
+    pub(crate) symbol_targets: Vec<PlannedSymbolTarget>,
 }
 
 impl PlannedTask {
-    fn into_task(self) -> Task {
+    pub(crate) fn into_task(self) -> Task {
         Task {
             id: self.id,
             title: self.title,
@@ -80,12 +100,17 @@ Output ONLY a JSON array (no prose, no code fence) of task objects with EXACTLY 
   dependencies  array of ids that must finish before this task (omit or [] for roots)\n\
   source_branch the task's feature branch, e.g. \"feat/auth\"\n\
   target_branch the branch to merge into, almost always \"main\"\n\
-  priority      one of low|medium|high|critical (optional, default medium)\n\n\
+  priority      one of low|medium|high|critical (optional, default medium)\n\
+  symbol_targets array of { path, symbol, mode } (optional) — the EXISTING functions/classes a task \
+will edit. ONLY use this to let TWO parallel tasks edit DIFFERENT symbols in the SAME existing file: name \
+the exact existing symbols each task writes (mode \"write\"). The system VERIFIES every name against the \
+real source; do NOT invent line ranges or a confidence, and do NOT name symbols in files that do not exist yet.\n\n\
 HARD RULES (a plan violating any of these is rejected):\n\
   - the dependency graph MUST be acyclic\n\
   - every dependency id MUST name another task in this plan\n\
-  - tasks that can run in PARALLEL (no dependency path between them) MUST have DISJOINT outputs \
-— overlapping file lanes are forbidden; if two tasks need the same files, give one a dependency on the other\n\
+  - tasks that can run in PARALLEL (no dependency path between them) MUST own DISJOINT file lanes, \
+EXCEPT they may share ONE concrete existing file if EACH declares disjoint symbol_targets (verified existing \
+functions) on it; otherwise give them disjoint outputs or a dependency between them\n\
   - every task MUST declare at least one output, an owner, and both branches\n\n",
     );
     if !context.trim().is_empty() {
@@ -124,14 +149,14 @@ fn extract_json_array(response: &str) -> Result<&str, String> {
     Ok(&response[start..=end])
 }
 
-fn parse_plan(response: &str) -> Result<Vec<Task>, String> {
+fn parse_plan(response: &str) -> Result<Vec<PlannedTask>, String> {
     let json = extract_json_array(response)?;
     let raw: Vec<PlannedTask> =
         serde_json::from_str(json).map_err(|e| format!("could not parse the plan JSON: {e}"))?;
     if raw.is_empty() {
         return Err("the plan is empty — a goal must decompose into at least one task".to_string());
     }
-    Ok(raw.into_iter().map(PlannedTask::into_task).collect())
+    Ok(raw)
 }
 
 /// Decompose `goal` into a VALIDATED, dependency-ordered plan. Asks `llm` to
@@ -141,6 +166,7 @@ fn parse_plan(response: &str) -> Result<Vec<Task>, String> {
 pub fn decompose_to_plan(
     goal: &str,
     context: &str,
+    repo_root: &std::path::Path,
     llm: impl Fn(&str) -> Result<String, String>,
     max_attempts: usize,
 ) -> Result<Vec<Task>, String> {
@@ -148,7 +174,7 @@ pub fn decompose_to_plan(
     for attempt in 1..=max_attempts.max(1) {
         let prompt = decomposition_prompt(goal, context, &prior_errors);
         let response = llm(&prompt).map_err(|e| format!("planner LLM call failed: {e}"))?;
-        let tasks = match parse_plan(&response) {
+        let planned = match parse_plan(&response) {
             Ok(t) => t,
             Err(e) => {
                 // A parse failure is also feedback the LLM can act on.
@@ -156,9 +182,20 @@ pub fn decompose_to_plan(
                 continue;
             }
         };
+        // VERIFY each declared symbol target against real source -> Task.symbols at
+        // Confidence::Parser (the ONLY mint path). Unverifiable targets (missing file,
+        // unknown/ambiguous name, glob/unsafe path) are dropped to file-level and
+        // reported as diagnostics so the planner can fix names or add a dependency.
+        let (tasks, unresolved) =
+            crate::task::symbol_enrich::enrich_plan_with_symbols(repo_root, planned);
         match validate_plan(tasks) {
             Ok(ordered) => return Ok(ordered),
-            Err(errs) => {
+            Err(mut errs) => {
+                // Surface why same-file parallelism was rejected (the unproven symbol),
+                // not just the collision, so the next attempt is actionable.
+                errs.extend(unresolved);
+                errs.sort();
+                errs.dedup();
                 prior_errors = errs;
                 let _ = attempt;
             }
@@ -187,8 +224,14 @@ mod tests {
 
     #[test]
     fn decomposes_a_valid_plan_in_one_attempt_ordered() {
-        let tasks =
-            decompose_to_plan("build app", "rust", |_| Ok(GOOD_PLAN.to_string()), 3).unwrap();
+        let tasks = decompose_to_plan(
+            "build app",
+            "rust",
+            std::path::Path::new("."),
+            |_| Ok(GOOD_PLAN.to_string()),
+            3,
+        )
+        .unwrap();
         let ids: Vec<&str> = tasks.iter().map(|t| t.id.as_str()).collect();
         // `wire` depends on auth+ui, so it comes last.
         assert_eq!(ids.last(), Some(&"wire"));
@@ -211,6 +254,7 @@ mod tests {
         let plan = decompose_to_plan(
             "g",
             "",
+            std::path::Path::new("."),
             |prompt| {
                 let n = calls.get();
                 calls.set(n + 1);
@@ -219,7 +263,7 @@ mod tests {
                     assert!(!prompt.contains("REJECTED"));
                     Ok(bad.to_string())
                 } else {
-                    assert!(prompt.contains("overlap"), "errors fed back to LLM");
+                    assert!(prompt.contains("collide"), "errors fed back to LLM");
                     Ok(good.to_string())
                 }
             },
@@ -233,14 +277,28 @@ mod tests {
     #[test]
     fn fails_loudly_without_fallback_when_no_valid_plan() {
         let bad = r#"[{"id":"a","title":"A","owner":"w","outputs":[],"source_branch":"feat/a","target_branch":"main"}]"#;
-        let err = decompose_to_plan("g", "", |_| Ok(bad.to_string()), 2).unwrap_err();
+        let err = decompose_to_plan(
+            "g",
+            "",
+            std::path::Path::new("."),
+            |_| Ok(bad.to_string()),
+            2,
+        )
+        .unwrap_err();
         assert!(err.contains("could not produce a valid plan"), "{err}");
         assert!(err.contains("declares no outputs"), "{err}");
     }
 
     #[test]
     fn surfaces_a_malformed_json_response() {
-        let err = decompose_to_plan("g", "", |_| Ok("no json here".to_string()), 1).unwrap_err();
+        let err = decompose_to_plan(
+            "g",
+            "",
+            std::path::Path::new("."),
+            |_| Ok("no json here".to_string()),
+            1,
+        )
+        .unwrap_err();
         assert!(
             err.contains("no JSON array") || err.contains("could not parse"),
             "{err}"
@@ -249,7 +307,14 @@ mod tests {
 
     #[test]
     fn propagates_an_llm_call_failure() {
-        let err = decompose_to_plan("g", "", |_| Err("model offline".to_string()), 2).unwrap_err();
+        let err = decompose_to_plan(
+            "g",
+            "",
+            std::path::Path::new("."),
+            |_| Err("model offline".to_string()),
+            2,
+        )
+        .unwrap_err();
         assert!(err.contains("planner LLM call failed"), "{err}");
     }
 }
