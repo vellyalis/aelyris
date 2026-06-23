@@ -34,6 +34,7 @@ pub mod shell_integration;
 pub mod snapshot;
 pub mod suggest;
 pub mod supervisor;
+pub mod symbol_ownership;
 pub mod task;
 pub mod term;
 pub mod watchdog;
