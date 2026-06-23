@@ -44,6 +44,12 @@ function gateComplete(proof, name) {
 }
 
 const apiSource = read("src-tauri/src/api/mod.rs");
+// The MCP tool surface (tool names + Rust-backed handlers) was extracted from the
+// api/mod.rs god-file into a dedicated api/mcp.rs module by refactor 6919221. The
+// router that mounts /mcp/* still lives in mod.rs, but the tool-name strings moved
+// here. Assert routes against mod.rs and tool names against mcp.rs — both are real
+// and wired (mod.rs routes /mcp/tools/call -> mcp::tools_call).
+const mcpSource = read("src-tauri/src/api/mcp.rs");
 const dbSource = read("src-tauri/src/db/queries.rs");
 const migrationSource = read("src-tauri/src/db/migrations.rs");
 const nativeSource = read("src-tauri/src/bin/aether_native.rs");
@@ -110,8 +116,8 @@ addCheck(
     apiSource.includes("/mcp/contract") &&
     apiSource.includes("/mcp/tools/list") &&
     apiSource.includes("/mcp/tools/call") &&
-    apiSource.includes("terminal.capture") &&
-    apiSource.includes("mux.workspace.safeInput"),
+    mcpSource.includes("terminal.capture") &&
+    mcpSource.includes("mux.workspace.safeInput"),
   "Local MCP contract and tool-call routes are Rust-backed and route through PTY/mux state.",
   { routes: proof?.gates?.["aether.mcp.server.v1"]?.routes ?? [] },
 );
