@@ -7,7 +7,7 @@ use tokio::sync::broadcast;
 use crate::agent::output_monitor;
 use crate::agent::{AgentCli, InteractiveSessionInfo, InteractiveSessionManager};
 use crate::ghostdiff::{self, LayerRegistry, LayerTint, WatcherPool};
-use crate::pty::PtyManager;
+use crate::pty::{ExitInfo, PtyManager};
 use crate::pty_sidecar::PtySidecarState;
 use crate::term::NativeTerminalRegistry;
 
@@ -499,7 +499,26 @@ async fn run_loop_pane_monitor(
     }
     flush_alive.store(false, Ordering::Release);
     native_registry.remove(terminal_id);
-    let _ = app.emit(&format!("pty-exit-{}", terminal_id), ());
+    // We reach here when the broadcast channel closes, which happens once BOTH
+    // the instance's `output_tx` (dropped when `PaneFleet::poll_completions`
+    // reaps the pane via close/remove_exited) AND the reader thread's cloned
+    // sender are gone — so this is the authoritative "the fleet pane ended"
+    // signal for the frontend (it may lag the reap until the reader exits, but
+    // it is not lost). Emit a real
+    // `ExitInfo` payload, NOT `()`: the renderer's `pty-exit` handler does
+    // `setExitInfo(payload)`, and a null payload would CLEAR the exit state
+    // instead of setting it — leaving the dead pane mounted and re-firing resize
+    // against a gone PTY (the 404 "Terminal degraded" spam). `code: None,
+    // crashed: false` = a quiet "exited" banner (the loop owns real
+    // success/failure via task status; this only stops the resize loop and shows
+    // the pane as done).
+    let _ = app.emit(
+        &format!("pty-exit-{}", terminal_id),
+        ExitInfo {
+            code: None,
+            crashed: false,
+        },
+    );
 }
 
 /// Reads PTY output from the broadcast channel, applies CLI parser, emits
@@ -602,6 +621,15 @@ async fn run_output_monitor(
     }
     emit_interactive_sessions(app, &session_mgr);
 
-    // Emit exit event
-    let _ = app.emit(&format!("pty-exit-{}", session_id), ());
+    // Emit exit event with a real `ExitInfo` payload (not `()`): the renderer's
+    // `pty-exit` handler stores the payload via `setExitInfo`, and a null payload
+    // would clear the exit state rather than set it. Same contract as the loop
+    // pane monitor above — every `pty-exit-<id>` carries `{ code, crashed }`.
+    let _ = app.emit(
+        &format!("pty-exit-{}", session_id),
+        ExitInfo {
+            code: None,
+            crashed: false,
+        },
+    );
 }
