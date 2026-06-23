@@ -25,6 +25,7 @@ use serde::{Deserialize, Serialize};
 /// symbol extractors normalize each source (LSP's 0-based, parser, diff-hunk)
 /// into this one convention so overlap is comparable across confidence tiers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SymbolRange {
     pub start_line: u32,
     pub end_line: u32,

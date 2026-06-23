@@ -474,6 +474,30 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                         "priority": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
                         "dependencies": { "type": "array", "items": { "type": "string" } },
                         "outputs": { "type": "array", "items": { "type": "string" }, "description": "Declared file lanes claimed on dispatch (FileLocked)." },
+                        "symbols": {
+                            "type": "array",
+                            "description": "Declared symbol-range intents (spec §6.2): the finer lane so two tasks editing one file on DISJOINT symbols co-dispatch while overlapping ranges serialize. Empty/absent = file-level exclusivity.",
+                            "items": {
+                                "type": "object",
+                                "required": ["path", "symbol", "range", "mode", "confidence"],
+                                "properties": {
+                                    "path": { "type": "string" },
+                                    "symbol": { "type": "string" },
+                                    "range": {
+                                        "type": "object",
+                                        "required": ["startLine", "endLine"],
+                                        "properties": {
+                                            "startLine": { "type": "integer", "minimum": 0 },
+                                            "endLine": { "type": "integer", "minimum": 0 }
+                                        },
+                                        "additionalProperties": false
+                                    },
+                                    "mode": { "type": "string", "enum": ["write", "review", "test", "read"] },
+                                    "confidence": { "type": "string", "enum": ["lsp", "parser", "diff-hunk"] }
+                                },
+                                "additionalProperties": false
+                            }
+                        },
                         "sourceBranch": { "type": "string" },
                         "targetBranch": { "type": "string" }
                     },
@@ -1297,6 +1321,14 @@ pub(super) async fn tools_call(
             // are claimed for its owner + a FileLocked event is published.
             if let Some(outputs) = arg_optional_string_array(&args, "outputs")? {
                 task.outputs = outputs;
+            }
+            // Declared symbol-range intents (spec §6.2): the finer lane that lets
+            // the scheduler co-dispatch disjoint-symbol work on ONE file (overlap
+            // serializes). Each item: { path, symbol, range:{startLine,endLine},
+            // mode, confidence }. Without this, agent-created tasks are file-level.
+            if let Some(symbols) = args.get("symbols") {
+                task.symbols = serde_json::from_value(symbols.clone())
+                    .map_err(|err| ApiError::BadRequest(format!("invalid symbols: {err}")))?;
             }
             if let (Some(source), Some(target)) = (
                 arg_optional_string(&args, "sourceBranch"),
