@@ -567,6 +567,7 @@ pub fn run_step(
         crate::orchestrator::autonomy::step(graph, &caps, usage, &mut ports)
     });
     apply_file_lanes(ownership, events, &lanes, &report);
+    apply_symbol_lanes(symbol_ownership.as_ref(), &report);
     publish_escalations(events, &report);
     // Durable half of the escalation surface: persist each give-up when a db is
     // attached, so a Failed task survives restart on BOTH faces (P4). The Event
@@ -624,6 +625,7 @@ pub fn run_step_visible(
         crate::orchestrator::autonomy::step(graph, &caps, usage, &mut ports)
     });
     apply_file_lanes(ownership, events, &lanes, &report);
+    apply_symbol_lanes(symbol_ownership.as_ref(), &report);
     publish_escalations(events, &report);
     // Durable half of the escalation surface: persist each give-up when a db is
     // attached, so a Failed task survives restart on BOTH faces (P4). The Event
@@ -700,6 +702,33 @@ fn apply_file_lanes(
     }
     for event in to_publish {
         events.publish(event);
+    }
+}
+
+/// Release a task's SYMBOL claims when it LEAVES the running set this step —
+/// merged, recovered (crash/timeout reassign), rejected (rework), or given up
+/// (Failed via escalations). The finer-grained mirror of `apply_file_lanes`'
+/// release half (§6.2 release-on-merge / release-on-fail cleanup, BR8), so an
+/// agent's claimed range never lingers past its task beyond the lease — and a
+/// re-dispatched worker (recover/rework) starts from a clean lane. No-op without a
+/// symbol map (the headless unit path). Runs after the step, under the symbol
+/// mutex only (disjoint from the graph lock).
+fn apply_symbol_lanes(
+    symbol_ownership: Option<&Arc<Mutex<SymbolOwnership>>>,
+    report: &crate::orchestrator::autonomy::StepReport,
+) {
+    let Some(map) = symbol_ownership else {
+        return;
+    };
+    let mut owner = map.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let terminal = report
+        .merged
+        .iter()
+        .chain(&report.recovered)
+        .chain(&report.rejected)
+        .chain(report.escalations.iter().map(|esc| &esc.task_id));
+    for task_id in terminal {
+        owner.release_for_task(task_id);
     }
 }
 
@@ -892,6 +921,62 @@ mod tests {
         assert!(ports.symbol_blocking(&[], &["src/x.rs".to_string()]));
         // ...but a file-level task on a different file is free.
         assert!(!ports.symbol_blocking(&[], &["src/y.rs".to_string()]));
+    }
+
+    #[test]
+    fn apply_symbol_lanes_releases_every_terminal_tasks_claims() {
+        use crate::failure_policy::RecoveryAction;
+        use crate::orchestrator::autonomy::Escalation;
+        use crate::orchestrator::LoopState;
+        use crate::symbol_ownership::{
+            ClaimMode, Confidence, SymbolClaim, SymbolOwnership, SymbolRange,
+        };
+        let map = Arc::new(Mutex::new(SymbolOwnership::new()));
+        let mk = |cid: &str, tid: &str| SymbolClaim {
+            claim_id: cid.to_string(),
+            agent_id: "a".to_string(),
+            task_id: Some(tid.to_string()),
+            path: "src/x.rs".to_string(),
+            symbol: "f".to_string(),
+            range: SymbolRange::new(1, 10),
+            mode: ClaimMode::Write,
+            lease_expires_at: u64::MAX,
+            confidence: Confidence::Lsp,
+        };
+        // Same agent -> all Granted (no self-conflict), one claim per task.
+        for (cid, tid) in [
+            ("c1", "t-merge"),
+            ("c2", "t-recover"),
+            ("c3", "t-reject"),
+            ("c4", "t-fail"),
+            ("c5", "t-running"),
+        ] {
+            map.lock().unwrap().claim(mk(cid, tid), 0);
+        }
+        let report = StepReport {
+            dispatched: vec![],
+            merged: vec!["t-merge".to_string()],
+            rejected: vec!["t-reject".to_string()],
+            recovered: vec!["t-recover".to_string()],
+            escalations: vec![Escalation {
+                task_id: "t-fail".to_string(),
+                reason: "crash".to_string(),
+                action: RecoveryAction::NotifyReviewer,
+            }],
+            state: LoopState::Active,
+        };
+        apply_symbol_lanes(Some(&map), &report);
+        let live: Vec<String> = map
+            .lock()
+            .unwrap()
+            .live_claims(0)
+            .iter()
+            .filter_map(|c| c.task_id.clone())
+            .collect();
+        // Every terminal/recovered/rejected/failed task's claims freed; only the
+        // still-running task survives (no map = no-op is covered by the None arm).
+        assert_eq!(live, vec!["t-running".to_string()]);
+        apply_symbol_lanes(None, &report); // does not panic without a map
     }
 
     #[test]
