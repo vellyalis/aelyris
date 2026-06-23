@@ -65,7 +65,7 @@ mod tests {
     #[test]
     fn default_caps_then_configurable() {
         let mgr = CostManager::new();
-        assert_eq!(mgr.caps().max_agents, Some(8));
+        assert_eq!(mgr.caps().max_agents, Some(4));
         mgr.set_caps(CostCaps {
             max_agents: Some(12),
             ..CostCaps::default()
@@ -75,16 +75,16 @@ mod tests {
 
     #[test]
     fn guard_spawn_blocks_at_cap_and_allows_under() {
-        let mgr = CostManager::new(); // max_agents = 8
-        assert!(mgr.guard_spawn(7).is_ok());
-        assert!(mgr.guard_spawn(8).unwrap_err().contains("8/8"));
+        let mgr = CostManager::new(); // max_agents = 4
+        assert!(mgr.guard_spawn(3).is_ok());
+        assert!(mgr.guard_spawn(4).unwrap_err().contains("4/4"));
     }
 
     #[test]
     fn can_spawn_uses_current_caps() {
-        let mgr = CostManager::new(); // max_agents = 8
+        let mgr = CostManager::new(); // max_agents = 4
         let at_cap = CostUsage {
-            active_agents: 8,
+            active_agents: 4,
             ..Default::default()
         };
         assert!(!mgr.can_spawn(&at_cap).allowed);

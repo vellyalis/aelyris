@@ -13,11 +13,12 @@ pub use manager::CostManager;
 use serde::{Deserialize, Serialize};
 
 /// Hard caps. `None` means "no limit on this axis". The default fleet size is a
-/// dense-but-bounded 8 concurrent agents — enough to fill the cockpit with a
-/// lively visible fleet while still being a hard ceiling the loop never exceeds
-/// (BR7 runaway protection). It stays runtime-configurable (`cost_set_caps`), so
-/// an operator on a constrained machine can lower it; there is no budget ceiling
-/// until the operator sets one.
+/// controlled-but-bounded 4 concurrent agents — the spec's binding default
+/// (AETHER_COCKPIT_REQUIREMENTS BR7: `max_agents` default 4; worker batch 3-4),
+/// favouring controlled parallel engineering over a dense stress fleet, while
+/// still being a hard ceiling the loop never exceeds (BR7 runaway protection). It
+/// stays runtime-configurable (`cost_set_caps`), so an operator who wants a denser
+/// fleet can raise it; there is no budget ceiling until the operator sets one.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct CostCaps {
     pub max_agents: Option<usize>,
@@ -29,7 +30,7 @@ pub struct CostCaps {
 impl Default for CostCaps {
     fn default() -> Self {
         Self {
-            max_agents: Some(8),
+            max_agents: Some(4),
             max_tokens: None,
             max_cost_usd: None,
             max_runtime_secs: None,
@@ -155,15 +156,15 @@ mod tests {
 
     #[test]
     fn blocks_spawn_at_agent_cap() {
-        let caps = CostCaps::default(); // max_agents = 8
+        let caps = CostCaps::default(); // max_agents = 4
         let usage = CostUsage {
-            active_agents: 8,
+            active_agents: 4,
             ..Default::default()
         };
         let decision = caps.can_spawn(&usage);
         assert!(!decision.allowed);
         assert_eq!(decision.blocked_by, Some(CostLimit::Agents));
-        assert!(decision.reason.unwrap().contains("8/8"));
+        assert!(decision.reason.unwrap().contains("4/4"));
     }
 
     #[test]
