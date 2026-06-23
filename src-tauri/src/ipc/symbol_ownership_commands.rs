@@ -6,8 +6,12 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use serde::Serialize;
 use tauri::State;
 
+use crate::symbol_ownership::agent_context::{
+    active_ownership_context, render_ownership_header, DEFAULT_CONTEXT_CAP,
+};
 use crate::symbol_ownership::{
     ClaimMode, ClaimOutcome, Confidence, SymbolClaim, SymbolConflict, SymbolOwnership, SymbolRange,
 };
@@ -108,4 +112,41 @@ pub fn symbol_conflicts(state: State<'_, Arc<Mutex<SymbolOwnership>>>) -> Vec<Sy
     let mut owner = lock(&state);
     owner.expire(now);
     owner.conflicts(now)
+}
+
+/// The active-ownership prompt section for a set of `files` — the SAME rendered text the
+/// autonomy loop injects into a dispatched agent's prompt, exposed so the FRONTEND
+/// Orchestra can prepend it to its manually-launched role prompts (one SSOT formatter,
+/// not a TS re-implementation). `section` is empty when nothing is claimed; `claimCount`
+/// lets the UI avoid claiming "parallel-safe" when other agents hold live write claims.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OwnershipPromptSection {
+    pub section: String,
+    pub claim_count: usize,
+}
+
+#[tauri::command]
+pub fn symbol_ownership_prompt_section(
+    state: State<'_, Arc<Mutex<SymbolOwnership>>>,
+    files: Vec<String>,
+    for_agent: Option<String>,
+) -> OwnershipPromptSection {
+    let now = now_secs();
+    let claims: Vec<SymbolClaim> = {
+        let mut owner = lock(&state);
+        owner.expire(now);
+        owner.live_claims(now).into_iter().cloned().collect()
+    };
+    let ctx = active_ownership_context(
+        &claims,
+        for_agent.as_deref(),
+        None,
+        &files,
+        DEFAULT_CONTEXT_CAP,
+    );
+    OwnershipPromptSection {
+        claim_count: ctx.entries.len(),
+        section: render_ownership_header(&ctx).unwrap_or_default(),
+    }
 }

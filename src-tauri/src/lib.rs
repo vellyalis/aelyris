@@ -813,6 +813,7 @@ pub fn run() {
             ipc::symbol_release_task,
             ipc::symbol_claims,
             ipc::symbol_conflicts,
+            ipc::symbol_ownership_prompt_section,
             ipc::discover_projects,
             ipc::default_project_scan_dirs,
             ipc::list_branches,

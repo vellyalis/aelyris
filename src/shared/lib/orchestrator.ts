@@ -125,6 +125,19 @@ export function detectFileConflicts(
   return conflicts;
 }
 
+/**
+ * Active symbol-ownership context for a set of files, as rendered by the BACKEND
+ * (`symbol_ownership_prompt_section`) — the single source of truth. Never re-formatted
+ * in TS; the frontend embeds `section` verbatim and uses `claimCount` to avoid claiming
+ * "parallel-safe" when other agents hold live write claims.
+ */
+export interface OwnershipPromptSection {
+  /** The "[Active symbol ownership — do NOT edit ...]" text; "" when nothing is claimed. */
+  section: string;
+  /** How many OTHER-agent live write claims touch these files (>0 ⇒ not parallel-safe). */
+  claimCount: number;
+}
+
 export interface OrchestraConfig {
   task: string;
   roles: string[];
@@ -132,6 +145,12 @@ export interface OrchestraConfig {
   changedFiles?: readonly string[];
   pendingDecisionCount?: number;
   existingSessionCount?: number;
+  /**
+   * Active symbol-ownership context for the changed files (backend-fetched). Prepended
+   * to every role prompt so a hand-launched agent is warned off the symbols other agents
+   * own — the same "do NOT edit" context the autonomy loop injects into its dispatches.
+   */
+  ownershipContext?: OwnershipPromptSection;
 }
 
 export interface OrchestraPrompt {
@@ -306,11 +325,15 @@ export function buildOrchestraPrompts(config: OrchestraConfig): OrchestraPrompt[
         index,
         existingSessionCount: config.existingSessionCount,
       });
+      const ownershipLines = config.ownershipContext?.section
+        ? [config.ownershipContext.section.trimEnd(), ""]
+        : [];
       return {
         roleId: role.id,
         model: role.model,
         branchName,
         prompt: [
+          ...ownershipLines,
           role.promptTemplate.replace("{task}", plan.task),
           "",
           "Aether Orchestra Contract:",
