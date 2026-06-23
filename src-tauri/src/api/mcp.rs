@@ -490,30 +490,6 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                         "priority": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
                         "dependencies": { "type": "array", "items": { "type": "string" } },
                         "outputs": { "type": "array", "items": { "type": "string" }, "description": "Declared file lanes claimed on dispatch (FileLocked)." },
-                        "symbols": {
-                            "type": "array",
-                            "description": "Declared symbol-range intents (spec §6.2): the finer lane so two tasks editing one file on DISJOINT symbols co-dispatch while overlapping ranges serialize. Empty/absent = file-level exclusivity.",
-                            "items": {
-                                "type": "object",
-                                "required": ["path", "symbol", "range", "mode", "confidence"],
-                                "properties": {
-                                    "path": { "type": "string" },
-                                    "symbol": { "type": "string" },
-                                    "range": {
-                                        "type": "object",
-                                        "required": ["startLine", "endLine"],
-                                        "properties": {
-                                            "startLine": { "type": "integer", "minimum": 0 },
-                                            "endLine": { "type": "integer", "minimum": 0 }
-                                        },
-                                        "additionalProperties": false
-                                    },
-                                    "mode": { "type": "string", "enum": ["write", "review", "test", "read"] },
-                                    "confidence": { "type": "string", "enum": ["lsp", "parser", "diff-hunk"] }
-                                },
-                                "additionalProperties": false
-                            }
-                        },
                         "sourceBranch": { "type": "string" },
                         "targetBranch": { "type": "string" }
                     },
@@ -1373,13 +1349,17 @@ pub(super) async fn tools_call(
             if let Some(outputs) = arg_optional_string_array(&args, "outputs")? {
                 task.outputs = outputs;
             }
-            // Declared symbol-range intents (spec §6.2): the finer lane that lets
-            // the scheduler co-dispatch disjoint-symbol work on ONE file (overlap
-            // serializes). Each item: { path, symbol, range:{startLine,endLine},
-            // mode, confidence }. Without this, agent-created tasks are file-level.
-            if let Some(symbols) = args.get("symbols") {
-                task.symbols = serde_json::from_value(symbols.clone())
-                    .map_err(|err| ApiError::BadRequest(format!("invalid symbols: {err}")))?;
+            // Task.symbols (the finer lane that unlocks same-file co-dispatch, §6.2) are
+            // MINTED ONLY by `enrich_plan_with_symbols`, which VERIFIES each declared
+            // symbol against real source via the tree-sitter parser. A caller must never
+            // supply them — that would let an unverified guess wear `Confidence::Parser`
+            // and falsely unlock parallelism (A6.3 hard boundary). Reject the attempt.
+            if args.contains_key("symbols") {
+                return Err(ApiError::BadRequest(
+                    "task symbols cannot be set via task.create — they are derived from \
+                     verified source by the planner's symbol-enrichment step"
+                        .to_string(),
+                ));
             }
             if let (Some(source), Some(target)) = (
                 arg_optional_string(&args, "sourceBranch"),
@@ -2623,5 +2603,32 @@ mod tests {
         };
         let result = rt.block_on(tools_call(State(state), Json(body)));
         assert!(matches!(result, Err(ApiError::BadRequest(_))));
+    }
+
+    /// A6.3 hard boundary: Task.symbols are minted ONLY by verified enrichment, never by
+    /// a caller (a caller-supplied Confidence::Parser would falsely unlock same-file
+    /// parallelism). The task.create contract must not advertise OR accept a `symbols`
+    /// field — `additionalProperties:false` rejects it at the schema, and the handler
+    /// rejects it explicitly.
+    #[test]
+    fn task_create_does_not_expose_or_accept_caller_symbols() {
+        let Json(listed) = tokio::runtime::Runtime::new()
+            .expect("tokio runtime")
+            .block_on(tools_list());
+        let create = listed["tools"]
+            .as_array()
+            .expect("tools array")
+            .iter()
+            .find(|t| t["name"] == "aether.task.create")
+            .expect("task.create present");
+        assert!(
+            create["inputSchema"]["properties"].get("symbols").is_none(),
+            "task.create must not expose a symbols field"
+        );
+        assert_eq!(
+            create["inputSchema"]["additionalProperties"],
+            serde_json::json!(false),
+            "task.create must reject unknown fields (so a caller-supplied symbols is denied)"
+        );
     }
 }

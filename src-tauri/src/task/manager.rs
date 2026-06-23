@@ -261,7 +261,7 @@ mod tests {
                 full("y", &["src/shared/y.rs"], &[]),
             ])
             .unwrap_err();
-        assert!(errs.iter().any(|e| e.contains("overlap")), "{errs:?}");
+        assert!(errs.iter().any(|e| e.contains("collide")), "{errs:?}");
         assert_eq!(mgr.list().len(), 1, "no plan task was added");
         assert!(mgr.get("x").is_none() && mgr.get("y").is_none());
     }

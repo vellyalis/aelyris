@@ -444,6 +444,55 @@ pub fn intents_block(a: &SymbolIntent, b: &SymbolIntent) -> bool {
     a.range.overlaps(&b.range)
 }
 
+/// Do two tasks collide on their declared output lanes, accounting for symbol intent?
+/// The SINGLE source of the same-file co-dispatch rule, shared by the dispatch gate
+/// (`orchestrator::autonomy`) AND the plan validator (`task::planner`) so the two never
+/// drift. Two tasks that share a file lane collide UNLESS, on every shared CONCRETE file,
+/// BOTH declare disjoint WRITE symbols that prove function-level parallelism (spec §6.2).
+/// Anything not symbol-proven — no symbols on either side, a glob/pattern lane, a
+/// non-Write declaration, or an overlapping/inferred/shared-file range — stays
+/// file-exclusive (the conservative default; never misses a real collision).
+pub fn tasks_collide(
+    a_outputs: &[String],
+    a_symbols: &[SymbolIntent],
+    b_outputs: &[String],
+    b_symbols: &[SymbolIntent],
+) -> bool {
+    for a_out in a_outputs {
+        for b_out in b_outputs {
+            if !crate::file_ownership::patterns_overlap(a_out, b_out) {
+                continue;
+            }
+            // Symbol disjointness is provable only when the shared lane is ONE concrete
+            // file both sides name identically — a glob can write parts of the file its
+            // declared symbols don't cover, so it stays file-exclusive.
+            if a_out != b_out || a_out.contains('*') {
+                return true;
+            }
+            // Only WRITE symbols on the shared file count as proof: a Read/Review/Test
+            // declaration does not prove the task's WRITES are disjoint.
+            let writes_on_file = |syms: &[SymbolIntent]| -> Vec<SymbolIntent> {
+                syms.iter()
+                    .filter(|s| &s.path == a_out && matches!(s.mode, ClaimMode::Write))
+                    .cloned()
+                    .collect()
+            };
+            let a_here = writes_on_file(a_symbols);
+            let b_here = writes_on_file(b_symbols);
+            if a_here.is_empty() || b_here.is_empty() {
+                return true; // no write-symbol proof on this lane -> file-level
+            }
+            if a_here
+                .iter()
+                .any(|a| b_here.iter().any(|b| intents_block(a, b)))
+            {
+                return true; // overlapping symbol ranges -> serialize
+            }
+        }
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -558,6 +607,68 @@ mod tests {
             &intent("src/x.rs", 50, 55, ClaimMode::Write, Confidence::Lsp),
             Some("task-a"),
             0,
+        ));
+    }
+
+    #[test]
+    fn tasks_collide_is_the_shared_same_file_matrix() {
+        let out = |p: &str| vec![p.to_string()];
+        let w = |s, e| intent("src/x.rs", s, e, ClaimMode::Write, Confidence::Parser);
+        // Disjoint files never collide; same file with no symbols -> file-level collide.
+        assert!(!tasks_collide(&out("a.rs"), &[], &out("b.rs"), &[]));
+        assert!(tasks_collide(&out("src/x.rs"), &[], &out("src/x.rs"), &[]));
+        // Same file, disjoint WRITE Parser symbols -> co-dispatch (the payoff).
+        assert!(!tasks_collide(
+            &out("src/x.rs"),
+            &[w(1, 10)],
+            &out("src/x.rs"),
+            &[w(20, 30)]
+        ));
+        // Overlapping ranges -> collide.
+        assert!(tasks_collide(
+            &out("src/x.rs"),
+            &[w(1, 10)],
+            &out("src/x.rs"),
+            &[w(5, 15)]
+        ));
+        // A glob lane is never symbol-proven -> file-level even if disjoint.
+        assert!(tasks_collide(
+            &out("src/**"),
+            &[w(1, 10)],
+            &out("src/x.rs"),
+            &[w(20, 30)]
+        ));
+        // A non-Write declaration is not proof -> collide.
+        assert!(tasks_collide(
+            &out("src/x.rs"),
+            &[intent(
+                "src/x.rs",
+                1,
+                10,
+                ClaimMode::Read,
+                Confidence::Parser
+            )],
+            &out("src/x.rs"),
+            &[w(20, 30)],
+        ));
+        // Shared-config file: Parser does NOT unlock -> collide even if disjoint.
+        assert!(tasks_collide(
+            &out("package.json"),
+            &[intent(
+                "package.json",
+                1,
+                10,
+                ClaimMode::Write,
+                Confidence::Parser
+            )],
+            &out("package.json"),
+            &[intent(
+                "package.json",
+                20,
+                30,
+                ClaimMode::Write,
+                Confidence::Parser
+            )],
         ));
     }
 
