@@ -72,6 +72,9 @@ pub enum ClaimMode {
 pub enum Confidence {
     Lsp,
     Parser,
+    /// Spec §6.2 spells this `diff-hunk`; the explicit rename keeps the wire value
+    /// hyphenated (lowercase rename_all would otherwise collapse it to `diffhunk`).
+    #[serde(rename = "diff-hunk")]
     DiffHunk,
 }
 

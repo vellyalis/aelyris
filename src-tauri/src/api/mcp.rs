@@ -51,6 +51,7 @@ fn tool_names() -> Vec<&'static str> {
         "aether.symbol.claim",
         "aether.symbol.refresh",
         "aether.symbol.release",
+        "aether.symbol.release_task",
         "aether.symbol.claims",
         "aether.symbol.conflicts",
         "aether.context.set",
@@ -632,7 +633,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
             },
             {
                 "name": "aether.symbol.claim",
-                "description": "Claim a SYMBOL range inside a file (finer than file ownership): two agents may write the same file on disjoint ranges, but overlapping writes conflict. Returns { outcome: granted|warned|blocked, conflicts? }. blocked = NOT recorded (pick a disjoint range or wait). confidence lsp/parser is exact (overlap blocks); diffhunk is inferred (overlap only warns).",
+                "description": "Claim a SYMBOL range inside a file (finer than file ownership): two agents may write the same file on disjoint ranges, but overlapping writes conflict. Returns { outcome: granted|warned|blocked, conflicts? }. blocked = NOT recorded (pick a disjoint range or wait). confidence lsp/parser is exact (overlap blocks); diff-hunk is inferred (overlap only warns).",
                 "safety": "FREE",
                 "inputSchema": {
                     "type": "object",
@@ -646,7 +647,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                         "startLine": { "type": "integer", "minimum": 0 },
                         "endLine": { "type": "integer", "minimum": 0 },
                         "mode": { "type": "string", "enum": ["write", "review", "test", "read"] },
-                        "confidence": { "type": "string", "enum": ["lsp", "parser", "diffhunk"] },
+                        "confidence": { "type": "string", "enum": ["lsp", "parser", "diff-hunk"] },
                         "leaseSecs": { "type": "integer", "minimum": 1 }
                     },
                     "additionalProperties": false
@@ -674,6 +675,17 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                     "type": "object",
                     "required": ["claimId"],
                     "properties": { "claimId": { "type": "string" } },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aether.symbol.release_task",
+                "description": "Release ALL symbol claims a task held (call on merge/fail) — frees every range that task's worker claimed. Returns { released } (count).",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["taskId"],
+                    "properties": { "taskId": { "type": "string" } },
                     "additionalProperties": false
                 }
             },
@@ -1601,6 +1613,17 @@ pub(super) async fn tools_call(
                 .lock()
                 .map_err(|_| ApiError::Internal("symbol ownership lock poisoned".to_string()))?
                 .release(&claim_id);
+            serde_json::json!({ "released": released })
+        }
+        "aether.symbol.release_task" => {
+            let ownership = state.symbol_ownership.as_ref().ok_or_else(|| {
+                ApiError::Internal("symbol ownership is not attached to this process".to_string())
+            })?;
+            let task_id = arg_string(&args, "taskId")?;
+            let released = ownership
+                .lock()
+                .map_err(|_| ApiError::Internal("symbol ownership lock poisoned".to_string()))?
+                .release_for_task(&task_id);
             serde_json::json!({ "released": released })
         }
         "aether.symbol.claims" => {

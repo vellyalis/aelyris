@@ -38,17 +38,18 @@ fn tasks_collide(
             if !patterns_overlap(a_out, b_out) {
                 continue;
             }
-            // Shared lane. Safe only if both sides claim symbols on this concrete
-            // file and they are disjoint. A glob output never equals a concrete
-            // symbol path, so it stays file-exclusive.
-            let here = |syms: &[SymbolIntent]| -> Vec<SymbolIntent> {
-                syms.iter()
-                    .filter(|s| &s.path == a_out || &s.path == b_out)
-                    .cloned()
-                    .collect()
+            // Symbol-level disjointness is only provable when the shared lane is
+            // ONE concrete file both sides name identically. A glob / pattern lane
+            // (overlapping but `a_out != b_out`) can write parts of the file its
+            // declared symbols don't cover, so it stays file-exclusive.
+            if a_out != b_out {
+                return true;
+            }
+            let on_file = |syms: &[SymbolIntent]| -> Vec<SymbolIntent> {
+                syms.iter().filter(|s| &s.path == a_out).cloned().collect()
             };
-            let a_here = here(a_symbols);
-            let b_here = here(b_symbols);
+            let a_here = on_file(a_symbols);
+            let b_here = on_file(b_symbols);
             if a_here.is_empty() || b_here.is_empty() {
                 return true; // no symbol proof on this lane -> file-level exclusivity
             }
@@ -662,6 +663,28 @@ mod tests {
         let mut ports = FakePorts::new();
         let report = step(&mut g, &caps(4), &CostUsage::default(), &mut ports);
         assert_eq!(report.dispatched.len(), 2);
+    }
+
+    #[test]
+    fn glob_lane_stays_file_exclusive_despite_disjoint_symbols() {
+        // A broad glob output can write beyond its declared symbols, so it never
+        // earns symbol-level parallelism even when its symbols look disjoint — the
+        // shared lane must be one concrete file both sides name identically.
+        let mut g = TaskGraph::new();
+        let mut a = task_on_file("a", "src/x.rs", vec![write_intent("src/x.rs", 1, 20)]);
+        a.outputs = vec!["src/**".to_string()];
+        g.add(a).unwrap();
+        g.add(task_on_file(
+            "b",
+            "src/x.rs",
+            vec![write_intent("src/x.rs", 40, 60)],
+        ))
+        .unwrap();
+        g.recompute_ready();
+        let mut ports = FakePorts::new();
+        let report = step(&mut g, &caps(4), &CostUsage::default(), &mut ports);
+        assert_eq!(report.dispatched, ["a"]);
+        assert_eq!(g.get("b").unwrap().status, TaskStatus::Ready);
     }
 
     #[test]
