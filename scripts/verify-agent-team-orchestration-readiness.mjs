@@ -249,7 +249,10 @@ add(
     orchestraDispatch.includes("branchName: prompt.branchName") &&
     orchestratorTest.includes("normalizes Claude router model names for interactive CLI dispatch") &&
     app.includes('"route_agent", { prompt }') &&
-    orchestraDispatch.includes("catch {\n        return prompt;\n      }"),
+    // Whitespace/line-ending tolerant: the source uses CRLF, so an LF-literal
+    // `catch {\n...}` substring never matched. Assert the behavior (catch falls
+    // back to the raw prompt) instead of an exact byte sequence.
+    /catch\s*\{\s*return prompt;\s*\}/.test(orchestraDispatch),
   "Orchestra dispatch queries the Rust router before launch, normalizes Claude model names, and falls back to role defaults.",
 );
 

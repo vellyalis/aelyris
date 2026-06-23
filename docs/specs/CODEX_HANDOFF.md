@@ -13,8 +13,14 @@
 > remain: reviewer ≠ implementer, all-green gates, Cost Manager caps, human post-hoc
 > override/rollback.
 
-Status: **Ready for implementation.** Design complete; no source code written yet.
-Branch context: authored on `codex/release-hardening-quality-gates` (working tree dirty with unrelated WIP — see §7).
+Status: **In progress — substantial source has landed (this is NO LONGER "design only").**
+The cockpit/runtime/MCP/Reviewer-merge substrate is implemented (Task Graph, Event Bus,
+Context Store, Cost Manager, visible PTY-pane dispatch, file ownership, knowledge graph;
+cargo lib tests green). The WUs below remain the authoritative *design* reference — do NOT
+restart from "nothing built yet". For the live implementation-status and remaining-work
+source of truth, see
+[CLAUDE_HANDOFF_COCKPIT_REQUIREMENTS_AUDIT_2026-06-23](./CLAUDE_HANDOFF_COCKPIT_REQUIREMENTS_AUDIT_2026-06-23.md).
+Branch context: originally authored on `codex/release-hardening-quality-gates` (see §7).
 Implementer: **Codex** (GPT-5.x). Orchestration/integration owner: human + Opus.
 
 > This is the master plan. Each **Work Unit (WU)** below is self-contained: read its

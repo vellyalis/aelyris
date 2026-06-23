@@ -62,6 +62,31 @@ const run = spawnSync(
   },
 );
 
+if (run.error || run.status === null) {
+  // Spawn failure (cargo missing, or a sandboxed host that blocks child
+  // processes with EPERM) leaves run.status === null and run.stdout/stderr
+  // undefined. Emit an explicit BLOCKED artifact instead of crashing on
+  // `run.stderr.split(...)` below — a blocked host must be reported, not masked.
+  const blocked = {
+    schema: "aether.upper-compat-gates.verification.v1",
+    status: "blocked",
+    score: 0,
+    passed: 0,
+    total: 0,
+    blocker: {
+      reason: "cargo-spawn-failed",
+      code: run.error?.code ?? null,
+      message:
+        run.error?.message ??
+        `cargo did not run (status=${run.status}, signal=${run.signal})`,
+    },
+    cargo: { status: run.status, signal: run.signal },
+  };
+  writeJsonAtomic(OUT, blocked);
+  console.error(JSON.stringify(blocked, null, 2));
+  process.exit(1);
+}
+
 const checks = [];
 let proof = null;
 if (run.status === 0) {
@@ -150,7 +175,7 @@ const report = {
   cargo: {
     status: run.status,
     signal: run.signal,
-    stderrTail: run.stderr.split(/\r?\n/).slice(-40),
+    stderrTail: (run.stderr ?? "").split(/\r?\n/).slice(-40),
   },
   checks,
 };
