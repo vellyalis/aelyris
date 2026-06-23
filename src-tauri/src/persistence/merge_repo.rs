@@ -178,6 +178,42 @@ impl MergeRepo {
         raws.into_iter().map(RawMergeRow::into_intent).collect()
     }
 
+    /// All intents awaiting a decision — everything NOT in a clean terminal state
+    /// (`merged`/`rejected`). This is what the operator's pending-merge view shows
+    /// (queued/reviewing/ready_to_merge plus the attention states conflict/
+    /// cleanup_failed/needs_reconcile/merging).
+    pub fn list_unresolved(db: &Database) -> Result<Vec<MergeIntent>, String> {
+        let conn = db.conn();
+        let sql = format!(
+            "SELECT {COLUMNS} FROM merge_intents \
+             WHERE state NOT IN ('merged','rejected') ORDER BY created_at ASC"
+        );
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| format!("prepare list unresolved: {e}"))?;
+        let raws: Vec<RawMergeRow> = stmt
+            .query_map([], RawMergeRow::from_row)
+            .map_err(|e| format!("query unresolved merge intents: {e}"))?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|e| format!("read unresolved merge rows: {e}"))?;
+        raws.into_iter().map(RawMergeRow::into_intent).collect()
+    }
+
+    /// Reject an intent (operator decided not to merge it). Conditional: succeeds
+    /// (`true`) only from a rejectable state — NOT while a merge is in flight
+    /// (`merging`) and NOT once it is already resolved (`merged`/`rejected`).
+    pub fn reject(db: &Database, intent_id: &str, now: i64) -> Result<bool, String> {
+        let changed = db
+            .conn()
+            .execute(
+                "UPDATE merge_intents SET state = 'rejected', updated_at = ?2 \
+                 WHERE intent_id = ?1 AND state NOT IN ('merging','merged','rejected')",
+                params![intent_id, now],
+            )
+            .map_err(|e| format!("reject merge intent {intent_id}: {e}"))?;
+        Ok(changed == 1)
+    }
+
     /// Compare-and-swap the claim into `merging`: succeeds (returns `true`) ONLY if
     /// the row is still claimable (`queued`/`ready_to_merge`). A losing racer (or a
     /// terminal/already-merging row) gets `false`. This conditional `UPDATE` — not

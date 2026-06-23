@@ -398,7 +398,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
             },
             {
                 "name": "aether.list_pending_approvals",
-                "description": "Observe pending approval and merge requests. This cannot resolve them.",
+                "description": "Observe pending approval requests and unresolved DURABLE merge intents (everything not yet merged/rejected). Read-only — it cannot resolve them. Returns { pending:[permission items], mergeIntents:[durable merge intents] }.",
                 "safety": "GATED_OBSERVE_ONLY",
                 "inputSchema": { "type": "object", "additionalProperties": false }
             },
@@ -464,7 +464,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
             },
             {
                 "name": "aether.review.reject",
-                "description": "Reviewer authority: reject a queued merge intent. Resolves the intent without merging.",
+                "description": "Reviewer authority: reject a DURABLE merge intent BY ID, resolving it without merging. Cannot reject an in-flight (merging) or already-resolved intent. Optional `reason`. Returns { intentId, status, reason }.",
                 "safety": "REVIEWER_AUTHORITY",
                 "inputSchema": {
                     "type": "object",
@@ -1194,7 +1194,18 @@ pub(super) async fn tools_call(
                 .filter(|item| item.status == "pending")
                 .cloned()
                 .collect::<Vec<_>>();
-            serde_json::json!({ "pending": pending, "grantToolExposed": false })
+            // Durable merge intents awaiting a decision are synthesized from the
+            // store (their source of truth), NOT from `mcp_pending`. A read with no
+            // store attached simply shows none (a read can never cause a merge).
+            let merge_intents = match state.merge_store.as_ref() {
+                Some(store) => store.list_unresolved().map_err(ApiError::Internal)?,
+                None => Vec::new(),
+            };
+            serde_json::json!({
+                "pending": pending,
+                "mergeIntents": merge_intents,
+                "grantToolExposed": false,
+            })
         }
         "aether.request_merge" => {
             // Fail closed: a merge intent MUST be durable. Without the store we do
@@ -1452,26 +1463,38 @@ pub(super) async fn tools_call(
             }
         }
         "aether.review.reject" => {
-            let intent_id = arg_string(&args, "intentId")?;
-            let reason = arg_optional_string(&args, "reason");
-            let mut pending = state
-                .mcp_pending
-                .lock()
-                .map_err(|_| ApiError::Internal("MCP pending queue lock poisoned".to_string()))?;
-            let item = pending
-                .iter_mut()
-                .find(|i| i.id == intent_id)
-                .ok_or_else(|| ApiError::NotFound(intent_id.clone()))?;
-            if item.status != "pending" {
+            // Fail closed: rejection is a durable state transition on the stored
+            // intent, never a RAM-queue edit.
+            let store = state.merge_store.as_ref().ok_or_else(|| {
+                ApiError::Internal("merge persistence is not attached to this process".to_string())
+            })?;
+            const REJECT_ALLOWED: &[&str] = &["intentId", "reason"];
+            if let Some(bad) = args.keys().find(|k| !REJECT_ALLOWED.contains(&k.as_str())) {
                 return Err(ApiError::BadRequest(format!(
-                    "intent {intent_id} is not pending (status: {})",
-                    item.status
+                    "aether.review.reject does not accept `{bad}`"
                 )));
             }
-            item.status = "rejected".to_string();
-            let resolved = item.clone();
-            drop(pending);
-            serde_json::json!({ "intentId": intent_id, "status": "rejected", "reason": reason, "item": resolved })
+            let intent_id = arg_string(&args, "intentId")?;
+            let reason = match args.get("reason") {
+                None => None,
+                Some(serde_json::Value::String(s)) => Some(s.clone()),
+                Some(_) => return Err(ApiError::BadRequest("reason must be a string".to_string())),
+            };
+            let now = now_secs() as i64;
+            // Must exist (NotFound) ...
+            let intent = store
+                .get(&intent_id)
+                .map_err(ApiError::Internal)?
+                .ok_or_else(|| ApiError::NotFound(intent_id.clone()))?;
+            // ... and be rejectable (the conditional UPDATE is the real arbiter;
+            // an in-flight or already-resolved intent cannot be rejected).
+            if !store.reject(&intent_id, now).map_err(ApiError::Internal)? {
+                return Err(ApiError::BadRequest(format!(
+                    "intent {intent_id} cannot be rejected (state {}): it is merging or already resolved",
+                    intent.state.as_str()
+                )));
+            }
+            serde_json::json!({ "intentId": intent_id, "status": "rejected", "reason": reason })
         }
         "aether.task.create" => {
             let tasks = state.task_manager.as_ref().ok_or_else(|| {
@@ -3223,5 +3246,135 @@ mod tests {
             MergeIntentState::NeedsReconcile,
             "a moved tip leaves the intent needs_reconcile, never merged"
         );
+    }
+
+    /// P0-3 inc6: `aether.review.reject` is a durable, store-backed transition, and
+    /// `aether.list_pending_approvals` synthesizes its merge view from the store
+    /// (not mcp_pending) — a rejected intent leaves the unresolved view.
+    #[test]
+    fn review_reject_is_durable_and_pending_view_comes_from_the_store() {
+        use crate::db::{Database, ManagedDb};
+        use crate::merge_intent::{store::MergeIntentStore, MergeIntentState};
+        use crate::pty::PtyManager;
+        use git2::{build::CheckoutBuilder, Repository};
+        use std::path::Path;
+        use std::sync::Arc;
+
+        let dir = tempfile::tempdir().unwrap();
+        let repo = Repository::init(dir.path()).unwrap();
+        repo.set_head("refs/heads/main").unwrap();
+        let commit = |file: &str, content: &str, parents: &[git2::Oid]| -> git2::Oid {
+            let wd = repo.workdir().unwrap().to_path_buf();
+            std::fs::write(wd.join(file), content).unwrap();
+            let mut idx = repo.index().unwrap();
+            idx.add_path(Path::new(file)).unwrap();
+            idx.write().unwrap();
+            let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+            let sig = git2::Signature::now("T", "t@t").unwrap();
+            let pcs: Vec<git2::Commit> = parents
+                .iter()
+                .map(|o| repo.find_commit(*o).unwrap())
+                .collect();
+            let prefs: Vec<&git2::Commit> = pcs.iter().collect();
+            repo.commit(Some("HEAD"), &sig, &sig, "c", &tree, &prefs)
+                .unwrap()
+        };
+        let base = commit("a.txt", "base", &[]);
+        repo.branch("feature", &repo.find_commit(base).unwrap(), false)
+            .unwrap();
+        repo.set_head("refs/heads/feature").unwrap();
+        repo.checkout_head(Some(CheckoutBuilder::new().force()))
+            .unwrap();
+        commit("b.txt", "feat", &[base]);
+        repo.set_head("refs/heads/main").unwrap();
+        repo.checkout_head(Some(CheckoutBuilder::new().force()))
+            .unwrap();
+        let repo_path = repo.workdir().unwrap().to_str().unwrap().to_string();
+
+        let store = Arc::new(MergeIntentStore::new(Arc::new(ManagedDb::new(
+            Database::open_memory().unwrap(),
+        ))));
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_merge_store(Some(store.clone()));
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let call = |name: &str, args: serde_json::Value| {
+            let body = ToolCallBody {
+                name: name.to_string(),
+                arguments: args,
+            };
+            rt.block_on(tools_call(State(state.clone()), Json(body)))
+        };
+
+        let Json(req) = call(
+            "aether.request_merge",
+            serde_json::json!({
+                "taskId": "task-1", "repoPath": repo_path,
+                "sourceBranch": "feature", "targetBranch": "main",
+            }),
+        )
+        .expect("request ok");
+        let intent_id = req["result"]["intentId"].as_str().unwrap().to_string();
+
+        // The pending view comes from the store and shows the queued intent.
+        let Json(view) =
+            call("aether.list_pending_approvals", serde_json::json!({})).expect("list ok");
+        let intents = view["result"]["mergeIntents"].as_array().unwrap();
+        assert_eq!(intents.len(), 1);
+        assert_eq!(intents[0]["intentId"].as_str().unwrap(), intent_id);
+
+        // reject rejects the unknown field and the non-string reason.
+        assert!(matches!(
+            call(
+                "aether.review.reject",
+                serde_json::json!({ "intentId": intent_id, "evil": 1 })
+            )
+            .unwrap_err(),
+            ApiError::BadRequest(_)
+        ));
+        assert!(matches!(
+            call(
+                "aether.review.reject",
+                serde_json::json!({ "intentId": intent_id, "reason": 5 })
+            )
+            .unwrap_err(),
+            ApiError::BadRequest(_)
+        ));
+
+        // A real reject durably transitions the intent.
+        let Json(rej) = call(
+            "aether.review.reject",
+            serde_json::json!({ "intentId": intent_id, "reason": "not needed" }),
+        )
+        .expect("reject ok");
+        assert_eq!(rej["result"]["status"], "rejected");
+        assert_eq!(
+            store.get(&intent_id).unwrap().unwrap().state,
+            MergeIntentState::Rejected
+        );
+
+        // It is gone from the unresolved view, and cannot be rejected again.
+        let Json(view2) =
+            call("aether.list_pending_approvals", serde_json::json!({})).expect("list ok");
+        assert!(view2["result"]["mergeIntents"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+        assert!(matches!(
+            call(
+                "aether.review.reject",
+                serde_json::json!({ "intentId": intent_id })
+            )
+            .unwrap_err(),
+            ApiError::BadRequest(_)
+        ));
+        // An unknown id is NotFound.
+        assert!(matches!(
+            call(
+                "aether.review.reject",
+                serde_json::json!({ "intentId": "ghost" })
+            )
+            .unwrap_err(),
+            ApiError::NotFound(_)
+        ));
     }
 }

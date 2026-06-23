@@ -64,6 +64,18 @@ impl MergeIntentStore {
         self.db.with(|d| MergeRepo::list_in_state(d, state))
     }
 
+    /// Intents awaiting a decision (everything not cleanly resolved) — the
+    /// operator's pending-merge view.
+    pub fn list_unresolved(&self) -> Result<Vec<MergeIntent>, String> {
+        self.db.with(MergeRepo::list_unresolved)
+    }
+
+    /// Reject an intent. `true` only from a rejectable state (not in-flight,
+    /// not already resolved).
+    pub fn reject(&self, intent_id: &str, now: i64) -> Result<bool, String> {
+        self.db.with(|d| MergeRepo::reject(d, intent_id, now))
+    }
+
     /// Restart reconciliation: an intent left in `merging` means the process died
     /// mid-merge. For each, decide the true outcome by re-examining git (the durable
     /// source of truth is the repo, not our last in-flight guess):
