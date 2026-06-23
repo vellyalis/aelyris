@@ -158,6 +158,26 @@ impl MergeRepo {
         raw.map(RawMergeRow::into_intent).transpose()
     }
 
+    /// All intents currently in `state`, oldest first. Used by restart
+    /// reconciliation (dangling `merging`) and the pending-merge view.
+    pub fn list_in_state(
+        db: &Database,
+        state: MergeIntentState,
+    ) -> Result<Vec<MergeIntent>, String> {
+        let conn = db.conn();
+        let sql =
+            format!("SELECT {COLUMNS} FROM merge_intents WHERE state = ?1 ORDER BY created_at ASC");
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| format!("prepare list merge intents: {e}"))?;
+        let raws: Vec<RawMergeRow> = stmt
+            .query_map(params![state.as_str()], RawMergeRow::from_row)
+            .map_err(|e| format!("query merge intents: {e}"))?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|e| format!("read merge intent rows: {e}"))?;
+        raws.into_iter().map(RawMergeRow::into_intent).collect()
+    }
+
     /// Compare-and-swap the claim into `merging`: succeeds (returns `true`) ONLY if
     /// the row is still claimable (`queued`/`ready_to_merge`). A losing racer (or a
     /// terminal/already-merging row) gets `false`. This conditional `UPDATE` — not

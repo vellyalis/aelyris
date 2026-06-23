@@ -14,6 +14,8 @@
 //! -swap), never an in-memory mutation — so it survives restarts and serializes
 //! across callers.
 
+pub mod store;
+
 use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};

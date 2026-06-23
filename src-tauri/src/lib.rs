@@ -709,6 +709,32 @@ pub fn run() {
                     .state::<std::sync::Arc<knowledge_graph::KnowledgeGraphManager>>()
                     .inner()
                     .clone();
+                // P4: give the MCP face its own connection to the same db file so
+                // the autonomous loop persists escalations durably (WAL +
+                // busy_timeout make the extra writer safe). A failed open degrades
+                // the sink to a no-op, never blocks startup.
+                let mcp_db = Database::open(&db_path)
+                    .ok()
+                    .map(|d| std::sync::Arc::new(db::ManagedDb::new(d)));
+                // P0-3: build the durable merge-intent store on that same db and
+                // reconcile any merge left dangling in `merging` by a crash BEFORE
+                // serving, so a restart never resumes from a false in-flight state.
+                let now_secs = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0);
+                let merge_store = mcp_db.clone().map(|db| {
+                    let store =
+                        std::sync::Arc::new(merge_intent::store::MergeIntentStore::new(db));
+                    match store.reconcile_dangling_on_boot(now_secs) {
+                        Ok(n) if n > 0 => log::info!(
+                            "merge intents: reconciled {n} dangling merge(s) after restart"
+                        ),
+                        Ok(_) => {}
+                        Err(e) => log::warn!("merge intent boot reconcile failed: {e}"),
+                    }
+                    store
+                });
                 let api_state = api::ApiState::new(pty, api::AuthConfig::from_env())
                     .with_mux(mux_manager)
                     .with_agent_manager(agent_manager)
@@ -721,15 +747,8 @@ pub fn run() {
                     .with_context_store(context_store)
                     .with_intent_bus(intent_bus)
                     .with_knowledge_graph(knowledge_graph)
-                    // P4: give the MCP face its own connection to the same db
-                    // file so the autonomous loop persists escalations durably
-                    // (WAL + busy_timeout make the extra writer safe). A failed
-                    // open degrades the sink to a no-op, never blocks startup.
-                    .with_db(
-                        Database::open(&db_path)
-                            .ok()
-                            .map(|d| std::sync::Arc::new(db::ManagedDb::new(d))),
-                    )
+                    .with_db(mcp_db)
+                    .with_merge_store(merge_store)
                     .with_env_mux_store();
                 app.manage(api_state.clone());
                 let serve_state = api_state.clone();

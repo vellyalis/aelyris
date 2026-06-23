@@ -107,6 +107,36 @@ pub fn inspect_merge_worktree_branch(
     })
 }
 
+/// Resolve a branch (local/remote/ref) to its current tip OID as a hex string.
+/// Used to capture immutable merge-intent OIDs at request time and to re-check
+/// branch tips during restart reconciliation (P0-3). Errs if the branch is gone.
+pub fn resolve_branch_oid(repo_path: &str, branch: &str) -> Result<String, String> {
+    validate_branch_name(branch)?;
+    let repo = git2::Repository::open(repo_path).map_err(|err| format!("open repo: {err}"))?;
+    Ok(resolve_branchish(&repo, branch)?.to_string())
+}
+
+/// Does `branch`'s current tip contain `commit_oid` (i.e. is that commit an
+/// ancestor of, or equal to, the tip)? Used by P0-3 restart reconciliation to
+/// detect a merge that actually landed before a crash. Errs if the repo/branch
+/// is unavailable or `commit_oid` is malformed.
+pub fn branch_contains_commit(
+    repo_path: &str,
+    branch: &str,
+    commit_oid: &str,
+) -> Result<bool, String> {
+    validate_branch_name(branch)?;
+    let repo = git2::Repository::open(repo_path).map_err(|err| format!("open repo: {err}"))?;
+    let branch_oid = resolve_branchish(&repo, branch)?;
+    let commit = git2::Oid::from_str(commit_oid)
+        .map_err(|err| format!("invalid commit oid `{commit_oid}`: {err}"))?;
+    if branch_oid == commit {
+        return Ok(true);
+    }
+    repo.graph_descendant_of(branch_oid, commit)
+        .map_err(|err| format!("ancestry check: {err}"))
+}
+
 /// Merge `source_branch` into `target_branch` at the object/ref level. Fast-
 /// forwards when target has no unique commits, otherwise creates a merge
 /// commit; reports conflicts without committing anything. When the target
