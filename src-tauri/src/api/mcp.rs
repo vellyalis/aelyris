@@ -404,15 +404,17 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
             },
             {
                 "name": "aether.request_merge",
-                "description": "Queue a gated merge request. This never merges to main.",
+                "description": "Queue a DURABLE merge intent (never merges to main). The repo/source/target and their branch-tip OIDs are captured and stored at request time, so the merge is bound to specific commits. Idempotent per (taskId, source commit, target commit): a duplicate request returns the original intent. Returns { intentId, status, intent }.",
                 "safety": "GATED",
                 "inputSchema": {
                     "type": "object",
-                    "required": ["sessionId", "sourceBranch", "targetBranch"],
+                    "required": ["taskId", "repoPath", "sourceBranch", "targetBranch"],
                     "properties": {
-                        "sessionId": { "type": "string" },
+                        "taskId": { "type": "string" },
+                        "repoPath": { "type": "string" },
                         "sourceBranch": { "type": "string" },
-                        "targetBranch": { "type": "string" }
+                        "targetBranch": { "type": "string" },
+                        "sessionId": { "type": "string" }
                     },
                     "additionalProperties": false
                 }
@@ -1196,31 +1198,59 @@ pub(super) async fn tools_call(
             serde_json::json!({ "pending": pending, "grantToolExposed": false })
         }
         "aether.request_merge" => {
-            let request = crate::control::merge::MergeRequest {
-                session_id: arg_string(&args, "sessionId")?,
-                source_branch: arg_string(&args, "sourceBranch")?,
-                target_branch: arg_string(&args, "targetBranch")?,
+            // Fail closed: a merge intent MUST be durable. Without the store we do
+            // not fall back to a RAM queue a restart would lose (P0-3).
+            let store = state.merge_store.as_ref().ok_or_else(|| {
+                ApiError::Internal("merge persistence is not attached to this process".to_string())
+            })?;
+            let task_id = arg_string(&args, "taskId")?;
+            let source_branch = arg_string(&args, "sourceBranch")?;
+            let target_branch = arg_string(&args, "targetBranch")?;
+            let session_id = arg_optional_string(&args, "sessionId");
+            // Canonicalize the repo at REQUEST time: the intent is bound to a
+            // normalized absolute path the approver can never re-point later.
+            let repo_path = {
+                let raw = arg_string(&args, "repoPath")?;
+                let canonical = std::fs::canonicalize(&raw).map_err(|_| {
+                    ApiError::BadRequest("repoPath must exist and be accessible".to_string())
+                })?;
+                if !canonical.is_dir() {
+                    return Err(ApiError::BadRequest(
+                        "repoPath must be a directory".to_string(),
+                    ));
+                }
+                super::session_common::strip_local_verbatim_prefix(&canonical.to_string_lossy())
             };
-            let queued =
-                crate::control::merge::queue_request(request).map_err(ApiError::BadRequest)?;
-            let item = push_pending(
-                &state,
-                McpPendingDecision {
-                    id: queued.intent_id.clone(),
-                    session_id: queued.session_id.clone(),
-                    kind: "merge_conflict_strategy".to_string(),
-                    title: format!(
-                        "Merge {} into {}",
-                        queued.source_branch, queued.target_branch
-                    ),
-                    summary: Some(
-                        "Queued by aether.request_merge; no merge was performed.".to_string(),
-                    ),
-                    risk: "high".to_string(),
-                    status: "pending".to_string(),
-                },
-            )?;
-            serde_json::json!({ "intentId": queued.intent_id, "status": queued.status, "queued": queued, "item": item })
+            // Resolve the branch tips NOW (also validates names + source!=target):
+            // the immutable intent is bound to these exact commits.
+            let readiness =
+                crate::control::merge::inspect(&repo_path, &source_branch, &target_branch)
+                    .map_err(ApiError::BadRequest)?;
+            let now = now_secs() as i64;
+            let intent = crate::merge_intent::MergeIntent {
+                intent_id: format!("merge:{task_id}:{}", uuid::Uuid::new_v4()),
+                repo_path,
+                source_branch,
+                target_branch,
+                source_oid: readiness.source_oid,
+                target_oid: readiness.target_oid,
+                merge_base_oid: readiness.merge_base_oid,
+                task_id,
+                created_at: now,
+                state: crate::merge_intent::MergeIntentState::Queued,
+                updated_at: now,
+                session_id,
+                reviewer_id: None,
+                gates_digest: None,
+            };
+            // Idempotent: a duplicate (taskId, source_oid, target_oid) resolves to
+            // the original intent — no second row, no second merge.
+            let stored = store.create_or_get(&intent).map_err(ApiError::Internal)?;
+            serde_json::json!({
+                "intentId": stored.intent_id,
+                "status": stored.state.as_str(),
+                "intent": stored,
+            })
         }
         "aether.spawn_agent" => {
             let manager = state.agent_manager.as_ref().ok_or_else(|| {
@@ -2746,5 +2776,107 @@ mod tests {
         };
         let result = rt.block_on(tools_call(State(state), Json(body)));
         assert!(matches!(result, Err(ApiError::NotFound(_))), "{result:?}");
+    }
+
+    /// P0-3 inc3: `aether.request_merge` binds the repo/branch/OIDs into a durable
+    /// intent at request time, and is idempotent per (taskId, source_oid,
+    /// target_oid) — a duplicate request returns the ORIGINAL intent, not a new one.
+    #[test]
+    fn request_merge_is_idempotent_and_binds_immutable_fields() {
+        use crate::db::{Database, ManagedDb};
+        use crate::merge_intent::store::MergeIntentStore;
+        use crate::pty::PtyManager;
+        use git2::{build::CheckoutBuilder, Repository};
+        use std::path::Path;
+        use std::sync::Arc;
+
+        // temp repo: main, then a `feature` branch one commit ahead of main.
+        let dir = tempfile::tempdir().unwrap();
+        let repo = Repository::init(dir.path()).unwrap();
+        repo.set_head("refs/heads/main").unwrap();
+        let commit = |file: &str, content: &str, parents: &[git2::Oid]| -> git2::Oid {
+            let wd = repo.workdir().unwrap().to_path_buf();
+            std::fs::write(wd.join(file), content).unwrap();
+            let mut idx = repo.index().unwrap();
+            idx.add_path(Path::new(file)).unwrap();
+            idx.write().unwrap();
+            let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+            let sig = git2::Signature::now("T", "t@t").unwrap();
+            let pcs: Vec<git2::Commit> = parents
+                .iter()
+                .map(|o| repo.find_commit(*o).unwrap())
+                .collect();
+            let prefs: Vec<&git2::Commit> = pcs.iter().collect();
+            repo.commit(Some("HEAD"), &sig, &sig, "c", &tree, &prefs)
+                .unwrap()
+        };
+        let base = commit("a.txt", "base", &[]);
+        repo.branch("feature", &repo.find_commit(base).unwrap(), false)
+            .unwrap();
+        repo.set_head("refs/heads/feature").unwrap();
+        repo.checkout_head(Some(CheckoutBuilder::new().force()))
+            .unwrap();
+        commit("b.txt", "feat", &[base]);
+        repo.set_head("refs/heads/main").unwrap();
+        repo.checkout_head(Some(CheckoutBuilder::new().force()))
+            .unwrap();
+        let repo_path = repo.workdir().unwrap().to_str().unwrap().to_string();
+
+        let store = Arc::new(MergeIntentStore::new(Arc::new(ManagedDb::new(
+            Database::open_memory().unwrap(),
+        ))));
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_merge_store(Some(store));
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let call = |args: serde_json::Value| -> serde_json::Value {
+            let body = ToolCallBody {
+                name: "aether.request_merge".to_string(),
+                arguments: args,
+            };
+            let Json(v) = rt
+                .block_on(tools_call(State(state.clone()), Json(body)))
+                .expect("request_merge ok");
+            v
+        };
+
+        let args = serde_json::json!({
+            "taskId": "task-1",
+            "repoPath": repo_path,
+            "sourceBranch": "feature",
+            "targetBranch": "main",
+        });
+        let first = call(args.clone());
+        let id1 = first["result"]["intentId"].as_str().unwrap().to_string();
+        assert!(id1.starts_with("merge:task-1:"));
+        assert_eq!(first["result"]["status"], "queued");
+        // The intent bound the real branch + a concrete OID at request time.
+        assert_eq!(first["result"]["intent"]["sourceBranch"], "feature");
+        assert!(
+            first["result"]["intent"]["sourceOid"]
+                .as_str()
+                .unwrap()
+                .len()
+                >= 7
+        );
+
+        // A DUPLICATE request (same task + same source/target commits) returns the
+        // SAME intent id — no second row, no second merge.
+        let second = call(args);
+        assert_eq!(second["result"]["intentId"].as_str().unwrap(), id1);
+
+        // Fail closed: with no store attached, the verb errors (no RAM fallback) —
+        // and specifically an Internal error (persistence missing), not a
+        // request-shape error.
+        let no_store = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"));
+        let body = ToolCallBody {
+            name: "aether.request_merge".to_string(),
+            arguments: serde_json::json!({
+                "taskId": "t", "repoPath": repo_path, "sourceBranch": "feature", "targetBranch": "main"
+            }),
+        };
+        let err = rt
+            .block_on(tools_call(State(no_store), Json(body)))
+            .expect_err("fail closed without a merge store");
+        assert!(matches!(err, ApiError::Internal(_)), "{err:?}");
     }
 }
