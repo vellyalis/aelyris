@@ -294,6 +294,22 @@ impl SymbolOwnership {
         }
         out
     }
+
+    /// Would a prospective DECLARED `intent` (a not-yet-running task's plan) be
+    /// BLOCKED by the LIVE claims right now? Same path, overlapping range, a write
+    /// on either side, both exact-confidence — the dispatch gate's consult of the
+    /// live ownership map (spec §6.5), so a running agent's actual claim serializes
+    /// a ready task even if their DECLARED ranges looked disjoint. The candidate
+    /// holds no live claim yet, so agent identity is irrelevant.
+    pub fn intent_blocked(&self, intent: &SymbolIntent, now: u64) -> bool {
+        self.claims.iter().filter(|c| c.is_live(now)).any(|c| {
+            c.path == intent.path
+                && c.range.overlaps(&intent.range)
+                && (matches!(c.mode, ClaimMode::Write) || matches!(intent.mode, ClaimMode::Write))
+                && c.confidence.is_exact()
+                && intent.confidence.is_exact()
+        })
+    }
 }
 
 /// A task's DECLARED intent to own a symbol range — the plan-time counterpart of
@@ -362,6 +378,40 @@ mod tests {
         assert!(!intents_block(
             &intent("x", 1, 10, ClaimMode::Read, Confidence::Lsp),
             &intent("x", 5, 15, ClaimMode::Read, Confidence::Lsp),
+        ));
+    }
+
+    #[test]
+    fn intent_blocked_consults_live_claims() {
+        let mut own = SymbolOwnership::new();
+        // A running agent holds a LIVE exact write claim on x.rs 40-60.
+        own.claim(
+            claim(
+                "c1",
+                "a",
+                "src/x.rs",
+                "foo",
+                40,
+                60,
+                ClaimMode::Write,
+                Confidence::Lsp,
+            ),
+            0,
+        );
+        // A ready task DECLARING an overlapping exact range is blocked...
+        assert!(own.intent_blocked(
+            &intent("src/x.rs", 50, 55, ClaimMode::Write, Confidence::Lsp),
+            0,
+        ));
+        // ...a disjoint declaration is not...
+        assert!(!own.intent_blocked(
+            &intent("src/x.rs", 1, 20, ClaimMode::Write, Confidence::Lsp),
+            0,
+        ));
+        // ...and an inferred (diff-hunk) declaration never hard-blocks dispatch.
+        assert!(!own.intent_blocked(
+            &intent("src/x.rs", 50, 55, ClaimMode::Write, Confidence::DiffHunk),
+            0,
         ));
     }
 

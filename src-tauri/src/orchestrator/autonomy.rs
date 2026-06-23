@@ -131,6 +131,17 @@ pub trait LoopPorts {
     fn implementer_id(&self, task_id: &str) -> String;
     /// Merge the reviewed branch for `task_id` into the target.
     fn merge(&mut self, task_id: &str) -> Result<(), String>;
+
+    /// Is dispatching a task with these declared symbol `intents` blocked by the
+    /// LIVE symbol-ownership map (what running agents are ACTUALLY editing)? The
+    /// declared-intent gate ([`tasks_collide`]) already covers the planned graph;
+    /// this consults the runtime claim store so a ready task serializes behind a
+    /// running agent's live range even when their DECLARED ranges looked disjoint
+    /// (spec §6.5). Default: no live map wired (pure unit tests) -> nothing extra
+    /// blocks, so the declared-intent gate alone decides.
+    fn symbol_blocking(&self, _intents: &[SymbolIntent]) -> bool {
+        false
+    }
 }
 
 /// A task the loop gave up on this step (a retry budget was exhausted, leaving
@@ -375,6 +386,12 @@ pub fn step(
             .iter()
             .any(|(busy_out, busy_sym)| tasks_collide(&outputs, &symbols, busy_out, busy_sym));
         if lane_busy {
+            continue;
+        }
+        // Beyond the planned graph, respect the LIVE ownership map (spec §6.5): a
+        // running agent's actual claim can serialize this ready task even when the
+        // declared ranges looked clear.
+        if ports.symbol_blocking(&symbols) {
             continue;
         }
         if ports.dispatch(id).is_ok() {
