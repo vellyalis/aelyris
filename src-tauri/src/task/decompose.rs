@@ -54,6 +54,7 @@ impl PlannedTask {
             estimate: None,
             dependencies: self.dependencies,
             outputs: self.outputs,
+            symbols: Vec::new(),
             source_branch: Some(self.source_branch),
             target_branch: Some(self.target_branch),
             crash_attempts: 0,

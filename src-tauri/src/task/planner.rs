@@ -211,6 +211,7 @@ mod tests {
             estimate: None,
             dependencies: deps.iter().map(|s| s.to_string()).collect(),
             outputs: outputs.iter().map(|s| s.to_string()).collect(),
+            symbols: Vec::new(),
             source_branch: Some(format!("feat/{id}")),
             target_branch: Some("main".to_string()),
             crash_attempts: 0,

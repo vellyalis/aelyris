@@ -293,9 +293,74 @@ impl SymbolOwnership {
     }
 }
 
+/// A task's DECLARED intent to own a symbol range — the plan-time counterpart of
+/// a runtime [`SymbolClaim`] (no lease / agent / claim id yet). The scheduler
+/// gates co-dispatch on these so two tasks editing one file on disjoint symbols
+/// run in parallel while overlapping ones serialize.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SymbolIntent {
+    pub path: String,
+    pub symbol: String,
+    pub range: SymbolRange,
+    pub mode: ClaimMode,
+    pub confidence: Confidence,
+}
+
+/// Do two DECLARED intents (by different tasks) collide hard enough to BLOCK
+/// co-dispatch? Same path, overlapping ranges, at least one `Write`, and BOTH
+/// ranges exact (Lsp/Parser) — the dispatch-gate mirror of the runtime `Block`
+/// tier. Inferred (`DiffHunk`) intents never block dispatch (they warn at
+/// runtime instead), and disjoint ranges / different files are parallel-safe.
+pub fn intents_block(a: &SymbolIntent, b: &SymbolIntent) -> bool {
+    a.path == b.path
+        && a.range.overlaps(&b.range)
+        && (matches!(a.mode, ClaimMode::Write) || matches!(b.mode, ClaimMode::Write))
+        && a.confidence.is_exact()
+        && b.confidence.is_exact()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn intent(path: &str, s: u32, e: u32, mode: ClaimMode, conf: Confidence) -> SymbolIntent {
+        SymbolIntent {
+            path: path.to_string(),
+            symbol: "f".to_string(),
+            range: SymbolRange::new(s, e),
+            mode,
+            confidence: conf,
+        }
+    }
+
+    #[test]
+    fn intents_block_only_on_exact_overlapping_writes() {
+        // exact + overlapping ranges + a write -> blocks co-dispatch
+        assert!(intents_block(
+            &intent("x", 1, 10, ClaimMode::Write, Confidence::Lsp),
+            &intent("x", 5, 15, ClaimMode::Write, Confidence::Parser),
+        ));
+        // disjoint ranges in the same file -> parallel-safe
+        assert!(!intents_block(
+            &intent("x", 1, 10, ClaimMode::Write, Confidence::Lsp),
+            &intent("x", 11, 20, ClaimMode::Write, Confidence::Lsp),
+        ));
+        // different files -> never blocks
+        assert!(!intents_block(
+            &intent("x", 1, 10, ClaimMode::Write, Confidence::Lsp),
+            &intent("y", 1, 10, ClaimMode::Write, Confidence::Lsp),
+        ));
+        // inferred (diff-hunk) range -> does not block dispatch (warns at runtime)
+        assert!(!intents_block(
+            &intent("x", 1, 10, ClaimMode::Write, Confidence::DiffHunk),
+            &intent("x", 5, 15, ClaimMode::Write, Confidence::Lsp),
+        ));
+        // read-only overlap -> not a write collision
+        assert!(!intents_block(
+            &intent("x", 1, 10, ClaimMode::Read, Confidence::Lsp),
+            &intent("x", 5, 15, ClaimMode::Read, Confidence::Lsp),
+        ));
+    }
 
     const HOUR: u64 = 3_600;
 

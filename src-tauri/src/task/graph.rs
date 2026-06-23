@@ -74,6 +74,13 @@ pub struct Task {
     /// Artifacts produced by the task (file paths, branch names, ...).
     #[serde(default)]
     pub outputs: Vec<String>,
+    /// Declared symbol-range intents this task will write — the finer, plan-time
+    /// counterpart of `outputs`. Lets the scheduler co-dispatch two tasks on the
+    /// SAME file when their symbols are disjoint, and serialize them when ranges
+    /// overlap. Empty = file-level exclusivity (the conservative fallback). Not
+    /// persisted yet (re-declared per session by the planner / extractors).
+    #[serde(default)]
+    pub symbols: Vec<crate::symbol_ownership::SymbolIntent>,
     /// Branch the task's work lives on (set when dispatched to a worktree).
     #[serde(default)]
     pub source_branch: Option<String>,
@@ -113,6 +120,7 @@ impl Task {
             estimate: None,
             dependencies: Vec::new(),
             outputs: Vec::new(),
+            symbols: Vec::new(),
             source_branch: None,
             target_branch: None,
             crash_attempts: 0,
