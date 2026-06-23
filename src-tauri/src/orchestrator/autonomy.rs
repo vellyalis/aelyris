@@ -40,9 +40,10 @@ fn tasks_collide(
             }
             // Symbol-level disjointness is only provable when the shared lane is
             // ONE concrete file both sides name identically. A glob / pattern lane
-            // (overlapping but `a_out != b_out`) can write parts of the file its
-            // declared symbols don't cover, so it stays file-exclusive.
-            if a_out != b_out {
+            // (overlapping but `a_out != b_out`, OR identical wildcards like
+            // `src/**` vs `src/**`) can write parts of the file its declared
+            // symbols don't cover, so it stays file-exclusive.
+            if a_out != b_out || a_out.contains('*') {
                 return true;
             }
             let on_file = |syms: &[SymbolIntent]| -> Vec<SymbolIntent> {
@@ -132,14 +133,16 @@ pub trait LoopPorts {
     /// Merge the reviewed branch for `task_id` into the target.
     fn merge(&mut self, task_id: &str) -> Result<(), String>;
 
-    /// Is dispatching a task with these declared symbol `intents` blocked by the
-    /// LIVE symbol-ownership map (what running agents are ACTUALLY editing)? The
-    /// declared-intent gate ([`tasks_collide`]) already covers the planned graph;
-    /// this consults the runtime claim store so a ready task serializes behind a
-    /// running agent's live range even when their DECLARED ranges looked disjoint
-    /// (spec §6.5). Default: no live map wired (pure unit tests) -> nothing extra
-    /// blocks, so the declared-intent gate alone decides.
-    fn symbol_blocking(&self, _intents: &[SymbolIntent]) -> bool {
+    /// Is dispatching a task with these declared symbol `intents` AND file
+    /// `outputs` blocked by the LIVE symbol-ownership map (what running agents are
+    /// ACTUALLY editing)? The declared-intent gate ([`tasks_collide`]) covers the
+    /// planned graph; this consults the runtime claim store so a ready task
+    /// serializes behind a running agent's live claim even when the planned graph
+    /// looked clear (spec §6.5) — both when the candidate DECLARES an overlapping
+    /// symbol AND when it is file-level (no symbol on a file a live claim sits in).
+    /// Default: no live map wired (pure unit tests) -> nothing extra blocks, so the
+    /// declared-intent gate alone decides.
+    fn symbol_blocking(&self, _intents: &[SymbolIntent], _outputs: &[String]) -> bool {
         false
     }
 }
@@ -390,8 +393,9 @@ pub fn step(
         }
         // Beyond the planned graph, respect the LIVE ownership map (spec §6.5): a
         // running agent's actual claim can serialize this ready task even when the
-        // declared ranges looked clear.
-        if ports.symbol_blocking(&symbols) {
+        // declared ranges looked clear — including a file-level (symbol-less) task
+        // whose output file an agent is live-claiming.
+        if ports.symbol_blocking(&symbols, &outputs) {
             continue;
         }
         if ports.dispatch(id).is_ok() {
@@ -695,6 +699,31 @@ mod tests {
             "b",
             "src/x.rs",
             vec![write_intent("src/x.rs", 40, 60)],
+        ))
+        .unwrap();
+        g.recompute_ready();
+        let mut ports = FakePorts::new();
+        let report = step(&mut g, &caps(4), &CostUsage::default(), &mut ports);
+        assert_eq!(report.dispatched, ["a"]);
+        assert_eq!(g.get("b").unwrap().status, TaskStatus::Ready);
+    }
+
+    #[test]
+    fn identical_glob_lanes_stay_file_exclusive() {
+        // Two tasks on the SAME wildcard lane can't be symbol-proven (a glob
+        // writes beyond any declared range), even if their declared symbols look
+        // disjoint — `a_out == b_out` is not enough; it must be a concrete file.
+        let mut g = TaskGraph::new();
+        g.add(task_on_file(
+            "a",
+            "src/**",
+            vec![write_intent("src/**", 1, 20)],
+        ))
+        .unwrap();
+        g.add(task_on_file(
+            "b",
+            "src/**",
+            vec![write_intent("src/**", 40, 60)],
         ))
         .unwrap();
         g.recompute_ready();

@@ -247,18 +247,31 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<G
         }
     }
 
-    fn symbol_blocking(&self, intents: &[SymbolIntent]) -> bool {
+    fn symbol_blocking(&self, intents: &[SymbolIntent], outputs: &[String]) -> bool {
         let Some(map) = self.symbol_ownership.as_ref() else {
             return false;
         };
-        if intents.is_empty() {
-            return false;
-        }
         let now = now_secs();
         let owner = map.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        intents
+        // A declared symbol that overlaps a live claim serializes the task.
+        if intents
             .iter()
             .any(|intent| owner.intent_blocked(intent, now))
+        {
+            return true;
+        }
+        // A file the candidate owns FILE-LEVEL (an output with NO declared symbol
+        // on it) cannot co-exist with ANY live claim inside it — otherwise a
+        // symbol-less task would edit a whole file an agent is actively working in
+        // (the symbol-less half of the live-map gate, spec §6.5).
+        let symbol_paths: std::collections::HashSet<&str> =
+            intents.iter().map(|i| i.path.as_str()).collect();
+        owner.live_claims(now).iter().any(|claim| {
+            !symbol_paths.contains(claim.path.as_str())
+                && outputs
+                    .iter()
+                    .any(|out| crate::file_ownership::patterns_overlap(out, &claim.path))
+        })
     }
 }
 
@@ -870,10 +883,15 @@ mod tests {
         };
         // A ready task DECLARING an overlapping range is blocked by the running
         // agent's LIVE claim — the drift the declared-intent gate alone would miss.
-        assert!(ports.symbol_blocking(&[intent(50, 55)]));
-        // A disjoint declaration is free to dispatch; no intents blocks nothing.
-        assert!(!ports.symbol_blocking(&[intent(1, 20)]));
-        assert!(!ports.symbol_blocking(&[]));
+        assert!(ports.symbol_blocking(&[intent(50, 55)], &[]));
+        // A disjoint declaration is free to dispatch; no intents/outputs blocks nothing.
+        assert!(!ports.symbol_blocking(&[intent(1, 20)], &[]));
+        assert!(!ports.symbol_blocking(&[], &[]));
+        // A FILE-LEVEL (symbol-less) task whose OUTPUT file an agent is live-
+        // claiming is blocked too — it would edit the whole file the agent is in.
+        assert!(ports.symbol_blocking(&[], &["src/x.rs".to_string()]));
+        // ...but a file-level task on a different file is free.
+        assert!(!ports.symbol_blocking(&[], &["src/y.rs".to_string()]));
     }
 
     #[test]
