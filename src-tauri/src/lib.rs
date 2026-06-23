@@ -128,6 +128,9 @@ pub fn run() {
         .manage(std::sync::Arc::new(std::sync::Mutex::new(
             file_ownership::FileOwnership::new(),
         )))
+        .manage(std::sync::Arc::new(std::sync::Mutex::new(
+            symbol_ownership::SymbolOwnership::new(),
+        )))
         .manage(std::sync::Arc::new(intent::IntentBus::new()))
         .manage(std::sync::Arc::new(
             knowledge_graph::KnowledgeGraphManager::new(),
@@ -799,6 +802,12 @@ pub fn run() {
             ipc::ownership_owner_of,
             ipc::ownership_claims,
             ipc::ownership_conflicts,
+            ipc::symbol_claim,
+            ipc::symbol_refresh,
+            ipc::symbol_release,
+            ipc::symbol_release_task,
+            ipc::symbol_claims,
+            ipc::symbol_conflicts,
             ipc::discover_projects,
             ipc::default_project_scan_dirs,
             ipc::list_branches,
