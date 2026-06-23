@@ -705,14 +705,19 @@ fn apply_file_lanes(
     }
 }
 
-/// Release a task's SYMBOL claims when it LEAVES the running set this step —
-/// merged, recovered (crash/timeout reassign), rejected (rework), or given up
-/// (Failed via escalations). The finer-grained mirror of `apply_file_lanes`'
-/// release half (§6.2 release-on-merge / release-on-fail cleanup, BR8), so an
-/// agent's claimed range never lingers past its task beyond the lease — and a
-/// re-dispatched worker (recover/rework) starts from a clean lane. No-op without a
-/// symbol map (the headless unit path). Runs after the step, under the symbol
-/// mutex only (disjoint from the graph lock).
+/// Release a task's SYMBOL claims when it reaches a TERMINAL outcome this step —
+/// `merged` (Done) or given up (Failed, via `escalations`). The finer-grained
+/// mirror of `apply_file_lanes`' release half (§6.2 release-on-merge /
+/// release-on-fail cleanup, BR8), so a finished task's claimed ranges don't
+/// linger past it beyond the lease.
+///
+/// Deliberately NOT on `recovered`/`rejected`: those are SAME-TICK re-dispatched
+/// and stay Running with a NEW worker under the same `task_id`, so a
+/// `release_for_task` here would race away the new worker's fresh claims. The
+/// dead worker's stale claims on those paths self-release on the lease (BR9) and
+/// never block dispatch (`is_live` filter). No-op without a symbol map (the
+/// headless unit path); locks only the symbol mutex (disjoint from the graph
+/// lock, which `step` has already released).
 fn apply_symbol_lanes(
     symbol_ownership: Option<&Arc<Mutex<SymbolOwnership>>>,
     report: &crate::orchestrator::autonomy::StepReport,
@@ -724,8 +729,6 @@ fn apply_symbol_lanes(
     let terminal = report
         .merged
         .iter()
-        .chain(&report.recovered)
-        .chain(&report.rejected)
         .chain(report.escalations.iter().map(|esc| &esc.task_id));
     for task_id in terminal {
         owner.release_for_task(task_id);
@@ -973,9 +976,18 @@ mod tests {
             .iter()
             .filter_map(|c| c.task_id.clone())
             .collect();
-        // Every terminal/recovered/rejected/failed task's claims freed; only the
-        // still-running task survives (no map = no-op is covered by the None arm).
-        assert_eq!(live, vec!["t-running".to_string()]);
+        // ONLY the terminal outcomes (merged + failed-via-escalation) are freed.
+        // recovered/rejected are same-tick re-dispatched (still Running with a new
+        // worker), so their claims survive — releasing them would race the new
+        // worker's fresh claims; the dead worker's stale claims lease-expire.
+        assert_eq!(
+            live,
+            vec![
+                "t-recover".to_string(),
+                "t-reject".to_string(),
+                "t-running".to_string(),
+            ],
+        );
         apply_symbol_lanes(None, &report); // does not panic without a map
     }
 

@@ -363,15 +363,20 @@ pub fn is_shared_file(path: &str) -> bool {
     if SHARED_NAMES.contains(&lower.as_str()) {
         return true;
     }
+    let lower_norm = norm.to_ascii_lowercase();
     (lower.starts_with("tsconfig") && lower.ends_with(".json"))
         || lower.ends_with(".d.ts")
         || lower.contains(".schema.")
+        || lower.starts_with("schema.") // schema.prisma / schema.sql / schema.graphql
         || lower.ends_with(".proto")
         || lower.ends_with(".graphql")
         || lower.ends_with(".gql")
-        || lower.contains("openapi")
-        || norm.contains("/migrations/")
-        || norm.starts_with("migrations/")
+        // An openapi/swagger SPEC file, not a source file that merely contains the
+        // word (e.g. openapiClient.ts stays a normal, symbol-parallelizable file).
+        || ((lower.starts_with("openapi") || lower.starts_with("swagger"))
+            && (lower.ends_with(".json") || lower.ends_with(".yaml") || lower.ends_with(".yml")))
+        || lower_norm.contains("/migrations/")
+        || lower_norm.starts_with("migrations/")
 }
 
 /// May a symbol of this `confidence` on `path` unlock SYMBOL-LEVEL parallelism
@@ -430,9 +435,13 @@ mod tests {
         assert!(is_shared_file("proto/user.proto"));
         assert!(is_shared_file("db/migrations/0001_init.sql"));
         assert!(is_shared_file("types/api.d.ts"));
-        // Ordinary source + fixtures stay symbol-parallelizable.
+        assert!(is_shared_file("prisma/schema.prisma"));
+        assert!(is_shared_file("api/openapi.yaml"));
+        assert!(is_shared_file("db/MIGRATIONS/001_init.sql")); // case-insensitive dir
+                                                               // Ordinary source + fixtures stay symbol-parallelizable (no false positives).
         assert!(!is_shared_file("src/auth/login.ts"));
         assert!(!is_shared_file("src/__tests__/fixture.json"));
+        assert!(!is_shared_file("src/openapiClient.ts")); // contains "openapi" but is source
         assert!(!is_shared_file("src/x.rs"));
     }
 
