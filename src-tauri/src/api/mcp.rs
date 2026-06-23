@@ -62,6 +62,7 @@ fn tool_names() -> Vec<&'static str> {
         "aether.context.remove",
         "aether.agent.report_activity",
         "aether.agent.report_blocker",
+        "aether.agent.steer_avoid",
         "aether.agent.activity",
         "aether.intent.propose",
         "aether.intent.list",
@@ -818,6 +819,20 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                         "sessionId": { "type": "string" },
                         "summary": { "type": "string" },
                         "needs": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aether.agent.steer_avoid",
+                "description": "TYPED steer (§6.4): tell a LIVE agent to AVOID the symbols OTHER agents currently own in the files it is working on. DERIVES the avoidance list from the live symbol-ownership map (the same source as the dispatch prompt) — NOT raw pane text — so the directive is auditable and structured. Errors if the target sessionId is not a live agent. Publishes steer_avoid to the fleet stream; returns { sessionId, steered, avoidCount, avoid:[{agent,symbol,path,startLine,endLine,confidence}] }.",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["sessionId"],
+                    "properties": {
+                        "sessionId": { "type": "string" },
+                        "files": { "type": "array", "items": { "type": "string" }, "description": "The output lanes the steered agent is working on; the avoidance is scoped to claims on these files." }
                     },
                     "additionalProperties": false
                 }
@@ -1975,6 +1990,73 @@ pub(super) async fn tools_call(
             }
             serde_json::json!({ "sessionId": session_id, "raised": true })
         }
+        "aether.agent.steer_avoid" => {
+            let manager = state.agent_manager.as_ref().ok_or_else(|| {
+                ApiError::Internal("agent runtime is not attached to this process".to_string())
+            })?;
+            let ownership = state.symbol_ownership.as_ref().ok_or_else(|| {
+                ApiError::Internal("symbol ownership is not attached to this process".to_string())
+            })?;
+            let session_id = arg_string(&args, "sessionId")?;
+            // A typed steer to a dead/unknown agent is an ERROR, not a silent no-op (it
+            // would otherwise look delivered but reach nobody — §6.4 boundary).
+            if !manager.list_sessions().iter().any(|s| s.id == session_id) {
+                return Err(ApiError::NotFound(format!(
+                    "no live agent session '{session_id}' to steer"
+                )));
+            }
+            let files = arg_optional_string_array(&args, "files")?.unwrap_or_default();
+            let now = now_secs();
+            let claims: Vec<crate::symbol_ownership::SymbolClaim> = {
+                let mut owner = ownership.lock().map_err(|_| {
+                    ApiError::Internal("symbol ownership lock poisoned".to_string())
+                })?;
+                owner.expire(now);
+                owner.live_claims(now).into_iter().cloned().collect()
+            };
+            // The SAME ownership-context formatter the dispatch prompt uses (one SSOT): the
+            // OTHER agents' live write claims on the steered agent's files, self excluded.
+            let ctx = crate::symbol_ownership::agent_context::active_ownership_context(
+                &claims,
+                Some(&session_id),
+                None,
+                &files,
+                crate::symbol_ownership::agent_context::DEFAULT_CONTEXT_CAP,
+            );
+            let avoid: Vec<serde_json::Value> = ctx
+                .entries
+                .iter()
+                .map(|e| {
+                    let confidence = match e.confidence {
+                        crate::symbol_ownership::Confidence::Lsp => "lsp",
+                        crate::symbol_ownership::Confidence::Parser => "parser",
+                        crate::symbol_ownership::Confidence::DiffHunk => "diff-hunk",
+                    };
+                    serde_json::json!({
+                        "agent": e.agent_id,
+                        "symbol": e.symbol,
+                        "path": e.path,
+                        "startLine": e.range.start_line,
+                        "endLine": e.range.end_line,
+                        "confidence": confidence,
+                    })
+                })
+                .collect();
+            // Publish a TYPED, auditable directive (not raw pane input) onto the fleet
+            // stream — the agent / operator reads structured data and acts on it.
+            if let Some(bus) = state.event_bus.as_ref() {
+                bus.publish(crate::event_bus::AgentEvent::new(
+                    crate::event_bus::AgentEventKind::SteerAvoid,
+                    serde_json::json!({ "sessionId": session_id, "avoid": avoid }),
+                ));
+            }
+            serde_json::json!({
+                "sessionId": session_id,
+                "steered": true,
+                "avoidCount": avoid.len(),
+                "avoid": avoid,
+            })
+        }
         "aether.agent.activity" => {
             let manager = state.agent_manager.as_ref().ok_or_else(|| {
                 ApiError::Internal("agent runtime is not attached to this process".to_string())
@@ -2630,5 +2712,26 @@ mod tests {
             serde_json::json!(false),
             "task.create must reject unknown fields (so a caller-supplied symbols is denied)"
         );
+    }
+
+    /// A6.4: a typed steer to a DEAD/unknown agent session is an ERROR, not a silent
+    /// no-op (it would otherwise look delivered but reach nobody).
+    #[test]
+    fn steer_avoid_errors_when_the_target_session_is_missing() {
+        use crate::agent::AgentManager;
+        use crate::pty::PtyManager;
+        use crate::symbol_ownership::SymbolOwnership;
+        use std::sync::{Arc, Mutex};
+
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_agent_manager(AgentManager::new())
+            .with_symbol_ownership(Arc::new(Mutex::new(SymbolOwnership::new())));
+        let body = ToolCallBody {
+            name: "aether.agent.steer_avoid".to_string(),
+            arguments: serde_json::json!({ "sessionId": "ghost", "files": ["src/x.rs"] }),
+        };
+        let result = rt.block_on(tools_call(State(state), Json(body)));
+        assert!(matches!(result, Err(ApiError::NotFound(_))), "{result:?}");
     }
 }
