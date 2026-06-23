@@ -688,6 +688,10 @@ pub fn run() {
                     .state::<std::sync::Arc<event_bus::EventBus>>()
                     .inner()
                     .clone();
+                let symbol_ownership = app
+                    .state::<std::sync::Arc<std::sync::Mutex<symbol_ownership::SymbolOwnership>>>()
+                    .inner()
+                    .clone();
                 let file_ownership = app
                     .state::<std::sync::Arc<std::sync::Mutex<file_ownership::FileOwnership>>>()
                     .inner()
@@ -712,6 +716,7 @@ pub fn run() {
                     .with_task_manager(task_manager)
                     .with_event_bus(event_bus)
                     .with_file_ownership(file_ownership)
+                    .with_symbol_ownership(symbol_ownership)
                     .with_context_store(context_store)
                     .with_intent_bus(intent_bus)
                     .with_knowledge_graph(knowledge_graph)

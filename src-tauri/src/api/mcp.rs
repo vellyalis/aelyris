@@ -48,6 +48,11 @@ fn tool_names() -> Vec<&'static str> {
         "aether.ownership.owner_of",
         "aether.ownership.claims",
         "aether.ownership.conflicts",
+        "aether.symbol.claim",
+        "aether.symbol.refresh",
+        "aether.symbol.release",
+        "aether.symbol.claims",
+        "aether.symbol.conflicts",
         "aether.context.set",
         "aether.context.get",
         "aether.context.all",
@@ -77,6 +82,15 @@ fn arg_string(args: &serde_json::Map<String, serde_json::Value>, key: &str) -> A
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
         .ok_or_else(|| ApiError::BadRequest(format!("MCP argument `{key}` is required")))
+}
+
+/// Wall-clock unix seconds for symbol-claim leases (the MCP face's clock, kept out
+/// of the pure `symbol_ownership` core).
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 fn arg_usize(
@@ -613,6 +627,65 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
             {
                 "name": "aether.ownership.conflicts",
                 "description": "All current cross-agent ownership conflicts (overlapping claims by different agents) — the collisions to resolve before dispatching parallel lanes.",
+                "safety": "FREE",
+                "inputSchema": { "type": "object", "additionalProperties": false }
+            },
+            {
+                "name": "aether.symbol.claim",
+                "description": "Claim a SYMBOL range inside a file (finer than file ownership): two agents may write the same file on disjoint ranges, but overlapping writes conflict. Returns { outcome: granted|warned|blocked, conflicts? }. blocked = NOT recorded (pick a disjoint range or wait). confidence lsp/parser is exact (overlap blocks); diffhunk is inferred (overlap only warns).",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["claimId", "agentId", "path", "symbol", "startLine", "endLine", "mode", "confidence"],
+                    "properties": {
+                        "claimId": { "type": "string" },
+                        "agentId": { "type": "string" },
+                        "taskId": { "type": "string" },
+                        "path": { "type": "string" },
+                        "symbol": { "type": "string" },
+                        "startLine": { "type": "integer", "minimum": 0 },
+                        "endLine": { "type": "integer", "minimum": 0 },
+                        "mode": { "type": "string", "enum": ["write", "review", "test", "read"] },
+                        "confidence": { "type": "string", "enum": ["lsp", "parser", "diffhunk"] },
+                        "leaseSecs": { "type": "integer", "minimum": 1 }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aether.symbol.refresh",
+                "description": "Extend a live symbol claim's lease (the heartbeat that keeps a claim alive; an unrefreshed claim expires and frees its range). Returns { refreshed }.",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["claimId"],
+                    "properties": {
+                        "claimId": { "type": "string" },
+                        "leaseSecs": { "type": "integer", "minimum": 1 }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aether.symbol.release",
+                "description": "Release a symbol claim by id (call when done editing the symbol). Returns { released }.",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["claimId"],
+                    "properties": { "claimId": { "type": "string" } },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aether.symbol.claims",
+                "description": "All live symbol claims (expired leases swept first) — who owns which symbol range right now.",
+                "safety": "FREE",
+                "inputSchema": { "type": "object", "additionalProperties": false }
+            },
+            {
+                "name": "aether.symbol.conflicts",
+                "description": "All live cross-agent symbol overlaps (block + warn) — the function-level collisions to coordinate before co-editing a file.",
                 "safety": "FREE",
                 "inputSchema": { "type": "object", "additionalProperties": false }
             },
@@ -1450,6 +1523,112 @@ pub(super) async fn tools_call(
                 .lock()
                 .map_err(|_| ApiError::Internal("file ownership lock poisoned".to_string()))?
                 .conflicts();
+            serde_json::json!({ "conflicts": conflicts })
+        }
+        "aether.symbol.claim" => {
+            let ownership = state.symbol_ownership.as_ref().ok_or_else(|| {
+                ApiError::Internal("symbol ownership is not attached to this process".to_string())
+            })?;
+            let now = now_secs();
+            let lease_secs = args
+                .get("leaseSecs")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(300);
+            let start_line = args
+                .get("startLine")
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| ApiError::BadRequest("startLine must be an integer".to_string()))?
+                as u32;
+            let end_line = args
+                .get("endLine")
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| ApiError::BadRequest("endLine must be an integer".to_string()))?
+                as u32;
+            let mode: crate::symbol_ownership::ClaimMode = serde_json::from_value(
+                args.get("mode").cloned().unwrap_or(serde_json::Value::Null),
+            )
+            .map_err(|_| ApiError::BadRequest("invalid mode".to_string()))?;
+            let confidence: crate::symbol_ownership::Confidence = serde_json::from_value(
+                args.get("confidence")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null),
+            )
+            .map_err(|_| ApiError::BadRequest("invalid confidence".to_string()))?;
+            let claim = crate::symbol_ownership::SymbolClaim {
+                claim_id: arg_string(&args, "claimId")?,
+                agent_id: arg_string(&args, "agentId")?,
+                task_id: args
+                    .get("taskId")
+                    .and_then(|v| v.as_str())
+                    .map(String::from),
+                path: arg_string(&args, "path")?,
+                symbol: arg_string(&args, "symbol")?,
+                range: crate::symbol_ownership::SymbolRange::new(start_line, end_line),
+                mode,
+                lease_expires_at: now.saturating_add(lease_secs),
+                confidence,
+            };
+            let outcome = {
+                let mut owner = ownership.lock().map_err(|_| {
+                    ApiError::Internal("symbol ownership lock poisoned".to_string())
+                })?;
+                owner.claim(claim, now)
+            };
+            serde_json::to_value(outcome)
+                .map_err(|err| ApiError::Internal(format!("serialize symbol outcome: {err}")))?
+        }
+        "aether.symbol.refresh" => {
+            let ownership = state.symbol_ownership.as_ref().ok_or_else(|| {
+                ApiError::Internal("symbol ownership is not attached to this process".to_string())
+            })?;
+            let claim_id = arg_string(&args, "claimId")?;
+            let lease_secs = args
+                .get("leaseSecs")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(300);
+            let refreshed = ownership
+                .lock()
+                .map_err(|_| ApiError::Internal("symbol ownership lock poisoned".to_string()))?
+                .refresh(&claim_id, now_secs(), lease_secs);
+            serde_json::json!({ "refreshed": refreshed })
+        }
+        "aether.symbol.release" => {
+            let ownership = state.symbol_ownership.as_ref().ok_or_else(|| {
+                ApiError::Internal("symbol ownership is not attached to this process".to_string())
+            })?;
+            let claim_id = arg_string(&args, "claimId")?;
+            let released = ownership
+                .lock()
+                .map_err(|_| ApiError::Internal("symbol ownership lock poisoned".to_string()))?
+                .release(&claim_id);
+            serde_json::json!({ "released": released })
+        }
+        "aether.symbol.claims" => {
+            let ownership = state.symbol_ownership.as_ref().ok_or_else(|| {
+                ApiError::Internal("symbol ownership is not attached to this process".to_string())
+            })?;
+            let now = now_secs();
+            let claims: Vec<crate::symbol_ownership::SymbolClaim> = {
+                let mut owner = ownership.lock().map_err(|_| {
+                    ApiError::Internal("symbol ownership lock poisoned".to_string())
+                })?;
+                owner.expire(now);
+                owner.live_claims(now).into_iter().cloned().collect()
+            };
+            serde_json::json!({ "claims": claims })
+        }
+        "aether.symbol.conflicts" => {
+            let ownership = state.symbol_ownership.as_ref().ok_or_else(|| {
+                ApiError::Internal("symbol ownership is not attached to this process".to_string())
+            })?;
+            let now = now_secs();
+            let conflicts = {
+                let mut owner = ownership.lock().map_err(|_| {
+                    ApiError::Internal("symbol ownership lock poisoned".to_string())
+                })?;
+                owner.expire(now);
+                owner.conflicts(now)
+            };
             serde_json::json!({ "conflicts": conflicts })
         }
         "aether.context.set" => {
