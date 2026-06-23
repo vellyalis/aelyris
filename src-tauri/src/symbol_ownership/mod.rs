@@ -19,6 +19,10 @@
 //! The store is a pure data structure (no I/O, no locks) so it can be wrapped as
 //! shared state and unit-tested deterministically (`now` is always injected).
 
+/// Symbol extractors (spec §6.3) — derive [`SymbolIntent`]s from a source. Pure.
+/// Crate-internal: consumed by the IPC/MCP wiring, not part of the public API.
+pub(crate) mod extract;
+
 use serde::{Deserialize, Serialize};
 
 /// Inclusive line range `[start_line, end_line]` (1-based, editor-style). The

@@ -54,6 +54,7 @@ fn tool_names() -> Vec<&'static str> {
         "aether.symbol.release_task",
         "aether.symbol.claims",
         "aether.symbol.conflicts",
+        "aether.symbol.claim_from_diff",
         "aether.context.set",
         "aether.context.get",
         "aether.context.all",
@@ -724,6 +725,23 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 "description": "All live cross-agent symbol overlaps (block + warn) — the function-level collisions to coordinate before co-editing a file.",
                 "safety": "FREE",
                 "inputSchema": { "type": "object", "additionalProperties": false }
+            },
+            {
+                "name": "aether.symbol.claim_from_diff",
+                "description": "DERIVE symbol claims from your worktree's `git diff` instead of hand-specifying ranges: parses each hunk's NEW-side line span into a claim at confidence diff-hunk (inferred — overlaps WARN, never hard-block; can't prove disjointness so they serialize overlapping ready tasks). Idempotent per span (re-running with an updated diff replaces that span's claim). Returns { recorded, claims: [{ claimId, outcome }] }. Call after editing, refresh()/release() as the work proceeds.",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["agentId", "diff"],
+                    "properties": {
+                        "agentId": { "type": "string" },
+                        "taskId": { "type": "string" },
+                        "diff": { "type": "string", "maxLength": 1048576 },
+                        "mode": { "type": "string", "enum": ["write", "review", "test", "read"] },
+                        "leaseSecs": { "type": "integer", "minimum": 1 }
+                    },
+                    "additionalProperties": false
+                }
             },
             {
                 "name": "aether.context.set",
@@ -1687,6 +1705,67 @@ pub(super) async fn tools_call(
             };
             serde_json::json!({ "conflicts": conflicts })
         }
+        "aether.symbol.claim_from_diff" => {
+            let ownership = state.symbol_ownership.as_ref().ok_or_else(|| {
+                ApiError::Internal("symbol ownership is not attached to this process".to_string())
+            })?;
+            let now = now_secs();
+            let lease_secs = args
+                .get("leaseSecs")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(300);
+            let agent_id = arg_string(&args, "agentId")?;
+            let task_id = args
+                .get("taskId")
+                .and_then(|v| v.as_str())
+                .map(String::from);
+            let diff = arg_string(&args, "diff")?;
+            // Bound untrusted diff text (mirrors the maxLength on the schema +
+            // the pane-input frame cap): a 1 MiB ceiling before we parse it.
+            if diff.len() > 1_048_576 {
+                return Err(ApiError::BadRequest("diff exceeds 1 MiB".to_string()));
+            }
+            // Default Write (the only mode that drives a collision); an explicit
+            // mode is validated against the enum.
+            let mode: crate::symbol_ownership::ClaimMode = match args.get("mode") {
+                Some(v) => serde_json::from_value(v.clone())
+                    .map_err(|_| ApiError::BadRequest("invalid mode".to_string()))?,
+                None => crate::symbol_ownership::ClaimMode::Write,
+            };
+            let intents = crate::symbol_ownership::extract::intents_from_diff(&diff, mode);
+            let mut recorded = Vec::new();
+            {
+                let mut owner = ownership.lock().map_err(|_| {
+                    ApiError::Internal("symbol ownership lock poisoned".to_string())
+                })?;
+                // Sweep expired leases first (sibling verbs claims/conflicts do the
+                // same) so a crashed agent's stale span can't linger in the map.
+                owner.expire(now);
+                for intent in intents {
+                    // Deterministic id so re-running on an updated diff is idempotent
+                    // per span (release the prior claim for this span, then re-add).
+                    let claim_id = format!(
+                        "{agent_id}:{}:{}-{}",
+                        intent.path, intent.range.start_line, intent.range.end_line
+                    );
+                    owner.release(&claim_id);
+                    let claim = crate::symbol_ownership::SymbolClaim {
+                        claim_id: claim_id.clone(),
+                        agent_id: agent_id.clone(),
+                        task_id: task_id.clone(),
+                        path: intent.path,
+                        symbol: intent.symbol,
+                        range: intent.range,
+                        mode: intent.mode,
+                        lease_expires_at: now.saturating_add(lease_secs),
+                        confidence: intent.confidence,
+                    };
+                    let outcome = owner.claim(claim, now);
+                    recorded.push(serde_json::json!({ "claimId": claim_id, "outcome": outcome }));
+                }
+            }
+            serde_json::json!({ "recorded": recorded.len(), "claims": recorded })
+        }
         "aether.context.set" => {
             let store = state.context_store.as_ref().ok_or_else(|| {
                 ApiError::Internal("context store is not attached to this process".to_string())
@@ -2186,5 +2265,40 @@ mod tests {
             .unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].kind, "access_denied");
+    }
+
+    /// claim_from_diff derives diff-hunk claims from a worktree diff and records
+    /// them in the LIVE symbol-ownership map (the map the dispatch gate + UI read) —
+    /// the extractor's wiring, not just the pure parser.
+    #[test]
+    fn claim_from_diff_records_diffhunk_claims_in_live_map() {
+        use crate::pty::PtyManager;
+        use crate::symbol_ownership::{Confidence, SymbolOwnership};
+        use std::sync::{Arc, Mutex};
+
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let owner = Arc::new(Mutex::new(SymbolOwnership::new()));
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_symbol_ownership(owner.clone());
+        let diff = "--- a/src/x.rs\n+++ b/src/x.rs\n@@ -1,1 +1,3 @@\n a\n+b\n+c\n";
+        let body = ToolCallBody {
+            name: "aether.symbol.claim_from_diff".to_string(),
+            arguments: serde_json::json!({ "agentId": "agent-a", "taskId": "t1", "diff": diff }),
+        };
+        let Json(value) = rt
+            .block_on(tools_call(State(state), Json(body)))
+            .expect("claim_from_diff ok");
+        // Per-verb payload is wrapped under the `result` envelope key.
+        assert_eq!(value["result"]["recorded"], serde_json::json!(1));
+
+        let guard = owner.lock().unwrap();
+        let claims = guard.live_claims(0);
+        assert_eq!(claims.len(), 1);
+        assert_eq!(claims[0].path, "src/x.rs");
+        assert_eq!(claims[0].agent_id, "agent-a");
+        assert_eq!(claims[0].task_id.as_deref(), Some("t1"));
+        assert_eq!(claims[0].confidence, Confidence::DiffHunk);
+        assert_eq!(claims[0].range.start_line, 1);
+        assert_eq!(claims[0].range.end_line, 3);
     }
 }
