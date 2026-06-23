@@ -219,3 +219,48 @@ serializes, shared config co-dispatch denied, DiffHunk pair serializes) →
 **WU2 = A3** → **WU3 = B2** → **WU4 = A4** → **WU5 = A6** → **WU6 = A5** →
 **WU7+ = Fusion C2-C5 + advisory MCP**. Each WU gated + committed; large WUs
 (A4, Fusion) adversarially reviewed.
+
+---
+
+## A4 — STATUS 2026-06-23: COMPLETE as non-LSP symbol extraction (branch `feat/symbol-extractors`)
+
+Done: ~~WU1 (A1+A2)~~, ~~WU2 (A3)~~, ~~WU3 (B2)~~ (master `d91f71a`), ~~WU4 (A4)~~ (this branch).
+
+Codex set the A4 scope this session (consult): finish A4 as **non-LSP extraction**. The Rust
+LSP client is a frontend-correlated passthrough (request↔response correlation lives in
+`src/features/editor/lsp/useLsp.ts`; `didOpen` is editor-driven; `didChange` unwired), so a
+BACKEND `documentSymbol` extractor needs new request-correlation plumbing + a headless
+`didOpen` — split into its own WU. Built, gated, and **Codex-reviewed per increment**:
+
+- **A4.0** `6632fde` — diff-hunk extractor (`symbol_ownership/extract.rs`:
+  `parse_diff_hunks` / `intents_from_diff`, `Confidence::DiffHunk`) + MCP verb
+  `aether.symbol.claim_from_diff` (records into the live ownership map). Untrusted input clamped.
+- **A4.1 + A4.2** `bc5fb13` — tree-sitter parser tier (Rust + TS/TSX, `Confidence::Parser`,
+  exact 1-based ranges for fn/method/class/struct/enum/trait/arrow-component; unsupported
+  language or an unclean parse → file-level fallback, never a guessed range) +
+  `SymbolOwnership::release_for_agent_path` (parser reconcile) + MCP verb
+  `aether.symbol.claim_from_source`. Deps: `tree-sitter` 0.26 / `tree-sitter-rust` 0.24 /
+  `tree-sitter-typescript` 0.23 (`cargo audit`: 0 new advisories).
+- **A4.3** `4fb34d6` — dispatch-gate matrix fully pinned: Parser disjoint symbols UNLOCK
+  same-file co-dispatch on a normal source file; shared-config Parser / DiffHunk / overlapping
+  ranges all serialize; empty symbols → file-level exclusivity (§6.2 / §6.5).
+
+**Hard boundaries held** (Codex re-checked each review): no regex labelled `Parser` (real
+tree-sitter parse); DiffHunk never unlocks parallelism; **no backend LSP** in A4; **no
+git-diff/parse polling** in the autonomy loop (extractors are agent/MCP-driven); scope did
+NOT leak into A6 / A5 / Fusion.
+
+### Follow-up WUs (explicitly DEFERRED — not done, named so they aren't silently absorbed)
+- **A4-LSP** — backend LSP request↔response correlation (a pending-request map + oneshot
+  channels) + a headless `didOpen` / `didChange`, so `textDocument/documentSymbol` can feed
+  `Confidence::Lsp` extraction at PLAN time — the only tier that unlocks shared
+  config/schema/types files (`is_shared_file` honors LSP-only). This is the heavy piece the
+  frontend-correlation finding split out.
+- **A4-watch** — file-watcher / tool-event auto-refresh of symbol claims (today agents call the
+  MCP verbs; the lease + `refresh`/`release` keep claims live; the `fs:changed` watcher event is
+  frontend-facing only).
+- **B1 (live)** — exercise the extractor MCP verbs (`claim_from_diff` / `claim_from_source` over
+  HTTP with the current `AETHER_API_TOKEN`) on the running app. NOTE: `verify-symbol-ownership-live.mjs`
+  drives the **Tauri IPC** surface (`symbol_claims`/`symbol_conflicts`/`symbol_release`), not the
+  MCP verbs — a live MCP harness + token consent is the operator step.
+- **A6 / A5 / Fusion** — unchanged, still sequenced after A4 per the order above.
