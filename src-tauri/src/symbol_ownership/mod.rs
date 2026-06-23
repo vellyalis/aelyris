@@ -297,18 +297,26 @@ impl SymbolOwnership {
     }
 
     /// Would a prospective DECLARED `intent` (a not-yet-running task's plan) be
-    /// BLOCKED by the LIVE claims right now? Same path, overlapping range, a write
-    /// on either side, both exact-confidence — the dispatch gate's consult of the
-    /// live ownership map (spec §6.5), so a running agent's actual claim serializes
-    /// a ready task even if their DECLARED ranges looked disjoint. The candidate
-    /// holds no live claim yet, so agent identity is irrelevant.
+    /// BLOCKED by the LIVE claims right now? The dispatch gate's consult of the live
+    /// ownership map (§6.5): same path + a write, then blocked UNLESS both the live
+    /// claim and the intent can prove disjointness ([`unlocks_parallelism`]) AND
+    /// their ranges are disjoint — so a running agent's inferred/shared-file claim,
+    /// or an overlapping exact one, serializes the ready task. The candidate holds
+    /// no live claim yet, so agent identity is irrelevant.
     pub fn intent_blocked(&self, intent: &SymbolIntent, now: u64) -> bool {
         self.claims.iter().filter(|c| c.is_live(now)).any(|c| {
-            c.path == intent.path
-                && c.range.overlaps(&intent.range)
-                && (matches!(c.mode, ClaimMode::Write) || matches!(intent.mode, ClaimMode::Write))
-                && c.confidence.is_exact()
-                && intent.confidence.is_exact()
+            if c.path != intent.path {
+                return false;
+            }
+            if !matches!(c.mode, ClaimMode::Write) && !matches!(intent.mode, ClaimMode::Write) {
+                return false;
+            }
+            if !unlocks_parallelism(c.confidence, &c.path)
+                || !unlocks_parallelism(intent.confidence, &intent.path)
+            {
+                return true; // can't prove disjointness -> blocked (file-level)
+            }
+            c.range.overlaps(&intent.range)
         })
     }
 }
@@ -326,17 +334,82 @@ pub struct SymbolIntent {
     pub confidence: Confidence,
 }
 
+/// Shared config / types / schema / lockfile / manifest / migration files DEFAULT
+/// to file-level exclusivity (§6.2 L470, reinforced by §6.5 L519's slow path) —
+/// symbol-level parallelism on them needs language-server-proven boundaries (see
+/// [`unlocks_parallelism`]). Named globs, NOT a blanket `*.json`, so ordinary
+/// source + fixtures stay symbol-parallelizable.
+pub fn is_shared_file(path: &str) -> bool {
+    let norm = path.replace('\\', "/");
+    let name = norm.rsplit('/').next().unwrap_or(&norm);
+    let lower = name.to_ascii_lowercase();
+    const SHARED_NAMES: &[&str] = &[
+        "package.json",
+        "package-lock.json",
+        "pnpm-lock.yaml",
+        "yarn.lock",
+        "cargo.toml",
+        "cargo.lock",
+        "tauri.conf.json",
+        "go.mod",
+        "go.sum",
+        "pyproject.toml",
+        "poetry.lock",
+        "composer.json",
+        "composer.lock",
+        "gemfile",
+        "gemfile.lock",
+    ];
+    if SHARED_NAMES.contains(&lower.as_str()) {
+        return true;
+    }
+    let lower_norm = norm.to_ascii_lowercase();
+    (lower.starts_with("tsconfig") && lower.ends_with(".json"))
+        || lower.ends_with(".d.ts")
+        || lower.contains(".schema.")
+        || lower.starts_with("schema.") // schema.prisma / schema.sql / schema.graphql
+        || lower.ends_with(".proto")
+        || lower.ends_with(".graphql")
+        || lower.ends_with(".gql")
+        // An openapi/swagger SPEC file, not a source file that merely contains the
+        // word (e.g. openapiClient.ts stays a normal, symbol-parallelizable file).
+        || ((lower.starts_with("openapi") || lower.starts_with("swagger"))
+            && (lower.ends_with(".json") || lower.ends_with(".yaml") || lower.ends_with(".yml")))
+        || lower_norm.contains("/migrations/")
+        || lower_norm.starts_with("migrations/")
+}
+
+/// May a symbol of this `confidence` on `path` unlock SYMBOL-LEVEL parallelism
+/// (two agents co-editing the file on disjoint ranges)? `Lsp` always; `Parser`
+/// only on a NORMAL source file (a shared config/schema/types file needs the
+/// language server's exact boundaries, §6.2 L470); an inferred `DiffHunk` never
+/// (it cannot prove disjointness — §6.5 slow path).
+fn unlocks_parallelism(confidence: Confidence, path: &str) -> bool {
+    match confidence {
+        Confidence::Lsp => true,
+        Confidence::Parser => !is_shared_file(path),
+        Confidence::DiffHunk => false,
+    }
+}
+
 /// Do two DECLARED intents (by different tasks) collide hard enough to BLOCK
-/// co-dispatch? Same path, overlapping ranges, at least one `Write`, and BOTH
-/// ranges exact (Lsp/Parser) — the dispatch-gate mirror of the runtime `Block`
-/// tier. Inferred (`DiffHunk`) intents never block dispatch (they warn at
-/// runtime instead), and disjoint ranges / different files are parallel-safe.
+/// co-dispatch? Same path + at least one `Write`, then file-level exclusivity
+/// UNLESS BOTH sides can prove disjointness ([`unlocks_parallelism`]) AND their
+/// ranges are disjoint. So an inferred (`DiffHunk`) intent — or a `Parser` intent
+/// on a shared file — collapses the file to exclusivity (serialize), while two
+/// exact, disjoint ranges co-dispatch. (The runtime claim layer still only WARNS
+/// for inferred overlaps, §6.2 L469; this stricter rule is the dispatch gate.)
 pub fn intents_block(a: &SymbolIntent, b: &SymbolIntent) -> bool {
-    a.path == b.path
-        && a.range.overlaps(&b.range)
-        && (matches!(a.mode, ClaimMode::Write) || matches!(b.mode, ClaimMode::Write))
-        && a.confidence.is_exact()
-        && b.confidence.is_exact()
+    if a.path != b.path {
+        return false;
+    }
+    if !matches!(a.mode, ClaimMode::Write) && !matches!(b.mode, ClaimMode::Write) {
+        return false;
+    }
+    if !unlocks_parallelism(a.confidence, &a.path) || !unlocks_parallelism(b.confidence, &b.path) {
+        return true; // can't prove disjointness -> file-level exclusivity
+    }
+    a.range.overlaps(&b.range)
 }
 
 #[cfg(test)]
@@ -354,31 +427,60 @@ mod tests {
     }
 
     #[test]
-    fn intents_block_only_on_exact_overlapping_writes() {
-        // exact + overlapping ranges + a write -> blocks co-dispatch
+    fn is_shared_file_classifies_named_configs_not_blanket_json() {
+        assert!(is_shared_file("package.json"));
+        assert!(is_shared_file("src-tauri/Cargo.toml"));
+        assert!(is_shared_file("tsconfig.build.json"));
+        assert!(is_shared_file("api/user.schema.ts"));
+        assert!(is_shared_file("proto/user.proto"));
+        assert!(is_shared_file("db/migrations/0001_init.sql"));
+        assert!(is_shared_file("types/api.d.ts"));
+        assert!(is_shared_file("prisma/schema.prisma"));
+        assert!(is_shared_file("api/openapi.yaml"));
+        assert!(is_shared_file("db/MIGRATIONS/001_init.sql")); // case-insensitive dir
+                                                               // Ordinary source + fixtures stay symbol-parallelizable (no false positives).
+        assert!(!is_shared_file("src/auth/login.ts"));
+        assert!(!is_shared_file("src/__tests__/fixture.json"));
+        assert!(!is_shared_file("src/openapiClient.ts")); // contains "openapi" but is source
+        assert!(!is_shared_file("src/x.rs"));
+    }
+
+    #[test]
+    fn intents_block_confidence_and_shared_file_matrix() {
+        // NORMAL source file: Lsp/Parser are both exact-enough -> overlap blocks,
+        // disjoint co-dispatches.
         assert!(intents_block(
-            &intent("x", 1, 10, ClaimMode::Write, Confidence::Lsp),
-            &intent("x", 5, 15, ClaimMode::Write, Confidence::Parser),
+            &intent("src/x.rs", 1, 10, ClaimMode::Write, Confidence::Lsp),
+            &intent("src/x.rs", 5, 15, ClaimMode::Write, Confidence::Parser),
         ));
-        // disjoint ranges in the same file -> parallel-safe
         assert!(!intents_block(
-            &intent("x", 1, 10, ClaimMode::Write, Confidence::Lsp),
-            &intent("x", 11, 20, ClaimMode::Write, Confidence::Lsp),
+            &intent("src/x.rs", 1, 10, ClaimMode::Write, Confidence::Lsp),
+            &intent("src/x.rs", 11, 20, ClaimMode::Write, Confidence::Parser),
         ));
-        // different files -> never blocks
-        assert!(!intents_block(
-            &intent("x", 1, 10, ClaimMode::Write, Confidence::Lsp),
-            &intent("y", 1, 10, ClaimMode::Write, Confidence::Lsp),
+        // DiffHunk (inferred) can't prove disjointness -> file-level exclusivity
+        // even on disjoint ranges (the §6.5 slow path; runtime layer still warns).
+        assert!(intents_block(
+            &intent("src/x.rs", 1, 10, ClaimMode::Write, Confidence::DiffHunk),
+            &intent("src/x.rs", 40, 60, ClaimMode::Write, Confidence::Lsp),
         ));
-        // inferred (diff-hunk) range -> does not block dispatch (warns at runtime)
+        // SHARED file: Lsp-proven boundaries DO unlock disjoint co-dispatch...
         assert!(!intents_block(
-            &intent("x", 1, 10, ClaimMode::Write, Confidence::DiffHunk),
-            &intent("x", 5, 15, ClaimMode::Write, Confidence::Lsp),
+            &intent("package.json", 1, 10, ClaimMode::Write, Confidence::Lsp),
+            &intent("package.json", 40, 60, ClaimMode::Write, Confidence::Lsp),
         ));
-        // read-only overlap -> not a write collision
+        // ...but Parser does NOT unlock a shared file -> serialize even if disjoint.
+        assert!(intents_block(
+            &intent("package.json", 1, 10, ClaimMode::Write, Confidence::Parser),
+            &intent("package.json", 40, 60, ClaimMode::Write, Confidence::Lsp),
+        ));
+        // Different files / read-only overlaps never block.
         assert!(!intents_block(
-            &intent("x", 1, 10, ClaimMode::Read, Confidence::Lsp),
-            &intent("x", 5, 15, ClaimMode::Read, Confidence::Lsp),
+            &intent("src/x.rs", 1, 10, ClaimMode::Write, Confidence::Lsp),
+            &intent("src/y.rs", 1, 10, ClaimMode::Write, Confidence::Lsp),
+        ));
+        assert!(!intents_block(
+            &intent("src/x.rs", 1, 10, ClaimMode::Read, Confidence::Lsp),
+            &intent("src/x.rs", 5, 15, ClaimMode::Read, Confidence::Lsp),
         ));
     }
 
@@ -399,19 +501,19 @@ mod tests {
             ),
             0,
         );
-        // A ready task DECLARING an overlapping exact range is blocked...
+        // Overlapping exact range is blocked; disjoint exact is free.
         assert!(own.intent_blocked(
             &intent("src/x.rs", 50, 55, ClaimMode::Write, Confidence::Lsp),
             0,
         ));
-        // ...a disjoint declaration is not...
         assert!(!own.intent_blocked(
             &intent("src/x.rs", 1, 20, ClaimMode::Write, Confidence::Lsp),
             0,
         ));
-        // ...and an inferred (diff-hunk) declaration never hard-blocks dispatch.
-        assert!(!own.intent_blocked(
-            &intent("src/x.rs", 50, 55, ClaimMode::Write, Confidence::DiffHunk),
+        // An inferred (diff-hunk) declaration can't prove disjointness -> BLOCKED by
+        // the live claim even on a disjoint-looking range (dispatch gate, §6.5).
+        assert!(own.intent_blocked(
+            &intent("src/x.rs", 1, 20, ClaimMode::Write, Confidence::DiffHunk),
             0,
         ));
     }

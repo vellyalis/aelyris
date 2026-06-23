@@ -733,6 +733,64 @@ mod tests {
         assert_eq!(g.get("b").unwrap().status, TaskStatus::Ready);
     }
 
+    fn intent_on(file: &str, start: u32, end: u32, confidence: Confidence) -> SymbolIntent {
+        SymbolIntent {
+            path: file.to_string(),
+            symbol: format!("fn_{start}"),
+            range: SymbolRange::new(start, end),
+            mode: ClaimMode::Write,
+            confidence,
+        }
+    }
+
+    #[test]
+    fn diffhunk_symbols_serialize_at_dispatch() {
+        // Inferred (DiffHunk) symbols can't prove disjointness, so the file
+        // serializes at dispatch even on disjoint ranges (§6.5 slow path).
+        let mut g = TaskGraph::new();
+        g.add(task_on_file(
+            "a",
+            "src/dh.rs",
+            vec![intent_on("src/dh.rs", 1, 20, Confidence::DiffHunk)],
+        ))
+        .unwrap();
+        g.add(task_on_file(
+            "b",
+            "src/dh.rs",
+            vec![intent_on("src/dh.rs", 40, 60, Confidence::DiffHunk)],
+        ))
+        .unwrap();
+        g.recompute_ready();
+        let mut ports = FakePorts::new();
+        let report = step(&mut g, &caps(4), &CostUsage::default(), &mut ports);
+        assert_eq!(report.dispatched, ["a"]);
+        assert_eq!(g.get("b").unwrap().status, TaskStatus::Ready);
+    }
+
+    #[test]
+    fn shared_config_parser_symbols_serialize_at_dispatch() {
+        // Parser confidence unlocks a NORMAL file but NOT a shared config/schema
+        // file (which needs LSP-proven boundaries, §6.2 L470) -> serialize.
+        let mut g = TaskGraph::new();
+        g.add(task_on_file(
+            "a",
+            "package.json",
+            vec![intent_on("package.json", 1, 20, Confidence::Parser)],
+        ))
+        .unwrap();
+        g.add(task_on_file(
+            "b",
+            "package.json",
+            vec![intent_on("package.json", 40, 60, Confidence::Parser)],
+        ))
+        .unwrap();
+        g.recompute_ready();
+        let mut ports = FakePorts::new();
+        let report = step(&mut g, &caps(4), &CostUsage::default(), &mut ports);
+        assert_eq!(report.dispatched, ["a"]);
+        assert_eq!(g.get("b").unwrap().status, TaskStatus::Ready);
+    }
+
     #[test]
     fn green_review_merges_and_completes() {
         let mut g = TaskGraph::new();

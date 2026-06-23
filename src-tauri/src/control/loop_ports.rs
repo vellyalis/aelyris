@@ -567,6 +567,7 @@ pub fn run_step(
         crate::orchestrator::autonomy::step(graph, &caps, usage, &mut ports)
     });
     apply_file_lanes(ownership, events, &lanes, &report);
+    apply_symbol_lanes(symbol_ownership.as_ref(), &report);
     publish_escalations(events, &report);
     // Durable half of the escalation surface: persist each give-up when a db is
     // attached, so a Failed task survives restart on BOTH faces (P4). The Event
@@ -624,6 +625,7 @@ pub fn run_step_visible(
         crate::orchestrator::autonomy::step(graph, &caps, usage, &mut ports)
     });
     apply_file_lanes(ownership, events, &lanes, &report);
+    apply_symbol_lanes(symbol_ownership.as_ref(), &report);
     publish_escalations(events, &report);
     // Durable half of the escalation surface: persist each give-up when a db is
     // attached, so a Failed task survives restart on BOTH faces (P4). The Event
@@ -700,6 +702,36 @@ fn apply_file_lanes(
     }
     for event in to_publish {
         events.publish(event);
+    }
+}
+
+/// Release a task's SYMBOL claims when it reaches a TERMINAL outcome this step —
+/// `merged` (Done) or given up (Failed, via `escalations`). The finer-grained
+/// mirror of `apply_file_lanes`' release half (§6.2 release-on-merge /
+/// release-on-fail cleanup, BR8), so a finished task's claimed ranges don't
+/// linger past it beyond the lease.
+///
+/// Deliberately NOT on `recovered`/`rejected`: those are SAME-TICK re-dispatched
+/// and stay Running with a NEW worker under the same `task_id`, so a
+/// `release_for_task` here would race away the new worker's fresh claims. The
+/// dead worker's stale claims on those paths self-release on the lease (BR9) and
+/// never block dispatch (`is_live` filter). No-op without a symbol map (the
+/// headless unit path); locks only the symbol mutex (disjoint from the graph
+/// lock, which `step` has already released).
+fn apply_symbol_lanes(
+    symbol_ownership: Option<&Arc<Mutex<SymbolOwnership>>>,
+    report: &crate::orchestrator::autonomy::StepReport,
+) {
+    let Some(map) = symbol_ownership else {
+        return;
+    };
+    let mut owner = map.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let terminal = report
+        .merged
+        .iter()
+        .chain(report.escalations.iter().map(|esc| &esc.task_id));
+    for task_id in terminal {
+        owner.release_for_task(task_id);
     }
 }
 
@@ -892,6 +924,71 @@ mod tests {
         assert!(ports.symbol_blocking(&[], &["src/x.rs".to_string()]));
         // ...but a file-level task on a different file is free.
         assert!(!ports.symbol_blocking(&[], &["src/y.rs".to_string()]));
+    }
+
+    #[test]
+    fn apply_symbol_lanes_releases_every_terminal_tasks_claims() {
+        use crate::failure_policy::RecoveryAction;
+        use crate::orchestrator::autonomy::Escalation;
+        use crate::orchestrator::LoopState;
+        use crate::symbol_ownership::{
+            ClaimMode, Confidence, SymbolClaim, SymbolOwnership, SymbolRange,
+        };
+        let map = Arc::new(Mutex::new(SymbolOwnership::new()));
+        let mk = |cid: &str, tid: &str| SymbolClaim {
+            claim_id: cid.to_string(),
+            agent_id: "a".to_string(),
+            task_id: Some(tid.to_string()),
+            path: "src/x.rs".to_string(),
+            symbol: "f".to_string(),
+            range: SymbolRange::new(1, 10),
+            mode: ClaimMode::Write,
+            lease_expires_at: u64::MAX,
+            confidence: Confidence::Lsp,
+        };
+        // Same agent -> all Granted (no self-conflict), one claim per task.
+        for (cid, tid) in [
+            ("c1", "t-merge"),
+            ("c2", "t-recover"),
+            ("c3", "t-reject"),
+            ("c4", "t-fail"),
+            ("c5", "t-running"),
+        ] {
+            map.lock().unwrap().claim(mk(cid, tid), 0);
+        }
+        let report = StepReport {
+            dispatched: vec![],
+            merged: vec!["t-merge".to_string()],
+            rejected: vec!["t-reject".to_string()],
+            recovered: vec!["t-recover".to_string()],
+            escalations: vec![Escalation {
+                task_id: "t-fail".to_string(),
+                reason: "crash".to_string(),
+                action: RecoveryAction::NotifyReviewer,
+            }],
+            state: LoopState::Active,
+        };
+        apply_symbol_lanes(Some(&map), &report);
+        let live: Vec<String> = map
+            .lock()
+            .unwrap()
+            .live_claims(0)
+            .iter()
+            .filter_map(|c| c.task_id.clone())
+            .collect();
+        // ONLY the terminal outcomes (merged + failed-via-escalation) are freed.
+        // recovered/rejected are same-tick re-dispatched (still Running with a new
+        // worker), so their claims survive — releasing them would race the new
+        // worker's fresh claims; the dead worker's stale claims lease-expire.
+        assert_eq!(
+            live,
+            vec![
+                "t-recover".to_string(),
+                "t-reject".to_string(),
+                "t-running".to_string(),
+            ],
+        );
+        apply_symbol_lanes(None, &report); // does not panic without a map
     }
 
     #[test]
