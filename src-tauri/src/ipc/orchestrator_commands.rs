@@ -15,6 +15,7 @@ use crate::orchestrator::autonomy::StepReport;
 use crate::orchestrator::{plan, DispatchPlan};
 use crate::pty::PtyManager;
 use crate::review::GateResults;
+use crate::symbol_ownership::SymbolOwnership;
 use crate::task::TaskManager;
 use crate::term::NativeTerminalRegistry;
 
@@ -55,6 +56,7 @@ pub fn orchestrator_step(
     fleet: State<'_, PaneFleet>,
     bus: State<'_, Arc<EventBus>>,
     ownership: State<'_, Arc<Mutex<FileOwnership>>>,
+    symbol_ownership: State<'_, Arc<Mutex<SymbolOwnership>>>,
     context: State<'_, Arc<ContextStoreManager>>,
     usage: CostUsage,
     repo_path: String,
@@ -66,6 +68,7 @@ pub fn orchestrator_step(
         &cost,
         &fleet,
         &ownership,
+        Some(symbol_ownership.inner().clone()),
         &bus,
         &context,
         &usage,

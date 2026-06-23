@@ -170,6 +170,10 @@ pub struct ApiState {
     /// one) so the orchestrator AI can assign/inspect path claims + conflicts
     /// over MCP (BR8) and dispatch non-overlapping lanes.
     pub file_ownership: Option<Arc<Mutex<crate::file_ownership::FileOwnership>>>,
+    /// Shared Symbol Ownership (same instance as the Tauri-managed one) so the
+    /// orchestrator AI / agents can claim/release/inspect range-scoped symbol
+    /// claims + conflicts over MCP — the finer layer over file ownership.
+    pub symbol_ownership: Option<Arc<Mutex<crate::symbol_ownership::SymbolOwnership>>>,
     /// Shared Context Store / project ADR (same instance as the Tauri-managed
     /// one) so the orchestrator AI reads + writes the decisions every agent
     /// aligns to over MCP (BR6) — the shared world-model.
@@ -227,6 +231,7 @@ impl ApiState {
             task_manager: None,
             event_bus: None,
             file_ownership: None,
+            symbol_ownership: None,
             context_store: None,
             intent_bus: None,
             knowledge_graph: None,
@@ -329,6 +334,14 @@ impl ApiState {
         file_ownership: Arc<Mutex<crate::file_ownership::FileOwnership>>,
     ) -> Self {
         self.file_ownership = Some(file_ownership);
+        self
+    }
+
+    pub fn with_symbol_ownership(
+        mut self,
+        symbol_ownership: Arc<Mutex<crate::symbol_ownership::SymbolOwnership>>,
+    ) -> Self {
+        self.symbol_ownership = Some(symbol_ownership);
         self
     }
 

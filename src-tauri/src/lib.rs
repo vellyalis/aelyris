@@ -34,6 +34,7 @@ pub mod shell_integration;
 pub mod snapshot;
 pub mod suggest;
 pub mod supervisor;
+pub mod symbol_ownership;
 pub mod task;
 pub mod term;
 pub mod watchdog;
@@ -126,6 +127,9 @@ pub fn run() {
         .manage(failure_policy::FailurePolicy::new())
         .manage(std::sync::Arc::new(std::sync::Mutex::new(
             file_ownership::FileOwnership::new(),
+        )))
+        .manage(std::sync::Arc::new(std::sync::Mutex::new(
+            symbol_ownership::SymbolOwnership::new(),
         )))
         .manage(std::sync::Arc::new(intent::IntentBus::new()))
         .manage(std::sync::Arc::new(
@@ -684,6 +688,10 @@ pub fn run() {
                     .state::<std::sync::Arc<event_bus::EventBus>>()
                     .inner()
                     .clone();
+                let symbol_ownership = app
+                    .state::<std::sync::Arc<std::sync::Mutex<symbol_ownership::SymbolOwnership>>>()
+                    .inner()
+                    .clone();
                 let file_ownership = app
                     .state::<std::sync::Arc<std::sync::Mutex<file_ownership::FileOwnership>>>()
                     .inner()
@@ -708,6 +716,7 @@ pub fn run() {
                     .with_task_manager(task_manager)
                     .with_event_bus(event_bus)
                     .with_file_ownership(file_ownership)
+                    .with_symbol_ownership(symbol_ownership)
                     .with_context_store(context_store)
                     .with_intent_bus(intent_bus)
                     .with_knowledge_graph(knowledge_graph)
@@ -798,6 +807,12 @@ pub fn run() {
             ipc::ownership_owner_of,
             ipc::ownership_claims,
             ipc::ownership_conflicts,
+            ipc::symbol_claim,
+            ipc::symbol_refresh,
+            ipc::symbol_release,
+            ipc::symbol_release_task,
+            ipc::symbol_claims,
+            ipc::symbol_conflicts,
             ipc::discover_projects,
             ipc::default_project_scan_dirs,
             ipc::list_branches,

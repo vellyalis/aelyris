@@ -10,7 +10,7 @@
 //! docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md (BR9, Acceptance:
 //! end-to-end autonomy).
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use crate::agent::AgentManager;
 use crate::control::agent::{start_headless, HeadlessSpawnSpec};
@@ -21,6 +21,7 @@ use crate::file_ownership::FileOwnership;
 use crate::git::{perform_merge, MergeOutcome};
 use crate::orchestrator::autonomy::{Completions, LoopPorts};
 use crate::review::GateResults;
+use crate::symbol_ownership::{SymbolIntent, SymbolOwnership};
 
 /// Wall-clock budget for a single dispatched agent before it is treated as hung
 /// and killed (BR9 hang recovery). Deliberately generous so a legitimately long
@@ -118,6 +119,9 @@ pub struct LoopPortsAdapter<G, D, T> {
     gate_runner: G,
     dispatcher: D,
     task_info: T,
+    /// The live symbol-ownership map, so the dispatch gate can consult what agents
+    /// are ACTUALLY editing now (spec §6.5). `None` => declared-intent gate only.
+    symbol_ownership: Option<Arc<Mutex<SymbolOwnership>>>,
 }
 
 impl<G, D, T> LoopPortsAdapter<G, D, T> {
@@ -127,6 +131,7 @@ impl<G, D, T> LoopPortsAdapter<G, D, T> {
         gate_runner: G,
         dispatcher: D,
         task_info: T,
+        symbol_ownership: Option<Arc<Mutex<SymbolOwnership>>>,
     ) -> Self {
         Self {
             repo_path: repo_path.into(),
@@ -135,6 +140,7 @@ impl<G, D, T> LoopPortsAdapter<G, D, T> {
             gate_runner,
             dispatcher,
             task_info,
+            symbol_ownership,
         }
     }
 
@@ -239,6 +245,33 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<G
                 Err(err)
             }
         }
+    }
+
+    fn symbol_blocking(&self, intents: &[SymbolIntent], outputs: &[String]) -> bool {
+        let Some(map) = self.symbol_ownership.as_ref() else {
+            return false;
+        };
+        let now = now_secs();
+        let owner = map.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        // A declared symbol that overlaps a live claim serializes the task.
+        if intents
+            .iter()
+            .any(|intent| owner.intent_blocked(intent, now))
+        {
+            return true;
+        }
+        // A file the candidate owns FILE-LEVEL (an output with NO declared symbol
+        // on it) cannot co-exist with ANY live claim inside it — otherwise a
+        // symbol-less task would edit a whole file an agent is actively working in
+        // (the symbol-less half of the live-map gate, spec §6.5).
+        let symbol_paths: std::collections::HashSet<&str> =
+            intents.iter().map(|i| i.path.as_str()).collect();
+        owner.live_claims(now).iter().any(|claim| {
+            !symbol_paths.contains(claim.path.as_str())
+                && outputs
+                    .iter()
+                    .any(|out| crate::file_ownership::patterns_overlap(out, &claim.path))
+        })
     }
 }
 
@@ -490,6 +523,7 @@ pub fn run_step(
     cost: &crate::cost::CostManager,
     agents: &AgentManager,
     ownership: &Mutex<FileOwnership>,
+    symbol_ownership: Option<Arc<Mutex<SymbolOwnership>>>,
     events: &EventBus,
     context: &crate::context_store::ContextStoreManager,
     usage: &crate::cost::CostUsage,
@@ -528,6 +562,7 @@ pub fn run_step(
                 specs,
             },
             info,
+            symbol_ownership.clone(),
         );
         crate::orchestrator::autonomy::step(graph, &caps, usage, &mut ports)
     });
@@ -556,6 +591,7 @@ pub fn run_step_visible(
     cost: &crate::cost::CostManager,
     fleet: &PaneFleet,
     ownership: &Mutex<FileOwnership>,
+    symbol_ownership: Option<Arc<Mutex<SymbolOwnership>>>,
     events: &EventBus,
     context: &crate::context_store::ContextStoreManager,
     usage: &crate::cost::CostUsage,
@@ -583,6 +619,7 @@ pub fn run_step_visible(
             gate_runner,
             PaneDispatcher { fleet, specs },
             info,
+            symbol_ownership.clone(),
         );
         crate::orchestrator::autonomy::step(graph, &caps, usage, &mut ports)
     });
@@ -800,7 +837,61 @@ mod tests {
                 branches,
                 implementer: "implementer".to_string(),
             },
+            None,
         )
+    }
+
+    #[test]
+    fn symbol_blocking_consults_the_live_ownership_map() {
+        use crate::orchestrator::autonomy::LoopPorts;
+        use crate::symbol_ownership::{
+            ClaimMode, Confidence, SymbolClaim, SymbolIntent, SymbolOwnership, SymbolRange,
+        };
+        let map = Arc::new(Mutex::new(SymbolOwnership::new()));
+        // A running agent holds a LIVE exact write claim on src/x.rs 40-60.
+        map.lock().unwrap().claim(
+            SymbolClaim {
+                claim_id: "c1".to_string(),
+                agent_id: "a".to_string(),
+                task_id: None,
+                path: "src/x.rs".to_string(),
+                symbol: "foo".to_string(),
+                range: SymbolRange::new(40, 60),
+                mode: ClaimMode::Write,
+                lease_expires_at: u64::MAX,
+                confidence: Confidence::Lsp,
+            },
+            0,
+        );
+        let ports = LoopPortsAdapter::new(
+            "repo",
+            "reviewer",
+            FakeGate(GREEN),
+            RecordingDispatcher::default(),
+            MapInfo {
+                branches: HashMap::new(),
+                implementer: "i".to_string(),
+            },
+            Some(map),
+        );
+        let intent = |s, e| SymbolIntent {
+            path: "src/x.rs".to_string(),
+            symbol: "bar".to_string(),
+            range: SymbolRange::new(s, e),
+            mode: ClaimMode::Write,
+            confidence: Confidence::Lsp,
+        };
+        // A ready task DECLARING an overlapping range is blocked by the running
+        // agent's LIVE claim — the drift the declared-intent gate alone would miss.
+        assert!(ports.symbol_blocking(&[intent(50, 55)], &[]));
+        // A disjoint declaration is free to dispatch; no intents/outputs blocks nothing.
+        assert!(!ports.symbol_blocking(&[intent(1, 20)], &[]));
+        assert!(!ports.symbol_blocking(&[], &[]));
+        // A FILE-LEVEL (symbol-less) task whose OUTPUT file an agent is live-
+        // claiming is blocked too — it would edit the whole file the agent is in.
+        assert!(ports.symbol_blocking(&[], &["src/x.rs".to_string()]));
+        // ...but a file-level task on a different file is free.
+        assert!(!ports.symbol_blocking(&[], &["src/y.rs".to_string()]));
     }
 
     #[test]
@@ -922,6 +1013,7 @@ mod tests {
             FakeGate(GREEN),
             RecordingDispatcher::default(),
             snapshot,
+            None,
         );
 
         let report = step(&mut graph, &caps(4), &CostUsage::default(), &mut ports);
@@ -974,6 +1066,7 @@ mod tests {
                 branches,
                 implementer: "implementer".to_string(),
             },
+            None,
         );
 
         let report = step(&mut graph, &caps(4), &CostUsage::default(), &mut ports);
@@ -1002,6 +1095,7 @@ mod tests {
                 branches,
                 implementer: "implementer".to_string(),
             },
+            None,
         );
 
         let report = step(&mut graph, &caps(4), &CostUsage::default(), &mut ports);
@@ -1181,6 +1275,7 @@ mod tests {
                 branches,
                 implementer: "impl".to_string(),
             },
+            None,
         );
 
         let report = step(&mut graph, &caps(4), &CostUsage::default(), &mut ports);
@@ -1229,6 +1324,7 @@ mod tests {
                 branches,
                 implementer: "implementer".to_string(),
             },
+            None,
         );
 
         let report = step(&mut graph, &caps(4), &CostUsage::default(), &mut ports);

@@ -17,7 +17,53 @@ use crate::cost::{CostCaps, CostUsage};
 use crate::failure_policy::{FailureEvent, FailurePolicy, RecoveryAction};
 use crate::file_ownership::patterns_overlap;
 use crate::review::{review, GateResults, ReviewVerdict};
+use crate::symbol_ownership::{intents_block, SymbolIntent};
 use crate::task::{TaskGraph, TaskStatus};
+
+/// Do two tasks collide on their declared output lanes, accounting for symbol
+/// intent? Two tasks that share a file lane collide UNLESS, on every shared
+/// concrete file, BOTH declare symbols and those symbols are pairwise disjoint
+/// (proven function-level parallelism, spec §6.2). Anything not symbol-proven —
+/// no symbols on either side, a glob lane, or an overlapping range — falls back
+/// to file-level exclusivity (the conservative default; never misses a real
+/// collision).
+fn tasks_collide(
+    a_outputs: &[String],
+    a_symbols: &[SymbolIntent],
+    b_outputs: &[String],
+    b_symbols: &[SymbolIntent],
+) -> bool {
+    for a_out in a_outputs {
+        for b_out in b_outputs {
+            if !patterns_overlap(a_out, b_out) {
+                continue;
+            }
+            // Symbol-level disjointness is only provable when the shared lane is
+            // ONE concrete file both sides name identically. A glob / pattern lane
+            // (overlapping but `a_out != b_out`, OR identical wildcards like
+            // `src/**` vs `src/**`) can write parts of the file its declared
+            // symbols don't cover, so it stays file-exclusive.
+            if a_out != b_out || a_out.contains('*') {
+                return true;
+            }
+            let on_file = |syms: &[SymbolIntent]| -> Vec<SymbolIntent> {
+                syms.iter().filter(|s| &s.path == a_out).cloned().collect()
+            };
+            let a_here = on_file(a_symbols);
+            let b_here = on_file(b_symbols);
+            if a_here.is_empty() || b_here.is_empty() {
+                return true; // no symbol proof on this lane -> file-level exclusivity
+            }
+            if a_here
+                .iter()
+                .any(|a| b_here.iter().any(|b| intents_block(a, b)))
+            {
+                return true; // overlapping symbol ranges -> serialize
+            }
+        }
+    }
+    false
+}
 
 /// Maximum times a task's worker may CRASH before it is left `Failed` (BR9
 /// recovery). With `2`, a crashed task is reassigned once; a second crash fails
@@ -86,6 +132,19 @@ pub trait LoopPorts {
     fn implementer_id(&self, task_id: &str) -> String;
     /// Merge the reviewed branch for `task_id` into the target.
     fn merge(&mut self, task_id: &str) -> Result<(), String>;
+
+    /// Is dispatching a task with these declared symbol `intents` AND file
+    /// `outputs` blocked by the LIVE symbol-ownership map (what running agents are
+    /// ACTUALLY editing)? The declared-intent gate ([`tasks_collide`]) covers the
+    /// planned graph; this consults the runtime claim store so a ready task
+    /// serializes behind a running agent's live claim even when the planned graph
+    /// looked clear (spec §6.5) — both when the candidate DECLARES an overlapping
+    /// symbol AND when it is file-level (no symbol on a file a live claim sits in).
+    /// Default: no live map wired (pure unit tests) -> nothing extra blocks, so the
+    /// declared-intent gate alone decides.
+    fn symbol_blocking(&self, _intents: &[SymbolIntent], _outputs: &[String]) -> bool {
+        false
+    }
 }
 
 /// A task the loop gave up on this step (a retry budget was exhausted, leaving
@@ -311,27 +370,37 @@ pub fn step(
         ..*usage
     };
     let dispatch_plan = plan(graph, caps, &live_usage);
-    let mut occupied: Vec<String> = graph
+    // Each running task occupies its output lanes AND its declared symbol ranges.
+    // A new task collides when its lanes overlap a busy one UNLESS both sides prove
+    // disjoint symbols on the shared file (function-level parallelism, §6.2).
+    let mut occupied: Vec<(Vec<String>, Vec<SymbolIntent>)> = graph
         .list()
         .iter()
         .filter(|task| task.status == TaskStatus::Running)
-        .flat_map(|task| task.outputs.clone())
+        .map(|task| (task.outputs.clone(), task.symbols.clone()))
         .collect();
     let mut dispatched = Vec::new();
     for id in &dispatch_plan.to_dispatch {
-        let outputs = graph
+        let (outputs, symbols) = graph
             .get(id)
-            .map(|task| task.outputs.clone())
+            .map(|task| (task.outputs.clone(), task.symbols.clone()))
             .unwrap_or_default();
-        let lane_busy = outputs
+        let lane_busy = occupied
             .iter()
-            .any(|out| occupied.iter().any(|busy| patterns_overlap(out, busy)));
+            .any(|(busy_out, busy_sym)| tasks_collide(&outputs, &symbols, busy_out, busy_sym));
         if lane_busy {
+            continue;
+        }
+        // Beyond the planned graph, respect the LIVE ownership map (spec §6.5): a
+        // running agent's actual claim can serialize this ready task even when the
+        // declared ranges looked clear — including a file-level (symbol-less) task
+        // whose output file an agent is live-claiming.
+        if ports.symbol_blocking(&symbols, &outputs) {
             continue;
         }
         if ports.dispatch(id).is_ok() {
             let _ = graph.transition(id, TaskStatus::Running);
-            occupied.extend(outputs);
+            occupied.push((outputs, symbols));
             dispatched.push(id.clone());
         }
     }
@@ -420,6 +489,7 @@ pub fn run(
 mod tests {
     use super::*;
     use crate::failure_policy::RecoveryAction;
+    use crate::symbol_ownership::{ClaimMode, Confidence, SymbolRange};
     use crate::task::graph::Task;
     use std::collections::HashMap;
 
@@ -521,6 +591,146 @@ mod tests {
         assert_eq!(g.get("a").unwrap().status, TaskStatus::Running);
         assert_eq!(report.state, LoopState::Active);
         assert_eq!(ports.dispatched, ["a", "b"]);
+    }
+
+    fn write_intent(path: &str, start: u32, end: u32) -> SymbolIntent {
+        SymbolIntent {
+            path: path.to_string(),
+            symbol: format!("fn_{start}"),
+            range: SymbolRange::new(start, end),
+            mode: ClaimMode::Write,
+            confidence: Confidence::Lsp,
+        }
+    }
+
+    fn task_on_file(id: &str, file: &str, symbols: Vec<SymbolIntent>) -> Task {
+        let mut task = Task::new(id, id);
+        task.outputs = vec![file.to_string()];
+        task.symbols = symbols;
+        task
+    }
+
+    #[test]
+    fn disjoint_symbols_in_one_file_co_dispatch() {
+        // The headline product claim: two tasks editing the SAME file on DISJOINT
+        // functions run in parallel (file ownership alone would have serialized them).
+        let mut g = TaskGraph::new();
+        g.add(task_on_file(
+            "a",
+            "src/x.rs",
+            vec![write_intent("src/x.rs", 1, 20)],
+        ))
+        .unwrap();
+        g.add(task_on_file(
+            "b",
+            "src/x.rs",
+            vec![write_intent("src/x.rs", 40, 60)],
+        ))
+        .unwrap();
+        g.recompute_ready();
+        let mut ports = FakePorts::new();
+        let report = step(&mut g, &caps(4), &CostUsage::default(), &mut ports);
+        assert_eq!(report.dispatched.len(), 2);
+        assert_eq!(g.get("a").unwrap().status, TaskStatus::Running);
+        assert_eq!(g.get("b").unwrap().status, TaskStatus::Running);
+    }
+
+    #[test]
+    fn overlapping_symbols_in_one_file_serialize() {
+        // Same file, OVERLAPPING ranges -> the second task serializes (blocked this
+        // tick); it dispatches once the first frees the range.
+        let mut g = TaskGraph::new();
+        g.add(task_on_file(
+            "a",
+            "src/x.rs",
+            vec![write_intent("src/x.rs", 1, 30)],
+        ))
+        .unwrap();
+        g.add(task_on_file(
+            "b",
+            "src/x.rs",
+            vec![write_intent("src/x.rs", 20, 50)],
+        ))
+        .unwrap();
+        g.recompute_ready();
+        let mut ports = FakePorts::new();
+        let report = step(&mut g, &caps(4), &CostUsage::default(), &mut ports);
+        assert_eq!(report.dispatched, ["a"]);
+        assert_eq!(g.get("a").unwrap().status, TaskStatus::Running);
+        assert_eq!(g.get("b").unwrap().status, TaskStatus::Ready);
+    }
+
+    #[test]
+    fn same_file_without_symbols_stays_file_exclusive() {
+        // No symbol proof on either side -> file-level exclusivity (the
+        // conservative fallback): the shared file serializes, as before.
+        let mut g = TaskGraph::new();
+        g.add(task_on_file("a", "src/x.rs", vec![])).unwrap();
+        g.add(task_on_file("b", "src/x.rs", vec![])).unwrap();
+        g.recompute_ready();
+        let mut ports = FakePorts::new();
+        let report = step(&mut g, &caps(4), &CostUsage::default(), &mut ports);
+        assert_eq!(report.dispatched, ["a"]);
+        assert_eq!(g.get("b").unwrap().status, TaskStatus::Ready);
+    }
+
+    #[test]
+    fn disjoint_files_always_co_dispatch() {
+        // Sanity: different files are unaffected by the symbol layer.
+        let mut g = TaskGraph::new();
+        g.add(task_on_file("a", "src/x.rs", vec![])).unwrap();
+        g.add(task_on_file("b", "src/y.rs", vec![])).unwrap();
+        g.recompute_ready();
+        let mut ports = FakePorts::new();
+        let report = step(&mut g, &caps(4), &CostUsage::default(), &mut ports);
+        assert_eq!(report.dispatched.len(), 2);
+    }
+
+    #[test]
+    fn glob_lane_stays_file_exclusive_despite_disjoint_symbols() {
+        // A broad glob output can write beyond its declared symbols, so it never
+        // earns symbol-level parallelism even when its symbols look disjoint — the
+        // shared lane must be one concrete file both sides name identically.
+        let mut g = TaskGraph::new();
+        let mut a = task_on_file("a", "src/x.rs", vec![write_intent("src/x.rs", 1, 20)]);
+        a.outputs = vec!["src/**".to_string()];
+        g.add(a).unwrap();
+        g.add(task_on_file(
+            "b",
+            "src/x.rs",
+            vec![write_intent("src/x.rs", 40, 60)],
+        ))
+        .unwrap();
+        g.recompute_ready();
+        let mut ports = FakePorts::new();
+        let report = step(&mut g, &caps(4), &CostUsage::default(), &mut ports);
+        assert_eq!(report.dispatched, ["a"]);
+        assert_eq!(g.get("b").unwrap().status, TaskStatus::Ready);
+    }
+
+    #[test]
+    fn identical_glob_lanes_stay_file_exclusive() {
+        // Two tasks on the SAME wildcard lane can't be symbol-proven (a glob
+        // writes beyond any declared range), even if their declared symbols look
+        // disjoint — `a_out == b_out` is not enough; it must be a concrete file.
+        let mut g = TaskGraph::new();
+        g.add(task_on_file(
+            "a",
+            "src/**",
+            vec![write_intent("src/**", 1, 20)],
+        ))
+        .unwrap();
+        g.add(task_on_file(
+            "b",
+            "src/**",
+            vec![write_intent("src/**", 40, 60)],
+        ))
+        .unwrap();
+        g.recompute_ready();
+        let mut ports = FakePorts::new();
+        let report = step(&mut g, &caps(4), &CostUsage::default(), &mut ports);
+        assert_eq!(report.dispatched, ["a"]);
+        assert_eq!(g.get("b").unwrap().status, TaskStatus::Ready);
     }
 
     #[test]

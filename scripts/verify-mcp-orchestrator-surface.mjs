@@ -254,14 +254,23 @@ const checks = [
       // The pattern-overlap primitive is shared (one source of truth) between
       // detection (conflicts) and enforcement (dispatch).
       fileOwnership.includes("pub fn patterns_overlap") &&
-      // The loop refuses to co-dispatch a task whose outputs overlap a running
-      // task's lane — ownership enforced, not merely detected (BR8 / ②).
+      // The loop refuses to co-dispatch a task whose lane collides with a running
+      // one — ownership enforced, not merely detected (BR8 / ②).
       autonomy.includes("use crate::file_ownership::patterns_overlap") &&
       autonomy.includes("let lane_busy") &&
-      autonomy.includes("patterns_overlap(out, busy)") &&
-      autonomy.includes("if lane_busy"),
+      autonomy.includes("if lane_busy") &&
+      // The combined file+symbol gate: a shared FILE lane collides UNLESS both
+      // tasks prove DISJOINT symbols (spec §6.2 function-level parallelism); any
+      // overlap without symbol proof falls back to file-level exclusivity, still
+      // via patterns_overlap.
+      autonomy.includes("fn tasks_collide") &&
+      autonomy.includes("patterns_overlap(a_out, b_out)") &&
+      autonomy.includes("intents_block") &&
+      // ...and the dispatch gate ALSO consults the LIVE ownership map (spec §6.5):
+      // a running agent's actual claim serializes a ready task.
+      autonomy.includes("symbol_blocking"),
     detail:
-      "the loop never co-dispatches tasks whose output lanes overlap (reusing file_ownership::patterns_overlap) — two agents can never edit the same file at once (BR8, ② ownership enforced)",
+      "the loop co-dispatches two tasks on ONE file only when their declared symbols are disjoint (tasks_collide / intents_block, spec §6.2); any lane overlap without symbol proof — or an overlapping/inferred range — stays file-exclusive (patterns_overlap), and the live ownership map is consulted too (symbol_blocking, §6.5). So two agents never edit the same file region at once (BR8, ②)",
   },
   {
     id: "mcp-orchestrator-final-exam-harness",

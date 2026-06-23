@@ -183,6 +183,9 @@ impl TaskRepo {
                 rework_attempts: u32::try_from(raw.rework_attempts).unwrap_or(0),
                 timeout_attempts: u32::try_from(raw.timeout_attempts).unwrap_or(0),
                 outputs,
+                // Symbol intents are not persisted yet (re-declared per session);
+                // a restored task falls back to file-level exclusivity until then.
+                symbols: Vec::new(),
                 id: raw.id,
                 title: raw.title,
                 description: raw.description,
