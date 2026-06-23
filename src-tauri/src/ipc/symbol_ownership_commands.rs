@@ -146,7 +146,10 @@ pub fn symbol_ownership_prompt_section(
         DEFAULT_CONTEXT_CAP,
     );
     OwnershipPromptSection {
-        claim_count: ctx.entries.len(),
+        // Count ALL relevant claims, including those dropped by the prompt cap, so the
+        // UI's "N active claims" never undercounts a busy file map (the rendered section
+        // is still bounded; only the count reflects the true total).
+        claim_count: ctx.entries.len() + ctx.truncated,
         section: render_ownership_header(&ctx).unwrap_or_default(),
     }
 }

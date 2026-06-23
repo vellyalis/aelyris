@@ -251,7 +251,7 @@ impl AgentManager {
             return outcome;
         };
         for proc in sessions.values_mut() {
-            if proc.info.status == "done" || proc.info.status == "failed" {
+            if is_terminal_status(&proc.info.status) {
                 continue;
             }
             if let Ok(Some(exit)) = proc.child.try_wait() {
@@ -283,7 +283,7 @@ impl AgentManager {
         };
         for proc in sessions.values_mut() {
             // Already finished/reaped (or previously timed out) -> leave it.
-            if proc.info.status == "done" || proc.info.status == "failed" {
+            if is_terminal_status(&proc.info.status) {
                 continue;
             }
             // Only loop-dispatched agents (task-bound) are subject to the loop's
@@ -364,6 +364,26 @@ impl AgentManager {
             .unwrap_or_default()
     }
 
+    /// Look up a session that is currently LIVE — present, NOT in a terminal status,
+    /// and whose process has not already exited. Returns the session info (incl.
+    /// `task_id`) so a caller can both gate on liveness and read the task binding in
+    /// one lock. `list_sessions` retains `done`/`failed` sessions for the UI, so a
+    /// liveness gate (e.g. a typed steer that must reach a real agent — §6.4) must use
+    /// THIS, not membership in `list_sessions`. A process that exited but has not been
+    /// reaped yet is also treated as not-live (`try_wait` is idempotent once it caches
+    /// the exit, so probing here does not disturb `reap`'s exit-code classification).
+    pub fn live_session(&self, id: &str) -> Option<AgentSessionInfo> {
+        let mut sessions = self.sessions.lock().ok()?;
+        let proc = sessions.get_mut(id)?;
+        if is_terminal_status(&proc.info.status) {
+            return None;
+        }
+        if matches!(proc.child.try_wait(), Ok(Some(_))) {
+            return None;
+        }
+        Some(proc.info.clone())
+    }
+
     /// Kill all agent sessions (called on app exit)
     pub fn stop_all(&self) {
         if let Ok(mut sessions) = self.sessions.lock() {
@@ -410,6 +430,13 @@ fn now_secs() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
+}
+
+/// A session in a terminal status (`done`/`failed`) is finished — reaped or killed.
+/// One predicate so the reap paths and the liveness gate agree on what "finished"
+/// means instead of re-spelling the magic strings at each site.
+fn is_terminal_status(status: &str) -> bool {
+    status == "done" || status == "failed"
 }
 
 /// Kill an entire process tree on Windows using taskkill /T /F
@@ -593,5 +620,43 @@ mod reap_tests {
             "an interactive session is left running"
         );
         let _ = mgr.stop_session("interactive");
+    }
+
+    /// `live_session` is the §6.4 liveness gate for a typed steer: it must accept a
+    /// running session (and hand back its `task_id` for self-exclusion) but reject a
+    /// terminal session and one whose process already exited — `list_sessions`
+    /// retains both, so a steer keyed off membership alone would "deliver" to nobody.
+    #[test]
+    fn live_session_accepts_running_and_rejects_terminal_or_exited() {
+        let mgr = AgentManager::new();
+
+        // A running, task-bound session is live and carries its task id.
+        insert(&mgr, "alive", "task-live", spawn_sleeper());
+        let live = mgr.live_session("alive").expect("running session is live");
+        assert_eq!(live.task_id.as_deref(), Some("task-live"));
+
+        // A terminal (done) session is retained for the UI but is NOT live.
+        mgr.update_status("alive", "done").unwrap();
+        assert!(
+            mgr.live_session("alive").is_none(),
+            "a done session is not a live steer target"
+        );
+
+        // A process that exited but was never reaped (status still 'running') is
+        // also not live — try_wait sees the exit.
+        insert(&mgr, "exited", "task-exit", spawn_exit("0"));
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while mgr.live_session("exited").is_some() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(
+            mgr.live_session("exited").is_none(),
+            "an exited-but-unreaped session is not a live steer target"
+        );
+
+        // An unknown id is never live.
+        assert!(mgr.live_session("ghost").is_none());
+
+        let _ = mgr.stop_session("alive");
     }
 }

@@ -393,6 +393,7 @@ mod tests {
             AgentEventKind::AgentActivity,
             AgentEventKind::IntentDeclared,
             AgentEventKind::BlockerRaised,
+            AgentEventKind::SteerAvoid,
             AgentEventKind::EscalationRaised,
         ];
         for kind in all {
