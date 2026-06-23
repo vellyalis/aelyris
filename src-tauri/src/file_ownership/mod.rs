@@ -146,7 +146,12 @@ fn pattern_base(pattern: &str) -> &str {
 /// flagged though no file is shared) but never misses a real collision for any
 /// glob form — BR8 errs toward caution (prefer serializing over a write race).
 pub fn patterns_overlap(a: &str, b: &str) -> bool {
-    let (base_a, base_b) = (pattern_base(a), pattern_base(b));
+    // Normalize separators so `src\auth.rs` and `src/auth.rs` are the SAME lane. Claim
+    // paths are stored `/`-normalized, but a task's declared outputs can arrive with `\`
+    // on Windows; without this the dispatch gate (and the prompt's ownership context,
+    // which shares this primitive) would miss a real overlap.
+    let (a, b) = (a.replace('\\', "/"), b.replace('\\', "/"));
+    let (base_a, base_b) = (pattern_base(&a), pattern_base(&b));
     base_a == base_b || is_path_prefix(base_a, base_b) || is_path_prefix(base_b, base_a)
 }
 
@@ -234,6 +239,16 @@ mod tests {
         // A leading wildcard anchors at the root, so it conservatively contends
         // with everything rather than silently slipping the gate.
         assert!(patterns_overlap("*.ts", "src/auth/login.ts"));
+    }
+
+    #[test]
+    fn overlap_is_separator_agnostic() {
+        // A Windows-style output `src\auth.rs` must contend with the `/`-normalized
+        // claim path `src/auth.rs` — otherwise the gate (and the prompt's ownership
+        // context) would silently miss a real same-file overlap.
+        assert!(patterns_overlap("src\\auth.rs", "src/auth.rs"));
+        assert!(patterns_overlap("src\\auth\\**", "src/auth/login.rs"));
+        assert!(!patterns_overlap("src\\db.rs", "src/auth.rs"));
     }
 
     #[test]

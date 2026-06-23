@@ -125,7 +125,7 @@ try {
       }
       replanCount++;
       console.log(`  escalation: ${e.task_id} exhausted '${e.reason}' -> RE-PLAN (${replanCount}/${MAX_REPLANS})`);
-      const rp = await inv("replan_task", { taskId: e.task_id, model: "sonnet" });
+      const rp = await inv("replan_task", { taskId: e.task_id, repoPath: repo, model: "sonnet" });
       console.log(`  re-planned ${rp.failedTask} -> subtasks ${JSON.stringify(rp.subtaskIds)}, rewired ${JSON.stringify(rp.rewiredDependents)}`);
     }
     if (rep.state === "complete") break;

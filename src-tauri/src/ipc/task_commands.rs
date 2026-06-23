@@ -17,6 +17,20 @@ fn emit_task_graph(app: &AppHandle, manager: &TaskManager) {
     let _ = app.emit(TASK_GRAPH_UPDATED, manager.list());
 }
 
+/// Caller-facing task entry points must NEVER accept symbols — `Task.symbols` (which
+/// unlock same-file co-dispatch) are minted ONLY by the planner's verified enrichment
+/// (`task::symbol_enrich`). Reject any caller-supplied symbols at the boundary.
+fn ensure_no_caller_symbols(tasks: &[Task]) -> Result<(), String> {
+    if tasks.iter().any(|t| !t.symbols.is_empty()) {
+        return Err(
+            "task symbols cannot be set by a caller — they are derived from verified \
+                    source by the planner's enrichment step"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
 /// Create a task, run the dependency gate, and broadcast the new graph.
 /// Returns the ids whose status changed by the gate (e.g. a root -> Ready).
 #[tauri::command]
@@ -26,6 +40,11 @@ pub fn task_create(
     bus: State<'_, Arc<EventBus>>,
     task: Task,
 ) -> Result<Vec<String>, String> {
+    // Task.symbols are minted ONLY by the planner's VERIFIED enrichment, never by a
+    // caller (a caller-minted Confidence::Parser/Lsp would falsely unlock same-file
+    // co-dispatch). The plan_build entry decomposes + enriches internally; this external
+    // command must refuse caller-supplied symbols.
+    ensure_no_caller_symbols(std::slice::from_ref(&task))?;
     let (id, title) = (task.id.clone(), task.title.clone());
     let changed = manager.create(task).map_err(|e| e.to_string())?;
     emit_task_graph(&app, &manager);
@@ -53,16 +72,21 @@ pub async fn plan_build(
     bus: State<'_, Arc<EventBus>>,
     goal: String,
     context: Option<String>,
+    repo_path: String,
     model: Option<String>,
 ) -> Result<Vec<String>, String> {
     let ctx = context.unwrap_or_default();
     let mdl = model.unwrap_or_else(|| "sonnet".to_string());
+    // The repo root anchors symbol-target verification (the planner's declared symbols are
+    // parsed from the REAL source there); see task::symbol_enrich.
+    let repo = std::path::PathBuf::from(repo_path);
     // The decomposition is a blocking subprocess + validation loop; run it off
     // the async runtime.
     let ordered = tauri::async_runtime::spawn_blocking(move || {
         crate::task::decompose_to_plan(
             &goal,
             &ctx,
+            &repo,
             |prompt| crate::agent::claude_oneshot(prompt, &mdl),
             3,
         )
@@ -120,6 +144,7 @@ pub async fn replan_task(
     bus: State<'_, Arc<EventBus>>,
     context: State<'_, Arc<ContextStoreManager>>,
     task_id: String,
+    repo_path: String,
     model: Option<String>,
 ) -> Result<ReplanReport, String> {
     let failed = manager
@@ -159,13 +184,16 @@ must cover these outputs: {outputs}.\n\
         .collect::<Vec<_>>()
         .join("\n");
     let mdl = model.unwrap_or_else(|| "sonnet".to_string());
+    let repo = std::path::PathBuf::from(repo_path);
 
     // Decompose with the Planner LLM off the async runtime (blocking subprocess +
-    // validation loop), then splice atomically.
+    // validation loop), then splice atomically. The repo root anchors symbol-target
+    // verification (task::symbol_enrich).
     let subtasks = tauri::async_runtime::spawn_blocking(move || {
         crate::task::decompose_to_plan(
             &goal,
             &adr,
+            &repo,
             |prompt| crate::agent::claude_oneshot(prompt, &mdl),
             3,
         )
@@ -215,6 +243,9 @@ pub fn task_submit_plan(
     bus: State<'_, Arc<EventBus>>,
     tasks: Vec<Task>,
 ) -> Result<Vec<String>, Vec<String>> {
+    // Same boundary as task_create: a caller may not carry symbols into the plan — only
+    // the internal plan_build/enrich path mints verified Confidence::Parser symbols.
+    ensure_no_caller_symbols(&tasks).map_err(|e| vec![e])?;
     let created: Vec<(String, String)> = tasks
         .iter()
         .map(|t| (t.id.clone(), t.title.clone()))
@@ -269,4 +300,26 @@ pub fn task_recompute_ready(app: AppHandle, manager: State<'_, Arc<TaskManager>>
     let changed = manager.recompute_ready();
     emit_task_graph(&app, &manager);
     changed
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::symbol_ownership::{ClaimMode, Confidence, SymbolIntent, SymbolRange};
+
+    #[test]
+    fn caller_supplied_symbols_are_rejected_at_the_ipc_boundary() {
+        // The escape hatch closed in A6.3: a caller can set every other Task field, but
+        // NOT symbols (only verified planner enrichment mints them).
+        let mut t = Task::new("a", "A");
+        assert!(ensure_no_caller_symbols(std::slice::from_ref(&t)).is_ok());
+        t.symbols = vec![SymbolIntent {
+            path: "src/x.rs".into(),
+            symbol: "f".into(),
+            range: SymbolRange::new(1, 5),
+            mode: ClaimMode::Write,
+            confidence: Confidence::Parser,
+        }];
+        assert!(ensure_no_caller_symbols(std::slice::from_ref(&t)).is_err());
+    }
 }

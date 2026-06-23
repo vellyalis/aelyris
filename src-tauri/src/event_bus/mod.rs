@@ -90,6 +90,10 @@ pub enum AgentEventKind {
     /// An agent is stuck (the "what am I blocked on" channel) — surfaced so a
     /// peer or the orchestrator can unblock it rather than it stalling silently.
     BlockerRaised,
+    /// A TYPED steer told an agent to AVOID specific symbols another agent owns in
+    /// its files (§6.4) — derived from the live ownership map, not raw pane text, so
+    /// the directive is auditable and the agent (or operator) can act on structured data.
+    SteerAvoid,
     /// The loop gave up on a task (a retry budget — crash/rework/timeout — was
     /// exhausted, leaving it `Failed`). Pushed to the supervisor/reviewer with
     /// the failure policy's recommended action so a Failed task is never left
@@ -111,6 +115,7 @@ impl AgentEventKind {
             Self::AgentActivity => "agent_activity",
             Self::IntentDeclared => "intent_declared",
             Self::BlockerRaised => "blocker_raised",
+            Self::SteerAvoid => "steer_avoid",
             Self::EscalationRaised => "escalation_raised",
         }
     }
@@ -131,7 +136,8 @@ impl AgentEventKind {
             | Self::FileLocked
             | Self::FileReleased
             | Self::AgentActivity
-            | Self::BlockerRaised => EventChannel::System,
+            | Self::BlockerRaised
+            | Self::SteerAvoid => EventChannel::System,
             // Proposals are deliberation — they belong on the planning channel.
             Self::IntentDeclared => EventChannel::Planning,
         }
@@ -155,6 +161,7 @@ impl FromStr for AgentEventKind {
             "agent_activity" => Self::AgentActivity,
             "intent_declared" => Self::IntentDeclared,
             "blocker_raised" => Self::BlockerRaised,
+            "steer_avoid" => Self::SteerAvoid,
             "escalation_raised" => Self::EscalationRaised,
             other => return Err(format!("unknown event kind: {other}")),
         })
@@ -386,6 +393,7 @@ mod tests {
             AgentEventKind::AgentActivity,
             AgentEventKind::IntentDeclared,
             AgentEventKind::BlockerRaised,
+            AgentEventKind::SteerAvoid,
             AgentEventKind::EscalationRaised,
         ];
         for kind in all {

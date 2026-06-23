@@ -15,11 +15,23 @@ interface OrchestraState {
   open: boolean;
   defaultTask: string;
   defaultRoles: OrchestraRoleId[];
+  /** Other agents' live write claims on the changed files (backend-derived). >0 means the
+   *  dialog must NOT present parallel lanes as conflict-free. */
+  activeClaimCount: number;
+  /** True when the backend ownership map could NOT be consulted (a real Tauri/backend
+   *  failure, NOT browser-dev). The dialog then treats safety as UNKNOWN — it must not
+   *  present `0 claims` as "parallel-safe" when it simply failed to read the map. */
+  ownershipUnavailable: boolean;
   resolve: ((value: OrchestraResult | null) => void) | null;
 }
 
 interface OrchestraStore extends OrchestraState {
-  show: (opts?: { defaultTask?: string; defaultRoles?: OrchestraRoleId[] }) => Promise<OrchestraResult | null>;
+  show: (opts?: {
+    defaultTask?: string;
+    defaultRoles?: OrchestraRoleId[];
+    activeClaimCount?: number;
+    ownershipUnavailable?: boolean;
+  }) => Promise<OrchestraResult | null>;
   close: (value: OrchestraResult | null) => void;
 }
 
@@ -29,6 +41,8 @@ export const useOrchestraStore = create<OrchestraStore>((set, get) => ({
   open: false,
   defaultTask: "",
   defaultRoles: DEFAULT_ROLES,
+  activeClaimCount: 0,
+  ownershipUnavailable: false,
   resolve: null,
   show: (opts) =>
     new Promise<OrchestraResult | null>((resolve) => {
@@ -36,6 +50,8 @@ export const useOrchestraStore = create<OrchestraStore>((set, get) => ({
         open: true,
         defaultTask: opts?.defaultTask ?? "",
         defaultRoles: opts?.defaultRoles ?? DEFAULT_ROLES,
+        activeClaimCount: opts?.activeClaimCount ?? 0,
+        ownershipUnavailable: opts?.ownershipUnavailable ?? false,
         resolve,
       });
     }),
@@ -47,7 +63,8 @@ export const useOrchestraStore = create<OrchestraStore>((set, get) => ({
 }));
 
 export function OrchestraDialog() {
-  const { open, defaultTask, defaultRoles, close } = useOrchestraStore();
+  const { open, defaultTask, defaultRoles, activeClaimCount, ownershipUnavailable, close } =
+    useOrchestraStore();
   const [task, setTask] = useState("");
   const [selected, setSelected] = useState<Set<OrchestraRoleId>>(() => new Set(defaultRoles));
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -181,6 +198,18 @@ export function OrchestraDialog() {
             {runPlan.warnings.length > 0 ? (
               <div className={styles.planWarnings}>{runPlan.warnings.slice(0, 2).join(" · ")}</div>
             ) : null}
+            {ownershipUnavailable ? (
+              <div className={styles.planWarnings}>
+                ⚠ Could not read the symbol-ownership map (backend unavailable) — parallel lanes
+                are NOT verified conflict-free. Proceed only if you know the lanes are disjoint.
+              </div>
+            ) : activeClaimCount > 0 ? (
+              <div className={styles.planWarnings}>
+                ⚠ {activeClaimCount} active symbol claim{activeClaimCount === 1 ? "" : "s"} on the
+                changed files — parallel lanes are NOT conflict-free; each agent's prompt lists the
+                ranges another agent owns.
+              </div>
+            ) : null}
           </section>
           <div className={styles.hint}>
             Ctrl+Enter to dispatch · Esc to cancel · Each role gets its own prompt template.
@@ -203,6 +232,8 @@ export function OrchestraDialog() {
 export function showOrchestra(opts?: {
   defaultTask?: string;
   defaultRoles?: OrchestraRoleId[];
+  activeClaimCount?: number;
+  ownershipUnavailable?: boolean;
 }): Promise<OrchestraResult | null> {
   return useOrchestraStore.getState().show(opts);
 }

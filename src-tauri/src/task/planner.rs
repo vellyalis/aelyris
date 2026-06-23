@@ -16,8 +16,8 @@
 use std::collections::{HashMap, HashSet};
 
 use super::graph::Task;
-use crate::file_ownership::patterns_overlap;
 use crate::git::validate_branch_name;
+use crate::symbol_ownership::tasks_collide;
 
 /// Validate a self-contained plan (every dependency names another task IN THE
 /// SAME plan) and return the tasks in a valid dependency order — each task after
@@ -97,15 +97,18 @@ pub fn validate_plan(tasks: Vec<Task>) -> Result<Vec<Task>, Vec<String>> {
                 if ordered {
                     continue;
                 }
-                for oa in &a.outputs {
-                    for ob in &b.outputs {
-                        if patterns_overlap(oa, ob) {
-                            errs.push(format!(
-                                "tasks {} and {} can run in parallel but their output lanes overlap ({oa} vs {ob}) — give them disjoint outputs or a dependency between them",
-                                a.id, b.id
-                            ));
-                        }
-                    }
+                // The SHARED same-file collision rule (one source with the dispatch
+                // gate, `symbol_ownership::tasks_collide`): two parallel tasks may share
+                // a CONCRETE file only when both declare disjoint VERIFIED exact write
+                // symbols on it; a glob lane, a missing/overlapping/inferred symbol, or a
+                // shared-config file stays file-exclusive and is rejected here. The
+                // symbols were verified against real source by `enrich_plan_with_symbols`
+                // BEFORE validation, so this stays pure (the validator mints nothing).
+                if tasks_collide(&a.outputs, &a.symbols, &b.outputs, &b.symbols) {
+                    errs.push(format!(
+                        "tasks {} and {} can run in parallel but collide on a shared file with no proven disjoint symbols — give them disjoint outputs, declare disjoint exact symbols on the shared file, or add a dependency between them",
+                        a.id, b.id
+                    ));
                 }
             }
         }
@@ -221,6 +224,48 @@ mod tests {
     }
 
     #[test]
+    fn same_file_parallel_tasks_pass_only_with_disjoint_verified_symbols() {
+        use crate::symbol_ownership::{ClaimMode, Confidence, SymbolIntent, SymbolRange};
+        let sym = |s: u32, e: u32| SymbolIntent {
+            path: "src/x.rs".to_string(),
+            symbol: format!("f{s}"),
+            range: SymbolRange::new(s, e),
+            mode: ClaimMode::Write,
+            confidence: Confidence::Parser,
+        };
+        let with_syms = |id: &str, syms: Vec<SymbolIntent>| {
+            let mut t = task(id, &["src/x.rs"], &[]);
+            t.symbols = syms;
+            t
+        };
+        // Two PARALLEL tasks editing ONE file with DISJOINT verified Parser symbols -> valid.
+        assert!(validate_plan(vec![
+            with_syms("a", vec![sym(1, 10)]),
+            with_syms("b", vec![sym(20, 30)]),
+        ])
+        .is_ok());
+        // Overlapping symbols on the shared file -> rejected.
+        assert!(validate_plan(vec![
+            with_syms("a", vec![sym(1, 10)]),
+            with_syms("b", vec![sym(5, 15)]),
+        ])
+        .is_err());
+        // Symbol-less same-file parallel tasks -> rejected (file-level exclusivity; the
+        // planner must declare disjoint symbols or add a dependency — no silent serialize).
+        assert!(validate_plan(vec![
+            task("a", &["src/x.rs"], &[]),
+            task("b", &["src/x.rs"], &[])
+        ])
+        .is_err());
+        // ...but a DEPENDENCY makes them ordered (not parallel) -> the shared file is fine.
+        assert!(validate_plan(vec![
+            task("a", &["src/x.rs"], &[]),
+            task("b", &["src/x.rs"], &["a"])
+        ])
+        .is_ok());
+    }
+
+    #[test]
     fn accepts_a_well_formed_plan_and_orders_deps_first() {
         // c depends on a and b (which are parallel + disjoint lanes).
         let plan = vec![
@@ -319,7 +364,7 @@ mod tests {
         .unwrap_err();
         assert!(
             errs.iter()
-                .any(|e| e.contains("run in parallel but their output lanes overlap")),
+                .any(|e| e.contains("run in parallel but collide on a shared file")),
             "{errs:?}"
         );
     }

@@ -24,6 +24,8 @@ const examHarness = read("src-tauri/src/orchestrator/exam.rs");
 const agentClaude = read("src-tauri/src/agent/claude.rs");
 const eventBus = read("src-tauri/src/event_bus/mod.rs");
 const knowledgeGraph = read("src-tauri/src/knowledge_graph/mod.rs");
+const symbolOwnership = read("src-tauri/src/symbol_ownership/mod.rs");
+const planner = read("src-tauri/src/task/planner.rs");
 
 const requiredTools = [
   "aether.worktree.validate",
@@ -222,7 +224,11 @@ const checks = [
       // Every dispatched agent's prompt carries the CURRENT ADR, rebuilt from
       // the shared store each step — no agent runs on stale context (③).
       loopPorts.includes("build_adr_header(&context.all())") &&
-      loopPorts.includes("format!(\"{adr_header}{task_prompt}\")") &&
+      // Every dispatched prompt carries BOTH the current ADR (world-model) AND the
+      // active symbol-ownership section (A6 §6.4) — the agent runs blind to neither the
+      // shared decisions nor who owns which symbols in its files.
+      loopPorts.includes("format!(\"{adr_header}{ownership_section}{task_prompt}\")") &&
+      loopPorts.includes("fn ownership_section(") &&
       // Rejected/stale work is re-dispatched (with the fresh ADR) via the shared
       // requeue path on the rework budget, not stranded in Running with no worker.
       autonomy.includes("requeue_or_escalate(graph, &id, FailureKind::Rework") &&
@@ -254,18 +260,21 @@ const checks = [
       // The pattern-overlap primitive is shared (one source of truth) between
       // detection (conflicts) and enforcement (dispatch).
       fileOwnership.includes("pub fn patterns_overlap") &&
-      // The loop refuses to co-dispatch a task whose lane collides with a running
-      // one — ownership enforced, not merely detected (BR8 / ②).
-      autonomy.includes("use crate::file_ownership::patterns_overlap") &&
+      // The combined file+symbol collision rule is ONE shared pure predicate in
+      // symbol_ownership — a shared FILE lane collides UNLESS both tasks prove DISJOINT
+      // WRITE symbols (spec §6.2 function-level parallelism); any overlap without symbol
+      // proof (glob / missing / inferred / shared-config) falls back to file-level, via
+      // patterns_overlap + intents_block.
+      symbolOwnership.includes("pub fn tasks_collide") &&
+      symbolOwnership.includes("patterns_overlap(a_out, b_out)") &&
+      symbolOwnership.includes("intents_block") &&
+      // The loop consumes it to refuse co-dispatch of a colliding task (BR8 / ②)...
+      autonomy.includes("tasks_collide(") &&
       autonomy.includes("let lane_busy") &&
       autonomy.includes("if lane_busy") &&
-      // The combined file+symbol gate: a shared FILE lane collides UNLESS both
-      // tasks prove DISJOINT symbols (spec §6.2 function-level parallelism); any
-      // overlap without symbol proof falls back to file-level exclusivity, still
-      // via patterns_overlap.
-      autonomy.includes("fn tasks_collide") &&
-      autonomy.includes("patterns_overlap(a_out, b_out)") &&
-      autonomy.includes("intents_block") &&
+      // ...the plan validator rejects a colliding PARALLEL plan up front via the SAME
+      // predicate (no drift between validation and dispatch)...
+      planner.includes("tasks_collide(") &&
       // ...and the dispatch gate ALSO consults the LIVE ownership map (spec §6.5):
       // a running agent's actual claim serializes a ready task.
       autonomy.includes("symbol_blocking"),
@@ -315,7 +324,7 @@ const checks = [
       lib.includes(".with_context_store(context_store)") &&
       loopPorts.includes("fn build_adr_header(") &&
       loopPorts.includes("align your work to these shared decisions") &&
-      loopPorts.includes("spawn_specs(graph, &repo_path, &adr_header)"),
+      loopPorts.includes("spawn_specs(graph, &repo_path, &adr_header, claims_snapshot.as_deref())"),
     detail:
       "orchestrator AI reads/writes the shared ADR (Context Store) over MCP; context.set publishes decision_changed; and the ADR is injected into every dispatched agent's prompt so all agents share the world-model (BR6)",
   },

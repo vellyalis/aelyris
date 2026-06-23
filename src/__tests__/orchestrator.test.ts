@@ -99,6 +99,35 @@ describe("buildOrchestraPrompts", () => {
     expect(result[0].prompt).toContain("Refactor the database layer");
     expect(result[0].prompt).not.toContain("{task}");
   });
+
+  it("prepends the backend-rendered ownership context to every role prompt (SSOT, verbatim)", () => {
+    const section =
+      "[Active symbol ownership — do NOT edit these ranges; another agent owns them]\n" +
+      "- @tester owns login in src/auth.rs (lines 10-20, lsp)\n";
+    const result = buildOrchestraPrompts({
+      task: "Edit auth",
+      roles: ["implementer", "tester"],
+      projectPath: "/project",
+      ownershipContext: { section, claimCount: 1 },
+    });
+    expect(result).toHaveLength(2);
+    for (const p of result) {
+      // The backend text is embedded VERBATIM (never re-formatted in TS) ahead of the role.
+      expect(p.prompt.startsWith("[Active symbol ownership")).toBe(true);
+      expect(p.prompt).toContain("@tester owns login in src/auth.rs (lines 10-20, lsp)");
+    }
+  });
+
+  it("omits the ownership section when there are no active claims", () => {
+    const result = buildOrchestraPrompts({
+      task: "Edit auth",
+      roles: ["implementer"],
+      projectPath: "/project",
+      ownershipContext: { section: "", claimCount: 0 },
+    });
+    expect(result[0].prompt.startsWith("[Active symbol ownership")).toBe(false);
+    expect(result[0].prompt).not.toContain("Active symbol ownership");
+  });
 });
 
 describe("normalizeOrchestraRoutedModel", () => {

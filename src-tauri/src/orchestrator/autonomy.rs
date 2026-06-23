@@ -15,55 +15,9 @@ use serde::{Deserialize, Serialize};
 use super::{plan, LoopState};
 use crate::cost::{CostCaps, CostUsage};
 use crate::failure_policy::{FailureEvent, FailurePolicy, RecoveryAction};
-use crate::file_ownership::patterns_overlap;
 use crate::review::{review, GateResults, ReviewVerdict};
-use crate::symbol_ownership::{intents_block, SymbolIntent};
+use crate::symbol_ownership::{tasks_collide, SymbolIntent};
 use crate::task::{TaskGraph, TaskStatus};
-
-/// Do two tasks collide on their declared output lanes, accounting for symbol
-/// intent? Two tasks that share a file lane collide UNLESS, on every shared
-/// concrete file, BOTH declare symbols and those symbols are pairwise disjoint
-/// (proven function-level parallelism, spec §6.2). Anything not symbol-proven —
-/// no symbols on either side, a glob lane, or an overlapping range — falls back
-/// to file-level exclusivity (the conservative default; never misses a real
-/// collision).
-fn tasks_collide(
-    a_outputs: &[String],
-    a_symbols: &[SymbolIntent],
-    b_outputs: &[String],
-    b_symbols: &[SymbolIntent],
-) -> bool {
-    for a_out in a_outputs {
-        for b_out in b_outputs {
-            if !patterns_overlap(a_out, b_out) {
-                continue;
-            }
-            // Symbol-level disjointness is only provable when the shared lane is
-            // ONE concrete file both sides name identically. A glob / pattern lane
-            // (overlapping but `a_out != b_out`, OR identical wildcards like
-            // `src/**` vs `src/**`) can write parts of the file its declared
-            // symbols don't cover, so it stays file-exclusive.
-            if a_out != b_out || a_out.contains('*') {
-                return true;
-            }
-            let on_file = |syms: &[SymbolIntent]| -> Vec<SymbolIntent> {
-                syms.iter().filter(|s| &s.path == a_out).cloned().collect()
-            };
-            let a_here = on_file(a_symbols);
-            let b_here = on_file(b_symbols);
-            if a_here.is_empty() || b_here.is_empty() {
-                return true; // no symbol proof on this lane -> file-level exclusivity
-            }
-            if a_here
-                .iter()
-                .any(|a| b_here.iter().any(|b| intents_block(a, b)))
-            {
-                return true; // overlapping symbol ranges -> serialize
-            }
-        }
-    }
-    false
-}
 
 /// Maximum times a task's worker may CRASH before it is left `Failed` (BR9
 /// recovery). With `2`, a crashed task is reassigned once; a second crash fails
@@ -140,9 +94,17 @@ pub trait LoopPorts {
     /// serializes behind a running agent's live claim even when the planned graph
     /// looked clear (spec §6.5) — both when the candidate DECLARES an overlapping
     /// symbol AND when it is file-level (no symbol on a file a live claim sits in).
+    /// `task_id` is the CANDIDATE's task — its own still-live claims (kept across a
+    /// rework/recovery, which free only on a terminal outcome) are excluded so a task
+    /// can never deadlock on its own prior worker's claim when it re-dispatches.
     /// Default: no live map wired (pure unit tests) -> nothing extra blocks, so the
     /// declared-intent gate alone decides.
-    fn symbol_blocking(&self, _intents: &[SymbolIntent], _outputs: &[String]) -> bool {
+    fn symbol_blocking(
+        &self,
+        _task_id: &str,
+        _intents: &[SymbolIntent],
+        _outputs: &[String],
+    ) -> bool {
         false
     }
 }
@@ -395,7 +357,7 @@ pub fn step(
         // running agent's actual claim can serialize this ready task even when the
         // declared ranges looked clear — including a file-level (symbol-less) task
         // whose output file an agent is live-claiming.
-        if ports.symbol_blocking(&symbols, &outputs) {
+        if ports.symbol_blocking(id, &symbols, &outputs) {
             continue;
         }
         if ports.dispatch(id).is_ok() {

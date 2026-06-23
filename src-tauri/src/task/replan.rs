@@ -211,7 +211,7 @@ mod tests {
             ],
         )
         .unwrap_err();
-        assert!(err.iter().any(|e| e.contains("overlap")), "{err:?}");
+        assert!(err.iter().any(|e| e.contains("collide")), "{err:?}");
     }
 
     #[test]

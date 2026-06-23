@@ -188,7 +188,7 @@ import {
   type OrchestraRoutingDecision,
   routeOrchestraPrompts,
 } from "./shared/lib/orchestraDispatch";
-import { buildOrchestraPrompts, ORCHESTRA_ROLES } from "./shared/lib/orchestrator";
+import { buildOrchestraPrompts, ORCHESTRA_ROLES, type OwnershipPromptSection } from "./shared/lib/orchestrator";
 import {
   deriveFinalGoalRequirementProofs,
   deriveFinalGoalResidualRisk,
@@ -4861,18 +4861,41 @@ export function App() {
             rightRailAllChangedFiles.length === 1 ? "" : "s"
           } in ${projectName}.`
         : `Plan and implement the next parallel development task for ${projectName}.`);
+    const changedFiles = rightRailAllChangedFiles.map((file) => file.path);
+    // Fetch the SAME backend-rendered ownership context the loop injects (SSOT) so the
+    // hand-launched roles are warned off the symbols other agents own. Browser-dev (no
+    // backend) simply skips the consult — the launch path itself requires Tauri. A real
+    // Tauri/backend FAILURE is different: it must NOT be collapsed into "0 claims"
+    // (= looks parallel-safe). Track it separately so the dialog warns safety is UNKNOWN.
+    let ownershipContext: OwnershipPromptSection | undefined;
+    let ownershipUnavailable = false;
+    if (isTauriRuntime()) {
+      try {
+        ownershipContext = await tauriInvoke<OwnershipPromptSection>("symbol_ownership_prompt_section", {
+          files: changedFiles,
+          forAgent: null,
+        });
+      } catch (error) {
+        ownershipContext = undefined;
+        ownershipUnavailable = true;
+        console.error("[Orchestra] symbol_ownership_prompt_section failed", error);
+      }
+    }
     const result = await showOrchestra({
       defaultTask,
       defaultRoles: ["implementer", "tester", "reviewer"],
+      activeClaimCount: ownershipContext?.claimCount ?? 0,
+      ownershipUnavailable,
     });
     if (!result || result.roles.length === 0) return;
     const prompts = buildOrchestraPrompts({
       task: result.task,
       roles: result.roles,
       projectPath,
-      changedFiles: rightRailAllChangedFiles.map((file) => file.path),
+      changedFiles,
       pendingDecisionCount: decisionInbox.pendingCount,
       existingSessionCount: sessions.length + interactiveSessions.length,
+      ownershipContext,
     });
     const routedPrompts = await routeOrchestraPrompts(
       prompts,

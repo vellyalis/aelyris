@@ -5,7 +5,12 @@ import { OrchestraDialog, showOrchestra, useOrchestraStore } from "../shared/ui/
 
 describe("OrchestraDialog", () => {
   afterEach(() => {
-    useOrchestraStore.setState({ open: false, resolve: null });
+    useOrchestraStore.setState({
+      open: false,
+      resolve: null,
+      activeClaimCount: 0,
+      ownershipUnavailable: false,
+    });
     cleanup();
   });
 
@@ -72,5 +77,54 @@ describe("OrchestraDialog", () => {
       });
     });
     await expect(p).resolves.toEqual({ task: "do it", roles: ["implementer"] });
+  });
+
+  it("warns that parallel lanes are NOT conflict-free when active symbol claims exist", async () => {
+    const { findByPlaceholderText } = render(<OrchestraDialog />);
+    let resultPromise: Promise<unknown> | null = null;
+    act(() => {
+      resultPromise = showOrchestra({ activeClaimCount: 2 });
+    });
+    await findByPlaceholderText("What should the team work on?");
+    // The dialog must NOT present parallel lanes as safe when others hold live claims.
+    expect(document.body.textContent).toContain("2 active symbol claim");
+    expect(document.body.textContent).toContain("parallel lanes are NOT conflict-free");
+    act(() => {
+      useOrchestraStore.getState().close(null);
+    });
+    await resultPromise;
+  });
+
+  it("shows no claim warning when there are zero active claims", async () => {
+    const { findByPlaceholderText } = render(<OrchestraDialog />);
+    let resultPromise: Promise<unknown> | null = null;
+    act(() => {
+      resultPromise = showOrchestra({ activeClaimCount: 0 });
+    });
+    await findByPlaceholderText("What should the team work on?");
+    expect(document.body.textContent).not.toContain("active symbol claim");
+    act(() => {
+      useOrchestraStore.getState().close(null);
+    });
+    await resultPromise;
+  });
+
+  it("warns that safety is UNKNOWN (not parallel-safe) when the ownership map is unavailable", async () => {
+    const { findByPlaceholderText } = render(<OrchestraDialog />);
+    let resultPromise: Promise<unknown> | null = null;
+    act(() => {
+      // A real backend failure: claimCount is 0 only because the read FAILED — the
+      // dialog must NOT present that as "no claims / parallel-safe".
+      resultPromise = showOrchestra({ activeClaimCount: 0, ownershipUnavailable: true });
+    });
+    await findByPlaceholderText("What should the team work on?");
+    expect(document.body.textContent).toContain("Could not read the symbol-ownership map");
+    expect(document.body.textContent).toContain("NOT verified conflict-free");
+    // It must NOT also render the zero-claim "all clear" path.
+    expect(document.body.textContent).not.toContain("active symbol claim");
+    act(() => {
+      useOrchestraStore.getState().close(null);
+    });
+    await resultPromise;
   });
 });
