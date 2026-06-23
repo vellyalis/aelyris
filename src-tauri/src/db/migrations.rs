@@ -373,8 +373,79 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
         );
         CREATE INDEX IF NOT EXISTS idx_code_graph_edges_order
             ON code_graph_edges(sort_order);
+
+        -- P0-3 world-release hardening: durable, IMMUTABLE merge intents. The MCP
+        -- merge approval path (aether.request_merge -> aether.review.approve) kept
+        -- intents in a RAM Vec and let the approver supply repo/source/target, so
+        -- an intent id was a mere token a caller could re-point at any merge. These
+        -- rows are the source of truth: the merge-defining columns are captured at
+        -- request time and an UPDATE trigger makes them immutable, so approve takes
+        -- only an intentId and can never be redirected.
+        -- See docs/specs/P0-3_DURABLE_MERGE_INTENT_PLAN.md.
+        CREATE TABLE IF NOT EXISTS merge_intents (
+            -- NOT NULL is explicit: a rowid-table PRIMARY KEY allows NULL in
+            -- SQLite, and a NULL id would let the immutability trigger's
+            -- comparison evaluate to NULL (not true) and be bypassed.
+            intent_id      TEXT NOT NULL PRIMARY KEY,
+            repo_path      TEXT NOT NULL,
+            source_branch  TEXT NOT NULL,
+            target_branch  TEXT NOT NULL,
+            source_oid     TEXT NOT NULL,
+            target_oid     TEXT NOT NULL,
+            merge_base_oid TEXT,
+            task_id        TEXT NOT NULL,
+            created_at     INTEGER NOT NULL,
+            state          TEXT NOT NULL DEFAULT 'queued',
+            updated_at     INTEGER NOT NULL,
+            session_id     TEXT,
+            reviewer_id    TEXT,
+            gates_digest   TEXT
+        );
+        -- Idempotency key (audit §P0-3): one intent per (task, source commit,
+        -- target commit). A duplicate request_merge resolves to the existing one.
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_merge_intents_idempotency
+            ON merge_intents(task_id, source_oid, target_oid);
+        CREATE INDEX IF NOT EXISTS idx_merge_intents_state
+            ON merge_intents(state);
+        -- Immutability guard (hard boundary #4): the merge-defining columns can
+        -- NEVER change after creation. Only state/updated_at and late metadata
+        -- (session_id/reviewer_id/gates_digest) are mutable. `IS NOT` is the
+        -- null-safe distinct operator: it is true when exactly one side is NULL
+        -- (so a NULL intent_id or a merge_base_oid flip between NULL and '' is
+        -- caught), unlike `<>`/`IFNULL` which would let those through.
+        CREATE TRIGGER IF NOT EXISTS trg_merge_intents_immutable
+        BEFORE UPDATE ON merge_intents
+        FOR EACH ROW WHEN
+               NEW.intent_id      IS NOT OLD.intent_id
+            OR NEW.repo_path      IS NOT OLD.repo_path
+            OR NEW.source_branch  IS NOT OLD.source_branch
+            OR NEW.target_branch  IS NOT OLD.target_branch
+            OR NEW.source_oid     IS NOT OLD.source_oid
+            OR NEW.target_oid     IS NOT OLD.target_oid
+            OR NEW.merge_base_oid IS NOT OLD.merge_base_oid
+            OR NEW.task_id        IS NOT OLD.task_id
+            OR NEW.created_at     IS NOT OLD.created_at
+        BEGIN
+            SELECT RAISE(ABORT, 'merge_intents: merge-defining columns are immutable');
+        END;
+        -- Append-only guard: a merge intent is a permanent audit record. Blocking
+        -- DELETE also closes the `INSERT OR REPLACE` bypass — REPLACE deletes the
+        -- conflicting row first, and with recursive_triggers ON (set below) this
+        -- BEFORE DELETE fires and aborts the whole statement, so REPLACE cannot
+        -- rewrite the immutable columns the UPDATE trigger protects.
+        CREATE TRIGGER IF NOT EXISTS trg_merge_intents_no_delete
+        BEFORE DELETE ON merge_intents
+        FOR EACH ROW
+        BEGIN
+            SELECT RAISE(ABORT, 'merge_intents: rows are permanent (append-only)');
+        END;
         ",
     )?;
+
+    // REPLACE-conflict deletes only fire DELETE triggers when recursive triggers
+    // are enabled; the append-only guard above relies on this to block an
+    // `INSERT OR REPLACE` that would otherwise rewrite immutable merge columns.
+    conn.pragma_update(None, "recursive_triggers", "ON")?;
 
     // Enable WAL mode for better concurrent read performance
     conn.pragma_update(None, "journal_mode", "WAL")?;

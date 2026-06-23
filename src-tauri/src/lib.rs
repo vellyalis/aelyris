@@ -22,6 +22,7 @@ mod ipc;
 pub mod knowledge_graph;
 pub mod logging;
 pub mod lsp;
+pub mod merge_intent;
 pub mod mux;
 pub mod orchestrator;
 pub mod persistence;
