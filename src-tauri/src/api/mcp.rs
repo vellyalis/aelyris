@@ -54,6 +54,8 @@ fn tool_names() -> Vec<&'static str> {
         "aether.symbol.release_task",
         "aether.symbol.claims",
         "aether.symbol.conflicts",
+        "aether.symbol.claim_from_diff",
+        "aether.symbol.claim_from_source",
         "aether.context.set",
         "aether.context.get",
         "aether.context.all",
@@ -81,6 +83,20 @@ fn arg_string(args: &serde_json::Map<String, serde_json::Value>, key: &str) -> A
         .and_then(|value| value.as_str())
         .map(str::trim)
         .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| ApiError::BadRequest(format!("MCP argument `{key}` is required")))
+}
+
+/// Like [`arg_string`] but PRESERVES the value byte-for-byte (no trim, `""` allowed) —
+/// for payloads where positions/content matter (a unified diff, a file's source).
+/// Trimming a source would strip leading blank lines and shift every symbol's line
+/// number, corrupting the extracted ranges. Still required to be present as a string.
+fn arg_string_raw(
+    args: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> ApiResult<String> {
+    args.get(key)
+        .and_then(|value| value.as_str())
         .map(ToOwned::to_owned)
         .ok_or_else(|| ApiError::BadRequest(format!("MCP argument `{key}` is required")))
 }
@@ -724,6 +740,41 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 "description": "All live cross-agent symbol overlaps (block + warn) — the function-level collisions to coordinate before co-editing a file.",
                 "safety": "FREE",
                 "inputSchema": { "type": "object", "additionalProperties": false }
+            },
+            {
+                "name": "aether.symbol.claim_from_diff",
+                "description": "DERIVE symbol claims from your worktree's `git diff` instead of hand-specifying ranges: parses each hunk's NEW-side line span into a claim at confidence diff-hunk (inferred — overlaps WARN, never hard-block; can't prove disjointness so they serialize overlapping ready tasks). Idempotent per span (re-running with an updated diff replaces that span's claim). Returns { recorded, claims: [{ claimId, outcome }] }. Call after editing, refresh()/release() as the work proceeds.",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["agentId", "diff"],
+                    "properties": {
+                        "agentId": { "type": "string" },
+                        "taskId": { "type": "string" },
+                        "diff": { "type": "string", "maxLength": 1048576 },
+                        "mode": { "type": "string", "enum": ["write", "review", "test", "read"] },
+                        "leaseSecs": { "type": "integer", "minimum": 1 }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aether.symbol.claim_from_source",
+                "description": "DERIVE symbol claims by PARSING file source (tree-sitter: Rust / TS / TSX) into exact function/method/class/struct/enum/trait/component ranges at confidence parser (EXACT — overlapping writes hard-block, and disjoint symbols UNLOCK same-file co-editing on normal source files). Reconciles: re-running for the same agent+path replaces that file's prior derived claims (renamed/removed symbols are freed). Unsupported language or an unparseable file yields NO claims (fallback:true -> file-level exclusivity; never a guessed range). Returns { recorded, fallback, claims: [{ claimId, outcome }] }.",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["agentId", "path", "source"],
+                    "properties": {
+                        "agentId": { "type": "string" },
+                        "taskId": { "type": "string" },
+                        "path": { "type": "string" },
+                        "source": { "type": "string", "maxLength": 1048576 },
+                        "mode": { "type": "string", "enum": ["write", "review", "test", "read"] },
+                        "leaseSecs": { "type": "integer", "minimum": 1 }
+                    },
+                    "additionalProperties": false
+                }
             },
             {
                 "name": "aether.context.set",
@@ -1599,14 +1650,25 @@ pub(super) async fn tools_call(
                     .unwrap_or(serde_json::Value::Null),
             )
             .map_err(|_| ApiError::BadRequest("invalid confidence".to_string()))?;
+            let claim_id = arg_string(&args, "claimId")?;
+            // `parse:` / `dh:` are RESERVED id prefixes for extractor-derived claims
+            // (claim_from_source / claim_from_diff) so their reconcile can't sweep a
+            // hand-made claim. Reject a manual claim that squats on them.
+            if claim_id.starts_with("parse:") || claim_id.starts_with("dh:") {
+                return Err(ApiError::BadRequest(
+                    "claimId prefix `parse:`/`dh:` is reserved for derived claims".to_string(),
+                ));
+            }
             let claim = crate::symbol_ownership::SymbolClaim {
-                claim_id: arg_string(&args, "claimId")?,
+                claim_id,
                 agent_id: arg_string(&args, "agentId")?,
                 task_id: args
                     .get("taskId")
                     .and_then(|v| v.as_str())
                     .map(String::from),
-                path: arg_string(&args, "path")?,
+                // Normalize to forward slashes so a `src\x.rs` claim conflict-detects
+                // against a `src/x.rs` claim (path equality drives conflict_between).
+                path: arg_string(&args, "path")?.replace('\\', "/"),
                 symbol: arg_string(&args, "symbol")?,
                 range: crate::symbol_ownership::SymbolRange::new(start_line, end_line),
                 mode,
@@ -1686,6 +1748,159 @@ pub(super) async fn tools_call(
                 owner.conflicts(now)
             };
             serde_json::json!({ "conflicts": conflicts })
+        }
+        "aether.symbol.claim_from_diff" => {
+            let ownership = state.symbol_ownership.as_ref().ok_or_else(|| {
+                ApiError::Internal("symbol ownership is not attached to this process".to_string())
+            })?;
+            let now = now_secs();
+            let lease_secs = args
+                .get("leaseSecs")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(300);
+            let agent_id = arg_string(&args, "agentId")?;
+            let task_id = args
+                .get("taskId")
+                .and_then(|v| v.as_str())
+                .map(String::from);
+            // Raw (no trim): preserve the diff exactly. Hunk headers carry absolute
+            // line numbers so trimming wouldn't shift ranges, but an empty diff should
+            // mean "0 hunks", not a BadRequest.
+            let diff = arg_string_raw(&args, "diff")?;
+            // Bound untrusted diff text (mirrors the maxLength on the schema +
+            // the pane-input frame cap): a 1 MiB ceiling before we parse it.
+            if diff.len() > 1_048_576 {
+                return Err(ApiError::BadRequest("diff exceeds 1 MiB".to_string()));
+            }
+            // Default Write (the only mode that drives a collision); an explicit
+            // mode is validated against the enum.
+            let mode: crate::symbol_ownership::ClaimMode = match args.get("mode") {
+                Some(v) => serde_json::from_value(v.clone())
+                    .map_err(|_| ApiError::BadRequest("invalid mode".to_string()))?,
+                None => crate::symbol_ownership::ClaimMode::Write,
+            };
+            let intents = crate::symbol_ownership::extract::intents_from_diff(&diff, mode);
+            let mut claims = Vec::new();
+            let mut recorded = 0usize;
+            {
+                let mut owner = ownership.lock().map_err(|_| {
+                    ApiError::Internal("symbol ownership lock poisoned".to_string())
+                })?;
+                // Sweep expired leases first (sibling verbs claims/conflicts do the
+                // same) so a crashed agent's stale span can't linger in the map.
+                owner.expire(now);
+                for intent in intents {
+                    // Deterministic id so re-running on an updated diff is idempotent
+                    // per span (release the prior claim for this span, then re-add). The
+                    // `dh:` prefix marks the diff-hunk origin so claim_from_source's
+                    // parser reconcile (which sweeps `parse:`-prefixed ids) leaves these.
+                    let claim_id = format!(
+                        "dh:{agent_id}:{}:{}-{}",
+                        intent.path, intent.range.start_line, intent.range.end_line
+                    );
+                    owner.release(&claim_id);
+                    let claim = crate::symbol_ownership::SymbolClaim {
+                        claim_id: claim_id.clone(),
+                        agent_id: agent_id.clone(),
+                        task_id: task_id.clone(),
+                        path: intent.path,
+                        symbol: intent.symbol,
+                        range: intent.range,
+                        mode: intent.mode,
+                        lease_expires_at: now.saturating_add(lease_secs),
+                        confidence: intent.confidence,
+                    };
+                    let outcome = owner.claim(claim, now);
+                    // `recorded` = claims actually stored. DiffHunk never Blocks, but
+                    // count defensively so the field can never overstate ownership.
+                    if !matches!(
+                        outcome,
+                        crate::symbol_ownership::ClaimOutcome::Blocked { .. }
+                    ) {
+                        recorded += 1;
+                    }
+                    claims.push(serde_json::json!({ "claimId": claim_id, "outcome": outcome }));
+                }
+            }
+            serde_json::json!({ "recorded": recorded, "claims": claims })
+        }
+        "aether.symbol.claim_from_source" => {
+            let ownership = state.symbol_ownership.as_ref().ok_or_else(|| {
+                ApiError::Internal("symbol ownership is not attached to this process".to_string())
+            })?;
+            let now = now_secs();
+            let lease_secs = args
+                .get("leaseSecs")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(300);
+            let agent_id = arg_string(&args, "agentId")?;
+            let task_id = args
+                .get("taskId")
+                .and_then(|v| v.as_str())
+                .map(String::from);
+            // Normalize the path to forward slashes so the reconcile prefix and the
+            // per-claim ids are spelling-consistent across calls (re-parsing `src\x.rs`
+            // then `src/x.rs` reconciles the same file).
+            let path = arg_string(&args, "path")?.replace('\\', "/");
+            // Raw (no trim): trimming would strip leading blank lines and shift every
+            // parsed symbol's line number. Empty source is valid -> fallback, no claims.
+            let source = arg_string_raw(&args, "source")?;
+            // Bound untrusted source text (same 1 MiB ceiling as the diff verb).
+            if source.len() > 1_048_576 {
+                return Err(ApiError::BadRequest("source exceeds 1 MiB".to_string()));
+            }
+            let mode: crate::symbol_ownership::ClaimMode = match args.get("mode") {
+                Some(v) => serde_json::from_value(v.clone())
+                    .map_err(|_| ApiError::BadRequest("invalid mode".to_string()))?,
+                None => crate::symbol_ownership::ClaimMode::Write,
+            };
+            let intents =
+                crate::symbol_ownership::extract::intents_from_source(&path, &source, mode);
+            // No safe symbols (unsupported language / unparseable) -> file-level fallback.
+            let fallback = intents.is_empty();
+            let mut claims = Vec::new();
+            let mut recorded = 0usize;
+            {
+                let mut owner = ownership.lock().map_err(|_| {
+                    ApiError::Internal("symbol ownership lock poisoned".to_string())
+                })?;
+                owner.expire(now);
+                // Reconcile: the parser re-derives the WHOLE file, so drop this agent's
+                // prior PARSER-derived claims on the path (the `parse:{agent}:{path}:`
+                // prefix) before recording the fresh set — a renamed/removed symbol's
+                // stale claim is freed. Scoped by prefix so it leaves the agent's
+                // diff-hunk (`dh:`) and hand-made claims on the same file untouched.
+                owner.release_for_prefix(&format!("parse:{agent_id}:{path}:"));
+                for intent in intents {
+                    let claim_id = format!(
+                        "parse:{agent_id}:{}:{}@{}-{}",
+                        intent.path, intent.symbol, intent.range.start_line, intent.range.end_line
+                    );
+                    let claim = crate::symbol_ownership::SymbolClaim {
+                        claim_id: claim_id.clone(),
+                        agent_id: agent_id.clone(),
+                        task_id: task_id.clone(),
+                        path: intent.path,
+                        symbol: intent.symbol,
+                        range: intent.range,
+                        mode: intent.mode,
+                        lease_expires_at: now.saturating_add(lease_secs),
+                        confidence: intent.confidence,
+                    };
+                    let outcome = owner.claim(claim, now);
+                    // `recorded` counts claims actually stored — a Parser claim that
+                    // Blocks against another agent's exact range is NOT recorded, so it
+                    // must not inflate the count (the caller mustn't think it owns it).
+                    if !matches!(
+                        outcome,
+                        crate::symbol_ownership::ClaimOutcome::Blocked { .. }
+                    ) {
+                        recorded += 1;
+                    }
+                    claims.push(serde_json::json!({ "claimId": claim_id, "outcome": outcome }));
+                }
+            }
+            serde_json::json!({ "recorded": recorded, "fallback": fallback, "claims": claims })
         }
         "aether.context.set" => {
             let store = state.context_store.as_ref().ok_or_else(|| {
@@ -2186,5 +2401,227 @@ mod tests {
             .unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].kind, "access_denied");
+    }
+
+    /// claim_from_diff derives diff-hunk claims from a worktree diff and records
+    /// them in the LIVE symbol-ownership map (the map the dispatch gate + UI read) —
+    /// the extractor's wiring, not just the pure parser.
+    #[test]
+    fn claim_from_diff_records_diffhunk_claims_in_live_map() {
+        use crate::pty::PtyManager;
+        use crate::symbol_ownership::{Confidence, SymbolOwnership};
+        use std::sync::{Arc, Mutex};
+
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let owner = Arc::new(Mutex::new(SymbolOwnership::new()));
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_symbol_ownership(owner.clone());
+        let diff = "--- a/src/x.rs\n+++ b/src/x.rs\n@@ -1,1 +1,3 @@\n a\n+b\n+c\n";
+        let body = ToolCallBody {
+            name: "aether.symbol.claim_from_diff".to_string(),
+            arguments: serde_json::json!({ "agentId": "agent-a", "taskId": "t1", "diff": diff }),
+        };
+        let Json(value) = rt
+            .block_on(tools_call(State(state), Json(body)))
+            .expect("claim_from_diff ok");
+        // Per-verb payload is wrapped under the `result` envelope key.
+        assert_eq!(value["result"]["recorded"], serde_json::json!(1));
+
+        let guard = owner.lock().unwrap();
+        let claims = guard.live_claims(0);
+        assert_eq!(claims.len(), 1);
+        assert_eq!(claims[0].path, "src/x.rs");
+        assert_eq!(claims[0].agent_id, "agent-a");
+        assert_eq!(claims[0].task_id.as_deref(), Some("t1"));
+        assert_eq!(claims[0].confidence, Confidence::DiffHunk);
+        assert_eq!(claims[0].range.start_line, 1);
+        assert_eq!(claims[0].range.end_line, 3);
+    }
+
+    /// claim_from_source parses real source (tree-sitter) into Parser-confidence claims
+    /// in the live map — the parser tier's wiring.
+    #[test]
+    fn claim_from_source_records_parser_claims_in_live_map() {
+        use crate::pty::PtyManager;
+        use crate::symbol_ownership::{Confidence, SymbolOwnership};
+        use std::sync::{Arc, Mutex};
+
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let owner = Arc::new(Mutex::new(SymbolOwnership::new()));
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_symbol_ownership(owner.clone());
+        let source = "fn alpha() {\n    let _ = 1;\n}\n\nfn beta() {\n    let _ = 2;\n}\n";
+        let body = ToolCallBody {
+            name: "aether.symbol.claim_from_source".to_string(),
+            arguments: serde_json::json!({ "agentId": "agent-a", "taskId": "t1", "path": "src/x.rs", "source": source }),
+        };
+        let Json(value) = rt
+            .block_on(tools_call(State(state), Json(body)))
+            .expect("claim_from_source ok");
+        assert_eq!(value["result"]["recorded"], serde_json::json!(2));
+        assert_eq!(value["result"]["fallback"], serde_json::json!(false));
+
+        let guard = owner.lock().unwrap();
+        let claims = guard.live_claims(0);
+        assert_eq!(claims.len(), 2);
+        assert!(claims.iter().all(|c| c.confidence == Confidence::Parser));
+        assert!(claims.iter().any(|c| c.symbol == "alpha"));
+        assert!(claims.iter().any(|c| c.symbol == "beta"));
+    }
+
+    /// An unsupported language (or unparseable source) records NO claims and reports
+    /// fallback:true — the file-level gate then applies (never a guessed Parser range).
+    #[test]
+    fn claim_from_source_unsupported_language_is_fallback_no_claims() {
+        use crate::pty::PtyManager;
+        use crate::symbol_ownership::SymbolOwnership;
+        use std::sync::{Arc, Mutex};
+
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let owner = Arc::new(Mutex::new(SymbolOwnership::new()));
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_symbol_ownership(owner.clone());
+        let body = ToolCallBody {
+            name: "aether.symbol.claim_from_source".to_string(),
+            arguments: serde_json::json!({ "agentId": "a", "path": "notes.md", "source": "# hi" }),
+        };
+        let Json(value) = rt
+            .block_on(tools_call(State(state), Json(body)))
+            .expect("claim_from_source ok");
+        assert_eq!(value["result"]["fallback"], serde_json::json!(true));
+        assert_eq!(value["result"]["recorded"], serde_json::json!(0));
+        assert_eq!(owner.lock().unwrap().live_claims(0).len(), 0);
+    }
+
+    /// The `source` arg is read RAW (untrimmed): a symbol after blank lines keeps its
+    /// real line number, and empty source is a graceful fallback (not a BadRequest).
+    #[test]
+    fn claim_from_source_preserves_line_numbers_and_allows_empty() {
+        use crate::pty::PtyManager;
+        use crate::symbol_ownership::SymbolOwnership;
+        use std::sync::{Arc, Mutex};
+
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let owner = Arc::new(Mutex::new(SymbolOwnership::new()));
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_symbol_ownership(owner.clone());
+        // Leading blank lines must NOT shift the range (raw, untrimmed source).
+        let body = ToolCallBody {
+            name: "aether.symbol.claim_from_source".to_string(),
+            arguments: serde_json::json!({ "agentId": "a", "path": "src/x.rs", "source": "\n\nfn f() {\n}\n" }),
+        };
+        let Json(value) = rt
+            .block_on(tools_call(State(state), Json(body)))
+            .expect("claim_from_source ok");
+        assert_eq!(value["result"]["recorded"], serde_json::json!(1));
+        {
+            let guard = owner.lock().unwrap();
+            let claims = guard.live_claims(0);
+            assert_eq!(claims[0].symbol, "f");
+            assert_eq!(claims[0].range.start_line, 3); // not 1 — blank lines preserved
+        }
+
+        // Empty source -> fallback, no claims, NO error (reconciles f away too).
+        let state2 = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_symbol_ownership(owner.clone());
+        let body2 = ToolCallBody {
+            name: "aether.symbol.claim_from_source".to_string(),
+            arguments: serde_json::json!({ "agentId": "a", "path": "src/x.rs", "source": "" }),
+        };
+        let Json(v2) = rt
+            .block_on(tools_call(State(state2), Json(body2)))
+            .expect("empty source ok");
+        assert_eq!(v2["result"]["fallback"], serde_json::json!(true));
+        assert_eq!(v2["result"]["recorded"], serde_json::json!(0));
+        assert_eq!(owner.lock().unwrap().live_claims(0).len(), 0);
+    }
+
+    /// Cross-verb coherence (final Codex review): claim_from_source's reconcile must
+    /// NOT erase the same agent's diff-hunk or hand-made claims on the same file — it
+    /// sweeps only its OWN parser-derived (`parse:`-prefixed) claims.
+    #[test]
+    fn claim_from_source_reconcile_keeps_diff_and_manual_claims() {
+        use crate::pty::PtyManager;
+        use crate::symbol_ownership::SymbolOwnership;
+        use std::sync::{Arc, Mutex};
+
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let owner = Arc::new(Mutex::new(SymbolOwnership::new()));
+        let mk_state = || {
+            ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+                .with_symbol_ownership(owner.clone())
+        };
+
+        // 1. A diff-hunk claim on src/x.rs (an import-region edit the parser won't model).
+        let diff = "--- a/src/x.rs\n+++ b/src/x.rs\n@@ -1,1 +1,2 @@\n use a;\n+use b;\n";
+        let dbody = ToolCallBody {
+            name: "aether.symbol.claim_from_diff".to_string(),
+            arguments: serde_json::json!({ "agentId": "a", "path": "src/x.rs", "diff": diff }),
+        };
+        let Json(_) = rt
+            .block_on(tools_call(State(mk_state()), Json(dbody)))
+            .expect("diff ok");
+
+        // 2. A hand-made claim (even at parser confidence) on the same file.
+        let mbody = ToolCallBody {
+            name: "aether.symbol.claim".to_string(),
+            arguments: serde_json::json!({ "claimId": "manual-1", "agentId": "a", "path": "src/x.rs",
+                "symbol": "hand", "startLine": 90, "endLine": 95, "mode": "write", "confidence": "parser" }),
+        };
+        let Json(_) = rt
+            .block_on(tools_call(State(mk_state()), Json(mbody)))
+            .expect("manual ok");
+
+        // 3. Parse the source -> reconciles ONLY parse: claims; diff + manual survive.
+        let src = "fn alpha() {\n    let _ = 1;\n}\n";
+        let sbody = ToolCallBody {
+            name: "aether.symbol.claim_from_source".to_string(),
+            arguments: serde_json::json!({ "agentId": "a", "path": "src/x.rs", "source": src }),
+        };
+        let Json(_) = rt
+            .block_on(tools_call(State(mk_state()), Json(sbody)))
+            .expect("source ok");
+
+        let guard = owner.lock().unwrap();
+        let ids: Vec<String> = guard
+            .live_claims(0)
+            .iter()
+            .map(|c| c.claim_id.clone())
+            .collect();
+        assert!(
+            ids.iter().any(|i| i.starts_with("dh:a:src/x.rs:")),
+            "diff claim must survive source reconcile: {ids:?}"
+        );
+        assert!(
+            ids.iter().any(|i| i == "manual-1"),
+            "manual claim must survive source reconcile: {ids:?}"
+        );
+        assert!(
+            ids.iter()
+                .any(|i| i.starts_with("parse:a:src/x.rs:") && i.contains("alpha")),
+            "parser claim must be recorded: {ids:?}"
+        );
+    }
+
+    /// A manual claim cannot squat on the reserved `parse:`/`dh:` id prefixes — that
+    /// would let the extractor reconcile sweep a hand-made claim.
+    #[test]
+    fn manual_claim_rejects_reserved_id_prefix() {
+        use crate::pty::PtyManager;
+        use crate::symbol_ownership::SymbolOwnership;
+        use std::sync::{Arc, Mutex};
+
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let owner = Arc::new(Mutex::new(SymbolOwnership::new()));
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_symbol_ownership(owner);
+        let body = ToolCallBody {
+            name: "aether.symbol.claim".to_string(),
+            arguments: serde_json::json!({ "claimId": "parse:a:src/x.rs:foo@1-3", "agentId": "a",
+                "path": "src/x.rs", "symbol": "foo", "startLine": 1, "endLine": 3,
+                "mode": "write", "confidence": "parser" }),
+        };
+        let result = rt.block_on(tools_call(State(state), Json(body)));
+        assert!(matches!(result, Err(ApiError::BadRequest(_))));
     }
 }

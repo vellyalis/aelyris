@@ -19,6 +19,10 @@
 //! The store is a pure data structure (no I/O, no locks) so it can be wrapped as
 //! shared state and unit-tested deterministically (`now` is always injected).
 
+/// Symbol extractors (spec §6.3) — derive [`SymbolIntent`]s from a source. Pure.
+/// Crate-internal: consumed by the IPC/MCP wiring, not part of the public API.
+pub(crate) mod extract;
+
 use serde::{Deserialize, Serialize};
 
 /// Inclusive line range `[start_line, end_line]` (1-based, editor-style). The
@@ -255,6 +259,18 @@ impl SymbolOwnership {
     pub fn release_for_agent(&mut self, agent_id: &str) -> usize {
         let before = self.claims.len();
         self.claims.retain(|c| c.agent_id != agent_id);
+        before - self.claims.len()
+    }
+
+    /// Release every claim whose `claim_id` starts with `prefix`. The derived
+    /// extractors stamp a reserved id prefix per origin (`parse:{agent}:{path}:` for the
+    /// parser tier, `dh:` for diff-hunk) so an extractor reconciles ONLY its OWN prior
+    /// derived claims for a file: re-deriving the whole file frees a renamed/removed
+    /// symbol's stale claim WITHOUT erasing the OTHER extractor's claims or an agent's
+    /// hand-made (`aether.symbol.claim`) claims on the same file. Returns the count freed.
+    pub fn release_for_prefix(&mut self, prefix: &str) -> usize {
+        let before = self.claims.len();
+        self.claims.retain(|c| !c.claim_id.starts_with(prefix));
         before - self.claims.len()
     }
 
@@ -900,6 +916,38 @@ mod tests {
         own.claim(c2, 0);
         assert_eq!(own.release_for_task("task-1"), 2);
         assert_eq!(own.live_claims(0).len(), 0);
+    }
+
+    #[test]
+    fn release_for_prefix_frees_only_matching_ids() {
+        let mut own = SymbolOwnership::new();
+        // Two parser-derived claims for (a, x.rs), one diff-derived, one hand-made.
+        for (id, s, e) in [
+            ("parse:a:src/x.rs:foo@1-5", 1, 5),
+            ("parse:a:src/x.rs:bar@10-20", 10, 20),
+            ("dh:a:src/x.rs:30-40", 30, 40),
+            ("manual-1", 50, 60),
+        ] {
+            own.claim(
+                claim(
+                    id,
+                    "a",
+                    "src/x.rs",
+                    "f",
+                    s,
+                    e,
+                    ClaimMode::Write,
+                    Confidence::Parser,
+                ),
+                0,
+            );
+        }
+        // Reconcile ONLY the parser-derived claims for (a, x.rs); diff + manual survive.
+        assert_eq!(own.release_for_prefix("parse:a:src/x.rs:"), 2);
+        let live = own.live_claims(0);
+        assert_eq!(live.len(), 2);
+        assert!(live.iter().any(|c| c.claim_id == "dh:a:src/x.rs:30-40"));
+        assert!(live.iter().any(|c| c.claim_id == "manual-1"));
     }
 
     #[test]
