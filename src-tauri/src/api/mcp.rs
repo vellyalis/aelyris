@@ -1780,9 +1780,11 @@ pub(super) async fn tools_call(
                 owner.expire(now);
                 for intent in intents {
                     // Deterministic id so re-running on an updated diff is idempotent
-                    // per span (release the prior claim for this span, then re-add).
+                    // per span (release the prior claim for this span, then re-add). The
+                    // `dh:` prefix marks the diff-hunk origin so claim_from_source's
+                    // parser reconcile (which sweeps `parse:`-prefixed ids) leaves these.
                     let claim_id = format!(
-                        "{agent_id}:{}:{}-{}",
+                        "dh:{agent_id}:{}:{}-{}",
                         intent.path, intent.range.start_line, intent.range.end_line
                     );
                     owner.release(&claim_id);
@@ -1850,12 +1852,14 @@ pub(super) async fn tools_call(
                 })?;
                 owner.expire(now);
                 // Reconcile: the parser re-derives the WHOLE file, so drop this agent's
-                // prior claims on the path before recording the fresh set (a renamed or
-                // deleted symbol's stale claim is freed, not stranded on its lease).
-                owner.release_for_agent_path(&agent_id, &path);
+                // prior PARSER-derived claims on the path (the `parse:{agent}:{path}:`
+                // prefix) before recording the fresh set — a renamed/removed symbol's
+                // stale claim is freed. Scoped by prefix so it leaves the agent's
+                // diff-hunk (`dh:`) and hand-made claims on the same file untouched.
+                owner.release_for_prefix(&format!("parse:{agent_id}:{path}:"));
                 for intent in intents {
                     let claim_id = format!(
-                        "{agent_id}:{}:{}@{}-{}",
+                        "parse:{agent_id}:{}:{}@{}-{}",
                         intent.path, intent.symbol, intent.range.start_line, intent.range.end_line
                     );
                     let claim = crate::symbol_ownership::SymbolClaim {
@@ -2516,5 +2520,72 @@ mod tests {
         assert_eq!(v2["result"]["fallback"], serde_json::json!(true));
         assert_eq!(v2["result"]["recorded"], serde_json::json!(0));
         assert_eq!(owner.lock().unwrap().live_claims(0).len(), 0);
+    }
+
+    /// Cross-verb coherence (final Codex review): claim_from_source's reconcile must
+    /// NOT erase the same agent's diff-hunk or hand-made claims on the same file — it
+    /// sweeps only its OWN parser-derived (`parse:`-prefixed) claims.
+    #[test]
+    fn claim_from_source_reconcile_keeps_diff_and_manual_claims() {
+        use crate::pty::PtyManager;
+        use crate::symbol_ownership::SymbolOwnership;
+        use std::sync::{Arc, Mutex};
+
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let owner = Arc::new(Mutex::new(SymbolOwnership::new()));
+        let mk_state = || {
+            ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+                .with_symbol_ownership(owner.clone())
+        };
+
+        // 1. A diff-hunk claim on src/x.rs (an import-region edit the parser won't model).
+        let diff = "--- a/src/x.rs\n+++ b/src/x.rs\n@@ -1,1 +1,2 @@\n use a;\n+use b;\n";
+        let dbody = ToolCallBody {
+            name: "aether.symbol.claim_from_diff".to_string(),
+            arguments: serde_json::json!({ "agentId": "a", "path": "src/x.rs", "diff": diff }),
+        };
+        let Json(_) = rt
+            .block_on(tools_call(State(mk_state()), Json(dbody)))
+            .expect("diff ok");
+
+        // 2. A hand-made claim (even at parser confidence) on the same file.
+        let mbody = ToolCallBody {
+            name: "aether.symbol.claim".to_string(),
+            arguments: serde_json::json!({ "claimId": "manual-1", "agentId": "a", "path": "src/x.rs",
+                "symbol": "hand", "startLine": 90, "endLine": 95, "mode": "write", "confidence": "parser" }),
+        };
+        let Json(_) = rt
+            .block_on(tools_call(State(mk_state()), Json(mbody)))
+            .expect("manual ok");
+
+        // 3. Parse the source -> reconciles ONLY parse: claims; diff + manual survive.
+        let src = "fn alpha() {\n    let _ = 1;\n}\n";
+        let sbody = ToolCallBody {
+            name: "aether.symbol.claim_from_source".to_string(),
+            arguments: serde_json::json!({ "agentId": "a", "path": "src/x.rs", "source": src }),
+        };
+        let Json(_) = rt
+            .block_on(tools_call(State(mk_state()), Json(sbody)))
+            .expect("source ok");
+
+        let guard = owner.lock().unwrap();
+        let ids: Vec<String> = guard
+            .live_claims(0)
+            .iter()
+            .map(|c| c.claim_id.clone())
+            .collect();
+        assert!(
+            ids.iter().any(|i| i.starts_with("dh:a:src/x.rs:")),
+            "diff claim must survive source reconcile: {ids:?}"
+        );
+        assert!(
+            ids.iter().any(|i| i == "manual-1"),
+            "manual claim must survive source reconcile: {ids:?}"
+        );
+        assert!(
+            ids.iter()
+                .any(|i| i.starts_with("parse:a:src/x.rs:") && i.contains("alpha")),
+            "parser claim must be recorded: {ids:?}"
+        );
     }
 }

@@ -238,7 +238,8 @@ BACKEND `documentSymbol` extractor needs new request-correlation plumbing + a he
 - **A4.1 + A4.2** `bc5fb13` — tree-sitter parser tier (Rust + TS/TSX, `Confidence::Parser`,
   exact 1-based ranges for fn/method/class/struct/enum/trait/arrow-component; unsupported
   language or an unclean parse → file-level fallback, never a guessed range) +
-  `SymbolOwnership::release_for_agent_path` (parser reconcile) + MCP verb
+  `SymbolOwnership::release_for_prefix` (origin-scoped parser reconcile — `parse:`/`dh:`
+  reserved id prefixes so source-reconcile keeps diff-hunk + hand-made claims) + MCP verb
   `aether.symbol.claim_from_source`. Deps: `tree-sitter` 0.26 / `tree-sitter-rust` 0.24 /
   `tree-sitter-typescript` 0.23 (`cargo audit`: 0 new advisories).
 - **A4.3** `4fb34d6` — dispatch-gate matrix fully pinned: Parser disjoint symbols UNLOCK

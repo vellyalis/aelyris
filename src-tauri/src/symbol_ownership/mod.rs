@@ -262,15 +262,15 @@ impl SymbolOwnership {
         before - self.claims.len()
     }
 
-    /// Release every claim `agent_id` holds in `path`. The parser tier re-derives a
-    /// file's WHOLE symbol set on each parse, so it reconciles by dropping the agent's
-    /// prior claims for that file before recording the fresh set — a renamed/removed
-    /// symbol's stale claim is freed, not stranded until its lease lapses. Returns the
-    /// count freed.
-    pub fn release_for_agent_path(&mut self, agent_id: &str, path: &str) -> usize {
+    /// Release every claim whose `claim_id` starts with `prefix`. The derived
+    /// extractors stamp a reserved id prefix per origin (`parse:{agent}:{path}:` for the
+    /// parser tier, `dh:` for diff-hunk) so an extractor reconciles ONLY its OWN prior
+    /// derived claims for a file: re-deriving the whole file frees a renamed/removed
+    /// symbol's stale claim WITHOUT erasing the OTHER extractor's claims or an agent's
+    /// hand-made (`aether.symbol.claim`) claims on the same file. Returns the count freed.
+    pub fn release_for_prefix(&mut self, prefix: &str) -> usize {
         let before = self.claims.len();
-        self.claims
-            .retain(|c| !(c.agent_id == agent_id && c.path == path));
+        self.claims.retain(|c| !c.claim_id.starts_with(prefix));
         before - self.claims.len()
     }
 
@@ -919,19 +919,20 @@ mod tests {
     }
 
     #[test]
-    fn release_for_agent_path_frees_only_that_agents_claims_in_that_file() {
+    fn release_for_prefix_frees_only_matching_ids() {
         let mut own = SymbolOwnership::new();
-        for (id, agent, path, s, e) in [
-            ("c1", "a", "src/x.rs", 1, 5),
-            ("c2", "a", "src/x.rs", 10, 20),
-            ("c3", "a", "src/y.rs", 1, 5),
-            ("c4", "b", "src/x.rs", 30, 40),
+        // Two parser-derived claims for (a, x.rs), one diff-derived, one hand-made.
+        for (id, s, e) in [
+            ("parse:a:src/x.rs:foo@1-5", 1, 5),
+            ("parse:a:src/x.rs:bar@10-20", 10, 20),
+            ("dh:a:src/x.rs:30-40", 30, 40),
+            ("manual-1", 50, 60),
         ] {
             own.claim(
                 claim(
                     id,
-                    agent,
-                    path,
+                    "a",
+                    "src/x.rs",
                     "f",
                     s,
                     e,
@@ -941,16 +942,12 @@ mod tests {
                 0,
             );
         }
-        // Only agent a's TWO claims in x.rs are freed.
-        assert_eq!(own.release_for_agent_path("a", "src/x.rs"), 2);
+        // Reconcile ONLY the parser-derived claims for (a, x.rs); diff + manual survive.
+        assert_eq!(own.release_for_prefix("parse:a:src/x.rs:"), 2);
         let live = own.live_claims(0);
         assert_eq!(live.len(), 2);
-        assert!(live
-            .iter()
-            .any(|c| c.agent_id == "a" && c.path == "src/y.rs"));
-        assert!(live
-            .iter()
-            .any(|c| c.agent_id == "b" && c.path == "src/x.rs"));
+        assert!(live.iter().any(|c| c.claim_id == "dh:a:src/x.rs:30-40"));
+        assert!(live.iter().any(|c| c.claim_id == "manual-1"));
     }
 
     #[test]
