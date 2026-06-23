@@ -222,7 +222,11 @@ const checks = [
       // Every dispatched agent's prompt carries the CURRENT ADR, rebuilt from
       // the shared store each step — no agent runs on stale context (③).
       loopPorts.includes("build_adr_header(&context.all())") &&
-      loopPorts.includes("format!(\"{adr_header}{task_prompt}\")") &&
+      // Every dispatched prompt carries BOTH the current ADR (world-model) AND the
+      // active symbol-ownership section (A6 §6.4) — the agent runs blind to neither the
+      // shared decisions nor who owns which symbols in its files.
+      loopPorts.includes("format!(\"{adr_header}{ownership_section}{task_prompt}\")") &&
+      loopPorts.includes("fn ownership_section(") &&
       // Rejected/stale work is re-dispatched (with the fresh ADR) via the shared
       // requeue path on the rework budget, not stranded in Running with no worker.
       autonomy.includes("requeue_or_escalate(graph, &id, FailureKind::Rework") &&
@@ -315,7 +319,7 @@ const checks = [
       lib.includes(".with_context_store(context_store)") &&
       loopPorts.includes("fn build_adr_header(") &&
       loopPorts.includes("align your work to these shared decisions") &&
-      loopPorts.includes("spawn_specs(graph, &repo_path, &adr_header)"),
+      loopPorts.includes("spawn_specs(graph, &repo_path, &adr_header, claims_snapshot.as_deref())"),
     detail:
       "orchestrator AI reads/writes the shared ADR (Context Store) over MCP; context.set publishes decision_changed; and the ADR is injected into every dispatched agent's prompt so all agents share the world-model (BR6)",
   },

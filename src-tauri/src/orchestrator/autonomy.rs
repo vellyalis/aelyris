@@ -140,9 +140,17 @@ pub trait LoopPorts {
     /// serializes behind a running agent's live claim even when the planned graph
     /// looked clear (spec §6.5) — both when the candidate DECLARES an overlapping
     /// symbol AND when it is file-level (no symbol on a file a live claim sits in).
+    /// `task_id` is the CANDIDATE's task — its own still-live claims (kept across a
+    /// rework/recovery, which free only on a terminal outcome) are excluded so a task
+    /// can never deadlock on its own prior worker's claim when it re-dispatches.
     /// Default: no live map wired (pure unit tests) -> nothing extra blocks, so the
     /// declared-intent gate alone decides.
-    fn symbol_blocking(&self, _intents: &[SymbolIntent], _outputs: &[String]) -> bool {
+    fn symbol_blocking(
+        &self,
+        _task_id: &str,
+        _intents: &[SymbolIntent],
+        _outputs: &[String],
+    ) -> bool {
         false
     }
 }
@@ -395,7 +403,7 @@ pub fn step(
         // running agent's actual claim can serialize this ready task even when the
         // declared ranges looked clear — including a file-level (symbol-less) task
         // whose output file an agent is live-claiming.
-        if ports.symbol_blocking(&symbols, &outputs) {
+        if ports.symbol_blocking(id, &symbols, &outputs) {
             continue;
         }
         if ports.dispatch(id).is_ok() {

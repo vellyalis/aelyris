@@ -21,7 +21,10 @@ use crate::file_ownership::FileOwnership;
 use crate::git::{perform_merge, MergeOutcome};
 use crate::orchestrator::autonomy::{Completions, LoopPorts};
 use crate::review::GateResults;
-use crate::symbol_ownership::{SymbolIntent, SymbolOwnership};
+use crate::symbol_ownership::agent_context::{
+    active_ownership_context, render_ownership_header, DEFAULT_CONTEXT_CAP,
+};
+use crate::symbol_ownership::{SymbolClaim, SymbolIntent, SymbolOwnership};
 
 /// Wall-clock budget for a single dispatched agent before it is treated as hung
 /// and killed (BR9 hang recovery). Deliberately generous so a legitimately long
@@ -247,27 +250,30 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<G
         }
     }
 
-    fn symbol_blocking(&self, intents: &[SymbolIntent], outputs: &[String]) -> bool {
+    fn symbol_blocking(&self, task_id: &str, intents: &[SymbolIntent], outputs: &[String]) -> bool {
         let Some(map) = self.symbol_ownership.as_ref() else {
             return false;
         };
         let now = now_secs();
         let owner = map.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        // A declared symbol that overlaps a live claim serializes the task.
+        // A declared symbol that overlaps a live claim serializes the task — but NOT a
+        // claim belonging to this same task (a rework/recovered task keeps its prior
+        // worker's claims live, so it must not block its OWN re-dispatch).
         if intents
             .iter()
-            .any(|intent| owner.intent_blocked(intent, now))
+            .any(|intent| owner.intent_blocked(intent, Some(task_id), now))
         {
             return true;
         }
         // A file the candidate owns FILE-LEVEL (an output with NO declared symbol
         // on it) cannot co-exist with ANY live claim inside it — otherwise a
         // symbol-less task would edit a whole file an agent is actively working in
-        // (the symbol-less half of the live-map gate, spec §6.5).
+        // (the symbol-less half of the live-map gate, spec §6.5). Same self-exclusion.
         let symbol_paths: std::collections::HashSet<&str> =
             intents.iter().map(|i| i.path.as_str()).collect();
         owner.live_claims(now).iter().any(|claim| {
-            !symbol_paths.contains(claim.path.as_str())
+            claim.task_id.as_deref() != Some(task_id)
+                && !symbol_paths.contains(claim.path.as_str())
                 && outputs
                     .iter()
                     .any(|out| crate::file_ownership::patterns_overlap(out, &claim.path))
@@ -321,6 +327,7 @@ fn spawn_specs(
     graph: &crate::task::TaskGraph,
     repo_path: &str,
     adr_header: &str,
+    ownership: Option<&[SymbolClaim]>,
 ) -> std::collections::HashMap<String, HeadlessSpawnSpec> {
     graph
         .list()
@@ -329,7 +336,11 @@ fn spawn_specs(
             (
                 task.id.clone(),
                 HeadlessSpawnSpec {
-                    prompt: task_agent_prompt(task, adr_header),
+                    prompt: task_agent_prompt(
+                        task,
+                        adr_header,
+                        &ownership_section(ownership, task),
+                    ),
                     cwd: task_worktree_cwd(task, repo_path),
                     // Route to the task's explicit `model` if set, else its
                     // `owner` (back-compat). `owner` stays the implementer
@@ -343,20 +354,45 @@ fn spawn_specs(
         .collect()
 }
 
-/// The prompt a dispatched agent runs for `task`: title (+ description) prefixed
-/// with the shared ADR header so every agent works from the same world-model
-/// (e.g. it knows auth_method=jwt) rather than blind. Shared by the headless and
-/// visible-pane spec builders so both inject the same prompt.
-fn task_agent_prompt(task: &crate::task::graph::Task, adr_header: &str) -> String {
+/// The prompt a dispatched agent runs for `task`: title (+ description) prefixed with
+/// the shared ADR header (the world-model) AND the active-symbol-ownership section (the
+/// claims OTHER work holds on this task's files), so every agent works informed rather
+/// than blind. Shared by the headless and visible-pane spec builders so both inject the
+/// same prompt. Empty headers contribute nothing.
+fn task_agent_prompt(
+    task: &crate::task::graph::Task,
+    adr_header: &str,
+    ownership_section: &str,
+) -> String {
     let task_prompt = if task.description.trim().is_empty() {
         task.title.clone()
     } else {
         format!("{}\n\n{}", task.title, task.description)
     };
-    if adr_header.is_empty() {
-        task_prompt
-    } else {
-        format!("{adr_header}{task_prompt}")
+    format!("{adr_header}{ownership_section}{task_prompt}")
+}
+
+/// The active-ownership prompt section for `task` (§6.4): the live WRITE claims OTHER
+/// work holds on this task's output files, so the dispatched agent knows not to edit
+/// them. A `None` snapshot means the symbol map is UNAVAILABLE this run — which is NOT
+/// "safe": say so explicitly (the dispatch gate still serializes overlapping files via
+/// file ownership, but the agent is told to coordinate conservatively). Excludes the
+/// task's own claims so it isn't warned off its own ranges.
+fn ownership_section(ownership: Option<&[SymbolClaim]>, task: &crate::task::graph::Task) -> String {
+    match ownership {
+        None => "[Symbol ownership unavailable this run — do not assume disjoint edits \
+                 are safe; coordinate at the file level]\n\n"
+            .to_string(),
+        Some(claims) => {
+            let ctx = active_ownership_context(
+                claims,
+                None,
+                Some(&task.id),
+                &task.outputs,
+                DEFAULT_CONTEXT_CAP,
+            );
+            render_ownership_header(&ctx).unwrap_or_default()
+        }
     }
 }
 
@@ -403,6 +439,7 @@ fn pane_spawn_specs(
     graph: &crate::task::TaskGraph,
     repo_path: &str,
     adr_header: &str,
+    ownership: Option<&[SymbolClaim]>,
 ) -> std::collections::HashMap<String, PaneSpawnSpec> {
     graph
         .list()
@@ -411,7 +448,11 @@ fn pane_spawn_specs(
             (
                 task.id.clone(),
                 PaneSpawnSpec {
-                    prompt: task_agent_prompt(task, adr_header),
+                    prompt: task_agent_prompt(
+                        task,
+                        adr_header,
+                        &ownership_section(ownership, task),
+                    ),
                     cwd: task_worktree_cwd(task, repo_path),
                     model: task.agent_model(),
                     cols: PANE_COLS,
@@ -498,6 +539,20 @@ fn build_adr_header(adr: &std::collections::BTreeMap<String, String>) -> String 
     header
 }
 
+/// Snapshot the CURRENTLY-LIVE symbol claims (expiry swept) once before a step, so each
+/// dispatched agent's prompt can list the claims OTHER work holds on its files without
+/// holding the symbol lock across the whole step. `None` = no map attached (the prompt
+/// then reports ownership unavailable; see [`ownership_section`]).
+fn snapshot_live_claims(
+    ownership: Option<&Arc<Mutex<SymbolOwnership>>>,
+) -> Option<Vec<SymbolClaim>> {
+    let map = ownership?;
+    let now = now_secs();
+    let mut owner = map.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    owner.expire(now);
+    Some(owner.live_claims(now).into_iter().cloned().collect())
+}
+
 /// Capture each task's `(owner, declared output paths)` before a step so the
 /// dispatch/merge in the report can claim/free the right file lanes. Shared by
 /// the headless and visible-pane step runners.
@@ -536,6 +591,9 @@ pub fn run_step(
     let caps = cost.caps();
     // The shared ADR, injected into every agent dispatched this step.
     let adr_header = build_adr_header(&context.all());
+    // The live symbol claims, snapshot once so each agent's prompt lists the claims
+    // OTHER work holds on its files (§6.4).
+    let claims_snapshot = snapshot_live_claims(symbol_ownership.as_ref());
     // Each task's owner + declared file paths (outputs), captured before the
     // step so dispatched/merged tasks can claim/free their file lanes.
     let lanes = capture_lanes(tasks);
@@ -543,7 +601,7 @@ pub fn run_step(
         // Snapshots captured before the step mutates the graph — the adapter
         // never re-locks the manager (std Mutex is not reentrant).
         let info = TaskBranchSnapshot::from_graph(graph);
-        let specs = spawn_specs(graph, &repo_path, &adr_header);
+        let specs = spawn_specs(graph, &repo_path, &adr_header, claims_snapshot.as_deref());
         // Objective gates (tests/lint/types) run mechanically in each task's
         // worktree when a command is configured; otherwise they (and the
         // subjective gates always) fall back to the caller's supplied verdict.
@@ -604,10 +662,11 @@ pub fn run_step_visible(
 ) -> crate::orchestrator::autonomy::StepReport {
     let caps = cost.caps();
     let adr_header = build_adr_header(&context.all());
+    let claims_snapshot = snapshot_live_claims(symbol_ownership.as_ref());
     let lanes = capture_lanes(tasks);
     let report = tasks.with_graph_mut(|graph| {
         let info = TaskBranchSnapshot::from_graph(graph);
-        let specs = pane_spawn_specs(graph, &repo_path, &adr_header);
+        let specs = pane_spawn_specs(graph, &repo_path, &adr_header, claims_snapshot.as_deref());
         let gate_runner = crate::control::gate_runner::ProcessGateRunner::new(
             repo_path.clone(),
             gate_commands.unwrap_or_default(),
@@ -913,17 +972,70 @@ mod tests {
             mode: ClaimMode::Write,
             confidence: Confidence::Lsp,
         };
+        // The live claim above belongs to no task (task_id None), so a different
+        // candidate "cand" is genuinely blocked by it.
         // A ready task DECLARING an overlapping range is blocked by the running
         // agent's LIVE claim — the drift the declared-intent gate alone would miss.
-        assert!(ports.symbol_blocking(&[intent(50, 55)], &[]));
+        assert!(ports.symbol_blocking("cand", &[intent(50, 55)], &[]));
         // A disjoint declaration is free to dispatch; no intents/outputs blocks nothing.
-        assert!(!ports.symbol_blocking(&[intent(1, 20)], &[]));
-        assert!(!ports.symbol_blocking(&[], &[]));
+        assert!(!ports.symbol_blocking("cand", &[intent(1, 20)], &[]));
+        assert!(!ports.symbol_blocking("cand", &[], &[]));
         // A FILE-LEVEL (symbol-less) task whose OUTPUT file an agent is live-
         // claiming is blocked too — it would edit the whole file the agent is in.
-        assert!(ports.symbol_blocking(&[], &["src/x.rs".to_string()]));
+        assert!(ports.symbol_blocking("cand", &[], &["src/x.rs".to_string()]));
         // ...but a file-level task on a different file is free.
-        assert!(!ports.symbol_blocking(&[], &["src/y.rs".to_string()]));
+        assert!(!ports.symbol_blocking("cand", &[], &["src/y.rs".to_string()]));
+    }
+
+    #[test]
+    fn symbol_blocking_excludes_the_candidates_own_live_claims() {
+        // A rework/recovered task keeps its prior worker's claims live (they free only
+        // on a TERMINAL outcome). When that task re-dispatches it must NOT be blocked by
+        // its OWN claim — otherwise it deadlocks until lease expiry. (Codex review HIGH.)
+        use crate::orchestrator::autonomy::LoopPorts;
+        use crate::symbol_ownership::{
+            ClaimMode, Confidence, SymbolClaim, SymbolIntent, SymbolOwnership, SymbolRange,
+        };
+        let map = Arc::new(Mutex::new(SymbolOwnership::new()));
+        // Task "t" left a live write claim on src/x.rs 40-60 from its prior worker.
+        map.lock().unwrap().claim(
+            SymbolClaim {
+                claim_id: "c1".to_string(),
+                agent_id: "worker-1".to_string(),
+                task_id: Some("t".to_string()),
+                path: "src/x.rs".to_string(),
+                symbol: "foo".to_string(),
+                range: SymbolRange::new(40, 60),
+                mode: ClaimMode::Write,
+                lease_expires_at: u64::MAX,
+                confidence: Confidence::Lsp,
+            },
+            0,
+        );
+        let ports = LoopPortsAdapter::new(
+            "repo",
+            "reviewer",
+            FakeGate(GREEN),
+            RecordingDispatcher::default(),
+            MapInfo {
+                branches: HashMap::new(),
+                implementer: "i".to_string(),
+            },
+            Some(map),
+        );
+        let intent = SymbolIntent {
+            path: "src/x.rs".to_string(),
+            symbol: "foo".to_string(),
+            range: SymbolRange::new(50, 55),
+            mode: ClaimMode::Write,
+            confidence: Confidence::Lsp,
+        };
+        // Re-dispatching task "t" is NOT blocked by its own claim (declared or file-level).
+        assert!(!ports.symbol_blocking("t", std::slice::from_ref(&intent), &[]));
+        assert!(!ports.symbol_blocking("t", &[], &["src/x.rs".to_string()]));
+        // A DIFFERENT task is still blocked by that live claim (the gate still works).
+        assert!(ports.symbol_blocking("other", &[intent], &[]));
+        assert!(ports.symbol_blocking("other", &[], &["src/x.rs".to_string()]));
     }
 
     #[test]
@@ -1249,12 +1361,109 @@ mod tests {
         adr.insert("auth_method".to_string(), "jwt".to_string());
         let header = build_adr_header(&adr);
 
-        let specs = spawn_specs(&graph, "/repo", &header);
+        let specs = spawn_specs(&graph, "/repo", &header, None);
         let spec = specs.get("t").unwrap();
 
         assert!(spec.prompt.starts_with("[Project decisions"));
         assert!(spec.prompt.contains("auth_method: jwt"));
         assert!(spec.prompt.contains("Build login"));
+        // No symbol map this run -> the prompt states ownership is UNAVAILABLE, never
+        // implying disjoint edits are "safe" (the gate still serializes via file lanes).
+        assert!(spec.prompt.contains("Symbol ownership unavailable"));
+    }
+
+    #[test]
+    fn spawn_specs_inject_active_symbol_ownership_into_the_prompt() {
+        use crate::symbol_ownership::{ClaimMode, Confidence, SymbolClaim, SymbolRange};
+        let mut graph = TaskGraph::new();
+        let mut task = Task::new("t", "Edit auth");
+        task.outputs = vec!["src/auth.rs".to_string()];
+        graph.add(task).unwrap();
+        // Another agent (a DIFFERENT task) holds a live write claim in the same file.
+        let claims = vec![SymbolClaim {
+            claim_id: "other:src/auth.rs:login".to_string(),
+            agent_id: "other".to_string(),
+            task_id: Some("t2".to_string()),
+            path: "src/auth.rs".to_string(),
+            symbol: "login".to_string(),
+            range: SymbolRange::new(10, 20),
+            mode: ClaimMode::Write,
+            lease_expires_at: u64::MAX,
+            confidence: Confidence::Lsp,
+        }];
+        let specs = spawn_specs(&graph, "/repo", "", Some(&claims));
+        let prompt = &specs.get("t").unwrap().prompt;
+        assert!(prompt.contains("do NOT edit"), "{prompt}");
+        assert!(
+            prompt.contains("@other owns login in src/auth.rs (lines 10-20, lsp)"),
+            "{prompt}"
+        );
+    }
+
+    #[test]
+    fn spawn_specs_excludes_a_tasks_own_claims_from_its_prompt() {
+        use crate::symbol_ownership::{ClaimMode, Confidence, SymbolClaim, SymbolRange};
+        let mut graph = TaskGraph::new();
+        let mut task = Task::new("t", "Edit auth");
+        task.outputs = vec!["src/auth.rs".to_string()];
+        graph.add(task).unwrap();
+        // A claim made BY this task (task_id == "t") must be excluded — an agent isn't
+        // warned off its own ranges.
+        let claims = vec![SymbolClaim {
+            claim_id: "self:src/auth.rs:foo".to_string(),
+            agent_id: "self".to_string(),
+            task_id: Some("t".to_string()),
+            path: "src/auth.rs".to_string(),
+            symbol: "foo".to_string(),
+            range: SymbolRange::new(1, 5),
+            mode: ClaimMode::Write,
+            lease_expires_at: u64::MAX,
+            confidence: Confidence::Lsp,
+        }];
+        let specs = spawn_specs(&graph, "/repo", "", Some(&claims));
+        let prompt = &specs.get("t").unwrap().prompt;
+        assert!(
+            !prompt.contains("do NOT edit"),
+            "a task's own claim must be excluded: {prompt}"
+        );
+    }
+
+    #[test]
+    fn pane_spawn_specs_inject_active_symbol_ownership_too() {
+        // The visible-pane face must inject the SAME ownership context as the headless
+        // face (both go through `task_agent_prompt`) — proven directly, not assumed.
+        use crate::symbol_ownership::{ClaimMode, Confidence, SymbolClaim, SymbolRange};
+        let mut graph = TaskGraph::new();
+        let mut task = Task::new("t", "Edit auth");
+        task.outputs = vec!["src/auth.rs".to_string()];
+        graph.add(task).unwrap();
+        let claims = vec![SymbolClaim {
+            claim_id: "other:src/auth.rs:login".to_string(),
+            agent_id: "other".to_string(),
+            task_id: Some("t2".to_string()),
+            path: "src/auth.rs".to_string(),
+            symbol: "login".to_string(),
+            range: SymbolRange::new(10, 20),
+            mode: ClaimMode::Write,
+            lease_expires_at: u64::MAX,
+            confidence: Confidence::Lsp,
+        }];
+        let specs = pane_spawn_specs(&graph, "/repo", "", Some(&claims));
+        assert!(
+            specs
+                .get("t")
+                .unwrap()
+                .prompt
+                .contains("@other owns login in src/auth.rs"),
+            "visible pane prompt must carry active claims"
+        );
+        // And the no-map note appears on the visible face too.
+        let none_specs = pane_spawn_specs(&graph, "/repo", "", None);
+        assert!(none_specs
+            .get("t")
+            .unwrap()
+            .prompt
+            .contains("Symbol ownership unavailable"));
     }
 
     fn lane(task: &str, agent: &str, path: &str) -> HashMap<String, (String, Vec<String>)> {

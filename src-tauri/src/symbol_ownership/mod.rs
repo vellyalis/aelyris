@@ -23,6 +23,10 @@
 /// Crate-internal: consumed by the IPC/MCP wiring, not part of the public API.
 pub(crate) mod extract;
 
+/// Active-ownership context (spec §6.4/§6.6) — the SSOT that renders the live claim
+/// map into the "do not edit" context every agent launch / steer / UI prompt shares.
+pub(crate) mod agent_context;
+
 use serde::{Deserialize, Serialize};
 
 /// Inclusive line range `[start_line, end_line]` (1-based, editor-style). The
@@ -319,21 +323,33 @@ impl SymbolOwnership {
     /// their ranges are disjoint — so a running agent's inferred/shared-file claim,
     /// or an overlapping exact one, serializes the ready task. The candidate holds
     /// no live claim yet, so agent identity is irrelevant.
-    pub fn intent_blocked(&self, intent: &SymbolIntent, now: u64) -> bool {
-        self.claims.iter().filter(|c| c.is_live(now)).any(|c| {
-            if c.path != intent.path {
-                return false;
-            }
-            if !matches!(c.mode, ClaimMode::Write) && !matches!(intent.mode, ClaimMode::Write) {
-                return false;
-            }
-            if !unlocks_parallelism(c.confidence, &c.path)
-                || !unlocks_parallelism(intent.confidence, &intent.path)
-            {
-                return true; // can't prove disjointness -> blocked (file-level)
-            }
-            c.range.overlaps(&intent.range)
-        })
+    /// `exclude_task` skips claims belonging to the CANDIDATE's own task — a rework /
+    /// recovered task keeps its prior worker's claims live (they free only on a TERMINAL
+    /// outcome), so it must not block its OWN re-dispatch on them.
+    pub fn intent_blocked(
+        &self,
+        intent: &SymbolIntent,
+        exclude_task: Option<&str>,
+        now: u64,
+    ) -> bool {
+        self.claims
+            .iter()
+            .filter(|c| c.is_live(now))
+            .filter(|c| exclude_task.is_none() || c.task_id.as_deref() != exclude_task)
+            .any(|c| {
+                if c.path != intent.path {
+                    return false;
+                }
+                if !matches!(c.mode, ClaimMode::Write) && !matches!(intent.mode, ClaimMode::Write) {
+                    return false;
+                }
+                if !unlocks_parallelism(c.confidence, &c.path)
+                    || !unlocks_parallelism(intent.confidence, &intent.path)
+                {
+                    return true; // can't prove disjointness -> blocked (file-level)
+                }
+                c.range.overlaps(&intent.range)
+            })
     }
 }
 
@@ -520,16 +536,27 @@ mod tests {
         // Overlapping exact range is blocked; disjoint exact is free.
         assert!(own.intent_blocked(
             &intent("src/x.rs", 50, 55, ClaimMode::Write, Confidence::Lsp),
+            None,
             0,
         ));
         assert!(!own.intent_blocked(
             &intent("src/x.rs", 1, 20, ClaimMode::Write, Confidence::Lsp),
+            None,
             0,
         ));
         // An inferred (diff-hunk) declaration can't prove disjointness -> BLOCKED by
         // the live claim even on a disjoint-looking range (dispatch gate, §6.5).
         assert!(own.intent_blocked(
             &intent("src/x.rs", 1, 20, ClaimMode::Write, Confidence::DiffHunk),
+            None,
+            0,
+        ));
+        // ...but excluding the claim's OWN task frees it: the `claim` builder tags
+        // c1 with task_id `task-a`, so a candidate from that task is NOT blocked by it
+        // (a re-dispatched task can't deadlock on its prior worker's live claim).
+        assert!(!own.intent_blocked(
+            &intent("src/x.rs", 50, 55, ClaimMode::Write, Confidence::Lsp),
+            Some("task-a"),
             0,
         ));
     }
