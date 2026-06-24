@@ -454,10 +454,14 @@ pub(super) fn workspace_summary(graph: &MuxGraph) -> MuxWorkspaceSummary {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn send_workspace_input(
     state: &ApiState,
     workspace_id: &str,
     bytes: &[u8],
+    source_kind: &str,
+    approval_id: Option<&str>,
+    atomic: bool,
 ) -> ApiResult<serde_json::Value> {
     if bytes.len() > WS_MAX_INPUT_FRAME_BYTES {
         return Err(ApiError::BadRequest(format!(
@@ -480,6 +484,26 @@ pub(super) fn send_workspace_input(
             "mux workspace has no live PTY targets".to_string(),
         ));
     }
+    // P0-4: the gate returns the bytes that may reach the panes (it HOLDS unterminated
+    // streaming input and emits only complete, approved lines). Write those, not `bytes`.
+    let writable = super::gate_command_input(
+        state,
+        source_kind,
+        workspace_id,
+        &targets,
+        approval_id,
+        bytes,
+        atomic,
+    )?;
+    if writable.is_empty() {
+        return Ok(serde_json::json!({
+            "workspaceId": workspace_id,
+            "targets": targets.len(),
+            "accepted": 0,
+            "held": true,
+        }));
+    }
+    let bytes = writable.as_slice();
 
     let mut accepted = 0usize;
     let mut failed = 0usize;
@@ -692,7 +716,14 @@ async fn broadcast_mux_workspace_input(
     Path(workspace_id): Path<String>,
     Json(body): Json<InputBody>,
 ) -> ApiResult<Json<MuxBroadcastResponse>> {
-    let result = send_workspace_input(&state, &workspace_id, body.text.as_bytes())?;
+    let result = send_workspace_input(
+        &state,
+        &workspace_id,
+        body.text.as_bytes(),
+        "rest-mux-input",
+        body.approval_id.as_deref(),
+        false, // REST mux input is an untrimmed byte stream
+    )?;
     Ok(Json(MuxBroadcastResponse {
         workspace_id,
         targets: result["targets"].as_u64().unwrap_or_default() as usize,

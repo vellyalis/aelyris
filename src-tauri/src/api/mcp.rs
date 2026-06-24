@@ -254,13 +254,14 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
             },
             {
                 "name": "mux.workspace.safeInput",
-                "description": "Send bounded input to all live panes in a mux workspace.",
+                "description": "Send bounded input to all live panes in a mux workspace. A command classified `review` by the backend command-risk policy (P0-4) is refused unless an `approvalId` minted for that exact command + target set is supplied; `deny` (destructive) is always refused.",
                 "inputSchema": {
                     "type": "object",
                     "required": ["workspaceId", "text"],
                     "properties": {
                         "workspaceId": { "type": "string" },
-                        "text": { "type": "string", "maxLength": 1048576 }
+                        "text": { "type": "string", "maxLength": 1048576 },
+                        "approvalId": { "type": "string" }
                     },
                     "additionalProperties": false
                 }
@@ -352,14 +353,15 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
             },
             {
                 "name": "aether.pane_send_input",
-                "description": "Send bounded input to a live pane/terminal id.",
+                "description": "Send bounded input to a live pane/terminal id. A command classified `review` by the backend command-risk policy (P0-4) is refused unless an `approvalId` minted for that exact command + terminal is supplied; `deny` (destructive) is always refused — this is the agent-injection path the gate exists to catch.",
                 "safety": "FREE",
                 "inputSchema": {
                     "type": "object",
                     "required": ["terminalId", "text"],
                     "properties": {
                         "terminalId": { "type": "string" },
-                        "text": { "type": "string", "maxLength": 1048576 }
+                        "text": { "type": "string", "maxLength": 1048576 },
+                        "approvalId": { "type": "string" }
                     },
                     "additionalProperties": false
                 }
@@ -1041,7 +1043,15 @@ pub(super) async fn tools_call(
         "mux.workspace.safeInput" => {
             let workspace_id = arg_string(&args, "workspaceId")?;
             let text = arg_string(&args, "text")?;
-            send_workspace_input(&state, &workspace_id, text.as_bytes())?
+            let approval_id = arg_optional_string(&args, "approvalId");
+            send_workspace_input(
+                &state,
+                &workspace_id,
+                text.as_bytes(),
+                "mcp-safe-input",
+                approval_id.as_deref(),
+                true, // arg_string trims the payload -> classify the whole bare command
+            )?
         }
         "aether.worktree.validate" => {
             let branch_name = arg_string(&args, "branchName")?;
@@ -1103,15 +1113,29 @@ pub(super) async fn tools_call(
         "aether.pane_send_input" => {
             let terminal_id = arg_string(&args, "terminalId")?;
             let text = arg_string(&args, "text")?;
+            let approval_id = arg_optional_string(&args, "approvalId");
             if text.len() > WS_MAX_INPUT_FRAME_BYTES {
                 return Err(ApiError::BadRequest(format!(
                     "input frame exceeds {} bytes",
                     WS_MAX_INPUT_FRAME_BYTES
                 )));
             }
+            // P0-4: classify the agent-injected command BEFORE it reaches the PTY
+            // (hard boundary #1). An agent steering a terminal is exactly the
+            // automated-injection path the gate exists to catch.
+            let targets = [terminal_id.clone()];
+            let writable = super::gate_command_input(
+                &state,
+                "mcp-pane-input",
+                &terminal_id,
+                &targets,
+                approval_id.as_deref(),
+                text.as_bytes(),
+                true, // arg_string trims the payload -> classify the whole bare command
+            )?;
             state
                 .pty
-                .write(&terminal_id, text.as_bytes())
+                .write(&terminal_id, &writable)
                 .map_err(ApiError::BadRequest)?;
             serde_json::json!({ "terminalId": terminal_id, "accepted": true })
         }
@@ -3376,5 +3400,43 @@ mod tests {
             .unwrap_err(),
             ApiError::NotFound(_)
         ));
+    }
+
+    /// P0-4 inc3: the MCP agent-injection write path (`aether.pane_send_input`) is gated by
+    /// the command-risk policy — a destructive command is refused (catastrophic) and a
+    /// review command is refused without an approval id, BOTH before any byte reaches a PTY.
+    #[test]
+    fn pane_send_input_is_gated_by_the_command_risk_policy() {
+        use crate::command_risk::gate::CommandRiskGate;
+        use crate::db::{Database, ManagedDb};
+        use crate::pty::PtyManager;
+        use std::sync::Arc;
+
+        let gate = Arc::new(CommandRiskGate::new(Some(Arc::new(ManagedDb::new(
+            Database::open_memory().unwrap(),
+        )))));
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_command_risk_gate(Some(gate));
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let call = |text: &str| {
+            let body = ToolCallBody {
+                name: "aether.pane_send_input".to_string(),
+                arguments: serde_json::json!({ "terminalId": "term-1", "text": text }),
+            };
+            rt.block_on(tools_call(State(state.clone()), Json(body)))
+        };
+
+        // A destructive command is refused (catastrophic) before the PTY write.
+        let err = call("rm -rf /tmp/x\r").unwrap_err();
+        assert!(
+            matches!(&err, ApiError::CommandRiskBlocked(d) if d.catastrophic),
+            "{err:?}"
+        );
+        // A review command without an approval id is refused (not catastrophic).
+        let err2 = call("git commit -m x\r").unwrap_err();
+        assert!(
+            matches!(&err2, ApiError::CommandRiskBlocked(d) if !d.catastrophic),
+            "{err2:?}"
+        );
     }
 }

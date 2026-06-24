@@ -192,6 +192,9 @@ pub struct ApiState {
     /// Durable merge-intent store (P0-3). The single source of truth for the
     /// operator/MCP merge approval path; `None` = merge verbs fail closed.
     pub merge_store: Option<Arc<crate::merge_intent::store::MergeIntentStore>>,
+    /// Backend command-risk gate (P0-4). Every command-carrying write path classifies
+    /// through it before reaching a PTY; `None` (tests) leaves writes ungated.
+    pub command_risk_gate: Option<Arc<crate::command_risk::gate::CommandRiskGate>>,
     pub mcp_pending: Arc<Mutex<Vec<McpPendingDecision>>>,
     /// Governance policy (P5): the single authorization + tenancy choke point
     /// every MCP verb flows through. Defaults to allow-all + single-tenant, so
@@ -240,6 +243,7 @@ impl ApiState {
             knowledge_graph: None,
             db: None,
             merge_store: None,
+            command_risk_gate: None,
             mcp_pending: Arc::new(Mutex::new(Vec::new())),
             governance: Arc::new(crate::governance::Governance::new()),
             mux_store: None,
@@ -318,6 +322,16 @@ impl ApiState {
     /// face. `None` leaves the sink a no-op (tests / non-persistent mode).
     pub fn with_db(mut self, db: Option<Arc<crate::db::ManagedDb>>) -> Self {
         self.db = db;
+        self
+    }
+
+    /// Attach the P0-4 command-risk gate. Every command-carrying write path guards
+    /// through it before the PTY write. `None` (tests) leaves writes ungated.
+    pub fn with_command_risk_gate(
+        mut self,
+        gate: Option<Arc<crate::command_risk::gate::CommandRiskGate>>,
+    ) -> Self {
+        self.command_risk_gate = gate;
         self
     }
 
@@ -1129,6 +1143,11 @@ pub enum ApiError {
 
     #[error("internal error: {0}")]
     Internal(String),
+
+    /// A command-carrying write was refused by the P0-4 command-risk gate. Carries the
+    /// structured denial so the operator UI can show the risk + mint an approval.
+    #[error("command blocked by risk policy")]
+    CommandRiskBlocked(Box<crate::command_risk::gate::GateDenial>),
 }
 
 #[derive(Serialize)]
@@ -1139,6 +1158,19 @@ struct ErrorBody {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
+        // A risk-policy denial returns the STRUCTURED denial (not the generic body) so the
+        // frontend can render the risk and mint an approval (403 Forbidden).
+        if let ApiError::CommandRiskBlocked(denial) = &self {
+            return (
+                StatusCode::FORBIDDEN,
+                Json(serde_json::json!({
+                    "error": self.to_string(),
+                    "code": "command_risk_blocked",
+                    "denial": denial,
+                })),
+            )
+                .into_response();
+        }
         let (status, code) = match &self {
             ApiError::NotFound(_) => (StatusCode::NOT_FOUND, "not_found"),
             ApiError::BadRequest(_) => (StatusCode::BAD_REQUEST, "bad_request"),
@@ -1147,6 +1179,7 @@ impl IntoResponse for ApiError {
             ApiError::Forbidden(_) => (StatusCode::FORBIDDEN, "forbidden"),
             ApiError::RateLimited => (StatusCode::TOO_MANY_REQUESTS, "rate_limited"),
             ApiError::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "internal"),
+            ApiError::CommandRiskBlocked(_) => unreachable!("handled above"),
         };
         (
             status,
@@ -1157,6 +1190,37 @@ impl IntoResponse for ApiError {
         )
             .into_response()
     }
+}
+
+/// Gate a command-carrying write through the P0-4 `CommandRiskGate` before it reaches a
+/// PTY (hard boundary #1). `Ok(())` = the caller may write; `Err(CommandRiskBlocked)` =
+/// refused with the structured denial. When no gate is attached (tests) writes are ungated.
+/// Returns the EXACT bytes that may be forwarded to the PTY (NOT necessarily `data`): the
+/// gate holds unterminated streaming input and emits only complete, approved lines. With no
+/// gate attached (tests) the input is returned unchanged.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn gate_command_input(
+    state: &ApiState,
+    source_kind: &str,
+    session_id: &str,
+    target_ids: &[String],
+    approval_id: Option<&str>,
+    data: &[u8],
+    atomic: bool,
+) -> ApiResult<Vec<u8>> {
+    let Some(gate) = state.command_risk_gate.as_ref() else {
+        return Ok(data.to_vec());
+    };
+    let options = crate::command_risk::CommandRiskOptions::default();
+    let ctx = crate::command_risk::gate::GateContext {
+        source_kind,
+        session_id,
+        target_ids,
+        approval_id,
+        options: &options,
+        atomic,
+    };
+    gate.check(&ctx, data).map_err(ApiError::CommandRiskBlocked)
 }
 
 type ApiResult<T> = Result<T, ApiError>;
@@ -1393,6 +1457,10 @@ struct ResizeBody {
 #[derive(Deserialize)]
 struct InputBody {
     text: String,
+    /// P0-4: a single-use approval id minted for a `review` command, carried so the
+    /// command-risk gate can authorize the write.
+    #[serde(default, rename = "approvalId")]
+    approval_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -1760,8 +1828,22 @@ async fn send_session_input(
         return Err(ApiError::NotFound(id));
     }
     let targets = synchronized_input_targets(&state, &id)?.unwrap_or_else(|| vec![id.clone()]);
+    // P0-4: the gate returns the bytes that may reach the PTY (it HOLDS unterminated input
+    // and emits only complete, approved lines — boundary #1). Write those, not `bytes`.
+    let writable = gate_command_input(
+        &state,
+        "rest-session-input",
+        &id,
+        &targets,
+        body.approval_id.as_deref(),
+        bytes,
+        false, // REST input is an untrimmed byte stream -> accumulate, flush on \r/\n
+    )?;
+    if writable.is_empty() {
+        return Ok(StatusCode::NO_CONTENT); // input held pending a complete line
+    }
     for target_id in targets {
-        state.pty.write(&target_id, bytes).map_err(|err| {
+        state.pty.write(&target_id, &writable).map_err(|err| {
             if state.pty.contains(&target_id) {
                 ApiError::Internal(err)
             } else {
@@ -1970,7 +2052,37 @@ async fn handle_ws(
                 );
                 break;
             }
-            if let Err(e) = write_state.pty.write(&write_id, &bytes) {
+            // P0-4: the WS stream is interactive bytes; the gate's per-{source,terminal}
+            // line accumulator reassembles a command across frames and refuses a
+            // destructive submission at its terminator (no approval id on this raw
+            // stream). A refused frame is DROPPED (the command is not executed); the
+            // session stays open so benign typing continues.
+            let targets = [write_id.clone()];
+            let writable = match gate_command_input(
+                &write_state,
+                "ws-session-input",
+                &write_id,
+                &targets,
+                None,
+                &bytes,
+                false, // interactive byte stream -> accumulate, flush on \r/\n
+            ) {
+                Ok(writable) => writable,
+                Err(d) => {
+                    if let ApiError::CommandRiskBlocked(denial) = &d {
+                        log::warn!(
+                            "api: WS {} input blocked by command-risk gate: {}",
+                            write_id,
+                            denial.reason
+                        );
+                    }
+                    continue;
+                }
+            };
+            if writable.is_empty() {
+                continue; // input held pending a complete line
+            }
+            if let Err(e) = write_state.pty.write(&write_id, &writable) {
                 log::warn!("api: PTY write to {} failed: {}", write_id, e);
                 break;
             }

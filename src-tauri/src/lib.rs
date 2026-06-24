@@ -748,6 +748,11 @@ pub fn run() {
                     .with_context_store(context_store)
                     .with_intent_bus(intent_bus)
                     .with_knowledge_graph(knowledge_graph)
+                    .with_command_risk_gate(Some(std::sync::Arc::new(
+                        // P0-4: the gate shares the MCP db so its decisions are durably
+                        // audited; with no db it fails closed for review-approved writes.
+                        command_risk::gate::CommandRiskGate::new(mcp_db.clone()),
+                    )))
                     .with_db(mcp_db)
                     .with_merge_store(merge_store)
                     .with_env_mux_store();
