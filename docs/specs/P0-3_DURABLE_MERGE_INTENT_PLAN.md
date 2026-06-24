@@ -40,3 +40,23 @@ Goal locked with Codex (independent reviewer, different model) on 2026-06-24 —
 ## Follow-ups (explicitly deferred, NOT silently absorbed)
 - P0-1: route the autonomy-loop self-merge through this durable store inside a transaction/outbox.
 - Live merge verifiers require a temp git repo + running dev server (operator-run, not headless gate).
+
+## Status — LANDED (2026-06-24)
+
+All 8 increments complete; each gated green and Codex-reviewed before commit (the
+codex-guided-implementation flow). Branch `feat/p0-3-durable-merge-intent`:
+
+| Inc | Commit | What | Codex |
+|-----|--------|------|-------|
+| 1 | `78b6734` | durable `MergeIntent`/9-state + `merge_repo` + migration (immutable trigger) | FIX-FIRST → fixed REPLACE/NULL-id/merge_base trigger holes |
+| 2 | `d29ca63` | `MergeIntentStore` + boot reconcile + wiring | APPROVE |
+| 3 | `e74b12c` | `request_merge` binds repo/taskId/OIDs, idempotent | FIX-FIRST → overclaim + test kind |
+| 4+5 | `df4f0cf` | **approve = stored intent only** (OID-bound CAS merge) | FIX-FIRST ×2 → fixed CRITICAL TOCTOU (`reference_matching` CAS) + HIGH type-confusion + LOW dangling state → APPROVE |
+| 6 | `304c4f5` | reject + pending-view to the store (boundary #3 closed) | APPROVE |
+| 7 | `362192c` | binding (static) + idempotency (live) verifiers | FIX-FIRST → verifier envelope + tightened checks → APPROVE |
+| 8 | (this) | regression + whole-WU review + merge | whole-WU: **MERGE-OK**, zero findings |
+
+Final gates: `cargo test` 1026 lib + integration, `cargo clippy --all-targets -D`,
+`cargo fmt --check`, `tsc --noEmit` (FE untouched), `verify-security-mcp-merge-intent-binding`
+10/10, `verify-mcp-orchestrator-surface`. The 5 hard boundaries hold across the whole
+feature (Codex whole-WU verified). Deferred items above remain the honest remainder.
