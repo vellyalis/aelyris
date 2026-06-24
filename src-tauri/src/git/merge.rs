@@ -107,6 +107,46 @@ pub fn inspect_merge_worktree_branch(
     })
 }
 
+/// Resolve a branch (local/remote/ref) to its current tip OID as a hex string.
+/// Used to capture immutable merge-intent OIDs at request time and to re-check
+/// branch tips during restart reconciliation (P0-3). Errs if the branch is gone.
+pub fn resolve_branch_oid(repo_path: &str, branch: &str) -> Result<String, String> {
+    validate_branch_name(branch)?;
+    let repo = git2::Repository::open(repo_path).map_err(|err| format!("open repo: {err}"))?;
+    Ok(resolve_branchish(&repo, branch)?.to_string())
+}
+
+/// Does `branch`'s current tip contain `commit_oid` (i.e. is that commit an
+/// ancestor of, or equal to, the tip)? Used by P0-3 restart reconciliation to
+/// detect a merge that actually landed before a crash. Errs if the repo/branch
+/// is unavailable or `commit_oid` is malformed.
+pub fn branch_contains_commit(
+    repo_path: &str,
+    branch: &str,
+    commit_oid: &str,
+) -> Result<bool, String> {
+    validate_branch_name(branch)?;
+    let repo = git2::Repository::open(repo_path).map_err(|err| format!("open repo: {err}"))?;
+    let branch_oid = resolve_branchish(&repo, branch)?;
+    let commit = git2::Oid::from_str(commit_oid)
+        .map_err(|err| format!("invalid commit oid `{commit_oid}`: {err}"))?;
+    if branch_oid == commit {
+        return Ok(true);
+    }
+    repo.graph_descendant_of(branch_oid, commit)
+        .map_err(|err| format!("ancestry check: {err}"))
+}
+
+/// The result of an OID-BOUND merge (P0-3 `perform_merge_bound`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BoundMergeResult {
+    /// The merge ran against exactly the reviewed commits.
+    Merged(MergeOutcome),
+    /// A branch tip no longer matches the reviewed OID, so the bound merge was
+    /// NOT performed — the caller must reconcile (this is not the reviewed merge).
+    StaleTips,
+}
+
 /// Merge `source_branch` into `target_branch` at the object/ref level. Fast-
 /// forwards when target has no unique commits, otherwise creates a merge
 /// commit; reports conflicts without committing anything. When the target
@@ -121,10 +161,59 @@ pub fn perform_merge(
     if source_branch == target_branch {
         return Err("source and target branch must be different".to_string());
     }
+    let repo = git2::Repository::open(repo_path).map_err(|err| format!("open repo: {err}"))?;
+    let source_oid = resolve_branchish(&repo, source_branch)?;
+    let target_oid = resolve_branchish(&repo, target_branch)?;
+    merge_resolved(&repo, source_branch, target_branch, source_oid, target_oid)
+}
+
+/// OID-BOUND merge (P0-3): like [`perform_merge`], but the caller passes the
+/// branch tip OIDs it reviewed. The repo is opened ONCE; the live tips are
+/// resolved and compared to the expected OIDs, and only if BOTH still match is
+/// the merge performed — against those exact commits, with no second name
+/// re-resolution. A tip that moved since review yields `StaleTips` instead of
+/// silently merging an unreviewed commit. This is what makes
+/// `aether.review.approve` merge only the reviewed change (hard boundary #4).
+pub fn perform_merge_bound(
+    repo_path: &str,
+    source_branch: &str,
+    target_branch: &str,
+    expected_source_oid: &str,
+    expected_target_oid: &str,
+) -> Result<BoundMergeResult, String> {
+    validate_branch_name(source_branch)?;
+    validate_branch_name(target_branch)?;
+    if source_branch == target_branch {
+        return Err("source and target branch must be different".to_string());
+    }
+    let expected_source = git2::Oid::from_str(expected_source_oid)
+        .map_err(|err| format!("invalid expected source oid: {err}"))?;
+    let expected_target = git2::Oid::from_str(expected_target_oid)
+        .map_err(|err| format!("invalid expected target oid: {err}"))?;
 
     let repo = git2::Repository::open(repo_path).map_err(|err| format!("open repo: {err}"))?;
     let source_oid = resolve_branchish(&repo, source_branch)?;
     let target_oid = resolve_branchish(&repo, target_branch)?;
+    // The reviewed commits must still be the live tips, or this is not the merge
+    // that was approved.
+    if source_oid != expected_source || target_oid != expected_target {
+        return Ok(BoundMergeResult::StaleTips);
+    }
+    merge_resolved(&repo, source_branch, target_branch, source_oid, target_oid)
+        .map(BoundMergeResult::Merged)
+}
+
+/// The shared merge body, operating on ALREADY-RESOLVED tip OIDs (no name
+/// re-resolution). Just before each ref-mutating write it re-checks that the
+/// target ref is still at `target_oid`, so a concurrent writer moving the target
+/// between resolution and write can never be clobbered (it errors instead).
+fn merge_resolved(
+    repo: &git2::Repository,
+    source_branch: &str,
+    target_branch: &str,
+    source_oid: git2::Oid,
+    target_oid: git2::Oid,
+) -> Result<MergeOutcome, String> {
     let (source_ahead, source_behind) = repo
         .graph_ahead_behind(source_oid, target_oid)
         .map_err(|err| format!("ahead/behind: {err}"))?;
@@ -136,13 +225,18 @@ pub fn perform_merge(
     let target_refname = format!("refs/heads/{target_branch}");
 
     if source_behind == 0 {
-        let mut reference = repo
-            .find_reference(&target_refname)
-            .map_err(|err| format!("find target ref: {err}"))?;
-        reference
-            .set_target(source_oid, "aether fast-forward merge")
-            .map_err(|err| format!("fast-forward: {err}"))?;
-        if head_is_branch(&repo, target_branch) {
+        // ATOMIC old-OID-bound update (no check-then-set window): move the target
+        // ref to the source tip ONLY if it still points at `target_oid`. A
+        // concurrent move makes this fail rather than clobber the other write.
+        repo.reference_matching(
+            &target_refname,
+            source_oid,
+            true,
+            target_oid,
+            "aether fast-forward merge",
+        )
+        .map_err(|err| format!("fast-forward (target moved?): {err}"))?;
+        if head_is_branch(repo, target_branch) {
             repo.checkout_head(Some(git2::build::CheckoutBuilder::new().force()))
                 .map_err(|err| format!("checkout after fast-forward: {err}"))?;
         }
@@ -180,16 +274,19 @@ pub fn perform_merge(
     }
 
     let tree_oid = index
-        .write_tree_to(&repo)
+        .write_tree_to(repo)
         .map_err(|err| format!("write merged tree: {err}"))?;
     let tree = repo
         .find_tree(tree_oid)
         .map_err(|err| format!("find merged tree: {err}"))?;
-    let sig = repo_signature(&repo)?;
+    let sig = repo_signature(repo)?;
     let message = format!("Merge branch '{source_branch}' into {target_branch}");
+    // Build the merge commit WITHOUT moving the ref (update_ref=None), then move
+    // the target ref atomically from `target_oid` to the new commit — so a
+    // concurrent target move is detected and never clobbered.
     let merge_commit = repo
         .commit(
-            Some(&target_refname),
+            None,
             &sig,
             &sig,
             &message,
@@ -197,7 +294,15 @@ pub fn perform_merge(
             &[&target_commit, &source_commit],
         )
         .map_err(|err| format!("create merge commit: {err}"))?;
-    if head_is_branch(&repo, target_branch) {
+    repo.reference_matching(
+        &target_refname,
+        merge_commit,
+        true,
+        target_oid,
+        "aether merge",
+    )
+    .map_err(|err| format!("advance target ref (moved?): {err}"))?;
+    if head_is_branch(repo, target_branch) {
         repo.checkout_head(Some(git2::build::CheckoutBuilder::new().force()))
             .map_err(|err| format!("checkout after merge: {err}"))?;
     }
@@ -377,6 +482,40 @@ mod tests {
         );
         // The merge brought feature's file into the checked-out main worktree.
         assert!(repo.workdir().unwrap().join("b.txt").exists());
+    }
+
+    /// P0-3 OID-bound merge: `perform_merge_bound` merges only when the live tips
+    /// still equal the reviewed OIDs; a moved tip yields `StaleTips` and never
+    /// merges an unreviewed commit.
+    #[test]
+    fn perform_merge_bound_merges_on_match_and_stales_on_drift() {
+        let (_dir, repo) = init_repo();
+        let base = commit(&repo, &[("a.txt", "A")], "A", &[]);
+        repo.branch("feature", &repo.find_commit(base).unwrap(), false)
+            .unwrap();
+        checkout_branch(&repo, "feature");
+        let feat = commit(&repo, &[("b.txt", "B")], "B", &[base]);
+        checkout_branch(&repo, "main");
+        let rp = path_of(&repo);
+
+        // Wrong expected target OID -> StaleTips (no merge), even though the live
+        // tips would otherwise fast-forward cleanly.
+        let stale =
+            perform_merge_bound(&rp, "feature", "main", &feat.to_string(), &feat.to_string())
+                .unwrap();
+        assert_eq!(stale, BoundMergeResult::StaleTips);
+        // main is untouched (still at base).
+        assert_eq!(resolve_branchish(&repo, "main").unwrap(), base);
+
+        // Correct expected OIDs (source=feat, target=base) -> the bound merge runs.
+        let merged =
+            perform_merge_bound(&rp, "feature", "main", &feat.to_string(), &base.to_string())
+                .unwrap();
+        assert!(
+            matches!(merged, BoundMergeResult::Merged(_)),
+            "got {merged:?}"
+        );
+        assert_eq!(resolve_branchish(&repo, "main").unwrap(), feat);
     }
 
     #[test]

@@ -81,7 +81,10 @@ fn expand_api_cwd(path: &str) -> Result<String, ApiError> {
     Ok(trimmed.to_string())
 }
 
-fn strip_local_verbatim_prefix(path: &str) -> String {
+/// Strip Windows extended-length (`\\?\C:\...`) prefixes that `canonicalize()`
+/// returns, while preserving UNC paths. Shared with the MCP merge-intent path so
+/// a canonicalized `repo_path` is stored in its plain form.
+pub(crate) fn strip_local_verbatim_prefix(path: &str) -> String {
     if let Some(rest) = path.strip_prefix(r"\\?\") {
         if rest.to_lowercase().starts_with(r"unc\") {
             return path.to_string();

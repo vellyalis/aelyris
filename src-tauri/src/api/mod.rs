@@ -189,6 +189,9 @@ pub struct ApiState {
     /// unattended-safe durability the cockpit face also gets. `None` in tests /
     /// non-persistent mode (a no-op sink).
     pub db: Option<Arc<crate::db::ManagedDb>>,
+    /// Durable merge-intent store (P0-3). The single source of truth for the
+    /// operator/MCP merge approval path; `None` = merge verbs fail closed.
+    pub merge_store: Option<Arc<crate::merge_intent::store::MergeIntentStore>>,
     pub mcp_pending: Arc<Mutex<Vec<McpPendingDecision>>>,
     /// Governance policy (P5): the single authorization + tenancy choke point
     /// every MCP verb flows through. Defaults to allow-all + single-tenant, so
@@ -236,6 +239,7 @@ impl ApiState {
             intent_bus: None,
             knowledge_graph: None,
             db: None,
+            merge_store: None,
             mcp_pending: Arc::new(Mutex::new(Vec::new())),
             governance: Arc::new(crate::governance::Governance::new()),
             mux_store: None,
@@ -314,6 +318,18 @@ impl ApiState {
     /// face. `None` leaves the sink a no-op (tests / non-persistent mode).
     pub fn with_db(mut self, db: Option<Arc<crate::db::ManagedDb>>) -> Self {
         self.db = db;
+        self
+    }
+
+    /// Attach the durable merge-intent store (P0-3). The MCP merge verbs FAIL
+    /// CLOSED when this is `None` — they must never fall back to an in-RAM queue
+    /// that a restart would lose or a caller could re-point. `None` only in
+    /// tests / non-persistent mode (where the merge verbs are simply unavailable).
+    pub fn with_merge_store(
+        mut self,
+        store: Option<Arc<crate::merge_intent::store::MergeIntentStore>>,
+    ) -> Self {
+        self.merge_store = store;
         self
     }
 
