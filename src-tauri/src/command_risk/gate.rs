@@ -25,8 +25,28 @@ use crate::db::ManagedDb;
 /// buffered unboundedly — a caller cannot grow gate memory or evade classification.
 const MAX_BUFFER_BYTES: usize = 256 * 1024;
 
+/// How the gate processes a write path's bytes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GateMode {
+    /// A single API call carries a complete (often trimmed) command — classify the WHOLE
+    /// payload at once. Used by the MCP pane/safe input verbs.
+    Atomic,
+    /// A programmatic byte stream — HOLD unterminated bytes and emit only complete, approved
+    /// lines (nothing reaches the PTY until a submission is allowed). Used by REST/WS input
+    /// and the IPC send-keys verbs. Interactive echo is NOT expected here.
+    HoldUntilApproved,
+    /// An INTERACTIVE TUI stream that needs char-by-char echo — pass non-terminator bytes
+    /// through (so the shell echoes), mirror the assembled line, and classify on each
+    /// `\r`/`\n`. A blocked submission does NOT forward Enter; a neutralization byte (Ctrl-C)
+    /// is emitted instead to clear the pending line, so a destructive command never executes
+    /// while normal typing keeps echoing.
+    EchoPreserving,
+}
+
 /// What a write needs to be gated: who/where, the optional approval id carried by the
-/// write, and the path-scope options for unsafe-path classification.
+/// write, the path-scope options, and the gate mode + whether a `review` command requires
+/// an approval id here (the external API face) or is allowed (the local IPC face — only
+/// `deny`/catastrophic is hard-blocked there; the FE dialog is the review UX).
 pub struct GateContext<'a> {
     pub source_kind: &'a str,
     pub session_id: &'a str,
@@ -34,12 +54,8 @@ pub struct GateContext<'a> {
     pub target_ids: &'a [String],
     pub approval_id: Option<&'a str>,
     pub options: &'a CommandRiskOptions,
-    /// `true` for an ATOMIC submission path (a single API call carries a complete, often
-    /// trimmed command — e.g. MCP pane input): the WHOLE payload is classified at once.
-    /// `false` for a streaming byte path (e.g. the WS terminal stream): bytes accumulate
-    /// per `{source, target}` and a submission is classified on each `\r`/`\n` so split
-    /// frames are reassembled and interactive keystrokes pass until Enter.
-    pub atomic: bool,
+    pub mode: GateMode,
+    pub review_requires_approval: bool,
 }
 
 /// Why a write was refused — carries the risk report + the command hash so the operator UI
@@ -116,17 +132,31 @@ impl CommandRiskGate {
                 .collect::<Vec<_>>(),
         );
 
-        // ATOMIC: the API call is the submission boundary — classify the WHOLE payload as
-        // one command (no buffering; a split across calls is caught because each fragment is
-        // itself classified, and the policy treats anything non-trivial as review/deny). On
-        // approval the whole payload is the writable output.
-        if ctx.atomic {
-            let command = String::from_utf8_lossy(data);
-            self.enforce_command(&command, ctx, &scope)?;
-            return Ok(data.to_vec());
+        match ctx.mode {
+            // ATOMIC: the API call is the submission boundary — classify the WHOLE payload as
+            // one command (no buffering; a split across calls is caught because each fragment
+            // is itself classified, and the policy treats anything non-trivial as
+            // review/deny). On approval the whole payload is the writable output.
+            GateMode::Atomic => {
+                let command = String::from_utf8_lossy(data);
+                self.enforce_command(&command, ctx, &scope)?;
+                Ok(data.to_vec())
+            }
+            GateMode::HoldUntilApproved => self.check_hold(ctx, data, scope),
+            GateMode::EchoPreserving => self.check_echo_preserving(ctx, data, &scope),
         }
+    }
 
-        // STREAMING: accumulate per {source, target}; emit ONLY complete, approved lines.
+    /// HOLD mode: accumulate per `{source, target}`; emit ONLY complete, approved lines.
+    /// Unterminated bytes are held inside the gate (never written) so a destructive line can
+    /// never be pre-typed and then run by a later bare Enter. A `deny`/unapproved line aborts
+    /// the whole batch — nothing is written.
+    fn check_hold(
+        &self,
+        ctx: &GateContext,
+        data: &[u8],
+        scope: String,
+    ) -> Result<Vec<u8>, Box<GateDenial>> {
         let key = format!("{}\u{0}{}", ctx.source_kind, scope);
         let lines = {
             let mut map = self.buffers.lock().unwrap_or_else(|p| p.into_inner());
@@ -135,24 +165,13 @@ impl CommandRiskGate {
                 .or_insert_with(|| BufferState { bytes: Vec::new() });
             if buf.bytes.len().saturating_add(data.len()) > MAX_BUFFER_BYTES {
                 buf.bytes.clear();
-                return Err(Box::new(GateDenial {
-                    reason: "command input exceeds the classifiable size limit".to_string(),
-                    severity: None,
-                    classes: Vec::new(),
-                    preview: String::new(),
-                    command_hash: None,
-                    source_kind: ctx.source_kind.to_string(),
-                    target_scope_hash: scope,
-                    catastrophic: true,
-                }));
+                return Err(self.oversized_denial(ctx, scope));
             }
             buf.bytes.extend_from_slice(data);
             let (lines, remainder) = split_complete_lines(&buf.bytes);
             buf.bytes = remainder; // hold the incomplete trailing bytes (NOT written)
             lines
         };
-        // Each complete line is enforced; an approved/allowed line contributes its exact
-        // bytes (content + terminator). A deny aborts the whole batch — nothing is written.
         let mut writable = Vec::new();
         for (content, term) in &lines {
             let command = String::from_utf8_lossy(content);
@@ -161,6 +180,89 @@ impl CommandRiskGate {
             writable.push(*term);
         }
         Ok(writable)
+    }
+
+    /// ECHO-PRESERVING mode (interactive TUIs): non-terminator bytes pass through immediately
+    /// (so the shell echoes each keystroke) while a per-`{source, target}` mirror reassembles
+    /// the pending line. On each `\r`/`\n` the mirror is classified: an `allow`/approved line
+    /// forwards the terminator (Enter executes); a blocked line emits a neutralization byte
+    /// (Ctrl-C) INSTEAD of Enter, clearing the shell line so the command never runs. On the
+    /// local IPC face `review` is permitted (only catastrophic `deny` is neutralized) — the FE
+    /// dialog is the review UX — unless `review_requires_approval` is set for this context.
+    fn check_echo_preserving(
+        &self,
+        ctx: &GateContext,
+        data: &[u8],
+        scope: &str,
+    ) -> Result<Vec<u8>, Box<GateDenial>> {
+        // Phase 1 (under the buffer lock): split the input into echo runs and the assembled
+        // lines to classify, updating the mirror. No classification/audit happens under the
+        // lock. Each element is (echoed_bytes, Option<(assembled_line, terminator_bytes)>). A
+        // `\r\n` pair within one payload is ONE terminator so a denied CR is not followed by a
+        // spurious blank LF (which would otherwise re-forward an Enter and pollute history).
+        type Segment = (Vec<u8>, Option<(Vec<u8>, Vec<u8>)>);
+        let key = format!("{}\u{0}{}", ctx.source_kind, scope);
+        let segments: Vec<Segment> = {
+            let mut map = self.buffers.lock().unwrap_or_else(|p| p.into_inner());
+            let buf = map
+                .entry(key)
+                .or_insert_with(|| BufferState { bytes: Vec::new() });
+            let mut segments: Vec<Segment> = Vec::new();
+            let mut echo: Vec<u8> = Vec::new();
+            let mut i = 0;
+            while i < data.len() {
+                let b = data[i];
+                if b == b'\r' || b == b'\n' {
+                    let mut term = vec![b];
+                    if b == b'\r' && data.get(i + 1) == Some(&b'\n') {
+                        term.push(b'\n'); // fold a paired CRLF into one terminator
+                        i += 1;
+                    }
+                    let line = std::mem::take(&mut buf.bytes);
+                    segments.push((std::mem::take(&mut echo), Some((line, term))));
+                } else {
+                    // Bound the mirror: an over-long unterminated line stops mirroring further
+                    // bytes but still echoes them, so when Enter arrives it classifies the
+                    // truncated head — never silently allowing an unclassifiable line.
+                    if buf.bytes.len() < MAX_BUFFER_BYTES {
+                        buf.bytes.push(b);
+                    }
+                    echo.push(b);
+                }
+                i += 1;
+            }
+            if !echo.is_empty() {
+                segments.push((echo, None)); // trailing keystrokes, no submission yet
+            }
+            segments
+        };
+        // Phase 2 (no lock held): echo bytes pass; each completed line is classified and the
+        // terminator is forwarded only if it is allowed, else replaced with a single Ctrl-C.
+        let mut out = Vec::new();
+        for (echo, terminated) in segments {
+            out.extend_from_slice(&echo);
+            if let Some((line, term)) = terminated {
+                let command = String::from_utf8_lossy(&line);
+                match self.enforce_command(&command, ctx, scope) {
+                    Ok(()) => out.extend_from_slice(&term), // allowed/approved/blank: executes
+                    Err(_denial) => out.push(0x03),         // blocked: Ctrl-C clears the line
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    fn oversized_denial(&self, ctx: &GateContext, scope: String) -> Box<GateDenial> {
+        Box::new(GateDenial {
+            reason: "command input exceeds the classifiable size limit".to_string(),
+            severity: None,
+            classes: Vec::new(),
+            preview: String::new(),
+            command_hash: None,
+            source_kind: ctx.source_kind.to_string(),
+            target_scope_hash: scope,
+            catastrophic: true,
+        })
     }
 
     /// Classify ONE assembled command and enforce the policy: `allow` passes; `deny` is
@@ -190,6 +292,14 @@ impl CommandRiskGate {
                 ))
             }
             CommandRiskSeverity::Review => {
+                // The local IPC face does not require an approval id for `review` — only
+                // catastrophic `deny` is hard-blocked there (the user chose the "Balanced"
+                // policy; the FE shell-safety dialog is the interactive review UX). The
+                // external API face sets `review_requires_approval` so a remote/agent caller
+                // must mint + carry a single-use approval id.
+                if !ctx.review_requires_approval {
+                    return Ok(());
+                }
                 let binding = ApprovalBinding {
                     policy_version: POLICY_VERSION,
                     command_hash: command_hash(command),
@@ -314,7 +424,10 @@ mod tests {
             target_ids: targets,
             approval_id: approval,
             options: opts,
-            atomic: false, // the streaming/accumulator tests; atomic mode has its own test
+            // The streaming/accumulator tests model the external API face: HOLD mode with
+            // `review` gated on an approval id. Atomic + echo-preserving have their own tests.
+            mode: GateMode::HoldUntilApproved,
+            review_requires_approval: true,
         }
     }
 
@@ -462,7 +575,8 @@ mod tests {
             target_ids: targets,
             approval_id: None,
             options: opts,
-            atomic: true,
+            mode: GateMode::Atomic,
+            review_requires_approval: true,
         }
     }
 
@@ -480,6 +594,141 @@ mod tests {
                 .catastrophic
         );
         assert!(g.check(&atomic_ctx(&t, &o), b"git status").is_ok());
+    }
+
+    /// The local IPC interactive face: echo-preserving mode, `review` allowed (Balanced).
+    fn echo_ctx<'a>(
+        source: &'a str,
+        targets: &'a [String],
+        opts: &'a CommandRiskOptions,
+    ) -> GateContext<'a> {
+        GateContext {
+            source_kind: source,
+            session_id: "term-1",
+            target_ids: targets,
+            approval_id: None,
+            options: opts,
+            mode: GateMode::EchoPreserving,
+            review_requires_approval: false,
+        }
+    }
+
+    #[test]
+    fn echo_preserving_passes_keystrokes_and_forwards_enter_for_an_allowed_line() {
+        let g = gate();
+        let t = vec!["term-1".to_string()];
+        let o = CommandRiskOptions::default();
+        // Char-by-char typing echoes each byte immediately (interactive TUIs need this).
+        for (i, ch) in b"ls".iter().enumerate() {
+            let out = g.check(&echo_ctx("ipc-write", &t, &o), &[*ch]).unwrap();
+            assert_eq!(out, vec![*ch], "keystroke {i} must echo through");
+        }
+        // Enter completes an allowed line -> the terminator is forwarded so it executes.
+        assert_eq!(
+            g.check(&echo_ctx("ipc-write", &t, &o), b"\r").unwrap(),
+            b"\r"
+        );
+    }
+
+    #[test]
+    fn echo_preserving_neutralizes_a_destructive_line_instead_of_running_it() {
+        let g = gate();
+        let t = vec!["term-1".to_string()];
+        let o = CommandRiskOptions::default();
+        // The whole "rm -rf /tmp/x\r" arrives in one payload (e.g. a fast typist / IME commit
+        // of one line): the keystrokes echo, but the Enter is replaced with Ctrl-C so the
+        // shell line is cleared and the destructive command NEVER executes.
+        let out = g
+            .check(&echo_ctx("ipc-write", &t, &o), b"rm -rf /tmp/x\r")
+            .unwrap();
+        assert_eq!(out, b"rm -rf /tmp/x\x03");
+        assert!(!out.contains(&b'\r'), "no Enter reaches the PTY for a deny");
+    }
+
+    #[test]
+    fn echo_preserving_allows_a_review_line_on_the_local_face() {
+        // Balanced policy: a `review` command (git commit) typed interactively is NOT blocked
+        // on the local IPC face — the Enter is forwarded. Only catastrophic `deny` neutralizes.
+        let g = gate();
+        let t = vec!["term-1".to_string()];
+        let o = CommandRiskOptions::default();
+        let out = g
+            .check(&echo_ctx("ipc-write", &t, &o), b"git commit -m x\r")
+            .unwrap();
+        assert_eq!(out, b"git commit -m x\r");
+    }
+
+    #[test]
+    fn echo_preserving_neutralizes_a_split_typed_destructive_line() {
+        // The destructive command is typed across many keystroke writes, then Enter: the
+        // mirror reassembles it and the final Enter is replaced with Ctrl-C.
+        let g = gate();
+        let t = vec!["term-1".to_string()];
+        let o = CommandRiskOptions::default();
+        for ch in b"rm -rf /tmp/x" {
+            g.check(&echo_ctx("ipc-write", &t, &o), &[*ch]).unwrap();
+        }
+        let out = g.check(&echo_ctx("ipc-write", &t, &o), b"\r").unwrap();
+        assert_eq!(
+            out, b"\x03",
+            "the lone Enter becomes Ctrl-C; nothing executes"
+        );
+    }
+
+    #[test]
+    fn echo_preserving_folds_crlf_into_one_terminator_for_a_denied_line() {
+        // A `\r\n`-terminated destructive submission must yield a SINGLE Ctrl-C, not
+        // `\x03` + a spurious `\n` (which would re-forward an Enter and pollute history).
+        let g = gate();
+        let t = vec!["term-1".to_string()];
+        let o = CommandRiskOptions::default();
+        let out = g
+            .check(&echo_ctx("ipc-write", &t, &o), b"rm -rf /tmp/x\r\n")
+            .unwrap();
+        assert_eq!(out, b"rm -rf /tmp/x\x03");
+        assert!(!out.contains(&b'\n'), "no spurious LF after the Ctrl-C");
+    }
+
+    #[test]
+    fn echo_preserving_forwards_crlf_intact_for_an_allowed_line() {
+        let g = gate();
+        let t = vec!["term-1".to_string()];
+        let o = CommandRiskOptions::default();
+        let out = g.check(&echo_ctx("ipc-write", &t, &o), b"ls\r\n").unwrap();
+        assert_eq!(out, b"ls\r\n", "an allowed CRLF line keeps both bytes");
+    }
+
+    #[test]
+    fn hold_mode_balanced_face_allows_review_without_an_approval_id() {
+        // The local programmatic face (send-keys) uses HOLD mode but Balanced policy: a
+        // `review` command is emitted without an approval id; only `deny` is refused.
+        let g = gate();
+        let t = vec!["term-1".to_string()];
+        let o = CommandRiskOptions::default();
+        let balanced = GateContext {
+            source_kind: "ipc-send-keys",
+            session_id: "s1",
+            target_ids: &t,
+            approval_id: None,
+            options: &o,
+            mode: GateMode::HoldUntilApproved,
+            review_requires_approval: false,
+        };
+        assert_eq!(
+            g.check(&balanced, b"git commit -m x\r").unwrap(),
+            b"git commit -m x\r"
+        );
+        // Catastrophic is still hard-blocked even on the Balanced face.
+        let deny = GateContext {
+            source_kind: "ipc-send-keys",
+            session_id: "s1",
+            target_ids: &t,
+            approval_id: None,
+            options: &o,
+            mode: GateMode::HoldUntilApproved,
+            review_requires_approval: false,
+        };
+        assert!(g.check(&deny, b"rm -rf /tmp/x\r").unwrap_err().catastrophic);
     }
 
     #[test]

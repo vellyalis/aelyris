@@ -664,6 +664,20 @@ pub fn run() {
             // 127.0.0.1:9333. Failures (e.g. port already taken by another
             // app instance or the long-lived sidecar) log a warning and leave
             // the rest of the app running normally.
+            // P0-4: the command-risk gate is the ONE backend seam every command-carrying
+            // write crosses before a PTY (boundary #1). It must exist for the LOCAL Tauri IPC
+            // paths whether or not the in-process API server runs (the sidecar path also
+            // writes to PTYs), so it is created + managed UNCONDITIONALLY here and the SAME
+            // instance is shared with the API face below. Its own db connection durably audits
+            // decisions (WAL-safe alongside the other writers); no db fails closed for
+            // review-approved writes.
+            let command_risk_gate = std::sync::Arc::new(command_risk::gate::CommandRiskGate::new(
+                Database::open(&db_path)
+                    .ok()
+                    .map(|d| std::sync::Arc::new(db::ManagedDb::new(d))),
+            ));
+            app.manage(command_risk_gate.clone());
+
             let sidecar_enabled = app
                 .try_state::<pty_sidecar::PtySidecarState>()
                 .and_then(|state| state.client())
@@ -748,11 +762,10 @@ pub fn run() {
                     .with_context_store(context_store)
                     .with_intent_bus(intent_bus)
                     .with_knowledge_graph(knowledge_graph)
-                    .with_command_risk_gate(Some(std::sync::Arc::new(
-                        // P0-4: the gate shares the MCP db so its decisions are durably
-                        // audited; with no db it fails closed for review-approved writes.
-                        command_risk::gate::CommandRiskGate::new(mcp_db.clone()),
-                    )))
+                    // P0-4: the API face shares the SAME gate instance managed above, so the
+                    // approval registry + line accumulator + audit sink are unified across the
+                    // REST/WS/MCP and local IPC surfaces.
+                    .with_command_risk_gate(Some(command_risk_gate.clone()))
                     .with_db(mcp_db)
                     .with_merge_store(merge_store)
                     .with_env_mux_store();

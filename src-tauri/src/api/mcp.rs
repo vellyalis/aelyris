@@ -1050,7 +1050,8 @@ pub(super) async fn tools_call(
                 text.as_bytes(),
                 "mcp-safe-input",
                 approval_id.as_deref(),
-                true, // arg_string trims the payload -> classify the whole bare command
+                // arg_string trims the payload -> classify the whole bare command
+                crate::command_risk::gate::GateMode::Atomic,
             )?
         }
         "aether.worktree.validate" => {
@@ -1131,7 +1132,8 @@ pub(super) async fn tools_call(
                 &targets,
                 approval_id.as_deref(),
                 text.as_bytes(),
-                true, // arg_string trims the payload -> classify the whole bare command
+                // arg_string trims the payload -> classify the whole bare command
+                crate::command_risk::gate::GateMode::Atomic,
             )?;
             state
                 .pty

@@ -65,7 +65,47 @@ replayable (command-hash match, no one-time token).
    replay failure, redacted `command_risk_decision` evidence, and NO unguarded command-carrying
    backend write remains.
 
+## Inc4 — operator decision + gate modes (implemented 2026-06-24)
+The IPC face needs char-by-char echo for live TUIs, which a pure hold-gate breaks. Codex ruled
+REVISE-SCOPE: hard-gate the programmatic/paste/command-center paths AND add an echo-preserving
+submit gate for interactive typing. The human operator then chose the **"Balanced"** local policy:
+- **External API face (REST/WS/MCP, incl. the sidecar daemon):** unchanged — `deny` blocked,
+  `review` requires a minted single-use approval id (`review_requires_approval = true`).
+- **Local Tauri IPC face:** `deny` (catastrophic — the DANGEROUS_PATTERNS set: `rm -rf`,
+  `git reset --hard`, `git clean -fd`, `dd if=`, `mkfs`, `curl|sh`, `>/dev/sd*`, …) is ALWAYS
+  hard-blocked; `review` (e.g. `git commit`, `npm install`, `mkdir`) is ALLOWED
+  (`review_requires_approval = false`) — the FE shell-safety dialog is the interactive review UX.
+  Rationale: neutralizing every review command in interactive typing makes the terminal unusable,
+  and the human typing on their own keyboard is not the injection threat; programmatic injection
+  (REST/MCP/send-keys) is still fully gated.
+
+Three `GateMode`s: `Atomic` (whole-payload classify — MCP, native paste, command-center submit),
+`HoldUntilApproved` (accumulate, emit only complete approved lines — REST/WS, send-keys family),
+`EchoPreserving` (interactive typing — echo keystrokes, classify on `\r`/`\n`, replace a denied
+terminator with a single Ctrl-C so the catastrophic line never executes). A per-terminal
+write-order lock (`TERMINAL_WRITE_ORDER`) holds the gate-check + PTY write atomic per terminal so
+echoed chars and the neutralizing Ctrl-C cannot reorder (closes the Codex split-write race).
+
+### Documented residual (acceptable under Balanced, NOT silently absorbed)
+Echo-preserving necessarily writes echoed characters to the PTY's pending shell line before the
+user submits. In the window between the human's last keystroke and their own Enter, a *different*
+source's bare Enter to the same terminal (e.g. a concurrent agent `send_keys "\r"`) could submit
+the pending line. This is NOT a remote/programmatic injection bypass: a catastrophic command sent
+*as a command* through ANY gated path (REST/MCP/send-keys/paste/command-center) is hard-blocked;
+only char-by-char interactive typing — where the human themselves typed the catastrophic chars —
+has this window. Full submits (paste/command-center) use `Atomic` and are fully gated. Accepted as
+an inherent property of a shared interactive terminal under the Balanced local policy.
+
+### Inc4 Codex review status
+First Inc4 review (whole increment) → FIX-FIRST: 2 CRITICAL (sidecar API ungated; echo-preserving
+write-reordering race) + 1 LOW (CRLF double-terminator). All three fixed forward (sidecar gate
+wired in `pty-server/src/main.rs`; per-terminal write-order lock; CRLF folding). The re-review of
+the fix-forward was self-reviewed (grep call-graph + trace) because Codex hit its usage limit
+(resets 2026-06-25); a Codex pass over the fix-forward is folded into the Inc6 whole-WU review.
+
 ## Follow-ups (explicitly deferred, NOT silently absorbed)
 - Owned-worktree carve-out for catastrophic commands (needs a command-time canonical-path authority).
 - Single-source policy (codegen / FE-calls-Rust) to retire the FE/Rust duplication; for P0-4 the
   shared golden corpus is the anti-drift guard.
+- Re-run the Codex review over the Inc4 fix-forward (sidecar gate + write-order lock + CRLF) once
+  the usage limit resets, at the latest as part of the Inc6 whole-WU review.

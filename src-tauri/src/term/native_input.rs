@@ -241,32 +241,21 @@ fn count_native_paste_line_endings(text: &str) -> usize {
     count
 }
 
+/// Whether a clipboard paste contains a CATASTROPHIC (`deny`) command. Single source of
+/// truth: defer to the shared `command_risk` classifier — the SAME policy the P0-4
+/// `CommandRiskGate` enforces authoritatively at the commit path — instead of a divergent
+/// substring list. This early native-surface check blocks only catastrophic pastes; a
+/// `review`-level paste falls through to the multi-line confirmation and the authoritative
+/// gate (local "Balanced" policy), so the early guard and the gate never diverge.
 fn native_paste_contains_destructive_command(text: &str) -> bool {
-    let normalized = text.to_ascii_lowercase();
-    [
-        "rm -rf",
-        "remove-item",
-        "del /s",
-        "rmdir /s",
-        "git reset --hard",
-        "git clean -fd",
-        "git clean -xdf",
-        "format ",
-        "diskpart",
-        "stop-process",
-        "taskkill",
-        "kill -9",
-        "curl ",
-        " | sh",
-        " | bash",
-        "invoke-expression",
-        "iex ",
-        "set-executionpolicy",
-        "reg delete",
-        "drop table",
-    ]
-    .iter()
-    .any(|needle| normalized.contains(needle))
+    matches!(
+        crate::command_risk::classify_command(
+            text,
+            &crate::command_risk::CommandRiskOptions::default()
+        )
+        .severity,
+        crate::command_risk::CommandRiskSeverity::Deny
+    )
 }
 
 fn classify_native_terminal_paste_input(text: &str) -> NativePasteGuard {

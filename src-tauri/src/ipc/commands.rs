@@ -1935,8 +1935,27 @@ pub(crate) async fn adopt_sidecar_terminals(
 #[tauri::command]
 pub async fn write_terminal(app: AppHandle, id: String, data: String) -> Result<(), String> {
     validate_keys_payload(&data)?;
-    save_submitted_command_history(&app, &id, &data);
-    let bytes = data.into_bytes();
+    let raw = data.into_bytes();
+    // P0-4: `write_terminal` is an INTERACTIVE agent-TUI path (a live claude/codex TUI that
+    // echoes char-by-char), so gate in echo-preserving mode: keystrokes pass through, but a
+    // catastrophic submission's Enter is replaced with Ctrl-C so the command never runs. The
+    // GATED bytes flow downstream, so a neutralized line is neither saved as submitted history
+    // nor snapshotted.
+    // Hold the per-terminal write-order lock across the gate-check AND the PTY write so the
+    // echoed keystrokes and the (possibly neutralizing) terminator cannot reorder on the PTY.
+    let write_order = terminal_write_order_lock(&id);
+    let _write_guard = write_order.lock().await;
+    let bytes = gate_ipc_input(
+        &app,
+        &id,
+        &raw,
+        "ipc-write-terminal",
+        crate::command_risk::gate::GateMode::EchoPreserving,
+    )?;
+    if bytes.is_empty() {
+        return Ok(());
+    }
+    save_submitted_command_history(&app, &id, &String::from_utf8_lossy(&bytes));
     let metadata = serde_json::json!({
         "bytes": bytes.len(),
         "containsEnter": bytes.contains(&b'\r'),
@@ -2159,8 +2178,55 @@ async fn commit_native_terminal_input(
         );
         return Err(err);
     }
-    save_submitted_command_history(app, &terminal_id, &data);
-    let bytes = data.into_bytes();
+    // P0-4: gate native input by its kind. A full submit (the app's own command-center) and a
+    // clipboard paste are complete payloads -> classify atomically (deny refused; review
+    // allowed under the local Balanced policy). Raw keystroke sources need char echo ->
+    // echo-preserving mode (a catastrophic submission's Enter becomes Ctrl-C). The
+    // keystroke source_kind is stable per kind so one terminal's pending line shares one mirror.
+    let (gate_source, gate_mode) = match source.as_str() {
+        "command-center" => (
+            "ipc-native-command-center",
+            crate::command_risk::gate::GateMode::Atomic,
+        ),
+        "native-clipboard-paste" => (
+            "ipc-native-paste",
+            crate::command_risk::gate::GateMode::Atomic,
+        ),
+        _ => (
+            "ipc-native-keystroke",
+            crate::command_risk::gate::GateMode::EchoPreserving,
+        ),
+    };
+    let raw = data.into_bytes();
+    // Serialize the gate-check + PTY write per terminal so echoed keystrokes and the
+    // (possibly neutralizing) terminator cannot reorder on the PTY (see TERMINAL_WRITE_ORDER).
+    let write_order = terminal_write_order_lock(&terminal_id);
+    let _write_guard = write_order.lock().await;
+    let bytes = match gate_ipc_input(app, &terminal_id, &raw, gate_source, gate_mode) {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            host.record_error(&terminal_id, sanitize_audit_error(&err));
+            record_audit_event(
+                app,
+                "terminal",
+                "native_input_rejected",
+                "warn",
+                Some("terminal"),
+                Some(&terminal_id),
+                "Native terminal input rejected",
+                serde_json::json!({
+                    "source": source,
+                    "error": sanitize_audit_error(&err),
+                    "redacted": true,
+                }),
+            );
+            return Err(err);
+        }
+    };
+    if bytes.is_empty() {
+        return Ok(host.record_commit(terminal_id, source, 0));
+    }
+    save_submitted_command_history(app, &terminal_id, &String::from_utf8_lossy(&bytes));
     let metadata = serde_json::json!({
         "bytes": bytes.len(),
         "containsEnter": bytes.contains(&b'\r'),
@@ -2234,16 +2300,7 @@ pub(crate) async fn terminal_write_async(
         return sidecar.write(terminal_id, data).await;
     }
     let pty_manager = app.state::<PtyManager>().inner().clone();
-    let targets = app
-        .try_state::<Arc<Mutex<crate::mux::manager::MuxManager>>>()
-        .and_then(|mux| {
-            mux.inner()
-                .lock()
-                .ok()
-                .and_then(|mux| mux.synchronized_input_targets_for_pane(terminal_id))
-        })
-        .filter(|targets| !targets.is_empty())
-        .unwrap_or_else(|| vec![terminal_id.to_string()]);
+    let targets = synchronized_input_targets(app, terminal_id);
     let data = data.to_vec();
     tauri::async_runtime::spawn_blocking(move || {
         for target in targets {
@@ -2253,6 +2310,89 @@ pub(crate) async fn terminal_write_async(
     })
     .await
     .map_err(|err| format!("Terminal write task failed: {}", err))?
+}
+
+/// The effective fan-out target set for a write to `terminal_id`: the synchronized-input
+/// pane group it belongs to (sorted/deduped), or just itself. Shared by `terminal_write_async`
+/// (which writes them) and the P0-4 gate (which binds the approval scope to the SAME set), so
+/// the gated scope and the actual writes never diverge.
+pub(crate) fn synchronized_input_targets(app: &AppHandle, terminal_id: &str) -> Vec<String> {
+    app.try_state::<Arc<Mutex<crate::mux::manager::MuxManager>>>()
+        .and_then(|mux| {
+            mux.inner()
+                .lock()
+                .ok()
+                .and_then(|mux| mux.synchronized_input_targets_for_pane(terminal_id))
+        })
+        .filter(|targets| !targets.is_empty())
+        .unwrap_or_else(|| vec![terminal_id.to_string()])
+}
+
+/// P0-4: gate a command-carrying LOCAL IPC write through the shared `CommandRiskGate` BEFORE
+/// it reaches a PTY (hard boundary #1, covering both the in-process and sidecar write paths).
+/// Returns the EXACT bytes that may be forwarded — the gate HOLDS unterminated programmatic
+/// input and emits only complete approved lines, or (echo-preserving) passes keystrokes
+/// through while replacing a catastrophic submission's Enter with Ctrl-C so it never runs.
+///
+/// The local IPC face uses the "Balanced" policy: a `review` command is allowed (the FE
+/// shell-safety dialog is the review UX); only a catastrophic `deny` is hard-blocked. So no
+/// approval id is carried here. Hold/atomic modes return `Err` on a denied submission;
+/// echo-preserving never errors (it neutralizes in-band). When no gate is managed (some test
+/// harnesses) the input passes through unchanged.
+pub(crate) fn gate_ipc_input(
+    app: &AppHandle,
+    terminal_id: &str,
+    data: &[u8],
+    source_kind: &str,
+    mode: crate::command_risk::gate::GateMode,
+) -> Result<Vec<u8>, String> {
+    let Some(gate) = app.try_state::<Arc<crate::command_risk::gate::CommandRiskGate>>() else {
+        return Ok(data.to_vec());
+    };
+    let targets = synchronized_input_targets(app, terminal_id);
+    let options = crate::command_risk::CommandRiskOptions::default();
+    let ctx = crate::command_risk::gate::GateContext {
+        source_kind,
+        session_id: terminal_id,
+        target_ids: &targets,
+        approval_id: None,
+        options: &options,
+        mode,
+        review_requires_approval: false, // local IPC face = Balanced (deny-only hard block)
+    };
+    gate.check(&ctx, data)
+        .map_err(|denial| format!("command-risk: {}", denial.reason))
+}
+
+/// Per-terminal write-order locks (P0-4). In echo-preserving mode the gate WRITES echoed
+/// keystrokes to the PTY *before* they are classified, so the gate's per-terminal mirror is
+/// only consistent with the PTY's pending shell line if the gate-check and the resulting write
+/// happen atomically and in order per terminal. Without this, two racing IPC writes (the
+/// keystrokes, then the Enter) could be reordered on the PTY so the neutralizing Ctrl-C lands
+/// before the echoed characters, stranding a destructive line that a later bare Enter would
+/// execute. Holding this lock across `gate_ipc_input` + `terminal_write_async` serializes
+/// (classify + write) per terminal so writes never reorder and the mirror never desyncs.
+static TERMINAL_WRITE_ORDER: std::sync::LazyLock<
+    Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+> = std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Get (or create) the write-order lock for a terminal. Hold its guard across the gate-check
+/// and the PTY write so command-carrying writes to one terminal cannot interleave or reorder.
+pub(crate) fn terminal_write_order_lock(terminal_id: &str) -> Arc<tokio::sync::Mutex<()>> {
+    let mut map = TERMINAL_WRITE_ORDER
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    map.entry(terminal_id.to_string())
+        .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+        .clone()
+}
+
+/// Drop a terminal's write-order lock when the terminal closes, so the registry does not grow
+/// unboundedly across a long session with many ephemeral panes.
+pub(crate) fn forget_terminal_write_order(terminal_id: &str) {
+    if let Ok(mut map) = TERMINAL_WRITE_ORDER.lock() {
+        map.remove(terminal_id);
+    }
 }
 
 pub(crate) async fn terminal_ids_async(app: &AppHandle) -> Vec<String> {
@@ -2441,6 +2581,7 @@ pub async fn close_terminal(app: AppHandle, id: String) -> Result<(), String> {
     // Clean up associated registries
     app.state::<OutputBufferRegistry>().remove(&id);
     app.state::<crate::pty::PaneRegistry>().remove(&id);
+    forget_terminal_write_order(&id); // drop the P0-4 per-terminal write-order lock
     sync_mux_terminal_remove(&app, &id);
     app.state::<Arc<NativeTerminalRegistry>>().remove(&id);
     if let Some(store) = app.try_state::<Arc<SnapshotStore>>() {

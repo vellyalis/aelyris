@@ -461,7 +461,7 @@ pub(super) fn send_workspace_input(
     bytes: &[u8],
     source_kind: &str,
     approval_id: Option<&str>,
-    atomic: bool,
+    mode: crate::command_risk::gate::GateMode,
 ) -> ApiResult<serde_json::Value> {
     if bytes.len() > WS_MAX_INPUT_FRAME_BYTES {
         return Err(ApiError::BadRequest(format!(
@@ -493,7 +493,7 @@ pub(super) fn send_workspace_input(
         &targets,
         approval_id,
         bytes,
-        atomic,
+        mode,
     )?;
     if writable.is_empty() {
         return Ok(serde_json::json!({
@@ -722,7 +722,7 @@ async fn broadcast_mux_workspace_input(
         body.text.as_bytes(),
         "rest-mux-input",
         body.approval_id.as_deref(),
-        false, // REST mux input is an untrimmed byte stream
+        crate::command_risk::gate::GateMode::HoldUntilApproved, // untrimmed byte stream
     )?;
     Ok(Json(MuxBroadcastResponse {
         workspace_id,

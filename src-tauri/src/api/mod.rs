@@ -1206,7 +1206,7 @@ pub(crate) fn gate_command_input(
     target_ids: &[String],
     approval_id: Option<&str>,
     data: &[u8],
-    atomic: bool,
+    mode: crate::command_risk::gate::GateMode,
 ) -> ApiResult<Vec<u8>> {
     let Some(gate) = state.command_risk_gate.as_ref() else {
         return Ok(data.to_vec());
@@ -1218,7 +1218,10 @@ pub(crate) fn gate_command_input(
         target_ids,
         approval_id,
         options: &options,
-        atomic,
+        mode,
+        // The REST/WS/MCP surface is the EXTERNAL API face: a `review` command must carry a
+        // minted single-use approval id. (The local Tauri IPC face uses the Balanced policy.)
+        review_requires_approval: true,
     };
     gate.check(&ctx, data).map_err(ApiError::CommandRiskBlocked)
 }
@@ -1837,7 +1840,8 @@ async fn send_session_input(
         &targets,
         body.approval_id.as_deref(),
         bytes,
-        false, // REST input is an untrimmed byte stream -> accumulate, flush on \r/\n
+        // REST input is an untrimmed byte stream -> accumulate, flush on \r/\n.
+        crate::command_risk::gate::GateMode::HoldUntilApproved,
     )?;
     if writable.is_empty() {
         return Ok(StatusCode::NO_CONTENT); // input held pending a complete line
@@ -2065,7 +2069,8 @@ async fn handle_ws(
                 &targets,
                 None,
                 &bytes,
-                false, // interactive byte stream -> accumulate, flush on \r/\n
+                // interactive byte stream -> accumulate, flush on \r/\n
+                crate::command_risk::gate::GateMode::HoldUntilApproved,
             ) {
                 Ok(writable) => writable,
                 Err(d) => {

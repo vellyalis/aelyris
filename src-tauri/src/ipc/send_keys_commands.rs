@@ -3,10 +3,17 @@
 use tauri::{AppHandle, Manager};
 
 use super::commands::{
-    capture_if_enter, record_audit_event, sanitize_audit_error, save_submitted_command_history,
-    sync_mux_pane_name, sync_mux_pane_role, terminal_ids_async, terminal_write_async,
-    validate_keys_payload, OutputBufferRegistry,
+    capture_if_enter, gate_ipc_input, record_audit_event, sanitize_audit_error,
+    save_submitted_command_history, sync_mux_pane_name, sync_mux_pane_role, terminal_ids_async,
+    terminal_write_async, terminal_write_order_lock, validate_keys_payload, OutputBufferRegistry,
 };
+
+/// The P0-4 gate mode for the send-keys family: these are the PROGRAMMATIC injection verbs
+/// (automation / agents / scripts), so HOLD unterminated input and emit only complete,
+/// approved lines — they do not need interactive char echo.
+const SEND_KEYS_GATE_MODE: crate::command_risk::gate::GateMode =
+    crate::command_risk::gate::GateMode::HoldUntilApproved;
+const SEND_KEYS_SOURCE: &str = "ipc-send-keys";
 
 /// Send keystrokes to a specific terminal pane. Mirrors `write_terminal`'s
 /// snapshot hook so Orchestra agents that drive a pane through this IPC
@@ -14,9 +21,24 @@ use super::commands::{
 #[tauri::command]
 pub async fn send_keys(app: AppHandle, terminal_id: String, data: String) -> Result<(), String> {
     validate_keys_payload(&data)?;
-    save_submitted_command_history(&app, &terminal_id, &data);
-    let bytes = data.as_bytes();
-    match terminal_write_async(&app, &terminal_id, bytes).await {
+    // P0-4: gate the injected command BEFORE the PTY (boundary #1); write only what the gate
+    // returns. A held (incomplete) line yields no bytes; a denied submission errors. The
+    // per-terminal write-order lock keeps the gate + write atomic so writes never reorder.
+    let raw = data.into_bytes();
+    let write_order = terminal_write_order_lock(&terminal_id);
+    let _write_guard = write_order.lock().await;
+    let bytes = gate_ipc_input(
+        &app,
+        &terminal_id,
+        &raw,
+        SEND_KEYS_SOURCE,
+        SEND_KEYS_GATE_MODE,
+    )?;
+    if bytes.is_empty() {
+        return Ok(()); // input held pending a complete line (nothing reaches the PTY)
+    }
+    save_submitted_command_history(&app, &terminal_id, &String::from_utf8_lossy(&bytes));
+    match terminal_write_async(&app, &terminal_id, &bytes).await {
         Ok(()) => {
             record_audit_event(
                 &app,
@@ -32,7 +54,7 @@ pub async fn send_keys(app: AppHandle, terminal_id: String, data: String) -> Res
                     "redacted": true,
                 }),
             );
-            capture_if_enter(&app, &terminal_id, bytes);
+            capture_if_enter(&app, &terminal_id, &bytes);
             Ok(())
         }
         Err(err) => {
@@ -111,10 +133,31 @@ pub async fn broadcast_keys(app: AppHandle, data: String) -> Result<u32, String>
     let mut count: u32 = 0;
     let mut last_error: Option<String> = None;
     for id in &ids {
-        match terminal_write_async(&app, id, data.as_bytes()).await {
+        // P0-4: gate each pane's write independently (its own synchronized scope); a denied
+        // submission is refused for that pane while benign panes still receive input. The
+        // per-terminal lock keeps each pane's gate + write atomic so writes never reorder.
+        let write_order = terminal_write_order_lock(id);
+        let _write_guard = write_order.lock().await;
+        let writable = match gate_ipc_input(
+            &app,
+            id,
+            data.as_bytes(),
+            "ipc-broadcast-keys",
+            SEND_KEYS_GATE_MODE,
+        ) {
+            Ok(writable) => writable,
+            Err(err) => {
+                last_error = Some(err);
+                continue;
+            }
+        };
+        if writable.is_empty() {
+            continue; // held pending a complete line
+        }
+        match terminal_write_async(&app, id, &writable).await {
             Ok(()) => {
                 count += 1;
-                capture_if_enter(&app, id, data.as_bytes());
+                capture_if_enter(&app, id, &writable);
             }
             Err(err) => last_error = Some(err),
         }
@@ -193,8 +236,22 @@ pub async fn send_keys_by_name(app: AppHandle, name: String, data: String) -> Re
     let terminal_id = pane_registry
         .find_by_name_unique(&name)?
         .ok_or_else(|| format!("No pane named '{}'", name))?;
-    let bytes = data.as_bytes();
-    match terminal_write_async(&app, &terminal_id, bytes).await {
+    // P0-4: gate the named-pane injection BEFORE the PTY; write only the returned bytes. The
+    // per-terminal write-order lock keeps the gate + write atomic so writes never reorder.
+    let raw = data.into_bytes();
+    let write_order = terminal_write_order_lock(&terminal_id);
+    let _write_guard = write_order.lock().await;
+    let bytes = gate_ipc_input(
+        &app,
+        &terminal_id,
+        &raw,
+        SEND_KEYS_SOURCE,
+        SEND_KEYS_GATE_MODE,
+    )?;
+    if bytes.is_empty() {
+        return Ok(()); // held pending a complete line
+    }
+    match terminal_write_async(&app, &terminal_id, &bytes).await {
         Ok(()) => {
             record_audit_event(
                 &app,
@@ -211,7 +268,7 @@ pub async fn send_keys_by_name(app: AppHandle, name: String, data: String) -> Re
                     "redacted": true,
                 }),
             );
-            capture_if_enter(&app, &terminal_id, bytes);
+            capture_if_enter(&app, &terminal_id, &bytes);
             Ok(())
         }
         Err(err) => {
@@ -338,10 +395,30 @@ async fn write_to_terminals(
     let mut last_error: Option<String> = None;
     let target_count = terminal_ids.len();
     for terminal_id in terminal_ids {
-        match terminal_write_async(app, &terminal_id, data).await {
+        // P0-4: gate each target independently; a denied submission is refused for that pane.
+        // The per-terminal lock keeps each target's gate + write atomic so writes never reorder.
+        let write_order = terminal_write_order_lock(&terminal_id);
+        let _write_guard = write_order.lock().await;
+        let writable = match gate_ipc_input(
+            app,
+            &terminal_id,
+            data,
+            SEND_KEYS_SOURCE,
+            SEND_KEYS_GATE_MODE,
+        ) {
+            Ok(writable) => writable,
+            Err(err) => {
+                last_error = Some(err);
+                continue;
+            }
+        };
+        if writable.is_empty() {
+            continue; // held pending a complete line
+        }
+        match terminal_write_async(app, &terminal_id, &writable).await {
             Ok(()) => {
                 count += 1;
-                capture_if_enter(app, &terminal_id, data);
+                capture_if_enter(app, &terminal_id, &writable);
             }
             Err(err) => last_error = Some(err),
         }
