@@ -85,6 +85,8 @@
     "verify:cockpit:batch-b": "node scripts/verify-cockpit-batch-b-readiness.mjs",
     "verify:control-layer": "node scripts/verify-control-layer-scaffold.mjs",
     "verify:mcp-orchestrator": "node scripts/verify-mcp-orchestrator-surface.mjs",
+    "verify:security-merge-intent-binding": "node scripts/verify-security-mcp-merge-intent-binding.mjs",
+    "verify:merge-idempotency": "node scripts/verify-merge-idempotency.mjs",
     "verify:orchestrator-step-live": "node scripts/verify-orchestrator-step-live.mjs",
     "verify:mcp-task-surface-live": "node scripts/verify-mcp-task-surface-live.mjs",
     "verify:autonomy-loop-live": "node scripts/verify-autonomy-loop-live.mjs",

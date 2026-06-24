@@ -101,15 +101,20 @@ const checks = [
     detail: "approval requests create pending inbox items instead of grants",
   },
   {
-    id: "request-merge-queues-only",
+    id: "request-merge-binds-durable-intent",
     ok:
-      controlMod.includes("pub mod merge;") &&
-      merge.includes("pub fn queue_request") &&
-      merge.includes("MergeIntentStatus::Queued.as_str().to_string()") &&
-      merge.includes('Self::Queued => "queued"') &&
       apiMcp.includes('"aether.request_merge"') &&
-      apiMcp.includes("no merge was performed"),
-    detail: "merge requests validate and queue without merging to main",
+      // P0-3: request_merge mints a DURABLE immutable intent (not a RAM queue),
+      // capturing the canonical repo + the resolved branch OIDs at request time.
+      apiMcp.includes("state.merge_store.as_ref()") &&
+      apiMcp.includes('arg_string(&args, "repoPath")') &&
+      apiMcp.includes('arg_string(&args, "taskId")') &&
+      apiMcp.includes("crate::merge_intent::MergeIntent {") &&
+      apiMcp.includes("store.create_or_get(&intent)") &&
+      // ...and never merges to main at request time.
+      !apiMcp.includes('"aether.merge_to_main"'),
+    detail:
+      "request_merge captures repo/branch/OIDs into a durable, immutable intent; it never merges",
   },
   {
     id: "merge-readiness-read-only-backend",
@@ -131,15 +136,20 @@ const checks = [
     detail: "pending approval polling explicitly reports no grant tool exposure",
   },
   {
-    id: "reviewer-authority-performs-merge",
+    id: "reviewer-approve-binds-to-stored-intent",
     ok:
       apiMcp.includes('"aether.review.approve"') &&
       apiMcp.includes('"aether.review.reject"') &&
-      apiMcp.includes("crate::git::perform_merge(&repo_path, &source_branch, &target_branch)") &&
-      apiMcp.includes('item.status = "merging".to_string()') &&
-      gitMerge.includes("pub fn perform_merge"),
+      // P0-3 boundary #1/#4: approve NEVER takes caller repo/source/target; the
+      // old override call is gone, replaced by an OID-bound merge of the stored
+      // intent, claimed via the DB compare-and-swap.
+      !apiMcp.includes("crate::git::perform_merge(&repo_path, &source_branch, &target_branch)") &&
+      apiMcp.includes("APPROVE_ALLOWED") &&
+      apiMcp.includes("crate::git::perform_merge_bound(") &&
+      apiMcp.includes(".claim_for_merge(&intent_id, now)") &&
+      gitMerge.includes("pub fn perform_merge_bound"),
     detail:
-      "reviewer approve performs a real git merge (claimed pending -> merging -> terminal); reject resolves without merging",
+      "reviewer approve binds to the stored immutable intent (intentId only), CAS-claims, and runs an OID-bound merge; reject resolves without merging",
   },
   {
     id: "mcp-spawn-enforces-cost-gate",
