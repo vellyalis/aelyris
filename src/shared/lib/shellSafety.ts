@@ -61,7 +61,9 @@ const DANGEROUS_PATTERNS: Array<{ pattern: RegExp; reason: string; riskClass: Co
   /\brmdir\s+\/s/i,
   /\bmkfs\b/i,
   /\bdd\s+if=/i,
-  /\b>\s*\/dev\/sd[a-z]/i,
+  // No `\b` before `>` — the normal shell form `echo x > /dev/sda` has a space
+  // before `>` and there is no word boundary between a space and `>`.
+  />\s*\/dev\/sd[a-z]/i,
   /\bchmod\s+(-[rR]\s+)?777\b/,
   /\bcurl\b.*\|\s*(ba)?sh\b/i,
   /\bwget\b.*\|\s*(ba)?sh\b/i,
@@ -95,7 +97,9 @@ const SECRET_PATTERNS: Array<{ kind: string; pattern: RegExp }> = [
 ];
 
 const WINDOWS_ABSOLUTE_PATH = /\b[A-Za-z]:[\\/][^\s"'`|&;)]*/g;
-const UNIX_ABSOLUTE_PATH = /(^|[\s"'`])\/[A-Za-z0-9._~+\-/]*/g;
+// Group 2 is the path WITHOUT the leading quote/space delimiter, so a quoted path
+// like "/etc/passwd" is recognized as absolute/system (else the deny is bypassed).
+const UNIX_ABSOLUTE_PATH = /(^|[\s"'`])(\/[A-Za-z0-9._~+\-/]*)/g;
 
 const REVIEW_CLASSES = new Set<CommandRiskClass>([
   "file mutation",
@@ -135,7 +139,8 @@ function extractCommandPaths(command: string): string[] {
   const paths = new Set<string>();
   for (const match of command.matchAll(WINDOWS_ABSOLUTE_PATH)) paths.add(match[0]);
   for (const match of command.matchAll(UNIX_ABSOLUTE_PATH)) {
-    const value = (match[0] ?? "").trim();
+    // match[2] is the path without the leading quote/space delimiter.
+    const value = (match[2] ?? "").trim();
     if (value.length > 1) paths.add(value);
   }
   return Array.from(paths);

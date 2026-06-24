@@ -5,6 +5,7 @@
 pub mod agent;
 pub mod api;
 pub mod audit;
+pub mod command_risk;
 pub mod config;
 pub mod context_store;
 pub mod control;

@@ -1,4 +1,10 @@
+// @ts-expect-error Node types are intentionally absent from the app tsconfig.
+import { readFileSync } from "node:fs";
+// @ts-expect-error Node types are intentionally absent from the app tsconfig.
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+
+declare const process: { cwd(): string };
 import {
   classifyCommand,
   detectDangerousCommand,
@@ -172,4 +178,36 @@ describe("classifyCommand", () => {
     expect(summary).toContain("Risk: deny");
     expect(summary).toContain("Classes:");
   });
+});
+
+describe("shared golden corpus (Rust <-> frontend parity)", () => {
+  // The SAME file the Rust command_risk tests assert against. If the FE policy and the
+  // backend-authoritative Rust policy ever diverge on a severity, one side fails here.
+  const corpusPath = join(process.cwd(), "src-tauri/src/command_risk/corpus.json");
+  const corpus = JSON.parse(readFileSync(corpusPath, "utf8")) as {
+    cases: Array<{
+      command: string;
+      severity: "allow" | "review" | "deny";
+      classes?: string[];
+      options?: { workspaceRoot?: string; safePaths?: string[] };
+      previewExcludes?: string[];
+    }>;
+  };
+
+  it("has a representative number of cases", () => {
+    expect(corpus.cases.length).toBeGreaterThanOrEqual(30);
+  });
+
+  for (const testCase of corpus.cases) {
+    it(`classifies ${JSON.stringify(testCase.command)} as ${testCase.severity}`, () => {
+      const report = classifyCommand(testCase.command, testCase.options ?? {});
+      expect(report.severity).toBe(testCase.severity);
+      if (testCase.classes) {
+        expect([...report.classes].sort()).toEqual([...testCase.classes].sort());
+      }
+      for (const needle of testCase.previewExcludes ?? []) {
+        expect(report.preview).not.toContain(needle);
+      }
+    });
+  }
 });
