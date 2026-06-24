@@ -6,6 +6,8 @@
 //! Parity with the frontend is enforced by a SHARED golden corpus (`corpus.json`) asserted
 //! by both the Rust tests here and the Vitest suite, so the two policies cannot drift.
 
+pub mod approval;
+
 use std::collections::BTreeSet;
 use std::sync::LazyLock;
 
