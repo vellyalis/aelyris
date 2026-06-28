@@ -4,10 +4,11 @@ Project-first AI workspace terminal for Windows.
 
 ![A fleet of AI coding agents working in parallel inside Aether Terminal's visible split panes, with the project file tree on the left and the orchestrator rail on the right showing spawned and reviewed agents](docs/assets/hero-fleet.png)
 
-> Captured live: a real fleet of AI coding agents working in parallel — each pane
-> is an interactive agent CLI in its own git worktree, coordinated by the
-> orchestrator rail. This is a development screenshot of the alpha; see the
-> status and limitations below.
+> Development screenshot of the alpha: visible agent panes, each an interactive
+> agent CLI in its own git worktree, with the orchestrator rail on the right.
+> Multi-agent parallel dispatch into the central pane tree is still gated
+> (`verify:agent-team-orchestration-readiness` is not yet green) — this shows the
+> substrate, not a proven parallel-fleet guarantee. See status and limitations below.
 
 Aether Terminal is a Tauri desktop app that combines a real terminal workspace,
 visible AI-agent panes, project/worktree context, review and merge controls, and
@@ -56,7 +57,8 @@ Aether is designed around this target workflow:
 - Windows terminal runtime: Tauri v2, Rust backend, WebView2 frontend, ConPTY,
   xterm.js, and native terminal experiments.
 - Pane and mux layer: pane tree, split layouts, persisted pane state, mux graph,
-  sidecar direction, and tmux-grade contract verifiers.
+  sidecar direction, and a tmux-grade-contract verifier whose live mux-restore
+  proof is still gated.
 - Visible AI agents: interactive Codex, Claude, and Gemini CLI launch paths that
   avoid using print/headless mode for human-visible panes.
 - AI control plane: task/orchestrator APIs, MCP surface, event/context plumbing,

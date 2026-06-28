@@ -83,3 +83,20 @@ scripts/probe-*.mjs
 scripts/shot-*.mjs
 scripts/raise-opacity-demo.mjs
 scripts/set-opacity-direct.mjs
+
+# Defense-in-depth: never allow credential/key material to be committed even via
+# `git add -f`. The real signing key lives in the already-ignored .aether-updater/.
+*.pem
+*.key
+*.pfx
+*.p12
+id_rsa*
+.npmrc
+.netrc
+
+# Test/coverage output and toolchain caches.
+coverage/
+.nyc_output/
+.eslintcache
+*.tsbuildinfo
+.pnpm-store/
