@@ -621,7 +621,7 @@ This order gives an immediate visible product improvement before the deeper tmux
 Paste this to Claude when assigning implementation work:
 
 ```text
-You are implementing Aether Terminal in C:\Users\owner\Aether_Terminal.
+You are implementing Aether Terminal in <repo>.
 
 First read:
 1. docs/specs/CODEX_HANDOFF.md

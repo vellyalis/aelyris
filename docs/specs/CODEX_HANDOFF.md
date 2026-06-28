@@ -168,7 +168,7 @@ The **only missing layer** of the autonomous team-dev vision; everything below i
 
 Before handing back any WU, run from `src-tauri/`: `cargo test` · `cargo clippy --all-targets -- -D warnings` · `cargo fmt --check`. From repo root: `pnpm test` (vitest).
 
-- ⚠ **WU-1.1 lockstep:** `scripts/verify-agent-team-orchestration-readiness.mjs:218` asserts the **exact** string `handleStartAgent(prompt.prompt, prompt.model, { role: prompt.roleId as OrchestraRoleId })`. If you change that dispatch call to pass `branchName`, update this gate string (and `:210-219` block) in the same commit, or `npm run verify:*` fails.
+- ⚠ **WU-1.1 lockstep:** `scripts/verify-agent-team-orchestration-readiness.mjs` now checks Orchestra dispatch semantically: each lane must pass a deterministic `branchName` through `handleStartAgent(...)` and the verifier must keep proving the branch/worktree contract. If you change the dispatch shape, update the semantic gate in the same commit.
 - **Doc-freshness gate:** `scripts/verify-goal-documentation-freshness.mjs` tracks 5 live goal docs — don't let edits stale them.
 - **Right-rail suite:** `verify-right-rail-*.mjs` (orchestrated by `verify-right-rail-suite.mjs`) guards rail/density — re-run after WU-2.1 and any token dial.
 - **Single-blur rule:** UI WUs change only alpha/size/tokens — never add a second `backdrop-filter` to a child.

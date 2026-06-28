@@ -1,6 +1,6 @@
 ---
 name: aether-orchestrate
-description: Drive Aether's autonomous build runtime over its MCP capability surface (the aether.* verbs). You are the orchestrator brain; Aether is the hands. Decompose a goal into a Task Graph, set the shared ADR, dispatch real heterogeneous agents (Claude/Codex/Gemini) into isolated worktrees, coordinate them in real time over the shared Event/Intent/Ownership/Activity stream + Knowledge Graph, and review→merge to quiescence — all by calling MCP verbs. Use when the user says "作って"/"build X"/"並列で実装"/"orchestrate"/"autonomous loop", or wants the fleet to self-coordinate. Distinct from aether-fleet (the older PowerShell/send_keys model); this skill drives the in-process MCP runtime.
+description: Drive Aether's experimental local MCP orchestration workflow over the aether.* verbs. Use for current Aether runtime orchestration when the local MCP server is available: decompose a goal, set shared ADR, create task graph/worktrees, observe agent activity, and run review gates with machine evidence. This is not release-readiness proof; aether-fleet is the legacy PowerShell fallback.
 ---
 
 # Aether orchestration (MCP runtime)
@@ -10,6 +10,8 @@ You do not edit files yourself; you drive the runtime by calling `aether.*` MCP 
 and the worker agents (real `claude`/`codex`/`gemini` CLIs in isolated worktrees) do the
 implementation. Keep decomposition, coordination, review judgment, and integration in
 yourself. Aether is local-only — never push or open PRs.
+
+Claim-safety note: this skill drives an experimental local operator workflow. It does not make Aether release-ready, world-class, tmux-equivalent, or BridgeSpace-plus complete. Public claims still require the verifier gates in `AGENTS.md`, `docs/requirements.md`, and `docs/AGENT_WORKFLOWS.md`.
 
 ## How to call verbs
 
@@ -118,9 +120,7 @@ is the only path to a real merge. Never self-review (reviewer==owner is blocked)
 - **Concurrency cap 4** (the cost gate). The plan won't dispatch past it; pass an accurate
   `activeAgents`.
 - **ADR keys:** stable snake_case (`auth_method`, `database`, `framework`, `api_style`).
-- **`review.approve` / `request_merge` are reviewer-authority / gated** — the AI reviewer
-  (you, with green gates) is the gate; there is no human in the critical path under full
-  auto, but the gates must genuinely be green. Don't fabricate a green verdict.
+- **`review.approve` / `request_merge` are reviewer-authority / gated** — the reviewer supplies evidence-backed gate judgments, but approval / merge-to-main authority must follow the configured gate policy and current machine evidence. Full-auto merge remains experimental. Do not fabricate a green verdict.
 - **Local-only:** never push/PR. Files <800 lines, immutable updates, explicit errors.
 
 ## Worked example — "ECサイト作って"

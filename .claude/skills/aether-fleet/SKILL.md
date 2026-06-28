@@ -1,9 +1,11 @@
 ---
 name: aether-fleet
-description: Orchestrate worktree-isolated parallel implementation of Aether cockpit Work Units (from docs/specs/CODEX_HANDOFF.md). Dispatch coding agents into isolated git worktrees via scripts/fleet/fleet-dispatch.ps1, coordinate them with a star topology (orchestrator-mediated, no peer-to-peer), and merge sequentially behind the gates. Use when the user wants to run multiple coding agents in parallel on Aether, says "fleet"/"並列実装"/"dispatch"/"worktree で並列", or references a Work Unit (WU) id.
+description: Legacy/manual fallback for worktree-isolated Aether cockpit Work Units from docs/specs/CODEX_HANDOFF.md. Prefer the MCP runtime orchestration skill when the local Aether MCP runtime is available. Use only for historical WU execution, manual PowerShell fleet dispatch, recovery of old fleet branches, or when the user explicitly asks for the legacy fleet path.
 ---
 
 # Aether fleet orchestration
+
+Legacy note: this is the older PowerShell/worktree/send-keys workflow. It is useful as a fallback and for historical WU recovery, but it is not the default public product path and does not prove release readiness. Prefer the MCP runtime workflow when available.
 
 You are the **orchestrator**. You decompose, dispatch, observe, and integrate. The
 worker agents (Claude/Codex CLIs, each in its own git worktree) do the implementation.

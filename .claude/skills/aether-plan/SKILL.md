@@ -1,13 +1,13 @@
 ---
 name: aether-plan
-description: Turn a one-line dev task for Aether into a requirements spec + a Work-Unit decomposition emitted as scripts/fleet/wu-manifest.json — the contract the aether-fleet skill dispatches. This is the planner front-half of the autonomous team-dev loop (the other half is aether-fleet). Use when the user throws a feature/task/objective at the orchestrator and wants it auto-planned into parallel work units, says "plan this"/"要件定義して分解して"/"タスクを投げる"/"これを並列で進めて", or gives a one-line goal for Aether to build.
+description: Turn a one-line Aether task into requirements, acceptance criteria, verifier gates, and a Work Unit or MCP task graph decomposition. Use when the user asks to plan, define requirements, split work, or prepare parallel implementation. Standard handoff is the current MCP runtime path; scripts/fleet/wu-manifest.json is a legacy fallback.
 ---
 
 # Aether planner (requirements + decomposition)
 
 You are the **planner / orchestrator** (run on **Opus** — deep reasoning for requirements,
 decomposition, and integration). You do **not** implement. You produce a spec + a Work-Unit
-manifest, then hand off to the `aether-fleet` skill for parallel execution. Keep planning and
+manifest, then hand off to the MCP runtime workflow (`aether-orchestrate`) or, when explicitly needed, the legacy `aether-fleet` fallback. Keep planning and
 final judgment in yourself; never delegate them.
 
 The output is the automation of what a human orchestrator does by hand — the exemplar is
@@ -25,8 +25,7 @@ The output is the automation of what a human orchestrator does by hand — the e
    (traps / lockstep gates / GATED markers).
 4. **Self-review (adversarial)** — before handing off, attack your own plan: is each WU
    self-contained and cold-startable? Are deps correct and acyclic? Do parallel-batch WUs avoid
-   file overlap? Are gates/do-not-break traps named? Fix what fails. (For deeper planning use the
-   `blueprint` or `ralphinho-rfc-pipeline` skills.)
+   file overlap? Are gates/do-not-break traps named? Fix what fails.
 
 ## Decomposition rules (binding)
 
@@ -50,18 +49,14 @@ Append/extend `scripts/fleet/wu-manifest.json` with the new WUs in its exact sch
          "notes": "traps / lockstep / GATED" }
 ```
 
-Model routing for `suggestedAgent`: **Opus** = design/UI/architecture; **Codex** = backend impl
-(Codex usage-limited until 2026-07-01 → route backend to Opus until then). Validate the JSON, then
+Model routing for `suggestedAgent`: use the operator's current model budget and tool availability. Prefer clear ownership and verifier fit over stale date-based routing rules. Validate the JSON, then
 run `pwsh scripts/fleet/fleet-dispatch.ps1 list` to confirm the WUs appear.
 
 ## Hand off (do not implement)
 
-Tell the user (or proceed, if asked) to dispatch with the **`aether-fleet`** skill:
-`pwsh scripts/fleet/fleet-dispatch.ps1 dispatch <ids...> -DryRun` → then for real. The fleet skill
-owns worktree creation, star-comms steering, and sequential gated merge. The full autonomous loop
-(plan → dispatch → monitor → review → merge → repeat) is specced as WU-5.2 in `PLANNER_SPEC.md`.
+For current orchestration, hand off to `aether-orchestrate` and create MCP tasks/worktrees. Use `scripts/fleet/wu-manifest.json` and `aether-fleet` only as the legacy/manual fallback. The full autonomous loop (plan → dispatch → monitor → review → merge → repeat) is specced as WU-5.2 in `PLANNER_SPEC.md`.
 
 ## References
 - Exemplar output: `docs/specs/CODEX_HANDOFF.md` · spec: `docs/specs/PLANNER_SPEC.md`
 - Contract: `scripts/fleet/wu-manifest.json` · execution: `aether-fleet` skill
-- Deeper patterns: `blueprint`, `ralphinho-rfc-pipeline`, `devfleet`
+- Keep planning repo-local; do not import external skill packs or personas wholesale.
