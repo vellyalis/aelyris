@@ -1,4 +1,4 @@
-# Aether MCP Tool Surface Spec (`aether.mcp.v1`)
+# Quorum MCP Tool Surface Spec (`aether.mcp.v1`)
 
 > ⚠️ **v2.0 merge-model update (2026-06-15) — read first.** The authoritative
 > requirements ([AETHER_COCKPIT_REQUIREMENTS](./AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md),
@@ -15,7 +15,7 @@
 
 Status: Draft / binding design alignment
 Audience: backend (Rust) + orchestration engineering
-Scope: the **AI-facing** projection of the Aether Control API.
+Scope: the **AI-facing** projection of the Quorum Control API.
 
 > **HARD SCOPE NOTE:** This document is analysis + design only. It maps a proposed
 > `aether` MCP server onto real backend code. File:line references are to the
@@ -28,7 +28,7 @@ Scope: the **AI-facing** projection of the Aether Control API.
 
 ### 1.1 The two-faces model
 
-Aether's north star is a single backend **Aether Control API** (a capability /
+Quorum's north star is a single backend **Quorum Control API** (a capability /
 intent layer). Two clients ("faces") project onto it:
 
 | Face | Consumer | Transport | Status |
@@ -49,8 +49,8 @@ Two deployment shapes, same tool catalog:
 1. **Operator-attached** — the operator's existing `claude` / `codex` CLI session
    (already a long-lived process; see `AgentCli` at
    `src-tauri/src/agent/interactive.rs:65`) adds `aether` as an MCP server in its
-   own config. The operator drives Aether from the same chat they already use.
-2. **Embedded orchestrator** — an in-app Opus 4.8 orchestrator process that Aether
+   own config. The operator drives Quorum from the same chat they already use.
+2. **Embedded orchestrator** — an in-app Opus 4.8 orchestrator process that Quorum
    spawns and points at the `aether` MCP server. This is the "dispatch a fleet,
    poll, request a gated merge" loop (worked example in §6).
 
@@ -67,7 +67,7 @@ claims (`src-tauri/src/api/mod.rs:1858-1863`).
 
 The default and recommended transport is **stdio**. Rationale:
 
-- Aether is a **local-only**, single-operator desktop app (Tauri). The MCP
+- Quorum is a **local-only**, single-operator desktop app (Tauri). The MCP
   client and server run on the same machine under the same user.
 - stdio needs no port, no token, no loopback exposure — the OS process boundary
   is the trust boundary. This is strictly safer than opening another TCP port.

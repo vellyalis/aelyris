@@ -1,4 +1,4 @@
-# Aether World-Class Gap Closure Implementation Design
+# Quorum Gap Closure Implementation Design
 
 Date: 2026-06-25
 Status: DESIGN READY FOR WORK-UNIT PLANNING
@@ -50,7 +50,7 @@ Do not claim any of the following until the matching gate is green:
 
 Allowed current positioning while these gates are red:
 
-> Aether has a real Rust/Tauri terminal, mux, sidecar, visible-agent, MCP,
+> Quorum has a real Rust/Tauri terminal, mux, sidecar, visible-agent, MCP,
 > worktree, ownership, review, and merge substrate, but the world-class claim is
 > still blocked by durability, persistence, native-quality, and current-proof gates.
 
@@ -202,7 +202,7 @@ the relevant product claim in review/block.
 
 ## 3C. Modularity And Changeability Standard
 
-The implementation must keep Aether easy to change while the product moves toward
+The implementation must keep Quorum easy to change while the product moves toward
 tmux / BridgeSpace / Ghostty-class quality. The goal is not merely smaller files; it
 is stable ownership boundaries, narrow contracts, and low-risk replacement of
 terminal, mux, orchestration, persistence, and UI surfaces.
@@ -397,7 +397,7 @@ gates are blocked.
 - `package.json`
 - `docs/specs/README.md`
 - `docs/specs/CODEX_HANDOFF.md`
-- `docs/specs/IMPLEMENTATION_PLAN_2026-06-23.md`
+- `docs/history/IMPLEMENTATION_PLAN_2026-06-23.md`
 
 ### Data Contract
 
@@ -875,7 +875,7 @@ Expose through:
 - `node scripts/verify-symbol-ownership-live.mjs`
 - `node scripts/verify-shared-brain-live.mjs`
 - `node scripts/verify-shared-brain-restart-replay.mjs --phase seed`
-- restart Aether Terminal
+- restart Quorum
 - `node scripts/verify-shared-brain-restart-replay.mjs --phase verify --id <seed-id>`
 
 ### Done Definition
@@ -1316,7 +1316,7 @@ Ghostty/WezTerm parity remains BLOCKED until:
 
 Create one command that answers the user's strategic question:
 
-> Can Aether honestly claim tmux + BridgeSpace + Ghostty quality on Windows?
+> Can Quorum honestly claim tmux + BridgeSpace + Ghostty quality on Windows?
 
 ### Target Files
 
@@ -1394,7 +1394,7 @@ Current blocking reasons:
 - `tmux`: live mux restore proof is `environment-blocked` or not green. The
   static mux contract passes but still has recorded review gaps.
 - `bridgespace`: shared brain restart replay now writes an
-  `environment-blocked` artifact when no authenticated live Aether API token is
+  `environment-blocked` artifact when no authenticated live Quorum API token is
   supplied, and agent-team orchestration readiness is still blocked by mux live
   restore plus upper-compat host proof gates.
 - `ghostty`: native boundary is blocked. The native text-shaping subclaim is now
@@ -1518,7 +1518,7 @@ Reason:
 - G0.2 prevents fallback debt and test-only greens from unlocking strategic claims.
 - G0.3 prevents the closure work from increasing god-file debt or mixing unrelated
   boundaries.
-- G4 is the point where Aether's tmux-equivalence claim becomes evidence-backed
+- G4 is the point where Quorum's tmux-equivalence claim becomes evidence-backed
   instead of architecture-only.
 
 ## 15. Final Re-Audit Statement

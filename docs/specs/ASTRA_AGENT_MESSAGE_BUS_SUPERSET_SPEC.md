@@ -1,13 +1,13 @@
-# Astra Agent Message Bus Superset Requirements / Specification / Design
+# Quorum Agent Message Bus Superset Requirements / Specification / Design
 
 Date: 2026-06-28 JST
 Status: design ready for work-unit planning; implementation not complete
 Related plan: `../../PLAN.md`
 Related public copy: `../GITHUB_INTRODUCTION.md`
 
-Naming note: **Astra** is the public product-name candidate; **Aether** remains the current repository, runtime, API, and schema prefix until a dedicated rename work unit changes it. This document turns the `agmsg` comparative audit into Aether/Astra requirements,
+Naming note: **Quorum** is the product name (formerly Aether Terminal). The lowercase `aether.*` namespace and `AETHER_*` identifiers remain the current repository, runtime, API, and schema prefix as internal code tokens, unaffected by the product-name change. This document turns the `agmsg` comparative audit into Quorum requirements,
 specification, and implementation design. The goal is not to copy `agmsg` as a
-standalone CLI. The goal is to make Astra a strict superset of that class of
+standalone CLI. The goal is to make Quorum a strict superset of that class of
 local agent messaging, then exceed it by binding messages to visible panes,
 TaskGraph, worktrees, review, merge, and evidence.
 
@@ -20,7 +20,7 @@ Audited reference:
 
 Current verdict: **BLOCK for strict agmsg superset claims**.
 
-Astra/Aether already has a stronger product substrate than `agmsg`: Tauri/Rust
+Quorum already has a stronger product substrate than `agmsg`: Tauri/Rust
 workspace UI, real terminal panes, TaskGraph, EventBus, MCP/control APIs,
 worktree isolation, file/symbol ownership, review/merge gates, and release
 evidence. However, it does not yet implement the concrete local agent-message
@@ -39,13 +39,13 @@ Missing or weaker than `agmsg` today:
 - Watch-once / no-empty-worker safety gates.
 - No-loss and backpressure semantics for message publication.
 
-Astra can still claim a broader AI development workspace direction, but it must
+Quorum can still claim a broader AI development workspace direction, but it must
 not claim strict `agmsg` superset behavior until the gates in this document are
 green.
 
 ## 2. Product Requirement
 
-Astra must provide a local-first coordination layer where AI agents and human
+Quorum must provide a local-first coordination layer where AI agents and human
 operators can exchange durable, addressed messages that are visible, replayable,
 permissioned, and connected to the actual project work.
 
@@ -59,7 +59,7 @@ visible panes, worktrees, review gates, ownership, merge intent, and evidence.
 | --- | --- | --- |
 | AMB-R1 | Local message bus backed by SQLite/WAL and repo-local project identity. | BLOCK |
 | AMB-R2 | Addressed messages with inbox, history, read/ack state, sender, recipient, role, task, pane, and evidence refs. | BLOCK |
-| AMB-R3 | Delivery modes: `monitor`, `turn`, `both`, `off`, plus Astra policy hooks for review-gated and task-scoped delivery. | BLOCK |
+| AMB-R3 | Delivery modes: `monitor`, `turn`, `both`, `off`, plus Quorum policy hooks for review-gated and task-scoped delivery. | BLOCK |
 | AMB-R4 | Team and agent identity: whoami/team list, role membership, active/inactive state, driver identity, and session linkage. | REVIEW |
 | AMB-R5 | Persistent role leases equivalent to `actas`: acquire, renew, release, steal-with-reason, expiry, and audit events. | BLOCK |
 | AMB-R6 | Peer lifecycle: spawn, ready sentinel, health, graceful despawn, force despawn, and message-route cleanup. | REVIEW |
@@ -75,7 +75,7 @@ visible panes, worktrees, review gates, ownership, merge intent, and evidence.
 
 Allowed before implementation:
 
-> Astra is designing a local-first agent coordination layer that will connect
+> Quorum is designing a local-first agent coordination layer that will connect
 > messages, tasks, panes, reviews, and evidence in one workspace.
 
 Forbidden until gates pass:
@@ -89,7 +89,7 @@ Forbidden until gates pass:
 ## 5. API Specification
 
 Internal naming may keep the existing `aether.*` prefix until a full product
-rename is planned. Public copy may use Astra.
+rename is planned. Public copy uses Quorum.
 
 ### Message API
 
@@ -175,7 +175,7 @@ Hard requirements:
 | `both` | Stream now and keep turn-boundary delivery. | Proof that duplicate handling is idempotent through `message_id` plus `idempotency_key`. |
 | `off` | No automatic delivery; manual inbox/history only. | Proof that no process is spawned and no stream event is delivered. |
 
-Astra-specific extension:
+Quorum-specific extension:
 
 - `review_gate`: deliver when a task reaches review or conflict state.
 - `task_scope`: deliver only to agents bound to a task/lane/worktree.
@@ -271,9 +271,9 @@ strict agmsg superset claims as blocked.
 ## 12. Open Decisions
 
 - When to run a full brand/API rename. AMB-1 through AMB-10 use `aether.*` APIs and `aether.*.v1` schema literals until that separate rename work unit exists.
-- Whether third-party `agmsg` import/export should be supported in v1 or deferred. Core Astra/Aether message ids use UUIDv7 plus sequence cursors.
+- Whether third-party `agmsg` import/export should be supported in v1 or deferred. Core Quorum message ids use UUIDv7 plus sequence cursors.
 - Whether compatibility with `agmsg` CLI file/database layout is required, or
-  whether Astra only needs behavioral superset semantics.
+  whether Quorum only needs behavioral superset semantics.
 - Whether third-party `agmsg` import/export should be supported.
 - Which message bodies can be included in context packs by default.
 

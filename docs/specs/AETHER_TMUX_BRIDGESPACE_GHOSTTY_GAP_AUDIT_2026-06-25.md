@@ -1,4 +1,4 @@
-# Aether Terminal tmux / BridgeSpace / Ghostty Gap Audit
+# Quorum tmux / BridgeSpace / Ghostty Gap Audit
 
 Date: 2026-06-25 JST
 Status: REVIEW / BLOCK for world-class positioning
@@ -6,7 +6,7 @@ Scope: current local checkout, current source, current `.codex-auto` evidence, a
 
 ## Executive Verdict
 
-Aether is not "just chat tabs" anymore. The repo contains a substantial Rust/Tauri
+Quorum is not "just chat tabs" anymore. The repo contains a substantial Rust/Tauri
 terminal and AI-team control plane:
 
 - Rust-owned terminal engine, mux graph, pane layouts, sidecar PTY daemon, durable scrollback, and mux APIs.
@@ -32,11 +32,11 @@ Current hard truth from `node scripts/score-release-quality.mjs`:
 
 Defensible public/internal claim today:
 
-> Aether has a local daemon-backed Windows mux and an implemented AI-team control-plane prototype with visible PTY agent panes, MCP orchestration APIs, and native-first terminal proof paths.
+> Quorum has a local daemon-backed Windows mux and an implemented AI-team control-plane prototype with visible PTY agent panes, MCP orchestration APIs, and native-first terminal proof paths.
 
 Not yet defensible:
 
-> Aether is tmux-equivalent, BridgeSpace-plus complete, or Ghostty-class as a daily driver on Windows.
+> Quorum is tmux-equivalent, BridgeSpace-plus complete, or Ghostty-class as a daily driver on Windows.
 
 ## Subagent Coverage
 
@@ -87,7 +87,7 @@ Implemented:
 
 Meaning:
 
-- Aether has a serious local daemon-backed Windows mux core.
+- Quorum has a serious local daemon-backed Windows mux core.
 - It is not merely a React pane layout.
 
 ### Visible Agent Runtime
@@ -118,7 +118,7 @@ Implemented:
 
 Meaning:
 
-- Aether is already above "N terminals running N AI CLIs" at the control-plane level.
+- Quorum is already above "N terminals running N AI CLIs" at the control-plane level.
 - However, durable AI-team OS semantics are incomplete where state is split or in-memory.
 
 ### Native / Ghostty-Class Direction
@@ -509,11 +509,11 @@ Required:
 Current restart replay evidence:
 
 - `pnpm verify:shared-brain-restart-replay` now writes an
-  `environment-blocked` artifact when no authenticated live Aether API token is
+  `environment-blocked` artifact when no authenticated live Quorum API token is
   available. This keeps the BridgeSpace claim red without pretending the replay
   path passed.
-- To turn it green, run the seed phase against a live authenticated Aether API,
-  restart Aether Terminal, then run the verify phase with the printed id.
+- To turn it green, run the seed phase against a live authenticated Quorum API,
+  restart Quorum, then run the verify phase with the printed id.
 
 ### To Claim "Ghostty/WezTerm-Class Windows Terminal"
 
@@ -567,7 +567,7 @@ Required:
 
 ## Final Assessment
 
-Aether has the right architecture to become the Windows AI terminal/workspace leader:
+Quorum has the right architecture to grow into a strong Windows AI terminal/workspace:
 
 - local daemon mux
 - AI-team control plane
@@ -584,4 +584,4 @@ The missing work is no longer "invent the idea." It is:
 - harden native renderer/input quality into daily-driver proof
 - stop stale artifacts and docs from overstating readiness
 
-Until those gates are green, position Aether as an implemented prototype/platform with strong foundations, not as completed tmux/Ghostty/BridgeSpace replacement.
+Until those gates are green, position Quorum as an implemented prototype/platform with strong foundations, not as completed tmux/Ghostty/BridgeSpace replacement.

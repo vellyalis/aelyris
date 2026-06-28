@@ -13,7 +13,7 @@ and historical score snapshots.
 Read in this order:
 
 1. `../README.md` - public project overview and current alpha status.
-2. `GITHUB_INTRODUCTION.md` - public GitHub introduction draft and Astra naming copy.
+2. `GITHUB_INTRODUCTION.md` - public GitHub introduction draft and Quorum naming copy.
 3. `PUBLICATION_READINESS.md` - public-release checklist and current blockers.
 4. `requirements.md` - stable requirements entrypoint referenced by `AGENTS.md`.
 5. `specs/README.md` - active spec index and work-unit map.
@@ -91,7 +91,7 @@ is green:
 - release-ready,
 - strict `agmsg` superset or completed agent-message-bus coordination.
 
-The safe public claim is narrower: Aether has a real terminal, mux, sidecar,
+The safe public claim is narrower: Quorum has a real terminal, mux, sidecar,
 visible-agent, MCP, worktree, ownership, review, and merge substrate, while the
 world-class product claim remains gated.
 

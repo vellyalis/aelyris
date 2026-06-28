@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Aether Terminal",
-  "mainBinaryName": "Aether",
+  "productName": "Quorum",
+  "mainBinaryName": "Quorum",
   "version": "0.2.3",
   "identifier": "com.aether.terminal",
   "build": {
@@ -13,7 +13,7 @@
   "app": {
     "windows": [
       {
-        "title": "Aether Terminal",
+        "title": "Quorum",
         "width": 1440,
         "height": 900,
         "minWidth": 960,

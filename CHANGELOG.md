@@ -1,7 +1,7 @@
 # Changelog
 
-All notable changes to Aether Terminal are tracked here. Dates are listed in
-`YYYY-MM-DD`. Commit hashes reference `refactor/tauri-react-migration`.
+All notable changes to Quorum (formerly Aether Terminal) are tracked here. Dates
+are listed in `YYYY-MM-DD`. Commit hashes reference `refactor/tauri-react-migration`.
 
 ## [Unreleased]
 

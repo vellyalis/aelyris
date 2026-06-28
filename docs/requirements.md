@@ -1,4 +1,4 @@
-# Aether Terminal Requirements Index
+# Quorum Requirements Index
 
 Status: active implementation index
 Last updated: 2026-06-27 JST
@@ -13,7 +13,7 @@ authoritative requirement, specification, design, and proof sources.
 1. Product requirements:
    `docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md`
 
-   Owns the AI Agent OS / autonomous cockpit requirements: Aether Control API,
+   Owns the AI Agent OS / autonomous cockpit requirements: Quorum Control API,
    Planner / Worker / Reviewer hierarchy, Task Graph, Event Bus, Context Store,
    Cost Manager, worktree isolation, merge authority, and non-blocking automated
    safety controls.
@@ -57,7 +57,7 @@ The product must not claim any of these until the matching gate is green:
 
 The current defensible claim is narrower:
 
-> Aether has a real Rust/Tauri terminal, mux, sidecar, visible-agent, MCP,
+> Quorum has a real Rust/Tauri terminal, mux, sidecar, visible-agent, MCP,
 > worktree, ownership, review, and merge substrate, but the world-class claim is
 > still blocked by durability, persistence, native-quality, and current-proof
 > gates.

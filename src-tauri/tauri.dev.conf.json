@@ -3,7 +3,7 @@
   "app": {
     "windows": [
       {
-        "title": "Aether Terminal",
+        "title": "Quorum",
         "width": 1440,
         "height": 900,
         "minWidth": 960,

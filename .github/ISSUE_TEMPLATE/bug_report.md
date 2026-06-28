@@ -1,11 +1,11 @@
 ---
 name: Bug report
-about: Report a reproducible problem in Aether Terminal
+about: Report a reproducible problem in Quorum
 title: "[bug] "
 labels: bug
 ---
 
-> Aether Terminal is alpha / not release-ready. Bug reports that include exact
+> Quorum is alpha / not release-ready. Bug reports that include exact
 > reproduction steps and machine-checked evidence are the most actionable.
 
 ## What happened
@@ -25,7 +25,7 @@ What you expected to happen instead.
 ## Environment
 
 - OS / version (e.g. Windows 11 26200):
-- Aether Terminal version / commit:
+- Quorum version / commit:
 - Node / pnpm version:
 - Rust / cargo version:
 

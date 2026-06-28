@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for taking a look at Aether Terminal.
+Thanks for taking a look at Quorum.
 
 The project is in alpha development. Contributions are welcome, but changes
 should preserve the current proof-first workflow: implementation claims need
@@ -53,7 +53,7 @@ gate is green:
 - world-class Windows terminal AI OS,
 - release-ready.
 
-The current safe public framing is that Aether has a real terminal, mux,
+The current safe public framing is that Quorum has a real terminal, mux,
 visible-agent, MCP, worktree, ownership, review, and merge substrate, while
 world-class product claims remain gated.
 

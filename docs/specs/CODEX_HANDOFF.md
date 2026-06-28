@@ -1,4 +1,4 @@
-# Aether Cockpit — Codex Implementation Handoff
+# Quorum Cockpit — Codex Implementation Handoff
 
 > ⚠️ **v2.0 merge-model update (2026-06-15) — read first.** The authoritative
 > requirements ([AETHER_COCKPIT_REQUIREMENTS](./AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md),
@@ -19,7 +19,7 @@ Context Store, Cost Manager, visible PTY-pane dispatch, file ownership, knowledg
 cargo lib tests green). The WUs below remain the authoritative *design* reference — do NOT
 restart from "nothing built yet". For the live implementation-status and remaining-work
 source of truth, see
-[CLAUDE_HANDOFF_COCKPIT_REQUIREMENTS_AUDIT_2026-06-23](./CLAUDE_HANDOFF_COCKPIT_REQUIREMENTS_AUDIT_2026-06-23.md).
+[CLAUDE_HANDOFF_COCKPIT_REQUIREMENTS_AUDIT_2026-06-23](../history/CLAUDE_HANDOFF_COCKPIT_REQUIREMENTS_AUDIT_2026-06-23.md).
 Branch context: originally authored on `codex/release-hardening-quality-gates` (see §7).
 Implementer: **Codex** (GPT-5.x). Orchestration/integration owner: human + Opus.
 
@@ -32,9 +32,9 @@ Implementer: **Codex** (GPT-5.x). Orchestration/integration owner: human + Opus.
 
 ## 1. North star
 
-Aether becomes an **agent-controllable workspace**, not just an IDE. Its capabilities
+Quorum becomes an **agent-controllable workspace**, not just an IDE. Its capabilities
 (worktree · agent · pane · diff · merge · approval) become **one backend capability
-layer** ("Aether Control API"). Two clients project onto it:
+layer** ("Quorum Control API"). Two clients project onto it:
 
 - **Face 1 — Cockpit UI** (human operator, via Tauri IPC) — supervises by exception.
 - **Face 2 — Orchestrator AI** (Opus 4.8, via an `aether` MCP server) — drives the mechanics.

@@ -23,8 +23,8 @@ reference. Shared names (`AgentSession`, `useAgentFleet`, the canonical status t
 the single branch validator and worktree-path fn) are used verbatim so the three Phase
 specs align.
 
-> **North star (binding design — all sibling specs must agree).** Aether is an
-> agent-controllable workspace. Its capabilities are **one** backend *Aether Control API*
+> **North star (binding design — all sibling specs must agree).** Quorum is an
+> agent-controllable workspace. Its capabilities are **one** backend *Quorum Control API*
 > (a capability/intent layer). **Two faces** project onto that layer: (1) the human
 > **Cockpit UI** via Tauri IPC, and (2) the **Orchestrator AI** (Opus 4.8) via an `aether`
 > MCP server. We build the layer once; both faces are thin adapters over it. This spec
@@ -38,7 +38,7 @@ specs align.
 
 ## 0. Current-state map (the problem)
 
-Aether runs agents through **two fully parallel stacks** that never share a model:
+Quorum runs agents through **two fully parallel stacks** that never share a model:
 
 | Concern | Headless stack | Interactive (PTY) stack |
 |---|---|---|
@@ -81,9 +81,9 @@ Aether runs agents through **two fully parallel stacks** that never share a mode
 
 ---
 
-## 0.5 Capability layer (Aether Control API)
+## 0.5 Capability layer (Quorum Control API)
 
-Everything in §0 is a symptom of the same structural gap: **Aether's capabilities exist
+Everything in §0 is a symptom of the same structural gap: **Quorum's capabilities exist
 only as scattered `#[tauri::command]` functions that are reachable from exactly one caller —
 the webview.** `commands.rs` alone is 6795 lines / 140 commands
 (`src-tauri/src/ipc/commands.rs:1`, registered at `lib.rs:526`), with more in
@@ -91,7 +91,7 @@ the webview.** `commands.rs` alone is 6795 lines / 140 commands
 the command bodies mix IPC marshalling, `AppHandle` state lookups, and the actual capability
 logic. That makes a second face (the MCP server) impossible without copy-pasting logic.
 
-The **Aether Control API** is the missing seam. It sits **UNDER** `useAgentFleet` (§1.3) and
+The **Quorum Control API** is the missing seam. It sits **UNDER** `useAgentFleet` (§1.3) and
 **OVER** the runtimes (`PtyManager`, `AgentFleet`, `git2`, `LayerRegistry`, the watchdog
 engine). It is a typed, in-process Rust surface — *not* a network service — that both faces
 adapt onto:
@@ -103,7 +103,7 @@ adapt onto:
         (ipc/*_commands.rs)            (MCP_TOOL_SURFACE_SPEC.md)
               └───────────────┬────────────────┘
                               ▼
-                 Aether Control API   ← THIS layer (src-tauri/src/control/)
+                 Quorum Control API   ← THIS layer (src-tauri/src/control/)
             worktree · agent · pane · diff · merge · approval
                               ▼
         PtyManager · AgentFleet · git2/worktree · LayerRegistry · WatchdogEngine
@@ -254,7 +254,7 @@ pub enum AgentRuntime {
 
 ### 1.3 Target frontend hook: `useAgentFleet`
 
-`useAgentFleet` is the **UI-side client of the Aether Control API** (§0.5) — specifically
+`useAgentFleet` is the **UI-side client of the Quorum Control API** (§0.5) — specifically
 the Cockpit face's view of the `agent` domain. It does **not** call Tauri commands ad hoc;
 it calls the `agent`-domain commands (today `start_agent` / `spawn_interactive_agent` /
 `stop_agent` / `list_agents`, which §0.5.2 lifts into `control/agent.rs`) through the Tauri
@@ -519,7 +519,7 @@ Existing gates to keep green throughout: `verify-interactive-ai-cli-boundary.mjs
 
 ## 5. Gate model (FREE vs GATED — the safety boundary)
 
-The Aether Control API (§0.5) is consumed by two faces. The Cockpit face is driven by a
+The Quorum Control API (§0.5) is consumed by two faces. The Cockpit face is driven by a
 human, so every capability is implicitly human-authorized. The **MCP face is driven by the
 Orchestrator AI**, which means the layer needs a hard, code-enforced boundary deciding what
 the AI may do unilaterally vs what requires human authority. This is **the** safety

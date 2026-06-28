@@ -30,7 +30,7 @@ If any skill, prompt, or older doc conflicts with `AGENTS.md` or
 
 - Do not import external skill packs, hooks, slash commands, or personas wholesale.
 - Do not enable hooks that rewrite files or inject hidden session behavior.
-- Keep `.claude/skills` as Aether-specific workflows. They are not product capability proof.
+- Keep `.claude/skills` as Quorum-specific workflows. They are not product capability proof.
 - Machine gates and local verifier outputs outrank reviewer-agent opinions.
 - Token-spending AI prompt smoke requires explicit operator consent.
 

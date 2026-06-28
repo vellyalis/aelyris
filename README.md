@@ -1,8 +1,10 @@
-# Aether Terminal
+**English** | [日本語](README.ja.md)
 
-Project-first AI workspace terminal for Windows.
+# Quorum
 
-![A fleet of AI coding agents working in parallel inside Aether Terminal's visible split panes, with the project file tree on the left and the orchestrator rail on the right showing spawned and reviewed agents](docs/assets/hero-fleet.png)
+Quorum — project-first AI development workspace for Windows (formerly Aether Terminal).
+
+![A fleet of AI coding agents working in parallel inside Quorum's visible split panes, with the project file tree on the left and the orchestrator rail on the right showing spawned and reviewed agents](docs/assets/hero-fleet.png)
 
 > Development screenshot of the alpha: visible agent panes, each an interactive
 > agent CLI in its own git worktree, with the orchestrator rail on the right.
@@ -10,10 +12,10 @@ Project-first AI workspace terminal for Windows.
 > (`verify:agent-team-orchestration-readiness` is not yet green) — this shows the
 > substrate, not a proven parallel-fleet guarantee. See status and limitations below.
 
-Aether Terminal is a Tauri desktop app that combines a real terminal workspace,
+Quorum is a Tauri desktop app that combines a real terminal workspace,
 visible AI-agent panes, project/worktree context, review and merge controls, and
 machine-checked release gates. The long-term target is not just another terminal
-tab manager: Aether is being built as an auditable operating surface for AI
+tab manager: Quorum is being built as an auditable operating surface for AI
 development teams.
 
 ## Current Status
@@ -35,14 +37,14 @@ Latest documented machine evidence, generated locally on 2026-06-28 JST. Regener
 
 The current defensible claim is:
 
-> Aether has a real Rust/Tauri terminal, mux, sidecar, visible-agent, MCP,
+> Quorum has a real Rust/Tauri terminal, mux, sidecar, visible-agent, MCP,
 > worktree, ownership, review, and merge substrate. The world-class product claim
 > is still blocked by live durability, restart/replay, native-quality,
 > signing/updater, and external operator-proof gates.
 
-## What Aether Is
+## What Quorum Is
 
-Aether is designed around this target workflow:
+Quorum is designed around this target workflow:
 
 1. Open a project, not just a shell.
 2. Split work into visible agent lanes.

@@ -1,4 +1,4 @@
-# Aether Cockpit Requirements — AI Agent OS v1.0 superset
+# Quorum Cockpit Requirements — AI Agent OS v1.0 superset
 
 Status: Active implementation requirements
 Version: 2.0 (AI Agent OS v1.0 superset)
@@ -37,7 +37,7 @@ names, and **reverses one load-bearing invariant** (user decision, 2026-06-15):
 
 ## Goal
 
-Aether Terminal is an **agent-controllable workspace that runs a full
+Quorum is an **agent-controllable workspace that runs a full
 single-instruction autonomous build loop**. The user gives one instruction
 (e.g. "build an authenticated e-commerce site"); the system autonomously
 decomposes it into a Task Graph, spawns a Planner + Worker + Reviewer fleet,
@@ -45,7 +45,7 @@ isolates each worker in a git worktree, delegates tasks, reviews, and integrates
 — producing the final artifact with the human supervising by exception.
 
 The human Cockpit UI and the Orchestrator AI consume the **same backend
-capability layer** (Aether Control API); they are two faces over one set of
+capability layer** (Quorum Control API); they are two faces over one set of
 domain functions, never separate ad hoc command paths. The product target is a
 native-first hybrid terminal running 3–4 coding agents in parallel by default.
 
@@ -73,7 +73,7 @@ catastrophic/irreversible operations. The loop never pauses to ask a human.
 
 ## Binding Requirements
 
-1. **Aether Control API (capability layer, two faces).**
+1. **Quorum Control API (capability layer, two faces).**
    - One backend capability layer for worktree, agent, pane, diff, task, event,
      context, merge, and review domains.
    - Tauri IPC (Face 1, human Cockpit) and `aether.mcp.v1` (Face 2, orchestrator

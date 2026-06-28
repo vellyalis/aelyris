@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-Aether Terminal is currently in alpha development. No stable public release is
+Quorum is currently in alpha development. No stable public release is
 supported yet.
 
 Security fixes are handled on the default development line until a supported
@@ -26,7 +26,7 @@ include:
 
 ## Security Boundaries
 
-Aether works near several sensitive boundaries:
+Quorum works near several sensitive boundaries:
 
 - local shell and PTY execution,
 - project file access,

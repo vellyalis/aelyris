@@ -1,7 +1,7 @@
 # Visible Agent Pane Runtime Spec
 
 作成: 2026-06-23
-対象: Aether Terminal を「tmux + BridgeSpace 以上」の可視エージェント作業台にするための runtime 境界仕様。
+対象: Quorum を可視エージェント作業台にするための runtime 境界仕様（tmux / BridgeSpace を参照点とする）。
 
 ## 0. 結論
 
@@ -104,16 +104,16 @@ Frontend 側:
 
 ## 2. Product Target
 
-Aether の勝ち筋は、BridgeSpace の「賑やかな multi-pane ADE」を正面から真似ることではない。
+Quorum の方向性は、BridgeSpace の「賑やかな multi-pane ADE」を正面から真似ることではない。
 
 目標は:
 
-> tmux-grade durable panes + BridgeSpace-style agent workspace + Aether の worktree / review / audit / merge control を一体化した、可視で監査できる AI 組織 OS。
+> tmux-grade durable panes + BridgeSpace-style agent workspace + Quorum の worktree / review / audit / merge control を一体化した、可視で監査できる AI 開発ワークスペース。
 
 よって最重要体験は次の 1 画面である。
 
 1. Operator が一つの goal を投入する。
-2. Aether が N 個の work unit に分ける。
+2. Quorum が N 個の work unit に分ける。
 3. 各 agent が独立 worktree の interactive TUI として、中央の terminal pane tree / shell workspace に 1 agent = 1 pane で表示される。
 4. Operator は tmux 的に pane を移動・拡大・送信・broadcast できる。
 5. 完了、詰まり、承認待ち、差分、merge readiness が同じ cockpit で見える。
@@ -396,7 +396,7 @@ New / updated gates:
 
 ## 6. Live Shared Awareness
 
-This is the speed multiplier. Aether must not be "N AI CLIs open at once"; it must be a shared live workspace where every agent can see what the other agents are doing and which code surface they are touching.
+This is the speed multiplier. Quorum must not be "N AI CLIs open at once"; it must be a shared live workspace where every agent can see what the other agents are doing and which code surface they are touching.
 
 Current foundation:
 
@@ -503,7 +503,7 @@ Agent-to-agent context:
 
 ### 6.5 Speed claim boundary
 
-This makes Aether parallel and fast only if the scheduler respects the live ownership map.
+This makes Quorum parallel and fast only if the scheduler respects the live ownership map.
 
 Fast path:
 
@@ -525,7 +525,7 @@ The product should say "parallel-safe" only on the fast path. Otherwise it shoul
 
 ### 6.6 Shared brain without log flood
 
-The shared brain is not the raw terminal log. Raw logs are evidence and replay material; they are too noisy to be the live coordination state. Aether must turn high-volume streams into small, durable, queryable brain records.
+The shared brain is not the raw terminal log. Raw logs are evidence and replay material; they are too noisy to be the live coordination state. Quorum must turn high-volume streams into small, durable, queryable brain records.
 
 Pipeline:
 
@@ -621,7 +621,7 @@ This order gives an immediate visible product improvement before the deeper tmux
 Paste this to Claude when assigning implementation work:
 
 ```text
-You are implementing Aether Terminal in <repo>.
+You are implementing Quorum in <repo>.
 
 First read:
 1. docs/specs/CODEX_HANDOFF.md
@@ -629,7 +629,7 @@ First read:
 3. Only the specific source files named by the work unit you choose.
 
 Goal:
-Make Aether's multi-agent experience center-terminal-first: every GUI-visible AI agent must run as a real visible PTY / interactive TUI in the central terminal pane tree, with 1 agent = 1 pane. Do not render headless stdout as a fake terminal. Do not use `-p` / `--print` for anything shown in a GUI pane.
+Make Quorum's multi-agent experience center-terminal-first: every GUI-visible AI agent must run as a real visible PTY / interactive TUI in the central terminal pane tree, with 1 agent = 1 pane. Do not render headless stdout as a fake terminal. Do not use `-p` / `--print` for anything shown in a GUI pane.
 
 Runtime invariant:
 - visible agents: interactive CLI, no `-p`, PTY-backed `TerminalCanvas`

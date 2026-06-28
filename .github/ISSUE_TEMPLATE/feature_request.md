@@ -11,7 +11,7 @@ What problem are you trying to solve? Who hits it and when?
 
 ## Proposed direction
 
-What you'd like Aether Terminal to do.
+What you'd like Quorum to do.
 
 ## Scope / non-goals
 

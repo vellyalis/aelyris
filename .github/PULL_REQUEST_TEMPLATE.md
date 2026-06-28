@@ -1,5 +1,5 @@
 <!--
-Aether Terminal keeps requirements, spec, design, and gate in sync.
+Quorum keeps requirements, spec, design, and gate in sync.
 See CONTRIBUTING.md and docs/requirements.md before opening a PR.
 -->
 

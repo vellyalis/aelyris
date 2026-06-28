@@ -1,6 +1,6 @@
-# Aether Terminal Agent Guide
+# Quorum Agent Guide
 
-Windows向けプロジェクトファーストAIワークスペースターミナル。
+Windows向けプロジェクトファーストAI開発ワークスペース（旧称 Aether Terminal）。
 
 このファイルは Codex / Claude / other coding agents 共通の作業入口です。
 Claude Code 固有の補足は `CLAUDE.md` に置きますが、矛盾した場合はこの
@@ -54,7 +54,7 @@ signing/updater / operator proof gates 待ちです。
 - 死コード、重複、未配線 infrastructure を残さない。
 - Cargo build outputs, `node_modules`, `.codex-auto`, `dist`, `artifacts`, `.env*`, signing material, token files は commit しない。
 - token-spending AI prompt smoke は explicit consent なしで実行しない。
-- workflow/checklist の詳細は `docs/AGENT_WORKFLOWS.md` または Aether 専用 skill に置き、この root guide を肥大化させない。
+- workflow/checklist の詳細は `docs/AGENT_WORKFLOWS.md` または Quorum 専用 skill に置き、この root guide を肥大化させない。
 
 ## Tech Stack
 

@@ -2,12 +2,12 @@
 
 Status: public-previewable, not release-ready.
 
-This file is the short public-release checklist for Aether Terminal. It exists so
+This file is the short public-release checklist for Quorum. It exists so
 GitHub readers do not need to infer readiness from scattered historical docs.
 
 ## Current Verdict
 
-Aether can be published as an alpha / experimental project if the README keeps
+Quorum can be published as an alpha / experimental project if the README keeps
 the current limitations visible. It should not be published as a stable release
 or advertised as tmux-equivalent, BridgeSpace-plus complete, Ghostty/WezTerm-class,
 world-class, release-ready, or a strict `agmsg` superset.
@@ -77,8 +77,8 @@ Then confirm:
 
 ## Suggested GitHub Description
 
-Project-first AI workspace terminal for Windows. Alpha Tauri/Rust/React app with
-visible AI-agent panes, worktree/review/merge control, and machine-checked
+Quorum — project-first AI development workspace for Windows. Alpha Tauri/Rust/React
+app with visible AI-agent panes, worktree/review/merge control, and machine-checked
 readiness gates.
 
 

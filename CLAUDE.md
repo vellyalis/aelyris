@@ -1,4 +1,4 @@
-# Claude Code Guide For Aether Terminal
+# Claude Code Guide For Quorum
 
 Claude Code should treat `AGENTS.md` as the shared source of truth for this repo.
 Read it first, then use this file only for Claude-specific operating notes.

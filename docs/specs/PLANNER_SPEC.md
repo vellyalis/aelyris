@@ -23,7 +23,7 @@ fleet dispatch → parallel impl/test/review → star-comms → sequential gated
 ## 0. Insight
 
 The planner is the **automation of what a human orchestrator does by hand**. The exemplar is this
-very repo's `CODEX_HANDOFF.md`: a one-line objective ("make Aether a cockpit") became an audit →
+very repo's `CODEX_HANDOFF.md`: a one-line objective ("make Quorum a cockpit") became an audit →
 5 specs → 26 Work Units with a dependency DAG. WU-5.1 makes an LLM (Opus) do that planning pass
 and emit the result as `scripts/fleet/wu-manifest.json` — the contract `fleet-dispatch` already reads.
 

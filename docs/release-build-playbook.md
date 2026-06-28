@@ -1,4 +1,4 @@
-# Aether Terminal Release Build Playbook
+# Quorum Release Build Playbook
 
 This playbook is the human smoke path paired with `pnpm.cmd verify:release:doctor`.
 It deliberately separates local unsigned artifact checks from signed updater releases.
@@ -21,7 +21,9 @@ stall on esbuild or `net use` process creation before the bundle is produced.
 4. Run `pnpm.cmd verify:release:doctor`.
 5. Record the generated report from `.codex-auto/release-doctor/p2-08-release-doctor.json`.
 
-Expected local artifacts for the current version:
+Expected local artifacts for the current version (bundle and binary names follow
+the app `productName` / binary config in `tauri.conf.json`; they update when the
+app-config rename lands):
 
 - `src-tauri/target/release/Aether.exe`
 - `src-tauri/target/release/bundle/nsis/Aether Terminal_<version>_x64-setup.exe`

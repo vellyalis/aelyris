@@ -5,7 +5,7 @@ Owns: how the Rust↔TS IPC contract stops drifting so front and back can be bui
 
 ## 0. Problem (grounded)
 
-- Aether calls the backend via **raw `invoke`** (`@tauri-apps/api` 2.11.0, `package.json:128`) and keeps **hand-written TS types** in `src/shared/types/` (15 files) that mirror Rust structs. There is **no** `specta` / `ts-rs` / `typeshare` (verified: `src-tauri/Cargo.toml`).
+- Quorum calls the backend via **raw `invoke`** (`@tauri-apps/api` 2.11.0, `package.json:128`) and keeps **hand-written TS types** in `src/shared/types/` (15 files) that mirror Rust structs. There is **no** `specta` / `ts-rs` / `typeshare` (verified: `src-tauri/Cargo.toml`).
 - Drift is **silent**: a Rust serde rename or a changed field does not fail any test — it breaks at runtime. The cockpit audit flagged "status vocabularies inconsistent across layers."
 - **Live drift surface right now:** WU-0.1 is hand-writing BOTH `src-tauri/src/agent/status.rs` (Rust) and `src/shared/types/agentStatus.ts` (TS) — two copies of one contract, kept in sync by hope.
 - This is the single thing blocking **simultaneous front/back**: the frontend cannot trust the contract is stable, so it waits for the backend.

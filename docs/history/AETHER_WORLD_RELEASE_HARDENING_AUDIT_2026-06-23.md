@@ -1,9 +1,9 @@
-# Aether World-Release Hardening Audit
+# Quorum Release-Hardening Audit
 
 Date: 2026-06-23
-Status: BLOCK for world release. REVIEW for product hardening.
+Status: BLOCK for release. REVIEW for product hardening.
 
-This is a strict multi-agent audit for turning Aether Terminal from a strong
+This is a strict multi-agent audit for turning Quorum from a strong
 autonomous-agent cockpit into a release-grade, robust, fault-tolerant product.
 
 The goal is not "make the foundation work". The goal is a system that can be
