@@ -2,6 +2,13 @@
 
 Project-first AI workspace terminal for Windows.
 
+![A fleet of AI coding agents working in parallel inside Aether Terminal's visible split panes, with the project file tree on the left and the orchestrator rail on the right showing spawned and reviewed agents](docs/assets/hero-fleet.png)
+
+> Captured live: a real fleet of AI coding agents working in parallel — each pane
+> is an interactive agent CLI in its own git worktree, coordinated by the
+> orchestrator rail. This is a development screenshot of the alpha; see the
+> status and limitations below.
+
 Aether Terminal is a Tauri desktop app that combines a real terminal workspace,
 visible AI-agent panes, project/worktree context, review and merge controls, and
 machine-checked release gates. The long-term target is not just another terminal
