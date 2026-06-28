@@ -1,8 +1,6 @@
+# Security vulnerabilities must NOT be filed as issues. See SECURITY.md and use
+# GitHub Private Vulnerability Reporting (enable it in repo Settings > Security).
+# No contact_links are configured here on purpose: a hardcoded URL would be wrong
+# until the public repository slug exists, and a broken link would mislead the
+# responsible-disclosure flow. SECURITY.md is surfaced automatically by GitHub.
 blank_issues_enabled: true
-contact_links:
-  - name: Security report
-    url: https://github.com/SECURITY.md
-    about: Please report security issues privately per SECURITY.md, not as a public issue.
-  - name: Project status & claim policy
-    url: https://github.com/blob/main/docs/PUBLICATION_READINESS.md
-    about: Read the current alpha status and what the project does not yet claim.
