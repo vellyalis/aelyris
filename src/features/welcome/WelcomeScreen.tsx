@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { FolderOpen, GitBranch, Settings as SettingsIcon, Upload } from "lucide-react";
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
 import logoPng from "../../assets/logo.png";
 import styles from "./WelcomeScreen.module.css";
@@ -27,7 +27,7 @@ interface WelcomeScreenProps {
 // Frontend fallback if the Rust `default_project_scan_dirs` command fails
 // for some reason (should never happen on Windows). These are intentionally
 // generic; the previous revision shipped developer-machine paths
-// (`H:/claude`, `C:/Users/owner/…`) that leaked into every build.
+// (`H:/claude`, `C:/Users/example/…`) that leaked into every build.
 const FALLBACK_SCAN_DIRS = ["."];
 const SKELETON_KEYS = ["recent-skeleton-1", "recent-skeleton-2", "recent-skeleton-3", "recent-skeleton-4"];
 
@@ -43,6 +43,7 @@ export function WelcomeScreen({ onOpenProject, onOpenSettings }: WelcomeScreenPr
   const [recentProjects, setRecentProjects] = useState<ProjectInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState<string | null>(null);
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     let cancelled = false;
@@ -124,24 +125,24 @@ export function WelcomeScreen({ onOpenProject, onOpenSettings }: WelcomeScreenPr
     >
       <motion.div
         className={styles.center}
-        initial={{ opacity: 0, y: 20 }}
+        initial={reduceMotion ? false : { opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ type: "spring", stiffness: 200, damping: 25 }}
+        transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 200, damping: 25 }}
       >
         <motion.div
           className={styles.logo}
-          initial={{ scale: 0.8, opacity: 0 }}
+          initial={reduceMotion ? false : { scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          transition={{ type: "spring", stiffness: 300, damping: 20, delay: 0.05 }}
+          transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 300, damping: 20, delay: 0.05 }}
         >
           <img src={logoPng} alt="Aether" width={48} height={48} className={styles.logoIcon} />
           <h1 className={styles.title}>Aether Terminal</h1>
         </motion.div>
         <motion.p
           className={styles.greeting}
-          initial={{ opacity: 0 }}
+          initial={reduceMotion ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 0.15 }}
+          transition={reduceMotion ? { duration: 0 } : { delay: 0.15 }}
         >
           {userName ? `${getGreeting()}, ${userName}.` : `${getGreeting()}.`}
         </motion.p>
@@ -180,9 +181,11 @@ export function WelcomeScreen({ onOpenProject, onOpenSettings }: WelcomeScreenPr
                 key={p.path}
                 className={styles.projectCard}
                 onClick={() => onOpenProject(p.path)}
-                initial={{ opacity: 0, x: -10 }}
+                initial={reduceMotion ? false : { opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.1 + i * 0.04, type: "spring", stiffness: 300, damping: 25 }}
+                transition={
+                  reduceMotion ? { duration: 0 } : { delay: 0.1 + i * 0.04, type: "spring", stiffness: 300, damping: 25 }
+                }
               >
                 <div className={styles.projectAvatar}>{p.name.slice(0, 2).toUpperCase()}</div>
                 <div className={styles.projectInfo}>

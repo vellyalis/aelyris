@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { FolderSearch, X } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "../../shared/store/toastStore";
 import { EmptyState } from "../../shared/ui/EmptyState";
@@ -31,6 +31,7 @@ export function SearchPanel({ visible, rootPath, onClose, onResultClick }: Searc
   // any invoke already in flight is uncancellable.
   const requestIdRef = useRef(0);
   const mountedRef = useRef(true);
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     mountedRef.current = true;
@@ -103,14 +104,14 @@ export function SearchPanel({ visible, rootPath, onClose, onResultClick }: Searc
   }
 
   return (
-    <AnimatePresence>
+    <AnimatePresence initial={!reduceMotion}>
       {visible && (
         <motion.div
           className={styles.panel}
-          initial={{ height: 0, opacity: 0 }}
+          initial={reduceMotion ? false : { height: 0, opacity: 0 }}
           animate={{ height: "auto", opacity: 1 }}
-          exit={{ height: 0, opacity: 0 }}
-          transition={{ type: "spring", stiffness: 300, damping: 30 }}
+          exit={reduceMotion ? { opacity: 0 } : { height: 0, opacity: 0 }}
+          transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 300, damping: 30 }}
         >
           <div className={styles.header}>
             <input

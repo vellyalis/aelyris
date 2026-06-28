@@ -173,6 +173,64 @@ describe("pane tree persistence", () => {
     });
   });
 
+  it("round-trips visible agent pane bindings while dropping stale bindings", () => {
+    const tree: PaneNode = {
+      type: "terminal",
+      id: "agent-pty-1",
+      shell: "powershell",
+      cwd: "C:/repo",
+      title: "agent",
+      role: "agent",
+    };
+
+    savePaneTreeSnapshot(KEY, {
+      tree,
+      activePaneId: "agent-pty-1",
+      agentBindings: {
+        "agent-pty-1": {
+          paneId: "agent-pty-1",
+          terminalId: "agent-pty-1",
+          model: "sonnet",
+          backend: "native",
+          durability: "degraded",
+          status: "running",
+          taskId: "task-123",
+          roleId: "review",
+          cwd: "C:/repo",
+          branchName: "feature/agent-binding",
+          spawnedAt: "2026-06-25T08:00:00.000Z",
+        },
+        "pane-stale": {
+          paneId: "pane-stale",
+          terminalId: "stale-pty",
+          model: "opus",
+          backend: "sidecar",
+          durability: "tmux-durable",
+          status: "done",
+          spawnedAt: "2026-06-25T08:00:00.000Z",
+        },
+      },
+    });
+
+    const loaded = loadPaneTreeSnapshot(KEY, "powershell");
+
+    expect(loaded?.agentBindings).toEqual({
+      "agent-pty-1": {
+        paneId: "agent-pty-1",
+        terminalId: "agent-pty-1",
+        model: "sonnet",
+        backend: "native",
+        durability: "degraded",
+        status: "running",
+        taskId: "task-123",
+        roleId: "review",
+        cwd: "C:/repo",
+        branchName: "feature/agent-binding",
+        spawnedAt: "2026-06-25T08:00:00.000Z",
+      },
+    });
+  });
+
   it("drops corrupted snapshots instead of booting an invalid tree", () => {
     localStorage.setItem(
       KEY,

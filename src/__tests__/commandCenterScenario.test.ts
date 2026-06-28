@@ -21,7 +21,7 @@ import type { AgentSession } from "../shared/types/agent";
 declare const process: { cwd(): string; env: Record<string, string | undefined> };
 
 const NOW = Date.parse("2026-05-19T15:00:00.000Z");
-const WORKSPACE = "C:/Users/owner/Aether_Terminal";
+const WORKSPACE = "C:/repo/aether-terminal";
 const TARGET_FILE = "src/features/terminal/NativeTerminalArea.tsx";
 
 const ACTION_PHASE: Record<string, "Plan" | "Run" | "Observe" | "Route" | "Review" | "Preserve" | "Recover"> = {

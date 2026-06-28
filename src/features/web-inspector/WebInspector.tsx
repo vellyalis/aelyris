@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useState } from "react";
 import styles from "./WebInspector.module.css";
 
@@ -10,16 +10,17 @@ interface WebInspectorProps {
 export function WebInspector({ visible, onClose }: WebInspectorProps) {
   const [url, setUrl] = useState("http://localhost:3000");
   const [currentUrl, setCurrentUrl] = useState("http://localhost:3000");
+  const reduceMotion = useReducedMotion();
 
   return (
-    <AnimatePresence>
+    <AnimatePresence initial={!reduceMotion}>
       {visible && (
         <motion.div
           className={styles.panel}
-          initial={{ opacity: 0, scale: 0.95 }}
+          initial={reduceMotion ? false : { opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.95 }}
-          transition={{ type: "spring", stiffness: 400, damping: 30 }}
+          exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.95 }}
+          transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 400, damping: 30 }}
         >
           <div className={styles.header}>
             <button type="button" className={styles.navBtn} onClick={() => setCurrentUrl(url)}>

@@ -25,6 +25,18 @@ export const PANE_HEALTH_STATES = ["unknown", "healthy", "degraded", "exited", "
 
 export type PaneHealthState = (typeof PANE_HEALTH_STATES)[number];
 
+export const VISIBLE_AGENT_PANE_BACKENDS = ["sidecar", "native"] as const;
+
+export type VisibleAgentPaneBackend = (typeof VISIBLE_AGENT_PANE_BACKENDS)[number];
+
+export const VISIBLE_AGENT_PANE_DURABILITY_STATES = ["tmux-durable", "degraded"] as const;
+
+export type VisibleAgentPaneDurability = (typeof VISIBLE_AGENT_PANE_DURABILITY_STATES)[number];
+
+export const VISIBLE_AGENT_PANE_STATUSES = ["running", "done", "error"] as const;
+
+export type VisibleAgentPaneStatus = (typeof VISIBLE_AGENT_PANE_STATUSES)[number];
+
 export interface PaneScrollbackCheckpoint {
   terminalId?: string;
   cursorRow?: number;
@@ -52,6 +64,22 @@ export interface PaneSessionIntent {
   createdAt?: string;
   lastActiveAt?: string;
   scrollbackCheckpoint?: PaneScrollbackCheckpoint;
+}
+
+export interface VisibleAgentPaneBinding {
+  paneId: string;
+  terminalId: string;
+  model: string;
+  backend: VisibleAgentPaneBackend;
+  durability: VisibleAgentPaneDurability;
+  status: VisibleAgentPaneStatus;
+  taskId?: string;
+  roleId?: string;
+  sessionId?: string;
+  cwd?: string;
+  branchName?: string;
+  spawnedAt: string;
+  updatedAt?: string;
 }
 
 /** A leaf node — a single terminal instance */

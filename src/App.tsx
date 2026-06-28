@@ -14,7 +14,6 @@ import {
   SquareTerminal,
   Users,
 } from "lucide-react";
-import { MotionConfig } from "motion/react";
 import {
   lazy,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -42,6 +41,7 @@ import {
   paneTreeStorageKey,
 } from "./features/terminal/pane-tree";
 import type {
+  PaneAgentSpawnRequest,
   PaneAttachRequest,
   PaneCloseRequest,
   PaneFocusRequest,
@@ -147,13 +147,17 @@ const PRInspector = lazy(() => import("./features/pr-inspector/PRInspector").the
 const WebInspector = lazy(() =>
   import("./features/web-inspector/WebInspector").then((m) => ({ default: m.WebInspector })),
 );
+const FleetHud = lazy(() => import("./features/fleet-hud/FleetHud").then((m) => ({ default: m.FleetHud })));
+const OnboardingOverlay = lazy(() =>
+  import("./shared/ui/OnboardingOverlay").then((m) => ({ default: m.OnboardingOverlay })),
+);
 
 import { HistorySearchDialog, showHistorySearch } from "./features/history/HistorySearchDialog";
 import { type StartAgentMeta, useAgentFleet } from "./shared/hooks/useAgentFleet";
 import { useAuditEvents } from "./shared/hooks/useAuditEvents";
 import { useGitStatus } from "./shared/hooks/useGitStatus";
 import { useKeyboardShortcuts } from "./shared/hooks/useKeyboardShortcuts";
-import { useTabManager } from "./shared/hooks/useTabManager";
+import { useTabManager, VISUAL_QA_FALLBACK_PROJECT_PATH } from "./shared/hooks/useTabManager";
 import { useTaskAgentLink } from "./shared/hooks/useTaskAgentLink";
 import { useTerminalNotifications } from "./shared/hooks/useTerminalNotifications";
 import { useThemeApplier } from "./shared/hooks/useTheme";
@@ -231,8 +235,6 @@ import { ConfirmDialog, showConfirm } from "./shared/ui/ConfirmDialog";
 import { ErrorBoundary } from "./shared/ui/ErrorBoundary";
 import { HandoffDialog } from "./shared/ui/HandoffDialog";
 import { LazyDialog } from "./shared/ui/LazyDialog";
-import { FleetHud } from "./features/fleet-hud/FleetHud";
-import { OnboardingOverlay } from "./shared/ui/OnboardingOverlay";
 import { OrchestraDialog, showOrchestra } from "./shared/ui/OrchestraDialog";
 import { PromptDialog } from "./shared/ui/PromptDialog";
 import { SplitPane } from "./shared/ui/SplitPane";
@@ -780,7 +782,7 @@ function readDevVisualQaState(): DevVisualQaState {
   const requestedNegativePath = params.get("negativePath") ?? params.get("rightRailNegativePath");
   const negativePath =
     requestedNegativePath === "missing-diff" || requestedNegativePath === "stale-pane" ? requestedNegativePath : null;
-  const projectPath = params.get("projectPath") || storedProject || "C:/Users/owner/Aether_Terminal";
+  const projectPath = params.get("projectPath") || storedProject || VISUAL_QA_FALLBACK_PROJECT_PATH;
   const requestedRail = params.get("rail");
   const requestedScenarioParam = params.has("railState")
     ? "railState"
@@ -1015,7 +1017,7 @@ function createDevVisualQaCommandBlocks(
   projectPath: string,
 ): WorkstationGraphCommandBlock[] {
   if (scenario === "idle") return [];
-  const cwd = projectPath || "C:/Users/owner/Aether_Terminal";
+  const cwd = projectPath || VISUAL_QA_FALLBACK_PROJECT_PATH;
   const agentId = scenario === "review" ? "qa-review" : scenario === "blocked" ? "qa-blocked" : "qa-impl";
   return [
     {
@@ -1086,7 +1088,7 @@ function createDevVisualQaPanes(
   tabShell: ShellType,
   attachFixture = false,
 ): TerminalPaneTarget[] {
-  const cwd = projectPath || "C:/Users/owner/Aether_Terminal";
+  const cwd = projectPath || VISUAL_QA_FALLBACK_PROJECT_PATH;
   if (attachFixture) {
     return [
       {
@@ -2657,29 +2659,61 @@ export function App() {
   // them work in genuine terminal panes.
   const [paneAgentSpawns, setPaneAgentSpawns] = useState<{
     tabId: string;
-    agents: { terminalId: string; model: string }[];
+    agents: PaneAgentSpawnRequest["agents"][number][];
     sequence: number;
   } | null>(null);
   useEffect(() => {
     if (!isTauriRuntime()) return;
     let unlisten: UnlistenFn | null = null;
     let cancelled = false;
-    void tauriListen<{ kind?: string; payload?: { terminalId?: unknown; model?: unknown } }>(
+    void tauriListen<{
+      kind?: string;
+      payload?: {
+        terminalId?: unknown;
+        model?: unknown;
+        taskId?: unknown;
+        roleId?: unknown;
+        backend?: unknown;
+        durability?: unknown;
+        branchName?: unknown;
+      };
+    }>(
       "agent-event",
       (event) => {
         if (cancelled) return;
         const message = event.payload;
         if (message?.kind !== "agent_spawned") return;
-        const terminalId = message.payload?.terminalId;
+        const payload = message.payload;
+        const terminalId = payload?.terminalId;
         if (typeof terminalId !== "string") return;
-        const model = typeof message.payload?.model === "string" ? message.payload.model : "sonnet";
+        const model = typeof payload?.model === "string" ? payload.model : "sonnet";
+        const taskId = typeof payload?.taskId === "string" ? payload.taskId : undefined;
+        const roleId = typeof payload?.roleId === "string" ? payload.roleId : undefined;
+        const branchName = typeof payload?.branchName === "string" ? payload.branchName : undefined;
+        const backend = payload?.backend === "sidecar" || payload?.backend === "native" ? payload.backend : "native";
+        const durability =
+          payload?.durability === "tmux-durable" || payload?.durability === "degraded"
+            ? payload.durability
+            : backend === "sidecar"
+              ? "tmux-durable"
+              : "degraded";
+        const agent: PaneAgentSpawnRequest["agents"][number] = {
+          terminalId,
+          model,
+          backend,
+          durability,
+          spawnedAt: new Date().toISOString(),
+          ...(taskId ? { taskId } : {}),
+          ...(roleId ? { roleId } : {}),
+          ...(branchName ? { branchName } : {}),
+        };
         setPaneAgentSpawns((prev) => {
           const sameTab = prev && prev.tabId === activeTabId ? prev : null;
           const agents = sameTab?.agents ?? [];
           if (agents.some((agent) => agent.terminalId === terminalId)) return prev;
           return {
             tabId: activeTabId,
-            agents: [...agents, { terminalId, model }],
+            agents: [...agents, agent],
             sequence: (sameTab?.sequence ?? 0) + 1,
           };
         });
@@ -3086,6 +3120,10 @@ export function App() {
       projectPath,
       ".codex-auto/production-smoke/process-reconnect-command-evidence.json",
     );
+    const muxLiveProcessPreservationPath = resolveProjectFilePath(
+      projectPath,
+      ".codex-auto/quality/mux-live-process-preservation.json",
+    );
     const interactiveBoundaryPath = resolveProjectFilePath(
       projectPath,
       ".codex-auto/production-smoke/interactive-ai-cli-boundary.json",
@@ -3099,10 +3137,11 @@ export function App() {
             invoke<string>("read_file", { path: nativeInputPath }),
             invoke<string>("read_file", { path: imePath }),
             invoke<string>("read_file", { path: processReconnectPath }),
+            invoke<string>("read_file", { path: muxLiveProcessPreservationPath }),
             invoke<string>("read_file", { path: interactiveBoundaryPath }),
           ]),
         )
-        .then(([realProbeResult, nativeInputResult, imeResult, processReconnectResult, interactiveBoundaryResult]) => {
+        .then(([realProbeResult, nativeInputResult, imeResult, processReconnectResult, muxLiveProcessPreservationResult, interactiveBoundaryResult]) => {
           if (!active) return;
           const evidence =
             realProbeResult.status === "fulfilled"
@@ -3122,6 +3161,12 @@ export function App() {
                   processReconnectResult.value,
                 )
               : null;
+          const muxLiveProcessPreservation =
+            muxLiveProcessPreservationResult.status === "fulfilled"
+              ? parseJsonArtifact<NonNullable<AiCliLaunchPreflightEvidence["muxLiveProcessPreservation"]>>(
+                  muxLiveProcessPreservationResult.value,
+                )
+              : null;
           const interactiveBoundary =
             interactiveBoundaryResult.status === "fulfilled"
               ? parseJsonArtifact<NonNullable<AiCliLaunchPreflightEvidence["interactiveBoundary"]>>(
@@ -3129,11 +3174,12 @@ export function App() {
                 )
               : null;
           const preflight =
-            nativeInputHost || ime || processReconnect || interactiveBoundary
+            nativeInputHost || ime || processReconnect || muxLiveProcessPreservation || interactiveBoundary
               ? {
                   nativeInputHost,
                   ime,
                   processReconnect,
+                  muxLiveProcessPreservation,
                   interactiveBoundary,
                 }
               : null;
@@ -4614,6 +4660,7 @@ export function App() {
         ".codex-auto/production-smoke/real-ai-cli-binary-probe.json",
         ".codex-auto/production-smoke/native-terminal-input-host.json",
         ".codex-auto/production-smoke/process-reconnect-command-evidence.json",
+        ".codex-auto/quality/mux-live-process-preservation.json",
         ".codex-auto/production-smoke/interactive-ai-cli-boundary.json",
       ],
     }),
@@ -5080,15 +5127,8 @@ export function App() {
   ) : null;
 
   return (
-    /* MotionConfig reducedMotion="user" tells every motion.* child in the
-     * tree to honor the OS prefers-reduced-motion setting. CSS already
-     * zeroes transition-duration and transform on :hover under that
-     * query — this adds the missing JS-side respect for Framer-driven
-     * springs across CommandPalette/WelcomeScreen/SearchPanel/PRInspector/
-     * WebInspector/OnboardingOverlay. */
-    <MotionConfig reducedMotion="user">
-      <TooltipProvider>
-        <ToastProvider>
+    <TooltipProvider>
+      <ToastProvider>
           <div className="app-container" data-density={workspaceProfile.visualDensity}>
             <UpdateBanner />
             <ProjectHeaderBar
@@ -6965,12 +7005,13 @@ export function App() {
             <HandoffDialog />
             <OrchestraDialog />
             <HistorySearchDialog onAccept={handleHistoryAccept} defaultCwdPrefix={projectPath || undefined} />
-            <OnboardingOverlay />
-            <FleetHud />
+            <Suspense fallback={null}>
+              <OnboardingOverlay />
+              <FleetHud />
+            </Suspense>
           </div>
         </ToastProvider>
-      </TooltipProvider>
-    </MotionConfig>
+    </TooltipProvider>
   );
 }
 

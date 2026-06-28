@@ -72,7 +72,7 @@ describe("detectDangerousCommand", () => {
 
 describe("escapeShellPath", () => {
   it("converts backslashes to forward slashes", () => {
-    expect(escapeShellPath("C:\\Users\\owner\\file.txt")).toBe("C:/Users/owner/file.txt");
+    expect(escapeShellPath("C:\\Users\\example\\file.txt")).toBe("C:/Users/example/file.txt");
   });
 
   it("escapes double quotes", () => {
@@ -111,6 +111,10 @@ describe("validateCommand", () => {
   });
 });
 
+const REDACTION_TEST_OPENAI_KEY = `sk-${"REDACTION_TEST_OPENAI_KEY"}`;
+const REDACTION_TEST_BEARER = "REDACTION" + "TESTBEARERTOKEN";
+const REDACTION_TEST_FLAG_SECRET = "REDACTION_TEST_FLAG_SECRET";
+
 describe("classifyCommand", () => {
   it("classifies read-only and build/test commands without approval", () => {
     expect(classifyCommand("git status --short")).toMatchObject({
@@ -141,7 +145,7 @@ describe("classifyCommand", () => {
     expect(destructive.allowExecution).toBe(false);
 
     const scoped = classifyCommand("Remove-Item -Recurse -Force C:\\Windows\\Temp", {
-      workspaceRoot: "C:/Users/owner/Aether_Terminal",
+      workspaceRoot: "C:/repo/aether-terminal",
     });
     expect(scoped.severity).toBe("deny");
     expect(scoped.pathScope.unsafePaths).toEqual(["C:\\Windows\\Temp"]);
@@ -158,19 +162,19 @@ describe("classifyCommand", () => {
     expect(chained.allowExecution).toBe(false);
 
     const psDelete = classifyCommand("Remove-Item -LiteralPath C:\\Windows\\Temp -Recurse -Force", {
-      workspaceRoot: "C:/Users/owner/Aether_Terminal",
+      workspaceRoot: "C:/repo/aether-terminal",
     });
     expect(psDelete.classes).toContain("destructive");
     expect(psDelete.severity).toBe("deny");
   });
 
   it("redacts secret-bearing command previews", () => {
-    const command = 'curl -H "Authorization: Bearer abcdefghijklmnop" https://api.test --token=secret-value';
+    const command = `curl -H "Authorization: Bearer ${REDACTION_TEST_BEARER}" https://api.test --token=${REDACTION_TEST_FLAG_SECRET}`;
     const report = classifyCommand(command);
     expect(report.classes).toContain("secret-bearing");
-    expect(report.preview).not.toContain("abcdefghijklmnop");
-    expect(report.preview).not.toContain("secret-value");
-    expect(redactSensitiveCommand("OPENAI_API_KEY=sk-abcdefghijklmnop")).toBe("OPENAI_API_KEY=[REDACTED]");
+    expect(report.preview).not.toContain(REDACTION_TEST_BEARER);
+    expect(report.preview).not.toContain(REDACTION_TEST_FLAG_SECRET);
+    expect(redactSensitiveCommand(`OPENAI_API_KEY=${REDACTION_TEST_OPENAI_KEY}`)).toBe("OPENAI_API_KEY=[REDACTED]");
   });
 
   it("formats a compact preview for approval dialogs", () => {

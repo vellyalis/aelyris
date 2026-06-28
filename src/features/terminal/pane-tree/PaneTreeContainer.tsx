@@ -17,7 +17,14 @@ import {
   savePaneTreeSnapshot,
   savePaneTreeSnapshotToBackend,
 } from "./persistence";
-import type { PaneHealthState, PaneLifecycleState, PaneNode, PaneSessionIntent, SplitDirection } from "./types";
+import type {
+  PaneHealthState,
+  PaneLifecycleState,
+  PaneNode,
+  PaneSessionIntent,
+  SplitDirection,
+  VisibleAgentPaneBinding,
+} from "./types";
 import { usePaneTree } from "./usePaneTree";
 
 export interface PaneFocusRequest {
@@ -80,7 +87,16 @@ export interface PaneLayoutRequest {
  * lost to render batching; already-mounted terminals are skipped.
  */
 export interface PaneAgentSpawnRequest {
-  agents: ReadonlyArray<{ terminalId: string; model: string }>;
+  agents: ReadonlyArray<{
+    terminalId: string;
+    model: string;
+    taskId?: string;
+    roleId?: string;
+    backend?: VisibleAgentPaneBinding["backend"];
+    durability?: VisibleAgentPaneBinding["durability"];
+    branchName?: string;
+    spawnedAt?: string;
+  }>;
   sequence: number;
 }
 
@@ -139,6 +155,26 @@ interface BackendPaneInfo {
 /** Most recent finished agent panes kept on screen; older ones auto-close. */
 const MAX_DONE_AGENT_PANES = 6;
 
+function agentBindingsToMeta(bindings: ReadonlyMap<string, VisibleAgentPaneBinding>) {
+  const meta = new Map<string, { model: string; status: "running" | "done" | "error" }>();
+  for (const binding of bindings.values()) {
+    meta.set(binding.terminalId, { model: binding.model, status: binding.status });
+  }
+  return meta;
+}
+
+function preserveSeedAgentBindings(
+  primary: PaneTreeSnapshot | null,
+  seed: PaneTreeSnapshot | null,
+): PaneTreeSnapshot | null {
+  if (!primary || primary.agentBindings || !seed?.agentBindings) return primary;
+  const leafIds = new Set(collectLeafIds(primary.tree));
+  const agentBindings = Object.fromEntries(
+    Object.entries(seed.agentBindings).filter(([paneId]) => leafIds.has(paneId)),
+  );
+  return Object.keys(agentBindings).length > 0 ? { ...primary, agentBindings } : primary;
+}
+
 /**
  * Container that owns the PaneTree state for a single tab.
  * Connects the usePaneTree hook to the PaneTreeRenderer.
@@ -169,12 +205,21 @@ export function PaneTreeContainer({
   const [paneLifecycleStates, setPaneLifecycleStates] = useState<ReadonlyMap<string, PaneLifecycleState>>(
     () => new Map(),
   );
-  // Per-agent-pane identity + live status (keyed by terminal id == agent pane id).
-  // Drives the TerminalInfoBar agent chip so each fleet pane shows what it is and
-  // whether it is still working — the visible-fleet liveliness signal.
-  const [agentMeta, setAgentMeta] = useState<ReadonlyMap<string, { model: string; status: "running" | "done" }>>(
-    () => new Map(),
+  const initialAgentBindings = useMemo(
+    () => new Map(Object.entries(initialSnapshot?.agentBindings ?? {})),
+    [initialSnapshot],
   );
+  // Durable per-agent-pane contract (keyed by pane id == terminal id for loop
+  // agents). This persists task/backend/durability so restored visible panes do
+  // not become anonymous shells.
+  const [agentBindings, setAgentBindings] = useState<ReadonlyMap<string, VisibleAgentPaneBinding>>(
+    () => initialAgentBindings,
+  );
+  // Renderer-facing projection keyed by terminal id; kept separate so the UI
+  // only consumes display identity while the persistence layer owns the contract.
+  const [agentMeta, setAgentMeta] = useState<
+    ReadonlyMap<string, { model: string; status: "running" | "done" | "error" }>
+  >(() => agentBindingsToMeta(initialAgentBindings));
   const [synchronizedPanes, setSynchronizedPanes] = useState(() => initialSnapshot?.synchronizedPanes === true);
   const [orphanedBackendPanes, setOrphanedBackendPanes] = useState<PaneSwitcherEntry[]>([]);
   const [backendReconciled, setBackendReconciled] = useState(() => !layoutStorageKey);
@@ -242,6 +287,9 @@ export function PaneTreeContainer({
       backendBindingsRef.current = snapshot.backendBindings ?? {};
       workspaceTerminalIdRef.current =
         snapshot.muxWorkspaceId ?? Object.values(snapshot.backendBindings ?? {})[0]?.terminalId ?? null;
+      const restoredAgentBindings = new Map(Object.entries(snapshot.agentBindings ?? {}));
+      setAgentBindings(restoredAgentBindings);
+      setAgentMeta(agentBindingsToMeta(restoredAgentBindings));
       setSynchronizedPanes(snapshot.synchronizedPanes === true);
       if (shouldReplace) replaceTree(snapshot.tree, snapshot.activePaneId);
     };
@@ -257,7 +305,7 @@ export function PaneTreeContainer({
         if (muxSnapshot) break;
       }
       if (cancelled) return;
-      const nextSnapshot = muxSnapshot ?? seedSnapshot;
+      const nextSnapshot = preserveSeedAgentBindings(muxSnapshot, seedSnapshot) ?? seedSnapshot;
       applySnapshot(nextSnapshot, nextSnapshot !== initialSnapshot);
       setLayoutHydrated(true);
     };
@@ -458,6 +506,10 @@ export function PaneTreeContainer({
       layoutId,
       activePaneId,
     );
+    const leafIds = new Set(collectLeafIds(tree));
+    const persistedAgentBindings = Object.fromEntries(
+      Array.from(agentBindings.entries()).filter(([paneId, binding]) => leafIds.has(paneId) && binding.terminalId),
+    );
     const snapshot = {
       tree,
       activePaneId,
@@ -467,6 +519,7 @@ export function PaneTreeContainer({
       synchronizedPanes,
       backendBindings,
       paneIntents,
+      agentBindings: Object.keys(persistedAgentBindings).length > 0 ? persistedAgentBindings : undefined,
     };
     const pending = {
       storageKey: layoutStorageKey,
@@ -482,6 +535,7 @@ export function PaneTreeContainer({
     return () => window.clearTimeout(timer);
   }, [
     activePaneId,
+    agentBindings,
     cwd,
     flushPaneTreeSnapshot,
     layoutHydrated,
@@ -574,6 +628,57 @@ export function PaneTreeContainer({
   useEffect(() => {
     closeRef.current = close;
   }, [close]);
+
+  useEffect(() => {
+    for (const binding of agentBindings.values()) {
+      everMountedAgentsRef.current.add(binding.terminalId);
+      if (binding.status === "running" && terminalIds.get(binding.paneId) === binding.terminalId) {
+        agentPaneIdsRef.current.add(binding.terminalId);
+      } else if (binding.status !== "running") {
+        agentPaneIdsRef.current.delete(binding.terminalId);
+      }
+    }
+  }, [agentBindings, terminalIds]);
+
+  useEffect(() => {
+    if (!layoutStorageKey || !backendReconciled || agentBindings.size === 0) return;
+    const missingRestoredAgents = Array.from(agentBindings.values()).filter(
+      (binding) =>
+        binding.status === "running" &&
+        !terminalIds.has(binding.paneId) &&
+        !agentPaneIdsRef.current.has(binding.terminalId),
+    );
+    if (missingRestoredAgents.length === 0) return;
+    const now = new Date().toISOString();
+    setPaneLifecycleStates((prev) => {
+      const next = new Map(prev);
+      for (const binding of missingRestoredAgents) next.set(binding.paneId, "exited");
+      return next;
+    });
+    setAgentBindings((prev) => {
+      const next = new Map(prev);
+      let changed = false;
+      for (const binding of missingRestoredAgents) {
+        const current = next.get(binding.paneId);
+        if (!current || current.status !== "running") continue;
+        next.set(binding.paneId, { ...current, status: "error", updatedAt: now });
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+    setAgentMeta((prev) => {
+      const next = new Map(prev);
+      let changed = false;
+      for (const binding of missingRestoredAgents) {
+        const current = next.get(binding.terminalId);
+        if (!current || current.status !== "running") continue;
+        next.set(binding.terminalId, { ...current, status: "error" });
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [agentBindings, backendReconciled, layoutStorageKey, terminalIds]);
+
   const firstLiveTerminalId = useMemo(() => {
     for (const paneId of collectLeafIds(tree)) {
       const terminalId = terminalIds.get(paneId);
@@ -1002,17 +1107,35 @@ export function PaneTreeContainer({
     handledAgentSpawnSequenceRef.current = spawnAgentPaneRequest.sequence;
 
     let mountedAny = false;
-    for (const { terminalId, model } of spawnAgentPaneRequest.agents) {
+    for (const agent of spawnAgentPaneRequest.agents) {
+      const { terminalId, model, taskId, roleId, branchName } = agent;
       if (everMountedAgentsRef.current.has(terminalId) || collectLeafIds(tree).includes(terminalId)) continue;
       const targetId = activePaneId && findLeaf(tree, activePaneId) ? activePaneId : collectLeafIds(tree)[0];
       if (!targetId) break;
       const targetLeaf = findLeaf(tree, targetId);
       const direction: SplitDirection = agentPaneIdsRef.current.size % 2 === 0 ? "right" : "down";
       splitWithExistingTerminal(targetId, direction, terminalId, targetLeaf?.shell ?? shell, targetLeaf?.cwd ?? cwd);
+      const backend = agent.backend ?? "native";
+      const durability = agent.durability ?? (backend === "sidecar" ? "tmux-durable" : "degraded");
+      const bindingCwd = targetLeaf?.cwd ?? cwd;
+      const binding: VisibleAgentPaneBinding = {
+        paneId: terminalId,
+        terminalId,
+        model,
+        backend,
+        durability,
+        status: "running",
+        ...(taskId ? { taskId } : {}),
+        ...(roleId ? { roleId } : {}),
+        ...(bindingCwd ? { cwd: bindingCwd } : {}),
+        ...(branchName ? { branchName } : {}),
+        spawnedAt: agent.spawnedAt ?? new Date().toISOString(),
+      };
       agentPaneIdsRef.current.add(terminalId);
       everMountedAgentsRef.current.add(terminalId);
       setPaneLifecycleStates((prev) => new Map(prev).set(terminalId, "live"));
       setAgentMeta((prev) => new Map(prev).set(terminalId, { model, status: "running" }));
+      setAgentBindings((prev) => new Map(prev).set(terminalId, binding));
       mountedAny = true;
 
       if (isTauriRuntime()) {
@@ -1030,6 +1153,11 @@ export function PaneTreeContainer({
             if (!meta) return prev;
             return new Map(prev).set(id, { ...meta, status: "done" });
           });
+          setAgentBindings((prev) => {
+            const current = prev.get(id);
+            if (!current) return prev;
+            return new Map(prev).set(id, { ...current, status: "done", updatedAt: new Date().toISOString() });
+          });
           // Bound the kept "done" panes: close the oldest once over the cap so
           // they cannot accumulate without limit across many dispatch rounds.
           agentPaneIdsRef.current.delete(id);
@@ -1038,6 +1166,12 @@ export function PaneTreeContainer({
             const evict = doneAgentOrderRef.current.shift();
             if (!evict) break;
             setAgentMeta((prev) => {
+              if (!prev.has(evict)) return prev;
+              const next = new Map(prev);
+              next.delete(evict);
+              return next;
+            });
+            setAgentBindings((prev) => {
               if (!prev.has(evict)) return prev;
               const next = new Map(prev);
               next.delete(evict);

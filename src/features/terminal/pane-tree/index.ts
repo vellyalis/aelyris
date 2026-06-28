@@ -31,6 +31,16 @@ export type {
   SplitDirection,
   SplitNode,
   TerminalLeaf,
+  VisibleAgentPaneBackend,
+  VisibleAgentPaneBinding,
+  VisibleAgentPaneDurability,
+  VisibleAgentPaneStatus,
 } from "./types";
-export { PANE_LIFECYCLE_STATES, PANE_ROLES } from "./types";
+export {
+  PANE_LIFECYCLE_STATES,
+  PANE_ROLES,
+  VISIBLE_AGENT_PANE_BACKENDS,
+  VISIBLE_AGENT_PANE_DURABILITY_STATES,
+  VISIBLE_AGENT_PANE_STATUSES,
+} from "./types";
 export { usePaneTree } from "./usePaneTree";

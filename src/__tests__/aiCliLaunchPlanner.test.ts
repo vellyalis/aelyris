@@ -15,11 +15,11 @@ function realCliEvidence(overrides: Partial<AiCliProbeEvidence> = {}): AiCliProb
         {
           cli: "codex",
           status: "pass",
-          discovery: { preferred: { name: "codex.cmd", path: "C:/Users/owner/AppData/Roaming/npm/codex.cmd" } },
-          executablePath: "C:/Users/owner/AppData/Roaming/npm/codex.cmd",
+          discovery: { preferred: { name: "codex.cmd", path: "C:/Users/example/AppData/Roaming/npm/codex.cmd" } },
+          executablePath: "C:/Users/example/AppData/Roaming/npm/codex.cmd",
           attemptCount: 1,
           retried: false,
-          attempts: [{ cli: "codex", attempt: 1, executablePath: "C:/Users/owner/AppData/Roaming/npm/codex.cmd" }],
+          attempts: [{ cli: "codex", attempt: 1, executablePath: "C:/Users/example/AppData/Roaming/npm/codex.cmd" }],
           markerSeen: true,
           commandNotFound: false,
           versionLike: true,
@@ -28,11 +28,11 @@ function realCliEvidence(overrides: Partial<AiCliProbeEvidence> = {}): AiCliProb
         {
           cli: "claude",
           status: "pass",
-          discovery: { preferred: { name: "claude.exe", path: "C:/Users/owner/.local/bin/claude.exe" } },
-          executablePath: "C:/Users/owner/.local/bin/claude.exe",
+          discovery: { preferred: { name: "claude.exe", path: "C:/Users/example/.local/bin/claude.exe" } },
+          executablePath: "C:/Users/example/.local/bin/claude.exe",
           attemptCount: 1,
           retried: false,
-          attempts: [{ cli: "claude", attempt: 1, executablePath: "C:/Users/owner/.local/bin/claude.exe" }],
+          attempts: [{ cli: "claude", attempt: 1, executablePath: "C:/Users/example/.local/bin/claude.exe" }],
           markerSeen: true,
           commandNotFound: false,
           versionLike: true,
@@ -41,11 +41,11 @@ function realCliEvidence(overrides: Partial<AiCliProbeEvidence> = {}): AiCliProb
         {
           cli: "gemini",
           status: "pass",
-          discovery: { preferred: { name: "gemini.cmd", path: "C:/Users/owner/AppData/Roaming/npm/gemini.cmd" } },
-          executablePath: "C:/Users/owner/AppData/Roaming/npm/gemini.cmd",
+          discovery: { preferred: { name: "gemini.cmd", path: "C:/Users/example/AppData/Roaming/npm/gemini.cmd" } },
+          executablePath: "C:/Users/example/AppData/Roaming/npm/gemini.cmd",
           attemptCount: 1,
           retried: false,
-          attempts: [{ cli: "gemini", attempt: 1, executablePath: "C:/Users/owner/AppData/Roaming/npm/gemini.cmd" }],
+          attempts: [{ cli: "gemini", attempt: 1, executablePath: "C:/Users/example/AppData/Roaming/npm/gemini.cmd" }],
           markerSeen: true,
           commandNotFound: false,
           versionLike: true,
@@ -119,6 +119,20 @@ function preflightEvidence() {
   };
 }
 
+function muxLiveProcessPreservationEvidence() {
+  return {
+    ok: true,
+    status: "passed",
+    currentCapability: "daemon-live-detach-reattach-same-process",
+    requiredCapability: "same-process-or-broker-preserved-reconnect",
+    checks: [
+      { id: "graph-live-binding-carries-process-id", ok: true },
+      { id: "integration-test-proves-same-process-detach-reattach", ok: true },
+      { id: "restart-restore-still-clears-stale-live-identity", ok: true },
+    ],
+  };
+}
+
 function promptContract() {
   return {
     objective: "Review the current workspace changes and report the safest next implementation step.",
@@ -173,7 +187,7 @@ describe("deriveAiCliLaunchPlan", () => {
       recommendedProvider: "codex",
       recommendedBackend: "sidecar-command-session",
       selectedLauncher: "codex.cmd",
-      selectedExecutablePath: "C:/Users/owner/AppData/Roaming/npm/codex.cmd",
+      selectedExecutablePath: "C:/Users/example/AppData/Roaming/npm/codex.cmd",
       selectedAttemptCount: 1,
       selectedVersion: "codex-cli 0.130.0",
     });
@@ -182,7 +196,7 @@ describe("deriveAiCliLaunchPlan", () => {
         provider: "claude",
         status: "ready",
         launcher: "claude.exe",
-        executablePath: "C:/Users/owner/.local/bin/claude.exe",
+        executablePath: "C:/Users/example/.local/bin/claude.exe",
         attemptCount: 1,
         retried: false,
         version: "2.1.142 (Claude Code)",
@@ -191,7 +205,7 @@ describe("deriveAiCliLaunchPlan", () => {
         provider: "codex",
         status: "ready",
         launcher: "codex.cmd",
-        executablePath: "C:/Users/owner/AppData/Roaming/npm/codex.cmd",
+        executablePath: "C:/Users/example/AppData/Roaming/npm/codex.cmd",
         attemptCount: 1,
         retried: false,
         version: "codex-cli 0.130.0",
@@ -200,7 +214,7 @@ describe("deriveAiCliLaunchPlan", () => {
         provider: "gemini",
         status: "ready",
         launcher: "gemini.cmd",
-        executablePath: "C:/Users/owner/AppData/Roaming/npm/gemini.cmd",
+        executablePath: "C:/Users/example/AppData/Roaming/npm/gemini.cmd",
         attemptCount: 1,
         retried: false,
         version: "0.42.0",
@@ -226,6 +240,26 @@ describe("deriveAiCliLaunchPlan", () => {
     ]);
     expect(plan.trace.preflightChecks.every((check) => check.status === "ready")).toBe(true);
     expect(plan.expectedArtifacts).toContain("native IME, clipboard, reconnect, and AI CLI input-boundary preflight");
+  });
+
+  it("accepts daemon-live mux process preservation when process restart proof is unavailable", () => {
+    const plan = deriveAiCliLaunchPlan({
+      evidence: realCliEvidence(),
+      preflight: {
+        ...preflightEvidence(),
+        processReconnect: { ok: false, checks: {} },
+        muxLiveProcessPreservation: muxLiveProcessPreservationEvidence(),
+      },
+      requirePreflight: true,
+      preferredProvider: "claude",
+      currentTimeMs: NOW,
+    });
+
+    const reconnect = plan.preflightChecks.find((check) => check.id === "process-reconnect");
+    expect(plan.status).toBe("ready");
+    expect(reconnect).toMatchObject({ status: "ready" });
+    expect(reconnect?.detail).toContain("daemon-live detach/reattach");
+    expect(reconnect?.detail).toContain("restart restore remains a separate release gate");
   });
 
   it("accepts native HWND IME and paste evidence when live CDP IME proof is unavailable", () => {

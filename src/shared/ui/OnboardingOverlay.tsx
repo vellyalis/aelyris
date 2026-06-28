@@ -1,5 +1,5 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useState } from "react";
 import styles from "./OnboardingOverlay.module.css";
 
@@ -49,6 +49,7 @@ const STEPS: Step[] = [
 
 export function OnboardingOverlay() {
   const [step, setStep] = useState(-1);
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     try {
@@ -91,15 +92,15 @@ export function OnboardingOverlay() {
       <Dialog.Portal>
         <Dialog.Overlay className={styles.overlay} />
         <Dialog.Content className={styles.contentWrapper} aria-describedby={undefined}>
-          <AnimatePresence mode="wait">
+          <AnimatePresence mode="wait" initial={!reduceMotion}>
             {current && (
               <motion.div
                 key={step}
                 className={`${styles.card} ${styles[current.position]}`}
-                initial={{ opacity: 0, y: 10, scale: 0.97 }}
+                initial={reduceMotion ? false : { opacity: 0, y: 10, scale: 0.97 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ type: "spring", stiffness: 350, damping: 25 }}
+                exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -10 }}
+                transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 350, damping: 25 }}
               >
                 <div className={styles.stepIndicator}>
                   {STEPS.map((item, i) => (

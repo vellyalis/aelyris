@@ -100,7 +100,7 @@ describe("buildRunGraph", () => {
       session("complete", {
         status: "done",
         owner: "review-lead",
-        workspaceScope: "C:/Users/owner/Aether_Terminal",
+        workspaceScope: "C:/repo/aether-terminal",
         writeSet: ["src/App.tsx", "src/App.tsx", "src/shared/types/agent.ts"],
         finalReport: { status: "ready", title: "Agent report" },
         tokensUsed: 120_000,
@@ -112,7 +112,7 @@ describe("buildRunGraph", () => {
     expect(graph.finalReportCount).toBe(1);
     expect(graph.nodes[0]).toMatchObject({
       owner: "review-lead",
-      workspaceScope: "C:/Users/owner/Aether_Terminal",
+      workspaceScope: "C:/repo/aether-terminal",
       writeSet: ["src/App.tsx", "src/shared/types/agent.ts"],
       finalReportStatus: "ready",
       closeState: "collectable",

@@ -356,7 +356,7 @@ export function PaneTreeRenderer({
         // A finished AGENT pane keeps its terminal mounted (not the "Ended pane"
         // placeholder) so claude's final output stays visible — the fleet persists
         // for review instead of vanishing the moment the agent exits.
-        const shouldHoldForAttach = endedLifecycle && !agent;
+        const shouldHoldForAttach = endedLifecycle && (!agent || !terminalId);
         const shouldMount =
           !shouldSuspendForLeaf && !shouldHoldForAttach && (hasRealSize || initializedRef.current.has(leaf.id));
 

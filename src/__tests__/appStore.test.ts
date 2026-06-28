@@ -194,14 +194,14 @@ describe("appStore — appearance customization", () => {
     const { setMoodPresetId, setWallpaperSettingsForMood } = useAppStore.getState();
 
     setWallpaperSettingsForMood("aether-sakura", {
-      imagePath: "C:/Users/owner/Pictures/sakura.jpg",
+      imagePath: "C:/Users/example/Pictures/sakura.jpg",
       opacity: 0.45,
       positionX: 20,
       positionY: 80,
       scale: 160,
     });
     setWallpaperSettingsForMood("aether-pro", {
-      imagePath: "C:/Users/owner/Pictures/pro.jpg",
+      imagePath: "C:/Users/example/Pictures/pro.jpg",
       opacity: 0.12,
       positionX: 60,
       positionY: 45,
@@ -209,12 +209,12 @@ describe("appStore — appearance customization", () => {
     });
 
     setMoodPresetId("aether-sakura");
-    expect(useAppStore.getState().wallpaperImagePath).toBe("C:/Users/owner/Pictures/sakura.jpg");
+    expect(useAppStore.getState().wallpaperImagePath).toBe("C:/Users/example/Pictures/sakura.jpg");
     expect(useAppStore.getState().wallpaperOpacity).toBe(0.45);
     expect(useAppStore.getState().wallpaperSettingsByMood["aether-sakura"].scale).toBe(160);
 
     setMoodPresetId("aether-pro");
-    expect(useAppStore.getState().wallpaperImagePath).toBe("C:/Users/owner/Pictures/pro.jpg");
+    expect(useAppStore.getState().wallpaperImagePath).toBe("C:/Users/example/Pictures/pro.jpg");
     expect(useAppStore.getState().wallpaperOpacity).toBe(0.12);
     expect(useAppStore.getState().wallpaperSettingsByMood["aether-pro"].positionX).toBe(60);
   });

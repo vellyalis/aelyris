@@ -94,6 +94,13 @@ export interface AiCliLaunchPreflightEvidence {
     ok?: boolean;
     checks?: Record<string, unknown>;
   } | null;
+  muxLiveProcessPreservation?: {
+    ok?: boolean;
+    status?: string;
+    currentCapability?: string;
+    requiredCapability?: string;
+    checks?: Array<{ id?: string; ok?: boolean; detail?: string }>;
+  } | null;
   interactiveBoundary?: {
     ok?: boolean;
     checks?: {
@@ -388,6 +395,11 @@ function hasImeCheck(input: AiCliLaunchPlanInput, pattern: RegExp): boolean {
   );
 }
 
+function hasMuxLiveProcessPreservationCheck(input: AiCliLaunchPlanInput, id: string): boolean {
+  const checks = input.preflight?.muxLiveProcessPreservation?.checks;
+  return Array.isArray(checks) && checks.some((check) => check.id === id && check.ok === true);
+}
+
 function hasPromptText(value: string | undefined, minLength = 8): boolean {
   return String(value ?? "").trim().length >= minLength;
 }
@@ -428,12 +440,22 @@ function derivePreflightChecks(input: AiCliLaunchPlanInput): AiCliLaunchCheck[] 
       hasNativeInputCheck(input, "surface-paste-guard") ||
       hasImeCheck(input, /LF paste submitted/i));
   const reconnectChecks = input.preflight?.processReconnect?.checks ?? {};
-  const reconnectReady =
+  const restartReconnectReady =
     input.preflight?.processReconnect?.ok === true &&
     reconnectChecks.sidecarRetainedTerminal === true &&
     reconnectChecks.sidecarRetainedSplitTerminal === true &&
     reconnectChecks.terminalAdoptedAfterRestart === true &&
     reconnectChecks.splitTerminalAdoptedAfterRestart === true;
+  const muxLiveProcessPreservation = input.preflight?.muxLiveProcessPreservation;
+  const daemonLiveReconnectReady =
+    muxLiveProcessPreservation?.ok === true &&
+    muxLiveProcessPreservation.status === "passed" &&
+    muxLiveProcessPreservation.currentCapability === "daemon-live-detach-reattach-same-process" &&
+    muxLiveProcessPreservation.requiredCapability === "same-process-or-broker-preserved-reconnect" &&
+    hasMuxLiveProcessPreservationCheck(input, "graph-live-binding-carries-process-id") &&
+    hasMuxLiveProcessPreservationCheck(input, "integration-test-proves-same-process-detach-reattach") &&
+    hasMuxLiveProcessPreservationCheck(input, "restart-restore-still-clears-stale-live-identity");
+  const reconnectReady = restartReconnectReady || daemonLiveReconnectReady;
   const cliEntries = Array.isArray(input.preflight?.interactiveBoundary?.checks?.clis)
     ? (input.preflight?.interactiveBoundary?.checks?.clis ?? [])
     : [];
@@ -472,9 +494,11 @@ function derivePreflightChecks(input: AiCliLaunchPlanInput): AiCliLaunchCheck[] 
       id: "process-reconnect",
       label: "Pane reconnect",
       status: reconnectReady ? "ready" : input.preflight ? "blocked" : "unknown",
-      detail: reconnectReady
+      detail: restartReconnectReady
         ? "base and split sidecar terminals reconnect after process restart"
-        : "process reconnect proof is missing",
+        : daemonLiveReconnectReady
+          ? "daemon-live detach/reattach preserves the same PTY process; restart restore remains a separate release gate"
+          : "pane reconnect proof is missing",
     },
     {
       id: "interactive-cli-boundary",

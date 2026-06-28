@@ -20,6 +20,8 @@ interface CapturedProps {
   tree: PaneNode;
   activePaneId: string | null;
   terminalIds: Map<string, string>;
+  paneLifecycleStates?: ReadonlyMap<string, PaneLifecycleState>;
+  agentMeta?: ReadonlyMap<string, { model: string; status: "running" | "done" | "error" }>;
   synchronizedPanes?: boolean;
   onFocusPane: (id: string) => void;
   onSplit: (id: string, direction: SplitDirection) => void;
@@ -1322,6 +1324,52 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
       expect(saved?.backendBindings).toEqual({
         [paneId]: { terminalId: "pty-stable-main" },
       });
+    });
+  });
+
+  it("marks restored degraded agent panes exited instead of spawning a fresh shell when the PTY is gone", async () => {
+    localStorage.setItem(
+      "aether:paneTree:tab-test",
+      JSON.stringify({
+        version: 1,
+        tree: {
+          type: "terminal",
+          id: "agent-pty-1",
+          shell: "powershell",
+          title: "review agent",
+          role: "agent",
+        },
+        activePaneId: "agent-pty-1",
+        agentBindings: {
+          "agent-pty-1": {
+            paneId: "agent-pty-1",
+            terminalId: "agent-pty-1",
+            model: "sonnet",
+            backend: "native",
+            durability: "degraded",
+            status: "running",
+            taskId: "task-agent-1",
+            spawnedAt: "2026-06-25T08:00:00.000Z",
+          },
+        },
+      }),
+    );
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "get_pane_tree_layout") return Promise.resolve(null);
+      if (command === "mux_get_workspace") return Promise.resolve(null);
+      if (command === "list_panes_info") return Promise.resolve([]);
+      if (command === "list_terminals") return Promise.resolve([]);
+      return Promise.resolve(undefined);
+    });
+
+    render(<PaneTreeContainer shell="powershell" layoutStorageKey="aether:paneTree:tab-test" />);
+
+    await waitFor(() => {
+      const c = captured as unknown as CapturedProps;
+      expect(c.suspendTerminalMounts).toBe(false);
+      expect(c.terminalIds.has("agent-pty-1")).toBe(false);
+      expect(c.paneLifecycleStates?.get("agent-pty-1")).toBe("exited");
+      expect(c.agentMeta?.get("agent-pty-1")).toEqual({ model: "sonnet", status: "error" });
     });
   });
 

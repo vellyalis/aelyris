@@ -209,7 +209,7 @@ describe("useThemeApplier", () => {
         themeId="sakura-hub"
         moodPresetId="aether-sakura"
         wallpaper={{
-          imagePath: "C:/Users/owner/Pictures/background.jpg",
+          imagePath: "C:/Users/example/Pictures/background.jpg",
           opacity: 0.32,
           positionX: 20,
           positionY: 75,

@@ -1314,11 +1314,11 @@ describe("Release evidence gates", () => {
     expect(finalGoalAuditScript).toContain("nativeHwndPasteLiveChecks");
     expect(finalGoalAuditScript).toContain("pass-current-native-hwnd-paste-contract");
     expect(finalGoalAuditScript).toContain("scripts/verify-native-hwnd-paste-live.mjs");
-    expect(finalGoalAuditScript).toContain("docs/AETHER_COMMAND_CENTER_EDGE_PLAN.md");
-    expect(finalGoalAuditScript).toContain("docs/AETHER_COMMAND_CENTER_EDGE_PROGRESS.md");
-    expect(finalGoalAuditScript).toContain("docs/RUST_CORE_WEZTERM_TMUX_WIZARD_GOALS.md");
-    expect(finalGoalAuditScript).toContain("docs/TERMINAL_NATIVE_CORE_AND_EDITOR_DESCOPE_PLAN_2026-05-17.md");
-    expect(finalGoalAuditScript).toContain("docs/NATIVE_RUST_WEZTERM_PLUS_MIGRATION_PLAN.md");
+    expect(finalGoalAuditScript).toContain("README.md");
+    expect(finalGoalAuditScript).toContain("docs/README.md");
+    expect(finalGoalAuditScript).toContain("docs/PUBLICATION_READINESS.md");
+    expect(finalGoalAuditScript).toContain("docs/specs/README.md");
+    expect(finalGoalAuditScript).toContain("docs/specs/AETHER_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md");
     expect(finalGoalAuditScript).toContain("src/features/terminal/keymap.ts");
     expect(finalGoalAuditScript).toContain("src/features/terminal/hooks/useAICliDetection.ts");
     expect(finalGoalAuditScript).toContain("src/shared/hooks/useKeyboardShortcuts.ts");
@@ -1390,11 +1390,11 @@ describe("Release evidence gates", () => {
     expect(score).toContain("requiredDocsCovered");
     expect(score).toContain("final-goal-audit-after-goal-docs");
     expect(score).toContain("quality-score-final");
-    expect(score).toContain("docs/TERMINAL_NATIVE_CORE_AND_EDITOR_DESCOPE_PLAN_2026-05-17.md");
-    expect(score).toContain("docs/NATIVE_RUST_WEZTERM_PLUS_MIGRATION_PLAN.md");
-    expect(goalDocumentationFreshnessScript).toContain("docs/AETHER_COMMAND_CENTER_EDGE_PLAN.md");
-    expect(goalDocumentationFreshnessScript).toContain("docs/AETHER_COMMAND_CENTER_EDGE_PROGRESS.md");
-    expect(goalDocumentationFreshnessScript).toContain("docs/RUST_CORE_WEZTERM_TMUX_WIZARD_GOALS.md");
+    expect(score).toContain("docs/specs/README.md");
+    expect(score).toContain("docs/specs/AETHER_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md");
+    expect(goalDocumentationFreshnessScript).toContain("README.md");
+    expect(goalDocumentationFreshnessScript).toContain("docs/README.md");
+    expect(goalDocumentationFreshnessScript).toContain("docs/PUBLICATION_READINESS.md");
     expect(score).toContain('"verify:goal:safe"');
     expect(score).toContain("tokenPromptExecutedWithConsent");
     expect(score).toContain("promptExecutionStateReady");
@@ -1542,7 +1542,7 @@ describe("App right rail composition", () => {
     const src = getSrc();
     const styles = getStyles();
     const packageJson = readFileSync(join(process.cwd(), "package.json"), "utf8");
-    const plan = readFileSync(join(process.cwd(), "docs/CLAUGE_UI_REFRESH_FINAL_GOAL_2026-05-26.md"), "utf8");
+    const plan = readFileSync(join(process.cwd(), "docs/history/CLAUGE_UI_REFRESH_FINAL_GOAL_2026-05-26.md"), "utf8");
     const verifier = readFileSync(join(process.cwd(), "scripts/verify-clauge-ui-refresh-contract.mjs"), "utf8");
 
     expect(src).toContain("type ProductModeId");

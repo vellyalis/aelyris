@@ -38,18 +38,18 @@ describe("external editor integration", () => {
   });
 
   it("invokes the native VS Code opener with optional line and column", async () => {
-    await openInVSCode("C:/Users/owner/project/src/main.ts", { line: 42, column: 7 });
+    await openInVSCode("C:/repo/project/src/main.ts", { line: 42, column: 7 });
     expect(invokeMock).toHaveBeenCalledWith("open_in_vscode", {
-      path: "C:/Users/owner/project/src/main.ts",
+      path: "C:/repo/project/src/main.ts",
       line: 42,
       column: 7,
     });
   });
 
   it("invokes the native VS Code git diff opener", async () => {
-    await openGitDiffInVSCode("C:/Users/owner/project", "src/main.ts");
+    await openGitDiffInVSCode("C:/repo/project", "src/main.ts");
     expect(invokeMock).toHaveBeenCalledWith("open_git_file_diff_in_vscode", {
-      repoPath: "C:/Users/owner/project",
+      repoPath: "C:/repo/project",
       filePath: "src/main.ts",
     });
   });

@@ -731,7 +731,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
                       const next = event.currentTarget.value.trim();
                       setWallpaperSettingsForMood(mood, { imagePath: next.length > 0 ? next : null });
                     }}
-                    placeholder="C:/Users/owner/Pictures/background.jpg"
+                    placeholder="C:/Users/example/Pictures/background.jpg"
                   />
                   <div className={styles.wallpaperPath} title={wallpaper.imagePath ?? "No image selected"}>
                     {wallpaper.imagePath ?? "No image selected"}

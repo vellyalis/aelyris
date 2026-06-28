@@ -1,7 +1,7 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
-import type { ShellType } from "../../../shared/types/terminalPane";
 import { formatFallbackError, reportFallback } from "../../../shared/lib/fallbackTelemetry";
 import { isTauriRuntime } from "../../../shared/lib/tauriRuntime";
+import type { ShellType } from "../../../shared/types/terminalPane";
 import { collectLeafIds, createLeaf, createLeafWithId } from "./operations";
 import {
   PANE_ATTACH_STATES,
@@ -13,6 +13,10 @@ import {
   type PaneScrollbackCheckpoint,
   type PaneSessionIntent,
   type TerminalLeaf,
+  VISIBLE_AGENT_PANE_BACKENDS,
+  VISIBLE_AGENT_PANE_DURABILITY_STATES,
+  VISIBLE_AGENT_PANE_STATUSES,
+  type VisibleAgentPaneBinding,
 } from "./types";
 
 const SNAPSHOT_VERSION = 1;
@@ -42,6 +46,7 @@ export interface PaneTreeSnapshot {
   synchronizedPanes?: boolean;
   backendBindings?: Record<string, PaneBackendBindingFingerprint>;
   paneIntents?: Record<string, PaneSessionIntent>;
+  agentBindings?: Record<string, VisibleAgentPaneBinding>;
 }
 
 export interface PaneBackendBindingFingerprint {
@@ -232,6 +237,10 @@ export function muxWorkspaceIdCandidates(
   if (snapshot?.activePaneId) add(snapshot.backendBindings?.[snapshot.activePaneId]?.terminalId);
   for (const binding of Object.values(snapshot?.backendBindings ?? {})) add(binding.terminalId);
   for (const intent of Object.values(snapshot?.paneIntents ?? {})) add(intent.terminalId);
+  for (const binding of Object.values(snapshot?.agentBindings ?? {})) {
+    add(binding.terminalId);
+    add(binding.sessionId);
+  }
   add(snapshot?.sessionId);
   add(snapshot?.layoutId);
   add(fallbackStorageKey);
@@ -363,6 +372,7 @@ function sanitizeSnapshot(value: unknown, fallbackShell: ShellType, fallbackCwd?
 
   const backendBindings = sanitizeBackendBindings(record.backendBindings, leafIds);
   const paneIntents = sanitizePaneIntents(record.paneIntents, leafIds);
+  const agentBindings = sanitizeAgentBindings(record.agentBindings, leafIds);
   const sessionId = sanitizeBoundedString(record.sessionId, 160);
   const layoutId = sanitizeBoundedString(record.layoutId, 160);
   const muxWorkspaceId = sanitizeTerminalId(record.muxWorkspaceId);
@@ -378,6 +388,7 @@ function sanitizeSnapshot(value: unknown, fallbackShell: ShellType, fallbackCwd?
     ...(synchronizedPanes ? { synchronizedPanes } : {}),
     ...(backendBindings ? { backendBindings } : {}),
     ...(paneIntents ? { paneIntents } : {}),
+    ...(agentBindings ? { agentBindings } : {}),
   };
 }
 
@@ -588,6 +599,47 @@ function sanitizePaneIntents(
     };
   }
   return Object.keys(intents).length > 0 ? intents : undefined;
+}
+
+function sanitizeAgentBindings(
+  value: unknown,
+  leafIds: ReadonlySet<string>,
+): Record<string, VisibleAgentPaneBinding> | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const bindings: Record<string, VisibleAgentPaneBinding> = {};
+  for (const [paneId, rawBinding] of Object.entries(value as Record<string, unknown>)) {
+    if (!leafIds.has(paneId) || !rawBinding || typeof rawBinding !== "object") continue;
+    const record = rawBinding as Record<string, unknown>;
+    const terminalId = sanitizeTerminalId(record.terminalId);
+    const model = sanitizeBoundedString(record.model, 80);
+    const backend = sanitizeLiteral(record.backend, VISIBLE_AGENT_PANE_BACKENDS);
+    const durability = sanitizeLiteral(record.durability, VISIBLE_AGENT_PANE_DURABILITY_STATES);
+    const status = sanitizeLiteral(record.status, VISIBLE_AGENT_PANE_STATUSES);
+    const spawnedAt = sanitizeBoundedString(record.spawnedAt, 80);
+    if (!terminalId || !model || !backend || !durability || !status || !spawnedAt) continue;
+    const taskId = sanitizeBoundedString(record.taskId, 160);
+    const roleId = sanitizeBoundedString(record.roleId, 80);
+    const sessionId = sanitizeBoundedString(record.sessionId, 160);
+    const cwd = sanitizeBoundedString(record.cwd, 2048);
+    const branchName = sanitizeBoundedString(record.branchName, 256);
+    const updatedAt = sanitizeBoundedString(record.updatedAt, 80);
+    bindings[paneId] = {
+      paneId,
+      terminalId,
+      model,
+      backend,
+      durability,
+      status,
+      ...(taskId ? { taskId } : {}),
+      ...(roleId ? { roleId } : {}),
+      ...(sessionId ? { sessionId } : {}),
+      ...(cwd ? { cwd } : {}),
+      ...(branchName ? { branchName } : {}),
+      spawnedAt,
+      ...(updatedAt ? { updatedAt } : {}),
+    };
+  }
+  return Object.keys(bindings).length > 0 ? bindings : undefined;
 }
 
 function sanitizeTerminalId(value: unknown): string | undefined {

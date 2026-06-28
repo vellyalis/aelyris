@@ -9,6 +9,8 @@ export interface Tab {
   worktreeBranch?: string;
 }
 
+export const VISUAL_QA_FALLBACK_PROJECT_PATH = "C:/repo/aether-terminal";
+
 const SHELL_LABELS: Record<ShellType, string> = {
   powershell: "PowerShell",
   cmd: "CMD",
@@ -33,7 +35,7 @@ function readVisualQaProjectPath(): string | null {
   }
   const enabled = params.get("aetherVisualQa") === "1" || params.get("visualQa") === "1";
   if (!enabled) return null;
-  return (params.get("projectPath") || storedProject || "C:/Users/owner/Aether_Terminal").replace(/\\/g, "/");
+  return (params.get("projectPath") || storedProject || VISUAL_QA_FALLBACK_PROJECT_PATH).replace(/\\/g, "/");
 }
 
 // Validate that a parsed tab has the minimum shape we need. Without this,

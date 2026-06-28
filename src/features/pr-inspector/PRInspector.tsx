@@ -13,7 +13,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { LoadingSkeleton } from "../../shared/ui/LoadingSkeleton";
@@ -144,6 +144,7 @@ export function PRInspector({ visible, projectPath, onClose, onViewDiff, onStart
   const [diff, setDiff] = useState<string | null>(null);
   const prRequestSeq = useRef(0);
   const diffRequestSeq = useRef(0);
+  const reduceMotion = useReducedMotion();
 
   const loadPRs = useCallback(async () => {
     const requestId = ++prRequestSeq.current;
@@ -199,14 +200,14 @@ export function PRInspector({ visible, projectPath, onClose, onViewDiff, onStart
   };
 
   return (
-    <AnimatePresence>
+    <AnimatePresence initial={!reduceMotion}>
       {visible && (
         <motion.div
           className={styles.panel}
-          initial={{ opacity: 0, scale: 0.95 }}
+          initial={reduceMotion ? false : { opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.95 }}
-          transition={{ type: "spring", stiffness: 400, damping: 30 }}
+          exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.95 }}
+          transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 400, damping: 30 }}
         >
           <PanelHeader
             title="Pull Requests"

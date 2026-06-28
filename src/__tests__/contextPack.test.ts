@@ -9,6 +9,11 @@ import { buildWorkstationGraph } from "../shared/lib/workstationGraph";
 import type { AgentSession } from "../shared/types/agent";
 import type { AuditEventRecord } from "../shared/types/audit";
 
+const REDACTION_TEST_OPENAI_KEY = `sk-${"REDACTION_TEST_OPENAI_KEY"}`;
+const REDACTION_TEST_BEARER = "REDACTION" + "TESTBEARERTOKEN";
+const REDACTION_TEST_FLAG_SECRET = "REDACTION_TEST_FLAG_SECRET";
+const REDACTION_TEST_DASHBOARD_TOKEN = "REDACTION_TEST_DASHBOARD_TOKEN";
+
 function session(overrides: Partial<AgentSession> = {}): AgentSession {
   return {
     id: "agent-a",
@@ -21,12 +26,12 @@ function session(overrides: Partial<AgentSession> = {}): AgentSession {
       {
         timestamp: 2,
         type: "text",
-        content: "Implemented generator with OPENAI_API_KEY=sk-live-secret1234567890 in the local shell.",
+        content: `Implemented generator with OPENAI_API_KEY=${REDACTION_TEST_OPENAI_KEY} in the local shell.`,
       },
       {
         timestamp: 3,
         type: "tool_result",
-        content: "pnpm test passed with Authorization: Bearer abcdefghijklmnop",
+        content: `pnpm test passed with Authorization: Bearer ${REDACTION_TEST_BEARER}`,
       },
     ],
     cost: 0.4,
@@ -79,7 +84,7 @@ function baseInput(overrides: Partial<ContextPackInput> = {}): ContextPackInput 
     panes: [{ paneId: "pane-1", terminalId: "term-1", title: "PowerShell", role: "work", status: "live" }],
     commandsRun: [
       {
-        command: "pnpm test -- --token super-secret-token",
+        command: `pnpm test -- --token ${REDACTION_TEST_FLAG_SECRET}`,
         result: "pass",
       },
     ],
@@ -93,7 +98,7 @@ function baseInput(overrides: Partial<ContextPackInput> = {}): ContextPackInput 
       summary: "Aether run completed with focused validation.",
       markdown: "Final report body",
     },
-    dashboardState: { status: "running", token: "dashboard-secret-token", fileContent: "raw source should not leak" },
+    dashboardState: { status: "running", token: REDACTION_TEST_DASHBOARD_TOKEN, fileContent: "raw source should not leak" },
     workstationGraph,
     ...overrides,
   };
@@ -119,10 +124,10 @@ describe("buildContextPack", () => {
     const pack = buildContextPack(baseInput());
     const serialized = JSON.stringify(pack);
 
-    expect(serialized).not.toContain("sk-live-secret1234567890");
-    expect(serialized).not.toContain("abcdefghijklmnop");
-    expect(serialized).not.toContain("super-secret-token");
-    expect(serialized).not.toContain("dashboard-secret-token");
+    expect(serialized).not.toContain(REDACTION_TEST_OPENAI_KEY);
+    expect(serialized).not.toContain(REDACTION_TEST_BEARER);
+    expect(serialized).not.toContain(REDACTION_TEST_FLAG_SECRET);
+    expect(serialized).not.toContain(REDACTION_TEST_DASHBOARD_TOKEN);
     expect(serialized).not.toContain("raw source should not leak");
     expect(pack.json.summary.redactionCount).toBeGreaterThanOrEqual(5);
   });
@@ -158,9 +163,9 @@ describe("buildContextPack", () => {
   });
 
   it("exports the redaction primitive for focused fixtures", () => {
-    const text = redactSensitiveText("Authorization: Bearer abcdefghijk --api-key sk-secret123456 token=plain-secret");
-    expect(text).not.toContain("abcdefghijk");
-    expect(text).not.toContain("sk-secret123456");
+    const text = redactSensitiveText(`Authorization: Bearer ${REDACTION_TEST_BEARER} --api-key ${REDACTION_TEST_OPENAI_KEY} token=plain-secret`);
+    expect(text).not.toContain(REDACTION_TEST_BEARER);
+    expect(text).not.toContain(REDACTION_TEST_OPENAI_KEY);
     expect(text).not.toContain("plain-secret");
     expect(text).toContain("[redacted]");
   });
